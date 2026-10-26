@@ -90,4 +90,20 @@ Each part's done-check is `make check-<n>` (written as part of that part). It pr
 
 ## Order of work
 
-Parts 1–5 can be built in parallel against fixtures from day 1. Part 6 needs only the file formats. Part 7 is last. Scope questions go on the part's issue (#55–#61); scope changes need Mo or the team to say so on a part issue — agents do not widen scope on their own. (#27 and #1 defined this scope and are now closed for reference.)
+Parts 1–5 can be built in parallel against fixtures from day 1. Part 6 needs only the file formats. Part 7 is last. Scope questions go on the part's issue; scope changes need Mo or the team to say so on a part issue — agents do not widen scope on their own. (#27 and #1 defined this scope and are now closed for reference.)
+
+## Repos (one per part, isolated)
+
+Each part is built in its own repo containing **only that part's context**, so agents working there never load the other parts. Parts stay black boxes: they connect only through the shared files above.
+
+| Part | Repo | Main-repo tracker |
+|---|---|---|
+| 1 Key frame finder/splitter | [moalborati/simon-part-1-keyframes](https://github.com/moalborati/simon-part-1-keyframes) | #55 |
+| 2 Images → 3D models | [moalborati/simon-part-2-images-to-3d](https://github.com/moalborati/simon-part-2-images-to-3d) | #56 |
+| 3 Align 3D / skeleton consistency | [moalborati/simon-part-3-skeleton-consistency](https://github.com/moalborati/simon-part-3-skeleton-consistency) | #57 |
+| 4 Animate between key frames | [moalborati/simon-part-4-animate-keyframes](https://github.com/moalborati/simon-part-4-animate-keyframes) | #58 |
+| 5 Compare + fault analysis | [moalborati/simon-part-5-fault-analysis](https://github.com/moalborati/simon-part-5-fault-analysis) | #59 |
+| 6 Recording/playback catalog app | [moalborati/simon-part-6-recording-catalog](https://github.com/moalborati/simon-part-6-recording-catalog) | #60 |
+| 7 Stitching into one app | [moalborati/simon-part-7-stitching-app](https://github.com/moalborati/simon-part-7-stitching-app) | #61 |
+
+Work happens in the part repo (its issue #1). The main-repo issues #55–#61 are trackers pointing there; do not build in this repo.
