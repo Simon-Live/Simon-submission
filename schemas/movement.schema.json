@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://simon.local/schemas/movement.schema.json",
   "title": "Simon Movement Package",
-  "description": "The single contract between import (Track A) and live (Track B), for any movement routine (exercise, pilates, yoga, dance/choreography). Frozen v0.1.0 on Day 1; see PLAN.md P0.",
+  "description": "The single contract between import (Track A) and live (Track B), for any movement routine (exercise, pilates, yoga, dance/choreography). v0.2.0; freezes when Track B starts M1 (see PLAN.md P0). Breaking change = minor-version bump with fixtures regenerated in the same commit.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "movement", "coordinate_system", "timing", "joint_names", "reference_motion", "phases", "rules", "provenance", "quality"],
   "properties": {
-    "schema_version": { "const": "0.1.0" },
+    "schema_version": { "const": "0.2.0" },
     "movement": {
       "type": "object",
       "additionalProperties": false,
@@ -115,6 +115,17 @@
             "maxItems": 2
           }
         }
+      }
+    },
+    "audio": {
+      "description": "Audio asset for music routines (extracted source audio, or a generated metronome for synthetic fixtures). Live mode plays this asset and its playback clock is the beat clock (see PLAN.md P10); offset_ms aligns asset time 0 to movement frame 0.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri", "offset_ms"],
+      "properties": {
+        "uri": { "type": "string", "minLength": 1 },
+        "offset_ms": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       }
     },
     "music": {
@@ -230,7 +241,7 @@
         },
         "measure": {
           "type": "object",
-          "description": "angle without plane: 3D angle at joints[1] between joints[0] and joints[2]. angle with plane: segment joints[0]->joints[1] projected onto the body plane, measured from the reference direction; frames where the projected length is below min_projected_ratio of the true length are skipped (no fault, no pass). pose_similarity: mean angle (deg) between the user's and the time-aligned reference's bone directions over the listed joints; 0 = identical shape. timing: signed ms between the user reaching the phase keyframe and the reference (or the beat, with music); positive = late. pose_similarity and timing need live alignment (P10), so they are evaluated in live mode only.",
+          "description": "angle without plane: 3D angle at joints[1] between joints[0] and joints[2]. angle with plane: segment joints[0]->joints[1] projected onto the body plane, measured from the reference direction; frames where the projected length is below min_projected_ratio of the true length are skipped (no fault, no pass). pose_similarity: mean angle (deg) between the user's and the time-aligned reference's bone directions over the listed joints; 0 = identical shape. timing: signed ms between the user reaching the phase keyframe and the reference (or the beat, with music); positive = late. pose_similarity is evaluated live via P10 alignment, and in reference mode by tools/measures.py (each rep/pass aligned by normalised phase position against the first rep/pass). timing needs live alignment (P10), so it is live-only.",
           "additionalProperties": false,
           "required": ["type", "joints"],
           "properties": {

@@ -88,6 +88,20 @@ JOINT_NAMES = ["nose", "left_eye", "right_eye", "left_ear", "right_ear",
                "left_wrist", "right_wrist", "left_hip", "right_hip",
                "left_knee", "right_knee", "left_ankle", "right_ankle"]
 
+BASELINE_RULE = {
+    "id": "shape_match",
+    "cue_text": "match the reference shape",
+    "phases": ["descend", "bottom_pause", "ascend", "top"],
+    "side": "as_written",
+    "measure": {"type": "pose_similarity", "joints": ["nose", "left_eye", "right_eye", "left_ear", "right_ear",
+                "left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist",
+                "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle"]},
+    "normal_range": [0, 6],
+    "fault_when": {"operator": ">", "threshold": 8},
+    "min_frames": 6,
+    "joint_highlight": "right_elbow",
+}
+
 RULE = {
     "id": "elbow_flare",
     "cue_text": "elbows tucked",
@@ -119,7 +133,7 @@ def main() -> None:
                 frame += 1
     rep2_start = phases[len(PHASE_FRAMES)]["start_frame"]
     pkg = {
-        "schema_version": "0.1.0",
+        "schema_version": "0.2.0",
         "movement": {"id": "pushup", "name": "Push-up", "primary_joint": "right_elbow",
                      "structure": "reps", "follower_mirrors": False},
         "coordinate_system": {
@@ -143,7 +157,7 @@ def main() -> None:
             {"id": "elbow_flare", "text": "this is what flaring looks like", "type": "fault", "phase": "descend",
              "t_ms": round(rep2_start * 1000 / FPS), "demo_frames": [rep2_start, len(frames) - 1]},
         ],
-        "rules": [RULE],
+        "rules": [RULE, BASELINE_RULE],
         "provenance": {
             "source": "synthetic push-up, rep 1 tucked, rep 2 flared (no video)",
             "generated_by": "tools/make_pushup_fixture.py",

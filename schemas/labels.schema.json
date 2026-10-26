@@ -16,8 +16,18 @@
     "source_file": { "type": "string", "pattern": "\\.mp4$" },
     "labeled_by": { "type": "string" },
     "labeling_tool": { "const": "Label Studio" },
+    "beats_ms": {
+      "description": "Beat times in clip-local milliseconds. Required for music clips (the converter or labeler fills it); ground truth for S4/P4/P12 timing checks.",
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 }
+    },
+    "downbeats_ms": {
+      "description": "Downbeat (count 1) times in clip-local milliseconds; subset of beats_ms.",
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 }
+    },
     "sync": {
-      "description": "Clips filmed simultaneously on several phones share one set of rep/phase labels. offset_frames = this clip's frame index at the group's frame 0 (from a clap or flash at the start).",
+      "description": "Clips filmed simultaneously on several phones share one set of rep/phase labels. All start_frame/end_frame values in this file are clip-local. offset_frames = this clip's frame index at the group's frame 0 (from a clap or flash at the start), so group_frame = clip_frame - offset_frames. The converter, never a human, produces group-timeline labels for eval.",
       "type": "object",
       "additionalProperties": false,
       "required": ["group", "offset_frames"],
@@ -38,6 +48,11 @@
           "start_frame": { "type": "integer", "minimum": 0 },
           "end_frame": { "type": "integer", "minimum": 0 },
           "fault": { "description": "none, or the rule id of the fault performed in this rep.", "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "human_rating": {
+            "description": "Optional human form rating for this rep/pass (P11 shape-correlation gate). Collected from M1 labelling onward.",
+            "type": "integer", "minimum": 1, "maximum": 5
+          },
+          "rater": { "type": "string" },
           "phases": {
             "type": "array",
             "minItems": 1,
