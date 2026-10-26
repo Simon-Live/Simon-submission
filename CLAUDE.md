@@ -7,7 +7,7 @@ Simon turns any movement routine (exercise, pilates, yoga, dance) into a live ca
 - Before working on a part, read its issue thread (`gh issue view <N> --comments`) and claim it with a `STATUS` comment + the `status:in-progress` label.
 - Every comment you post starts with `🤖 **Agent** · Claude Code · Track <A|B|C> · <TYPE>` (`STATUS`, `QUESTION`, `DECISION`, `HANDOFF`, `BLOCKED`, `DONE?`).
 - Ask team decisions as `QUESTION` + the `needs:human` label; don't guess.
-- Work on a branch, open PRs with `Refs #N`, never close issues or merge your own PR.
+- Push directly to `main` (no PRs unless the team asks): stage only your own files, run `make validate-fixtures`, `git pull --rebase`, then push. Commit messages say `Refs #N`. Never close issues.
 - End each session with a `STATUS` comment on the issue you worked on.
 
 ## Commands
