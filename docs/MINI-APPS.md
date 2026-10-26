@@ -90,4 +90,4 @@ Each part's done-check is `make check-<n>` (written as part of that part). It pr
 
 ## Order of work
 
-Parts 1–5 can be built in parallel against fixtures from day 1. Part 6 needs only the file formats. Part 7 is last. Scope questions go on the part's issue; scope changes need Mo or the team to say so on #27 or #1 — agents do not widen scope on their own.
+Parts 1–5 can be built in parallel against fixtures from day 1. Part 6 needs only the file formats. Part 7 is last. Scope questions go on the part's issue (#55–#61); scope changes need Mo or the team to say so on a part issue — agents do not widen scope on their own. (#27 and #1 defined this scope and are now closed for reference.)

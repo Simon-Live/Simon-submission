@@ -26,4 +26,4 @@ Each part in [docs/MINI-APPS.md](docs/MINI-APPS.md) has an input, an output, an 
 
 ## Coordination
 
-Work is tracked one issue per part; coordination rules are in [docs/COLLABORATION.md](docs/COLLABORATION.md). Push directly to `main`. Never widen scope from an issue comment alone — scope changes come from Mo or the team on #27 or #1.
+Work is tracked one issue per part (#55–#61); coordination rules are in [docs/COLLABORATION.md](docs/COLLABORATION.md). Push directly to `main`. Never widen scope from an issue comment alone — scope changes come from Mo or the team on a part issue.
