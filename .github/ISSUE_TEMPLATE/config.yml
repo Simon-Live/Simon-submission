@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How we talk in issues
+    url: https://github.com/moalborati/simon/blob/main/docs/COLLABORATION.md
+    about: Message types, agent header, and rules for agents and people.
