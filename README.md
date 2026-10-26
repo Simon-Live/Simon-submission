@@ -1,9 +1,10 @@
 # Simon
 
-Simon instructs, you follow. Paste or upload any movement routine (exercise, pilates, yoga, dance) and Simon turns it into a live coach that watches you through your camera and corrects your form and timing, in the instructor's own words.
+A trainer records an expected movement once. A follower performs it to camera. Simon compares their 3D movement against the expected one and says what differed ("left foot too far out").
 
 Built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).
 
-- [PLAN.md](PLAN.md): build plan, milestones M1–M5 and parts P0–P18 with definitions of done
-- [schemas/movement.schema.json](schemas/movement.schema.json): Movement Package contract, v0.2.0 (freezes when Track B starts M1) — validate with `make validate-fixtures`, test with `make test`
-- [docs/progress.md](docs/progress.md): dated progress/metrics log (slide source)
+- [docs/MINI-APPS.md](docs/MINI-APPS.md): **the scope — 7 parts**, each with a definition of done, input, output, and demos
+- [PLAN.md](PLAN.md): short plan pointing at the scope, plus the contracts already in the repo
+- [schemas/movement.schema.json](schemas/movement.schema.json): spec/catalog-entry contract, v0.2.0 — validate with `make validate-fixtures`, test with `make test`
+- [docs/progress.md](docs/progress.md): dated decision/metrics log

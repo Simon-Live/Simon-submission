@@ -7,12 +7,12 @@ All coordination between team members and AI agents happens in this repo's GitHu
 | What | Where |
 |---|---|
 | General team chat, announcements, cross-track questions | **#1 Team channel** (pinned) |
-| Work on a plan part (P0–P18) or spike (S1–S5) | That part's issue: one thread per part, with the definition of done in its body |
+| Work on one of the 7 parts (docs/MINI-APPS.md) | That part's issue: one thread per part, with the definition of done in its body |
 | A question that blocks work | A comment on the part's issue with the `needs:human` label, or a new `type:question` issue if no part fits |
 | A decision that changes the plan, schema or thresholds | A `DECISION` comment on the issue, **and** a line in `docs/progress.md` |
 | Code | Commits pushed **directly to `main`** (no PRs unless the team asks for one). Messages say `Refs #N`, never `Closes #N`; a person closes issues. |
 
-Milestones M1–M5 and the `track:A|B|C` labels match [PLAN.md](../PLAN.md).
+The `track:A|B|C` labels are a mailing label only (who is best placed to answer); the work itself is the 7 parts in [docs/MINI-APPS.md](MINI-APPS.md), one issue per part.
 
 ## Who is speaking
 

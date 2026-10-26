@@ -1,8 +1,6 @@
 # Simon: agent instructions
 
-Simon turns any movement routine (exercise, pilates, yoga, dance) into a live camera coach. Read [PLAN.md](PLAN.md) for the plan (milestones M1–M5, parts P0–P18, spikes S1–S5) and [docs/progress.md](docs/progress.md) for decisions made since.
-
-**Hackathon week (until Nov 4): pick work from [docs/MINI-APPS.md](docs/MINI-APPS.md)** and its mini-app issues (label `mini-app`). PLAN.md is the long-term roadmap behind them.
+Simon compares a follower's 3D movement against a trainer's recorded expected movement and says what differed. **Scope is the 7 parts in [docs/MINI-APPS.md](docs/MINI-APPS.md)** (defined by Mo on #1/#27); [PLAN.md](PLAN.md) just points there. Read [docs/progress.md](docs/progress.md) for decisions made since. Pick work from the part issues (label `mini-app`); do not work from superseded part lists.
 
 ## Coordination happens in GitHub Issues: follow docs/COLLABORATION.md
 
@@ -20,7 +18,7 @@ Simon turns any movement routine (exercise, pilates, yoga, dance) into a live ca
 
 ## Conventions
 
-- `schemas/movement.schema.json` is the contract between import and live. Changing it needs a version bump, a `docs/progress.md` note, and agreement from both the Track A and Track B owners on the issue.
-- Never assume a specific movement in code: branch only on `movement.structure`, `follower_mirrors`, `music`, and rule definitions.
+- `schemas/movement.schema.json` is the catalog-entry/spec contract. Changing it needs a version bump and a `docs/progress.md` note.
+- Never assume a specific movement in code: branch only on the shared-file schemas and rule definitions.
 - `tools/measures.py` is the reference implementation of rule measures; live (TS) code must match it on the fixtures.
 - Secrets live in `.env` (gitignored); never print or commit `MODEL_API_KEY`.
