@@ -1,0 +1,28 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Node (web/)
+node_modules/
+dist/
+.vite/
+
+# Python (import/)
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Pipeline working data and large media
+work/
+*.mp4
+*.mov
+*.webm
+*.wav
+!fixtures/**/*.json
