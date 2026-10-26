@@ -2,6 +2,8 @@
 
 Simon turns any movement routine (exercise, pilates, yoga, dance) into a live camera coach. Read [PLAN.md](PLAN.md) for the plan (milestones M1–M5, parts P0–P18, spikes S1–S5) and [docs/progress.md](docs/progress.md) for decisions made since.
 
+**Hackathon week (until Nov 4): pick work from [docs/MINI-APPS.md](docs/MINI-APPS.md)** and its mini-app issues (label `mini-app`). PLAN.md is the long-term roadmap behind them.
+
 ## Coordination happens in GitHub Issues: follow docs/COLLABORATION.md
 
 - Before working on a part, read its issue thread (`gh issue view <N> --comments`) and claim it with a `STATUS` comment + the `status:in-progress` label.

@@ -17,8 +17,12 @@ env:
 
 jobs:
   respond:
-    # Bots don't get a reply, so the responder can never trigger itself.
-    if: github.event_name == 'issues' && github.event.issue.user.type != 'Bot'
+    # Skips bots (so it never triggers itself) and issues opened by agents (body starts with the robot header;
+    # agents label their own issues).
+    if: >-
+      github.event_name == 'issues' &&
+      github.event.issue.user.type != 'Bot' &&
+      !startsWith(github.event.issue.body, '🤖')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -63,8 +67,6 @@ jobs:
                - the next step and who it waits on (a track owner, or an agent via needs:agent).
                Don't @mention anyone; refer to roles like "Track B owner". Keep it under 200 words.
 
-            If the issue was opened by an agent (its body starts with 🤖), only add labels and related-issue links;
-            don't answer questions it addresses to people.
 
   follow-up:
     # Comments that @mention the owner, or any comment in the team channel. Skips bots, PR comments,

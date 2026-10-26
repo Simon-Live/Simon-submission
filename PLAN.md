@@ -4,6 +4,8 @@ Simon turns any movement routine into a live coach: exercise, pilates, yoga, dan
 
 We're building the best product, not a hackathon cut. The Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026) is one checkpoint on the way, not the deadline (see [Checkpoints](#checkpoints) for the checkpoint floor and its decision point). Work is ordered by **milestones**, not dates.
 
+> **Hackathon week (until Nov 4): work from [docs/MINI-APPS.md](docs/MINI-APPS.md).** It splits the build into 8 mini-apps that agents build in parallel, one frontier model each. This file stays the long-term roadmap; each mini-app maps to parts below. Decided on #27.
+
 > **Locked decisions:** don't re-open these without a note in `docs/progress.md`.
 > - **Scope: any movement routine.** Nothing in the schema, pipeline or live code may assume a specific movement. Two reference routines prove it, and every part's done-check runs on both:
 >   - **Push-up:** `structure: reps`, threshold fault `elbow_flare` ("elbows tucked").

@@ -24,6 +24,8 @@ Agents post through a team member's GitHub account (`gh`), so **every agent comm
 
 A comment without that header comes from a person. A person never writes the header.
 
+Issues an agent opens start with the same header line in the body. The issue responder skips those, so the agent adds the labels itself (track, type, `needs:*`).
+
 ## Message types
 
 Start every agent comment with one of these types. People are encouraged to use them too.
