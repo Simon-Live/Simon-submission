@@ -16,6 +16,8 @@ env:
   OWNER_HANDLE: the team
 
 jobs:
+  # Tool scope: all gh issue/label/search/api commands plus writing comment bodies. The job token
+  # (contents: read, issues: write) is what limits the blast radius, not the tool list.
   respond:
     # Skips bots (so it never triggers itself) and issues opened by agents (body starts with the robot header;
     # agents label their own issues).
@@ -39,7 +41,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --max-turns 20
-            --allowedTools "Read,Glob,Grep,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh search issues:*),Bash(gh label list:*)"
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh issue:*),Bash(gh search:*),Bash(gh label:*),Bash(gh api:*),Bash(cat:*),Bash(mkdir:*)"
           prompt: |
             You are the issue responder for ${{ github.repository }}. Issue #${{ github.event.issue.number }} was just opened.
 
@@ -93,7 +95,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
             --max-turns 20
-            --allowedTools "Read,Glob,Grep,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh search issues:*),Bash(gh label list:*),Bash(gh api repos/${{ github.repository }}/issues/comments/:*)"
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh issue:*),Bash(gh search:*),Bash(gh label:*),Bash(gh api:*),Bash(cat:*),Bash(mkdir:*)"
           prompt: |
             You are the follow-up agent for ${{ github.repository }}. A new comment (id ${{ github.event.comment.id }}) by
             ${{ github.event.comment.user.login }} was posted on issue #${{ github.event.issue.number }}.
