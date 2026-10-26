@@ -1,0 +1,2 @@
+fixtures/clips/*.mp4 filter=lfs diff=lfs merge=lfs -text
+fixtures/clips/*.mov filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://simon.local/schemas/labels.schema.json",
+  "title": "Simon clip labels",
+  "description": "Hand labels for one fixture/eval clip. Produced from a Label Studio export by the Track C converter; never hand-edited.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["clip_id", "movement_id", "camera_condition", "fps", "source_file", "reps"],
+  "properties": {
+    "clip_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "movement_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "camera_condition": {
+      "enum": ["reference", "reference_reentry", "front", "deg45", "side", "low_floor_side", "dim", "backlit", "distractor"]
+    },
+    "fps": { "type": "number", "exclusiveMinimum": 0 },
+    "source_file": { "type": "string", "pattern": "\\.mp4$" },
+    "labeled_by": { "type": "string" },
+    "labeling_tool": { "const": "Label Studio" },
+    "sync": {
+      "description": "Clips filmed simultaneously on several phones share one set of rep/phase labels. offset_frames = this clip's frame index at the group's frame 0 (from a clap or flash at the start).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group", "offset_frames"],
+      "properties": {
+        "group": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "offset_frames": { "type": "integer" }
+      }
+    },
+    "reps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rep", "start_frame", "end_frame", "fault", "phases"],
+        "properties": {
+          "rep": { "type": "integer", "minimum": 1 },
+          "start_frame": { "type": "integer", "minimum": 0 },
+          "end_frame": { "type": "integer", "minimum": 0 },
+          "fault": { "description": "none, or the rule id of the fault performed in this rep.", "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "phases": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "start_frame", "end_frame"],
+              "properties": {
+                "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+                "start_frame": { "type": "integer", "minimum": 0 },
+                "end_frame": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

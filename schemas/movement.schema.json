@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://simon.local/schemas/movement.schema.json",
+  "title": "Simon Movement Package",
+  "description": "The single contract between import (Track A) and live (Track B), for any movement routine (exercise, pilates, yoga, dance/choreography). Frozen v0.1.0 on Day 1; see PLAN.md P0.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "movement", "coordinate_system", "timing", "joint_names", "reference_motion", "phases", "rules", "provenance", "quality"],
+  "properties": {
+    "schema_version": { "const": "0.1.0" },
+    "movement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "structure", "follower_mirrors"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "primary_joint": { "$ref": "#/$defs/jointName" },
+        "structure": {
+          "description": "reps = the same pattern repeats (push-up, squat); rep counting applies. sequence = one non-repeating routine (choreography, flow); the follower is tracked by position in the routine and 'rep' is the pass number (1 unless the whole routine is repeated).",
+          "enum": ["reps", "sequence"]
+        },
+        "follower_mirrors": {
+          "description": "true when the follower copies the instructor as a mirror image (instructor's right arm = follower's left arm), common in dance tutorials filmed facing the camera. Live mode swaps left_/right_ in the reference before comparing.",
+          "type": "boolean"
+        }
+      }
+    },
+    "coordinate_system": {
+      "type": "object",
+      "description": "Right-handed, gravity-aligned, hip-centred per frame. x = right_hip->left_hip projected onto the horizontal plane (subject's left); y = world up (against gravity); z = x cross y (anterior when standing; toward the head when prone, e.g. push-up). See PLAN.md P0.",
+      "additionalProperties": false,
+      "required": ["origin", "x_axis", "y_axis", "z_axis", "handedness", "up_source", "length_unit", "angle_unit"],
+      "properties": {
+        "origin": { "const": "pelvis_midpoint_per_frame" },
+        "x_axis": { "const": "subject_left_horizontal" },
+        "y_axis": { "const": "world_up" },
+        "z_axis": { "const": "x_cross_y" },
+        "handedness": { "const": "right" },
+        "up_source": {
+          "description": "How world up was estimated. assumed_level_camera = image up treated as world up (MVP default).",
+          "enum": ["assumed_level_camera", "device_gravity", "floor_plane", "synthetic"]
+        },
+        "length_unit": { "const": "m" },
+        "angle_unit": { "const": "deg" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fps", "time_base", "frame_count"],
+      "properties": {
+        "fps": { "type": "number", "exclusiveMinimum": 0 },
+        "time_base": { "const": "frame_index" },
+        "frame_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "joint_names": {
+      "type": "array",
+      "prefixItems": [
+        { "const": "nose" }, { "const": "left_eye" }, { "const": "right_eye" },
+        { "const": "left_ear" }, { "const": "right_ear" },
+        { "const": "left_shoulder" }, { "const": "right_shoulder" },
+        { "const": "left_elbow" }, { "const": "right_elbow" },
+        { "const": "left_wrist" }, { "const": "right_wrist" },
+        { "const": "left_hip" }, { "const": "right_hip" },
+        { "const": "left_knee" }, { "const": "right_knee" },
+        { "const": "left_ankle" }, { "const": "right_ankle" }
+      ],
+      "items": false,
+      "minItems": 17,
+      "maxItems": 17
+    },
+    "reference_motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frames"],
+      "properties": {
+        "frames": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/frame" } },
+        "bone_lengths_m": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    "phases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/phaseSegment" } },
+    "instructions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "text"],
+        "properties": {
+          "phase": { "$ref": "#/$defs/phaseName" },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "cues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "type", "phase"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "text": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["cue", "fault"] },
+          "phase": { "$ref": "#/$defs/phaseName" },
+          "t_ms": { "type": "integer", "minimum": 0 },
+          "demo_frames": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      }
+    },
+    "music": {
+      "description": "Present when the routine is timed to music; phases then carry the count they start on, and timing feedback is relative to the beat.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bpm", "first_beat_ms", "counts_per_phrase"],
+      "properties": {
+        "bpm": { "type": "number", "exclusiveMinimum": 0 },
+        "first_beat_ms": { "type": "integer", "minimum": 0 },
+        "counts_per_phrase": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "generated_by", "created_at"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "generated_by": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "quality": { "$ref": "#/$defs/quality" }
+  },
+  "$defs": {
+    "jointName": {
+      "enum": ["nose", "left_eye", "right_eye", "left_ear", "right_ear",
+        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+        "left_wrist", "right_wrist", "left_hip", "right_hip",
+        "left_knee", "right_knee", "left_ankle", "right_ankle"]
+    },
+    "phaseName": { "description": "Routine-specific phase or section name, e.g. descend / bottom_pause for a push-up, count_1 ... count_8 for a dance phrase.", "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "joint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z", "conf"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "conf": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame", "t_ms", "joints", "interpolated"],
+      "properties": {
+        "frame": { "type": "integer", "minimum": 0 },
+        "t_ms": { "type": "integer", "minimum": 0 },
+        "joints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["nose", "left_eye", "right_eye", "left_ear", "right_ear",
+            "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+            "left_wrist", "right_wrist", "left_hip", "right_hip",
+            "left_knee", "right_knee", "left_ankle", "right_ankle"],
+          "properties": {
+            "nose": { "$ref": "#/$defs/joint" },
+            "left_eye": { "$ref": "#/$defs/joint" },
+            "right_eye": { "$ref": "#/$defs/joint" },
+            "left_ear": { "$ref": "#/$defs/joint" },
+            "right_ear": { "$ref": "#/$defs/joint" },
+            "left_shoulder": { "$ref": "#/$defs/joint" },
+            "right_shoulder": { "$ref": "#/$defs/joint" },
+            "left_elbow": { "$ref": "#/$defs/joint" },
+            "right_elbow": { "$ref": "#/$defs/joint" },
+            "left_wrist": { "$ref": "#/$defs/joint" },
+            "right_wrist": { "$ref": "#/$defs/joint" },
+            "left_hip": { "$ref": "#/$defs/joint" },
+            "right_hip": { "$ref": "#/$defs/joint" },
+            "left_knee": { "$ref": "#/$defs/joint" },
+            "right_knee": { "$ref": "#/$defs/joint" },
+            "left_ankle": { "$ref": "#/$defs/joint" },
+            "right_ankle": { "$ref": "#/$defs/joint" }
+          }
+        },
+        "interpolated": { "type": "boolean" }
+      }
+    },
+    "phaseSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "rep", "start_frame", "end_frame", "keyframe_frame"],
+      "properties": {
+        "name": { "$ref": "#/$defs/phaseName" },
+        "rep": { "description": "Repetition number (reps) or pass through the routine (sequence, usually 1).", "type": "integer", "minimum": 1 },
+        "start_frame": { "type": "integer", "minimum": 0 },
+        "end_frame": { "type": "integer", "minimum": 0 },
+        "keyframe_frame": { "type": "integer", "minimum": 0 },
+        "count": { "description": "Music count this segment starts on (1-based within the phrase); only with music.", "type": "integer", "minimum": 1 }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "cue_text", "phases", "side", "measure", "normal_range", "fault_when", "min_frames", "joint_highlight"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "cue_text": { "type": "string", "minLength": 1 },
+        "phases": {
+          "description": "Phases in which the rule is evaluated; outside them it never fires.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/phaseName" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "side": {
+          "description": "Joints are written with canonical names for one side. as_written = only those joints; otherwise consumers also evaluate the left_/right_ mirror. visible = use the side with higher mean confidence; either = fault if either side faults; both = fault only if both do.",
+          "enum": ["as_written", "visible", "either", "both"]
+        },
+        "measure": {
+          "type": "object",
+          "description": "angle without plane: 3D angle at joints[1] between joints[0] and joints[2]. angle with plane: segment joints[0]->joints[1] projected onto the body plane, measured from the reference direction; frames where the projected length is below min_projected_ratio of the true length are skipped (no fault, no pass). pose_similarity: mean angle (deg) between the user's and the time-aligned reference's bone directions over the listed joints; 0 = identical shape. timing: signed ms between the user reaching the phase keyframe and the reference (or the beat, with music); positive = late. pose_similarity and timing need live alignment (P10), so they are evaluated in live mode only.",
+          "additionalProperties": false,
+          "required": ["type", "joints"],
+          "properties": {
+            "type": { "enum": ["angle", "distance_ratio", "alignment", "duration", "depth", "symmetry", "velocity", "pose_similarity", "timing"] },
+            "joints": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/jointName" },
+              "minItems": 2,
+              "maxItems": 17,
+              "uniqueItems": true
+            },
+            "plane": {
+              "description": "frontal = body plane spanned by the shoulder line and the torso axis (shoulder midpoint -> hip midpoint).",
+              "enum": ["frontal"]
+            },
+            "reference": {
+              "description": "torso_caudal = direction from shoulder midpoint to hip midpoint (0 deg = segment points at the hips, 90 deg = straight out to the side).",
+              "enum": ["torso_caudal"]
+            },
+            "min_projected_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "type": { "const": "angle" } }, "required": ["type", "plane"] },
+              "then": {
+                "required": ["reference", "min_projected_ratio"],
+                "properties": { "joints": { "minItems": 2, "maxItems": 2 } }
+              }
+            },
+            {
+              "if": {
+                "properties": { "type": { "const": "angle" } },
+                "required": ["type"],
+                "not": { "required": ["plane"] }
+              },
+              "then": { "properties": { "joints": { "minItems": 3, "maxItems": 3 } } }
+            },
+            {
+              "if": { "not": { "required": ["plane"] } },
+              "then": { "not": { "anyOf": [{ "required": ["reference"] }, { "required": ["min_projected_ratio"] }] } }
+            }
+          ]
+        },
+        "normal_range": {
+          "type": "array",
+          "prefixItems": [{ "type": "number" }, { "type": "number" }],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "fault_when": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operator", "threshold"],
+          "properties": {
+            "operator": { "enum": [">", ">=", "<", "<=", "outside", "inside"] },
+            "threshold": { "type": "number" },
+            "threshold_high": { "type": "number" }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "operator": { "enum": ["outside", "inside"] } }, "required": ["operator"] },
+              "then": { "required": ["operator", "threshold", "threshold_high"] }
+            }
+          ]
+        },
+        "min_frames": { "type": "integer", "minimum": 1 },
+        "joint_highlight": { "$ref": "#/$defs/jointName" }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coverage", "mean_confidence", "flags"],
+      "properties": {
+        "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "mean_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "flags": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

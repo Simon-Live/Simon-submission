@@ -1,0 +1,39 @@
+{
+  "clip_id": "reference_pushup_01",
+  "movement_id": "pushup",
+  "camera_condition": "reference",
+  "fps": 30,
+  "source_file": "reference_pushup_01.mp4",
+  "labeled_by": "Track C (example - replace after filming)",
+  "labeling_tool": "Label Studio",
+  "reps": [
+    {
+      "rep": 1,
+      "start_frame": 0,
+      "end_frame": 89,
+      "fault": "none",
+      "phases": [
+        {
+          "name": "descend",
+          "start_frame": 0,
+          "end_frame": 29
+        },
+        {
+          "name": "bottom_pause",
+          "start_frame": 30,
+          "end_frame": 44
+        },
+        {
+          "name": "ascend",
+          "start_frame": 45,
+          "end_frame": 74
+        },
+        {
+          "name": "top",
+          "start_frame": 75,
+          "end_frame": 89
+        }
+      ]
+    }
+  ]
+}
