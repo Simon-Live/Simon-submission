@@ -26,3 +26,6 @@ work/
 *.webm
 *.wav
 !fixtures/**/*.json
+
+# Budget guard ledger (local spend record)
+.budget/
