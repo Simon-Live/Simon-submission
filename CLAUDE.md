@@ -7,18 +7,15 @@ Simon compares a follower's 3D movement against a trainer's recorded expected mo
 - Before working on a part, read its issue thread (`gh issue view <N> --comments`) and claim it with a `STATUS` comment + the `status:in-progress` label.
 - Every comment you post starts with `🤖 **Agent** · Claude Code · Track <A|B|C> · <TYPE>` (`STATUS`, `QUESTION`, `DECISION`, `HANDOFF`, `BLOCKED`, `DONE?`).
 - Ask team decisions as `QUESTION` + the `needs:human` label; don't guess.
-- Push directly to `main` (no PRs unless the team asks): stage only your own files, run `make validate-fixtures`, `git pull --rebase`, then push. Commit messages say `Refs #N`. Never close issues.
+- Each part is built in its own repo (table in docs/MINI-APPS.md); this repo is coordination and docs only. Push directly to `main` (no PRs unless the team asks): stage only your own files, `git pull --rebase`, then push. Commit messages say `Refs #N`. Never close issues.
 - End each session with a `STATUS` comment on the issue you worked on.
 
 ## Commands
 
-- `make validate-fixtures`: P0 done-check (schemas, both fixtures, rule checks).
-- `make fixtures`: regenerate `fixtures/pushup.movement.json` and `fixtures/arm_phrase.movement.json`.
+- In a part repo: `make check-<n>` is that part's done-check.
 - `python import/budget_guard.py status`: Meta API spend. Every Meta API call goes through `import/budget_guard.py`.
 
 ## Conventions
 
-- `schemas/movement.schema.json` is the catalog-entry/spec contract. Changing it needs a version bump and a `docs/progress.md` note.
-- Never assume a specific movement in code: branch only on the shared-file schemas and rule definitions.
-- `tools/measures.py` is the reference implementation of rule measures; live (TS) code must match it on the fixtures.
+- Never assume a specific movement in code: parts branch only on the shared-file formats in docs/MINI-APPS.md.
 - Secrets live in `.env` (gitignored); never print or commit `MODEL_API_KEY`.

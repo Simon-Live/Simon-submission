@@ -25,10 +25,5 @@ work/
 *.mov
 *.webm
 *.wav
-# Golden/eval clips are tracked via Git LFS instead (see .gitattributes + PLAN.md P0)
-!fixtures/clips/*.mp4
-!fixtures/clips/*.mov
-!fixtures/audio/*.wav
-
 # Budget guard ledger (local spend record)
 .budget/

@@ -18,11 +18,9 @@ Simon: a trainer records an expected movement once; a follower performs it to ca
 
 Each part in [docs/MINI-APPS.md](docs/MINI-APPS.md) has an input, an output, an AI-checkable definition of done (`make check-<n>`), an isolated demo, and an integrated demo. Parts connect only through the shared files listed there; each part ships a fixture of its output so the next part never waits.
 
-## Contracts already in the repo
+## Contracts
 
-- [`schemas/movement.schema.json`](schemas/movement.schema.json) (v0.2.0): the spec/catalog-entry format — canonical 17 joints, coordinate frame, phases, rules. Changing it needs a version bump and a `docs/progress.md` note.
-- [`schemas/labels.schema.json`](schemas/labels.schema.json): hand labels for eval clips.
-- `fixtures/pushup.movement.json`, `fixtures/arm_phrase.movement.json`: generated fixtures (`make fixtures`) checked by `make validate-fixtures`; [`tools/measures.py`](tools/measures.py) is the reference rule maths (`make test`).
+The shared-file formats are defined in [docs/MINI-APPS.md](docs/MINI-APPS.md) and specified in detail inside each part's own repo. This repo holds no central schemas, fixtures, or tests from earlier plans — those were deleted in the scope reset; each part now owns its fixtures and its `make check-<n>` in its repo.
 
 ## Coordination
 

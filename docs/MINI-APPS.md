@@ -21,8 +21,8 @@ Parts connect only through these files. Each part ships a small fixture of its o
 | File | Written by | What it holds |
 |---|---|---|
 | `keyframes.json` | Part 1 | Key frame times/indices per movement (start, bottom, top, …) |
-| `tracks.json` | Part 2 | Per frame: each person's ID, box, mask, confidence (`schemas/tracks.schema.json`) |
-| `pose3d.json` | Part 2 | Per frame, per person: 17 canonical 3D joints (`schemas/pose3d.schema.json`; joints and coordinate frame as in `schemas/movement.schema.json`) |
+| `tracks.json` | Part 2 | Per frame: each person's ID, box, mask, confidence |
+| `pose3d.json` | Part 2 | Per frame, per person: 17 canonical 3D joints (joint names and coordinate frame are specified in Part 2's repo) |
 | `skeleton.json` | Part 3 | `pose3d.json` cleaned: fixed bone lengths, standard facing, no left/right flips |
 | `animation.json` | Part 4 | Smooth 30 fps expected 3D animation between the key frames |
 | `analysis.json` | Part 5 | Per-movement fault report: what differed, which joint, by how much, in plain words |
@@ -67,7 +67,7 @@ Each part's done-check is `make check-<n>` (written as part of that part). It pr
 ### Part 5 — Compare 3D animations and analyse faults
 
 - **Input:** the expected `animation.json` (or its `skeleton.json`) and a follower's `skeleton.json`.
-- **Output:** `analysis.json` — for each fault: what differed, the joint/body part, the size of the difference, and a plain-words line (e.g. "left foot too far out", "elbows wider than the example"). The rule maths in `tools/measures.py` is the reference for the measurements.
+- **Output:** `analysis.json` — for each fault: what differed, the joint/body part, the size of the difference, and a plain-words line (e.g. "left foot too far out", "elbows wider than the example").
 - **Done when:** on labelled follower clips (correct and deliberate-fault takes, several angles), faults are found with precision ≥0.85 and recall ≥0.75 in good light, every other angle reported separately; on correct takes it reports no faults. `make check-5`.
 - **Isolated demo:** a follower clip replayed with each fault listed and the joint highlighted.
 - **Integrated demo:** in Part 7, this analysis is what the follower is shown after a take.

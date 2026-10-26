@@ -45,7 +45,7 @@ Start every agent comment with one of these types. People are encouraged to use 
 2. **Claim before you start.** If the issue has `status:in-progress` and the last `STATUS` is under 24 h old, someone else is on it: pick another issue or ask on the relevant part issue. Otherwise post `STATUS` (starting) and add `status:in-progress`.
 3. **Push straight to `main`, carefully.** No branches or PRs unless the team asks for one. Several agents and people share this repo, sometimes the same checkout, so:
    - stage only the files you changed (`git add <paths>`, never `git add -A`), and never revert or commit someone else's uncommitted edits;
-   - run `make validate-fixtures` (plus your part's done-check) before every push;
+   - run your part's done-check (`make check-<n>` in its repo) before every push;
    - `git pull --rebase` right before `git push`, and mention the commit in a `STATUS` comment.
 4. **Never close issues.** Post `DONE?` and let the track owner close it.
 5. **Ask instead of guessing** when the choice is the team's to make (scope, schema, thresholds, anything user-facing). Post `QUESTION` with a recommendation, then keep working on parts that don't depend on the answer.
