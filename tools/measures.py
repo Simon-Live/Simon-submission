@@ -1,4 +1,4 @@
-"""Reference implementation of movement.schema.json rule measures (v0.1.0).
+"""Reference implementation of movement.schema.json rule measures (v0.2.0).
 
 Used by the fixture generator and validate_fixtures.py so the hand-written
 rules are checked against the fixture motion. Track B's live evaluator must
@@ -9,8 +9,9 @@ from __future__ import annotations
 import math
 
 Vec = tuple[float, float, float]
-# Need the user's motion time-aligned to the reference (P10), so only the live evaluator computes them.
-LIVE_ONLY_MEASURES = {"pose_similarity", "timing"}
+# Timing needs live alignment (P10). pose_similarity is also checked in
+# reference mode (pose_similarity_per_rep), so it is not live-only.
+LIVE_ONLY_MEASURES = {"timing"}
 OPS = {
     ">": lambda v, t, h: v > t,
     ">=": lambda v, t, h: v >= t,
@@ -113,6 +114,81 @@ def _side_faults(joints: dict, rule: dict) -> bool | None:
     if not results:
         return None
     return any(results) if rule["side"] == "either" else (len(results) == 2 and all(results))
+
+
+BONES = [
+    ("left_shoulder", "left_elbow"), ("left_elbow", "left_wrist"),
+    ("right_shoulder", "right_elbow"), ("right_elbow", "right_wrist"),
+    ("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"),
+    ("left_shoulder", "left_hip"), ("right_shoulder", "right_hip"),
+    ("left_hip", "left_knee"), ("left_knee", "left_ankle"),
+    ("right_hip", "right_knee"), ("right_knee", "right_ankle"),
+    ("nose", "left_shoulder"), ("nose", "right_shoulder"),
+]
+
+
+def pose_similarity(joints_a: dict, joints_b: dict, joint_names: list) -> float:
+    """Mean angle (deg) between corresponding bone directions; 0 = identical shape."""
+    wanted = set(joint_names)
+    angles = []
+    for a, b in BONES:
+        if a not in wanted and b not in wanted:
+            continue
+        u = unit(sub(_p(joints_a, b), _p(joints_a, a)))
+        v = unit(sub(_p(joints_b, b), _p(joints_b, a)))
+        angles.append(math.degrees(math.acos(max(-1.0, min(1.0, dot(u, v))))))
+    if not angles:
+        raise ValueError("pose_similarity: no bone touches the listed joints")
+    return sum(angles) / len(angles)
+
+
+def mirror_joints(joints: dict) -> dict:
+    """Swap left_/right_ joint labels (canonical-name mirror, coordinates unchanged)."""
+    return {mirror(name): joint for name, joint in joints.items()}
+
+
+def anterior_ok(joints: dict) -> bool:
+    """Independent mirror check: the nose must sit anterior (+z) of the shoulder line."""
+    shoulder_mid = mid(_p(joints, "left_shoulder"), _p(joints, "right_shoulder"))
+    return sub(_p(joints, "nose"), shoulder_mid)[2] > 0
+
+
+def _aligned_similarities(pkg: dict, rule: dict, rep: int, ref_rep: int) -> list[float]:
+    frames = {f["frame"]: f for f in pkg["reference_motion"]["frames"]}
+    values: list[float] = []
+    ref_segments = {p["name"]: p for p in pkg["phases"] if p["rep"] == ref_rep}
+    for seg in sorted((p for p in pkg["phases"] if p["rep"] == rep), key=lambda p: p["start_frame"]):
+        if seg["name"] not in rule["phases"] or seg["name"] not in ref_segments:
+            continue
+        ref = ref_segments[seg["name"]]
+        n, n_ref = seg["end_frame"] - seg["start_frame"], ref["end_frame"] - ref["start_frame"]
+        for i in range(n + 1):
+            ref_i = ref["start_frame"] + (round(i * n_ref / n) if n else 0)
+            values.append(pose_similarity(frames[seg["start_frame"] + i]["joints"],
+                                          frames[ref_i]["joints"], rule["measure"]["joints"]))
+    return values
+
+
+def pose_similarity_per_rep(pkg: dict, rule: dict) -> dict[int, float]:
+    """Reference-mode score per rep/pass: mean similarity vs the first rep/pass (0 for itself)."""
+    reps = sorted({p["rep"] for p in pkg["phases"]})
+    return {rep: (sum(v) / len(v) if (v := _aligned_similarities(pkg, rule, rep, reps[0])) else 0.0)
+            for rep in reps}
+
+
+def pose_similarity_fires_per_rep(pkg: dict, rule: dict) -> dict[int, bool]:
+    """Whether >= min_frames consecutive aligned frames fault vs the first rep/pass."""
+    fw = rule["fault_when"]
+    check = lambda v: OPS[fw["operator"]](v, fw["threshold"], fw.get("threshold_high"))
+    reps = sorted({p["rep"] for p in pkg["phases"]})
+    fired: dict[int, bool] = {}
+    for rep in reps:
+        run = best = 0
+        for v in _aligned_similarities(pkg, rule, rep, reps[0]):
+            run = run + 1 if check(v) else 0
+            best = max(best, run)
+        fired[rep] = best >= rule["min_frames"]
+    return fired
 
 
 def rule_fires_per_rep(pkg: dict, rule: dict) -> dict[int, bool]:

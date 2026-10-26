@@ -11,7 +11,10 @@ counts 3-4, so the arms_straight rule fires on pass 2 only.
 from __future__ import annotations
 
 import json
+import math
+import struct
 import sys
+import wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -87,6 +90,19 @@ ARMS_STRAIGHT = {
     "min_frames": 6,
     "joint_highlight": "right_elbow",
 }
+BASELINE_RULE = {
+    "id": "shape_match",
+    "cue_text": "match the reference shape",
+    "phases": [f"count_{c}" for c in range(1, COUNTS + 1)],
+    "side": "as_written",
+    "measure": {"type": "pose_similarity", "joints": ["nose", "left_eye", "right_eye", "left_ear", "right_ear",
+                "left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist",
+                "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle"]},
+    "normal_range": [0, 3],
+    "fault_when": {"operator": ">", "threshold": 5},
+    "min_frames": 6,
+    "joint_highlight": "right_elbow",
+}
 ON_THE_BEAT = {
     "id": "on_the_beat",
     "cue_text": "hit it on the count",
@@ -100,7 +116,25 @@ ON_THE_BEAT = {
 }
 
 
+def write_metronome() -> None:
+    """8 s of 120 bpm clicks at 8 kHz mono, referenced by the package's audio.uri."""
+    sr, duration = 8000, 8.0
+    out = ROOT / "fixtures/audio/metronome_120bpm.wav"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(out), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        data = bytearray()
+        for i in range(int(sr * duration)):
+            beat = (i / sr) * BPM / 60
+            v = int(12000 * math.exp(-30 * (beat % 1)) * math.sin(2 * math.pi * 880 * (beat % 1))) if (beat % 1) < 0.1 else 0
+            data += struct.pack("<h", v)
+        w.writeframes(bytes(data))
+
+
 def main() -> None:
+    write_metronome()
     frames, phases, frame = [], [], 0
     previous = key_pose(8, soft_arms=False)  # the phrase starts from arms down
     for rep, soft in ((1, False), (2, True)):
@@ -122,7 +156,8 @@ def main() -> None:
             previous = target
     pass2 = [p for p in phases if p["rep"] == 2]
     pkg = {
-        "schema_version": "0.1.0",
+        "schema_version": "0.2.0",
+        "audio": {"uri": "fixtures/audio/metronome_120bpm.wav", "offset_ms": 0},
         "movement": {"id": "arm_phrase", "name": "8-count arm phrase", "primary_joint": "right_elbow",
                      "structure": "sequence", "follower_mirrors": True},
         "coordinate_system": {
@@ -147,7 +182,7 @@ def main() -> None:
              "phase": "count_3", "t_ms": round(pass2[2]["start_frame"] * 1000 / FPS),
              "demo_frames": [pass2[2]["start_frame"], pass2[3]["end_frame"]]},
         ],
-        "rules": [ARMS_STRAIGHT, ON_THE_BEAT],
+        "rules": [ARMS_STRAIGHT, ON_THE_BEAT, BASELINE_RULE],
         "provenance": {
             "source": "synthetic 8-count arm phrase, pass 1 clean, pass 2 soft arms on counts 3-4 (no video)",
             "generated_by": "tools/make_arm_phrase_fixture.py",

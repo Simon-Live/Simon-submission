@@ -2,7 +2,7 @@
 
 Simon turns any movement routine into a live coach: exercise, pilates, yoga, dance and choreography. You paste or upload a video, and Simon watches you through your camera and coaches you against it. It's web first, then native.
 
-We're building the best product, not a hackathon cut. The Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026) is one checkpoint on the way, not the deadline (see [Checkpoints](#checkpoints)). Work is ordered by **milestones**, not dates.
+We're building the best product, not a hackathon cut. The Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026) is one checkpoint on the way, not the deadline (see [Checkpoints](#checkpoints) for the checkpoint floor and its decision point). Work is ordered by **milestones**, not dates.
 
 > **Locked decisions:** don't re-open these without a note in `docs/progress.md`.
 > - **Scope: any movement routine.** Nothing in the schema, pipeline or live code may assume a specific movement. Two reference routines prove it, and every part's done-check runs on both:
@@ -10,9 +10,9 @@ We're building the best product, not a hackathon cut. The Meta Global AI Develop
 >   - **8-count arm phrase:** `structure: sequence`, timed to music, `follower_mirrors: true`, fault `arms_straight` ("long arms") plus beat timing.
 >   - A third shape (a slow pilates/yoga flow: holds and transitions, no music) is added once both pass end to end.
 > - **Team: 3 people, one owner per area.**
->   - Track A: import pipeline (P1–P3, P5–P7, P17).
+>   - Track A: import pipeline (P1–P7, P17). P4 sits here because its outputs feed P3/P7.
 >   - Track B: live app (P8–P11, P15, P16).
->   - Track C: contracts, eval, agent and integration (P0, P4, P12–P14, P18, filming, labels, slides).
+>   - Track C: contracts, eval, agent and integration (P0, P12–P14, P18, filming, labels, slides).
 > - **Labeling tool: Label Studio** (one local instance, run by Track C). Rep or section boundaries, phase/count boundaries, and a fault tag per rep. The export is converted to `labels.schema.json` by a script; no label JSON is edited by hand.
 > - **Clip storage: Git LFS.**
 >   - Golden/eval clips live in `fixtures/clips/*.mp4`, trimmed and re-encoded to 720p H.264.
@@ -50,7 +50,8 @@ P12 (robustness eval) runs from M1 onward. Every change to live mode re-runs it.
 
 ```
 IMPORT (once per video, server, Python — Track A)                      LIVE (every session, on device, TS — Track B)
-video/link ─► P17 shot cuts + camera motion ─► P1 preprocess ─► P2a provisional tracks ─► P5 pose (all candidate tracks)
+link ─ ─ ─► P17 shot cuts + camera motion (M3 only) ─ ─ ─►┐
+video/upload ──────────────────────────────────────────────┴─► P1 preprocess ─► P2a provisional tracks ─► P5 pose (all candidate tracks)
                                                                      │                         │
                                                                      └──── P2b re-ID + instructor selection ◄─┘
 audio ─► P4 transcript, cues, counts, beat grid                                               │
@@ -77,7 +78,9 @@ audio ─► P4 transcript, cues, counts, beat grid                             
 
 A stage may only consume files written earlier in this order.
 
-**The single contract between import and live is `movement.json`** (the "Movement Package"), defined by [`schemas/movement.schema.json`](schemas/movement.schema.json) v0.1.0. Import and live are built in parallel against the generated fixtures (`make fixtures`). Any schema change needs a version bump, a `docs/progress.md` note, and sign-off from both Track A and Track B.
+**The single contract between import and live is `movement.json`** (the "Movement Package"), defined by [`schemas/movement.schema.json`](schemas/movement.schema.json) v0.2.0. Import and live are built in parallel against the generated fixtures (`make fixtures`). **Version discipline:** a breaking schema change means a minor-version bump, fixtures regenerated in the same commit, a `docs/progress.md` note, and sign-off from both Track A and Track B. v0.2.0 freezes when Track B starts M1; after that, breaking changes also need a migration note for packages already generated.
+
+The M2 import path is upload → P1 (P17 is bypassed). The link path through P17 exists only from M3.
 
 ### Routine shapes
 
@@ -142,7 +145,7 @@ These are spikes: each ends with a written decision and a fallback agreed in adv
 - **Done when:** `make validate-fixtures` exits 0. That means:
   - Both schemas validate.
   - Both generated fixtures (`pushup`, `arm_phrase`) validate and aren't mirrored (`left_hip.x > right_hip.x` on every frame).
-  - Every non-live rule fires on exactly the reps where its own fault cue is demonstrated, computed with `tools/measures.py`.
+  - Every non-live rule fires on exactly the reps where its own fault cue is demonstrated, computed with `tools/measures.py`. `pose_similarity` is checked in reference mode (each rep/pass vs the first, aligned by normalised phase position); a rule using an unimplemented measure type fails the gate with a named error, never a traceback. Mirrored packages must contain a keyframe asymmetric enough that a left/right swap is detectable (>20° mirrored-vs-written similarity).
   - Every manifest clip exists, matches its sha256, and has valid labels.
   - All 3 laptops can `git lfs pull` and play the reference clips.
 - **Input:** the shot list below.
@@ -150,8 +153,9 @@ These are spikes: each ends with a written decision and a fallback agreed in adv
 - **Isolated demo:** `make validate-fixtures` passes on a fresh clone.
 - **Integrated demo:** n/a (this is the foundation everything else builds on).
 
-**`movement.schema.json` v0.1.0 summary** (the schema file is normative):
-- **Version:** `schema_version: "0.1.0"`; consumers reject other major versions.
+**`movement.schema.json` v0.2.0 summary** (the schema file is normative):
+- **Version:** `schema_version: "0.2.0"`; consumers reject other major versions. Breaking change = minor bump + fixtures regenerated in the same commit (see Architecture). Freezes when Track B starts M1.
+- **Audio:** `audio: {uri, offset_ms, sha256?}` references the extracted source audio (or a generated metronome for synthetic fixtures). Live mode plays this asset; its playback clock is the beat clock (P10). Silent routines omit it.
 - **Coordinate system** (right-handed, gravity-aligned):
   - Origin: the hip midpoint, per frame.
   - `y` = **world up** (against gravity, not along the torso; for a push-up these are 90° apart).
@@ -183,8 +187,9 @@ These are spikes: each ends with a written decision and a fallback agreed in adv
 **Labels per clip** (Label Studio → converter):
 - Rep or section boundaries, and phase/count boundaries per rep (**required**).
 - Fault per rep (`none` or a rule id), and camera condition.
-- For synchronized clips, a `sync` block (`group`, `offset_frames`).
-- For music clips, the beat times (needed for S4 and the timing metrics).
+- For synchronized clips, a `sync` block (`group`, `offset_frames`). All frame numbers are **clip-local**; `group_frame = clip_frame − offset_frames`, and only the converter produces group-timeline labels.
+- For music clips, `beats_ms` and `downbeats_ms` in clip-local milliseconds (needed for S4 and the timing metrics) — stored in the labels file, per `labels.schema.json`.
+- Optional `human_rating` (1–5) + `rater` per rep/pass, collected from M1 labelling onward; P11's shape-correlation gate cannot be computed without it.
 
 ---
 
@@ -248,7 +253,7 @@ Two ordered passes with P5 between them: **P2a → P5 → P2b**.
 
 ---
 
-## P4 — Transcript, cues, counts, beat grid (Track C) · M2
+## P4 — Transcript, cues, counts, beat grid (Track A) · M2
 
 - **Done when:**
   - All cues in the hand labels are extracted (recall 100% on the references), each timestamped within ±1 s and mapped to a segment.
@@ -293,9 +298,10 @@ Two ordered passes with P5 between them: **P2a → P5 → P2b**.
 
   **Axis conversion (MediaPipe world landmarks → canonical).** Track A and Track B use the same code:
   1. MediaPipe gives `(x_img_right, y_img_down, z_away_from_camera)` in metres, with the hip midpoint as origin.
-  2. Up = `-y_img_down` for a level camera (`assumed_level_camera`). Live on a phone, rotate by the `DeviceOrientationEvent` gravity vector instead (`device_gravity`).
+  2. Up: live on a phone, rotate by the `DeviceOrientationEvent` gravity vector (`device_gravity`). At import, do **not** default to `-y_img_down`: a floor phone is pitched, not level. Estimate the floor plane in P6 from contact joints (hands/ankles for push-up, feet for standing routines) and record `up_source: floor_plane`. `assumed_level_camera` is allowed only when camera pitch is known to be <10°.
   3. Rotate about up so that `right_hip → left_hip` lies on +x, then set z = x × y.
-  4. Check `left_hip.x > 0 > right_hip.x` on every frame.
+  4. Check `left_hip.x > 0 > right_hip.x` on every frame, plus the independent anterior check (nose anterior of the shoulder line — see `tools/measures.py: anterior_ok`), since the hip check alone is true by construction.
+  5. **Tilt spike (Track A, before P5 lands):** film one push-up clip at a known ~30° upward tilt and one level clip of the same reps; recovered elbow angles must agree within 5°. If they don't, `floor_plane` estimation becomes part of P5, not P6.
 - **Isolated demo:** one frame shown next to its rotatable 3D skeleton.
 - **Integrated demo:** the full clip with the skeleton overlaid on the video, frame by frame.
 
@@ -312,7 +318,9 @@ Two ordered passes with P5 between them: **P2a → P5 → P2b**.
 - **Output:** `motion.json`: fixed bone lengths, smoothed trajectories, interpolation flags, precomputed angles.
 - **How:**
   1. **Clean v1:** fit one set of bone lengths to the person, fix left/right swaps, and fill short gaps (one-euro or Savitzky-Golay filtering plus spline interpolation). Leave long gaps flagged.
-  2. **Refine** (after P3): re-fill short gaps using the segment key frames as anchors. This output replaces v1 only if every v1 check still passes.
+  2. **Temporal body axis:** the canonical x-axis comes from the hip line, but per-frame recomputation degenerates when that line is near-vertical (side plank, cartwheel, floor work, spins). Compute x only when the hip line's horizontal projection ratio is ≥0.3; below that, carry the last stable axis forward, smooth axis changes over the segment, and flag those frames `frame_axis_unstable` in the quality block. The axis must never spin within a segment.
+  3. **Floor plane (import):** estimate world up from contact joints (see P5 step 2) and store `up_source` accordingly.
+  4. **Refine** (after P3): re-fill short gaps using the segment key frames as anchors. This output replaces v1 only if every v1 check still passes.
 - **Isolated demo:** the raw vs. cleaned skeleton side by side, with a bone-length plot.
 - **Integrated demo:** the P8 viewer plays the cleaned motion.
 
@@ -352,7 +360,7 @@ This is the core of the product: turning a reference into checks a coach can mak
      - Muse proposes `measure` + `phases` + direction for each fault cue, choosing from the schema's measure types.
      - Thresholds come from data: `normal_range` from the correct reps; `fault_when.threshold` halfway between normal and the demonstrated fault.
      - Hand-written rules in the fixtures unblock live mode until auto-generation passes the done check.
-  3. `tools/measures.py` is the reference implementation of every non-live measure. Track B's live evaluator is unit-tested against it on the fixture frames.
+  3. `tools/measures.py` is the reference implementation of every non-live measure, plus reference-mode `pose_similarity` (rep/pass vs the first, aligned by normalised phase position). The baseline `shape_match` rule ships in both fixtures, so M1 packages can emit shape cues before auto-generation exists. Track B's live evaluator is unit-tested against `measures.py` on the fixture frames (`tests/test_contracts.py`).
 - **Isolated demo:** a rules table with a per-rep pass/fail grid on each reference.
 - **Integrated demo:** upload → a complete `movement.json` that loads in live mode with no manual edits.
 
@@ -364,7 +372,7 @@ This is the core of the product: turning a reference into checks a coach can mak
   - Loads any valid `movement.json` (both fixtures) and plays at 30 fps in Chrome and Safari.
   - Orbit camera works, and the segment label and instruction stay in sync.
   - **Learning controls:** mirror toggle (defaults to `follower_mirrors`), loop a segment, 0.5×/0.75× speed (music time-stretched, pitch kept), and a count overlay for music routines.
-  - Lighthouse mobile performance ≥80.
+  - Lighthouse mobile performance: **target ≥80, measured and reported — not a gate** for M1.
 - **Input:** `movement.json` (+ audio for music routines).
 - **Output:** `<ReferenceViewer>`.
 - **How:** react-three-fiber with a capsule-limb avatar (a full body mesh can come later from P5 if the backend provides one). The scrubber is built from `phases`.
@@ -395,7 +403,7 @@ This is the core of the product: turning a reference into checks a coach can mak
 - **Done when:**
   - **Reps:** the count is exact on ≥95% of sets, each frame's phase matches the labels on ≥85% of frames, and the count updates <300 ms after a rep ends.
   - **Sequence:** the user's position in the routine is within 1 count of the labels on ≥95% of frames.
-  - **Timing:** with music, the per-count timing error matches the labelled offsets to within ±60 ms.
+  - **Timing:** with music, the per-count timing error matches the labelled offsets to within ±60 ms. This is a **target, not a gate**, until sub-frame keyframe timing (parabolic interpolation on the joint-velocity peak) is spiked and shown to beat the 33 ms frame interval at 30 fps; gate on it only after that spike passes.
   - Re-syncs within 2 counts after the user skips or repeats a section.
 - **Input:** a `LivePose` stream + `movement.json` (+ the music clock when present).
 - **Output:** `rep_complete {n}`, `phase_change {phase, progress}`, `count_hit {count, offset_ms}` events.
@@ -403,7 +411,7 @@ This is the core of the product: turning a reference into checks a coach can mak
   - Online DTW over viewpoint-invariant features: angles within a limb, not screen coordinates.
   - Applies the left/right swap when `follower_mirrors` is set.
   - **Reps:** align rep by rep, so the user moves at their own pace.
-  - **Music:** the music playback is the clock, and alignment measures the offset from each beat. Without music, DTW follows the user's pace.
+  - **Music:** the app plays the package's `audio` asset and that playback (`currentTime`) is the clock; alignment measures the offset from each beat. Following an external speaker is a later fallback ("tap to sync"), not the M1 path. Without music, DTW follows the user's pace.
 - **Isolated demo:** play an eval clip; the rep counter, segment bar and beat-offset meter update in sync.
 - **Integrated demo:** live camera following a freshly imported routine.
 
@@ -468,9 +476,10 @@ This is the core of the product: turning a reference into checks a coach can mak
 
 ---
 
-## P15 — App shell & link import (Track B, with Track A for the endpoint) · M1 (shell) / M2 (import)
+## P15 — App shell & import (Track B, with Track A for the endpoint) · M1 (shell) / M2 (upload import) / M3 (link import)
 
-- **Done when:** on a deployed URL, the user can paste a link or upload, watch per-stage progress with each quality gate shown, confirm the instructor and mirroring, open the viewer, press "Start", and follow the routine live, all without dev tools.
+- **Done when (M2, upload):** on a deployed URL, the user can upload a video, watch per-stage progress with each quality gate shown, confirm the instructor and mirroring, open the viewer, press "Start", and follow the routine live, all without dev tools.
+- **Done when (M3, link):** the same flow starting from a pasted link, via P17. Link import is not part of the M2 done-check.
 - **Isolated / integrated demo:** this is the end-to-end product flow.
 
 ## P16 — Native apps (Track B) · M5
@@ -504,7 +513,11 @@ This is the core of the product: turning a reference into checks a coach can mak
 
 ## Checkpoints
 
-- **Hackathon submission (Nov 4, 2026, 9 PM ET is also the deadline to claim the API credits):** demo whatever has passed its done check by then (target: M1 on both routines, plus as much of M2 as is green). The pitch outline:
+- **Hackathon submission (Nov 4, 2026, 9 PM ET is also the deadline to claim the API credits):** the checkpoint has a floor, a stretch, and a decision point — demoing "whatever is green" is not a plan.
+  - **Floor (must):** push-up live end-to-end on the fixture package, then on one filmed reference (P9–P11 passing their done-checks). If only one routine demos live on Nov 4, it is this one.
+  - **Stretch (should):** arm phrase live following (P10 sequence + timing), plus as much of M2 (one filmed routine through the real import pipeline) as is green.
+  - **Decision point: Oct 30.** If P10-sequence is not passing on an eval clip by then, the arm phrase becomes viewer-only for the demo (P8 with counts, no live following), Track B returns to push-up robustness, and pitch slide 5 becomes "live push-up, dance phrase in the viewer."
+  - The pitch outline (slide 5 reflects the Oct 30 decision):
   1. Problem: the gap between sessions with a trainer.
   2. Any routine → a coach.
   3. The pipeline.
@@ -514,4 +527,4 @@ This is the core of the product: turning a reference into checks a coach can mak
   7. A coach that holds its ground.
   8. The progress log.
   9. What's next.
-- **After the hackathon:** continue straight through M2 → M5. No part is "cut"; parts are only reordered.
+- **After the hackathon:** continue straight through M2 → M5. No part is deleted from the product plan; parts are deferred past a checkpoint, and the deferral (with its date and reason) is recorded in `docs/progress.md`.

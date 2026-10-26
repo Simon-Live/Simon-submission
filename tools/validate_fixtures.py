@@ -18,7 +18,8 @@ def fail(msg: str) -> None:
     sys.exit(1)
 
 
-def check_movement(label: str, pkg: dict, rule_fires_per_rep, live_only: set) -> None:
+def check_movement(label: str, pkg: dict, rule_fires_per_rep, live_only: set,
+                   pose_similarity_fires_per_rep, anterior_ok, mirror_joints, pose_similarity) -> None:
     frames = pkg["reference_motion"]["frames"]
     if pkg["timing"]["frame_count"] != len(frames):
         fail(f"{label}: timing.frame_count != number of reference_motion frames")
@@ -31,7 +32,29 @@ def check_movement(label: str, pkg: dict, rule_fires_per_rep, live_only: set) ->
     # x = subject's left: a mirrored skeleton silently inverts every angle rule.
     if not all(f["joints"]["left_hip"]["x"] > f["joints"]["right_hip"]["x"] for f in frames):
         fail(f"{label}: left_hip.x <= right_hip.x on some frame (x must be the subject's left)")
-    print(f"OK: {label} axes are not mirrored (left_hip.x > right_hip.x on every frame)")
+    # Independent check (the hip check above is true by construction once x is
+    # defined along the hip line): the nose must sit anterior of the shoulders.
+    if not all(anterior_ok(f["joints"]) for f in frames):
+        fail(f"{label}: nose is not anterior (+z) of the shoulder line on some frame (mirrored labels?)")
+    print(f"OK: {label} axes are not mirrored (hip axis + anterior nose check on every frame)")
+
+    if "audio" in pkg:
+        asset = ROOT / pkg["audio"]["uri"]
+        if not asset.exists():
+            fail(f"{label}: audio.uri does not exist: {pkg['audio']['uri']}")
+        print(f"OK: {label} audio asset exists ({pkg['audio']['uri']})")
+
+    # Mirrored-follower packages must contain a detectable asymmetry, otherwise
+    # a left/right swap in live mirroring passes every gate unnoticed.
+    if pkg["movement"]["follower_mirrors"]:
+        worst = 0.0
+        all_joints = pkg["joint_names"]
+        for seg in pkg["phases"]:
+            joints = frames[seg["keyframe_frame"]]["joints"]
+            worst = max(worst, pose_similarity(mirror_joints(joints), joints, all_joints))
+        if worst <= 20.0:
+            fail(f"{label}: follower_mirrors is true but no keyframe is asymmetric enough to detect a mirror swap (max {worst:.1f} deg)")
+        print(f"OK: {label} mirror swap is detectable (max mirrored-vs-written similarity {worst:.1f} deg at a keyframe)")
 
     # P7 done-check on the fixture: each rule fires on exactly the reps where its own fault
     # (the fault cue with the same id) is demonstrated, and never on a rep without one.
@@ -44,7 +67,18 @@ def check_movement(label: str, pkg: dict, rule_fires_per_rep, live_only: set) ->
             continue
         demo = [c["demo_frames"] for c in pkg.get("cues", [])
                 if c["type"] == "fault" and c["id"] == rule["id"] and "demo_frames" in c]
-        fired = rule_fires_per_rep(pkg, rule)
+        all_demo = [c["demo_frames"] for c in pkg.get("cues", [])
+                    if c["type"] == "fault" and "demo_frames" in c]
+        try:
+            if rule["measure"]["type"] == "pose_similarity":
+                # Reference mode: fires on a rep/pass only if a fault (any cue) is demonstrated there.
+                fired = pose_similarity_fires_per_rep(pkg, rule)
+                demo = all_demo
+            else:
+                fired = rule_fires_per_rep(pkg, rule)
+        except NotImplementedError:
+            fail(f"{label}: measure type {rule['measure']['type']!r} used by rule {rule['id']} "
+                 f"is not implemented in tools/measures.py")
         for rep, did_fire in fired.items():
             span = [p for p in pkg["phases"] if p["rep"] == rep]
             start, end = min(p["start_frame"] for p in span), max(p["end_frame"] for p in span)
@@ -74,7 +108,8 @@ def main() -> int:
         print(f"OK: {doc_path.relative_to(ROOT)} validates against {schema_path.name}")
 
     sys.path.insert(0, str(ROOT / "tools"))
-    from measures import LIVE_ONLY_MEASURES, rule_fires_per_rep
+    from measures import (LIVE_ONLY_MEASURES, anterior_ok, mirror_joints, pose_similarity,
+                          pose_similarity_fires_per_rep, rule_fires_per_rep)
 
     # One fixture per routine shape: pushup (reps) and arm_phrase (music-timed sequence).
     for name in ("pushup", "arm_phrase"):
@@ -83,13 +118,20 @@ def main() -> int:
             fail(f"fixtures/{name}.movement.json missing (make fixtures)")
         validate(ROOT / "schemas/movement.schema.json", movement_fixture)
         check_movement(movement_fixture.name, json.loads(movement_fixture.read_text()),
-                       rule_fires_per_rep, LIVE_ONLY_MEASURES)
+                       rule_fires_per_rep, LIVE_ONLY_MEASURES, pose_similarity_fires_per_rep,
+                       anterior_ok, mirror_joints, pose_similarity)
 
     label_files = sorted((ROOT / "fixtures").glob("*.labels.json"))
     if not label_files:
         fail("no fixtures/*.labels.json files found")
     for labels in label_files:
         validate(ROOT / "schemas/labels.schema.json", labels)
+        doc = json.loads(labels.read_text())
+        for key in ("beats_ms", "downbeats_ms"):
+            if key in doc and doc[key] != sorted(doc[key]):
+                fail(f"{labels.relative_to(ROOT)}: {key} is not in ascending order")
+        if "beats_ms" in doc:
+            print(f"OK: {labels.relative_to(ROOT)} beat times are ordered")
 
     manifest_path = ROOT / "fixtures/clips.manifest.json"
     if not manifest_path.exists():

@@ -2,6 +2,8 @@
 
 Dated metrics per part (PLAN.md). This log is the source for the "progress over time" slide. Append, never rewrite history; note every threshold or schema change here.
 
+> **Read the latest entry first.** Early entries below are superseded in places (push-up-only lock, schema v0.1.0 wording); the dated amendments at the end of each day's block are authoritative.
+
 ## 2026-10-26 (Day 1)
 
 - Team locked at 3: Track A import, Track B live, Track C agent/eval/integration.
@@ -20,6 +22,7 @@ Dated metrics per part (PLAN.md). This log is the source for the "progress over 
 - **Scope changed: any movement routine, not push-up only.** Decision: product-first, no 10-day cut; the hackathon (Nov 4) is a checkpoint, and PLAN.md is now ordered by milestones M1–M5 instead of days. Push-up stays as the first reference routine; an 8-count music-timed arm phrase (`fixtures/arm_phrase.movement.json`, `make fixtures`) is the second, so every check runs on a rep-based routine and a sequence routine.
 - **Schema v0.1.0 generalised before freeze:** `movement.structure` (`reps`/`sequence`), `movement.follower_mirrors`, optional `music` block, free-form phase names with optional `count`, rules array may be empty, measure types `pose_similarity` and `timing` (live-only), up to 17 joints per measure. Labels: any movement id, fault = any rule id, free-form phase names.
 - New parts: P16 native, P17 any-video robustness, P18 creators/consent/privacy. New spikes: S4 beat grid, S5 mirrored-video detection.
+- **Review fixes applied (same day):** schema bumped to **v0.2.0** (breaking-change = minor bump + fixtures regenerated in the same commit; freezes when Track B starts M1). Labels gain `beats_ms`/`downbeats_ms` (clip-local), clip-local sync semantics (`group_frame = clip_frame − offset_frames`, converter-produced group labels), and optional `human_rating`/`rater`. Movement packages gain `audio {uri, offset_ms, sha256?}`; live music clock = in-app playback of that asset. Both fixtures gain a baseline `shape_match` (`pose_similarity`) rule; `tools/measures.py` gained reference-mode `pose_similarity` (rep/pass vs first, phase-aligned), `mirror_joints`, and `anterior_ok`. Validator: anterior nose check added (hip check alone was tautological), mirrored packages must contain a >20° detectable asymmetry, audio assets must exist, unimplemented measure types now fail with a named error instead of a traceback. Checkpoint floor added (push-up live = must; arm-phrase live = stretch; decision point Oct 30). P4 ownership moved Track C → Track A; P15 split into M2 upload / M3 link; P17 drawn as M3-only. P5/P6: temporal body axis (carry-forward below 0.3 projection ratio, `frame_axis_unstable` flag), floor-plane up at import, and a 30° tilt spike before P5 lands. P8 Lighthouse and P10 ±60 ms demoted to targets until their spikes pass. New durable tests: `tests/test_contracts.py` (`make test`, 6 tests).
 
 ### Spike decisions
 

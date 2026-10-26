@@ -1,5 +1,9 @@
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.0",
+  "audio": {
+    "uri": "fixtures/audio/metronome_120bpm.wav",
+    "offset_ms": 0
+  },
   "movement": {
     "id": "arm_phrase",
     "name": "8-count arm phrase",
@@ -26458,6 +26462,53 @@
       },
       "min_frames": 1,
       "joint_highlight": "right_wrist"
+    },
+    {
+      "id": "shape_match",
+      "cue_text": "match the reference shape",
+      "phases": [
+        "count_1",
+        "count_2",
+        "count_3",
+        "count_4",
+        "count_5",
+        "count_6",
+        "count_7",
+        "count_8"
+      ],
+      "side": "as_written",
+      "measure": {
+        "type": "pose_similarity",
+        "joints": [
+          "nose",
+          "left_eye",
+          "right_eye",
+          "left_ear",
+          "right_ear",
+          "left_shoulder",
+          "right_shoulder",
+          "left_elbow",
+          "right_elbow",
+          "left_wrist",
+          "right_wrist",
+          "left_hip",
+          "right_hip",
+          "left_knee",
+          "right_knee",
+          "left_ankle",
+          "right_ankle"
+        ]
+      },
+      "normal_range": [
+        0,
+        3
+      ],
+      "fault_when": {
+        "operator": ">",
+        "threshold": 5
+      },
+      "min_frames": 6,
+      "joint_highlight": "right_elbow"
     }
   ],
   "provenance": {
