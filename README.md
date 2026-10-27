@@ -40,3 +40,51 @@ Done-check: `make check-4` — prints a metrics JSON and exits 0 only when every
 - Work only in this repo. Do not copy or import another part's code; consume other parts only through the shared files above, using fixtures until they exist.
 - Every run of the done-check goes through `make check-4`.
 - Fixtures of your inputs live in `fixtures/input/`; ship a fixture of your output so the next part can start.
+
+## Run
+
+Python 3.10+ and the standard library. No packages to install.
+
+Two fixture sets:
+
+| Set | Movement | Input | Shipped output |
+| --- | --- | --- | --- |
+| `exercise` | squat, 3 s | `fixtures/input/exercise/` | `fixtures/output/exercise/animation.json` |
+| `dance` | step-touch, 4 s | `fixtures/input/dance/` | `fixtures/output/dance/animation.json` |
+
+Hidden in-betweens used by the done-check live in `fixtures/expected/<set>/held_out.json`. The animator does not read that directory.
+
+```bash
+make check-4          # both sets; metrics JSON on stdout; exit 0 only if every threshold passes
+make animate          # rebuild both animation.json files from the keyframes
+make fixtures         # regenerate inputs, held-out frames, and outputs from the analytic motions
+```
+
+`make check-4` scores every non-keyframe against the held-out pose. A joint passes when its bone direction is within 8°. Bone lengths must stay within 1 mm of the rest rig, and the hip midpoint must stay at the origin. The check also requires `interpolated: true` on filled frames and `false` on keyframes. It makes no Meta API calls.
+
+Rebuild one clip:
+
+```bash
+PYTHONPATH=src python3 -m simon_anim.animate --set exercise
+```
+
+Orbit either clip in a browser. From the repo root:
+
+```bash
+python3 -m http.server 8765
+# open http://127.0.0.1:8765/demo/
+```
+
+Drag to orbit, scroll to zoom, space to play. The page loads `fixtures/output/<set>/animation.json`.
+
+## File shapes
+
+`keyframes.json` lists the 30 fps timeline and the key indices. `skeleton.json` is the rigid rig (rest offsets, bone lengths) plus `local_rotations` and joint positions at those keys. Rotations are quaternions `(x, y, z, w)`.
+
+`animation.json` (`format: simon.animation.v1`) is one frame per 30 fps tick. Each frame has `index`, `t`, `interpolated`, and `joints` named with the canonical 17. Positions are metres in the hip-centered frame (x subject left, y up, z anterior).
+
+Interpolation is cubic Hermite on rotation vectors, then forward kinematics, so segment lengths stay at the rest offsets. Blending positions would stretch the bones.
+
+## Meta models
+
+Optional. Off unless `META_LIVE=1`. Setup, the role of each model, and the spend ledger are in `docs/META_MODELS.md`. Cumulative spend starts at $0. `make check-4` does not call the API.

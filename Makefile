@@ -1,6 +1,18 @@
-.PHONY: check-4
+.PHONY: check-4 animate fixtures meta-status
 
-# Done-check for Part 4 (see README.md). Replace the stub with the real check:
-# it must print a metrics JSON and exit 0 only when every threshold passes.
+# src/ is the package root. Targets below assume `make` is run from the repo root.
+export PYTHONPATH := src
+
+# Done-check for Part 4. Prints metrics JSON and exits 0 only when every
+# threshold passes for the exercise and dance fixtures. No Meta API calls.
 check-4:
-	@echo "check-4: not implemented yet" && exit 1
+	@python3 -m simon_anim.check
+
+animate:
+	@python3 -m simon_anim.animate --set exercise --set dance
+
+fixtures:
+	@python3 scripts/generate_fixtures.py
+
+meta-status:
+	@python3 -m simon_anim.meta_hooks status
