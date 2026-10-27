@@ -52,7 +52,8 @@ def estimate(frames_dir, out_path, boxes=None, estimator=None) -> dict:
     """Run SAM 3D Body on every frame and write body3d.json.
 
     boxes: {frame: {id: [x, y, w, h]}} to run on given people (multi-person, from tracks.json).
-    Without it, the largest detected person in each frame becomes id 0 (one-person mode).
+    Without it, one person per frame becomes id 0 (one-person mode, see choose_subject).
+    Assumes fixed intrinsics (no zoom/crop) for the whole frames_dir.
     """
     import cv2
     import torch
@@ -62,13 +63,13 @@ def estimate(frames_dir, out_path, boxes=None, estimator=None) -> dict:
     est = estimator or load_estimator()
     images = {r["frame"]: frames_dir / r["file"] for r in recs}
 
-    h, w = cv2.imread(str(images[recs[0]["frame"]])).shape[:2]
+    h, w = _read(images[recs[0]["frame"]]).shape[:2]
     K = clip_intrinsics(est, [images[r["frame"]] for r in recs])
     cam_int = torch.tensor(K[None], dtype=torch.float32)
 
-    out_frames = []
+    out_frames, prev = [], None
     for r in recs:
-        bgr = cv2.imread(str(images[r["frame"]]))
+        bgr = _read(images[r["frame"]])
         if boxes is not None:
             given = boxes.get(r["frame"], boxes.get(str(r["frame"]), {}))
             ids = list(given)
@@ -77,13 +78,15 @@ def estimate(frames_dir, out_path, boxes=None, estimator=None) -> dict:
             dets = est.detector.run_human_detection(bgr, det_cat_id=0, bbox_thr=0.5, nms_thr=0.3,
                                                     default_to_full_image=False)
             if len(dets):
-                areas = (dets[:, 2] - dets[:, 0]) * (dets[:, 3] - dets[:, 1])
-                xyxy, ids = dets[[int(np.argmax(areas))]].astype(np.float32), [0]
+                pick = choose_subject(dets, prev)
+                xyxy, ids, prev = dets[[pick]].astype(np.float32), [0], dets[pick]
             else:
                 xyxy, ids = np.zeros((0, 4), np.float32), []
         people = []
         if len(ids):
             outs = est.process_one_image(str(images[r["frame"]]), bboxes=xyxy, cam_int=cam_int)
+            if len(outs) != len(ids):
+                raise RuntimeError(f"frame {r['frame']}: {len(ids)} boxes in, {len(outs)} people out")
             people = [_person(pid, o, K) for pid, o in zip(ids, outs)]
         out_frames.append({"frame": r["frame"], "t_ms": r["t_ms"], "people": people})
 
@@ -94,6 +97,33 @@ def estimate(frames_dir, out_path, boxes=None, estimator=None) -> dict:
     return result
 
 
+def _read(path):
+    import cv2
+
+    img = cv2.imread(str(path))
+    if img is None:
+        raise ValueError(f"cannot read image {path}")
+    return img
+
+
+def choose_subject(dets: np.ndarray, prev) -> int:
+    """One-person mode: the detection that best continues last frame's subject (IoU > 0.3),
+    else the largest, so a passer-by closer to the camera doesn't take over."""
+    if prev is not None:
+        ious = [iou_xyxy(d, prev) for d in dets]
+        if max(ious) > 0.3:
+            return int(np.argmax(ious))
+    return int(np.argmax((dets[:, 2] - dets[:, 0]) * (dets[:, 3] - dets[:, 1])))
+
+
+def iou_xyxy(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return float(inter / union) if union > 0 else 0.0
+
+
 def clip_intrinsics(est, image_paths) -> np.ndarray:
     """One K for the whole clip (fixed camera): median of MoGe-2 estimates on evenly spaced frames,
     so focal length doesn't jitter frame to frame."""
@@ -102,7 +132,7 @@ def clip_intrinsics(est, image_paths) -> np.ndarray:
     picks = [image_paths[int(i)] for i in np.linspace(0, len(image_paths) - 1, min(INTRINSICS_SAMPLES, len(image_paths)))]
     Ks = []
     for p in picks:
-        rgb = cv2.cvtColor(cv2.imread(str(p)), cv2.COLOR_BGR2RGB)
+        rgb = cv2.cvtColor(_read(p), cv2.COLOR_BGR2RGB)
         Ks.append(np.asarray(est.fov_estimator.get_cam_intrinsics(rgb)).reshape(3, 3))
     return np.median(np.stack(Ks), axis=0)
 

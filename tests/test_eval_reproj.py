@@ -79,3 +79,26 @@ def test_cli_prints_metrics_and_exit_code(tmp_path, capsys):
     labels["frames"][0]["joints"]["nose"][1] += 200
     (tmp_path / "labels.json").write_text(json.dumps(labels))
     assert cli.main(args) == 1
+
+
+def test_labels_are_validated():
+    pose3d, camera, labels = _setup()
+    dup = {"frames": labels["frames"] + [labels["frames"][0]]}
+    with pytest.raises(ValueError, match="listed twice"):
+        evaluate(pose3d, camera, dup)
+    labels["frames"][0]["joints"]["nosee"] = [1, 1]
+    with pytest.raises(ValueError, match="unknown joints"):
+        evaluate(pose3d, camera, labels)
+
+
+def test_pose_without_camera_entry_scores_as_missing():
+    pose3d, camera, labels = _setup()
+    camera["frames"][2]["people"] = []
+    row = evaluate(pose3d, camera, labels)["per_frame"][2]
+    assert not row["ok"] and "no prediction" in row["note"]
+
+
+def test_worst_joint_named():
+    pose3d, camera, labels = _setup()
+    labels["frames"][0]["joints"]["left_knee"][0] += 30
+    assert evaluate(pose3d, camera, labels)["per_frame"][0]["worst_joint"] == "left_knee"

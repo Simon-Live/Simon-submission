@@ -3,7 +3,9 @@
 Canonical frame, per frame and person (README): origin at the hip midpoint; y = world up;
 x = subject's left (left-hip minus right-hip, made horizontal); z = x × y (anterior). Metres.
 
-World up is the camera's up (-y in OpenCV camera space), i.e. a level camera is assumed.
+World up is the camera's up (-y in OpenCV camera space), i.e. a level camera is assumed; a
+tilted camera tilts every pose by the same angle. A person whose hips coincide or line up
+vertically (no defined left) is left out of that frame.
 
 camera.json keeps what the canonical frame drops, so joints can be projected back to pixels:
   {camera_frame: "opencv", K, image_size,
@@ -59,7 +61,10 @@ def convert(body3d: dict, smooth: bool = False) -> tuple[dict, dict]:
         for p in f["people"]:
             kp = np.array([p["kp3d_cam"][j] for j in CANONICAL], dtype=float)
             uv = np.array([p["kp2d"][j] for j in CANONICAL], dtype=float)
-            R, t = frame_axes(kp)
+            try:
+                R, t = frame_axes(kp)
+            except ValueError:  # degenerate pose (hips coincide / line is vertical): person absent this frame
+                continue
             can = to_canonical(kp, R, t)
             inside = (uv[:, 0] >= 0) & (uv[:, 0] < w) & (uv[:, 1] >= 0) & (uv[:, 1] < h)
             people.append({"id": p["id"], "joints": {
@@ -71,7 +76,7 @@ def convert(body3d: dict, smooth: bool = False) -> tuple[dict, dict]:
         cam_frames.append({"frame": f["frame"], "people": cams})
     pose3d = {"frames": pose_frames}
     validate_pose3d(pose3d)
-    camera = {"camera_frame": body3d["camera_frame"], "K": body3d["K"], "image_size": body3d["image_size"],
+    camera = {"camera_frame": body3d["camera_frame"], "world_up": "camera up (level camera assumed)", "K": body3d["K"], "image_size": body3d["image_size"],
               "frames": cam_frames}
     return pose3d, camera
 
@@ -92,7 +97,9 @@ def project_pose3d(pose3d: dict, camera: dict) -> dict:
     out = {}
     for f in pose3d["frames"]:
         for p in f["people"]:
-            c = cams[(f["frame"], p["id"])]
+            c = cams.get((f["frame"], p["id"]))
+            if c is None:  # no camera pose: the eval scores this as a missing prediction
+                continue
             can = np.array([[p["joints"][j][k] for k in "xyz"] for j in CANONICAL])
             cam = to_camera(can, np.array(c["R"]), np.array(c["t"]))
             uv = cam[:, :2] / cam[:, 2:3] * [K[0, 0], K[1, 1]] + [K[0, 2], K[1, 2]]

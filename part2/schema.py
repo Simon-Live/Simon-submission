@@ -39,9 +39,13 @@ def validate_tracks(doc) -> None:
             if not (isinstance(bbox, list) and len(bbox) == 4 and all(_isnum(v) for v in bbox) and bbox[2] >= 0 and bbox[3] >= 0):
                 raise ValueError(f"{pat}.bbox: expected [x, y, w, h] with w, h >= 0, got {bbox!r}")
             rle = _dict(p, "mask_rle", pat)
-            if not (isinstance(rle.get("size"), list) and len(rle["size"]) == 2 and isinstance(rle.get("counts"), (str, list))):
-                raise ValueError(f"{pat}.mask_rle: expected COCO RLE {{size: [h, w], counts}}")
+            size, counts = rle.get("size"), rle.get("counts")
+            if not (isinstance(size, list) and len(size) == 2 and all(isinstance(v, int) and v > 0 for v in size)
+                    and isinstance(counts, (str, list)) and len(counts) > 0):
+                raise ValueError(f"{pat}.mask_rle: expected COCO RLE {{size: [h, w] > 0, counts: non-empty}}")
             _num(p, "confidence", pat)
+            if not 0 <= p["confidence"] <= 1:
+                raise ValueError(f"{pat}.confidence: {p['confidence']} not in [0, 1]")
         if len(set(ids)) != len(ids):
             raise ValueError(f"{at}.people: duplicate ids {ids}")
     _increasing([f["frame"] for f in frames], "tracks.frames[].frame")
