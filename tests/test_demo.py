@@ -52,3 +52,13 @@ def test_overlay_writes_video_with_all_frames(run_dir):
 
 def test_colors_stable_per_id():
     assert demo.color_for(3) == demo.color_for("3") != demo.color_for(4)
+
+
+def test_string_id_colors_are_stable():
+    assert demo.color_for("person_a") == demo.COLORS[__import__("zlib").crc32(b"person_a") % len(demo.COLORS)]
+
+
+@needs_ffmpeg
+def test_viewer_unknown_id_is_an_error(run_dir):
+    with pytest.raises(ValueError, match="available ids"):
+        demo.viewer(run_dir, person_id="7")

@@ -11,6 +11,7 @@
 import json
 import subprocess
 import tempfile
+import zlib
 from pathlib import Path
 
 from part2 import frames as frames_mod
@@ -23,7 +24,8 @@ COLORS = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC
 
 
 def color_for(pid) -> str:
-    return COLORS[(int(pid) if str(pid).lstrip("-").isdigit() else abs(hash(pid))) % len(COLORS)]
+    n = int(pid) if str(pid).lstrip("-").isdigit() else zlib.crc32(str(pid).encode())  # stable across runs
+    return COLORS[n % len(COLORS)]
 
 
 def _load(run: Path):
@@ -39,6 +41,8 @@ def viewer(run, person_id=None, out=None) -> Path:
     if not ids:
         raise ValueError(f"{run / 'pose3d.json'} has no people")
     pid = ids[0] if person_id is None else type(ids[0])(person_id)
+    if pid not in ids:
+        raise ValueError(f"person {person_id!r} not in {run / 'pose3d.json'}; available ids: {ids}")
     seq = []
     for f in pose3d["frames"]:
         p = next((p for p in f["people"] if p["id"] == pid), None)
@@ -61,7 +65,8 @@ def overlay(run, out=None, fps=None) -> Path:
     uv = project_pose3d(pose3d, camera)
     if fps is None:
         dt = [b["t_ms"] - a["t_ms"] for a, b in zip(recs, recs[1:])]
-        fps = 1000 / (sorted(dt)[len(dt) // 2]) if dt else 1
+        median = sorted(dt)[len(dt) // 2] if dt else 0
+        fps = 1000 / median if median > 0 else 10
     out = Path(out) if out else run / "overlay.mp4"
     with tempfile.TemporaryDirectory() as tmp:
         for i, r in enumerate(recs):
