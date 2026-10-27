@@ -6,9 +6,9 @@ stable track id) into the shared tracks.json shape and validate it:
     {frames: [{frame, people: [{id, bbox, mask_rle, confidence}]}]}
 
 bbox is [x, y, w, h] in pixels; mask_rle is COCO RLE ({size: [h, w], counts});
-ids are stable integers across frames. The SAM 3.1 runner that produces the
-detections runs only on the GPU pod (see load_sam31_tracker); everything else in
-this module imports and tests without torch or pycocotools.
+ids are stable integers across frames. Detections come from SAM 3.1 through
+the Meta Model API (api_tracker, via part2.meta_api); everything else in this
+module imports and tests without torch or pycocotools.
 """
 import json
 from pathlib import Path
@@ -130,16 +130,112 @@ def track(frames_dir, out_path, tracker=None) -> dict:
     return doc
 
 
-def load_sam31_tracker():
-    """SAM 3.1 video tracker (GPU pod only). Deferred until the GPU env has SAM 3.
+def derive_fps(frame_records) -> float:
+    """Median frame rate from t_ms gaps (the SAM API needs a constant-fps video)."""
+    ts = sorted(r["t_ms"] for r in frame_records)
+    gaps = [b - a for a, b in zip(ts, ts[1:]) if b > a]
+    if not gaps:
+        return 30.0
+    gaps.sort()
+    return 1000.0 / gaps[len(gaps) // 2]
 
-    Kept as a factory so importing part2.track never imports torch/sam3 locally.
+
+def encode_video(frames_dir, frame_records, out_path) -> float:
+    """Re-encode a frames dir as a constant-fps MP4 (H.264) for the SAM API.
+
+    Video frame i is frame_records[i], so API frame indices map back through
+    the records to the real `frame` numbers. Returns the fps used.
     """
-    try:
-        import sam3  # noqa: F401
-    except ImportError as e:
-        raise RuntimeError(
-            "SAM 3.1 is not installed here; run tracking in the GPU environment "
-            "(k8s/setup_env.sh on user-part2-gpu) or inject a tracker"
-        ) from e
-    raise RuntimeError("SAM 3.1 tracker wiring is not implemented yet (GPU is down)")
+    import subprocess
+    import tempfile
+
+    frames_dir = Path(frames_dir)
+    fps = derive_fps(frame_records)
+    with tempfile.TemporaryDirectory() as tmp:
+        list_path = Path(tmp) / "files.txt"
+        list_path.write_text("".join(
+            f"file '{(frames_dir / r['file']).resolve()}'\n" for r in frame_records))
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0",
+                        "-r", f"{fps:.3f}", "-i", str(list_path),
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path)],
+                       check=True, capture_output=True)
+    return fps
+
+
+_OBJ_RE = None  # compiled on first use (keeps module import light)
+
+
+def _decode_mask(payload: str, width: int, height: int):
+    """SAM mask payload -> row-major raster bytes (official parser library)."""
+    from meta_sam_parser import SegmentationMask, decode_mask_to_raster
+
+    enc = "lossless" if payload.startswith("~") else "one_bit"
+    return decode_mask_to_raster(SegmentationMask(encoding=enc, payload=payload,
+                                                  width=width, height=height))
+
+
+def parse_sam31_text(text: str, frame_records, mask_decoder=None) -> dict:
+    """Parse SAM 3.1's text grammar into detections for build_tracks.
+
+    Grammar per frame: `<Nf>id<|box;x1;y1;x2;y2;w=W;h=H[;c=score]|><|mask;…|>,…`
+    API frame index N maps to frame_records[N] (the video is re-encoded from
+    the frames dir in record order). Masks are box-sized crops; each is placed
+    at its box corner into a full-frame mask. Ids are SAM's stable track ids.
+    """
+    import re
+
+    import numpy as np
+
+    global _OBJ_RE
+    if _OBJ_RE is None:
+        _OBJ_RE = re.compile(
+            r",?(\d+)<\|box;x1=([\d.]+);y1=([\d.]+);x2=([\d.]+);y2=([\d.]+);w=(\d+);h=(\d+)"
+            r"(?:;c=([\d.]+))?\|><\|mask;x=\d+;y=\d+;(?:c=[\d.]+;)?data=(\d+),(\d+),([^|]+)\|>")
+    decode = mask_decoder or _decode_mask
+    detections = {}
+    parts = re.split(r"<(\d+)f>", text)
+    for i in range(1, len(parts) - 1, 2):
+        api_frame, segment = int(parts[i]), parts[i + 1]
+        if api_frame >= len(frame_records):
+            continue  # API returned a frame we did not send; nothing to map it to
+        frame = int(frame_records[api_frame]["frame"])
+        people = []
+        for m in _OBJ_RE.finditer(segment):
+            pid, x1, y1, x2, y2 = (int(float(m.group(g))) for g in (1, 2, 3, 4, 5))
+            img_w, img_h = int(m.group(6)), int(m.group(7))
+            mh, mw, payload = int(m.group(9)), int(m.group(10)), m.group(11)
+            raster = np.frombuffer(decode(payload, mw, mh), dtype=np.uint8).reshape(mh, mw)
+            full = np.zeros((img_h, img_w), dtype=np.uint8)
+            sub = full[y1:y1 + mh, x1:x1 + mw]
+            sel = raster.astype(bool)[:sub.shape[0], :sub.shape[1]]
+            sub[sel] = 1
+            people.append({"id": pid, "bbox": [x1, y1, x2 - x1, y2 - y1],
+                           "mask": full, "confidence": float(m.group(8) or 0.0)})
+        if people:
+            detections[frame] = people
+    return detections
+
+
+def api_tracker(frames_dir, frame_records, prompt: str = "person", budget=None):
+    """SAM 3.1 via the Meta Model API (through part2.meta_api, budget-guarded)."""
+    import tempfile
+
+    from part2 import meta_api
+
+    frames_dir = Path(frames_dir)
+    with tempfile.TemporaryDirectory() as tmp:
+        video_path = Path(tmp) / "clip.mp4"
+        encode_video(frames_dir, frame_records, video_path)
+        file_id = meta_api.upload(video_path)
+        deltas = meta_api.respond(
+            "sam-3.1", [meta_api.text(prompt), meta_api.video(file_id)],
+            est_cost_usd=meta_api.sam_video_cost(len(frame_records)),
+            metadata={"include_confidence": "true"}, budget=budget,
+            what=f"sam31-track-{frames_dir.name}")
+        text = "".join(deltas)
+    return parse_sam31_text(text, frame_records)
+
+
+def load_sam31_tracker():
+    """The default tracker: SAM 3.1 through the Meta Model API (#4/#10)."""
+    return api_tracker

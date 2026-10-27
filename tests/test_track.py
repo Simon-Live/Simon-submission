@@ -3,7 +3,7 @@ import json
 import pytest
 
 from part2.schema import validate_tracks
-from part2.track import build_tracks, mask_to_rle, rle_counts, track
+from part2.track import build_tracks, derive_fps, mask_to_rle, parse_sam31_text, rle_counts, track
 
 MASK_A = [[1, 1, 0], [0, 1, 0], [0, 0, 0]]  # 3x3
 MASK_B = [[0, 0], [1, 1]]  # 2x2
@@ -83,3 +83,30 @@ def test_mask_to_rle_large_mask_matches_counts():
     if flat[0]:
         counts.insert(0, 0)
     assert rle_counts(rle) == counts
+
+
+def test_parse_sam31_text_maps_frames_boxes_and_masks():
+    recs = [{"frame": 10, "t_ms": 0.0, "file": "a.jpg"}, {"frame": 12, "t_ms": 100.0, "file": "b.jpg"}]
+    # one 4x3 image; object id 5, box (1,0)-(3,2), 2x2 crop mask [[1,0],[0,1]], score .9
+    text = ("<0f>5<|box;x1=1;y1=0;x2=3;y2=2;w=4;h=3;c=0.9|>"
+            "<|mask;x=0;y=0;c=0.9;data=2,2,~fake|>"
+            "<1f>5<|box;x1=1;y1=0;x2=3;y2=2;w=4;h=3;c=0.8|>"
+            "<|mask;x=0;y=0;c=0.8;data=2,2,~fake|>")
+
+    def fake_decode(payload, w, h):
+        assert (w, h) == (2, 2)
+        return bytes([1, 0, 0, 1])
+
+    dets = parse_sam31_text(text, recs, mask_decoder=fake_decode)
+    assert sorted(dets) == [10, 12]  # API indices mapped onto real frame numbers
+    d = dets[10][0]
+    assert d["id"] == 5 and d["bbox"] == [1, 0, 2, 2] and d["confidence"] == 0.9
+    assert d["mask"].tolist() == [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]
+    doc = build_tracks(recs, dets)
+    assert doc["frames"][0]["people"][0]["mask_rle"]["size"] == [3, 4]
+
+
+def test_derive_fps_from_timestamps():
+    recs = [{"frame": i, "t_ms": i * 40.0, "file": "x"} for i in range(5)]
+    assert derive_fps(recs) == 25.0
+    assert derive_fps(recs[:1]) == 30.0
