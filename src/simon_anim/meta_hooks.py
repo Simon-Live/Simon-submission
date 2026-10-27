@@ -98,7 +98,7 @@ def critique(set_name: str) -> dict:
     parsed = chat_completion(
         model="muse-spark-1.3",
         call=f"critique:{set_name}",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {
                 "role": "developer",
@@ -154,7 +154,7 @@ def plan_motion(set_name: str) -> dict:
     parsed = chat_completion(
         model="muse-wonder-1.0",
         call=f"plan:{set_name}",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {
                 "role": "developer",

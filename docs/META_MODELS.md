@@ -46,6 +46,10 @@ Muse Spark always reasons, and reasoning tokens are spent from `max_tokens`
 before any visible reply. A small `max_tokens` comes back as `content: null`
 and `finish_reason: "length"`. The client floors `max_tokens` at 1024 and
 raises if the reply is still truncated. It does not fill in a fake answer.
+Live smoke of the Spark critique and Wonder plan needed 2048: with 1024 the
+finish reason was `length` and content was empty, because reasoning tokens
+consume the budget first. Those two hooks request 2048. A truncated reply is
+still appended to the spend ledger as `<call>:truncated`.
 
 ## What each model does here
 

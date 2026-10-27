@@ -16,8 +16,10 @@ Chat completions follow the probed shape:
     response.choices[0].finish_reason in {stop, length}
 
 Muse Spark always reasons, and reasoning tokens consume max_tokens first.
-This client floors max_tokens at 1024 so a short reply is not truncated to
-content=null with finish_reason=length.
+This client floors max_tokens at 1024. That floor is not always enough:
+live smoke of the Part 4 critique and plan hooks needed 2048, because
+reasoning burned a 1024 budget and returned empty content. Those hooks
+request 2048. A truncated body is still recorded on the spend ledger.
 """
 
 from __future__ import annotations
@@ -288,7 +290,8 @@ def parse_chat_completion(payload: dict) -> dict:
     if content in (None, "") and finish == "length":
         raise MetaTruncated(
             "Muse returned finish_reason=length with empty content. Reasoning tokens "
-            "consume max_tokens first. Retry with max_tokens >= 1024."
+            "consume max_tokens first. The client floor is 1024; live smoke of the "
+            "Spark critique and Wonder plan needed 2048 before content was returned."
         )
     return parsed
 
@@ -328,7 +331,26 @@ def chat_completion(
         "temperature": temperature,
     }
     body = _post_json(url, payload, key)
-    parsed = parse_chat_completion(body)
+    try:
+        parsed = parse_chat_completion(body)
+    except MetaTruncated:
+        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        details = usage.get("completion_tokens_details") or {}
+        prompt_details = usage.get("prompt_tokens_details") or {}
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        cost = 0.0 if local else estimate_token_cost(model, prompt_tokens, completion_tokens)
+        record_spend(
+            model=model,
+            call=f"{call}:truncated",
+            estimated_usd=cost,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            reasoning_tokens=details.get("reasoning_tokens"),
+            cached_tokens=prompt_details.get("cached_tokens"),
+            detail="finish_reason=length with empty content",
+        )
+        raise
     prompt_tokens = int(parsed["prompt_tokens"] or 0)
     completion_tokens = int(parsed["completion_tokens"] or 0)
     cost = 0.0 if local else estimate_token_cost(model, prompt_tokens, completion_tokens)
