@@ -10,6 +10,8 @@ is the clicked nose -> ankle-midpoint distance (nose -> the one clicked ankle if
 which is shorter than full stature, so the threshold is stricter than "5% of height".
 mean/p95/max cover scored frames only; n_failed_frames counts unscored ones too.
 A labelled frame with no prediction scores as a failure.
+Pass rule (decision 2, #18): every frame must be within the threshold (rule="every_frame");
+rule="mean" is kept for diagnostics only.
 """
 import json
 from pathlib import Path
