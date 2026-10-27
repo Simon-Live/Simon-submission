@@ -1,0 +1,7 @@
+# torch stays the base image's build (pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel) so detectron2's
+# CUDA extension compiles with the image's nvcc 12.4 against the torch it runs with.
+torch==2.5.1
+torchvision==0.20.1
+torchaudio==2.5.1
+# detectron2 imports pkg_resources, removed in setuptools 81.
+setuptools<81
