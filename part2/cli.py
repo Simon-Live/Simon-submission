@@ -39,7 +39,15 @@ def main(argv: list[str] | None = None) -> int:
     p_ev.add_argument("--rule", choices=["every_frame", "mean"], default="every_frame")
     p_ev.add_argument("--per-frame", action="store_true", help="include per-frame rows in the output")
 
+    sub.add_parser("check", help="done-check: metrics JSON for both modes, exit 0 only if all pass (#14)")
+
     args = parser.parse_args(argv)
+    if args.command == "check":
+        from part2 import check
+
+        report = check.run()
+        print(json.dumps(report, indent=2))
+        return 0 if report["pass"] else 1
     if args.command == "eval-reproj":
         from part2 import eval_reproj
 
