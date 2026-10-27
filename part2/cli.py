@@ -109,6 +109,17 @@ def main(argv: list[str] | None = None) -> int:
             doc = track.track(args.out / "frames", args.out / "tracks.json")
             ids = {p["id"] for f in doc["frames"] for p in f["people"]}
             print(f"{len(ids)} tracked people -> {args.out / 'tracks.json'}")
+            try:
+                import torch  # noqa: F401
+            except ImportError:
+                pass  # no GPU env here: tracks are written, 3D stays pending (#11)
+            else:
+                from part2 import multi3d
+
+                res = multi3d.run(args.out / "frames", args.out, smooth=args.smooth)
+                print(f"pose3d for people {res['people']} -> {args.out / 'pose3d.json'} "
+                      f"(+ pose3d_person_<id>.json each)")
+                return 0
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         print(f"part2: {e}", file=sys.stderr)
         return 1
