@@ -1,0 +1,53 @@
+# GPU dev pod for Part 2 on the k3s node `nas` (shared RTX 3090, time-sliced 10 ways).
+# Pattern from an earlier project's pod.yaml. Naming: pods `user-<job>`,
+# host paths `simon-...`. Driven by the gpu-* targets in the Makefile; see k8s/README.md.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: user-part2-gpu
+  labels:
+    app: simon-part-2
+spec:
+  restartPolicy: Never
+  runtimeClassName: nvidia
+  nodeSelector:
+    kubernetes.io/hostname: nas  # the hostPath volume only exists there
+  containers:
+  - name: part2
+    image: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel
+    command: ["sleep", "infinity"]
+    workingDir: /workspace
+    env:
+    - name: NVIDIA_VISIBLE_DEVICES
+      value: "all"
+    - name: NVIDIA_DRIVER_CAPABILITIES
+      value: "compute,utility"
+    - name: HF_HOME
+      value: /workspace/.cache/huggingface
+    - name: TORCH_HOME
+      value: /workspace/.cache/torch
+    - name: PATH
+      value: /workspace/venv/bin:/opt/conda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    - name: PYTHONPATH
+      value: /workspace/sam-3d-body:/workspace/part2
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: user-hf-token
+          key: HF_TOKEN
+          optional: true
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+      requests:
+        nvidia.com/gpu: 1
+        memory: "16Gi"
+        cpu: "4"
+    volumeMounts:
+    - name: project-data
+      mountPath: /workspace
+  volumes:
+  - name: project-data
+    hostPath:
+      path: /opt/tank/Applications/simon-part-2
+      type: DirectoryOrCreate
