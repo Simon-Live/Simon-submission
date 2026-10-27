@@ -100,6 +100,8 @@ def _request(method, path, body=None, headers=None, timeout=600):
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")[:500]
         raise RuntimeError(f"Meta API {method} {path}: HTTP {e.code}: {detail}") from None
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Meta API {method} {path}: {e.reason}") from None
 
 
 def multipart(fields: dict, file_field: str, path: Path) -> tuple[bytes, str]:
@@ -152,5 +154,7 @@ def respond(model: str, content: list, est_cost_usd: float, metadata=None, budge
         body["metadata"] = metadata
     with _request("POST", "/responses", json.dumps(body).encode(),
                   {"Content-Type": "application/json", "Accept": "text/event-stream"}) as r:
+        # Record as soon as the call is accepted: a caller that stops reading
+        # early has still been charged, so the ledger must not wait for EOF.
+        budget.record(est_cost_usd, what, model)
         yield from sse_text_deltas(r)
-    budget.record(est_cost_usd, what, model)
