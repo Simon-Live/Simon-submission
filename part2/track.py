@@ -20,29 +20,28 @@ from part2.schema import validate_tracks
 def mask_to_rle(mask) -> dict:
     """COCO RLE for a 2D binary mask (any nested sequence / numpy array of 0/1).
 
-    Uses pycocotools' compressed string form when available; otherwise the
-    equivalent uncompressed run-length counts (also valid COCO RLE, and what
-    part2.schema.validate_tracks accepts).
+    Always writes COCO's compressed counts string, computed here in pure
+    python/numpy (byte-identical to pycocotools.mask.encode).
     """
-    rows = [list(row) for row in mask]
-    if not rows or not rows[0]:
+    import numpy as np
+
+    try:
+        a = np.asarray(mask)
+    except ValueError as e:  # ragged rows
+        raise ValueError("mask rows must all have the same width") from e
+    if a.ndim != 2 or 0 in a.shape:
         raise ValueError("mask must be a non-empty 2D array")
-    h, w = len(rows), len(rows[0])
-    if any(len(r) != w for r in rows):
-        raise ValueError("mask rows must all have the same width")
+    h, w = (int(v) for v in a.shape)
     # Column-major (Fortran order) run lengths, starting with the 0-run,
     # then COCO's compressed counts string (verified byte-identical to
     # pycocotools.mask.encode, so no pycocotools dependency is needed).
-    counts, run_val, run_len = [], 0, 0
-    for x in range(w):
-        for y in range(h):
-            v = 1 if rows[y][x] else 0
-            if v == run_val:
-                run_len += 1
-            else:
-                counts.append(run_len)
-                run_val, run_len = v, 1
-    counts.append(run_len)
+    flat = a.astype(bool).ravel(order="F")
+    bounds = np.flatnonzero(np.diff(flat)) + 1
+    starts = np.concatenate(([0], bounds))
+    ends = np.concatenate((bounds, [flat.size]))
+    counts = (ends - starts).astype(int).tolist()
+    if flat[0]:
+        counts.insert(0, 0)
     return {"size": [h, w], "counts": _compress_counts(counts)}
 
 
@@ -93,6 +92,10 @@ def build_tracks(frame_records, detections) -> dict:
     array; ids must already be stable across frames (that's the tracker's job).
     Frames with no detections are kept with an empty people list.
     """
+    known = {int(r["frame"]) for r in frame_records}
+    unknown = sorted({int(k) for k in detections} - known)
+    if unknown:
+        raise ValueError(f"detections for frames not in frames.json: {unknown[:5]}")
     out_frames = []
     for r in frame_records:
         people = []

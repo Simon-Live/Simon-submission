@@ -64,3 +64,22 @@ def test_track_writes_valid_json_with_fake_tracker(tmp_path):
     written = json.loads((tmp_path / "out" / "tracks.json").read_text())
     assert written == doc
     validate_tracks(written)
+
+
+def test_build_tracks_rejects_frames_not_in_records():
+    with pytest.raises(ValueError, match="not in frames.json"):
+        build_tracks(_recs(), {99: [{"id": 1, "bbox": [0, 0, 1, 1], "mask": MASK_B, "confidence": 0.5}]})
+
+
+def test_mask_to_rle_large_mask_matches_counts():
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    m = (rng.random((720, 1280)) > 0.5).astype(int)
+    rle = mask_to_rle(m)
+    flat = m.astype(bool).ravel(order="F")
+    bounds = np.flatnonzero(np.diff(flat)) + 1
+    counts = np.diff(np.concatenate(([0], bounds, [flat.size]))).astype(int).tolist()
+    if flat[0]:
+        counts.insert(0, 0)
+    assert rle_counts(rle) == counts
