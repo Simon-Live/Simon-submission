@@ -46,3 +46,10 @@ def test_split_people_keeps_frame_alignment():
     # canonical poses match while the streams stay separate per id
     assert streams[7]["frames"][1]["people"][0]["joints"] == \
         streams[0]["frames"][1]["people"][0]["joints"]
+
+
+def test_write_pose_streams_drops_stale_person_files(tmp_path):
+    (tmp_path / "pose3d_person_99.json").write_text("{}")  # id from an earlier run
+    write_pose_streams(_two_person_body3d(), tmp_path)
+    assert sorted(p.name for p in tmp_path.glob("pose3d_person_*.json")) == \
+        ["pose3d_person_0.json", "pose3d_person_7.json"]

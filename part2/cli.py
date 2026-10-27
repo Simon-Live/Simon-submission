@@ -10,10 +10,7 @@ from pathlib import Path
 
 from part2 import canonical, frames
 
-# Stages after frame ingest, filled in by their issues.
-PENDING = {
-    "multi": "per-person 3D for the tracks (#11)",
-}
+NO_GPU_ENV = "3D stages need the GPU environment (HPC: hpc/README.md, k3s: k8s/README.md)"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
                 from part2 import body3d
                 import torch  # noqa: F401
             except ImportError:
-                print("part2: 3D stages need the GPU environment (make gpu-shell, see k8s/README.md)", file=sys.stderr)
+                print(f"part2: {NO_GPU_ENV}", file=sys.stderr)
                 return 1
             body3d.estimate(args.out / "frames", args.out / "body3d.json")
             print(f"camera-space 3D -> {args.out / 'body3d.json'}")
@@ -112,19 +109,18 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 import torch  # noqa: F401
             except ImportError:
-                pass  # no GPU env here: tracks are written, 3D stays pending (#11)
-            else:
-                from part2 import multi3d
+                print(f"part2: tracks.json written; {NO_GPU_ENV}", file=sys.stderr)
+                return 1
+            from part2 import multi3d
 
-                res = multi3d.run(args.out / "frames", args.out, smooth=args.smooth)
-                print(f"pose3d for people {res['people']} -> {args.out / 'pose3d.json'} "
-                      f"(+ pose3d_person_<id>.json each)")
-                return 0
+            res = multi3d.run(args.out / "frames", args.out, smooth=args.smooth)
+            print(f"pose3d for people {res['people']} -> {args.out / 'pose3d.json'} "
+                  f"(+ pose3d_person_<id>.json each)")
+            return 0
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         print(f"part2: {e}", file=sys.stderr)
         return 1
-    print(f"part2 run --mode {args.mode}: not implemented yet: {PENDING[args.mode]}", file=sys.stderr)
-    return 2
+    raise AssertionError(f"unhandled mode {args.mode}")
 
 
 if __name__ == "__main__":
