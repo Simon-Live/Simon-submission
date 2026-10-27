@@ -1,0 +1,15 @@
+{
+  "id": "jumping-jack",
+  "name": "Jumping jack",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-27T00:00:00Z",
+  "schema_version": 1,
+  "category": "exercise",
+  "description": "Arms and legs open and close, eight repetitions.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 8000,
+  "files_source": "fixture"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "simon-part-6-recording-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Simon Part 6 done-check driver (make check-6). The app itself needs no npm packages.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "playwright": "1.61.1"
+  }
+}

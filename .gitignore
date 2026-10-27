@@ -5,3 +5,4 @@ dist/
 out/
 *.mp4
 !fixtures/**/*.json
+.pytest_cache/

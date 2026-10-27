@@ -1,0 +1,15 @@
+{
+  "id": "side-step",
+  "name": "Side step",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-27T00:00:00Z",
+  "schema_version": 1,
+  "category": "dance",
+  "description": "Step to each side in turn with arms swinging, eight steps.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 8000,
+  "files_source": "fixture"
+}
