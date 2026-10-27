@@ -4,4 +4,5 @@ dist/
 .env
 out/
 *.mp4
+demo/posters/
 !fixtures/**/*.json
