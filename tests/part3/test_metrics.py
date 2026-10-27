@@ -13,7 +13,34 @@ from part3.angles import ANGLE_NAMES, joints_array
 from part3.geometry import body_up, pelvis_frame
 from part3.joints import GROUPS, INDEX, JOINTS, PAIRS, swap_index
 
-CONTRACT = ROOT / "docs" / "specs" / "contract-skeleton-output.md"
+# The "Metrics JSON" example of the output contract (field names final, 2026-10-27), copied here so the
+# test runs in the published repository, which does not carry the workspace's docs/specs/.
+CONTRACT_METRICS = json.loads("""
+{
+  "part": 3,
+  "data_source": "synthetic",
+  "data": {"real_clip": "fixtures/input/part2-single/pose3d.json",
+           "takes": "fixtures/input/synthetic-4take/"},
+  "alignment": {"method": "dtw", "reference_take": 1, "band_fraction": 0.25,
+                "signal": "mean of 8 interior joint angles in degrees, 5-frame centred moving average",
+                "frame_map": "middle paired frame, 3-frame centred mean, linear interpolation"},
+  "angles": ["left_elbow", "right_elbow", "left_shoulder", "right_shoulder",
+             "left_hip", "right_hip", "left_knee", "right_knee", "trunk_inclination"],
+  "thresholds": {
+    "bone_length_variation_max":     {"value": 0.0, "max": 0.02, "pass": true},
+    "lr_flips":                      {"value": 0,   "max": 0,    "pass": true},
+    "joint_angle_agreement_p95_deg": {"value": 0.0, "max": 10.0, "pass": true},
+    "negative_control_p95_deg":      {"value": 0.0, "min_exclusive": 10.0, "pass": true}
+  },
+  "context": {"agreement_median_deg": 0.0, "agreement_mean_deg": 0.0, "agreement_max_deg": 0.0,
+              "agreement_per_angle_p95_deg": {"left_elbow": 0.0},
+              "agreement_linear_p95_deg": 0.0, "frames_compared": 0,
+              "input_bone_length_variation_max": 0.0,
+              "flips_injected": 27, "flips_repaired": 0, "real_clip_flips_detected_after_repair": 0,
+              "up_error_max_deg": 0.0, "mirror_take_max_angle_diff_deg": 0.0},
+  "pass": true
+}
+""")
 STANDARD = bones.lengths_array(json.loads((ROOT / "part3" / "standard_body.json").read_text())["bone_lengths_m"])
 
 
@@ -133,8 +160,7 @@ def shape(obj):
 
 
 def test_metrics_json_has_exactly_the_contract_keys():
-    block = CONTRACT.read_text().split("## Metrics JSON printed by")[1].split("```json")[1].split("```")[0]
-    contract = json.loads(block)
+    contract = CONTRACT_METRICS
     built = metrics.build_metrics(measured())
     assert list(built) == list(contract)
     assert shape(built["thresholds"]) == shape(contract["thresholds"])
