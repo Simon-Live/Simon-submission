@@ -8,3 +8,4 @@ out/
 .idea/
 .venv/
 .pytest_cache/
+!demos/*.mp4
