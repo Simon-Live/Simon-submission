@@ -7,11 +7,10 @@ import argparse
 import sys
 from pathlib import Path
 
-from part2 import frames
+from part2 import canonical, frames
 
 # Stages after frame ingest, filled in by their issues.
 PENDING = {
-    "single": "canonical pose3d.json (#9)",
     "multi": "SAM 3.1 tracking (#10) and per-person 3D (#11)",
 }
 
@@ -26,10 +25,11 @@ def main(argv: list[str] | None = None) -> int:
     p_frames.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
 
     p_run = sub.add_parser("run", help="full pipeline: frames -> pose3d.json (+ tracks.json in multi mode)")
-    p_run.add_argument("--mode", required=True, choices=sorted(PENDING), help="one-person or class recording")
+    p_run.add_argument("--mode", required=True, choices=["single", "multi"], help="one-person or class recording")
     p_run.add_argument("--input", required=True, type=Path, help="video file or directory of images")
     p_run.add_argument("--out", required=True, type=Path, help="output directory")
     p_run.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
+    p_run.add_argument("--smooth", action="store_true", help="One-Euro smoothing of 3D joints over time")
 
     args = parser.parse_args(argv)
     try:
@@ -48,6 +48,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             body3d.estimate(args.out / "frames", args.out / "body3d.json")
             print(f"camera-space 3D -> {args.out / 'body3d.json'}")
+            pose_path, cam_path = canonical.write(args.out / "body3d.json", args.out, smooth=args.smooth)
+            print(f"{pose_path} + {cam_path}")
+            return 0
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         print(f"part2: {e}", file=sys.stderr)
         return 1

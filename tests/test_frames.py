@@ -75,3 +75,13 @@ def test_cli_run_is_honest_about_pending_stages(tmp_path, capsys):
 def test_cli_reports_bad_input(tmp_path, capsys):
     assert cli.main(["frames", "--input", str(tmp_path / "missing.mp4"), "--out", str(tmp_path / "f")]) == 1
     assert "missing.mp4" in capsys.readouterr().err
+
+
+def test_cli_single_without_gpu_env_says_so(tmp_path, capsys, monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+    monkeypatch.setattr(builtins, "__import__", lambda n, *a, **k: (_ for _ in ()).throw(ImportError(n)) if n == "torch" else real_import(n, *a, **k))
+    d = _image_dir(tmp_path, ["a.jpg"])
+    assert cli.main(["run", "--mode", "single", "--input", str(d), "--out", str(tmp_path / "o"), "--fps", "30"]) == 1
+    assert "GPU environment" in capsys.readouterr().err
