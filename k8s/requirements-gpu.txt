@@ -29,3 +29,8 @@ matplotlib==3.11.2
 omegaconf==2.3.1
 tabulate==0.10.0
 termcolor==3.3.0
+# MoGe runtime deps (MoGe itself is installed --no-deps; its extras pull a newer torch)
+click==8.5.0
+pillow==10.2.0
+requests==2.32.3
+tqdm==4.66.5
