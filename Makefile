@@ -1,6 +1,21 @@
-.PHONY: check-2 gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
+.PHONY: setup test run-single run-multi check-2 gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
 
 POD := user-part2-gpu
+INPUT ?=
+OUT ?= out/$(basename $(notdir $(INPUT)))
+
+setup:
+	uv sync
+
+test:
+	uv run pytest -q
+
+# make run-single INPUT=clip.mp4 [OUT=out/clip]
+run-single:
+	uv run part2 run --mode single --input $(INPUT) --out $(OUT)
+
+run-multi:
+	uv run part2 run --mode multi --input $(INPUT) --out $(OUT)
 
 # Done-check for Part 2 (see README.md). Replace the stub with the real check:
 # it must print a metrics JSON and exit 0 only when every threshold passes.

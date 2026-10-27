@@ -40,3 +40,14 @@ Done-check: `make check-2` — prints a metrics JSON and exits 0 only when every
 - Work only in this repo. Do not copy or import another part's code; consume other parts only through the shared files above, using fixtures until they exist.
 - Every run of the done-check goes through `make check-2`.
 - Fixtures of your inputs live in `fixtures/input/`; ship a fixture of your output so the next part can start.
+
+## Development
+
+```
+make setup                         # uv sync (Python ≥ 3.11, ffmpeg on PATH)
+make test                          # pytest
+uv run part2 frames --input clip.mp4 --out out/clip/frames [--fps 30]
+make run-single INPUT=clip.mp4     # also run-multi; writes out/<clip>/
+```
+
+`part2 frames` writes numbered frames plus `frames.json` (`frame`, `t_ms`, `file`); those `frame`/`t_ms` values are the ones in `pose3d.json` and `tracks.json`. GPU inference runs on the k3s cluster: see `k8s/README.md`. Tasks and progress: issues #2–#16, checklist #17, team chat #18.
