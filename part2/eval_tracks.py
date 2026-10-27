@@ -9,8 +9,10 @@ same frame by IoU (>= 0.5), greedily by descending IoU, one-to-one. For each GT
 person, over the keyframes where they are labelled:
   coverage      = matched keyframes / labelled keyframes        (pass: >= 0.95 each)
   id swaps      = times the matched track id changes between consecutive
-                  matched appearances; swaps/min uses the person's labelled
-                  time span from pose3d.json timestamps          (pass: <= 1 each)
+                  matched appearances                 (pass: <= allowed_swaps each)
+allowed_swaps = 1 per minute of clip, at least 1: max(1, clip_min) where clip_min
+is the pose3d.json timestamp span (decision 4, #18), so a clip under a minute
+still allows one swap instead of failing on a single one.
 The clip passes when it has >= 5 GT people, every GT person meets both limits,
 and every matched track id has a pose3d stream (appears in pose3d.json).
 """
@@ -69,6 +71,10 @@ def evaluate(tracks: dict, gt: dict, pose3d: dict) -> dict:
         for g in people:
             appearances.setdefault(g["id"], []).append((f["frame"], matched.get(g["id"])))
 
+    times = list(t_by_frame.values())
+    clip_min = (max(times) - min(times)) / 60000.0 if len(times) >= 2 else 0.0
+    allowed_swaps = MAX_SWAPS_PER_MIN * max(1.0, clip_min)
+
     per_person = []
     for gid in sorted(appearances):
         apps = sorted(appearances[gid])
@@ -79,16 +85,12 @@ def evaluate(tracks: dict, gt: dict, pose3d: dict) -> dict:
             if prev is not None and pid != prev:
                 swaps += 1
             prev = pid
-        times = [t_by_frame[fr] for fr, _ in apps if fr in t_by_frame]
-        span_min = (max(times) - min(times)) / 60000.0 if len(times) >= 2 else 0.0
-        swaps_per_min = swaps / span_min if span_min > 0 else (float("inf") if swaps else 0.0)
         matched_ids = sorted({pid for _, pid in hits})
         n_pose = sum(1 for fr, pid in hits if pid in pose_by_frame.get(fr, set()))
         per_person.append({
             "gt_id": gid, "n_keyframes": n, "n_matched": len(hits),
             "coverage": round(len(hits) / n, 4) if n else 0.0,
-            "id_swaps": swaps, "span_min": round(span_min, 3),
-            "swaps_per_min": None if swaps_per_min == float("inf") else round(swaps_per_min, 3),
+            "id_swaps": swaps,
             "track_ids": matched_ids,
             "pose3d_coverage": round(n_pose / len(hits), 4) if hits else 0.0,
             "has_pose3d": bool(hits) and n_pose / len(hits) >= MIN_COVERAGE,
@@ -97,15 +99,14 @@ def evaluate(tracks: dict, gt: dict, pose3d: dict) -> dict:
     checks = {
         "enough_people": len(per_person) >= MIN_PEOPLE,
         "coverage_ge_95pct": all(p["coverage"] >= MIN_COVERAGE for p in per_person),
-        "swaps_le_1_per_min": all(
-            (p["swaps_per_min"] is not None and p["swaps_per_min"] <= MAX_SWAPS_PER_MIN)
-            for p in per_person),
+        "swaps_le_1_per_min": all(p["id_swaps"] <= allowed_swaps for p in per_person),
         "pose3d_per_person": all(p["has_pose3d"] for p in per_person) and bool(per_person),
     }
     n_missing_t = sum(1 for apps in appearances.values() for fr, _ in apps if fr not in t_by_frame)
     return {
         "metric": "tracking_coverage_and_id_swaps",
-        "swap_rate_basis": "person_span (decision pending: #18 open decision 4)",
+        "swap_rate_basis": "max(1, clip_min)",
+        "clip_min": round(clip_min, 3), "allowed_swaps": round(allowed_swaps, 3),
         "n_appearances_missing_timestamps": n_missing_t,
         "iou_threshold": IOU_THRESHOLD, "min_people": MIN_PEOPLE,
         "n_gt_people": len(per_person),

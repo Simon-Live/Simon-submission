@@ -57,11 +57,31 @@ def test_one_missed_keyframe_in_ten_fails_coverage():
     assert p["coverage"] == 0.9 and not m["checks"]["coverage_ge_95pct"] and not m["pass"]
 
 
-def test_id_swap_counted_and_fails_at_this_duration():
-    m = evaluate(*_clip(swap_at=(2, 5)))  # 1 swap in a 9 s span = 6.7/min
+def test_one_swap_allowed_on_a_short_clip():
+    m = evaluate(*_clip(swap_at=(2, 5)))  # 9 s clip: max(1, 0.15 min) = 1 swap allowed
     p = next(p for p in m["per_person"] if p["gt_id"] == 2)
     assert p["id_swaps"] == 1 and p["track_ids"] == [2, 101]
+    assert m["allowed_swaps"] == 1.0 and m["checks"]["swaps_le_1_per_min"] and m["pass"]
+
+
+def test_two_swaps_fail_on_a_short_clip():
+    tracks, gt, pose = _clip(swap_at=(2, 5))
+    for f in tracks["frames"][8:]:  # person 2 switches track again
+        for q in f["people"]:
+            if q["id"] == 101:
+                q["id"] = 202
+    for f in pose["frames"][8:]:
+        for q in f["people"]:
+            if q["id"] == 101:
+                q["id"] = 202
+    m = evaluate(tracks, gt, pose)
+    assert next(p for p in m["per_person"] if p["gt_id"] == 2)["id_swaps"] == 2
     assert not m["checks"]["swaps_le_1_per_min"] and not m["pass"]
+
+
+def test_allowance_grows_with_clip_minutes():
+    m = evaluate(*_clip(n_key=181))  # 180 s clip
+    assert m["clip_min"] == 3.0 and m["allowed_swaps"] == 3.0
 
 
 def test_missing_pose3d_stream_fails():
@@ -101,7 +121,7 @@ def test_pose3d_present_at_only_some_matched_frames_fails():
     m = evaluate(tracks, gt, pose)
     p = next(p for p in m["per_person"] if p["gt_id"] == 3)
     assert p["pose3d_coverage"] == 0.5 and not p["has_pose3d"]
-    assert not m["checks"]["pose3d_per_person"] and m["swap_rate_basis"].startswith("person_span")
+    assert not m["checks"]["pose3d_per_person"] and m["swap_rate_basis"] == "max(1, clip_min)"
 
 
 def test_malformed_inputs_raise():
