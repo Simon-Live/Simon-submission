@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Simon Part 2: video frames to per-person 3D poses (pose3d.json) and tracks (tracks.json)"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "numpy>=2.0",
+]
 
 [project.scripts]
 part2 = "part2.cli:main"

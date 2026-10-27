@@ -67,8 +67,8 @@ def test_image_dir_uses_its_own_manifest(tmp_path):
 
 def test_cli_run_is_honest_about_pending_stages(tmp_path, capsys):
     d = _image_dir(tmp_path, ["a.jpg"])
-    assert cli.main(["run", "--mode", "single", "--input", str(d), "--out", str(tmp_path / "o"), "--fps", "30"]) == 2
-    assert "#8" in capsys.readouterr().err
+    assert cli.main(["run", "--mode", "multi", "--input", str(d), "--out", str(tmp_path / "o"), "--fps", "30"]) == 2
+    assert "#10" in capsys.readouterr().err
     assert (tmp_path / "o" / "frames" / "frames.json").is_file()
 
 

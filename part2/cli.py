@@ -11,7 +11,7 @@ from part2 import frames
 
 # Stages after frame ingest, filled in by their issues.
 PENDING = {
-    "single": "one-person 3D (#8) and canonical pose3d.json (#9)",
+    "single": "canonical pose3d.json (#9)",
     "multi": "SAM 3.1 tracking (#10) and per-person 3D (#11)",
 }
 
@@ -39,6 +39,15 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         recs = frames.ingest(args.input, args.out / "frames", args.fps)
         print(f"{len(recs)} frames -> {args.out / 'frames'}")
+        if args.mode == "single":
+            try:
+                from part2 import body3d
+                import torch  # noqa: F401
+            except ImportError:
+                print("part2: 3D stages need the GPU environment (make gpu-shell, see k8s/README.md)", file=sys.stderr)
+                return 1
+            body3d.estimate(args.out / "frames", args.out / "body3d.json")
+            print(f"camera-space 3D -> {args.out / 'body3d.json'}")
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         print(f"part2: {e}", file=sys.stderr)
         return 1
