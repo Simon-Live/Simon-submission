@@ -37,6 +37,8 @@ def write_pose_streams(body3d_doc: dict, out_dir, smooth: bool = False) -> dict:
     (out_dir / "pose3d.json").write_text(json.dumps(pose3d))
     (out_dir / "camera.json").write_text(json.dumps(camera))
     per_person = split_people(pose3d)
+    for stale in out_dir.glob("pose3d_person_*.json"):  # ids from an earlier run into this dir
+        stale.unlink()
     for pid, doc in per_person.items():
         (out_dir / f"pose3d_person_{pid}.json").write_text(json.dumps(doc))
     return {"pose3d": pose3d, "camera": camera, "people": sorted(per_person, key=str)}

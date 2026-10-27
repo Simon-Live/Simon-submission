@@ -107,16 +107,21 @@ def test_image_dir_reingest_removes_stale_frames(tmp_path):
     assert sorted(p.name for p in out.iterdir()) == ["000000.jpg", "frames.json"] and len(recs) == 1
 
 
-def test_cli_run_multi_tracks_then_reports_pending_3d(tmp_path, capsys, monkeypatch):
+def test_cli_run_multi_without_gpu_env_keeps_tracks(tmp_path, capsys, monkeypatch):
+    import builtins
+
     from part2 import track
+
+    real_import = builtins.__import__
+    monkeypatch.setattr(builtins, "__import__", lambda n, *a, **k: (_ for _ in ()).throw(ImportError(n)) if n == "torch" else real_import(n, *a, **k))
 
     mask = [[0, 1], [1, 1]]
     monkeypatch.setattr(track, "load_sam31_tracker", lambda: lambda frames_dir, recs: {
         r["frame"]: [{"id": 4, "bbox": [0, 0, 2, 2], "mask": mask, "confidence": 0.9}] for r in recs})
     d = _image_dir(tmp_path, ["a.jpg", "b.jpg"])
-    assert cli.main(["run", "--mode", "multi", "--input", str(d), "--out", str(tmp_path / "o"), "--fps", "30"]) == 2
+    assert cli.main(["run", "--mode", "multi", "--input", str(d), "--out", str(tmp_path / "o"), "--fps", "30"]) == 1
     out = capsys.readouterr()
-    assert "1 tracked people" in out.out and "#11" in out.err
+    assert "1 tracked people" in out.out and "GPU environment" in out.err
     doc = json.loads((tmp_path / "o" / "tracks.json").read_text())
     assert [len(f["people"]) for f in doc["frames"]] == [1, 1]
 
