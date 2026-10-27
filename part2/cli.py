@@ -39,7 +39,23 @@ def main(argv: list[str] | None = None) -> int:
     p_ev.add_argument("--rule", choices=["every_frame", "mean"], default="every_frame")
     p_ev.add_argument("--per-frame", action="store_true", help="include per-frame rows in the output")
 
+    p_an = sub.add_parser("annotate", help="label ground truth in the browser (#6)")
+    p_an.add_argument("what", choices=["joints", "ids"], help="joints: 17 joints per frame; ids: person boxes + ids")
+    p_an.add_argument("--frames", required=True, type=Path, help="frames dir (from part2 frames)")
+    p_an.add_argument("--out", required=True, type=Path, help="labels_2d.json (joints) or gt_tracks.json (ids)")
+    p_an.add_argument("--prefill", type=Path, help="body3d.json (joints) or tracks.json (ids) to start from")
+    p_an.add_argument("--count", type=int, default=20, help="joints: frames to label, spread over the clip")
+    p_an.add_argument("--every-s", type=float, default=1.0, help="ids: seconds between keyframes")
+    p_an.add_argument("--port", type=int, default=8765)
+    p_an.add_argument("--no-browser", action="store_true")
+
     args = parser.parse_args(argv)
+    if args.command == "annotate":
+        from part2 import annotate
+
+        annotate.serve(args.what, args.frames, args.out, args.prefill, args.count, args.every_s, args.port,
+                       open_browser=not args.no_browser)
+        return 0
     if args.command == "eval-reproj":
         from part2 import eval_reproj
 
