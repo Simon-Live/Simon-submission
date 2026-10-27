@@ -10,6 +10,8 @@ metadata:
 spec:
   restartPolicy: Never
   runtimeClassName: nvidia
+  nodeSelector:
+    kubernetes.io/hostname: nas  # the hostPath volume only exists there
   containers:
   - name: part2
     image: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel

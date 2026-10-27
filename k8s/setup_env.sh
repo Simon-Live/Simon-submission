@@ -24,18 +24,18 @@ $PIP -r "$HERE/requirements-gpu.txt"
 python -c "import detectron2" 2>/dev/null || \
   $PIP --no-build-isolation --no-deps "git+https://github.com/facebookresearch/detectron2.git@$DETECTRON2_COMMIT"
 # MoGe's optional extras (flex-gemm, gradio, pipeline) pull a newer torch; inference needs only these.
-$PIP click matplotlib pillow requests tqdm \
-  "utils3d_moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@$UTILS3D_MOGE_COMMIT"
+$PIP "utils3d_moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@$UTILS3D_MOGE_COMMIT"
 $PIP --no-deps "git+https://github.com/microsoft/MoGe.git@$MOGE_COMMIT"
 
-if [ ! -d sam-3d-body ]; then
-  git clone -q https://github.com/facebookresearch/sam-3d-body.git
-fi
+# A clone interrupted half-way leaves a directory git can't use; start it over.
+git -C sam-3d-body rev-parse --git-dir >/dev/null 2>&1 || { rm -rf sam-3d-body; git clone -q https://github.com/facebookresearch/sam-3d-body.git; }
 git -C sam-3d-body fetch -q --depth 1 origin "$SAM3D_COMMIT" 2>/dev/null || true
 git -C sam-3d-body checkout -q "$SAM3D_COMMIT"
 
+pip check | grep -vE "detectron2 .* requires (black|tensorboard)" || true  # report conflicts; those two are unused
 python - <<'EOF'
 import torch, detectron2, moge, sys
+assert torch.__version__.startswith("2.5.1"), f"torch drifted to {torch.__version__}"
 from detectron2.config import LazyConfig  # noqa: F401  (pulls detectron2 runtime deps)
 sys.path.insert(0, "/workspace/sam-3d-body")
 from sam_3d_body import load_sam_3d_body  # noqa: F401
