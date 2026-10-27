@@ -27,8 +27,9 @@ gpu-up:
 	kubectl apply -f k8s/pod.yaml
 	kubectl wait --for=condition=Ready pod/$(POD) --timeout=600s
 
+# Overlay copy of git-tracked files: files deleted locally stay in the pod until removed there.
 gpu-sync:
-	git ls-files -z | tar --null -T - -czf - | kubectl exec -i $(POD) -- bash -c 'mkdir -p /workspace/part2 && tar -xzf - -C /workspace/part2'
+	git ls-files -z | COPYFILE_DISABLE=1 tar --null -T - -czf - | kubectl exec -i $(POD) -- bash -c 'mkdir -p /workspace/part2 && tar -xzf - -C /workspace/part2'
 
 gpu-setup: gpu-sync
 	kubectl exec $(POD) -- bash /workspace/part2/k8s/setup_env.sh
