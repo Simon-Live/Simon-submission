@@ -8,6 +8,7 @@ Per labelled frame: error = mean pixel distance over clicked joints between the 
 reprojected 3D joint (pose3d.json + camera.json), divided by body height in pixels. Body height
 is the clicked nose -> ankle-midpoint distance (nose -> the one clicked ankle if only one is),
 which is shorter than full stature, so the threshold is stricter than "5% of height".
+mean/p95/max cover scored frames only; n_failed_frames counts unscored ones too.
 A labelled frame with no prediction scores as a failure.
 """
 import json
@@ -16,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from part2.canonical import project_pose3d
+from part2.joints import CANONICAL
 
 THRESHOLD = 0.05
 MIN_FRAMES = 20
@@ -28,6 +30,7 @@ def evaluate(pose3d: dict, camera: dict, labels: dict, threshold=THRESHOLD, rule
     for (frame, pid) in proj:
         ids_by_frame.setdefault(frame, []).append(pid)
 
+    validate_labels(labels)
     per_frame = []
     for lf in labels["frames"]:
         clicked = {j: np.asarray(uv, float) for j, uv in lf["joints"].items() if uv is not None}
@@ -49,7 +52,7 @@ def evaluate(pose3d: dict, camera: dict, labels: dict, threshold=THRESHOLD, rule
             dists = [float(np.linalg.norm(np.asarray(pred[j]) - uv)) for j, uv in clicked.items()]
             pct = float(np.mean(dists)) / height
             row.update(error_px=round(float(np.mean(dists)), 2), error_pct=round(pct * 100, 3),
-                       worst_joint=max(zip(dists, clicked))[1], ok=pct <= threshold)
+                       worst_joint=list(clicked)[int(np.argmax(dists))], ok=pct <= threshold)
         per_frame.append(row)
 
     scored = [r["error_pct"] for r in per_frame if r["error_pct"] is not None]
@@ -72,6 +75,25 @@ def evaluate(pose3d: dict, camera: dict, labels: dict, threshold=THRESHOLD, rule
         "checks": checks, "pass": all(checks.values()),
         "per_frame": per_frame,
     }
+
+
+def validate_labels(labels: dict) -> None:
+    """Shape of labels_2d.json; each frame once, only canonical joint names."""
+    frames = labels.get("frames") if isinstance(labels, dict) else None
+    if not isinstance(frames, list):
+        raise ValueError("labels: expected {frames: [...]}")
+    seen = set()
+    for i, lf in enumerate(frames):
+        n = lf.get("frame")
+        if not isinstance(n, int) or n in seen:
+            raise ValueError(f"labels.frames[{i}].frame: {n!r} is missing, not an int, or listed twice")
+        seen.add(n)
+        unknown = set(lf.get("joints", {})) - set(CANONICAL)
+        if unknown:
+            raise ValueError(f"labels frame {n}: unknown joints {sorted(unknown)}")
+        for j, uv in lf["joints"].items():
+            if uv is not None and not (isinstance(uv, list) and len(uv) == 2):
+                raise ValueError(f"labels frame {n}.{j}: expected [u, v] or null")
 
 
 def body_height_px(clicked: dict) -> float | None:
