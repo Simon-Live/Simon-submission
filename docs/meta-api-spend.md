@@ -3,7 +3,7 @@
 Estimated spend for live calls made by this repo. Classical `make check-4`
 does not call the API. Open-weight local runs are logged at $0.
 
-Cumulative estimated spend: **$0.0000**
+Cumulative estimated spend: **$0.0347**
 
 Alert thresholds crossed: none
 
@@ -18,4 +18,5 @@ Those calls are not in the table below.
 
 | When (UTC) | Model | Call | Prompt tokens | Completion tokens | Reasoning tokens | Estimated USD | Cumulative |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| — | — | no live calls | 0 | 0 | 0 | 0.0000 | 0.0000 |
+| 2026-10-27T05:41:17Z | muse-spark-1.3 | critique:exercise | 250 | 1616 | 1493 | 0.0072 | 0.0072 |
+| 2026-10-27T05:41:34Z | muse-wonder-1.0 | plan:dance | 93 | 1359 | 1270 | 0.0276 | 0.0347 |

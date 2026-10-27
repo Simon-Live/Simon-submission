@@ -1,6 +1,29 @@
 {
-  "cumulative_usd": 0.0,
+  "cumulative_usd": 0.034733,
   "alerts_crossed_usd": [],
-  "calls": [],
+  "calls": [
+    {
+      "when": "2026-10-27T05:41:17Z",
+      "model": "muse-spark-1.3",
+      "call": "critique:exercise",
+      "prompt_tokens": 250,
+      "completion_tokens": 1616,
+      "reasoning_tokens": 1493,
+      "cached_tokens": 0,
+      "estimated_usd": 0.007181,
+      "cumulative_usd": 0.007181
+    },
+    {
+      "when": "2026-10-27T05:41:34Z",
+      "model": "muse-wonder-1.0",
+      "call": "plan:dance",
+      "prompt_tokens": 93,
+      "completion_tokens": 1359,
+      "reasoning_tokens": 1270,
+      "cached_tokens": 0,
+      "estimated_usd": 0.027552,
+      "cumulative_usd": 0.034733
+    }
+  ],
   "notes": []
 }

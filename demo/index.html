@@ -237,7 +237,8 @@ async function loadSet(name) {
   draw();
 }
 
-function tick(now) {
+function tick() {
+  const now = performance.now();
   if (playing && clip) {
     const dt = lastTick ? (now - lastTick) / 1000 : 0;
     lastTick = now;
@@ -245,9 +246,8 @@ function tick(now) {
     frame = (frame + advance) % clip.frame_count;
     draw();
   } else {
-    lastTick = now;
+    lastTick = 0;
   }
-  requestAnimationFrame(tick);
 }
 
 playBtn.addEventListener("click", () => {
@@ -303,7 +303,7 @@ resize();
 loadSet("exercise").catch((error) => {
   status.textContent = "Could not load the clip (" + error.message + "). From the repo root run: python3 -m http.server 8765";
 });
-requestAnimationFrame(tick);
+setInterval(tick, 1000 / 30);
 </script>
 </body>
 </html>
