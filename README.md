@@ -40,3 +40,23 @@ Done-check: `make check-3` — prints a metrics JSON and exits 0 only when every
 - Work only in this repo. Do not copy or import another part's code; consume other parts only through the shared files above, using fixtures until they exist.
 - Every run of the done-check goes through `make check-3`.
 - Fixtures of your inputs live in `fixtures/input/`; ship a fixture of your output so the next part can start.
+
+## Development
+
+```
+make run IN=fixtures/input/part2-single/pose3d.json OUT=out/skeleton.json   # FLIP=auto|on|off
+make check-3    # done-check: prints the metrics JSON, exit 0 only when every threshold passes
+make test       # unit and acceptance tests (pytest, tests/part3/)
+make demo       # 3D viewer on http://127.0.0.1:8733/ (runs in the background); make demo-stop ends it
+```
+
+Needs Python 3.11 or later with numpy and pytest. `make setup` installs the pins in `requirements.txt` with pip; on a system Python that refuses pip installs (PEP 668), run it inside a virtualenv (`python3 -m venv .venv && . .venv/bin/activate && make setup`). No network, no model, no GPU.
+
+`python3 -m part3 run --in <pose3d.json> --out <skeleton.json> [--flip auto|on|off]` exits 0 on success, 2 when the input breaks the `pose3d.json` contract (the failing path is printed, nothing is written) and 1 when the output cannot be written. `python3 -m part3.schema <skeleton.json>` validates an output file.
+
+What the run does, in order: validate the input, keep one person, apply the mirror option, repair left/right label swaps, take "up" from the body (feet to shoulders while standing straight) instead of the camera, express every frame in that body frame, apply one fixed 5-frame mean to remove per-frame jitter, and rebuild every frame on one standard reference body (`part3/standard_body.json`, stature 1.70 m). Timing is unchanged: every input frame and `t_ms` is kept.
+
+- **One person.** When the input holds several ids, the id present in the most frames is kept; ties go to the larger person in the image, then to the first id. `skeleton.json` records the choice under `person`.
+- **`--flip`.** A selfie-mode video can be saved mirrored, which swaps left and right in a way no pose can reveal. `auto` (default) mirrors only when the input has the top-level key `"mirrored": true`; `on` always mirrors; `off` never does. The output records the setting, whether it was applied and why under `mirror`.
+- **The 4-angle agreement is synthetic.** A movement is recorded as one take from one phone at any angle, so no multi-angle recording exists. `make check-3` therefore measures the "4 phones agree within 10 degrees" criterion on four synthetic takes of the real Part 2 squat, rendered from four camera angles with Part 2-like errors (`fixtures/input/synthetic-4take/`, regenerated with `python3 -m part3.synth --out fixtures/input/synthetic-4take`). The metrics JSON says `"data_source": "synthetic"`.
+- **Output for Parts 4 and 5.** `fixtures/output/` holds `skeleton.json` files with a README on the format, its invariants and its limits.
