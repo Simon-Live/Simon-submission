@@ -1,4 +1,4 @@
-.PHONY: setup test run-single run-multi check-2 gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
+.PHONY: setup test run-single run-multi check-2 gpu-outputs gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
 
 POD := user-part2-gpu
 INPUT ?=
@@ -17,10 +17,14 @@ run-single:
 run-multi:
 	uv run part2 run --mode multi --input $(INPUT) --out $(OUT)
 
-# Done-check for Part 2 (see README.md). Replace the stub with the real check:
-# it must print a metrics JSON and exit 0 only when every threshold passes.
+# Done-check for Part 2 (see README.md): prints a metrics JSON, exits 0 only when every
+# threshold passes. Scores out/ against fixtures/input/; refresh out/ with make gpu-outputs.
 check-2:
-	@echo "check-2: not implemented yet" && exit 1
+	@uv run --quiet part2 check
+
+# Run inference for the fixtures on the GPU pod and bring the outputs back to out/.
+gpu-outputs: gpu-sync
+	bash k8s/gpu_outputs.sh $(POD)
 
 # --- GPU pod on the k3s cluster (see k8s/README.md) ---
 gpu-up:

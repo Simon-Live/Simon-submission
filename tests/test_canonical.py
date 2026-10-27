@@ -102,3 +102,23 @@ def test_validators_reject_bad_documents():
     good["frames"][0]["people"].append(dict(good["frames"][0]["people"][0]))
     with pytest.raises(ValueError, match="duplicate ids"):
         validate_tracks(good)
+
+
+def test_degenerate_hips_drop_person_not_clip():
+    b = _body3d([0, 0])
+    p = b["frames"][1]["people"][0]
+    p["kp3d_cam"]["right_hip"] = list(p["kp3d_cam"]["left_hip"])
+    pose3d, camera = convert(b)
+    assert len(pose3d["frames"][0]["people"]) == 1 and pose3d["frames"][1]["people"] == []
+    assert camera["frames"][1]["people"] == [] and "level camera" in camera["world_up"]
+
+
+def test_validate_tracks_ranges():
+    def doc(**kw):
+        p = {"id": 1, "bbox": [0, 0, 5, 9], "mask_rle": {"size": [9, 5], "counts": "a1"}, "confidence": 0.9, **kw}
+        return {"frames": [{"frame": 0, "people": [p]}]}
+
+    validate_tracks(doc())
+    for bad in [dict(confidence=1.5), dict(mask_rle={"size": [0, 5], "counts": "a"}), dict(mask_rle={"size": [9, 5], "counts": ""})]:
+        with pytest.raises(ValueError):
+            validate_tracks(doc(**bad))
