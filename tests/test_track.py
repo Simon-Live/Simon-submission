@@ -101,7 +101,7 @@ def test_parse_sam31_text_maps_frames_boxes_and_masks():
     assert sorted(dets) == [10, 12]  # API indices mapped onto real frame numbers
     d = dets[10][0]
     assert d["id"] == 5 and d["bbox"] == [1, 0, 2, 2] and d["confidence"] == 0.9
-    assert d["mask"].tolist() == [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]
+    assert _decode(d["mask_rle"]) == [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]
     doc = build_tracks(recs, dets)
     assert doc["frames"][0]["people"][0]["mask_rle"]["size"] == [3, 4]
 
@@ -110,3 +110,14 @@ def test_derive_fps_from_timestamps():
     recs = [{"frame": i, "t_ms": i * 40.0, "file": "x"} for i in range(5)]
     assert derive_fps(recs) == 25.0
     assert derive_fps(recs[:1]) == 30.0
+
+
+def test_parse_sam31_rejects_missing_confidence_and_offsets():
+    recs = [{"frame": 0, "t_ms": 0.0, "file": "a.jpg"}]
+    dec = lambda payload, w, h: bytes([1] * (w * h))
+    with pytest.raises(ValueError, match="no confidence"):
+        parse_sam31_text("<0f>1<|box;x1=0;y1=0;x2=1;y2=1;w=2;h=2|>"
+                         "<|mask;x=0;y=0;data=1,1,~f|>", recs, mask_decoder=dec)
+    with pytest.raises(ValueError, match="mask offset"):
+        parse_sam31_text("<0f>1<|box;x1=0;y1=0;x2=1;y2=1;w=2;h=2;c=0.5|>"
+                         "<|mask;x=3;y=0;c=0.5;data=1,1,~f|>", recs, mask_decoder=dec)

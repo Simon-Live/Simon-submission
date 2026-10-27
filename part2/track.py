@@ -103,7 +103,9 @@ def build_tracks(frame_records, detections) -> dict:
             people.append({
                 "id": int(d["id"]),
                 "bbox": [float(v) for v in d["bbox"]],
-                "mask_rle": mask_to_rle(d["mask"]),
+                # a pre-encoded mask_rle is used as-is, so callers parsing a
+                # stream never hold more than one full-frame raster at a time
+                "mask_rle": d["mask_rle"] if "mask_rle" in d else mask_to_rle(d["mask"]),
                 "confidence": float(d["confidence"]),
             })
         people.sort(key=lambda p: p["id"])
@@ -157,8 +159,16 @@ def encode_video(frames_dir, frame_records, out_path) -> float:
             f"file '{(frames_dir / r['file']).resolve()}'\n" for r in frame_records))
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0",
                         "-r", f"{fps:.3f}", "-i", str(list_path),
+                        "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path)],
                        check=True, capture_output=True)
+    count = int(subprocess.run(
+        ["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
+         "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(out_path)],
+        check=True, capture_output=True, text=True).stdout.strip())
+    if count != len(frame_records):
+        raise RuntimeError(f"encoded video has {count} frames for {len(frame_records)} "
+                           "frame records; API frame indices would not line up")
     return fps
 
 
@@ -190,7 +200,7 @@ def parse_sam31_text(text: str, frame_records, mask_decoder=None) -> dict:
     if _OBJ_RE is None:
         _OBJ_RE = re.compile(
             r",?(\d+)<\|box;x1=([\d.]+);y1=([\d.]+);x2=([\d.]+);y2=([\d.]+);w=(\d+);h=(\d+)"
-            r"(?:;c=([\d.]+))?\|><\|mask;x=\d+;y=\d+;(?:c=[\d.]+;)?data=(\d+),(\d+),([^|]+)\|>")
+            r"(?:;c=([\d.]+))?\|><\|mask;x=(\d+);y=(\d+);(?:c=[\d.]+;)?data=(\d+),(\d+),([^|]+)\|>")
     decode = mask_decoder or _decode_mask
     detections = {}
     parts = re.split(r"<(\d+)f>", text)
@@ -203,25 +213,46 @@ def parse_sam31_text(text: str, frame_records, mask_decoder=None) -> dict:
         for m in _OBJ_RE.finditer(segment):
             pid, x1, y1, x2, y2 = (int(float(m.group(g))) for g in (1, 2, 3, 4, 5))
             img_w, img_h = int(m.group(6)), int(m.group(7))
-            mh, mw, payload = int(m.group(9)), int(m.group(10)), m.group(11)
+            if m.group(8) is None:
+                raise ValueError(f"frame {frame} id {pid}: SAM returned no confidence "
+                                 "(include_confidence was requested)")
+            mx, my = int(m.group(9)), int(m.group(10))
+            if (mx, my) != (0, 0):
+                raise ValueError(f"frame {frame} id {pid}: mask offset x={mx} y={my} "
+                                 "is not understood (expected 0,0 crop at the box corner)")
+            mh, mw, payload = int(m.group(11)), int(m.group(12)), m.group(13)
             raster = np.frombuffer(decode(payload, mw, mh), dtype=np.uint8).reshape(mh, mw)
             full = np.zeros((img_h, img_w), dtype=np.uint8)
             sub = full[y1:y1 + mh, x1:x1 + mw]
             sel = raster.astype(bool)[:sub.shape[0], :sub.shape[1]]
             sub[sel] = 1
+            # encode now: holding a full-frame raster per person per frame
+            # would take ~2 MB x people x frames (25 GB for a 1-minute clip)
             people.append({"id": pid, "bbox": [x1, y1, x2 - x1, y2 - y1],
-                           "mask": full, "confidence": float(m.group(8) or 0.0)})
+                           "mask_rle": mask_to_rle(full), "confidence": float(m.group(8))})
         if people:
             detections[frame] = people
     return detections
 
 
+MAX_API_FRAMES = 15000  # per-request limit; chunking would break id continuity
+MAX_API_OBJECTS = 16  # tracked objects per frame; more people than this are lost
+
+
 def api_tracker(frames_dir, frame_records, prompt: str = "person", budget=None):
-    """SAM 3.1 via the Meta Model API (through part2.meta_api, budget-guarded)."""
+    """SAM 3.1 via the Meta Model API (through part2.meta_api, budget-guarded).
+
+    Limits: at most 15,000 frames per request and 16 tracked objects per
+    frame. Longer clips need chunking, which is not implemented (it would
+    break track-id continuity across chunks).
+    """
     import tempfile
 
     from part2 import meta_api
 
+    if len(frame_records) > MAX_API_FRAMES:
+        raise ValueError(f"{len(frame_records)} frames exceeds the SAM API limit of "
+                         f"{MAX_API_FRAMES} per request; chunking is not implemented")
     frames_dir = Path(frames_dir)
     with tempfile.TemporaryDirectory() as tmp:
         video_path = Path(tmp) / "clip.mp4"
