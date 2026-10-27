@@ -12,7 +12,7 @@ from part2 import canonical, frames
 
 # Stages after frame ingest, filled in by their issues.
 PENDING = {
-    "multi": "SAM 3.1 tracking (#10) and per-person 3D (#11)",
+    "multi": "per-person 3D for the tracks (#11)",
 }
 
 
@@ -103,6 +103,12 @@ def main(argv: list[str] | None = None) -> int:
             pose_path, cam_path = canonical.write(args.out / "body3d.json", args.out, smooth=args.smooth)
             print(f"{pose_path} + {cam_path}")
             return 0
+        if args.mode == "multi":
+            from part2 import track
+
+            doc = track.track(args.out / "frames", args.out / "tracks.json")
+            ids = {p["id"] for f in doc["frames"] for p in f["people"]}
+            print(f"{len(ids)} tracked people -> {args.out / 'tracks.json'}")
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         print(f"part2: {e}", file=sys.stderr)
         return 1
