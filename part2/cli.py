@@ -39,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     p_ev.add_argument("--rule", choices=["every_frame", "mean"], default="every_frame")
     p_ev.add_argument("--per-frame", action="store_true", help="include per-frame rows in the output")
 
+    sub.add_parser("check", help="done-check: metrics JSON for both modes, exit 0 only if all pass (#14)")
+
     p_an = sub.add_parser("annotate", help="label ground truth in the browser (#6)")
     p_an.add_argument("what", choices=["joints", "ids"], help="joints: 17 joints per frame; ids: person boxes + ids")
     p_an.add_argument("--frames", required=True, type=Path, help="frames dir (from part2 frames)")
@@ -50,6 +52,12 @@ def main(argv: list[str] | None = None) -> int:
     p_an.add_argument("--no-browser", action="store_true")
 
     args = parser.parse_args(argv)
+    if args.command == "check":
+        from part2 import check
+
+        report = check.run()
+        print(json.dumps(report, indent=2))
+        return 0 if report["pass"] else 1
     if args.command == "annotate":
         from part2 import annotate
 
