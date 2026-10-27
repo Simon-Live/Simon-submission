@@ -4,6 +4,7 @@
     part2 run --mode single|multi --input clip.mp4 --out out/clip [--fps 30]
 """
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -31,7 +32,22 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
     p_run.add_argument("--smooth", action="store_true", help="One-Euro smoothing of 3D joints over time")
 
+    p_ev = sub.add_parser("eval-reproj", help="one-person metric: reprojection error vs hand-clicked joints (#12)")
+    p_ev.add_argument("--pose3d", required=True, type=Path)
+    p_ev.add_argument("--camera", required=True, type=Path)
+    p_ev.add_argument("--labels", required=True, type=Path, help="labels_2d.json")
+    p_ev.add_argument("--rule", choices=["every_frame", "mean"], default="every_frame")
+    p_ev.add_argument("--per-frame", action="store_true", help="include per-frame rows in the output")
+
     args = parser.parse_args(argv)
+    if args.command == "eval-reproj":
+        from part2 import eval_reproj
+
+        m = eval_reproj.evaluate_files(args.pose3d, args.camera, args.labels, rule=args.rule)
+        if not args.per_frame:
+            m.pop("per_frame")
+        print(json.dumps(m, indent=2))
+        return 0 if m["pass"] else 1
     try:
         if args.command == "frames":
             recs = frames.ingest(args.input, args.out, args.fps)
