@@ -92,3 +92,24 @@ def test_evaluate_files_roundtrip(tmp_path):
         (tmp_path / f"{name}.json").write_text(json.dumps(doc))
     m = evaluate_files(tmp_path / "tracks.json", tmp_path / "gt.json", tmp_path / "pose.json")
     assert m["pass"]
+
+
+def test_pose3d_present_at_only_some_matched_frames_fails():
+    tracks, gt, pose = _clip()
+    for f in pose["frames"][5:]:  # person 3 loses their 3D stream halfway
+        f["people"] = [p for p in f["people"] if p["id"] != 3]
+    m = evaluate(tracks, gt, pose)
+    p = next(p for p in m["per_person"] if p["gt_id"] == 3)
+    assert p["pose3d_coverage"] == 0.5 and not p["has_pose3d"]
+    assert not m["checks"]["pose3d_per_person"] and m["swap_rate_basis"].startswith("person_span")
+
+
+def test_malformed_inputs_raise():
+    tracks, gt, pose = _clip()
+    gt["frames"][0]["people"].append(dict(gt["frames"][0]["people"][0]))
+    with pytest.raises(ValueError, match="duplicate GT ids"):
+        evaluate(tracks, gt, pose)
+    tracks, gt, pose = _clip()
+    tracks["frames"][0]["people"][0]["confidence"] = 1.5
+    with pytest.raises(ValueError, match="confidence"):
+        evaluate(tracks, gt, pose)

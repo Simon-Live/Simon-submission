@@ -51,9 +51,14 @@ def _match(gt_people, pred_people):
 
 
 def evaluate(tracks: dict, gt: dict, pose3d: dict) -> dict:
+    from part2.schema import validate_tracks
+
+    validate_tracks(tracks)
+    _validate_gt(gt)
     pred_by_frame = {f["frame"]: f.get("people", []) for f in tracks.get("frames", [])}
     t_by_frame = {f["frame"]: f["t_ms"] for f in pose3d.get("frames", []) if "t_ms" in f}
-    pose_ids = {p["id"] for f in pose3d.get("frames", []) for p in f.get("people", [])}
+    pose_by_frame = {f["frame"]: {p["id"] for p in f.get("people", [])}
+                     for f in pose3d.get("frames", [])}
 
     appearances = {}  # gt id -> [(frame, matched pred id | None)]
     for f in gt.get("frames", []):
@@ -78,13 +83,15 @@ def evaluate(tracks: dict, gt: dict, pose3d: dict) -> dict:
         span_min = (max(times) - min(times)) / 60000.0 if len(times) >= 2 else 0.0
         swaps_per_min = swaps / span_min if span_min > 0 else (float("inf") if swaps else 0.0)
         matched_ids = sorted({pid for _, pid in hits})
+        n_pose = sum(1 for fr, pid in hits if pid in pose_by_frame.get(fr, set()))
         per_person.append({
             "gt_id": gid, "n_keyframes": n, "n_matched": len(hits),
             "coverage": round(len(hits) / n, 4) if n else 0.0,
             "id_swaps": swaps, "span_min": round(span_min, 3),
             "swaps_per_min": None if swaps_per_min == float("inf") else round(swaps_per_min, 3),
             "track_ids": matched_ids,
-            "has_pose3d": bool(matched_ids) and all(pid in pose_ids for pid in matched_ids),
+            "pose3d_coverage": round(n_pose / len(hits), 4) if hits else 0.0,
+            "has_pose3d": bool(hits) and n_pose / len(hits) >= MIN_COVERAGE,
         })
 
     checks = {
@@ -95,8 +102,11 @@ def evaluate(tracks: dict, gt: dict, pose3d: dict) -> dict:
             for p in per_person),
         "pose3d_per_person": all(p["has_pose3d"] for p in per_person) and bool(per_person),
     }
+    n_missing_t = sum(1 for apps in appearances.values() for fr, _ in apps if fr not in t_by_frame)
     return {
         "metric": "tracking_coverage_and_id_swaps",
+        "swap_rate_basis": "person_span (decision pending: #18 open decision 4)",
+        "n_appearances_missing_timestamps": n_missing_t,
         "iou_threshold": IOU_THRESHOLD, "min_people": MIN_PEOPLE,
         "n_gt_people": len(per_person),
         "n_keyframes": sum(p["n_keyframes"] for p in per_person),
@@ -106,6 +116,20 @@ def evaluate(tracks: dict, gt: dict, pose3d: dict) -> dict:
         "checks": checks, "pass": all(checks.values()),
         "per_person": per_person,
     }
+
+
+def _validate_gt(gt: dict) -> None:
+    frames = gt.get("frames") if isinstance(gt, dict) else None
+    if not isinstance(frames, list):
+        raise ValueError("gt_tracks: expected {frames: [...]}")
+    for i, f in enumerate(frames):
+        ids = [p.get("id") for p in f.get("people", [])]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"gt_tracks.frames[{i}]: duplicate GT ids {ids}")
+        for p in f.get("people", []):
+            bbox = p.get("bbox")
+            if not (isinstance(bbox, list) and len(bbox) == 4):
+                raise ValueError(f"gt_tracks.frames[{i}]: bbox must be [x, y, w, h]")
 
 
 def evaluate_files(tracks_path, gt_path, pose3d_path) -> dict:
