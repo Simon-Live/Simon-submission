@@ -51,7 +51,19 @@ def main(argv: list[str] | None = None) -> int:
     p_an.add_argument("--port", type=int, default=8765)
     p_an.add_argument("--no-browser", action="store_true")
 
+    p_demo = sub.add_parser("demo", help="viewer.html (rotatable 3D skeleton) or overlay.mp4 (#16)")
+    p_demo.add_argument("what", choices=["viewer", "overlay"])
+    p_demo.add_argument("--run", required=True, type=Path, help="part2 run output dir (frames/, pose3d.json, camera.json)")
+    p_demo.add_argument("--id", help="viewer: person id to show (default: first)")
+    p_demo.add_argument("--out", type=Path)
+
     args = parser.parse_args(argv)
+    if args.command == "demo":
+        from part2 import demo
+
+        path = demo.viewer(args.run, args.id, args.out) if args.what == "viewer" else demo.overlay(args.run, args.out)
+        print(path)
+        return 0
     if args.command == "check":
         from part2 import check
 

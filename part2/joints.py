@@ -15,3 +15,12 @@ MHR70 = {
     "left_ankle": 13, "right_ankle": 14, "right_wrist": 41, "left_wrist": 62,
 }
 MHR70_INDEX = [MHR70[name] for name in CANONICAL]
+
+# Skeleton edges for drawing.
+BONES = [
+    ("left_ear", "left_eye"), ("left_eye", "nose"), ("nose", "right_eye"), ("right_eye", "right_ear"),
+    ("left_shoulder", "right_shoulder"), ("left_shoulder", "left_elbow"), ("left_elbow", "left_wrist"),
+    ("right_shoulder", "right_elbow"), ("right_elbow", "right_wrist"),
+    ("left_shoulder", "left_hip"), ("right_shoulder", "right_hip"), ("left_hip", "right_hip"),
+    ("left_hip", "left_knee"), ("left_knee", "left_ankle"), ("right_hip", "right_knee"), ("right_knee", "right_ankle"),
+]
