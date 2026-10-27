@@ -39,7 +39,19 @@ def main(argv: list[str] | None = None) -> int:
     p_ev.add_argument("--rule", choices=["every_frame", "mean"], default="every_frame")
     p_ev.add_argument("--per-frame", action="store_true", help="include per-frame rows in the output")
 
+    p_demo = sub.add_parser("demo", help="viewer.html (rotatable 3D skeleton) or overlay.mp4 (#16)")
+    p_demo.add_argument("what", choices=["viewer", "overlay"])
+    p_demo.add_argument("--run", required=True, type=Path, help="part2 run output dir (frames/, pose3d.json, camera.json)")
+    p_demo.add_argument("--id", help="viewer: person id to show (default: first)")
+    p_demo.add_argument("--out", type=Path)
+
     args = parser.parse_args(argv)
+    if args.command == "demo":
+        from part2 import demo
+
+        path = demo.viewer(args.run, args.id, args.out) if args.what == "viewer" else demo.overlay(args.run, args.out)
+        print(path)
+        return 0
     if args.command == "eval-reproj":
         from part2 import eval_reproj
 
