@@ -79,10 +79,18 @@ class Budget:
                                  f"over META_BUDGET_USD=${self.limit:.2f} (ledger {self.ledger})")
 
     def record(self, usd: float, what: str, model: str) -> float:
-        before = self.spent()
         self.ledger.parent.mkdir(parents=True, exist_ok=True)
-        with self.ledger.open("a") as f:
-            f.write(json.dumps({"ts": time.time(), "model": model, "what": what, "usd": usd}) + "\n")
+        lock_path = self.ledger.with_suffix(".lock")
+        with lock_path.open("a") as lock:
+            try:
+                import fcntl
+
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            except (ImportError, OSError):
+                pass  # best effort: the read+append below is still one open
+            before = self.spent()
+            with self.ledger.open("a") as f:
+                f.write(json.dumps({"ts": time.time(), "model": model, "what": what, "usd": usd}) + "\n")
         after = before + usd
         if self.remind_every > 0 and int(after // self.remind_every) > int(before // self.remind_every):
             print(f"[meta budget] spent ${after:.2f} of ${self.limit:.2f}", file=sys.stderr)
@@ -144,7 +152,7 @@ def sse_text_deltas(lines):
 def respond(model: str, content: list, est_cost_usd: float, metadata=None, budget: Budget | None = None,
             what: str = "", **extra):
     """Stream a /responses call, yielding output_text deltas. The estimated cost is checked
-    against the budget before the call and recorded once the stream finishes."""
+    against the budget before the call and recorded as soon as the call is accepted."""
     budget = budget or Budget()
     what = what or model
     budget.reserve(est_cost_usd, what)
