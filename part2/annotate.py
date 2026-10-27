@@ -11,6 +11,8 @@ ids    -> gt_tracks.json: {keyframes_only: true, frames: [{frame, people: [{id, 
 Existing output is loaded, so labelling can stop and resume. Every save rewrites the file.
 """
 import json
+import math
+import secrets
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +23,7 @@ from part2.joints import CANONICAL
 
 VIEWS = ["front", "side", "back", "other"]
 PAGE = Path(__file__).with_name("annotate.html")
+MAX_POST_BYTES = 10 * 1024 * 1024
 
 
 def pick_frames(recs: list[dict], count: int) -> list[int]:
@@ -65,14 +68,31 @@ def build_state(mode: str, frames_dir, out_path, prefill=None, count=20, every_s
             "saved": saved, "hints": {str(k): v for k, v in hints.items()}}
 
 
-def validate(mode: str, doc: dict) -> dict:
-    """Check a document posted by the page and return it in canonical form."""
+def _finite(values, what) -> list[float]:
+    out = [float(v) for v in values]
+    if not all(math.isfinite(v) for v in out):
+        raise ValueError(f"{what}: numbers must be finite, got {values!r}")
+    return out
+
+
+def _int_id(v) -> int:
+    if isinstance(v, bool) or not (isinstance(v, int) or (isinstance(v, float) and v.is_integer())
+                                   or (isinstance(v, str) and v.isdigit())):
+        raise ValueError(f"id must be a whole number, got {v!r}")
+    return int(v)
+
+
+def validate(mode: str, doc: dict, allowed_frames=None) -> dict:
+    """Check a document posted by the page and return it in canonical form.
+    allowed_frames: frame numbers being labelled; anything else is rejected."""
     out = []
     seen = set()
     for f in doc.get("frames", []):
         n = f["frame"]
-        if not isinstance(n, int) or n in seen:
+        if not isinstance(n, int) or isinstance(n, bool) or n in seen:
             raise ValueError(f"bad or duplicate frame {n!r}")
+        if allowed_frames is not None and n not in allowed_frames:
+            raise ValueError(f"frame {n} is not one of the frames being labelled")
         seen.add(n)
         if mode == "joints":
             joints = f.get("joints", {})
@@ -83,17 +103,21 @@ def validate(mode: str, doc: dict) -> dict:
             clean = {}
             for j in CANONICAL:
                 uv = joints.get(j)
-                clean[j] = None if uv is None else [round(float(uv[0]), 1), round(float(uv[1]), 1)]
+                if uv is not None and not (isinstance(uv, list) and len(uv) == 2):
+                    raise ValueError(f"frame {n}: {j} must be [u, v] or null")
+                clean[j] = None if uv is None else [round(v, 1) for v in _finite(uv, f"frame {n} {j}")]
             if any(v is not None for v in clean.values()):
                 out.append({"frame": n, "view": f["view"], "joints": clean})
         else:
             people, ids = [], set()
             for p in f.get("people", []):
-                pid = int(p["id"])
+                pid = _int_id(p["id"])
                 if pid in ids:
                     raise ValueError(f"frame {n}: id {pid} used twice")
                 ids.add(pid)
-                x, y, w, h = (float(v) for v in p["bbox"])
+                if not (isinstance(p["bbox"], list) and len(p["bbox"]) == 4):
+                    raise ValueError(f"frame {n}: bbox must be [x, y, w, h]")
+                x, y, w, h = _finite(p["bbox"], f"frame {n} id {pid} bbox")
                 if w <= 0 or h <= 0:
                     raise ValueError(f"frame {n}: empty box for id {pid}")
                 people.append({"id": pid, "bbox": [round(x, 1), round(y, 1), round(w, 1), round(h, 1)]})
@@ -103,9 +127,14 @@ def validate(mode: str, doc: dict) -> dict:
 
 
 def make_server(state: dict, frames_dir, out_path, port=0) -> ThreadingHTTPServer:
+    """Localhost server. /api/* needs the per-run token (?t= on the page URL, sent back as
+    X-Token) and a localhost Host header, so other sites open in the browser can't read or
+    overwrite labels (CSRF / DNS rebinding)."""
     frames_dir, out_path = Path(frames_dir), Path(out_path)
     files = {fr["file"] for fr in state["frames"]}
+    allowed = {fr["frame"] for fr in state["frames"]}
     lock = threading.Lock()
+    token = secrets.token_urlsafe(16)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -118,8 +147,14 @@ def make_server(state: dict, frames_dir, out_path, port=0) -> ThreadingHTTPServe
             self.end_headers()
             self.wfile.write(body)
 
+        def _trusted(self) -> bool:
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+            return host in ("127.0.0.1", "localhost") and secrets.compare_digest(self.headers.get("X-Token", ""), token)
+
         def do_GET(self):
-            if self.path == "/":
+            if self.path.startswith("/api/") and not self._trusted():
+                return self._send(403, b'{"error": "forbidden"}')
+            if self.path == "/" or self.path.startswith("/?"):
                 self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
             elif self.path == "/api/state":
                 self._send(200, json.dumps(state).encode())
@@ -133,19 +168,26 @@ def make_server(state: dict, frames_dir, out_path, port=0) -> ThreadingHTTPServe
         def do_POST(self):
             if self.path != "/api/save":
                 return self._send(404, b'{"error": "not found"}')
+            if not self._trusted():
+                return self._send(403, b'{"error": "forbidden"}')
+            size = int(self.headers.get("Content-Length") or 0)
+            if size > MAX_POST_BYTES:
+                return self._send(413, b'{"error": "too large"}')
             try:
-                doc = validate(state["mode"], json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
-            except (ValueError, KeyError, TypeError) as e:
+                doc = validate(state["mode"], json.loads(self.rfile.read(size)), allowed)
+            except (ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
                 return self._send(400, json.dumps({"error": str(e)}).encode())
             with lock:
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 tmp = out_path.with_suffix(".tmp")
-                tmp.write_text(json.dumps(doc, indent=1))
+                tmp.write_text(json.dumps(doc, indent=1, allow_nan=False))
                 tmp.replace(out_path)
                 state["saved"] = doc["frames"]
             self._send(200, json.dumps({"saved": len(doc["frames"]), "path": str(out_path)}).encode())
 
-    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.token = token
+    return server
 
 
 def serve(mode, frames_dir, out_path, prefill=None, count=20, every_s=1.0, port=8765, open_browser=True):
@@ -154,7 +196,7 @@ def serve(mode, frames_dir, out_path, prefill=None, count=20, every_s=1.0, port=
         server = make_server(state, frames_dir, out_path, port)
     except OSError:  # port taken: let the OS pick a free one
         server = make_server(state, frames_dir, out_path, 0)
-    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    url = f"http://127.0.0.1:{server.server_address[1]}/?t={server.token}"
     print(f"labelling {len(state['frames'])} frames ({mode}) -> {out_path}\nopen {url}  (Ctrl+C to stop)", flush=True)
     if open_browser:
         webbrowser.open(url)

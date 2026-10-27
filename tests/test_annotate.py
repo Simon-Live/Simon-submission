@@ -61,6 +61,21 @@ def test_validate_ids_rejects_duplicates_and_empty_boxes():
         annotate.validate("ids", {"frames": [{"frame": 0, "people": [{"id": 1, "bbox": [0, 0, 5, 5]}] * 2}]})
     with pytest.raises(ValueError, match="empty box"):
         annotate.validate("ids", {"frames": [{"frame": 0, "people": [{"id": 1, "bbox": [0, 0, 0, 5]}]}]})
+    for bbox in ([0, 0, float("nan"), 5], [0, float("inf"), 5, 5], [0, 0, 5]):
+        with pytest.raises(ValueError):
+            annotate.validate("ids", {"frames": [{"frame": 0, "people": [{"id": 1, "bbox": bbox}]}]})
+    with pytest.raises(ValueError, match="whole number"):
+        annotate.validate("ids", {"frames": [{"frame": 0, "people": [{"id": 2.7, "bbox": [0, 0, 5, 5]}]}]})
+    empty = annotate.validate("ids", {"frames": [{"frame": 3, "people": []}]})
+    assert empty["frames"] == [{"frame": 3, "people": []}]  # visited-but-empty keyframes are kept
+
+
+def test_validate_joints_rejects_nonfinite_and_wrong_length():
+    for uv in ([float("nan"), 1], [1, float("inf")], [1], [1, 2, 3]):
+        with pytest.raises(ValueError):
+            annotate.validate("joints", {"frames": [{"frame": 0, "view": "front", "joints": {"nose": uv}}]})
+    with pytest.raises(ValueError, match="not one of"):
+        annotate.validate("joints", {"frames": [{"frame": 5, "view": "front", "joints": {"nose": [1, 1]}}]}, {0, 1})
 
 
 def _serve(state, frames_dir, out):
@@ -69,27 +84,38 @@ def _serve(state, frames_dir, out):
     return server, f"http://127.0.0.1:{server.server_address[1]}"
 
 
-def _post(url, doc):
-    req = urllib.request.Request(url, data=json.dumps(doc).encode(), headers={"Content-Type": "application/json"})
+def _post(url, doc, token):
+    req = urllib.request.Request(url, data=json.dumps(doc).encode(),
+                                 headers={"Content-Type": "application/json", "X-Token": token})
     return json.loads(urllib.request.urlopen(req).read())
+
+
+def _get(url, token=None):
+    return urllib.request.urlopen(urllib.request.Request(url, headers={"X-Token": token} if token else {})).read()
 
 
 def test_server_roundtrip_writes_labels_that_eval_reads(frames_dir, tmp_path):
     out = tmp_path / "labels_2d.json"
     state = annotate.build_state("joints", frames_dir, out, count=3)
     server, url = _serve(state, frames_dir, out)
+    tok = server.token
     try:
-        assert b"<canvas" in urllib.request.urlopen(url + "/").read()
-        assert json.loads(urllib.request.urlopen(url + "/api/state").read())["mode"] == "joints"
-        assert urllib.request.urlopen(url + "/img/000000.jpg").read() == b"\xff\xd8img0"
-        with pytest.raises(urllib.error.HTTPError) as e:  # only frames being labelled are served
-            urllib.request.urlopen(url + "/img/../frames.json")
-        assert e.value.code == 404
-        with pytest.raises(urllib.error.HTTPError) as e:
-            _post(url + "/api/save", {"frames": [{"frame": 0, "view": "top", "joints": {"nose": [1, 1]}}]})
-        assert e.value.code == 400 and not out.exists()
+        assert b"<canvas" in _get(url + "/?t=" + tok)
+        assert json.loads(_get(url + "/api/state", tok))["mode"] == "joints"
+        assert _get(url + "/img/000000.jpg") == b"\xff\xd8img0"
+        for path, token in [("/img/../frames.json", None), ("/api/state", None), ("/api/state", "wrong")]:
+            with pytest.raises(urllib.error.HTTPError) as e:  # whitelist of frames; api needs the token
+                _get(url + path, token)
+            assert e.value.code in (403, 404)
+        for bad, token in [({"frames": [{"frame": 0, "view": "top", "joints": {"nose": [1, 1]}}]}, tok),
+                           ({"frames": [{"frame": 0, "view": "side", "joints": {"nose": [1]}}]}, tok),
+                           ({"frames": [{"frame": 99999, "view": "side", "joints": {"nose": [1, 1]}}]}, tok),
+                           ({"frames": [{"frame": 0, "view": "side", "joints": {"nose": [1, 1]}}]}, "forged")]:
+            with pytest.raises(urllib.error.HTTPError) as e:
+                _post(url + "/api/save", bad, token)
+            assert e.value.code in (400, 403) and not out.exists()
         joints = {j: [100.0, 50.0 + 10 * i] for i, j in enumerate(CANONICAL)}
-        assert _post(url + "/api/save", {"frames": [{"frame": 0, "view": "side", "joints": joints}]})["saved"] == 1
+        assert _post(url + "/api/save", {"frames": [{"frame": 0, "view": "side", "joints": joints}]}, tok)["saved"] == 1
     finally:
         server.shutdown()
         server.server_close()

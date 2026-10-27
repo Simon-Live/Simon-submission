@@ -39,10 +39,14 @@ let S, idx = 0, img = new Image(), view = {s: 1, ox: 0, oy: 0};
 let labels = {};          // frame -> joints: {frame, view, joints:{j:[u,v]|null}} ; ids: {frame, people:[{id,bbox}]}
 let cur = 0, sel = -1, drag = null, dirty = false;
 const COLORS = ['#e6194b','#3cb44b','#4363d8','#f58231','#911eb4','#42d4f4','#f032e6','#bfef45','#fabed4','#469990','#dcbeff','#9a6324','#800000','#aaffc3','#000075'];
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const api = (path, opts = {}) => fetch(path, {...opts, headers: {...(opts.headers || {}), 'X-Token': TOKEN}});
 const color = id => COLORS[((id % COLORS.length) + COLORS.length) % COLORS.length];
 
 async function init() {
-  S = await (await fetch('/api/state')).json();
+  const r = await api('/api/state');
+  if (!r.ok) { document.getElementById('title').textContent = 'Open the exact URL printed by part2 annotate (it includes ?t=…)'; return; }
+  S = await r.json();
   for (const f of S.saved) labels[f.frame] = structuredClone(f);
   document.getElementById('title').textContent = S.mode === 'joints' ? 'Click the 17 joints' : 'Label person identities';
   document.getElementById('keys').innerHTML = S.mode === 'joints'
@@ -214,7 +218,7 @@ async function save() {
   const frames = Object.values(labels).map(f => S.mode === 'joints'
     ? {...f, joints: Object.fromEntries(S.joints.map(j => [j, f.joints[j] ?? null]))} : f);
   const st = document.getElementById('status');
-  const r = await fetch('/api/save', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({frames})});
+  const r = await api('/api/save', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({frames})});
   const body = await r.json();
   st.className = r.ok ? '' : 'err';
   st.textContent = r.ok ? `saved ${body.saved} frames → ${body.path}` : `not saved: ${body.error}`;
