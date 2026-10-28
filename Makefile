@@ -4,12 +4,12 @@
 export PYTHONPATH := src
 
 # Done-check for Part 4. Prints metrics JSON and exits 0 only when every
-# threshold passes for the exercise and dance fixtures. No Meta API calls.
+# threshold passes for the exercise, dance, and long fixtures. No Meta API calls.
 check-4:
 	@python3 -m simon_anim.check
 
 animate:
-	@python3 -m simon_anim.animate --set exercise --set dance
+	@python3 -m simon_anim.animate --set exercise --set dance --set long
 
 fixtures:
 	@python3 scripts/generate_fixtures.py

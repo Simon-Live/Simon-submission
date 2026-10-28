@@ -6,8 +6,6 @@ A trainer records a movement once. Part 1 marks the important moments (the keyfr
 
 This repo is only Part 4. It reads its own input files and writes its own output. It does not import the other parts. Hub repo: https://github.com/moalborati/simon. Source task: [moalborati/simon issue #58](https://github.com/moalborati/simon/issues/58). Scope: `docs/MINI-APPS.md` in that repo.
 
-The behavior below is what this working branch ships. `main` updates when the Part 4 pull request merges.
-
 ## Where this part sits
 
 ```mermaid
@@ -23,24 +21,26 @@ Parts 1 and 3 can be missing. This repo ships fixtures of their files so the ani
 
 ## What goes in, what comes out
 
-Each movement is one set under `fixtures/input/<set>/`.
+The animator reads `fixtures/input/` and writes `fixtures/output/`. `fixtures/expected/` is the answer key for the test. The animator does not read it.
 
-| File | Who writes it | What this part uses |
+| Directory | File | Role |
 | --- | --- | --- |
-| `keyframes.json` | Part 1 | The 30 fps timeline and the key indices |
-| `skeleton.json` | Part 3 | The local rotation at each of those keys |
-| `coaching_note.txt` | authored with the fixture | Nothing in the animator. An optional offline voice hook can read it |
+| `fixtures/input/<set>/` | `keyframes.json` | Part 1's timeline: which frames are keys |
+| `fixtures/input/<set>/` | `skeleton.json` | Part 3's body and the pose at those keys |
+| `fixtures/input/<set>/` | `coaching_note.txt` | Optional offline voice hook. The animator ignores it |
+| `fixtures/output/<set>/` | `animation.json` | This part. Every frame at 30 fps |
+| `fixtures/expected/<set>/` | `held_out.json` | `make check-4` only. The hidden in-between poses |
 
-The animator writes one file:
+`expected` stays in its own directory so the check measures the curve. Those poses are the correct in-between frames.
 
-`fixtures/output/<set>/animation.json`
+Four clips ship with the repo. `make check-4` scores the first three. The one-minute clip is there to watch.
 
-Two sets ship with the repo.
-
-| Set | Movement | Length | Frames | Keys | Frames filled in |
-| --- | --- | ---: | ---: | ---: | ---: |
-| `exercise` | squat | 3 s | 91 | 10 | 81 |
-| `dance` | step-touch | 4 s | 121 | 13 | 108 |
+| Set | Movement | Length | Frames | Keys | Frames filled in | Scored |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `exercise` | squat | 3 s | 91 | 10 | 81 | yes |
+| `dance` | step-touch | 4 s | 121 | 13 | 108 | yes |
+| `long` | ten squats | 30 s | 901 | 71 | 830 | yes |
+| `minute` | twenty squats | 60 s | 1801 | 141 | 1660 | no |
 
 The squat keys are frames 0, 10, 20, 30, 40, 50, 60, 70, 80, and 90. Frame 45, the bottom of the squat, is not a key. The curve builds it from the poses at frames 40 and 50.
 
@@ -54,7 +54,7 @@ flowchart LR
 
 Rotations are quaternions `(x, y, z, w)`. A quaternion and its opposite describe the same pose, so the code first flips each key into the same hemisphere as the previous key. That stops a joint from spinning the long way when the author only meant a small step.
 
-Each quaternion is then converted to a rotation vector: an axis times an angle in radians, kept in the range 0 to 180°. A cubic Hermite curve is fitted through those vectors. The slope at each key comes from the keys on either side (a Catmull-Rom tangent). At a key time the stored rotation is copied through, so the clip hits every authored pose. Between keys the curve supplies the rotation.
+Each quaternion is then converted to a rotation vector: an axis times an angle in radians, kept in the range 0 to 180°. That conversion, and the slope at each key, is done once for the whole clip. A cubic Hermite curve uses those slopes (a Catmull-Rom tangent from the keys on either side). At a key time the stored rotation is copied through, so the clip hits every authored pose. Between keys the curve supplies the rotation.
 
 Joint positions are not blended. Blending positions would change the distance between joints and stretch the bones. The curve produces a rotation, and forward kinematics places the joints from a fixed rest rig. Bone lengths stay at those rest offsets for every frame.
 
@@ -76,7 +76,7 @@ Seventeen joints are written into every frame, in this order:
 
 nose, left_eye, right_eye, left_ear, right_ear, left_shoulder, right_shoulder, left_elbow, right_elbow, left_wrist, right_wrist, left_hip, right_hip, left_knee, right_knee, left_ankle, right_ankle.
 
-Three extra joints exist only inside the rig so the limbs and the head have a parent: pelvis, chest, and neck. They are not written to `animation.json`.
+Two extra joints exist only inside the rig: pelvis, which is the root, and neck. The collarbones and the head leave the neck. They are not written to `animation.json`.
 
 Every frame is hip-centered. The origin is the midpoint of the two hips. Positions are metres.
 
@@ -91,7 +91,7 @@ Every frame is hip-centered. The origin is the midpoint of the two hips. Positio
 
 `z` is `x` cross `y`. In a squat the hips stay at the origin, so the feet rise toward the body as the knees bend. The body does not travel across the floor. That translation was already removed before this part sees the pose.
 
-The rest lengths baked into the animator include a 0.42 m thigh, a 0.40 m shin, a 0.28 m upper arm, and a 0.25 m forearm. `skeleton.json` also carries `rest_offsets_m` and joint positions. The animator does not read them. It poses the built-in rig from `local_rotations`.
+Bone lengths come from `rest_offsets_m` in `skeleton.json`. Those lengths are the Part 3 standard for a 1.7 m body: thigh 0.4165 m, shank 0.4182 m, upper arm 0.3162 m, forearm 0.2482 m, spine 0.4896 m. Each key also stores a confidence on every joint, and the file carries the scalar `bone_lengths_m` table, the bone list, and the stature sources. The twists that the curve needs are stored beside the positions. The 30 s clip scales that same body by 1.15. The one-minute clip keeps the unscaled 1.7 m body. The animator poses whichever body is in the file. Joint positions are checked against that pose. They are not blended to make the in-between frames.
 
 ## What a frame looks like
 
@@ -104,36 +104,35 @@ The standing squat, frame 0, is a key. The next tick is filled in:
 { "index": 1, "t": 0.033333, "interpolated": true }
 ```
 
-Each frame also has a `joints` object. Values are metres `[x, y, z]`. On squat frame 0 the nose is `[0.0, 0.77, 0.04]`: centered, 0.77 m above the hips, 0.04 m forward. The other sixteen joints use the same shape.
+Each frame also has a `joints` object. Values are metres `[x, y, z]`. On squat frame 0 the nose is `[0.0, 0.675416, 0.042881]`: centered, 0.675 m above the hips, 0.043 m forward. The other sixteen joints use the same shape.
 
 ## Edge cases
 
-A new clip runs when both files sit in one directory, `fps` is 30, and the key indices in `keyframes.json` and `skeleton.json` are the same list in the same order. When `skeleton.json` includes a `joints` list, it must be the canonical 17 in the order above. The shipped squat and step-touch fixtures meet this. Their keys are 10 frames apart, both ends are keys, each key time matches `index / 30`, and the step from one key to the next stays under 120°.
+A new clip runs when both files sit in one directory, `fps` is 30, `frame_count` is `round(duration_s × 30) + 1`, and the key indices in `keyframes.json` and `skeleton.json` are the same strictly increasing list. Each key index lies inside the clip, and its `t` matches `index / 30` within a microsecond. `rest_offsets_m` must include every joint of the standard rig, with that joint's parent unchanged. When `skeleton.json` includes a `joints` list, it must be the canonical 17 in the order above. The shipped clips meet this. The short ones place a key every 10 frames. The 30 s clip and the one-minute clip space keys unevenly, from 7 to 16 frames apart, and repeat that pattern on every 3 s squat. The 30 s clip uses the larger body.
 
 ### The file is rejected
 
-- `fps` is anything other than 30.
-- The key index lists differ, including a difference in order.
-- The skeleton has no keyframes.
+The clip is not written. The error names the joint or the frame.
+
+- `fps` is anything other than 30, or `frame_count` does not match the duration.
+- The key index lists differ, a key is repeated or out of order, or a key sits outside the clip.
+- A key time differs from `index / 30` by more than a microsecond.
+- The skeleton has no keyframes, or `rest_offsets_m` is missing a joint or gives a joint the wrong parent.
 - A `joints` list is present and is not the canonical 17 in canonical order.
+- **A missing rotation, or a quaternion of all zeros.** The joint would otherwise freeze on the rest pose.
+- **More than 180° between two neighboring keys in rotation-vector space.** The curve would take the long way around. A spin or a cartwheel inside one gap is this case. The error names the joint and the two frame indices.
 
 A missing `fps`, `frame_count`, `keyframes`, `index`, or `t` raises an error from the missing field.
 
 ### The file runs, and this is the result
 
-- **A missing rotation, or a quaternion of all zeros.** That joint is treated as no rotation and stays on the rest pose. The clip still writes.
-- **A key time that is not `index / 30`.** The authored pose is copied only when the two times match within a microsecond. Otherwise that frame is interpolated and can leave the authored pose.
 - **No key on the first or last frame.** Frames before the first key, and frames after the last key, repeat the nearest key pose. They are marked `interpolated: true`.
 - **A single key.** Every frame holds that pose.
-- **More than 180° between two neighboring keys.** The rotation vector only represents the short arc, up to 180°. The joint turns the short way. A spin or a cartwheel inside one gap comes out as the opposite small turn.
-- **Keys far apart on a fast bend.** The cubic can overshoot the arc between two keys. The 8° check passes for the shipped clips. It is not a promise for every spacing.
-- **`duration_s` disagrees with `frame_count`.** Frame time is `index / 30`. `duration_s` is copied into the output and not checked. These clips use `frame_count = round(duration_s × 30) + 1`, so the last frame lands on the final key.
-- **A duplicate time, a time that goes backward, or a key index outside the clip.** Sorting is by index. A zero-length step collapses to the left pose. A key past the last frame still pulls on the curve and never appears as its own output frame.
-- **Different limb lengths or joint positions in `skeleton.json`.** The output uses the built-in rig. `make check-4` still compares key positions with the input and fails when they differ by more than 1 mm.
+- **Keys far apart on a fast bend, while each step stays under 180°.** The cubic can overshoot the arc between two keys. The 8° check passes for the shipped clips, including the uneven 30 s gaps. It is not a promise for every spacing.
 
 ### Nothing in the keyframes can supply this
 
-- **Which way a joint turned, once one gap is over 180°.** Two poses do not record the direction or the number of turns. Unwrapping can follow a long turn only when every single step between keys is under 180°.
+- **Which way a joint turned, once one gap is over 180°.** Two poses do not record the direction or the number of turns. The clip is rejected instead of guessing the short way.
 - **A wiggle between the keys.** The hidden motion is not in the file. Denser keys are what keep the result inside 8°. Those keys come from Part 1.
 - **A movement, when only one pose was provided.** The clip can hold the pose.
 - **Travel across the floor.** The input is already hip-centered. This part cannot put the root path back.
@@ -142,7 +141,7 @@ A missing `fps`, `frame_count`, `keyframes`, `index`, or `t` raises an error fro
 
 Hide the in-between frames. The animation must rebuild them within 8° per joint, and bone lengths must stay fixed.
 
-`make check-4` prints a metrics JSON and exits 0 only when every threshold passes for both fixture sets:
+`make check-4` prints a metrics JSON and exits 0 only when every threshold passes for every fixture set:
 
 - max joint direction error ≤ 8° on every held-out frame
 - bone length within 1 mm of the rest rig
@@ -150,27 +149,28 @@ Hide the in-between frames. The animation must rebuild them within 8° per joint
 - keyframe positions reproduced, `interpolated` flags correct, and the shipped `animation.json` matches a fresh rebuild
 - `meta_live_calls` is 0
 
-Held-out ground truth lives in `fixtures/expected/<set>/held_out.json`. The animator does not read that directory. On the shipped clips the worst joint error is about 1.1° for the squat and about 2.7° for the step-touch, both under 8°, with bone-length error at 0.
+Held-out ground truth lives in `fixtures/expected/<set>/held_out.json`. The animator does not read that directory. On the scored clips the worst joint error is about 1.1° for the squat, about 4.2° for the step-touch, and about 3.1° for the 30 s repeated squat. All three are under 8°, with bone-length error at 0. The long clip's bones follow the larger body in its `skeleton.json`.
 
-`make check-4` scores `exercise` and `dance` only. Another set can be built with `--set`. It is scored after it is added to that list and given a held-out file.
+`make check-4` scores `exercise`, `dance`, and `long`. The `minute` clip has a held-out file and plays in the demo. It is left off that score list. Another set is scored after it is added to the list in `src/simon_anim/check.py`.
 
 ## Run
 
 Python 3.10+ and the standard library. No packages to install. Run these from the repo root.
 
 ```bash
-make check-4          # both sets; metrics JSON on stdout; exit 0 only if every threshold passes
-make animate          # rebuild both animation.json files from the keyframes
-make fixtures         # regenerate inputs, held-out frames, and outputs from the analytic motions
+make check-4          # exercise, dance, and long; metrics JSON on stdout; exit 0 only if every threshold passes
+make animate          # rebuild those three animation.json files from the keyframes
+make fixtures         # regenerate every clip, including the one-minute squat
 ```
 
 Rebuild one clip:
 
 ```bash
 PYTHONPATH=src python3 -m simon_anim.animate --set exercise
+PYTHONPATH=src python3 -m simon_anim.animate --set minute
 ```
 
-Watch either clip. From the repo root:
+Watch a clip. From the repo root:
 
 ```bash
 python3 -m http.server 8765
@@ -178,7 +178,7 @@ python3 -m http.server 8765
 
 Open http://127.0.0.1:8765/demo/
 
-Drag to orbit, scroll to zoom, space to play. The page loads `fixtures/output/<set>/animation.json`. Blue joints are the subject's left. Orange joints are the subject's right.
+Drag to orbit, scroll to zoom, space to play. The clip menu lists the squat, the step-touch, the 30 s squat, and the one-minute squat. The page loads `fixtures/output/<set>/animation.json`. Blue joints are the subject's left. Orange joints are the subject's right.
 
 ## Models sit beside the animation
 

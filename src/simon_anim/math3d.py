@@ -171,6 +171,13 @@ def as_vec3(seq: Iterable[float]) -> Vec3:
     return (float(x), float(y), float(z))
 
 
+def as_joint(value) -> Vec3:
+    """A joint position as a list, or as Part 3's {x, y, z, conf} object."""
+    if isinstance(value, dict):
+        return (float(value["x"]), float(value["y"]), float(value["z"]))
+    return as_vec3(value)
+
+
 def as_quat(seq: Iterable[float]) -> Quat:
     x, y, z, w = seq
     return quat_normalize((float(x), float(y), float(z), float(w)))

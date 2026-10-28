@@ -1,7 +1,8 @@
 """Part 4 done-check.
 
 Rebuilds each fixture from its keyframes, scores hidden in-between frames
-against the stored ground truth, and checks that bone lengths stay fixed.
+against the stored ground truth, and checks that bone lengths stay fixed
+at the body in skeleton.json.
 Prints one metrics JSON object. Exits 0 only when every threshold passes.
 Does not call Meta Model API.
 """
@@ -13,7 +14,7 @@ import sys
 from pathlib import Path
 
 from .interpolate import build_animation
-from .math3d import as_vec3, direction_angle_deg, round_floats, v_norm, v_sub
+from .math3d import as_joint, direction_angle_deg, round_floats, v_norm, v_sub
 from .skeleton import (
     ANGLE_BONES,
     CANONICAL_JOINTS,
@@ -21,10 +22,11 @@ from .skeleton import (
     derived_points,
     forward_kinematics,
     length_bones_with_rest,
+    rest_offsets_from_skeleton,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-SETS = ("exercise", "dance")
+SETS = ("exercise", "dance", "long")
 
 
 def _load(path: Path) -> dict:
@@ -39,7 +41,7 @@ def _points(frame: dict) -> dict:
 def _max_abs_joint_delta(a: dict, b: dict) -> float:
     worst = 0.0
     for name in CANONICAL_JOINTS:
-        worst = max(worst, v_norm(v_sub(as_vec3(a[name]), as_vec3(b[name]))))
+        worst = max(worst, v_norm(v_sub(as_joint(a[name]), as_joint(b[name]))))
     return worst
 
 
@@ -88,7 +90,8 @@ def _score_set(set_name: str) -> dict:
             worst_frame_err = frame_worst
             worst_frame = index
 
-    bones = length_bones_with_rest()
+    rest_offsets = rest_offsets_from_skeleton(skeleton)
+    bones = length_bones_with_rest(rest_offsets)
     per_bone_dev = {}
     max_dev = 0.0
     max_hip = 0.0
@@ -101,10 +104,10 @@ def _score_set(set_name: str) -> dict:
             per_bone_dev[bone["name"]] = max(per_bone_dev.get(bone["name"], 0.0), dev)
             max_dev = max(max_dev, dev)
 
-    # Input positions must agree with FK of the stored local rotations.
+    # Input positions must agree with FK of the stored local rotations on the file's body.
     fk_residual = 0.0
     for sample in skeleton["keyframes"]:
-        posed = forward_kinematics(sample["local_rotations"])
+        posed = forward_kinematics(sample["local_rotations"], rest_offsets)
         fk_residual = max(fk_residual, _max_abs_joint_delta(posed, sample["joints"]))
 
     key_pos_err = 0.0

@@ -35,9 +35,9 @@ def animate_set(set_name: str, input_dir: Path | None = None, out_path: Path | N
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Interpolate Simon keyframes into animation.json")
-    parser.add_argument("--set", dest="sets", action="append", default=None, help="exercise, dance, or both by default")
+    parser.add_argument("--set", dest="sets", action="append", default=None, help="exercise, dance, long, or all three by default")
     args = parser.parse_args(argv)
-    names = args.sets or ["exercise", "dance"]
+    names = args.sets or ["exercise", "dance", "long"]
     for name in names:
         animation = animate_set(name)
         print(f"wrote fixtures/output/{name}/animation.json ({animation['frame_count']} frames)")

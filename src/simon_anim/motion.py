@@ -67,8 +67,11 @@ def dance_rotations(t: float, duration: float = 4.0) -> dict[str, Quat]:
     wave_r = -math.sin(w)
     rots = _blank()
     rots["pelvis"] = _rz(_deg(7.0 * math.sin(w)))
-    rots["chest"] = quat_mul(_ry(_deg(24.0 * math.sin(w))), _rz(_deg(10.0 * math.sin(w + 0.7))))
-    rots["neck"] = quat_mul(_ry(_deg(-10.0 * math.sin(w))), _rx(_deg(8.0 * math.sin(2.0 * w))))
+    # The torso twist used to sit on a chest bone. Collarbones now leave the neck,
+    # so that twist is part of the neck rotation.
+    chest = quat_mul(_ry(_deg(24.0 * math.sin(w))), _rz(_deg(10.0 * math.sin(w + 0.7))))
+    neck = quat_mul(_ry(_deg(-10.0 * math.sin(w))), _rx(_deg(8.0 * math.sin(2.0 * w))))
+    rots["neck"] = quat_mul(chest, neck)
     rots["left_hip"] = _rx(_deg(-32.0 * lift_l))
     rots["right_hip"] = _rx(_deg(-32.0 * lift_r))
     rots["left_knee"] = _rx(_deg(62.0 * lift_l))
@@ -78,6 +81,13 @@ def dance_rotations(t: float, duration: float = 4.0) -> dict[str, Quat]:
     rots["left_elbow"] = _rx(_deg(-16.0 - 14.0 * lift_l))
     rots["right_elbow"] = _rx(_deg(-16.0 - 14.0 * lift_r))
     return rots
+
+
+def repeated_squat_rotations(t: float, duration: float = 30.0) -> dict[str, Quat]:
+    """Ten squat cycles over a longer clip. Each cycle is the 3 s squat."""
+    cycle = 3.0
+    local_t = 0.0 if t >= duration - 1e-9 else t % cycle
+    return squat_rotations(local_t, cycle)
 
 
 MOTIONS = {
@@ -103,6 +113,30 @@ MOTIONS = {
             "Lift one knee while the other arm reaches, and let the torso twist."
         ),
     },
+    "long": {
+        "movement": "repeated_squat",
+        "duration_s": 30.0,
+        "fps": 30,
+        "cycle_frames": 90,
+        "key_pattern": (0, 7, 18, 33, 46, 61, 74),
+        "scale": 1.15,
+        "rotations": repeated_squat_rotations,
+        "coaching_note": (
+            "Squat down and stand back up, ten times, over thirty seconds. "
+            "The body in this file is a larger standard skeleton than the short clips."
+        ),
+    },
+    "minute": {
+        "movement": "repeated_squat",
+        "duration_s": 60.0,
+        "fps": 30,
+        "cycle_frames": 90,
+        "key_pattern": (0, 7, 18, 33, 46, 61, 74),
+        "rotations": repeated_squat_rotations,
+        "coaching_note": (
+            "Squat down and stand back up, twenty times, over one minute."
+        ),
+    },
 }
 
 
@@ -115,5 +149,24 @@ def keyframe_indices(count: int, stride: int) -> list[int]:
     indices = list(range(0, count, stride))
     last = count - 1
     if indices[-1] != last:
+        indices.append(last)
+    return indices
+
+
+def uneven_keyframe_indices(count: int, cycle_frames: int, pattern: tuple[int, ...]) -> list[int]:
+    """Key indices from a repeated uneven pattern. The last frame is always a key."""
+    indices: list[int] = []
+    start = 0
+    while start < count:
+        for relative in pattern:
+            index = start + relative
+            if index >= count:
+                break
+            if indices and indices[-1] == index:
+                continue
+            indices.append(index)
+        start += cycle_frames
+    last = count - 1
+    if not indices or indices[-1] != last:
         indices.append(last)
     return indices
