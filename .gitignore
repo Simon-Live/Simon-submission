@@ -7,4 +7,5 @@ dist/
 .venv/
 out/
 *.mp4
+!inbox/*.mp4
 !fixtures/**/*.json
