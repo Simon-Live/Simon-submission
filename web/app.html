@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Simon Part 3: clean a 3D skeleton</title>
   <meta name="description" content="Run the real Part 3 pipeline on a pose3d.json and see the skeleton.json it writes, in 3D.">
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="app.css">
   <script type="importmap">{"imports": {"three": "./vendor/three/three.module.js"}}</script>
 </head>
@@ -18,6 +18,8 @@
     <div class="agree">
       <a class="link" href="agreement">Four-take agreement</a>
       <p>Four synthetic takes of the same squat, from four camera angles, agree within 10 degrees.</p>
+      <a class="link" href="compare">Compare takes</a>
+      <p>Run two to six inputs together and see how well they agree.</p>
     </div>
   </header>
 
@@ -33,7 +35,7 @@
             <input type="radio" name="input" id="pick-upload" value="upload" aria-labelledby="upload-label" aria-describedby="upload-meta">
             <span class="choice-text">
               <span class="choice-label" id="upload-label">Your own file</span>
-              <span class="choice-meta" id="upload-meta">A pose3d.json, up to 2 MB. It is not stored.</span>
+              <span class="choice-meta" id="upload-meta">A pose3d.json, up to 16 MB. It is not stored.</span>
             </span>
           </label>
           <div class="file-field">
@@ -69,6 +71,44 @@
               </span>
             </label>
           </div>
+        </fieldset>
+
+        <fieldset class="group options" aria-labelledby="options-legend">
+          <legend id="options-legend">Output options</legend>
+          <div class="option-grid">
+            <div class="field">
+              <label for="body-select">Body</label>
+              <select id="body-select" aria-describedby="body-hint">
+                <option value="simon-standard" selected>Simon standard</option>
+                <option value="part4-rig">Part 4 rig</option>
+                <option value="measured">Measured from the clip</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="height-input">Height</label>
+              <input type="number" id="height-input" min="0.5" max="2.5" step="0.01" inputmode="decimal" placeholder="the body's own" aria-describedby="height-hint">
+            </div>
+            <div class="field">
+              <label for="view-select">View</label>
+              <select id="view-select" aria-describedby="view-hint">
+                <option value="native" selected>Native skeleton.json</option>
+                <option value="part4">Part 4 keys, every 10 ticks</option>
+                <option value="part5">Part 5 animation</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fps-select">Frame rate</label>
+              <select id="fps-select" aria-describedby="fps-hint">
+                <option value="" selected>Source</option>
+                <option value="30">30 per second</option>
+                <option value="60">60 per second</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint" id="body-hint">Body: the one set of bone lengths every frame is rebuilt on.</p>
+          <p class="hint" id="height-hint">Height in metres, 0.5 to 2.5. Blank keeps the body's own.</p>
+          <p class="hint" id="view-hint">View: the file shape you download. The 3D panels always draw the native skeleton.</p>
+          <p class="hint" id="fps-hint">Frame rate: Source keeps the input's frames.</p>
         </fieldset>
 
         <div class="run-row">
@@ -115,9 +155,14 @@
         </article>
         <article class="card">
           <h3>Body height</h3>
-          <p class="value"><span class="unit">Standard body</span> <span id="m-height">n/a</span></p>
+          <p class="value"><span class="unit" id="m-profile">Standard body</span> <span id="m-height">n/a</span></p>
           <p class="sub" id="m-height-input" hidden></p>
-          <p class="sub">every output uses this one body</p>
+          <p class="sub" id="m-height-sub">every output uses this one body</p>
+        </article>
+        <article class="card">
+          <h3>Bone lengths</h3>
+          <p class="value"><span id="m-thigh">n/a</span> <span class="unit">thigh</span></p>
+          <p class="sub" id="m-bones-sub"></p>
         </article>
         <article class="card">
           <h3>Frames kept</h3>
@@ -139,7 +184,7 @@
           <button type="button" id="btn-top" title="Top view">Top</button>
         </div>
         <div class="cluster play" role="group" aria-label="Playback">
-          <button type="button" id="btn-play" class="primary" aria-pressed="false" title="Play or pause (Space)">Play</button>
+          <button type="button" id="btn-play" class="primary" title="Play or pause (Space)">Play</button>
           <label class="scrub-label" for="frame-slider">Frame</label>
           <input type="range" id="frame-slider" min="0" max="0" step="1" value="0" aria-describedby="frame-readout">
           <span id="frame-readout">0 of 0</span>
@@ -160,12 +205,12 @@
         </figure>
         <figure class="panel" id="panel-output">
           <div class="stage" id="stage-output"></div>
-          <figcaption class="tag"><span class="dot output"></span><span>Output skeleton.json, one standard body</span></figcaption>
+          <figcaption class="tag"><span class="dot output"></span><span>Output skeleton.json, one fixed body</span></figcaption>
           <p class="foot" id="note-output">Frame 1 of 1</p>
         </figure>
       </div>
 
-      <p class="footnote">Left: the input in the camera's frame, with the subject's left side drawn lighter. Right: the output rebuilt on one standard body, feet on the grid, so its limb lengths are the standard body's and not the person's own.</p>
+      <p class="footnote">The input panel shows the input in the camera's frame, with the subject's left side drawn lighter. The output panel shows the output rebuilt on the Body you chose, with the same limb lengths in every frame and the feet on the grid. Measured from the clip uses this clip's own median lengths, and a Height scales whichever Body you chose.</p>
     </section>
   </main>
 

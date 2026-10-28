@@ -1,5 +1,6 @@
 // Shared 3D pieces of Simon Part 3: skeleton rig, panel (renderer, camera, orbit controls), scene helpers and
-// frame sampling. Used by the run page (app.js) and the four-take agreement view (viewer.js); moved out of
+// frame sampling, and the overlay of up to six runs. Used by the run page (app.js), the compare page (compare.js)
+// and the four-take agreement view (viewer.js); the shared pieces were moved out of
 // viewer.js unchanged (docs/specs/run-app.md). Static module, no build step, no network.
 import * as THREE from "three";
 import { OrbitControls } from "./vendor/three/OrbitControls.js";
@@ -318,4 +319,73 @@ export class Panel {
     changed = this.controls.update() || changed;
     if (changed || this.dirty) this.render();
   }
+}
+
+// ---------------------------------------------------------------- overlay of several runs (compare page)
+
+// Up to six skeletons in one panel, each in its own colour. Colours 1 to 4 are the four takes of the agreement view.
+export const OVERLAY_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#17becf"];
+// Nested tubes: the first input is the thickest, so a thinner tube of a later input stays visible inside it.
+const OVERLAY_RADII = [0.028, 0.0235, 0.019, 0.0145, 0.01, 0.0055];
+
+export class Overlay {
+  constructor(stage, bones, label) {
+    this.panel = new Panel(stage, { fov: 34, label, minDistance: 1.2, maxDistance: 9 });
+    this.panel.controls.maxPolarAngle = Math.PI * 0.56;
+    this.panel.scene.add(makeGrid(), makeAxes(new THREE.Vector3(-0.95, 0, -0.45), 0.32, true));
+    this.rigs = OVERLAY_RADII.map((radius, k) => {
+      const rig = new Rig(bones, { color: OVERLAY_COLORS[k], radius, tinted: false, layer: k });
+      this.panel.scene.add(rig.group);
+      return rig;
+    });
+    this.panel.place(OVERLAP_VIEWS.reset, OVERLAP_TARGET);
+  }
+
+  // poses: per input a list of 17 [x, y, z] or null; inputs past the list are not drawn.
+  setPoses(poses) {
+    this.rigs.forEach((rig, k) => rig.setPose(poses[k] || null, true));
+    this.panel.dirty = true;
+  }
+
+  setShown(k, on) {
+    this.rigs[k].setEnabled(on);
+    this.panel.dirty = true;
+  }
+
+  // The inputs that are drawn right now (shown and holding a pose in this frame).
+  drawn() {
+    return this.rigs.flatMap((rig, k) => (rig.group.visible ? [k] : []));
+  }
+}
+
+// ---------------------------------------------------------------- shared page helpers
+
+const DEFAULT_FPS = 15;
+
+// True when this browser can make a WebGL context (the 3D panels need one).
+export function webglAvailable() {
+  const canvas = document.createElement("canvas");
+  const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+  if (!gl) return false;
+  const lose = gl.getExtension("WEBGL_lose_context");
+  if (lose) lose.loseContext();
+  return true;
+}
+
+// Playback rate of a clip from the median gap between its frames' t_ms.
+export function framesPerSecond(frames) {
+  const gaps = [];
+  for (let i = 1; i < frames.length; i++) {
+    const gap = frames[i].t_ms - frames[i - 1].t_ms;
+    if (Number.isFinite(gap) && gap > 0) gaps.push(gap);
+  }
+  if (!gaps.length) return DEFAULT_FPS;
+  gaps.sort((a, b) => a - b);
+  return clamp(1000 / gaps[Math.floor(gaps.length / 2)], 1, 60);
+}
+
+// Camera offset of a named view; a tall narrow panel needs more distance to fit the subject.
+export function viewOffset(panel, name) {
+  const scale = panel.camera.aspect < 1.25 ? 1.3 : 1;
+  return OVERLAP_VIEWS[name].clone().multiplyScalar(scale);
 }

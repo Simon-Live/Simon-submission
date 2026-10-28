@@ -10,7 +10,7 @@ import pytest
 from clipkit import real_skeleton
 from conftest import ROOT
 from part3.joints import JOINTS
-from part3.schema import ContractError, validate_pose3d, validate_skeleton
+from part3.schema import ContractError, OptionError, describe, is_int, validate_pose3d, validate_skeleton
 
 
 def base(real_doc, frames=6):
@@ -259,6 +259,44 @@ def test_schema_module_exit_codes(tmp_path):
     assert run_schema(tmp_path / "missing.json").returncode == 2
     no_args = subprocess.run([sys.executable, "-m", "part3.schema"], cwd=ROOT, capture_output=True, text=True)
     assert no_args.returncode == 2
+
+
+def test_option_error_reads_without_a_colon_and_is_a_contract_error():
+    error = OptionError("--view part4", "needs --keyframes <keyframes.json> or every:<n>")
+    assert isinstance(error, ContractError)
+    assert str(error) == "--view part4 needs --keyframes <keyframes.json> or every:<n>"
+    assert (error.path, error.msg) == ("--view part4", "needs --keyframes <keyframes.json> or every:<n>")
+
+
+def test_option_error_has_one_home_in_the_schema_module():
+    from part3 import resample
+
+    assert resample.OptionError is OptionError and OptionError.__module__ == "part3.schema"
+
+
+@pytest.mark.parametrize("value,expected", [(None, "null"), (True, "a boolean"), (False, "a boolean"),
+                                            (3, "a number"), (2.5, "a number"), ("x", "a string"),
+                                            ([1], "an array"), ({"a": 1}, "an object")])
+def test_describe_names_a_json_value_in_words(value, expected):
+    assert describe(value) == expected
+
+
+def test_describe_falls_back_to_the_type_name_for_what_json_cannot_hold():
+    assert describe(b"x") == "bytes"
+
+
+@pytest.mark.parametrize("value,expected", [(3, True), (0, True), (-7, True), (True, False), (False, False),
+                                            (2.0, False), ("3", False), (None, False), ([3], False)])
+def test_is_int_is_a_whole_number_and_not_a_bool(value, expected):
+    assert is_int(value) is expected
+
+
+def test_one_definition_of_describe_and_is_int_serves_every_module():
+    from part3 import doctor, keyframes
+
+    assert doctor.describe is describe and keyframes.describe is describe and doctor.is_int is is_int
+    for module in (doctor, keyframes):
+        assert not hasattr(module, "_describe") and not hasattr(module, "_kind_of") and not hasattr(module, "_is_int")
 
 
 def test_joint_names_in_input_contract_are_the_canonical_17():

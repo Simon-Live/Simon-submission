@@ -1,22 +1,27 @@
-"""The pure logic of the run app (spec run-app.md): the sample table, one pipeline run and the error mapping.
+"""The pure logic of the run app (specs run-app.md, compare-mode.md): the sample table, the run options, one
+pipeline run and the error mapping.
 
-No HTTP here. `part3.server` owns sockets, limits and headers; it calls `samples()` and `handle()`.
-Nothing in this module writes a file or keeps an upload: the bytes live for one call.
+No HTTP here. `part3.server` owns sockets, limits and headers; it calls `samples()`, `parse_options()` and
+`handle()`. Nothing in this module writes a file or keeps an upload: the bytes live for one call.
 """
 
 import functools
 import hashlib
 import json
+import math
 import pathlib
+import re
 import sys
 import time
 import traceback
+from urllib.parse import parse_qsl
 
-from part3 import bones, cli, io
+from part3 import adapters, bones, cli, io, keyframes, profiles, rig, views
+from part3.angles import joint_angles
 from part3.demo_data import bone_pairs, frames_to_points, round_finite
 from part3.metrics import BONE_MAX, bone_variation, flagged_frames, input_bone_variation
 from part3.mirror import FLIP_VALUES
-from part3.schema import ContractError
+from part3.schema import ContractError, is_number
 
 INPUT_DIR = io.REPO / "fixtures" / "input"
 SYNTH = "synthetic-4take"
@@ -24,6 +29,21 @@ MAX_NAME = 80  # an upload's file name is shown as text, never used as a path
 FIELD_MAX = 200  # a field path or reason copied into a message is cut at this length
 MESSAGE_MAX = 300  # an error message is cut at this length
 DECIMALS = io.OUTPUT_DECIMALS
+MAX_QUERY_FIELDS = 20
+# Review B1 (docs/specs/compare-mode.md): the work of a run grows with the clip's time span, not with the upload's
+# size, so a request whose span times its frame rate is over this many frames is refused before anything runs.
+SERVER_MAX_FRAMES = 20_000
+
+# compare-mode.md AC-M01: the switches of a run. The server accepts these named values only, never `file:` profiles.
+DEFAULT_BODY = "simon-standard"
+BODIES = (DEFAULT_BODY, "part4-rig", "measured")
+VIEWS = ("native", "part4", "part5")
+FPS_VALUES = (30, 60)
+STATURE_RANGE = (0.5, 2.5)
+KEYFRAMES = "every:10"  # the key spacing of the part4 view, as `python3 -m part3 run --keyframes every:10`
+OUTPUT_NAMES = {"native": "skeleton.json", "part4": "skeleton.json", "part5": "skeleton.part5.json"}
+DEFAULT_OPTIONS = {"body": DEFAULT_BODY, "stature": None, "view": "native", "fps": None}
+_STATURE = re.compile(r"[0-9]{1,2}(?:\.[0-9]{1,6})?")
 
 # (id, file under fixtures/input/, label) in the order the page lists them (spec "Samples").
 SAMPLES = (
@@ -38,9 +58,15 @@ _BY_ID = {sample[0]: sample for sample in SAMPLES}
 ERRORS = {
     "not_json": (400, "This file is not JSON. Choose a pose3d.json file."),
     "contract": (422, "This file is not a valid pose3d.json."),
-    "too_large": (413, "This file is larger than 2 MB. Choose a smaller pose3d.json."),
+    "view_refused": (422, "This clip cannot be written in that View. Choose another View."),
+    "too_large": (413, "This file is over 16 MB. Choose a smaller pose3d.json file."),
     "length_required": (411, "The upload had no length. Try again."),
     "bad_flip": (400, "Mirror must be auto, on or off."),
+    "bad_body": (400, "Body must be simon-standard, part4-rig or measured."),
+    "bad_stature": (400, "Height must be blank or 0.5 to 2.5 m."),
+    "bad_view": (400, "View must be native, part4 or part5."),
+    "bad_fps": (400, "Frame rate must be blank, 30 or 60."),
+    "too_long": (400, "This clip is too long for that frame rate here. Choose a lower frame rate or a shorter clip."),
     "unknown_sample": (404, "There is no sample with that name."),
     "no_input": (400, "Choose a sample or a file first."),
     "both_inputs": (400, "Choose a sample or a file, not both."),
@@ -49,6 +75,9 @@ ERRORS = {
     "cross_site": (403, "This request came from another site and was refused."),
     "bad_request": (400, "The upload was malformed. Try again."),
     "internal": (500, "Something went wrong on the server. Try again."),
+    "compare_count": (400, "Compare needs 2 to 6 inputs."),
+    "compare_shape": (400, "The compare request is not shaped as expected."),
+    "compare_size": (400, "The compare request is over a size limit."),
     # Answers for paths and methods the table of run endpoints does not cover, in the same JSON shape.
     "not_found": (404, "There is nothing at this address."),
     "method": (405, "This address does not accept that kind of request."),
@@ -59,12 +88,60 @@ class NotJson(Exception):
     """The upload is not UTF-8 JSON (or nests too deep)."""
 
 
+# The bad option answers name the option they refuse (AC-M02); a View that cannot write the clip names the View.
+_OPTION_FIELD = {"bad_body": "body", "bad_stature": "stature", "bad_view": "view", "bad_fps": "fps",
+                 "view_refused": "view"}
+
+
 def error(code, field=None, reason=None):
-    """(status, body) of the error `code`; `field` and `reason` only fill a `contract` message."""
+    """(status, body) of the error `code`. `field` and `reason` fill a `contract` message; the compare errors take
+    the whole plain message as `reason`; a bad option names its own option as the field."""
     status, message = ERRORS[code]
     if code == "contract":
         message = f"This file is not a valid pose3d.json: {field}: {reason}."
+    elif reason is not None:
+        message = reason
+    field = _OPTION_FIELD.get(code, field)
     return status, {"ok": False, "error": {"code": code, "field": field, "message": message[:MESSAGE_MAX]}}
+
+
+# ---- run options -------------------------------------------------------------------------------
+
+def parse_query(query):
+    """{name: value} of a query string; the first value of a repeated name wins. ValueError past MAX_QUERY_FIELDS."""
+    return dict(reversed(parse_qsl(query, keep_blank_values=True, max_num_fields=MAX_QUERY_FIELDS)))
+
+
+def _stature(text):
+    """The height in metres, None for blank, False for anything that is not a number from 0.5 to 2.5."""
+    text = text.strip()
+    if not text:
+        return None
+    if not _STATURE.fullmatch(text):
+        return False
+    value = float(text)
+    return value if STATURE_RANGE[0] <= value <= STATURE_RANGE[1] else False
+
+
+def parse_options(query):
+    """(options, None) or (None, (status, body)) for the run switches of a query (a string or a dict of fields).
+
+    options = {"body", "stature" (metres or None), "view", "fps" (30, 60 or None)}; an absent field takes its default.
+    """
+    fields = parse_query(query) if isinstance(query, str) else query
+    body = fields.get("body", DEFAULT_BODY)
+    if body not in BODIES:
+        return None, error("bad_body")
+    stature = _stature(fields.get("stature", ""))
+    if stature is False:
+        return None, error("bad_stature")
+    view = fields.get("view", "native")
+    if view not in VIEWS:
+        return None, error("bad_view")
+    fps = fields.get("fps", "")
+    if fps not in ("", *map(str, FPS_VALUES)):
+        return None, error("bad_fps")
+    return {"body": body, "stature": stature, "view": view, "fps": int(fps) if fps else None}, None
 
 
 # ---- samples -----------------------------------------------------------------------------------
@@ -131,19 +208,7 @@ def _parse(raw):
         raise NotJson from problem
 
 
-def _chain(lengths):
-    """Leg and trunk chain in metres: thigh and shank (both sides averaged) plus the spine."""
-    legs = sum(lengths[f"{side}_{bone}"] for side in ("left", "right") for bone in ("thigh", "shank"))
-    return legs / 2.0 + lengths["spine"]
-
-
-def _height_estimate(skeleton):
-    """The standard stature scaled by the kept person's leg and trunk chain over the standard body's."""
-    measured = _chain(skeleton["person"]["measured_bone_lengths_m"])
-    return skeleton["standard"]["stature_m"] * measured / _chain(skeleton["bone_lengths_m"])
-
-
-def _metrics(doc, skeleton):
+def _metrics(doc, skeleton, options):
     person, chosen = skeleton["person"], skeleton["person"]["id"]
     lengths = bones.lengths_array(skeleton["bone_lengths_m"])
     return {
@@ -155,15 +220,16 @@ def _metrics(doc, skeleton):
         "variation_limit": BONE_MAX,
         "flips_repaired_frames": len(flagged_frames(skeleton)),
         "flips_repaired_total": person["flips_repaired_total"],
-        "mirror": skeleton["mirror"], "stature_m": skeleton["standard"]["stature_m"],
-        "input_height_estimate_m": round_finite(_height_estimate(skeleton), DECIMALS),
+        "mirror": skeleton["mirror"], "profile": options["body"], "stature_m": skeleton["standard"]["stature_m"],
+        "input_height_estimate_m": round_finite(
+            profiles.estimate_stature(person["measured_bone_lengths_m"]), DECIMALS),
         "up_source": skeleton["frame"]["up_source"],
     }, frames_to_points(doc, chosen, strict=True)
 
 
-def _skeleton_text(skeleton):
+def _text(document):
     """The exact text `python3 -m part3 run` writes; an id that is not UTF-8 is a contract break, as there."""
-    text = io.dumps(skeleton)
+    text = io.dumps(document)
     try:
         text.encode("utf-8")
     except UnicodeEncodeError as problem:
@@ -175,34 +241,149 @@ def _clip(text):
     return str(text)[:FIELD_MAX]
 
 
-def run(raw, flip, source):
+# The pipeline words a missing t_ms for the command line; the page has no such flag, so it says what a visitor can do
+# (review residual 11). The field path stays in the message.
+_PAGE_REASONS = {"missing; pass --input-fps <n> or add a top-level fps":
+                 "missing; add t_ms to every frame or a top-level fps"}
+
+
+def _page_reason(msg):
+    return _PAGE_REASONS.get(msg, msg)
+
+
+# Review R1: the pipeline names its own refusals by the command line option they came from (`--view part4`, `--fps 60`,
+# `--keyframes`). Those are not the visitor's file being invalid, and the page has no such flags, so they are told apart by
+# that path (never by the wording of the message) and answered in the page's own words.
+VIEW_LABELS = {"part4": "Part 4 keys", "part5": "a Part 5 animation"}
+_LONG_WAY = re.compile(r"Part 4 would reject this clip: (\w+) turns ([0-9.]+) degrees between keys ([0-9]+) and ([0-9]+)")
+
+
+def _view_detail(msg):
+    """The part of a view's refusal worth showing: the joint and keys of a long-way turn, else the message when it
+    names no command line flag, else None."""
+    found = _LONG_WAY.match(msg)
+    if found:
+        joint, degrees, first, second = found.groups()
+        return (f"{joint} turns {degrees} degrees between keys {first} and {second} "
+                f"(Part 4 allows {rig.MAX_ROTVEC_STEP_DEG:g})")
+    return None if "--" in msg else msg
+
+
+def _contract_failure(problem, view):
+    """(status, body) for a ContractError of a run with the chosen `view`: `too_long` for the pipeline's own frame cap
+    (`--fps`, `--keyframes`), `view_refused` for a view that cannot write the clip (`--view ...`), else `contract`."""
+    path = str(problem.path)
+    if path.startswith(("--fps", "--keyframes")):
+        return error("too_long")
+    if path.startswith("--view"):
+        detail = _view_detail(str(problem.msg))
+        shown = f": {_clip(detail).rstrip('.')}" if detail else ""
+        label = VIEW_LABELS.get(view, "the chosen View")
+        return error("view_refused", reason=f"This clip cannot be written as {label}{shown}. Choose another View.")
+    return error("contract", _clip(problem.path), _clip(_page_reason(problem.msg)).rstrip("."))
+
+
+def _clip_span_ms(doc):
+    """Last minus first frame `t_ms` of `doc` as the pipeline reads it (the input adapters derive a missing `t_ms`),
+    or None when there is no readable first and last time. The pipeline then names what is wrong."""
+    try:
+        canonical = adapters.adapt(doc)[0]
+    except ContractError:
+        return None
+    frames = canonical.get("frames") if isinstance(canonical, dict) else None
+    if not (isinstance(frames, list) and frames):
+        return None
+    ends = [frame.get("t_ms") if isinstance(frame, dict) else None for frame in (frames[0], frames[-1])]
+    if not all(is_number(t) for t in ends):
+        return None
+    try:
+        return float(ends[1]) - float(ends[0])
+    except OverflowError:  # a whole number past the range of a float
+        return math.inf
+
+
+def _frame_rate(options):
+    """The frames per second the run writes along the clip: the chosen rate, else the 30 of the part4 timeline, else
+    None (a native run keeps the input's own frames, so the upload size bounds it)."""
+    return options["fps"] or (keyframes.FPS if options["view"] == "part4" else None)
+
+
+def too_long(doc, options):
+    """True when the run would write more than SERVER_MAX_FRAMES frames, or the clip's span is not a finite number."""
+    rate, span = _frame_rate(options), None
+    if rate is not None:
+        span = _clip_span_ms(doc)
+    if span is None:
+        return False
+    return not math.isfinite(span) or span * rate / 1000.0 + 1 > SERVER_MAX_FRAMES
+
+
+def _angle_rows(skeleton):
+    """The joint-angle series `make check-3` compares: 9 angles per output frame, null where there is none."""
+    return [[float(v) if math.isfinite(v) else None for v in row] for row in joint_angles(skeleton).tolist()]
+
+
+def _process(doc, flip, digest, options):
+    """The native skeleton for the run options. A request never names a server path or reads the server's
+    environment: the profile is resolved with no environment and no config file, and `process` is told the same.
+    `simon-standard` is the default profile, so it is requested as `python3 -m part3 run` without --body does."""
+    body = profiles.resolve(flag=None if options["body"] == DEFAULT_BODY else options["body"],
+                            stature_flag=options["stature"], env={}, config=False)
+    return cli.process(doc, flip=flip, sha256=digest, body=body, fps=options["fps"], env={}, config=False,
+                       max_frames=SERVER_MAX_FRAMES)
+
+
+def _render(skeleton, view):
+    """The chosen view of the native skeleton; native is the skeleton itself."""
+    if view == "native":
+        return skeleton
+    return views.render(skeleton, view, max_frames=SERVER_MAX_FRAMES,
+                        **({"keyframes": KEYFRAMES} if view == "part4" else {}))
+
+
+def _canonical(doc, skeleton):
+    """The input as the pipeline read it: the metrics and the input frames use the canonical form of a tolerated
+    shape (joints as arrays, no frame numbers), which the skeleton names in `input.adapters`."""
+    return adapters.adapt(doc)[0] if skeleton["input"]["adapters"] else doc
+
+
+def run(raw, flip, source, options=None):
     """(HTTP status, JSON dict) for one pipeline run on `raw` bytes with the mirror setting `flip`.
 
-    `source` is {"kind", "id", "name"}; the byte count and SHA-256 of `raw` are added to it.
-    Every failure becomes an error body; an unexpected exception is logged with its traceback to
-    stderr and answered as `internal` without it.
+    `source` is {"kind", "id", "name"}; the byte count and SHA-256 of `raw` are added to it. `options` are the
+    parsed run switches (`parse_options`); None means the defaults. Every failure becomes an error body; an
+    unexpected exception is logged with its traceback to stderr and answered as `internal` without it.
     """
+    options = options or DEFAULT_OPTIONS
     started = time.perf_counter()
     try:
         doc = _parse(raw)
+        if too_long(doc, options):  # before any work: the cost follows the span, not the size of the upload
+            return error("too_long")
         digest = hashlib.sha256(raw).hexdigest()
-        skeleton = cli.process(doc, flip=flip, sha256=digest)
-        text = _skeleton_text(skeleton)
-        metrics, input_frames = _metrics(doc, skeleton)
+        skeleton = _process(doc, flip, digest, options)
+        text = _text(skeleton)
+        output_text = text if options["view"] == "native" else _text(_render(skeleton, options["view"]))
+        metrics, input_frames = _metrics(_canonical(doc, skeleton), skeleton, options)
+        angles = _angle_rows(skeleton)
     except NotJson:
         return error("not_json")
     except ContractError as problem:
-        return error("contract", _clip(problem.path), _clip(problem.msg).rstrip("."))
+        return _contract_failure(problem, options["view"])
     except Exception:  # noqa: BLE001 - the page gets a plain message, the log gets the traceback
         traceback.print_exc(file=sys.stderr)
         return error("internal")
     return 200, {"ok": True, "source": {**source, "bytes": len(raw), "sha256": digest}, "flip": flip,
-                 "metrics": metrics, "input_frames": input_frames, "bones": bone_pairs(),
-                 "skeleton_text": text, "run_ms": round((time.perf_counter() - started) * 1000.0, 1)}
+                 "options": dict(options), "metrics": metrics, "input_frames": input_frames, "bones": bone_pairs(),
+                 "angles": angles, "skeleton_text": text, "output_text": output_text,
+                 "output_name": OUTPUT_NAMES[options["view"]],
+                 "run_ms": round((time.perf_counter() - started) * 1000.0, 1)}
 
 
-def handle(sample_id, flip, name, body):
-    """(status, JSON dict) for POST api/run: the query values and the request body, checked then run."""
+def handle(sample_id, flip, name, body, options=None):
+    """(status, JSON dict) for POST api/run: the query values and the request body, checked then run.
+
+    `options` are the run switches as `parse_options` returns them (None: the defaults)."""
     if flip not in FLIP_VALUES:
         return error("bad_flip")
     if sample_id and body:
@@ -216,4 +397,4 @@ def handle(sample_id, flip, name, body):
         source, raw = upload_source(name), body
     else:
         return error("no_input")
-    return run(raw, flip, source)
+    return run(raw, flip, source, options)

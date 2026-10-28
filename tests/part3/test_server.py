@@ -1,4 +1,5 @@
-"""The HTTP server of the run app on a real socket (docs/specs/run-app.md AC-R07, AC-R08, AC-NFR-01..03, AC-NFR-05)."""
+"""The HTTP server of the run app on a real socket (docs/specs/run-app.md AC-R07, AC-R08, AC-NFR-01..03, AC-NFR-05;
+docs/specs/compare-mode.md AC-M02, AC-M03, AC-M04, AC-NFR-M1)."""
 
 import base64
 import contextlib
@@ -89,6 +90,7 @@ def site(tmp_path):
     (web / "data").mkdir(parents=True)
     (web / "app.html").write_text(APP_HTML)
     (web / "index.html").write_text("<!doctype html><title>agreement</title>")
+    (web / "compare.html").write_text("<!doctype html><title>compare</title>")
     (web / "app.js").write_text("export const ok = true;")
     (web / "app.css").write_text("body { margin: 0; }")
     (web / "data" / "demo.json").write_text('{"p95": 1.5}')
@@ -194,6 +196,31 @@ def test_query_strings_are_ignored_for_lookup(site):
     assert site.get("api/health?x=1").json()["ok"] is True
 
 
+def test_the_compare_page_is_web_compare_html_with_its_own_csp(real):
+    reply = real.get("compare")
+    assert (reply.status, reply.body) == (200, (WEB / "compare.html").read_bytes())
+    assert reply.headers["content-type"] == "text/html; charset=utf-8" and reply.headers["cache-control"] == "no-cache"
+    html = (WEB / "compare.html").read_text()
+    block = html.split('<script type="importmap">')[1].split("</script>")[0]
+    assert script_src(reply) == ["'self'", hash_of(block)]
+    for rel in ("compare.js", "compare.css", "scene.js", "app.css", "controls.js"):
+        assert real.get(rel).status == 200, rel
+
+
+def test_the_shared_controls_module_is_served_as_javascript(real):
+    # Both pages import it as an ES module; a wrong type would make the browser refuse it.
+    reply = real.get("controls.js")
+    assert (reply.status, reply.body) == (200, (WEB / "controls.js").read_bytes())
+    assert reply.headers["content-type"] == "text/javascript; charset=utf-8"
+    assert reply.headers["x-content-type-options"] == "nosniff"
+
+
+def test_the_compare_page_route_follows_the_base_path(site):
+    assert (site.get("compare").status, b"compare" in site.get("compare").body) == (200, True)
+    assert site.get("compare.html").body == site.get("compare").body
+    assert site.raw("GET", "/compare").status == 404 and site.raw("GET", "/simon-part-3x/compare").status == 404
+
+
 def test_api_health_and_samples(real):
     assert real.get("api/health").json() == {"ok": True, "samples": 7}
     assert real.get("api/samples").json() == {"samples": runapi.samples()}
@@ -208,7 +235,8 @@ def test_head_has_the_headers_and_no_body(site):
 def test_wrong_method_on_a_known_path_is_405(site):
     for method, rel, allow in [("POST", "", "GET, HEAD"), ("GET", "api/run", "POST"), ("POST", "api/health", "GET, HEAD"),
                                ("PUT", "app.js", "GET, HEAD"), ("DELETE", "api/samples", "GET, HEAD"),
-                               ("OPTIONS", "agreement", "GET, HEAD")]:
+                               ("OPTIONS", "agreement", "GET, HEAD"), ("GET", "api/compare", "POST"),
+                               ("PUT", "api/compare", "POST"), ("POST", "compare", "GET, HEAD")]:
         reply = site.raw(method, BASE + rel)
         assert reply.status == 405 and reply.error_code() == "method", (method, rel)
         assert reply.headers["allow"] == allow
@@ -265,16 +293,18 @@ def test_content_types_follow_the_extension(site):
 def test_every_response_has_nosniff_and_no_referrer(site):
     replies = [site.get(""), site.get("app.js"), site.get("api/health"), site.get("missing"), site.get("api/run"),
                site.raw("GET", BASE.rstrip("/")), site.raw("GET", "/elsewhere"), site.run("sample=take-1"),
-               site.run("flip=bad&sample=take-1"), site.raw("BREW", BASE)]
+               site.run("flip=bad&sample=take-1"), site.raw("BREW", BASE), site.get("api/compare"),
+               site.post("api/compare", b"{}"), site.run("sample=take-1&body=file:/etc/passwd")]
     for reply in replies:
         assert reply.headers["x-content-type-options"] == "nosniff"
         assert reply.headers["referrer-policy"] == "no-referrer"
 
 
 def test_cache_headers_api_no_store_static_no_cache(site):
-    for rel in ("api/health", "api/samples", "missing", "api/run"):
+    for rel in ("api/health", "api/samples", "missing", "api/run", "api/compare"):
         assert site.get(rel).headers["cache-control"] == "no-store", rel
     assert site.run("sample=take-1").headers["cache-control"] == "no-store"
+    assert site.post("api/compare", b"{}").headers["cache-control"] == "no-store"
     for rel in ("", "app.js", "app.css", "data/demo.json", "logo.png"):
         assert site.get(rel).headers["cache-control"] == "no-cache", rel
 
@@ -344,19 +374,39 @@ def test_a_chunked_body_is_411(real):
     conn.close()
 
 
-def test_a_body_over_2_mib_is_read_and_discarded_then_413_with_close(real):
-    reply = real.post("api/run?name=big.json", b"x" * (3 * 1024 * 1024))
-    assert reply.status == 413 and reply.error_code() == "too_large"
-    assert reply.headers["connection"] == "close"
-    assert reply.json()["error"]["message"] == "This file is larger than 2 MB. Choose a smaller pose3d.json."
+MIB = 1024 * 1024
 
 
-def test_exactly_8_mib_is_still_discarded_before_the_413(real):
+def test_the_limits_are_the_documented_ones():
+    """AC-M03: 16 MiB uploads, a 32 MiB drain, a 60 s body deadline; the other guards keep their values."""
+    assert (server.MAX_BODY, server.DRAIN_MAX, server.BODY_TIMEOUT_S) == (16 * MIB, 32 * MIB, 60.0)
+    assert (server.SOCKET_TIMEOUT_S, server.HEADER_DEADLINE_S, server.MAX_CONNECTIONS, server.MAX_RUNS) == (
+        15.0, 20.0, 16, 2)
+    assert server.RESERVED_CONNECTIONS == 1 and server.RESERVE_HEAD_S == 2.0
+
+
+def test_a_body_over_16_mib_is_read_and_discarded_then_413_with_close(real):
+    """AC-M03: 16 MiB + 1 is refused with the plain text, whichever route it is posted to (residual 11: per route)."""
+    for rel, text in (("api/run?name=big.json", "This file is over 16 MB. Choose a smaller pose3d.json file."),
+                      ("api/compare", "This compare request is over 16 MB.")):
+        reply = real.post(rel, b"x" * (server.MAX_BODY + 1))
+        assert reply.status == 413 and reply.error_code() == "too_large", rel
+        assert reply.headers["connection"] == "close"
+        assert reply.json()["error"]["message"] == text
+        assert reply.json()["error"]["field"] is None
+
+
+def test_a_body_of_3_mib_is_no_longer_too_large(real):
+    reply = real.post("api/run?name=big.json", b"x" * (3 * MIB))
+    assert (reply.status, reply.error_code()) == (400, "not_json")
+
+
+def test_exactly_32_mib_is_still_discarded_before_the_413(real):
     reply = real.post("api/run", b"x" * server.DRAIN_MAX)
     assert (reply.status, reply.error_code()) == (413, "too_large")
 
 
-def test_beyond_8_mib_the_413_comes_without_reading_the_body(real):
+def test_beyond_32_mib_the_413_comes_without_reading_the_body(real):
     conn = post_head(real, ("Content-Length", str(server.DRAIN_MAX + 1)))  # no body is ever sent
     status, code, response = answer(conn)
     assert (status, code, response.getheader("Connection")) == (413, "too_large", "close")
@@ -373,13 +423,28 @@ def test_a_stalled_oversize_body_gets_the_413_after_the_body_timeout(monkeypatch
         conn.close()
 
 
-def test_exactly_2_mib_is_accepted_for_reading(real):
+def test_exactly_16_mib_is_accepted_for_reading(real):
+    """AC-M03: the cap is on Content-Length over 16 MiB, so exactly 16 MiB is read and judged on its content."""
     reply = real.post("api/run", b" " * server.MAX_BODY)
     assert reply.status == 400 and reply.error_code() == "not_json"
+    compared = real.post("api/compare", b" " * server.MAX_BODY)
+    assert compared.status == 400 and compared.error_code() == "compare_shape"
+
+
+def test_a_client_that_goes_silent_mid_upload_is_dropped_at_the_socket_timeout_not_the_body_deadline(monkeypatch):
+    monkeypatch.setattr(server, "SOCKET_TIMEOUT_S", 0.5)
+    monkeypatch.setattr(server, "BODY_TIMEOUT_S", 30.0)
+    with serving() as client:
+        conn = post_head(client, ("Content-Length", str(8 * MIB)))
+        conn.send(b"{" * 1000)  # a start, then silence
+        started = time.perf_counter()
+        assert answer(conn)[:2] == (400, "bad_request")
+        assert 0.4 < time.perf_counter() - started < 5
+        conn.close()
 
 
 def test_a_stalled_upload_is_answered_400_within_the_body_timeout_while_health_keeps_answering(monkeypatch):
-    assert server.SOCKET_TIMEOUT_S == server.BODY_TIMEOUT_S == 15.0 and server.MAX_CONNECTIONS == 16
+    assert server.SOCKET_TIMEOUT_S == 15.0 and server.BODY_TIMEOUT_S == 60.0 and server.MAX_CONNECTIONS == 16
     monkeypatch.setattr(server, "BODY_TIMEOUT_S", 0.6)
     with serving() as client:
         conn = post_head(client, ("Content-Length", "500"))

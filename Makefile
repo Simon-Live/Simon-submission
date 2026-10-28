@@ -1,4 +1,4 @@
-.PHONY: setup test run check-3 demo-data demo demo-stop
+.PHONY: setup test run check-3 check-3-contract demo-data demo demo-stop
 
 # Part 3 targets (docs/specs/part3-skeleton.md "Locked defaults").
 PYTHON ?= python3
@@ -9,7 +9,7 @@ setup:
 	$(PYTHON) -m pip install -r requirements.txt
 
 test:
-	$(PYTHON) -m pytest tests/part3 $(wildcard tests/staging) -q
+	$(PYTHON) -m pytest tests/part3 $(wildcard tests/staging) $(wildcard tests/neighbour) -q
 
 # make run IN=<pose3d.json> OUT=<skeleton.json> [FLIP=auto|on|off]
 run:
@@ -18,6 +18,11 @@ run:
 # Done-check: prints the metrics JSON, exit 0 only when every threshold passes.
 check-3:
 	@$(PYTHON) -m part3.metrics
+
+# Conformance kit: validates every golden and follower file against contracts/, rebuilds the kit byte for byte
+# and checks every labelled fault is still visible. Prints a metrics JSON, exit 0 only when everything passes.
+check-3-contract:
+	@$(PYTHON) -m part3.conformance check
 
 demo-data:
 	$(PYTHON) -m part3.demo_data

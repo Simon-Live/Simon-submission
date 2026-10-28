@@ -32,6 +32,14 @@ class ContractError(Exception):
         self.msg = msg
 
 
+class OptionError(ContractError):
+    """A missing or unusable command line option; `str()` reads `<option> <message>` with no colon."""
+
+    def __init__(self, option, msg):
+        super().__init__(option, msg)
+        self.args = (f"{option} {msg}",)
+
+
 def _is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
@@ -45,8 +53,23 @@ def _is_finite(value):
         return False
 
 
-def _is_int(value):
+def is_int(value):
+    """True for a JSON whole number (an int that is not a bool)."""
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+_KINDS = ((type(None), "null"), (bool, "a boolean"), ((int, float), "a number"), (str, "a string"),
+          (list, "an array"), (dict, "an object"))
+
+
+def describe(value):
+    """A parsed JSON value's kind in words, for a message: null, a boolean, a number, a string, an array or an object."""
+    return next((name for kinds, name in _KINDS if isinstance(value, kinds)), type(value).__name__)
+
+
+# The public names other modules import (one definition of "a JSON number" for all of Part 3).
+is_number = _is_number
+is_finite = _is_finite
 
 
 def _fail(path, msg):
@@ -90,7 +113,7 @@ def _check_person(person, path, seen_ids, person_hook):
     if not isinstance(person, dict):
         _fail(path, "expected an object")
     pid = person.get("id")
-    if not (_is_int(pid) or isinstance(pid, str)):
+    if not (is_int(pid) or isinstance(pid, str)):
         _fail(f"{path}.id", "expected an integer or a string")
     if (type(pid), pid) in seen_ids:
         _fail(f"{path}.id", f"duplicate id {pid!r} in this frame")
@@ -103,7 +126,7 @@ def _check_person(person, path, seen_ids, person_hook):
 def _check_frame(frame, path, person_hook, max_people):
     if not isinstance(frame, dict):
         _fail(path, "expected an object")
-    if not _is_int(frame.get("frame")):
+    if not is_int(frame.get("frame")):
         _fail(f"{path}.frame", "expected an integer")
     _finite(frame.get("t_ms"), f"{path}.t_ms")
     people = frame.get("people")
@@ -176,24 +199,49 @@ def _check_header(doc, p):
 
 def _check_standard(doc, p):
     std = _expect_object(doc.get("standard"), f"{p}.standard")
+    _expect_lengths(doc.get("bone_lengths_m"), f"{p}.bone_lengths_m")
+    if "body" in doc:  # a body profile chose the numbers; `_check_body` checks them against it
+        sources = std.get("sources")
+        if not _is_finite(std.get("stature_m")):
+            _fail(f"{p}.standard.stature_m", "expected a finite number")
+        if not isinstance(sources, list) or not sources or not all(isinstance(s, str) for s in sources):
+            _fail(f"{p}.standard.sources", "expected a non-empty list of strings")
+        return
+    # A file from before the body profiles holds the standard body.
     _expect_equal(std.get("stature_m"), standard.stature_m(), f"{p}.standard.stature_m")
     _expect_equal(std.get("sources"), standard.sources(), f"{p}.standard.sources")
-    _expect_lengths(doc.get("bone_lengths_m"), f"{p}.bone_lengths_m")
     if doc["bone_lengths_m"] != standard.bone_lengths():
         _fail(f"{p}.bone_lengths_m", "expected the standard body of part3/standard_body.json")
+
+
+def _check_body(doc, p):
+    if "body" in doc:
+        from part3 import profiles  # profiles imports this module for ContractError, so import it here
+        profiles.validate_block(doc, p)
+
+
+def _check_rule(block, pid, p):
+    rule = block.get("rule")
+    if rule == "requested":
+        if "requested" not in block or type(block["requested"]) is not type(pid) or block["requested"] != pid:
+            _fail(f"{p}.person.requested", "must equal person.id when rule is requested")
+    elif rule != "most_frames":
+        _fail(f"{p}.person.rule", 'expected "most_frames" or "requested"')
+    elif "requested" in block:
+        _fail(f"{p}.person.requested", 'only present when rule is "requested"')
 
 
 def _check_person_block(doc, p):
     block = _expect_object(doc.get("person"), f"{p}.person")
     pid = block.get("id")
-    if not (_is_int(pid) or isinstance(pid, str)):
+    if not (is_int(pid) or isinstance(pid, str)):
         _fail(f"{p}.person.id", "expected an integer or a string")
-    _expect_equal(block.get("rule"), "most_frames", f"{p}.person.rule")
+    _check_rule(block, pid, p)
     cands = _expect_object(block.get("candidates"), f"{p}.person.candidates")
-    if str(pid) not in cands or not all(_is_int(c) and c > 0 for c in cands.values()):
+    if str(pid) not in cands or not all(is_int(c) and c > 0 for c in cands.values()):
         _fail(f"{p}.person.candidates", "expected frame counts that include the chosen id")
     for key in ("frames_present", "frames_dropped"):
-        if not _is_int(block.get(key)) or block[key] < 0:
+        if not is_int(block.get(key)) or block[key] < 0:
             _fail(f"{p}.person.{key}", "expected a non-negative integer")
     if cands[str(pid)] != block["frames_present"] + block["frames_dropped"]:
         _fail(f"{p}.person.candidates", "chosen id count must equal frames_present + frames_dropped")
@@ -201,7 +249,7 @@ def _check_person_block(doc, p):
                   f"{p}.person.few_frames")
     _expect_lengths(block.get("measured_bone_lengths_m"), f"{p}.person.measured_bone_lengths_m")
     totals = _expect_object(block.get("flips_repaired_total"), f"{p}.person.flips_repaired_total")
-    if list(totals) != list(GROUP_ORDER) or not all(_is_int(v) and v >= 0 for v in totals.values()):
+    if list(totals) != list(GROUP_ORDER) or not all(is_int(v) and v >= 0 for v in totals.values()):
         _fail(f"{p}.person.flips_repaired_total", "expected counts for body, legs, arms, face")
     return block
 
@@ -214,9 +262,13 @@ def _check_mirror_and_input(doc, p):
         _fail(f"{p}.mirror.applied", "expected true or false")
     if mirror.get("reason") not in MIRROR_REASONS:
         _fail(f"{p}.mirror.reason", "expected one of the documented reasons")
-    digest = _expect_object(doc.get("input"), f"{p}.input").get("sha256")
+    block = _expect_object(doc.get("input"), f"{p}.input")
+    digest = block.get("sha256")
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
         _fail(f"{p}.input.sha256", "expected a 64-character lowercase hex digest")
+    adapters = block.get("adapters", [])
+    if not isinstance(adapters, list) or not all(isinstance(name, str) for name in adapters):
+        _fail(f"{p}.input.adapters", "expected a list of adapter names")
 
 
 def _check_output_number(value, path):
@@ -244,9 +296,41 @@ def _skeleton_person_hook(block, tally):
     return hook
 
 
+def _check_source(frame, path):
+    source = frame.get("source")
+    pair = source.get("frames") if isinstance(source, dict) else None
+    if not (isinstance(pair, list) and len(pair) == 2 and all(is_int(n) for n in pair)):
+        _fail(f"{path}.source.frames", "expected the two input frame numbers that bracket this frame")
+    weight = source.get("weight")
+    if not _is_finite(weight) or not 0 <= weight <= 1:
+        _fail(f"{path}.source.weight", "expected a number in [0, 1]")
+
+
+def _check_resample(doc, p):
+    """The `resample` block and its per-frame `source` (a file without the block must have no `source`)."""
+    frames = doc["frames"]
+    if "resample" not in doc:
+        for k, frame in enumerate(frames):
+            if "source" in frame:
+                _fail(f"{p}.frames[{k}].source", "only a resampled file (with a resample block) has it")
+        return False
+    block = _expect_object(doc["resample"], f"{p}.resample")
+    if not _is_finite(block.get("fps")) or not 1 <= block["fps"] <= 240:
+        _fail(f"{p}.resample.fps", "expected a number from 1 to 240")
+    if not is_int(block.get("source_frames")) or block["source_frames"] < 1:
+        _fail(f"{p}.resample.source_frames", "expected a positive integer")
+    if not isinstance(block.get("method"), str):
+        _fail(f"{p}.resample.method", "expected a string")
+    for k, frame in enumerate(frames):
+        _check_source(frame, f"{p}.frames[{k}]")
+    return True
+
+
 def _check_skeleton_frames(doc, p, block):
     tally = {"present": 0, **{g: 0 for g in GROUP_ORDER}}
     _check_frames(doc.get("frames"), p, _skeleton_person_hook(block, tally), max_people=1)
+    if _check_resample(doc, p):
+        return  # the person block describes the input clip, the frames are on the new grid
     if tally["present"] != block["frames_present"]:
         _fail(f"{p}.person.frames_present", f"expected {tally['present']}, the frames holding the person")
     if {g: tally[g] for g in GROUP_ORDER} != block["flips_repaired_total"]:
@@ -260,6 +344,7 @@ def validate_skeleton(doc):
     _check_header(doc, p)
     _check_standard(doc, p)
     block = _check_person_block(doc, p)
+    _check_body(doc, p)
     _check_mirror_and_input(doc, p)
     _check_skeleton_frames(doc, p, block)
 

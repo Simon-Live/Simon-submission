@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-3-skeleton-consistency/contracts/keyframes-part4.schema.json",
+  "title": "Part 4 keyframes.json (simon.keyframes.v1)",
+  "description": "The 30 fps key list Part 4 reads beside skeleton.json. Part 4 writes it in its fixtures; Part 3 reads it with --keyframes and writes it with --keyframes-out. Key indices must strictly increase and sit inside the clip, and each t must equal index / 30 within one microsecond; Part 4 rejects the file otherwise and python3 -m part3 doctor checks it.",
+  "x-simon-version": "simon.keyframes.v1",
+  "x-direction": "both",
+  "x-producer": "Part 4 or Part 3 (--keyframes-out)",
+  "x-consumers": [
+    "Part 3",
+    "Part 4"
+  ],
+  "x-version-field": "format",
+  "type": "object",
+  "required": [
+    "format",
+    "fps",
+    "duration_s",
+    "frame_count",
+    "keyframes"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.keyframes.v1"
+    },
+    "producer": {
+      "type": "string"
+    },
+    "set": {
+      "type": "string"
+    },
+    "movement": {
+      "type": "string"
+    },
+    "fps": {
+      "const": 30
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "frame_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "keyframes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "t": {
+            "type": "number",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "t",
+          "name"
+        ]
+      },
+      "minItems": 1
+    }
+  }
+}

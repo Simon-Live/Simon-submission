@@ -1,0 +1,1731 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-3-skeleton-consistency/contracts/skeleton-part4.schema.json",
+  "title": "Part 3 skeleton.json (part4 view)",
+  "description": "The output of python3 -m part3 run --view part4 --keyframes ...: the native skeleton plus the block Part 4 reads. Key joints are the forward kinematics of local_rotations on rest_offsets_m, so Part 4's 1 mm rule holds; rig.fit reports how far the snapped pose is from the native frame. Part 5 also reads this file as an expected skeleton (keyframes[] with joints as [x, y, z] lists). Rules a schema cannot say (checked by python3 -m part3 doctor <file> --for part4): key t equals index / 30 within one microsecond, indices strictly increase inside the clip, no quaternion has a norm under 1e-8, no joint turns more than 180 degrees between neighbouring keys in rotation-vector space (Part 3 refuses to write such a clip), forward kinematics reproduces each key within 1 mm, and keyframes.json sits beside this file with the same key indices.",
+  "x-simon-version": "simon.skeleton.v1",
+  "x-direction": "output",
+  "x-producer": "Part 3",
+  "x-consumers": [
+    "Part 4",
+    "Part 5"
+  ],
+  "x-version-field": "format",
+  "type": "object",
+  "required": [
+    "schema",
+    "units",
+    "frame",
+    "joints",
+    "bones",
+    "standard",
+    "bone_lengths_m",
+    "person",
+    "mirror",
+    "input",
+    "frames",
+    "format",
+    "coordinate_frame",
+    "root_joint",
+    "virtual_joints",
+    "rest_offsets_m",
+    "timeline",
+    "rig",
+    "keyframes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "simon.skeleton/1"
+    },
+    "units": {
+      "const": {
+        "length": "m",
+        "angle": "deg",
+        "time": "ms"
+      }
+    },
+    "frame": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "const": "hip_midpoint"
+        },
+        "x": {
+          "const": "subject_left"
+        },
+        "y": {
+          "const": "body_up"
+        },
+        "z": {
+          "const": "anterior"
+        },
+        "up_source": {
+          "enum": [
+            "standing_frames",
+            "all_frames"
+          ]
+        }
+      },
+      "required": [
+        "origin",
+        "x",
+        "y",
+        "z",
+        "up_source"
+      ]
+    },
+    "joints": {
+      "const": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ]
+    },
+    "bones": {
+      "const": [
+        {
+          "name": "left_pelvis",
+          "from": "root",
+          "to": "left_hip"
+        },
+        {
+          "name": "right_pelvis",
+          "from": "root",
+          "to": "right_hip"
+        },
+        {
+          "name": "left_thigh",
+          "from": "left_hip",
+          "to": "left_knee"
+        },
+        {
+          "name": "right_thigh",
+          "from": "right_hip",
+          "to": "right_knee"
+        },
+        {
+          "name": "left_shank",
+          "from": "left_knee",
+          "to": "left_ankle"
+        },
+        {
+          "name": "right_shank",
+          "from": "right_knee",
+          "to": "right_ankle"
+        },
+        {
+          "name": "spine",
+          "from": "root",
+          "to": "neck"
+        },
+        {
+          "name": "left_clavicle",
+          "from": "neck",
+          "to": "left_shoulder"
+        },
+        {
+          "name": "right_clavicle",
+          "from": "neck",
+          "to": "right_shoulder"
+        },
+        {
+          "name": "left_upper_arm",
+          "from": "left_shoulder",
+          "to": "left_elbow"
+        },
+        {
+          "name": "right_upper_arm",
+          "from": "right_shoulder",
+          "to": "right_elbow"
+        },
+        {
+          "name": "left_forearm",
+          "from": "left_elbow",
+          "to": "left_wrist"
+        },
+        {
+          "name": "right_forearm",
+          "from": "right_elbow",
+          "to": "right_wrist"
+        },
+        {
+          "name": "head",
+          "from": "neck",
+          "to": "nose"
+        },
+        {
+          "name": "left_eye_link",
+          "from": "nose",
+          "to": "left_eye"
+        },
+        {
+          "name": "right_eye_link",
+          "from": "nose",
+          "to": "right_eye"
+        },
+        {
+          "name": "left_ear_link",
+          "from": "left_eye",
+          "to": "left_ear"
+        },
+        {
+          "name": "right_ear_link",
+          "from": "right_eye",
+          "to": "right_ear"
+        }
+      ]
+    },
+    "standard": {
+      "type": "object",
+      "properties": {
+        "stature_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "stature_m",
+        "sources"
+      ]
+    },
+    "bone_lengths_m": {
+      "$ref": "#/$defs/bone_lengths"
+    },
+    "body": {
+      "$ref": "#/$defs/body"
+    },
+    "person": {
+      "$ref": "#/$defs/person"
+    },
+    "mirror": {
+      "type": "object",
+      "properties": {
+        "setting": {
+          "enum": [
+            "auto",
+            "on",
+            "off"
+          ]
+        },
+        "applied": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "setting",
+        "applied",
+        "reason"
+      ]
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "adapters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of the input adapters that fired, in order."
+        }
+      },
+      "required": [
+        "sha256"
+      ]
+    },
+    "resample": {
+      "type": "object",
+      "properties": {
+        "fps": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 240
+        },
+        "source_frames": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "method": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fps",
+        "source_frames",
+        "method"
+      ],
+      "description": "Only with --fps."
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    },
+    "format": {
+      "const": "simon.skeleton.v1"
+    },
+    "coordinate_frame": {
+      "$ref": "#/$defs/coordinate_frame"
+    },
+    "root_joint": {
+      "const": "pelvis"
+    },
+    "virtual_joints": {
+      "const": [
+        "pelvis",
+        "neck"
+      ]
+    },
+    "rest_offsets_m": {
+      "type": "object",
+      "properties": {
+        "left_hip": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "pelvis"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "left_knee": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "left_hip"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "left_ankle": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "left_knee"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "right_hip": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "pelvis"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "right_knee": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "right_hip"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "right_ankle": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "right_knee"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "neck": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "pelvis"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "left_shoulder": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "neck"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "left_elbow": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "left_shoulder"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "left_wrist": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "left_elbow"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "right_shoulder": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "neck"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "right_elbow": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "right_shoulder"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "right_wrist": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "right_elbow"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "nose": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "neck"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "left_eye": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "nose"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "left_ear": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "left_eye"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "right_eye": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "nose"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        },
+        "right_ear": {
+          "type": "object",
+          "properties": {
+            "parent": {
+              "const": "right_eye"
+            },
+            "offset": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "parent",
+            "offset"
+          ]
+        }
+      },
+      "required": [
+        "left_hip",
+        "left_knee",
+        "left_ankle",
+        "right_hip",
+        "right_knee",
+        "right_ankle",
+        "neck",
+        "left_shoulder",
+        "left_elbow",
+        "left_wrist",
+        "right_shoulder",
+        "right_elbow",
+        "right_wrist",
+        "nose",
+        "left_eye",
+        "left_ear",
+        "right_eye",
+        "right_ear"
+      ],
+      "additionalProperties": false,
+      "description": "Part 4's rig: every non-root joint with its fixed parent and its rest offset in the parent frame, metres."
+    },
+    "timeline": {
+      "type": "object",
+      "properties": {
+        "fps": {
+          "const": 30
+        },
+        "duration_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "frame_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "t0_ms": {
+          "type": "number"
+        },
+        "source_kind": {
+          "enum": [
+            "part1",
+            "part4",
+            "every"
+          ]
+        },
+        "person": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "dropped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "t_ms": {
+                "type": "number"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "name",
+              "t_ms",
+              "reason"
+            ]
+          }
+        }
+      },
+      "required": [
+        "fps",
+        "duration_s",
+        "frame_count",
+        "t0_ms",
+        "source_kind",
+        "dropped"
+      ]
+    },
+    "rig": {
+      "type": "object",
+      "properties": {
+        "convention": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fit": {
+          "type": "object",
+          "properties": {
+            "max_m": {
+              "type": "number",
+              "minimum": 0
+            },
+            "mean_m": {
+              "type": "number",
+              "minimum": 0
+            },
+            "worst_joint": {
+              "type": "string"
+            },
+            "worst_index": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "max_m",
+            "mean_m",
+            "worst_joint",
+            "worst_index"
+          ],
+          "description": "Distance between the snapped key pose and the native frame, metres."
+        }
+      },
+      "required": [
+        "convention",
+        "fit"
+      ]
+    },
+    "keyframes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "t": {
+            "type": "number",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "source_frame": {
+            "type": "integer"
+          },
+          "source_t_ms": {
+            "type": "number"
+          },
+          "joints": {
+            "type": "object",
+            "properties": {
+              "nose": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "left_eye": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "right_eye": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "left_ear": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "right_ear": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "left_shoulder": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "right_shoulder": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "left_elbow": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "right_elbow": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "left_wrist": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "right_wrist": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "left_hip": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "right_hip": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "left_knee": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "right_knee": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "left_ankle": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "right_ankle": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              }
+            },
+            "required": [
+              "nose",
+              "left_eye",
+              "right_eye",
+              "left_ear",
+              "right_ear",
+              "left_shoulder",
+              "right_shoulder",
+              "left_elbow",
+              "right_elbow",
+              "left_wrist",
+              "right_wrist",
+              "left_hip",
+              "right_hip",
+              "left_knee",
+              "right_knee",
+              "left_ankle",
+              "right_ankle"
+            ],
+            "additionalProperties": false
+          },
+          "conf": {
+            "type": "object",
+            "properties": {
+              "nose": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_eye": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_eye": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_ear": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_ear": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_shoulder": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_shoulder": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_elbow": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_elbow": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_wrist": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_wrist": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_hip": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_hip": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_knee": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_knee": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_ankle": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_ankle": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "nose",
+              "left_eye",
+              "right_eye",
+              "left_ear",
+              "right_ear",
+              "left_shoulder",
+              "right_shoulder",
+              "left_elbow",
+              "right_elbow",
+              "left_wrist",
+              "right_wrist",
+              "left_hip",
+              "right_hip",
+              "left_knee",
+              "right_knee",
+              "left_ankle",
+              "right_ankle"
+            ],
+            "additionalProperties": false
+          },
+          "local_rotations": {
+            "type": "object",
+            "properties": {
+              "pelvis": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "left_hip": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "left_knee": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "left_ankle": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "right_hip": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "right_knee": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "right_ankle": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "neck": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "left_shoulder": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "left_elbow": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "left_wrist": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "right_shoulder": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "right_elbow": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "right_wrist": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "nose": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "left_eye": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "left_ear": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "right_eye": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "right_ear": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              }
+            },
+            "required": [
+              "pelvis",
+              "left_hip",
+              "left_knee",
+              "left_ankle",
+              "right_hip",
+              "right_knee",
+              "right_ankle",
+              "neck",
+              "left_shoulder",
+              "left_elbow",
+              "left_wrist",
+              "right_shoulder",
+              "right_elbow",
+              "right_wrist",
+              "nose",
+              "left_eye",
+              "left_ear",
+              "right_eye",
+              "right_ear"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "index",
+          "t",
+          "name",
+          "source_frame",
+          "source_t_ms",
+          "joints",
+          "conf",
+          "local_rotations"
+        ],
+        "description": "One key pose. Quaternions are (x, y, z, w) with w >= 0."
+      },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "person_id": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "A person id as Part 2 writes it: an integer or a string."
+    },
+    "joint": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "conf": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z",
+        "conf"
+      ],
+      "description": "One joint: metres and a confidence in 0 to 1."
+    },
+    "joints": {
+      "type": "object",
+      "properties": {
+        "nose": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ankle": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ankle": {
+          "$ref": "#/$defs/joint"
+        }
+      },
+      "required": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ],
+      "additionalProperties": false
+    },
+    "bone_lengths": {
+      "type": "object",
+      "properties": {
+        "left_pelvis": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "right_pelvis": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "left_thigh": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "right_thigh": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "left_shank": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "right_shank": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "spine": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "left_clavicle": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "right_clavicle": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "left_upper_arm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "right_upper_arm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "left_forearm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "right_forearm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "head": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "left_eye_link": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "right_eye_link": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "left_ear_link": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "right_ear_link": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "left_pelvis",
+        "right_pelvis",
+        "left_thigh",
+        "right_thigh",
+        "left_shank",
+        "right_shank",
+        "spine",
+        "left_clavicle",
+        "right_clavicle",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_forearm",
+        "right_forearm",
+        "head",
+        "left_eye_link",
+        "right_eye_link",
+        "left_ear_link",
+        "right_ear_link"
+      ],
+      "additionalProperties": false
+    },
+    "body": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "simon-standard, part4-rig, measured, or file:<name from the profile file>."
+        },
+        "selected_by": {
+          "enum": [
+            "flag",
+            "env",
+            "config",
+            "api",
+            "default"
+          ]
+        },
+        "stature_selected_by": {
+          "enum": [
+            "flag",
+            "env",
+            "config",
+            "api"
+          ],
+          "description": "Present when a stature was requested: which channel set it."
+        },
+        "stature_m": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2.5
+        },
+        "scale": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symmetrized": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "profile",
+        "selected_by",
+        "stature_m",
+        "scale",
+        "source",
+        "symmetrized"
+      ],
+      "description": "The body profile the output was rebuilt on."
+    },
+    "person_entry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/person_id"
+        },
+        "joints": {
+          "$ref": "#/$defs/joints"
+        },
+        "flips_repaired": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "body",
+              "legs",
+              "arms",
+              "face"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "joints",
+        "flips_repaired"
+      ]
+    },
+    "frame": {
+      "type": "object",
+      "properties": {
+        "frame": {
+          "type": "integer"
+        },
+        "t_ms": {
+          "type": "number"
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/person_entry"
+          },
+          "maxItems": 1
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "frames": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "weight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "frames",
+            "weight"
+          ],
+          "description": "Only on resampled output: the two input frames the frame blends and the share of the second."
+        }
+      },
+      "required": [
+        "frame",
+        "t_ms",
+        "people"
+      ]
+    },
+    "person": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/person_id"
+        },
+        "rule": {
+          "enum": [
+            "most_frames",
+            "requested"
+          ]
+        },
+        "requested": {
+          "$ref": "#/$defs/person_id"
+        },
+        "candidates": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "frames_present": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "frames_dropped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "few_frames": {
+          "type": "boolean"
+        },
+        "measured_bone_lengths_m": {
+          "$ref": "#/$defs/bone_lengths"
+        },
+        "flips_repaired_total": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "legs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "arms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "face": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "body",
+            "legs",
+            "arms",
+            "face"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "rule",
+        "candidates",
+        "frames_present",
+        "frames_dropped",
+        "few_frames",
+        "measured_bone_lengths_m",
+        "flips_repaired_total"
+      ]
+    },
+    "coordinate_frame": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "const": "hip_midpoint"
+        },
+        "x": {
+          "const": "subject_left"
+        },
+        "y": {
+          "const": "world_up"
+        },
+        "z": {
+          "const": "anterior"
+        },
+        "position_unit": {
+          "const": "metres"
+        },
+        "angle_unit": {
+          "const": "degrees"
+        }
+      },
+      "required": [
+        "origin",
+        "x",
+        "y",
+        "z",
+        "position_unit",
+        "angle_unit"
+      ],
+      "description": "The frame Part 4 and Part 5 read. y is world_up: Part 3's body up is its estimate of world up."
+    }
+  }
+}

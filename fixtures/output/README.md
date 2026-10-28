@@ -21,10 +21,12 @@ Regenerate one: `make run IN=fixtures/input/part2-single/pose3d.json OUT=fixture
 | `schema` | `simon.skeleton/1` |
 | `frame` | origin hip midpoint, x subject's left, y body up, z anterior; `up_source` is `standing_frames` or `all_frames` |
 | `joints`, `bones` | the 17 joint names and the 18 bones (`root` = hip midpoint, `neck` = shoulder midpoint) |
-| `bone_lengths_m`, `standard` | the one standard reference body (stature 1.70 m) and its sources |
-| `person` | the person kept, the rule, candidates, frame counts, the performer's measured bone lengths, label flips repaired |
+| `bone_lengths_m`, `standard` | the body the frames are built on (the default `simon-standard`, stature 1.70 m) and its sources |
+| `body` | which body profile was used and who chose it: `profile`, `selected_by` (`flag`, `env`, `config`, `api` or `default`), `stature_m`, `scale`, `source`, `symmetrized`; `stature_selected_by` appears only when a stature was asked for |
+| `person` | the person kept, the rule (`most_frames`, or `requested` with `--person`), candidates, frame counts, the performer's measured bone lengths, label flips repaired |
 | `mirror` | the `--flip` setting, whether it was applied, and why |
-| `input.sha256` | hash of the input file |
+| `input` | `sha256` of the input file; `adapters` names the input adapters that fired (`[]` for a canonical Part 2 file) |
+| `resample` | only with `--fps`: the grid, the number of input frames and the method; each frame then also has `source` (its two bracketing input frames and the weight of the second) |
 
 Per frame, `people` holds 0 or 1 entry; `flips_repaired` lists the label groups repaired in that frame (`body`, `legs`, `arms`, `face`).
 
@@ -32,13 +34,13 @@ Per frame, `people` holds 0 or 1 entry; `flips_repaired` lists the label groups 
 
 - Same frames and `t_ms` as the input, in the same order.
 - Bone lengths recomputed from `joints` equal `bone_lengths_m` within rounding (4 decimals, 0.1 mm), in every frame of every file.
-- `bone_lengths_m` is identical in every `skeleton.json`, so two recordings or two people compare joint by joint.
+- `bone_lengths_m` is the chosen profile's in every frame of one file. With the default profile it is identical in every `skeleton.json`, so two recordings or two people compare joint by joint; compare files that name the same `body.profile`.
 - Up comes from the body, never the camera; left hip at positive x; face at positive z.
 - No frame has left and right swapped; one person per file.
 
 ## Limits
 
-- The bone lengths are the standard body's, not the performer's. The performer's are in `person.measured_bone_lengths_m`.
+- With the default profile the bone lengths are the standard body's, not the performer's. The performer's are in `person.measured_bone_lengths_m`; `--body measured` builds on them.
 - `conf` is copied from Part 2: 1.0 inside the image, 0.3 when Part 2 extrapolated the joint outside it. In the real clip `right_ankle` is 0.3 in every frame and `left_ankle` in 19 frames; their positions follow the input direction.
 - A whole-body turn on the spot is not represented: Part 2 removes rotation per frame.
 - A mirrored recording is corrected only with `--flip on` or a top-level `"mirrored": true` in the input.

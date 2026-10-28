@@ -1,0 +1,39 @@
+{
+  "format": "simon.keyframes.v1",
+  "movement": "squat",
+  "fps": 30,
+  "duration_s": 7.066667,
+  "frame_count": 213,
+  "keyframes": [
+    {
+      "index": 38,
+      "t": 1.266667,
+      "name": "start"
+    },
+    {
+      "index": 70,
+      "t": 2.333333,
+      "name": "bottom"
+    },
+    {
+      "index": 100,
+      "t": 3.333333,
+      "name": "top"
+    },
+    {
+      "index": 130,
+      "t": 4.333333,
+      "name": "start"
+    },
+    {
+      "index": 162,
+      "t": 5.4,
+      "name": "bottom"
+    },
+    {
+      "index": 192,
+      "t": 6.4,
+      "name": "top"
+    }
+  ]
+}

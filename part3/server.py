@@ -1,11 +1,11 @@
-"""The HTTP server of the run app (spec run-app.md "API / Interface Contract").
+"""The HTTP server of the run app (specs run-app.md and compare-mode.md "API / Interface Contract").
 
     python3 -m part3.server [--host 127.0.0.1] [--port 8733] [--base /]
 
 Standard library only. The route table is fixed: the pages, the API and a table of the files of `web/`
 built once at start-up. A request path is only ever looked up in that table, never joined to a
 filesystem path, so `..`, encoded dots and backslashes simply miss and answer 404. All run logic is in
-`part3.runapi`; this module owns sockets, limits, headers and the log line.
+`part3.runapi` and `part3.compare`; this module owns sockets, limits, headers and the log line.
 """
 
 import argparse
@@ -23,15 +23,14 @@ import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BufferedReader, RawIOBase  # the standard library's io: in this module `io` is part3.io
-from urllib.parse import parse_qsl
 
-from part3 import io, runapi
+from part3 import compare, io, runapi
 
-MAX_BODY = 2 * 1024 * 1024  # bytes of an upload; a larger Content-Length is refused with 413
-DRAIN_MAX = 8 * 1024 * 1024  # an oversize body up to this size is read and thrown away before the 413
+MAX_BODY = 16 * 1024 * 1024  # bytes of an upload; a larger Content-Length is refused with 413
+DRAIN_MAX = 32 * 1024 * 1024  # an oversize body up to this size is read and thrown away before the 413
 SOCKET_TIMEOUT_S = 15.0  # a connection that sends nothing for this long is dropped
 HEADER_DEADLINE_S = 20.0  # the request line and headers must be complete this long after the connection opens
-BODY_TIMEOUT_S = 15.0  # the whole upload must arrive within this
+BODY_TIMEOUT_S = 60.0  # the whole upload must arrive within this (16 MiB over a slow link)
 LINGER_S = 3.0  # how long a refused request's small body is thrown away after the answer
 MAX_CONNECTIONS = 16  # open connections; one more goes to the reserve below
 RESERVED_CONNECTIONS = 1  # kept for `GET api/health` once MAX_CONNECTIONS are open; anything else there gets `busy`
@@ -39,14 +38,13 @@ RESERVE_HEAD_S = 2.0  # a reserve connection must send its request line and head
 RESERVE_LINGER_S = 0.2  # how long a reserve connection's refused body is thrown away
 MAX_RUNS = 2  # pipeline runs at once; a third gets `busy`
 RUN_TIMEOUT_S = 20.0  # a run past this answers `timeout`; its thread ends on its own and then frees its slot
-MAX_QUERY_FIELDS = 20
 
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png",
     ".svg": "image/svg+xml",
 }
-PAGES = {"": "app.html", "agreement": "index.html"}  # path below the base -> file of web/
+PAGES = {"": "app.html", "agreement": "index.html", "compare": "compare.html"}  # path below the base -> file of web/
 GET = ("GET", "HEAD")
 CSP = ("default-src 'self'; script-src {scripts}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
        "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
@@ -219,6 +217,8 @@ class Handler(BaseHTTPRequestHandler):
             return GET, lambda query: self._json(200, {"samples": runapi.samples()})
         if rel == "api/run":
             return ("POST",), self._run
+        if rel == "api/compare":
+            return ("POST",), self._compare
         name = PAGES.get(rel, rel)
         if name in self.server.table:
             return GET, lambda query: self._static(name)
@@ -268,20 +268,47 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, data, STATIC_TYPES[path.suffix.lower()], "no-cache",
                    [("Content-Security-Policy", csp)] if csp else [])
 
-    # -- POST api/run -------------------------------------------------------------------------
+    # -- POST api/run and POST api/compare ----------------------------------------------------
 
     def _run(self, query):
+        return self._post(query, self._run_args, self._run_call, "upload")
+
+    def _compare(self, query):
+        return self._post(query, lambda _query: ((), None), self._compare_call, "compare", compare.TOO_LARGE)
+
+    def _run_args(self, query):
+        """((query fields, run options), None) or (None, failure): checked before the body is read."""
+        try:
+            fields = runapi.parse_query(query)
+        except ValueError:
+            return None, runapi.error("bad_request")
+        options, failure = runapi.parse_options(fields)
+        return (None, failure) if failure else ((fields, options), None)
+
+    @staticmethod
+    def _run_call(args, body):
+        fields, options = args
+        return runapi.handle(fields.get("sample"), fields.get("flip", "auto"), fields.get("name"), body, options)
+
+    @staticmethod
+    def _compare_call(_args, body):
+        return compare.handle(body)
+
+    def _post(self, query, check, work, noun, too_large=None):
+        """The guards every POST shares, then `work(args, body)` under a run slot and the run timeout.
+
+        `check(query)` gives (args, None) or (None, failure) before the body is read; `noun` names the body in the
+        log; `too_large` is the 413 text for this route (None: the upload text)."""
         if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
             return self._refuse("cross_site")
         length, problem = self._length()
         if problem:
             return self._error(problem)
         if length > MAX_BODY:
-            return self._too_large(length)
-        try:
-            fields = dict(reversed(parse_qsl(query, keep_blank_values=True, max_num_fields=MAX_QUERY_FIELDS)))
-        except ValueError:
-            return self._refuse("bad_request")
+            return self._too_large(length, too_large)
+        args, failure = check(query)
+        if failure:
+            return self._refuse_with(failure)
         slots, handed = self.server.slots, False
         if not slots.acquire(blocking=False):  # the slot is taken before the body is read
             return self._refuse("busy")
@@ -290,9 +317,9 @@ class Handler(BaseHTTPRequestHandler):
             if len(body) != length:
                 return self._error("bad_request")
             if body:
-                self._note = f"upload={length}B sha256={hashlib.sha256(body).hexdigest()[:16]}"
+                self._note = f"{noun}={length}B sha256={hashlib.sha256(body).hexdigest()[:16]}"
             handed = True
-            status, payload = self._execute(fields.get("sample"), fields.get("flip", "auto"), fields.get("name"), body)
+            status, payload = self._execute(lambda: work(args, body))
         finally:
             if not handed:
                 slots.release()
@@ -307,26 +334,32 @@ class Handler(BaseHTTPRequestHandler):
             return None, "bad_request"
         return int(raw), None
 
-    def _too_large(self, length):
-        """413: a body up to DRAIN_MAX is read and thrown away first, a larger one is not read at all."""
+    def _too_large(self, length, message=None):
+        """413: a body up to DRAIN_MAX is read and thrown away first, a larger one is not read at all. `message`
+        replaces the upload text with one that names this route's request."""
         self.close_connection = True
         if length <= DRAIN_MAX:
             self._discard(length, BODY_TIMEOUT_S)
-        self._error("too_large", [("Connection", "close")])
+        self._json(*runapi.error("too_large", reason=message), [("Connection", "close")])
 
     def _refuse(self, code, linger_s=None):
-        """Answer `code`, then throw away a small unread body so the client sees the answer, not a reset."""
+        self._refuse_with(runapi.error(code), linger_s)
+
+    def _refuse_with(self, failure, linger_s=None):
+        """Answer the (status, body) `failure`, then throw away a small unread body so the client sees the answer,
+        not a reset."""
         self.close_connection = True
-        self._error(code, [("Connection", "close")])
+        self._json(*failure, [("Connection", "close")])
         raw = self.headers.get("Content-Length", "")
         self._discard(min(int(raw), DRAIN_MAX) if _LENGTH.fullmatch(raw) else 0, LINGER_S if linger_s is None else linger_s)
 
     def _chunks(self, length, seconds):
-        """The next pieces of the request body, up to `length` bytes, until it ends or `seconds` pass."""
+        """The next pieces of the request body, up to `length` bytes, until it ends or `seconds` pass. A client that
+        sends nothing for SOCKET_TIMEOUT_S ends it sooner."""
         deadline = time.monotonic() + seconds
         try:
             while length > 0 and (left := deadline - time.monotonic()) > 0:
-                self.connection.settimeout(left)
+                self.connection.settimeout(min(left, SOCKET_TIMEOUT_S))
                 try:
                     chunk = self.rfile.read1(min(length, 65536))
                 except OSError:
@@ -342,14 +375,14 @@ class Handler(BaseHTTPRequestHandler):
         for _ in self._chunks(length, seconds):
             pass
 
-    def _execute(self, sample, flip, name, body):
-        """`runapi.handle` in a worker thread, RUN_TIMEOUT_S at most. The caller's run slot goes with the
-        thread and comes back only when it ends, so a flood of slow runs gets `busy`, not more work."""
+    def _execute(self, call):
+        """`call()` in a worker thread, RUN_TIMEOUT_S at most. The caller's run slot goes with the thread and
+        comes back only when it ends, so a flood of slow runs gets `busy`, not more work."""
         slots, box = self.server.slots, []
 
         def work():
             try:
-                box.append(runapi.handle(sample, flip, name, body))
+                box.append(call())
             except Exception:  # noqa: BLE001 - logged here, answered as `internal` without it
                 traceback.print_exc(file=sys.stderr)
                 box.append(runapi.error("internal"))

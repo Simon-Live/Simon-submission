@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simon Part 3: compare takes</title>
+  <meta name="description" content="Run two to six pose3d.json inputs through the real Part 3 pipeline and see how well their skeletons agree.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="compare.css">
+  <script type="importmap">{"imports": {"three": "./vendor/three/three.module.js"}}</script>
+</head>
+<body>
+  <header class="top">
+    <div class="titles">
+      <h1>Simon Part 3: compare takes</h1>
+      <p class="subtitle">Runs two to six inputs through the real pipeline, lines them up by movement phase and measures how well they agree.</p>
+    </div>
+    <div class="agree">
+      <a class="link" href="./">Run the pipeline</a>
+      <p>One input at a time, with every output option.</p>
+      <a class="link" href="agreement">Four-take agreement</a>
+      <p>The stored result of the done-check.</p>
+    </div>
+  </header>
+
+  <noscript><p class="error">This page needs JavaScript.</p></noscript>
+
+  <main class="page">
+    <section class="setup" aria-label="Choose the inputs and compare">
+      <fieldset class="group" aria-labelledby="inputs-legend">
+        <legend id="inputs-legend">Inputs</legend>
+        <ol class="rows" id="rows"></ol>
+        <div class="row-actions">
+          <button type="button" id="add-btn">Add input</button>
+          <p class="hint" id="rows-hint">Two to six inputs. Each file up to 16 MB and 3000 frames. Files are not stored.</p>
+        </div>
+      </fieldset>
+
+      <div class="side">
+        <fieldset class="group options" aria-labelledby="options-legend">
+          <legend id="options-legend">Options for every input</legend>
+          <div class="option-grid">
+            <div class="field">
+              <label for="body-select">Body</label>
+              <select id="body-select">
+                <option value="simon-standard" selected>Simon standard</option>
+                <option value="part4-rig">Part 4 rig</option>
+                <option value="measured">Measured from the clip</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="height-input">Height</label>
+              <input type="number" id="height-input" min="0.5" max="2.5" step="0.01" inputmode="decimal" placeholder="the body's own" aria-describedby="height-hint">
+            </div>
+            <div class="field">
+              <label for="view-select">View</label>
+              <select id="view-select">
+                <option value="native" selected>Native skeleton.json</option>
+                <option value="part4">Part 4 keys, every 10 ticks</option>
+                <option value="part5">Part 5 animation</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fps-select">Frame rate</label>
+              <select id="fps-select">
+                <option value="" selected>Source</option>
+                <option value="30">30 per second</option>
+                <option value="60">60 per second</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint" id="height-hint">Height in metres, 0.5 to 2.5. Blank keeps the body's own. View sets the file each input downloads.</p>
+        </fieldset>
+
+        <div class="run-row">
+          <button type="button" id="compare-btn" class="primary" disabled>Compare</button>
+          <p class="status" id="status" role="status">Loading the samples.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="error" id="alert" role="alert" hidden>
+      <p id="alert-message"></p>
+      <p id="alert-field" hidden></p>
+    </div>
+
+    <section id="results" class="results" aria-labelledby="results-title" hidden>
+      <div class="result-head">
+        <div class="result-title">
+          <h2 id="results-title">Result</h2>
+          <p class="source-note" id="source-note"></p>
+        </div>
+      </div>
+
+      <div class="metrics" role="group" aria-label="Metrics">
+        <article class="card">
+          <h3>Joint-angle agreement, p95</h3>
+          <p class="value"><span id="c-p95">n/a</span> <span class="unit">deg</span> <span class="badge" id="c-badge"></span></p>
+          <p class="sub" id="c-sub">limit 10 degrees</p>
+        </article>
+        <article class="card">
+          <h3>Inputs compared</h3>
+          <p class="value"><span id="c-count">0</span></p>
+          <p class="sub" id="c-count-sub"></p>
+        </article>
+      </div>
+
+      <div class="controls" aria-label="Playback and camera controls">
+        <div class="cluster" id="camera-group" role="group" aria-label="Camera">
+          <button type="button" id="btn-reset" title="Reset the camera">Reset</button>
+          <button type="button" id="btn-front" title="Front view">Front</button>
+          <button type="button" id="btn-side" title="Side view">Side</button>
+          <button type="button" id="btn-top" title="Top view">Top</button>
+        </div>
+        <div class="cluster play" role="group" aria-label="Playback">
+          <button type="button" id="btn-play" class="primary" title="Play or pause (Space)">Play</button>
+          <label class="scrub-label" for="frame-slider">Frame</label>
+          <input type="range" id="frame-slider" min="0" max="0" step="1" value="0" aria-describedby="frame-readout">
+          <span id="frame-readout">0 of 0</span>
+        </div>
+        <p class="hints" aria-label="Keyboard and mouse hints">
+          <span><kbd>Space</kbd> play or pause</span>
+          <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> step a frame</span>
+          <span>drag to orbit</span>
+          <span>wheel to zoom</span>
+        </p>
+      </div>
+
+      <div class="overlay">
+        <figure class="panel" id="panel-overlay">
+          <div class="stage" id="stage-overlay"></div>
+          <figcaption class="tag"><span class="dot output"></span><span>Aligned outputs, all inputs overlaid</span></figcaption>
+          <p class="foot" id="note-overlay">Frame 1 of 1</p>
+        </figure>
+        <fieldset class="group legend-box" aria-labelledby="legend-title">
+          <legend id="legend-title">Show or hide an input</legend>
+          <ul class="legend" id="legend"></ul>
+        </fieldset>
+      </div>
+
+      <div class="tables" tabindex="0" role="region" aria-label="Result tables">
+        <table class="grid" id="inputs-table">
+          <caption>Inputs</caption>
+          <thead>
+            <tr>
+              <th scope="col">Input</th>
+              <th scope="col">Frames</th>
+              <th scope="col">Bone variation</th>
+              <th scope="col">Flips repaired</th>
+              <th scope="col">Mirror applied</th>
+              <th scope="col">Body</th>
+              <th scope="col">File</th>
+            </tr>
+          </thead>
+          <tbody id="inputs-body"></tbody>
+        </table>
+
+        <table class="grid" id="pairs-table">
+          <caption>Agreement</caption>
+          <thead>
+            <tr>
+              <th scope="col">Compared</th>
+              <th scope="col">p95 (deg)</th>
+              <th scope="col">Result</th>
+            </tr>
+          </thead>
+          <tbody id="pairs-body"></tbody>
+        </table>
+      </div>
+
+      <p class="footnote">The inputs are lined up on the first input's timeline by the same phase alignment as the done-check, then the spread of every joint angle across inputs is measured. Each pair is read off the same lined-up timeline. Each output is rebuilt on the Body you chose, with the same limb lengths in every frame. Measured from the clip uses each input's own median lengths, and a Height scales whichever Body you chose.</p>
+    </section>
+  </main>
+
+  <script type="module" src="compare.js"></script>
+</body>
+</html>

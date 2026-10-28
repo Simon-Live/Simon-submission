@@ -26,6 +26,10 @@ GROUPS = {
 }
 GROUP_ORDER = ("body", "legs", "arms", "face")
 
+# The coordinate_frame block Part 4 and Part 5 read (the part4 and part5 views write it; doctor checks it).
+COORDINATE_FRAME = {"origin": "hip_midpoint", "x": "subject_left", "y": "world_up", "z": "anterior",
+                    "position_unit": "metres", "angle_unit": "degrees"}
+
 # Virtual joints: root = hip midpoint, neck = shoulder midpoint.
 ROOT = "root"
 NECK = "neck"

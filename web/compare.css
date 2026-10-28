@@ -1,0 +1,45 @@
+/* Compare page for Simon Part 3 (docs/specs/compare-mode.md). Builds on app.css: same look, the pieces below are new. */
+
+/* Input rows */
+.rows { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.row { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-raised); }
+.row-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.row-title { font-weight: 600; }
+.row-fields { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 10px; align-items: end; }
+.row-file { margin-top: 8px; }
+.row-file input[type="file"] { width: 100%; }
+.row-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.row-actions .hint { margin-top: 0; }
+
+/* Overlay panel and legend */
+.overlay { display: grid; grid-template-columns: minmax(0, 3fr) minmax(220px, 1fr); gap: var(--gap); align-items: start; }
+.overlay .panel { height: clamp(380px, 62vh, 640px); }
+.legend-box { align-self: stretch; }
+.legend { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.legend li { min-width: 0; }
+.legend label { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-raised); cursor: pointer; overflow-wrap: anywhere; }
+.legend label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.legend input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.legend .swatch { flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--swatch, #888); }
+.legend li.off .name { color: var(--muted); text-decoration: line-through; }
+
+/* Tables */
+.tables { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; overflow-x: auto; }
+.grid { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: var(--radius); font-variant-numeric: tabular-nums; }
+.grid caption { padding: 10px 12px 4px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-align: left; text-transform: uppercase; }
+.grid th, .grid td { padding: 8px 12px; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+.grid thead th { color: var(--muted); font-size: 12px; font-weight: 600; }
+.grid tbody th { font-weight: 600; }
+.grid td button { min-height: 32px; }
+
+@media (max-width: 900px) {
+  .row-fields { grid-template-columns: minmax(0, 1fr); }
+  .overlay { grid-template-columns: minmax(0, 1fr); }
+  .overlay .panel { height: min(96vw, 440px); min-height: 320px; }
+  .grid th, .grid td { padding: 6px 8px; font-size: 12px; }
+  /* Narrow screens: cells keep whole words and numbers; a wide table scrolls inside .tables instead of breaking
+     headers and digits letter by letter. The row label column still wraps between words. */
+  .grid { width: auto; min-width: 100%; }
+  .grid thead th, .grid td { white-space: nowrap; overflow-wrap: normal; }
+  .grid tbody th { min-width: 10em; overflow-wrap: normal; }
+}

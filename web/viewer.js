@@ -122,8 +122,7 @@ class Viewer {
 
   updatePlayButton() {
     const button = byId("btn-play");
-    button.textContent = this.playing ? "Pause" : "Play";
-    button.setAttribute("aria-pressed", String(this.playing));
+    button.textContent = this.playing ? "Pause" : "Play"; // the label says what a press does; no aria-pressed
   }
 
   // Camera offset for a named view; a tall narrow panel (phone) needs more distance to fit the subject.

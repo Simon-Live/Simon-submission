@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-3-skeleton-consistency/contracts/body-profile.schema.json",
+  "title": "Part 3 body profile file",
+  "description": "A body profile you pass as --body file:<path>. All 18 bones are required. Rules a schema cannot say: left_pelvis must equal right_pelvis and left_clavicle must equal right_clavicle, so the hip and shoulder midpoints stay put. python3 -m part3 doctor checks both. Extra keys are ignored.",
+  "x-simon-version": "simon.body_profile/1",
+  "x-direction": "input",
+  "x-producer": "you (any team)",
+  "x-consumers": [
+    "Part 3"
+  ],
+  "x-version-field": "schema",
+  "type": "object",
+  "required": [
+    "schema",
+    "name",
+    "stature_m",
+    "bone_lengths_m",
+    "source"
+  ],
+  "properties": {
+    "schema": {
+      "const": "simon.body_profile/1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "stature_m": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 2.5
+    },
+    "bone_lengths_m": {
+      "type": "object",
+      "properties": {
+        "left_pelvis": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "right_pelvis": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "left_thigh": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "right_thigh": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "left_shank": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "right_shank": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "spine": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "left_clavicle": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "right_clavicle": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "left_upper_arm": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "right_upper_arm": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "left_forearm": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "right_forearm": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "head": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "left_eye_link": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "right_eye_link": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "left_ear_link": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        },
+        "right_ear_link": {
+          "type": "number",
+          "minimum": 0.005,
+          "maximum": 1.5
+        }
+      },
+      "required": [
+        "left_pelvis",
+        "right_pelvis",
+        "left_thigh",
+        "right_thigh",
+        "left_shank",
+        "right_shank",
+        "spine",
+        "left_clavicle",
+        "right_clavicle",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_forearm",
+        "right_forearm",
+        "head",
+        "left_eye_link",
+        "right_eye_link",
+        "left_ear_link",
+        "right_ear_link"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where the numbers come from. The output records it."
+    }
+  }
+}

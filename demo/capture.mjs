@@ -9,10 +9,12 @@
 // 390 px, the take toggle hides the take in the 3D rig, Space and the arrow keys work, a mouse wheel
 // redraws the paused overlap panel, and every file was written.
 // Offline: the only requests go to the page being served.
+// Playwright comes from `npm install` in the repo root (package.json pins it). To use a copy elsewhere, set
+// PLAYWRIGHT_MODULE to the path of its index.mjs; a missing copy stops the run with a message that says so.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { chromium } from "/home/gingy/.npm/_npx/9833c18b2d85bc59/node_modules/playwright/index.mjs";
+import { pathToFileURL } from "node:url";
 
 const args = parseArgs(process.argv.slice(2));
 const baseUrl = (args.url || "http://127.0.0.1:8733/").replace(/\/?$/, "/");
@@ -211,7 +213,19 @@ async function recordVideo(browser) {
   return seconds;
 }
 
+async function loadChromium() {
+  const custom = process.env.PLAYWRIGHT_MODULE;
+  const specifier = custom ? pathToFileURL(path.resolve(custom)).href : "playwright";
+  try {
+    return (await import(specifier)).chromium;
+  } catch (error) {
+    throw new Error(`cannot load Playwright from ${custom ? `PLAYWRIGHT_MODULE=${custom}` : "node_modules"}: ${error.message}. `
+      + "Run npm install in the repo root, or set PLAYWRIGHT_MODULE to the path of a playwright index.mjs.");
+  }
+}
+
 async function main() {
+  const chromium = await loadChromium();
   fs.mkdirSync(outDir, { recursive: true });
   const demo = await (await fetch(`${baseUrl}data/demo.json`)).json();
   const agreementJson = demo.metrics.thresholds.joint_angle_agreement_p95_deg.value;

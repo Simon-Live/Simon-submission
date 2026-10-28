@@ -33,7 +33,7 @@ A follow-up prompt asked for the part to run end to end as a web app on the firm
 | Human turns after the prompt | 0 |
 | New code | `part3/server.py` and `part3/runapi.py` 643 lines of Python; the run page (`web/app.html`, `web/app.js`, `web/app.css` and `web/scene.js`, the 3D code moved out of `web/viewer.js`) 1,270 lines; new tests 1,675 lines |
 | Tests | 520 in this repository (`make test` exit 0); the private workspace adds 44 tests of its staging scripts |
-| Video | [`staging-walkthrough.mp4`](staging-walkthrough.mp4): 50.6 s, one uninterrupted recording through the staging gateway on the final build |
+| Video | `staging-walkthrough.mp4` at the time: 50.6 s, one uninterrupted recording through the staging gateway on the final build (replaced by the Phase 2 recording below) |
 
 ### What a visitor can do
 
@@ -61,6 +61,52 @@ d2904b4 fix(staging): traversal check accepts the gateway's own 404 as long as n
 The walkthrough was recorded again on `3f6f482`.
 
 The staging scripts and the verify suite stay in the private workspace; this repository gets the app, its tests and the video.
+
+## Phase 2: the integration contract (2026-10-28)
+
+A third prompt asked for Part 3 to be easy to stitch with Parts 2, 4, 5 and 7 and able to adapt to them, without building any other part. Claude Code built it unattended.
+
+| | |
+|---|---|
+| Built by | one Claude Opus 5.5 session orchestrating; five implementation lanes in parallel, one refactor lane and three review-fix lanes, all Claude Code subagents on Claude Sonnet 5.5; one consolidated review by a reviewer subagent on the Opus tier; QA driver subagents on Sonnet and separate QA validator subagents on Opus; a stakeholder-proxy subagent for one scope ruling |
+| Start (UTC) | 2026-10-28T06:00:57Z |
+| Final code commit (UTC) | 2026-10-28T09:16:35Z (`6afbe93`) |
+| Human turns after the prompt | 0 |
+| New and changed code | `part3` +4,745 / -138 lines; tests `tests/part3` +7,517 / -36; `web` +1,140 / -286; `CONTRACT.md` and `contracts/` +3,935 |
+| Tests | 1,557 in `tests/part3` (`make test` exit 0) |
+| Video | [`staging-walkthrough.mp4`](staging-walkthrough.mp4): 54.8 s, one uninterrupted recording through the staging gateway on `6afbe93` (a body switch, an upload and the Compare page) |
+
+### What another part gets
+
+- [`CONTRACT.md`](../CONTRACT.md) and [`contracts/`](../contracts/): a JSON Schema for every file Part 3 reads or writes, a compatibility table checked against the neighbours' current commits, `python3 -m part3 contract` and `python3 -m part3 doctor <file> --for part3|part4|part5`.
+- Body profiles by `--body`, `PART3_BODY`, `part3.toml` or the API: `simon-standard`, `part4-rig`, `measured`, `file:<path>`, and `--stature`.
+- Output views: `native`, `part4` (keys from Part 1's `keyframes.json` on Part 4's rig) and `part5` (`simon.animation.v1`), plus `--fps`, `--person` and `--all-people`; tolerant input adapters.
+- A conformance kit in `fixtures/conformance/`: golden files for every profile and view, and 15 labelled Part 5 follower takes; `make check-3-contract` rebuilds them byte for byte.
+- On the web app: a Compare page for 2 to 6 takes, 16 MB uploads, and the Body, Height, View and Frame rate switches.
+
+### How it was checked
+
+- `make check-3` exits 0 with the same metrics as before; `make check-3-contract` exits 0 (75 files validated, 81 rebuilt identical, 12 of 12 faults visible, 3 of 3 correct takes clean).
+- A local check ran Part 2's newest `pose3d.json` through every view and Part 4's own animator, in a temporary clone through its Makefile, on the `part4` output: key error 0.0 m, bone deviation 0.0000013 m. Neither part's code was copied or imported.
+- One consolidated review found 5 blocking issues: a frame count that grew with a clip's time span instead of its size (a 2.5 KB upload could take 6.7 GiB), Part 4's 180 degree rule not applied (an arm overhead was rejected by Part 4), a `doctor` that accepted what it could not check, the wrong schema for three golden files, and duplicated helpers. All were fixed in one batch and rerun with the reviewer's own probes. The arms of the Part 4 rest pose now hang in a T-pose.
+- The staging verify suite (21 checks, among them a 16 MB upload and the four-take Compare at 7.420 degrees) exited 0 on the final build, directly and through the gateway.
+- Ten QA recipes and seven use cases were driven by hand on the final build by driver agents and validated from the frames by separate agents. Driving them found four copy and layout nits (phone tables, captions that said left and right where the panels stack, an output title that said standard body under any body); each was fixed and everything was driven again on the final commit.
+
+### Commits
+
+```
+7d4d8aa docs(spec): Phase 2 integration contract and compare mode specs, TICKET-022 to 031; M3 rerun record
+7de16fd merge: Lane B, Part 4 rig, keyframes and the part4 view (TICKET-025)
+8859991 merge: Lane D, conformance kit inputs, follower takes, check-3-contract, neighbour check (TICKET-026, TICKET-027)
+e5da472 merge: Lane A, body profiles, config, adapters, views registry, part5 view, fps, people (TICKET-023, TICKET-024)
+bbd7a27 merge: Lane C, CONTRACT.md, JSON Schemas, compatibility table, contract and doctor (TICKET-022)
+13b6a42 merge: Lane E, staging compare mode, 16 MiB cap, run switches, verify checks, QA recipes (TICKET-028, TICKET-029)
+6fe6043 merge: shared web/controls.js for the Run and Compare pages (refactor, TICKET-028)
+d9b30ca chore(phase2): review fix batch verified with the reviewer's probes; neighbour check rerun exit 0; TICKET-022 to 027 done
+3967e9e fix(web): TICKET-021 polish: app icon on every page, a pressed view button looks pressed, Play states its action by its label (no aria-pressed); upload-good-file recipe starts from the file-picked state
+924513a fix(web): agreement view footnote names its panels, not their side (they stack on a phone; driver F1 finding)
+6afbe93 fix(web): the Run page output panel says one fixed body, true for every Body profile (driver G3 finding); recipes quote the new title
+```
 
 ## How to run
 

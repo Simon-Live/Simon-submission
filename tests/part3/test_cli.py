@@ -47,7 +47,7 @@ def test_output_is_one_line_with_a_newline_and_contract_key_order(produced):
     assert text.endswith("}\n") and text.count("\n") == 1
     skeleton = json.loads(text)
     assert list(skeleton) == ["schema", "units", "frame", "joints", "bones", "standard", "bone_lengths_m",
-                              "person", "mirror", "input", "frames"]
+                              "body", "person", "mirror", "input", "frames"]
     assert list(skeleton["frame"]) == ["origin", "x", "y", "z", "up_source"]
     assert list(skeleton["person"]) == ["id", "rule", "candidates", "frames_present", "frames_dropped",
                                         "few_frames", "measured_bone_lengths_m", "flips_repaired_total"]

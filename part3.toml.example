@@ -1,0 +1,9 @@
+# Copy this file to part3.toml (read from the working directory) or point PART3_CONFIG at it.
+# Order of precedence, first set wins: --body / --stature, then PART3_BODY / PART3_STATURE, then
+# this file, then the body= / stature= arguments of the Python API, then the defaults.
+[body]
+# simon-standard (default), part4-rig, measured, or file:<path to a body profile JSON>.
+# A relative file: path is relative to this file's folder.
+profile = "simon-standard"
+# Scale every bone length so the body has this stature in metres (0.5 to 2.5).
+# stature = 1.80
