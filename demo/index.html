@@ -73,6 +73,7 @@
       <option value="dance">dance — step touch</option>
       <option value="long">long — repeated squat</option>
       <option value="minute">minute — one minute squat</option>
+      <option value="part3-squat">part3-squat: Part 3 output, two squats</option>
     </select></label>
     <button id="play" type="button">Play</button>
     <button id="step" type="button">Step</button>
@@ -200,7 +201,7 @@ function draw() {
   }
   const t = sample.t.toFixed(2);
   const kind = sample.interpolated ? "interpolated" : "keyframe";
-  status.textContent = `${clip.movement} · frame ${sample.index} / ${clip.frame_count - 1} · ${t}s · ${kind}`;
+  status.textContent = `${clip.movement || clip.set} · frame ${sample.index} / ${clip.frame_count - 1} · ${t}s · ${kind}`;
   scrub.max = String(clip.frame_count - 1);
   scrub.value = String(index);
 }

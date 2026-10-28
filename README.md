@@ -33,7 +33,7 @@ The animator reads `fixtures/input/` and writes `fixtures/output/`. `fixtures/ex
 
 `expected` stays in its own directory so the check measures the curve. Those poses are the correct in-between frames.
 
-Four clips ship with the repo. `make check-4` scores the first three. The one-minute clip is there to watch.
+Five clips ship with the repo. `make check-4` scores the first three against hidden frames and holds `part3-squat` to the key, bone and output rules. The one-minute clip is there to watch.
 
 | Set | Movement | Length | Frames | Keys | Frames filled in | Scored |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -41,6 +41,9 @@ Four clips ship with the repo. `make check-4` scores the first three. The one-mi
 | `dance` | step-touch | 4 s | 121 | 13 | 108 | yes |
 | `long` | ten squats | 30 s | 901 | 71 | 830 | yes |
 | `minute` | twenty squats | 60 s | 1801 | 141 | 1660 | no |
+| `part3-squat` | two squats, Part 3's real output | 7.07 s | 213 | 6 | 207 | keys and bones only |
+
+`part3-squat` is Part 3's `--view part4` output for Part 2's squat, with Part 1-shaped keys, copied unedited. `fixtures/input/part3-squat/SOURCE.md` names the commit, the command and the hashes.
 
 The squat keys are frames 0, 10, 20, 30, 40, 50, 60, 70, 80, and 90. Frame 45, the bottom of the squat, is not a key. The curve builds it from the poses at frames 40 and 50.
 
@@ -93,6 +96,10 @@ Every frame is hip-centered. The origin is the midpoint of the two hips. Positio
 
 Bone lengths come from `rest_offsets_m` in `skeleton.json`. Those lengths are the Part 3 standard for a 1.7 m body: thigh 0.4165 m, shank 0.4182 m, upper arm 0.3162 m, forearm 0.2482 m, spine 0.4896 m. Each key also stores a confidence on every joint, and the file carries the scalar `bone_lengths_m` table, the bone list, and the stature sources. The twists that the curve needs are stored beside the positions. The 30 s clip scales that same body by 1.15. The one-minute clip keeps the unscaled 1.7 m body. The animator poses whichever body is in the file. Joint positions are checked against that pose. They are not blended to make the in-between frames.
 
+## Contract
+
+`CONTRACT.md` lists every field, unit and rule of the three files, and what Parts 1, 3, 5 and 6 send or read. The schemas are `contracts/keyframes.schema.json`, `contracts/skeleton.schema.json` and `contracts/animation.schema.json` (JSON Schema draft 2020-12). The animator checks both inputs against them before it reads anything.
+
 ## What a frame looks like
 
 `format` is `simon.animation.v1`. There is one frame per 30 fps tick. A key sample has `"interpolated": false`. A filled frame has `"interpolated": true`.
@@ -108,12 +115,13 @@ Each frame also has a `joints` object. Values are metres `[x, y, z]`. On squat f
 
 ## Edge cases
 
-A new clip runs when both files sit in one directory, `fps` is 30, `frame_count` is `round(duration_s × 30) + 1`, and the key indices in `keyframes.json` and `skeleton.json` are the same strictly increasing list. Each key index lies inside the clip, and its `t` matches `index / 30` within a microsecond. `rest_offsets_m` must include every joint of the standard rig, with that joint's parent unchanged. When `skeleton.json` includes a `joints` list, it must be the canonical 17 in the order above. The shipped clips meet this. The short ones place a key every 10 frames. The 30 s clip and the one-minute clip space keys unevenly, from 7 to 16 frames apart, and repeat that pattern on every 3 s squat. The 30 s clip uses the larger body.
+A new clip runs when both files sit in one directory, each meets its schema in `contracts/`, `fps` is 30, `frame_count` is `round(duration_s × 30) + 1`, and the key indices in `keyframes.json` and `skeleton.json` are the same strictly increasing list. Each key index lies inside the clip, and its `t` matches `index / 30` within a microsecond. `rest_offsets_m` must include every joint of the standard rig, with that joint's parent unchanged. When `skeleton.json` includes a `joints` list, it must be the canonical 17 in the order above. The shipped clips meet this. The short ones place a key every 10 frames. The 30 s clip and the one-minute clip space keys unevenly, from 7 to 16 frames apart, and repeat that pattern on every 3 s squat. The 30 s clip uses the larger body.
 
 ### The file is rejected
 
 The clip is not written. The error names the joint or the frame.
 
+- A file breaks its schema: a missing field, a `format` other than `simon.keyframes.v1` or `simon.skeleton.v1`, a key without `joints` or `local_rotations`, or a value of the wrong type. The error names the file, the schema and the field path.
 - `fps` is anything other than 30, or `frame_count` does not match the duration.
 - The key index lists differ, a key is repeated or out of order, or a key sits outside the clip.
 - A key time differs from `index / 30` by more than a microsecond.
@@ -122,7 +130,7 @@ The clip is not written. The error names the joint or the frame.
 - **A missing rotation, or a quaternion of all zeros.** The joint would otherwise freeze on the rest pose.
 - **More than 180° between two neighboring keys in rotation-vector space.** The curve would take the long way around. A spin or a cartwheel inside one gap is this case. The error names the joint and the two frame indices.
 
-A missing `fps`, `frame_count`, `keyframes`, `index`, or `t` raises an error from the missing field.
+A missing `fps`, `frame_count`, `keyframes`, `index`, or `t` is a schema error that names the missing field.
 
 ### The file runs, and this is the result
 
@@ -147,20 +155,24 @@ Hide the in-between frames. The animation must rebuild them within 8° per joint
 - bone length within 1 mm of the rest rig
 - hip midpoint within 1 mm of the origin
 - keyframe positions reproduced, `interpolated` flags correct, and the shipped `animation.json` matches a fresh rebuild
+- every fixture meets its schema in `contracts/`, and those files match `src/simon_anim/contract.py`
 - `meta_live_calls` is 0
 
 Held-out ground truth lives in `fixtures/expected/<set>/held_out.json`. The animator does not read that directory. On the scored clips the worst joint error is about 1.1° for the squat, about 4.2° for the step-touch, and about 3.1° for the 30 s repeated squat. All three are under 8°, with bone-length error at 0. The long clip's bones follow the larger body in its `skeleton.json`.
 
-`make check-4` scores `exercise`, `dance`, and `long`. The `minute` clip has a held-out file and plays in the demo. It is left off that score list. Another set is scored after it is added to the list in `src/simon_anim/check.py`.
+`make check-4` scores `exercise`, `dance`, and `long`, and checks `part3-squat` for key positions within 1 mm, fixed bone lengths, flags and the shipped file. It also reports, without a threshold, how far that clip sits from Part 3's own frames between the keys. The `minute` clip has a held-out file and plays in the demo. It is left off that score list. Another set is scored after it is added to the list in `src/simon_anim/check.py`.
 
 ## Run
 
 Python 3.10+ and the standard library. No packages to install. Run these from the repo root.
 
 ```bash
-make check-4          # exercise, dance, and long; metrics JSON on stdout; exit 0 only if every threshold passes
-make animate          # rebuild those three animation.json files from the keyframes
-make fixtures         # regenerate every clip, including the one-minute squat
+make check-4          # exercise, dance, long and part3-squat; metrics JSON on stdout; exit 0 only if every threshold passes
+make test             # contract tests: schemas, fixtures, and what the loader rejects
+make animate          # rebuild the exercise, dance, long and part3-squat animation.json files
+make fixtures         # regenerate the synthetic clips, including the one-minute squat
+make contracts        # rewrite contracts/*.schema.json from src/simon_anim/contract.py
+make part3-squat PART3=../simon-part-3-skeleton-consistency   # refresh the Part 3 clip from a Part 3 clone
 ```
 
 Rebuild one clip:
@@ -168,6 +180,7 @@ Rebuild one clip:
 ```bash
 PYTHONPATH=src python3 -m simon_anim.animate --set exercise
 PYTHONPATH=src python3 -m simon_anim.animate --set minute
+PYTHONPATH=src python3 -m simon_anim.animate --in <dir with skeleton.json and keyframes.json> --out <dir>/animation.json
 ```
 
 Watch a clip. From the repo root:
@@ -178,7 +191,7 @@ python3 -m http.server 8765
 
 Open http://127.0.0.1:8765/demo/
 
-Drag to orbit, scroll to zoom, space to play. The clip menu lists the squat, the step-touch, the 30 s squat, and the one-minute squat. The page loads `fixtures/output/<set>/animation.json`. Blue joints are the subject's left. Orange joints are the subject's right.
+Drag to orbit, scroll to zoom, space to play. The clip menu lists the squat, the step-touch, the 30 s squat, the one-minute squat, and Part 3's squat. The page loads `fixtures/output/<set>/animation.json`. Blue joints are the subject's left. Orange joints are the subject's right.
 
 ## Models sit beside the animation
 

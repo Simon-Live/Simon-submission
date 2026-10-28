@@ -1,0 +1,587 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-4-animate-keyframes/contracts/skeleton.schema.json",
+  "title": "skeleton.json read by Part 4",
+  "description": "Part 3's body and the pose at each key. Part 3 writes it with --view part4. Part 4 reads rest_offsets_m and keyframes[].local_rotations; keyframes[].joints is the forward kinematics of those rotations and make check-4 holds it to 1 mm. Extra keys are allowed and ignored.",
+  "x-simon-version": "simon.skeleton.v1",
+  "x-direction": "input",
+  "x-producer": "Part 3 (--view part4)",
+  "x-consumers": [
+    "Part 4",
+    "Part 5",
+    "Part 6"
+  ],
+  "x-version-field": "format",
+  "x-rules": [
+    "keyframes[].t equals index / 30 within one microsecond",
+    "keyframes[].index equals the key list of the keyframes.json beside this file",
+    "no rest offset has zero length",
+    "no local rotation has a norm under 1e-8",
+    "no joint turns more than 180 degrees between neighbouring keys in rotation-vector space"
+  ],
+  "$defs": {
+    "vec3": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "quat": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4,
+      "description": "Local rotation (x, y, z, w). Normalized on read; a norm under 1e-8 is rejected."
+    },
+    "joint_position": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/vec3"
+        },
+        {
+          "type": "object",
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            },
+            "conf": {
+              "type": "number"
+            }
+          }
+        }
+      ],
+      "description": "Metres in the body frame, as [x, y, z] or Part 3's {x, y, z, conf}."
+    }
+  },
+  "type": "object",
+  "required": [
+    "format",
+    "rest_offsets_m",
+    "keyframes"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.skeleton.v1"
+    },
+    "fps": {
+      "const": 30,
+      "description": "Optional. When present it must be 30."
+    },
+    "joints": {
+      "const": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ]
+    },
+    "rest_offsets_m": {
+      "type": "object",
+      "required": [
+        "left_hip",
+        "left_knee",
+        "left_ankle",
+        "right_hip",
+        "right_knee",
+        "right_ankle",
+        "neck",
+        "left_shoulder",
+        "left_elbow",
+        "left_wrist",
+        "right_shoulder",
+        "right_elbow",
+        "right_wrist",
+        "nose",
+        "left_eye",
+        "left_ear",
+        "right_eye",
+        "right_ear"
+      ],
+      "properties": {
+        "left_hip": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "pelvis"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "left_knee": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "left_hip"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "left_ankle": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "left_knee"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "right_hip": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "pelvis"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "right_knee": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "right_hip"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "right_ankle": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "right_knee"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "neck": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "pelvis"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "left_shoulder": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "neck"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "left_elbow": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "left_shoulder"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "left_wrist": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "left_elbow"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "right_shoulder": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "neck"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "right_elbow": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "right_shoulder"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "right_wrist": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "right_elbow"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "nose": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "neck"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "left_eye": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "nose"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "left_ear": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "left_eye"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "right_eye": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "nose"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        },
+        "right_ear": {
+          "type": "object",
+          "required": [
+            "parent",
+            "offset"
+          ],
+          "properties": {
+            "parent": {
+              "const": "right_eye"
+            },
+            "offset": {
+              "$ref": "#/$defs/vec3"
+            }
+          }
+        }
+      },
+      "description": "Rest offset of each joint in its parent's frame, metres. The parent is fixed by the standard rig; the length and direction come from the file. Extra joints are ignored."
+    },
+    "keyframes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "index",
+          "t",
+          "joints",
+          "local_rotations"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "t": {
+            "type": "number",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "joints": {
+            "type": "object",
+            "required": [
+              "nose",
+              "left_eye",
+              "right_eye",
+              "left_ear",
+              "right_ear",
+              "left_shoulder",
+              "right_shoulder",
+              "left_elbow",
+              "right_elbow",
+              "left_wrist",
+              "right_wrist",
+              "left_hip",
+              "right_hip",
+              "left_knee",
+              "right_knee",
+              "left_ankle",
+              "right_ankle"
+            ],
+            "properties": {
+              "nose": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "left_eye": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "right_eye": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "left_ear": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "right_ear": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "left_shoulder": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "right_shoulder": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "left_elbow": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "right_elbow": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "left_wrist": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "right_wrist": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "left_hip": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "right_hip": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "left_knee": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "right_knee": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "left_ankle": {
+                "$ref": "#/$defs/joint_position"
+              },
+              "right_ankle": {
+                "$ref": "#/$defs/joint_position"
+              }
+            }
+          },
+          "local_rotations": {
+            "type": "object",
+            "required": [
+              "pelvis",
+              "left_hip",
+              "left_knee",
+              "left_ankle",
+              "right_hip",
+              "right_knee",
+              "right_ankle",
+              "neck",
+              "left_shoulder",
+              "left_elbow",
+              "left_wrist",
+              "right_shoulder",
+              "right_elbow",
+              "right_wrist",
+              "nose",
+              "left_eye",
+              "left_ear",
+              "right_eye",
+              "right_ear"
+            ],
+            "properties": {
+              "pelvis": {
+                "$ref": "#/$defs/quat"
+              },
+              "left_hip": {
+                "$ref": "#/$defs/quat"
+              },
+              "left_knee": {
+                "$ref": "#/$defs/quat"
+              },
+              "left_ankle": {
+                "$ref": "#/$defs/quat"
+              },
+              "right_hip": {
+                "$ref": "#/$defs/quat"
+              },
+              "right_knee": {
+                "$ref": "#/$defs/quat"
+              },
+              "right_ankle": {
+                "$ref": "#/$defs/quat"
+              },
+              "neck": {
+                "$ref": "#/$defs/quat"
+              },
+              "left_shoulder": {
+                "$ref": "#/$defs/quat"
+              },
+              "left_elbow": {
+                "$ref": "#/$defs/quat"
+              },
+              "left_wrist": {
+                "$ref": "#/$defs/quat"
+              },
+              "right_shoulder": {
+                "$ref": "#/$defs/quat"
+              },
+              "right_elbow": {
+                "$ref": "#/$defs/quat"
+              },
+              "right_wrist": {
+                "$ref": "#/$defs/quat"
+              },
+              "nose": {
+                "$ref": "#/$defs/quat"
+              },
+              "left_eye": {
+                "$ref": "#/$defs/quat"
+              },
+              "left_ear": {
+                "$ref": "#/$defs/quat"
+              },
+              "right_eye": {
+                "$ref": "#/$defs/quat"
+              },
+              "right_ear": {
+                "$ref": "#/$defs/quat"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

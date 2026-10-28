@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
+from . import contract
 from .math3d import (
     IDENT_QUAT,
     Quat,
@@ -243,8 +244,15 @@ def _require_key_time(index: int, t: float, fps: int, source: str) -> None:
         raise ValueError(f"{source} frame {index} has t={t}, expected {expected:.6f}")
 
 
-def build_animation(skeleton: dict, keyframes_doc: dict) -> dict:
-    """30 fps animation.json document from a keyframe skeleton."""
+def build_animation(skeleton: dict, keyframes_doc: dict, set_name: str | None = None) -> dict:
+    """30 fps animation.json document from a keyframe skeleton.
+
+    Both inputs are checked against contracts/*.schema.json first, so a file
+    the schema rejects is never animated. `set_name` names the clip when
+    neither input does.
+    """
+    contract.require(keyframes_doc, "keyframes", "keyframes.json")
+    contract.require(skeleton, "skeleton", "skeleton.json")
     fps, duration_s, frame_count, key_idx = _require_timeline(keyframes_doc)
     sk_idx = [int(frame["index"]) for frame in skeleton["keyframes"]]
     if key_idx != sk_idx:
@@ -280,8 +288,8 @@ def build_animation(skeleton: dict, keyframes_doc: dict) -> dict:
         "fps": fps,
         "duration_s": duration_s,
         "frame_count": frame_count,
-        "movement": keyframes_doc.get("movement"),
-        "set": keyframes_doc.get("set"),
+        "movement": keyframes_doc.get("movement") or skeleton.get("movement"),
+        "set": keyframes_doc.get("set") or skeleton.get("set") or set_name,
         "coordinate_frame": COORDINATE_FRAME,
         "joints": list(CANONICAL_JOINTS),
         "bones": length_bones_with_rest(rest_offsets),
