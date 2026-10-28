@@ -21,6 +21,47 @@ One consolidated review by an independent reviewer agent found 3 blocking issues
 
 Screenshots: [front](front.png), [side](side.png), [top](top.png), [take 4 toggled off](toggle-off.png), [phone width](phone.png). Video: [`viewer.webm`](viewer.webm).
 
+## Staging milestone: the run app (2026-10-28)
+
+A follow-up prompt asked for the part to run end to end as a web app on the firm's staging gateway, with a video. Claude Code built it unattended, in the same way as the first run.
+
+| | |
+|---|---|
+| Built by | one Claude Opus 5.5 session orchestrating; three implementation lanes in parallel and one fix lane, all Claude Code subagents on Claude Sonnet 5.5; a reviewer subagent on the Opus tier that attacked the specs before any code and then did one consolidated review; a QA driver subagent on Sonnet and a separate QA validator subagent on Opus |
+| Start (UTC) | 2026-10-28T03:43:37Z |
+| Final code commit (UTC) | 2026-10-28T05:22:37Z (`3f6f482`, 1 h 39 min after the start) |
+| Human turns after the prompt | 0 |
+| New code | `part3/server.py` and `part3/runapi.py` 643 lines of Python; the run page (`web/app.html`, `web/app.js`, `web/app.css` and `web/scene.js`, the 3D code moved out of `web/viewer.js`) 1,270 lines; new tests 1,675 lines |
+| Tests | 520 in this repository (`make test` exit 0); the private workspace adds 44 tests of its staging scripts |
+| Video | [`staging-walkthrough.mp4`](staging-walkthrough.mp4): 50.6 s, one uninterrupted recording through the staging gateway on the final build |
+
+### What a visitor can do
+
+Open the page, pick the Part 2 squat, a synthetic take or their own `pose3d.json`, choose the mirror setting and press Run. The server runs the same `process` as `python3 -m part3 run`, so Download skeleton.json saves the exact bytes the command line writes for that input and setting. The page shows the metrics and draws input and output side by side in 3D with orbit, zoom, Front, Side, Top, play and a frame slider. The four-take agreement view is one link away. A bad file gets a plain error naming the failing field. `make demo` serves the same app locally.
+
+### How it was checked
+
+- The specs were attacked by the reviewer before code; 7 blocking findings changed them (among them a metric call that would have crashed, upload limits that would misbehave behind the gateway, and connection limits).
+- A Playwright suite drives the app as a visitor through the gateway: every sample with every mirror setting (21 runs), the download compared with the command line byte for byte, a good upload and three bad ones, the 3D controls, the agreement view, a phone-width layout, a browser without WebGL, and the server's limits. It exited 0 on the final build, both directly and through the gateway.
+- One consolidated review approved the result with no blocking findings; its 9 residual items were fixed in one batch.
+- Three QA recipes (run a sample, upload a bad file, open the agreement view) were driven by hand by one agent and validated from the frames by another. The validator's notes on the run page (the person card, the view buttons for screen readers, the message for a missing key) were fixed in a second small batch, and the affected recipes were driven and validated again on the final build.
+
+### Commits
+
+```
+fd3c24c feat(app): run page, stdlib run API and staging stack for the gateway (TICKET-013, 014, 015)
+1a32b69 feat(staging): verify suite, QA recipes and walkthrough recorder (TICKET-016, 017)
+d2904b4 fix(staging): traversal check accepts the gateway's own 404 as long as no file leaks (TICKET-016)
+354973f demo: staging walkthrough video through the gateway, orchestrator video review, consolidated review verdict (TICKET-017, 018)
+1a6091a fix: review residuals in one batch (TICKET-020)
+1d9d59a demo: walkthrough re-recorded through the gateway on the final build 1a6091a (TICKET-017)
+3f6f482 fix: validator findings in the run page and the input validator (TICKET-020)
+```
+
+The walkthrough was recorded again on `3f6f482`.
+
+The staging scripts and the verify suite stay in the private workspace; this repository gets the app, its tests and the video.
+
 ## How to run
 
 ```

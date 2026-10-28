@@ -9,7 +9,7 @@ setup:
 	$(PYTHON) -m pip install -r requirements.txt
 
 test:
-	$(PYTHON) -m pytest tests/part3 -q
+	$(PYTHON) -m pytest tests/part3 $(wildcard tests/staging) -q
 
 # make run IN=<pose3d.json> OUT=<skeleton.json> [FLIP=auto|on|off]
 run:
@@ -22,14 +22,14 @@ check-3:
 demo-data:
 	$(PYTHON) -m part3.demo_data
 
-# Serves web/ on 127.0.0.1:8733 in the background and returns; make demo-stop ends it.
+# Serves the run app (part3.server) on 127.0.0.1:8733 in the background and returns; make demo-stop ends it.
 demo:
 	@if [ -f .demo.pid ] && kill -0 "$$(cat .demo.pid)" 2>/dev/null; then \
 	  echo "demo already running: http://127.0.0.1:$(DEMO_PORT)/ (pid $$(cat .demo.pid))"; exit 0; fi
 	@if ! $(PYTHON) -c "import socket,sys; s=socket.socket(); sys.exit(0 if s.connect_ex(('127.0.0.1',$(DEMO_PORT))) else 1)"; then \
 	  echo "port $(DEMO_PORT) is busy; stop what holds it or run make demo-stop"; exit 1; fi
 	@mkdir -p out
-	@setsid nohup $(PYTHON) -m http.server $(DEMO_PORT) --bind 127.0.0.1 -d web > out/demo.log 2>&1 & echo $$! > .demo.pid
+	@setsid nohup $(PYTHON) -m part3.server --port $(DEMO_PORT) --base / > out/demo.log 2>&1 & echo $$! > .demo.pid
 	@echo "demo: http://127.0.0.1:$(DEMO_PORT)/ (pid $$(cat .demo.pid)); stop with make demo-stop"
 
 demo-stop:

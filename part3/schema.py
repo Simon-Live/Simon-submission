@@ -64,7 +64,11 @@ def _check_joint(joint, path):
     if not isinstance(joint, dict):
         _fail(path, "expected an object with x, y, z and conf")
     for axis in "xyz":
+        if axis not in joint:
+            _fail(f"{path}.{axis}", "missing (expected a finite number)")
         _finite(joint.get(axis), f"{path}.{axis}")
+    if "conf" not in joint:
+        _fail(f"{path}.conf", "missing (expected a number in [0, 1])")
     conf = joint.get("conf")
     if not _is_number(conf):
         _fail(f"{path}.conf", "expected a number in [0, 1]")

@@ -10,11 +10,12 @@ import sys
 
 import numpy as np
 
-from part3 import bones, io
+from part3 import bones, io, person
 from part3.align import frame_map, phase_signal, sample
 from part3.angles import ANGLE_NAMES, joint_angles, joints_array
 from part3.cli import process as pipeline_process
 from part3.geometry import angle_between, normalize
+from part3.joints import N_JOINTS
 
 REAL_CLIP = "fixtures/input/part2-single/pose3d.json"
 TAKES_DIR = "fixtures/input/synthetic-4take/"
@@ -78,9 +79,23 @@ def bone_variation(doc, lengths):
     return float(np.nanmax(np.abs(L / np.asarray(lengths, dtype=float) - 1.0)))
 
 
-def input_bone_variation(doc):
-    """Same as `bone_variation` against the input's own per-bone medians."""
-    L = bones.measure(joints_array(doc))
+def kept_joints(doc, person_id):
+    """(n, 17, 3) joint positions of the person with `person_id` per frame; NaN where that id is absent."""
+    frames = doc["frames"]
+    out = np.full((len(frames), N_JOINTS, 3), np.nan)
+    indices, rows, _ = person.extract(frames, person_id)
+    out[indices] = rows
+    return out
+
+
+def input_bone_variation(doc, person_id=None):
+    """Same as `bone_variation` against the input's own per-bone medians.
+
+    `person_id` None measures `people[0]` of every frame; otherwise the person with that id (the
+    pipeline's own id test), and a frame without that id never contributes another person.
+    """
+    J = joints_array(doc) if person_id is None else kept_joints(doc, person_id)
+    L = bones.measure(J)
     return float(np.nanmax(np.abs(L / np.nanmedian(L, axis=0) - 1.0)))
 
 

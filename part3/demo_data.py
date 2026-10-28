@@ -27,8 +27,8 @@ def _finite(value):
     return value if math.isfinite(value) else None
 
 
-def _round(value, decimals):
-    """Rounded float (negative zero folded to zero), or None when not finite."""
+def round_finite(value, decimals):
+    """Rounded float (negative zero folded to zero), or None when not finite. Shared with part3.runapi."""
     value = _finite(value)
     return None if value is None else io.round_clean(value, decimals)
 
@@ -40,7 +40,7 @@ def round_metrics(obj):
     if isinstance(obj, bool) or obj is None or isinstance(obj, (int, str)):
         return obj
     if isinstance(obj, float):
-        return _round(obj, METRIC_DECIMALS)
+        return round_finite(obj, METRIC_DECIMALS)
     if isinstance(obj, dict):
         return {str(key): round_metrics(value) for key, value in obj.items()}
     if isinstance(obj, (list, tuple)):
@@ -48,34 +48,42 @@ def round_metrics(obj):
     raise TypeError(f"metrics hold a value the page cannot show: {type(obj).__name__}")
 
 
-def _person(frame, person_id):
-    """The kept person of a frame: the one with person_id when present, else the first; None if empty."""
+def _person(frame, person_id, strict=False):
+    """The kept person of a frame: the one with person_id when present, else the first; None if empty.
+
+    With `strict` the id is required: a frame without `person_id` gives None, never another person.
+    """
     people = frame.get("people") or []
     for person in people:
         if person_id is not None and person.get("id") == person_id:
             return person
-    return people[0] if people else None
+    return None if strict else (people[0] if people else None)
 
 
-def frames_to_points(doc, person_id=None):
-    """Per frame: 17 [x, y, z] lists in canonical joint order (4 decimals), or None when no person."""
+def frames_to_points(doc, person_id=None, strict=False):
+    """Per frame: 17 [x, y, z] lists in canonical joint order (4 decimals), or None when no person.
+
+    `strict` (with a `person_id`) turns a frame that lacks that id into None instead of showing
+    whoever else is there.
+    """
     out = []
     for frame in doc["frames"]:
-        person = _person(frame, person_id)
+        person = _person(frame, person_id, strict)
         if person is None:
             out.append(None)
             continue
         joints = person["joints"]
-        out.append([[_round(joints[name][axis], COORD_DECIMALS) for axis in "xyz"] for name in JOINTS])
+        out.append([[round_finite(joints[name][axis], COORD_DECIMALS) for axis in "xyz"] for name in JOINTS])
     return out
 
 
-def _bones():
+def bone_pairs():
+    """The 18 bones as [from, to] joint indices; -1 is the hip midpoint and -2 the shoulder midpoint."""
     return [[bone_index(src), bone_index(dst)] for _, src, dst in BONES]
 
 
 def _camera(camera):
-    return {key: _round(camera[key], ANGLE_DECIMALS)
+    return {key: round_finite(camera[key], ANGLE_DECIMALS)
             for key in ("azimuth_deg", "pitch_deg", "roll_deg")}
 
 
@@ -87,7 +95,7 @@ def _take(entry, person_id):
         "color": TAKE_COLORS[number - 1],
         "input": frames_to_points(entry["input"], person_id),
         "output": frames_to_points(entry["output"], person_id),
-        "map": [_round(v, ANGLE_DECIMALS) for v in entry["map"]],
+        "map": [round_finite(v, ANGLE_DECIMALS) for v in entry["map"]],
         "flips": sorted(int(i) for i in entry["flips"]),
     }
 
@@ -101,8 +109,8 @@ def build(metrics, detail):
     return {
         "metrics": round_metrics(metrics),
         "takes": [_take(entry, person_id) for entry in entries],
-        "bones": _bones(),
-        "spread_max_per_frame": [_round(v, ANGLE_DECIMALS) for v in detail["spread_max_per_frame"]],
+        "bones": bone_pairs(),
+        "spread_max_per_frame": [round_finite(v, ANGLE_DECIMALS) for v in detail["spread_max_per_frame"]],
         "fps": FPS,
     }
 

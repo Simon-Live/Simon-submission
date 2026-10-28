@@ -47,7 +47,7 @@ Done-check: `make check-3` — prints a metrics JSON and exits 0 only when every
 make run IN=fixtures/input/part2-single/pose3d.json OUT=out/skeleton.json   # FLIP=auto|on|off
 make check-3    # done-check: prints the metrics JSON, exit 0 only when every threshold passes
 make test       # unit and acceptance tests (pytest, tests/part3/)
-make demo       # 3D viewer on http://127.0.0.1:8733/ (runs in the background); make demo-stop ends it
+make demo       # web app on http://127.0.0.1:8733/ (runs in the background); make demo-stop ends it
 ```
 
 Needs Python 3.11 or later with numpy and pytest. `make setup` installs the pins in `requirements.txt` with pip; on a system Python that refuses pip installs (PEP 668), run it inside a virtualenv (`python3 -m venv .venv && . .venv/bin/activate && make setup`). No network, no model, no GPU.
@@ -60,3 +60,18 @@ What the run does, in order: validate the input, keep one person, apply the mirr
 - **`--flip`.** A selfie-mode video can be saved mirrored, which swaps left and right in a way no pose can reveal. `auto` (default) mirrors only when the input has the top-level key `"mirrored": true`; `on` always mirrors; `off` never does. The output records the setting, whether it was applied and why under `mirror`.
 - **The 4-angle agreement is synthetic.** A movement is recorded as one take from one phone at any angle, so no multi-angle recording exists. `make check-3` therefore measures the "4 phones agree within 10 degrees" criterion on four synthetic takes of the real Part 2 squat, rendered from four camera angles with Part 2-like errors (`fixtures/input/synthetic-4take/`, regenerated with `python3 -m part3.synth --out fixtures/input/synthetic-4take`). The metrics JSON says `"data_source": "synthetic"`.
 - **Output for Parts 4 and 5.** `fixtures/output/` holds `skeleton.json` files with a README on the format, its invariants and its limits.
+
+### Web app
+
+`make demo` starts `python3 -m part3.server` (Python standard library only) on http://127.0.0.1:8733/. The page at `/` lets you run the real pipeline from the browser:
+
+1. Pick an input: the Part 2 squat (a real clip), one of the synthetic takes, or your own `pose3d.json` (up to 2 MB, read in memory and never stored).
+2. Pick the mirror setting `auto`, `on` or `off` (the same as `--flip`) and press Run.
+3. The server calls the same `process` the command line uses and returns `skeleton.json` with its metrics: bone-length variation of the output and of the input, flips repaired, the mirror decision and the standard body height.
+4. Input and output are drawn side by side in 3D. Drag to orbit, use the wheel to zoom, and use Front, Side, Top, Play and the frame slider. Download skeleton.json saves the exact bytes `python3 -m part3 run` writes for the same input and setting.
+
+A file that breaks the input contract gets an error naming the failing field, for example `pose3d.frames[0].people[0].joints.nose.conf`. The four-take agreement view is at `/agreement`.
+
+To serve the app under a path prefix, pass `--base`: `python3 -m part3.server --port 7120 --base /simon-part-3/`. Every URL in the page is relative, so it works under any prefix.
+
+Limits: at most 2 runs at once, a 20 s run limit and a 2 MB upload limit. The app has no accounts; put it behind your own access control if you expose it.

@@ -2,7 +2,7 @@
 //
 //   scripts/with-browser-slot.sh node demo/capture.mjs [--url http://127.0.0.1:8733/] [--out demo]
 //
-// Start the page first with `make demo` (and `make demo-data` for web/data/demo.json).
+// Start the page first with `make demo` (and `make demo-data` for web/data/demo.json). It opens <url>agreement.
 // Writes front.png, side.png, top.png, toggle-off.png (1440x900), phone.png (390x844) and
 // viewer.webm (1280x720, about 20 s) into --out. Prints a JSON summary; exits 0 only when
 // the console is clean, the page's agreement figure equals demo.json, nothing scrolls sideways at
@@ -16,6 +16,7 @@ import { chromium } from "/home/gingy/.npm/_npx/9833c18b2d85bc59/node_modules/pl
 
 const args = parseArgs(process.argv.slice(2));
 const baseUrl = (args.url || "http://127.0.0.1:8733/").replace(/\/?$/, "/");
+const pageUrl = `${baseUrl}agreement`; // the run app is served at the base; the four-take viewer is at agreement
 const outDir = path.resolve(args.out || "demo");
 const SETTLE_MS = 700; // camera fly-to is 450 ms, plus a render
 const VIDEO_MIN_MS = 18000;
@@ -45,7 +46,7 @@ function watch(page, label) {
 async function openPage(context, label) {
   const page = await context.newPage();
   watch(page, label);
-  await page.goto(baseUrl, { waitUntil: "load" });
+  await page.goto(pageUrl, { waitUntil: "load" });
   await page.waitForFunction(() => window.viewerReady === true, null, { timeout: 30000 });
   return page;
 }

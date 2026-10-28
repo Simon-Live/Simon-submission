@@ -156,6 +156,14 @@ def test_metrics_rounding_rejects_values_the_page_cannot_show():
         demo_data.round_metrics({"x": object()})
 
 
+@pytest.mark.parametrize("value, decimals, expected", [
+    (0.123456, 4, 0.1235), (-0.00001, 4, 0.0), (2, 3, 2.0), (np.float64(0.0204), 3, 0.02),
+    (None, 4, None), (float("nan"), 4, None), (float("inf"), 4, None), (float("-inf"), 4, None)])
+def test_round_finite_is_the_one_rounding_helper(value, decimals, expected):
+    out = demo_data.round_finite(value, decimals)
+    assert out == expected and str(out) == str(expected)  # str: negative zero would show as -0.0
+
+
 def test_takes_must_be_one_to_four():
     detail = make_detail()
     detail["takes"][3]["take"] = 5
@@ -212,3 +220,19 @@ def test_real_build_agreement_matches_compute(tmp_path):
     assert all(len(t["map"]) == n1 for t in obj["takes"])
     assert len(obj["spread_max_per_frame"]) == n1
     assert math.isfinite(obj["metrics"]["thresholds"][key]["value"])
+
+
+def test_strict_points_never_show_another_person_in_a_frame_without_the_kept_id():
+    doc = make_doc(3, person_id=7)
+    doc["frames"][1]["people"] = make_doc(1, person_id=9)["frames"][0]["people"]  # only a passer-by in frame 1
+    doc["frames"][2]["people"] = []
+    loose = demo_data.frames_to_points(doc, 7)
+    strict = demo_data.frames_to_points(doc, 7, strict=True)
+    assert loose[1] is not None and loose[2] is None  # the default still falls back to the first person
+    assert strict[0] == loose[0] and strict[1] is None and strict[2] is None
+
+
+def test_bone_pairs_is_public_and_equals_the_bones_of_the_file():
+    pairs = demo_data.bone_pairs()
+    assert len(pairs) == 18 and pairs[6] == [-1, -2]
+    assert pairs == demo_data.build(make_metrics(), make_detail())["bones"]

@@ -42,6 +42,8 @@ h1, h2, p, figure, ul { margin: 0; padding: 0; }
 .titles { min-width: 0; }
 h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
 .subtitle { margin-top: 2px; color: var(--muted); font-size: 14px; }
+.back-link { display: inline-block; margin-top: 6px; color: var(--accent); font-size: 13px; text-underline-offset: 3px; }
+.back-link:hover { color: var(--text); }
 .verdict {
   flex: none;
   padding: 5px 12px;

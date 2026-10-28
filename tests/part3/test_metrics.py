@@ -359,3 +359,26 @@ def test_end_to_end_with_the_real_pipeline(tmp_path, capsys):
         skeleton = json.loads((tmp_path / "synthetic-4take" / folder / "skeleton.json").read_text())
         violations, seen = facing_violations(skeleton)
         assert seen >= metrics.MIN_FRAMES and violations == 0, folder
+
+
+def test_input_bone_variation_of_one_person_ignores_the_others():
+    real = json.loads((ROOT / "fixtures/input/part2-single/pose3d.json").read_text())
+    alone = metrics.input_bone_variation(real, person_id=0)
+    assert alone == metrics.input_bone_variation(real)  # None keeps people[0]; here id 0 is people[0]
+    for frame in real["frames"]:  # a wildly stretched passer-by listed before the kept person
+        decoy = json.loads(json.dumps(frame["people"][0]))
+        decoy["id"] = 5
+        for joint in decoy["joints"].values():
+            joint["x"] *= 3.0
+        frame["people"].insert(0, decoy)
+    assert metrics.input_bone_variation(real, person_id=0) == alone
+    assert metrics.input_bone_variation(real) != alone  # the default measures people[0], the decoy
+
+
+def test_input_bone_variation_skips_frames_without_the_kept_id():
+    real = json.loads((ROOT / "fixtures/input/part2-single/pose3d.json").read_text())
+    for frame in real["frames"][:5]:
+        frame["people"][0]["id"] = 4
+    assert metrics.input_bone_variation(real, person_id=4) == metrics.input_bone_variation({"frames": real["frames"][:5]})
+    assert metrics.kept_joints(real, 4).shape == (len(real["frames"]), 17, 3)
+    assert np.isnan(metrics.kept_joints(real, 4)[5:]).all() and np.isfinite(metrics.kept_joints(real, 4)[:5]).all()
