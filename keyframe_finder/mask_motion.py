@@ -3,6 +3,11 @@
 SAM's box only moves when an outer edge moves. A limb can travel inside that
 rectangle while the box stays put. The silhouette grid catches that. A change
 smaller than the error margin is the same pose: outline wobble, not a new move.
+
+Each person's frames are reduced to one movement signal: the direction in which
+their silhouette changes most over the clip. 0 is the pose they start in, 1 is
+the far pose. A repetition leaves the start pose, reaches the far pose, and
+comes back.
 """
 
 import numpy as np
@@ -11,13 +16,21 @@ from keyframe_finder.schema import frame_ms
 
 # Outline wobble, and a box that only shivers, stay under this.
 ERROR_RATIO = 0.18
-# A repetition must reach this share of the biggest move that person makes.
-OWN_MOVE_RATIO = 0.50
 # Moving this far across the frame counts as much as a completely different shape.
 STEP_FRACTION = 0.12
 # A pose has to sit still this long before it counts as settled.
 MIN_HOLD_S = 0.50
 SHAPE = 48
+# The silhouette is compared on a coarser grid, so a ragged edge is not a move.
+CELL = 4
+# A repetition goes past REACH on the way out and back under RETURN.
+# The gap between them keeps a wobble at the halfway mark from counting twice.
+REACH = 0.60
+RETURN = 0.40
+# A pose is settled while it stays within this share of the full move.
+SETTLE = 0.10
+# Signal range, ignoring the most extreme 2% at each end.
+RANGE_PERCENTILE = 2.0
 
 
 def silhouette(raster, height, width):
@@ -40,6 +53,27 @@ def silhouette(raster, height, width):
     gx = np.minimum(cols * SHAPE // width, SHAPE - 1)
     grid[gy, gx] = True
     return grid
+
+
+def keep_aspect(grid, box_width, box_height):
+    """Put the silhouette back in its box's proportions, feet on the bottom row.
+
+    The stored grid is stretched to a square, so a person bent over and the same
+    person standing can fill it alike. Their box width against height still differs.
+    """
+    if grid is None or box_width <= 0 or box_height <= 0:
+        return None
+    aspect = float(box_width) / float(box_height)
+    if aspect <= 1.0:
+        rows, cols = SHAPE, max(1, int(round(SHAPE * aspect)))
+    else:
+        rows, cols = max(1, int(round(SHAPE / aspect))), SHAPE
+    row_index = np.minimum(np.arange(rows) * SHAPE // rows, SHAPE - 1)
+    col_index = np.minimum(np.arange(cols) * SHAPE // cols, SHAPE - 1)
+    placed = np.zeros((SHAPE, SHAPE), dtype=bool)
+    left = (SHAPE - cols) // 2
+    placed[SHAPE - rows :, left : left + cols] = np.asarray(grid, dtype=bool)[np.ix_(row_index, col_index)]
+    return placed
 
 
 def mask_distance(left, right):
@@ -70,52 +104,6 @@ def _usable(masks, centers, frame):
     if masks[frame] is not None:
         return True
     return centers is not None and centers[frame] is not None
-
-
-def _holds(count, fps, usable, dist):
-    min_span = max(2, int(round(MIN_HOLD_S * float(fps))))
-    max_gap = max(1, int(round(MIN_HOLD_S * float(fps))))
-    holds = []
-    index = 0
-    while index < count:
-        if not usable(index):
-            index += 1
-            continue
-        last = index
-        cursor = index
-        while cursor + 1 < count:
-            nxt = cursor + 1
-            while nxt < count and not usable(nxt):
-                nxt += 1
-            if nxt >= count or nxt - last > max_gap:
-                break
-            if dist(nxt, index) >= ERROR_RATIO:
-                break
-            last = nxt
-            cursor = nxt
-        if last - index + 1 >= min_span:
-            holds.append((index, last))
-        index = last + 1
-    return holds
-
-
-def _farthest(count, start, stop, reference, usable, dist):
-    """Frame that differs most from the reference.
-
-    Once the score is maxed, the mark is the middle of that stretch, so a held
-    extreme wins over the first frame that left the old pose.
-    """
-    scored = []
-    stop = min(stop, count - 1)
-    for frame in range(max(0, start), stop + 1):
-        if not usable(frame):
-            continue
-        scored.append((frame, dist(frame, reference)))
-    if not scored:
-        return start, -1.0
-    best = max(distance for _, distance in scored)
-    peak = [frame for frame, distance in scored if distance >= best - 0.02]
-    return peak[len(peak) // 2], best
 
 
 def _closest(count, start, stop, reference, target, usable, dist):
@@ -232,82 +220,144 @@ def _prepare(masks, centers, fps):
     return _smooth(masks, fps), _smooth_centers(centers, fps)
 
 
-def _motion_span(masks, centers):
-    present = [index for index in range(len(masks)) if _usable(masks, centers, index)]
-    if len(present) < 4:
-        return 0.0
-    step = max(1, len(present) // 40)
-    sample = present[::step]
-    span = 0.0
-    for left in sample:
-        for right in sample:
-            if right <= left:
-                continue
-            span = max(span, _pose_distance(masks, centers, left, right))
-    return span
+def _fill_columns(rows):
+    """Carry each feature across frames that lack it."""
+    index = np.arange(rows.shape[0])
+    for column in range(rows.shape[1]):
+        good = ~np.isnan(rows[:, column])
+        if not good.any():
+            rows[:, column] = 0.0
+        elif not good.all():
+            rows[:, column] = np.interp(index, index[good], rows[good, column])
+    return rows
 
 
-def _move_threshold(span):
-    """Cut off wobble, but keep a small move when it is this person's biggest one."""
-    if span < ERROR_RATIO:
+def _features(masks, centers, present):
+    """One row per frame: the coarse silhouette, then the position in the frame."""
+    side = SHAPE // CELL
+    shape = np.full((len(present), side * side), np.nan)
+    for row, frame in enumerate(present):
+        if masks[frame] is not None:
+            coarse = np.asarray(masks[frame], dtype=np.float64).reshape(side, CELL, side, CELL)
+            shape[row] = coarse.mean(axis=(1, 3)).ravel()
+    shape = _fill_columns(shape)
+    if centers is None:
+        return shape
+    place = np.full((len(present), 2), np.nan)
+    for row, frame in enumerate(present):
+        if centers[frame] is not None:
+            place[row] = centers[frame]
+    place = _fill_columns(place)
+    size = float(np.median(np.linalg.norm(shape, axis=1)))
+    weight = (size if size > 0 else 1.0) / STEP_FRACTION
+    return np.hstack([shape, place * weight])
+
+
+def _movement_signal(masks, centers, present, fps):
+    """0 at the starting pose, 1 at the far pose, along the person's biggest change."""
+    rows = _features(masks, centers, present)
+    rows = rows - rows.mean(axis=0)
+    if not np.any(rows):
         return None
-    return max(ERROR_RATIO, OWN_MOVE_RATIO * span)
+    _, _, axes = np.linalg.svd(rows, full_matrices=False)
+    signal = rows @ axes[0]
+    low = float(np.percentile(signal, RANGE_PERCENTILE))
+    high = float(np.percentile(signal, 100.0 - RANGE_PERCENTILE))
+    if high - low <= 1e-9:
+        return None
+    signal = np.clip((signal - low) / (high - low), 0.0, 1.0)
+    head = max(_window(fps), len(signal) // 5)
+    if float(np.median(signal[:head])) > 0.5:
+        signal = 1.0 - signal
+    return signal
 
 
-def _drift_marks(count, usable, dist, threshold):
-    present = [index for index in range(count) if usable(index)]
-    if not present:
-        return []
-    marks = [present[0]]
-    anchor = present[0]
-    for frame in present[1:]:
-        if dist(frame, anchor) >= threshold:
-            marks.append(frame)
-            anchor = frame
-    return marks
+def _excursions(signal):
+    """Stretches that go past REACH and later fall back under RETURN.
+
+    The last one has no return when the clip ends on the far pose.
+    """
+    found = []
+    began = None
+    been_low = False
+    for index, value in enumerate(signal):
+        if began is None:
+            if value <= RETURN:
+                been_low = True
+            elif value >= REACH and been_low:
+                began = index
+        elif value <= RETURN:
+            found.append((began, index))
+            began = None
+    if began is not None:
+        found.append((began, None))
+    return found
 
 
-def _hold_bounds(holds):
+def _peak_middle(signal, start, stop):
+    """Middle of the stretch spent at the far pose."""
+    peak = start + int(np.argmax(signal[start:stop]))
+    level = float(signal[peak]) - SETTLE
+    first = peak
+    while first > start and signal[first - 1] >= level:
+        first -= 1
+    last = peak
+    while last + 1 < stop and signal[last + 1] >= level:
+        last += 1
+    return (first + last) // 2, first, last
+
+
+def _rep_bounds(signal, fps):
+    """Start, far, and end positions in the signal for each repetition."""
+    outs = _excursions(signal)
     bounds = []
-    for previous, nxt in zip(holds, holds[1:]):
-        bounds.append(previous[1])
-        bounds.append(nxt[0])
-    return sorted(set(bounds))
-
-
-def _bounds_from_pairs(count, pairs, usable, dist, threshold):
-    bounds = []
-    for start, end in pairs:
-        if end <= start or not usable(start):
+    hold = max(2, int(round(MIN_HOLD_S * float(fps))))
+    for number, (began, back) in enumerate(outs):
+        before = outs[number - 1][1] if number else 0
+        floor = float(np.min(signal[before : began + 1]))
+        start = began
+        while start > before and signal[start] > floor + SETTLE:
+            start -= 1
+        if back is None:
+            middle, first, last = _peak_middle(signal, began, len(signal))
+            if last - first + 1 < hold or last != len(signal) - 1:
+                continue
+            bounds.append((start, middle, len(signal) - 1))
             continue
-        middle, distance = _farthest(count, start, end, start, usable, dist)
-        if distance < threshold:
-            continue
+        after = outs[number + 1][0] if number + 1 < len(outs) else len(signal)
+        floor = float(np.min(signal[back:after]))
+        end = back
+        while end + 1 < after and signal[end] > floor + SETTLE:
+            end += 1
+        middle, _, _ = _peak_middle(signal, began, back)
         bounds.append((start, middle, end))
     return bounds
 
 
 def find_motion_bounds(masks, fps, centers=None):
-    """Start, extreme, and end frames for each real move, on the whole clip.
+    """Start, far, and end frames for each repetition, on the whole clip.
 
-    The move has to be a large share of the biggest change this person makes.
-    A step across the frame counts even when the body shape stays the same.
+    The start is where the person leaves the pose they began in. The far frame
+    is the middle of the time spent at the other extreme. The end is where they
+    are back. A repetition cut off by the end of the clip still counts once the
+    far pose has been held. The far pose has to differ from the start pose by
+    more than outline wobble.
     """
     masks, centers = _prepare(masks, centers, fps)
-    count = len(masks)
-    usable = lambda frame: _usable(masks, centers, frame)
-    dist = lambda left, right: _pose_distance(masks, centers, left, right)
-    threshold = _move_threshold(_motion_span(masks, centers))
-    if threshold is None:
+    present = [frame for frame in range(len(masks)) if _usable(masks, centers, frame)]
+    if len(present) < 4:
         return []
-    holds = _holds(count, fps, usable, dist)
-    if len(holds) >= 2:
-        pairs = list(zip(_hold_bounds(holds), _hold_bounds(holds)[1:]))
-        found = _bounds_from_pairs(count, pairs, usable, dist, threshold)
-        if found:
-            return found
-    marks = _drift_marks(count, usable, dist, threshold)
-    return _bounds_from_pairs(count, list(zip(marks, marks[1:])), usable, dist, threshold)
+    signal = _movement_signal(masks, centers, present, fps)
+    if signal is None:
+        return []
+    low = present[int(np.argmin(signal))]
+    high = present[int(np.argmax(signal))]
+    if _pose_distance(masks, centers, low, high) < ERROR_RATIO:
+        return []
+    return [
+        (present[start], present[middle], present[end])
+        for start, middle, end in _rep_bounds(signal, fps)
+    ]
 
 
 def frames_for_bounds(masks, fps, names, start, middle, end, centers=None):
@@ -321,11 +371,11 @@ def frames_for_bounds(masks, fps, names, start, middle, end, centers=None):
 
 
 def find_mask_repetitions(masks, fps, names, centers=None):
-    """One repetition runs from one pose to the next settled pose.
+    """One repetition leaves the start pose, reaches the far pose, and comes back.
 
-    The start mark is the pose being left. The middle mark is the frame that
-    differs most. The end mark is where the shape settles. Five names add the
-    halfway points on the way out and the way back.
+    The start mark is where the start pose is left. The middle mark is the middle
+    of the time at the far pose. The end mark is where the start pose is reached
+    again. Five names add the halfway points on the way out and the way back.
     """
     if len(names) not in (3, 5):
         raise ValueError("keyframe_names must list 3 or 5 phases in time order")

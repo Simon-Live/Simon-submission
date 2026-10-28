@@ -444,7 +444,7 @@
         video: doc.video,
         fps: doc.fps,
         analysis_fps: doc.analysis_fps,
-        people: doc.people.map((item) => ({
+        people: doc.people.filter((item) => item.repetitions.length > 0).map((item) => ({
           id: item.id,
           repetitions: item.repetitions.map((rep, index) => ({
             rep: index + 1,

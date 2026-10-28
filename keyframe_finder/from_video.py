@@ -25,6 +25,7 @@ from keyframe_finder.mask_motion import (
     SHAPE,
     find_motion_bounds,
     frames_for_bounds,
+    keep_aspect,
     mask_distance,
 )
 from keyframe_finder.meta_client import delete_file, name_sections, track_people, upload_video
@@ -43,7 +44,7 @@ SHORT_CLIP_S = 20.0
 SHORT_FPS = 15.0
 # Ignore a figure that is only a sliver of the frame, or only on screen briefly.
 MIN_AREA_RATIO = 0.02
-MIN_AREA_OF_LARGEST = 0.25
+MIN_AREA_OF_LARGEST = 0.35
 MIN_TRACK_S = 1.0
 # A person who leaves and comes back nearby is the same track.
 STITCH_GAP_S = 0.75
@@ -483,7 +484,7 @@ def _series_for(view):
         series[frame] = (sample["y1"] + sample["y2"]) / 2.0
         grid = sample.get("grid")
         if grid is not None:
-            grids[frame] = grid
+            grids[frame] = keep_aspect(grid, sample["x2"] - sample["x1"], sample["y2"] - sample["y1"])
         centers[frame] = _sample_center(sample, view["width"], view["height"])
     return series, grids, centers
 

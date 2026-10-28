@@ -8,6 +8,7 @@ from keyframe_finder.mask_motion import (
     ERROR_RATIO,
     SHAPE,
     find_mask_repetitions,
+    keep_aspect,
     mask_distance,
 )
 from keyframe_finder.sam_parse import BoxParser
@@ -51,18 +52,30 @@ def _squat():
 
 
 class MaskMotionTest(unittest.TestCase):
-    def test_down_and_up_settles_twice(self):
+    def test_down_and_up_is_one_repetition(self):
         found = find_mask_repetitions(_squat(), 8, ["start", "bottom", "top"])
-        self.assertEqual(len(found), 2)
-        down = [item["frame"] for item in found[0]["keyframes"]]
-        up = [item["frame"] for item in found[1]["keyframes"]]
-        self.assertEqual(down[0], 8)
-        self.assertEqual(down[2], 13)
-        self.assertGreaterEqual(down[1], 10)
-        self.assertLessEqual(down[1], 13)
-        self.assertEqual(up[0], 22)
-        self.assertEqual(up[2], 27)
+        self.assertEqual(len(found), 1)
+        start, bottom, top = [item["frame"] for item in found[0]["keyframes"]]
+        self.assertEqual(start, 8)
+        self.assertGreaterEqual(bottom, 14)
+        self.assertLessEqual(bottom, 21)
+        self.assertEqual(top, 27)
         self.assertEqual([item["name"] for item in found[0]["keyframes"]], ["start", "bottom", "top"])
+
+    def test_two_squats_are_two_repetitions(self):
+        masks = _squat() + _squat()[8:]
+        found = find_mask_repetitions(masks, 8, ["start", "bottom", "top"])
+        self.assertEqual(len(found), 2)
+        self.assertLess(found[0]["keyframes"][-1]["frame"], found[1]["keyframes"][0]["frame"])
+
+    def test_a_repetition_cut_off_by_the_clip_end_counts_once_held(self):
+        down = [_pose(top) for top in (2, 8, 14, 20, 26, 32)]
+        held = [_pose(2)] * 8 + down + [_pose(32)] * 8
+        found = find_mask_repetitions(held, 8, ["start", "bottom", "top"])
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["keyframes"][-1]["frame"], len(held) - 1)
+        cut = [_pose(2)] * 8 + down + [_pose(32)] * 2
+        self.assertEqual(find_mask_repetitions(cut, 8, ["start", "bottom", "top"]), [])
 
     def test_outline_wobble_is_not_a_move(self):
         base = _pose(4)
@@ -93,15 +106,16 @@ class MaskMotionTest(unittest.TestCase):
         self.assertEqual(frames, sorted(frames))
         self.assertEqual(len(set(frames)), 5)
 
-    def test_continuous_motion_is_not_one_long_rep(self):
+    def test_a_one_way_drift_is_not_chopped_into_repetitions(self):
         masks = [_pose(min(2 + index, 36)) for index in range(36)]
-        found = find_mask_repetitions(masks, 8, ["start", "bottom", "top"])
-        self.assertGreater(len(found), 1)
-        gaps = []
-        for rep in found:
-            frames = [item["frame"] for item in rep["keyframes"]]
-            gaps.append(frames[-1] - frames[0])
-        self.assertLess(max(gaps), len(masks) - 1)
+        self.assertEqual(find_mask_repetitions(masks, 8, ["start", "bottom", "top"]), [])
+
+    def test_box_proportions_tell_bent_from_upright(self):
+        body = np.ones((SHAPE, SHAPE), dtype=bool)
+        upright = keep_aspect(body, 40, 100)
+        bent = keep_aspect(body, 70, 100)
+        self.assertEqual(mask_distance(body, body), 0.0)
+        self.assertGreater(mask_distance(upright, bent), ERROR_RATIO)
 
     def test_small_move_counts_when_it_is_the_biggest_one(self):
         low = _pose(10)
@@ -211,6 +225,14 @@ class TrackTest(unittest.TestCase):
         mirror = _view(3, list(range(0, 40)), 0.03, (0.10, 0.50), 200, grid)
         kept = keep_exercisers(stitch_tracks([person, passerby, mirror], 15), 15)
         self.assertEqual([view["id"] for view in kept], [1])
+
+    def test_someone_standing_far_behind_is_dropped(self):
+        grid = _pose(8)
+        person = _view(1, list(range(0, 40)), 0.26, (0.55, 0.50), 40, grid)
+        behind = _view(2, list(range(0, 40)), 0.08, (0.42, 0.45), 40, grid)
+        partner = _view(3, list(range(0, 40)), 0.11, (0.20, 0.45), 40, grid)
+        kept = keep_exercisers([person, behind, partner], 15)
+        self.assertEqual([view["id"] for view in kept], [1, 3])
 
 
 if __name__ == "__main__":
