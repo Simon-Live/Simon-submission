@@ -73,3 +73,10 @@ def test_bad_side_is_an_error():
         phrase("trunk_lean_forward", "more", "left")
     with pytest.raises(ValueError):
         phrase("knee_flexion", "less", "center")
+
+
+@pytest.mark.parametrize("measure", ["trunk_lean_forward", "trunk_lean_side", "shoulder_tilt", "head_forward"])
+def test_centre_phrases_are_relative_to_the_example(measure):
+    # Detection only sees follower − expected, so these can't claim an absolute lean or tilt.
+    for d in ("more", "less"):
+        assert "the example" in phrase(measure, d, "center")

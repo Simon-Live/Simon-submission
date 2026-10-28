@@ -24,11 +24,16 @@ PHRASES = {
                       "less": ("{side} thigh {nq} raised enough", "thighs {nq} raised enough")},
     "foot_out": {"more": ("{side} foot {q}too far out", "feet {q}too far apart"),
                  "less": ("{side} foot {q}too far in", "feet {q}too close together")},
+    # Centre measures are phrased relative to the example: detection only knows
+    # follower − expected, so "leaning to the right" would be wrong when the example leans left.
     "trunk_lean_forward": {"more": "leaning forward {q}more than the example",
-                           "less": "{q}too upright, lean forward more"},
-    "trunk_lean_side": {"more": "leaning {q}too far to the left", "less": "leaning {q}too far to the right"},
-    "shoulder_tilt": {"more": "left shoulder {q}higher than the right", "less": "right shoulder {q}higher than the left"},
-    "head_forward": {"more": "head pushed {q}too far forward", "less": "head pulled {q}too far back"},
+                           "less": "{q}more upright than the example, lean forward more"},
+    "trunk_lean_side": {"more": "leaning {q}further to the left than the example",
+                        "less": "leaning {q}further to the right than the example"},
+    "shoulder_tilt": {"more": "left shoulder {q}higher than in the example",
+                      "less": "right shoulder {q}higher than in the example"},
+    "head_forward": {"more": "head {q}further forward than the example",
+                     "less": "head {q}further back than the example"},
 }
 
 # Size qualifier from |magnitude| / threshold: just past the threshold reads "slightly".
