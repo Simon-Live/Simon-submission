@@ -122,3 +122,17 @@ def test_no_faults_on_good_light_correct_dummy_takes():
         e = normalise(load_clip(ROOT / t["expected"])).positions
         f = normalise(load_clip(ROOT / t["follower"])).positions
         assert run(e, f) == [], t["take_id"]
+
+
+def test_merge_sides_does_not_depend_on_order():
+    from part5.detect import Fault, _merge_sides
+
+    def fault(side, mag):
+        return Fault(measure="upper_arm_out", side=side, joint=f"{side}_shoulder", body_part="upper arm",
+                     direction="more", magnitude_deg=mag, peak_deg=mag + 2, threshold_deg=9,
+                     expected_frames=(10, 60), follower_frames=(12, 64), phase=(0.1, 0.7),
+                     coverage=1.0, confidence=0.9)
+
+    for order in ([fault("left", 20), fault("right", 22)], [fault("right", 22), fault("left", 20)]):
+        merged = _merge_sides(order)
+        assert [(f.side, f.joint, f.magnitude_deg) for f in merged] == [("both", "shoulder", 21.0)]
