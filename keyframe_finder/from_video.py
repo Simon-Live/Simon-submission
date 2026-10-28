@@ -7,6 +7,9 @@ Muse Spark names the phases. Repetition times come from how each person's
 silhouette changes, so a motion inside a still box still counts, and people in
 the same frame can be on different phases. A call that would cross the next $5
 mark is not sent.
+
+The SAM and Spark results are saved next to keyframes.json. A later run
+rebuilds from them without calling the API. --fresh sends the video again.
 """
 
 import json
@@ -19,6 +22,7 @@ import numpy as np
 
 from keyframe_finder.detect import find_repetitions
 from keyframe_finder.mask_motion import (
+    SHAPE,
     find_motion_bounds,
     frames_for_bounds,
     mask_distance,
@@ -45,6 +49,8 @@ MIN_TRACK_S = 1.0
 STITCH_GAP_S = 0.75
 STITCH_CENTER = 0.12
 STITCH_SHAPE = 0.55
+# Bump when run.json or tracks.npz change shape, so old saved runs are sent again.
+SAVED_VERSION = 1
 
 
 def media_info(path):
@@ -134,6 +140,50 @@ def snake(name):
     return cleaned or "phase"
 
 
+_SECTION_FIELD = {
+    "movement": re.compile(r'"movement"\s*:\s*"([^"]*)"'),
+    "start_s": re.compile(r'"start_s"\s*:\s*(-?\d+(?:\.\d+)?)'),
+    "end_s": re.compile(r'"end_s"\s*:\s*(-?\d+(?:\.\d+)?)'),
+    "phase_names": re.compile(r'"(?:phase_names|phases)"\s*:\s*\[([^\]]*)\]'),
+}
+
+
+def _salvage_sections(text):
+    """Read each section on its own when one broken bracket spoils the whole JSON.
+
+    Each section starts at its "movement" key, the order the prompt asks for.
+    """
+    records = []
+    for piece in re.split(r'(?="movement"\s*:)', text)[1:]:
+        raw = {}
+        for key, pattern in _SECTION_FIELD.items():
+            found = pattern.search(piece)
+            if not found:
+                continue
+            if key == "phase_names":
+                raw[key] = re.findall(r'"([^"]*)"', found.group(1))
+            elif key == "movement":
+                raw[key] = found.group(1)
+            else:
+                raw[key] = float(found.group(1))
+        if {"movement", "start_s", "end_s"} <= raw.keys():
+            records.append(raw)
+    return records
+
+
+def _section_records(text):
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            payload = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict) and isinstance(payload.get("sections"), list):
+            return [raw for raw in payload["sections"] if isinstance(raw, dict)]
+    return _salvage_sections(text)
+
+
 def parse_sections(text, duration_s):
     fallback = [
         {
@@ -144,21 +194,16 @@ def parse_sections(text, duration_s):
             "source": "fallback",
         }
     ]
-    start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end <= start:
-        return fallback
-    try:
-        payload = json.loads(text[start : end + 1])
-    except json.JSONDecodeError:
-        return fallback
     sections = []
-    for raw in payload.get("sections") or []:
+    for raw in _section_records(text or ""):
         names = [snake(name) for name in (raw.get("phase_names") or raw.get("phases") or [])]
         if len(names) not in (3, 5):
             names = ["start", "bottom", "top"]
-        start_s = max(0.0, float(raw.get("start_s", 0)))
-        end_s = min(duration_s, float(raw.get("end_s", duration_s)))
+        try:
+            start_s = max(0.0, float(raw.get("start_s", 0)))
+            end_s = min(duration_s, float(raw.get("end_s", duration_s)))
+        except (TypeError, ValueError):
+            continue
         if end_s - start_s < 0.5:
             continue
         sections.append(
@@ -487,38 +532,131 @@ def source_clock(people, analysis_fps, source_fps):
     return timed
 
 
-def save_silhouettes(dest, tracks, width, height):
-    """Keep the decoded shapes and where they sat, so a later timing change is free."""
+_TRACK_FIELDS = ("x1", "y1", "x2", "y2", "frame_w", "frame_h", "c")
+_TRACK_KEY = re.compile(r"^p(\d+)_frame$")
+
+
+def saved_paths(stem):
+    base = ROOT / "out" / stem
+    return base / "run.json", base / "tracks.npz", base / "spark.txt"
+
+
+def save_tracks(dest, tracks):
+    """Keep every SAM sample, so the timing can be rebuilt without another call."""
     arrays = {}
+    blank = np.zeros(SHAPE * SHAPE, dtype=np.uint8)
     for object_id, samples in tracks.items():
-        frames = []
-        packed = []
-        centers_x = []
-        centers_y = []
-        for sample in samples:
-            grid = sample.get("grid")
-            if grid is None:
-                continue
-            center = _sample_center(sample, width, height)
-            frames.append(int(sample["frame"]))
-            packed.append(np.packbits(np.asarray(grid, dtype=np.uint8).reshape(-1)))
-            centers_x.append(np.nan if center is None else center[0])
-            centers_y.append(np.nan if center is None else center[1])
-        if not frames:
+        if not samples:
             continue
-        key = str(int(object_id))
-        arrays[f"frames_{key}"] = np.asarray(frames, dtype=np.int32)
-        arrays[f"grids_{key}"] = np.stack(packed)
-        arrays[f"cx_{key}"] = np.asarray(centers_x, dtype=np.float32)
-        arrays[f"cy_{key}"] = np.asarray(centers_y, dtype=np.float32)
-    if not arrays:
-        return
+        key = f"p{int(object_id)}"
+        arrays[f"{key}_frame"] = np.asarray([int(sample["frame"]) for sample in samples], dtype=np.int32)
+        for name in _TRACK_FIELDS:
+            arrays[f"{key}_{name}"] = np.asarray(
+                [np.nan if sample.get(name) is None else float(sample[name]) for sample in samples],
+                dtype=np.float64,
+            )
+        arrays[f"{key}_hasgrid"] = np.asarray(
+            [sample.get("grid") is not None for sample in samples], dtype=bool
+        )
+        arrays[f"{key}_grid"] = np.stack(
+            [
+                np.packbits(
+                    blank
+                    if sample.get("grid") is None
+                    else np.asarray(sample["grid"], dtype=np.uint8).reshape(-1)
+                )
+                for sample in samples
+            ]
+        )
     dest.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(dest, **arrays)
 
 
-def process(path):
+def load_tracks(path):
+    tracks = {}
+    with np.load(path) as data:
+        for name in data.files:
+            match = _TRACK_KEY.match(name)
+            if not match:
+                continue
+            object_id = int(match.group(1))
+            key = f"p{object_id}"
+            columns = {field: data[f"{key}_{field}"] for field in _TRACK_FIELDS}
+            has_grid = data[f"{key}_hasgrid"]
+            grids = data[f"{key}_grid"]
+            samples = []
+            for index, frame in enumerate(data[name]):
+                sample = {"frame": int(frame)}
+                for field in _TRACK_FIELDS:
+                    value = float(columns[field][index])
+                    sample[field] = None if np.isnan(value) else value
+                grid = None
+                if bool(has_grid[index]):
+                    flat = np.unpackbits(grids[index])[: SHAPE * SHAPE]
+                    grid = flat.reshape(SHAPE, SHAPE).astype(bool)
+                sample["grid"] = grid
+                samples.append(sample)
+            tracks[object_id] = samples
+    return tracks
+
+
+def build_document(run, tracks, spark_text):
+    """Time every person from the saved run. This step never calls the API."""
+    sections = parse_sections(spark_text, run["duration_s"])
+    people = people_from_tracks(
+        tracks,
+        run["frames"],
+        run["width"] * run["height"],
+        run["analysis_fps"],
+        sections,
+        run["width"],
+        run["height"],
+    )
+    people = source_clock(people, run["analysis_fps"], run["source_fps"])
+    spark_names = "spark" if any(section.get("source") == "spark" for section in sections) else "fallback"
+    return {
+        "video": run["video"],
+        "fps": run["source_fps"],
+        "analysis_fps": run["analysis_fps"],
+        "spark_names": spark_names,
+        "quality": run["quality"],
+        "people": people,
+    }
+
+
+def write_document(stem, document):
+    dest = ROOT / "out" / stem / "keyframes.json"
+    dump_json(dest, document)
+    people = document["people"]
+    print(
+        f"  wrote {dest.relative_to(ROOT)} "
+        f"({len(people)} people, "
+        f"{sum(len(person['repetitions']) for person in people)} repetitions, "
+        f"names from {document['spark_names']})",
+        flush=True,
+    )
+    return dest
+
+
+def rebuild(path):
+    """Rebuild keyframes.json from the saved SAM and Spark results, or return None."""
+    run_path, tracks_path, spark_path = saved_paths(Path(path).stem)
+    if not (run_path.is_file() and tracks_path.is_file() and spark_path.is_file()):
+        return None
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    if run.get("version") != SAVED_VERSION:
+        return None
+    print(f"{Path(path).name}: rebuilt from saved SAM and Spark results, no API call", flush=True)
+    document = build_document(run, load_tracks(tracks_path), spark_path.read_text(encoding="utf-8"))
+    return write_document(Path(path).stem, document)
+
+
+def process(path, fresh=False):
     path = Path(path)
+    if not fresh:
+        rebuilt = rebuild(path)
+        if rebuilt is not None:
+            return rebuilt
     decision = assess(path)
     print(format_report(decision, path.name), flush=True)
     if decision.verdict == "refused":
@@ -547,53 +685,41 @@ def process(path):
     )
     made = media_info(work)
     frames = max(1, int(round(made["duration_s"] * made["fps"])))
+    run = {
+        "version": SAVED_VERSION,
+        "video": display_path(path),
+        "source_fps": info["fps"],
+        "analysis_fps": made["fps"],
+        "frames": frames,
+        "width": made["width"],
+        "height": made["height"],
+        "duration_s": made["duration_s"],
+        "quality": decision.as_dict(),
+    }
+    run_path, tracks_path, spark_path = saved_paths(path.stem)
     print("  uploading", flush=True)
     file_id = upload_video(work)
     warnings = []
+    spark_text = ""
     try:
         tracks, sam_warnings = track_people(file_id, frames)
         warnings.extend(sam_warnings)
-        save_silhouettes(ROOT / "out" / path.stem / "silhouettes.npz", tracks, made["width"], made["height"])
+        for stale in (run_path, tracks_path, spark_path, run_path.parent / "silhouettes.npz"):
+            stale.unlink(missing_ok=True)
+        save_tracks(tracks_path, tracks)
         try:
-            text, spark_warnings = name_sections(file_id, made["duration_s"])
+            spark_text, spark_warnings = name_sections(file_id, made["duration_s"])
             warnings.extend(spark_warnings)
-            (ROOT / "out" / path.stem).mkdir(parents=True, exist_ok=True)
-            (ROOT / "out" / path.stem / "spark.txt").write_text(text, encoding="utf-8")
-            sections = parse_sections(text, made["duration_s"])
+            spark_path.write_text(spark_text, encoding="utf-8")
+            sections = parse_sections(spark_text, made["duration_s"])
             named = ", ".join(section["movement"] for section in sections[:6])
             print(f"  spark sections {len(sections)}: {named}", flush=True)
         except SpendWarning as exc:
             print(f"\nWARNING: {exc}\n", flush=True)
-            sections = parse_sections("", made["duration_s"])
-        people = people_from_tracks(
-            tracks,
-            frames,
-            made["width"] * made["height"],
-            made["fps"],
-            sections,
-            made["width"],
-            made["height"],
-        )
-        people = source_clock(people, made["fps"], info["fps"])
     finally:
         delete_file(file_id)
-    spark_names = "spark" if any(section.get("source") == "spark" for section in sections) else "fallback"
-    document = {
-        "video": display_path(path),
-        "fps": info["fps"],
-        "analysis_fps": made["fps"],
-        "spark_names": spark_names,
-        "quality": decision.as_dict(),
-        "people": people,
-    }
-    dest = ROOT / "out" / path.stem / "keyframes.json"
-    dump_json(dest, document)
-    print(
-        f"  wrote {dest.relative_to(ROOT)} "
-        f"({len(people)} people, "
-        f"{sum(len(person['repetitions']) for person in people)} repetitions)",
-        flush=True,
-    )
+    dump_json(run_path, run)
+    dest = write_document(path.stem, build_document(run, tracks, spark_text))
     for warning in warnings:
         print(f"\nWARNING: {warning}\n", flush=True)
     return dest
@@ -606,6 +732,8 @@ def inbox_videos():
 
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
+    fresh = "--fresh" in args
+    args = [arg for arg in args if arg != "--fresh"]
     videos = [Path(arg) for arg in args] or inbox_videos()
     if not videos:
         print("Drop an mp4 into inbox/, then run make keyframes.", flush=True)
@@ -614,7 +742,7 @@ def main(argv=None):
     refused = 0
     for video in videos:
         try:
-            if process(video) is None:
+            if process(video, fresh=fresh) is None:
                 refused += 1
         except SpendWarning as exc:
             print(f"\nWARNING: {exc}\n", flush=True)

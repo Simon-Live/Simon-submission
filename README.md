@@ -17,19 +17,23 @@ Drop an `.mp4` into `inbox/`, then:
 make keyframes
 ```
 
-Each video becomes `out/<name>/keyframes.json`. Running `make keyframes` again sends the videos again and adds to the spend ledger.
+Each video becomes `out/<name>/keyframes.json`. The first run of a video pays for SAM and Spark and saves their results next to it. Running `make keyframes` again rebuilds from those saved results, calls no API, and gives the same answer every time. `make keyframes-fresh` sends every video again and adds to the spend ledger. Do that when the video itself changes.
+
+`make test` runs the local tests. They do not call the API.
 
 ## What happens
 
 1. **Quality check, on this machine.** ffmpeg samples the original at 2 frames a second and measures brightness, contrast, blur, motion, near-black fraction, noise, flicker, and scene cuts. That costs nothing.
-   - **Fine.** The analysis file is the original scaled to 640 pixels wide at 8 fps.
+   - **Fine.** The analysis file is the original scaled to 640 pixels wide.
    - **Enhanced.** A dark clip that still shows a person is denoised and lifted (gamma, and a wider 960-pixel frame). A preview of that lift has to show the person before the full file is encoded.
    - **Refused.** The picture is under 144 pixels on the short side, has no edges, has a bright-to-dark spread under 12, is too blurred to recover, or never changes. The terminal says `Keyframing stopped` and names the metric. No API call is made, and an existing `keyframes.json` is left as it is. The command exits 3.
-2. **Analysis file.** The models watch `out/work/<name>.mp4`, not the file you dropped. It keeps the original duration at 8 fps (one sample every 125 ms), 640 pixels wide, or 960 if it was enhanced. The uploaded copy is deleted after the run. The original stays in `inbox/`.
-3. **SAM 3.1 finds the people.** It is prompted with `person` and returns a box around each person on each frame. `id` is the SAM object id for that response. Someone who leaves and comes back can get a new id.
-4. **Muse Spark 1.3 names the poses.** It watches the same analysis file and returns the section names and the pose names inside a repetition, in snake_case. It does not pick the frame numbers. This is the standard model, so the clip is not used for training.
-5. **Times are measured locally.** For each person, the vertical center of their box is a line over time. A low point becomes the bottom of a move, and the ends of the move become the other poses. Spark's names are laid onto those peaks, so people in the same frame can be on different poses.
-6. **The result is written on the original clock.** `fps` is the original frame rate. `frame` is an index on that clock. `t_ms` is that same moment. `analysis_fps` is the clock the models watched.
+2. **Analysis file.** The models watch `out/work/<name>.mp4`, not the file you dropped. It keeps the original duration, 640 pixels wide, or 960 if it was enhanced. A clip of 20 seconds or less is sampled at 15 fps, so a fast move still lands on a frame. A longer clip is sampled at 8 fps (one sample every 125 ms). The uploaded copy is deleted after the run. The original stays in `inbox/`.
+3. **SAM 3.1 finds the people.** It is prompted with `person` and returns a box and a mask (the person's outline) for each person on each frame. The mask is reduced to a 48 by 48 silhouette. `id` is the SAM object id for that response.
+4. **The real exercisers are kept.** A track that ends and a new one that starts close by, with a similar shape, within 0.75 s, is joined into one person. A figure on screen for under a second (and under 15% of the clip), a figure under 2% of the frame, and a figure under a quarter of the size of the largest person are dropped. That covers someone walking through and a reflection.
+5. **Muse Spark 1.3 names the poses.** It watches the same analysis file and returns the section names and the pose names inside a repetition, in snake_case. It does not pick the frame numbers. If one broken bracket spoils its JSON, each section is read on its own. If nothing can be read, the poses are named `start`, `bottom`, `top`, and `spark_names` says `fallback`. This is the standard model, so the clip is not used for training.
+6. **Times are measured locally, from the silhouette.** A limb can move inside a box that stays still, so the outline is compared, not the box. The silhouette is averaged over half a second, so outline wobble is not a move. A pose that changes by less than 18% of its outline, and stays put in the frame, is the same pose. A repetition has to reach half of the biggest change that person makes in the clip, so a small squat still counts and a twitch does not. Stepping 12% of the way across the frame counts as fully as a new shape. The start is the pose being left, the middle is the frame that differs most, and the end is where the pose settles. Five pose names add the halfway points on the way out and back.
+7. **Names are attached afterwards.** Repetitions are found on the whole clip. Each one gets the names of the Spark section it falls in, so a wrong section time cannot hide a repetition. People in the same frame can be on different poses.
+8. **The result is written on the original clock.** `fps` is the original frame rate. `frame` is an index on that clock. `t_ms` is that same moment. `analysis_fps` is the clock the models watched.
 
 A call that would cross the next $5 mark ($5, $10, $15, …) is not sent. The running total is printed at the end. `.meta-spend.json` is this repo's ledger at published list rates, not Meta's invoice for the account.
 
@@ -40,6 +44,7 @@ A call that would cross the next $5 mark ($5, $10, $15, …) is not sent. The ru
   "video": "inbox/example.mp4",
   "fps": 60.0,
   "analysis_fps": 8.0,
+  "spark_names": "spark",
   "quality": {
     "verdict": "fine",
     "brightness": 156.0,
@@ -70,6 +75,14 @@ A call that would cross the next $5 mark ($5, $10, $15, …) is not sent. The ru
   ]
 }
 ```
+
+`spark_names` is `spark` when the pose names came from Muse Spark, and `fallback` when they are the generic `start`, `bottom`, `top`.
+
+The same folder keeps what the models returned, so the keyframes can be rebuilt without paying again:
+
+- `run.json`: the analysis clock, frame count and size, and the quality report.
+- `tracks.npz`: every SAM box, confidence, and silhouette.
+- `spark.txt`: Muse Spark's answer, as it was sent.
 
 ## Hand labels
 
