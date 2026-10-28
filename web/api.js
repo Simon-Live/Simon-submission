@@ -59,7 +59,8 @@ export function producerOf(format) {
 }
 
 // The part a files panel row names for one provenance record: its whole-number part; '' when the
-// record says null (the producer is not known); the format's usual producer only when the file has
+// record says null (the producer is not known: an import without a part, a mock recording, a
+// processor file with no declared part); the format's usual producer only when the file has
 // no provenance record at all (a catalog copied by hand). catalog-contract AC-C08.
 export function provenancePart(record, format) {
   const known = record && typeof record === 'object' ? record : null;

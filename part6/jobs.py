@@ -113,8 +113,8 @@ class Jobs:
     """Run recordings through `run` on one worker thread, in the order they were submitted.
 
     `run` is the processor callable; None means the mock `part6.processor.process`, looked up
-    when a job starts. `store(recording, files, files_source, description)` writes the entry and
-    returns its manifest; the default stores it without a lock or a cap. At most `max_waiting`
+    when a job starts. `store(recording, files, files_source, description, parts)` writes the entry
+    and returns its manifest (`parts` is the result's optional `parts`, else None); the default stores it without a lock or a cap. At most `max_waiting`
     jobs wait behind the running one, and the last `keep` jobs are remembered.
     """
 
@@ -234,7 +234,7 @@ class Jobs:
         files = {kind: result[kind] for kind in formats.KINDS if result.get(kind) is not None}
         source, description = self._origin()
         try:
-            manifest = self._store(job.recording, files, source, description)
+            manifest = self._store(job.recording, files, source, description, result.get("parts"))
         except importer.ImportProblem as exc:
             return self._end(job, _failed(VALIDATE_STAGE, _first_line(exc)))
         except Exception as exc:    # the detail may hold a server path: log it, do not serve it
@@ -252,9 +252,9 @@ class Jobs:
             return "mock", processor.MOCK_DESCRIPTION.format(day=day)
         return "processor", f"Recorded {day}. Processed by {describe(run)}."
 
-    def _store_entry(self, recording, files, files_source, description):
+    def _store_entry(self, recording, files, files_source, description, parts=None):
         return importer.store_processed(self.root, recording, files, files_source=files_source,
-                                        description=description, visitor=True)
+                                        description=description, visitor=True, parts=parts)
 
     def _end(self, job, status, entry=None):
         with self._cond:

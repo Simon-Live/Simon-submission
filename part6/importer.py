@@ -37,6 +37,8 @@ KIND_WORDS = {"keyframes": "key frames", "skeleton": "skeleton", "animation": "a
               "video": "video"}
 ID_HINT = ("id: use 1 to 63 lowercase letters, digits or dashes, starting with a letter or "
            "digit")
+PART_HINT = "use a whole number from 1 to 7, or null"
+PARTS_HINT = "parts: use an object of file kind to part number (1 to 7, or null)"
 
 
 class ImportProblem(ValueError):
@@ -186,17 +188,16 @@ def _default_description(loaded, now):
 
 # building and writing
 
-def _provenance(shared, video, usual_producer=False):
-    """Provenance per file. `part` is the part given with the file, else None (not known): the
-    format alone never names a producer. Only a processor's files (`usual_producer`) record the
-    format's usual producer, as AC-C09 states."""
+def _provenance(shared, video):
+    """Provenance per file. `part` is the part given with the file (`--part`, or the part a
+    processor declares), else None (not known): the format alone never names a producer
+    (AC-C06, AC-C09)."""
     out = {}
     for kind in formats.KINDS:
         if kind in shared:
             entry = shared[kind]
             fmt = entry.normalized["format"]
-            part = entry.part or (formats.PRODUCER[fmt] if usual_producer else None)
-            record = {"part": part, "format": fmt, "detected_by": entry.normalized["detected_by"]}
+            record = {"part": entry.part, "format": fmt, "detected_by": entry.normalized["detected_by"]}
             out[kind] = _with_hash(record, entry)
     if video:
         out["video"] = _with_hash({"part": video.part, "format": None, "detected_by": "file"},
@@ -227,12 +228,11 @@ class Prepared(NamedTuple):
 
 
 def prepare_entry(*, name, category, files_source, description, created_at, shared, video=None,
-                  duration_ms=None, usual_producer=False):
+                  duration_ms=None):
     """Make the manifest and files of one entry from read files.
 
     `shared` is {kind: Shared}, `video` a Video or None. The thumbnail comes from what plays
-    (`formats.playable`); `duration_ms` is that animation's unless given. `usual_producer` is
-    passed to `_provenance`. Raises ImportProblem (E12 when nothing plays)."""
+    (`formats.playable`); `duration_ms` is that animation's unless given. Raises ImportProblem (E12 when nothing plays)."""
     try:
         play = formats.playable(shared["animation"].normalized if "animation" in shared else None,
                                 shared["skeleton"].normalized if "skeleton" in shared else None)
@@ -242,7 +242,7 @@ def prepare_entry(*, name, category, files_source, description, created_at, shar
         None, name, category, duration_ms or duration_ms_of(play), files_source,
         description, created_at, kinds=tuple(shared),
         video_uri=f"video.{video.ext}" if video else None,
-        provenance=_provenance(shared, video, usual_producer))
+        provenance=_provenance(shared, video))
     files = {manifest[kind]: shared[kind].data for kind in shared}
     files[manifest["thumbnail"]] = thumbnail.svg(play)
     if video:
@@ -262,13 +262,12 @@ def write_prepared(root, entry_id, prepared, visitor=None):
 
 
 def add_entry(root, *, entry_id, name, category, files_source, description, created_at,
-              shared, video=None, duration_ms=None, visitor=None, usual_producer=False):
+              shared, video=None, duration_ms=None, visitor=None):
     """Write one entry from read files and return its manifest (`prepare_entry`, then
     `write_prepared`). Raises ImportProblem or FileExistsError."""
     prepared = prepare_entry(
         name=name, category=category, files_source=files_source, description=description,
-        created_at=created_at, shared=shared, video=video, duration_ms=duration_ms,
-        usual_producer=usual_producer)
+        created_at=created_at, shared=shared, video=video, duration_ms=duration_ms)
     return write_prepared(root, entry_id, prepared, visitor)
 
 
@@ -342,13 +341,31 @@ def import_files(root, name, category, items, *, entry_id=None, description=None
     return commit_import(root, prepared, entry_id=entry_id, visitor=visitor)
 
 
+def _declared_parts(parts, files):
+    """{kind: part or None} from a processor's optional `parts`: a dict of kind to a whole number
+    from 1 to 7 or None. Kinds it did not return are ignored. Raises ImportProblem."""
+    if parts is None:
+        return {}
+    if not isinstance(parts, dict):
+        raise ImportProblem(PARTS_HINT)
+    out = {}
+    for kind in formats.KINDS:
+        if files.get(kind) is not None and parts.get(kind) is not None:
+            try:
+                out[kind] = _clean_part(parts[kind])
+            except ImportProblem:
+                raise ImportProblem(f"parts.{kind}: {PART_HINT}") from None
+    return out
+
+
 def store_processed(root, recording, files, *, files_source, description, visitor=True,
-                    created_at=None):
+                    created_at=None, parts=None):
     """Store the parsed files a processor returned as the entry `recording["id"]`.
 
     `files` is {"keyframes"?, "skeleton"?, "animation"?} of parsed JSON, stored as compact JSON.
-    Provenance records each file's format and the format's usual producer. Raises ImportProblem
-    (the reader's E-message, or E12) or FileExistsError."""
+    `parts` is the processor's optional {kind: part} (AC-C09): provenance records each file's
+    format and the part declared for it, else null. Raises ImportProblem (the reader's E-message,
+    a bad `parts`, or E12) or FileExistsError."""
     catalog.guard_root(root)
     if files_source not in FILES_SOURCES:
         raise ValueError(f"files_source must be one of {', '.join(FILES_SOURCES)}")
@@ -357,12 +374,12 @@ def store_processed(root, recording, files, *, files_source, description, visito
         raise ImportProblem(ID_HINT)
     _check_id(entry_id)
     name = _clean_name_and_category(recording.get("name"), recording.get("category"))
-    shared = {kind: read_shared(kind, parsed=files[kind]) for kind in formats.KINDS
-              if files.get(kind) is not None}
+    declared = _declared_parts(parts, files)
+    shared = {kind: read_shared(kind, parsed=files[kind], part=declared.get(kind))
+              for kind in formats.KINDS if files.get(kind) is not None}
     stamp = created_at or f"{catalog.utc_now():%Y-%m-%dT%H:%M:%SZ}"
     duration = recording.get("duration_ms")
     ok = isinstance(duration, int) and not isinstance(duration, bool) and duration > 0
     return add_entry(root, entry_id=entry_id, name=name, category=recording["category"],
                      files_source=files_source, description=description, created_at=stamp,
-                     shared=shared, duration_ms=duration if ok else None, visitor=bool(visitor),
-                     usual_producer=True)
+                     shared=shared, duration_ms=duration if ok else None, visitor=bool(visitor))

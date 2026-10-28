@@ -443,6 +443,7 @@ def test_a_mock_recording_is_a_visitor_entry_with_provenance(tmp_path, mock_entr
         "keyframes": ("simon.keyframes/part1", "shape"),
         "skeleton": ("simon.skeleton/1", "version"),
         "animation": ("simon.animation/1", "version")}
+    assert {record["part"] for record in manifest["provenance"].values()} == {None}    # A-P6-01
     for kind, record in manifest["provenance"].items():
         raw = (folder / f"{kind}.json").read_bytes()
         assert record["sha256"] == hashlib.sha256(raw).hexdigest() and record["bytes"] == len(raw)

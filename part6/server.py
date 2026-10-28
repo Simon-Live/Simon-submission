@@ -91,12 +91,12 @@ class CatalogServer(ThreadingHTTPServer):
         self.import_slots = threading.BoundedSemaphore(MAX_IMPORTS)
         self.jobs = Jobs(self.root, processor, store=self.store)
 
-    def store(self, recording, files, files_source, description):
+    def store(self, recording, files, files_source, description, parts=None):
         """Store a processed recording as an entry, then apply the cap; the worker's callback."""
         with self.save_lock:
             manifest = importer.store_processed(
                 self.root, recording, files, files_source=files_source,
-                description=description, visitor=True)
+                description=description, visitor=True, parts=parts)
             self.apply_cap(manifest["id"])
         return manifest
 

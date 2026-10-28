@@ -14,7 +14,9 @@ mock `process`).
   that never reports shows as `queued` until it returns. `report` may be None when a function is
   called directly.
 - The result is a dict with any of `keyframes`, `skeleton`, `animation` (parsed JSON; at least one
-  of `skeleton` and `animation`): the job is done and the entry is stored. A dict
+  of `skeleton` and `animation`): the job is done and the entry is stored. An optional `parts`,
+  `{kind: part number 1 to 7}`, declares which Simon part made each file; provenance records it,
+  and a file with no declared part records `part: null` (the mock declares none). A dict
   `{"status": "failed:<stage>: <reason>"}` fails the job. An exception fails it as
   `failed:<last reported stage, else processing>: <first line of the message>`. Files the readers
   reject fail it as `failed:validate: <reader message>`. Nothing is written for a failed job.

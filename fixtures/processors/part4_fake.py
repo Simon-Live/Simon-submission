@@ -3,7 +3,8 @@
 `process(recording, report)` reports three stages (`processing:keyframes`, `processing:skeleton`,
 `processing:animation`), pauses `SIMON6_FAKE_STAGE_S` seconds at each (default 1.2) and returns
 Part 4 v1 files: the `simon.keyframes.v1`, keyframe-only `simon.skeleton.v1` and
-`simon.animation.v1` golden files of `fixtures/conformance/formats/`. `fail` reports
+`simon.animation.v1` golden files of `fixtures/conformance/formats/`, declaring Part 4 as their
+producer (`parts`, AC-C09). `fail` reports
 `processing:pose` and fails the job. Both ignore the recording's content: nothing is computed.
 
 Run with `python3 -m part6 serve --processor fixtures.processors.part4_fake:process` (or `:fail`).
@@ -19,6 +20,7 @@ FORMATS = Path(__file__).resolve().parents[1] / "conformance" / "formats"
 STAGES = ("keyframes", "skeleton", "animation")
 STAGE_ENV = "SIMON6_FAKE_STAGE_S"
 DEFAULT_STAGE_S = 1.2
+PART = 4    # the producer this fake declares for every file it returns
 FAILURE = "failed:pose: no person found in the video"
 # Which golden each stage's file comes from: (kind, format id, must be a key-poses-only file).
 WANTED = {"keyframes": ("simon.keyframes.v1", False), "skeleton": ("simon.skeleton.v1", True),
@@ -64,7 +66,7 @@ def process(recording, report=None):
         if report:
             report(f"processing:{stage}")
         time.sleep(pause)
-    return files
+    return dict(files, parts={kind: PART for kind in STAGES})
 
 
 def fail(recording, report=None):

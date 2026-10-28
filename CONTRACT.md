@@ -244,7 +244,8 @@ that writes synthetic files. Your chain takes its place without touching Part 6.
 def process(recording, report):
     report("processing:pose")
     ...
-    return {"skeleton": skeleton_json, "animation": animation_json}
+    return {"skeleton": skeleton_json, "animation": animation_json,
+            "parts": {"skeleton": 3, "animation": 4}}    # optional
 ```
 
 - Selection: `serve --processor <module>:<function>`, else `SIMON6_PROCESSOR`, else
@@ -272,14 +273,19 @@ def process(recording, report):
   Record screen polls every 500 ms and shows the stage.
 - Queue: one worker thread runs jobs in order, at most 8 wait (503 `busy, try again` beyond), and
   the last 50 jobs are kept in memory and lost on restart. The entry folder is the durable result.
-- Entries from the mock keep `files_source: "mock"`. Any other processor writes `processor`, and
-  provenance records each file's format and `part`, the format's usual producer.
+- Entries from the mock keep `files_source: "mock"`. Any other processor writes `processor`.
+- Producer: a result may add `parts`, `{kind: part}` with a whole number from 1 to 7 (or `null`)
+  for each kind it returns, for example `"parts": {"skeleton": 3, "animation": 4}`. Provenance
+  records each file's format and the part declared for it, else `part: null`, as an import without
+  `--part` does: the format alone never names a producer. The mock declares none. A `parts` that
+  is not an object, or a part outside 1 to 7, fails the job as `failed:validate: parts...`.
 - No timeout. A processor that never returns blocks the worker, and Python cannot stop a thread.
   Your chain should time out its own subprocesses.
 
 Two fake processors exercise the seam, as test data: `fixtures.processors.part4_fake:process`
 reports `processing:keyframes`, `processing:skeleton` and `processing:animation`, pausing
-`SIMON6_FAKE_STAGE_S` seconds at each (default 1.2), and returns Part 4's v1 files.
+`SIMON6_FAKE_STAGE_S` seconds at each (default 1.2), and returns Part 4's v1 files with
+`parts` naming Part 4.
 `fixtures.processors.part4_fake:fail` reports `processing:pose` and returns
 `{"status": "failed:pose: no person found in the video"}`.
 

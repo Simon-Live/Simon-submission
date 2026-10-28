@@ -29,10 +29,12 @@ class Store:
 
     def __init__(self):
         self.calls = []
+        self.parts = []
         self.error = None
 
-    def __call__(self, recording, files, files_source, description):
+    def __call__(self, recording, files, files_source, description, parts=None):
         self.calls.append((recording, files, files_source, description))
+        self.parts.append(parts)
         if self.error:
             raise self.error
         return {"id": recording["id"], "name": recording["name"], "files_source": files_source,
@@ -149,6 +151,30 @@ def test_the_store_gets_the_recording_the_three_files_and_the_origin(make):
     assert recording == rec(2)
     assert files == {"skeleton": {"s": 1}, "animation": {"a": 1}}    # None and extras are dropped
     assert source == "processor"
+
+
+def test_the_store_gets_the_declared_parts_else_none(make):
+    """AC-C09, A-P6-01: `parts` goes to the store as returned; it is never a file."""
+    queue, store = make(lambda recording, report: dict(GOOD, parts={"animation": 4}))
+    queue.submit(rec(30))
+    finish(queue, "job-30")
+    assert store.parts == [{"animation": 4}] and "parts" not in store.calls[0][1]
+    queue, store = make(lambda recording, report: dict(GOOD))
+    queue.submit(rec(31))
+    finish(queue, "job-31")
+    assert store.parts == [None]
+
+
+def test_bad_declared_parts_fail_the_job_at_validate(tmp_path):
+    queue = Jobs(tmp_path / "catalog", lambda recording, report: dict(
+        processor.process(recording), parts={"animation": 9}))
+    try:
+        queue.submit(rec(32))
+        job = finish(queue, "job-32")
+    finally:
+        queue.close()
+    assert job["status"] == "failed:validate: parts.animation: use a whole number from 1 to 7, or null"
+    assert not (tmp_path / "catalog" / "job-32").exists()
 
 
 def test_a_processor_gets_a_copy_with_the_five_recording_keys(make):

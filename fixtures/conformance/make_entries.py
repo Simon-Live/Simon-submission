@@ -112,7 +112,8 @@ def fake_processor_files(recording):
 def write_processors(out):
     recording = {"id": "conf-processor-fake", "name": "Fake Part 4 processor",
                  "category": "exercise", "duration_ms": 2100, "video_path": None}
-    importer.store_processed(out, recording, fake_processor_files(recording),
+    files = fake_processor_files(recording)
+    importer.store_processed(out, recording, files, parts=files.get("parts"),
                              files_source="processor", visitor=False, created_at=CREATED_AT,
                              description="Files from the fake Part 4 processor (test data).")
     recording = {"id": "conf-processor-v1", "name": "Part 4 animation, Part 3 skeleton",
@@ -120,7 +121,7 @@ def write_processors(out):
     files = {"animation": json.loads(golden(GOLDEN_V1_ANIMATION)),
              "skeleton": json.loads(golden(GOLDEN_PART3_SKELETON))}
     importer.store_processed(out, recording, files, files_source="processor", visitor=False,
-                             created_at=CREATED_AT,
+                             created_at=CREATED_AT, parts={"animation": 4, "skeleton": 3},
                              description="A v1 animation with a simon.skeleton/1 skeleton, as a "
                                          "processor stores them.")
 

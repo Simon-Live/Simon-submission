@@ -203,7 +203,8 @@ def test_the_fake_reports_three_stages_in_order_and_returns_part4_v1_files(fast)
     reports = []
     out = part4_fake.process(recording(), reports.append)
     assert reports == ["processing:keyframes", "processing:skeleton", "processing:animation"]
-    assert set(out) == {"keyframes", "skeleton", "animation"}
+    assert set(out) == {"keyframes", "skeleton", "animation", "parts"}
+    assert out["parts"] == {"keyframes": 4, "skeleton": 4, "animation": 4}    # A-P6-01
     assert out["keyframes"]["format"] == "simon.keyframes.v1"
     assert out["skeleton"]["format"] == "simon.skeleton.v1"
     assert out["animation"]["format"] == "simon.animation.v1"

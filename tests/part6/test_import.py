@@ -778,9 +778,22 @@ def test_store_processed_writes_compact_json_with_a_final_newline(root):
         assert raw == catalog.compact_json(files[kind]).encode() and raw.endswith(b"}\n")
 
 
-def test_store_processed_provenance_names_the_usual_producer(root):
-    manifest = stored(root, {"animation": json.loads(part4_items()[2]["data"]),
-                             "skeleton": json.loads(golden("skeleton-1-part3.json"))})
+def v1_and_part3_files():
+    return {"animation": json.loads(part4_items()[2]["data"]),
+            "skeleton": json.loads(golden("skeleton-1-part3.json"))}
+
+
+def test_store_processed_without_declared_parts_records_no_producer(root):
+    """AC-C09, A-P6-01: the format alone never names a producer, for a processor as for import."""
+    prov = stored(root, v1_and_part3_files())["provenance"]
+    assert {kind: record["part"] for kind, record in prov.items()} == {
+        "skeleton": None, "animation": None}
+    assert prov["animation"]["format"] == "simon.animation.v1"
+    assert validate.check_entry(root / "job-1") == []
+
+
+def test_store_processed_provenance_records_the_declared_parts(root):
+    manifest = stored(root, v1_and_part3_files(), parts={"animation": 4, "skeleton": 3})
     assert manifest["animation"] == "animation.json" and manifest["keyframes"] is None
     prov = manifest["provenance"]
     assert prov["animation"]["part"] == 4 and prov["animation"]["format"] == "simon.animation.v1"
@@ -925,6 +938,29 @@ def test_store_processed_accepts_what_the_mock_processor_returns(root):
     rec = recording("mock-1", name="Mock", category="dance")
     manifest = stored(root, processor.process(rec), rec=rec, files_source="mock")
     assert manifest["files_source"] == "mock" and validate.check_entry(root / "mock-1") == []
+    assert {record["part"] for record in manifest["provenance"].values()} == {None}
+
+
+def test_store_processed_declared_parts_may_be_partial_null_or_name_kinds_not_returned(root):
+    prov = stored(root, v1_and_part3_files(),
+                  parts={"animation": 4, "skeleton": None, "keyframes": 1, "pose3d": 9})["provenance"]
+    assert {kind: record["part"] for kind, record in prov.items()} == {
+        "skeleton": None, "animation": 4}
+
+
+@pytest.mark.parametrize("parts, expected", [
+    ([4], importer.PARTS_HINT),
+    ("4", importer.PARTS_HINT),
+    ({"animation": 0}, "parts.animation: " + importer.PART_HINT),
+    ({"animation": 8}, "parts.animation: " + importer.PART_HINT),
+    ({"skeleton": True}, "parts.skeleton: " + importer.PART_HINT),
+    ({"skeleton": "3"}, "parts.skeleton: " + importer.PART_HINT),
+    ({"animation": 4.0}, "parts.animation: " + importer.PART_HINT),
+])
+def test_store_processed_refuses_bad_declared_parts_and_writes_nothing(root, parts, expected):
+    with pytest.raises(importer.ImportProblem) as caught:
+        stored(root, v1_and_part3_files(), parts=parts)
+    assert str(caught.value) == expected and not (root / "job-1").exists()
 
 
 # prepare then commit: the slow work apart from the write (review R5)
