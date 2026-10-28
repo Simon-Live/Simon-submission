@@ -1,5 +1,7 @@
 """Shared vector maths on joint arrays of shape (..., 17, 3) in canonical joint order."""
 
+import os
+
 import numpy as np
 
 from part3.joints import INDEX, NECK, ROOT
@@ -7,6 +9,7 @@ from part3.joints import INDEX, NECK, ROOT
 HIP_EPS_M = 1e-6
 STANDING_KNEE_DEG = 160.0
 MIN_STANDING_FRAMES = 5
+UP_FALLBACK_ENV = "PART3_UP_FALLBACK"   # "all_frames" restores the pre-stitching fallback (ASM-019)
 
 
 def normalize(v, axis=-1):
@@ -46,8 +49,9 @@ def knee_angles(J):
 def body_up(J):
     """Clip body up (spec step 5 item 1) from frames J (n, 17, 3).
 
-    Returns (unit up vector, "standing_frames" or "all_frames"). Standing = both knees above
-    160 degrees; with fewer than 5 standing frames every frame is used.
+    Returns (unit up vector, "standing_frames", "input_up" or "all_frames"). Standing = both knees
+    above 160 degrees. With fewer than 5 standing frames the input's +y (Part 2's world up) is used
+    (ASM-019); PART3_UP_FALLBACK=all_frames uses the mean over every frame instead.
     """
     J = np.asarray(J, dtype=float)
     ankle_mid = 0.5 * (point(J, "left_ankle") + point(J, "right_ankle"))
@@ -56,7 +60,9 @@ def body_up(J):
     standing = np.all(knees > STANDING_KNEE_DEG, axis=-1)
     if int(standing.sum()) >= MIN_STANDING_FRAMES:
         return normalize(vec[standing].mean(axis=0)), "standing_frames"
-    return normalize(vec.mean(axis=0)), "all_frames"
+    if os.environ.get(UP_FALLBACK_ENV, "input_up") == "all_frames":
+        return normalize(vec.mean(axis=0)), "all_frames"
+    return np.array([0.0, 1.0, 0.0]), "input_up"
 
 
 def pelvis_frame(J, up):

@@ -65,6 +65,7 @@ VERSION_KINDS = {
     "simon.skeleton.v1": "part4-view", "simon.animation.v1": "animation", "simon.keyframes.v1": "keyframes-part4",
     "simon.body_profile/1": "body-profile", "simon.part3.people/1": "people-index",
     "simon.part3.follower_labels/1": "follower-labels",
+    "simon.keyframes/part1": "keyframes-part1",  # Part 1 from 775aa1e; older files carry no format
 }
 NATIVE_VERSION = "simon.skeleton/1"
 

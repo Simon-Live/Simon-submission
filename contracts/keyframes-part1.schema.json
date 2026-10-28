@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-3-skeleton-consistency/contracts/keyframes-part1.schema.json",
   "title": "Part 1 keyframes.json",
-  "description": "Part 1's key moments on the original video clock. Part 1 writes it without a version field. Part 3 reads people[].repetitions[].keyframes[] name and t_ms when you pass the file to --keyframes. Extra keys are ignored.",
+  "description": "Part 1's key moments on the original video clock. Part 1 up to 2108c7c writes it without a version field; from 775aa1e it writes format simon.keyframes/part1. Both are read. Part 3 reads people[].repetitions[].keyframes[] name and t_ms when you pass the file to --keyframes. Extra keys are ignored.",
   "x-simon-version": "part1.keyframes/2026-10-28",
   "x-direction": "input",
   "x-producer": "Part 1",
@@ -14,6 +14,10 @@
     "people"
   ],
   "properties": {
+    "format": {
+      "const": "simon.keyframes/part1",
+      "description": "Part 1's version field from 775aa1e; optional, a file without it is read the same way."
+    },
     "video": {
       "type": "string"
     },

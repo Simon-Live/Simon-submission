@@ -284,4 +284,4 @@ def test_armraise_set(src):
     assert J[13, INDEX["right_wrist"], 0] < J[13, INDEX["right_shoulder"], 0]  # right arm towards -x
     arm = np.linalg.norm(J[:, INDEX["left_wrist"]] - J[:, INDEX["left_shoulder"]], axis=1)
     assert np.allclose(arm, arm[0], atol=2e-4)  # upper arm and forearm collinear at truth lengths
-    assert body_up(J)[1] == "all_frames"
+    assert body_up(J)[1] == "input_up"

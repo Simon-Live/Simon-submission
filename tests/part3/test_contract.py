@@ -236,7 +236,7 @@ def test_the_part4_schema_is_the_native_schema_plus_the_overlay():
     for name, definition in native["$defs"].items():
         assert part4["$defs"][name] == definition, f"$defs.{name} differs between skeleton and part4"
     added = [key for key in part4["properties"] if key not in native["properties"]]
-    assert added == ["format", "coordinate_frame", "root_joint", "virtual_joints", "rest_offsets_m", "timeline",
+    assert added == ["format", "fps", "coordinate_frame", "root_joint", "virtual_joints", "rest_offsets_m", "timeline",
                      "rig", "keyframes"]
     assert part4["required"] == native["required"] + added
     assert part4["x-simon-version"] == "simon.skeleton.v1" and part4["x-version-field"] == "format"
@@ -399,10 +399,10 @@ def test_every_row_is_complete_and_names_its_fix():
 
 def test_neighbour_commits_are_recorded_as_evidence():
     doc = contract.compatibility_document()
-    assert doc["neighbours"] == {"part1": "6fac92f", "part2": "7e11a7f", "part4": "9f4c073",
+    assert doc["neighbours"] == {"part1": "775aa1e", "part2": "7e11a7f", "part4": "9f4c073",
                                  "part5": "c292a15", "part6": "59f923f", "part7": "90aa473"}
     evidence = " ".join(r["evidence"] for r in doc["rows"])
-    for part, commit in (("Part 1", "6fac92f"), ("Part 2", "7e11a7f"), ("Part 4", "9f4c073"),
+    for part, commit in (("Part 1", "775aa1e"), ("Part 2", "7e11a7f"), ("Part 4", "9f4c073"),
                          ("Part 5", "c292a15"), ("Part 6", "59f923f"), ("Part 7", "90aa473")):
         assert f"{part} {commit}" in evidence
 

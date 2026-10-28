@@ -65,13 +65,14 @@ def _same_frames(frames, indices):
     return [(frame["frame"], frame["t_ms"], row_of.get(i), None) for i, frame in enumerate(frames)]
 
 
-def _rebuild(n_frames, indices, framed, lengths):
-    """Step 5b then step 6 (unrounded): filter inside runs of present frames, retarget to `lengths`."""
+def _rebuild(n_frames, indices, framed, lengths, window=temporal.WINDOW):
+    """Step 5b then step 6 (unrounded): filter inside runs of present frames over `window` frames
+    (temporal.window_for), retarget to `lengths`."""
     present = np.zeros(n_frames, dtype=bool)
     present[indices] = True
     body = np.zeros((n_frames, len(JOINTS), 3))
     body[indices] = framed
-    return bones.retarget(temporal.smooth(body, present)[indices], lengths)
+    return bones.retarget(temporal.smooth(body, present, window)[indices], lengths)
 
 
 def _select_person(doc, requested=None):
@@ -158,7 +159,8 @@ def _single(job, requested=None, trace=None):
     measured = _rounded_lengths(standard.measured_bone_lengths(J, conf))
     body = profiles.lengths_for(job.selection, measured)
     lengths = bones.lengths_array(body.bone_lengths_m)
-    rebuilt = _rebuild(len(doc["frames"]), indices, framed, lengths)
+    window = temporal.window_for([f.get("t_ms") for f in doc["frames"]])
+    rebuilt = _rebuild(len(doc["frames"]), indices, framed, lengths, window)
     slots, coords, out_conf, out_repaired = _frames_for(job, indices, rebuilt, conf, repaired, lengths)
     frames = _output_frames(slots, chosen, coords, out_conf, out_repaired)
     skeleton = {

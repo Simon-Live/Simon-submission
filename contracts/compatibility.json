@@ -2,7 +2,7 @@
   "schema": "simon.part3.compatibility/1",
   "checked": "2026-10-28",
   "neighbours": {
-    "part1": "6fac92f",
+    "part1": "775aa1e",
     "part2": "7e11a7f",
     "part4": "9f4c073",
     "part5": "c292a15",
@@ -58,7 +58,7 @@
       "consumer_version": "part3 phase 2",
       "result": "works with option",
       "option": "--view part4 --keyframes <keyframes.json>",
-      "evidence": "Part 1 6fac92f README 'Output': people[].repetitions[].keyframes[] name, frame, t_ms on the video clock; Part 3 maps them onto the 30 fps index by time"
+      "evidence": "Part 1 775aa1e contracts/keyframes.schema.json and keyframes.example.json: format simon.keyframes/part1, people[].repetitions[].keyframes[] name, frame, t_ms on the video clock (files without format, as up to 2108c7c, read the same); Part 3 maps them onto the 30 fps index by time"
     },
     {
       "producer": "Part 4",

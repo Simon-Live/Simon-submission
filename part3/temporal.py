@@ -1,8 +1,27 @@
-"""Step 5b: centred 5-frame mean of every joint position within runs of present frames."""
+"""Step 5b: centred mean over 1/3 s of every joint position within runs of present frames."""
 
 import numpy as np
 
-WINDOW = 5
+WINDOW = 5          # frames at CALIBRATED_FPS, the rate the filter was calibrated on
+CALIBRATED_FPS = 15.0
+WINDOW_S = WINDOW / CALIBRATED_FPS
+
+
+def window_for(t_ms):
+    """Odd window width in frames for a clip whose frames sit at `t_ms` (spec step 5b, ASM-018).
+
+    fps is 1000 over the median step; the width is the odd number nearest to fps * WINDOW_S, the
+    smaller on a tie, at least 1. Without two increasing times it is WINDOW.
+    """
+    t = np.asarray([v for v in t_ms if v is not None], dtype=float)
+    steps = np.diff(t)
+    steps = steps[steps > 0]
+    if steps.size == 0:
+        return WINDOW
+    target = (1000.0 / float(np.median(steps))) * WINDOW_S
+    below = max(1, int(np.floor((target - 1) / 2)) * 2 + 1)
+    above = below + 2
+    return above if abs(above - target) < abs(target - below) else below
 
 
 def centred_mean(x, width):

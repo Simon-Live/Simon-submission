@@ -140,7 +140,9 @@ def _rig_schema():
 def _part4_properties():
     """What the part4 view adds to the native document, in file order."""
     return {
-        "format": {"const": "simon.skeleton.v1"}, "coordinate_frame": {"$ref": "#/$defs/coordinate_frame"},
+        "format": {"const": "simon.skeleton.v1"},
+        "fps": {"const": 30, "description": "The rate of the Part 4 timeline: key t is index / fps."},
+        "coordinate_frame": {"$ref": "#/$defs/coordinate_frame"},
         "root_joint": {"const": ROOT_JOINT}, "virtual_joints": {"const": [ROOT_JOINT, "neck"]},
         "rest_offsets_m": _rest_offsets_schema(), "timeline": _timeline_schema(), "rig": _rig_schema(),
         "keyframes": {"type": "array", "items": _key_schema(), "minItems": 1},

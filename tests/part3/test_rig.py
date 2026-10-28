@@ -390,3 +390,62 @@ def test_a_target_on_top_of_its_parent_holds_the_rest_direction_without_nan():
     everything_at_the_origin = rig.fit(np.zeros((17, 3)), offsets)
     assert all(np.isfinite(q).all() for q in everything_at_the_origin[0].values())
     assert np.isfinite(residual["left_knee"])
+
+
+# --- twist continuity (stitching 2026-10-28, ASM-020) -------------------------------------------
+
+def _bent_arm_pose(swing_deg, offsets):
+    """Rest pose with the left upper arm overhead and the forearm folded 160 degrees back, its bend
+    plane turned `swing_deg` about the upper arm: the seated stretch that broke the long-way rule."""
+    joints = rig.forward({j: [0.0, 0.0, 0.0, 1.0] for j in rig.ROTATED}, offsets)
+    shoulder = np.asarray(joints["left_shoulder"])
+    upper = np.linalg.norm(offsets["left_elbow"]["offset"])
+    fore = np.linalg.norm(offsets["left_wrist"]["offset"])
+    elbow = shoulder + upper * np.array([0.0, 1.0, 0.0])
+    s = np.radians(swing_deg)
+    bend = np.array([np.cos(s), 0.0, np.sin(s)])
+    fold = np.radians(160.0)
+    direction = np.cos(fold) * np.array([0.0, 1.0, 0.0]) + np.sin(fold) * bend
+    out = {name: np.asarray(p, dtype=float) for name, p in joints.items()}
+    out["left_elbow"], out["left_wrist"] = elbow, elbow + fore * direction
+    return {name: list(p) for name, p in out.items()}
+
+
+def _keys(poses, offsets, continuity):
+    keys, previous = [], None
+    for index, pose in enumerate(poses):
+        rotations, fk, _ = rig.fit(pose, offsets, previous if continuity else None)
+        keys.append({"index": index * 10, "local_rotations": rotations, "fk": fk})
+        previous = rotations
+    return keys
+
+
+def test_twist_continuity_keeps_a_folded_elbow_under_part4s_180_degree_step():
+    offsets = rig.rest_offsets(standard_lengths())
+    poses = [_bent_arm_pose(s, offsets) for s in (0, 80, 160, 80, 0)]
+    assert rig.long_way(_keys(poses, offsets, continuity=False)) != []
+    keys = _keys(poses, offsets, continuity=True)
+    assert rig.long_way(keys) == []
+    for pose, key in zip(poses, keys):
+        assert max_gap(key["fk"], pose) < 1e-9
+
+
+def test_the_twist_moves_no_joint_and_the_first_key_matches_the_fit_without_previous():
+    offsets = rig.rest_offsets(standard_lengths())
+    rng = np.random.default_rng(7)
+    rotations = random_rotations(rng)
+    pose = {n: list(p) for n, p in rig.forward(rotations, offsets).items()}
+    plain, fk_plain, _ = rig.fit(pose, offsets)
+    _, fk_cont, _ = rig.fit(pose, offsets, previous=random_rotations(rng))
+    assert max_gap(fk_plain, pose) < 1e-9 and max_gap(fk_cont, pose) < 1e-9
+    assert rig.fit(pose, offsets, previous=None)[0] == plain
+
+
+def test_no_gain_means_no_twist():
+    """A straight limb at rest: every twist scores worse than none, so the rotation is the arc."""
+    offsets = rig.rest_offsets(standard_lengths())
+    pose = {n: list(p) for n, p in rig.forward({j: [0.0, 0.0, 0.0, 1.0] for j in rig.ROTATED},
+                                               offsets).items()}
+    rotations, _, _ = rig.fit(pose, offsets, previous={j: [0.0, 0.0, 0.0, 1.0] for j in rig.ROTATED})
+    for joint in rig.TWIST_CHILD:
+        assert np.allclose(rotations[joint], [0.0, 0.0, 0.0, 1.0], atol=1e-9)

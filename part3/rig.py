@@ -38,8 +38,17 @@ CONVENTION = (
     "quaternions (x, y, z, w), Hamilton product, active rotation; global[j] = global[parent] * local[j]; "
     "position[j] = position[parent] + rotate(global[parent], offset[j]); pelvis at the origin; "
     "positions relative to the hip midpoint. Fit: weighted Kabsch where a joint has several children "
-    "(pelvis, neck, nose), shortest arc in the parent frame where it has one, identity at the leaves."
+    "(pelvis, neck, nose), shortest arc in the parent frame where it has one, identity at the leaves; "
+    "shoulders and hips add the twist about their bone that keeps their own and the elbow's or knee's "
+    "rotation closest to the previous key (the first key: closest to rest)."
 )
+# A twist about a shoulder's or hip's own bone moves no joint; it only changes how the elbow's or
+# knee's bend is split between the two rotations. Chosen per key for continuity (ASM-020).
+TWIST_CHILD = {"left_shoulder": "left_elbow", "right_shoulder": "right_elbow",
+               "left_hip": "left_knee", "right_hip": "right_knee"}
+TWIST_COARSE_DEG = 5.0
+TWIST_FINE_DEG = 0.5
+TWIST_TIE = 1e-3  # radians of score per radian of twist: with no gain, no twist
 
 _ANTIPARALLEL = 1e-12  # 1 + cos(angle) below this counts as a 180 degree turn
 _TINY = 1e-12
@@ -291,7 +300,90 @@ def _fit_joint(joint, parent_global, origin, target, offsets):
     return _kabsch(rests, goals, [WEIGHTS[c] for c in children])
 
 
-def fit(joints, rest_offsets):
+def _axis_angle(axis, theta):
+    """Rotation matrix of `theta` radians about the unit direction of `axis`."""
+    a = _direction(np.asarray(axis, dtype=float))
+    K = np.array([[0.0, -a[2], a[1]], [a[2], 0.0, -a[0]], [-a[1], a[0], 0.0]])
+    return np.eye(3) + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
+
+
+def _rotvecs_of_quats(q):
+    """Rotation vectors (n, 3) of quaternions (n, 4) taken with w >= 0, as `rotation_vector`."""
+    q = q / np.linalg.norm(q, axis=1, keepdims=True)
+    q = np.where(q[:, 3:4] < 0, -q, q)
+    angle = 2.0 * np.arccos(np.clip(q[:, 3], -1.0, 1.0))
+    s = np.sqrt(np.maximum(0.0, 1.0 - q[:, 3] ** 2))
+    scale = np.where((s < 1e-8) | (angle < 1e-8), 0.0, angle / np.where(s < 1e-8, 1.0, s))
+    return q[:, :3] * scale[:, None]
+
+
+def _arc_rotvecs(rest, goals):
+    """Rotation vectors (n, 3) of the shortest arcs from `rest` onto each of `goals` (n, 3)."""
+    a = _direction(np.asarray(rest, dtype=float))
+    b = goals / np.maximum(np.linalg.norm(goals, axis=1, keepdims=True), _TINY)
+    axis = np.cross(a, b)
+    sin = np.linalg.norm(axis, axis=1)
+    angle = np.arctan2(sin, b @ a)
+    return np.where(sin[:, None] > 1e-12, axis / np.maximum(sin, 1e-12)[:, None] * angle[:, None], 0.0)
+
+
+def _steps(rotvecs, previous):
+    """Part 4's step (radians) from `previous` to each rotation vector; without one, the angle from
+    rest. Part 4 aligns hemispheres and then takes the angle in 0 to 180 degrees, so the step is the
+    distance between the w >= 0 rotation vectors (`long_way`)."""
+    if previous is None:
+        return np.linalg.norm(rotvecs, axis=1)
+    return np.linalg.norm(rotvecs - rotation_vector(previous), axis=1)
+
+
+def _twist_scores(thetas, joint, local, parent_global, origin, target, offsets, previous):
+    """Score per twist: the larger Part 4 step of the twisted joint and its child, plus the tie-break."""
+    child = TWIST_CHILD[joint]
+    offset = np.asarray(offsets[child]["offset"], dtype=float)
+    grand = CHILDREN[child][0]
+    bone = _direction(local @ offset)
+    half = thetas / 2.0
+    twist = np.column_stack([np.outer(np.sin(half), bone), np.cos(half)])
+    base = matrix_to_quat(local)
+    # Hamilton product twist * base, vectorised over the twists.
+    x1, y1, z1, w1 = twist.T
+    x2, y2, z2, w2 = base
+    quats = np.column_stack([w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2, w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                             w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2, w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2])
+    child_pos = origin + parent_global @ local @ offset
+    u = parent_global.T @ (target[grand] - child_pos)  # the grandchild in the joint's parent frame
+    c, s = np.cos(-thetas)[:, None], np.sin(-thetas)[:, None]
+    turned = u * c + np.cross(bone, u) * s + np.outer(1 - c[:, 0], bone) * (bone @ u)  # twist^T u
+    goals = turned @ local  # local^T (twist^T u), row by row
+    prev = (None, None) if previous is None else (previous.get(joint), previous.get(child))
+    own = _steps(_rotvecs_of_quats(quats), prev[0])
+    kid = _steps(_arc_rotvecs(offsets[grand]["offset"], goals), prev[1])
+    return np.maximum(own, kid) + TWIST_TIE * np.abs(thetas)
+
+
+def _twisted(joint, local, parent_global, origin, target, offsets, previous):
+    """`local` turned about its own bone by the twist that minimises the larger Part 4 step of the
+    joint and its child (TWIST_CHILD), searched every TWIST_COARSE_DEG then TWIST_FINE_DEG, and kept
+    only when it scores below no twist."""
+    child = TWIST_CHILD[joint]
+    bone = local @ np.asarray(offsets[child]["offset"], dtype=float)
+    if np.linalg.norm(bone) < _TINY or not CHILDREN[child]:
+        return local
+
+    def scores(thetas):
+        return _twist_scores(thetas, joint, local, parent_global, origin, target, offsets, previous)
+
+    coarse = np.radians(np.arange(-180.0, 180.0, TWIST_COARSE_DEG))
+    best = coarse[int(np.argmin(scores(coarse)))]
+    fine = best + np.radians(np.arange(-TWIST_COARSE_DEG, TWIST_COARSE_DEG + 1e-9, TWIST_FINE_DEG))
+    fine_scores = scores(fine)
+    best = fine[int(np.argmin(fine_scores))]
+    if float(fine_scores.min()) >= float(scores(np.array([0.0]))[0]):
+        return local
+    return _axis_angle(bone, best) @ local
+
+
+def fit(joints, rest_offsets, previous=None):
     """Local rotations that pose the rig closest to `joints`.
 
     `joints` is a {name: [x, y, z]} dict (a {x, y, z} object works too) or a (17, 3) array in canonical
@@ -305,12 +397,19 @@ def fit(joints, rest_offsets):
     `ROTATED` joints, the `forward` result of those rotations, and the distance in metres of each of
     the 17 FK joints to its target. A pose the rig can reproduce comes back exactly (the rotations of
     single-child joints may differ from the original by a twist, the positions do not).
+
+    `previous` is the previous key's local rotations (None for the first key). Shoulders and hips
+    (TWIST_CHILD) then take the twist about their own bone that keeps their rotation and the elbow's
+    or knee's closest to `previous` in Part 4's rotation-vector space, so a bent elbow that swings
+    behind the head stays under Part 4's 180 degree step (ASM-020). The twist moves no joint.
     """
     target = _targets(joints)
     rotations, glob, pos = {}, {}, {ROOT_JOINT: np.zeros(3)}
     for joint in ROTATED:
         parent_global = np.eye(3) if joint == ROOT_JOINT else glob[HIERARCHY[joint]]
         local = _fit_joint(joint, parent_global, pos[joint], target, rest_offsets)
+        if joint in TWIST_CHILD:
+            local = _twisted(joint, local, parent_global, pos[joint], target, rest_offsets, previous)
         rotations[joint] = matrix_to_quat(local)
         glob[joint] = parent_global @ local
         for child in CHILDREN[joint]:

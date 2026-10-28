@@ -170,6 +170,7 @@ def part4_view(indices=(0, 10, 20), names=("start", "down", "up")):
                      "conf": {n: 1.0 for n in JOINTS}, "local_rotations": rotations})
     doc.update({
         "format": "simon.skeleton.v1",
+        "fps": 30,
         "coordinate_frame": coordinate_frame(),
         "root_joint": "pelvis",
         "virtual_joints": ["pelvis", "neck"],

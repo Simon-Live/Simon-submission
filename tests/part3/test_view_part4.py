@@ -457,13 +457,11 @@ TICKS_0_AND_30 = {"format": "simon.keyframes.v1", "fps": 30, "keyframes": [
     {"index": 0, "t": 0.0, "name": "start"}, {"index": 30, "t": 1.0, "name": "end"}]}
 
 
-def test_b2_a_forearm_spun_past_180_degrees_about_the_upper_arm_between_two_keys_is_refused(skeleton):
-    with pytest.raises(ContractError) as caught:
-        part4.render(spun_forearm_clip(skeleton, 190.0), keyframes=TICKS_0_AND_30)
-    match = LONG_WAY.match(str(caught.value))
-    assert match, str(caught.value)
-    assert (match.group(1), match.group(3), match.group(4)) == ("left_elbow", "0", "30")
-    assert float(match.group(2)) > 180.0
+def test_b2_a_forearm_spun_past_180_degrees_about_the_upper_arm_is_taken_by_the_shoulder_twist(skeleton):
+    """Twist continuity (ASM-020): the shoulder turns about the upper arm, so the elbow keeps its axis
+    and Part 4's rule holds; before stitching this clip was refused (left_elbow, keys 0 and 30)."""
+    out = part4.render(spun_forearm_clip(skeleton, 190.0), keyframes=TICKS_0_AND_30)
+    assert rig.long_way(out["keyframes"]) == [] and p4.violations(out, part4.keyframes_doc(out)) == []
 
 
 def test_b2_a_small_spin_of_the_same_forearm_is_not_over_the_limit(skeleton):
@@ -471,7 +469,7 @@ def test_b2_a_small_spin_of_the_same_forearm_is_not_over_the_limit(skeleton):
     assert rig.long_way(out["keyframes"]) == [] and p4.violations(out, part4.keyframes_doc(out)) == []
 
 
-@pytest.mark.parametrize("build", ["spun", "across"])
+@pytest.mark.parametrize("build", ["across"])
 def test_b2_the_independent_part4_rules_flag_the_step_the_view_refuses(skeleton, monkeypatch, build):
     """Switch the view's own check off and run the rendered file through part4rules (separate code)."""
     if build == "spun":
@@ -529,3 +527,33 @@ def test_b1_a_clip_whose_span_would_make_too_long_a_timeline_is_refused(skeleton
     long_clip["frames"][-1]["t_ms"] = 1e300
     with pytest.raises(ContractError, match=r"would have 3e\+298 ticks"):
         part4.render(long_clip, keyframes="every:10")
+
+
+# --- keys where the person is missing (stitching 2026-10-28, ASM-021) ----------------------------
+
+def test_a_key_inside_a_gap_without_the_person_is_dropped_with_the_reason(skeleton):
+    gapped = copy.deepcopy(skeleton)
+    for frame in gapped["frames"][20:40]:
+        frame["people"] = []
+    rendered = part4.render(gapped, keyframes="every:10")
+    gap_from, gap_to = gapped["frames"][20]["t_ms"], gapped["frames"][39]["t_ms"]
+    t0 = gapped["frames"][0]["t_ms"]
+    dropped = [d for d in rendered["timeline"]["dropped"] if d["reason"] == part4.GAP_REASON]
+    assert dropped and all(gap_from - 1 <= d["t_ms"] <= gap_to + 1 for d in dropped)
+    for key in rendered["keyframes"]:
+        assert abs(key["source_t_ms"] - (t0 + key["index"] * 1000 / 30)) <= 1000 / 15 / 2 + 1
+
+
+def test_every_key_in_a_gap_exits_with_a_contract_error(skeleton):
+    gapped = copy.deepcopy(skeleton)
+    for frame in gapped["frames"][1:-1]:
+        frame["people"] = []
+    with pytest.raises(ContractError):
+        part4.render(gapped, keyframes={"format": "simon.keyframes.v1", "fps": 30,
+                                        "keyframes": [{"index": 100, "t": 100 / 30, "name": "mid"}]})
+
+
+def test_the_part4_view_writes_fps_30_at_the_top(rendered):
+    """Part 5 reads a top-level fps (found by the Part 5 contract helper, 2026-10-28)."""
+    assert rendered["fps"] == 30
+    assert all(abs(k["t"] - k["index"] / rendered["fps"]) <= 1e-6 for k in rendered["keyframes"])

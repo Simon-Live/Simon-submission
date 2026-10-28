@@ -17,7 +17,7 @@ from part3.mirror import FLIP_VALUES
 SCHEMA_ID = "simon.skeleton/1"
 UNITS = {"length": "m", "angle": "deg", "time": "ms"}
 FRAME_BLOCK = {"origin": "hip_midpoint", "x": "subject_left", "y": "body_up", "z": "anterior"}
-UP_SOURCES = ("standing_frames", "all_frames")
+UP_SOURCES = ("standing_frames", "input_up", "all_frames")
 MIRROR_REASONS = ("flag on", "flag off", "auto: input mirrored true", "auto: input mirrored false",
                   "auto: no mirrored key in input")
 FEW_FRAMES_BELOW = 5

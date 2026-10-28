@@ -93,25 +93,50 @@ def test_output_hip_line_has_no_component_along_z(untilted):
     assert np.allclose(out_J[:, INDEX["right_hip"]], -out_J[:, INDEX["left_hip"]], atol=1e-4)
 
 
-def test_no_standing_frames_uses_all_frames(real_doc):
+def test_no_standing_frames_uses_the_input_up(real_doc):
+    """ASM-019: without standing frames the up is Part 2's world up (input +y), not the body."""
     J, conf = doc_arrays(real_doc)
     bent = np.flatnonzero(~np.all(geometry.knee_angles(J) > geometry.STANDING_KNEE_DEG, axis=1))
     assert len(bent) > 20
     doc = make_doc(J[bent], conf[bent], frame_ids=bent.tolist())
     trace = {}
     out = cli.process(doc, trace=trace)
+    assert out["frame"]["up_source"] == "input_up" == trace["up_source"]
+    assert np.allclose(trace["up_in_input"], [0.0, 1.0, 0.0])
+
+
+def test_the_all_frames_fallback_stays_behind_its_switch(real_doc, monkeypatch):
+    J, conf = doc_arrays(real_doc)
+    bent = np.flatnonzero(~np.all(geometry.knee_angles(J) > geometry.STANDING_KNEE_DEG, axis=1))
+    monkeypatch.setenv(geometry.UP_FALLBACK_ENV, "all_frames")
+    trace = {}
+    out = cli.process(make_doc(J[bent], conf[bent], frame_ids=bent.tolist()), trace=trace)
     assert out["frame"]["up_source"] == "all_frames" == trace["up_source"]
-    assert not np.any(np.all(geometry.knee_angles(J[bent]) > 160, axis=1))
     expected, source = geometry.body_up(J[bent])
     assert source == "all_frames" and np.allclose(trace["up_in_input"], expected)
 
 
-def test_fewer_than_five_standing_frames_uses_all_frames(real_doc):
+def test_floor_work_keeps_its_tilt_against_world_up():
+    """A body lying along z (spine horizontal, never standing) stays horizontal (ASM-019)."""
+    J = np.zeros((12, 17, 3))
+    for name, (x, y, z) in {"left_hip": (0.1, 0.4, 0), "right_hip": (-0.1, 0.4, 0),
+                            "left_shoulder": (0.18, 0.45, 0.5), "right_shoulder": (-0.18, 0.45, 0.5),
+                            "left_knee": (0.1, 0.0, 0.0), "right_knee": (-0.1, 0.0, 0.0),
+                            "left_ankle": (0.1, 0.0, -0.4), "right_ankle": (-0.1, 0.0, -0.4)}.items():
+        J[:, INDEX[name]] = (x, y, z)
+    up, source = geometry.body_up(J)
+    framed, _ = geometry.pelvis_frame(J, up)
+    spine = framed[0, INDEX["left_shoulder"]] + framed[0, INDEX["right_shoulder"]]
+    tilt = np.degrees(np.arccos(spine[1] / np.linalg.norm(spine)))
+    assert source == "input_up" and tilt > 80
+
+
+def test_fewer_than_five_standing_frames_uses_the_input_up(real_doc):
     J, conf = doc_arrays(real_doc)
     standing = np.flatnonzero(np.all(geometry.knee_angles(J) > geometry.STANDING_KNEE_DEG, axis=1))
     bent = np.flatnonzero(~np.isin(np.arange(len(J)), standing))
     keep = np.sort(np.concatenate([standing[:4], bent]))
-    assert cli.process(make_doc(J[keep], conf[keep], frame_ids=keep.tolist()))["frame"]["up_source"] == "all_frames"
+    assert cli.process(make_doc(J[keep], conf[keep], frame_ids=keep.tolist()))["frame"]["up_source"] == "input_up"
     keep = np.sort(np.concatenate([standing[:5], bent]))
     assert cli.process(make_doc(J[keep], conf[keep], frame_ids=keep.tolist()))["frame"]["up_source"] == "standing_frames"
 

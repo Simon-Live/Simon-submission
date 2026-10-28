@@ -54,6 +54,7 @@
         "up_source": {
           "enum": [
             "standing_frames",
+            "input_up",
             "all_frames"
           ]
         }

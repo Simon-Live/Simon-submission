@@ -59,7 +59,7 @@ def test_retarget_per_frame_lengths(real_doc):
     assert np.allclose(bones.measure(bones.retarget(J, L)), L)
 
 
-def test_body_up_falls_back_to_all_frames():
+def test_body_up_falls_back_to_the_input_up(monkeypatch):
     J = np.zeros((6, 17, 3))
     J[:, INDEX["left_hip"]] = [0.1, 0, 0]
     J[:, INDEX["right_hip"]] = [-0.1, 0, 0]
@@ -69,5 +69,8 @@ def test_body_up_falls_back_to_all_frames():
     J[:, INDEX["right_ankle"]] = [-0.1, -0.4, 0]
     J[:, INDEX["left_shoulder"]] = [0.2, 0.5, 0]
     J[:, INDEX["right_shoulder"]] = [-0.2, 0.5, 0]
+    up, source = g.body_up(J)
+    assert source == "input_up" and np.allclose(up, [0, 1, 0])
+    monkeypatch.setenv(g.UP_FALLBACK_ENV, "all_frames")
     up, source = g.body_up(J)
     assert source == "all_frames" and np.allclose(up, [0, 1, 0])

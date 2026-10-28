@@ -26,6 +26,8 @@ KEYFRAMES_FORMAT = "simon.keyframes.v1"
 PAGE_LABEL = "Part 4 keys"  # how the run app names this view in a sentence (schema.view_refusal_text)
 VIRTUAL_JOINTS = ["pelvis", "neck"]
 DECIMALS = 6
+GAP_PAGE_TEXT = "Every key falls where the person is missing from the clip, so there is no key pose to write."
+GAP_REASON = "the input frame nearest the key has no person (the person is missing there)"
 
 
 def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, **_):
@@ -46,16 +48,25 @@ def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, **_
     timeline = kf.load(keyframes, t0_ms, t_last_ms, person=keyframes_person, max_frames=max_frames)
     offsets = _written_offsets(skeleton["bone_lengths_m"])
     holders = [(f["t_ms"], f) for f in frames if f["people"]]
-    keys, residual = [], []
+    keys, residual, previous = [], [], None
+    every = [(f["t_ms"], f) for f in frames]
     for index, name in timeline.keys:
-        frame = _nearest(holders, kf.tick_time_ms(t0_ms, index))
-        key, distances = _key(index, name, frame, offsets)
+        t_ms = kf.tick_time_ms(t0_ms, index)
+        if not _nearest(every, t_ms)["people"]:
+            timeline.dropped.append({"name": name, "t_ms": round(t_ms, 3), "reason": GAP_REASON})
+            continue
+        key, distances = _key(index, name, _nearest(holders, t_ms), offsets, previous)
+        previous = key["local_rotations"]
         keys.append(key)
         residual.append(distances)
+    if not keys:
+        raise ViewError("--keyframes", "every key falls where the person is missing from the clip",
+                        GAP_PAGE_TEXT)
     _check_long_way(keys)
     out = copy.deepcopy(skeleton)
     out.update({
         "format": FORMAT,
+        "fps": kf.FPS,
         "coordinate_frame": dict(COORDINATE_FRAME),
         "root_joint": rig.ROOT_JOINT,
         "virtual_joints": list(VIRTUAL_JOINTS),
@@ -109,11 +120,12 @@ def _nearest(holders, t_ms):
     return holders[int(np.flatnonzero(gaps <= gaps.min() + 1e-9)[0])][1]
 
 
-def _key(index, name, frame, offsets):
-    """(key entry, per-joint distance in metres of the key's FK joints to the native pose)."""
+def _key(index, name, frame, offsets, previous=None):
+    """(key entry, per-joint distance in metres of the key's FK joints to the native pose).
+    `previous` is the previous key's local rotations, for rig.fit's twist continuity."""
     person = frame["people"][0]["joints"]
     native = {j: [person[j]["x"], person[j]["y"], person[j]["z"]] for j in JOINTS}
-    rotations, _, _ = rig.fit(native, offsets)
+    rotations, _, _ = rig.fit(native, offsets, previous)
     rotations = {j: _round(q) for j, q in rotations.items()}
     posed = {j: _round(p) for j, p in rig.forward(rotations, offsets).items()}
     distances = rig.residuals(posed, native)

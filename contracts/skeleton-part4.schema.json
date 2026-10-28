@@ -25,6 +25,7 @@
     "input",
     "frames",
     "format",
+    "fps",
     "coordinate_frame",
     "root_joint",
     "virtual_joints",
@@ -62,6 +63,7 @@
         "up_source": {
           "enum": [
             "standing_frames",
+            "input_up",
             "all_frames"
           ]
         }
@@ -292,6 +294,10 @@
     },
     "format": {
       "const": "simon.skeleton.v1"
+    },
+    "fps": {
+      "const": 30,
+      "description": "The rate of the Part 4 timeline: key t is index / fps."
     },
     "coordinate_frame": {
       "$ref": "#/$defs/coordinate_frame"
