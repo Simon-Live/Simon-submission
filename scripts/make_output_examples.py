@@ -4,7 +4,7 @@
   fixtures/output/analysis.no-faults.example.json a correct take (`faults: []`)
 
 Deterministic for a given pipeline: rerunning with unchanged code rewrites identical files.
-Run: `python3 scripts/make_output_examples.py` (or `make output-examples`).
+Run: `make output-examples` (uv run python; it needs numpy via the project env).
 """
 import json
 import sys
@@ -31,7 +31,8 @@ def analyse(take):
     alignment = align(exp.positions, fol.positions)
     faults = detect(compute(exp.positions), compute(fol.positions), alignment)
     diagnostics = {"alignment_residual": round(float(alignment.residual), 4),
-                   "alignment_measures": alignment.measures}
+                   "alignment_measures": alignment.measures,
+                   "follower_span": [int(alignment.follower_span[0]), int(alignment.follower_span[1])]}
     return build_analysis(
         {"path": take["expected"], "set": take["set"], "movement": take["movement"]},
         {"path": take["follower"], "take_id": take["take_id"]},
