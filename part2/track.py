@@ -173,6 +173,21 @@ def _count_frames(video_path, ffmpeg: str) -> int:
             ["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
              "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(video_path)],
             check=True, capture_output=True, text=True).stdout.strip())
+    try:
+        import cv2
+
+        cap = cv2.VideoCapture(str(video_path))
+        n = 0
+        while True:
+            ok, _ = cap.read()
+            if not ok:
+                break
+            n += 1
+        cap.release()
+        if n:
+            return n
+    except ImportError:
+        pass
     r = subprocess.run([ffmpeg, "-v", "info", "-i", str(video_path),
                         "-map", "0:v:0", "-c", "copy", "-f", "null", "-"],
                        capture_output=True, text=True)
