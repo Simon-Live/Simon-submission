@@ -478,7 +478,7 @@ def test_the_output_panel_title_holds_for_every_body_profile():
 
 # ---- review N1: the copy about limb lengths is true for every Body, including Measured from the clip ----------
 
-DEMO_MD = ROOT / "staging" / "DEMO.md"
+DEMO_MD = ROOT / "staging" / "DEMO.md"  # local only: staging/ is never published, so the published tree skips these checks
 DENIALS = ("not the person's own", "not the person\u2019s own", "that body's and not")
 
 
@@ -489,8 +489,15 @@ def test_no_page_says_the_output_limb_lengths_are_not_the_persons_own(name):
         assert denial not in text, (name, denial)
 
 
+def demo_notes():
+    """The staging demo notes, or a skip in a tree without them (the published one)."""
+    if not DEMO_MD.exists():
+        pytest.skip("staging/DEMO.md is local only; the published tree has no staging/")
+    return DEMO_MD.read_text(encoding="utf-8")
+
+
 def test_no_line_of_the_demo_notes_says_the_output_limb_lengths_are_not_the_persons_own():
-    lines = DEMO_MD.read_text(encoding="utf-8").splitlines()
+    lines = demo_notes().splitlines()
     assert any("limb lengths" in line for line in lines)  # must-hit control: the sentence under test is there
     for line in lines:
         for denial in DENIALS:
@@ -511,8 +518,10 @@ def test_the_footnotes_say_what_measured_uses_and_that_a_height_scales_the_body(
     assert ("Each output is rebuilt on the Body you chose, with the same limb lengths in every frame. "
             "Measured from the clip uses each input's own median lengths, and a Height scales whichever Body you chose."
             ) in compare_note
-    demo = " ".join(DEMO_MD.read_text(encoding="utf-8").split())
-    assert "Measured from the clip uses the clip's own median lengths" in demo
+
+
+def test_the_demo_notes_say_what_measured_uses():
+    assert "Measured from the clip uses the clip's own median lengths" in " ".join(demo_notes().split())
 
 
 def test_the_compare_page_claims_no_single_body_across_its_inputs():
