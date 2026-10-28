@@ -8,7 +8,7 @@ from part2 import check
 def _single(root, labels_ok=True):
     pose3d, camera, labels = _setup()
     if not labels_ok:
-        labels["frames"][0]["joints"]["nose"][1] += 200
+        labels["frames"][0]["joints"]["left_wrist"][1] += 1000
     inp, out = root / "fixtures" / "input" / "single", root / "out" / "single"
     (inp / "frames").mkdir(parents=True)
     (inp / "frames" / "000000.jpg").write_bytes(b"frame")
