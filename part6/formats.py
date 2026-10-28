@@ -27,6 +27,17 @@ JOINTS = (
     "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle",
 )
 
+PRODUCER_VALUES = {f"part{n}": n for n in range(1, 8)}
+
+
+def declared_producer(data):
+    """The part a file names in its own top-level `producer` ("part1" to "part7"; Part 3 writes
+    "part3" in its views and keyframes), else None. A declared producer is read, never guessed
+    (docs/specs/catalog-contract.md AC-C05, AC-C06)."""
+    value = data.get("producer") if isinstance(data, dict) else None
+    return PRODUCER_VALUES.get(value) if isinstance(value, str) else None
+
+
 A1, AV1 = FORMATS["animation"]
 S1, SV1 = FORMATS["skeleton"]
 K1, KV1 = FORMATS["keyframes"]

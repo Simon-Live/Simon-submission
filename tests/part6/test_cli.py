@@ -657,3 +657,30 @@ def test_import_of_part_3s_part4_view_files_never_guesses_part_4(tmp_path, capsy
     assert code == 0
     assert {k: r["part"] for k, r in printed["provenance"].items()} == {
         "keyframes": want, "skeleton": want}
+
+
+def test_import_part_per_kind_records_each_files_producer(tmp_path, capsys):
+    """A stitched folder: Part 3's key frames and skeleton beside Part 4's animation."""
+    code = run_import(str(part4_folder(tmp_path)), "--name", "Stitched", "--category", "exercise",
+                      "--catalog", str(tmp_path / "c"), "--part", "3", "--part", "animation=4")
+    printed = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert {k: r["part"] for k, r in printed["provenance"].items()} == {
+        "keyframes": 3, "skeleton": 3, "animation": 4}
+
+
+@pytest.mark.parametrize("parts", [("--part", "3", "--part", "4"),
+                                   ("--part", "skeleton=3", "--part", "skeleton=4")])
+def test_import_refuses_a_part_given_twice(tmp_path, capsys, parts):
+    code = run_import(str(part4_folder(tmp_path)), "--name", "Twice", "--category", "exercise",
+                      "--catalog", str(tmp_path / "c"), *parts)
+    assert code == 2 and "twice" in capsys.readouterr().err
+    assert not (tmp_path / "c").exists() or list((tmp_path / "c").iterdir()) == []
+
+
+@pytest.mark.parametrize("value", ["thumbnail=3", "skeleton=9", "skeleton=", "=3"])
+def test_import_refuses_a_bad_part_value(tmp_path, capsys, value):
+    with pytest.raises(SystemExit) as caught:
+        run_import(str(part4_folder(tmp_path)), "--name", "Bad", "--category", "exercise",
+                   "--catalog", str(tmp_path / "c"), "--part", value)
+    assert caught.value.code == 2

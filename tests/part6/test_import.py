@@ -1008,3 +1008,51 @@ def test_commit_import_refuses_the_fixture_catalog():
     prepared = importer.prepare_import("Moves", "dance", part4_items())
     with pytest.raises(catalog.RootError):
         importer.commit_import(catalog.FIXTURE_CATALOG, prepared)
+
+
+# Stitching (2026-10-28): one entry holds files from more than one part.
+
+def _declaring(name, producer):
+    data = json.loads(golden(name))
+    data["producer"] = producer
+    return data
+
+
+def test_a_part_per_kind_wins_over_the_plain_part(root):
+    manifest = do_import(root, part4_items(), part={"*": 3, "animation": 4})
+    assert {k: v["part"] for k, v in manifest["provenance"].items()} == {
+        "keyframes": 3, "skeleton": 3, "animation": 4}
+
+
+def test_kinds_without_a_part_stay_unknown(root):
+    manifest = do_import(root, part4_items(), part={"animation": 4})
+    assert {k: v["part"] for k, v in manifest["provenance"].items()} == {
+        "keyframes": None, "skeleton": None, "animation": 4}
+
+
+def test_a_producer_the_file_declares_is_recorded_without_part(root):
+    items = [item("keyframes.json", _declaring("keyframes-v1.json", "part3")),
+             item("skeleton.json", _declaring("skeleton-v1-keys-part4.json", "part3")),
+             item("animation.json", golden("animation-1-part6.json"))]
+    manifest = do_import(root, items)
+    assert {k: v["part"] for k, v in manifest["provenance"].items()} == {
+        "keyframes": 3, "skeleton": 3, "animation": None}
+
+
+def test_a_given_part_wins_over_the_declared_producer(root):
+    items = [item("keyframes.json", _declaring("keyframes-v1.json", "part3"))]
+    manifest = do_import(root, items + [item("animation.json", golden("animation-1-part6.json"))],
+                         part={"keyframes": 1})
+    assert manifest["provenance"]["keyframes"]["part"] == 1
+
+
+@pytest.mark.parametrize("producer", ["part0", "part8", "Part3", "3", 3, None, "part3 "])
+def test_a_producer_that_is_not_part1_to_part7_is_not_read(root, producer):
+    items = [item("skeleton.json", _declaring("skeleton-v1-keys-part4.json", producer))]
+    assert do_import(root, items)["provenance"]["skeleton"]["part"] is None
+
+
+@pytest.mark.parametrize("part", [{}, {"thumbnail": 3}, {"animation": 8}, {"*": 0},
+                                  {"skeleton": True}])
+def test_a_bad_part_per_kind_is_refused_and_nothing_is_written(root, part):
+    assert problem(root, part4_items(), part=part) == "part"

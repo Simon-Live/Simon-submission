@@ -37,14 +37,36 @@ def _cap(text):
     return value
 
 
+PART_KINDS = ("keyframes", "skeleton", "animation", "video")
+
+
 def _part(text):
+    """--part N or --part KIND=N: (kind or None, N)."""
+    kind, sep, number = text.rpartition("=")
+    if sep and kind not in PART_KINDS:
+        raise argparse.ArgumentTypeError(
+            f"{text!r}: the kind before = must be one of {', '.join(PART_KINDS)}")
     try:
-        value = int(text)
+        value = int(number)
     except ValueError:
         value = 0
     if not 1 <= value <= 7:
         raise argparse.ArgumentTypeError(f"{text!r} is not a number from 1 to 7")
-    return value
+    return (kind or None, value)
+
+
+def _parts(given):
+    """The importer's `part` from repeated --part values: None, one number, or {kind or "*": n}.
+    Raises ValueError for a second plain number or a kind named twice."""
+    if not given:
+        return None
+    out = {}
+    for kind, value in given:
+        key = kind or "*"
+        if key in out:
+            raise ValueError(f"--part names {'every file' if key == '*' else key} twice")
+        out[key] = value
+    return out["*"] if list(out) == ["*"] else out
 
 
 def _add_serve(sub):
@@ -73,8 +95,10 @@ def _add_import(sub):
     imp.add_argument("--id", dest="entry_id", help="entry id (else made from the name)")
     imp.add_argument("--description", help="text for the detail page")
     imp.add_argument("--source", help="where the files came from, kept in the provenance")
-    imp.add_argument("--part", type=_part, metavar="N",
-                     help="part that made the files (else recorded as not known)")
+    imp.add_argument("--part", type=_part, action="append", metavar="N|KIND=N",
+                     help="part that made the files, or KIND=N for one kind (keyframes, "
+                     "skeleton, animation, video); repeatable. Else the producer a file "
+                     "declares, else recorded as not known")
 
 
 def _parser():
@@ -172,6 +196,10 @@ def _collect(paths, importer):
 def _import(args):
     from . import importer
     try:
+        part = _parts(args.part)
+    except ValueError as exc:
+        return _fail(f"import: {exc}", 2)
+    try:
         root = catalog.resolve_root(args.catalog)
         catalog.guard_root(root)
     except catalog.RootError as exc:
@@ -180,7 +208,7 @@ def _import(args):
         manifest = importer.import_files(
             root, args.name, args.category, _collect(args.paths, importer),
             entry_id=args.entry_id, description=args.description, source=args.source,
-            part=args.part)
+            part=part)
     except importer.ImportProblem as exc:
         return _fail(f"import: {IMPORT_WORDS.get(str(exc), exc)}", 1)
     except OSError as exc:

@@ -87,6 +87,15 @@ def _read_data_file(folder, kind, name, claim):
         return None, str(exc), []
 
 
+def _producer(path, normal):
+    """The producer a file declares, else its format's usual producer (no provenance)."""
+    try:
+        declared = formats.declared_producer(json.loads(path.read_bytes()))
+    except (OSError, ValueError):
+        declared = None
+    return declared or formats.PRODUCER.get(normal["format"])
+
+
 def _check_data_file(folder, kind, name, claim, report):
     """Check one file and add its line. Returns (normalized or None, reading error or None)."""
     normal, error, bad_hash = _read_data_file(folder, kind, name, claim)
@@ -96,7 +105,7 @@ def _check_data_file(folder, kind, name, claim, report):
     if isinstance(claim, dict) and "part" in claim:
         part = claim["part"] if claim["part"] is not None else "unknown"
     else:
-        part = formats.PRODUCER.get(normal["format"])    # no provenance: the usual producer
+        part = _producer(folder / name, normal)    # no provenance: declared, else usual
     report.file(f"{name}: {normal['format']} ({normal['detected_by']}){_part_text(part)}", bad_hash)
     return normal, None
 
@@ -184,7 +193,7 @@ def _diagnose_file(path):
         normal = formats.read(kind, data, name)
     except formats.FormatError as exc:
         return dict(base, problems=[str(exc)], lines=[f"fail {exc}"])
-    part = formats.PRODUCER.get(normal["format"])
+    part = formats.declared_producer(data) or formats.PRODUCER.get(normal["format"])
     plays = {"animation": "plays animation", "skeleton": "plays skeleton (no animation)"}.get(kind)
     line = f"ok {name}: {kind}, {normal['format']} ({normal['detected_by']}){_part_text(part)}"
     return dict(base, ok=True, plays=plays, lines=[line], kind=kind, format=normal["format"])

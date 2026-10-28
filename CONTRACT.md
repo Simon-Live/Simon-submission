@@ -194,11 +194,15 @@ means valid and playable, 1 means not, 2 means the path is missing.
 
 `python3 -m part6 import <folder or files...> --name NAME --category exercise|dance` puts files in
 the catalog. Options: `--catalog DIR`, `--id ID`, `--description TEXT`, `--source TEXT` and
-`--part N`. From a folder it takes `keyframes.json`, `skeleton.json`, `animation.json` and one
+`--part`. `--part N` names the part that made every file; `--part KIND=N` names it for one kind
+(`keyframes`, `skeleton`, `animation` or `video`) and can be repeated, for example
+`--part keyframes=3 --part skeleton=3 --part animation=4`. A kind's own value wins over `--part N`.
+From a folder it takes `keyframes.json`, `skeleton.json`, `animation.json` and one
 `video.webm` or `video.mp4`; given files, it finds each kind as described above. Every JSON file
 goes through its reader. Any error stops the import with the reader's sentence on stderr and exit
 1, and nothing is written. The entry gets `files_source: "import"`, provenance per file (`part`
-from `--part`, else `null`: the format alone never names a producer), a thumbnail from the playable animation, and a
+from `--part`, else the producer the file names in a top-level `producer` field such as Part 3's
+`"producer": "part3"`, else `null`: the format alone never names a producer), a thumbnail from the playable animation, and a
 `duration_ms` from its duration. The command prints the manifest. The shipped fixture catalog is
 refused as `--catalog` (exit 2).
 

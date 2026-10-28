@@ -14,6 +14,7 @@ from conftest import short_id
 from part6 import doctor
 
 ROOT = Path(__file__).resolve().parents[2]
+GOLDEN_FORMATS = ROOT / "fixtures" / "conformance" / "formats"
 CATALOG = ROOT / "fixtures" / "output" / "catalog"
 PART4 = ROOT / "fixtures" / "part4" / "exercise"
 DASHES = (chr(0x2014), chr(0x2013))  # the em and en dash, spelled so this file holds neither
@@ -550,3 +551,14 @@ def test_cli_exit_codes(entry, tmp_path):
     assert cli(entry).returncode == 1
     missing = cli(tmp_path / "nowhere")
     assert missing.returncode == 2 and missing.stdout == "" and "nowhere" in missing.stderr
+
+
+def test_single_file_names_the_producer_it_declares(tmp_path):
+    """Part 3's part5 view is simon.animation.v1 with "producer": "part3": not Part 4's file."""
+    data = json.loads((GOLDEN_FORMATS / "skeleton-v1-keys-part4.json").read_text())
+    data["producer"] = "part3"
+    path = tmp_path / "skeleton.json"
+    path.write_text(json.dumps(data))
+    code, lines, _ = run_doctor(path)
+    assert code == 0
+    assert lines == ["ok skeleton.json: skeleton, simon.skeleton.v1 (version), part 3"]

@@ -133,9 +133,20 @@ def _classify(item):
     return _detect_kind(parsed, label), label, data, parsed
 
 
+def part_for(part, kind, parsed=None):
+    """The part recorded for one file (AC-C06): `part` is None, a whole number for every file, or
+    {kind or "*": number}. A number named for the kind wins, then "*" or the plain number, then the
+    producer the file declares itself (`formats.declared_producer`), else None (not known)."""
+    if isinstance(part, dict):
+        chosen = part.get(kind, part.get("*"))
+    else:
+        chosen = part
+    return chosen if chosen is not None else formats.declared_producer(parsed)
+
+
 def load_items(items, part=None, source=None):
     """{kind: Shared or Video} for the dropped files, at most one per kind. A second file of a
-    kind is refused before its content is read."""
+    kind is refused before its content is read. `part` as in `part_for`."""
     if not isinstance(items, (list, tuple)) or not items:
         raise ImportProblem("files")
     if len(items) > MAX_FILES:
@@ -146,10 +157,11 @@ def load_items(items, part=None, source=None):
         if kind in loaded:
             raise ImportProblem(f"two {kind} files")
         if kind == "video":
-            loaded[kind] = Video(data, detail, part, source, label)
+            loaded[kind] = Video(data, detail, part_for(part, kind), source, label)
         else:
-            loaded[kind] = read_shared(kind, data=data, parsed=detail, file=label, part=part,
-                                       source=source, original_name=label)
+            loaded[kind] = read_shared(kind, data=data, parsed=detail, file=label,
+                                       part=part_for(part, kind, detail), source=source,
+                                       original_name=label)
     return loaded
 
 
@@ -165,7 +177,15 @@ def _clean_text(value, field):
     return text or None
 
 
+PART_KEYS = formats.KINDS + ("video", "*")
+
+
 def _clean_part(part):
+    """None, a whole number from 1 to 7, or {kind or "*": that number}; raises ImportProblem."""
+    if isinstance(part, dict):
+        if not part or any(key not in PART_KEYS for key in part):
+            raise ImportProblem("part")
+        return {key: _clean_part(value) for key, value in part.items()}
     if part is not None and not (isinstance(part, int) and not isinstance(part, bool)
                                  and 1 <= part <= 7):
         raise ImportProblem("part")
@@ -189,9 +209,9 @@ def _default_description(loaded, now):
 # building and writing
 
 def _provenance(shared, video):
-    """Provenance per file. `part` is the part given with the file (`--part`, or the part a
-    processor declares), else None (not known): the format alone never names a producer
-    (AC-C06, AC-C09)."""
+    """Provenance per file. `part` is the part given with the file (`--part`, the producer the
+    file declares, or the part a processor declares), else None (not known): the format alone
+    never names a producer (AC-C06, AC-C09)."""
     out = {}
     for kind in formats.KINDS:
         if kind in shared:
