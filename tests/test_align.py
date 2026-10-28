@@ -113,8 +113,26 @@ def test_phase_is_monotonic_and_spans_0_to_1():
 
 def test_out_of_range_speed_is_an_error():
     p = expected("exercise")
-    with pytest.raises(ValueError, match="too short or too long"):
+    with pytest.raises(ValueError, match="too short"):
         align(p, p[::3])
+
+
+def test_too_slow_follower_aligns_to_a_subsegment():
+    # The step set bounds local slope, not the whole clip: a ⅓x follower isn't rejected, it
+    # matches the part of the clip that fits best. Pinned so callers know to check the span.
+    p = expected("exercise")
+    a = align(p, np.repeat(p, 3, axis=0))
+    start, end = a.follower_span
+    assert end - start + 1 <= 2 * len(p)
+    assert start > 0 or end < 3 * len(p) - 1
+
+
+def test_all_nan_measure_in_a_static_clip_does_not_break_the_fallback():
+    from part5.io import JOINTS
+    p = np.repeat(expected("exercise")[:1], 40, axis=0)
+    p[:, JOINTS.index("left_wrist")] = np.nan
+    a = align(p, p.copy())
+    assert np.isfinite(a.residual)
 
 
 def test_partial_offset_in_a_barely_moving_measure_does_not_drag_timing():
