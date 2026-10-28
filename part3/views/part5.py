@@ -11,12 +11,13 @@ import copy
 
 from part3 import views
 from part3.joints import COORDINATE_FRAME, JOINTS
-from part3.schema import SCHEMA_ID, ContractError
+from part3.schema import SCHEMA_ID, ViewError, view_refusal_text
 
 NAME = "part5"
 DESCRIPTION = "simon.animation.v1 for Part 5: joints as [x, y, z] lists, hip midpoint at the origin"
 SCHEMA = "animation-part5.schema.json"
 FORMAT = "simon.animation.v1"
+PAGE_LABEL = "a Part 5 animation"  # how the run app names this view in a sentence (schema.view_refusal_text)
 T_DECIMALS = 6
 
 
@@ -38,8 +39,8 @@ def _frames(skeleton):
             continue
         t = _seconds(frame["t_ms"], t0)
         if last is not None and t <= last:
-            raise ContractError(f"--view {NAME}", f"frame {frame['frame']}: times must strictly increase "
-                                                   "(Part 5 rejects a clip whose times do not)")
+            detail = f"frame {frame['frame']}: times must strictly increase (Part 5 rejects a clip whose times do not)"
+            raise ViewError(f"--view {NAME}", detail, view_refusal_text(PAGE_LABEL, detail))
         written.append(_frame(frame, frame["people"][0], t))
         last = t
     return written

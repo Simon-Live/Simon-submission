@@ -12,7 +12,7 @@ import pytest
 
 from part3 import cli, compare, metrics, runapi, server
 from part3.align import frame_map, phase_signal, sample
-from test_server import BASE, answer, post_head, serving
+from runapikit import BASE, answer, post_head, serving
 
 TAKES = (1, 2, 3, 4)
 BAD_ANGLE = "frame 1 holds an angle that is not a number from -1000 to 1000 or null."

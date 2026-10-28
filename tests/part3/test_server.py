@@ -2,10 +2,8 @@
 docs/specs/compare-mode.md AC-M02, AC-M03, AC-M04, AC-NFR-M1)."""
 
 import base64
-import contextlib
 import copy
 import hashlib
-import http.client
 import json
 import socket
 import threading
@@ -16,65 +14,14 @@ import pytest
 
 from conftest import ROOT
 from part3 import cli, runapi, server
+from runapikit import BASE, answer, post_head, serving
 
 WEB = ROOT / "web"
-BASE = "/simon-part-3/"
 IMPORT_MAP = '{"imports": {"three": "./vendor/three.js"}}'
 INLINE = "window.answer = 42;"
 APP_HTML = (f'<!doctype html><html><head><script type="importmap">{IMPORT_MAP}</script></head><body>'
             f'<script type="module" src="app.js"></script><script>{INLINE}</script></body></html>')
 SECRET = "SECRET-MARKER-NOT-FOR-VISITORS"
-
-
-class Reply:
-    def __init__(self, response, body):
-        self.status, self.body = response.status, body
-        self.headers = {name.lower(): value for name, value in response.getheaders()}
-
-    def json(self):
-        return json.loads(self.body)
-
-    def error_code(self):
-        return self.json()["error"]["code"]
-
-
-class Client:
-    def __init__(self, port, base):
-        self.port, self.base = port, base
-
-    def connect(self):
-        return http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
-
-    def raw(self, method, path, body=None, headers=None):
-        conn = self.connect()
-        try:
-            conn.request(method, path, body=body, headers=headers or {})
-            response = conn.getresponse()
-            return Reply(response, response.read())
-        finally:
-            conn.close()
-
-    def get(self, rel, **kwargs):
-        return self.raw("GET", self.base + rel, **kwargs)
-
-    def post(self, rel, body=b"", headers=None):
-        return self.raw("POST", self.base + rel, body=body, headers=headers)
-
-    def run(self, query, body=b""):
-        return self.post("api/run?" + query, body)
-
-
-@contextlib.contextmanager
-def serving(base=BASE, web_dir=None):
-    app = server.AppServer(("127.0.0.1", 0), base, web_dir)
-    thread = threading.Thread(target=app.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True)
-    thread.start()
-    try:
-        yield Client(app.server_address[1], app.base)
-    finally:
-        app.shutdown()
-        app.server_close()
-        thread.join(5)
 
 
 @pytest.fixture(scope="module")
@@ -344,21 +291,6 @@ def test_a_post_without_content_length_is_411(real):
     response = conn.getresponse()
     assert (response.status, json.loads(response.read())["error"]["code"]) == (411, "length_required")
     conn.close()
-
-
-def post_head(client, *headers, query=""):
-    """A POST to api/run whose request line and chosen headers are sent; the caller sends any body."""
-    conn = client.connect()
-    conn.putrequest("POST", BASE + "api/run" + query)
-    for header in headers:
-        conn.putheader(*header)
-    conn.endheaders()
-    return conn
-
-
-def answer(conn):
-    response = conn.getresponse()
-    return response.status, json.loads(response.read())["error"]["code"], response
 
 
 @pytest.mark.parametrize("value", ["abc", "-5", "1e3", "1 2", "0x10", "", "9" * 40])

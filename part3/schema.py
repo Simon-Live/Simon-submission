@@ -40,6 +40,68 @@ class OptionError(ContractError):
         self.args = (f"{option} {msg}",)
 
 
+class FrameCapError(OptionError):
+    """The output frame grid (`--fps`) or the key timeline (`--keyframes`) would hold more frames than the cap.
+
+    `timeline` is True for the Part 4 key timeline and False for the `--fps` grid, so a caller tells the two apart by
+    the attribute and never by the wording. The timeline's refusal keeps the `<path>: <message>` reading (the `--fps`
+    refusal has none).
+    """
+
+    def __init__(self, path, msg, timeline=False):
+        super().__init__(path, msg)
+        self.timeline = timeline
+        if timeline:
+            self.args = (f"{path}: {msg}",)
+
+
+class FrameRateError(ContractError):
+    """The clip cannot be resampled at the chosen `--fps` for a reason that is not the frame cap.
+
+    `times` is True when the input times do not increase, False when no output frame holds the person.
+    """
+
+    def __init__(self, path, msg, times=False):
+        super().__init__(path, msg)
+        self.times = times
+
+
+def view_refusal_text(label, detail=None):
+    """The run app's sentence for a View that cannot write the clip: no command line option in it, one next step."""
+    shown = f": {detail.rstrip('.')}" if detail else ""
+    return f"This clip cannot be written as {label}{shown}. Choose another View."
+
+
+class ViewError(ContractError):
+    """A View (`--view`) cannot write this clip. Every refusal a view raises is of this type, so the run app tells it
+    from an invalid file by the type (docs/specs/compare-mode.md AC-M14), never by the path or the wording.
+
+    `page_text` is the sentence the run app shows for it, with no command line option in it. `colon=False` gives the
+    `<option> <message>` reading of a missing option.
+    """
+
+    def __init__(self, path, msg, page_text, colon=True):
+        super().__init__(path, msg)
+        self.page_text = page_text
+        if not colon:
+            self.args = (f"{path} {msg}",)
+
+
+class LongWayError(ViewError):
+    """Part 4 would reject the keys: `joint` turns `degrees` between keys `from_index` and `to_index`, over `limit_deg`.
+
+    The numbers are attributes so a caller words the refusal for its own reader from them, not from `msg`; the page's
+    sentence (`page_text`) is built from them here.
+    """
+
+    def __init__(self, path, msg, joint, degrees, from_index, to_index, limit_deg):
+        detail = (f"{joint} turns {degrees} degrees between keys {from_index} and {to_index} "
+                  f"(Part 4 allows {limit_deg:g})")
+        super().__init__(path, msg, view_refusal_text("Part 4 keys", detail))
+        self.joint, self.degrees = joint, degrees
+        self.from_index, self.to_index, self.limit_deg = from_index, to_index, limit_deg
+
+
 def _is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 

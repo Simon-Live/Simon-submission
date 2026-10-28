@@ -20,7 +20,7 @@ from part3 import adapters, bones, facing, flips, io, mirror, people, profiles, 
 from part3 import person as person_step
 from part3 import temporal, views
 from part3.joints import BONES, GROUP_ORDER, JOINTS
-from part3.schema import ContractError, OptionError
+from part3.schema import ContractError, FrameRateError, OptionError
 
 DELEGATED = {"contract": "print the published schemas and the compatibility table",
              "doctor": "check a file against the contract and say which neighbour would reject it"}
@@ -134,7 +134,7 @@ def _frames_for(job, indices, rebuilt, conf, repaired, lengths):
     slots, coords, conf, repaired = resample.resample(times, [frame["frame"] for frame in frames], indices,
                                                       rebuilt, conf, repaired, lengths, job.fps, job.max_frames)
     if not len(coords):
-        raise ContractError("--fps", "no output frame holds the person; use a higher --fps")
+        raise FrameRateError("--fps", "no output frame holds the person; use a higher --fps")
     return slots, coords, conf, repaired
 
 
@@ -197,9 +197,11 @@ def process(doc, flip="auto", sha256=None, trace=None, *, body=None, stature=Non
     the profile channels. `max_frames` caps the frames `fps` may write (None: `resample.MAX_FRAMES`).
     `doc` is never modified.
 
-    Raises ContractError for an invalid input or option, an empty clip, a clip without a person or an
-    `fps` grid over `max_frames`, and ValueError for a `flip` value other than auto, on or off. When `trace` is a dict it receives
-    `up_in_input` (the clip body up in the label-repaired input coordinates) and `up_source`.
+    Raises ContractError for an invalid input or option, an empty clip and a clip without a person; its subclass
+    FrameCapError for an `fps` grid over `max_frames` and FrameRateError for a clip that `fps` cannot resample (times
+    that do not increase, or no output frame holding the person). Raises ValueError for a `flip` value other than
+    auto, on or off. When `trace` is a dict it receives `up_in_input` (the clip body up in the label-repaired input
+    coordinates) and `up_source`.
     """
     job = _job(doc, flip, sha256, body, stature, fps, input_fps, env, config, max_frames)
     skeleton = _single(job, person, trace)

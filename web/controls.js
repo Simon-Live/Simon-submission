@@ -8,6 +8,7 @@ const REQUEST_TIMEOUT_MS = 100000; // above the server's 60 s upload deadline pl
 const HEIGHT_RANGE = [0.5, 2.5];
 const NAME_LIMIT = 80;
 const FIELD_TYPES = new Set(["radio", "range", "file", "checkbox", "text", "number"]);
+const FRAMING_STATURE_M = 1.7; // the Simon standard body, the one the output camera's views are framed for
 
 export const PROFILE_NAMES = { "simon-standard": "Simon standard", "part4-rig": "Part 4 rig", measured: "Measured" };
 export const MESSAGES = {
@@ -153,6 +154,31 @@ export function downloadFile(text, name) {
 }
 
 // ---------------------------------------------------------------- 3D stage and view buttons
+
+// How far out the output camera and its target move from the grid origin so the head of a body of `statureM` stays clear
+// of the panel caption: the 1.70 m views scaled by stature / 1.70 for a taller body (a Height up to 2.5 m), unchanged
+// at 1.70 m or below, and unchanged when the stature is not a finite number.
+export function framingScale(statureM) {
+  return isNum(statureM) && statureM > FRAMING_STATURE_M ? statureM / FRAMING_STATURE_M : 1;
+}
+
+// A camera offset and target moved out from the grid origin by `scale` (state.framing of the page): the same view as at
+// 1.70 m, seen from farther away, for a taller body. Returns new vectors; the arguments are not changed.
+export function framedView(offset, target, scale) {
+  return { offset: offset.clone().multiplyScalar(scale), target: target.clone().multiplyScalar(scale) };
+}
+
+// Frames `panel` (null when the page has no 3D stage) for a body of framing `scale`: records it in state.framing and
+// moves the live camera out or in by scale / state.framing, so the visitor keeps the angle and the zoom they chose; a
+// body of the same framing leaves the camera where it is.
+export function reframePanel(state, panel, scale) {
+  const ratio = scale / state.framing;
+  state.framing = scale;
+  if (!panel || ratio === 1) return;
+  panel.tween = null;
+  const offset = panel.camera.position.clone().sub(panel.controls.target).multiplyScalar(ratio);
+  panel.place(offset, panel.controls.target.clone().multiplyScalar(ratio));
+}
 
 // Puts the "3D needs WebGL" note in each stage element and hides the camera buttons.
 export function showNoWebgl(stages) {

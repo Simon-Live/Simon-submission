@@ -95,6 +95,8 @@ def _unit(q):
 # --- Part 4's long-way rule ----------------------------------------------------------------------
 
 MAX_ROTVEC_STEP_DEG = 180.0  # Part 4 README "The file is rejected": more than this between neighbouring keys
+# The one next step for a long-way turn, worded for the part4 view's refusal and for `doctor` (review residual 9).
+LONG_WAY_FIX = "add keys between them (a smaller every:<n>) or use another view"
 
 
 def rotation_vector(q):

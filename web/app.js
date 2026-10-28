@@ -7,9 +7,9 @@ import {
   Panel, Rig, framesPerSecond, makeAxes, makeGrid, viewOffset, webglAvailable,
 } from "./scene.js";
 import {
-  MESSAGES, NA, PROFILE_NAMES, badge, bind, byId, createPlayer, downloadFile, ensureStage, failure, heightError,
-  inputError, isNum, loadSamples, markView, percent, plural, readOptions, runAnswer, say, sendRun, shortName,
-  showAlert, showNoWebgl,
+  MESSAGES, NA, PROFILE_NAMES, badge, bind, byId, createPlayer, downloadFile, ensureStage, failure, framedView,
+  framingScale, heightError, inputError, isNum, loadSamples, markView, percent, plural, readOptions, reframePanel,
+  runAnswer, say, sendRun, shortName, showAlert, showNoWebgl,
 } from "./controls.js"; // the request, option, player and view-button code the Compare page shares
 
 const BONES_SHOWN = [["left_shank", "shank"], ["left_upper_arm", "upper arm"], ["left_forearm", "forearm"], ["spine", "spine"]];
@@ -34,6 +34,7 @@ const state = {
   count: 0,
   playing: false,
   accumulator: 0,
+  framing: 1, // framingScale of the body the output camera is framed for
 };
 
 const runUsable = runAnswer("input_frames"); // an ok answer must carry the input frames drawn beside the output
@@ -123,7 +124,7 @@ function fillHeight(m) {
   const profile = PROFILE_NAMES[m.profile] || shown(m.profile);
   byId("m-profile").textContent = profile;
   byId("m-height").textContent = metres(m.stature_m);
-  byId("m-height-sub").textContent = `every output uses this one body: ${profile}`;
+  byId("m-height-sub").textContent = `this run's body: ${profile}`;
   const estimate = byId("m-height-input");
   estimate.hidden = !isNum(m.input_height_estimate_m);
   estimate.textContent = estimate.hidden ? "" : `Input person about ${metres(m.input_height_estimate_m)}`;
@@ -210,7 +211,8 @@ function buildStage(bones) {
   output.scene.add(makeGrid(), makeAxes(new THREE.Vector3(-0.95, 0, -0.45), 0.32, true));
   const outputRig = new Rig(bones, { color: OUTPUT_COLOR, radius: OUTPUT_RADIUS, tinted: false });
   output.scene.add(outputRig.group);
-  output.place(viewOffset(output, "reset"), OVERLAP_TARGET);
+  const home = framedView(viewOffset(output, "reset"), OVERLAP_TARGET, state.framing);
+  output.place(home.offset, home.target);
   for (const panel of [input, output]) panel.controls.addEventListener("start", () => markView(null));
   markView(null);
   return { input: { panel: input, rig: inputRig }, output: { panel: output, rig: outputRig } };
@@ -221,7 +223,8 @@ const showNoStage = () => showNoWebgl([byId("stage-input"), byId("stage-output")
 function showView(name) {
   if (!state.stage) return;
   const { input, output } = state.stage;
-  output.panel.flyTo(viewOffset(output.panel, name), OVERLAP_TARGET);
+  const view = framedView(viewOffset(output.panel, name), OVERLAP_TARGET, state.framing);
+  output.panel.flyTo(view.offset, view.target);
   if (name === "reset") input.panel.goHome();
   else input.panel.flyTo(viewOffset(input.panel, name), INPUT_TARGET);
   markView(name);
@@ -271,6 +274,7 @@ function showResult(data) {
   byId("alert").hidden = true;
   byId("results").hidden = false;
   ensureStage(state, () => buildStage(result.bones), showNoStage);
+  reframePanel(state, state.stage && state.stage.output.panel, framingScale(data.metrics.stature_m));
   player.rewind();
   byId("results").scrollIntoView({ block: "start" }); // the 3D panels are the point; do not leave them below the fold
 }

@@ -1,44 +1,12 @@
 """--person, --all-people and the people index (spec integration-contract.md "People"; AC-V01, AC-V02)."""
 
-import copy
-
 import pytest
 
+from clipkit import coincident_hips, crowd
 from part3 import cli, people, person
 from part3.schema import ContractError, validate_skeleton
 
 CLEAN = {"env": {}, "config": False}
-
-
-def crowd(real_doc, ids=("b",), frames=20, absent=None, move=1.5):
-    """The real clip's first `frames` frames with extra people (copies moved sideways) added.
-
-    `absent` maps an id to the frame positions where it is missing; person 0 keeps the clip's own id.
-    """
-    doc = copy.deepcopy(real_doc)
-    doc["frames"] = doc["frames"][:frames]
-    absent = absent or {}
-    for i, frame in enumerate(doc["frames"]):
-        keep = [p for p in frame["people"] if i not in absent.get(p["id"], ())]
-        for k, pid in enumerate(ids):
-            if i in absent.get(pid, ()):
-                continue
-            other = copy.deepcopy(frame["people"][0])
-            other["id"] = pid
-            for joint in other["joints"].values():
-                joint["x"] += move * (k + 1)
-            keep.append(other)
-        frame["people"] = keep
-    return doc
-
-
-def coincident_hips(doc, pid):
-    """`doc` with the right hip of `pid` moved onto its left hip in every frame."""
-    for frame in doc["frames"]:
-        for entry in frame["people"]:
-            if entry["id"] == pid:
-                entry["joints"]["right_hip"] = dict(entry["joints"]["left_hip"])
-    return doc
 
 
 # --- finding the id ---------------------------------------------------------------------------------

@@ -6,9 +6,9 @@ import {
   OVERLAP_TARGET, OVERLAY_COLORS, Overlay, framesPerSecond, sampleOutput, viewOffset, webglAvailable,
 } from "./scene.js";
 import {
-  MESSAGES, NA, PROFILE_NAMES, badge, bind, byId, call, createPlayer, downloadFile, el, ensureStage, heightError,
-  inputError, isNum, loadSamples, markView, percent, plural, readOptions, runAnswer, say, sendRun, shortName,
-  showAlert, showNoWebgl,
+  MESSAGES, NA, PROFILE_NAMES, badge, bind, byId, call, createPlayer, downloadFile, el, ensureStage, framedView,
+  framingScale, heightError, inputError, isNum, loadSamples, markView, percent, plural, readOptions, reframePanel,
+  runAnswer, say, sendRun, shortName, showAlert, showNoWebgl,
 } from "./controls.js"; // the request, option, player and view-button code the Run page shares
 
 const MIN_ROWS = 2;
@@ -27,6 +27,7 @@ const state = {
   nextId: 1,
   result: null, // { inputs: [{ name, frames, poses, metrics, options, text, fileName }], maps, agreement, fps }
   stage: null, // the Overlay of every input's skeleton
+  framing: 1, // framingScale of the tallest input; the overlay camera is framed for that body
   webgl: false,
   shown: [],
   frame: 0,
@@ -175,16 +176,33 @@ function fillTables(result) {
     ...agreement.per_pair.map((pair) => pairRow(`${label(pair.a)} and ${label(pair.b)}`, pair.p95_deg, pair.pass)));
 }
 
-function fillCards(result, options) {
+// A number the server applied, or null for none: the server echoes a number (null when the field was blank), and a
+// numeric string reads as that number, so a raw field text can never make the note forget a Height or a Frame rate.
+const applied = (v) => {
+  const n = typeof v === "string" && v.trim() ? Number(v) : v;
+  return isNum(n) ? n : null;
+};
+const named = (v) => (v === null || v === undefined ? NA : String(v));
+
+// The result's source note: the Body, Height, View and Frame rate the server applied, read from the `options` it echoed
+// for the runs (as the Run page's note is), not from the page's own field text.
+function sourceNote(options) {
+  const o = options || {};
+  const stature = applied(o.stature);
+  const fps = applied(o.fps);
+  const height = stature === null ? "the body's own" : `${stature} m`;
+  const rate = fps === null ? "source" : `${fps} per second`;
+  return `Body: ${named(o.body)}, height ${height}. View: ${named(o.view)}. Frame rate: ${rate}.`;
+}
+
+function fillCards(result) {
   const { agreement } = result;
   byId("c-p95").textContent = isNum(agreement.p95_deg) ? agreement.p95_deg.toFixed(3) : NA;
   badge(byId("c-badge"), isNum(agreement.p95_deg) ? agreement.p95_deg <= LIMIT_DEG : null);
   byId("c-sub").textContent = `largest spread of a joint angle across inputs, limit ${LIMIT_DEG} degrees`;
   byId("c-count").textContent = String(result.inputs.length);
   byId("c-count-sub").textContent = "lined up on the timeline of input 1";
-  const height = isNum(options.stature) ? `${options.stature} m` : "the body's own";
-  const rate = isNum(options.fps) ? `${options.fps} per second` : "source";
-  byId("source-note").textContent = `Body: ${options.body}, height ${height}. View: ${options.view}. Frame rate: ${rate}.`;
+  byId("source-note").textContent = sourceNote(result.inputs[0].options); // every run was sent the same options
 }
 
 function fillLegend(result) {
@@ -220,7 +238,8 @@ function buildStage(bones) {
 
 function showView(name) {
   if (!state.stage) return;
-  state.stage.panel.flyTo(viewOffset(state.stage.panel, name), OVERLAP_TARGET);
+  const view = framedView(viewOffset(state.stage.panel, name), OVERLAP_TARGET, state.framing);
+  state.stage.panel.flyTo(view.offset, view.target);
   markView(name);
 }
 
@@ -263,7 +282,7 @@ function keepRun(input, data) {
     return person ? names.map((name) => [person.joints[name].x, person.joints[name].y, person.joints[name].z]) : null;
   });
   return {
-    name: input.name || data.source.name, frames: poses.length, poses, metrics: data.metrics, bones: data.bones,
+    name: input.name || data.source.name, frames: poses.length, poses, metrics: data.metrics, bones: data.bones, options: data.options,
     angles: data.angles, text: data.output_text, fileName: data.output_name, fps: framesPerSecond(skeleton.frames),
   };
 }
@@ -285,19 +304,21 @@ async function runAll(inputs, options) {
   return { runs };
 }
 
-function showResult(runs, compared, options) {
+function showResult(runs, compared) {
   const result = {
     inputs: runs, maps: compared.alignment.maps, agreement: compared.agreement, fps: runs[0].fps,
   };
   player.pause();
   state.result = result;
   state.count = runs[0].frames;
-  fillCards(result, options);
+  fillCards(result);
   fillTables(result);
   fillLegend(result);
   byId("alert").hidden = true;
   byId("results").hidden = false;
   ensureStage(state, () => buildStage(runs[0].bones), showNoStage);
+  const tallest = Math.max(...runs.map((run) => framingScale(run.metrics.stature_m))); // the tallest input's framing
+  reframePanel(state, state.stage && state.stage.panel, tallest);
   if (state.stage) runs.forEach((_, k) => state.stage.setShown(k, true));
   if (state.stage) for (let k = runs.length; k < OVERLAY_COLORS.length; k++) state.stage.setShown(k, false);
   player.rewind();
@@ -341,7 +362,7 @@ async function onCompare() {
     showAlert(outcome.error, outcome.input ? `${describe(outcome.input)}: ` : "");
     say("The comparison did not finish.");
   } else {
-    showResult(runs, compared, options);
+    showResult(runs, compared);
     say(`Compared ${runs.length} inputs.`);
   }
   state.lastRun = summary(inputs, runs, outcome, compared);

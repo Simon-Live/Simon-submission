@@ -14,7 +14,7 @@ import numpy as np
 from part3 import keyframes as kf
 from part3 import rig
 from part3.joints import COORDINATE_FRAME, JOINTS
-from part3.schema import ContractError, OptionError
+from part3.schema import LongWayError, ViewError, view_refusal_text
 
 NAME = "part4"
 DESCRIPTION = ("simon.skeleton.v1 for Part 4: the native skeleton plus rest offsets, 30 fps key ticks "
@@ -23,6 +23,7 @@ SCHEMA = "skeleton-part4.schema.json"
 
 FORMAT = "simon.skeleton.v1"
 KEYFRAMES_FORMAT = "simon.keyframes.v1"
+PAGE_LABEL = "Part 4 keys"  # how the run app names this view in a sentence (schema.view_refusal_text)
 VIRTUAL_JOINTS = ["pelvis", "neck"]
 DECIMALS = 6
 
@@ -32,12 +33,14 @@ def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, **_
 
     `keyframes` is a file path (Part 1 or Part 4 keyframes), `"every:<n>"` or a parsed keyframes dict;
     `keyframes_person` picks the Part 1 person; `max_frames` caps the timeline's ticks (None: the cap
-    of `resample.MAX_FRAMES`). Raises ContractError when `keyframes` is missing, unreadable, of an
-    unknown kind or leaves no key inside the clip, when the timeline would be longer than the cap, and
-    when Part 4 would reject the keys (a joint turning the long way between two of them).
+    of `resample.MAX_FRAMES`). Raises ViewError when `keyframes` is missing; ContractError when it is
+    unreadable, of an unknown kind or leaves no key inside the clip; FrameCapError when the timeline would
+    be longer than the cap; LongWayError (a ViewError) when Part 4 would reject the keys (a joint turning
+    the long way between two of them).
     """
     if keyframes is None:
-        raise OptionError("--view part4", "needs --keyframes <keyframes.json> or every:<n>")
+        raise ViewError("--view part4", "needs --keyframes <keyframes.json> or every:<n>",
+                        view_refusal_text(PAGE_LABEL), colon=False)
     frames = skeleton["frames"]
     t0_ms, t_last_ms = frames[0]["t_ms"], frames[-1]["t_ms"]
     timeline = kf.load(keyframes, t0_ms, t_last_ms, person=keyframes_person, max_frames=max_frames)
@@ -78,14 +81,15 @@ def keyframes_doc(rendered):
 
 
 def _check_long_way(keys):
-    """Raise ContractError for the earliest key step Part 4 would reject (spec "Self-check", review B2)."""
+    """Raise LongWayError for the earliest key step Part 4 would reject (spec "Self-check", review B2)."""
     steps = rig.long_way(keys)
     if steps:
         step = min(steps, key=lambda s: s["from_index"])
-        raise ContractError("--view part4", f"Part 4 would reject this clip: {step['joint']} turns {step['deg']} "
-                                            f"degrees between keys {step['from_index']} and {step['to_index']} "
-                                            f"(Part 4 allows {rig.MAX_ROTVEC_STEP_DEG:g}); add keys between them "
-                                            "(a smaller every:<n>) or use another view")
+        raise LongWayError("--view part4", f"Part 4 would reject this clip: {step['joint']} turns {step['deg']} "
+                                           f"degrees between keys {step['from_index']} and {step['to_index']} "
+                                           f"(Part 4 allows {rig.MAX_ROTVEC_STEP_DEG:g}); {rig.LONG_WAY_FIX}",
+                           joint=step["joint"], degrees=step["deg"], from_index=step["from_index"],
+                           to_index=step["to_index"], limit_deg=rig.MAX_ROTVEC_STEP_DEG)
 
 
 def _round(values):

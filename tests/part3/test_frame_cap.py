@@ -12,11 +12,11 @@ import time
 import pytest
 
 from part3 import cli, runapi
-from test_runapi import code_of, options_for
-from test_server import serving
-from test_view_part4 import across_the_body, take1_with_arms
+from part3.schema import FrameCapError
+from runapikit import across_the_body, code_of, options_for, serving, take1_with_arms
 
 TOO_LONG = "This clip is too long for that frame rate here. Choose a lower frame rate or a shorter clip."
+TIMELINE_TOO_LONG = "This clip is too long for Part 4 keys here. Choose another View or a shorter clip."
 MISSING_T_MS = ("This file is not a valid pose3d.json: pose3d.frames[0].t_ms: "
                 "missing; add t_ms to every frame or a top-level fps.")
 
@@ -53,16 +53,19 @@ def test_the_server_frame_cap_and_its_message():
     assert runapi.ERRORS["too_long"] == (400, TOO_LONG)
 
 
-@pytest.mark.parametrize("query", ["fps=60", "fps=30", "view=part4", "view=part4&fps=30", "view=part4&fps=60",
-                                   "body=measured&view=part5&fps=60"])
-def test_a_two_frame_file_ten_million_ms_long_is_refused_before_anything_runs(real_doc, monkeypatch, query):
+@pytest.mark.parametrize("query, message", [
+    ("fps=60", TOO_LONG), ("fps=30", TOO_LONG), ("view=part4&fps=30", TOO_LONG), ("view=part4&fps=60", TOO_LONG),
+    ("body=measured&view=part5&fps=60", TOO_LONG),
+    ("view=part4", TIMELINE_TOO_LONG),  # Source: the Part 4 timeline is 30 per second whatever the Frame rate
+])
+def test_a_two_frame_file_ten_million_ms_long_is_refused_before_anything_runs(real_doc, monkeypatch, query, message):
     def explode(*args, **kwargs):
         raise AssertionError("the pipeline ran")
     monkeypatch.setattr(cli, "process", explode)
     started = time.perf_counter()
     status, error = code_of(post_long(two_frames(real_doc), query))
     assert time.perf_counter() - started < 1.0
-    assert (status, error["code"], error["field"], error["message"]) == (400, "too_long", None, TOO_LONG)
+    assert (status, error["code"], error["field"], error["message"]) == (400, "too_long", None, message)
 
 
 @pytest.mark.parametrize("query", ["", "view=part5", "view=native&body=part4-rig", "stature=1.9"])
@@ -145,14 +148,30 @@ def test_a_non_object_document_is_the_pipelines_to_refuse():
 
 # ---- review R1: the pipeline's own frame cap is the same too_long, not an invalid file -----------
 
-@pytest.mark.parametrize("query, cap", [("fps=60", 50), ("fps=30", 50), ("view=part4", 3), ("view=part4&fps=30", 3)])
-def test_the_pipelines_own_cap_is_answered_too_long_and_names_no_command_line_flag(monkeypatch, query, cap):
+@pytest.mark.parametrize("query, cap, message", [
+    ("fps=60", 50, TOO_LONG), ("fps=30", 50, TOO_LONG),
+    ("view=part4", 3, TIMELINE_TOO_LONG),  # the key timeline's FrameCapError (its `timeline` attribute is True)
+    ("view=part4&fps=30", 3, TOO_LONG),    # the 30 per second grid is over the cap first, in cli.process
+])
+def test_the_pipelines_own_cap_is_answered_too_long_and_names_no_command_line_flag(monkeypatch, query, cap, message):
     """With the span pre-check out of the way, `cli.process` (`--fps`) or the part4 timeline (`--keyframes`) refuses the
-    clip itself; both are the visitor's frame rate being too high for this clip, not a bad file."""
+    clip itself with a `FrameCapError`: the frames it would write are over the cap, not a bad file. Only that type is
+    answered `too_long`; the other `--fps` refusals are `FrameRateError`s (test_fps_refusal.py). The timeline's own
+    error (marked by its `timeline` attribute) is worded for the View, as a lower frame rate cannot help it."""
     monkeypatch.setattr(runapi, "too_long", lambda doc, options: False)
     monkeypatch.setattr(runapi, "SERVER_MAX_FRAMES", cap)
     status, error = code_of(runapi.handle("part2-squat", "auto", None, b"", options_for(query)))
-    assert (status, error["code"], error["field"], error["message"]) == (400, "too_long", None, TOO_LONG)
+    assert (status, error["code"], error["field"], error["message"]) == (400, "too_long", None, message)
+    assert "--" not in error["message"]
+
+
+def test_the_timeline_cap_is_told_from_the_grid_cap_by_the_attribute_and_not_by_the_words():
+    same_words = "the limit is 3"
+    timeline = FrameCapError("--keyframes", same_words, timeline=True)
+    grid = FrameCapError("--keyframes", same_words)  # the same path and words, not the timeline
+    assert code_of(runapi._contract_failure(timeline, runapi.DEFAULT_OPTIONS))[1]["message"] == TIMELINE_TOO_LONG
+    assert code_of(runapi._contract_failure(grid, runapi.DEFAULT_OPTIONS))[1]["message"] == TOO_LONG
+    assert runapi.ERRORS["too_long"] == (400, TOO_LONG)  # the table keeps the grid's text staging/verify.mjs checks
 
 
 def test_the_pipelines_own_cap_is_the_same_answer_over_http(real, monkeypatch):
@@ -161,6 +180,10 @@ def test_the_pipelines_own_cap_is_the_same_answer_over_http(real, monkeypatch):
     reply = real.run("sample=part2-squat&fps=60")
     assert (reply.status, reply.error_code()) == (400, "too_long")
     assert reply.json()["error"] == {"code": "too_long", "field": None, "message": TOO_LONG}
+    monkeypatch.setattr(runapi, "SERVER_MAX_FRAMES", 3)
+    timeline = real.run("sample=part2-squat&view=part4")
+    assert (timeline.status, timeline.error_code()) == (400, "too_long")
+    assert timeline.json()["error"] == {"code": "too_long", "field": None, "message": TIMELINE_TOO_LONG}
 
 
 def test_a_clip_part4_would_reject_is_a_view_refusal_over_http_and_still_runs_natively(real):
@@ -172,6 +195,17 @@ def test_a_clip_part4_would_reject_is_a_view_refusal_over_http_and_still_runs_na
     assert error["message"].endswith(" degrees between keys 110 and 120 (Part 4 allows 180). Choose another View.")
     assert "--" not in error["message"] and b"Traceback" not in refused.body
     assert real.run("name=sweep.json&view=native", raw).status == 200
+
+
+def test_a_clip_part5_would_reject_is_a_view_refusal_over_http_and_still_runs_natively(real, real_doc):
+    raw = json.dumps(two_frames(real_doc, 0)).encode()  # two frames at one time: valid natively, not for Part 5
+    refused = real.run("name=equal.json&view=part5", raw)
+    error = refused.json()["error"]
+    assert (refused.status, error["code"], error["field"]) == (422, "view_refused", "view")
+    assert error["message"] == ("This clip cannot be written as a Part 5 animation: frame 1: times must strictly "
+                                "increase (Part 5 rejects a clip whose times do not). Choose another View.")
+    assert "--" not in error["message"] and b"Traceback" not in refused.body
+    assert real.run("name=equal.json&view=native", raw).status == 200
 
 
 # ---- residual 11: the page does not tell a visitor to use a command line flag ------------------
@@ -195,8 +229,10 @@ def raw_two_frames(real_doc, last_ms):
     return json.dumps(two_frames(real_doc, last_ms)).encode()
 
 
-@pytest.mark.parametrize("query", ["fps=60", "view=part4", "view=part4&fps=60"])
-def test_a_tiny_file_with_a_ten_million_ms_span_is_refused_400_too_long_at_once_over_http(real, real_doc, query):
+@pytest.mark.parametrize("query, message", [("fps=60", TOO_LONG), ("view=part4", TIMELINE_TOO_LONG),
+                                            ("view=part4&fps=60", TOO_LONG)])
+def test_a_tiny_file_with_a_ten_million_ms_span_is_refused_400_too_long_at_once_over_http(real, real_doc, query,
+                                                                                       message):
     """The review's 2.5 KB upload used 6.7 GiB and 45 s at 60 frames per second before the frame count was checked."""
     raw = raw_two_frames(real_doc, 10_000_000)
     assert len(raw) < 3000
@@ -204,7 +240,7 @@ def test_a_tiny_file_with_a_ten_million_ms_span_is_refused_400_too_long_at_once_
     reply = real.run(f"name=gap.json&{query}", raw)
     elapsed = time.perf_counter() - started
     assert (reply.status, reply.error_code()) == (400, "too_long")
-    assert reply.json()["error"] == {"code": "too_long", "field": None, "message": TOO_LONG}
+    assert reply.json()["error"] == {"code": "too_long", "field": None, "message": message}
     assert elapsed < 1.0 and b"Traceback" not in reply.body
     assert real.run("sample=take-1").status == 200 and real.run("sample=take-2").status == 200  # both slots are free
 

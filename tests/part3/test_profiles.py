@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from clipkit import skeleton_arrays
+from clipkit import skeleton_arrays, write_profile
 from part3 import bones, cli, profiles, runapi
 from part3.joints import BONE_NAMES
 from part3.metrics import bone_variation
@@ -22,15 +22,6 @@ def run(doc, **kw):
 
 def variation(skeleton):
     return bone_variation(skeleton, bones.lengths_array(skeleton["bone_lengths_m"]))
-
-
-def write_profile(path, **changes):
-    profile = {"schema": "simon.body_profile/1", "name": "tall-test", "stature_m": 1.9,
-               "bone_lengths_m": {name: round(value * 1.9 / 1.7, 4) for name, value in bone_lengths().items()},
-               "source": "unit test"}
-    profile.update(changes)
-    path.write_text(json.dumps(profile), encoding="utf-8")
-    return path
 
 
 # --- AC-B01: the default ------------------------------------------------------------------------

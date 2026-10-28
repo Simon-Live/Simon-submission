@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from part3 import io
 from part3.resample import cap_for, shown
-from part3.schema import ContractError, describe, is_finite, is_int
+from part3.schema import ContractError, FrameCapError, describe, is_finite, is_int
 
 FPS = 30
 EVERY_PREFIX = "every:"
@@ -42,18 +42,18 @@ class Timeline:
 def frame_count(t0_ms, t_last_ms, max_frames=None):
     """Ticks in the clip: floor((t_last - t0) * 30 / 1000 + 1e-9) + 1 (at least 1).
 
-    Raises ContractError when the clip would have more than `max_frames` ticks (None: `resample.MAX_FRAMES`)
+    Raises FrameCapError when the clip would have more than `max_frames` ticks (None: `resample.MAX_FRAMES`)
     or its span is not finite: the timeline is built tick by tick, so its length must be bounded (review B1).
     """
     cap = cap_for(max_frames)
     scaled = max(float(t_last_ms) - float(t0_ms), 0.0) * FPS / 1000.0 + _EPS
     if not math.isfinite(scaled):
-        raise ContractError("--keyframes", f"the {FPS} fps timeline would have more ticks than the limit of "
-                                           f"{cap}: the clip span (first to last t_ms) is not finite")
+        raise FrameCapError("--keyframes", f"the {FPS} fps timeline would have more ticks than the limit of "
+                                           f"{cap}: the clip span (first to last t_ms) is not finite", timeline=True)
     count = math.floor(scaled) + 1
     if count > cap:
-        raise ContractError("--keyframes", f"the {FPS} fps timeline would have {shown(count)} ticks; "
-                                           f"the limit is {cap}")
+        raise FrameCapError("--keyframes", f"the {FPS} fps timeline would have {shown(count)} ticks; "
+                                           f"the limit is {cap}", timeline=True)
     return count
 
 

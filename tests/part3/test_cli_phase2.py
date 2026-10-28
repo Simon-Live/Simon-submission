@@ -12,12 +12,11 @@ import types
 
 import pytest
 
+from clipkit import coincident_hips, crowd, write_profile
 from conftest import REAL_CLIP, ROOT
 from part3 import cli, views
 from part3.schema import validate_skeleton
-from test_people import coincident_hips, crowd
-from test_profiles import write_profile
-from test_views import part5_input_rules
+from part5rules import part5_input_rules
 
 
 @pytest.fixture(autouse=True)

@@ -3,8 +3,11 @@
 import math
 
 import numpy as np
+import pytest
 
-from part3 import rig
+from part3 import doctor, rig
+from part3.schema import ContractError, LongWayError
+from part3.views import part4
 
 
 def _quat_about_z(deg):
@@ -43,3 +46,25 @@ def test_ac_p02_a_negated_quaternion_is_the_same_key():
     keys = _keys([(0, 30.0), (10, 40.0)])
     keys[1]["local_rotations"]["left_shoulder"] = [-c for c in keys[1]["local_rotations"]["left_shoulder"]]
     assert rig.long_way(keys) == []
+
+
+def test_the_part4_views_refusal_is_a_long_way_error_with_the_step_as_attributes():
+    keys = _keys([(0, 170.0), (10, 190.0)])
+    with pytest.raises(LongWayError) as caught:
+        part4._check_long_way(keys)
+    error = caught.value
+    assert isinstance(error, ContractError)
+    assert (error.path, error.joint, error.from_index, error.to_index, error.limit_deg) == (
+        "--view part4", "left_shoulder", 0, 10, 180.0)
+    assert error.degrees == rig.long_way(keys)[0]["deg"] > 180.0
+    assert str(error) == (f"--view part4: Part 4 would reject this clip: left_shoulder turns {error.degrees} degrees "
+                          "between keys 0 and 10 (Part 4 allows 180); add keys between them (a smaller every:<n>) "
+                          "or use another view")
+
+
+def test_r9_the_view_and_doctor_share_one_long_way_next_step():
+    assert rig.LONG_WAY_FIX == "add keys between them (a smaller every:<n>) or use another view"
+    assert doctor.FIX_LONG_WAY is rig.LONG_WAY_FIX
+    with pytest.raises(LongWayError) as caught:
+        part4._check_long_way(_keys([(0, 170.0), (10, 190.0)]))
+    assert caught.value.msg.endswith(f"; {rig.LONG_WAY_FIX}")

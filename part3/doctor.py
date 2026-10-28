@@ -42,7 +42,7 @@ RUN = "python3 -m part3 run ..."
 FIX_PART4 = f"{RUN} --view part4 --keyframes <keyframes.json>"
 FIX_PART5 = f"{RUN} --view part5"
 FIX_KEYFRAMES_OUT = f"{RUN} --view part4 --keyframes <keyframes.json> --keyframes-out <dir>/keyframes.json"
-FIX_LONG_WAY = "add keys between them (a smaller every:<n> or more keys in the keyframes file) or use another view"
+FIX_LONG_WAY = rig.LONG_WAY_FIX
 FIX_PRODUCER = "fix the producer of this file (Part 3 did not write it)"
 
 # kind: (label, schema name, consumers that read this kind)

@@ -9,6 +9,7 @@ import numpy as np
 from conftest import REAL_CLIP
 from part3 import cli
 from part3.joints import GROUPS, JOINTS, swap_index
+from part3.standard import bone_lengths
 from part3.synth import FPS
 
 
@@ -81,3 +82,43 @@ def with_mirrored(doc, value):
     out = copy.deepcopy(doc)
     out["mirrored"] = value
     return out
+
+
+def crowd(real_doc, ids=("b",), frames=20, absent=None, move=1.5):
+    """The real clip's first `frames` frames with extra people (copies moved sideways) added.
+
+    `absent` maps an id to the frame positions where it is missing; person 0 keeps the clip's own id.
+    """
+    doc = copy.deepcopy(real_doc)
+    doc["frames"] = doc["frames"][:frames]
+    absent = absent or {}
+    for i, frame in enumerate(doc["frames"]):
+        keep = [p for p in frame["people"] if i not in absent.get(p["id"], ())]
+        for k, pid in enumerate(ids):
+            if i in absent.get(pid, ()):
+                continue
+            other = copy.deepcopy(frame["people"][0])
+            other["id"] = pid
+            for joint in other["joints"].values():
+                joint["x"] += move * (k + 1)
+            keep.append(other)
+        frame["people"] = keep
+    return doc
+
+
+def coincident_hips(doc, pid):
+    """`doc` with the right hip of `pid` moved onto its left hip in every frame."""
+    for frame in doc["frames"]:
+        for entry in frame["people"]:
+            if entry["id"] == pid:
+                entry["joints"]["right_hip"] = dict(entry["joints"]["left_hip"])
+    return doc
+
+
+def write_profile(path, **changes):
+    profile = {"schema": "simon.body_profile/1", "name": "tall-test", "stature_m": 1.9,
+               "bone_lengths_m": {name: round(value * 1.9 / 1.7, 4) for name, value in bone_lengths().items()},
+               "source": "unit test"}
+    profile.update(changes)
+    path.write_text(json.dumps(profile), encoding="utf-8")
+    return path

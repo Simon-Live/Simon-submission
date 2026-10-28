@@ -13,7 +13,7 @@ import numpy as np
 
 from part3 import bones, io
 from part3.joints import GROUP_ORDER, JOINTS
-from part3.schema import ContractError, OptionError
+from part3.schema import ContractError, FrameCapError, FrameRateError
 
 FPS_MIN, FPS_MAX = 1, 240
 MAX_FRAMES = 100_000  # review B1: the grid grows with the clip's time span, so the upload size bounds nothing
@@ -48,11 +48,11 @@ def cap_for(max_frames):
 def _check_times(times):
     steps = np.flatnonzero(times[1:] <= times[:-1])  # compared, not subtracted: huge t_ms must not overflow
     if len(steps):
-        raise ContractError(f"pose3d.frames[{steps[0] + 1}].t_ms", "must increase for --fps")
+        raise FrameRateError(f"pose3d.frames[{steps[0] + 1}].t_ms", "must increase for --fps", times=True)
 
 
 def grid_count(first_ms, last_ms, fps, max_frames=None):
-    """Frames on the `fps` grid from `first_ms` to `last_ms`; OptionError over the cap or for a span that overflows.
+    """Frames on the `fps` grid from `first_ms` to `last_ms`; FrameCapError over the cap or for a span that overflows.
 
     `max_frames` None means `MAX_FRAMES`. Plain floats on purpose: a span past the float range is `inf`
     here and a message, never a numpy warning or an array too large to allocate.
@@ -60,11 +60,11 @@ def grid_count(first_ms, last_ms, fps, max_frames=None):
     cap = cap_for(max_frames)
     scaled = (float(last_ms) - float(first_ms) + HALF_STEP_MS) * fps / 1000.0
     if not math.isfinite(scaled):
-        raise OptionError(f"--fps {fps}", f"would write more frames than the limit of {cap}: "
-                                          "the clip span (first to last t_ms) is not finite")
+        raise FrameCapError(f"--fps {fps}", f"would write more frames than the limit of {cap}: "
+                                            "the clip span (first to last t_ms) is not finite")
     count = math.floor(scaled) + 1
     if count > cap:
-        raise OptionError(f"--fps {fps}", f"would write {shown(count)} frames; the limit is {cap}")
+        raise FrameCapError(f"--fps {fps}", f"would write {shown(count)} frames; the limit is {cap}")
     return count
 
 

@@ -11,11 +11,11 @@ import pytest
 
 import part4rules as p4
 from clipkit import real_skeleton
-from conftest import ROOT
 from part3 import cli, rig
 from part3.joints import JOINTS
-from part3.schema import ContractError, OptionError
+from part3.schema import ContractError, FrameCapError, LongWayError, OptionError, ViewError
 from part3.views import part4
+from runapikit import TAKE_1, across_the_body, take1_with_arms
 
 NATIVE_KEYS_TO_CHECK = ("schema", "units", "frame", "joints", "bones", "standard", "bone_lengths_m",
                         "person", "mirror", "input", "frames")
@@ -317,8 +317,9 @@ def test_p04_without_keyframes_the_error_names_the_option(skeleton):
     for missing in ({}, {"keyframes": None}):
         with pytest.raises(ContractError) as caught:
             part4.render(skeleton, **missing)
-        assert isinstance(caught.value, OptionError)
+        assert isinstance(caught.value, ViewError) and not isinstance(caught.value, OptionError)
         assert str(caught.value) == "--view part4 needs --keyframes <keyframes.json> or every:<n>"
+        assert caught.value.page_text == "This clip cannot be written as Part 4 keys. Choose another View."
 
 
 def test_p04_an_unreadable_unknown_or_empty_keyframes_file_names_the_path(tmp_path, skeleton):
@@ -363,50 +364,16 @@ def test_nfr001_process_and_render_every_tick_stay_under_two_seconds():
 # Part 4 refused the file (the old rest pose had the arms hanging). The T-pose rest keeps those arms clear of the
 # 180 degree turn, and the view checks its own keys against Part 4's rule instead of writing a file Part 4 rejects.
 
-TAKE_1 = ROOT / "fixtures" / "input" / "synthetic-4take" / "take-1" / "pose3d.json"
-UPPER_ARM_M, FOREARM_M = 0.3162, 0.2482
 CLEAN = {"env": {}, "config": False}
 LONG_WAY = re.compile(r"^--view part4: Part 4 would reject this clip: (\w+) turns (\d+\.\d) degrees between keys "
                       r"(\d+) and (\d+) \(Part 4 allows 180\); add keys between them \(a smaller every:<n>\) "
                       r"or use another view$")
 
 
-def take1_with_arms(directions):
-    """take-1's pose3d.json with the elbows and wrists put along `directions(side, u)` at the arm lengths.
-
-    `u` is the share of the clip (0 to 1); a unit vector in the input frame sets the whole arm, None keeps
-    that side's input arm.
-    """
-    source = json.loads(TAKE_1.read_text())
-    frames = [f for f in source["frames"] if f["people"]]
-    clip = {"frames": []}
-    for i, frame in enumerate(frames):
-        joints = copy.deepcopy(frame["people"][0]["joints"])
-        for side in ("left", "right"):
-            direction = directions(side, i / (len(frames) - 1))
-            if direction is None:
-                continue
-            shoulder = joints[f"{side}_shoulder"]
-            for name, length in ((f"{side}_elbow", UPPER_ARM_M), (f"{side}_wrist", UPPER_ARM_M + FOREARM_M)):
-                joints[name] = {**{a: shoulder[a] + direction[k] * length for k, a in enumerate("xyz")},
-                                "conf": 0.9}
-        clip["frames"].append({"frame": frame["frame"], "t_ms": frame["t_ms"],
-                               "people": [{"id": 0, "joints": joints}]})
-    return clip
-
-
 def overhead(side, u):
     """Both arms swept in the sagittal plane from 120 to 240 degrees from hanging, through overhead (180)."""
     angle = math.radians(120.0 + 120.0 * u)
     return (0.0, -math.cos(angle), math.sin(angle))
-
-
-def across_the_body(side, u):
-    """The left arm points across the chest, slightly down for the first half of the clip and slightly up after."""
-    if side == "right":
-        return None
-    direction = np.array([-1.0, 0.3 if u >= 0.5 else -0.3, 0.0])
-    return tuple(direction / np.linalg.norm(direction))
 
 
 @pytest.fixture(scope="module")
@@ -442,10 +409,11 @@ def test_b2_the_old_hanging_rest_pose_is_what_made_this_sweep_fail(overhead_skel
 
 def test_b2_an_arm_swept_across_the_body_is_refused_with_the_joint_and_both_keys():
     skeleton = cli.process(take1_with_arms(across_the_body), **CLEAN)
-    with pytest.raises(ContractError) as caught:
+    with pytest.raises(LongWayError) as caught:
         part4.render(skeleton, keyframes="every:10")
     match = LONG_WAY.match(str(caught.value))
     assert match, str(caught.value)
+    assert (caught.value.joint, caught.value.from_index, caught.value.to_index) == ("left_shoulder", 110, 120)
     joint, degrees, first, second = match.groups()
     assert (joint, int(first), int(second)) == ("left_shoulder", 110, 120) and float(degrees) > 180.0
     assert caught.value.path == "--view part4"
@@ -533,14 +501,29 @@ def test_b2_the_cli_refuses_the_clip_with_exit_2_and_writes_neither_file(tmp_pat
     assert not out.exists() and not companion.exists()
 
 
+def test_the_cli_says_what_it_said_for_a_part4_view_with_no_keys_and_for_keys_on_another_view(tmp_path, capsys):
+    """TICKET-033: the refusals became typed (ViewError); the command line's stderr text and exit code did not."""
+    source = tmp_path / "pose3d.json"
+    source.write_text(TAKE_1.read_text())
+    for args, message in ((["--view", "part4"], "--view part4 needs --keyframes <keyframes.json> or every:<n>"),
+                          (["--view", "part5", "--keyframes", "every:10"],
+                           "--keyframes: only applies to --view part4 (the view is part5)")):
+        code = cli.main(["run", "--in", str(source), "--out", str(tmp_path / "skeleton.json"), *args])
+        captured = capsys.readouterr()
+        assert (code, captured.out, captured.err) == (2, "", message + "\n")
+    assert not (tmp_path / "skeleton.json").exists()
+
+
 # --- review B1: the part4 timeline is capped -----------------------------------------------------------------------
 
 def test_b1_a_clip_whose_span_would_make_too_long_a_timeline_is_refused(skeleton):
     long_clip = copy.deepcopy(skeleton)
     long_clip["frames"][-1]["t_ms"] = 10_000_000.0
-    with pytest.raises(ContractError) as caught:
+    with pytest.raises(FrameCapError) as caught:
         part4.render(long_clip, keyframes="every:10")
     assert str(caught.value) == "--keyframes: the 30 fps timeline would have 300001 ticks; the limit is 100000"
+    assert (caught.value.path, isinstance(caught.value, OptionError)) == ("--keyframes", True)
+    assert caught.value.timeline is True  # the attribute the run app tells the key timeline's cap by
     with pytest.raises(ContractError, match=r"the limit is 20000$"):
         part4.render(long_clip, keyframes="every:10", max_frames=20_000)
     long_clip["frames"][-1]["t_ms"] = 1e300

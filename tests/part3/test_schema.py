@@ -10,7 +10,8 @@ import pytest
 from clipkit import real_skeleton
 from conftest import ROOT
 from part3.joints import JOINTS
-from part3.schema import ContractError, OptionError, describe, is_int, validate_pose3d, validate_skeleton
+from part3.schema import (ContractError, FrameCapError, FrameRateError, LongWayError, OptionError, ViewError,
+                          describe, is_int, validate_pose3d, validate_skeleton, view_refusal_text)
 
 
 def base(real_doc, frames=6):
@@ -271,7 +272,60 @@ def test_option_error_reads_without_a_colon_and_is_a_contract_error():
 def test_option_error_has_one_home_in_the_schema_module():
     from part3 import resample
 
-    assert resample.OptionError is OptionError and OptionError.__module__ == "part3.schema"
+    assert OptionError.__module__ == "part3.schema" and resample.FrameCapError is FrameCapError
+
+
+def test_the_frame_cap_error_is_an_option_error_and_reads_with_or_without_a_colon():
+    plain = FrameCapError("--fps 60", "would write 600001 frames; the limit is 100000")
+    assert isinstance(plain, OptionError) and isinstance(plain, ContractError) and plain.timeline is False
+    assert str(plain) == "--fps 60 would write 600001 frames; the limit is 100000"
+    assert (plain.path, plain.msg) == ("--fps 60", "would write 600001 frames; the limit is 100000")
+    colon = FrameCapError("--keyframes", "the 30 fps timeline would have 9 ticks; the limit is 8", timeline=True)
+    assert isinstance(colon, OptionError) and colon.timeline is True  # the attribute marks the timeline, not the words
+    assert str(colon) == "--keyframes: the 30 fps timeline would have 9 ticks; the limit is 8"
+    assert (colon.path, colon.msg) == ("--keyframes", "the 30 fps timeline would have 9 ticks; the limit is 8")
+
+
+def test_the_frame_rate_error_is_a_contract_error_that_is_not_the_frame_cap():
+    no_person = FrameRateError("--fps", "no output frame holds the person; use a higher --fps")
+    assert isinstance(no_person, ContractError) and not isinstance(no_person, (OptionError, FrameCapError))
+    assert str(no_person) == "--fps: no output frame holds the person; use a higher --fps"
+    assert no_person.times is False
+    times = FrameRateError("pose3d.frames[3].t_ms", "must increase for --fps", times=True)
+    assert times.times is True and str(times) == "pose3d.frames[3].t_ms: must increase for --fps"
+
+
+def test_the_long_way_error_is_a_contract_error_carrying_the_step():
+    error = LongWayError("--view part4", "some words", "left_shoulder", 340.0, 10, 20, 180.0)
+    assert isinstance(error, ViewError) and isinstance(error, ContractError)
+    assert not isinstance(error, (OptionError, FrameRateError))
+    assert str(error) == "--view part4: some words" and (error.path, error.msg) == ("--view part4", "some words")
+    assert (error.joint, error.degrees, error.from_index, error.to_index, error.limit_deg) == (
+        "left_shoulder", 340.0, 10, 20, 180.0)
+
+
+def test_a_view_error_is_a_contract_error_that_carries_the_pages_sentence():
+    error = ViewError("--view part5", "frame 3: times must strictly increase", "the page sentence")
+    assert isinstance(error, ContractError) and not isinstance(error, (OptionError, FrameCapError, FrameRateError))
+    assert str(error) == "--view part5: frame 3: times must strictly increase"
+    assert (error.path, error.msg, error.page_text) == ("--view part5", "frame 3: times must strictly increase",
+                                                         "the page sentence")
+    bare = ViewError("--view part4", "needs --keyframes <keyframes.json> or every:<n>", "page", colon=False)
+    assert str(bare) == "--view part4 needs --keyframes <keyframes.json> or every:<n>"
+    assert (bare.path, bare.msg) == ("--view part4", "needs --keyframes <keyframes.json> or every:<n>")
+
+
+def test_the_long_way_error_builds_the_pages_sentence_from_its_numbers_and_not_from_its_words():
+    error = LongWayError("--view part4", "words that name none of the numbers", "right_elbow", 351.1, 10, 20, 180.0)
+    assert error.page_text == ("This clip cannot be written as Part 4 keys: right_elbow turns 351.1 degrees between "
+                               "keys 10 and 20 (Part 4 allows 180). Choose another View.")
+    assert "--" not in error.page_text and "words that name" not in error.page_text
+
+
+def test_the_view_refusal_sentence_has_one_form_with_or_without_a_reason():
+    assert view_refusal_text("Part 4 keys") == "This clip cannot be written as Part 4 keys. Choose another View."
+    assert view_refusal_text("a Part 5 animation", "frame 3: bad.") == (
+        "This clip cannot be written as a Part 5 animation: frame 3: bad. Choose another View.")
 
 
 @pytest.mark.parametrize("value,expected", [(None, "null"), (True, "a boolean"), (False, "a boolean"),

@@ -16,12 +16,12 @@ import time
 import traceback
 from urllib.parse import parse_qsl
 
-from part3 import adapters, bones, cli, io, keyframes, profiles, rig, views
+from part3 import adapters, bones, cli, io, keyframes, profiles, views
 from part3.angles import joint_angles
 from part3.demo_data import bone_pairs, frames_to_points, round_finite
 from part3.metrics import BONE_MAX, bone_variation, flagged_frames, input_bone_variation
 from part3.mirror import FLIP_VALUES
-from part3.schema import ContractError, is_number
+from part3.schema import ContractError, FrameCapError, FrameRateError, ViewError, is_number
 
 INPUT_DIR = io.REPO / "fixtures" / "input"
 SYNTH = "synthetic-4take"
@@ -67,6 +67,7 @@ ERRORS = {
     "bad_view": (400, "View must be native, part4 or part5."),
     "bad_fps": (400, "Frame rate must be blank, 30 or 60."),
     "too_long": (400, "This clip is too long for that frame rate here. Choose a lower frame rate or a shorter clip."),
+    "fps_refused": (422, "This clip cannot be written at that frame rate. Choose another Frame rate."),
     "unknown_sample": (404, "There is no sample with that name."),
     "no_input": (400, "Choose a sample or a file first."),
     "both_inputs": (400, "Choose a sample or a file, not both."),
@@ -88,9 +89,9 @@ class NotJson(Exception):
     """The upload is not UTF-8 JSON (or nests too deep)."""
 
 
-# The bad option answers name the option they refuse (AC-M02); a View that cannot write the clip names the View.
+# The bad option answers name the option they refuse (AC-M02); a View or a frame rate the clip cannot take names it.
 _OPTION_FIELD = {"bad_body": "body", "bad_stature": "stature", "bad_view": "view", "bad_fps": "fps",
-                 "view_refused": "view"}
+                 "view_refused": "view", "fps_refused": "fps"}
 
 
 def error(code, field=None, reason=None):
@@ -251,35 +252,46 @@ def _page_reason(msg):
     return _PAGE_REASONS.get(msg, msg)
 
 
-# Review R1: the pipeline names its own refusals by the command line option they came from (`--view part4`, `--fps 60`,
-# `--keyframes`). Those are not the visitor's file being invalid, and the page has no such flags, so they are told apart by
-# that path (never by the wording of the message) and answered in the page's own words.
-VIEW_LABELS = {"part4": "Part 4 keys", "part5": "a Part 5 animation"}
-_LONG_WAY = re.compile(r"Part 4 would reject this clip: (\w+) turns ([0-9.]+) degrees between keys ([0-9]+) and ([0-9]+)")
+# Review R1 and residuals 1, 3, 4 (TICKET-032), 1, 2, 6 (TICKET-033): the pipeline names some refusals by the command
+# line option they came from (`--view part4`, `--fps 60`, `--keyframes`). Those are not the visitor's file being
+# invalid, and the page has no such flags, so they are told apart by the type of the error (never by its path or the
+# wording of its message) and answered in the page's own words, which name only choices the page has.
+SOURCE = "Source"  # the Frame rate option whose value is blank: the input's own frames
+TIMELINE_TOO_LONG = "This clip is too long for Part 4 keys here. Choose another View or a shorter clip."
 
 
-def _view_detail(msg):
-    """The part of a view's refusal worth showing: the joint and keys of a long-way turn, else the message when it
-    names no command line flag, else None."""
-    found = _LONG_WAY.match(msg)
-    if found:
-        joint, degrees, first, second = found.groups()
-        return (f"{joint} turns {degrees} degrees between keys {first} and {second} "
-                f"(Part 4 allows {rig.MAX_ROTVEC_STEP_DEG:g})")
-    return None if "--" in msg else msg
+def _no_person_text(fps):
+    """The sentence for a frame rate at which no output frame holds the person: the next higher Frame rate option the
+    page has, else Source alone. `fps` is None only for a call that names no rate."""
+    higher = next((rate for rate in FPS_VALUES if fps is not None and rate > fps), None)
+    choice = f"{higher} per second or {SOURCE}" if higher else SOURCE
+    rate = "that frame rate" if fps is None else f"{fps} per second"
+    return f"No frame at {rate} holds the person. Choose {choice}."
 
 
-def _contract_failure(problem, view):
-    """(status, body) for a ContractError of a run with the chosen `view`: `too_long` for the pipeline's own frame cap
-    (`--fps`, `--keyframes`), `view_refused` for a view that cannot write the clip (`--view ...`), else `contract`."""
-    path = str(problem.path)
-    if path.startswith(("--fps", "--keyframes")):
-        return error("too_long")
-    if path.startswith("--view"):
-        detail = _view_detail(str(problem.msg))
-        shown = f": {_clip(detail).rstrip('.')}" if detail else ""
-        label = VIEW_LABELS.get(view, "the chosen View")
-        return error("view_refused", reason=f"This clip cannot be written as {label}{shown}. Choose another View.")
+def _too_long(timeline):
+    """The `too_long` answer: the Part 4 key timeline words it for its View, the frame grid keeps the table's text."""
+    return error("too_long", reason=TIMELINE_TOO_LONG if timeline else None)
+
+
+def _fps_refusal(problem, fps):
+    """(status, body) for a FrameRateError at the Frame rate `fps`: the input times, else no frame holding the person."""
+    if problem.times:
+        return error("fps_refused", reason=f"{_clip(problem.path)}: the times must increase to change the frame rate. "
+                                           f"Choose {SOURCE}, or fix the times.")
+    return error("fps_refused", reason=_no_person_text(fps))
+
+
+def _contract_failure(problem, options):
+    """(status, body) for a ContractError of a run with the `options`, told apart by its type: `too_long` for the
+    pipeline's own frame cap (the Part 4 key timeline words it for that View), `fps_refused` for a frame rate the clip
+    cannot take, `view_refused` for a View that cannot write the clip, else `contract`."""
+    if isinstance(problem, FrameCapError):
+        return _too_long(problem.timeline)
+    if isinstance(problem, FrameRateError):
+        return _fps_refusal(problem, options["fps"])
+    if isinstance(problem, ViewError):
+        return error("view_refused", reason=problem.page_text)
     return error("contract", _clip(problem.path), _clip(_page_reason(problem.msg)).rstrip("."))
 
 
@@ -306,6 +318,13 @@ def _frame_rate(options):
     """The frames per second the run writes along the clip: the chosen rate, else the 30 of the part4 timeline, else
     None (a native run keeps the input's own frames, so the upload size bounds it)."""
     return options["fps"] or (keyframes.FPS if options["view"] == "part4" else None)
+
+
+def _span_cap_error(options):
+    """The `too_long` answer of the span pre-check: a run that writes the Part 4 timeline at its own 30 frames per
+    second (View part4, Frame rate Source) is told what the timeline can do, as its `FrameCapError` is; lowering the
+    Frame rate cannot help there."""
+    return _too_long(options["view"] == "part4" and options["fps"] is None)
 
 
 def too_long(doc, options):
@@ -359,7 +378,7 @@ def run(raw, flip, source, options=None):
     try:
         doc = _parse(raw)
         if too_long(doc, options):  # before any work: the cost follows the span, not the size of the upload
-            return error("too_long")
+            return _span_cap_error(options)
         digest = hashlib.sha256(raw).hexdigest()
         skeleton = _process(doc, flip, digest, options)
         text = _text(skeleton)
@@ -369,7 +388,7 @@ def run(raw, flip, source, options=None):
     except NotJson:
         return error("not_json")
     except ContractError as problem:
-        return _contract_failure(problem, options["view"])
+        return _contract_failure(problem, options)
     except Exception:  # noqa: BLE001 - the page gets a plain message, the log gets the traceback
         traceback.print_exc(file=sys.stderr)
         return error("internal")
