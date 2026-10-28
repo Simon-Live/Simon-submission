@@ -6,8 +6,12 @@ null = not visible / not clicked; such joints are not scored.
 
 Per labelled frame: error = mean pixel distance over clicked joints between the click and the
 reprojected 3D joint (pose3d.json + camera.json), divided by body height in pixels. Body height
-is the clicked nose -> ankle-midpoint distance (nose -> the one clicked ankle if only one is),
-which is shorter than full stature, so the threshold is stricter than "5% of height".
+is per person for the whole clip (#18): the largest clicked nose -> ankle-midpoint distance
+(nose -> the one clicked ankle if only one is) over that person's labelled frames. A per-frame
+height collapses when the pose folds (seated forward bend: nose meets the feet, height halves)
+and would double the score for the same pixel error. It is still shorter than full stature,
+so the threshold stays stricter than "5% of height"; it assumes the camera does not zoom and
+the person stays at a similar distance, as in a fixed-camera clip.
 mean/p95/max cover scored frames only; n_failed_frames counts unscored ones too.
 A labelled frame with no prediction scores as a failure.
 Pass rule (decision 2, #18): every frame must be within the threshold (rule="every_frame");
@@ -33,12 +37,19 @@ def evaluate(pose3d: dict, camera: dict, labels: dict, threshold=THRESHOLD, rule
         ids_by_frame.setdefault(frame, []).append(pid)
 
     validate_labels(labels)
+    clip_height = {}  # label id -> max nose->ankle over that person's labelled frames
+    for lf in labels["frames"]:
+        h = body_height_px({j: np.asarray(uv, float) for j, uv in lf["joints"].items() if uv is not None})
+        if h is not None:
+            clip_height[lf.get("id")] = max(h, clip_height.get(lf.get("id"), 0.0))
     per_frame = []
     for lf in labels["frames"]:
         clicked = {j: np.asarray(uv, float) for j, uv in lf["joints"].items() if uv is not None}
-        height = body_height_px(clicked)
+        frame_height = body_height_px(clicked)
+        height = clip_height.get(lf.get("id"))
         row = {"frame": lf["frame"], "view": lf.get("view"), "n_joints": len(clicked),
-               "height_px": None if height is None else round(height, 1)}
+               "height_px": None if height is None else round(height, 1),
+               "frame_height_px": None if frame_height is None else round(frame_height, 1)}
         pid = lf.get("id")
         if pid is None:
             ids = ids_by_frame.get(lf["frame"], [])
@@ -47,7 +58,7 @@ def evaluate(pose3d: dict, camera: dict, labels: dict, threshold=THRESHOLD, rule
                 row["note"] = f"{len(ids)} people predicted; label has no id"
         pred = proj.get((lf["frame"], pid))
         if height is None:
-            row.update(error_pct=None, ok=False, note="nose and an ankle must be clicked to measure height")
+            row.update(error_pct=None, ok=False, note="no height: no labelled frame of this person has nose and an ankle clicked")
         elif pred is None:
             row.update(error_pct=None, ok=False, note=row.get("note", "no prediction for this frame"))
         else:
@@ -69,6 +80,7 @@ def evaluate(pose3d: dict, camera: dict, labels: dict, threshold=THRESHOLD, rule
     worst = max((r for r in per_frame if r["error_pct"] is not None), key=lambda r: r["error_pct"], default=None)
     return {
         "metric": "reprojection_error_pct_of_body_height", "threshold_pct": threshold * 100, "rule": rule,
+        "body_height": "clip_max nose->ankle per person",
         "n_frames": len(per_frame), "n_side_frames": n_side, "n_failed_frames": sum(not r["ok"] for r in per_frame),
         "mean_pct": _r(np.mean(scored)) if scored else None,
         "p95_pct": _r(np.percentile(scored, 95)) if scored else None,

@@ -74,7 +74,7 @@ def check_single(root: Path = ROOT) -> dict:
     m = eval_reproj.evaluate_files(out / "pose3d.json", out / "camera.json",
                                    root / "fixtures" / "input" / "single" / "labels_2d.json")
     m.pop("per_frame")
-    m["body_height"] = "clicked nose to ankle-midpoint distance in px (stricter than full stature)"
+    m["body_height"] = "clip max of clicked nose to ankle-midpoint distance in px (stricter than full stature)"
     return m
 
 

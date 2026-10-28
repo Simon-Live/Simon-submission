@@ -46,13 +46,36 @@ def test_requires_twenty_frames_and_side_views():
     assert not m["checks"]["has_side_views"] and not m["pass"]
 
 
-def test_missing_prediction_and_unmeasurable_height_fail():
+def test_missing_prediction_fails_and_frame_without_nose_uses_clip_height():
     pose3d, camera, labels = _setup()
     pose3d["frames"][3]["people"] = []
     labels["frames"][5]["joints"]["nose"] = None
     rows = {r["frame"]: r for r in evaluate(pose3d, camera, labels)["per_frame"]}
     assert not rows[3]["ok"] and "no prediction" in rows[3]["note"]
-    assert not rows[5]["ok"] and "height" in rows[5]["note"]
+    assert rows[5]["ok"] and rows[5]["frame_height_px"] is None and rows[5]["height_px"] > 0
+
+
+def test_unmeasurable_height_fails_when_no_frame_has_nose():
+    pose3d, camera, labels = _setup()
+    for lf in labels["frames"]:
+        lf["joints"]["nose"] = None
+    m = evaluate(pose3d, camera, labels)
+    assert not m["pass"] and all("height" in r["note"] for r in m["per_frame"])
+
+
+def test_height_is_clip_max_so_a_folded_frame_is_not_penalised():
+    pose3d, camera, labels = _setup()
+    clip_h = max(r["frame_height_px"] for r in evaluate(pose3d, camera, labels)["per_frame"])
+    lf = labels["frames"][7]
+    for j in CANONICAL:  # 3% of clip height off on every joint
+        lf["joints"][j][0] += 0.03 * clip_h
+    lf["joints"]["nose"] = None  # stand-in for a fold: this frame's own height is unmeasurable/short
+    m = evaluate(pose3d, camera, labels)
+    row = next(r for r in m["per_frame"] if r["frame"] == 7)
+    assert row["height_px"] == pytest.approx(clip_h, abs=0.1) and row["ok"]
+    assert row["error_pct"] == pytest.approx(3.0, abs=0.2)
+    assert all(r["height_px"] == pytest.approx(clip_h, abs=0.1) for r in m["per_frame"])
+    assert m["body_height"].startswith("clip_max")
 
 
 def test_unclicked_joints_are_not_scored():
@@ -76,7 +99,7 @@ def test_cli_prints_metrics_and_exit_code(tmp_path, capsys):
             "--labels", str(tmp_path / "labels.json")]
     assert cli.main(args) == 0
     assert json.loads(capsys.readouterr().out)["pass"] is True
-    labels["frames"][0]["joints"]["nose"][1] += 200
+    labels["frames"][0]["joints"]["left_wrist"][1] += 1000
     (tmp_path / "labels.json").write_text(json.dumps(labels))
     assert cli.main(args) == 1
 
