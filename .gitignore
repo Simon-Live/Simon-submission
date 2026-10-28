@@ -4,5 +4,6 @@ dist/
 .env
 out/
 *.mp4
+!demo/staging-walkthrough.mp4
 !fixtures/**/*.json
 .pytest_cache/

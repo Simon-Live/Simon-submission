@@ -5,10 +5,10 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  BrowserMissingError, REPO_ROOT, allowProbe, angleDiff, byId, cardIds, closePage, createObserver, frames,
+  BrowserMissingError, MIN_SCRUB_TRAVEL_S, REPO_ROOT, allowProbe, angleDiff, byId, cardIds, closePage, createObserver, frames,
   launchBrowser, log, makeTempCatalog, measureTargets, newPhoneContext, orbitDrag, phone360, playerState,
   readManifests, removeTempDir, round, screenReady, screenVisible, scrubDrag, settle, sleep, startServer,
-  stopServer, timerSeconds, visibleBox, waitForCardIds, waitForPlayer, waitForText,
+  stopServer, tap, timerSeconds, visibleBox, waitForCardIds, waitForPlayer, waitForText, waitForTimerAtLeast,
 } from './harness.mjs';
 
 const THRESHOLDS = {
@@ -61,7 +61,6 @@ const flag = (ok) => (ok ? 1 : 0);
 const lowerName = (m) => String(m.name).toLowerCase();
 const matchesTerms = (m, text) => text.toLowerCase().split(/\s+/).filter(Boolean).every((t) => lowerName(m).includes(t));
 const idsOf = (manifests) => manifests.map((m) => m.id);
-const tap = (page, id) => byId(page, id).tap();
 
 // true when every part is true, 0 when any part is false, null when a part was not measured.
 function allOf(...parts) {
@@ -330,9 +329,13 @@ async function pausedChecks(env, page, sync) {
 }
 
 async function scrubCheck(env, page, cdp, sync) {
-  await scrubDrag(page, cdp, 0.5);
+  const { startS } = await scrubDrag(page, cdp, 0.5);
   await frames(page, 2);
   const state = await playerState(page);
+  const travel = Math.abs(startS - state.duration_s / 2);
+  if (!(travel > MIN_SCRUB_TRAVEL_S)) {
+    throw new Error(`the scrub started ${round(travel)} s from its target, so it proves nothing (wanted more than ${MIN_SCRUB_TRAVEL_S} s)`);
+  }
   env.m.scrub_error_s = round(Math.abs(state.position_s - state.duration_s / 2));
   sync.scrub = [pausedSyncError(state)];
 }
@@ -407,10 +410,7 @@ async function recordScreen(env, page) {
   const first = await timerSeconds(page);
   await sleep(1000);
   await step('touch targets: record', () => recordTargets(env, page, 'record'));
-  await page.waitForFunction((secs) => {
-    const match = /(\d+):(\d{2})/.exec(document.querySelector('[data-testid="timer"]').textContent);
-    return !!match && Number(match[1]) * 60 + Number(match[2]) >= secs;
-  }, RECORD_SECONDS);
+  await waitForTimerAtLeast(page, RECORD_SECONDS);
   await page.waitForFunction(() => !document.querySelector('[data-testid="stop"]').disabled);
   const last = await timerSeconds(page);
   log(`record timer: ${first} s then ${last} s`);

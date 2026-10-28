@@ -9,6 +9,17 @@ from pathlib import Path
 from . import catalog, server, validate
 
 
+def _cap(text):
+    """--max-recordings: an integer of 0 or more (argparse turns the error into exit 2)."""
+    try:
+        value = int(text)
+    except ValueError:
+        value = -1
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"{text!r} is not an integer of 0 or more")
+    return value
+
+
 def _parser():
     parser = argparse.ArgumentParser(prog="part6", description="Simon Part 6 movement catalog")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -16,6 +27,9 @@ def _parser():
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8726)
     serve.add_argument("--catalog", help="catalog root (else SIMON6_CATALOG_DIR, else the default)")
+    serve.add_argument("--max-recordings", type=_cap, default=catalog.DEFAULT_MAX_RECORDINGS,
+                       metavar="N", help="visitor recordings kept; the oldest go after a save "
+                       "(default %(default)s, 0 = no cap)")
     check = sub.add_parser("validate", help="exit 0 only when every catalog entry is valid")
     check.add_argument("catalog", help="catalog folder to check")
     reset = sub.add_parser("reset", help="drop mock entries, restore the fixture entries")
@@ -49,7 +63,7 @@ def main(argv=None):
         if args.command == "reset":
             print(json.dumps(catalog.reset(root)))
             return 0
-        return server.serve(root, args.host, args.port)
+        return server.serve(root, args.host, args.port, args.max_recordings)
     except catalog.RootError as exc:
         print(f"part6: {exc}", file=sys.stderr)
         return 2

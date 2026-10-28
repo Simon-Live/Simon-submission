@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_CATALOG = REPO_ROOT / "fixtures" / "output" / "catalog"
 DEFAULT_ROOT = Path("~/.local/state/simon-part-6/catalog")
 SLUG_MAX = 40
+DEFAULT_MAX_RECORDINGS = 30    # visitor recordings kept; 0 = no cap, only when passed (AC-015)
 ID_RETRIES = 8
 
 
@@ -175,6 +176,56 @@ def reset(root, source=None):
     for folder in folders:
         _copy_entry(folder, root)
     return {"removed": len(doomed), "restored": len(folders)}
+
+
+def remove_entry(root, entry_id):
+    """Delete one entry folder. The id pattern is checked, a symlink is refused, and the folder
+    is renamed to a dot folder (never listed) before it is deleted."""
+    if not is_valid_id(entry_id):
+        raise ValueError(f"invalid id: {entry_id!r}")
+    folder = Path(root) / entry_id
+    if folder.is_symlink() or not folder.is_dir():
+        raise ValueError(f"{entry_id} is not an entry folder")
+    doomed = Path(root) / f".evict-{entry_id}"
+    shutil.rmtree(doomed, ignore_errors=True)
+    os.rename(folder, doomed)
+    try:
+        shutil.rmtree(doomed)
+    except OSError as exc:
+        log(f"left {doomed.name} behind: {exc}")    # unlisted; `reset` removes dot folders
+
+
+def visitor_entries(root):
+    """Manifests of the visitor recordings (files_source "mock"), oldest first. A symlinked
+    folder is not counted: remove_entry refuses it, so it would hold a cap slot forever."""
+    mock = [m for m in list_entries(root)
+            if m["files_source"] == "mock" and not (Path(root) / m["id"]).is_symlink()]
+    return sorted(mock, key=lambda m: (m["created_at"], m["id"]))
+
+
+def enforce_cap(root, cap, keep_id):
+    """Remove the oldest visitor recordings until at most `cap` remain; 0 means no cap.
+    Fixtures are not counted, `keep_id` is never removed, and a failed removal is logged and
+    skipped (the next oldest goes instead). Returns the removed ids."""
+    removed = []
+    if cap <= 0:
+        return removed
+    visitors = visitor_entries(root)
+    excess = len(visitors) - cap
+    for manifest in visitors:
+        if excess <= 0:
+            break
+        if manifest["id"] == keep_id:
+            continue
+        try:
+            remove_entry(root, manifest["id"])
+        except (OSError, ValueError) as exc:
+            log(f"could not evict {manifest['id']}: {exc}")
+            continue
+        log(f"evicted {manifest['id']} (cap {cap})")
+        removed.append(manifest["id"])
+        excess -= 1
+    return removed
 
 
 def slugify(name):

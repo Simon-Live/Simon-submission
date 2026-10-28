@@ -22,6 +22,7 @@ export const round = (n, digits = 4) => Math.round(n * 10 ** digits) / 10 ** dig
 export const angleDiff = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
 export const testid = (id) => `[data-testid="${id}"]`;
 export const byId = (page, id) => page.locator(testid(id));
+export const tap = (page, id) => byId(page, id).tap();
 
 // ---------------------------------------------------------------- process cleanup
 
@@ -338,11 +339,22 @@ export async function waitForText(page, id, pattern) {
   }
 }
 
-export const timerSeconds = async (page) => {
-  const text = (await byId(page, 'timer').textContent()) || '';
-  const match = /(\d+):(\d{2})/.exec(text);
+// The one place the record timer text ("m:ss") is parsed; the page-side wait uses its source.
+const TIMER_PATTERN = /(\d+):(\d{2})/;
+const secondsFromTimer = (text) => {
+  const match = TIMER_PATTERN.exec(text || '');
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
 };
+
+export const timerSeconds = async (page) => secondsFromTimer(await byId(page, 'timer').textContent());
+
+// Waits until the record timer reads at least `seconds`.
+export function waitForTimerAtLeast(page, seconds) {
+  return page.waitForFunction(({ sel, source, min }) => {
+    const match = new RegExp(source).exec((document.querySelector(sel) || {}).textContent || '');
+    return !!match && Number(match[1]) * 60 + Number(match[2]) >= min;
+  }, { sel: testid('timer'), source: TIMER_PATTERN.source, min: seconds });
+}
 
 // ---------------------------------------------------------------- player access
 
@@ -387,16 +399,55 @@ export async function orbitDrag(page, cdp) {
   await touchDrag(cdp, { x: box.x + box.width * 0.3, y: box.cy }, { x: box.x + box.width * 0.7, y: box.cy });
 }
 
-// Drag the scrub bar from the current thumb to a fraction of the range (0.5 is its horizontal centre).
+// CDP two-finger pinch about `centre`: the fingers start `gapFrom` px apart and end `gapTo` px apart
+// (10 touchMove steps 16 ms apart). A growing gap dollies the camera in, a shrinking one out.
+export async function touchPinch(cdp, centre, gapFrom, gapTo) {
+  const send = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  const fingers = (gap) => [
+    { x: centre.x - gap / 2, y: centre.y, id: 1 }, { x: centre.x + gap / 2, y: centre.y, id: 2 },
+  ];
+  await send('touchStart', fingers(gapFrom));
+  for (let step = 1; step <= 10; step += 1) {
+    await send('touchMove', fingers(gapFrom + (gapTo - gapFrom) * (step / 10)));
+    await sleep(16);
+  }
+  await send('touchEnd', []);
+}
+
+// Drags the thumb of the scrub bar to `fraction` of the track (0.5 is its horizontal centre). A thumb
+// closer than MIN_SCRUB_SPAN to the target is first dragged to the far side: a drag of a few pixels
+// stays inside the browser's touch slop and sometimes never moves the thumb (staging verify,
+// 2026-10-28: 15 px from 0:05 to 0:06 of 0:12). That pre-drag is read back: a thumb that did not
+// reach the far side throws, so a scrub that does nothing cannot pass by starting near the target.
+// Returns the position the final drag started from, which callers compare with the target.
+const MIN_SCRUB_SPAN = 0.25;
+const PRE_DRAG_TOLERANCE = 0.1;
+export const MIN_SCRUB_TRAVEL_S = 1;
+
+async function preDragTo(page, cdp, at, from, far) {
+  await touchDrag(cdp, at(from), at(far));
+  await frames(page, 2);
+  const landed = await playerState(page);
+  const wanted = landed && landed.duration_s ? far * landed.duration_s : null;
+  if (wanted === null || Math.abs(landed.position_s - wanted) > PRE_DRAG_TOLERANCE * landed.duration_s) {
+    throw new Error(`scrub pre-drag to ${far} of the track left the player at ${landed && landed.position_s} s of ${landed && landed.duration_s} s`);
+  }
+  return landed.position_s;
+}
+
 export async function scrubDrag(page, cdp, fraction = 0.5) {
   const box = await visibleBox(page, byId(page, 'scrub'));
   const state = await playerState(page);
-  const startFraction = state && state.duration_s ? state.position_s / state.duration_s : 0;
-  await touchDrag(
-    cdp,
-    { x: box.x + box.width * startFraction, y: box.cy },
-    { x: box.x + box.width * fraction, y: box.cy },
-  );
+  let from = state && state.duration_s ? state.position_s / state.duration_s : 0;
+  let startS = state ? state.position_s : null;
+  const at = (f) => ({ x: box.x + box.width * f, y: box.cy });
+  if (Math.abs(from - fraction) < MIN_SCRUB_SPAN) {
+    const far = fraction < 0.5 ? 0.9 : 0.1;
+    startS = await preDragTo(page, cdp, at, from, far);
+    from = far;
+  }
+  await touchDrag(cdp, at(from), at(fraction));
+  return { startS };
 }
 
 const TARGET_SELECTOR = 'button, a[href], select, textarea, '

@@ -64,6 +64,47 @@ Pixel 7 emulation (412 px wide, device scale 2.625), from `make -s demo-6`:
 
 [walkthrough.webm](walkthrough.webm): browse, filter, search, open a movement, play, rotate by touch drag, switch speed and views, scrub, then Record, Stop, name and type, Processing and the new entry playing.
 
+## Staging walkthrough
+
+[staging-walkthrough.mp4](staging-walkthrough.mp4) is a screen recording of the app running as a staged service behind a firm gateway, under the `/simon-part-6/` path prefix, in Pixel 7 emulation (headless Chromium, not a phone in hand). It is one recording with no cuts, and nothing is seeded for it.
+
+What it shows, in order:
+
+1. The catalog opens, and Dances is tapped.
+2. A search for part of a dance name ("side") leaves Side step, and it is opened.
+3. Play at 1x, then 0.5x, then a one-finger drag turns the figure.
+4. Front, Side and Top snap the camera.
+5. Back to the catalog, Record, and Stop after four seconds.
+6. A name is typed ("Cha cha"), Dance is chosen, Save shows Processing, and the new entry opens and plays.
+7. Back to the catalog, a search for "cha" finds the entry (labelled Mock recording), and it is opened and played.
+8. Back to the catalog and a page reload: the entry is still listed.
+
+How it was made: `staging/walkthrough.mjs` (in the firm workspace; `staging/` is local only and not published) loads the same `check/harness.mjs` as `make check-6`, so the browser, launch flags and Pixel 7 context are the same. Playwright `recordVideo` records one page in one context at the Pixel 7 viewport size. A small ring is drawn at each touch so a viewer can see taps and drags. The app is driven only through its screens, and each scene waits for the app's own ready signals before the next step, with short holds for reading. The login for the gateway comes from `STAGING_USER` and `STAGING_PASSWORD` and is not printed. When the run finishes, the script converts the webm with ffmpeg (libx264, yuv420p, `-movflags +faststart`, width and height cropped to even numbers, CRF 23 unless the file would reach 15 MB), checks the result with ffprobe (codec h264, under 75 s, under 15 MB, otherwise exit 1) and removes the entry it recorded with `staging/remove-entry.py`, so the recording leaves no entry behind in the staged catalog.
+
+Measured from ffprobe on the file in this folder:
+
+| | |
+|---|---|
+| Codec | h264, yuv420p |
+| Duration | 47.44 s |
+| Size | 662147 bytes (CRF 23) |
+| Dimensions | 412 x 838, 25 fps |
+
+Record it again, from the firm workspace at the repo root:
+
+```bash
+# through the gateway: the login is supplied by the firm's staging tool, never typed or printed
+staging.sh exec simon-part-6 -- scripts/with-browser-slot.sh node staging/walkthrough.mjs
+
+# against a local server, to a scratch file; stop the server afterwards
+STATE=$(mktemp -d) && mkdir "$STATE/catalog"
+SIMON6_BASE_PATH=/simon-part-6 python3 -m part6 serve --catalog "$STATE/catalog" --port 8730 &
+STAGING_SECRETS_DIR="$STATE" SIMON6_WALKTHROUGH_OUT=/tmp/walk.mp4 \
+  scripts/with-browser-slot.sh node staging/walkthrough.mjs http://127.0.0.1:8730/simon-part-6/
+```
+
+The script prints one JSON line (file, duration, size, codec, entry id, whether the entry was removed). Without `SIMON6_WALKTHROUGH_OUT` it writes `demo/staging-walkthrough.mp4`. The script exits 2 for a gateway URL when the login is not in the environment.
+
 ## Run it
 
 ```bash

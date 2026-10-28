@@ -63,11 +63,13 @@ def parse_range(header, size):
 class CatalogServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, root, base_path, web_root):
+    def __init__(self, address, root, base_path, web_root, max_recordings):
         super().__init__(address, Handler)
         self.root = Path(root)
         self.base_path = base_path
         self.web_root = Path(web_root).resolve()
+        self.max_recordings = max_recordings
+        self.save_lock = threading.Lock()    # one save at a time, so the cap cannot overshoot
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -170,7 +172,19 @@ class Handler(BaseHTTPRequestHandler):
         fields, bad = clean_create_request(obj)
         if bad:
             return self._error(400, bad)
-        self._json(201, catalog.create_mock_entry(self.server.root, **fields))
+        self._json(201, self._save(fields))
+
+    def _save(self, fields):
+        """Write the new entry, then trim the oldest visitor recordings over the cap. A failed
+        trim is logged; the new entry stays saved."""
+        srv = self.server
+        with srv.save_lock:
+            manifest = catalog.create_mock_entry(srv.root, **fields)
+            try:
+                catalog.enforce_cap(srv.root, srv.max_recordings, manifest["id"])
+            except OSError as exc:
+                catalog.log(f"could not apply the cap of {srv.max_recordings}: {exc}")
+        return manifest
 
     def _read_body(self):
         """The request body bytes, or None after an error response was sent."""
@@ -251,16 +265,19 @@ class Handler(BaseHTTPRequestHandler):
         self._start(301, 0, {"Location": location, "Cache-Control": "no-store"})
 
 
-def make_server(root, host="127.0.0.1", port=0, base_path=None, web_root=None):
+def make_server(root, host="127.0.0.1", port=0, base_path=None, web_root=None,
+                max_recordings=catalog.DEFAULT_MAX_RECORDINGS):
     catalog.guard_root(root)
+    if max_recordings < 0:
+        raise ValueError(f"max_recordings must be 0 or more, got {max_recordings}")
     base = normalize_base(os.environ.get("SIMON6_BASE_PATH") if base_path is None else base_path)
-    return CatalogServer((host, port), root, base, web_root or REPO_ROOT / "web")
+    return CatalogServer((host, port), root, base, web_root or REPO_ROOT / "web", max_recordings)
 
 
-def serve(root, host="127.0.0.1", port=8726):
+def serve(root, host="127.0.0.1", port=8726, max_recordings=catalog.DEFAULT_MAX_RECORDINGS):
     """Seed the catalog when it has no entry, then serve until SIGTERM or Ctrl-C."""
     catalog.seed(root)
-    server = make_server(root, host, port)
+    server = make_server(root, host, port, max_recordings=max_recordings)
 
     def stop(signum, _frame):
         threading.Thread(target=server.shutdown, daemon=True).start()
@@ -268,7 +285,7 @@ def serve(root, host="127.0.0.1", port=8726):
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     address = f"http://{server.server_address[0]}:{server.server_address[1]}{server.base_path}/"
-    catalog.log(f"serving {address} catalog={root}")
+    catalog.log(f"serving {address} catalog={root} max-recordings={max_recordings}")
     try:
         server.serve_forever(poll_interval=0.1)
     finally:

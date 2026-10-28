@@ -76,6 +76,26 @@ python3 -m part6 reset                            # drop mock entries, restore t
 python3 -m pytest tests/part6 -q                  # unit tests
 ```
 
+### Under a path prefix, with a cap on visitor recordings
+
+`SIMON6_BASE_PATH` serves the whole app under a prefix, so a gateway can route one path to it. The web app uses relative URLs only, and a request outside the prefix gets a 404.
+
+```bash
+SIMON6_BASE_PATH=/simon-part-6 python3 -m part6 serve --max-recordings 30
+# app:    http://127.0.0.1:8726/simon-part-6/
+# health: http://127.0.0.1:8726/simon-part-6/api/health
+```
+
+`--max-recordings N` sets how many visitor recordings the catalog keeps (entries with `"files_source": "mock"`). After each save the oldest ones are removed until at most N remain. The default is 30, and 0 turns the cap off. The six sample movements are never counted or removed.
+
+## Staging and the walkthrough video
+
+The part also runs as a staged app behind a firm gateway, where it is checked as a visitor on a phone-sized viewport. The tooling that starts, checks and stops that stack, and the script that records the video, belongs to the firm workspace and is not published with this repo, so what ships here is the result: [demo/staging-walkthrough.mp4](demo/staging-walkthrough.mp4).
+
+The video is one uninterrupted screen recording at the Pixel 7 viewport size. It opens the catalog, taps Dances, searches, opens a movement, plays it at 1x and 0.5x, turns it by dragging and switches Front, Side and Top. Then it goes to Record, stops after a few seconds, names the movement, picks Dance, saves, finds the new entry by search, plays it and reloads the page to show it is still there. Nothing is seeded: the entry is made through the app in the recording and removed afterwards. How it was made and how to repeat it is in [demo/README.md](demo/README.md).
+
+The staged app is the same server as the local run, set up with the two options above: it is served under the `/simon-part-6/` path prefix and keeps at most 30 visitor recordings. Recordings survive a restart, and the six sample movements are always there.
+
 ## Done-check
 
 `make check-6` needs Python 3.12 with pytest, and Node 22 or newer. It installs the pinned `playwright` from `package-lock.json` when `node_modules` is missing, starts the server on a temporary catalog and drives the app in headless Chromium under Pixel 7 emulation: search, filter, detail, the 3D player (orbit, zoom, views, play, pause, scrub, 1x and 0.5x) and the mock Record flow. It prints one metrics JSON line and exits 0 only when every threshold passes. If Chromium is missing it says so; run `npx playwright install chromium` once.

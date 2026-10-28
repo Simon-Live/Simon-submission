@@ -7,7 +7,7 @@ import path from 'node:path';
 import {
   BrowserMissingError, REPO_ROOT, byId, createObserver, frames, launchBrowser, log, makeTempCatalog,
   newPhoneContext, orbitDrag, playerState, readManifests, removeTempDir, scrubDrag, screenReady,
-  screenVisible, sleep, startServer, stopServer, testid, timerSeconds, waitForCardIds, waitForPlayer,
+  screenVisible, sleep, startServer, stopServer, tap, testid, timerSeconds, waitForCardIds, waitForPlayer,
 } from './harness.mjs';
 
 // SIMON6_DEMO_OUT redirects the output (for trial runs); the default is the published demo/ folder.
@@ -21,7 +21,6 @@ const SHOTS = [
   '07-record-camera', '08-record-form', '09-processing', '10-new-entry-player', '11-new-entry-in-catalog',
 ];
 
-const tap = (page, id) => byId(page, id).tap();
 const written = [];
 
 async function shot(page, name) {
