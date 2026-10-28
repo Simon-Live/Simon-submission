@@ -91,3 +91,17 @@ def test_follower_with_no_usable_joints_exits_1(tmp_path, capsys):
     assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(blind),
                      "--out", str(tmp_path / "a.json")]) == 1
     assert "could be measured" in capsys.readouterr().err
+
+
+def test_unwritable_out_exits_1(tmp_path, capsys):
+    example = json.loads(EXAMPLE.read_text())
+    assert cli.main(["analyse", "--expected", str(ROOT / example["expected"]["path"]),
+                     "--follower", str(ROOT / example["follower"]["path"]), "--out", str(tmp_path)]) == 1
+    assert "cannot write" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("ref", [42, ["a"], {"take_id": "x"}, {"path": ""}, {"path": 3}, None])
+def test_bad_refs_raise_analysis_error(ref):
+    from part5.pipeline import AnalysisError, analyse
+    with pytest.raises(AnalysisError, match="expected must be"):
+        analyse(ref, str(ROOT / EXPECTED))

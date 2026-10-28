@@ -25,6 +25,9 @@ def main(argv=None):
         except (InputError, AnalysisError, OutputError) as e:
             print(f"part5 analyse: {e}", file=sys.stderr)
             return 1
+        except OSError as e:  # e.g. --out is a directory or not writable
+            print(f"part5 analyse: cannot write {args.out} ({e.strerror or e})", file=sys.stderr)
+            return 1
         for w in doc["diagnostics"]["warnings"]:
             print(f"part5 analyse: warning: {w}", file=sys.stderr)
         n = len(doc["faults"])

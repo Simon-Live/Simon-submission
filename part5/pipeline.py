@@ -30,7 +30,7 @@ def analyse(expected, follower, rules=None):
     """`expected`/`follower` are paths, or objects with `path` plus ids that pass through
     to the output (e.g. `take_id`). Raises `io.InputError` for a bad file, `AnalysisError`
     if the takes can't be aligned."""
-    exp_ref, fol_ref = _ref(expected), _ref(follower)
+    exp_ref, fol_ref = _ref(expected, "expected"), _ref(follower, "follower")
     exp = normalise(load_clip(exp_ref["path"]))
     fol = normalise(load_clip(fol_ref["path"]))
     exp_m, fol_m = compute(exp.positions), compute(fol.positions)
@@ -47,8 +47,12 @@ def analyse(expected, follower, rules=None):
     return build_analysis(exp_ref, fol_ref, faults, diagnostics=_diagnostics(alignment, len(fol.positions)))
 
 
-def _ref(ref):
-    return {"path": str(ref)} if isinstance(ref, (str, Path)) else dict(ref)
+def _ref(ref, key):
+    if isinstance(ref, (str, Path)):
+        ref = {"path": str(ref)}
+    if not (isinstance(ref, dict) and isinstance(ref.get("path"), (str, Path)) and str(ref["path"])):
+        raise AnalysisError(f"{key} must be a path or an object with a 'path', got {ref!r}")
+    return dict(ref, path=str(ref["path"]))
 
 
 def _diagnostics(alignment, n_follower):
@@ -56,9 +60,9 @@ def _diagnostics(alignment, n_follower):
     share = (end - start + 1) / n_follower
     warnings = []
     if share < MIN_SPAN_SHARE:
-        warnings.append(f"only {share:.0%} of the follower clip matched the expected movement; "
-                        "it may be much slower than the example or repeat the movement, "
-                        "so timing and faults are unreliable")
+        warnings.append(f"only {share:.0%} of the follower clip matched the expected movement: "
+                        "fine if the rest is standing still, but if the follower is much slower "
+                        "than the example or repeats the movement, timing and faults may be wrong")
     return {"alignment_residual": round(float(alignment.residual), 4),
             "alignment_measures": list(alignment.measures),
             "follower_span": [start, end],
