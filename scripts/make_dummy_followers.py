@@ -330,8 +330,11 @@ def main():
     args = ap.parse_args()
     rng = random.Random(args.seed)
 
-    if OUT.exists():
-        shutil.rmtree(OUT)
+    # Remove only what this script writes, so hand-written files (README.md) survive a rerun.
+    for set_name in SETS:
+        if (OUT / set_name).exists():
+            shutil.rmtree(OUT / set_name)
+    (OUT / "labels.json").unlink(missing_ok=True)
     takes = []
     for set_name in SETS:
         exp_path = EXPECTED / set_name / "animation.json"
