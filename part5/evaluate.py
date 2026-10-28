@@ -8,6 +8,11 @@ Predicted faults are `analysis.json` fault objects (see docs/schemas.md); labels
 - trunk faults match at body-part level (side is ignored);
 - matching is one-to-one (maximum cardinality), so one prediction can satisfy one label.
 
+Two edges of the one-way `both` rule, so nobody is surprised later: a `both` label satisfied
+by a left-only prediction does not count the missed right side (lenient), while a `both`
+prediction against a one-sided label scores 0 — an FP and an FN — even though detection only
+emits `both` when both sides fired (harsh). Changing either is a rule change, not a bug fix.
+
 This module only scores; producing the analyses over a corpus is #10/#14's job, and the
 thresholds that gate `make check-5` live in #14, not here.
 """
@@ -118,8 +123,16 @@ def score(records):
             "overall": _finalise(overall)}
 
 
-def records_from_corpus(labels_doc, analyses_by_take_id):
-    """Pair a labels.json document with analysis documents keyed by take_id → score records."""
+def records_from_corpus(labels_doc, analyses_by_take_id, allow_missing=False):
+    """Pair a labels.json document with analysis documents keyed by take_id → score records.
+
+    A take with no analysis raises `ValueError` listing the missing take_ids: scoring it as
+    "no predictions" would let a crashed pipeline pass the correct-takes criterion.
+    `allow_missing=True` is the explicit opt-in for tooling over a partial corpus.
+    """
+    missing = [t["take_id"] for t in labels_doc["takes"] if t["take_id"] not in analyses_by_take_id]
+    if missing and not allow_missing:
+        raise ValueError(f"missing analysis for {len(missing)} take(s): {missing}")
     records = []
     for take in labels_doc["takes"]:
         analysis = analyses_by_take_id.get(take["take_id"], {"faults": []})
@@ -129,5 +142,5 @@ def records_from_corpus(labels_doc, analyses_by_take_id):
     return records
 
 
-def evaluate_corpus(labels_doc, analyses_by_take_id):
-    return score(records_from_corpus(labels_doc, analyses_by_take_id))
+def evaluate_corpus(labels_doc, analyses_by_take_id, allow_missing=False):
+    return score(records_from_corpus(labels_doc, analyses_by_take_id, allow_missing))

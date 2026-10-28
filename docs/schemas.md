@@ -116,5 +116,8 @@ Produced by `part5.evaluate.score` / `evaluate_corpus` (#13) and printed by `mak
   the README. Each entry has `tp`, `fp`, `fn`, `takes`, `correct_takes`,
   `faults_on_correct_takes`, `precision`, `recall`. An empty denominator scores 1.0: nothing
   predicted (or labelled) in that slice is not itself a failure — misses appear in the other
-  ratio. `good_light` is the good-light aggregate #14 gates on (precision ≥ 0.85, recall
-  ≥ 0.75, 0 faults on correct takes); low light is reported, not gated.
+  ratio. #14 gates on **every good-light angle slice separately** (`good/front`, `good/45`,
+  `good/side` must each reach precision ≥ 0.85 and recall ≥ 0.75 with 0 faults on correct
+  takes), so one weak angle cannot hide inside an aggregate; `good_light` is a summary only.
+  Low-light slices are reported, not gated. A labelled take with no analysis is an error
+  (the missing `take_id`s are listed), never scored as "no predictions".

@@ -92,13 +92,20 @@ def test_evaluate_corpus_pairs_analyses_with_labels_by_take():
                          "correct": False, "faults": [label()]}]}
     m = evaluate_corpus(labels, {"t1": {"faults": [pred()]}})
     assert m["overall"]["tp"] == 1
-    m2 = evaluate_corpus(labels, {})  # missing analysis = no predictions
+    # A missing analysis must never score as clean: it raises, naming the takes.
+    try:
+        evaluate_corpus(labels, {})
+        raise AssertionError("expected ValueError for a missing analysis")
+    except ValueError as e:
+        assert "t1" in str(e)
+    # ...unless the caller explicitly opts into a partial corpus.
+    m2 = evaluate_corpus(labels, {}, allow_missing=True)
     assert m2["overall"]["fn"] == 1
 
 
 def test_real_labels_document_parses_into_records():
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
-    m = evaluate_corpus(labels, {})
+    m = evaluate_corpus(labels, {}, allow_missing=True)
     assert m["overall"]["takes"] == 96
     assert m["overall"]["fn"] == 84 and m["overall"]["fp"] == 0
     assert set(m["slices"]) == {f"{li}/{an}" for li in ("good", "low") for an in ("front", "45", "side")}
