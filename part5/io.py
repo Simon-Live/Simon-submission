@@ -22,6 +22,10 @@ HIP_TOLERANCE_M = 0.01
 MIN_CONF = 0.3
 
 
+def _is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
 class InputError(ValueError):
     """An input file breaks the contract; the message says where."""
 
@@ -57,13 +61,15 @@ def parse_clip(doc, source="<input>"):
     if not isinstance(doc, dict):
         fail("top level must be an object")
     fmt = doc.get("format")
-    if fmt not in FORMATS:
+    if not isinstance(fmt, str) or fmt not in FORMATS:
         fail(f"format must be one of {sorted(FORMATS)}, got {fmt!r}")
     cf = doc.get("coordinate_frame", {})
+    if not isinstance(cf, dict):
+        fail(f"coordinate_frame must be an object, got {type(cf).__name__}")
     for k, v in COORDINATE_FRAME.items():
         if k in cf and cf[k] != v:
             fail(f"coordinate_frame.{k} must be {v!r}, got {cf[k]!r}")
-    if "joints" in doc and list(doc["joints"]) != JOINTS:
+    if "joints" in doc and doc["joints"] != JOINTS:
         fail(f"joints must be the canonical 17 in order {JOINTS}")
     fps = doc.get("fps")
     if fps is not None and (not isinstance(fps, (int, float)) or fps <= 0):
@@ -80,10 +86,17 @@ def parse_clip(doc, source="<input>"):
     interp = np.zeros(n, bool)
     for i, fr in enumerate(frames):
         where = f"{FORMATS[fmt]}[{i}]"
+        if not isinstance(fr, dict):
+            fail(f"{where} must be an object, got {type(fr).__name__}")
         if "t" in fr:
+            if not _is_number(fr["t"]):
+                fail(f"{where}.t must be a number, got {fr['t']!r}")
             t[i] = fr["t"]
         elif fps:
-            t[i] = fr.get("index", i) / fps
+            index = fr.get("index", i)
+            if not _is_number(index):
+                fail(f"{where}.index must be a number, got {index!r}")
+            t[i] = index / fps
         else:
             fail(f"{where}: needs 't' (or a top-level fps)")
         interp[i] = bool(fr.get("interpolated", False))
@@ -94,12 +107,17 @@ def parse_clip(doc, source="<input>"):
         if unknown:
             fail(f"{where}.joints has unknown names {sorted(unknown)}")
         conf = fr.get("conf", {})
+        if not isinstance(conf, dict):
+            fail(f"{where}.conf must be an object of joint → 0..1, got {type(conf).__name__}")
+        bad = {k: v for k, v in conf.items() if not _is_number(v)}
+        if bad:
+            fail(f"{where}.conf values must be numbers, got {bad!r}")
         for j, name in enumerate(JOINTS):
             p = joints.get(name)
             if p is None:
                 continue
             if (not isinstance(p, list) or len(p) != 3
-                    or not all(isinstance(c, (int, float)) and math.isfinite(c) for c in p)):
+                    or not all(_is_number(c) for c in p)):
                 fail(f"{where}.joints.{name} must be [x, y, z] finite numbers, got {p!r}")
             pos[i, j] = p
             mask[i, j] = conf.get(name, 1.0) >= MIN_CONF

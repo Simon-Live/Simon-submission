@@ -24,6 +24,8 @@
 - Positions are metres `[x, y, z]`. The hip midpoint is subtracted per frame (it must be within
   1 cm of the origin). x = subject's left, y = up, z = anterior (x × y).
 - `interpolated: true` marks frames Part 4 filled between keyframes. Part 5 treats them like any other frame.
+- `coordinate_frame` may be left out: the frame is then assumed, and checked through the hip-midpoint
+  rule. If it is present, every field it gives must match the values above.
 - `t` must strictly increase. If `t` is missing, it is taken as `index / fps`.
 
 ### Expected skeleton alternative: `skeleton.json` (`simon.skeleton.v1`)

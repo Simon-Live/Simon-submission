@@ -59,6 +59,15 @@ def test_missing_and_low_conf_joints_are_masked(doc):
     (lambda d: d["frames"][2]["joints"].update(toe=[0, 0, 0]), "unknown names"),
     (lambda d: d["frames"][5].update(t=0.0), "strictly increase"),
     (lambda d: [f["joints"].update(left_hip=[0.5, 0.0, 0.0]) for f in d["frames"]], "hip midpoint"),
+    (lambda d: d["frames"].__setitem__(1, [0, 1, 2]), r"frames\[1\] must be an object"),
+    (lambda d: d["frames"][1].update(conf=[0.5]), r"frames\[1\]\.conf must be an object"),
+    (lambda d: d["frames"][1].update(t="0.03"), r"frames\[1\]\.t must be a number"),
+    (lambda d: d["frames"][1].update(conf={"nose": "high"}), r"conf values must be numbers"),
+    (lambda d: [f.pop("t") or f.update(index="x") for f in d["frames"][:1]], r"index must be a number"),
+    (lambda d: d["frames"][1]["joints"].update(nose=[True, 0, 0]), "joints.nose"),
+    (lambda d: d.update(coordinate_frame="hip"), "coordinate_frame must be an object"),
+    (lambda d: d.update(joints=3), "canonical 17"),
+    (lambda d: d.update(format=["simon.animation.v1"]), "format must be"),
 ])
 def test_malformed_inputs_fail_clearly(doc, edit, msg):
     d = copy.deepcopy(doc)
