@@ -1,5 +1,6 @@
 {
   "format": "simon.animation.v1",
+  "producer": "part4",
   "fps": 30,
   "duration_s": 4.0,
   "frame_count": 121,

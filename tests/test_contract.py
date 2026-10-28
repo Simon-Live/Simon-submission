@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import sys
 import unittest
 from pathlib import Path
@@ -19,6 +20,22 @@ sys.path.insert(0, str(ROOT / "src"))
 from simon_anim import contract  # noqa: E402
 from simon_anim.check import fixture_files  # noqa: E402
 from simon_anim.interpolate import build_animation  # noqa: E402
+from simon_anim.math3d import (  # noqa: E402
+    as_quat,
+    direction_angle_deg,
+    quat_align_hemisphere,
+    quat_from_axis_angle,
+    quat_normalize,
+    quat_to_rotvec,
+    v_add,
+    v_cross,
+    v_dot,
+    v_norm,
+    v_normalize,
+    v_scale,
+    v_sub,
+)
+from simon_anim.skeleton import ROTATED_JOINTS, forward_kinematics, rest_offsets_from_skeleton  # noqa: E402
 
 try:  # optional second witness
     import jsonschema
@@ -53,6 +70,42 @@ def _set(path: list, value):
         node[path[-1]] = value
 
     return apply
+
+
+def _about(axis, degrees: float) -> tuple:
+    return quat_from_axis_angle(axis, math.radians(degrees))
+
+
+def _arc(a, b) -> tuple:
+    """Shortest rotation taking unit vector a onto unit vector b (not antiparallel)."""
+    c = v_cross(a, b)
+    return quat_normalize((c[0], c[1], c[2], 1.0 + v_dot(a, b)))
+
+
+def _old_rule_steps(quats: list) -> list[float]:
+    """Steps in degrees as f1693dc measured them: rotation vectors kept in 0 to 180 degrees."""
+    previous = (0.0, 0.0, 0.0, 1.0)
+    vectors = []
+    for quat in quats:
+        previous = quat_align_hemisphere(as_quat(quat), previous)
+        vectors.append(quat_to_rotvec(previous))
+    return [math.degrees(v_norm(v_sub(b, a))) for a, b in zip(vectors, vectors[1:])]
+
+
+def _clip_with(skeleton: dict, joint: str, quats: list) -> dict:
+    """Every key of `skeleton` at its first key's pose, except `joint`, which takes `quats` in turn.
+
+    Key positions are the forward kinematics of the new rotations, as Part 3 writes them.
+    """
+    offsets = rest_offsets_from_skeleton(skeleton)
+    first = skeleton["keyframes"][0]["local_rotations"]
+    clip = copy.deepcopy(skeleton)
+    for key, quat in zip(clip["keyframes"], quats):
+        rotations = {name: list(first[name]) for name in ROTATED_JOINTS}
+        rotations[joint] = list(quat)
+        key["local_rotations"] = rotations
+        key["joints"] = {name: list(p) for name, p in forward_kinematics(rotations, offsets).items()}
+    return clip
 
 
 # Each case breaks one rule a schema states. The loader must refuse every one.
@@ -137,6 +190,15 @@ class FixturesConformTest(unittest.TestCase):
         animation = build_animation(_load(base / "skeleton.json"), _load(base / "keyframes.json"))
         self.assertEqual(contract.validate(json.loads(json.dumps(animation)), _published("animation")), [])
 
+    def test_every_shipped_animation_names_part4_as_producer(self):
+        outputs = sorted((ROOT / "fixtures" / "output").glob("*/animation.json"))
+        self.assertGreaterEqual(len(outputs), 5)
+        for path in outputs:
+            with self.subTest(path=str(path.relative_to(ROOT))):
+                self.assertEqual(_load(path)["producer"], "part4")
+        self.assertEqual(_published("animation")["properties"]["producer"]["const"], "part4")
+        self.assertIn("producer", _published("animation")["required"])
+
 
 class LoaderRejectsWhatSchemaRejectsTest(unittest.TestCase):
     def setUp(self):
@@ -182,11 +244,13 @@ class LoaderRejectsWhatSchemaRejectsTest(unittest.TestCase):
                     build_animation(skeleton, keyframes)
 
     def test_long_way_round_names_joint_and_keys(self):
+        # 170 degrees about x, then 170 degrees about z: a near half turn inside one gap.
         skeleton = copy.deepcopy(self.skeleton)
-        skeleton["keyframes"][1]["local_rotations"]["left_knee"] = [1.0, 0.0, 0.0, -0.05]
-        skeleton["keyframes"][2]["local_rotations"]["left_knee"] = [-1.0, 0.0, 0.0, -0.05]
+        skeleton["keyframes"][1]["local_rotations"]["left_hip"] = list(_about((1.0, 0.0, 0.0), 170.0))
+        for key in skeleton["keyframes"][2:]:
+            key["local_rotations"]["left_hip"] = list(_about((0.0, 0.0, 1.0), 170.0))
         self.assertEqual(contract.validate(skeleton, _published("skeleton")), [])
-        with self.assertRaisesRegex(ValueError, "left_knee takes the long way between frames"):
+        with self.assertRaisesRegex(ValueError, "left_hip takes the long way between frames 10 and 20"):
             build_animation(skeleton, self.keyframes)
 
     def test_optional_fields_part3_adds_are_accepted(self):
@@ -210,6 +274,8 @@ class AnimationSchemaIsClosedTest(unittest.TestCase):
             "fps 60": _set(["fps"], 60),
             "another format": _set(["format"], "simon.animation/1"),
             "no movement field": _drop(["movement"]),
+            "no producer": _drop(["producer"]),
+            "another producer": _set(["producer"], "part5"),
         }
         for name, apply in breaks.items():
             with self.subTest(name):
@@ -218,6 +284,78 @@ class AnimationSchemaIsClosedTest(unittest.TestCase):
                 self.assertNotEqual(contract.validate(doc, _published("animation")), [])
                 if jsonschema is not None:
                     self.assertFalse(jsonschema.Draft202012Validator(_published("animation")).is_valid(doc))
+
+
+class ShortestArcTest(unittest.TestCase):
+    """Key pairs the 180 degree rule of f1693dc refused although the body barely moved (A-P4-07, A-P4-08)."""
+
+    FOLD_DEG = 160.0
+    SWINGS_DEG = (0.0, 80.0, 160.0, 80.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    def setUp(self):
+        base = ROOT / "fixtures" / "input" / "exercise"
+        self.keyframes = _load(base / "keyframes.json")
+        self.skeleton = _load(base / "skeleton.json")
+        offsets = rest_offsets_from_skeleton(self.skeleton)
+        self.upper = v_normalize(offsets["left_elbow"][1])
+        self.rest_forearm = v_normalize(offsets["left_wrist"][1])
+        self.p1 = v_normalize(v_cross(self.upper, (0.0, 0.0, 1.0)))
+        self.p2 = v_cross(self.upper, self.p1)
+
+    def _forearm(self, swing_deg: float) -> tuple:
+        """Forearm direction in the upper arm's frame: folded FOLD_DEG back, bend plane turned swing_deg."""
+        fold, swing = math.radians(self.FOLD_DEG), math.radians(swing_deg)
+        bend = v_add(v_scale(self.p1, math.cos(swing)), v_scale(self.p2, math.sin(swing)))
+        return v_add(v_scale(self.upper, math.cos(fold)), v_scale(bend, math.sin(fold)))
+
+    def test_a_folded_elbow_swung_about_the_upper_arm_is_animated(self):
+        # Part 3's seated side stretch: the forearm folded 160 degrees, its bend plane swinging
+        # 80 degrees per gap. The elbow's own swing changes axis, the forearm moves about 25 degrees.
+        quats = [_arc(self.rest_forearm, self._forearm(s)) for s in self.SWINGS_DEG]
+        self.assertGreater(max(_old_rule_steps(quats)), 180.0)
+        clip = _clip_with(self.skeleton, "left_elbow", quats)
+        animation = build_animation(clip, self.keyframes)
+        offsets = rest_offsets_from_skeleton(clip)
+        first = clip["keyframes"][0]["local_rotations"]
+        key_t = [float(k["t"]) for k in self.keyframes["keyframes"]]
+        worst = 0.0
+        for frame in animation["frames"]:
+            t = frame["t"]
+            i = min(sum(1 for kt in key_t if kt <= t) - 1, len(key_t) - 2)
+            u = min(1.0, (t - key_t[i]) / (key_t[i + 1] - key_t[i]))
+            swing = self.SWINGS_DEG[i] + u * (self.SWINGS_DEG[i + 1] - self.SWINGS_DEG[i])
+            truth_rot = {name: first[name] for name in ROTATED_JOINTS}
+            truth_rot["left_elbow"] = _arc(self.rest_forearm, self._forearm(swing))
+            truth = forward_kinematics(truth_rot, offsets)
+            got = frame["joints"]
+            worst = max(worst, direction_angle_deg(
+                v_sub(got["left_wrist"], got["left_elbow"]), v_sub(truth["left_wrist"], truth["left_elbow"])))
+            if not frame["interpolated"]:
+                self.assertLess(v_norm(v_sub(got["left_wrist"], truth["left_wrist"])), 1e-6)
+        self.assertLess(worst, 8.0)
+
+    def test_a_joint_turning_through_180_degrees_is_animated_the_short_way(self):
+        # The hip lifts the thigh overhead and just past it (175 to 185 degrees), then back down.
+        angles = (0.0, 90.0, 150.0, 175.0, 185.0, 175.0, 150.0, 90.0, 30.0, 0.0)
+        quats = [_about((1.0, 0.0, 0.0), a) for a in angles]
+        self.assertGreater(max(_old_rule_steps(quats)), 180.0)
+        clip = _clip_with(self.skeleton, "left_hip", quats)
+        animation = build_animation(clip, self.keyframes)
+        rest = v_sub(animation["frames"][0]["joints"]["left_knee"], animation["frames"][0]["joints"]["left_hip"])
+        for frame in animation["frames"][30:41]:
+            thigh = v_sub(frame["joints"]["left_knee"], frame["joints"]["left_hip"])
+            self.assertGreater(direction_angle_deg(thigh, rest), 170.0, f"frame {frame['index']}")
+
+    def test_the_twist_taken_out_moves_no_joint_at_the_keys(self):
+        twisted = [list(_about(self.rest_forearm, 30.0 * i)) for i in range(10)]
+        self.assertGreater(max(_old_rule_steps(twisted)), 180.0)
+        plain = _clip_with(self.skeleton, "left_elbow", [(0.0, 0.0, 0.0, 1.0)] * 10)
+        clip = _clip_with(self.skeleton, "left_elbow", twisted)
+        a = build_animation(clip, self.keyframes)
+        b = build_animation(plain, self.keyframes)
+        for fa, fb in zip(a["frames"], b["frames"]):
+            for name in contract.CANONICAL_JOINTS:
+                self.assertLess(v_norm(v_sub(fa["joints"][name], fb["joints"][name])), 1e-6)
 
 
 class Part3ViewEndToEndTest(unittest.TestCase):

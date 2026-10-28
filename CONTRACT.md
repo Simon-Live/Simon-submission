@@ -38,11 +38,13 @@ enforced by `src/simon_anim/interpolate.py`.
 ## `animation.json` (`simon.animation.v1`)
 
 Every object in this file is closed: a field the schema does not list is an error, so a new field
-means a new format.
+means a new format. `producer` is the one exception: it joined v1 as a required constant (A-P4-06),
+because Part 6 reads a declared producer and Parts 5 and 6 detect the file by `format`.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `format` | `"simon.animation.v1"` | the version |
+| `producer` | `"part4"` | the part that wrote the file; always `part4` |
 | `fps` | `30` | |
 | `duration_s`, `frame_count` | number, integer | the clock above |
 | `movement` | string or `null` | from `keyframes.json`, else `skeleton.json`, else `null` |
@@ -85,3 +87,18 @@ changes a unit, the frame or the clock, gets a new `format` value (for example
 shipped clips changed joint positions without changing the format; copies taken before it
 (366d628) differ from the current `fixtures/output/` by up to 0.136 m (dance) and 0.124 m (exercise), so refresh them together with
 anything built from them.
+
+The shortest-arc change after f1693dc (A-P4-07, A-P4-08) left the exercise, dance, long and minute
+joint positions unchanged and added `producer` to every file. It moved the in-between frames of
+`part3-squat` by up to 0.0176 m (right ankle; wrists up to 0.0049 m). Part 3 writes each knee and
+elbow rotation as a pure swing from rest, and two swings about different axes differ by a twist
+about the shank or forearm, which Part 4 now takes out. Its key frames did not move. A schema copied before this change rejects the new files (closed
+objects), so copy `contracts/animation.schema.json` again together with the outputs.
+
+### Rotations Part 4 now accepts
+
+Before the change, a key pair was refused when a joint's rotation vector (angle kept in 0 to 180°)
+stepped more than 180°. That refused a folded elbow swinging about the upper arm and any joint
+passing through 180°. Part 3 worked around the first with a shoulder twist (its ASM-020); that
+twist is no longer needed by Part 4, and leaving it in is harmless. The rule now applies after the
+shortest arc described in the README, "How one in-between frame is made".

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-4-animate-keyframes/contracts/animation.schema.json",
   "title": "animation.json written by Part 4",
-  "description": "simon.animation.v1 exactly as Part 4 writes it: one frame per 30 fps tick, joints in metres in the hip-centred body frame. Every object is closed; a new field means a new format.",
+  "description": "simon.animation.v1 exactly as Part 4 writes it: one frame per 30 fps tick, joints in metres in the hip-centred body frame. Every object is closed. producer joined v1 as a required constant (A-P4-06); any other new field means a new format.",
   "x-simon-version": "simon.animation.v1",
   "x-direction": "output",
   "x-producer": "Part 4",
@@ -32,6 +32,7 @@
   "additionalProperties": false,
   "required": [
     "format",
+    "producer",
     "fps",
     "duration_s",
     "frame_count",
@@ -45,6 +46,10 @@
   "properties": {
     "format": {
       "const": "simon.animation.v1"
+    },
+    "producer": {
+      "const": "part4",
+      "description": "The part that wrote this file. Part 4 always writes part4."
     },
     "fps": {
       "const": 30

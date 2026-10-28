@@ -55,15 +55,21 @@ flowchart LR
 
 ## How one in-between frame is made
 
-Rotations are quaternions `(x, y, z, w)`. A quaternion and its opposite describe the same pose, so the code first flips each key into the same hemisphere as the previous key. That stops a joint from spinning the long way when the author only meant a small step.
+Rotations are quaternions `(x, y, z, w)`. Each key is first put on the shortest arc from the key before it:
 
-Each quaternion is then converted to a rotation vector: an axis times an angle in radians, kept in the range 0 to 180°. That conversion, and the slope at each key, is done once for the whole clip. A cubic Hermite curve uses those slopes (a Catmull-Rom tangent from the keys on either side). At a key time the stored rotation is copied through, so the clip hits every authored pose. Between keys the curve supplies the rotation.
+- A turn that moves no written joint is taken out. An elbow, knee or eye loses its twist about the bone to its only child (wrist, ankle, ear), against the previous key. A wrist, ankle or ear has no child, so its rotation is held at the identity. Key positions do not change.
+- A quaternion and its opposite describe the same pose, so the key is flipped into the same hemisphere as the previous key. That stops a joint from spinning the long way when the author only meant a small step.
+
+Each quaternion is then converted to a rotation vector: an axis times an angle in radians. The flipped sign is kept, so the angle runs from 0 to 360° and a joint that turns through 180° (an arm lifted just past overhead) stays next to its previous key. That conversion, and the slope at each key, is done once for the whole clip.
+
+Why the twist goes first: a folded elbow whose forearm swings around the upper arm (Part 2's seated side stretch) moves the forearm about 25° per key, but the elbow's own swing changes axis by 80° and its rotation vector jumps more than 180°. Before this step that key pair was refused, and Part 3 had to add a shoulder twist to get through (its ASM-020). With the twist taken out, the step is the forearm's real movement. A cubic Hermite curve uses those slopes (a Catmull-Rom tangent from the keys on either side). At a key time the stored rotation is copied through, so the clip hits every authored pose. Between keys the curve supplies the rotation.
 
 Joint positions are not blended. Blending positions would change the distance between joints and stretch the bones. The curve produces a rotation, and forward kinematics places the joints from a fixed rest rig. Bone lengths stay at those rest offsets for every frame.
 
 ```mermaid
 flowchart TD
-  keys["Rotations at the keyframes"] --> hemi["Flip each quaternion into the same hemisphere as the previous key"]
+  keys["Rotations at the keyframes"] --> twist["Take out turns that move no written joint"]
+  twist --> hemi["Flip each quaternion into the same hemisphere as the previous key"]
   hemi --> vec["Convert to a rotation vector"]
   vec --> curve["Cubic Hermite between the keys"]
   curve --> quat["Convert back to a quaternion"]
@@ -102,7 +108,7 @@ Bone lengths come from `rest_offsets_m` in `skeleton.json`. Those lengths are th
 
 ## What a frame looks like
 
-`format` is `simon.animation.v1`. There is one frame per 30 fps tick. A key sample has `"interpolated": false`. A filled frame has `"interpolated": true`.
+`format` is `simon.animation.v1` and `producer` is `"part4"`, so a reader can tell Part 4's file from a copy or a stand-in. There is one frame per 30 fps tick. A key sample has `"interpolated": false`. A filled frame has `"interpolated": true`.
 
 The standing squat, frame 0, is a key. The next tick is filled in:
 
@@ -128,7 +134,7 @@ The clip is not written. The error names the joint or the frame.
 - The skeleton has no keyframes, or `rest_offsets_m` is missing a joint or gives a joint the wrong parent.
 - A `joints` list is present and is not the canonical 17 in canonical order.
 - **A missing rotation, or a quaternion of all zeros.** The joint would otherwise freeze on the rest pose.
-- **More than 180° between two neighboring keys in rotation-vector space.** The curve would take the long way around. A spin or a cartwheel inside one gap is this case. The error names the joint and the two frame indices.
+- **More than 180° between two neighboring keys in rotation-vector space, after the shortest arc above.** The curve would take the long way around. Two large turns about very different axes in one gap (170° about x, then 170° about z) are this case, and so is a joint that keeps spinning until its angle nears 360°. A folded elbow swinging about the upper arm, or a joint passing through 180°, is not. The error names the joint and the two frame indices.
 
 A missing `fps`, `frame_count`, `keyframes`, `index`, or `t` is a schema error that names the missing field.
 
@@ -140,7 +146,7 @@ A missing `fps`, `frame_count`, `keyframes`, `index`, or `t` is a schema error t
 
 ### Nothing in the keyframes can supply this
 
-- **Which way a joint turned, once one gap is over 180°.** Two poses do not record the direction or the number of turns. The clip is rejected instead of guessing the short way.
+- **Which way a joint turned, once one gap is over 180°.** Two poses do not record the direction or the number of turns. The curve takes the short way. It cannot tell a 190° turn from a 170° turn the other way.
 - **A wiggle between the keys.** The hidden motion is not in the file. Denser keys are what keep the result inside 8°. Those keys come from Part 1.
 - **A movement, when only one pose was provided.** The clip can hold the pose.
 - **Travel across the floor.** The input is already hip-centered. This part cannot put the root path back.

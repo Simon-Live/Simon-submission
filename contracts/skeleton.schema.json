@@ -17,7 +17,7 @@
     "keyframes[].index equals the key list of the keyframes.json beside this file",
     "no rest offset has zero length",
     "no local rotation has a norm under 1e-8",
-    "no joint turns more than 180 degrees between neighbouring keys in rotation-vector space"
+    "no joint turns more than 180 degrees between neighbouring keys in rotation-vector space, measured on the shortest arc: each key in the previous key's quaternion hemisphere, the twist about a bone that ends in a leaf joint removed, and a joint with no child held still"
   ],
   "$defs": {
     "vec3": {

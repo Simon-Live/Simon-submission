@@ -6,7 +6,7 @@ module (`make contracts`) and `make check-4` fails when the files differ.
 
 The animator validates both inputs against these schemas before it reads
 them, so a file a schema rejects is never animated. Rules a schema cannot
-state (key times, index order, zero quaternions, the 180 degree step) are
+state (key times, index order, zero quaternions, the half-turn step) are
 listed under `x-rules` and enforced in `interpolate.py`.
 
 The validator below covers the keywords these schemas use and refuses any
@@ -39,6 +39,8 @@ REPO_URL = "https://github.com/moalborati/simon-part-4-animate-keyframes"
 KEYFRAMES_FORMAT = "simon.keyframes.v1"
 SKELETON_FORMAT = "simon.skeleton.v1"
 ANIMATION_FORMAT = "simon.animation.v1"
+# Names the part that wrote animation.json, so a reader can tell it from a copy or a stand-in (A-P4-06).
+ANIMATION_PRODUCER = "part4"
 FPS = 30
 
 FILES = {
@@ -171,7 +173,9 @@ def skeleton_schema() -> dict:
         "keyframes[].index equals the key list of the keyframes.json beside this file",
         "no rest offset has zero length",
         "no local rotation has a norm under 1e-8",
-        "no joint turns more than 180 degrees between neighbouring keys in rotation-vector space",
+        "no joint turns more than 180 degrees between neighbouring keys in rotation-vector space, "
+        "measured on the shortest arc: each key in the previous key's quaternion hemisphere, the "
+        "twist about a bone that ends in a leaf joint removed, and a joint with no child held still",
     ]
     schema["$defs"] = {"vec3": _VEC3, "quat": _QUAT, "joint_position": _JOINT_POSITION}
     schema.update(
@@ -219,7 +223,8 @@ def animation_schema() -> dict:
         "animation",
         "animation.json written by Part 4",
         "simon.animation.v1 exactly as Part 4 writes it: one frame per 30 fps tick, joints in metres "
-        "in the hip-centred body frame. Every object is closed; a new field means a new format.",
+        "in the hip-centred body frame. Every object is closed. producer joined v1 as a required "
+        "constant (A-P4-06); any other new field means a new format.",
         "output",
         "Part 4",
         ["Part 5", "Part 6"],
@@ -238,6 +243,7 @@ def animation_schema() -> dict:
             "additionalProperties": False,
             "required": [
                 "format",
+                "producer",
                 "fps",
                 "duration_s",
                 "frame_count",
@@ -250,6 +256,10 @@ def animation_schema() -> dict:
             ],
             "properties": {
                 "format": {"const": ANIMATION_FORMAT},
+                "producer": {
+                    "const": ANIMATION_PRODUCER,
+                    "description": "The part that wrote this file. Part 4 always writes part4.",
+                },
                 "fps": {"const": FPS},
                 "duration_s": {"type": "number", "minimum": 0},
                 "frame_count": {"type": "integer", "minimum": 1},

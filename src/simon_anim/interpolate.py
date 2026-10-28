@@ -19,9 +19,12 @@ from .math3d import (
     Vec3,
     as_quat,
     quat_align_hemisphere,
-    quat_to_rotvec,
+    quat_mul,
+    quat_normalize,
     rotvec_to_quat,
+    v_dot,
     v_norm,
+    v_normalize,
     v_sub,
 )
 from .skeleton import (
@@ -36,9 +39,59 @@ from .skeleton import (
 # One microsecond. Shipped JSON times are rounded to 6 decimals, which can
 # differ from index/30 by a few ten-millionths of a second.
 TIME_TOLERANCE_S = 1e-6
-# A rotation vector only represents the short arc. A larger step between two
-# keys means the curve would take the long way around.
+# Keys are first put on the shortest arc (same quaternion hemisphere, twist
+# about a leaf bone removed), so a step this large in rotation-vector space
+# is a real half turn or more inside one gap: two poses cannot say which way.
 MAX_ROTVEC_STEP_DEG = 180.0
+
+
+def _rotvec_unwrapped(q: Sequence[float]) -> Vec3:
+    """Rotation vector of q as given, angle 0 to 360 degrees (A-P4-07).
+
+    A negative w is kept, so a key already flipped into the previous key's
+    hemisphere stays next to that key's vector when the joint turns through
+    180 degrees, for example a folded elbow.
+    """
+    x, y, z, w = quat_normalize(q)
+    s = math.sqrt(x * x + y * y + z * z)
+    if s < 1e-12:
+        return (0.0, 0.0, 0.0)
+    scale = 2.0 * math.atan2(s, w) / s
+    return (x * scale, y * scale, z * scale)
+
+
+def _drop_twist(q: Quat, reference: Quat, axis: Sequence[float]) -> Quat:
+    """q turned about `axis` (in q's own frame) to sit as close to `reference` as it can (A-P4-08).
+
+    The turn moves nothing when the bone along `axis` ends in a leaf joint, so
+    only the swing that moves that leaf is left between the keys.
+    """
+    u = v_normalize(axis)
+    d = quat_mul((-reference[0], -reference[1], -reference[2], reference[3]), q)
+    half = math.atan2(-v_dot(d[:3], u), d[3])
+    s = math.sin(half)
+    return quat_mul(q, (u[0] * s, u[1] * s, u[2] * s, math.cos(half)))
+
+
+def _free_rotations(rest_offsets: dict) -> tuple[dict[str, Vec3], set[str]]:
+    """Joints whose rotation is partly or wholly invisible in the 17 output joints.
+
+    Returns ({joint: offset of its only child, when that child is a leaf},
+    {joints with no child}). Elbows, knees and eyes are in the first; wrists,
+    ankles and ears in the second.
+    """
+    children: dict[str, list[str]] = {joint: [] for joint in ROTATED_JOINTS}
+    for child, (parent, _offset) in rest_offsets.items():
+        children.setdefault(parent, []).append(child)
+    twist_axes = {}
+    leaves = set()
+    for joint in ROTATED_JOINTS:
+        kids = children.get(joint, [])
+        if not kids:
+            leaves.add(joint)
+        elif len(kids) == 1 and not children.get(kids[0]) and v_norm(rest_offsets[kids[0]][1]) > 1e-9:
+            twist_axes[joint] = rest_offsets[kids[0]][1]
+    return twist_axes, leaves
 
 
 def _hermite(p0: float, p1: float, m0: float, m1: float, t0: float, t1: float, t: float) -> float:
@@ -91,17 +144,32 @@ def _require_quat(frame: dict, joint: str) -> Sequence[float]:
     return raw
 
 
-def _keyframe_quats(skeleton: dict) -> tuple[list[int], list[float], dict[str, list[Quat]]]:
+def _keyframe_quats(
+    skeleton: dict, rest_offsets: dict | None = None
+) -> tuple[list[int], list[float], dict[str, list[Quat]]]:
+    """Key rotations per joint, each on the shortest arc from the key before.
+
+    With `rest_offsets`, a turn that moves no output joint is taken out first:
+    a joint with no child holds the identity, and an elbow, knee or eye loses
+    its twist about the bone to its leaf child against the previous key. Key
+    positions do not change.
+    """
     frames = sorted(skeleton["keyframes"], key=lambda f: int(f["index"]))
     if not frames:
         raise ValueError("skeleton has no keyframes")
     indices = [int(frame["index"]) for frame in frames]
     times = [float(frame["t"]) for frame in frames]
+    twist_axes, leaves = _free_rotations(rest_offsets) if rest_offsets else ({}, set())
     series: dict[str, list[Quat]] = {joint: [] for joint in ROTATED_JOINTS}
     previous = {joint: IDENT_QUAT for joint in ROTATED_JOINTS}
     for frame in frames:
         for joint in ROTATED_JOINTS:
-            aligned = quat_align_hemisphere(as_quat(_require_quat(frame, joint)), previous[joint])
+            quat = as_quat(_require_quat(frame, joint))
+            if joint in leaves:
+                quat = IDENT_QUAT
+            elif joint in twist_axes:
+                quat = _drop_twist(quat, previous[joint], twist_axes[joint])
+            aligned = quat_align_hemisphere(quat, previous[joint])
             series[joint].append(aligned)
             previous[joint] = aligned
     return indices, times, series
@@ -122,7 +190,7 @@ def _prepare_curves(
     """Rotation-vector curves and slopes, computed once for the whole clip."""
     curves: dict[str, _JointCurve] = {}
     for joint, quats in series.items():
-        rotvecs = [quat_to_rotvec(quat) for quat in quats]
+        rotvecs = [_rotvec_unwrapped(quat) for quat in quats]
         for i in range(len(rotvecs) - 1):
             step = math.degrees(v_norm(v_sub(rotvecs[i + 1], rotvecs[i])))
             if step > MAX_ROTVEC_STEP_DEG:
@@ -264,7 +332,7 @@ def build_animation(skeleton: dict, keyframes_doc: dict, set_name: str | None = 
     for frame in skeleton["keyframes"]:
         _require_key_time(int(frame["index"]), float(frame["t"]), fps, "skeleton.json")
     rest_offsets = rest_offsets_from_skeleton(skeleton)
-    indices, times, series = _keyframe_quats(skeleton)
+    indices, times, series = _keyframe_quats(skeleton, rest_offsets)
     curves = _prepare_curves(indices, times, series)
     key_set = set(key_idx)
     frames = []
@@ -284,7 +352,8 @@ def build_animation(skeleton: dict, keyframes_doc: dict, set_name: str | None = 
             }
         )
     return {
-        "format": "simon.animation.v1",
+        "format": contract.ANIMATION_FORMAT,
+        "producer": contract.ANIMATION_PRODUCER,
         "fps": fps,
         "duration_s": duration_s,
         "frame_count": frame_count,
