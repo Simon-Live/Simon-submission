@@ -121,3 +121,10 @@ def test_parse_sam31_rejects_missing_confidence_and_offsets():
     with pytest.raises(ValueError, match="mask offset"):
         parse_sam31_text("<0f>1<|box;x1=0;y1=0;x2=1;y2=1;w=2;h=2;c=0.5|>"
                          "<|mask;x=3;y=0;c=0.5;data=1,1,~f|>", recs, mask_decoder=dec)
+
+
+def test_ffmpeg_exe_falls_back_to_imageio(monkeypatch):
+    import part2.track as tr
+
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    assert tr._ffmpeg_exe().endswith(("ffmpeg", "ffmpeg.exe")) or "ffmpeg" in tr._ffmpeg_exe()

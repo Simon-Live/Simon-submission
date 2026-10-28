@@ -142,6 +142,46 @@ def derive_fps(frame_records) -> float:
     return 1000.0 / gaps[len(gaps) // 2]
 
 
+def _ffmpeg_exe() -> str:
+    """System ffmpeg if present, else the imageio-ffmpeg bundled binary.
+
+    the cluster's compute nodes have no ffmpeg module, so the API tracker must not
+    assume one on PATH.
+    """
+    import shutil
+
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except ImportError as e:
+        raise RuntimeError("ffmpeg not found on PATH and imageio-ffmpeg is not "
+                           "installed; cannot encode the SAM API video") from e
+
+
+def _count_frames(video_path, ffmpeg: str) -> int:
+    """Exact frame count: ffprobe when available, else an ffmpeg null decode."""
+    import re
+    import shutil
+    import subprocess
+
+    if shutil.which("ffprobe"):
+        return int(subprocess.run(
+            ["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
+             "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(video_path)],
+            check=True, capture_output=True, text=True).stdout.strip())
+    r = subprocess.run([ffmpeg, "-v", "info", "-i", str(video_path),
+                        "-map", "0:v:0", "-c", "copy", "-f", "null", "-"],
+                       capture_output=True, text=True)
+    counts = re.findall(r"frame=\s*(\d+)", r.stderr)
+    if not counts:
+        raise RuntimeError(f"could not count frames in encoded video {video_path}")
+    return int(counts[-1])
+
+
 def encode_video(frames_dir, frame_records, out_path) -> float:
     """Re-encode a frames dir as a constant-fps MP4 (H.264) for the SAM API.
 
@@ -151,21 +191,19 @@ def encode_video(frames_dir, frame_records, out_path) -> float:
     import subprocess
     import tempfile
 
+    ffmpeg = _ffmpeg_exe()
     frames_dir = Path(frames_dir)
     fps = derive_fps(frame_records)
     with tempfile.TemporaryDirectory() as tmp:
         list_path = Path(tmp) / "files.txt"
         list_path.write_text("".join(
             f"file '{(frames_dir / r['file']).resolve()}'\n" for r in frame_records))
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0",
+        subprocess.run([ffmpeg, "-v", "error", "-y", "-f", "concat", "-safe", "0",
                         "-r", f"{fps:.3f}", "-i", str(list_path),
                         "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path)],
                        check=True, capture_output=True)
-    count = int(subprocess.run(
-        ["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
-         "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(out_path)],
-        check=True, capture_output=True, text=True).stdout.strip())
+    count = _count_frames(out_path, ffmpeg)
     if count != len(frame_records):
         raise RuntimeError(f"encoded video has {count} frames for {len(frame_records)} "
                            "frame records; API frame indices would not line up")
