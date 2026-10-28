@@ -34,3 +34,7 @@ click==8.5.0
 pillow==10.2.0
 requests==2.32.3
 tqdm==4.66.5
+
+# SAM 3.1 API tracker run on HPC (part2.track)
+meta-sam-parser==0.1.0
+imageio-ffmpeg==0.6.0
