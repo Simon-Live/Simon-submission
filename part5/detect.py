@@ -156,6 +156,8 @@ def _drop_explained(faults, explained_by):
 
 
 def _merge_sides(faults):
+    # Lefts first, so a right fault listed before its left partner still gets merged.
+    faults = sorted(faults, key=lambda f: f.side != "left")
     out, used = [], set()
     for i, f in enumerate(faults):
         if i in used:
