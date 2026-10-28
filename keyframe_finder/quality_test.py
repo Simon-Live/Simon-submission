@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from keyframe_finder import from_video
-from keyframe_finder.quality import assess, measure
+from keyframe_finder.quality import _parse_stats, assess, measure
 from keyframe_finder.signal import encode_rgb, ffmpeg_exe
 
 
@@ -124,6 +124,19 @@ class QualityGateTest(unittest.TestCase):
             from_video.upload_video = original
         self.assertIsNone(result)
         self.assertEqual(calls, [])
+
+
+class StatsParseTest(unittest.TestCase):
+    def test_minus_nan_from_ffmpeg_is_read_as_missing(self):
+        # Some ffmpeg builds print -nan for the blur of a flat frame.
+        text = (
+            "[Parsed_metadata_7 @ 0x1] frame:0    pts:0       pts_time:0\n"
+            "[Parsed_metadata_7 @ 0x1] lavfi.signalstats.YAVG=8.0\n"
+            "[Parsed_metadata_7 @ 0x1] lavfi.blur=-nan\n"
+        )
+        frames = _parse_stats(text)
+        self.assertEqual(frames[0]["signalstats.YAVG"], 8.0)
+        self.assertTrue(np.isnan(frames[0]["blur"]))
 
 
 if __name__ == "__main__":

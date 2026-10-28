@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-1-keyframes/contracts/keyframes.schema.json",
+  "title": "Part 1 keyframes.json",
+  "description": "The key frames of each repetition, per person, on the clock of the original video. t_ms is the time every consumer joins on. frame is the same moment as an index at fps. Extra keys may appear and are ignored by readers. See CONTRACT.md.",
+  "x-simon-version": "simon.keyframes/part1",
+  "x-producer": "Part 1 (make keyframes, make label)",
+  "x-consumers": ["Part 3", "Part 6"],
+  "type": "object",
+  "required": ["format", "video", "fps", "people"],
+  "properties": {
+    "format": {
+      "const": "simon.keyframes/part1",
+      "description": "Version id. A change that breaks a reader gets a new id."
+    },
+    "video": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The original video, relative to the Part 1 repo root, for example inbox/<name>.mp4."
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Frame rate of the original video. keyframes[].frame counts frames at this rate."
+    },
+    "analysis_fps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Rate of the analysis copy the models watched (15 for a clip of 20 s or less, else 8). It sets the time resolution of t_ms. Written by make keyframes."
+    },
+    "spark_names": {
+      "enum": ["spark", "fallback"],
+      "description": "spark: pose names came from Muse Spark. fallback: the generic start, bottom, top. Written by make keyframes; hand labels omit it."
+    },
+    "quality": {
+      "type": "object",
+      "description": "The local quality report. A refused video writes no keyframes.json, so verdict is fine or enhanced. Written by make keyframes; hand labels omit it.",
+      "required": ["verdict"],
+      "properties": {
+        "verdict": {"enum": ["fine", "enhanced"]},
+        "brightness": {"type": "number"},
+        "spread": {"type": "number"},
+        "blur": {"type": ["number", "null"]},
+        "motion": {"type": "number"},
+        "near_black": {"type": "number"},
+        "noise": {"type": "number"},
+        "flicker": {"type": "number"},
+        "analysis_width": {"type": "integer"},
+        "filters": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "people": {
+      "type": "array",
+      "description": "Each person Part 1 kept. An empty list means nobody moved enough to count.",
+      "items": {"$ref": "#/$defs/person"}
+    }
+  },
+  "$defs": {
+    "person": {
+      "type": "object",
+      "required": ["id", "repetitions"],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "SAM object id from Part 1's own tracking run. It is not Part 2's person id."
+        },
+        "repetitions": {"type": "array", "items": {"$ref": "#/$defs/repetition"}}
+      }
+    },
+    "repetition": {
+      "type": "object",
+      "required": ["rep", "movement", "keyframes"],
+      "properties": {
+        "rep": {"type": "integer", "minimum": 1, "description": "Numbered from 1 for each person."},
+        "movement": {"type": "string", "minLength": 1, "description": "snake_case section name from Spark, or movement when none applies."},
+        "keyframes": {"type": "array", "items": {"$ref": "#/$defs/keyframe"}}
+      }
+    },
+    "keyframe": {
+      "type": "object",
+      "required": ["name", "frame", "t_ms"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "description": "Pose name in snake_case."},
+        "frame": {"type": "integer", "minimum": 0, "description": "round(t_ms / 1000 * fps): the frame of the original video at this moment."},
+        "t_ms": {"type": "integer", "minimum": 0, "description": "Milliseconds from the start of the original video. Consumers join on this."},
+        "reviewed": {"type": "boolean", "description": "Hand labels only: true when a person moved or added this pose."}
+      }
+    }
+  }
+}

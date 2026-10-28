@@ -30,7 +30,7 @@ from keyframe_finder.mask_motion import (
 )
 from keyframe_finder.meta_client import delete_file, name_sections, track_people, upload_video
 from keyframe_finder.quality import assess, format_report
-from keyframe_finder.schema import dump_json, frame_ms
+from keyframe_finder.schema import FORMAT, dump_json, frame_ms
 from keyframe_finder.signal import ffmpeg_exe
 from keyframe_finder.spend import SpendWarning, estimate, status
 
@@ -616,6 +616,7 @@ def build_document(run, tracks, spark_text):
     people = source_clock(people, run["analysis_fps"], run["source_fps"])
     spark_names = "spark" if any(section.get("source") == "spark" for section in sections) else "fallback"
     return {
+        "format": FORMAT,
         "video": run["video"],
         "fps": run["source_fps"],
         "analysis_fps": run["analysis_fps"],
