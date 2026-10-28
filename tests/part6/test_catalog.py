@@ -9,7 +9,7 @@ import pytest
 from conftest import short_id
 
 from part6 import __main__ as cli
-from part6 import catalog, validate
+from part6 import catalog, importer, validate
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "fixtures" / "output" / "catalog"
@@ -243,19 +243,46 @@ def test_seed_copies_every_fixture_into_a_missing_root(tmp_path):
     assert tree(root) == tree(FIXTURES)
 
 
-def test_seed_adds_only_the_fixtures_a_catalog_is_missing(tmp_path):
+def test_seed_fills_an_empty_root_once_and_never_tops_up(tmp_path):
+    """AC-C13a: dot folders and plain files are not entries; once entries exist, no seeding."""
     root = tmp_path / "root"
     (root / ".tmp-leftover").mkdir(parents=True)
     (root / "note.txt").write_text("x")
     assert catalog.seed(root) == 8
     assert catalog.seed(root) == 0
     shutil.rmtree(root / "squat")
-    assert catalog.seed(root) == 1 and tree(root / "squat") == tree(FIXTURES / "squat")
+    assert catalog.seed(root) == 0 and not (root / "squat").exists()
 
 
-def test_a_catalog_made_before_the_part_4_fixtures_gains_them_and_nothing_else_changes(
-        tmp_path, mock_entry):
-    """AC-C13a: six fixtures, one edited by hand, and a visitor entry (review B6)."""
+def test_seed_fills_an_empty_existing_directory(tmp_path):
+    root = tmp_path / "empty"
+    root.mkdir()
+    assert catalog.seed(root) == 8
+    assert tree(root) == tree(FIXTURES)
+
+
+def import_entries(root, count):
+    """`count` import entries of Part 4's squat set, as `part6 import` writes them."""
+    names = ("keyframes.json", "skeleton.json", "animation.json")
+    items = [{"name": n, "data": (FIXTURES / "part4-squat" / n).read_bytes()} for n in names]
+    return [importer.import_files(root, f"Imported {i}", "exercise", items)["id"]
+            for i in range(count)]
+
+
+def test_a_catalog_of_imported_entries_is_never_seeded(tmp_path, capsys):
+    """The integration rehearsal on 4216b02: eight imports gained eight samples."""
+    root = tmp_path / "imports"
+    ids = import_entries(root, 8)
+    before = tree(root)
+    capsys.readouterr()
+    assert catalog.seed(root) == 0
+    assert tree(root) == before
+    assert sorted(m["id"] for m in catalog.list_entries(root)) == sorted(ids)
+    assert "seeded" not in capsys.readouterr().err
+
+
+def test_a_catalog_made_before_the_part_4_fixtures_is_left_as_it_is(tmp_path, mock_entry):
+    """AC-C13a: six fixtures, one edited by hand, and a visitor entry; `reset` brings the rest."""
     root = tmp_path / "root"
     old = [p for p in FIXTURES.iterdir() if not p.name.startswith("part4-")]
     assert len(old) == 6
@@ -264,32 +291,42 @@ def test_a_catalog_made_before_the_part_4_fixtures_gains_them_and_nothing_else_c
     (root / "squat" / "animation.json").write_text("edited by hand")
     visitor = mock_entry(root, "Visitor", "dance", 1000)["id"]
     before = tree(root)
-    assert catalog.seed(root) == 2
-    after = tree(root)
-    new = {k: v for k, v in after.items() if k.parts[0].startswith("part4-")}
-    assert new == {k: v for k, v in tree(FIXTURES).items() if k.parts[0].startswith("part4-")}
-    assert {k: v for k, v in after.items() if k not in new} == before
-    assert (root / "squat" / "animation.json").read_text() == "edited by hand"
+    assert catalog.seed(root) == 0 and tree(root) == before
+    assert not [p for p in root.iterdir() if p.name.startswith("part4-")]
     assert (root / visitor / "manifest.json").is_file()
-    assert sorted(m["id"] for m in catalog.list_entries(root)) == sorted(
-        [p.name for p in FIXTURES.iterdir()] + [visitor])
-    assert catalog.seed(root) == 0 and tree(root) == after
 
 
-def test_seed_keeps_entries_that_are_not_fixtures(tmp_path):
+def test_seed_keeps_a_catalog_with_one_entry_that_is_not_a_fixture(tmp_path):
     put_entry(tmp_path, "mine", name="Mine")
-    assert catalog.seed(tmp_path) == 8
-    assert "mine" in [m["id"] for m in catalog.list_entries(tmp_path)]
-    assert len(catalog.list_entries(tmp_path)) == 9
+    assert catalog.seed(tmp_path) == 0
+    assert [m["id"] for m in catalog.list_entries(tmp_path)] == ["mine"]
 
 
-def test_seed_never_replaces_a_name_that_exists_even_as_a_broken_link(tmp_path):
+def test_a_link_with_an_entry_name_counts_as_an_entry_even_when_broken(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
     (root / "squat").symlink_to(tmp_path / "nowhere", target_is_directory=True)
+    assert catalog.seed(root) == 0
+    assert (root / "squat").is_symlink() and [p.name for p in root.iterdir()] == ["squat"]
+
+
+def test_seed_never_replaces_a_plain_file_with_a_fixture_name(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
     (root / "arm-wave").write_text("a file with a fixture's name")
-    assert catalog.seed(root) == 6
-    assert (root / "squat").is_symlink() and (root / "arm-wave").read_text().startswith("a file")
+    assert catalog.seed(root) == 7
+    assert (root / "arm-wave").read_text().startswith("a file")
+
+
+@pytest.mark.parametrize("make", [
+    lambda root: None,
+    lambda root: root.mkdir(),
+    lambda root: (root / ".hidden").mkdir(parents=True),
+], ids=["missing", "empty", "dot-folder-only"])
+def test_holds_entry_is_false_without_an_entry(tmp_path, make):
+    root = tmp_path / "root"
+    make(root)
+    assert catalog.holds_entry(root) is False
 
 
 def test_seeding_never_writes_the_shipped_fixtures(tmp_path):

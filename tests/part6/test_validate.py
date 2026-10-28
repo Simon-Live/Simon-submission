@@ -192,7 +192,16 @@ def test_known_provenance_keys_keep_their_checks_beside_unknown_ones():
     data["provenance"]["pose3d"] = {}
     data["provenance"]["skeleton"]["part"] = 9
     assert validate.check_manifest(data, "squat") == [
-        "provenance.skeleton.part: must be a whole number from 1 to 7"]
+        "provenance.skeleton.part: must be a whole number from 1 to 7, or null"]
+
+
+def test_a_null_provenance_part_is_valid_and_a_missing_one_is_not():
+    data = manifest()
+    data["provenance"]["skeleton"]["part"] = None
+    assert validate.check_manifest(data, "squat") == []
+    del data["provenance"]["skeleton"]["part"]
+    assert validate.check_manifest(data, "squat") == [
+        "provenance.skeleton.part: must be a whole number from 1 to 7, or null"]
 
 
 def test_valid_manifest():

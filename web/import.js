@@ -2,7 +2,7 @@
 // the same readers the server uses, then send them to POST api/import. Chosen files add up, so a
 // phone picker can be used once per file.
 import {
-  el, importEntry, cleanName, nameProblem, fileLine, producerOf, SERVER_UNREACHABLE,
+  el, importEntry, cleanName, nameProblem, fileLine, SERVER_UNREACHABLE,
 } from './api.js';
 import { detectKind, parseStrictJson, read } from './formats.js';
 
@@ -136,9 +136,9 @@ function videoType(name) {
 }
 
 function detailLine(item) {
-  const part = producerOf(item.format);
+  // No producer part: the format alone never says which part made a file.
   const what = item.kind === 'video' ? videoType(item.name) : item.format;
-  return fileLine(item.kind, 'present', what, part);
+  return fileLine(item.kind, 'present', what);
 }
 
 // A chosen video has no format id; its row carries the container type so a reader can tell it is read.

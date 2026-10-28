@@ -207,8 +207,8 @@ def _provenance_file_errors(kind, entry, where):
         yield f"{where}: not an object"
         return
     part = entry.get("part")
-    if not (is_int(part) and 1 <= part <= 7):
-        yield f"{where}.part: must be a whole number from 1 to 7"
+    if not (part is None and "part" in entry) and not (is_int(part) and 1 <= part <= 7):
+        yield f"{where}.part: must be a whole number from 1 to 7, or null"
     fmt, how = entry.get("format"), entry.get("detected_by")
     if kind == "video":
         if fmt is not None:

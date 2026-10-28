@@ -3,7 +3,7 @@
 // web/formats.js; what plays is decided by playable() (AC-F11).
 import {
   el, getEntry, loadEntryJson, isValidId, categoryLabel, sourceLabel, formatTime, formatDuration, videoUrl,
-  plainFileName, fileLine, getContract, entryLink, manifestUrl, entryFileHref, producerOf, CATALOG_LOAD_FAILED,
+  plainFileName, fileLine, getContract, entryLink, manifestUrl, entryFileHref, provenancePart, CATALOG_LOAD_FAILED,
 } from './api.js';
 import { playable, readAnimation, readKeyframes, readSkeleton } from './formats.js';
 import { BACKGROUND, createPlayer, parseAnimation } from './player.js';
@@ -83,7 +83,7 @@ function describeData(entry, kind, part) {
   if (!part.present) return { kind, state: 'missing', format: '', from: '', line: fileLine(kind, 'missing') };
   const known = provenanceOf(entry, kind);
   const format = (typeof known.format === 'string' && known.format) || (part.normalized && part.normalized.format) || '';
-  const from = Number.isInteger(known.part) ? known.part : producerOf(format);
+  const from = provenancePart(entry.provenance && entry.provenance[kind], format);
   const line = part.error ? fileLine(kind, 'unreadable') : fileLine(kind, 'present', format, from);
   return { kind, state: 'present', format, from, line };
 }

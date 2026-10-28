@@ -186,18 +186,21 @@ def _default_description(loaded, now):
 
 # building and writing
 
-def _provenance(shared, video):
+def _provenance(shared, video, usual_producer=False):
+    """Provenance per file. `part` is the part given with the file, else None (not known): the
+    format alone never names a producer. Only a processor's files (`usual_producer`) record the
+    format's usual producer, as AC-C09 states."""
     out = {}
     for kind in formats.KINDS:
         if kind in shared:
             entry = shared[kind]
             fmt = entry.normalized["format"]
-            record = {"part": entry.part or formats.PRODUCER[fmt], "format": fmt,
-                      "detected_by": entry.normalized["detected_by"]}
+            part = entry.part or (formats.PRODUCER[fmt] if usual_producer else None)
+            record = {"part": part, "format": fmt, "detected_by": entry.normalized["detected_by"]}
             out[kind] = _with_hash(record, entry)
     if video:
-        out["video"] = _with_hash({"part": video.part or 6, "format": None,
-                                   "detected_by": "file"}, video)
+        out["video"] = _with_hash({"part": video.part, "format": None, "detected_by": "file"},
+                                  video)
     return out
 
 
@@ -224,12 +227,12 @@ class Prepared(NamedTuple):
 
 
 def prepare_entry(*, name, category, files_source, description, created_at, shared, video=None,
-                  duration_ms=None):
+                  duration_ms=None, usual_producer=False):
     """Make the manifest and files of one entry from read files.
 
     `shared` is {kind: Shared}, `video` a Video or None. The thumbnail comes from what plays
-    (`formats.playable`); `duration_ms` is that animation's unless given. Raises ImportProblem
-    (E12 when nothing plays)."""
+    (`formats.playable`); `duration_ms` is that animation's unless given. `usual_producer` is
+    passed to `_provenance`. Raises ImportProblem (E12 when nothing plays)."""
     try:
         play = formats.playable(shared["animation"].normalized if "animation" in shared else None,
                                 shared["skeleton"].normalized if "skeleton" in shared else None)
@@ -238,7 +241,8 @@ def prepare_entry(*, name, category, files_source, description, created_at, shar
     manifest = catalog.build_manifest(
         None, name, category, duration_ms or duration_ms_of(play), files_source,
         description, created_at, kinds=tuple(shared),
-        video_uri=f"video.{video.ext}" if video else None, provenance=_provenance(shared, video))
+        video_uri=f"video.{video.ext}" if video else None,
+        provenance=_provenance(shared, video, usual_producer))
     files = {manifest[kind]: shared[kind].data for kind in shared}
     files[manifest["thumbnail"]] = thumbnail.svg(play)
     if video:
@@ -258,12 +262,13 @@ def write_prepared(root, entry_id, prepared, visitor=None):
 
 
 def add_entry(root, *, entry_id, name, category, files_source, description, created_at,
-              shared, video=None, duration_ms=None, visitor=None):
+              shared, video=None, duration_ms=None, visitor=None, usual_producer=False):
     """Write one entry from read files and return its manifest (`prepare_entry`, then
     `write_prepared`). Raises ImportProblem or FileExistsError."""
     prepared = prepare_entry(
         name=name, category=category, files_source=files_source, description=description,
-        created_at=created_at, shared=shared, video=video, duration_ms=duration_ms)
+        created_at=created_at, shared=shared, video=video, duration_ms=duration_ms,
+        usual_producer=usual_producer)
     return write_prepared(root, entry_id, prepared, visitor)
 
 
@@ -359,4 +364,5 @@ def store_processed(root, recording, files, *, files_source, description, visito
     ok = isinstance(duration, int) and not isinstance(duration, bool) and duration > 0
     return add_entry(root, entry_id=entry_id, name=name, category=recording["category"],
                      files_source=files_source, description=description, created_at=stamp,
-                     shared=shared, duration_ms=duration if ok else None, visitor=bool(visitor))
+                     shared=shared, duration_ms=duration if ok else None, visitor=bool(visitor),
+                     usual_producer=True)

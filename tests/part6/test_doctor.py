@@ -114,6 +114,15 @@ def test_provenance_part_wins_over_the_usual_producer(part4_entry):
     assert "ok animation.json: simon.animation.v1 (version), part 5" in lines
 
 
+def test_a_null_provenance_part_reads_as_unknown_never_as_the_usual_producer(part4_entry):
+    manifest = read_manifest(part4_entry)
+    manifest["provenance"]["animation"]["part"] = None
+    write_manifest(part4_entry, manifest)
+    code, lines, _ = run_doctor(part4_entry)
+    assert code == 0, lines
+    assert "ok animation.json: simon.animation.v1 (version), part unknown" in lines
+
+
 def test_skeleton_only_entry_plays_the_skeleton(entry):
     manifest = read_manifest(entry)
     manifest.update(animation=None, keyframes=None)

@@ -132,20 +132,22 @@ def test_provenance_records_format_hash_size_and_the_dropped_name(root):
     manifest = do_import(root, items)
     animation = manifest["provenance"]["animation"]
     raw = items[2]["data"]
-    assert animation == {"part": 4, "format": "simon.animation.v1", "detected_by": "version",
+    assert animation == {"part": None, "format": "simon.animation.v1", "detected_by": "version",
                          "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
                          "original_name": "final animation.json"}
     assert manifest["provenance"]["keyframes"]["original_name"] == "keyframes.json"
     assert list(manifest["provenance"]) == ["keyframes", "skeleton", "animation"]
 
 
-def test_the_part_defaults_to_the_formats_usual_producer(root):
+def test_without_a_part_the_producer_is_not_known(root):
+    """The format alone never names a producer (catalog-contract AC-C06)."""
     items = [item("keyframes.json", golden("keyframes-part1.json")),
              item("skeleton.json", golden("skeleton-1-part3.json")),
              item("animation.json", golden("animation-1-part6.json"))]
     manifest = do_import(root, items)
     assert {k: v["part"] for k, v in manifest["provenance"].items()} == {
-        "keyframes": 1, "skeleton": 3, "animation": 6}
+        "keyframes": None, "skeleton": None, "animation": None}
+    assert validate.check_entry(root / manifest["id"]) == []
     assert {k: v["detected_by"] for k, v in manifest["provenance"].items()} == {
         "keyframes": "shape", "skeleton": "version", "animation": "version"}
 
@@ -217,8 +219,28 @@ def test_part_1_keyframes_on_a_60_fps_clock_with_a_part_3_skeleton_and_no_animat
     manifest = do_import(root, [item("keyframes.json", golden("keyframes-part1-60fps.json")),
                                 item("skeleton.json", golden("skeleton-1-part3.json"))])
     assert manifest["animation"] is None
-    assert manifest["provenance"]["keyframes"]["part"] == 1
-    assert manifest["provenance"]["skeleton"]["part"] == 3
+    assert manifest["provenance"]["keyframes"]["part"] is None
+    assert manifest["provenance"]["skeleton"]["part"] is None
+
+
+@pytest.mark.parametrize("part", [None, 3])
+def test_part_3s_part4_view_files_are_never_called_part_4s(root, part):
+    """The integration rehearsal on 4216b02: Part 3's v1 skeleton and key frames came out as
+    `part 4`. Without a part the producer is null; with one it is the part given."""
+    items = [item("keyframes.json", golden("keyframes-v1.json")),
+             item("skeleton.json", golden("skeleton-v1-keys-part4.json"))]
+    manifest = do_import(root, items, part=part)
+    prov = manifest["provenance"]
+    assert prov["skeleton"]["format"] == "simon.skeleton.v1"
+    assert prov["keyframes"]["format"] == "simon.keyframes.v1"
+    assert {prov[k]["part"] for k in ("keyframes", "skeleton")} == {part}
+    assert validate.check_entry(root / manifest["id"]) == []
+
+
+def test_a_video_without_a_part_is_not_known_either(root):
+    manifest = do_import(root, [part4_items()[2], item("c.webm", WEBM)])
+    assert manifest["provenance"]["video"]["part"] is None
+    assert validate.check_entry(root / manifest["id"]) == []
 
 
 def test_the_animation_beats_the_skeleton_for_duration_and_thumbnail(root):
@@ -565,7 +587,7 @@ def test_a_webm_is_stored_as_video_webm(root):
     assert manifest["video_uri"] == "video.webm" and (folder / "video.webm").read_bytes() == WEBM
     assert validate.check_entry(folder) == []
     assert manifest["provenance"]["video"] == {
-        "part": 6, "format": None, "detected_by": "file", "sha256": hashlib.sha256(WEBM).hexdigest(),
+        "part": None, "format": None, "detected_by": "file", "sha256": hashlib.sha256(WEBM).hexdigest(),
         "bytes": len(WEBM), "original_name": "my take.webm"}
 
 

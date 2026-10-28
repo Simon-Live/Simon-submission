@@ -14,7 +14,7 @@
   "files_source": "import",
   "provenance": {
     "keyframes": {
-      "part": 1,
+      "part": null,
       "format": "simon.keyframes/part1",
       "detected_by": "shape",
       "sha256": "2c3d87b3e0ccff3ef5e9ebd72850006c586091d902c230fdf41f955cd9a04b83",
@@ -23,7 +23,7 @@
       "original_name": "keyframes.json"
     },
     "skeleton": {
-      "part": 3,
+      "part": null,
       "format": "simon.skeleton/1",
       "detected_by": "version",
       "sha256": "ec43f7fb4f9304f26f9c1c2353ada12d4f3217dafae3b82bede8bbbed104a729",

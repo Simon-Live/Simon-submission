@@ -406,7 +406,7 @@ def test_a_known_provenance_key_keeps_its_checks_beside_an_unknown_one():
     manifest = good_manifest(provenance={"pose3d": prov(), "animation": prov(part=0)})
     assert schema_ok(manifest) is False and validator_ok(manifest) is False
     assert validate.check_manifest(manifest, "squat") == [
-        "provenance.animation.part: must be a whole number from 1 to 7"]
+        "provenance.animation.part: must be a whole number from 1 to 7, or null"]
 
 
 def test_the_validator_also_checks_the_folder_name_which_the_schema_cannot():

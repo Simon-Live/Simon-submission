@@ -497,8 +497,8 @@ def make_server(root, host="127.0.0.1", port=0, base_path=None, web_root=None,
 
 def serve(root, host="127.0.0.1", port=8726, max_recordings=catalog.DEFAULT_MAX_RECORDINGS,
           processor=None, follow_url=None):
-    """Copy the shipped fixture entries the catalog lacks into it (AC-C13a), then serve until
-    SIGTERM or Ctrl-C."""
+    """Seed a missing or empty catalog with the shipped fixture entries (AC-C13a), then serve
+    until SIGTERM or Ctrl-C."""
     catalog.seed(root)
     server = make_server(root, host, port, max_recordings=max_recordings, processor=processor,
                          follow_url=follow_url)

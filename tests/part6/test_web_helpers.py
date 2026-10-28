@@ -39,6 +39,10 @@ PRODUCER_SCRIPT = """
 const { producerOf } = await import(process.argv[1]);
 process.stdout.write(JSON.stringify(JSON.parse(process.argv[2]).map(producerOf)));
 """
+PART_SCRIPT = """
+const { provenancePart } = await import(process.argv[1]);
+process.stdout.write(JSON.stringify(JSON.parse(process.argv[2]).map(([r, f]) => provenancePart(r, f))));
+"""
 FAILURE_SCRIPT = """
 const { failureText } = await import(process.argv[1]);
 const { SERVER_UNREACHABLE } = await import(new URL('api.js', process.argv[1]));
@@ -139,6 +143,16 @@ def test_the_producer_lookup_knows_the_formats_and_nothing_inherited():
     got = run_module(PRODUCER_SCRIPT, "api.js", known + INHERITED_KEYS)
     assert got[:len(known)] == [formats.PRODUCER[fmt] for fmt in known]
     assert got[len(known):] == [""] * len(INHERITED_KEYS)
+
+
+def test_a_null_provenance_part_names_no_part_and_only_a_missing_record_uses_the_usual_one():
+    """AC-C08: the files panel never turns a null part (producer not known) into a guess."""
+    cases = [[{"part": 3, "format": "simon.skeleton.v1"}, "simon.skeleton.v1"],
+             [{"part": None, "format": "simon.skeleton.v1"}, "simon.skeleton.v1"],
+             [{"format": "simon.skeleton.v1"}, "simon.skeleton.v1"],
+             [None, "simon.skeleton.v1"],
+             [None, "unknown.format"]]
+    assert run_module(PART_SCRIPT, "api.js", cases) == [3, "", 4, 4, ""]
 
 
 SERVER_REASONS = {400: "animation.json: is not valid JSON", 408: "body too slow", 413: "body too large",

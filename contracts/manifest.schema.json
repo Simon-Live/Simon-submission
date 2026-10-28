@@ -157,8 +157,8 @@
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
     "part": {
-      "description": "The Simon part that produced the file.",
-      "type": "integer",
+      "description": "The Simon part that produced the file, or null when that is not known.",
+      "type": ["integer", "null"],
       "minimum": 1,
       "maximum": 7
     },

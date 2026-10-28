@@ -58,6 +58,16 @@ export function producerOf(format) {
   return typeof format === 'string' && Object.hasOwn(PRODUCER, format) ? PRODUCER[format] : '';
 }
 
+// The part a files panel row names for one provenance record: its whole-number part; '' when the
+// record says null (the producer is not known); the format's usual producer only when the file has
+// no provenance record at all (a catalog copied by hand). catalog-contract AC-C08.
+export function provenancePart(record, format) {
+  const known = record && typeof record === 'object' ? record : null;
+  if (known && Number.isInteger(known.part)) return known.part;
+  if (known && Object.hasOwn(known, 'part')) return '';
+  return producerOf(format);
+}
+
 // One line about a file of an entry or a chosen file: "Animation: simon.animation.v1 from Part 4".
 // state is present, missing or unreadable; what is the format id (or a video type); part may be ''.
 export function fileLine(kind, state, what = '', part = '') {

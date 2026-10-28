@@ -52,7 +52,7 @@ entry ever used it.
 
 | Key | Rule |
 |---|---|
-| `part` | 1 to 7, the part that made the file |
+| `part` | 1 to 7, the part that made the file, or `null` when that is not known |
 | `format` | the format id the file was read as; `null` for a video |
 | `detected_by` | `version` or `shape`; `file` for a video |
 | `sha256` | 64 lowercase hex characters |
@@ -198,7 +198,7 @@ the catalog. Options: `--catalog DIR`, `--id ID`, `--description TEXT`, `--sourc
 `video.webm` or `video.mp4`; given files, it finds each kind as described above. Every JSON file
 goes through its reader. Any error stops the import with the reader's sentence on stderr and exit
 1, and nothing is written. The entry gets `files_source: "import"`, provenance per file (`part`
-from `--part`, else the format's usual producer), a thumbnail from the playable animation, and a
+from `--part`, else `null`: the format alone never names a producer), a thumbnail from the playable animation, and a
 `duration_ms` from its duration. The command prints the manifest. The shipped fixture catalog is
 refused as `--catalog` (exit 2).
 

@@ -74,7 +74,7 @@ def _add_import(sub):
     imp.add_argument("--description", help="text for the detail page")
     imp.add_argument("--source", help="where the files came from, kept in the provenance")
     imp.add_argument("--part", type=_part, metavar="N",
-                     help="part that made the files (else the format's usual producer)")
+                     help="part that made the files (else recorded as not known)")
 
 
 def _parser():

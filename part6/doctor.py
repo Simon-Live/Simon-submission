@@ -93,8 +93,10 @@ def _check_data_file(folder, kind, name, claim, report):
     if error:
         report.file(None, [error])
         return None, error
-    part = claim.get("part") if isinstance(claim, dict) else None
-    part = part if part is not None else formats.PRODUCER.get(normal["format"])
+    if isinstance(claim, dict) and "part" in claim:
+        part = claim["part"] if claim["part"] is not None else "unknown"
+    else:
+        part = formats.PRODUCER.get(normal["format"])    # no provenance: the usual producer
     report.file(f"{name}: {normal['format']} ({normal['detected_by']}){_part_text(part)}", bad_hash)
     return normal, None
 
@@ -107,7 +109,7 @@ def _check_support_file(folder, name, label, claim, report):
     raw = path.read_bytes()
     if not raw:
         return report.file(None, [f"{name}: file is empty"])
-    part = claim.get("part") if isinstance(claim, dict) else None
+    part = (claim.get("part") or "unknown") if isinstance(claim, dict) else None
     report.file(f"{name}: {label}{_part_text(part)}", _hash_problems(name, raw, claim))
 
 

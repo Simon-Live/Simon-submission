@@ -138,30 +138,53 @@ def test_a_server_restart_keeps_the_entries(tmp_path):
         proc.wait(5)
 
 
-def test_serve_gives_an_older_catalog_the_new_fixtures_and_leaves_the_rest(tmp_path, mock_entry):
-    """AC-C13a (review B6): six fixtures with one edited, plus a visitor entry, before Part 4's sets."""
+def test_serve_never_seeds_a_catalog_of_imported_entries(tmp_path):
+    """AC-C13a; the integration rehearsal on 4216b02 logged "seeded 8 entries" here."""
+    root = tmp_path / "imports"
+    names = ("keyframes.json", "skeleton.json", "animation.json")
+    items = [{"name": n, "data": (PART4 / "exercise" / n).read_bytes()} for n in names]
+    for i in range(8):
+        importer.import_files(root, f"Imported {i}", "exercise", items)
+    before = tree(root)
+    proc, port, health = start(tmp_path, root)
+    try:
+        assert health["entries"] == 8
+    finally:
+        proc.terminate()
+        proc.wait(5)
+    assert tree(root) == before
+    assert "seeded" not in proc.stderr.read().decode()
+
+
+def test_serve_leaves_an_older_catalog_as_it_is(tmp_path, mock_entry):
+    """AC-C13a: six fixtures with one edited, plus a visitor entry, before Part 4's sets."""
     root = tmp_path / "older"
     for folder in CATALOG.iterdir():
         if not folder.name.startswith("part4-"):
             shutil.copytree(folder, root / folder.name)
     (root / "squat" / "animation.json").write_text("edited by hand")
-    visitor = mock_entry(root, "Visitor", "dance", 1000)["id"]
+    mock_entry(root, "Visitor", "dance", 1000)
     before = tree(root)
     proc, port, health = start(tmp_path, root)
     try:
-        assert health["entries"] == FIXTURE_COUNT + 1
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/entries/part4-squat", timeout=5) as r:
-            assert json.load(r)["files_source"] == "fixture"
+        assert health["entries"] == 7
     finally:
         proc.terminate()
         proc.wait(5)
-    after = tree(root)
-    assert {k: v for k, v in after.items() if not k.parts[0].startswith("part4-")} == before
-    assert sorted(p.name for p in root.iterdir() if p.name.startswith("part4-")) == [
-        "part4-squat", "part4-step-touch"]
-    assert (root / visitor / "manifest.json").is_file()
-    assert (root / "squat" / "animation.json").read_text() == "edited by hand"
-    assert "seeded 2 entries" in proc.stderr.read().decode()
+    assert tree(root) == before
+    assert "seeded" not in proc.stderr.read().decode()
+
+
+def test_serve_seeds_an_empty_directory(tmp_path):
+    root = tmp_path / "empty"
+    root.mkdir()
+    proc, port, health = start(tmp_path, root)
+    try:
+        assert health["entries"] == FIXTURE_COUNT
+    finally:
+        proc.terminate()
+        proc.wait(5)
+    assert f"seeded {FIXTURE_COUNT} entries" in proc.stderr.read().decode()
 
 
 # the shipped fixture catalog is never a writable root (review R5)
@@ -393,11 +416,11 @@ def test_import_a_folder_writes_one_entry_and_prints_its_manifest(tmp_path, caps
         PART4 / "exercise" / "animation.json").read_bytes()
 
 
-def test_import_uses_the_formats_usual_producer_or_the_part_and_source_given(tmp_path, capsys):
+def test_import_records_no_producer_without_part_and_the_part_and_source_given(tmp_path, capsys):
     folder = part4_folder(tmp_path)
     run_import(str(folder), "--name", "A", "--category", "dance", "--catalog", str(tmp_path / "c1"))
     plain = json.loads(capsys.readouterr().out)
-    assert {r["part"] for r in plain["provenance"].values()} == {4}
+    assert {r["part"] for r in plain["provenance"].values()} == {None}
     assert "source" not in plain["provenance"]["animation"]
     run_import(str(folder), "--name", "B", "--category", "dance", "--catalog", str(tmp_path / "c2"),
                "--part", "2", "--source", "Part 2 run 7", "--description", "From the CLI.")
@@ -621,3 +644,16 @@ def test_an_imported_entry_is_served_and_dropped_by_reset(tmp_path, capsys):
     assert cli.main(["reset", "--catalog", str(root)]) == 0
     assert json.loads(capsys.readouterr().out) == {"removed": 1, "restored": FIXTURE_COUNT}
     assert not (root / "gone-soon").exists()
+
+
+@pytest.mark.parametrize("extra, want", [((), None), (("--part", "3"), 3)])
+def test_import_of_part_3s_part4_view_files_never_guesses_part_4(tmp_path, capsys, extra, want):
+    """The integration rehearsal on 4216b02: without --part these were recorded as part 4."""
+    golden = ROOT / "fixtures" / "conformance" / "formats"
+    code = run_import(str(golden / "skeleton-v1-keys-part4.json"), str(golden / "keyframes-v1.json"),
+                      "--name", "Part 3 view", "--category", "exercise",
+                      "--catalog", str(tmp_path / "c"), *extra)
+    printed = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert {k: r["part"] for k, r in printed["provenance"].items()} == {
+        "keyframes": want, "skeleton": want}

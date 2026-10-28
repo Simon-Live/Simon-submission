@@ -259,7 +259,7 @@ def test_the_import_entry_without_an_animation_says_null():
     manifest = conf("conf-import-skeleton")
     assert manifest["animation"] is None and "animation" not in manifest["provenance"]
     assert not (CONFORMANCE / "conf-import-skeleton" / "animation.json").exists()
-    assert manifest["provenance"]["keyframes"]["part"] == 1
+    assert manifest["provenance"]["keyframes"]["part"] is None    # imported without a part
     assert manifest["provenance"]["skeleton"]["format"] == "simon.skeleton/1"
 
 

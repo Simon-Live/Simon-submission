@@ -146,22 +146,33 @@ def _copy_entry(source, root):
     os.rename(tmp, final)
 
 
-def seed(root, source=None):
-    """Copy every fixture entry whose id is missing from root into it; returns the count.
+def holds_entry(root):
+    """True when root has any non-dot folder or link with an id-shaped name (an entry of any
+    kind, a broken link included); False for a missing or empty root."""
+    try:
+        names = [p for p in Path(root).iterdir() if is_valid_id(p.name)]
+    except FileNotFoundError:
+        return False
+    return any(p.is_dir() or p.is_symlink() for p in names)
 
-    An empty or new root gets all of them. On a catalog that already has entries only the new
-    fixtures arrive: a folder that exists (edited, a visitor entry, an import) is never touched
-    (docs/specs/catalog-contract.md AC-C13a). `reset` is what restores the others."""
+
+def seed(root, source=None):
+    """Copy every fixture entry into a root that is missing or holds no entry; returns the count.
+
+    A root that holds any entry (fixture, visitor entry, import) is never seeded
+    (docs/specs/catalog-contract.md AC-C13a); `reset` is what brings the fixtures back."""
     guard_root(root)
     source = Path(source) if source else FIXTURE_CATALOG
     Path(root).mkdir(parents=True, exist_ok=True)
-    missing = [p for p in entry_folders(source)
+    if holds_entry(root):
+        return 0
+    folders = [p for p in entry_folders(source)
                if is_valid_id(p.name) and not os.path.lexists(Path(root) / p.name)]
-    for folder in missing:
+    for folder in folders:
         _copy_entry(folder, root)
-    if missing:
-        log(f"seeded {len(missing)} entries into {root}: {', '.join(p.name for p in missing)}")
-    return len(missing)
+    if folders:
+        log(f"seeded {len(folders)} entries into {root}: {', '.join(p.name for p in folders)}")
+    return len(folders)
 
 
 RESET_SOURCES = ("mock", "import", "processor")    # everything but the fixtures (AC-C12)
