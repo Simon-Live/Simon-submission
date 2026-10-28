@@ -22,6 +22,27 @@ shared files in the top-level README; nothing else is needed to read them.
 - "Up" is the camera's up (a level camera is assumed); a tilted camera tilts every pose.
 - Provisional: the real one-person fixture comes from the project footage (#5) once chosen.
 
-## `class/` — multi-person (`tracks.json` + `pose3d.json`)
+## `class/`: multi-person, the scored clip (`tracks.json` + `pose3d.json` + `camera.json`)
 
-Follows from #10/#11.
+- 89 frames (5 fps, 17.6 s), 7 people, ids 0–6, all present in every frame. Yoga class doing cat–cow on mats.
+- These are the exact outputs `make check-2` scored on `f47e03f`: multi-person **pass**, coverage 1.0
+  against the hand-verified ID keyframes, 0 ID swaps.
+- Source clip: "People Doing the Cat Cow Pose in a Yoga Class" by Yan Krukau, Pexels video 8480627,
+  Pexels licence (see `fixtures/input/class/SOURCE.md`).
+- Produced by `make hpc-outputs`: SAM 3.1 tracking via the Meta API, then SAM 3D Body per tracked box on
+  the HPC cluster (V100).
+
+## `dance/`: multi-person stress test (`tracks.json` + `pose3d.json` + `camera.json`)
+
+- 79 frames (5 fps, 15.5 s), 5 ids over the clip, 3–5 people per frame. Dancers cross and swap places;
+  the camera pans; ids 0 and 2 leave on the left and id 4 enters around frame 26.
+- No ground truth: this is a qualitative demo, not done-check evidence. IDs hold through the
+  crossings. 3D is reliable for fully visible dancers (id 3: hip centre inside its own box in 79/79
+  frames) and unreliable for dancers cut off by the frame edge or hidden behind someone
+  (67/289 person-frames have the hip centre outside the person's own box). Around frame 40 the
+  entering dancer's skeleton lands on the striped-shirt dancer.
+- Source clip: "Women Dancing All Together", Pexels video 8956007, Pexels licence.
+- Produced like `class/` (HPC job 2513739).
+
+`conf` in both means the same as in `single/` (above): 1.0 when the joint lies inside the image, 0.3 when
+it was extrapolated outside the frame. It is not a calibrated probability.
