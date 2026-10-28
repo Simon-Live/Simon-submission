@@ -53,12 +53,13 @@ def main(argv: list[str] | None = None) -> int:
     p_demo.add_argument("--run", required=True, type=Path, help="part2 run output dir (frames/, pose3d.json, camera.json)")
     p_demo.add_argument("--id", help="viewer: person id to show (default: first)")
     p_demo.add_argument("--out", type=Path)
+    p_demo.add_argument("--embed", action="store_true", help="viewer: inline the frames so the .html shares on its own")
 
     args = parser.parse_args(argv)
     if args.command == "demo":
         from part2 import demo
 
-        path = demo.viewer(args.run, args.id, args.out) if args.what == "viewer" else demo.overlay(args.run, args.out)
+        path = demo.viewer(args.run, args.id, args.out, embed=args.embed) if args.what == "viewer" else demo.overlay(args.run, args.out)
         print(path)
         return 0
     if args.command == "check":
