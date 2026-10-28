@@ -99,3 +99,25 @@ Per fault:
 - `confidence`: 0..1 margin-over-threshold heuristic times coverage. It is not a probability.
 - `text`: the plain-words line from #9, e.g. "left foot too far out". Lowercase fragment;
   capitalise at display time if wanted.
+
+## Evaluation metrics (`simon.part5.metrics.v1`)
+
+Produced by `part5.evaluate.score` / `evaluate_corpus` (#13) and printed by `make check-5`
+(#14). It scores `analysis.json` faults against `labels.json`:
+
+- **Match rule (decided 2026-10-28):** a prediction matches a label on measure + side +
+  direction; a label with `side: "both"` accepts a prediction on either side (a `"both"`
+  prediction does *not* satisfy a one-sided label); trunk faults match at body-part level.
+  Matching is one-to-one and maximal. Label fault `type`s map to prediction measures via
+  `LABEL_TYPE_TO_MEASURE` in `part5/evaluate.py` (e.g. the generator's `foot_out`, whose label
+  says `thigh_direction`, is scored as the `foot_out` measure).
+- **Shape:** `{"format", "slices", "by_lighting", "good_light", "overall"}`. `slices` is keyed
+  `"<lighting>/<angle>"` (e.g. `"good/side"`); every other angle is reported separately, per
+  the README. Each entry has `tp`, `fp`, `fn`, `takes`, `correct_takes`,
+  `faults_on_correct_takes`, `precision`, `recall`. An empty denominator scores 1.0: nothing
+  predicted (or labelled) in that slice is not itself a failure — misses appear in the other
+  ratio. #14 gates on **every good-light angle slice separately** (`good/front`, `good/45`,
+  `good/side` must each reach precision ≥ 0.85 and recall ≥ 0.75 with 0 faults on correct
+  takes), so one weak angle cannot hide inside an aggregate; `good_light` is a summary only.
+  Low-light slices are reported, not gated. A labelled take with no analysis is an error
+  (the missing `take_id`s are listed), never scored as "no predictions".
