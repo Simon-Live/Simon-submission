@@ -75,7 +75,7 @@ def _specs():
             MeasureSpec(f"{side}_upper_arm_out", f"{side}_shoulder", side, "arms", "direction",
                         "upper arm out from the body (frontal)"),
             MeasureSpec(f"{side}_upper_arm_forward", f"{side}_shoulder", side, "arms", "direction",
-                        "upper arm raised forward (sagittal, 0 = hanging down)"),
+                        "upper arm raised forward relative to the trunk (0 = along the trunk, hanging)"),
             MeasureSpec(f"{side}_forearm_out", f"{side}_elbow", side, "arms", "direction", "forearm out from the body"),
             MeasureSpec(f"{side}_thigh_out", f"{side}_hip", side, "legs", "direction", "thigh out from the body"),
             MeasureSpec(f"{side}_thigh_forward", f"{side}_hip", side, "legs", "direction",
@@ -105,13 +105,17 @@ def compute(positions):
         out[f"{side}_elbow_flexion"] = _flexion(p, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
         out[f"{side}_knee_flexion"] = _flexion(p, f"{side}_hip", f"{side}_knee", f"{side}_ankle")
         out[f"{side}_upper_arm_out"] = _out_angle(el - sh, side)
-        out[f"{side}_upper_arm_forward"] = _forward_from_down(el - sh)
         out[f"{side}_forearm_out"] = _out_angle(wr - el, side)
         out[f"{side}_thigh_out"] = _out_angle(kn - hp, side)
         out[f"{side}_thigh_forward"] = _forward_from_down(kn - hp)
         out[f"{side}_foot_out"] = _out_angle(an - hp, side)
     spine = _mid(p, "left_shoulder", "right_shoulder") - _mid(p, "left_hip", "right_hip")
     out["trunk_lean_forward"] = _sagittal(spine)
+    for side in SIDES:
+        # Shoulder flexion is relative to the trunk: arms that keep their angle to a leaning
+        # trunk aren't "raised" or "lowered", the trunk lean is the fault.
+        sh, el = p[:, J[f"{side}_shoulder"]], p[:, J[f"{side}_elbow"]]
+        out[f"{side}_upper_arm_forward"] = _forward_from_down(el - sh) + out["trunk_lean_forward"]
     out["trunk_lean_side"] = _lateral(spine)
     sl = p[:, J["left_shoulder"]] - p[:, J["right_shoulder"]]
     out["shoulder_tilt"] = np.degrees(np.arctan2(sl[:, 1], np.hypot(sl[:, 0], sl[:, 2])))

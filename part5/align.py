@@ -122,8 +122,14 @@ def dtw(cost, open_begin=True, open_end=True):
     return path, end_cost
 
 
-def _cost(fe, ff):
-    return np.sqrt(((fe[:, None, :] - ff[None, :, :]) ** 2).mean(axis=2))
+COST_CLIP_Z = 1.0
+
+
+def _cost(fe, ff, clip=COST_CLIP_Z):
+    """RMS over measures, each capped at `clip` z-units, so one measure that disagrees a lot
+    (a fault in a measure that barely moves) can't drag the timing on its own."""
+    d2 = (fe[:, None, :] - ff[None, :, :]) ** 2
+    return np.sqrt(np.minimum(d2, clip * clip).mean(axis=2))
 
 
 def align(expected_positions, follower_positions):

@@ -115,3 +115,22 @@ def test_out_of_range_speed_is_an_error():
     p = expected("exercise")
     with pytest.raises(ValueError, match="too short or too long"):
         align(p, p[::3])
+
+
+def test_partial_offset_in_a_barely_moving_measure_does_not_drag_timing():
+    # Squat with the trunk leaned 20° more from 10% to 90% of the clip: trunk lean barely moves
+    # in the squat (spread ~6°), so the step at each end is several z-units in one measure.
+    from part5.io import JOINTS
+    p = expected("exercise")
+    f = p.copy()
+    th = np.radians(20)
+    R = np.array([[1, 0, 0], [0, np.cos(th), -np.sin(th)], [0, np.sin(th), np.cos(th)]])
+    upper = [JOINTS.index(j) for j in JOINTS if not j.endswith(("hip", "knee", "ankle"))]
+    n = len(p)
+    for i in range(int(0.1 * n), int(0.9 * n) + 1):
+        f[i, upper] = f[i, upper] @ R.T
+    a = align(p, f)
+    err = np.abs(a.exp_to_fol - np.arange(n))
+    # The squat starts and ends standing still, where any of those frames is an equal match.
+    assert err[10:-10].max() <= 1
+    assert err.max() <= 4
