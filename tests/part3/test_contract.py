@@ -373,6 +373,7 @@ REQUIRED_ROWS = [
     ("Part 3", "native", "Part 5", "rejected", "--view part5"),
     ("Part 3", "part5 view", "Part 5", "works", ""),
     ("Part 3", "part4 view", "Part 5", "works", ""),
+    ("Part 3", "part5 view", "Part 6", "works", ""),
     ("Part 3", "command line", "Part 7", "works", ""),
 ]
 
@@ -399,10 +400,10 @@ def test_every_row_is_complete_and_names_its_fix():
 def test_neighbour_commits_are_recorded_as_evidence():
     doc = contract.compatibility_document()
     assert doc["neighbours"] == {"part1": "6fac92f", "part2": "7e11a7f", "part4": "9f4c073",
-                                 "part5": "c292a15", "part7": "90aa473"}
+                                 "part5": "c292a15", "part6": "59f923f", "part7": "90aa473"}
     evidence = " ".join(r["evidence"] for r in doc["rows"])
     for part, commit in (("Part 1", "6fac92f"), ("Part 2", "7e11a7f"), ("Part 4", "9f4c073"),
-                         ("Part 5", "c292a15"), ("Part 7", "90aa473")):
+                         ("Part 5", "c292a15"), ("Part 6", "59f923f"), ("Part 7", "90aa473")):
         assert f"{part} {commit}" in evidence
 
 

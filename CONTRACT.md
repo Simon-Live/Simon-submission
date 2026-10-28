@@ -32,7 +32,7 @@ Each schema is a JSON Schema draft 2020-12 document with `$id`, `title`, `x-simo
 <!-- schema-table:begin -->
 | Name | Version | Direction | File | Producer | Consumers |
 |---|---|---|---|---|---|
-| `animation-part5` | `simon.animation.v1` | output | `contracts/animation-part5.schema.json` | Part 3 or Part 4 | Part 5 |
+| `animation-part5` | `simon.animation.v1` | output | `contracts/animation-part5.schema.json` | Part 3 or Part 4 | Part 5, Part 6 |
 | `body-profile` | `simon.body_profile/1` | input | `contracts/body-profile.schema.json` | you (any team) | Part 3 |
 | `follower-labels` | `simon.part3.follower_labels/1` | output | `contracts/follower-labels.schema.json` | Part 3 | Part 5 |
 | `keyframes-part1` | `part1.keyframes/2026-10-28` | input | `contracts/keyframes-part1.schema.json` | Part 1 | Part 3 |
@@ -66,6 +66,7 @@ Which producer file works with which consumer, as checked against the neighbour 
 | Part 3 | skeleton.json (native) | `simon.skeleton/1` | Part 5 | c292a15 | rejected | `--view part5` | Part 5 c292a15 part5/io.py parse_clip: a file without format is rejected |
 | Part 3 | skeleton.json (part5 view) | `simon.animation.v1` | Part 5 (follower clip) | c292a15 | works |  | Part 5 c292a15 docs/schemas.md 'Follower clip': assumes the simon.animation.v1 shape (open decision 1 in its #18) |
 | Part 3 | skeleton.json (part4 view) | `simon.skeleton.v1` | Part 5 (expected clip) | c292a15 | works |  | Part 5 c292a15 docs/schemas.md 'Expected skeleton alternative': keyframes[] with joints as [x, y, z], extra fields ignored |
+| Part 3 | skeleton.json (part5 view) | `simon.animation.v1` | Part 6 | 59f923f | works |  | Part 6 59f923f part6/formats.py read_animation: fps must be a number above 0 (E5) and each frame's t is read as given; the part5 view always writes fps, so python3 -m part6 doctor and import accept the golden view-part5 file and every follower skeleton.json |
 | Part 3 | skeleton.json (native) | `simon.skeleton/1` | Part 3 (as pose3d.json) | part3 phase 2 | works |  | frames keeps the pose3d.json shape and unknown keys are ignored, so a skeleton.json is a valid input |
 | Part 3 | command line and files | `python3 -m part3 run` | Part 7 | 90aa473 | works |  | Part 7 90aa473 consumes parts through files and commands; exit 0 written, 1 not writable, 2 input or option breaks the contract |
 <!-- compatibility-table:end -->
@@ -159,7 +160,7 @@ Stature follows the same order: `--stature`, `PART3_STATURE`, `stature` in the c
 
 - `native`: `simon.skeleton/1`, the full record of the run.
 - `part4`: the native document plus what Part 4 reads. `format` is `simon.skeleton.v1`. It adds `rest_offsets_m`, a 30 fps `timeline` and `keyframes[]` with `joints` as `[x, y, z]`, `conf` and `local_rotations` (quaternions `x, y, z, w`, 19 per key). It needs `--keyframes`. Part 4 accepts the file when no joint turns more than 180 degrees between neighbouring keys in rotation-vector space (its README, "The file is rejected"). Part 3 checks this itself: the `part4` view refuses to write a clip that breaks it (exit 2) and says which joint and which keys. The arms rest in a T-pose (`rest_offsets_m` puts each elbow and wrist on the x axis), so an arm overhead and an arm hanging are both 90 degrees from rest. If a fast movement still breaks the rule, add keys between the two named keys (a smaller `every:<n>`) or use another view.
-- `part5`: `simon.animation.v1` with `frames[]` that hold the person, `joints` as `[x, y, z]` lists and the hip midpoint at the origin.
+- `part5`: `simon.animation.v1` with `frames[]` that hold the person, `joints` as `[x, y, z]` lists and the hip midpoint at the origin. `fps` is always there, so Part 6 accepts the file: the `--fps` rate when resampled, otherwise 1000 over the median step between input frames (3 decimals), and 30 for a one-frame clip. When the input steps are not uniform, `fps` is the nominal rate and each frame's `t` stays the time of record.
 
 One pipeline makes the native skeleton. The views are functions of it.
 

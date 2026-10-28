@@ -7,12 +7,14 @@
   "x-direction": "output",
   "x-producer": "Part 3 or Part 4",
   "x-consumers": [
-    "Part 5"
+    "Part 5",
+    "Part 6"
   ],
   "x-version-field": "format",
   "type": "object",
   "required": [
     "format",
+    "fps",
     "coordinate_frame",
     "joints",
     "frames"
@@ -30,7 +32,8 @@
     },
     "fps": {
       "type": "number",
-      "exclusiveMinimum": 0
+      "exclusiveMinimum": 0,
+      "description": "The clip's clock rate. Part 3 writes the --fps rate when resampled, otherwise 1000 over the median step between input frames (3 decimals), and 30 for a one-frame clip. Each frame's t stays the time of record. Part 6 requires it."
     },
     "duration_s": {
       "type": "number",

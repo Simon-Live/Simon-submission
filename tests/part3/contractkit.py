@@ -235,7 +235,7 @@ def part5_view(skeleton=None):
                "conf": {n: f["people"][0]["joints"][n]["conf"] for n in JOINTS}} for f in present]
     lengths = skeleton["bone_lengths_m"]
     return {
-        "format": "simon.animation.v1", "producer": "part3", "view": "part5",
+        "format": "simon.animation.v1", "producer": "part3", "view": "part5", "fps": 15.0,
         "duration_s": frames[-1]["t"], "frame_count": len(frames),
         "coordinate_frame": coordinate_frame(), "joints": list(JOINTS),
         "bones": [{"name": b["name"], "parent": b["from"], "child": b["to"], "length_m": lengths[b["name"]]}

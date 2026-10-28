@@ -3,7 +3,10 @@
 Only frames that hold the person are written, each with `interpolated: false`. `t` is seconds from
 the first input frame; `index` is the input `frame` (the grid index when the skeleton was resampled).
 `frame_count` is the number of frames written, `frames_skipped` the input frames left out, and
-`duration_s` spans the whole clip. `y` is `world_up` because Part 3's body up is its estimate of world
+`duration_s` spans the whole clip. `fps` is always written (`output_fps`): the `--fps` rate when the skeleton
+was resampled, otherwise the input clock's rate, 1000 over the median step between consecutive input `t_ms`
+(3 decimals), and 30 for a clip with no positive step. It is the clip's nominal clock; each frame's `t` stays
+the time of record when steps are not uniform. `y` is `world_up` because Part 3's body up is its estimate of world
 up (the native file calls the same axis `body_up`).
 """
 
@@ -19,10 +22,27 @@ SCHEMA = "animation-part5.schema.json"
 FORMAT = "simon.animation.v1"
 PAGE_LABEL = "a Part 5 animation"  # how the run app names this view in a sentence (schema.view_refusal_text)
 T_DECIMALS = 6
+FPS_DECIMALS = 3
+FALLBACK_FPS = 30  # a clip with no positive step between frames (one frame): Part 4's and Part 6's play rate
 
 
 def _seconds(t_ms, t0_ms):
     return round((t_ms - t0_ms) / 1000.0, T_DECIMALS)
+
+
+def output_fps(skeleton):
+    """The output clock's rate, a number above 0: the resample rate, else 1000 / median input step, else 30."""
+    if "resample" in skeleton:
+        return skeleton["resample"]["fps"]
+    times = [frame["t_ms"] for frame in skeleton["frames"]]
+    steps = sorted(b - a for a, b in zip(times, times[1:]) if b > a)
+    if not steps:
+        return FALLBACK_FPS
+    middle = len(steps) // 2
+    step = steps[middle] if len(steps) % 2 else (steps[middle - 1] + steps[middle]) / 2
+    rate = 1000.0 / step
+    rounded = round(rate, FPS_DECIMALS)
+    return rounded if rounded > 0 else rate
 
 
 def _frame(frame, person, t):
@@ -56,9 +76,7 @@ def render(skeleton, **opts):
     views.reject_options(opts, NAME)
     frames = _frames(skeleton)
     clip = skeleton["frames"]
-    head = {"format": FORMAT, "producer": "part3", "view": NAME}
-    if "resample" in skeleton:
-        head["fps"] = skeleton["resample"]["fps"]
+    head = {"format": FORMAT, "producer": "part3", "view": NAME, "fps": output_fps(skeleton)}
     return {**head, "duration_s": _seconds(clip[-1]["t_ms"], clip[0]["t_ms"]), "frame_count": len(frames),
             "coordinate_frame": dict(COORDINATE_FRAME), "joints": list(JOINTS), "bones": _bone_list(skeleton),
             "body": copy.deepcopy(skeleton["body"]), "person": copy.deepcopy(skeleton["person"]),

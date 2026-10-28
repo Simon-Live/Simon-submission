@@ -6,6 +6,7 @@
     "part2": "7e11a7f",
     "part4": "9f4c073",
     "part5": "c292a15",
+    "part6": "59f923f",
     "part7": "90aa473"
   },
   "rows": [
@@ -128,6 +129,16 @@
       "result": "works",
       "option": "",
       "evidence": "Part 5 c292a15 docs/schemas.md 'Expected skeleton alternative': keyframes[] with joints as [x, y, z], extra fields ignored"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (part5 view)",
+      "version": "simon.animation.v1",
+      "consumer": "Part 6",
+      "consumer_version": "59f923f",
+      "result": "works",
+      "option": "",
+      "evidence": "Part 6 59f923f part6/formats.py read_animation: fps must be a number above 0 (E5) and each frame's t is read as given; the part5 view always writes fps, so python3 -m part6 doctor and import accept the golden view-part5 file and every follower skeleton.json"
     },
     {
       "producer": "Part 3",

@@ -1,11 +1,14 @@
 """The view registry, the native view and the part5 view (spec integration-contract.md "Views"; AC-V04, AC-V05)."""
 
 import copy
+import json
+import pathlib
 import types
 
 import pytest
 
-from part3 import cli, views
+from part3 import cli, contract, jsonschema_lite, views
+from part3.views import part5
 from part3.joints import JOINTS
 from part3.schema import SCHEMA_ID, ContractError, ViewError
 from part5rules import COORDINATE_FRAME, part5_input_rules
@@ -78,7 +81,7 @@ def test_ac_v05_a_dummy_view_registered_in_one_call_renders_and_is_listed(skelet
 
 def test_ac_v04_part5_has_the_documented_top_level_shape(skeleton):
     out = views.render(skeleton, "part5")
-    assert list(out) == ["format", "producer", "view", "duration_s", "frame_count", "coordinate_frame", "joints",
+    assert list(out) == ["format", "producer", "view", "fps", "duration_s", "frame_count", "coordinate_frame", "joints",
                          "bones", "body", "person", "mirror", "source", "frames_skipped", "frames"]
     assert (out["format"], out["producer"], out["view"]) == ("simon.animation.v1", "part3", "part5")
     assert out["coordinate_frame"] == COORDINATE_FRAME and out["joints"] == list(JOINTS)
@@ -86,7 +89,7 @@ def test_ac_v04_part5_has_the_documented_top_level_shape(skeleton):
     assert out["body"] == skeleton["body"] and out["person"] == skeleton["person"]
     assert out["mirror"] == skeleton["mirror"]
     assert out["frame_count"] == len(out["frames"]) == 107 and out["frames_skipped"] == 0
-    assert out["duration_s"] == 7.066667 and "fps" not in out
+    assert out["duration_s"] == 7.066667 and out["fps"] == 15.0
 
 
 def test_ac_v04_part5_bones_carry_parent_child_and_length(skeleton):
@@ -153,6 +156,71 @@ def test_ac_v04_a_resampled_part5_file_records_fps_and_grid_indices(real_doc):
     assert [f["index"] for f in out["frames"][:3]] == [0, 1, 2]
     assert out["frames"][1]["t"] == 0.033333
     part5_input_rules(out)
+
+
+# --- AC-V06: the part5 view always writes fps (Part 6 requires it) ---------------------------------------------
+
+def _clock(t_ms, people=True):
+    return {"frames": [{"frame": i, "t_ms": t, "people": [{}] if people else []} for i, t in enumerate(t_ms)]}
+
+
+def test_ac_v06_fps_is_the_input_clock_rate_on_a_uniform_clock(skeleton):
+    assert part5.output_fps(skeleton) == 15.0
+    assert part5.output_fps(_clock([0, 33.333, 66.667, 100.0])) == 30.0
+    assert part5.output_fps(_clock([0, 1000 / 29.97, 2000 / 29.97])) == 29.97
+
+
+def test_ac_v06_a_resampled_clip_writes_the_resample_rate():
+    doc = _clock([0, 10, 20])
+    doc["resample"] = {"fps": 24}
+    assert part5.output_fps(doc) == 24
+
+
+def test_ac_v06_a_non_uniform_clock_writes_the_median_step_rate():
+    # steps 40, 50, 50, 200 ms: the median step is 50 ms, so 20 fps; a dropped frame does not move it
+    assert part5.output_fps(_clock([0, 40, 90, 140, 340])) == 20.0
+    # an even count of steps takes the mean of the two middle steps: 40 and 60 ms give 50 ms
+    assert part5.output_fps(_clock([0, 40, 100])) == 20.0
+
+
+def test_ac_v06_frames_without_the_person_still_set_the_clock():
+    doc = _clock([0, 100, 200, 300])
+    doc["frames"][1]["people"] = doc["frames"][2]["people"] = []
+    assert part5.output_fps(doc) == 10.0
+
+
+def test_ac_v06_a_clip_with_no_positive_step_writes_30():
+    assert part5.output_fps(_clock([0])) == part5.FALLBACK_FPS == 30
+    assert part5.output_fps(_clock([5, 5])) == 30
+
+
+def test_ac_v06_a_very_slow_clock_stays_above_zero():
+    rate = part5.output_fps(_clock([0, 10_000_000]))
+    assert 0 < rate == 0.0001
+
+
+def test_ac_v06_every_rendered_part5_file_carries_fps_above_zero(real_doc):
+    for kw in ({}, {"fps": 30}, {"body": "part4-rig"}):
+        out = views.render(cli.process(real_doc, **CLEAN, **kw), "part5")
+        assert isinstance(out["fps"], (int, float)) and out["fps"] > 0
+
+
+def test_ac_v06_the_schema_requires_fps(skeleton):
+    schema = contract.SCHEMAS["animation-part5"]["schema"]
+    out = views.render(skeleton, "part5")
+    assert jsonschema_lite.validate(out, schema) == []
+    missing = {k: v for k, v in out.items() if k != "fps"}
+    assert jsonschema_lite.validate(missing, schema)
+    assert jsonschema_lite.validate({**out, "fps": 0}, schema)
+
+
+def test_ac_v06_committed_part5_goldens_and_followers_carry_fps():
+    kit = pathlib.Path(__file__).resolve().parents[2] / "fixtures" / "conformance"
+    files = [kit / "golden" / "view-part5" / "skeleton.json", *sorted((kit / "followers").glob("*/skeleton.json"))]
+    assert len(files) == 16
+    for path in files:
+        doc = json.loads(path.read_text())
+        assert doc["format"] == "simon.animation.v1" and doc["fps"] == 15.0, path
 
 
 def test_ac_v04_times_that_do_not_increase_are_refused_as_part5_would(real_doc):
