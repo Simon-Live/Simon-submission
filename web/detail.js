@@ -1,31 +1,178 @@
-// Detail screen: movement facts, the 3D player and its controls (AC-005, AC-006, AC-007).
+// Detail screen: movement facts, the 3D player and its controls (AC-005, AC-006, AC-007), the
+// files panel and the Follow hand-off (AC-C08, AC-C14). The three data files are read through
+// web/formats.js; what plays is decided by playable() (AC-F11).
 import {
-  el, getEntry, loadEntryFile, isValidId, categoryLabel, sourceLabel, formatTime, formatDuration, videoUrl,
-  CATALOG_LOAD_FAILED,
+  el, getEntry, loadEntryJson, isValidId, categoryLabel, sourceLabel, formatTime, formatDuration, videoUrl,
+  plainFileName, fileLine, getContract, entryLink, manifestUrl, entryFileHref, producerOf, CATALOG_LOAD_FAILED,
 } from './api.js';
+import { playable, readAnimation, readKeyframes, readSkeleton } from './formats.js';
 import { BACKGROUND, createPlayer, parseAnimation } from './player.js';
 
 const TEXT = {
   notFound: 'This movement is not in the catalog.',
   noAnimation: 'No animation for this movement.',
   noWebgl: 'This browser cannot show the 3D view.',
+  playingSkeleton: 'Playing the skeleton, with each pose held until the next one.',
+  follow: 'Follow this movement',
+  followNote: 'Following comes with the Simon app.',
+  files: 'Files',
 };
 const SPEEDS = [['speed-1', '1x', 1], ['speed-05', '0.5x', 0.5]];
 const VIEWS = [['view-front', 'Front', 'front'], ['view-side', 'Side', 'side'], ['view-top', 'Top', 'top'], ['view-reset', 'Reset', 'reset']];
+const READERS = { keyframes: readKeyframes, skeleton: readSkeleton, animation: readAnimation };
+const JSON_KINDS = Object.keys(READERS);
+const VIDEO_TYPES = { '.webm': 'WebM', '.mp4': 'MP4' };
+const FOLLOW_EVENT = 'simon:follow';
 
-// ---- key frames -----------------------------------------------------------------------
+// ---- reading the entry's files --------------------------------------------------------
 
-function keyFramesOf(raw) {
-  const people = Array.isArray(raw && raw.people) ? raw.people : [];
-  const person = people.find((entry) => entry && entry.id === 0) || people[0];
-  const reps = Array.isArray(person && person.repetitions) ? person.repetitions : [];
-  return reps
-    .flatMap((rep) => (Array.isArray(rep && rep.keyframes) ? rep.keyframes : []))
-    .filter((frame) => frame && Number.isFinite(frame.t_ms) && frame.t_ms >= 0);
+// One data file read through its reader: {present, normalized, error}. A missing file has no
+// error; a file that is there but cannot be read carries the reader's message.
+function interpret(kind, file) {
+  if (file.status === 'missing') return { present: false, normalized: null, error: null };
+  const broken = (error) => ({ present: true, normalized: null, error });
+  if (file.status === 'invalid') return broken(`${file.name}: is not valid JSON`);
+  if (file.status === 'error') return broken(`${file.name}: could not be loaded`);
+  try {
+    return { present: true, normalized: READERS[kind](file.data, file.name), error: null };
+  } catch (error) {
+    return broken(error.message);
+  }
 }
 
-function markTimes(keyFrames) {
-  return [...new Set(keyFrames.map((frame) => frame.t_ms / 1000))];
+async function readParts(entry) {
+  const files = await Promise.all(JSON_KINDS.map((kind) => loadEntryJson(entry, kind)));
+  return Object.fromEntries(JSON_KINDS.map((kind, index) => [kind, interpret(kind, files[index])]));
+}
+
+// What plays: {data, held} for the player, or null when nothing can play.
+function playbackOf(parts) {
+  try {
+    const chosen = playable(parts.animation.normalized, parts.skeleton.normalized);
+    const data = parseAnimation(chosen);
+    return data ? { data, held: chosen.source_kind === 'skeleton' } : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function keyFrameCount(parts) {
+  return parts.keyframes.normalized ? parts.keyframes.normalized.marks.length : 0;
+}
+
+// The scrub bar marks the distinct key frame times, clamped to the duration.
+function markTimes(parts, duration) {
+  if (!parts.keyframes.normalized) return [];
+  const distinct = [...new Set(parts.keyframes.normalized.marks.map((mark) => mark.t))];
+  return distinct.map((time) => Math.min(Math.max(time, 0), duration));
+}
+
+function readerErrors(parts) {
+  return JSON_KINDS.map((kind) => parts[kind].error).filter(Boolean);
+}
+
+// ---- files panel ----------------------------------------------------------------------
+
+function provenanceOf(entry, kind) {
+  const all = entry.provenance;
+  const one = all && typeof all === 'object' ? all[kind] : null;
+  return one && typeof one === 'object' ? one : {};
+}
+
+function describeData(entry, kind, part) {
+  if (!part.present) return { kind, state: 'missing', format: '', from: '', line: fileLine(kind, 'missing') };
+  const known = provenanceOf(entry, kind);
+  const format = (typeof known.format === 'string' && known.format) || (part.normalized && part.normalized.format) || '';
+  const from = Number.isInteger(known.part) ? known.part : producerOf(format);
+  const line = part.error ? fileLine(kind, 'unreadable') : fileLine(kind, 'present', format, from);
+  return { kind, state: 'present', format, from, line };
+}
+
+function describeVideo(entry) {
+  const name = plainFileName(entry.video_uri);
+  if (!name) return { kind: 'video', state: 'missing', format: '', from: '', line: fileLine('video', 'missing') };
+  const known = provenanceOf(entry, 'video');
+  const from = Number.isInteger(known.part) ? known.part : '';
+  const type = VIDEO_TYPES[name.slice(name.lastIndexOf('.')).toLowerCase()] || '';
+  return {
+    kind: 'video', state: 'present', format: typeof known.format === 'string' ? known.format : '', from, line: fileLine('video', 'present', type, from),
+  };
+}
+
+function filesPanel(entry, parts) {
+  const rows = [...JSON_KINDS.map((kind) => describeData(entry, kind, parts[kind])), describeVideo(entry)];
+  return el('section', { class: 'files', 'data-testid': 'entry-files', 'aria-label': TEXT.files },
+    el('h2', { class: 'files-title' }, TEXT.files),
+    el('ul', { class: 'file-list' }, rows.map((row) => el('li', {
+      class: 'file-row',
+      'data-testid': 'entry-file',
+      'data-kind': row.kind,
+      'data-format': row.format,
+      'data-part': String(row.from),
+      'data-state': row.state,
+    }, row.line))));
+}
+
+// ---- follow (AC-C14) ------------------------------------------------------------------
+
+function fileLink(entry, name, present) {
+  return present && name ? entryFileHref(entry, name) : null;
+}
+
+function followDetail(entry, parts) {
+  const files = Object.fromEntries(JSON_KINDS.map((kind) => [kind, fileLink(entry, plainFileName(entry[kind]), parts[kind].present)]));
+  files.video = fileLink(entry, plainFileName(entry.video_uri), true);
+  return {
+    v: 1,
+    id: entry.id,
+    name: entry.name,
+    category: entry.category,
+    link: entryLink(entry.id),
+    manifest: manifestUrl(entry.id),
+    files,
+  };
+}
+
+// The contract's follow_url with {id} and {manifest} filled in, or null when it is not usable.
+function followTarget(template, detail) {
+  if (typeof template !== 'string' || !/^https?:\/\//i.test(template)) return null;
+  return template
+    .replaceAll('{id}', encodeURIComponent(detail.id))
+    .replaceAll('{manifest}', encodeURIComponent(detail.manifest));
+}
+
+// The note shows below the Follow button, which can be past the first screen at phone width, so it
+// is brought into view: instantly under reduced motion, smoothly otherwise (TICKET-028).
+function showNote(note) {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  note.hidden = false;
+  note.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+}
+
+// In this order: a window listener may take over; a framing page gets a message; the contract's
+// follow_url opens; else the note shows.
+async function follow(detail, note) {
+  const taken = !window.dispatchEvent(new CustomEvent(FOLLOW_EVENT, { detail, cancelable: true }));
+  if (taken) return;
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: FOLLOW_EVENT, ...detail }, '*');
+    return;
+  }
+  const contract = await getContract();
+  const handoff = contract.status === 'ok' && contract.data ? contract.data.handoff : null;
+  const target = followTarget(handoff && handoff.follow_url, detail);
+  if (target) window.location.assign(target);
+  else showNote(note);
+}
+
+function followView(entry, parts) {
+  const note = el('p', { class: 'follow-note', 'data-testid': 'follow-note', role: 'status', hidden: true }, TEXT.followNote);
+  const detail = followDetail(entry, parts);
+  return el('div', { class: 'follow' },
+    el('button', {
+      type: 'button', class: 'btn btn-primary follow-btn', 'data-testid': 'follow', onclick: () => follow(detail, note),
+    }, TEXT.follow),
+    note);
 }
 
 // ---- views ----------------------------------------------------------------------------
@@ -43,7 +190,12 @@ function notice(testid, text, ...actions) {
     ...actions);
 }
 
-function headerView(entry, keyFrameCount) {
+function formatErrorView(messages) {
+  return el('div', { class: 'format-error', 'data-testid': 'format-error', role: 'alert' },
+    messages.map((message) => el('p', {}, message)));
+}
+
+function headerView(entry, keyFrames) {
   const label = sourceLabel(entry.files_source);
   return el('header', { class: 'detail-head' },
     el('h1', { class: 'detail-name', 'data-testid': 'detail-name' }, entry.name),
@@ -51,7 +203,7 @@ function headerView(entry, keyFrameCount) {
       el('span', { class: 'pill', 'data-testid': 'detail-category' }, categoryLabel(entry.category)),
       label && el('span', { class: 'badge', 'data-testid': 'detail-label' }, label)),
     el('p', { class: 'detail-meta', 'data-testid': 'detail-meta' },
-      `${formatDuration(entry.duration_ms / 1000)}, ${keyFrameCount} key frames`));
+      `${formatDuration(entry.duration_ms / 1000)}, ${keyFrames} key frames`));
 }
 
 function legendView() {
@@ -153,20 +305,42 @@ function wireControls(player, ui) {
 
 // ---- screen ---------------------------------------------------------------------------
 
-function buildMovement(entry, data, keyFrames) {
+// The nodes every detail view ends with: follow, the description and the files panel.
+function tailNodes(entry, parts) {
+  const nodes = [followView(entry, parts)];
+  if (entry.description) nodes.push(el('p', { class: 'description' }, entry.description));
+  nodes.push(filesPanel(entry, parts));
+  return nodes;
+}
+
+function buildMovement(entry, parts, playback) {
   const canvas = el('canvas', {
     class: 'player-canvas', 'data-testid': 'player-canvas', 'data-bg': BACKGROUND, role: 'img', 'aria-label': '3D view',
   });
+  const { data, held } = playback;
   const url = videoUrl(entry);
   const video = url ? el('video', { class: 'reference-video', src: url, playsinline: true, preload: 'auto' }) : null;
   if (video) video.muted = true;
-  const ui = controlsView(data, markTimes(keyFrames));
+  const ui = controlsView(data, markTimes(parts, data.duration));
   ui.duration = data.duration;
-  const parts = [headerView(entry, keyFrames.length), stageView(canvas)];
-  if (video) parts.push(video);
-  parts.push(ui.node);
-  if (entry.description) parts.push(el('p', { class: 'description' }, entry.description));
-  return { nodes: parts, canvas, ui, video };
+  const errors = readerErrors(parts);
+  const nodes = [headerView(entry, keyFrameCount(parts))];
+  if (errors.length) nodes.push(formatErrorView(errors));
+  nodes.push(stageView(canvas));
+  if (held) nodes.push(el('p', { class: 'note', 'data-testid': 'playing-skeleton' }, TEXT.playingSkeleton));
+  if (video) nodes.push(video);
+  nodes.push(ui.node, ...tailNodes(entry, parts));
+  return { nodes, canvas, ui, video };
+}
+
+function buildNothingToPlay(entry, parts) {
+  const errors = readerErrors(parts);
+  return [
+    headerView(entry, keyFrameCount(parts)),
+    errors.length ? formatErrorView(errors) : null,
+    notice('no-animation', TEXT.noAnimation),
+    ...tailNodes(entry, parts),
+  ].filter(Boolean);
 }
 
 export function mountDetail(root, route, nav) {
@@ -192,11 +366,11 @@ export function mountDetail(root, route, nav) {
       el('button', { type: 'button', class: 'btn btn-primary', 'data-testid': 'retry', onclick: () => start() }, 'Try again')));
   }
 
-  function startPlayer(entry, data, keyFrames) {
-    const view = buildMovement(entry, data, keyFrames);
+  function startPlayer(entry, parts, playback) {
+    const view = buildMovement(entry, parts, playback);
     body.replaceChildren(...view.nodes);
     try {
-      player = createPlayer(view.canvas, data, hooksFor(view.ui, view.video));
+      player = createPlayer(view.canvas, playback.data, hooksFor(view.ui, view.video));
     } catch (error) {
       view.canvas.closest('.stage').replaceWith(notice('player-error', TEXT.noWebgl));
       player = null;
@@ -214,17 +388,11 @@ export function mountDetail(root, route, nav) {
     if (found.status === 'missing') return showNotFound();
     if (found.status !== 'ok') return showError();
     const entry = found.data;
-    const [animationFile, keyFrameFile] = await Promise.all([
-      loadEntryFile(entry, 'animation', 'animation.json'),
-      loadEntryFile(entry, 'keyframes', 'keyframes.json'),
-    ]);
+    const parts = await readParts(entry);
     if (destroyed) return undefined;
-    const data = animationFile.status === 'ok' ? parseAnimation(animationFile.data) : null;
-    const keyFrames = keyFrameFile.status === 'ok' ? keyFramesOf(keyFrameFile.data) : [];
-    if (data) return startPlayer(entry, data, keyFrames);
-    const parts = [headerView(entry, keyFrames.length), notice('no-animation', TEXT.noAnimation)];
-    if (entry.description) parts.push(el('p', { class: 'description' }, entry.description));
-    return show(...parts);
+    const playback = playbackOf(parts);
+    if (playback) return startPlayer(entry, parts, playback);
+    return show(...buildNothingToPlay(entry, parts));
   }
 
   function start() {

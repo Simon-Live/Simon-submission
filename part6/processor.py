@@ -1,10 +1,30 @@
 """The processor seam: the only module that produces keyframes, skeleton and animation.
 
-`process(recording)` is the one function the server calls. This mock implementation generates
-valid synthetic shared files (docs/specs/shared-files.md sections 1 to 3), varied by a seed taken
-from the recording id. The real video to frames to 3D to animation processor replaces this module
-and touches nothing else. `generate` is the shared core that `fixtures/make_catalog.py` also uses
-with fixed parameters.
+Plug-in contract (docs/specs/catalog-contract.md AC-C09). The server runs one processor function
+per recording, on one worker thread, in order. Choose it with
+`serve --processor <module>:<function>`, else `SIMON6_PROCESSOR`, else `DEFAULT` (this module's
+mock `process`).
+
+    function(recording, report) -> result
+
+- `recording` is `{id, name, category, duration_ms, video_path}`; `video_path` is None while
+  capture is mocked and is never read by the mock.
+- `report(status)` takes `"processing:<stage>"` where `<stage>` matches
+  `^[a-z0-9][a-z0-9_-]{0,31}$`; any other string is logged to stderr and ignored. A processor
+  that never reports shows as `queued` until it returns. `report` may be None when a function is
+  called directly.
+- The result is a dict with any of `keyframes`, `skeleton`, `animation` (parsed JSON; at least one
+  of `skeleton` and `animation`): the job is done and the entry is stored. A dict
+  `{"status": "failed:<stage>: <reason>"}` fails the job. An exception fails it as
+  `failed:<last reported stage, else processing>: <first line of the message>`. Files the readers
+  reject fail it as `failed:validate: <reader message>`. Nothing is written for a failed job.
+- Status vocabulary, exactly: `queued`, `processing:<stage>`, `failed:<stage>: <reason>`, `done`.
+
+This mock generates valid synthetic shared files (docs/specs/shared-files.md sections 1 to 3),
+varied by a seed taken from the recording id. Entries it makes carry `files_source: "mock"`; any
+other processor's entries carry `processor`. The real video to frames to 3D to animation processor
+replaces this function and touches nothing else. `generate` is the shared core that
+`fixtures/make_catalog.py` also uses with fixed parameters.
 """
 from __future__ import annotations
 
@@ -15,6 +35,9 @@ import random
 
 from . import motion
 
+DEFAULT = "part6.processor:process"
+# The description of an entry the mock makes; `{day}` is the UTC date, YYYY-MM-DD (Phase 1 text).
+MOCK_DESCRIPTION = "Mock recording from {day}. Capture and processing are mocked."
 ANIMATION_FPS = 30.0
 SKELETON_FPS = 15.0
 UNITS = {"length": "m", "angle": "deg", "time": "ms"}
@@ -132,10 +155,11 @@ def generate(family_id, duration_ms, params):
             "skeleton": _skeleton(frames, skeleton_count), "animation": animation}
 
 
-def process(recording):
+def process(recording, report=None):
     """Mock processor: `recording` is {id, name, category, duration_ms, video_path}.
 
-    `video_path` is None while capture is mocked and is never read. Returns
+    `video_path` is None while capture is mocked and is never read. `report` is accepted for the
+    plug-in contract and unused: the mock finishes at once. Returns
     {"keyframes": ..., "skeleton": ..., "animation": ...}.
     """
     category, duration_ms = recording["category"], recording["duration_ms"]

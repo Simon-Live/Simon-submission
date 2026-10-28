@@ -11,5 +11,28 @@
   "description": "Step to each side in turn with arms swinging, eight steps.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 8000,
-  "files_source": "fixture"
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 6,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "2b1f0a00f799ae2830d9762abfc91a426adfa94a3c498db4c520fe3ee695c725",
+      "bytes": 1424
+    },
+    "skeleton": {
+      "part": 6,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "4e4abf31a409413bd8117fd0b454f21677bb6b71cbd04bae8db56c1f34160c5d",
+      "bytes": 124962
+    },
+    "animation": {
+      "part": 6,
+      "format": "simon.animation/1",
+      "detected_by": "version",
+      "sha256": "14ab2f81964e2e8708886dd253119d929fe21d6f054205d37561bfa0d08e75da",
+      "bytes": 245032
+    }
+  }
 }

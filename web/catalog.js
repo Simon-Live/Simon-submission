@@ -83,9 +83,13 @@ export function mountCatalog(root, route, nav) {
   const screen = el('section', { class: 'screen catalog', 'data-testid': 'catalog', 'data-ready': '0' },
     el('header', { class: 'catalog-head' },
       el('h1', {}, 'Movements'),
-      el('button', {
-        type: 'button', class: 'btn btn-primary record-open', 'data-testid': 'record-open', onclick: () => nav.go('#/record'),
-      }, 'Record')),
+      el('div', { class: 'head-actions' },
+        el('button', {
+          type: 'button', class: 'btn import-open', 'data-testid': 'open-import', onclick: () => nav.go('#/import'),
+        }, 'Import'),
+        el('button', {
+          type: 'button', class: 'btn btn-primary record-open', 'data-testid': 'record-open', onclick: () => nav.go('#/record'),
+        }, 'Record'))),
     el('div', { class: 'search-wrap' },
       el('label', { class: 'sr-only', for: 'search' }, 'Search movements'),
       search),

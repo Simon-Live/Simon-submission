@@ -1,10 +1,17 @@
-"""part6/processor.py: the mock processor seam (AC-008a) and its locked parameters."""
+"""part6/processor.py: the mock processor seam (AC-008a, AC-C09) and its locked parameters, and
+the fake Part 4 processors that exercise the seam (AC-C11)."""
 import hashlib
+import inspect
 import math
+import time
+from pathlib import Path
 
 import pytest
 
-from part6 import motion, processor, validate
+from fixtures.processors import part4_fake
+from part6 import formats, jobs, motion, processor, validate
+
+PART6 = Path(__file__).resolve().parents[2] / "part6"
 
 
 def recording(entry_id="squat-ab12cd34", category="exercise", duration_ms=10000, name="Squat"):
@@ -28,6 +35,17 @@ def test_every_family_of_the_category_validates(category):
         assert validate.check_animation(out["animation"]) == []
         seen.add(out["keyframes"]["people"][0]["repetitions"][0]["movement"])
     assert seen == {f.id for f in motion.by_category(category)}
+
+
+def test_the_mock_description_is_one_constant_used_by_the_jobs_and_the_conformance_kit():
+    assert processor.MOCK_DESCRIPTION.format(day="2026-10-28") == (
+        "Mock recording from 2026-10-28. Capture and processing are mocked.")
+    root = PART6.parent
+    copies = [p.relative_to(root).as_posix() for p in [*PART6.glob("*.py"), *(root / "fixtures").rglob("*.py")]
+              if "Capture and processing are mocked" in p.read_text()]
+    assert copies == ["part6/processor.py"]
+    from fixtures.conformance import make_entries
+    assert make_entries.MOCK_DESCRIPTION == processor.MOCK_DESCRIPTION.format(day="2026-10-28")
 
 
 def test_seed_is_the_first_eight_hex_digits_of_sha256_of_the_id():
@@ -137,3 +155,108 @@ def test_skeleton_follows_the_part_3_header():
 def test_process_rejects_bad_recordings(bad):
     with pytest.raises(ValueError):
         processor.process(dict(recording(), **bad))
+
+
+# the plug-in contract (AC-C09)
+
+def test_the_signature_is_recording_then_an_optional_report():
+    params = inspect.signature(processor.process).parameters
+    assert list(params) == ["recording", "report"] and params["report"].default is None
+
+
+def test_the_default_spec_names_the_mock():
+    assert processor.DEFAULT == jobs.DEFAULT_PROCESSOR == "part6.processor:process"
+    assert jobs.parse_processor(processor.DEFAULT) is processor.process
+
+
+def test_the_mock_ignores_report_and_never_calls_it():
+    calls = []
+    with_report = processor.process(recording(), calls.append)
+    assert calls == [] and with_report == processor.process(recording())
+    assert with_report == processor.process(recording(), report=None)
+
+
+def test_the_module_documents_the_plug_in_contract():
+    doc = processor.__doc__
+    for text in ("serve --processor <module>:<function>", "SIMON6_PROCESSOR", "function(recording, report)",
+                 "{id, name, category, duration_ms, video_path}", "processing:<stage>",
+                 "^[a-z0-9][a-z0-9_-]{0,31}$", '{"status": "failed:<stage>: <reason>"}',
+                 "failed:validate", "`queued`, `processing:<stage>`, `failed:<stage>: <reason>`",
+                 'files_source: "mock"', "processor"):
+        assert text in doc, text
+
+
+def test_no_part6_module_imports_the_fake_processors():
+    for path in PART6.glob("*.py"):
+        text = path.read_text()
+        assert "import fixtures" not in text and "from fixtures" not in text, path.name
+
+
+# the fake Part 4 processors (AC-C11)
+
+@pytest.fixture
+def fast(monkeypatch):
+    monkeypatch.setenv(part4_fake.STAGE_ENV, "0")
+
+
+def test_the_fake_reports_three_stages_in_order_and_returns_part4_v1_files(fast):
+    reports = []
+    out = part4_fake.process(recording(), reports.append)
+    assert reports == ["processing:keyframes", "processing:skeleton", "processing:animation"]
+    assert set(out) == {"keyframes", "skeleton", "animation"}
+    assert out["keyframes"]["format"] == "simon.keyframes.v1"
+    assert out["skeleton"]["format"] == "simon.skeleton.v1"
+    assert out["animation"]["format"] == "simon.animation.v1"
+    assert formats.read_keyframes(out["keyframes"])["format"] == "simon.keyframes.v1"
+    assert formats.read_skeleton(out["skeleton"])["format"] == "simon.skeleton.v1"
+    assert formats.read_animation(out["animation"])["format"] == "simon.animation.v1"
+
+
+def test_the_fake_skeleton_is_the_key_poses_only_golden(fast):
+    skeleton = formats.read_skeleton(part4_fake.process(recording())["skeleton"])
+    assert skeleton["frames"] is None and skeleton["keys"]
+
+
+def test_the_fake_works_without_a_report_and_gives_a_fresh_copy_each_time(fast):
+    first = part4_fake.process(recording())
+    first["animation"]["frames"].clear()
+    assert part4_fake.process(recording())["animation"]["frames"]
+
+
+def test_the_fake_pauses_at_every_stage(monkeypatch):
+    monkeypatch.setenv(part4_fake.STAGE_ENV, "0.05")
+    began = time.monotonic()
+    part4_fake.process(recording())
+    assert time.monotonic() - began >= 0.15
+
+
+def test_the_pause_defaults_to_1_2_seconds_and_follows_the_environment(monkeypatch):
+    monkeypatch.delenv(part4_fake.STAGE_ENV, raising=False)
+    assert part4_fake.stage_seconds() == 1.2
+    monkeypatch.setenv(part4_fake.STAGE_ENV, "")
+    assert part4_fake.stage_seconds() == 1.2
+    monkeypatch.setenv(part4_fake.STAGE_ENV, "0.5")
+    assert part4_fake.stage_seconds() == 0.5
+    monkeypatch.setenv(part4_fake.STAGE_ENV, "0")
+    assert part4_fake.stage_seconds() == 0
+
+
+@pytest.mark.parametrize("value", ["abc", "-1", "nan", "1,5"])
+def test_a_bad_pause_is_a_plain_error(monkeypatch, value):
+    monkeypatch.setenv(part4_fake.STAGE_ENV, value)
+    with pytest.raises(ValueError, match=part4_fake.STAGE_ENV):
+        part4_fake.stage_seconds()
+
+
+def test_the_failing_fake_reports_pose_and_fails():
+    reports = []
+    assert part4_fake.fail(recording(), reports.append) == {
+        "status": "failed:pose: no person found in the video"}
+    assert reports == ["processing:pose"]
+    assert part4_fake.fail(recording()) == {"status": "failed:pose: no person found in the video"}
+
+
+def test_the_fakes_load_by_spec_and_say_what_they_are():
+    assert jobs.parse_processor("fixtures.processors.part4_fake:process") is part4_fake.process
+    assert jobs.parse_processor("fixtures.processors.part4_fake:fail") is part4_fake.fail
+    assert "not a production path" in part4_fake.__doc__

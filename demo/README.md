@@ -70,24 +70,25 @@ Pixel 7 emulation (412 px wide, device scale 2.625), from `make -s demo-6`:
 
 What it shows, in order:
 
-1. The catalog opens, and Dances is tapped.
-2. A search for part of a dance name ("side") leaves Side step, and it is opened.
-3. Play at 1x, then 0.5x, then a one-finger drag turns the figure.
-4. Front, Side and Top snap the camera.
-5. Back to the catalog, Record, and Stop after four seconds.
-6. A name is typed ("Cha cha"), Dance is chosen, Save shows Processing, and the new entry opens and plays.
-7. Back to the catalog, a search for "cha" finds the entry (labelled Mock recording), and it is opened and played.
-8. Back to the catalog and a page reload: the entry is still listed.
+1. The catalog opens, Dances is tapped, and a search for "side" leaves Side step.
+2. Side step is opened and played at 1x, then 0.5x, and a one-finger drag turns the figure.
+3. Front, Side and Top snap the camera.
+4. Back to the catalog, Record, and Stop after a few seconds; a name is typed ("Cha cha") and Dance is chosen.
+5. Save shows Processing, and the new entry opens and plays.
+6. Back to the catalog, a search for "cha" finds the entry (labelled Mock recording), and it is opened and played.
+7. Back to the catalog, All, a search for "part 4", and Squat (Part 4) is opened and played; its Files panel lists Part 4's key frames, skeleton and animation versions.
+8. Import: Part 4's version 1 key frames, skeleton and animation files are chosen, each listed with its format; a name is typed and Import opens the new entry, which plays and lists its files.
+9. Back to the catalog and a page reload: the imported entry is still listed.
 
-How it was made: `staging/walkthrough.mjs` (in the firm workspace; `staging/` is local only and not published) loads the same `check/harness.mjs` as `make check-6`, so the browser, launch flags and Pixel 7 context are the same. Playwright `recordVideo` records one page in one context at the Pixel 7 viewport size. A small ring is drawn at each touch so a viewer can see taps and drags. The app is driven only through its screens, and each scene waits for the app's own ready signals before the next step, with short holds for reading. The login for the gateway comes from `STAGING_USER` and `STAGING_PASSWORD` and is not printed. When the run finishes, the script converts the webm with ffmpeg (libx264, yuv420p, `-movflags +faststart`, width and height cropped to even numbers, CRF 23 unless the file would reach 15 MB), checks the result with ffprobe (codec h264, under 75 s, under 15 MB, otherwise exit 1) and removes the entry it recorded with `staging/remove-entry.py`, so the recording leaves no entry behind in the staged catalog.
+How it was made: `staging/walkthrough.mjs` (in the firm workspace; `staging/` is local only and not published) loads the same `check/harness.mjs` as `make check-6`, so the browser, launch flags and Pixel 7 context are the same. Playwright `recordVideo` records one page in one context at the Pixel 7 viewport size. A small ring is drawn at each touch so a viewer can see taps and drags. The app is driven only through its screens, and each scene waits for the app's own ready signals before the next step, with short holds for reading. The login for the gateway comes from `STAGING_USER` and `STAGING_PASSWORD` and is not printed. When the run finishes, the script converts the webm with ffmpeg (libx264, yuv420p, `-movflags +faststart`, width and height cropped to even numbers, CRF 23 unless the file would reach 15 MB), checks the result with ffprobe (codec h264, under 90 s, under 15 MB, otherwise exit 1) and removes the entries it made (the recording and the import) with `staging/remove-entry.py`, so the recording leaves no entry behind in the staged catalog.
 
 Measured from ffprobe on the file in this folder:
 
 | | |
 |---|---|
 | Codec | h264, yuv420p |
-| Duration | 47.44 s |
-| Size | 662147 bytes (CRF 23) |
+| Duration | 61.4 s |
+| Size | 1036529 bytes (CRF 23) |
 | Dimensions | 412 x 838, 25 fps |
 
 Record it again, from the firm workspace at the repo root:

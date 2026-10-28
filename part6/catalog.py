@@ -1,5 +1,6 @@
 """Catalog storage: one folder per entry under a root (docs/specs/shared-files.md section 4).
 
+The importer (part6/importer.py) builds entries and writes them through `write_shared_entry`.
 Entries are read from disk on every call. A folder with a missing or invalid manifest is skipped
 and logged to stderr. The id pattern is checked before any path is built from an id. Writes go
 to `<root>/.tmp-<id>/` and are renamed into place, so a crash never leaves a half entry in the
@@ -16,7 +17,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import processor, thumbnail
 from .validate import FILE_RE, ID_RE, check_manifest, entry_folders, read_json
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -74,8 +74,9 @@ def read_manifest(root, entry_id):
     return manifest
 
 
-def list_entries(root, q="", category=None):
-    """Manifests sorted by name; q terms must all occur in the name (case-insensitive)."""
+def list_entries(root, q="", category=None, source=None):
+    """Manifests sorted by name; q terms must all occur in the name (case-insensitive);
+    `category` and `source` (a `files_source` value) keep only exact matches when given."""
     terms = q.casefold().split()
     entries = []
     for folder in entry_folders(root):
@@ -83,19 +84,18 @@ def list_entries(root, q="", category=None):
         if manifest is None:
             continue
         name = manifest["name"].casefold()
-        if all(t in name for t in terms) and category in (None, manifest["category"]):
+        if (all(t in name for t in terms) and category in (None, manifest["category"])
+                and source in (None, manifest["files_source"])):
             entries.append(manifest)
     return sorted(entries, key=lambda m: (m["name"].casefold(), m["name"], m["id"]))
 
 
 def served_names(manifest):
-    """The files an entry serves: the four it names, and `video_uri` when it is a plain file name."""
-    names = {manifest["keyframes"], manifest["skeleton"], manifest["animation"],
-             manifest["thumbnail"]}
-    video = manifest.get("video_uri")
-    if isinstance(video, str) and FILE_RE.match(video):
-        names.add(video)
-    return names
+    """The files an entry serves: those it names (a kind that is null is not served) and the
+    thumbnail, plus `video_uri` when it is a plain file name."""
+    names = {manifest.get(field) for field in ("keyframes", "skeleton", "animation", "thumbnail",
+                                               "video_uri")}
+    return {n for n in names if isinstance(n, str) and FILE_RE.match(n)}
 
 
 def entry_file(root, entry_id, name):
@@ -129,6 +129,12 @@ def write_entry(root, entry_id, files):
     return final
 
 
+def write_shared_entry(root, entry_id, manifest, files):
+    """Write an entry made of `manifest` and `files` ({name: str or bytes}), atomically."""
+    return write_entry(root, entry_id, {"manifest.json": json.dumps(manifest, indent=2) + "\n",
+                                        **files})
+
+
 def _copy_entry(source, root):
     """Copy one fixture folder into root, replacing any folder of that name."""
     entry_id = source.name
@@ -141,34 +147,41 @@ def _copy_entry(source, root):
 
 
 def seed(root, source=None):
-    """Copy every fixture entry into root when it has no entry folder; returns the count."""
+    """Copy every fixture entry whose id is missing from root into it; returns the count.
+
+    An empty or new root gets all of them. On a catalog that already has entries only the new
+    fixtures arrive: a folder that exists (edited, a visitor entry, an import) is never touched
+    (docs/specs/catalog-contract.md AC-C13a). `reset` is what restores the others."""
     guard_root(root)
     source = Path(source) if source else FIXTURE_CATALOG
-    if entry_folders(root):
-        return 0
     Path(root).mkdir(parents=True, exist_ok=True)
-    folders = [p for p in entry_folders(source) if is_valid_id(p.name)]
-    for folder in folders:
+    missing = [p for p in entry_folders(source)
+               if is_valid_id(p.name) and not os.path.lexists(Path(root) / p.name)]
+    for folder in missing:
         _copy_entry(folder, root)
-    if folders:
-        log(f"seeded {len(folders)} entries into {root}")
-    return len(folders)
+    if missing:
+        log(f"seeded {len(missing)} entries into {root}: {', '.join(p.name for p in missing)}")
+    return len(missing)
 
 
-def _says_mock(folder):
+RESET_SOURCES = ("mock", "import", "processor")    # everything but the fixtures (AC-C12)
+
+
+def _is_resettable(folder):
     try:
-        return read_json(folder / "manifest.json").get("files_source") == "mock"
+        return read_json(folder / "manifest.json").get("files_source") in RESET_SOURCES
     except (ValueError, AttributeError):
         return False
 
 
 def reset(root, source=None):
-    """Delete mock entries and dot folders, recopy every fixture entry; {"removed", "restored"}."""
+    """Delete mock, import and processor entries and dot folders, recopy every fixture entry;
+    returns {"removed", "restored"}."""
     guard_root(root)
     root, source = Path(root), Path(source) if source else FIXTURE_CATALOG
     root.mkdir(parents=True, exist_ok=True)
     dot = [p for p in root.iterdir() if p.is_dir() and p.name.startswith(".")]
-    doomed = [p for p in dot + [p for p in entry_folders(root) if _says_mock(p)]
+    doomed = [p for p in dot + [p for p in entry_folders(root) if _is_resettable(p)]
               if not p.is_symlink()]
     for folder in doomed:
         shutil.rmtree(folder)
@@ -195,17 +208,27 @@ def remove_entry(root, entry_id):
         log(f"left {doomed.name} behind: {exc}")    # unlisted; `reset` removes dot folders
 
 
+def is_visitor(manifest):
+    """True for an entry made over HTTP (`visitor` true) and for a Phase 1 recording (no
+    `visitor` field, `files_source` mock). Fixtures and CLI imports never count (AC-C12)."""
+    if manifest["files_source"] == "fixture":
+        return False
+    if "visitor" in manifest:
+        return manifest["visitor"] is True
+    return manifest["files_source"] == "mock"
+
+
 def visitor_entries(root):
-    """Manifests of the visitor recordings (files_source "mock"), oldest first. A symlinked
-    folder is not counted: remove_entry refuses it, so it would hold a cap slot forever."""
-    mock = [m for m in list_entries(root)
-            if m["files_source"] == "mock" and not (Path(root) / m["id"]).is_symlink()]
-    return sorted(mock, key=lambda m: (m["created_at"], m["id"]))
+    """Manifests of the visitor entries (`is_visitor`), oldest first. A symlinked folder is not
+    counted: remove_entry refuses it, so it would hold a cap slot forever."""
+    visitors = [m for m in list_entries(root)
+                if is_visitor(m) and not (Path(root) / m["id"]).is_symlink()]
+    return sorted(visitors, key=lambda m: (m["created_at"], m["id"]))
 
 
 def enforce_cap(root, cap, keep_id):
-    """Remove the oldest visitor recordings until at most `cap` remain; 0 means no cap.
-    Fixtures are not counted, `keep_id` is never removed, and a failed removal is logged and
+    """Remove the oldest visitor entries until at most `cap` remain; 0 means no cap.
+    Fixtures and CLI imports are not counted, `keep_id` is never removed, and a failed removal is logged and
     skipped (the next oldest goes instead). Returns the removed ids."""
     removed = []
     if cap <= 0:
@@ -242,42 +265,25 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-def build_manifest(entry_id, name, category, duration_ms, files_source, description, created_at):
-    return {"id": entry_id, "name": name, "video_uri": None,
-            "keyframes": "keyframes.json", "skeleton": "skeleton.json",
-            "animation": "animation.json", "created_at": created_at,
-            "schema_version": 1, "category": category, "description": description,
-            "thumbnail": "thumbnail.svg", "duration_ms": duration_ms,
-            "files_source": files_source}
+def compact_json(data):
+    """The stored form of a parsed shared file: compact JSON and a final newline. NaN and
+    infinity are refused (ValueError), because a browser cannot parse them."""
+    return json.dumps(data, separators=(",", ":"), allow_nan=False) + "\n"
 
 
-def entry_files(manifest, shared):
-    """The files of an entry folder: manifest, the shared files and the thumbnail."""
-    def compact(data):
-        return json.dumps(data, separators=(",", ":")) + "\n"
-    return {"manifest.json": json.dumps(manifest, indent=2) + "\n",
-            manifest["keyframes"]: compact(shared["keyframes"]),
-            manifest["skeleton"]: compact(shared["skeleton"]),
-            manifest["animation"]: compact(shared["animation"]),
-            manifest["thumbnail"]: thumbnail.svg(shared["animation"])}
-
-
-def create_mock_entry(root, name, category, duration_ms):
-    """Process a mock recording and store it as a new entry; returns its manifest."""
-    for _ in range(ID_RETRIES):
-        entry_id = new_id(name)
-        if (Path(root) / entry_id).exists():
-            continue
-        now = utc_now()
-        recording = {"id": entry_id, "name": name, "category": category,
-                     "duration_ms": duration_ms, "video_path": None}
-        manifest = build_manifest(
-            entry_id, name, category, duration_ms, "mock",
-            f"Mock recording from {now:%Y-%m-%d}. Capture and processing are mocked.",
-            f"{now:%Y-%m-%dT%H:%M:%SZ}")
-        try:
-            write_entry(root, entry_id, entry_files(manifest, processor.process(recording)))
-        except FileExistsError:
-            continue
-        return manifest
-    raise RuntimeError("could not allocate an entry id")
+def build_manifest(entry_id, name, category, duration_ms, files_source, description, created_at,
+                   *, kinds=("keyframes", "skeleton", "animation"), video_uri=None,
+                   provenance=None, visitor=None):
+    """A manifest v1 (AC-C01). `kinds` are the shared files the entry holds, stored under their
+    fixed names; the others are null. `provenance` and `visitor` are left out when None."""
+    manifest = {"id": entry_id, "name": name, "video_uri": video_uri}
+    for kind in ("keyframes", "skeleton", "animation"):
+        manifest[kind] = f"{kind}.json" if kind in kinds else None
+    manifest.update(created_at=created_at, schema_version=1, category=category,
+                    description=description, thumbnail="thumbnail.svg", duration_ms=duration_ms,
+                    files_source=files_source)
+    if provenance is not None:
+        manifest["provenance"] = provenance
+    if visitor is not None:
+        manifest["visitor"] = visitor
+    return manifest

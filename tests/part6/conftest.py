@@ -16,9 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 if sys.path[0] != str(ROOT):
     sys.path.insert(0, str(ROOT))
 
-from part6 import catalog, server  # noqa: E402
+from part6 import catalog, jobs, server  # noqa: E402
 
 FIXTURES = ROOT / "fixtures" / "output" / "catalog"
+
+
+def short_id(value):
+    """A test id for a long string: the text itself, else its length."""
+    return value if len(value) <= 24 else f"{len(value)} chars"
 
 
 @pytest.fixture(autouse=True)
@@ -106,6 +111,25 @@ def start_server(tmp_path):
 def app(seeded, start_server):
     """A running server over a seeded catalog."""
     return start_server(seeded)
+
+
+@pytest.fixture
+def mock_entry():
+    """mock_entry(root, name, category, duration_ms) -> the manifest of a mock recording stored
+    under root through the job path the server uses (`part6.jobs.Jobs` with the mock processor),
+    without a server or a save lock."""
+    def store(root, name, category, duration_ms):
+        queue = jobs.Jobs(root)
+        try:
+            entry_id = catalog.new_id(name)
+            queue.submit({"id": entry_id, "name": name, "category": category,
+                          "duration_ms": duration_ms, "video_path": None})
+            job = queue.wait(entry_id, 30)
+            assert job["status"] == "done", job
+            return job["entry"]
+        finally:
+            queue.close()
+    return store
 
 
 @pytest.fixture

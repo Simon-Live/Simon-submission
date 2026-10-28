@@ -1,7 +1,7 @@
 // Shared harness for check/check6.mjs and check/demo.mjs: server lifecycle, temp catalog,
 // browser launch, Pixel 7 contexts, observers (console errors, external requests, camera API),
 // CDP touch drags and the readiness waits. Plain Node ESM; the only dependency is playwright.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import net from 'node:net';
@@ -20,6 +20,7 @@ export const log = (...parts) => process.stderr.write(`${parts.join(' ')}\n`);
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const round = (n, digits = 4) => Math.round(n * 10 ** digits) / 10 ** digits;
 export const angleDiff = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+export const flag = (ok) => (ok ? 1 : 0);
 export const testid = (id) => `[data-testid="${id}"]`;
 export const byId = (page, id) => page.locator(testid(id));
 export const tap = (page, id) => byId(page, id).tap();
@@ -118,11 +119,24 @@ function waitExit(server, ms) {
   });
 }
 
-export async function startServer({ catalog, port }) {
+// `env` is merged over the process environment (processor choice, fake stage pause) and `args` is
+// appended to the serve command; check-6 passes neither. The settings a server reads from its
+// environment are unset first, so a value in the caller's shell cannot change what a check drives.
+const SERVER_SETTINGS = ['SIMON6_PROCESSOR', 'SIMON6_FOLLOW_URL'];
+
+function serverEnv(env) {
+  const base = { ...process.env };
+  for (const name of SERVER_SETTINGS) delete base[name];
+  return { ...base, ...env };
+}
+
+export async function startServer({ catalog, port, env = {}, args: extraArgs = [] }) {
   hookExit();
   const usePort = port ?? (await freePort());
-  const args = ['-m', 'part6', 'serve', '--host', '127.0.0.1', '--port', String(usePort), '--catalog', catalog];
-  const proc = spawn('python3', args, { cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+  const args = ['-m', 'part6', 'serve', '--host', '127.0.0.1', '--port', String(usePort), '--catalog', catalog, ...extraArgs];
+  const proc = spawn('python3', args, {
+    cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'pipe'], env: serverEnv(env),
+  });
   proc.stdout.pipe(process.stderr, { end: false });
   proc.stderr.pipe(process.stderr, { end: false });
   const server = { proc, port: usePort, url: `http://127.0.0.1:${usePort}/`, catalog, exited: false };
@@ -188,11 +202,19 @@ export async function newPhoneContext(browser, observer, extra = {}) {
 // ---------------------------------------------------------------- observers
 
 export function createObserver(origin) {
-  return { origin, errors: [], external: [], gumCalls: 0, fileInputs: 0, scannedScreens: new Set(), probePath: null };
+  return {
+    origin, errors: [], external: [], gumCalls: 0, fileInputs: 0, scannedScreens: new Set(), probePath: null, expectedPaths: new Set(),
+  };
 }
 
 export function allowProbe(observer, unknownId) {
   observer.probePath = `/api/entries/${unknownId}`;
+}
+
+// A check that deliberately makes one path answer with an error status names it here, so the
+// browser's "Failed to load resource" line for that path is not counted as a console error.
+export function allowErrorStatus(observer, pathname) {
+  observer.expectedPaths.add(pathname);
 }
 
 function sameOrigin(observer, url) {
@@ -204,15 +226,18 @@ function addError(observer, text) {
   log(`console error: ${text}`);
 }
 
-function isProbeNotFound(observer, msg) {
-  if (!observer.probePath || !msg.text().startsWith('Failed to load resource')) return false;
-  try { return new URL(msg.location().url).pathname === observer.probePath; } catch { return false; }
+function isExpectedFailure(observer, msg) {
+  if (!msg.text().startsWith('Failed to load resource')) return false;
+  try {
+    const { pathname } = new URL(msg.location().url);
+    return pathname === observer.probePath || observer.expectedPaths.has(pathname);
+  } catch { return false; }
 }
 
 function onConsole(observer, msg) {
   if (msg.type() !== 'error') return;
-  if (isProbeNotFound(observer, msg)) {
-    log(`console error excluded (deliberate unknown-id probe): ${msg.text()}`);
+  if (isExpectedFailure(observer, msg)) {
+    log(`console error excluded (deliberate error status): ${msg.text()}`);
     return;
   }
   addError(observer, `${msg.text()} (${msg.location().url})`);
@@ -284,7 +309,8 @@ export async function screenVisible(page, observer, id) {
 }
 
 // Screens whose ready signal is not data-ready="1" (record, form, not-found) or that are ready.
-const SETTLED_SELECTOR = '[data-ready="1"], [data-testid="not-found"], [data-testid="record"], [data-testid="name"]';
+const SETTLED_SELECTOR = '[data-ready="1"], [data-testid="not-found"], [data-testid="record"], [data-testid="name"], '
+  + '[data-testid="import"], [data-testid="processing-failed"]';
 
 // Before a page is closed or navigated away, wait until its current screen is settled so that no
 // request (thumbnails included) is aborted. A timeout is logged; the caller carries on.
@@ -472,4 +498,103 @@ export function measureTargets(page) {
     }
     return { min: Number.isFinite(min) ? min : null, who };
   }, TARGET_SELECTOR);
+}
+
+// ---------------------------------------------------------------- shared check plumbing
+
+// A step that never throws: a failure or a spent time budget is logged and the metric stays null.
+export function makeStep(budgetMs, startedAt = Date.now()) {
+  return async function step(label, fn) {
+    if (Date.now() - startedAt > budgetMs) {
+      log(`step skipped (time budget used): ${label}`);
+      return undefined;
+    }
+    try {
+      return await fn();
+    } catch (error) {
+      log(`step failed: ${label}: ${String(error.message).split('\n').slice(0, 2).join(' | ')}`);
+      return undefined;
+    }
+  };
+}
+
+export function passes(value, limit) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+  return (limit.min === undefined || value >= limit.min) && (limit.max === undefined || value <= limit.max);
+}
+
+// Runs a command at the repo root and mirrors its output to stderr (stdout stays the check's JSON).
+export function runCommand(command, args, { timeout = 120_000 } = {}) {
+  log(`run: ${command} ${args.join(' ')}`);
+  const result = spawnSync(command, args, { cwd: REPO_ROOT, encoding: 'utf8', timeout });
+  if (result.stdout) process.stderr.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  return result;
+}
+
+export const runPython = (args, options) => runCommand('python3', args, options);
+
+// Failed plus errors from a pytest summary line; a non-zero exit with nothing parsed counts as 1.
+export function failedFromSummary(stdout, status) {
+  const line = String(stdout).split('\n').reverse().find((l) => /\bin \d+(\.\d+)?s\b/.test(l));
+  const failed = line ? Number((/(\d+) failed/.exec(line) || [0, 0])[1]) : 0;
+  const errors = line ? Number((/(\d+) errors?\b/.exec(line) || [0, 0])[1]) : 0;
+  const total = failed + errors;
+  return status !== 0 && total === 0 ? 1 : total;
+}
+
+// ---------------------------------------------------------------- player verdict
+
+export const MIN_RENDER_PIXELS = 500;
+export const JOINT_COUNT = 17;
+export const MIN_PLAY_ADVANCE_S = 0.5;
+const PLAY_WINDOW_MS = 1000;
+
+// Counts canvas pixels that differ from the scene background (the canvas's data-bg) by more than 16
+// in any channel, read from a 2D copy of the WebGL canvas.
+export function pixelTest(page) {
+  return page.evaluate(() => {
+    const canvas = document.querySelector('[data-testid="player-canvas"]');
+    const hex = canvas.getAttribute('data-bg') || '#000000';
+    const bg = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width;
+    copy.height = canvas.height;
+    const ctx = copy.getContext('2d');
+    ctx.drawImage(canvas, 0, 0);
+    const { data } = ctx.getImageData(0, 0, copy.width, copy.height);
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.abs(data[i] - bg[0]) > 16 || Math.abs(data[i + 1] - bg[1]) > 16 || Math.abs(data[i + 2] - bg[2]) > 16) count += 1;
+    }
+    return { count, bg: hex };
+  });
+}
+
+// Taps Play when the player is paused, then follows the player's own clock for one second of page time
+// (animation frames, no fixed sleep). `start_s` is the position before Play and `furthest_s` the
+// furthest position reached, so a clip shorter than a second that plays through to its end counts.
+export async function measurePlay(page) {
+  const before = await playerState(page);
+  if (!before) throw new Error('no player on this screen');
+  if (!before.playing) await tap(page, 'play');
+  return page.evaluate(({ windowMs, startS }) => new Promise((resolve) => {
+    const began = performance.now();
+    let furthest = startS;
+    const tick = () => {
+      const s = window.simonPlayer.state();
+      furthest = Math.max(furthest, s.position_s);
+      if (performance.now() - began >= windowMs) {
+        resolve({ start_s: startS, furthest_s: furthest, joints: s.joints_drawn, duration_s: s.duration_s });
+      } else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }), { windowMs: PLAY_WINDOW_MS, startS: before.position_s });
+}
+
+// The one verdict for "this entry renders and plays": enough pixels, 17 joints, the clock advanced.
+export function playVerdict(pixels, play) {
+  const advance = play.furthest_s - play.start_s;
+  const ok = pixels.count >= MIN_RENDER_PIXELS && play.joints === JOINT_COUNT && advance >= MIN_PLAY_ADVANCE_S;
+  return { ok, pixels: pixels.count, joints: play.joints, advance_s: round(advance, 3), duration_s: play.duration_s };
 }

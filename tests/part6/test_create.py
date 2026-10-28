@@ -1,4 +1,8 @@
-"""POST api/entries: the mock recording flow behind the processor seam (AC-008, AC-008a)."""
+"""POST api/entries: the mock recording flow behind the processor seam (AC-008, AC-008a, AC-C09).
+
+The mock finishes inside the 3 s wait, so a save answers 201 with the manifest as in Phase 1; a
+processor that fails or runs long is covered in test_server.py and test_jobs.py.
+"""
 import hashlib
 import json
 import re
@@ -11,6 +15,7 @@ import pytest
 from part6 import catalog, motion, processor, validate
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "output" / "catalog"
+N = len(list(FIXTURES.iterdir()))       # fixture entries; the catalog starts with these
 VALID = {"name": "Evening flow", "category": "dance", "duration_ms": 2000}
 
 
@@ -30,6 +35,7 @@ def test_201_with_the_new_manifest(app, seeded):
     assert manifest["video_uri"] is None and manifest["schema_version"] == 1
     assert manifest["description"].startswith("Mock recording from ")
     assert manifest["description"].endswith(". Capture and processing are mocked.")
+    assert manifest["visitor"] is True
     assert validate.check_entry(seeded / manifest["id"]) == []
 
 
@@ -43,14 +49,16 @@ def test_the_response_is_json_and_not_cached(app):
 def test_the_new_entry_is_listed_searchable_and_filterable(app):
     manifest = app.client.post_json(VALID)[1]
     listed = app.client.get_json("/api/entries")[1]["entries"]
-    assert manifest in listed and len(listed) == 7
+    assert manifest in listed and len(listed) == N + 1
     assert [m["id"] for m in app.client.get_json("/api/entries?q=evening")[1]["entries"]] == [
         manifest["id"]]
     dances = [m["id"] for m in app.client.get_json("/api/entries?category=dance")[1]["entries"]]
     exercises = [m["id"] for m in app.client.get_json("/api/entries?category=exercise")[1]["entries"]]
     assert manifest["id"] in dances and manifest["id"] not in exercises
-    assert app.client.get_json("/api/health")[1]["entries"] == 7
+    assert app.client.get_json("/api/health")[1]["entries"] == N + 1
     assert app.client.get_json(f"/api/entries/{manifest['id']}")[1] == manifest
+    mocks = app.client.get_json("/api/entries?source=mock")[1]["entries"]
+    assert [m["id"] for m in mocks] == [manifest["id"]]
 
 
 def test_the_new_entrys_files_validate_and_play(app):
@@ -70,7 +78,7 @@ def test_the_entry_persists_across_a_server_restart(tmp_path, seeded, start_serv
     first.stop()
     second = start_server(seeded)
     assert second.client.get_json(f"/api/entries/{manifest['id']}")[1] == manifest
-    assert second.client.get_json("/api/health")[1]["entries"] == 7
+    assert second.client.get_json("/api/health")[1]["entries"] == N + 1
 
 
 def test_the_shipped_fixtures_are_not_touched(app):
@@ -137,7 +145,7 @@ def test_concurrent_creates_all_succeed_with_distinct_ids(app):
     [t.join(20) for t in threads]
     assert [s for s, _ in results] == [201] * 8
     assert len({m["id"] for _, m in results}) == 8
-    assert app.client.get_json("/api/health")[1]["entries"] == 14
+    assert app.client.get_json("/api/health")[1]["entries"] == N + 8
 
 
 # validation: one failing case per rule
@@ -160,7 +168,7 @@ def test_concurrent_creates_all_succeed_with_distinct_ids(app):
 def test_400_names_the_bad_field(app, changes, field):
     status, body = app.client.post_json(body_of(**changes))
     assert (status, body) == (400, {"error": field})
-    assert app.client.get_json("/api/health")[1]["entries"] == 6
+    assert app.client.get_json("/api/health")[1]["entries"] == N
 
 
 @pytest.mark.parametrize("payload", [
@@ -199,17 +207,17 @@ def test_a_body_of_exactly_4096_bytes_is_accepted_and_4097_is_413(app):
     assert app.client.post(ok)[0] == 201
     status, body = app.client.post_json(too_big)
     assert (status, body) == (413, {"error": "body too large"})
-    assert app.client.get_json("/api/health")[1]["entries"] == 7
+    assert app.client.get_json("/api/health")[1]["entries"] == N + 1
 
 
 def test_a_huge_body_is_413_without_storing_anything(app):
     status, body = app.client.post_json(b"x" * 200_000)
     assert (status, body) == (413, {"error": "body too large"})
-    assert app.client.get_json("/api/health")[1]["entries"] == 6
+    assert app.client.get_json("/api/health")[1]["entries"] == N
 
 
 def test_validation_runs_before_any_processing(app, monkeypatch):
-    def explode(recording):
+    def explode(recording, report=None):
         raise AssertionError("processor called")
     monkeypatch.setattr(processor, "process", explode)
     assert app.client.post_json(body_of(duration_ms=5))[0] == 400
@@ -224,7 +232,7 @@ def test_the_server_gets_every_shared_file_from_process_only(app, seeded, monkey
     stamped = json.loads(json.dumps(sample))
     stamped["animation"]["units"] = {"length": "stub"}
 
-    def stub(recording):
+    def stub(recording, report=None):
         calls.append(recording)
         return stamped
 
@@ -239,33 +247,35 @@ def test_the_server_gets_every_shared_file_from_process_only(app, seeded, monkey
     assert app.client.get_json(f"/api/entries/{manifest['id']}/skeleton.json")[1] == stamped["skeleton"]
 
 
-def test_a_processor_failure_is_a_500_and_leaves_nothing_behind(app, seeded, monkeypatch):
-    def broken(recording):
+def test_a_processor_failure_fails_the_job_and_leaves_nothing_behind(app, seeded, monkeypatch):
+    def broken(recording, report=None):
         raise RuntimeError("model crashed")
     monkeypatch.setattr(processor, "process", broken)
     status, body = app.client.post_json(VALID)
-    assert (status, body) == (500, {"error": "internal error"})
-    assert sorted(p.name for p in seeded.iterdir()) == sorted(
-        ["squat", "forward-lunge", "jumping-jack", "side-step", "arm-wave", "hip-twist"])
+    assert status == 202 and body["status"] == "failed:processing: model crashed"
+    assert app.client.get_json(body["job"].replace("api/", "/api/", 1))[1]["entry"] is None
+    assert sorted(p.name for p in seeded.iterdir()) == sorted(m.name for m in FIXTURES.iterdir())
     monkeypatch.undo()
     assert app.client.post_json(VALID)[0] == 201
 
 
-def test_a_failed_write_leaves_no_half_entry(app, seeded, monkeypatch):
+def test_a_failed_write_fails_the_job_without_the_detail_and_leaves_no_half_entry(
+        app, seeded, monkeypatch):
     real = catalog.os.rename
 
     def fail(src, dst):
         raise OSError("disk gone")
     monkeypatch.setattr(catalog.os, "rename", fail)
-    assert app.client.post_json(VALID)[0] == 500
+    status, body = app.client.post_json(VALID)
+    assert status == 202 and body["status"] == "failed:store: could not save the entry"
     monkeypatch.setattr(catalog.os, "rename", real)
     assert not [p for p in seeded.iterdir() if p.name.startswith(".") or "evening" in p.name]
-    assert app.client.get_json("/api/health")[1]["entries"] == 6
+    assert app.client.get_json("/api/health")[1]["entries"] == N
 
 
 def test_a_crash_before_the_rename_never_shows_in_the_listing(app, seeded):
     (seeded / ".tmp-crashed-00000000").mkdir()
     (seeded / ".tmp-crashed-00000000" / "manifest.json").write_text(
         (seeded / "squat" / "manifest.json").read_text())
-    assert app.client.get_json("/api/health")[1]["entries"] == 6
+    assert app.client.get_json("/api/health")[1]["entries"] == N
     assert app.client.get("/api/entries/.tmp-crashed-00000000")[0] == 404

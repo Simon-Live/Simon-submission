@@ -11,5 +11,28 @@
   "description": "Bodyweight squat, three repetitions.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 10000,
-  "files_source": "fixture"
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 6,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "319b301c2ade36156ed58a6f9b29778411762d7a949b05eb9fc30faa09e43f89",
+      "bytes": 603
+    },
+    "skeleton": {
+      "part": 6,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "8573fd8fe4417dfa53dd489e2911f0dc8cb803f02999d66f678bfc84aa0721b6",
+      "bytes": 157907
+    },
+    "animation": {
+      "part": 6,
+      "format": "simon.animation/1",
+      "detected_by": "version",
+      "sha256": "ff1cf806086c5f314bdf964d05bb241cbf2efb4ee470e3b52292900696722eb0",
+      "bytes": 311007
+    }
+  }
 }

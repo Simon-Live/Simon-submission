@@ -1,7 +1,12 @@
-"""Validators for the shared files (docs/specs/shared-files.md sections 1 to 4) and the create body.
+"""Validators for catalog entries (docs/specs/catalog-contract.md AC-C01) and the create body.
 
 Each `check_*` returns a list of short messages, empty when valid, capped at MAX_ERRORS so a
 broken 300-frame file does not print 300 lines. `check_catalog` backs `python3 -m part6 validate`.
+
+`check_entry` reads the files an entry names through `part6/formats.py`, so any known format
+passes. `check_keyframes`, `check_skeleton` and `check_animation` are the strict checks of Part 6's
+own shapes (`simon.keyframes/part1`, `simon.skeleton/1`, `simon.animation/1`); they stay for the
+files Part 6 writes itself (docs/specs/formats.md AC-F12).
 """
 from __future__ import annotations
 
@@ -13,15 +18,60 @@ from datetime import datetime
 from itertools import islice
 from pathlib import Path
 
+from . import formats
 from .motion import CATEGORIES, JOINTS
 
 MAX_ERRORS = 10
 # \Z, not $: "$" would also accept a trailing newline.
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}\Z")
 FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\Z")
-FILES_SOURCES = ("fixture", "mock", "pipeline")
+FILES_SOURCES = ("fixture", "mock", "import", "processor")
+PROVENANCE_KINDS = (*formats.KINDS, "video")
+DETECTED_BY = ("version", "shape")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}\Z")
 NAME_MAX = 80
 DURATION_MIN_MS, DURATION_MAX_MS = 1000, 120000
+
+
+class NotJson(ValueError):
+    """Bytes that are not strict JSON; the message is "is not valid JSON"."""
+
+
+# The longest integer text that always fits a double (1.797e308 has 309 digits).
+SAFE_INT_CHARS = 308
+
+
+def _no_constant(name):
+    raise ValueError(f"{name} is not JSON")
+
+
+def parse_float(text):
+    """A JSON number with a fraction or exponent as a float; ValueError when it does not fit a
+    double (`1e400` reads as infinity, which a browser also cannot hold)."""
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"{text[:20]} does not fit a number")
+    return value
+
+
+def parse_int(text):
+    """A JSON integer. One too long to be sure it fits a double (this also covers more digits than
+    Python's own limit, which would raise) is read as a float, so it is refused when not finite."""
+    return parse_float(text) if len(text) > SAFE_INT_CHARS else int(text)
+
+
+def parse_json(raw):
+    """Parsed JSON of bytes (UTF-8, an optional byte order mark) or text, parsed as strictly as a
+    browser: `NaN`, `Infinity` and `-Infinity` are refused, and so is a number that does not fit
+    a double (`1e400`, `-1e400`, an integer of 400 digits). The one parser for every file and
+    request body Part 6 reads (docs/specs/formats.md "Error Cases"). Raises NotJson for anything
+    that is not JSON, including text nested too deep to parse."""
+    try:
+        text = raw.decode("utf-8-sig") if isinstance(raw, (bytes, bytearray)) else raw
+        return json.loads(text, parse_constant=_no_constant, parse_float=parse_float,
+                          parse_int=parse_int)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise NotJson("is not valid JSON") from None
 
 
 def is_number(v):
@@ -148,6 +198,47 @@ def _utc_stamp(value):
     return True
 
 
+def _plain_name(value):
+    return isinstance(value, str) and FILE_RE.match(value) is not None
+
+
+def _provenance_file_errors(kind, entry, where):
+    if not isinstance(entry, dict):
+        yield f"{where}: not an object"
+        return
+    part = entry.get("part")
+    if not (is_int(part) and 1 <= part <= 7):
+        yield f"{where}.part: must be a whole number from 1 to 7"
+    fmt, how = entry.get("format"), entry.get("detected_by")
+    if kind == "video":
+        if fmt is not None:
+            yield f"{where}.format: must be null for a video"
+        if how != "file":
+            yield f"{where}.detected_by: must be file for a video"
+    else:
+        if fmt not in formats.FORMATS[kind]:
+            yield f"{where}.format: must be one of {', '.join(formats.FORMATS[kind])}"
+        if how not in DETECTED_BY:
+            yield f"{where}.detected_by: must be version or shape"
+    if not (isinstance(entry.get("sha256"), str) and SHA256_RE.match(entry["sha256"])):
+        yield f"{where}.sha256: must be 64 lowercase hex characters"
+    if not (is_int(entry.get("bytes")) and entry["bytes"] >= 0):
+        yield f"{where}.bytes: must be a whole number of 0 or more"
+    for optional in ("source", "original_name"):
+        if optional in entry and not isinstance(entry[optional], str):
+            yield f"{where}.{optional}: must be a string"
+
+
+def _provenance_errors(data):
+    if not isinstance(data, dict):
+        yield "provenance: must be an object"
+        return
+    # A key this version does not know is ignored, never a reason to hide the entry (AC-C01).
+    for kind in PROVENANCE_KINDS:
+        if kind in data:
+            yield from _provenance_file_errors(kind, data[kind], f"provenance.{kind}")
+
+
 def _manifest_errors(data, folder_name):
     if not isinstance(data, dict):
         yield "manifest: not an object"
@@ -157,14 +248,18 @@ def _manifest_errors(data, folder_name):
         yield "id: does not match ^[a-z0-9][a-z0-9-]{0,62}$"
     elif folder_name is not None and eid != folder_name:
         yield "id: differs from the folder name"
-    if not (isinstance(data.get("name"), str) and data["name"].strip()):
-        yield "name: not a non-empty string"
-    if data.get("video_uri") is not None and not isinstance(data["video_uri"], str):
-        yield "video_uri: must be null or a string"
-    for field in ("keyframes", "skeleton", "animation", "thumbnail"):
-        value = data.get(field)
-        if not (isinstance(value, str) and FILE_RE.match(value)):
-            yield f"{field}: not a plain file name"
+    name = data.get("name")
+    if not (isinstance(name, str) and 1 <= len(name) <= NAME_MAX and name == name.strip()):
+        yield "name: must be 1 to 80 characters with no space at either end"
+    for field in ("video_uri", *formats.KINDS):
+        if field not in data:
+            yield f"{field}: is required"
+        elif data[field] is not None and not _plain_name(data[field]):
+            yield f"{field}: must be null or a plain file name"
+    if data.get("skeleton") is None and data.get("animation") is None:
+        yield "skeleton, animation: at least one must name a file"
+    if not _plain_name(data.get("thumbnail")):
+        yield "thumbnail: not a plain file name"
     if not _utc_stamp(data.get("created_at")):
         yield "created_at: not YYYY-MM-DDTHH:MM:SSZ"
     if data.get("schema_version") != 1 or not is_int(data.get("schema_version")):
@@ -176,7 +271,11 @@ def _manifest_errors(data, folder_name):
     if not (is_int(data.get("duration_ms")) and data["duration_ms"] > 0):
         yield "duration_ms: not a positive integer"
     if data.get("files_source") not in FILES_SOURCES:
-        yield "files_source: must be fixture, mock or pipeline"
+        yield f"files_source: must be {', '.join(FILES_SOURCES[:-1])} or {FILES_SOURCES[-1]}"
+    if "provenance" in data:
+        yield from _provenance_errors(data["provenance"])
+    if "visitor" in data and not isinstance(data["visitor"], bool):
+        yield "visitor: must be true or false"
 
 
 def check_keyframes(data):
@@ -196,17 +295,20 @@ def check_manifest(data, folder_name=None):
 
 
 def read_json(path):
-    """Parsed JSON of a file, or raises ValueError with a short reason."""
+    """Parsed JSON of a file (see `parse_json`), or raises ValueError with a short reason:
+    "file is missing", "is not valid JSON" or the operating system's words."""
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        raw = Path(path).read_bytes()
     except FileNotFoundError:
         raise ValueError("file is missing") from None
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"unreadable JSON: {exc}") from None
+    except OSError as exc:
+        raise ValueError(f"unreadable: {exc.strerror or exc}") from None
+    return parse_json(raw)
 
 
 def check_entry(folder):
-    """Every error of one entry folder: manifest, then the files it names."""
+    """Every error of one entry folder: manifest, then the files it names read through
+    `part6/formats.py` (any known format passes), the video and the thumbnail."""
     folder = Path(folder)
     try:
         manifest = read_json(folder / "manifest.json")
@@ -215,22 +317,28 @@ def check_entry(folder):
     errors = [f"manifest.json: {m}" for m in check_manifest(manifest, folder.name)]
     if errors:
         return errors
-    checks = (("keyframes", check_keyframes), ("skeleton", check_skeleton),
-              ("animation", check_animation))
-    for field, check in checks:
-        errors += _file_errors(folder, manifest[field], check)
+    for kind in formats.KINDS:
+        if manifest[kind] is not None:
+            errors += _file_errors(folder, kind, manifest[kind])
+    video = manifest.get("video_uri")
+    if video is not None and not (folder / video).is_file():
+        errors.append(f"{video}: file is missing")
     thumb = folder / manifest["thumbnail"]
     if not thumb.is_file() or thumb.stat().st_size == 0:
         errors.append(f"{manifest['thumbnail']}: file is missing or empty")
     return errors
 
 
-def _file_errors(folder, name, check):
+def _file_errors(folder, kind, name):
     try:
         data = read_json(folder / name)
     except ValueError as exc:
         return [f"{name}: {exc}"]
-    return [f"{name}: {m}" for m in check(data)]
+    try:
+        formats.read(kind, data, name)
+    except formats.FormatError as exc:
+        return [str(exc)]
+    return []
 
 
 def entry_folders(root):

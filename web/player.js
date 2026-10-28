@@ -1,4 +1,4 @@
-// The 3D player: parses animation.json, draws the figure with three.js, owns the playback
+// The 3D player: takes the normalized animation, draws the figure with three.js, owns the playback
 // clock and the camera, and exposes window.simonPlayer.state() for the done-check.
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/three/OrbitControls.js';
@@ -36,25 +36,27 @@ const BONE_RADIUS = { face: 0.007, body: 0.014 };
 
 // ---- animation data -------------------------------------------------------------------
 
-function personOf(frame) {
-  const people = Array.isArray(frame && frame.people) ? frame.people : [];
-  return people.find((person) => person && person.id === 0) || people[0] || null;
+// A normalized joint is [x, y, z]; the frame holds the 17 joints in JOINTS order, as a list or
+// as an object keyed by joint name (web/formats.js, AC-F04).
+function jointOf(joints, index) {
+  return Array.isArray(joints) ? joints[index] : joints[JOINTS[index]];
 }
 
 function readFrame(frame, into, offset) {
-  const person = personOf(frame);
-  if (!person || !person.joints) return null;
+  const joints = frame && frame.joints;
+  if (!joints) return null;
   let lowestAnkle = Infinity;
   for (let j = 0; j < JOINTS.length; j += 1) {
-    const point = person.joints[JOINTS[j]];
-    if (!point || ![point.x, point.y, point.z].every(Number.isFinite)) return null;
-    into.set([point.x, point.y, point.z], offset + j * 3);
-    if (JOINTS[j].endsWith('_ankle')) lowestAnkle = Math.min(lowestAnkle, point.y);
+    const point = jointOf(joints, j);
+    if (!point || point.length < 3 || ![point[0], point[1], point[2]].every(Number.isFinite)) return null;
+    into.set([point[0], point[1], point[2]], offset + j * 3);
+    if (JOINTS[j].endsWith('_ankle')) lowestAnkle = Math.min(lowestAnkle, point[1]);
   }
   return lowestAnkle;
 }
 
-// Returns {fps, frameCount, duration, positions, floorY}, or null when the file is unusable.
+// Takes the normalized animation of web/formats.js ({fps, frames: [{joints}]}). Returns
+// {fps, frameCount, duration, positions, floorY}, or null when it is unusable.
 export function parseAnimation(raw) {
   if (!raw || !(raw.fps > 0) || !Array.isArray(raw.frames) || raw.frames.length === 0) return null;
   const positions = new Float32Array(raw.frames.length * FRAME_FLOATS);

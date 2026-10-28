@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-6-recording-catalog/contracts/animation.v1.schema.json",
+  "title": "animation.json, simon.animation.v1 (Part 4)",
+  "description": "Part 4's animation. Each frame carries joints directly. A frame's time is t in seconds, else index / fps, else its position divided by fps; times must increase. interpolated is a boolean, missing means false. Part 6 recognizes it by the format field, else by shape: fps and frames[0].joints.",
+  "type": "object",
+  "required": [
+    "fps",
+    "frames"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.animation.v1"
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    }
+  },
+  "$defs": {
+    "joint": {
+      "description": "One joint: an object with x, y, z, or an array of three or more numbers (x, y, z first). Part 6 keeps x, y, z and ignores the rest.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "number"
+          }
+        }
+      ]
+    },
+    "jointMap": {
+      "description": "All 17 canonical joints. Extra joints are ignored.",
+      "type": "object",
+      "required": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ],
+      "properties": {
+        "nose": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ankle": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ankle": {
+          "$ref": "#/$defs/joint"
+        }
+      }
+    },
+    "person": {
+      "type": "object",
+      "required": [
+        "joints"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "joints": {
+          "$ref": "#/$defs/jointMap"
+        }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": [
+        "joints"
+      ],
+      "properties": {
+        "t": {
+          "description": "Seconds. When it is not a number, index over fps, else the frame's position over fps, is its time."
+        },
+        "interpolated": {
+          "type": "boolean"
+        },
+        "joints": {
+          "$ref": "#/$defs/jointMap"
+        }
+      }
+    }
+  }
+}

@@ -11,5 +11,28 @@
   "description": "Arms and legs open and close, eight repetitions.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 8000,
-  "files_source": "fixture"
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 6,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "72d0d5b3376de21d61f9ef8df4b0fac830b72aa339163591690cb129c7250fa5",
+      "bytes": 1456
+    },
+    "skeleton": {
+      "part": 6,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "1a094538e43c151b80355f1e62c6aced3d0f2d637f032f3e32a1fd78849e4624",
+      "bytes": 122946
+    },
+    "animation": {
+      "part": 6,
+      "format": "simon.animation/1",
+      "detected_by": "version",
+      "sha256": "408467b501cf120b832bc93ff80a7444a3dfd6a7bb4589054432517a78ffd12b",
+      "bytes": 241120
+    }
+  }
 }

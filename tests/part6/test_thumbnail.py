@@ -1,12 +1,31 @@
-"""part6/thumbnail.py: a small two-colour front-view drawing of the middle frame."""
+"""part6/thumbnail.py: a small two-colour front-view drawing of the middle frame of a normalized
+animation (AC-F12, AC-C13)."""
 import copy
+import hashlib
+import json
 import re
+from pathlib import Path
 
-from part6 import motion, processor, thumbnail
+import pytest
+
+from part6 import formats, motion, processor, thumbnail
+
+ROOT = Path(__file__).resolve().parents[2]
+CATALOG = ROOT / "fixtures" / "output" / "catalog"
+# sha256 of the six Phase 1 thumbnails, taken before the thumbnail read normalized animations.
+PHASE1_SHA256 = {
+    "arm-wave": "164cc2723610b7ea41e26ad47480f8dd87202ab7f12017ab92585960618d82f3",
+    "forward-lunge": "4f5e8c9c297651e32254c3e5be285502061403f9d19f7c58747d5362bc35d14c",
+    "hip-twist": "33ddfdcd1ab637de14508945c7bd8ea59d710e60e98b7858a1e370c9bdc0751a",
+    "jumping-jack": "8e1460f0ce99be9fb3f3ebc9105557d90f629c830533a724fa90d2738c4dcc3e",
+    "side-step": "37410393133ce11b779937568f27fc330553abf133fdaa678dd0fd5f0fe29b72",
+    "squat": "f3c1004d86526c706abc02f414e48a01d473f0cf3d412b1f4169fa6323841f7d",
+}
 
 
 def animation():
-    return processor.generate("jumping-jack", 2000, motion.MotionParams(1.0, 2))["animation"]
+    made = processor.generate("jumping-jack", 2000, motion.MotionParams(1.0, 2))["animation"]
+    return formats.read_animation(made)
 
 
 def numbers(svg, attr):
@@ -52,14 +71,52 @@ def test_deterministic_and_uses_the_middle_frame():
     assert thumbnail.svg(anim) == thumbnail.svg(copy.deepcopy(anim))
     mid = len(anim["frames"]) // 2
     other = copy.deepcopy(anim)
-    other["frames"][mid - 1]["people"][0]["joints"]["nose"]["x"] += 0.3
-    other["frames"][0]["people"][0]["joints"]["nose"]["x"] += 0.3
+    other["frames"][mid - 1]["joints"]["nose"][0] += 0.3
+    other["frames"][0]["joints"]["nose"][0] += 0.3
     assert thumbnail.svg(other) == thumbnail.svg(anim)
-    other["frames"][mid]["people"][0]["joints"]["left_wrist"]["y"] += 0.3
+    other["frames"][mid]["joints"]["left_wrist"][1] += 0.3
     assert thumbnail.svg(other) != thumbnail.svg(anim)
 
 
 def test_a_frozen_pose_does_not_divide_by_zero():
-    joints = {n: {"x": 0.0, "y": 0.0, "z": 0.0, "conf": 1.0} for n in motion.JOINTS}
-    flat = {"frames": [{"people": [{"joints": joints}]}]}
+    joints = {n: [0.0, 0.0, 0.0] for n in motion.JOINTS}
+    flat = {"frames": [{"t": 0.0, "interpolated": False, "joints": joints}]}
     assert thumbnail.svg(flat).count("<circle") == 17
+
+
+def test_joints_as_a_list_in_the_canonical_order_draw_the_same_picture():
+    anim = animation()
+    as_lists = copy.deepcopy(anim)
+    for frame in as_lists["frames"]:
+        frame["joints"] = [frame["joints"][n] for n in motion.JOINTS]
+    assert thumbnail.svg(as_lists) == thumbnail.svg(anim)
+
+
+def test_the_drawing_does_not_depend_on_the_order_of_the_joint_keys():
+    anim = animation()
+    shuffled = copy.deepcopy(anim)
+    for frame in shuffled["frames"]:
+        frame["joints"] = dict(reversed(list(frame["joints"].items())))
+    assert thumbnail.svg(shuffled) == thumbnail.svg(anim)
+
+
+def test_a_skeleton_played_as_an_animation_has_a_thumbnail():
+    made = processor.generate("squat", 2000, motion.MotionParams(2.0, 1))["skeleton"]
+    played = formats.playable(None, formats.read_skeleton(made))
+    assert played["held"] is True
+    assert thumbnail.svg(played).count("<line") == 16
+
+
+def test_part4_animation_draws_the_same_way():
+    data = (ROOT / "fixtures" / "part4" / "exercise" / "animation.json").read_bytes()
+    svg = thumbnail.svg(formats.read_animation(json.loads(data)))
+    assert svg.count("<line") == 16 and svg.count("<circle") == 17
+
+
+@pytest.mark.parametrize("entry", sorted(PHASE1_SHA256))
+def test_the_phase_1_thumbnails_come_out_byte_identical(entry):
+    shipped = (CATALOG / entry / "thumbnail.svg").read_bytes()
+    assert hashlib.sha256(shipped).hexdigest() == PHASE1_SHA256[entry]
+    animation = formats.read_animation(json.loads(
+        (CATALOG / entry / "animation.json").read_text()))
+    assert thumbnail.svg(animation).encode() == shipped

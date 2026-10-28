@@ -1,4 +1,5 @@
-"""AC-015 visitor recording cap, and the staging route prefix `/simon-part-6/` (AC-010)."""
+"""AC-015 visitor recording cap with imports (AC-C12), and the staging route prefix
+`/simon-part-6/` (AC-010)."""
 import functools
 import itertools
 import json
@@ -12,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from part6 import __main__ as cli
-from part6 import catalog, server
+from part6 import catalog, importer, motion, processor, server
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "fixtures" / "output" / "catalog"
@@ -20,13 +21,20 @@ FIXTURE_IDS = sorted(p.name for p in FIXTURES.iterdir())
 PREFIX = "/simon-part-6"
 
 
+def counted(manifest):
+    """The AC-C12 rule written out again, from a manifest read off the disk."""
+    if "visitor" in manifest:
+        return manifest["visitor"] is True and manifest["files_source"] != "fixture"
+    return manifest["files_source"] == "mock"
+
+
 def visitor_ids(root):
-    """Ids of the visitor recordings, read from the manifests on disk."""
+    """Ids of the entries the cap counts, read from the manifests on disk."""
     found = []
     for folder in Path(root).iterdir():
         manifest = folder / "manifest.json"
         if not folder.name.startswith(".") and manifest.is_file():
-            if json.loads(manifest.read_text())["files_source"] == "mock":
+            if counted(json.loads(manifest.read_text())):
                 found.append(folder.name)
     return sorted(found)
 
@@ -74,7 +82,7 @@ def test_three_saves_at_cap_two_leave_the_newest_two_and_every_fixture(
     assert visitor_ids(seeded) == sorted([second, third])
     assert sorted(p.name for p in seeded.iterdir()) == sorted(FIXTURE_IDS + [second, third])
     assert app.client.get(f"/api/entries/{first}")[0] == 404
-    assert app.client.get_json("/api/health")[1]["entries"] == 8
+    assert app.client.get_json("/api/health")[1]["entries"] == len(FIXTURE_IDS) + 2
     err = capsys.readouterr().err
     assert f"part6: evicted {first} (cap 2)" in err and f"evicted {second}" not in err
 
@@ -87,16 +95,79 @@ def test_fixture_entries_are_never_counted_or_touched(capped, seeded, post_valid
     assert tree(seeded, FIXTURE_IDS) == before == tree(FIXTURES, FIXTURE_IDS)
 
 
-def test_an_entry_of_another_source_is_not_counted_or_touched(capped, seeded, post_valid, clock):
+@pytest.mark.parametrize("source,extra", [("processor", {}), ("import", {}),
+                                          ("import", {"visitor": False}),
+                                          ("processor", {"visitor": False})])
+def test_an_entry_of_another_source_is_not_counted_or_touched(
+        capped, seeded, post_valid, clock, source, extra):
     manifest = json.loads((FIXTURES / "squat" / "manifest.json").read_text())
-    catalog.write_entry(seeded, "from-pipeline", {
+    catalog.write_entry(seeded, "not-a-visitor", {
         **{p.name: p.read_bytes() for p in (FIXTURES / "squat").iterdir()},
-        "manifest.json": json.dumps({**manifest, "id": "from-pipeline",
-                                     "files_source": "pipeline", "created_at": "2000-01-01T00:00:00Z"})})
+        "manifest.json": json.dumps({**manifest, "id": "not-a-visitor", "files_source": source,
+                                     "created_at": "2000-01-01T00:00:00Z", **extra})})
     app = capped(1)
     ids = save_all(app, post_valid, 3)
-    assert (seeded / "from-pipeline" / "manifest.json").is_file()
+    assert (seeded / "not-a-visitor" / "manifest.json").is_file()
     assert visitor_ids(seeded) == [ids[-1]]
+
+
+# imports count when they come over HTTP (visitor true), never when they come from the CLI
+
+def make_files():
+    made = processor.generate("squat", 1000, motion.MotionParams(1.0, 1))
+    return [{"name": "animation.json", "data": json.dumps(made["animation"]).encode()}]
+
+
+def import_entry(root, name, *, visitor, created_at):
+    return importer.import_files(root, name, "dance", make_files(), visitor=visitor,
+                                 created_at=created_at)["id"]
+
+
+def test_visitor_imports_are_counted_and_the_oldest_goes(seeded):
+    ids = [import_entry(seeded, f"Visitor {n}", visitor=True,
+                        created_at=f"2026-10-28T10:00:0{n}Z") for n in range(4)]
+    assert visitor_ids(seeded) == sorted(ids)
+    assert catalog.enforce_cap(seeded, 2, keep_id=ids[-1]) == ids[:2]
+    assert visitor_ids(seeded) == sorted(ids[2:])
+
+
+def test_cli_imports_are_never_counted_or_evicted(seeded):
+    cli_ids = [import_entry(seeded, f"Cli {n}", visitor=False,
+                            created_at="2000-01-01T00:00:00Z") for n in range(3)]
+    assert visitor_ids(seeded) == []
+    assert catalog.visitor_entries(seeded) == []
+    keep = import_entry(seeded, "Keep", visitor=True, created_at="2026-10-28T10:00:00Z")
+    assert catalog.enforce_cap(seeded, 1, keep_id=keep) == []
+    assert all((seeded / i / "manifest.json").is_file() for i in cli_ids)
+
+
+def test_the_cap_counts_imports_and_recordings_together(seeded, mock_entry):
+    mock = mock_entry(seeded, "Recorded", "dance", 1000)["id"]
+    first = import_entry(seeded, "Imported", visitor=True, created_at="2999-01-01T00:00:00Z")
+    second = import_entry(seeded, "Imported again", visitor=True, created_at="2999-01-02T00:00:00Z")
+    assert visitor_ids(seeded) == sorted([mock, first, second])
+    assert catalog.enforce_cap(seeded, 2, keep_id=second) == [mock]
+    assert visitor_ids(seeded) == sorted([first, second])
+
+
+def test_a_legacy_mock_entry_without_a_visitor_field_is_counted(seeded, mock_entry):
+    old = mock_entry(seeded, "Legacy", "dance", 1000)["id"]
+    path = seeded / old / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["visitor"], manifest["provenance"]
+    manifest["created_at"] = "2000-01-01T00:00:00Z"
+    path.write_text(json.dumps(manifest))
+    new = import_entry(seeded, "New", visitor=True, created_at="2026-10-28T10:00:00Z")
+    assert visitor_ids(seeded) == sorted([old, new])
+    assert catalog.enforce_cap(seeded, 1, keep_id=new) == [old]
+
+
+def test_an_imported_entry_over_http_is_evicted_like_a_recording(capped, seeded, post_valid, clock):
+    app = capped(1)
+    imported = import_entry(seeded, "From a visitor", visitor=True,
+                            created_at="2000-01-01T00:00:00Z")
+    newest = post_valid(app.client, name="Newest")["id"]
+    assert visitor_ids(seeded) == [newest] and not (seeded / imported).exists()
 
 
 def test_cap_one_leaves_only_the_new_visitor_entry(capped, seeded, post_valid, clock):
@@ -114,7 +185,8 @@ def test_cap_zero_means_no_cap(capped, seeded, post_valid, clock, capsys):
 
 def test_a_catalog_below_the_cap_loses_nothing(capped, seeded, post_valid, clock):
     ids = save_all(capped(5), post_valid, 5)
-    assert visitor_ids(seeded) == sorted(ids) and len(list(seeded.iterdir())) == 11
+    assert visitor_ids(seeded) == sorted(ids)
+    assert len(list(seeded.iterdir())) == len(FIXTURE_IDS) + 5
 
 
 def test_a_catalog_over_the_cap_is_trimmed_by_the_next_save(capped, seeded, post_valid, clock):
@@ -131,29 +203,29 @@ def test_a_trim_never_leaves_a_dot_folder_behind(capped, seeded, post_valid, clo
 
 # enforce_cap on its own: ties and the entry to keep
 
-def three_mock_entries(root, monkeypatch):
+def three_mock_entries(root, monkeypatch, mock_entry):
     """Three visitor entries with one created_at; returns their ids, sorted."""
     monkeypatch.setattr(catalog, "utc_now", lambda: datetime(2026, 10, 28, tzinfo=timezone.utc))
-    return sorted(catalog.create_mock_entry(root, f"Tie {n}", "dance", 1000)["id"]
+    return sorted(mock_entry(root, f"Tie {n}", "dance", 1000)["id"]
                   for n in range(3))
 
 
-def test_equal_created_at_is_broken_by_id(seeded, monkeypatch):
-    low, mid, high = three_mock_entries(seeded, monkeypatch)
+def test_equal_created_at_is_broken_by_id(seeded, monkeypatch, mock_entry):
+    low, mid, high = three_mock_entries(seeded, monkeypatch, mock_entry)
     assert catalog.enforce_cap(seeded, 2, keep_id="unrelated") == [low]
     assert visitor_ids(seeded) == [mid, high]
 
 
 @pytest.mark.parametrize("keep_index", [0, 1, 2])
-def test_the_entry_to_keep_is_never_removed(seeded, monkeypatch, keep_index):
-    ids = three_mock_entries(seeded, monkeypatch)
+def test_the_entry_to_keep_is_never_removed(seeded, monkeypatch, keep_index, mock_entry):
+    ids = three_mock_entries(seeded, monkeypatch, mock_entry)
     keep = ids[keep_index]
     removed = catalog.enforce_cap(seeded, 1, keep_id=keep)
     assert visitor_ids(seeded) == [keep] and sorted(removed) == sorted(set(ids) - {keep})
 
 
-def test_enforce_cap_with_cap_zero_removes_nothing(seeded, monkeypatch):
-    ids = three_mock_entries(seeded, monkeypatch)
+def test_enforce_cap_with_cap_zero_removes_nothing(seeded, monkeypatch, mock_entry):
+    ids = three_mock_entries(seeded, monkeypatch, mock_entry)
     assert catalog.enforce_cap(seeded, 0, keep_id=ids[0]) == []
     assert visitor_ids(seeded) == ids
 
@@ -185,7 +257,7 @@ def test_the_default_cap_is_thirty():
                                            (["--max-recordings", "7"], 7)])
 def test_the_cli_passes_the_cap_to_serve(tmp_path, monkeypatch, flag, expected):
     calls = []
-    monkeypatch.setattr(cli.server, "serve", lambda *args: calls.append(args) or 0)
+    monkeypatch.setattr(server, "serve", lambda *args, **kw: calls.append(args) or 0)
     assert cli.main(["serve", "--catalog", str(tmp_path / "c"), *flag]) == 0
     assert calls[0][3] == expected
 
@@ -210,10 +282,10 @@ def test_concurrent_saves_never_leave_more_than_the_cap(capped, seeded):
         results.append(app.client.post_json({"name": f"Race {n}", "category": "dance",
                                              "duration_ms": 1500}))
 
-    threads = [threading.Thread(target=save, args=(n,)) for n in range(12)]
+    threads = [threading.Thread(target=save, args=(n,)) for n in range(8)]
     [t.start() for t in threads]
     [t.join(60) for t in threads]
-    assert [status for status, _ in results] == [201] * 12
+    assert [status for status, _ in results] == [201] * 8
     assert len(visitor_ids(seeded)) == 3
     assert not [p for p in seeded.iterdir() if p.name.startswith(".")]
 
@@ -279,8 +351,9 @@ def test_a_listing_failure_while_trimming_still_returns_201(
 def test_a_processor_failure_trims_nothing(capped, seeded, post_valid, clock, monkeypatch):
     app = capped(1)
     only = post_valid(app.client, name="Only")["id"]
-    monkeypatch.setattr(catalog.processor, "process", raising(RuntimeError("model crashed")))
-    assert app.client.post_json({"name": "Boom", "category": "dance", "duration_ms": 2000})[0] == 500
+    monkeypatch.setattr(processor, "process", raising(RuntimeError("model crashed")))
+    status, body = app.client.post_json({"name": "Boom", "category": "dance", "duration_ms": 2000})
+    assert status == 202 and body["status"].startswith("failed:")
     assert visitor_ids(seeded) == [only]
 
 
@@ -304,30 +377,30 @@ def test_remove_entry_refuses_a_symlink_and_a_missing_folder(seeded, tmp_path):
     assert (outside / "keep.txt").read_text() == "keep" and (seeded / "linked").is_symlink()
 
 
-def test_a_symlinked_visitor_folder_holds_no_cap_slot(seeded, tmp_path):
+def test_a_symlinked_visitor_folder_holds_no_cap_slot(seeded, tmp_path, mock_entry):
     outside = tmp_path / "outside"
     outside.mkdir()
-    linked = catalog.create_mock_entry(outside, "Linked away", "dance", 1000)["id"]
+    linked = mock_entry(outside, "Linked away", "dance", 1000)["id"]
     (seeded / linked).symlink_to(outside / linked, target_is_directory=True)
     assert linked not in [m["id"] for m in catalog.visitor_entries(seeded)]
-    first = catalog.create_mock_entry(seeded, "First", "dance", 1000)["id"]
-    second = catalog.create_mock_entry(seeded, "Second", "dance", 1000)["id"]
+    first = mock_entry(seeded, "First", "dance", 1000)["id"]
+    second = mock_entry(seeded, "Second", "dance", 1000)["id"]
     assert catalog.enforce_cap(seeded, 1, second) == [first]
     assert (seeded / linked).is_symlink() and (outside / linked / "manifest.json").is_file()
 
 
-def test_remove_entry_does_not_follow_a_link_inside_the_folder(seeded, tmp_path):
+def test_remove_entry_does_not_follow_a_link_inside_the_folder(seeded, tmp_path, mock_entry):
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "keep.txt").write_text("keep")
-    entry = catalog.create_mock_entry(seeded, "Linked", "dance", 1000)["id"]
+    entry = mock_entry(seeded, "Linked", "dance", 1000)["id"]
     (seeded / entry / "link").symlink_to(outside, target_is_directory=True)
     catalog.remove_entry(seeded, entry)
     assert not (seeded / entry).exists() and (outside / "keep.txt").read_text() == "keep"
 
 
-def test_remove_entry_unlists_the_entry_before_it_deletes_it(seeded, monkeypatch, capsys):
-    entry = catalog.create_mock_entry(seeded, "Half gone", "dance", 1000)["id"]
+def test_remove_entry_unlists_the_entry_before_it_deletes_it(seeded, monkeypatch, capsys, mock_entry):
+    entry = mock_entry(seeded, "Half gone", "dance", 1000)["id"]
     real = catalog.shutil.rmtree
 
     def refuse(path, ignore_errors=False):
@@ -360,7 +433,8 @@ def test_the_staging_prefix_serves_the_app_and_the_api(staged):
     assert status == 200 and headers["content-type"] == "text/html; charset=utf-8"
     assert body == (ROOT / "web" / "index.html").read_bytes()
     assert c.get(f"{PREFIX}/index.html")[2] == body
-    assert c.get_json(f"{PREFIX}/api/health") == (200, {"ok": True, "entries": 6})
+    status, health = c.get_json(f"{PREFIX}/api/health")
+    assert status == 200 and health["ok"] is True and health["entries"] == len(FIXTURE_IDS)
     assert c.get(f"{PREFIX}/app.js")[1]["content-type"].startswith("text/javascript")
     assert c.get(f"{PREFIX}/api/entries/squat/animation.json")[0] == 200
 

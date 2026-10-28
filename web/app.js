@@ -1,24 +1,26 @@
 // Hash router: one screen at a time, mounted into #app and destroyed on leaving.
 //   #/ or #/?category=dance&q=wave   catalog
-//   #/movement/<id>                  detail
+//   #/movement/<id> or #/entry/<id>  detail
 //   #/record                         record
+//   #/import                         import
 // Anything else shows the catalog.
 import { mountCatalog } from './catalog.js';
 import { mountDetail } from './detail.js';
+import { mountImport } from './import.js';
 import { mountRecord } from './record.js';
 
 const CATEGORIES = ['exercise', 'dance'];
-const MOVEMENT_PREFIX = '/movement/';
-const TITLES = { catalog: 'Movements', record: 'Record' };
+const DETAIL_PREFIXES = ['/movement/', '/entry/'];
+const TITLES = { catalog: 'Movements', record: 'Record', import: 'Import' };
 
 function parseRoute(hash) {
   const raw = hash.replace(/^#/, '');
   const cut = raw.indexOf('?');
   const path = cut < 0 ? raw : raw.slice(0, cut);
   if (path === '/record') return { name: 'record' };
-  if (path.startsWith(MOVEMENT_PREFIX) && path.length > MOVEMENT_PREFIX.length) {
-    return { name: 'detail', id: decodeId(path.slice(MOVEMENT_PREFIX.length)) };
-  }
+  if (path === '/import') return { name: 'import' };
+  const prefix = DETAIL_PREFIXES.find((candidate) => path.startsWith(candidate) && path.length > candidate.length);
+  if (prefix) return { name: 'detail', id: decodeId(path.slice(prefix.length)) };
   const onCatalogPath = path === '/' || path === '';
   const params = new URLSearchParams(onCatalogPath && cut >= 0 ? raw.slice(cut + 1) : '');
   const category = params.get('category');
@@ -37,7 +39,9 @@ function decodeId(text) {
   }
 }
 
-const MOUNTS = { catalog: mountCatalog, detail: mountDetail, record: mountRecord };
+const MOUNTS = {
+  catalog: mountCatalog, detail: mountDetail, record: mountRecord, import: mountImport,
+};
 const root = document.getElementById('app');
 window.simonPlayer = null;
 let current = null;

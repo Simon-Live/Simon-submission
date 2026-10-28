@@ -1,0 +1,41 @@
+{
+  "id": "conf-fixture-part4",
+  "name": "Fixture in Part 4 formats",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-28T00:00:00Z",
+  "schema_version": 1,
+  "category": "dance",
+  "description": "Part 4's shipped step-touch, kept as a fixture entry in its v1 formats.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 4000,
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 4,
+      "format": "simon.keyframes.v1",
+      "detected_by": "version",
+      "sha256": "ea21629dc708a53a33d6a0cd25a2ea330d4119df707fa0f47563a60204f1baf4",
+      "bytes": 1163,
+      "source": "simon-part-4-animate-keyframes@9f4c073:fixtures/input/dance/keyframes.json"
+    },
+    "skeleton": {
+      "part": 4,
+      "format": "simon.skeleton.v1",
+      "detected_by": "version",
+      "sha256": "e9b6dd32b8287d3cabb632c49a2836a705a758e633150536ad8306a121a3c9fa",
+      "bytes": 64980,
+      "source": "simon-part-4-animate-keyframes@9f4c073:fixtures/input/dance/skeleton.json"
+    },
+    "animation": {
+      "part": 4,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "039213b9c43c42349f70f05a4b0ff93c9036e2f3d05963e495ce52e967c63fdf",
+      "bytes": 207963,
+      "source": "simon-part-4-animate-keyframes@9f4c073:fixtures/output/dance/animation.json"
+    }
+  }
+}

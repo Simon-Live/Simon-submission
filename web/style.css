@@ -141,11 +141,20 @@ a { color: var(--accent-strong); }
 
 .catalog-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
   margin: var(--s2) 0 var(--s4);
 }
+
+.catalog-head h1 { min-width: 0; font-size: clamp(22px, 5.8vw, 28px); }
+
+.head-actions { display: flex; flex: none; gap: var(--s2); }
+
+.head-actions .btn { padding: 0 var(--s3); }
+
+.import-open { color: var(--accent-strong); }
 
 .record-open::before {
   content: "";
@@ -722,6 +731,245 @@ legend.field-label { margin-bottom: var(--s2); }
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+/* Format errors, skeleton note, follow and the files panel ------------------------------ */
+
+.format-error {
+  margin: 0 0 var(--s3);
+  padding: var(--s3) var(--s4);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-s);
+  background: #fef2f2;
+  color: var(--error);
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.format-error p { margin: 0; }
+
+.format-error p + p { margin-top: var(--s2); }
+
+.note {
+  margin: var(--s3) 2px 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-wrap: pretty;
+}
+
+.follow { display: grid; gap: var(--s3); margin-top: var(--s3); }
+
+.follow-btn { width: 100%; }
+
+.follow-note {
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  border-radius: var(--radius-s);
+  background: var(--tint);
+  color: var(--accent-strong);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.files { margin-top: var(--s5); }
+
+.files-title { margin: 0 0 var(--s2); font-size: 15px; font-weight: 700; }
+
+.file-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  list-style: none;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 44px;
+  padding: var(--s2) var(--s4);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.file-row + .file-row { border-top: 1px solid var(--line); }
+
+.file-row::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.file-row[data-state="missing"] { color: var(--muted); }
+
+.file-row[data-state="missing"]::before {
+  border: 1.5px solid #98a2b8;
+  background: transparent;
+}
+
+/* Import ------------------------------------------------------------------------------- */
+
+.import h1 { margin: var(--s2) 0 var(--s3); }
+
+.import-lead { margin: 0 0 var(--s4); color: var(--muted); text-wrap: pretty; }
+
+.dropzone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1);
+  min-height: 132px;
+  padding: var(--s5) var(--s4);
+  border: 2px dashed var(--tint-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+  cursor: pointer;
+}
+
+.dropzone.is-over { border-color: var(--accent); background: var(--tint); }
+
+.dropzone:has(.dropzone-input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.dropzone-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dropzone-input:focus-visible { outline: none; }
+
+.dropzone-title { color: var(--accent-strong); font-size: 17px; font-weight: 650; }
+
+.dropzone-hint { color: var(--muted); font-size: 14px; text-wrap: balance; }
+
+.import-note {
+  margin: var(--s3) 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.import-list {
+  display: grid;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-list:empty { display: none; }
+
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s2) var(--s2) var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+}
+
+.btn-icon { flex: none; width: 44px; padding: 0; }
+
+.icon-x {
+  position: relative;
+  width: 16px;
+  height: 16px;
+}
+
+.icon-x::before,
+.icon-x::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.icon-x::before { transform: rotate(45deg); }
+
+.icon-x::after { transform: rotate(-45deg); }
+
+.import-row.is-error { border-color: #fecaca; background: #fef2f2; }
+
+.import-row-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.import-row-name { font-weight: 650; overflow-wrap: anywhere; }
+
+.import-row-detail { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+
+.import-row-error { color: var(--error); font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+
+.import-missing {
+  margin: var(--s3) 0 var(--s4);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--radius-s);
+  background: var(--tint);
+  color: var(--accent-strong);
+  font-size: 15px;
+  font-weight: 600;
+  text-wrap: pretty;
+}
+
+.import-repeated {
+  margin: calc(var(--s2) * -1) 0 var(--s4);
+  padding: var(--s3) var(--s4);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-s);
+  background: #fef2f2;
+  color: var(--error);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.field-hint { margin: 0; color: var(--error); font-size: 14px; font-weight: 600; }
+
+.select-input {
+  appearance: none;
+  padding-right: 44px;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23566077' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 16px center / 14px;
+}
+
+.actions-single { grid-template-columns: 1fr; }
+
+.form-error p { margin: var(--s1) 0 0; overflow-wrap: anywhere; }
+
+/* A failed job on the record screen ------------------------------------------------------ */
+
+.failure {
+  display: grid;
+  gap: var(--s3);
+  padding: var(--s4);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius);
+  background: #fef2f2;
+}
+
+.failure-head { margin: 0; color: var(--error); font-weight: 700; overflow-wrap: anywhere; }
+
+.failure-reason { margin: 0; overflow-wrap: anywhere; }
 
 @keyframes pulse {
   50% {

@@ -1,0 +1,39 @@
+{
+  "id": "conf-processor-fake",
+  "name": "Fake Part 4 processor",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-28T00:00:00Z",
+  "schema_version": 1,
+  "category": "exercise",
+  "description": "Files from the fake Part 4 processor (test data).",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 2100,
+  "files_source": "processor",
+  "provenance": {
+    "keyframes": {
+      "part": 4,
+      "format": "simon.keyframes.v1",
+      "detected_by": "version",
+      "sha256": "e86e554b62f9fb200e4f5e48530c0e9989988c93411ec11150ca29d5795115d8",
+      "bytes": 356
+    },
+    "skeleton": {
+      "part": 4,
+      "format": "simon.skeleton.v1",
+      "detected_by": "version",
+      "sha256": "395a22c85ff98660f0e8d13ba21ef39fd79558f45bbdc0429ad8597df3f04b1d",
+      "bytes": 5165
+    },
+    "animation": {
+      "part": 4,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "8ae382508e6677ef6be023509ba56642a67c94a056fbb175124fe5d408d02289",
+      "bytes": 38717
+    }
+  },
+  "visitor": false
+}

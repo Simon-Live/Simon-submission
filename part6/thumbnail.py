@@ -1,5 +1,11 @@
-"""Card thumbnail: the middle animation frame in front view, two colours, transparent background."""
+"""Card thumbnail: the middle animation frame in front view, two colours, transparent background.
+
+Draws from a normalized animation (part6/formats.py): `frames[].joints` holds `[x, y, z]` per
+joint, as a mapping from joint name or as a list in the canonical joint order.
+"""
 from __future__ import annotations
+
+from .motion import JOINTS
 
 SIZE, MARGIN = 160, 12
 LEFT_COLOUR, RIGHT_COLOUR = "#0f9d8f", "#e8624a"
@@ -21,22 +27,29 @@ def _side(joint):
     return "right" if joint.startswith("right_") else "left"
 
 
+def _named(joints):
+    """{joint name: (x, y)} from a mapping or a list in the canonical joint order."""
+    if isinstance(joints, dict):
+        joints = [joints[name] for name in JOINTS]
+    return {name: (joint[0], joint[1]) for name, joint in zip(JOINTS, joints)}
+
+
 def _project(joints):
     """Front view (x right, y up, z dropped) fitted into the viewBox with the margin."""
-    xs = [j["x"] for j in joints.values()]
-    ys = [j["y"] for j in joints.values()]
+    joints = _named(joints)
+    xs = [x for x, _ in joints.values()]
+    ys = [y for _, y in joints.values()]
     span_x, span_y = max(max(xs) - min(xs), 1e-6), max(max(ys) - min(ys), 1e-6)
     inner = SIZE - 2 * MARGIN
     scale = min(inner / span_x, inner / span_y)
     ox = (SIZE - span_x * scale) / 2 - min(xs) * scale
     oy = (SIZE - span_y * scale) / 2 + max(ys) * scale
-    return {n: (ox + j["x"] * scale, oy - j["y"] * scale) for n, j in joints.items()}
+    return {n: (ox + x * scale, oy - y * scale) for n, (x, y) in joints.items()}
 
 
 def svg(animation):
     frames = animation["frames"]
-    joints = frames[len(frames) // 2]["people"][0]["joints"]
-    pts = _project(joints)
+    pts = _project(frames[len(frames) // 2]["joints"])
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {SIZE} {SIZE}" '
              f'width="{SIZE}" height="{SIZE}" aria-hidden="true">',
              '<g stroke-width="3" stroke-linecap="round" fill="none">']

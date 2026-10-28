@@ -1,25 +1,41 @@
-// Record screen (AC-008): a mock camera view with a timer and Stop, then a name and type
-// form that posts to the server. Nothing here touches a camera API or a file input.
-import { el, createEntry, formatTime } from './api.js';
+// Record screen (AC-008, AC-C10): a mock camera view with a timer and Stop, then a name and
+// type form that posts to the server. A saved recording is either done at once (201) or a job
+// whose stage this screen shows until it is done or failed (202). Nothing here touches a camera
+// API or a file input.
+import {
+  el, createEntry, getJob, getEntry, formatTime, cleanName, nameProblem,
+} from './api.js';
 
-const LIMITS = { minStopMs: 1000, maxMs: 120000, minProcessingMs: 600, nameMax: 80 };
+const LIMITS = { minStopMs: 1000, maxMs: 120000, minProcessingMs: 600, pollMs: 500, pollFailures: 10 };
 const TEXT = {
-  noName: 'Enter a name.',
-  longName: 'Use 80 characters or fewer.',
   noType: 'Choose Exercise or Dance.',
   saveFailed: 'Could not save. Try again.',
+  processing: 'Processing',
+  queued: 'Waiting to start',
 };
-
-// Collapses whitespace and drops control characters, as the server's name rule does.
-function cleanName(raw) {
-  return raw.replace(/\s+/g, ' ').replace(/[\u0000-\u001f\u007f]/g, '').trim();
-}
+const FAILED_STATUS = /^failed:([^:]*):\s*([\s\S]*)$/;
+const UNSTAGED = 'processing';
 
 function problemWith(name, category) {
-  const length = Array.from(name).length;
-  if (length === 0) return TEXT.noName;
-  if (length > LIMITS.nameMax) return TEXT.longName;
-  return category ? null : TEXT.noType;
+  return nameProblem(name) || (category ? null : TEXT.noType);
+}
+
+// What the processing panel says for a job status: queued, processing:<stage> or anything else.
+function stageText(status) {
+  if (status === 'queued') return TEXT.queued;
+  if (typeof status === 'string' && status.startsWith('processing:')) {
+    return `${TEXT.processing}: ${status.slice('processing:'.length)}`;
+  }
+  return TEXT.processing;
+}
+
+// "failed:pose: no person found" -> {stage: 'pose', reason: 'No person found.'}
+function parseFailure(status) {
+  const match = FAILED_STATUS.exec(status);
+  const stage = (match && match[1].trim()) || UNSTAGED;
+  const reason = match ? match[2].trim() : '';
+  const sentence = reason ? `${reason[0].toUpperCase()}${reason.slice(1)}` : '';
+  return { stage, reason: /[.!?]$/.test(sentence) ? sentence : sentence && `${sentence}.` };
 }
 
 function pause(ms) {
@@ -39,14 +55,26 @@ function radioView(testid, value, text) {
     el('span', {}, text));
 }
 
+function failureView(status, onRetry, onDiscard) {
+  const { stage, reason } = parseFailure(status);
+  return el('div', { class: 'failure', 'data-testid': 'processing-failed', role: 'alert' },
+    el('p', { class: 'failure-head' }, `Processing failed at ${stage}.`),
+    reason && el('p', { class: 'failure-reason' }, reason),
+    el('div', { class: 'actions' },
+      el('button', { type: 'button', class: 'btn btn-primary', 'data-testid': 'retry', onclick: onRetry }, 'Try again'),
+      el('button', { type: 'button', class: 'btn', 'data-testid': 'discard', onclick: onDiscard }, 'Discard')));
+}
+
 function formView() {
+  const label = el('span', {}, TEXT.processing);
   const ui = {
+    label,
     name: el('input', { id: 'record-name', type: 'text', class: 'text-input', autocomplete: 'off', 'data-testid': 'name' }),
     exercise: radioView('type-exercise', 'exercise', 'Exercise'),
     dance: radioView('type-dance', 'dance', 'Dance'),
     error: el('p', { class: 'form-error', 'data-testid': 'form-error', role: 'alert', hidden: true }),
     processing: el('p', { class: 'processing', 'data-testid': 'processing', role: 'status', hidden: true },
-      el('span', { class: 'spinner', 'aria-hidden': 'true' }), 'Processing'),
+      el('span', { class: 'spinner', 'aria-hidden': 'true' }), label),
     save: el('button', { type: 'submit', class: 'btn btn-primary', 'data-testid': 'save' }, 'Save'),
     discard: el('button', { type: 'button', class: 'btn', 'data-testid': 'discard' }, 'Discard'),
   };
@@ -77,11 +105,23 @@ function showProblem(form, message) {
   form.error.hidden = !message;
 }
 
+// A job shows its stage in the processing panel; null goes back to the plain "Processing".
+function showStage(form, status) {
+  if (status === null) {
+    form.label.removeAttribute('data-testid');
+    form.label.textContent = TEXT.processing;
+    return;
+  }
+  form.label.setAttribute('data-testid', 'processing-stage');
+  form.label.textContent = stageText(status);
+}
+
 export function mountRecord(root, route, nav) {
   const startedAt = performance.now();
   let destroyed = false;
   let durationMs = 0;
   let form = null;
+  let lastBody = null;
 
   const timer = el('p', { class: 'timer', 'data-testid': 'timer' }, '0:00');
   const camera = cameraView();
@@ -106,6 +146,75 @@ export function mountRecord(root, route, nav) {
     showProblem(form, problemWith(name, chosenCategory(form)));
   }
 
+  function saveFailed() {
+    if (destroyed) return;
+    setBusy(form, false);
+    showProblem(form, TEXT.saveFailed);
+  }
+
+  function openEntry(route, id) {
+    nav.replace(`#/${route}/${encodeURIComponent(id)}`);
+  }
+
+  function retry() {
+    panel.replaceChildren(form.node);
+    submit(lastBody).catch(saveFailed);
+  }
+
+  function showFailure(status) {
+    setBusy(form, false);
+    panel.replaceChildren(failureView(status, retry, () => nav.back()));
+  }
+
+  // A job that is gone from the server's memory may still have stored its entry.
+  async function resolveLost(id) {
+    const found = await getEntry(id);
+    if (destroyed) return;
+    if (found.status === 'ok') openEntry('entry', id);
+    else saveFailed();
+  }
+
+  // Follows a 202 job: shows each stage, polls every 500 ms, stops when the screen is left.
+  async function watch(accepted) {
+    let status = String(accepted.status || 'queued');
+    let entryId = accepted.id;
+    let failures = 0;
+    while (!destroyed) {
+      if (status === 'done') return openEntry('entry', entryId);
+      if (status.startsWith('failed')) return showFailure(status);
+      showStage(form, status);
+      await pause(LIMITS.pollMs);
+      if (destroyed) return undefined;
+      const result = await getJob(accepted.id);
+      if (destroyed) return undefined;
+      if (result.status === 'missing') return resolveLost(accepted.id);
+      if (result.status === 'ok' && result.data) {
+        failures = 0;
+        status = String(result.data.status || status);
+        if (result.data.entry && result.data.entry.id) entryId = result.data.entry.id;
+      } else {
+        failures += 1;
+        if (failures >= LIMITS.pollFailures) return saveFailed();
+      }
+    }
+    return undefined;
+  }
+
+  async function submit(body) {
+    lastBody = body;
+    setBusy(form, true);
+    showStage(form, null);
+    const [result] = await Promise.all([createEntry(body), pause(LIMITS.minProcessingMs)]);
+    if (destroyed) return;
+    if (result.status !== 'ok' || !result.data || !result.data.id) {
+      saveFailed();
+    } else if (result.code === 201) {
+      openEntry('movement', result.data.id);
+    } else {
+      await watch(result.data);
+    }
+  }
+
   async function save() {
     const name = cleanName(form.name.value);
     const category = chosenCategory(form);
@@ -113,18 +222,7 @@ export function mountRecord(root, route, nav) {
     const problem = problemWith(name, category);
     showProblem(form, problem);
     if (problem) return;
-    setBusy(form, true);
-    const [result] = await Promise.all([
-      createEntry({ name, category, duration_ms: durationMs }),
-      pause(LIMITS.minProcessingMs),
-    ]);
-    if (destroyed) return;
-    if (result.status === 'ok' && result.data && result.data.id) {
-      nav.replace(`#/movement/${encodeURIComponent(result.data.id)}`);
-      return;
-    }
-    setBusy(form, false);
-    showProblem(form, TEXT.saveFailed);
+    await submit({ name, category, duration_ms: durationMs });
   }
 
   function finish(elapsedMs) {
@@ -137,11 +235,7 @@ export function mountRecord(root, route, nav) {
     form.checked = false;
     form.node.addEventListener('submit', (event) => {
       event.preventDefault();
-      save().catch(() => {
-        if (destroyed) return;
-        setBusy(form, false);
-        showProblem(form, TEXT.saveFailed);
-      });
+      save().catch(saveFailed);
     });
     form.node.addEventListener('input', revalidate);
     form.node.addEventListener('change', revalidate);

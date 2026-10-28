@@ -1,14 +1,13 @@
 // make check-6: Done-check driver for Part 6 (docs/specs/part6-recording-catalog.md, "Done-check").
 // Starts the server on a temp catalog, drives Playwright Chromium under Pixel 7 emulation, measures
 // every metric by its locked rule and prints one JSON line on stdout. Every log line goes to stderr.
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  BrowserMissingError, MIN_SCRUB_TRAVEL_S, REPO_ROOT, allowProbe, angleDiff, byId, cardIds, closePage, createObserver, frames,
-  launchBrowser, log, makeTempCatalog, measureTargets, newPhoneContext, orbitDrag, phone360, playerState,
-  readManifests, removeTempDir, round, screenReady, screenVisible, scrubDrag, settle, sleep, startServer,
-  stopServer, tap, timerSeconds, visibleBox, waitForCardIds, waitForPlayer, waitForText, waitForTimerAtLeast,
+  BrowserMissingError, MIN_SCRUB_TRAVEL_S, allowProbe, angleDiff, byId, cardIds, closePage, createObserver, failedFromSummary,
+  flag, frames, launchBrowser, log, makeStep, makeTempCatalog, measureTargets, newPhoneContext, orbitDrag, passes, phone360,
+  pixelTest, playerState, readManifests, removeTempDir, round, runPython, screenReady, screenVisible, scrubDrag, settle, sleep,
+  startServer, stopServer, tap, timerSeconds, visibleBox, waitForCardIds, waitForPlayer, waitForText, waitForTimerAtLeast,
 } from './harness.mjs';
 
 const THRESHOLDS = {
@@ -57,7 +56,6 @@ const DEFAULT_VIEW = { azimuth: 30, polar: 75, distance: 3.2 };
 
 // ---------------------------------------------------------------- small helpers
 
-const flag = (ok) => (ok ? 1 : 0);
 const lowerName = (m) => String(m.name).toLowerCase();
 const matchesTerms = (m, text) => text.toLowerCase().split(/\s+/).filter(Boolean).every((t) => lowerName(m).includes(t));
 const idsOf = (manifests) => manifests.map((m) => m.id);
@@ -68,41 +66,12 @@ function allOf(...parts) {
   return parts.every((p) => p === true) ? 1 : null;
 }
 
-async function step(label, fn) {
-  if (Date.now() - STARTED > BUDGET_MS) {
-    log(`step skipped (time budget used): ${label}`);
-    return undefined;
-  }
-  try {
-    return await fn();
-  } catch (error) {
-    log(`step failed: ${label}: ${String(error.message).split('\n').slice(0, 2).join(' | ')}`);
-    return undefined;
-  }
-}
+const step = makeStep(BUDGET_MS, STARTED);
 
-function passes(value, limit) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return false;
-  return (limit.min === undefined || value >= limit.min) && (limit.max === undefined || value <= limit.max);
-}
+// A catalog entry opens at #/entry/<id> or at #/movement/<id>; both reach the same detail screen.
+const isEntryHash = (hash, id) => hash === `#/entry/${id}` || hash === `#/movement/${id}`;
 
 // ---------------------------------------------------------------- python metrics
-
-function runPython(args) {
-  log(`run: python3 ${args.join(' ')}`);
-  const result = spawnSync('python3', args, { cwd: REPO_ROOT, encoding: 'utf8', timeout: 120_000 });
-  if (result.stdout) process.stderr.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-  return result;
-}
-
-function failedFromSummary(stdout, status) {
-  const line = String(stdout).split('\n').reverse().find((l) => /\bin \d+(\.\d+)?s\b/.test(l));
-  const failed = line ? Number((/(\d+) failed/.exec(line) || [0, 0])[1]) : 0;
-  const errors = line ? Number((/(\d+) errors?\b/.exec(line) || [0, 0])[1]) : 0;
-  const total = failed + errors;
-  return status !== 0 && total === 0 ? 1 : total;
-}
 
 function pythonMetrics(m) {
   const validate = runPython(['-m', 'part6', 'validate', 'fixtures/output/catalog']);
@@ -167,7 +136,7 @@ async function openCardCheck(env, page, id) {
   await screenReady(page, env.obs, 'detail');
   const name = (await byId(page, 'detail-name').textContent())?.trim();
   const dataId = await byId(page, 'detail').getAttribute('data-id');
-  return name === manifest.name && dataId === id && new URL(page.url()).hash === `#/movement/${id}`;
+  return name === manifest.name && dataId === id && isEntryHash(new URL(page.url()).hash, id);
 }
 
 async function backNavigationCheck(env, page) {
@@ -242,25 +211,6 @@ const rateOf = (samples) => {
 };
 const syncError = (s) => Math.abs(s.frame - Math.round(s.frame_position_s * s.fps));
 const pausedSyncError = (s) => Math.abs(s.frame - Math.round(s.position_s * s.fps));
-
-function pixelTest(page) {
-  return page.evaluate(() => {
-    const canvas = document.querySelector('[data-testid="player-canvas"]');
-    const hex = canvas.getAttribute('data-bg') || '#000000';
-    const bg = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-    const copy = document.createElement('canvas');
-    copy.width = canvas.width;
-    copy.height = canvas.height;
-    const ctx = copy.getContext('2d');
-    ctx.drawImage(canvas, 0, 0);
-    const { data } = ctx.getImageData(0, 0, copy.width, copy.height);
-    let count = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      if (Math.abs(data[i] - bg[0]) > 16 || Math.abs(data[i + 1] - bg[1]) > 16 || Math.abs(data[i + 2] - bg[2]) > 16) count += 1;
-    }
-    return { count, bg: hex };
-  });
-}
 
 async function renderCheck(env, page) {
   const pixels = await pixelTest(page);
@@ -434,7 +384,7 @@ async function savedEntry(env, page, name) {
   const id = await byId(page, 'detail').getAttribute('data-id');
   const title = (await byId(page, 'detail-name').textContent())?.trim();
   const onDisk = (await manifestsNow(env)).find((m) => m.id === id);
-  const inHash = new URL(page.url()).hash === `#/movement/${id}`;
+  const inHash = isEntryHash(new URL(page.url()).hash, id);
   const stored = !!onDisk && onDisk.name === name && onDisk.category === 'dance';
   return { id, ok: !!id && title === name && inHash && stored, onDisk };
 }

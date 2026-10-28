@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-6-recording-catalog/contracts/job-status.schema.json",
+  "title": "Processing job status",
+  "description": "The status string of a job in GET api/jobs/<id>, whose body is {id, status, entry}. The stage is lower case letters, digits, underscore or hyphen, 1 to 32 characters. failed carries the stage and a reason after a colon and a space.",
+  "type": "string",
+  "pattern": "^(queued|done|processing:[a-z0-9][a-z0-9_-]{0,31}|failed:[a-z0-9][a-z0-9_-]{0,31}: .+)$"
+}

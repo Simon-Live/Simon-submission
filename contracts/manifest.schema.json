@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-6-recording-catalog/contracts/manifest.schema.json",
+  "title": "Simon Part 6 catalog entry manifest (contract v1)",
+  "description": "manifest.json of one catalog entry folder. Extra fields are allowed and ignored by Part 6. The id equals the folder name; the schema cannot say that, part6 doctor and part6 validate check it.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "video_uri",
+    "keyframes",
+    "skeleton",
+    "animation",
+    "created_at",
+    "schema_version",
+    "category",
+    "description",
+    "thumbnail",
+    "duration_ms",
+    "files_source"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+    },
+    "name": {
+      "description": "1 to 80 characters, no space at either end.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^\\S([\\s\\S]*\\S)?$"
+    },
+    "video_uri": {
+      "description": "The video file name in the folder, or null when there is no video.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/fileName"
+        }
+      ]
+    },
+    "keyframes": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/fileName"
+        }
+      ]
+    },
+    "skeleton": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/fileName"
+        }
+      ]
+    },
+    "animation": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/fileName"
+        }
+      ]
+    },
+    "created_at": {
+      "description": "UTC time as YYYY-MM-DDTHH:MM:SSZ.",
+      "type": "string",
+      "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "category": {
+      "enum": [
+        "exercise",
+        "dance"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "thumbnail": {
+      "$ref": "#/$defs/fileName"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "files_source": {
+      "description": "Where the files came from.",
+      "enum": [
+        "fixture",
+        "mock",
+        "import",
+        "processor"
+      ]
+    },
+    "visitor": {
+      "description": "True on entries made through the HTTP API (Record or Import).",
+      "type": "boolean"
+    },
+    "provenance": {
+      "description": "Per file: which part made it, its format and how that was found, and its SHA-256 and size when it was stored. A key other than keyframes, skeleton, animation and video, and a field this version does not know inside a record, are ignored and allowed (the version policy in CONTRACT.md).",
+      "type": "object",
+      "properties": {
+        "keyframes": {
+          "$ref": "#/$defs/provenanceKeyframes"
+        },
+        "skeleton": {
+          "$ref": "#/$defs/provenanceSkeleton"
+        },
+        "animation": {
+          "$ref": "#/$defs/provenanceAnimation"
+        },
+        "video": {
+          "$ref": "#/$defs/provenanceVideo"
+        }
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "skeleton"
+      ],
+      "properties": {
+        "skeleton": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "required": [
+        "animation"
+      ],
+      "properties": {
+        "animation": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "fileName": {
+      "description": "A plain file name inside the entry folder: letters, digits, dot, underscore or hyphen, not starting with a dot, no slash.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "part": {
+      "description": "The Simon part that produced the file.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "provenanceKeyframes": {
+      "type": "object",
+      "required": [
+        "part",
+        "format",
+        "detected_by",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "part": {
+          "$ref": "#/$defs/part"
+        },
+        "format": {
+          "enum": [
+            "simon.keyframes/part1",
+            "simon.keyframes.v1"
+          ]
+        },
+        "detected_by": {
+          "enum": [
+            "version",
+            "shape"
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "string"
+        },
+        "original_name": {
+          "type": "string"
+        }
+      }
+    },
+    "provenanceSkeleton": {
+      "type": "object",
+      "required": [
+        "part",
+        "format",
+        "detected_by",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "part": {
+          "$ref": "#/$defs/part"
+        },
+        "format": {
+          "enum": [
+            "simon.skeleton/1",
+            "simon.skeleton.v1"
+          ]
+        },
+        "detected_by": {
+          "enum": [
+            "version",
+            "shape"
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "string"
+        },
+        "original_name": {
+          "type": "string"
+        }
+      }
+    },
+    "provenanceAnimation": {
+      "type": "object",
+      "required": [
+        "part",
+        "format",
+        "detected_by",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "part": {
+          "$ref": "#/$defs/part"
+        },
+        "format": {
+          "enum": [
+            "simon.animation/1",
+            "simon.animation.v1"
+          ]
+        },
+        "detected_by": {
+          "enum": [
+            "version",
+            "shape"
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "string"
+        },
+        "original_name": {
+          "type": "string"
+        }
+      }
+    },
+    "provenanceVideo": {
+      "type": "object",
+      "required": [
+        "part",
+        "format",
+        "detected_by",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "part": {
+          "$ref": "#/$defs/part"
+        },
+        "format": {
+          "type": "null"
+        },
+        "detected_by": {
+          "const": "file"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "string"
+        },
+        "original_name": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

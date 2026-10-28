@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-6-recording-catalog/contracts/import-request.schema.json",
+  "title": "Body of POST api/import",
+  "description": "JSON files go in text, a video goes in base64. At most 4 files; the server also caps the body at 24 MiB, a JSON file at 8 MiB and a video at 16 MiB decoded, and accepts only WebM or MP4 videos. File names are labels: the server stores fixed names. The body must be sent as application/json and arrive within 60 seconds. JSON is strict: NaN, Infinity and a body nested too deep are refused. One import runs at a time. The answer is 201 with the manifest; 400 with {error}: the reader's sentence or one of name, category, files, too many files, two <kind> files, <name>: is not valid JSON, <name>: file too large, <name>: not a WebM or MP4 video, <name>: not valid base64, body; 408 body too slow; 413 body too large; 503 busy, try again.",
+  "type": "object",
+  "required": [
+    "name",
+    "category",
+    "files"
+  ],
+  "properties": {
+    "name": {
+      "description": "1 to 80 characters once trimmed.",
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "enum": [
+        "exercise",
+        "dance"
+      ]
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    }
+  },
+  "$defs": {
+    "file": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "text"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "base64"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "base64": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

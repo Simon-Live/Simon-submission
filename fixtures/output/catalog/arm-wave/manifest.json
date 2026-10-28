@@ -11,5 +11,28 @@
   "description": "Both arms wave overhead, four waves.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 8000,
-  "files_source": "fixture"
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 6,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "7e85a37d89de50a1292469ff028c285921c43c997c0350c140e1a22324189d87",
+      "bytes": 766
+    },
+    "skeleton": {
+      "part": 6,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "65dd634033c48529686f955517755cac7b9cca0fad0e76e300d2f06d5b5c9723",
+      "bytes": 129126
+    },
+    "animation": {
+      "part": 6,
+      "format": "simon.animation/1",
+      "detected_by": "version",
+      "sha256": "8dea0492f798a51876cedd82ced994a2dcbf6fb656a3d0800a54cd1691395810",
+      "bytes": 253740
+    }
+  }
 }

@@ -11,5 +11,28 @@
   "description": "Step forward and lower, alternating legs, four repetitions.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 12000,
-  "files_source": "fixture"
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 6,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "71064bb687b0ebaef910fe4c870362a10fab1ac45699395504ab5931e97ab3d0",
+      "bytes": 797
+    },
+    "skeleton": {
+      "part": 6,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "c001c467ade3a4d6b8e6862ec65f8ff1500a66964fbfa13e168bb3b49fe321e3",
+      "bytes": 192304
+    },
+    "animation": {
+      "part": 6,
+      "format": "simon.animation/1",
+      "detected_by": "version",
+      "sha256": "9a0cdcd2b48dac4322dac118bdfef94f689b3e7c8e85f9b88105fbd4dfa6d84e",
+      "bytes": 379864
+    }
+  }
 }
