@@ -5,3 +5,6 @@ dist/
 out/
 *.mp4
 !fixtures/**/*.json
+.venv/
+.pytest_cache/
+.idea/
