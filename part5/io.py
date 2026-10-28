@@ -72,7 +72,7 @@ def parse_clip(doc, source="<input>"):
     if "joints" in doc and doc["joints"] != JOINTS:
         fail(f"joints must be the canonical 17 in order {JOINTS}")
     fps = doc.get("fps")
-    if fps is not None and (not isinstance(fps, (int, float)) or fps <= 0):
+    if fps is not None and not (_is_number(fps) and fps > 0):
         fail(f"fps must be a positive number, got {fps!r}")
 
     frames = doc.get(FORMATS[fmt])
@@ -99,7 +99,10 @@ def parse_clip(doc, source="<input>"):
             t[i] = index / fps
         else:
             fail(f"{where}: needs 't' (or a top-level fps)")
-        interp[i] = bool(fr.get("interpolated", False))
+        flag = fr.get("interpolated", False)
+        if not isinstance(flag, bool):
+            fail(f"{where}.interpolated must be true or false, got {flag!r}")
+        interp[i] = flag
         joints = fr.get("joints")
         if not isinstance(joints, dict):
             fail(f"{where}.joints must be an object")
@@ -109,9 +112,12 @@ def parse_clip(doc, source="<input>"):
         conf = fr.get("conf", {})
         if not isinstance(conf, dict):
             fail(f"{where}.conf must be an object of joint → 0..1, got {type(conf).__name__}")
-        bad = {k: v for k, v in conf.items() if not _is_number(v)}
+        bad = {k: v for k, v in conf.items() if not _is_number(v) or not 0 <= v <= 1}
         if bad:
-            fail(f"{where}.conf values must be numbers, got {bad!r}")
+            fail(f"{where}.conf values must be numbers in 0..1, got {bad!r}")
+        unknown_conf = set(conf) - set(JOINTS)
+        if unknown_conf:
+            fail(f"{where}.conf has unknown joint names {sorted(unknown_conf)}")
         for j, name in enumerate(JOINTS):
             p = joints.get(name)
             if p is None:
