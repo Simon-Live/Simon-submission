@@ -202,7 +202,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Label: http://127.0.0.1:{PORT}/?video=hiit-full-body", flush=True)
+    stems = videos() or [path.stem for path in sorted(INBOX.glob("*.mp4"))]
+    if stems:
+        print(f"Label: http://127.0.0.1:{PORT}/?video={stems[0]}", flush=True)
+    else:
+        print(f"Label: http://127.0.0.1:{PORT}/?video=<name>", flush=True)
     server.serve_forever()
 
 

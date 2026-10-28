@@ -2,10 +2,11 @@
 
 A local quality check runs first. A clip that is too dark, flat, blurred, or
 still is reported and not uploaded. A recoverable clip is lifted into the
-analysis file. SAM 3.1 tracks every person on that file. Muse Spark names the
-phases. Repetition times come from each person's box, so people in the same
-frame can be on different phases. A call that would cross the next $5 mark is
-not sent.
+analysis file. SAM 3.1 tracks every person on that file and returns a mask.
+Muse Spark names the phases. Repetition times come from how each person's
+silhouette changes, so a motion inside a still box still counts, and people in
+the same frame can be on different phases. A call that would cross the next $5
+mark is not sent.
 """
 
 import json
@@ -17,6 +18,11 @@ from pathlib import Path
 import numpy as np
 
 from keyframe_finder.detect import find_repetitions
+from keyframe_finder.mask_motion import (
+    find_motion_bounds,
+    frames_for_bounds,
+    mask_distance,
+)
 from keyframe_finder.meta_client import delete_file, name_sections, track_people, upload_video
 from keyframe_finder.quality import assess, format_report
 from keyframe_finder.schema import dump_json, frame_ms
@@ -28,6 +34,17 @@ INBOX = ROOT / "inbox"
 WORK = ROOT / "out" / "work"
 MAX_FRAMES = 14000
 TARGET_FPS = 8.0
+# A short clip can be watched more often without a large SAM bill.
+SHORT_CLIP_S = 20.0
+SHORT_FPS = 15.0
+# Ignore a figure that is only a sliver of the frame, or only on screen briefly.
+MIN_AREA_RATIO = 0.02
+MIN_AREA_OF_LARGEST = 0.25
+MIN_TRACK_S = 1.0
+# A person who leaves and comes back nearby is the same track.
+STITCH_GAP_S = 0.75
+STITCH_CENTER = 0.12
+STITCH_SHAPE = 0.55
 
 
 def media_info(path):
@@ -56,7 +73,8 @@ def media_info(path):
 def analysis_fps(duration_s):
     if duration_s <= 0:
         raise RuntimeError("video duration is zero")
-    fps = min(TARGET_FPS, MAX_FRAMES / duration_s)
+    target = SHORT_FPS if duration_s <= SHORT_CLIP_S else TARGET_FPS
+    fps = min(target, MAX_FRAMES / duration_s)
     if fps < 1:
         raise RuntimeError(
             "This video is longer than SAM 3.1 can take in one request even at 1 fps. "
@@ -123,6 +141,7 @@ def parse_sections(text, duration_s):
             "start_s": 0.0,
             "end_s": duration_s,
             "phase_names": ["start", "bottom", "top"],
+            "source": "fallback",
         }
     ]
     start = text.find("{")
@@ -148,10 +167,13 @@ def parse_sections(text, duration_s):
                 "start_s": start_s,
                 "end_s": end_s,
                 "phase_names": names,
+                "source": "spark",
             }
         )
     sections.sort(key=lambda section: section["start_s"])
-    return sections or fallback
+    if sections:
+        return sections
+    return fallback
 
 
 def _fill(series):
@@ -245,25 +267,200 @@ def to_source_clock(repetitions, analysis_fps, source_fps):
     return converted
 
 
-def people_from_tracks(tracks, n_frames, frame_area, fps, sections):
-    people = []
-    for object_id, samples in sorted(tracks.items()):
-        kept = [sample for sample in samples if sample["c"] is None or sample["c"] >= 0.25]
-        if len(kept) < 8:
-            continue
-        areas = [
-            max(0.0, sample["x2"] - sample["x1"]) * max(0.0, sample["y2"] - sample["y1"]) / frame_area
-            for sample in kept
+def section_for(sections, time_s):
+    """The named exercise that covers this moment. The nearest one if none do."""
+    if not sections:
+        return None
+    for section in sections:
+        if section["start_s"] <= time_s < section["end_s"]:
+            return section
+    return min(
+        sections,
+        key=lambda section: min(
+            abs(time_s - section["start_s"]),
+            abs(time_s - section["end_s"]),
+        ),
+    )
+
+
+def repetitions_from_masks(grids, centers, fps, sections):
+    """Find moves on the whole clip, then attach the name for that moment."""
+    bounds = find_motion_bounds(grids, fps, centers)
+    repetitions = []
+    for start, middle, end in bounds:
+        when = ((start + end) / 2.0) / float(fps)
+        section = section_for(sections, when)
+        names = section["phase_names"] if section else ["start", "bottom", "top"]
+        movement = section["movement"] if section else "movement"
+        try:
+            used_names = names
+            frames = frames_for_bounds(grids, fps, used_names, start, middle, end, centers)
+        except ValueError:
+            used_names = ["start", "bottom", "top"]
+            frames = frames_for_bounds(grids, fps, used_names, start, middle, end, centers)
+            movement = "movement"
+        keyframes = [
+            {"name": name, "frame": int(frame), "t_ms": frame_ms(frame, fps)}
+            for name, frame in zip(used_names, frames)
         ]
-        if not areas or float(np.median(areas)) < 0.01:
+        repetitions.append(
+            {
+                "rep": len(repetitions) + 1,
+                "movement": movement,
+                "keyframes": keyframes,
+            }
+        )
+    return repetitions
+
+
+def _sample_center(sample, width, height):
+    frame_w = sample.get("frame_w") or width
+    frame_h = sample.get("frame_h") or height
+    if not frame_w or not frame_h:
+        return None
+    return (
+        ((sample["x1"] + sample["x2"]) / 2.0) / float(frame_w),
+        ((sample["y1"] + sample["y2"]) / 2.0) / float(frame_h),
+    )
+
+
+def _track_view(object_id, samples, n_frames, frame_area, width, height):
+    kept = [sample for sample in samples if sample["c"] is None or sample["c"] >= 0.25]
+    if len(kept) < 8:
+        return None
+    areas = [
+        max(0.0, sample["x2"] - sample["x1"]) * max(0.0, sample["y2"] - sample["y1"]) / frame_area
+        for sample in kept
+    ]
+    if not areas or float(np.median(areas)) < 0.01:
+        return None
+    frames = []
+    for sample in kept:
+        frame = int(sample["frame"])
+        if 0 <= frame < n_frames:
+            frames.append(frame)
+    if not frames:
+        return None
+    return {
+        "id": int(object_id),
+        "samples": kept,
+        "median_area": float(np.median(areas)),
+        "first": min(frames),
+        "last": max(frames),
+        "width": width,
+        "height": height,
+        "n_frames": n_frames,
+    }
+
+
+def _end_center(view):
+    ordered = sorted(view["samples"], key=lambda sample: int(sample["frame"]))
+    for sample in reversed(ordered):
+        center = _sample_center(sample, view["width"], view["height"])
+        if center is not None:
+            return center, sample.get("grid")
+    return None, None
+
+
+def _start_center(view):
+    ordered = sorted(view["samples"], key=lambda sample: int(sample["frame"]))
+    for sample in ordered:
+        center = _sample_center(sample, view["width"], view["height"])
+        if center is not None:
+            return center, sample.get("grid")
+    return None, None
+
+
+def _same_person(host, guest, fps):
+    if guest["first"] <= host["last"]:
+        return False
+    if guest["first"] - host["last"] > STITCH_GAP_S * float(fps):
+        return False
+    host_center, host_grid = _end_center(host)
+    guest_center, guest_grid = _start_center(guest)
+    if host_center is None or guest_center is None:
+        return False
+    dx = host_center[0] - guest_center[0]
+    dy = host_center[1] - guest_center[1]
+    if ((dx * dx) + (dy * dy)) ** 0.5 > STITCH_CENTER:
+        return False
+    if host_grid is not None and guest_grid is not None:
+        if mask_distance(host_grid, guest_grid) > STITCH_SHAPE:
+            return False
+    return True
+
+
+def stitch_tracks(views, fps):
+    """Join a track that ends to one that begins nearby with a similar shape."""
+    merged = []
+    for view in sorted(views, key=lambda item: (item["first"], item["id"])):
+        host = next((item for item in merged if _same_person(item, view, fps)), None)
+        if host is None:
+            merged.append(view)
             continue
-        series = np.full(n_frames, np.nan)
-        for sample in kept:
-            frame = int(sample["frame"])
-            if 0 <= frame < n_frames:
-                series[frame] = (sample["y1"] + sample["y2"]) / 2.0
-        repetitions = to_source_clock(repetitions_for(series, fps, sections), fps, fps)
-        people.append({"id": int(object_id), "repetitions": repetitions})
+        host["samples"].extend(view["samples"])
+        host["last"] = max(host["last"], view["last"])
+        host["median_area"] = max(host["median_area"], view["median_area"])
+    return merged
+
+
+def keep_exercisers(views, fps):
+    """Drop a passerby and a figure much smaller than the person actually moving."""
+    if not views:
+        return []
+    stayed = []
+    for view in views:
+        duration_s = (view["last"] - view["first"] + 1) / float(fps)
+        share = duration_s / (view["n_frames"] / float(fps))
+        if duration_s < MIN_TRACK_S and share < 0.15:
+            continue
+        stayed.append(view)
+    if not stayed:
+        return []
+    largest = max(view["median_area"] for view in stayed)
+    return [
+        view
+        for view in stayed
+        if view["median_area"] >= MIN_AREA_RATIO
+        and view["median_area"] >= MIN_AREA_OF_LARGEST * largest
+    ]
+
+
+def _series_for(view):
+    n_frames = view["n_frames"]
+    series = np.full(n_frames, np.nan)
+    grids = [None] * n_frames
+    centers = [None] * n_frames
+    for sample in view["samples"]:
+        frame = int(sample["frame"])
+        if frame < 0 or frame >= n_frames:
+            continue
+        series[frame] = (sample["y1"] + sample["y2"]) / 2.0
+        grid = sample.get("grid")
+        if grid is not None:
+            grids[frame] = grid
+        centers[frame] = _sample_center(sample, view["width"], view["height"])
+    return series, grids, centers
+
+
+def people_from_tracks(tracks, n_frames, frame_area, fps, sections, width, height):
+    views = []
+    for object_id, samples in sorted(tracks.items()):
+        view = _track_view(object_id, samples, n_frames, frame_area, width, height)
+        if view is not None:
+            views.append(view)
+    views = keep_exercisers(stitch_tracks(views, fps), fps)
+    people = []
+    for view in sorted(views, key=lambda item: (item["first"], item["id"])):
+        series, grids, centers = _series_for(view)
+        if sum(grid is not None for grid in grids) >= 8:
+            repetitions = repetitions_from_masks(grids, centers, fps, sections)
+        else:
+            repetitions = repetitions_for(series, fps, sections)
+        repetitions = to_source_clock(repetitions, fps, fps)
+        if not repetitions:
+            continue
+        people.append({"id": int(view["id"]), "repetitions": repetitions})
     return people
 
 
@@ -288,6 +485,36 @@ def source_clock(people, analysis_fps, source_fps):
             )
         timed.append({"id": person["id"], "repetitions": repetitions})
     return timed
+
+
+def save_silhouettes(dest, tracks, width, height):
+    """Keep the decoded shapes and where they sat, so a later timing change is free."""
+    arrays = {}
+    for object_id, samples in tracks.items():
+        frames = []
+        packed = []
+        centers_x = []
+        centers_y = []
+        for sample in samples:
+            grid = sample.get("grid")
+            if grid is None:
+                continue
+            center = _sample_center(sample, width, height)
+            frames.append(int(sample["frame"]))
+            packed.append(np.packbits(np.asarray(grid, dtype=np.uint8).reshape(-1)))
+            centers_x.append(np.nan if center is None else center[0])
+            centers_y.append(np.nan if center is None else center[1])
+        if not frames:
+            continue
+        key = str(int(object_id))
+        arrays[f"frames_{key}"] = np.asarray(frames, dtype=np.int32)
+        arrays[f"grids_{key}"] = np.stack(packed)
+        arrays[f"cx_{key}"] = np.asarray(centers_x, dtype=np.float32)
+        arrays[f"cy_{key}"] = np.asarray(centers_y, dtype=np.float32)
+    if not arrays:
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(dest, **arrays)
 
 
 def process(path):
@@ -326,23 +553,36 @@ def process(path):
     try:
         tracks, sam_warnings = track_people(file_id, frames)
         warnings.extend(sam_warnings)
+        save_silhouettes(ROOT / "out" / path.stem / "silhouettes.npz", tracks, made["width"], made["height"])
         try:
             text, spark_warnings = name_sections(file_id, made["duration_s"])
             warnings.extend(spark_warnings)
+            (ROOT / "out" / path.stem).mkdir(parents=True, exist_ok=True)
+            (ROOT / "out" / path.stem / "spark.txt").write_text(text, encoding="utf-8")
             sections = parse_sections(text, made["duration_s"])
+            named = ", ".join(section["movement"] for section in sections[:6])
+            print(f"  spark sections {len(sections)}: {named}", flush=True)
         except SpendWarning as exc:
             print(f"\nWARNING: {exc}\n", flush=True)
             sections = parse_sections("", made["duration_s"])
         people = people_from_tracks(
-            tracks, frames, made["width"] * made["height"], made["fps"], sections
+            tracks,
+            frames,
+            made["width"] * made["height"],
+            made["fps"],
+            sections,
+            made["width"],
+            made["height"],
         )
         people = source_clock(people, made["fps"], info["fps"])
     finally:
         delete_file(file_id)
+    spark_names = "spark" if any(section.get("source") == "spark" for section in sections) else "fallback"
     document = {
         "video": display_path(path),
         "fps": info["fps"],
         "analysis_fps": made["fps"],
+        "spark_names": spark_names,
         "quality": decision.as_dict(),
         "people": people,
     }

@@ -156,6 +156,7 @@ def track_people(file_id):
                     print(f"  sam frame {frames}", flush=True)
             elif kind == "error":
                 raise RuntimeError(event.get("message") or "SAM stream failed")
+    parser.finish()
     return parser.tracks
 
 

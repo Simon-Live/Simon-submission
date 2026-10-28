@@ -150,7 +150,7 @@
     const nameInput = document.getElementById("name");
     const movementInput = document.getElementById("movement");
     const params = new URLSearchParams(location.search);
-    const stem = params.get("video") || "hiit-full-body";
+    const stem = params.get("video") || "";
 
     let doc = null;
     let fps = 30;
@@ -584,9 +584,13 @@
       status.textContent = reviewed;
     }
 
-    start().catch((error) => {
-      status.textContent = error.message;
-    });
+    if (!stem) {
+      status.textContent = "Open this page with ?video= and the file name from inbox/.";
+    } else {
+      start().catch((error) => {
+        status.textContent = error.message;
+      });
+    }
   </script>
 </body>
 </html>

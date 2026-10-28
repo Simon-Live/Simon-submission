@@ -73,7 +73,7 @@ A call that would cross the next $5 mark ($5, $10, $15, …) is not sent. The ru
 
 ## Hand labels
 
-`make label` opens http://127.0.0.1:8767/?video=hiit-full-body. The page plays the original video with the predicted marks already on it. Accept a pose, nudge it, add one, or delete one. Saving writes `fixtures/labels/<name>.json` and does not call the API. A pose you have not changed is stored at the model's time.
+`make label` opens http://127.0.0.1:8767/?video=<name>. The page plays the original video with the predicted marks already on it. Accept a pose, nudge it, add one, or delete one. Saving writes `fixtures/labels/<name>.json` and does not call the API. A pose you have not changed is stored at the model's time.
 
 ## Definition of done
 

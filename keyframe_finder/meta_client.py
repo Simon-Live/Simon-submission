@@ -171,6 +171,7 @@ def track_people(file_id, frame_count):
                 usage = (event.get("response") or {}).get("usage") or event.get("usage") or {}
             elif kind in {"error", "response.failed"} or event.get("error"):
                 raise RuntimeError(f"SAM 3.1 failed: {event.get('error') or event}")
+    parser.finish()
     billed_frames = int(usage.get("video_frames_processed") or billed)
     actual = estimate(SAM, frame=billed_frames)
     warnings = record(actual, f"SAM 3.1 person track, {billed_frames} frames", model=SAM)
