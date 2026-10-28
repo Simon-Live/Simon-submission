@@ -1,0 +1,189 @@
+{
+  "video": "inbox/7480487-uhd_2160_3840_25fps.mp4",
+  "fps": 25,
+  "people": [
+    {
+      "id": 1,
+      "repetitions": [
+        {
+          "rep": 1,
+          "movement": "intro_groove",
+          "keyframes": [
+            {
+              "name": "hands_clasped",
+              "frame": 38,
+              "t_ms": 1533,
+              "reviewed": true
+            },
+            {
+              "name": "hands_open",
+              "frame": 80,
+              "t_ms": 3200,
+              "reviewed": true
+            },
+            {
+              "name": "hands_relaxed",
+              "frame": 110,
+              "t_ms": 4400,
+              "reviewed": true
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "movement": "bounce_pull_step",
+          "keyframes": [
+            {
+              "name": "arms_extended_forward",
+              "frame": 272,
+              "t_ms": 10867,
+              "reviewed": true
+            },
+            {
+              "name": "arms_pulled_back",
+              "frame": 323,
+              "t_ms": 12933,
+              "reviewed": true
+            },
+            {
+              "name": "bounce_down",
+              "frame": 347,
+              "t_ms": 13867,
+              "reviewed": true
+            }
+          ]
+        },
+        {
+          "rep": 3,
+          "movement": "bounce_pull_step",
+          "keyframes": [
+            {
+              "name": "arms_extended_forward",
+              "frame": 363,
+              "t_ms": 14533,
+              "reviewed": true
+            },
+            {
+              "name": "arms_pulled_back",
+              "frame": 403,
+              "t_ms": 16133,
+              "reviewed": true
+            },
+            {
+              "name": "bounce_down",
+              "frame": 410,
+              "t_ms": 16400,
+              "reviewed": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 0,
+      "repetitions": [
+        {
+          "rep": 1,
+          "movement": "bounce_pull_step",
+          "keyframes": [
+            {
+              "name": "arms_extended_forward",
+              "frame": 283,
+              "t_ms": 11333,
+              "reviewed": true
+            },
+            {
+              "name": "arms_pulled_back",
+              "frame": 315,
+              "t_ms": 12600,
+              "reviewed": true
+            },
+            {
+              "name": "bounce_down",
+              "frame": 343,
+              "t_ms": 13733,
+              "reviewed": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "repetitions": [
+        {
+          "rep": 1,
+          "movement": "side_step_punch",
+          "keyframes": [
+            {
+              "name": "center_stance",
+              "frame": 162,
+              "t_ms": 6467,
+              "reviewed": true
+            },
+            {
+              "name": "right_lunge_punch",
+              "frame": 247,
+              "t_ms": 9867,
+              "reviewed": true
+            },
+            {
+              "name": "left_lunge_punch",
+              "frame": 250,
+              "t_ms": 10000,
+              "reviewed": true
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "movement": "bounce_pull_step",
+          "keyframes": [
+            {
+              "name": "arms_extended_forward",
+              "frame": 250,
+              "t_ms": 10000
+            },
+            {
+              "name": "arms_pulled_back",
+              "frame": 285,
+              "t_ms": 11400,
+              "reviewed": true
+            },
+            {
+              "name": "bounce_down",
+              "frame": 313,
+              "t_ms": 12533,
+              "reviewed": true
+            }
+          ]
+        },
+        {
+          "rep": 3,
+          "movement": "bounce_pull_step",
+          "keyframes": [
+            {
+              "name": "arms_extended_forward",
+              "frame": 327,
+              "t_ms": 13067,
+              "reviewed": true
+            },
+            {
+              "name": "arms_pulled_back",
+              "frame": 363,
+              "t_ms": 14533,
+              "reviewed": true
+            },
+            {
+              "name": "bounce_down",
+              "frame": 393,
+              "t_ms": 15733,
+              "reviewed": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "analysis_fps": 15
+}

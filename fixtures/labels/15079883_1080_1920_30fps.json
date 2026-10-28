@@ -1,0 +1,60 @@
+{
+  "video": "inbox/15079883_1080_1920_30fps.mp4",
+  "fps": 30,
+  "people": [
+    {
+      "id": 1,
+      "repetitions": [
+        {
+          "rep": 1,
+          "movement": "seated_reverse_fly",
+          "keyframes": [
+            {
+              "name": "start_forward",
+              "frame": 26,
+              "t_ms": 867,
+              "reviewed": true
+            },
+            {
+              "name": "open_wide",
+              "frame": 56,
+              "t_ms": 1867,
+              "reviewed": true
+            },
+            {
+              "name": "end_forward",
+              "frame": 82,
+              "t_ms": 2733,
+              "reviewed": true
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "movement": "seated_reverse_fly",
+          "keyframes": [
+            {
+              "name": "start_forward",
+              "frame": 118,
+              "t_ms": 3933,
+              "reviewed": true
+            },
+            {
+              "name": "open_wide",
+              "frame": 144,
+              "t_ms": 4800,
+              "reviewed": true
+            },
+            {
+              "name": "end_forward",
+              "frame": 158,
+              "t_ms": 5267,
+              "reviewed": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "analysis_fps": 15
+}
