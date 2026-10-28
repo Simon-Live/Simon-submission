@@ -79,6 +79,15 @@ Top level:
   a correct take still gets a file.
 - `diagnostics` (optional): pipeline internals (alignment residual and the measures timing was
   taken from). Part 7 may ignore it; it is not part of the follower-facing contract.
+  `part5 analyse` (#10) also writes `follower_span` (first and last matched follower frame) and
+  `warnings`, a list of plain sentences worth checking before trusting the result, e.g. when
+  less than 60% of the follower clip matched the movement. That is harmless if the rest is
+  idle lead-in or tail, but it is also what a follower much slower than the example, or one
+  doing several repetitions, looks like.
+
+`part5 analyse` exits 0 when it wrote the file, and 1 with a message naming the file when an
+input is malformed, less than half the body can be measured, or the takes can't be aligned
+(a follower more than 2x faster than the example).
 
 Per fault:
 - `measure`: what differed, in the side-less vocabulary shared with `labels.json` and

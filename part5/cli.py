@@ -2,6 +2,10 @@
 import argparse
 import sys
 
+from .io import InputError
+from .output import OutputError, write_analysis
+from .pipeline import AnalysisError, analyse
+
 
 def build_parser():
     p = argparse.ArgumentParser(prog="part5", description=__doc__)
@@ -16,8 +20,19 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     if args.command == "analyse":
-        print("part5 analyse: not implemented yet (see #10)", file=sys.stderr)
-        return 2
+        try:
+            doc = write_analysis(args.out, analyse(args.expected, args.follower))
+        except (InputError, AnalysisError, OutputError) as e:
+            print(f"part5 analyse: {e}", file=sys.stderr)
+            return 1
+        except OSError as e:  # e.g. --out is a directory or not writable
+            print(f"part5 analyse: cannot write {args.out} ({e.strerror or e})", file=sys.stderr)
+            return 1
+        for w in doc["diagnostics"]["warnings"]:
+            print(f"part5 analyse: warning: {w}", file=sys.stderr)
+        n = len(doc["faults"])
+        print(f"{args.out}: {n} fault{'s' if n != 1 else ''}" + "".join(f"\n  - {f['text']}" for f in doc["faults"]))
+        return 0
     return 1
 
 
