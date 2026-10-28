@@ -68,6 +68,12 @@ def test_missing_and_low_conf_joints_are_masked(doc):
     (lambda d: d.update(coordinate_frame="hip"), "coordinate_frame must be an object"),
     (lambda d: d.update(joints=3), "canonical 17"),
     (lambda d: d.update(format=["simon.animation.v1"]), "format must be"),
+    (lambda d: [f.pop("t") for f in d["frames"]] and d.update(fps=float("nan")), "fps must be"),
+    (lambda d: d.update(fps=float("inf")), "fps must be"),
+    (lambda d: d.update(fps=True), "fps must be"),
+    (lambda d: d["frames"][1].update(conf={"nose": 1.5}), r"numbers in 0\.\.1"),
+    (lambda d: d["frames"][1].update(conf={"toe": 0.9}), "conf has unknown joint names"),
+    (lambda d: d["frames"][1].update(interpolated="false"), "interpolated must be true or false"),
 ])
 def test_malformed_inputs_fail_clearly(doc, edit, msg):
     d = copy.deepcopy(doc)
