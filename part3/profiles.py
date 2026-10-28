@@ -44,6 +44,14 @@ PART4_LENGTHS_M = {
     "left_ear_link": 0.0774, "right_ear_link": 0.0774,
 }
 UNKNOWN = 'unknown body profile "{}"; choose simon-standard, part4-rig, measured or file:<path>'
+DEFAULT_NAME = "simon-standard"
+# Assumption ASM-012: with no body named on any channel, `--view part4` is rebuilt on Part 4's rig, because Part 4's
+# animator rejects a skeleton whose bone lengths differ from its rig by more than 1 mm. Every other view keeps
+# simon-standard (ASM-013). {view: (profile, the reason recorded as body.reason)}.
+VIEW_DEFAULTS = {
+    "part4": ("part4-rig", "default for --view part4: Part 4's animator rejects bone lengths more than 1 mm off its "
+                           "rig (assumption ASM-012); name a body to choose another"),
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -56,6 +64,7 @@ class Selection:
     stature: float | None = None
     stature_selected_by: str | None = None
     config_dir: pathlib.Path | None = None
+    reason: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -71,13 +80,17 @@ class Body:
     symmetrized: bool
     selected_by: str
     stature_selected_by: str | None = None
+    reason: str | None = None
 
     def block(self):
-        """The top-level `body` block of a skeleton (`stature_selected_by` only when a stature was asked for)."""
+        """The top-level `body` block of a skeleton (`stature_selected_by` only when a stature was asked for, `reason`
+        only when the view chose the profile)."""
         block = {"profile": self.name, "selected_by": self.selected_by, "stature_m": self.stature_m,
                  "scale": self.scale, "source": self.source, "symmetrized": self.symmetrized}
         if self.stature_selected_by is not None:
             block["stature_selected_by"] = self.stature_selected_by
+        if self.reason is not None:
+            block["reason"] = self.reason
         return block
 
 
@@ -123,10 +136,16 @@ def parse_stature(value, channel):
     return number
 
 
-def resolve(flag=None, api=None, stature_flag=None, stature_api=None, env=None, config=None):
+def default_for(view):
+    """(profile name, reason or None) used when no channel names a body: `VIEW_DEFAULTS`, else simon-standard."""
+    return VIEW_DEFAULTS.get(view, (DEFAULT_NAME, None))
+
+
+def resolve(flag=None, api=None, stature_flag=None, stature_api=None, env=None, config=None, view=None):
     """The `Selection` for the channels, first set wins: flag, environment, config file, API, default.
 
-    Body: `--body`, `PART3_BODY`, config `[body] profile`, API `body=`, `simon-standard`. Stature:
+    Body: `--body`, `PART3_BODY`, config `[body] profile`, API `body=`, then the default of `view` (`part4-rig` for
+    `part4`, with `reason` saying why; `simon-standard` for any other view or None). Stature:
     `--stature`, `PART3_STATURE`, config `[body] stature`, API `stature=`, none. `env` None means
     `os.environ`; `config` None discovers `PART3_CONFIG` then `./part3.toml`, False reads no file, a
     path names the file. Raises ContractError naming the channel for an unknown profile, a stature
@@ -138,14 +157,15 @@ def resolve(flag=None, api=None, stature_flag=None, stature_api=None, env=None, 
     spec, kind, channel = _pick([
         (flag, "flag", "--body"), (_env_value(env, "PART3_BODY"), "env", "PART3_BODY"),
         (cfg.profile if cfg else None, "config", f"{label} body.profile"), (api, "api", "body=")])
-    name = _profile_name(spec, channel) if spec is not None else "simon-standard"
+    default, reason = default_for(view)
+    name = _profile_name(spec, channel) if spec is not None else default
     stature, stature_kind, stature_channel = _pick([
         (stature_flag, "flag", "--stature"), (_env_value(env, "PART3_STATURE"), "env", "PART3_STATURE"),
         (cfg.stature if cfg else None, "config", f"{label} body.stature"), (stature_api, "api", "stature=")])
     return Selection(name, kind, spec if spec is not None else name,
                      parse_stature(stature, stature_channel) if stature is not None else None,
                      stature_kind if stature is not None else None,
-                     cfg.dir if cfg and kind == "config" else None)
+                     cfg.dir if cfg and kind == "config" else None, reason if spec is None else None)
 
 
 # --- numbers ------------------------------------------------------------------------------------
@@ -283,7 +303,7 @@ def lengths_for(selection, measured_lengths=None):
     scale = 1.0 if stature is None else stature / base.stature_m
     return Body(name, base.stature_m if stature is None else stature, scale, _scaled(base, scale),
                 base.source, list(base.sources), base.symmetrized, selection.selected_by,
-                selection.stature_selected_by)
+                selection.stature_selected_by, selection.reason)
 
 
 def _scaled(base, scale):
@@ -312,6 +332,9 @@ def _check_block_fields(block, doc, p):
         _block_fail(p, "source", "expected a source text")
     if not isinstance(block.get("symmetrized"), bool):
         _block_fail(p, "symmetrized", "expected true or false")
+    if "reason" in block and (block.get("selected_by") != "default" or not isinstance(block["reason"], str)
+                              or not block["reason"]):
+        _block_fail(p, "reason", "expected a text, and only on a profile the view chose (selected_by default)")
 
 
 def _check_block_numbers(block, doc, p):

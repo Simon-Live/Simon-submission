@@ -5,17 +5,21 @@ The work of a run grows with the clip's time span, not with the upload's size. `
 a request would write (span times rate, plus one) and refuses over SERVER_MAX_FRAMES before `cli.process` runs.
 """
 
-import copy
 import json
 import time
 
 import pytest
 
+from clipkit import two_frames
 from part3 import cli, runapi
 from part3.schema import FrameCapError
 from runapikit import across_the_body, code_of, options_for, serving, take1_with_arms
 
-TOO_LONG = "This clip is too long for that frame rate here. Choose a lower frame rate or a shorter clip."
+TOO_LONG = "This clip is too long to run here. Choose a shorter clip."  # the table: no Frame rate was chosen
+# TICKET-034 residual 1: worded by rate, naming only the lower choices the page has at which the clip fits.
+TOO_LONG_60 = "This clip is too long for 60 per second here. Choose 30 per second, Source or a shorter clip."
+TOO_LONG_60_SOURCE = "This clip is too long for 60 per second here. Choose Source or a shorter clip."
+TOO_LONG_30 = "This clip is too long for 30 per second here. Choose Source or a shorter clip."
 TIMELINE_TOO_LONG = "This clip is too long for Part 4 keys here. Choose another View or a shorter clip."
 MISSING_T_MS = ("This file is not a valid pose3d.json: pose3d.frames[0].t_ms: "
                 "missing; add t_ms to every frame or a top-level fps.")
@@ -25,14 +29,6 @@ MISSING_T_MS = ("This file is not a valid pose3d.json: pose3d.frames[0].t_ms: "
 def real():
     with serving() as client:
         yield client
-
-
-def two_frames(real_doc, last_ms=10_000_000, first_ms=0):
-    """The 2.5 KB file of the review: the first two frames of the real clip, `last_ms - first_ms` apart."""
-    doc = copy.deepcopy(real_doc)
-    doc["frames"] = doc["frames"][:2]
-    doc["frames"][0]["t_ms"], doc["frames"][1]["t_ms"] = first_ms, last_ms
-    return doc
 
 
 def post_long(doc, query):
@@ -54,9 +50,9 @@ def test_the_server_frame_cap_and_its_message():
 
 
 @pytest.mark.parametrize("query, message", [
-    ("fps=60", TOO_LONG), ("fps=30", TOO_LONG), ("view=part4&fps=30", TOO_LONG), ("view=part4&fps=60", TOO_LONG),
-    ("body=measured&view=part5&fps=60", TOO_LONG),
-    ("view=part4", TIMELINE_TOO_LONG),  # Source: the Part 4 timeline is 30 per second whatever the Frame rate
+    ("fps=60", TOO_LONG_60_SOURCE), ("fps=30", TOO_LONG_30), ("body=measured&view=part5&fps=60", TOO_LONG_60_SOURCE),
+    # View part4: the timeline is 30 per second whatever the Frame rate, and 10,000,000 ms at 30 is over the cap
+    ("view=part4", TIMELINE_TOO_LONG), ("view=part4&fps=30", TIMELINE_TOO_LONG), ("view=part4&fps=60", TIMELINE_TOO_LONG),
 ])
 def test_a_two_frame_file_ten_million_ms_long_is_refused_before_anything_runs(real_doc, monkeypatch, query, message):
     def explode(*args, **kwargs):
@@ -80,7 +76,8 @@ def test_the_squat_still_runs_at_30_and_60_per_second_and_as_the_part4_view():
     for query in ("fps=30", "fps=60", "view=part4", "view=part4&fps=60"):
         status, body = runapi.handle("part2-squat", "auto", None, b"", options_for(query))
         assert status == 200 and body["metrics"]["frames"] > 100, query
-        assert body["options"] == options_for(query)
+        profile = "part4-rig" if "part4" in query else "simon-standard"  # the View's default body (ASM-012)
+        assert body["options"] == {**options_for(query), "body": profile}
 
 
 @pytest.mark.parametrize("fps, span_ms, refused", [
@@ -104,6 +101,15 @@ def test_the_rate_of_the_part4_view_is_30_unless_a_higher_rate_is_chosen(real_do
     assert runapi.too_long(doc, options_for("view=part4&fps=60")) is True
     assert runapi.too_long(doc, options_for("fps=60")) is True
     assert runapi.too_long(doc, options_for("")) is False and runapi.too_long(doc, options_for("view=part5")) is False
+
+
+@pytest.mark.parametrize("query, message", [("fps=60", TOO_LONG_60), ("view=part4&fps=60", TOO_LONG_60),
+                                            ("view=part5&fps=60", TOO_LONG_60)])
+def test_a_clip_that_fits_at_30_per_second_is_told_to_choose_30_at_60(real_doc, query, message):
+    """TICKET-034 residual 1: 400,000 ms is 24,001 frames at 60 and 12,001 at 30, so 30 per second is named, and the
+    part4 timeline (30 per second) fits, so View part4 at 60 gets the same advice."""
+    status, error = code_of(post_long(two_frames(real_doc, 400_000), query))
+    assert (status, error["code"], error["message"]) == (400, "too_long", message)
 
 
 def test_the_span_is_the_last_frame_minus_the_first_not_the_last_alone(real_doc):
@@ -149,9 +155,11 @@ def test_a_non_object_document_is_the_pipelines_to_refuse():
 # ---- review R1: the pipeline's own frame cap is the same too_long, not an invalid file -----------
 
 @pytest.mark.parametrize("query, cap, message", [
-    ("fps=60", 50, TOO_LONG), ("fps=30", 50, TOO_LONG),
+    ("fps=60", 50, TOO_LONG_60), ("fps=30", 50, TOO_LONG_30),  # no span here: every lower rate is named
     ("view=part4", 3, TIMELINE_TOO_LONG),  # the key timeline's FrameCapError (its `timeline` attribute is True)
-    ("view=part4&fps=30", 3, TOO_LONG),    # the 30 per second grid is over the cap first, in cli.process
+    # the 30 per second grid is over the cap first, in cli.process; the 30 per second timeline would be too
+    ("view=part4&fps=30", 3, TIMELINE_TOO_LONG),
+    ("view=part4&fps=60", 50, TOO_LONG_60),  # the 60 grid is over; at 30 the timeline may fit
 ])
 def test_the_pipelines_own_cap_is_answered_too_long_and_names_no_command_line_flag(monkeypatch, query, cap, message):
     """With the span pre-check out of the way, `cli.process` (`--fps`) or the part4 timeline (`--keyframes`) refuses the
@@ -171,7 +179,7 @@ def test_the_timeline_cap_is_told_from_the_grid_cap_by_the_attribute_and_not_by_
     grid = FrameCapError("--keyframes", same_words)  # the same path and words, not the timeline
     assert code_of(runapi._contract_failure(timeline, runapi.DEFAULT_OPTIONS))[1]["message"] == TIMELINE_TOO_LONG
     assert code_of(runapi._contract_failure(grid, runapi.DEFAULT_OPTIONS))[1]["message"] == TOO_LONG
-    assert runapi.ERRORS["too_long"] == (400, TOO_LONG)  # the table keeps the grid's text staging/verify.mjs checks
+    assert runapi.ERRORS["too_long"] == (400, TOO_LONG)  # the table's text: no Frame rate was chosen
 
 
 def test_the_pipelines_own_cap_is_the_same_answer_over_http(real, monkeypatch):
@@ -179,7 +187,7 @@ def test_the_pipelines_own_cap_is_the_same_answer_over_http(real, monkeypatch):
     monkeypatch.setattr(runapi, "SERVER_MAX_FRAMES", 50)
     reply = real.run("sample=part2-squat&fps=60")
     assert (reply.status, reply.error_code()) == (400, "too_long")
-    assert reply.json()["error"] == {"code": "too_long", "field": None, "message": TOO_LONG}
+    assert reply.json()["error"] == {"code": "too_long", "field": None, "message": TOO_LONG_60}
     monkeypatch.setattr(runapi, "SERVER_MAX_FRAMES", 3)
     timeline = real.run("sample=part2-squat&view=part4")
     assert (timeline.status, timeline.error_code()) == (400, "too_long")
@@ -229,8 +237,8 @@ def raw_two_frames(real_doc, last_ms):
     return json.dumps(two_frames(real_doc, last_ms)).encode()
 
 
-@pytest.mark.parametrize("query, message", [("fps=60", TOO_LONG), ("view=part4", TIMELINE_TOO_LONG),
-                                            ("view=part4&fps=60", TOO_LONG)])
+@pytest.mark.parametrize("query, message", [("fps=60", TOO_LONG_60_SOURCE), ("view=part4", TIMELINE_TOO_LONG),
+                                            ("view=part4&fps=60", TIMELINE_TOO_LONG)])
 def test_a_tiny_file_with_a_ten_million_ms_span_is_refused_400_too_long_at_once_over_http(real, real_doc, query,
                                                                                        message):
     """The review's 2.5 KB upload used 6.7 GiB and 45 s at 60 frames per second before the frame count was checked."""

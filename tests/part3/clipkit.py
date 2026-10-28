@@ -122,3 +122,20 @@ def write_profile(path, **changes):
     profile.update(changes)
     path.write_text(json.dumps(profile), encoding="utf-8")
     return path
+
+
+def two_frames(doc, last_ms=10_000_000, first_ms=0):
+    """A copy of the first two frames of `doc` placed `last_ms - first_ms` apart: a tiny upload with a long span."""
+    out = copy.deepcopy(doc)
+    out["frames"] = out["frames"][:2]
+    out["frames"][0]["t_ms"], out["frames"][1]["t_ms"] = first_ms, last_ms
+    return out
+
+
+def equal_times(doc):
+    """A copy of the first 3 frames of `doc` with two equal t_ms (0, 33, 33): valid natively, not for Part 5 or --fps."""
+    out = copy.deepcopy(doc)
+    out["frames"] = out["frames"][:3]
+    for frame, t_ms in zip(out["frames"], (0.0, 33.0, 33.0)):
+        frame["t_ms"] = t_ms
+    return out

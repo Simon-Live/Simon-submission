@@ -246,7 +246,8 @@ def _parser():
                      help="path of skeleton.json to write (a directory with --all-people)")
     run.add_argument("--flip", choices=mirror.FLIP_VALUES, default="auto",
                      help="mirror correction for selfie recordings (default auto)")
-    run.add_argument("--body", help="simon-standard (default), part4-rig, measured or file:<path>")
+    run.add_argument("--body", help="simon-standard, part4-rig, measured or file:<path> (default: part4-rig for "
+                                     "--view part4, else simon-standard)")
     run.add_argument("--stature", help="scale the body to this stature in metres (0.5 to 2.5)")
     run.add_argument("--config", help="a part3.toml (default: PART3_CONFIG, then ./part3.toml)")
     run.add_argument("--view", default="native", help="native (default), part4 or part5")
@@ -404,7 +405,7 @@ def _run(args):
     if problem:
         return _refuse(problem)
     try:
-        selection = profiles.resolve(flag=args.body, stature_flag=args.stature, config=args.config)
+        selection = profiles.resolve(flag=args.body, stature_flag=args.stature, config=args.config, view=args.view)
         files = _documents(doc, digest, args, selection)
     except ContractError as error:
         return _refuse(error)

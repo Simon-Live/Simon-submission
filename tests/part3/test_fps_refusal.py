@@ -16,16 +16,16 @@ import pytest
 from conftest import ROOT
 from part3 import cli, keyframes, resample, runapi
 from part3.schema import ContractError, FrameCapError, FrameRateError, LongWayError, OptionError, ViewError
-from runapikit import code_of, options_for, serving
+from clipkit import equal_times
+from runapikit import TAKE_1, code_of, options_for, serving
 
 NO_PERSON_30 = "No frame at 30 per second holds the person. Choose 60 per second or Source."
 NO_PERSON_60 = "No frame at 60 per second holds the person. Choose Source."
 TIMES = ("pose3d.frames[2].t_ms: the times must increase to change the frame rate. "
          "Choose Source, or fix the times.")
-TOO_LONG = "This clip is too long for that frame rate here. Choose a lower frame rate or a shorter clip."
+TOO_LONG_60 = "This clip is too long for 60 per second here. Choose 30 per second, Source or a shorter clip."
 CLI_NO_PERSON = "--fps: no output frame holds the person; use a higher --fps"
 CLI_TIMES = "pose3d.frames[2].t_ms: must increase for --fps"
-TAKE_1 = "fixtures/input/synthetic-4take/take-1/pose3d.json"
 
 
 @pytest.fixture(scope="module")
@@ -36,7 +36,7 @@ def real():
 
 @pytest.fixture(scope="module")
 def take_1():
-    return json.loads((ROOT / TAKE_1).read_text())
+    return json.loads(TAKE_1.read_text())
 
 
 def sparse_clip(take_1, step_ms=12.0):
@@ -50,15 +50,6 @@ def sparse_clip(take_1, step_ms=12.0):
         frame["t_ms"] = step_ms * index
         if index not in (1, 2):
             frame["people"] = []
-    return doc
-
-
-def equal_times(take_1):
-    """take-1's first 3 frames with two equal t_ms."""
-    doc = copy.deepcopy(take_1)
-    doc["frames"] = doc["frames"][:3]
-    for index, t_ms in enumerate((0.0, 33.0, 33.0)):
-        doc["frames"][index]["t_ms"] = t_ms
     return doc
 
 
@@ -150,7 +141,7 @@ def test_the_real_frame_cap_is_still_400_too_long_and_the_sparse_clip_is_not_tha
     monkeypatch.setattr(runapi, "too_long", lambda doc, options: False)
     monkeypatch.setattr(runapi, "SERVER_MAX_FRAMES", 1)
     status, error = code_of(post(sparse_clip(take_1), "fps=60"))
-    assert (status, error["code"], error["field"], error["message"]) == (400, "too_long", None, TOO_LONG)
+    assert (status, error["code"], error["field"], error["message"]) == (400, "too_long", None, TOO_LONG_60)
     monkeypatch.setattr(runapi, "SERVER_MAX_FRAMES", 20_000)
     assert code_of(post(sparse_clip(take_1), "fps=30"))[1]["code"] == "fps_refused"
 
@@ -163,7 +154,6 @@ def test_the_real_frame_cap_is_still_400_too_long_and_the_sparse_clip_is_not_tha
     (25, (24, 30, 60), "No frame at 25 per second holds the person. Choose 30 per second or Source."),
     (45, (30, 60), "No frame at 45 per second holds the person. Choose 60 per second or Source."),
     (120, (30, 60), "No frame at 120 per second holds the person. Choose Source."),
-    (None, (30, 60), "No frame at that frame rate holds the person. Choose Source."),
 ])
 def test_the_no_person_text_names_only_choices_the_page_has(monkeypatch, fps, options, text):
     monkeypatch.setattr(runapi, "FPS_VALUES", options)
@@ -255,5 +245,8 @@ def test_the_time_path_in_the_page_text_is_cut_like_any_field():
     (OptionError("--view part4", "needs --keyframes <keyframes.json> or every:<n>"), "contract", 422),
 ])
 def test_runapi_classifies_a_refusal_by_its_type_and_not_by_its_path(problem, code, status):
-    answered_status, error = code_of(runapi._contract_failure(problem, runapi.DEFAULT_OPTIONS))
+    """A FrameRateError for the person only comes from a chosen Frame rate, so the options name one (TICKET-034
+    residual 6: the text for no rate was unreachable and is gone)."""
+    options = {**runapi.DEFAULT_OPTIONS, "fps": 30}
+    answered_status, error = code_of(runapi._contract_failure(problem, options))
     assert (answered_status, error["code"]) == (status, code)

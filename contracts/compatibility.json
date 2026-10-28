@@ -87,7 +87,7 @@
       "consumer": "Part 4",
       "consumer_version": "9f4c073",
       "result": "works",
-      "option": "--body part4-rig (optional)",
+      "option": "none (--view part4 uses --body part4-rig unless a body is named)",
       "evidence": "Part 4 9f4c073 README 'Edge cases': fps 30, key t = index / 30 within 1 microsecond, FK within 1 mm; rig.fit reports the residual of snapping key poses to the rig; Part 4's own animator on this view (local neighbour check, 2026-10-28): key error 0.0 m, bone deviation 0.0000013 m. Condition (README 'The file is rejected'): works when no joint turns more than 180 degrees between neighbouring keys in rotation-vector space; Part 3's part4 view refuses to write a clip that breaks this and names the joint and the keys, and the arms rest in a T-pose so an arm overhead or hanging stays 90 degrees from rest"
     },
     {

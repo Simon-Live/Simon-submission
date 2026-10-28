@@ -124,6 +124,24 @@
   ]
  },
  {
+  "id": "view-part4-named-standard-body",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "part4",
+   "--body",
+   "simon-standard",
+   "--keyframes",
+   "every:10",
+   "--keyframes-out",
+   "keyframes.json"
+  ],
+  "outputs": [
+   "skeleton.json",
+   "keyframes.json"
+  ]
+ },
+ {
   "id": "view-part5",
   "input": "fixtures/input/part2-single/pose3d.json",
   "args": [

@@ -14,17 +14,19 @@ import types
 import numpy as np
 import pytest
 
+from clipkit import equal_times
 from conftest import ROOT
 from part3 import cli, io, profiles, runapi, views
 from part3.angles import joint_angles
 from part3.metrics import BONE_MAX
 from part3.schema import ContractError, LongWayError, ViewError
-from runapikit import (REPLY_KEYS, across_the_body, clip, code_of, file_of, options_for, run_sample, take1_with_arms,
-                       upload)
+from runapikit import (REPLY_KEYS, TAKE_1, across_the_body, clip, code_of, file_of, options_for, run_sample,
+                       take1_with_arms, upload)
 
 # ---- AC-M01, AC-M02: the run options -----------------------------------------------------------
 
-DEFAULTS = {"body": "simon-standard", "stature": None, "view": "native", "fps": None}
+DEFAULTS = {"body": None, "stature": None, "view": "native", "fps": None}  # body None: the View's default (ASM-012)
+BAD_BODY = "Body must be blank, simon-standard, part4-rig or measured."
 
 
 def test_parse_options_defaults_when_nothing_is_given():
@@ -37,6 +39,7 @@ def test_parse_options_defaults_when_nothing_is_given():
     ("body=part4-rig", {"body": "part4-rig"}),
     ("body=measured", {"body": "measured"}),
     ("body=simon-standard", {"body": "simon-standard"}),
+    ("body=", {"body": None}),
     ("stature=1.85", {"stature": 1.85}),
     ("stature=0.5", {"stature": 0.5}),
     ("stature=2.5", {"stature": 2.5}),
@@ -58,11 +61,10 @@ def test_parse_options_accepts_every_documented_value(query, expected):
 
 
 @pytest.mark.parametrize("query, code, field, message", [
-    ("body=file:/etc/passwd", "bad_body", "body", "Body must be simon-standard, part4-rig or measured."),
-    ("body=file:part3/standard_body.json", "bad_body", "body", "Body must be simon-standard, part4-rig or measured."),
-    ("body=nonsense", "bad_body", "body", "Body must be simon-standard, part4-rig or measured."),
-    ("body=", "bad_body", "body", "Body must be simon-standard, part4-rig or measured."),
-    ("body=Part4-rig", "bad_body", "body", "Body must be simon-standard, part4-rig or measured."),
+    ("body=file:/etc/passwd", "bad_body", "body", BAD_BODY),
+    ("body=file:part3/standard_body.json", "bad_body", "body", BAD_BODY),
+    ("body=nonsense", "bad_body", "body", BAD_BODY),
+    ("body=Part4-rig", "bad_body", "body", BAD_BODY),
     ("stature=0.49", "bad_stature", "stature", "Height must be blank or 0.5 to 2.5 m."),
     ("stature=2.51", "bad_stature", "stature", "Height must be blank or 0.5 to 2.5 m."),
     ("stature=nan", "bad_stature", "stature", "Height must be blank or 0.5 to 2.5 m."),
@@ -119,7 +121,7 @@ def test_the_named_profiles_exist_in_the_profile_module():
 def test_a_run_with_default_options_carries_the_new_fields():
     status, body = run_sample("take-2")
     assert status == 200 and list(body) == REPLY_KEYS
-    assert body["options"] == DEFAULTS
+    assert body["options"] == {**DEFAULTS, "body": "simon-standard"}  # the echo names the body the run used
     assert body["metrics"]["profile"] == "simon-standard"
     assert body["output_text"] == body["skeleton_text"] and body["output_name"] == "skeleton.json"
 
@@ -187,22 +189,32 @@ def stand_ins(monkeypatch):
 def test_the_default_run_resolves_the_default_profile_and_renders_no_view(stand_ins):
     status, _ = runapi.handle("take-1", "auto", None, b"", options_for(""))
     assert status == 200 and stand_ins["render"] == []
-    assert stand_ins["resolve"] == [{"flag": None, "stature_flag": None, "env": {}, "config": False}]
+    assert stand_ins["resolve"] == [{"flag": None, "stature_flag": None, "env": {}, "config": False, "view": "native"}]
     kwargs = stand_ins["process"][0]
     assert kwargs["body"] is stand_ins["selection"] and kwargs["fps"] is None
     assert kwargs["env"] == {} and kwargs["config"] is False  # the server's environment and files are never read
     assert kwargs["max_frames"] == runapi.SERVER_MAX_FRAMES  # the pipeline's own cap, behind the span pre-check
 
 
-def test_asking_for_simon_standard_is_asking_for_the_default(stand_ins):
-    runapi.handle("take-1", "auto", None, b"", options_for("body=simon-standard"))
-    assert stand_ins["resolve"] == [{"flag": None, "stature_flag": None, "env": {}, "config": False}]
+def test_a_named_simon_standard_is_a_choice_that_wins_over_the_views_default(stand_ins):
+    """ASM-012: a blank body is the View's default; a named one is requested as `--body <name>` is, so
+    simon-standard at View part4 stays simon-standard."""
+    runapi.handle("take-1", "auto", None, b"", options_for("body=simon-standard&view=part4"))
+    assert stand_ins["resolve"] == [
+        {"flag": "simon-standard", "stature_flag": None, "env": {}, "config": False, "view": "part4"}]
+
+
+def test_a_blank_body_passes_the_view_so_the_resolver_picks_its_default(stand_ins):
+    runapi.handle("take-1", "auto", None, b"", options_for("body=&view=part4"))
+    assert stand_ins["resolve"] == [{"flag": None, "stature_flag": None, "env": {}, "config": False, "view": "part4"}]
 
 
 def test_a_named_body_resolves_with_no_environment_and_no_config_file(stand_ins):
     status, body = runapi.handle("take-1", "auto", None, b"", options_for("body=part4-rig"))
-    assert status == 200 and body["options"]["body"] == "part4-rig" and body["metrics"]["profile"] == "part4-rig"
-    assert stand_ins["resolve"] == [{"flag": "part4-rig", "stature_flag": None, "env": {}, "config": False}]
+    used = json.loads(body["skeleton_text"])["body"]["profile"]  # the stand-in pipeline runs the default body
+    assert status == 200 and body["options"]["body"] == used and body["metrics"]["profile"] == used
+    assert stand_ins["resolve"] == [
+        {"flag": "part4-rig", "stature_flag": None, "env": {}, "config": False, "view": "native"}]
     kwargs = stand_ins["process"][0]
     assert kwargs["body"] is stand_ins["selection"] and kwargs["fps"] is None
     assert kwargs["env"] == {} and kwargs["config"] is False
@@ -210,13 +222,13 @@ def test_a_named_body_resolves_with_no_environment_and_no_config_file(stand_ins)
 
 def test_a_height_on_the_default_body_resolves_the_default_profile(stand_ins):
     runapi.handle("take-1", "auto", None, b"", options_for("stature=1.85"))
-    assert stand_ins["resolve"] == [{"flag": None, "stature_flag": 1.85, "env": {}, "config": False}]
+    assert stand_ins["resolve"] == [{"flag": None, "stature_flag": 1.85, "env": {}, "config": False, "view": "native"}]
 
 
 def test_a_frame_rate_goes_to_the_pipeline_as_an_integer(stand_ins):
     runapi.handle("take-1", "auto", None, b"", options_for("fps=60"))
     assert stand_ins["process"][0]["fps"] == 60
-    assert stand_ins["resolve"] == [{"flag": None, "stature_flag": None, "env": {}, "config": False}]
+    assert stand_ins["resolve"] == [{"flag": None, "stature_flag": None, "env": {}, "config": False, "view": "native"}]
 
 
 @pytest.mark.parametrize("view, name, keywords", [
@@ -276,21 +288,12 @@ def test_view_refused_is_in_the_error_table_as_a_422_with_a_plain_message():
         422, {"code": "view_refused", "field": "view", "message": runapi.ERRORS["view_refused"][1]})
 
 
-def equal_times_clip():
-    """take-1's first 3 frames with two equal t_ms: a valid pose3d.json for the native view, not for Part 5."""
-    doc = json.loads((ROOT / "fixtures/input/synthetic-4take/take-1/pose3d.json").read_text())
-    doc["frames"] = doc["frames"][:3]
-    for frame, t_ms in zip(doc["frames"], (0.0, 33.0, 33.0)):
-        frame["t_ms"] = t_ms
-    return doc
-
-
 PART5_REFUSED = ("This clip cannot be written as a Part 5 animation: frame 2: times must strictly increase "
                  "(Part 5 rejects a clip whose times do not). Choose another View.")
 
 
 def test_a_clip_the_part5_view_refuses_is_a_422_view_refused_worded_without_a_flag():
-    raw = json.dumps(equal_times_clip()).encode()
+    raw = json.dumps(equal_times(json.loads(TAKE_1.read_text()))).encode()
     status, error = code_of(runapi.run(raw, "auto", SWEEP_SOURCE, options_for("view=part5")))
     assert (status, error["code"], error["field"], error["message"]) == (422, "view_refused", "view", PART5_REFUSED)
     assert "--" not in error["message"] and "not a valid pose3d.json" not in error["message"]
@@ -300,7 +303,7 @@ def test_a_clip_the_part5_view_refuses_is_a_422_view_refused_worded_without_a_fl
 
 def test_the_part5_refusal_is_a_view_error_and_the_command_line_says_what_it_said(tmp_path):
     source = tmp_path / "pose3d.json"
-    source.write_text(json.dumps(equal_times_clip()))
+    source.write_text(json.dumps(equal_times(json.loads(TAKE_1.read_text()))))
     result = subprocess.run([sys.executable, "-m", "part3", "run", "--in", str(source), "--out", str(tmp_path / "o.json"),
                              "--view", "part5"], cwd=ROOT, capture_output=True, text=True)
     assert (result.returncode, result.stdout) == (2, "")
@@ -310,7 +313,7 @@ def test_the_part5_refusal_is_a_view_error_and_the_command_line_says_what_it_sai
 
 def test_the_part4_view_without_keys_is_a_view_error_worded_for_the_page():
     """The run app always gives the part4 view its keys, so this refusal is reached through the view itself."""
-    skeleton = cli.process(json.loads((ROOT / "fixtures/input/synthetic-4take/take-1/pose3d.json").read_text()),
+    skeleton = cli.process(json.loads(TAKE_1.read_text()),
                            env={}, config=False)
     with pytest.raises(ViewError) as caught:
         views.render(skeleton, "part4")

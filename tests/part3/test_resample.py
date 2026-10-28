@@ -6,7 +6,7 @@ import time
 import numpy as np
 import pytest
 
-from clipkit import skeleton_arrays
+from clipkit import skeleton_arrays, two_frames
 from part3 import bones, cli, resample
 from part3.metrics import bone_variation
 from part3.schema import ContractError, validate_skeleton
@@ -197,14 +197,6 @@ def test_resampling_works_with_every_profile(clip):
 
 
 # --- review B1: the grid has a frame cap ---------------------------------------------------------------------
-
-def two_frames(real_doc, last_ms, first_ms=0.0):
-    """The first two frames of the real clip with the second moved to `last_ms`: a tiny upload with a long span."""
-    doc = copy.deepcopy(real_doc)
-    doc["frames"] = doc["frames"][:2]
-    doc["frames"][0]["t_ms"], doc["frames"][1]["t_ms"] = first_ms, last_ms
-    return doc
-
 
 def test_b1_the_cap_is_one_hundred_thousand_frames():
     assert resample.MAX_FRAMES == 100_000

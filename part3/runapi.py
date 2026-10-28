@@ -35,8 +35,9 @@ MAX_QUERY_FIELDS = 20
 SERVER_MAX_FRAMES = 20_000
 
 # compare-mode.md AC-M01: the switches of a run. The server accepts these named values only, never `file:` profiles.
-DEFAULT_BODY = "simon-standard"
-BODIES = (DEFAULT_BODY, "part4-rig", "measured")
+# A blank or absent body takes the default of the View (`profiles.VIEW_DEFAULTS`, assumption ASM-012).
+DEFAULT_BODY = None
+BODIES = ("simon-standard", "part4-rig", "measured")
 VIEWS = ("native", "part4", "part5")
 FPS_VALUES = (30, 60)
 STATURE_RANGE = (0.5, 2.5)
@@ -62,11 +63,11 @@ ERRORS = {
     "too_large": (413, "This file is over 16 MB. Choose a smaller pose3d.json file."),
     "length_required": (411, "The upload had no length. Try again."),
     "bad_flip": (400, "Mirror must be auto, on or off."),
-    "bad_body": (400, "Body must be simon-standard, part4-rig or measured."),
+    "bad_body": (400, "Body must be blank, simon-standard, part4-rig or measured."),
     "bad_stature": (400, "Height must be blank or 0.5 to 2.5 m."),
     "bad_view": (400, "View must be native, part4 or part5."),
     "bad_fps": (400, "Frame rate must be blank, 30 or 60."),
-    "too_long": (400, "This clip is too long for that frame rate here. Choose a lower frame rate or a shorter clip."),
+    "too_long": (400, "This clip is too long to run here. Choose a shorter clip."),
     "fps_refused": (422, "This clip cannot be written at that frame rate. Choose another Frame rate."),
     "unknown_sample": (404, "There is no sample with that name."),
     "no_input": (400, "Choose a sample or a file first."),
@@ -127,11 +128,12 @@ def _stature(text):
 def parse_options(query):
     """(options, None) or (None, (status, body)) for the run switches of a query (a string or a dict of fields).
 
-    options = {"body", "stature" (metres or None), "view", "fps" (30, 60 or None)}; an absent field takes its default.
+    options = {"body" (a name, or None for the View's default), "stature" (metres or None), "view", "fps" (30, 60 or
+    None)}; an absent field takes its default.
     """
     fields = parse_query(query) if isinstance(query, str) else query
-    body = fields.get("body", DEFAULT_BODY)
-    if body not in BODIES:
+    body = fields.get("body", "") or DEFAULT_BODY
+    if body is not DEFAULT_BODY and body not in BODIES:
         return None, error("bad_body")
     stature = _stature(fields.get("stature", ""))
     if stature is False:
@@ -221,7 +223,7 @@ def _metrics(doc, skeleton, options):
         "variation_limit": BONE_MAX,
         "flips_repaired_frames": len(flagged_frames(skeleton)),
         "flips_repaired_total": person["flips_repaired_total"],
-        "mirror": skeleton["mirror"], "profile": options["body"], "stature_m": skeleton["standard"]["stature_m"],
+        "mirror": skeleton["mirror"], "profile": skeleton["body"]["profile"], "stature_m": skeleton["standard"]["stature_m"],
         "input_height_estimate_m": round_finite(
             profiles.estimate_stature(person["measured_bone_lengths_m"]), DECIMALS),
         "up_source": skeleton["frame"]["up_source"],
@@ -261,17 +263,27 @@ TIMELINE_TOO_LONG = "This clip is too long for Part 4 keys here. Choose another 
 
 
 def _no_person_text(fps):
-    """The sentence for a frame rate at which no output frame holds the person: the next higher Frame rate option the
-    page has, else Source alone. `fps` is None only for a call that names no rate."""
-    higher = next((rate for rate in FPS_VALUES if fps is not None and rate > fps), None)
+    """The sentence for the Frame rate `fps` at which no output frame holds the person: the next higher Frame rate
+    option the page has, else Source alone. A FrameRateError without input times only comes from a chosen rate."""
+    higher = next((rate for rate in FPS_VALUES if rate > fps), None)
     choice = f"{higher} per second or {SOURCE}" if higher else SOURCE
-    rate = "that frame rate" if fps is None else f"{fps} per second"
-    return f"No frame at {rate} holds the person. Choose {choice}."
+    return f"No frame at {fps} per second holds the person. Choose {choice}."
 
 
-def _too_long(timeline):
-    """The `too_long` answer: the Part 4 key timeline words it for its View, the frame grid keeps the table's text."""
-    return error("too_long", reason=TIMELINE_TOO_LONG if timeline else None)
+def _grid_too_long_text(fps, span):
+    """The `too_long` sentence of the frame grid at the Frame rate `fps`, naming only choices the page has that can help
+    (TICKET-034 residual 1): each lower Frame rate at which the clip's `span` (ms; None when unknown) fits, Source, or
+    a shorter clip."""
+    lower = [f"{rate} per second" for rate in FPS_VALUES if rate < fps and (span is None or not _over_cap(span, rate))]
+    return f"This clip is too long for {fps} per second here. Choose {', '.join([*lower, SOURCE])} or a shorter clip."
+
+
+def _too_long(options, timeline, span=None):
+    """The `too_long` answer: the Part 4 key timeline words it for its View, a chosen Frame rate by that rate, else
+    the table's text."""
+    if timeline:
+        return error("too_long", reason=TIMELINE_TOO_LONG)
+    return error("too_long", reason=_grid_too_long_text(options["fps"], span) if options["fps"] else None)
 
 
 def _fps_refusal(problem, fps):
@@ -286,8 +298,9 @@ def _contract_failure(problem, options):
     """(status, body) for a ContractError of a run with the `options`, told apart by its type: `too_long` for the
     pipeline's own frame cap (the Part 4 key timeline words it for that View), `fps_refused` for a frame rate the clip
     cannot take, `view_refused` for a View that cannot write the clip, else `contract`."""
-    if isinstance(problem, FrameCapError):
-        return _too_long(problem.timeline)
+    if isinstance(problem, FrameCapError):  # at View part4 a grid at 30 per second or less caps the timeline too
+        return _too_long(options, problem.timeline or (
+            options["view"] == "part4" and options["fps"] is not None and options["fps"] <= keyframes.FPS))
     if isinstance(problem, FrameRateError):
         return _fps_refusal(problem, options["fps"])
     if isinstance(problem, ViewError):
@@ -320,11 +333,18 @@ def _frame_rate(options):
     return options["fps"] or (keyframes.FPS if options["view"] == "part4" else None)
 
 
-def _span_cap_error(options):
-    """The `too_long` answer of the span pre-check: a run that writes the Part 4 timeline at its own 30 frames per
-    second (View part4, Frame rate Source) is told what the timeline can do, as its `FrameCapError` is; lowering the
-    Frame rate cannot help there."""
-    return _too_long(options["view"] == "part4" and options["fps"] is None)
+def _over_cap(span, rate):
+    """True when `span` ms at `rate` frames per second is more than SERVER_MAX_FRAMES frames (or not finite)."""
+    return not math.isfinite(span) or span * rate / 1000.0 + 1 > SERVER_MAX_FRAMES
+
+
+def _span_cap_error(doc, options):
+    """The `too_long` answer of the span pre-check. View part4 is told what the timeline can do whenever its own 30
+    frames per second are over the cap, as its `FrameCapError` is, since no Frame rate can help there; otherwise the
+    text names the lower Frame rates (TICKET-034 residual 1)."""
+    span = _clip_span_ms(doc)
+    timeline = options["view"] == "part4" and span is not None and _over_cap(span, keyframes.FPS)
+    return _too_long(options, timeline, span)
 
 
 def too_long(doc, options):
@@ -334,7 +354,7 @@ def too_long(doc, options):
         span = _clip_span_ms(doc)
     if span is None:
         return False
-    return not math.isfinite(span) or span * rate / 1000.0 + 1 > SERVER_MAX_FRAMES
+    return _over_cap(span, rate)
 
 
 def _angle_rows(skeleton):
@@ -345,9 +365,10 @@ def _angle_rows(skeleton):
 def _process(doc, flip, digest, options):
     """The native skeleton for the run options. A request never names a server path or reads the server's
     environment: the profile is resolved with no environment and no config file, and `process` is told the same.
-    `simon-standard` is the default profile, so it is requested as `python3 -m part3 run` without --body does."""
-    body = profiles.resolve(flag=None if options["body"] == DEFAULT_BODY else options["body"],
-                            stature_flag=options["stature"], env={}, config=False)
+    A named body is requested as `python3 -m part3 run --body <name>` does; no body takes the View's default, as
+    `python3 -m part3 run --view <view>` without --body does, so the bytes of either equal the command line's."""
+    body = profiles.resolve(flag=options["body"], stature_flag=options["stature"], env={}, config=False,
+                            view=options["view"])
     return cli.process(doc, flip=flip, sha256=digest, body=body, fps=options["fps"], env={}, config=False,
                        max_frames=SERVER_MAX_FRAMES)
 
@@ -378,7 +399,7 @@ def run(raw, flip, source, options=None):
     try:
         doc = _parse(raw)
         if too_long(doc, options):  # before any work: the cost follows the span, not the size of the upload
-            return _span_cap_error(options)
+            return _span_cap_error(doc, options)
         digest = hashlib.sha256(raw).hexdigest()
         skeleton = _process(doc, flip, digest, options)
         text = _text(skeleton)
@@ -393,7 +414,7 @@ def run(raw, flip, source, options=None):
         traceback.print_exc(file=sys.stderr)
         return error("internal")
     return 200, {"ok": True, "source": {**source, "bytes": len(raw), "sha256": digest}, "flip": flip,
-                 "options": dict(options), "metrics": metrics, "input_frames": input_frames, "bones": bone_pairs(),
+                 "options": {**options, "body": skeleton["body"]["profile"]}, "metrics": metrics, "input_frames": input_frames, "bones": bone_pairs(),
                  "angles": angles, "skeleton_text": text, "output_text": output_text,
                  "output_name": OUTPUT_NAMES[options["view"]],
                  "run_ms": round((time.perf_counter() - started) * 1000.0, 1)}

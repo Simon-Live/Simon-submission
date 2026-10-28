@@ -344,8 +344,7 @@ def test_error_internal_hides_the_exception_and_logs_the_traceback(monkeypatch, 
 
 @pytest.mark.parametrize("code, status, message", [
     ("too_large", 413, "This file is over 16 MB. Choose a smaller pose3d.json file."),
-    ("too_long", 400,
-     "This clip is too long for that frame rate here. Choose a lower frame rate or a shorter clip."),
+    ("too_long", 400, "This clip is too long to run here. Choose a shorter clip."),  # no rate chosen (TICKET-034)
     ("length_required", 411, "The upload had no length. Try again."),
     ("busy", 503, "The server is busy. Try again in a moment."),
     ("timeout", 503, "The run took too long and was stopped."),

@@ -54,7 +54,7 @@ Needs Python 3.11 or later with numpy and pytest. `make setup` installs the pins
 
 `python3 -m part3 run --in <pose3d.json> --out <skeleton.json> [--flip auto|on|off]` exits 0 on success, 2 when the input breaks the `pose3d.json` contract (the failing path is printed, nothing is written) and 1 when the output cannot be written. `python3 -m part3.schema <skeleton.json>` validates an output file.
 
-What the run does, in order: validate the input, keep one person, apply the mirror option, repair left/right label swaps, take "up" from the body (feet to shoulders while standing straight) instead of the camera, express every frame in that body frame, apply one fixed 5-frame mean to remove per-frame jitter, and rebuild every frame on one body profile (default `simon-standard`: `part3/standard_body.json`, stature 1.70 m). Timing is unchanged: every input frame and `t_ms` is kept unless `--fps` asks for a new grid.
+What the run does, in order: validate the input, keep one person, apply the mirror option, repair left/right label swaps, take "up" from the body (feet to shoulders while standing straight) instead of the camera, express every frame in that body frame, apply one fixed 5-frame mean to remove per-frame jitter, and rebuild every frame on one body profile (default `simon-standard`: `part3/standard_body.json`, stature 1.70 m; `part4-rig` for `--view part4`). Timing is unchanged: every input frame and `t_ms` is kept unless `--fps` asks for a new grid.
 
 - **One person.** When the input holds several ids, the id present in the most frames is kept; ties go to the larger person in the image, then to the first id. `skeleton.json` records the choice under `person`.
 - **`--flip`.** A selfie-mode video can be saved mirrored, which swaps left and right in a way no pose can reveal. `auto` (default) mirrors only when the input has the top-level key `"mirrored": true`; `on` always mirrors; `off` never does. The output records the setting, whether it was applied and why under `mirror`.
@@ -79,7 +79,7 @@ How another part plugs in:
    # Everyone else: the native simon.skeleton/1 (default)
    python3 -m part3 run --in pose3d.json --out skeleton.json
    ```
-4. Pick the body with `--body`, `PART3_BODY` or `part3.toml` (below). The default stays `simon-standard`.
+4. Pick the body with `--body`, `PART3_BODY` or `part3.toml` (below). The default stays `simon-standard`, except that `--view part4` uses `part4-rig` because Part 4's animator rejects bone lengths more than 1 mm off its rig.
 5. Test your reader on the conformance kit in `fixtures/conformance/`: golden input and output pairs for every profile and view, and Part 5 follower takes with labelled faults (`followers/labels.json`). `make check-3-contract` rebuilds every file byte for byte and checks each fault is still visible after normalization.
 
 The `part4` view keeps the native frames and adds Part 4's keyframe block: Part 1's video-clock keys mapped onto a 30 fps index, local rotations on Part 4's rig (root `pelvis`, virtual joint `neck`) and `rest_offsets_m` from the chosen body. Part 4's rig moves the children of the pelvis, neck and nose together, while Part 3 keeps every bone's own direction, so each key pose is the forward kinematics of the fitted rotations and `rig.fit` reports how far it sits from the native frame (on the Part 2 squat, under 5 mm). Part 4 reproduces each key within its 1 mm rule by construction.
@@ -90,7 +90,7 @@ The `part4` view keeps the native frames and adds Part 4's keyframe block: Part 
 
 | Option | Values | What it does |
 |---|---|---|
-| `--body` | `simon-standard` (default), `part4-rig`, `measured`, `file:<path>` | The body every frame is rebuilt on. `part4-rig` holds the lengths from Part 4's README (today equal to `simon-standard`). `measured` is the subject's own median lengths, left and right averaged, fixed for the clip. `file:` reads a `simon.body_profile/1` JSON. |
+| `--body` | `simon-standard` (default), `part4-rig` (default for `--view part4`), `measured`, `file:<path>` | The body every frame is rebuilt on. `part4-rig` holds the lengths from Part 4's README (today equal to `simon-standard`). `measured` is the subject's own median lengths, left and right averaged, fixed for the clip. `file:` reads a `simon.body_profile/1` JSON. |
 | `--stature` | 0.5 to 2.5 m | Scales the chosen body to this stature. |
 | `--config` | path | A `part3.toml` (see `part3.toml.example`). |
 | `--view` | `native` (default), `part4`, `part5` | The output shape. |
@@ -102,7 +102,7 @@ The `part4` view keeps the native frames and adds Part 4's keyframe block: Part 
 | `--person` | id | Keeps this person instead of the one in the most frames. |
 | `--all-people` | | Writes `person-<id>/skeleton.json` for every person into the `--out` folder, plus `people.json`. |
 
-The body is chosen by the first of: `--body`, `PART3_BODY`, the config file (`--config`, else `PART3_CONFIG`, else `./part3.toml`), the `body=` argument of `part3.cli.process`, then `simon-standard`. Stature follows the same order with `--stature`, `PART3_STATURE`, `stature` in the config file and `stature=`. The output records the profile, its numbers, its source and the channel that chose it under `body`.
+The body is chosen by the first of: `--body`, `PART3_BODY`, the config file (`--config`, else `PART3_CONFIG`, else `./part3.toml`), the `body=` argument of `part3.cli.process`, then the view's default (`part4-rig` for `--view part4`, `simon-standard` otherwise). Stature follows the same order with `--stature`, `PART3_STATURE`, `stature` in the config file and `stature=`. The output records the profile, its numbers, its source and the channel that chose it under `body`. When the view chose the profile, `body.reason` says why.
 
 The input may also hold joints as `[x, y, z]` or `[x, y, z, conf]` arrays (or a list of 17 in canonical order), frames with `joints` and no `people`, joint names beyond the 17, frames without `frame`, or frames without `t_ms` (with `--input-fps` or a top-level `fps`). The output names each adapter that fired under `input.adapters`.
 
@@ -111,7 +111,7 @@ The input may also hold joints as `[x, y, z]` or `[x, y, z, conf]` arrays (or a 
 `make demo` starts `python3 -m part3.server` (Python standard library only) on http://127.0.0.1:8733/. The page at `/` lets you run the real pipeline from the browser:
 
 1. Pick an input: the Part 2 squat (a real clip), one of the synthetic takes, or your own `pose3d.json` (up to 16 MB, read in memory and never stored).
-2. Pick the mirror setting `auto`, `on` or `off` (the same as `--flip`). Optionally pick a Body (`simon-standard`, `part4-rig`, `measured`), a Height, a View (`native`, `part4` with a key every 10 frames at 30 fps, `part5`) and a Frame rate (source, 30 or 60). Press Run.
+2. Pick the mirror setting `auto`, `on` or `off` (the same as `--flip`). Optionally pick a Body (Default for the View, `simon-standard`, `part4-rig`, `measured`), a Height, a View (`native`, `part4` with a key every 10 frames at 30 fps, `part5`) and a Frame rate (source, 30 or 60). Press Run.
 3. The server calls the same `process` the command line uses and returns `skeleton.json` with its metrics: bone-length variation of the output and of the input, flips repaired, the mirror decision and the standard body height.
 4. Input and output are drawn side by side in 3D. Drag to orbit, use the wheel to zoom, and use Front, Side, Top, Play and the frame slider. The Download button saves the exact bytes `python3 -m part3 run` writes for the same input and options.
 

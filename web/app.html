@@ -79,7 +79,8 @@
             <div class="field">
               <label for="body-select">Body</label>
               <select id="body-select" aria-describedby="body-hint">
-                <option value="simon-standard" selected>Simon standard</option>
+                <option value="" selected>Default for the View</option>
+                <option value="simon-standard">Simon standard</option>
                 <option value="part4-rig">Part 4 rig</option>
                 <option value="measured">Measured from the clip</option>
               </select>
@@ -105,7 +106,7 @@
               </select>
             </div>
           </div>
-          <p class="hint" id="body-hint">Body: the one set of bone lengths every frame is rebuilt on.</p>
+          <p class="hint" id="body-hint">Body: the one set of bone lengths every frame is rebuilt on. The default is Part 4 rig for Part 4 keys and Simon standard for the other Views.</p>
           <p class="hint" id="height-hint">Height in metres, 0.5 to 2.5. Blank keeps the body's own.</p>
           <p class="hint" id="view-hint">View: the file shape you download. The 3D panels always draw the native skeleton.</p>
           <p class="hint" id="fps-hint">Frame rate: Source keeps the input's frames.</p>

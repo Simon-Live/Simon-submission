@@ -61,7 +61,7 @@ Which producer file works with which consumer, as checked against the neighbour 
 | Part 1 | keyframes.json | `part1.keyframes/2026-10-28` | Part 3 | part3 phase 2 | works with option | `--view part4 --keyframes <keyframes.json>` | Part 1 6fac92f README 'Output': people[].repetitions[].keyframes[] name, frame, t_ms on the video clock; Part 3 maps them onto the 30 fps index by time |
 | Part 4 | keyframes.json | `simon.keyframes.v1` | Part 3 | part3 phase 2 | works |  | Part 4 9f4c073 fixtures/input/exercise/keyframes.json; pass it to --keyframes and the kind is detected; its fps must be 30 |
 | Part 3 | skeleton.json (native) | `simon.skeleton/1` | Part 4 | 9f4c073 | rejected | `--view part4 --keyframes <keyframes.json>` | Part 4 9f4c073 README 'The file is rejected': no keyframes[], no rest_offsets_m, no local_rotations |
-| Part 3 | skeleton.json (part4 view) | `simon.skeleton.v1` | Part 4 | 9f4c073 | works | `--body part4-rig (optional)` | Part 4 9f4c073 README 'Edge cases': fps 30, key t = index / 30 within 1 microsecond, FK within 1 mm; rig.fit reports the residual of snapping key poses to the rig; Part 4's own animator on this view (local neighbour check, 2026-10-28): key error 0.0 m, bone deviation 0.0000013 m. Condition (README 'The file is rejected'): works when no joint turns more than 180 degrees between neighbouring keys in rotation-vector space; Part 3's part4 view refuses to write a clip that breaks this and names the joint and the keys, and the arms rest in a T-pose so an arm overhead or hanging stays 90 degrees from rest |
+| Part 3 | skeleton.json (part4 view) | `simon.skeleton.v1` | Part 4 | 9f4c073 | works | `none (--view part4 uses --body part4-rig unless a body is named)` | Part 4 9f4c073 README 'Edge cases': fps 30, key t = index / 30 within 1 microsecond, FK within 1 mm; rig.fit reports the residual of snapping key poses to the rig; Part 4's own animator on this view (local neighbour check, 2026-10-28): key error 0.0 m, bone deviation 0.0000013 m. Condition (README 'The file is rejected'): works when no joint turns more than 180 degrees between neighbouring keys in rotation-vector space; Part 3's part4 view refuses to write a clip that breaks this and names the joint and the keys, and the arms rest in a T-pose so an arm overhead or hanging stays 90 degrees from rest |
 | Part 3 | keyframes.json (written by --keyframes-out) | `simon.keyframes.v1` | Part 4 | 9f4c073 | works | `--keyframes-out <path>` | Part 4 9f4c073 README 'What goes in': keyframes.json sits beside skeleton.json and lists the same key indices |
 | Part 3 | skeleton.json (native) | `simon.skeleton/1` | Part 5 | c292a15 | rejected | `--view part5` | Part 5 c292a15 part5/io.py parse_clip: a file without format is rejected |
 | Part 3 | skeleton.json (part5 view) | `simon.animation.v1` | Part 5 (follower clip) | c292a15 | works |  | Part 5 c292a15 docs/schemas.md 'Follower clip': assumes the simon.animation.v1 shape (open decision 1 in its #18) |
@@ -126,7 +126,7 @@ python3 -m part3 doctor <file> [--for part3|part4|part5] [--json]
 | `--in` | The `pose3d.json` to read. Looser shapes are accepted through input adapters (see below). | required |
 | `--out` | The file to write. With `--all-people` it is a folder. | required |
 | `--flip` | Mirror correction for selfie recordings: `auto` reads `mirrored` in the input, `on` and `off` force it. | `auto` |
-| `--body` | The body profile: `simon-standard`, `part4-rig`, `measured` or `file:<path>`. | `simon-standard` |
+| `--body` | The body profile: `simon-standard`, `part4-rig`, `measured` or `file:<path>`. | `part4-rig` with `--view part4`, `simon-standard` otherwise |
 | `--stature` | Scales every bone length to this stature, 0.5 to 2.5 m. | none |
 | `--config` | A `part3.toml` file. Without it Part 3 reads `PART3_CONFIG`, then `./part3.toml` when it exists. | none |
 | `--view` | The output shape: `native`, `part4` or `part5`. | `native` |
@@ -144,7 +144,7 @@ Input adapters run before validation, in this order. `flat-joints` wraps a frame
 
 ## Body profile selection
 
-A profile is a name, a stature and the 18 bone lengths, with the source of the numbers. The output records the profile, its numbers and the channel that chose it (`body.selected_by`).
+A profile is a name, a stature and the 18 bone lengths, with the source of the numbers. The output records the profile, its numbers and the channel that chose it (`body.selected_by`). When no channel names a body, the view chooses it and `body.reason` says why.
 
 The first channel that is set wins:
 
@@ -152,7 +152,7 @@ The first channel that is set wins:
 2. the environment variable `PART3_BODY`
 3. the config file (`[body] profile = "..."` in `part3.toml`)
 4. the `body=` parameter of the Python API
-5. the default, `simon-standard`
+5. the default of the view: `part4-rig` for `--view part4`, because Part 4's animator rejects bone lengths more than 1 mm off its rig, and `simon-standard` for every other view
 
 Stature follows the same order: `--stature`, `PART3_STATURE`, `stature` in the config file, the `stature=` parameter, none. A `file:` profile is a JSON file that validates against `contracts/body-profile.schema.json`. `left_pelvis` must equal `right_pelvis` and `left_clavicle` must equal `right_clavicle`, so the hip and shoulder midpoints stay put. An unknown name, a stature out of range or a bad profile file exits 2 and names the channel and the field.
 
@@ -188,7 +188,7 @@ Each file carries its version in `schema` or `format`. A change that only adds f
 
 Part 4's rig moves the children of the pelvis, the neck and the nose rigidly. Part 3 keeps the direction of every bone, so the hip line, the spine and the head can bend against each other. No set of local rotations reproduces such a pose exactly. The `part4` view therefore snaps each key pose to the rig. Its `joints` are the forward kinematics of its `local_rotations`, so Part 4's 1 mm rule holds. `rig.fit` reports how far the snapped pose is from the native frame: `max_m`, `mean_m`, `worst_joint` and `worst_index`. On the Part 2 squat fixture with a key on every frame (`every:1`) the largest residual is 4.906 mm, the mean is 1.130 mm and the worst joint is `left_hip`.
 
-A chest joint and a head joint in Part 4's rig, or per-key rest offsets, would remove the residual. Part 4 can decide that later. Nothing waits on it. Today, use `--body part4-rig` so the bone lengths match Part 4's rig, and read `rig.fit` for the residual.
+A chest joint and a head joint in Part 4's rig, or per-key rest offsets, would remove the residual. Part 4 can decide that later. Nothing waits on it. The `part4` view uses `part4-rig` unless a body is named, so the bone lengths match Part 4's rig. Read `rig.fit` for the residual.
 
 The `part4` view works under one condition: no joint turns more than 180 degrees between neighbouring keys in rotation-vector space, the rule in Part 4's README. Part 3 fits each key on its own, so a joint that swings through a half turn between two keys can flip its rotation axis. The `part4` view then refuses to write the file and names the joint and the keys, for example `left_shoulder turns 329.6 degrees between keys 30 and 40`. Because the arms rest in a T-pose, an arm hanging and an arm overhead are both 90 degrees from rest. `doctor --for part4` applies the same rule to a file from any producer.
 
@@ -197,7 +197,7 @@ The `part4` view works under one condition: no joint turns more than 180 degrees
 1. Find your file in the compatibility table. The row says whether it works, needs an option, or is rejected and what fixes it.
 2. Read the schema with `python3 -m part3 contract --schema <name>` and check your producer's output against it with any JSON Schema validator.
 3. Run `python3 -m part3 doctor <your file> --for part3` (or `part4`, `part5`). Exit 0 means the consumer accepts it. Otherwise the message names the field and the option.
-4. Run Part 3 with the options the table names, for example `python3 -m part3 run --in pose3d.json --out out/skeleton.json --view part4 --body part4-rig --keyframes keyframes.json --keyframes-out out/keyframes.json`.
+4. Run Part 3 with the options the table names, for example `python3 -m part3 run --in pose3d.json --out out/skeleton.json --view part4 --keyframes keyframes.json --keyframes-out out/keyframes.json` (the `part4` view picks the `part4-rig` body itself).
 5. Run `doctor` on the output with `--for` set to the consumer, then hand the file over. If the contract needs to change, open an issue on `moalborati/simon-part-3-skeleton-consistency` that names the file kind and the field.
 
 `make check-3-contract` rebuilds the golden files in `fixtures/conformance/` byte for byte and validates each against its schema, so a change that breaks a neighbour shows up there first.

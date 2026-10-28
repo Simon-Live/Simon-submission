@@ -354,9 +354,9 @@ def test_a_16_mib_pose3d_with_a_frame_rate_is_refused_by_the_frame_cap_not_run_t
 
 def test_the_run_options_default_and_are_echoed(real):
     body = real.run("sample=take-1").json()
-    assert body["options"] == {"body": "simon-standard", "stature": None, "view": "native", "fps": None}
+    assert body["options"] == {"body": "simon-standard", "stature": None, "view": "native", "fps": None}  # the body used
     assert body["output_name"] == "skeleton.json" and body["output_text"] == body["skeleton_text"]
-    page_query = real.run("sample=take-1&flip=auto&body=simon-standard&stature=&view=native&fps=").json()
+    page_query = real.run("sample=take-1&flip=auto&body=&stature=&view=native&fps=").json()  # the page's blank Body
     assert page_query["options"] == body["options"] and page_query["skeleton_text"] == body["skeleton_text"]
 
 

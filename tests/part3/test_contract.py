@@ -520,8 +520,9 @@ def test_contract_md_states_the_version_policy_and_the_open_question():
     policy = md_section("Version policy")
     assert "only adds fields keeps the version" in policy and "removes or renames a field bumps the version" in policy
     question = md_section("Open question to Part 4")
-    for word in ("rig.fit", "`--body part4-rig`", "chest", "head joint", "per-key rest offsets", "1 mm"):
-        assert word in question
+    for word in ("rig.fit", "uses `part4-rig` unless a body is named", "chest", "head joint", "per-key rest offsets",
+                 "1 mm"):
+        assert word in question, word
 
 
 def test_the_part4_view_row_and_contract_md_state_the_180_degree_condition():

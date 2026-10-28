@@ -506,7 +506,8 @@
             "config",
             "api",
             "default"
-          ]
+          ],
+          "description": "Which channel chose the profile; default means none did, and the view's default was used (part4-rig for --view part4, simon-standard otherwise)."
         },
         "stature_selected_by": {
           "enum": [
@@ -532,6 +533,11 @@
         },
         "symmetrized": {
           "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Present only when the view chose the profile (selected_by default and --view part4): why that profile was used. A body named on any channel wins and has no reason."
         }
       },
       "required": [
