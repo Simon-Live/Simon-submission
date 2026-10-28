@@ -5,6 +5,7 @@ by the expected clip's spread, with constant follower offsets (held faults) remo
 Open begin and open end: the follower may idle before starting or after finishing, and
 those frames are skipped instead of being forced onto the first or last expected pose.
 """
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -49,24 +50,34 @@ def features(measures, names, scale):
 
 def timing_measures(exp_measures, min_spread=MIN_SPREAD_DEG):
     """Measures that move in the expected clip carry timing; static ones only add noise."""
+    with warnings.catch_warnings():  # all-NaN measures are handled below
+        warnings.simplefilter("ignore", RuntimeWarning)
+        sds = {n: np.nanstd(exp_measures[n]) for n in ALIGN_MEASURES}
     names, spread = [], []
     for n in ALIGN_MEASURES:
-        sd = np.nanstd(exp_measures[n])
+        sd = sds[n]
         if np.isfinite(sd) and sd >= min_spread:
             names.append(n)
             spread.append(sd)
     if not names:  # a nearly static clip: fall back to everything, floored
         names = list(ALIGN_MEASURES)
-        spread = [max(np.nanstd(exp_measures[n]), min_spread) for n in names]
+        # An all-NaN measure (a joint masked for the whole clip) has no spread; its column is
+        # 0-filled by `features`, so any finite floor will do.
+        spread = [sds[n] if np.isfinite(sds[n]) and sds[n] > min_spread else min_spread
+                  for n in names]
     return names, np.array(spread)
 
 
 def dtw(cost, open_begin=True, open_end=True):
     """Slope-constrained DTW (rows = expected, cols = follower).
 
-    Steps (1,1), (1,2) and (2,1), so the follower runs between half and double the expected
-    speed and the path can't collapse onto a few frames. With open begin/end the follower
-    may start late and finish early (idle lead-in and tail are skipped).
+    Steps (1,1), (1,2) and (2,1) limit the local slope to between ½ and 2, so the path can't
+    collapse onto a few frames. That bounds speed in one direction only: a follower more than
+    2x faster has too few frames and raises, but one slower than ½x isn't rejected. With open
+    begin/end it aligns to the subsegment that fits best and the rest is treated as idle, so
+    callers should check `follower_span` and `residual` rather than trust the phase blindly.
+    With open begin/end the follower may start late and finish early (idle lead-in and tail
+    are skipped).
     Returns the path (every cell visited, monotonic) and the mean cost per cell.
     """
     n, m = cost.shape
@@ -99,7 +110,7 @@ def dtw(cost, open_begin=True, open_end=True):
     with np.errstate(invalid="ignore"):
         mean_last = D[n - 1] / np.maximum(L[n - 1], 1)
     if not np.isfinite(mean_last).any():
-        raise ValueError("follower clip is too short or too long to align (speed outside 0.5x–2x)")
+        raise ValueError("follower clip is too short to align (more than 2x faster than the expected clip)")
     j = int(np.nanargmin(np.where(np.isfinite(mean_last), mean_last, np.inf))) if open_end else m - 1
     if not np.isfinite(D[n - 1, j]):
         raise ValueError("no alignment ends at the last follower frame")
