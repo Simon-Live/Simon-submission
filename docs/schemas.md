@@ -35,7 +35,7 @@ Extra fields, such as Part 4's `local_rotations` and `rest_offsets_m`, are ignor
 
 ### Follower clip: `skeleton.json`
 
-**Assumption (open decision 1 in #18):** the follower file has the same `simon.animation.v1` shape, with
+**Decided (the team, 2026-10-28, #18):** the follower file has the same `simon.animation.v1` shape as Part 4's output, with
 every frame `interpolated: false`. Two optional extensions are accepted:
 - a joint may be left out or set to `null` in a frame when the estimator lost it;
 - a frame may carry `"conf": {"<joint>": 0..1}`. Joints below 0.3 are masked.
