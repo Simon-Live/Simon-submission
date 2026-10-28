@@ -88,6 +88,42 @@ class SparkSectionsTest(unittest.TestCase):
             self.assertEqual(sections[0]["phase_names"], ["start", "bottom", "top"])
 
 
+def _section(movement, start_s, end_s):
+    return {"movement": movement, "start_s": start_s, "end_s": end_s, "phase_names": ["a", "b", "c"]}
+
+
+def _box(frame, x1, y1, x2, y2):
+    return {"frame": frame, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "frame_w": 100.0, "frame_h": 100.0, "c": 0.9, "grid": None}
+
+
+class SectionTest(unittest.TestCase):
+    def test_one_movement_is_one_range(self):
+        sections = [_section("fly", 0, 2.6), _section("fly", 2.6, 5.3)]
+        self.assertEqual(from_video.movement_spans(sections, 15, 80), [(0, 80)])
+
+    def test_each_new_movement_starts_a_range(self):
+        sections = [_section("intro", 0, 5), _section("punch", 5, 11), _section("punch", 11, 12), _section("bounce", 12, 16)]
+        self.assertEqual(from_video.movement_spans(sections, 10, 160), [(0, 50), (50, 120), (120, 160)])
+
+    def test_a_repetition_belongs_to_the_range_of_its_middle(self):
+        tops = [2] * 8 + [2, 8, 14, 20, 26, 32] + [32] * 8 + [32, 26, 20, 14, 8, 2] + [2] * 8
+        grids = [_pose(top) for top in tops]
+        whole = from_video.motion_bounds_by_span(grids, None, 8, [(0, len(grids))])
+        self.assertEqual(len(whole), 1)
+        middle = whole[0][1]
+        split = from_video.motion_bounds_by_span(grids, None, 8, [(0, middle + 1), (middle + 1, len(grids))])
+        self.assertEqual(split, whole)
+
+    def test_a_box_inside_a_bigger_person_is_dropped_on_that_frame(self):
+        tracks = {
+            1: [_box(0, 20, 10, 60, 95), _box(1, 20, 10, 60, 95)],
+            2: [_box(0, 30, 70, 45, 92), _box(1, 70, 30, 90, 92)],
+        }
+        kept = from_video.drop_parts(tracks)
+        self.assertEqual(len(kept[1]), 2)
+        self.assertEqual([sample["frame"] for sample in kept[2]], [1])
+
+
 class SavedRunTest(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()

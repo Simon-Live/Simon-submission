@@ -50,6 +50,14 @@ MIN_TRACK_S = 1.0
 STITCH_GAP_S = 0.75
 STITCH_CENTER = 0.12
 STITCH_SHAPE = 0.55
+# A box almost entirely inside a box at least twice its size, on the same frame,
+# is part of that person: SAM sometimes tracks a pair of legs before the real
+# second person walks in.
+PART_INSIDE = 0.90
+PART_AREA = 0.50
+# A repetition near a section edge is still found when Spark's time is off by up
+# to about half a repetition.
+SECTION_PAD_S = 2.0
 # Bump when run.json or tracks.npz change shape, so old saved runs are sent again.
 SAVED_VERSION = 1
 
@@ -329,12 +337,56 @@ def section_for(sections, time_s):
     )
 
 
+def movement_spans(sections, fps, count):
+    """Frame ranges that each get their own movement signal.
+
+    Neighbouring sections with the same movement are one range. A clip with one
+    movement is one range, so a wrong section time cannot split a repetition.
+    """
+    starts = []
+    for section in sections:
+        start = min(count, max(0, int(round(section["start_s"] * fps))))
+        if starts and starts[-1][1] == section["movement"]:
+            continue
+        starts.append((start, section["movement"]))
+    if len(starts) < 2:
+        return [(0, count)]
+    edges = [0] + [start for start, _ in starts[1:]] + [count]
+    return [(left, right) for left, right in zip(edges, edges[1:]) if right > left]
+
+
+def motion_bounds_by_span(grids, centers, fps, spans):
+    """Repetitions found inside each range, with a margin for a rough section time.
+
+    A repetition belongs to the range its middle falls in. Ranges are read with
+    a margin, so a repetition ends no later than the next one starts.
+    """
+    pad = int(round(SECTION_PAD_S * float(fps)))
+    found = []
+    for start, stop in spans:
+        low = max(0, start - pad)
+        high = min(len(grids), stop + pad)
+        window = None if centers is None else centers[low:high]
+        for first, middle, last in find_motion_bounds(grids[low:high], fps, window):
+            if start <= low + middle < stop:
+                found.append((low + first, low + middle, low + last))
+    ordered = []
+    for first, middle, last in sorted(found):
+        if ordered and first < ordered[-1][2]:
+            if first <= ordered[-1][1]:
+                continue
+            ordered[-1] = (ordered[-1][0], ordered[-1][1], first)
+        ordered.append((first, middle, last))
+    return ordered
+
+
 def repetitions_from_masks(grids, centers, fps, sections):
-    """Find moves on the whole clip, then attach the name for that moment."""
-    bounds = find_motion_bounds(grids, fps, centers)
+    """Find moves in each movement's stretch of the clip, then attach its names."""
+    spans = movement_spans(sections, fps, len(grids))
+    bounds = motion_bounds_by_span(grids, centers, fps, spans)
     repetitions = []
     for start, middle, end in bounds:
-        when = ((start + end) / 2.0) / float(fps)
+        when = middle / float(fps)
         section = section_for(sections, when)
         names = section["phase_names"] if section else ["start", "bottom", "top"]
         movement = section["movement"] if section else "movement"
@@ -489,7 +541,40 @@ def _series_for(view):
     return series, grids, centers
 
 
+def _box_area(sample):
+    return max(0.0, sample["x2"] - sample["x1"]) * max(0.0, sample["y2"] - sample["y1"])
+
+
+def _is_part_of(sample, other):
+    area = _box_area(sample)
+    if area <= 0 or area > PART_AREA * _box_area(other):
+        return False
+    wide = min(sample["x2"], other["x2"]) - max(sample["x1"], other["x1"])
+    tall = min(sample["y2"], other["y2"]) - max(sample["y1"], other["y1"])
+    return max(0.0, wide) * max(0.0, tall) >= PART_INSIDE * area
+
+
+def drop_parts(tracks):
+    """Remove the frames where a track is only a piece of a bigger person."""
+    by_frame = {}
+    for object_id, samples in tracks.items():
+        for sample in samples:
+            by_frame.setdefault(int(sample["frame"]), []).append((object_id, sample))
+    kept = {}
+    for object_id, samples in tracks.items():
+        kept[object_id] = [
+            sample
+            for sample in samples
+            if not any(
+                other_id != object_id and _is_part_of(sample, other)
+                for other_id, other in by_frame[int(sample["frame"])]
+            )
+        ]
+    return kept
+
+
 def people_from_tracks(tracks, n_frames, frame_area, fps, sections, width, height):
+    tracks = drop_parts(tracks)
     views = []
     for object_id, samples in sorted(tracks.items()):
         view = _track_view(object_id, samples, n_frames, frame_area, width, height)
