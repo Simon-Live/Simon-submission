@@ -2,12 +2,15 @@
 
   part2 demo viewer  --run out/clip [--id 0]   -> out/clip/viewer.html
       each frame beside its rotatable 3D skeleton (canonical frame); drag to rotate,
-      slider/arrow keys to scrub. Self-contained page; frames are loaded from ./frames/.
+      slider/arrow keys to scrub. Frames are loaded from ./frames/ next to the page;
+      --embed inlines them (downscaled JPEG data URIs) so the single .html file can be shared.
   part2 demo overlay --run out/clip            -> out/clip/overlay.mp4
       every person's skeleton projected onto the video, one stable colour per id.
 
 --run is a `part2 run` output dir: frames/ (+ frames.json), pose3d.json, camera.json.
 """
+import base64
+import io
 import json
 import subprocess
 import tempfile
@@ -33,7 +36,20 @@ def _load(run: Path):
             json.loads((run / "camera.json").read_text()))
 
 
-def viewer(run, person_id=None, out=None) -> Path:
+EMBED_MAX_SIDE = 640  # px; keeps an embedded viewer around 2-6 MB for a ~100-frame clip
+
+
+def _data_uri(path: Path) -> str:
+    from PIL import Image
+
+    im = Image.open(path).convert("RGB")
+    im.thumbnail((EMBED_MAX_SIDE, EMBED_MAX_SIDE))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=72)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def viewer(run, person_id=None, out=None, embed=False) -> Path:
     run = Path(run)
     recs, pose3d, _ = _load(run)
     files = {r["frame"]: r["file"] for r in recs}
@@ -46,7 +62,8 @@ def viewer(run, person_id=None, out=None) -> Path:
     seq = []
     for f in pose3d["frames"]:
         p = next((p for p in f["people"] if p["id"] == pid), None)
-        seq.append({"frame": f["frame"], "t_ms": f["t_ms"], "file": f"frames/{files[f['frame']]}",
+        src = _data_uri(run / "frames" / files[f["frame"]]) if embed else f"frames/{files[f['frame']]}"
+        seq.append({"frame": f["frame"], "t_ms": f["t_ms"], "file": src,
                     "joints": None if p is None else [[p["joints"][j][k] for k in "xyz"] for j in CANONICAL]})
     data = {"id": pid, "color": color_for(pid), "joints": CANONICAL,
             "bones": [[CANONICAL.index(a), CANONICAL.index(b)] for a, b in BONES], "frames": seq}

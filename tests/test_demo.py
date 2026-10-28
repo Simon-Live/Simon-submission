@@ -42,6 +42,12 @@ def test_viewer_embeds_sequence(run_dir):
     assert data["frames"][0]["file"] == "frames/000000.jpg"
 
 
+def test_viewer_embed_inlines_frames(run_dir, tmp_path):
+    out = demo.viewer(run_dir, out=tmp_path / "v.html", embed=True)  # away from run_dir/frames
+    data = json.loads(out.read_text().split("const D = ", 1)[1].split(";\n", 1)[0])
+    assert all(f["file"].startswith("data:image/jpeg;base64,") for f in data["frames"])
+
+
 @needs_ffmpeg
 def test_overlay_writes_video_with_all_frames(run_dir):
     out = demo.overlay(run_dir)
