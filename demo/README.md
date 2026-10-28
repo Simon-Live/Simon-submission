@@ -44,7 +44,7 @@ Open the page, pick the Part 2 squat, a synthetic take or their own `pose3d.json
 - The specs were attacked by the reviewer before code; 7 blocking findings changed them (among them a metric call that would have crashed, upload limits that would misbehave behind the gateway, and connection limits).
 - A Playwright suite drives the app as a visitor through the gateway: every sample with every mirror setting (21 runs), the download compared with the command line byte for byte, a good upload and three bad ones, the 3D controls, the agreement view, a phone-width layout, a browser without WebGL, and the server's limits. It exited 0 on the final build, both directly and through the gateway.
 - One consolidated review approved the result with no blocking findings; its 9 residual items were fixed in one batch.
-- Three QA recipes (run a sample, upload a bad file, open the agreement view) were driven by hand by one agent and validated from the frames by another. The validator's notes on the run page (the person card, the view buttons for screen readers, the message for a missing key) were fixed in a second small batch, and the affected recipes were driven and validated again on the final build.
+- Six QA recipes (run a sample, upload a bad file, upload a good file, turn to the top view and play, phone width, open the agreement view) were driven by hand by one agent and validated from the frames by another, all on the final build. The validator's notes on the run page (the person card, the view buttons for screen readers, the message for a missing key) were fixed in a second small batch, and the affected recipes were driven and validated again on the final build.
 
 ### Commits
 
