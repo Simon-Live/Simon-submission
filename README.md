@@ -40,3 +40,16 @@ Done-check: `make check-5` — prints a metrics JSON and exits 0 only when every
 - Work only in this repo. Do not copy or import another part's code; consume other parts only through the shared files above, using fixtures until they exist.
 - Every run of the done-check goes through `make check-5`.
 - Fixtures of your inputs live in `fixtures/input/`; ship a fixture of your output so the next part can start.
+
+## Dev setup
+
+```bash
+uv sync                # Python ≥3.10 + numpy, pytest
+make test              # unit tests
+make dummy-data        # regenerate fixtures/input/followers/ (synthetic labelled takes)
+uv run part5 analyse --expected fixtures/input/expected/exercise/animation.json \
+  --follower fixtures/input/followers/exercise/<take_id>/skeleton.json --out out/analysis.json
+make check-5           # done-check
+```
+
+Work is coordinated in GitHub issues: checklist #17, team chat #18.
