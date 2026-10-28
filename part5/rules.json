@@ -1,0 +1,28 @@
+{
+  "_comment": "Fault rules for part5.detect. Degrees and frames at the expected clip's rate. #15 tunes these.",
+  "smooth_frames": 5,
+  "tolerance_frames": 0,
+  "default": {"threshold_deg": 10.0, "min_fraction": 0.25, "min_frames_floor": 8},
+  "measures": {
+    "elbow_flexion": {"threshold_deg": 12.0},
+    "knee_flexion": {"threshold_deg": 10.0},
+    "upper_arm_out": {"threshold_deg": 9.0},
+    "forearm_out": {"threshold_deg": 12.0},
+    "thigh_out": {"threshold_deg": 8.0},
+    "foot_out": {"threshold_deg": 6.0},
+    "upper_arm_forward": {"threshold_deg": 15.0},
+    "thigh_forward": {"threshold_deg": 15.0},
+    "trunk_lean_forward": {"threshold_deg": 9.0},
+    "trunk_lean_side": {"threshold_deg": 9.0},
+    "shoulder_tilt": {"threshold_deg": 9.0},
+    "head_forward": {"threshold_deg": 18.0}
+  },
+  "explained_by": {
+    "_comment": "A fault in the key measure is dropped when a fault in one of the listed measures, same side and same direction, overlaps it: the listed one is the cause, the key one follows from it.",
+    "thigh_out": ["foot_out"],
+    "forearm_out": ["upper_arm_out"],
+    "upper_arm_forward": ["trunk_lean_forward"],
+    "thigh_forward": ["trunk_lean_forward"],
+    "head_forward": ["trunk_lean_forward"]
+  }
+}
