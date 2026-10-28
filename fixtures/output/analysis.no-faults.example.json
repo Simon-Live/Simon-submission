@@ -22,6 +22,10 @@
       "right_upper_arm_forward",
       "right_thigh_forward",
       "trunk_lean_forward"
+    ],
+    "follower_span": [
+      0,
+      96
     ]
   }
 }

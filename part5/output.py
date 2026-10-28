@@ -73,8 +73,12 @@ def fault_to_dict(fault):
     }
 
 
-def _input_ref(ref):
-    return {"path": str(ref)} if isinstance(ref, (str, Path)) else dict(ref)
+def _input_ref(ref, key):
+    if isinstance(ref, (str, Path)):
+        return {"path": str(ref)}
+    if isinstance(ref, dict):
+        return dict(ref)
+    raise OutputError(f"{key} must be a path or an object with a 'path', got {ref!r}")
 
 
 def build_analysis(expected, follower, faults, diagnostics=None):
@@ -85,10 +89,14 @@ def build_analysis(expected, follower, faults, diagnostics=None):
     `detect.Fault` objects (already sorted); an empty sequence means a correct take.
     `diagnostics`, if given, is carried as an optional object Part 7 may ignore.
     """
+    try:
+        faults = [fault_to_dict(f) for f in faults]
+    except (AttributeError, KeyError, TypeError, ValueError) as e:
+        raise OutputError(f"<built analysis>: cannot build a fault object ({e})") from e
     doc = {"format": FORMAT,
-           "expected": _input_ref(expected),
-           "follower": _input_ref(follower),
-           "faults": [fault_to_dict(f) for f in faults]}
+           "expected": _input_ref(expected, "expected"),
+           "follower": _input_ref(follower, "follower"),
+           "faults": faults}
     if diagnostics is not None:
         doc["diagnostics"] = diagnostics
     return validate_analysis(doc, source="<built analysis>")
@@ -96,8 +104,12 @@ def build_analysis(expected, follower, faults, diagnostics=None):
 
 def write_analysis(path, analysis):
     doc = validate_analysis(analysis, source=str(path))
+    try:
+        text = json.dumps(doc, indent=2, allow_nan=False) + "\n"
+    except (TypeError, ValueError) as e:
+        raise OutputError(f"{path}: analysis is not JSON-serialisable ({e})") from e
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps(doc, indent=2) + "\n")
+    Path(path).write_text(text)
     return doc
 
 
@@ -137,6 +149,10 @@ def validate_analysis(doc, source="<analysis>"):
         fail("faults must be a list")
     for i, f in enumerate(faults):
         _validate_fault(f, f"faults[{i}]", fail)
+    try:  # nothing anywhere (incl. diagnostics/extras) may make this invalid JSON downstream
+        json.dumps(doc, allow_nan=False)
+    except (TypeError, ValueError) as e:
+        fail(f"document is not JSON-serialisable ({e})")
     return doc
 
 
@@ -160,6 +176,13 @@ def _validate_fault(f, where, fail):
         fail(f"{where}.body_part must be {spec.body_part!r} for {measure}, got {f.get('body_part')!r}")
     if f.get("direction") not in DIRECTIONS:
         fail(f"{where}.direction must be one of {DIRECTIONS}, got {f.get('direction')!r}")
+    if _is_number(f.get("magnitude_deg")) and _is_number(f.get("peak_deg")):
+        positive = f["magnitude_deg"] > 0 and f["peak_deg"] > 0
+        negative = f["magnitude_deg"] < 0 and f["peak_deg"] < 0
+        if (f["direction"] == "more") != positive or (f["direction"] == "less") != negative:
+            fail(f"{where}: direction {f['direction']!r} disagrees with the signed "
+                 f"magnitude_deg {f['magnitude_deg']!r} / peak_deg {f['peak_deg']!r} "
+                 "(more ⇔ positive, less ⇔ negative)")
     if f.get("unit") != UNIT:
         fail(f"{where}.unit must be {UNIT!r}, got {f.get('unit')!r}")
     for key in ("magnitude_deg", "peak_deg", "threshold_deg"):

@@ -61,6 +61,20 @@ def test_measure_vocabulary_matches_detect_generics():
     assert len(GENERIC_MEASURES) == 12
 
 
+def test_build_and_write_never_leak_or_write_invalid_json(tmp_path):
+    with pytest.raises(OutputError, match="expected must be a path"):
+        build_analysis(42, "follower.json", [])
+    with pytest.raises(OutputError, match="cannot build a fault object"):
+        build_analysis("e.json", "f.json", [object()])
+    p = tmp_path / "analysis.json"
+    p.write_text("previous good file")
+    d = doc([make_fault()])
+    d["diagnostics"] = {"alignment_residual": float("nan")}
+    with pytest.raises(OutputError, match="not JSON-serialisable"):
+        write_analysis(p, d)
+    assert p.read_text() == "previous good file"  # failed writes leave the old file intact
+
+
 def test_write_then_load_round_trips(tmp_path):
     d = doc([make_fault()])
     p = tmp_path / "sub" / "analysis.json"
@@ -79,6 +93,9 @@ def test_write_then_load_round_trips(tmp_path):
     (lambda d: d["faults"][0].update(body_part="arms"), "body_part must be"),
     (lambda d: d["faults"][0].update(side="middle"), "side must be one of"),
     (lambda d: d["faults"][0].update(direction="wider"), "direction must be one of"),
+    (lambda d: d["faults"][0].update(direction="less"), "direction .* disagrees with the signed"),
+    (lambda d: d["faults"][0].update(peak_deg=-8.3), "direction .* disagrees with the signed"),
+    (lambda d: d.update(diagnostics={"alignment_residual": float("nan")}), "not JSON-serialisable"),
     (lambda d: d["faults"][0].update(unit="radians"), "unit must be"),
     (lambda d: d["faults"][0].update(magnitude_deg="8"), "magnitude_deg must be a finite number"),
     (lambda d: d["faults"][0].update(magnitude_deg=float("nan")), "finite number"),
