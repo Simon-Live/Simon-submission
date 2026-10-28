@@ -39,8 +39,11 @@ A call that would cross the next $5 mark ($5, $10, $15, …) is not sent. The ru
 
 ## Output
 
+The contract is [CONTRACT.md](CONTRACT.md): every field, the clock, and what each neighbouring part reads. The schema is `contracts/keyframes.schema.json`. Consumers join on `t_ms`.
+
 ```json
 {
+  "format": "simon.keyframes/part1",
   "video": "inbox/example.mp4",
   "fps": 60.0,
   "analysis_fps": 8.0,
@@ -86,7 +89,7 @@ The same folder keeps what the models returned, so the keyframes can be rebuilt 
 
 ## Hand labels
 
-`make label` opens http://127.0.0.1:8767/?video=<name>. The page plays the original video with the predicted marks already on it. Accept a pose, nudge it, add one, or delete one. Saving writes `fixtures/labels/<name>.json` and does not call the API. A pose you have not changed is stored at the model's time.
+`make label` opens http://127.0.0.1:8767/?video=<name>. The page plays the original video with the predicted marks already on it. Accept a pose, nudge it, add one, or delete one. Saving writes `fixtures/labels/<name>.json` in the same format and does not call the API. A label that breaks the contract is not saved, and the page shows which field. A pose you have not changed is stored at the model's time.
 
 ## Definition of done
 

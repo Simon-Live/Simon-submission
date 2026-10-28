@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from keyframe_finder.schema import dump_json
+from keyframe_finder.schema import FORMAT, dump_json, validate
 
 ROOT = Path(__file__).resolve().parents[1]
 INBOX = ROOT / "inbox"
@@ -53,12 +53,16 @@ def label_document(stem, payload):
     if not isinstance(payload, dict) or not isinstance(payload.get("people"), list):
         raise ValueError("a label needs a people list")
     document = {
+        "format": FORMAT,
         "video": f"inbox/{stem}.mp4",
         "fps": payload.get("fps"),
         "people": payload["people"],
     }
     if payload.get("analysis_fps") is not None:
         document["analysis_fps"] = payload["analysis_fps"]
+    errors = validate(document)
+    if errors:
+        raise ValueError("; ".join(errors[:5]))
     return document
 
 

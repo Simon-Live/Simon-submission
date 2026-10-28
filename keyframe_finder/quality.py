@@ -31,7 +31,7 @@ SAMPLE_WIDTH = 320
 _FRAME = re.compile(r"frame:\d+\s+pts:\d+\s+pts_time:")
 _KV = re.compile(
     r"lavfi\.(signalstats\.(?:YAVG|YMIN|YMAX|YDIF)|blur|scd\.score|freezedetect\.freeze_duration)"
-    r"=([0-9.eE+-]+|nan)"
+    r"=(-?nan|[0-9.eE+-]+)"
 )
 
 
@@ -400,7 +400,7 @@ def _parse_stats(text):
         found = _KV.search(line)
         if found and current is not None:
             raw = found.group(2)
-            current[found.group(1)] = float("nan") if raw == "nan" else float(raw)
+            current[found.group(1)] = float(raw)
     if current:
         frames.append(current)
     return frames
