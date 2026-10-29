@@ -12,6 +12,7 @@ evaluate(cpu_pose3d, ref_pose3d) -> {pass, mean_m, p95_m, worst_joint, bone_cv_m
   frames; bone_cv_max beside it.
 - pass: mean_m <= 0.10 and bone_cv_mean <= 0.05.
 The reference is a model output (SAM 3D Body), not ground truth: the bar measures agreement with it.
+block() also carries the check-2 spec names (mean_joint_distance_m, bone_length_cv_mean, bone_length_cv_max).
 
     python -m part2.eval_3d [--cpu pose3d.json] [--reference pose3d.json | viewer.html] [--lifter name]
 exits 0 when the bar passes, 1 when it fails, 2 when an input file is missing. A `part2 demo viewer` html
@@ -35,6 +36,8 @@ CPU_DEFAULT = ROOT / "fixtures" / "output" / "scored" / "cpu-single" / "pose3d.j
 REF_DEFAULT = ROOT / "fixtures" / "output" / "scored" / "single" / "pose3d.json"
 NO_CPU = "no cpu outputs; run make outputs BACKEND=cpu"
 NO_REF = "no gpu reference; run make outputs BACKEND=gpu"
+# The names docs/specs/check-2.md gives the bar's numbers in the cpu_backend_3d block, beside AC-B09's.
+SPEC_NAMES = {"mean_joint_distance_m": "mean_m", "bone_length_cv_mean": "bone_cv_mean", "bone_length_cv_max": "bone_cv_max"}
 
 
 def joints_by_frame(pose3d: dict, person=PERSON) -> dict:
@@ -91,7 +94,9 @@ def block(cpu_path=CPU_DEFAULT, ref_path=REF_DEFAULT, lifter: str | None = None)
     if lifter is None and not (cpu.get("provenance") or {}).get("lifter"):
         stamp = cpu_path.parent / "stamp.json"
         lifter = json.loads(stamp.read_text()).get("lifter") if stamp.is_file() else None
-    return {**evaluate(cpu, load_pose3d(ref_path), lifter=lifter), "cpu": _rel(cpu_path), "reference": _rel(ref_path)}
+    res = evaluate(cpu, load_pose3d(ref_path), lifter=lifter)
+    named = {k: res[v] for k, v in SPEC_NAMES.items() if v in res}
+    return {**res, **named, "cpu": _rel(cpu_path), "reference": _rel(ref_path)}
 
 
 def exit_code(result: dict) -> int:

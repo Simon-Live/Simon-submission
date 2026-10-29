@@ -1,7 +1,8 @@
-"""web/viewer.js: constants, colours and placement agree with part2, and the camera controls work (AC-A01, AC-A03).
+"""web/viewer.js and web/overlay.js: constants, colours, projection and placement agree with part2, and the camera
+controls work (AC-A01, AC-A03, AC-A05).
 
-The viewer is plain JavaScript with no DOM at import time, so these tests run it under Node with a stub
-canvas. The page wiring (buttons, slider, keys) is proved on the running app by the staging verify suite.
+Both scripts are plain JavaScript with no DOM at import time, so these tests run them under Node with a stub
+canvas and stub controls. The pages themselves are proved on the running app by the staging verify suite.
 """
 import json
 import shutil
@@ -17,12 +18,14 @@ from part2.joints import BONES, CANONICAL
 
 ROOT = Path(__file__).resolve().parent.parent
 VIEWER = ROOT / "web" / "viewer.js"
+OVERLAY = ROOT / "web" / "overlay.js"
 OUT = ROOT / "fixtures" / "output"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
 
 PRELUDE = f"""
 const V = require({json.dumps(str(VIEWER))});
+const O = require({json.dumps(str(OVERLAY))});
 const fs = require('fs');
 const readJSON = p => JSON.parse(fs.readFileSync(p, 'utf8'));
 function stub(size = 300) {{
@@ -255,3 +258,117 @@ def test_drawing_before_a_scene_is_loaded_does_nothing():
       return {n: v.frameCount(), people: v.people(), playing: v.playing(), strokes: s.calls.filter(c => c[0] === 'stroke').length};
     """)
     assert got == {"n": 0, "people": [], "playing": False, "strokes": 0}
+
+
+# ---- notes and shared controls ---------------------------------------------------------------------------------
+
+def test_the_empty_frame_note_can_be_changed():
+    got = run_js("""
+      const s = stub(), v = V.create(s.canvas, {timers: manualTimers().timers});
+      v.setScene(V.buildScene({frames: [{frame: 0, t_ms: 0, people: []}]}, {frames: []}));
+      v.setNote('This person is not in this frame.'); s.calls.length = 0; v.draw();
+      return s.calls.filter(c => c[0] === 'fillText').map(c => c[1]);
+    """)
+    assert "This person is not in this frame." in got
+
+
+def test_bind_controls_wires_buttons_slider_and_keys():
+    got = run_js("""
+      const els = {}, docHandlers = {};
+      const el = id => (els[id] = els[id] || {id, value: '0', textContent: 'Play', handlers: {},
+        addEventListener(n, fn) { this.handlers[n] = fn; }});
+      globalThis.document = {addEventListener: (n, fn) => { docHandlers[n] = fn; }};
+      const {v, m} = viewerFor(%s);
+      V.bindControls(v, el);
+      const rel = () => v.camera().map((c, i) => +(c - v.target()[i]).toFixed(9));
+      const out = {};
+      els['view-side'].handlers.click(); out.side = rel();
+      els['view-top'].handlers.click(); out.top = rel();
+      els['view-front'].handlers.click(); out.front = rel();
+      els['view-reset'].handlers.click(); out.reset = rel();
+      els['frame-slider'].value = '12'; els['frame-slider'].handlers.input(); out.slider = v.frame();
+      const key = (k, tag) => docHandlers.keydown({key: k, target: {tagName: tag || 'BODY'}, preventDefault() {}});
+      key('ArrowRight'); out.right = v.frame();
+      key('ArrowLeft'); key('ArrowLeft'); out.left = v.frame();
+      key('ArrowRight', 'INPUT'); out.inInput = v.frame();
+      els['play-toggle'].handlers.click(); out.playing = v.playing(); out.label = els['play-toggle'].textContent;
+      els['play-toggle'].handlers.click(); out.label2 = els['play-toggle'].textContent;
+      out.d = v.distance();
+      return out;
+    """ % json.dumps(str(OUT / "class")))
+    d = got["d"]
+    assert got["side"] == pytest.approx([d, 0, 0]) and got["top"] == pytest.approx([0, d, 0])
+    assert got["front"] == pytest.approx([0, 0, d]) and got["reset"] != got["front"]
+    assert got["slider"] == 12 and got["right"] == 13 and got["left"] == 11 and got["inInput"] == 11
+    assert got["playing"] is True and got["label"] == "Pause" and got["label2"] == "Play"
+
+
+# ---- overlay.js ------------------------------------------------------------------------------------------------
+
+def test_overlay_projection_matches_part2_canonical_project_pose3d():
+    from part2.canonical import project_pose3d
+
+    pose = json.loads((OUT / "class" / "pose3d.json").read_text())
+    camera = json.loads((OUT / "class" / "camera.json").read_text())
+    got = run_js("return O.project(readJSON(%s), readJSON(%s));" % (
+        json.dumps(str(OUT / "class" / "pose3d.json")), json.dumps(str(OUT / "class" / "camera.json"))))
+    want = project_pose3d(pose, camera)
+    assert set(got) == {f"{f}:{i}" for f, i in want}
+    for (f, i), joints in want.items():
+        np.testing.assert_allclose(got[f"{f}:{i}"], [joints[j] for j in CANONICAL], atol=1e-6)
+
+
+def test_overlay_fit_matches_object_fit_contain():
+    got = run_js("return [O.fit(1280, 720, 640, 640), O.fit(720, 1280, 400, 300)];")
+    assert got[0] == pytest.approx({"s": 0.5, "ox": 0, "oy": 140})
+    assert got[1] == pytest.approx({"s": 300 / 1280, "ox": (400 - 720 * 300 / 1280) / 2, "oy": 0})
+
+
+def test_overlay_draws_every_person_in_the_frame_in_their_colour():
+    got = run_js("""
+      const s = stub(640), o = O.create(s.canvas);
+      o.setData(readJSON(%s), readJSON(%s));
+      const seen = [];
+      for (const i of [0, 44, 88]) { o.setFrame(i); seen.push(o.people()); }
+      s.calls.length = 0; o.pick(3); o.draw();
+      return {seen, ids: o.ids(), colors: o.colors(), styles: [...s.styles],
+              strokes: s.calls.filter(c => c[0] === 'stroke').length, labels: s.calls.filter(c => c[0] === 'fillText').map(c => c[1])};
+    """ % (json.dumps(str(OUT / "class" / "pose3d.json")), json.dumps(str(OUT / "class" / "camera.json"))))
+    assert got["ids"] == list(range(7)) and all(len(ids) >= 5 for ids in got["seen"])
+    assert got["colors"] == {str(i): demo.color_for(i) for i in range(7)}
+    assert set(got["colors"].values()) <= set(got["styles"])
+    assert got["strokes"] >= 5 * len(BONES) and {"id 3"} <= set(got["labels"])
+
+
+def test_overlay_without_data_draws_nothing_and_one_person_has_no_label():
+    got = run_js("""
+      const s = stub(), o = O.create(s.canvas);
+      o.draw(); const empty = {people: o.people(), strokes: s.calls.filter(c => c[0] === 'stroke').length};
+      o.setData(readJSON(%s), readJSON(%s)); s.calls.length = 0; o.setFrame(3);
+      const one = {people: o.people(), labels: s.calls.filter(c => c[0] === 'fillText').length};
+      o.clear();
+      return {empty, one, cleared: o.people()};
+    """ % (json.dumps(str(OUT / "single" / "pose3d.json")), json.dumps(str(OUT / "single" / "camera.json"))))
+    assert got["empty"] == {"people": [], "strokes": 0}
+    assert got["one"] == {"people": [0], "labels": 0} and got["cleared"] == []
+
+
+def test_a_picked_person_is_shown_alone_in_the_canonical_frame():
+    pose = json.loads((OUT / "class" / "pose3d.json").read_text())
+    got = run_js("""
+      const pose = readJSON(%s), cam = readJSON(%s);
+      const scene = O.personScene(pose, cam, 4);
+      const s = stub(), v = V.create(s.canvas, {timers: manualTimers().timers});
+      v.setScene(scene); v.setFrame(10); v.view('front');
+      return {placement: scene.placement, ids: scene.ids, frames: scene.frames.length, drawn: v.people(),
+              front: v.camera().map((c, i) => c - v.target()[i]), d: v.distance(),
+              pts: scene.frames[10].people[0].pts, axes: scene.home.axes.labels,
+              kept: O.onlyPerson(pose, 4).frames.length, idOf: [O.idOf('4', [3, 4]), O.idOf('x', [3, 4])]};
+    """ % (json.dumps(str(OUT / "class" / "pose3d.json")), json.dumps(str(OUT / "class" / "camera.json"))))
+    person = next(p for p in pose["frames"][10]["people"] if p["id"] == 4)
+    assert got["placement"] == "canonical" and got["ids"] == [4] and got["drawn"] == [4]
+    assert got["frames"] == len(pose["frames"]) == got["kept"]
+    assert got["front"] == pytest.approx([0, 0, got["d"]], abs=1e-9)          # Front: camera on +z, the body's front
+    assert got["axes"] == ["x left", "y up", "z front"]
+    np.testing.assert_allclose(got["pts"], [[person["joints"][j][k] for k in "xyz"] for j in CANONICAL])
+    assert got["idOf"] == [4, None]

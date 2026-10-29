@@ -1,0 +1,99 @@
+{
+ "schema": "part2.stamp/2",
+ "mode": "coco-single",
+ "backend": "gpu",
+ "tracker": null,
+ "lifter": null,
+ "refine": [],
+ "env_profile": "gpu-cu128",
+ "env_lock": "envs/gpu-cu128/constraints.txt",
+ "env_lock_sha256": "f6335d220b1febc14f8aafb618ea3797551b53feb987a9614349e7fc3a28f3c6",
+ "code_files": {
+  "part2/backends/__init__.py": "a5742c4fec5cb5611de1292164b0ee0181d91ddfdf2df1206f7e38fe9174f804",
+  "part2/backends/gpu_sam3db.py": "a6f236a7402fbc980f9f9709c7a105dbb0c79e6788a4a5cd2451ee09d2b8eada",
+  "part2/body3d.py": "a1392f633dad90ea80b6434ff0b478848305a9b438bbe1b46b421fda09ff0fab",
+  "part2/canonical.py": "c093d8ac4abe3e2650290eb3e4b89b3b718c5ae5b5853bcbb71c0fd29105a7f1",
+  "part2/coco_set.py": "75f84b09948ad15e53e457a08a49c51785e765b874353512611b5180c90a0432",
+  "part2/eval_reproj.py": "a8a0b80d33f238a96d684c5f48c06b87275c5815e59a4fa0d1c947c8f492ef2a",
+  "part2/frames.py": "80951fffde382b7aa3db5e0825e4b0b820e7db11d6251ed085f48e67ad218c8f",
+  "part2/joints.py": "22bb9bb9e6671c558dc6ba6300eff2377a1eb853491ac44dbe5c2803534ad93f"
+ },
+ "code_sha256": "fceab389ef94e0f98c3394e4072d0d1894aada9d79d7c60c548fe95adcb13aa9",
+ "frames_dir": "fixtures/input/coco/images",
+ "frames_sha256": "9eb6c237c217d81880f57f5683a45cd11f86d542a9580c73b8a3376ddf30d152",
+ "models": [
+  {
+   "name": "sam-3d-body-dinov3",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/model.ckpt",
+   "weights_sha256": "b5a2f9d305dd02626b967aa2e86021fba07065df66ce7a7e00ffb9664f150abf"
+  },
+  {
+   "name": "mhr",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/assets/mhr_model.pt",
+   "weights_sha256": "352e271a6c42729c68554ceaea0c955e866970160c31e35506d782dc0f7377bc"
+  },
+  {
+   "name": "moge-2-vitl-normal",
+   "source": "hf:Ruicheng/moge-2-vitl-normal@cb0e8bbd6b1e243589717c78e750b1ba4c093acf/model.pt",
+   "weights_sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01"
+  },
+  {
+   "name": "vitdet-h-cascade-mask-rcnn",
+   "source": "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl",
+   "weights_sha256": "8601bc52000c8a87960f3db6a9672596c5e06ce33bc30a3b8f96a96efe42ae60"
+  }
+ ],
+ "files_sha256": {
+  "161875/camera.json": "ad3d50d34b352e746b1724b6930c2cae22dc3c243a702fffaac4abf2dfc874a9",
+  "161875/pose3d.json": "e62cef619ab81691bb84e9b943df0045f5858f228903273643e14fd9d0646eee",
+  "22705/camera.json": "0de9bab37426fc002a9ead812ef9cabaef55163e60b4c9868713e702c5f099bd",
+  "22705/pose3d.json": "4d1ae54e489a12345cf7db5776521524a3074a06ed4ac87d2fce9d36dd168332",
+  "229553/camera.json": "66010dcb700a063d8b274c47ca86b1f88e31142c470602993c13837dc47a5ac7",
+  "229553/pose3d.json": "86b5ddfe9e81ea66b79e377fa192603a680ba7b16461d8e2d6ee4f07987eb76b",
+  "261732/camera.json": "8757d9ac9fe8c50af414ccd85d1a0addcc0e65a2be3a5bd7c29c5708da7edd3d",
+  "261732/pose3d.json": "71a0b29a349ce5211f768eb4d572a248d60341eb8b4e1736158e494f33640df6",
+  "273760/camera.json": "5d08fa9e6acdd058df83621415869113605689112986f14fd01cb452d006b14d",
+  "273760/pose3d.json": "7f62c0da07ad49eece5c70f62b1d5e372577ed6145639451ea2d3ae1346f4af0",
+  "317433/camera.json": "72708c6dc49eee08941be64b31e63aa1195c47caee4ff904cde264e1b130553f",
+  "317433/pose3d.json": "66ed12aae932065a309d691046eb10e9979af2b7bc19bcf613ada6ae48e7b911",
+  "326128/camera.json": "a356466d02c71ff17e6b29601b7f54c56ed4316a162373f4b8cc55f5c2b2ff82",
+  "326128/pose3d.json": "57e5fd081ff29fdfef44ef9223263809e135df9daa44bedb21109dab629f2d4f",
+  "340451/camera.json": "dfef3cf997f690e25b8a45c27ad847fcc025fad7b86d1802d4b8d6171cde65c3",
+  "340451/pose3d.json": "b131776be435b6325ecf41a809af70043669f315c4da7afce429516331a89ec5",
+  "352760/camera.json": "9c1ae8031edfa9cfb3bb72ad326e7846575ae90754787ea494a1497180870390",
+  "352760/pose3d.json": "49311249e134192b0f4c1410886e29f3bfdf8326dac67358d5a425b103a2656f",
+  "356505/camera.json": "77a518d5e180286b8733d16d66f6c3179bc1bdcce2efeb9c3c38dd529197c1cf",
+  "356505/pose3d.json": "f9c3fcf494ca424f766c0d6611e243c46c0a9e48d84c8056a3b3ce29151ef9e6",
+  "358195/camera.json": "5b170214323dbedb464d580997354193b69d7e35c94edf34ad3dc47a3a087a72",
+  "358195/pose3d.json": "fa2c76f3a172dbfdf7b2f7a6ae2ed14ea1b45ba803cf7df0b9d2a30f8cfb06d0",
+  "42102/camera.json": "58d726b9e029d69bede845552a24dcff8ce9165538fb3558afacba748c1cf970",
+  "42102/pose3d.json": "82b3ce07a529c8c6b8baffaa35d18580dfa7adb818a31c3ebd4c8431d7f02dcc",
+  "473406/camera.json": "a681e3dc92ca1643ff857ec1cf224777bea6da00b313be089d0d01677d069426",
+  "473406/pose3d.json": "bdb2227aac1ecfdeb5bbba8eafb31964776cdb9260e1535f114e7533e9c02e7f",
+  "480936/camera.json": "ce769cbe875df254bc18165fe75a3b92b27d2d93713d3cedb7bc43b0bb972d16",
+  "480936/pose3d.json": "f9ad84cb3b00b275086a7a15c682a875f18f242a89dd1adaca4c3b3491cf7d92",
+  "481386/camera.json": "caaec8b627f7dd8eaee46a2458282e115dc013456e4632eb97422360096f8770",
+  "481386/pose3d.json": "6d54b67ed70e00e7550f98fa150e4082721de1527d44a29dd591faf8ddd3299b",
+  "493442/camera.json": "c7ac589eb75fe6374c4b6e0b92cc5b10330efc39a526165a8942ff0d947bc6d1",
+  "493442/pose3d.json": "afe1c124e16b37cb5f4b1212a1c9764a9878511df04c1432a52604621c1d75ff",
+  "520910/camera.json": "0e992a6b4b4d61d7f62ab358bc2ec37a7caba1c6696003ce904f7d1cdbc2fa8a",
+  "520910/pose3d.json": "0dd0f5e85eb0ca19f85900f6f64ac29993bc9ade0538aff36dcc7d89aebc9f7a",
+  "54931/camera.json": "dc0551ed41bb07e02a44479f55c271b4fd038e53a3861ee7cb511d6fd3c1a3b2",
+  "54931/pose3d.json": "e2e545d66b52c8c2ef619accc5c2b0be625f6b3df4494d4a52b5fbef248c0f5c",
+  "556158/camera.json": "76865dcfa1996132677de54938758722164fb347118b62801b9f1471d4f21e8f",
+  "556158/pose3d.json": "31852d69565a91aaef9c709d56bcf2c6c9d27c2fe2120a802bbf13add110ac14",
+  "785/camera.json": "3a6d75c63952825612a5259e972da6ef7766589bd8d8ec1baa8143c0342e300b",
+  "785/pose3d.json": "66c06e64e5c8b4b37564b864a2c077cb652d5ef7d499a57238e1da25df07797e"
+ },
+ "created_utc": "2026-10-29T04:33:15Z",
+ "host_gpu": "NVIDIA GeForce RTX 5090",
+ "run": {
+  "frames": 20,
+  "people": 20,
+  "seconds": 52.3,
+  "params": {
+   "smooth": false,
+   "mirrored": false
+  }
+ }
+}

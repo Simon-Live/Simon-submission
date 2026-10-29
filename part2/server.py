@@ -7,8 +7,11 @@ under a base path: `/` for scripts/dev.sh, `/simon-part-2/` behind the staging g
 a request reaches the filesystem (AC-A11): a request picks an entry of a table built from directory
 listings, and a name that is not in the table is a 404.
 
-S0 routes (GET and HEAD only): the pages, api/health, api/outputs, api/outputs/<id>,
+S0 routes (GET and HEAD): the pages, api/health, api/outputs, api/outputs/<id>,
 api/outputs/<id>/frames/<n>.jpg, api/contract, contracts/<file>.json and CONTRACT.md.
+M4 routes: GET api/capabilities, GET and POST api/jobs, GET api/jobs/<id>, POST api/jobs/<id>/cancel,
+GET api/jobs/<id>/files/<name> and api/jobs/<id>/files/frames/<n>.jpg. The request logic is in
+part2/runapi.py and the queue in part2/jobs.py; job dirs live outside the repo tree.
 """
 from __future__ import annotations
 
@@ -19,11 +22,14 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import unquote
+
+from part2 import gpu_guard, jobs, runapi
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -40,12 +46,18 @@ STATIC = {"": "index.html", **{n: n for n in (
 MESSAGES = {
     "not_found": "Not found.",
     "method_not_allowed": "This address accepts GET and HEAD only.",
+    "post_only": "This address accepts POST only.",
+    "get_or_post": "This address accepts GET, HEAD and POST only.",
+    "finished": "This job has already finished.",
     "contract_unavailable": "The contract data is not available right now.",
     "bad_request": "The request could not be read.",
     "unreadable": "This output could not be read.",
     "internal": "The server could not answer this request.",
 }
 STATUS_CODES = {400: "bad_request", 404: "not_found", 405: "method_not_allowed", 503: "contract_unavailable"}
+ALLOW = {("GET", "HEAD"): "method_not_allowed", ("POST",): "post_only", ("GET", "HEAD", "POST"): "get_or_post"}
+JOB_FILE = re.compile(r"(0|[1-9][0-9]{0,8})\.jpg", re.ASCII)
+GPU_TTL_S = 5.0
 
 # ---- the committed outputs ---------------------------------------------------------------------------
 
@@ -207,24 +219,42 @@ def normalize_base(base: str) -> str:
 # ---- the app: routes without any socket ----------------------------------------------------------------
 
 class App:
-    def __init__(self, root: Path = ROOT, base: str = "/"):
+    def __init__(self, root: Path = ROOT, base: str = "/", queue: jobs.JobQueue | None = None,
+                 caps: runapi.Capabilities | None = None, limits: runapi.Limits | None = None):
         self.root = Path(root)
         self.base = normalize_base(base)
         self.version = git_version(self.root)
         self._outputs: dict = {}
+        self.queue = queue
+        self.caps = caps or runapi.Capabilities()
+        self.limits = limits or runapi.Limits()
+        self._gpu = (0.0, None)
 
-    def handle(self, method: str, target: str) -> Response:
+    @staticmethod
+    def allowed(parts: list) -> tuple:
+        """The methods a path answers: POST only on the job routes that create or cancel."""
+        if parts == ["api", "jobs"]:
+            return ("GET", "HEAD", "POST")
+        if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "cancel":
+            return ("POST",)
+        return ("GET", "HEAD")
+
+    def handle(self, method: str, target: str, headers=None, rfile=None) -> Response:
         path = target.split("?", 1)[0].split("#", 1)[0]
         is_api = path.startswith(self.base + "api/")
-        if method not in ("GET", "HEAD"):
-            resp = error(405, headers=(("Allow", "GET, HEAD"),))
+        parts = [unquote(p) for p in path[len(self.base):].split("/")] if path.startswith(self.base) else []
+        allowed = self.allowed(parts)
+        if method not in allowed:
+            resp = error(405, "method_not_allowed", MESSAGES[ALLOW[allowed]], (("Allow", ", ".join(allowed)),))
         elif path == self.base.rstrip("/") and self.base != "/":
             resp = Response(301, "text/plain", b"", (("Location", self.base),))
         elif not path.startswith(self.base):
             resp = error(404)
         else:
             try:
-                resp = self._route([unquote(p) for p in path[len(self.base):].split("/")])
+                resp = self._post(parts, headers, rfile) if method == "POST" else self._route(parts)
+            except runapi.ApiError as exc:
+                resp = error(exc.status, exc.code, exc.message)
             except Exception as exc:  # never a stack trace to the client; the class name only in the log
                 print(f"error: {type(exc).__name__} while answering a request", file=sys.stderr)
                 resp = error(500, "internal")
@@ -249,9 +279,14 @@ class App:
 
     def _api(self, rest: list) -> Response:
         if rest == ["health"]:
-            return json_response(200, {"ok": True, "version": self.version, "gpu": None, "worker": "idle"})
+            worker = "busy" if self.queue is not None and self.queue.busy() else "idle"
+            return json_response(200, {"ok": True, "version": self.version, "gpu": self.gpu(), "worker": worker})
         if rest == ["contract"]:
             return self._contract()
+        if rest == ["capabilities"]:
+            return json_response(200, self.capabilities())
+        if rest[0] == "jobs":
+            return self._jobs(rest[1:])
         if rest == ["outputs"]:
             return json_response(200, [o.summary for o in self._all_outputs().values()])
         if rest[0] == "outputs" and len(rest) == 2:
@@ -317,6 +352,73 @@ class App:
         path = out.frame_files.get(int(match.group(1))) if out and match else None
         return self._file(path, TYPES[".jpg"]) if path else error(404)   # path comes from the table, not the URL
 
+    # -- the run API (M4)
+
+    def gpu(self):
+        """{free_gib, total_gib} of GPU 0, asked of nvidia-smi at most every 5 s; None without one."""
+        at, value = self._gpu
+        if time.monotonic() - at > GPU_TTL_S:
+            value = gpu_guard.query()
+            self._gpu = (time.monotonic(), value)
+        return value
+
+    def capabilities(self) -> dict:
+        queue = self.queue.settings.max_pending if self.queue else 0
+        return runapi.capabilities_doc(self.caps.raw(), runapi.samples(self.root), self.limits, queue)
+
+    def _post(self, parts: list, headers, rfile) -> Response:
+        if self.queue is None or headers is None:
+            return error(404)
+        if parts == ["api", "jobs"]:
+            created = runapi.create_job(self.queue, self.capabilities(), runapi.samples(self.root), self.limits,
+                                        headers, rfile)
+            return json_response(202, created)
+        try:
+            return json_response(200, {"state": self.queue.cancel(parts[2])})
+        except KeyError:
+            return error(404)
+        except jobs.AlreadyFinished:
+            return error(409, "finished")
+
+    def _jobs(self, rest: list) -> Response:
+        if self.queue is None:
+            return error(404)
+        if not rest:
+            return json_response(200, self.queue.listing())
+        job = self.queue.get(rest[0])
+        if job is None:
+            return error(404)
+        if len(rest) == 1:
+            return json_response(200, self.queue.public(job.id))
+        if rest[1] != "files" or job.state != "done":
+            return error(404)
+        if len(rest) == 3 and rest[2] in job.files and rest[2] in jobs.DOWNLOADS:
+            path = job.dir / "out" / rest[2]
+            disposition = (("Content-Disposition", f'attachment; filename="{rest[2]}"'),)
+            return self._file(path)._replace(headers=disposition) if path.is_file() else error(404)
+        if len(rest) == 4 and rest[2] == "frames":
+            return self._job_frame(job, rest[3])
+        return error(404)
+
+    @staticmethod
+    def _job_frame(job, name: str) -> Response:
+        """A frame picture of a finished job, looked up by number in the run's frames.json."""
+        match = JOB_FILE.fullmatch(name)
+        frames_dir = job.dir / "out" / "frames"
+        if not match:
+            return error(404)
+        try:
+            records = load_json(frames_dir / "frames.json")["frames"]
+            rec = next((r for r in records if r.get("frame") == int(match.group(1))), None)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return error(404)
+        if rec is None or not isinstance(rec.get("file"), str) or not FRAME_FILE.fullmatch(rec["file"]):
+            return error(404)
+        path = frames_dir / rec["file"]
+        if not path.is_file() or path.is_symlink() or path.resolve().parent != frames_dir.resolve():
+            return error(404)
+        return App._file(path, TYPES[".jpg"])
+
 
 # ---- the HTTP layer ----------------------------------------------------------------------------------
 
@@ -328,7 +430,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.server_version
 
     def _answer(self) -> None:
-        resp = self.server.app.handle(self.command, self.path)
+        resp = self.server.app.handle(self.command, self.path, self.headers, self.rfile)
+        if self.command == "POST":
+            self.close_connection = True       # a refused body may still be arriving; never read it as a request
         self._write(resp)
 
     def _write(self, resp: Response) -> None:
@@ -356,28 +460,57 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("%s %s\n" % (self.log_date_time_string(), fmt % args))
 
 
+class JobsDirUnusable(RuntimeError):
+    """The job dir cannot be created or written."""
+
+
 class AppServer(ThreadingHTTPServer):
     daemon_threads = True
     app: App
 
+    def server_close(self) -> None:
+        super().server_close()
+        if getattr(self, "app", None) is not None and self.app.queue is not None:
+            self.app.queue.stop()
 
-def make_server(host: str = "127.0.0.1", port: int = 8722, base: str = "/", root: Path = ROOT) -> AppServer:
+
+def make_server(host: str = "127.0.0.1", port: int = 8722, base: str = "/", root: Path = ROOT,
+                jobs_dir: Path | None = None, settings: jobs.Settings | None = None,
+                caps: runapi.Capabilities | None = None, limits: runapi.Limits | None = None,
+                command=None) -> AppServer:
+    """The server, its job queue (started: restart recovery and cleanup run now) and its capability probe.
+    Job dirs: jobs_dir, else PART2_JOBS_DIR, else ~/.local/state/simon-part-2/jobs/<port>."""
     server = AppServer((host, port), Handler)
-    server.app = App(root, base)
+    settings = settings or jobs.Settings()
+    try:
+        queue = jobs.JobQueue(jobs_dir or jobs.default_jobs_dir(server.server_address[1]), settings,
+                              command=command, root=root)
+        queue.start()
+    except OSError as exc:
+        server.server_close()
+        raise JobsDirUnusable() from exc
+    server.app = App(root, base, queue, caps or runapi.Capabilities(settings=settings, root=root), limits)
     return server
 
 
 def main(argv: list | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m part2.server", description="Part 2 web app (browse and contract pages).")
+    parser = argparse.ArgumentParser(prog="python -m part2.server",
+                                     description="Part 2 web app (browse, contract and run pages).")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8722)
     parser.add_argument("--base", default="/", help="URL prefix the app is served under, such as /simon-part-2/")
+    parser.add_argument("--jobs-dir", type=Path,
+                        help="where job dirs live (default: PART2_JOBS_DIR, else ~/.local/state/simon-part-2/jobs/<port>)")
     args = parser.parse_args(argv)
     try:
-        server = make_server(args.host, args.port, args.base)
+        server = make_server(args.host, args.port, args.base, jobs_dir=args.jobs_dir)
+    except JobsDirUnusable:
+        print("server: the jobs directory cannot be created or written; pass --jobs-dir", file=sys.stderr)
+        return 1
     except OSError:
         print(f"server: port {args.port} on {args.host} is in use by another program", file=sys.stderr)
         return 1
+    server.app.caps.warm()
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown).start())
     print(f"serving http://{args.host}:{args.port}{server.app.base}", flush=True)
     try:

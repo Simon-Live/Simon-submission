@@ -44,6 +44,7 @@ button:hover, select:hover { border-color: var(--accent); }
 .stage img, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stage img { object-fit: contain; }
 .stage .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #aab3bf; }
+.stage canvas.overlay { pointer-events: none; }
 #viewer { cursor: grab; touch-action: none; }
 #viewer:active { cursor: grabbing; }
 
@@ -72,6 +73,24 @@ section { margin-top: 20px; }
 .doc pre code { background: none; padding: 0; }
 .doc .table-wrap { margin: 8px 0; }
 .doc blockquote { margin: 8px 0; padding: 0 12px; border-left: 3px solid var(--line); color: var(--muted); }
+
+/* run page */
+.run-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; max-width: 760px; }
+.run-form fieldset { min-width: 0; margin: 0; padding: 8px 12px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.run-form legend { font-weight: 600; padding: 0 4px; }
+.choices { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.choice { display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; }
+.file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+.file-row input[type="file"] { max-width: 100%; font: inherit; }
+.settings { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.settings .picker { min-width: 0; max-width: 100%; }
+.picker select { flex: 0 1 auto; max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.run-form .hint { margin: 0; }
+.actions button[type="submit"] { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+button:disabled, select:disabled { opacity: 0.55; cursor: not-allowed; }
+.notice { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+.downloads { margin-top: 12px; }
+#result-line { overflow-wrap: anywhere; }
 
 @media (max-width: 700px) {
   main { padding: 12px; }

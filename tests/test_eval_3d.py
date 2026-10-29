@@ -127,3 +127,12 @@ def test_cli_prints_the_block_and_exits_by_it(tmp_path, capsys):
     bad.write_text(json.dumps({"frames": [{"frame": 0, "people": [{"id": 0, "joints": {}}]}]}))
     assert eval_3d.main(["--cpu", str(bad), "--reference", str(p)]) == 1
     assert json.loads(capsys.readouterr().out)["status"].startswith("error: KeyError")
+
+
+def test_block_carries_the_check_2_spec_names_beside_the_ac_b09_names(tmp_path):
+    p = tmp_path / "pose3d.json"
+    p.write_text(json.dumps(_pose3d(skeleton(4))))
+    r = eval_3d.block(p, p, lifter="motionbert")
+    assert r["mean_joint_distance_m"] == r["mean_m"] == 0
+    assert r["bone_length_cv_mean"] == r["bone_cv_mean"] and r["bone_length_cv_max"] == r["bone_cv_max"]
+    assert r["lifter"] == "motionbert" and r["pass"] is True

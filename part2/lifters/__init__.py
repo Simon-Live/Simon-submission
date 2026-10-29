@@ -17,8 +17,10 @@ import numpy as np
 from part2.joints import BONES, CANONICAL
 
 ENV = "PART2_LIFTER"
-# Provisional (lower mean_m vs the HPC reference, neither lifter passes); TICKET-016 sets it from the
-# local GPU measurement (AC-B10).
+# Set by measurement (TICKET-016, AC-B10): the 3D bar on fixtures/input/single against the local gpu output
+# fixtures/output/scored/single (2026-10-29), neither lifter passes, so the lower mean_m wins: fixed-bones
+# mean_m 0.2682, bone_cv_mean 0.0117; motionbert mean_m 0.2914, bone_cv_mean 0.1400. The CPU backend is
+# "3D approximate".
 DEFAULT = "fixed-bones"
 _REGISTRY = {"fixed-bones": ("part2.lifters.fixed_bones", "FixedBones"),
              "motionbert": ("part2.lifters.motionbert", "MotionBert")}

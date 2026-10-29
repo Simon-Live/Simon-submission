@@ -1,6 +1,7 @@
 /* Browse page and contract page of the Part 2 web app (docs/specs/run-app.md).
  * Every URL is relative, so the app runs at the root and under a gateway prefix.
  * window.app holds read-only hooks for the verify suite ("Page contract shared with the verify suite").
+ * A multi-person output shows web/overlay.js over its pictures and one person at a time in 3D (person picker).
  */
 (function () {
   'use strict';
@@ -8,7 +9,7 @@
   const $ = id => document.getElementById(id);
   const app = window.app = {
     ready: false, output: null, job: null, runs: 0,
-    frame: 0, frameCount: 0, playing: false, people: [], colors: {},
+    frame: 0, frameCount: 0, playing: false, people: [], colors: {}, person: null,
     camera: () => [0, 0, 0], target: () => [0, 0, 0],
   };
 
@@ -37,14 +38,17 @@
   // ---- browse page -----------------------------------------------------------------------------
 
   function initBrowse() {
-    const viewer = Viewer.create($('viewer'));
-    const view = { frames: [], pictures: false, token: 0 };
-    const slider = $('frame-slider'), img = $('frame-img'), select = $('output-select');
+    const viewer = Viewer.create($('viewer')), overlay = Overlay.create($('overlay'));
+    const view = { frames: [], pictures: false, token: 0, data: null, ids: [], multi: false, person: null };
+    const slider = $('frame-slider'), img = $('frame-img'), select = $('output-select'), picker = $('person-select');
 
+    // people: the ids drawn (the overlay's for a multi-person output, else the 3D panel's); person: the 3D id.
     Object.defineProperties(app, {
       frame: { get: () => viewer.frame() }, frameCount: { get: () => viewer.frameCount() },
-      playing: { get: () => viewer.playing() }, people: { get: () => viewer.people() },
-      colors: { get: () => viewer.colors() },
+      playing: { get: () => viewer.playing() },
+      people: { get: () => (view.multi ? overlay.people() : viewer.people()) },
+      colors: { get: () => (view.multi ? overlay.colors() : viewer.colors()) },
+      person: { get: () => view.person },
     });
     app.camera = () => viewer.camera();
     app.target = () => viewer.target();
@@ -52,6 +56,7 @@
     function showPicture(i) {
       const url = view.frames[i] && view.frames[i].url;
       img.hidden = !url;
+      $('overlay').hidden = !url || !view.multi;
       $('frame-empty').hidden = view.pictures;
       if (url && img.getAttribute('src') !== url) img.src = url;
       img.alt = url ? 'Picture for frame ' + (view.frames[i].frame) : '';
@@ -60,24 +65,22 @@
     function showFrame() {
       const i = viewer.frame(), f = viewer.current();
       slider.value = i;
+      overlay.setFrame(i);
+      const here = view.multi ? overlay.people() : viewer.people();
       $('frame-info').textContent = f
-        ? `${i + 1} of ${viewer.frameCount()}, ${(f.t_ms / 1000).toFixed(2)} s` + (f.people.length ? '' : ', nobody found') : '';
-      const here = new Set(viewer.people().map(String));
-      for (const li of $('legend').children) li.classList.toggle('absent', !here.has(li.dataset.id));
+        ? `${i + 1} of ${viewer.frameCount()}, ${(f.t_ms / 1000).toFixed(2)} s` + (here.length ? '' : ', nobody found') : '';
+      Overlay.markPresent($('legend'), here);
       showPicture(i);
     }
 
-    function fillLegend(scene) {
-      const legend = $('legend');
-      legend.replaceChildren();
-      legend.hidden = scene.ids.length < 2;
-      for (const id of scene.ids) {
-        const li = make('li', undefined, legend);
-        li.dataset.id = String(id);
-        make('span', undefined, li).className = 'swatch';
-        li.firstChild.style.background = scene.colors[id];
-        make('span', 'id ' + id, li);
-      }
+    function showPerson(id) {
+      const keep = viewer.frame(), playing = viewer.playing();
+      view.person = id;
+      viewer.setScene(Overlay.personScene(view.data.pose3d, view.data.camera, id));
+      viewer.setFrame(keep);
+      if (playing) viewer.play();
+      overlay.pick(id);
+      picker.value = String(id);
     }
 
     function fillSource(o) {
@@ -100,11 +103,20 @@
         return;
       }
       if (token !== view.token) return;               // a newer pick is loading
-      const scene = Viewer.buildScene(data.pose3d, data.camera);
-      view.frames = data.frames; view.pictures = data.output.has_pictures;
-      viewer.setScene(scene);
-      slider.max = Math.max(0, scene.frames.length - 1); slider.disabled = scene.frames.length < 2;
-      fillLegend(scene); fillSource(data.output); showFrame();
+      view.data = data; view.frames = data.frames; view.pictures = data.output.has_pictures;
+      view.ids = Overlay.ids(data.pose3d); view.multi = view.ids.length > 1;
+      overlay.setData(data.pose3d, data.camera);
+      Overlay.fillLegend($('legend'), view.ids, overlay.colors());
+      Overlay.fillPicker(picker, view.ids);
+      $('legend').hidden = $('person-picker').hidden = !view.multi;
+      viewer.setFrame(0);
+      if (view.multi) showPerson(view.ids[0]);
+      else {
+        viewer.setScene(Viewer.buildScene(data.pose3d, data.camera, 'canonical'));
+        view.person = view.ids.length ? view.ids[0] : null;
+      }
+      slider.max = Math.max(0, data.pose3d.frames.length - 1); slider.disabled = data.pose3d.frames.length < 2;
+      fillSource(data.output); showFrame();
       select.value = id; history.replaceState(null, '', '#' + encodeURIComponent(id));
       app.output = id; setStatus('');
     }
@@ -119,28 +131,15 @@
       select.disabled = false;
       select.addEventListener('change', () => showOutput(select.value));
       const wanted = decodeURIComponent(location.hash.slice(1));
-      await showOutput(outputs.some(o => o.id === wanted) ? wanted : outputs[0].id);
+      const first = outputs.find(o => o.has_pictures) || outputs[0];   // open on a clip whose frames are stored
+      await showOutput(outputs.some(o => o.id === wanted) ? wanted : first.id);
       app.ready = true;
     }
 
-    wireControls(viewer, slider);
+    picker.addEventListener('change', () => showPerson(Overlay.idOf(picker.value, view.ids)));
+    Viewer.bindControls(viewer, $);
     viewer.on('frame', showFrame);
-    viewer.on('play', () => { $('play-toggle').textContent = viewer.playing() ? 'Pause' : 'Play'; });
     return init();
-  }
-
-  function wireControls(viewer, slider) {
-    for (const name of ['front', 'side', 'top']) $('view-' + name).addEventListener('click', () => viewer.view(name));
-    $('view-reset').addEventListener('click', () => viewer.reset());
-    $('play-toggle').addEventListener('click', () => viewer.toggle());
-    slider.addEventListener('input', () => viewer.setFrame(+slider.value));
-    document.addEventListener('keydown', e => {
-      const tag = e.target.tagName;
-      if (e.altKey || e.ctrlKey || e.metaKey || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-      if (e.key === 'ArrowRight') { e.preventDefault(); viewer.step(1); }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); viewer.step(-1); }
-      else if (e.key === ' ' && tag !== 'BUTTON') { e.preventDefault(); viewer.toggle(); }
-    });
   }
 
   // ---- contract page ---------------------------------------------------------------------------

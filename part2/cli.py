@@ -5,9 +5,11 @@
               [--backend gpu|cpu] [--lifter fixed-bones|motionbert] [--tracker NAME] [--tracker-order scored|bulk]
     part2 contract [--json] [--schema NAME]      (also: python -m part2 contract)
     part2 doctor FILE [--for part3|part5|part6] [--json]
+    part2 stock [--clip pexels-<id>] [--backend gpu|cpu]   (make stock-outputs)
 """
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -17,6 +19,12 @@ from part2.schema import ContractError, write_json
 # Keys of a backend's provenance() that block() takes as arguments rather than as extra keys.
 _BLOCK_ARGS = ("backend", "tracker", "lifter", "refine", "models", "licence_notes", "kind")
 _FALLBACK = ("fallback_from", "fallback_reason")
+
+
+def _progress(stage: str, done: int, total: int) -> None:
+    """`progress <stage> <done> <total>` on stdout when PART2_PROGRESS=1 (the staging job worker reads it)."""
+    if os.environ.get("PART2_PROGRESS") == "1":
+        print(f"progress {stage} {done} {total}", flush=True)
 
 
 def _pose_extras(meta: dict, mirrored: bool, backend, tracks_prov: dict | None = None) -> dict:
@@ -106,7 +114,15 @@ def main(argv: list[str] | None = None) -> int:
     p_demo.add_argument("--out", type=Path)
     p_demo.add_argument("--embed", action="store_true", help="viewer: inline the frames so the .html shares on its own")
 
+    from part2 import stock
+
+    p_st = sub.add_parser("stock", help="Pexels follower takes for Part 5 -> fixtures/output/stock/pexels-<id>/")
+    p_st.add_argument("--clip", choices=list(stock.CLIPS), help="one clip (default: all three)")
+    p_st.add_argument("--backend", choices=list(backends.CHOICES), help="default: PART2_BACKEND, else gpu when CUDA is available")
+
     args = parser.parse_args(argv)
+    if args.command == "stock":
+        return stock.command(args.clip, args.backend)
     if args.command == "demo":
         from part2 import demo
 
@@ -155,19 +171,24 @@ def main(argv: list[str] | None = None) -> int:
         if backend.name == "cpu":
             backend.lifter = lifter
         recs = frames.ingest(args.input, args.out / "frames", args.fps)
+        _progress("frames", len(recs), len(recs))
         print(f"{len(recs)} frames -> {args.out / 'frames'}")
         meta = frames.load_meta(args.out / "frames")
         if args.mode == "single":
+            _progress("pose", 0, len(recs))
             backend.estimate(args.out / "frames", args.out / "body3d.json")
+            _progress("write", 0, 1)
             print(f"camera-space 3D ({backend.name}) -> {args.out / 'body3d.json'}")
             pose_path, cam_path = canonical.write(args.out / "body3d.json", args.out, smooth=args.smooth,
                                                   extras=_pose_extras(meta, args.mirrored, backend))
             print(f"{pose_path} + {cam_path}")
+            _progress("write", 1, 1)
             return 0
         if args.mode == "multi":
             from part2 import multi3d, track, trackers
 
             try:
+                _progress("track", 0, len(recs))
                 doc = track.track(args.out / "frames", args.out / "tracks.json", tracker=args.tracker,
                                   purpose=args.tracker_order)
             except trackers.UnknownTracker as e:
@@ -178,11 +199,14 @@ def main(argv: list[str] | None = None) -> int:
             note = trackers.describe_fallback(doc["provenance"])
             print(f"{len(ids)} tracked people -> {args.out / 'tracks.json'} "
                   f"(tracker {doc['provenance'].get('tracker')}{'; ' + note if note else ''})")
+            _progress("pose", 0, len(recs))
             b3d = backend.estimate(args.out / "frames", args.out / "body3d.json", boxes=multi3d.tracks_to_boxes(doc))
+            _progress("write", 0, 1)
             res = multi3d.write_pose_streams(b3d, args.out, smooth=args.smooth,
                                              extras=_pose_extras(meta, args.mirrored, backend, doc["provenance"]))
             print(f"pose3d for people {res['people']} -> {args.out / 'pose3d.json'} "
                   f"(+ pose3d_person_<id>.json each)")
+            _progress("write", 1, 1)
             return 0
     except ContractError as e:
         print(f"part2: output breaks the contract at {e.path}: {e.msg}", file=sys.stderr)

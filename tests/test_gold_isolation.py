@@ -7,8 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 GUARDED = ("part2/trackers", "part2/refine")
-EVAL_MODULES = ("eval_tracks", "eval_reproj")
-LABEL_NAMES = ("labels_2d", "gt_tracks")
+EVAL_MODULES = ("eval_tracks", "eval_reproj", "eval_coco", "coco_set")
+LABEL_NAMES = ("labels_2d", "gt_tracks", "input/coco")
 
 
 def violations(path: Path) -> list[str]:
@@ -48,9 +48,13 @@ def test_the_check_catches_each_kind_of_leak(tmp_path):
         "part2/refine/c.py": "from part2.eval_tracks import evaluate\n",
         "part2/refine/d.py": "PATH = 'fixtures/input/single/labels_2d.json'\n",
         "part2/trackers/e.py": "import importlib\nimportlib.import_module('part2.eval_tracks')\n",
+        "part2/refine/f.py": "from part2.eval_coco import LABELS\n",
+        "part2/trackers/g.py": "import part2.coco_set as c\n",
+        "part2/refine/h.py": "P = 'fixtures/input/coco/images/images.json'\n",
+        "part2/trackers/i.py": "from part2 import coco_set\n",
         "part2/trackers/ok.py": "from part2 import track\n",
     }
     for rel, src in leaks.items():
         (tmp_path / rel).write_text(src)
     flagged = {p.name for p in guarded_files(tmp_path) if violations(p)}
-    assert flagged == {"a.py", "b.py", "c.py", "d.py", "e.py"}
+    assert flagged == {"a.py", "b.py", "c.py", "d.py", "e.py", "f.py", "g.py", "h.py", "i.py"}

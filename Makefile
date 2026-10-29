@@ -1,4 +1,4 @@
-.PHONY: setup-gpu smoke-gpu setup-cpu check-2-cpu contract-sync contract-check check-2-contract hpc-sync hpc-setup hpc-run hpc-status hpc-outputs setup test run-single run-multi check-2 gpu-outputs gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
+.PHONY: outputs stock-outputs setup-gpu smoke-gpu setup-cpu check-2-cpu contract-sync contract-check check-2-contract hpc-sync hpc-setup hpc-run hpc-status hpc-outputs setup test run-single run-multi check-2 gpu-outputs gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
 
 POD := user-part2-gpu
 INPUT ?=
@@ -27,8 +27,32 @@ setup-cpu:
 	uv pip install --index-strategy unsafe-best-match -r envs/cpu/requirements.txt
 
 # The CPU backend's 3D bar (mean joint distance to the GPU reference, bone length CV); outside the README DoD.
+# Prints the cpu_backend_3d block of check-2 (same scored dir, same stamp checks); exit 0 pass, 1 fail, 2 missing.
 check-2-cpu:
-	@uv run --quiet python -m part2.eval_3d
+	@$(SCORED_ENV)uv run --quiet python -m part2.check --block cpu_backend_3d
+
+# Regenerate the scored outputs on this host with a part2.stamp/2 each (docs/specs/check-2.md, ADR-0006):
+#   make outputs [BACKEND=gpu] [TRACKER=name] [MODES=single,class] [SCORED=out]   single, class, class-local-open
+#   make outputs BACKEND=cpu [LIFTER=name]                                       cpu-single
+# Runs in the gpu-cu128 venv when it exists (the cpu backend with no GPU visible), else in the uv venv.
+BACKEND ?= gpu
+TRACKER ?=
+LIFTER ?=
+MODES ?=
+SCORED ?=
+SCORED_ENV = $(if $(SCORED),PART2_SCORED_DIR=$(SCORED) )
+OUTPUTS_PY ?= $(if $(wildcard $(GPU_PY)),$(GPU_PY),uv run --quiet python)
+
+outputs:
+	$(if $(filter cpu,$(BACKEND)),CUDA_VISIBLE_DEVICES= )PYTHONPATH=$(CURDIR) $(OUTPUTS_PY) -m part2.outputs --backend $(BACKEND) $(if $(TRACKER),--tracker $(TRACKER)) $(if $(LIFTER),--lifter $(LIFTER)) $(if $(MODES),--modes $(MODES)) $(if $(SCORED),--scored $(SCORED))
+
+# Stock follower takes for Part 5 (docs/specs/stock-takes.md): download each Pexels clip into ~/.cache, frames at
+# 10 fps, the one-person run, then fixtures/output/stock/pexels-<id>/{pose3d.json, camera.json, SOURCE.md}.
+#   make stock-outputs [BACKEND=gpu] [CLIP=pexels-5034562]      all three clips without CLIP
+CLIP ?=
+
+stock-outputs:
+	$(if $(filter cpu,$(BACKEND)),CUDA_VISIBLE_DEVICES= )PYTHONPATH=$(CURDIR) $(OUTPUTS_PY) -m part2 stock --backend $(BACKEND) $(if $(CLIP),--clip $(CLIP))
 
 # Downstream contract (CONTRACT.md). contract-sync refreshes contracts/consumers/part3-pose3d.schema.json
 # (Part 3's own schema, a byte copy) from Part 3's main and exits 1 when it changed, so drift shows up;
@@ -52,9 +76,10 @@ run-multi:
 	uv run part2 run --mode multi --input $(INPUT) --out $(OUT)
 
 # Done-check for Part 2 (see README.md): prints a metrics JSON, exits 0 only when every
-# threshold passes. Scores out/ against fixtures/input/; refresh out/ with make gpu-outputs.
+# threshold passes. Scores the committed fixtures/output/scored/ against fixtures/input/ (no GPU needed);
+# make check-2 SCORED=out scores out/<mode>/ instead. Refresh the scored outputs with make outputs.
 check-2:
-	@uv run --quiet part2 check
+	@$(SCORED_ENV)uv run --quiet part2 check
 
 # Run inference for the fixtures on the GPU pod and bring the outputs back to out/.
 gpu-outputs: gpu-sync

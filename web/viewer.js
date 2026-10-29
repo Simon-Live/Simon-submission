@@ -2,9 +2,12 @@
  * Extracted from the inline viewer in part2/demo.py (docs/specs/run-app.md, AC-A01, AC-A03).
  *
  * World frame is the canonical frame of CONTRACT.md: x the subject's left, y up, z anterior, metres.
- * One person is drawn person-centred (hips at the origin). Several people are placed in the camera's
- * scene with camera.json (p_cam = R p + t), flipped to y up, so Front (camera on +z) looks the way the
- * original camera looked.
+ * One person is drawn person-centred (hips at the origin); the pages show one person at a time this way
+ * (Overlay.personScene), so Front (camera on +z) faces the body's front. buildScene can also place several
+ * people in the camera's scene with camera.json (p_cam = R p + t), flipped to y up.
+ *
+ * bindControls(viewer, $) wires the shared controls of the browse and run pages: buttons view-front,
+ * view-side, view-top, view-reset and play-toggle, slider frame-slider, and the arrow and space keys.
  */
 (function (root, factory) {
   const api = factory(root);
@@ -274,7 +277,8 @@
   function create(canvas, options) {
     const timers = (options && options.timers) || defaultTimers;
     const ctx = canvas.getContext('2d');
-    const st = { scene: null, frame: 0, az: HOME.az, el: HOME.el, dist: 3, target: [0, 0, 0], timer: null, w: 300, h: 300, dpr: 1, queued: false };
+    const st = { scene: null, frame: 0, az: HOME.az, el: HOME.el, dist: 3, target: [0, 0, 0], timer: null, w: 300, h: 300, dpr: 1, queued: false,
+      note: 'Nobody was found in this frame.' };
     const listeners = { frame: [], play: [], camera: [] };
     const emit = name => listeners[name].forEach(fn => fn());
     const home = () => st.scene && st.scene.home;
@@ -298,7 +302,7 @@
 
     function drawNote(cam) {
       ctx.fillStyle = '#888'; ctx.font = `${13 * cam.dpr}px system-ui, sans-serif`; ctx.textAlign = 'center';
-      ctx.fillText('Nobody was found in this frame.', cam.cx, cam.cy * 1.8);
+      ctx.fillText(st.note, cam.cx, cam.cy * 1.8);
       ctx.textAlign = 'start';
     }
 
@@ -369,8 +373,10 @@
     else if (root.addEventListener) root.addEventListener('resize', resize);
     resize();
 
+    function setNote(text) { st.note = text; redraw(); }
+
     return {
-      setScene, setFrame, step, play, pause, reset, view, resize, draw,
+      setScene, setFrame, step, play, pause, reset, view, resize, draw, setNote,
       toggle: () => (st.timer ? pause() : play()),
       on: (name, fn) => listeners[name].push(fn),
       camera: () => orbitPosition(st.az, st.el, st.dist, st.target),
@@ -416,5 +422,21 @@
     }, { passive: false });
   }
 
-  return { JOINTS, BONES, PALETTE, colorFor, shade, buildScene, orbitPosition, viewBasis, create };
+  /* The camera buttons, Play/Pause, the Frame slider and the keys (arrows step a frame, space plays). */
+  function bindControls(viewer, $) {
+    for (const name of ['front', 'side', 'top']) $('view-' + name).addEventListener('click', () => viewer.view(name));
+    $('view-reset').addEventListener('click', () => viewer.reset());
+    $('play-toggle').addEventListener('click', () => viewer.toggle());
+    $('frame-slider').addEventListener('input', () => viewer.setFrame(+$('frame-slider').value));
+    viewer.on('play', () => { $('play-toggle').textContent = viewer.playing() ? 'Pause' : 'Play'; });
+    root.document.addEventListener('keydown', e => {
+      const tag = e.target.tagName;
+      if (e.altKey || e.ctrlKey || e.metaKey || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); viewer.step(1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); viewer.step(-1); }
+      else if (e.key === ' ' && tag !== 'BUTTON') { e.preventDefault(); viewer.toggle(); }
+    });
+  }
+
+  return { JOINTS, BONES, PALETTE, colorFor, shade, buildScene, orbitPosition, viewBasis, create, bindControls };
 });

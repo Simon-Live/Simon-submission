@@ -1,17 +1,20 @@
-"""part2/server.py and the S0 pages (docs/specs/run-app.md: AC-A01, AC-A02, AC-A10, AC-A11, AC-A12).
+"""part2/server.py and the pages (docs/specs/run-app.md: AC-A01, AC-A02, AC-A04 to AC-A12).
 
 Most tests serve a small synthetic repo from tmp_path so every edge case is exact; the AC-A01 tests also
-serve the committed outputs under fixtures/output/.
+serve the committed outputs under fixtures/output/. Jobs run the fake runner of tests/test_jobs.py; job dirs,
+the GPU lock and nvidia-smi are temp files or fakes, and the capability probe is a fake.
 """
 import contextlib
 import http.client
 import json
 import os
 import re
+import shutil
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -20,8 +23,10 @@ from pathlib import Path
 import pytest
 
 import part2.contract
-from part2 import server
+from part2 import jobs, runapi, server
 from part2.joints import CANONICAL
+from test_jobs import FAKE_RUN, fake_command
+from test_runapi import ALL_UP, form, jpeg
 
 ROOT = Path(__file__).resolve().parent.parent
 JPEG = b"\xff\xd8\xff\xe0fake-jpeg"
@@ -83,17 +88,33 @@ def repo(tmp_path):
     return root
 
 
+@pytest.fixture(autouse=True)
+def isolated_jobs(tmp_path_factory, monkeypatch):
+    """Job dirs and the GPU lock in temp dirs; no nvidia-smi (health says gpu null) unless a test fakes one."""
+    monkeypatch.setenv("PART2_JOBS_DIR", str(tmp_path_factory.mktemp("jobs")))
+    monkeypatch.setenv("PART2_GPU_LOCK", str(tmp_path_factory.mktemp("lock") / "gpu.lock"))
+    monkeypatch.setenv("PART2_NVIDIA_SMI", str(tmp_path_factory.mktemp("nosmi") / "nvidia-smi"))
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+
+
+FAST = jobs.Settings(gpu_poll_s=0.05, poll_s=0.05, kill_grace_s=2.0, gpu_wait_s=0.5)
+
+
 @contextlib.contextmanager
-def running(root: Path, base: str = "/"):
-    srv = server.make_server("127.0.0.1", 0, base, root)
-    thread = threading.Thread(target=srv.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield srv.server_address[1]
-    finally:
-        srv.shutdown()
-        srv.server_close()
-        thread.join(5)
+def running(root: Path, base: str = "/", probe=None, **kw):
+    """A server on a free port with its own temp job dir and a fake capability probe (all available)."""
+    with tempfile.TemporaryDirectory() as jobs_dir:
+        caps = runapi.Capabilities(probe=probe or (lambda: ALL_UP))
+        srv = server.make_server("127.0.0.1", 0, base, root, jobs_dir=kw.pop("jobs_dir", Path(jobs_dir)),
+                                 caps=caps, settings=kw.pop("settings", FAST), **kw)
+        thread = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+        thread.start()
+        try:
+            yield srv.server_address[1]
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            thread.join(5)
 
 
 @pytest.fixture
@@ -124,6 +145,19 @@ def test_health_answers_ok_with_version_gpu_and_worker(port):
     assert status == 200
     assert doc["ok"] is True and isinstance(doc["version"], str) and doc["version"]
     assert doc["gpu"] is None and doc["worker"] == "idle"
+
+
+def fake_smi(tmp_path: Path, monkeypatch, line: str = "20480, 32768") -> None:
+    script = tmp_path / "nvidia-smi"
+    script.write_text(f"#!/bin/sh\necho '{line}'\n")
+    script.chmod(0o755)
+    monkeypatch.setenv("PART2_NVIDIA_SMI", str(script))
+
+
+def test_health_names_free_gpu_memory_when_nvidia_smi_answers(repo, tmp_path, monkeypatch):
+    fake_smi(tmp_path, monkeypatch)
+    with running(repo) as p:
+        assert get_json(p, "/api/health")[1]["gpu"] == {"free_gib": 20.0, "total_gib": 32.0}
 
 
 def test_pages_and_assets_come_from_the_fixed_table(port):
@@ -181,11 +215,21 @@ def test_head_has_the_headers_and_length_of_get_but_no_body(port):
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 def test_other_methods_are_405_with_a_plain_json_error(port, method):
-    for path in ("/api/health", "/", "/api/jobs", "/nope"):
+    for path in ("/api/health", "/", "/api/capabilities", "/api/jobs/0123456789ab", "/nope"):
         status, headers, body = fetch(port, path, method, body=b"abc" if method in ("POST", "PUT") else None)
         assert status == 405, (method, path)
         assert headers["allow"] == "GET, HEAD" and headers["x-content-type-options"] == "nosniff"
         assert json.loads(body) == {"error": "This address accepts GET and HEAD only.", "code": "method_not_allowed"}
+
+
+@pytest.mark.parametrize("method", ["PUT", "DELETE", "PATCH"])
+def test_the_job_routes_name_their_own_methods(port, method):
+    status, headers, body = fetch(port, "/api/jobs", method, body=b"x" if method != "DELETE" else None)
+    assert status == 405 and headers["allow"] == "GET, HEAD, POST"
+    assert json.loads(body) == {"error": "This address accepts GET, HEAD and POST only.", "code": "method_not_allowed"}
+    for m in ("GET", "HEAD", method):
+        status, headers, _ = fetch(port, "/api/jobs/0123456789ab/cancel", m)
+        assert status == 405 and headers["allow"] == "POST" and headers["x-content-type-options"] == "nosniff"
 
 
 def test_an_unknown_method_is_a_json_error_not_an_html_page(port):
@@ -246,7 +290,8 @@ def test_traversal_and_unknown_paths_are_404_and_never_return_file_content(port,
 
 def test_error_bodies_name_no_traceback_class_or_path(port, repo):
     cases = [("GET", "/nope"), ("GET", "/api/outputs/nope"), ("POST", "/api/health"), ("GET", "/api/outputs/class/frames/99.jpg"),
-             ("TRACE", "/")] + [("GET", p) for p in TRAVERSAL[:12]]
+             ("TRACE", "/"), ("GET", "/api/jobs/0123456789ab"), ("POST", "/api/jobs/0123456789ab/cancel"),
+             ("GET", "/api/jobs/cancel"), ("POST", "/api/jobs")] + [("GET", p) for p in TRAVERSAL[:12]]
     for method, path in cases:
         _, _, body = fetch(port, path, method)
         text = body.decode()
@@ -540,13 +585,13 @@ def page_ids(html: str) -> set:
 
 
 def test_pages_use_no_inline_script_style_or_handler_so_the_csp_holds():
-    for name in ("index.html", "contract.html"):
+    for name in ("index.html", "contract.html", "run.html"):
         html = web_text(name)
         assert not re.search(r"<script(?![^>]*\ssrc=)", html), name
         assert not re.search(r"<style|\sstyle=|\son[a-z]+=", html), name
         assert 'rel="icon" href="icon.svg"' in html and 'href="style.css"' in html
         assert not re.search(r'(?:src|href)="/', html), f"{name} must use relative URLs"
-    js = web_text("browse.js") + web_text("viewer.js")
+    js = web_text("browse.js") + web_text("viewer.js") + web_text("run.js") + web_text("overlay.js")
     assert not re.search(r"""(?:fetch|href\s*=|src\s*=)\s*\(?\s*['"]/""", js), "scripts must use relative URLs"
     assert "setAttribute('style'" not in js and "innerHTML" not in js
 
@@ -556,7 +601,8 @@ def test_every_element_the_scripts_look_up_exists_on_its_page():
     looked_up = set(re.findall(r"\$\('([a-z-]+)'\)", web_text("browse.js")))
     assert looked_up <= index | contract
     browse_ids = {"output-select", "source-line", "frame-img", "frame-empty", "viewer", "legend", "view-front", "view-side",
-                  "view-top", "view-reset", "play-toggle", "frame-slider", "frame-info", "status", "alert"}
+                  "view-top", "view-reset", "play-toggle", "frame-slider", "frame-info", "status", "alert", "overlay",
+                  "person-picker", "person-select"}
     contract_ids = {"status", "alert", "schemas", "schemas-empty", "compat", "compat-empty", "contract-doc"}
     assert browse_ids <= index and contract_ids <= contract
     assert {"viewer"} & contract == set()          # browse.js tells the pages apart by the canvas
@@ -574,8 +620,9 @@ def test_controls_have_the_accessible_names_the_verify_suite_uses():
 
 
 def test_nothing_we_wrote_uses_an_em_or_en_dash():
-    files = [*(ROOT / "web").glob("*"), ROOT / "part2" / "server.py", ROOT / "scripts" / "dev.sh", Path(__file__),
-             ROOT / "tests" / "test_viewer_js.py"]
+    files = [*(ROOT / "web").glob("*"), *(ROOT / "part2" / n for n in ("server.py", "runapi.py", "jobs.py", "gpu_guard.py")),
+             ROOT / "scripts" / "dev.sh", Path(__file__), *(ROOT / "tests" / n for n in (
+                 "test_viewer_js.py", "test_jobs.py", "test_runapi.py", "test_gpu_guard.py"))]
     banned = (chr(0x2014), chr(0x2013))
     for path in (f for f in files if f.exists()):  # scripts/dev.sh is firm-only and absent upstream
         assert not any(ch in path.read_text() for ch in banned), path
@@ -661,3 +708,265 @@ def test_dev_script_refuses_a_port_held_by_another_program_and_unknown_arguments
         busy = dev(["start"], held, tmp_path / "state")
         assert busy.returncode == 1 and "in use by another program" in busy.stderr
     assert dev(["bogus"], free_port(), tmp_path / "state").returncode == 2
+
+
+# ---- the run API over HTTP (AC-A04 to AC-A12) ----------------------------------------------------------------------
+
+@pytest.fixture
+def runner(tmp_path):
+    """A fake `part2 run` whose behaviour the test sets: runner["behaviour"] = "ok" | "class-fallback" | "sleep" ..."""
+    script = tmp_path / "fake_run.py"
+    script.write_text(FAKE_RUN)
+    state = {"behaviour": "ok"}
+    state["command"] = fake_command(script, lambda job: state["behaviour"])
+    return state
+
+
+@pytest.fixture
+def run_port(repo, runner, tmp_path, monkeypatch):
+    fake_smi(tmp_path, monkeypatch)                        # 20 GiB free
+    with running(repo, command=runner["command"]) as p:
+        yield p
+
+
+def post_job(port, fields, file=None, extra=None, filename="clip.mp4"):
+    body, ctype = form(fields, file, filename=filename)
+    status, headers, raw = fetch(port, "/api/jobs", "POST", body, {"Content-Type": ctype, **(extra or {})})
+    return status, headers, json.loads(raw)
+
+
+def wait_job(port, jid, states=("done", "failed", "cancelled"), timeout=20.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status, doc = get_json(port, f"/api/jobs/{jid}")
+        assert status == 200
+        if doc["state"] in states:
+            return doc
+        time.sleep(0.05)
+    raise AssertionError(f"job stayed {doc['state']}")
+
+
+def test_capabilities_list_backends_trackers_samples_and_limits(run_port):
+    status, headers, body = fetch(run_port, "/api/capabilities")
+    doc = json.loads(body)
+    assert status == 200 and headers["cache-control"] == "no-store"
+    assert [b["name"] for b in doc["backends"]] == ["gpu", "cpu"]
+    assert [t["name"] for t in doc["trackers"]] == ["automatic", "local-open", "bytetrack"]
+    assert [s["id"] for s in doc["samples"]] == ["single", "class"]
+    assert doc["limits"]["video_s"] == 60 and doc["limits"]["queue"] == 5
+    assert "/" not in json.dumps({k: doc[k] for k in ("backends", "trackers", "samples")}).replace("/s", "")
+
+
+def test_capabilities_say_why_something_cannot_run(repo):
+    with running(repo, probe=lambda: {}) as p:
+        doc = get_json(p, "/api/capabilities")[1]
+        assert not any(b["available"] for b in doc["backends"])
+        status, _, body = post_job(p, {"mode": "single", "sample": "single"})
+        assert status == 503 and body == {"error": "No backend is available here right now.", "code": "no_backend"}
+
+
+def test_a_sample_job_runs_and_its_files_download(run_port):
+    status, headers, created = post_job(run_port, {"mode": "single", "sample": "single", "backend": "gpu"})
+    assert status == 202 and set(created) == {"id", "state"} and headers["cache-control"] == "no-store"
+    doc = wait_job(run_port, created["id"])
+    assert doc["state"] == "done" and doc["backend"] == "gpu" and doc["tracker"] is None and doc["error"] is None
+    assert doc["progress"] == {"stage": "write", "done": 1, "total": 1} and doc["files"] == ["pose3d.json", "camera.json"]
+    base = f"/api/jobs/{created['id']}/files/"
+    status, headers, body = fetch(run_port, base + "pose3d.json")
+    assert status == 200 and headers["content-type"] == "application/json"
+    assert headers["content-disposition"] == 'attachment; filename="pose3d.json"'
+    assert json.loads(body)["provenance"]["backend"] == "gpu"
+    assert fetch(run_port, base + "camera.json")[0] == 200
+    assert fetch(run_port, base + "tracks.json")[0] == 404                       # a one-person run has none
+    status, headers, body = fetch(run_port, base + "frames/2.jpg")
+    assert status == 200 and headers["content-type"] == "image/jpeg" and body.startswith(b"\xff\xd8")
+    for bad in ("frames/3.jpg", "frames/02.jpg", "frames/x.jpg", "frames/..%2fjob.json", "job.json", "run.err",
+                "run.out", "body3d.json", "..%2fjob.json", "%2e%2e/job.json", "frames", "frames/1.jpg/x"):
+        status, _, body = fetch(run_port, base + bad)
+        assert status == 404 and json.loads(body) == {"error": "Not found.", "code": "not_found"}, bad
+    assert fetch(run_port, base + "pose3d.json", "HEAD")[0] == 200
+
+
+def test_a_class_job_names_its_fallback_tracker_and_offers_tracks(run_port, runner):
+    runner["behaviour"] = "class-fallback"
+    status, _, created = post_job(run_port, {"mode": "class", "sample": "class"})
+    assert status == 202
+    queued = get_json(run_port, f"/api/jobs/{created['id']}")[1]
+    assert queued["tracker"] in ("automatic", "local-open") and queued["mode"] == "class"
+    doc = wait_job(run_port, created["id"])
+    assert doc["tracker"] == "local-open" and doc["fallback"] == {"from": "api-sam31", "reason": "budget"}
+    assert doc["notice"] == "SAM 3.1 spend cap reached; tracked with local-open"
+    status, headers, _ = fetch(run_port, f"/api/jobs/{created['id']}/files/tracks.json")
+    assert status == 200 and headers["content-disposition"] == 'attachment; filename="tracks.json"'
+
+
+def test_a_photo_job_runs_from_one_upright_frame(run_port):
+    status, _, created = post_job(run_port, {"mode": "single"}, jpeg(), filename="photo.jpg")
+    assert status == 202
+    doc = wait_job(run_port, created["id"])
+    assert doc["state"] == "done" and doc["kind"] == "photo"
+
+
+def test_upload_errors_are_plain_and_leave_no_job(run_port):
+    status, _, body = post_job(run_port, {"mode": "single"}, b"just text, renamed\n" * 30, filename="clip.mp4")
+    assert status == 415 and body == {"error": "This file is not a video or photo the app can read.", "code": "unsupported"}
+    status, _, body = post_job(run_port, {"mode": "single", "tracker": "api-sam31", "sample": "single"})
+    assert status == 400 and "chosen by the app" in body["error"]
+    status, _, body = post_job(run_port, {"mode": "class", "tracker": "local-sam31", "sample": "class"})
+    assert status == 400 and body["code"] == "tracker_by_order"
+    status, _, body = post_job(run_port, {"sample": "single"})
+    assert status == 400 and body["code"] == "bad_mode"
+    assert get_json(run_port, "/api/jobs")[1] == []
+
+
+def test_the_test_header_lowers_the_body_cap(run_port):
+    status, _, body = post_job(run_port, {"mode": "single"}, jpeg(), extra={"X-Part2-Test-Max-Body": "100"})
+    assert status == 413 and body["error"] == "The file is too large. Videos can be up to 200 MB and photos up to 20 MB."
+
+
+def test_a_body_over_the_cap_is_413_without_being_read(repo):
+    with running(repo, limits=runapi.Limits(video_bytes=1000, form_slack=0)) as p:
+        head, body = raw_exchange(p, b"POST /api/jobs HTTP/1.1\r\nHost: x\r\nContent-Type: multipart/form-data; boundary=b\r\n"
+                                     b"Content-Length: 201000000\r\n\r\n")
+        assert " 413 " in head.split("\r\n")[0] and json.loads(body)["code"] == "too_large"
+        assert "X-Content-Type-Options: nosniff" in head
+
+
+def test_content_length_missing_or_not_digits(run_port):
+    head, body = raw_exchange(run_port, b"POST /api/jobs HTTP/1.1\r\nHost: x\r\nContent-Type: multipart/form-data; boundary=b\r\n\r\n")
+    assert " 411 " in head.split("\r\n")[0] and json.loads(body)["code"] == "length_required"
+    head, body = raw_exchange(run_port, b"POST /api/jobs HTTP/1.1\r\nHost: x\r\nContent-Length: lots\r\n\r\n")
+    assert " 400 " in head.split("\r\n")[0] and json.loads(body)["code"] == "bad_length"
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg is not installed")
+def test_a_61_second_video_is_422(run_port, tmp_path):
+    clip = tmp_path / "long.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=32x32:r=1", "-t", "61",
+                    "-c:v", "mpeg4", str(clip)], check=True, timeout=120)
+    status, _, body = post_job(run_port, {"mode": "single"}, clip.read_bytes())
+    assert status == 422 and body == {"error": "Videos can be at most 60 seconds long.", "code": "too_long"}
+
+
+def test_the_sixth_job_is_429_and_cancel_answers_409_and_404(run_port, runner):
+    runner["behaviour"] = "sleep"
+    ids = [post_job(run_port, {"mode": "single", "sample": "single"})[2]["id"] for _ in range(5)]
+    status, _, body = post_job(run_port, {"mode": "single", "sample": "single"})
+    assert status == 429 and body == {"error": "The queue is full. Try again in a few minutes.", "code": "queue_full"}
+    listing = get_json(run_port, "/api/jobs")[1]
+    assert [r["position"] for r in listing][1:] == [1, 2, 3, 4] and all(i not in json.dumps(listing) for i in ids)
+    for jid in reversed(ids):
+        status, _, body = fetch(run_port, f"/api/jobs/{jid}/cancel", "POST")
+        assert status == 200 and json.loads(body) == {"state": "cancelled"}
+    status, _, body = fetch(run_port, f"/api/jobs/{ids[0]}/cancel", "POST")
+    assert status == 409 and json.loads(body) == {"error": "This job has already finished.", "code": "finished"}
+    assert fetch(run_port, "/api/jobs/0123456789ab/cancel", "POST")[0] == 404
+    assert fetch(run_port, "/api/jobs/..%2f..%2fcancel/cancel", "POST")[0] == 404
+    assert get_json(run_port, f"/api/jobs/{ids[0]}")[1]["state"] == "cancelled"
+    assert fetch(run_port, f"/api/jobs/{ids[0]}/files/pose3d.json")[0] == 404     # nothing to download
+
+
+def test_a_failed_job_reports_a_plain_message(run_port, runner):
+    runner["behaviour"] = "noperson"
+    doc = wait_job(run_port, post_job(run_port, {"mode": "single", "sample": "single"})[2]["id"])
+    assert doc["state"] == "failed" and doc["error"] == "No person was found in this file."
+    runner["behaviour"] = "crash"
+    doc = wait_job(run_port, post_job(run_port, {"mode": "single", "sample": "single"})[2]["id"])
+    text = json.dumps(doc)
+    assert "Traceback" not in text and "KeyError" not in text and "/home" not in text and ".py" not in text
+
+
+def test_a_gpu_job_waits_while_memory_is_short(repo, runner, tmp_path, monkeypatch):
+    fake_smi(tmp_path, monkeypatch, "4096, 32768")
+    with running(repo, command=runner["command"]) as p:
+        jid = post_job(p, {"mode": "single", "sample": "single", "backend": "gpu"})[2]["id"]
+        assert wait_job(p, jid, ("waiting-gpu",))["position"] == 0
+        assert get_json(p, "/api/health")[1]["worker"] == "busy"
+        doc = wait_job(p, jid)
+        assert doc["error"] == "The GPU is busy with other work; try again later."
+
+
+def test_unknown_jobs_are_404(run_port):
+    for path in ("/api/jobs/0123456789ab", "/api/jobs/xyz", "/api/jobs/..%2f..%2fsecret.txt", "/api/jobs/%2e%2e",
+                 "/api/jobs/0123456789ab/files/pose3d.json", "/api/jobs/0123456789AB", "/api/jobs/"):
+        status, _, body = fetch(run_port, path)
+        assert status == 404 and json.loads(body)["code"] == "not_found", path
+
+
+def test_running_jobs_write_nothing_in_the_tree(repo, runner, tmp_path, monkeypatch):
+    fake_smi(tmp_path, monkeypatch)
+    before = snapshot(repo)
+    jobs_dir = tmp_path / "server-jobs"
+    with running(repo, command=runner["command"], jobs_dir=jobs_dir) as p:
+        for fields, file in (({"mode": "single", "sample": "single"}, None), ({"mode": "single"}, jpeg()),
+                             ({"mode": "single"}, b"text"), ({"mode": "class", "sample": "class"}, None)):
+            status, _, body = post_job(p, fields, file)
+            if status == 202:
+                wait_job(p, body["id"])
+    assert snapshot(repo) == before
+    assert len([d for d in jobs_dir.iterdir() if jobs.JOB_ID.fullmatch(d.name)]) == 3
+
+
+def test_a_restart_reports_unfinished_jobs_as_failed(repo, runner, tmp_path, monkeypatch):
+    fake_smi(tmp_path, monkeypatch)
+    runner["behaviour"] = "sleep"
+    jobs_dir = tmp_path / "server-jobs"
+    with running(repo, command=runner["command"], jobs_dir=jobs_dir) as p:
+        jid = post_job(p, {"mode": "single", "sample": "single"})[2]["id"]
+        wait_job(p, jid, ("running",))
+    with running(repo, command=runner["command"], jobs_dir=jobs_dir) as p:
+        doc = get_json(p, f"/api/jobs/{jid}")[1]
+        assert doc["state"] == "failed" and doc["error"] == "The server restarted."
+
+
+# ---- the run page (TICKET-025) and the page contract ---------------------------------------------------------------
+
+def test_the_run_page_has_every_element_its_script_looks_up():
+    run_ids = page_ids(web_text("run.html"))
+    looked_up = set(re.findall(r"\$\('([a-z0-9-]+)'\)", web_text("run.js")))
+    assert looked_up and looked_up <= run_ids
+    viewer_ids = set(re.findall(r"\$\('([a-z-]+)'\)", web_text("viewer.js")))
+    assert viewer_ids <= run_ids and viewer_ids <= page_ids(web_text("index.html"))
+
+
+def test_run_page_controls_have_the_accessible_names_the_verify_suite_uses():
+    html = web_text("run.html")
+    assert "<legend>Input</legend>" in html and "<legend>Mode</legend>" in html
+    assert '<label for="file-input">Video or photo</label>' in html
+    assert 'id="mode-single" value="single" checked> One person</label>' in html
+    assert 'id="mode-class" value="class"> Class</label>' in html and 'id="input-file" value="file"> Your own file</label>' in html
+    for ident, name in (("backend-select", "Backend"), ("tracker-select", "Tracker"), ("person-select", "Person"),
+                        ("frame-slider", "Frame")):
+        assert f'<label for="{ident}">{name}</label>' in html
+    for ident, name in (("run-button", "Run"), ("cancel-button", "Cancel"), ("view-front", "Front"), ("view-side", "Side"),
+                        ("view-top", "Top"), ("view-reset", "Reset"), ("play-toggle", "Play"),
+                        ("download-pose3d", "Download pose3d.json"), ("download-tracks", "Download tracks.json")):
+        assert re.search(rf'<button type="(button|submit)" id="{ident}"[^>]*>{re.escape(name)}</button>', html), ident
+    assert 'id="status" role="status"' in html and 'id="alert" role="alert"' in html
+    assert 'aria-label="3D skeleton view"' in html and 'aria-label="People"' in html
+    assert "input-sample-" in web_text("run.js")                     # sample radios: input-sample-<id>, label = title
+
+
+def test_every_page_links_the_others_and_marks_itself():
+    for name, current in (("index.html", "Browse"), ("contract.html", "Contract"), ("run.html", "Run")):
+        nav = re.search(r'<nav id="site-nav" aria-label="Pages">(.*?)</nav>', web_text(name), re.S).group(1)
+        links = re.findall(r'<a href="([a-z.]+)"( aria-current="page")?>([A-Za-z]+)</a>', nav)
+        assert [(h, n) for h, _, n in links] == [("index.html", "Browse"), ("contract.html", "Contract"), ("run.html", "Run")]
+        assert [n for _, cur, n in links if cur] == [current], name
+
+
+def test_the_page_hooks_are_declared_on_window_app():
+    run, browse = web_text("run.js"), web_text("browse.js")
+    for key in ("ready", "output", "job", "runs", "frame", "frameCount", "playing", "people", "colors", "person",
+                "viewerPeople", "camera", "target"):
+        assert re.search(rf"\b{key}\b", run), key
+    for key in ("ready", "output", "job", "runs", "frame", "frameCount", "playing", "people", "colors", "person",
+                "camera", "target"):
+        assert re.search(rf"\b{key}\b", browse), key
+
+
+def test_the_run_page_is_served_with_its_scripts(real_port):
+    for path, ctype in (("/run.html", "text/html"), ("/run.js", "text/javascript"), ("/overlay.js", "text/javascript")):
+        status, headers, body = fetch(real_port, path)
+        assert status == 200 and headers["content-type"].startswith(ctype) and body
+    assert b'src="overlay.js"' in fetch(real_port, "/index.html")[2]

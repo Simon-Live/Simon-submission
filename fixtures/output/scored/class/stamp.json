@@ -1,0 +1,71 @@
+{
+ "schema": "part2.stamp/2",
+ "mode": "class",
+ "backend": "gpu",
+ "tracker": "api-sam31",
+ "lifter": null,
+ "refine": [],
+ "env_profile": "gpu-cu128",
+ "env_lock": "envs/gpu-cu128/constraints.txt",
+ "env_lock_sha256": "f6335d220b1febc14f8aafb618ea3797551b53feb987a9614349e7fc3a28f3c6",
+ "code_files": {
+  "part2/backends/__init__.py": "a5742c4fec5cb5611de1292164b0ee0181d91ddfdf2df1206f7e38fe9174f804",
+  "part2/backends/gpu_sam3db.py": "a6f236a7402fbc980f9f9709c7a105dbb0c79e6788a4a5cd2451ee09d2b8eada",
+  "part2/body3d.py": "a1392f633dad90ea80b6434ff0b478848305a9b438bbe1b46b421fda09ff0fab",
+  "part2/canonical.py": "c093d8ac4abe3e2650290eb3e4b89b3b718c5ae5b5853bcbb71c0fd29105a7f1",
+  "part2/frames.py": "80951fffde382b7aa3db5e0825e4b0b820e7db11d6251ed085f48e67ad218c8f",
+  "part2/joints.py": "22bb9bb9e6671c558dc6ba6300eff2377a1eb853491ac44dbe5c2803534ad93f",
+  "part2/meta_api.py": "6add1c2f2deee0611b061ada1d46fc871c1c2651425f1b8820dc9e91649470f5",
+  "part2/multi3d.py": "f7f0285564e45aee9218be06f531e6366d19a7e1619c01e6afbbb818484c6784",
+  "part2/track.py": "645a432b72ce55c23c50077ff915d2f921c457ab3ff47d63aecda54c9a45d45b",
+  "part2/trackers/__init__.py": "bfcefaa5569dba90644125767a7ed0a129eeccca6ea6da3ffd41bb08a6e8422a",
+  "part2/trackers/api_sam31.py": "b2ff09f667913970ed4c9e7ed7da5ee6a850149d7654f903307854ae04951983"
+ },
+ "code_sha256": "ac7c6260455565220ac1ba428deed38f6f3ec5fb04b1fbb49dde1f54910e30b8",
+ "frames_dir": "fixtures/input/class/frames",
+ "frames_sha256": "9de0db9dd793ab193f017efdae96f7cdcee8fdb55782ed8a450e1b55c8607f45",
+ "models": [
+  {
+   "name": "sam-3d-body-dinov3",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/model.ckpt",
+   "weights_sha256": "b5a2f9d305dd02626b967aa2e86021fba07065df66ce7a7e00ffb9664f150abf"
+  },
+  {
+   "name": "mhr",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/assets/mhr_model.pt",
+   "weights_sha256": "352e271a6c42729c68554ceaea0c955e866970160c31e35506d782dc0f7377bc"
+  },
+  {
+   "name": "moge-2-vitl-normal",
+   "source": "hf:Ruicheng/moge-2-vitl-normal@cb0e8bbd6b1e243589717c78e750b1ba4c093acf/model.pt",
+   "weights_sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01"
+  },
+  {
+   "name": "vitdet-h-cascade-mask-rcnn",
+   "source": "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl",
+   "weights_sha256": "8601bc52000c8a87960f3db6a9672596c5e06ce33bc30a3b8f96a96efe42ae60"
+  },
+  {
+   "name": "sam-3.1",
+   "source": "Meta Model API https://api.meta.ai/v1",
+   "weights_sha256": null
+  }
+ ],
+ "files_sha256": {
+  "camera.json": "f50aefc8469a9b9cf57eee2ad356ec04ff07ab0ecb8d77e5a8aabcb4910659b8",
+  "pose3d.json": "67ec0fc7419ef1175b61a1cd25c91df50e0c6b2e326995928c613b66f15e709f",
+  "tracks.json": "33e6a18f27961cec440616ad693cc2acfad95e990635c5c35a70b01ca3b9d36f"
+ },
+ "created_utc": "2026-10-29T04:21:58Z",
+ "host_gpu": "NVIDIA GeForce RTX 5090",
+ "run": {
+  "frames": 89,
+  "people": 7,
+  "seconds": 296.4,
+  "params": {
+   "smooth": false,
+   "mirrored": false
+  },
+  "spend_usd": 0.0178
+ }
+}

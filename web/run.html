@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Run | Simon Part 2</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-run">
+  <header class="site-header">
+    <a class="brand" href="./"><img src="icon.svg" alt="" width="28" height="28"><span>Simon Part 2</span></a>
+    <nav id="site-nav" aria-label="Pages">
+      <a href="index.html">Browse</a>
+      <a href="contract.html">Contract</a>
+      <a href="run.html" aria-current="page">Run</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Run the pipeline</h1>
+    <p class="lede">Pick a sample or upload a video or photo. The server turns it into 3D skeletons you can turn and download.</p>
+
+    <form id="run-form" class="run-form" novalidate>
+      <fieldset id="input-group">
+        <legend>Input</legend>
+        <div id="sample-options" class="choices"></div>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="input" id="input-file" value="file"> Your own file</label>
+        </div>
+        <div class="file-row">
+          <label for="file-input">Video or photo</label>
+          <input type="file" id="file-input" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png">
+        </div>
+        <p class="hint">The stretch sample shows one person from the side; the yoga sample is a class.</p>
+        <p class="hint">Videos: mp4, mov or webm, up to 60 seconds and 200 MB. Photos: JPEG or PNG, up to 20 MB.</p>
+      </fieldset>
+
+      <fieldset id="mode-group">
+        <legend>Mode</legend>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="mode" id="mode-single" value="single" checked> One person</label>
+          <label class="choice"><input type="radio" name="mode" id="mode-class" value="class"> Class</label>
+        </div>
+      </fieldset>
+
+      <div class="settings">
+        <div class="picker">
+          <label for="backend-select">Backend</label>
+          <select id="backend-select" disabled></select>
+        </div>
+        <div class="picker">
+          <label for="tracker-select">Tracker</label>
+          <select id="tracker-select" disabled></select>
+        </div>
+      </div>
+      <p id="tracker-hint" class="hint">One person mode runs no tracker.</p>
+
+      <div class="group actions">
+        <button type="submit" id="run-button" disabled>Run</button>
+        <button type="button" id="cancel-button" disabled>Cancel</button>
+      </div>
+    </form>
+
+    <p id="status" role="status" class="meta">Loading what this server can run.</p>
+    <p id="alert" role="alert" class="alert" hidden></p>
+    <p id="notice" class="notice" hidden></p>
+
+    <section id="result" aria-labelledby="result-heading" hidden>
+      <h2 id="result-heading">Result</h2>
+      <p id="result-line" class="meta"></p>
+
+      <div class="panels">
+        <section class="panel picture-panel" aria-labelledby="picture-heading">
+          <h2 id="picture-heading">Picture</h2>
+          <div class="stage">
+            <img id="frame-img" alt="" hidden>
+            <canvas id="overlay" class="overlay" aria-hidden="true"></canvas>
+          </div>
+          <ul id="legend" class="legend" aria-label="People" hidden></ul>
+          <div id="person-picker" class="picker" hidden>
+            <label for="person-select">Person</label>
+            <select id="person-select"></select>
+            <span class="hint">shown in 3D</span>
+          </div>
+        </section>
+        <section class="panel skeleton-panel" aria-labelledby="skeleton-heading">
+          <h2 id="skeleton-heading">3D skeleton</h2>
+          <div class="stage">
+            <canvas id="viewer" role="img" aria-label="3D skeleton view" tabindex="0"></canvas>
+          </div>
+          <p class="hint">Drag to turn. Scroll or pinch to zoom.</p>
+        </section>
+      </div>
+
+      <div class="controls">
+        <div class="group" role="group" aria-label="Camera">
+          <button type="button" id="view-front">Front</button>
+          <button type="button" id="view-side">Side</button>
+          <button type="button" id="view-top">Top</button>
+          <button type="button" id="view-reset">Reset</button>
+        </div>
+        <div class="group scrub">
+          <button type="button" id="play-toggle">Play</button>
+          <label for="frame-slider">Frame</label>
+          <input type="range" id="frame-slider" min="0" max="0" value="0" step="1" disabled>
+          <span id="frame-info" class="meta"></span>
+        </div>
+      </div>
+
+      <div class="group downloads" role="group" aria-label="Downloads">
+        <button type="button" id="download-pose3d">Download pose3d.json</button>
+        <button type="button" id="download-tracks" hidden>Download tracks.json</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="viewer.js"></script>
+  <script src="overlay.js"></script>
+  <script src="run.js"></script>
+</body>
+</html>

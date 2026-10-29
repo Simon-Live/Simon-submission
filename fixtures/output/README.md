@@ -3,7 +3,7 @@
 Real Part 2 output so the next parts can start before Part 2 is finished. Same shape as the
 shared files in the top-level README; nothing else is needed to read them.
 
-## `single/` — one-person clip (provisional)
+## `single/`: one-person clip (provisional)
 
 - `pose3d.json`: 107 frames (15 fps resample of a 7.1 s clip), one person (`id` 0), two
   barbell back squats. Canonical frame per frame: origin at the hip midpoint, x = subject's left,
@@ -46,3 +46,39 @@ shared files in the top-level README; nothing else is needed to read them.
 
 `conf` in both means the same as in `single/` (above): 1.0 when the joint lies inside the image, 0.3 when
 it was extrapolated outside the frame. It is not a calibrated probability.
+
+## `scored/`: the outputs `make check-2` scores
+
+Made on this host by `make outputs` (2026-10-29; the gpu dirs on its RTX 5090), each dir with a `stamp.json` (`part2.stamp/2`).
+
+| Dir | Files | Backend | Tracker | Frames | People | Scored as |
+|---|---|---|---|---|---|---|
+| `single/` | `pose3d.json`, `camera.json` | gpu (SAM 3D Body, ViTDet boxes, MoGe-2 focal) | none | 111 | 1 | `one_person` |
+| `class/` | `tracks.json`, `pose3d.json`, `camera.json` | gpu | `api-sam31` (the scored order) | 89 | 7 | `multi_person` |
+| `class-local-open/` | same as `class/` | gpu | `local-open` | 89 | 7 | `multi_person_local_open`, never gated |
+| `cpu-single/` | `pose3d.json`, `camera.json` | cpu (RTMPose-x, lifter `fixed-bones`) | none | 111 | 1 | `cpu_backend_3d` against `single/` |
+
+`stamp.json` names the backend, tracker, lifter, refine rungs and models with their weight digests, and holds
+the sha256 of the code the run imported, of the input frames, of the environment lock and of each output file.
+`make check-2` fails a dir whose code, frames or lock changed since it was made, or whose files were edited,
+and says which. The CPU backend misses the 3D bar (mean joint distance 0.2682 m against the 0.10 m limit), so
+its 3D is approximate.
+
+```
+make outputs                  # single, class, class-local-open on the GPU (TRACKER=, MODES=, SCORED= optional)
+make outputs BACKEND=cpu      # cpu-single (LIFTER= optional)
+make check-2                  # scores scored/; SCORED=out scores out/<mode>/ instead
+make check-2-cpu              # the cpu_backend_3d block alone
+```
+
+## `stock/`: follower takes for Part 5 (`pose3d.json` + `camera.json` + `SOURCE.md`)
+
+Three openly licensed Pexels clips run through Part 2 one-person mode on the gpu backend at 10 fps, made by
+`make stock-outputs` (`part2 stock`). Each folder's `SOURCE.md` names the clip, the licence, the downloaded file's
+sha256, the time range and the Part 2 commit that made it. The videos are not in the repo.
+
+| Folder | Pexels video | Angle | Frames |
+|---|---|---|---|
+| `stock/pexels-5034562/` | 5034562 | side (Part 5's expected take) | 154 |
+| `stock/pexels-5034577/` | 5034577 | front | 166 |
+| `stock/pexels-8837221/` | 8837221 | three-quarter | 256 |

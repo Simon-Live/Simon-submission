@@ -250,6 +250,16 @@ def test_provenance_names_the_backend_and_the_tracker_that_ran(gpu, tmp_path, ca
     assert "tracker api-sam31" in capsys.readouterr().out
 
 
+def test_progress_lines_only_when_asked(gpu, tmp_path, capsys, monkeypatch):
+    code, _ = _run(tmp_path)
+    assert code == 0 and "progress " not in capsys.readouterr().out
+    monkeypatch.setenv("PART2_PROGRESS", "1")
+    code, _ = _run(tmp_path, mode="multi", name="m", src=tmp_path / "imgs")
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("progress ")]
+    assert code == 0 and lines == ["progress frames 2 2", "progress track 0 2", "progress pose 0 2",
+                                   "progress write 0 1", "progress write 1 1"]
+
+
 # --- the contract and doctor commands, and python -m part2 --------------------------------------
 
 def test_contract_command_through_the_cli(capsys):

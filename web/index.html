@@ -13,6 +13,7 @@
     <nav id="site-nav" aria-label="Pages">
       <a href="index.html" aria-current="page">Browse</a>
       <a href="contract.html">Contract</a>
+      <a href="run.html">Run</a>
     </nav>
   </header>
 
@@ -33,7 +34,14 @@
         <h2 id="picture-heading">Picture</h2>
         <div class="stage">
           <img id="frame-img" alt="" hidden>
+          <canvas id="overlay" class="overlay" aria-hidden="true" hidden></canvas>
           <p id="frame-empty" class="empty" hidden>This output has no stored pictures. The 3D skeleton plays on its own.</p>
+        </div>
+        <ul id="legend" class="legend" aria-label="People" hidden></ul>
+        <div id="person-picker" class="picker" hidden>
+          <label for="person-select">Person</label>
+          <select id="person-select"></select>
+          <span class="hint">shown in 3D</span>
         </div>
       </section>
       <section class="panel skeleton-panel" aria-labelledby="skeleton-heading">
@@ -41,7 +49,6 @@
         <div class="stage">
           <canvas id="viewer" role="img" aria-label="3D skeleton view" tabindex="0"></canvas>
         </div>
-        <ul id="legend" class="legend" aria-label="People" hidden></ul>
         <p class="hint">Drag to turn. Scroll or pinch to zoom.</p>
       </section>
     </div>
@@ -63,6 +70,7 @@
   </main>
 
   <script src="viewer.js"></script>
+  <script src="overlay.js"></script>
   <script src="browse.js"></script>
 </body>
 </html>
