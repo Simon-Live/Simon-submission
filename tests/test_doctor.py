@@ -156,8 +156,20 @@ def test_ac_c08_an_analysis_missing_format_exits_1(tmp_path, capsys):
     assert 'format: missing; fix: write "format": "simon.analysis.v1"' in out
 
 
-def test_a_1_0_analysis_is_accepted_for_part7_with_notes_about_status_and_joints(capsys):
-    code, out, _ = run([EXAMPLE, "--for", "part7"], capsys)
+def one_point_zero(example):
+    """The shipped example as a schema 1.0 writer would have made it (no 1.1.0 fields)."""
+    doc = json.loads(example.read_text())
+    for key in ("schema_version", "status", "phrasing"):
+        doc.pop(key, None)
+    doc.get("diagnostics", {}).pop("guard", None)
+    for f in doc["faults"]:
+        for key in ("runs", "joints", "coaching"):
+            f.pop(key, None)
+    return doc
+
+
+def test_a_1_0_analysis_is_accepted_for_part7_with_notes_about_status_and_joints(tmp_path, capsys):
+    code, out, _ = run([write(tmp_path, "analysis.json", one_point_zero(EXAMPLE)), "--for", "part7"], capsys)
     assert code == 0 and "simon.analysis.v1 1.0.0 (no schema_version)" in out
     assert "note: no status block (schema 1.0): read it as ok" in out
     assert "faults[].joints is absent" in out

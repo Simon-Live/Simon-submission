@@ -13,7 +13,8 @@ import numpy as np
 from .measures import MEASURES, compute
 
 # Measures that drive alignment; head_forward is noisy and adds little timing information.
-ALIGN_MEASURES = [m for m in MEASURES if m != "head_forward"]
+# knee_valgus (ADR-0004) is a fault measure only, so alignment stays as it was before it was added.
+ALIGN_MEASURES = [m for m in MEASURES if m != "head_forward" and not m.endswith("_knee_valgus")]
 MIN_SPREAD_DEG = 5.0
 
 

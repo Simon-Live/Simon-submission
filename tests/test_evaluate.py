@@ -103,9 +103,58 @@ def test_evaluate_corpus_pairs_analyses_with_labels_by_take():
     assert m2["overall"]["fn"] == 1
 
 
+def test_knee_caving_label_maps_to_the_knee_valgus_measure():
+    caving = {"type": "knee_caving", "measure": "knee_valgus", "side": "left", "direction": "more",
+              "body_part": "legs"}
+    assert canonical_label(caving) == ("knee_valgus", "left", "more")
+    # A hand-written label without a type is translated from its measure field.
+    assert canonical_label({"measure": "knee_valgus", "side": "right", "direction": "more"}) == (
+        "knee_valgus", "right", "more")
+    assert matches(pred("knee_valgus", "left", "more"), caving)
+    assert not matches(pred("knee_valgus", "right", "more"), caving)
+    assert not matches(pred("knee_valgus", "left", "less"), caving)
+
+
+def take(take_id, angle="front", lighting="good", labels=(), **extra):
+    return {"take_id": take_id, "lighting": lighting, "angle": angle, "correct": not labels,
+            "faults": list(labels), **extra}
+
+
+REFUSED = {"status": {"code": "different_movement", "text": "x"}, "faults": []}
+
+
+def test_ac_k04_a_refused_take_counts_in_refused_and_its_labels_are_misses():
+    """AC-K04: the slice's `refused` is 1 and the take's labels count as misses."""
+    labels = {"takes": [take("a", labels=[label()]), take("b", labels=[label()]), take("c")]}
+    analyses = {"a": {"faults": [pred()]}, "b": REFUSED, "c": {"status": {"code": "ok", "text": "y"}, "faults": []}}
+    s = evaluate_corpus(labels, analyses)["slices"]["good/front"]
+    assert (s["tp"], s["fp"], s["fn"], s["takes"], s["refused"]) == (1, 0, 1, 3, 1)
+    assert s["recall"] == 0.5 and s["precision"] == 1.0
+    assert evaluate_corpus(labels, analyses)["overall"]["refused"] == 1
+
+
+def test_a_refused_take_scores_no_predictions_even_if_faults_were_listed():
+    s = score([{"predicted": [pred()], "labels": [], "lighting": "good", "angle": "front",
+                "correct": True, "refused": True}])["slices"]["good/front"]
+    assert (s["fp"], s["faults_on_correct_takes"], s["refused"]) == (0, 0, 1)
+
+
+def test_dropout_takes_get_their_own_slice_and_stay_out_of_the_lighting_slices():
+    labels = {"takes": [take("a", angle="side", labels=[label()]),
+                        take("b", angle="side", labels=[label()], variant="dropout", label_source="synthetic", seed=29),
+                        take("c", angle="45", variant="clean", seed=29)]}
+    analyses = {"a": {"faults": [pred()]}, "b": {"faults": []}, "c": {"faults": []}}
+    m = evaluate_corpus(labels, analyses)
+    assert set(m["slices"]) == {"good/side", "dropout/side", "good/45"}
+    assert (m["slices"]["good/side"]["tp"], m["slices"]["good/side"]["fn"]) == (1, 0)
+    assert (m["slices"]["dropout/side"]["tp"], m["slices"]["dropout/side"]["fn"]) == (0, 1)
+    assert m["good_light"]["takes"] == 2 and m["by_lighting"]["dropout"]["takes"] == 1
+    assert m["overall"]["takes"] == 3
+
+
 def test_real_labels_document_parses_into_records():
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     m = evaluate_corpus(labels, {}, allow_missing=True)
-    assert m["overall"]["takes"] == 96
-    assert m["overall"]["fn"] == 84 and m["overall"]["fp"] == 0
+    assert m["overall"]["takes"] == 108
+    assert m["overall"]["fn"] == 96 and m["overall"]["fp"] == 0 and m["overall"]["refused"] == 0
     assert set(m["slices"]) == {f"{li}/{an}" for li in ("good", "low") for an in ("front", "45", "side")}

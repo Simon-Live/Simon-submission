@@ -840,10 +840,7 @@
           "then": {
             "properties": {
               "measure_kind": {
-                "enum": [
-                  "angle",
-                  "direction"
-                ]
+                "const": "direction"
               },
               "body_part": {
                 "const": "legs"
@@ -853,6 +850,13 @@
                   "left",
                   "right",
                   "both"
+                ]
+              },
+              "joint": {
+                "enum": [
+                  "left_knee",
+                  "right_knee",
+                  "knee"
                 ]
               }
             }

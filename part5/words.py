@@ -6,7 +6,8 @@ A per-side phrase has a {side} slot; "both" uses the plural phrase without a sid
 
 # measure → direction → (one side, both sides). Centre measures have one phrase per direction.
 # Slots: {side}; {q} = "slightly " / "" / "much "; {nq} = "not quite" / "not" / "nowhere near"
-# (for "not … enough" phrases, where "slightly"/"much" would read wrong).
+# (for "not … enough" phrases, where "slightly"/"much" would read wrong); {aq} = " slightly" / ""
+# / " a lot" (for phrases that end on a verb, where "much caving in" would read wrong).
 PHRASES = {
     "elbow_flexion": {"more": ("{side} elbow bent {q}more than the example", "elbows bent {q}more than the example"),
                       "less": ("{side} elbow {q}straighter than the example", "elbows {q}straighter than the example")},
@@ -24,6 +25,8 @@ PHRASES = {
                       "less": ("{side} thigh {nq} raised enough", "thighs {nq} raised enough")},
     "foot_out": {"more": ("{side} foot {q}too far out", "feet {q}too far apart"),
                  "less": ("{side} foot {q}too far in", "feet {q}too close together")},
+    "knee_valgus": {"more": ("{side} knee caving in{aq}", "knees caving in{aq}"),
+                    "less": ("{side} knee pushed out{aq}", "knees pushed out{aq}")},
     # Centre measures are phrased relative to the example: detection only knows
     # follower − expected, so "leaning to the right" would be wrong when the example leans left.
     "trunk_lean_forward": {"more": "leaning forward {q}more than the example",
@@ -40,7 +43,8 @@ PHRASES = {
 SLIGHT_BELOW, MUCH_FROM = 1.5, 3.0
 
 
-QUALIFIERS = {"slight": ("slightly ", "not quite"), "plain": ("", "not"), "much": ("much ", "nowhere near")}
+QUALIFIERS = {"slight": ("slightly ", "not quite", " slightly"), "plain": ("", "not", ""),
+              "much": ("much ", "nowhere near", " a lot")}
 
 
 def band(magnitude_deg, threshold_deg):
@@ -54,17 +58,17 @@ def band(magnitude_deg, threshold_deg):
 
 def phrase(measure, direction, side, size="plain"):
     entry = PHRASES[measure][direction]
-    q, nq = QUALIFIERS[size]
+    q, nq, aq = QUALIFIERS[size]
     if isinstance(entry, str):
         if side != "center":
             raise ValueError(f"{measure} is a centre measure, got side {side!r}")
-        return entry.format(q=q, nq=nq)
+        return entry.format(q=q, nq=nq, aq=aq)
     one, both = entry
     if side == "both":
-        return both.format(q=q, nq=nq)
+        return both.format(q=q, nq=nq, aq=aq)
     if side not in ("left", "right"):
         raise ValueError(f"{measure} needs side left/right/both, got {side!r}")
-    return one.format(side=side, q=q, nq=nq)
+    return one.format(side=side, q=q, nq=nq, aq=aq)
 
 
 def describe(fault, qualify=True):

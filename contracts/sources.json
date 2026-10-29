@@ -19,7 +19,8 @@
   ],
   "derived": [],
   "pinned": [
-    {"upstream": "part4", "from": "fixtures/output/exercise/animation.json", "to": "fixtures/input/expected/exercise/animation.json", "commit": "366d6287f53cec4834ac0d5203118f84e9ac6c2f", "why": "make dummy-data builds every follower take from this clip; refresh it together with the takes"},
-    {"upstream": "part4", "from": "fixtures/output/dance/animation.json", "to": "fixtures/input/expected/dance/animation.json", "commit": "366d6287f53cec4834ac0d5203118f84e9ac6c2f", "why": "make dummy-data builds every follower take from this clip; refresh it together with the takes"}
+    {"upstream": "part4", "from": "fixtures/output/exercise/animation.json", "to": "fixtures/input/expected/exercise/animation.json", "commit": "dc3d9f2e70a0d3e95efb60bea1e5ab7fc307d284", "why": "make dummy-data builds every follower take from this clip; refreshed with the takes at the start of M2 (TICKET-016), never after a held-out seed is scored"},
+    {"upstream": "part4", "from": "fixtures/output/dance/animation.json", "to": "fixtures/input/expected/dance/animation.json", "commit": "dc3d9f2e70a0d3e95efb60bea1e5ab7fc307d284", "why": "make dummy-data builds every follower take from this clip; refreshed with the takes at the start of M2 (TICKET-016), never after a held-out seed is scored"},
+    {"upstream": "part4", "from": "fixtures/output/part3-squat/animation.json", "to": "fixtures/input/expected/part3-squat/animation.json", "commit": "dc3d9f2e70a0d3e95efb60bea1e5ab7fc307d284", "why": "the expected clip for Part 3's follower kit and the guard's matched reference; refreshed together with the other expected clips (TICKET-016)"}
   ]
 }

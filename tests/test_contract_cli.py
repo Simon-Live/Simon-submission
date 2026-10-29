@@ -84,7 +84,7 @@ def mini_root(tmp_path_factory):
     shutil.copytree(ROOT / "fixtures/input/expected/exercise", root / "fixtures/input/expected/exercise")
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     for take in labels["takes"]:
-        if take["take_id"].startswith(("exercise_front_good_07", "exercise_front_good_00")):
+        if take["take_id"].startswith(("exercise_front_good_08", "exercise_front_good_00")):
             dst = root / take["follower"]
             dst.parent.mkdir(parents=True)
             shutil.copy(ROOT / take["follower"], dst)
@@ -290,6 +290,8 @@ def fault_for(measure, side):
 def doc_with(fault):
     d = golden()
     d["faults"] = [fault]
+    if "phrasing" in d:  # one phrasing entry per fault
+        d["phrasing"]["faults"] = d["phrasing"]["faults"][:1]
     return d
 
 
@@ -339,8 +341,10 @@ def test_start_after_end_is_for_the_loader_only():
 
 def test_knee_valgus_is_an_allowed_measure_now():
     f = fault_for("elbow_flexion", "left")
-    f.update(measure="knee_valgus", measure_kind="angle", body_part="legs", joint="left_knee")
+    f.update(measure="knee_valgus", measure_kind="direction", body_part="legs", joint="left_knee")
     assert errors("analysis", doc_with(f)) == []
+    assert errors("analysis", doc_with(dict(f, measure_kind="angle")))
+    assert errors("analysis", doc_with(dict(f, joint="left_hip")))
     f.update(body_part="arms")
     assert errors("analysis", doc_with(f))
 

@@ -1,4 +1,4 @@
-"""The whole analysis for one follower take: load → normalise → align → measures → detect → words.
+"""The whole analysis for one follower take: load → normalise → align → guard → measures → detect → words.
 
 `analyse` returns a validated `simon.analysis.v1` document (see docs/schemas.md) without
 writing anything, so the CLI, `make check-5` and the example script share one code path.
@@ -9,11 +9,15 @@ from pathlib import Path
 import numpy as np
 
 from .align import ALIGN_MEASURES, Alignment, align
-from .detect import detect
+from .detect import detect, load_rules
+from .guard import GuardResult, check_movement
+from .guard import diagnostics as guard_diagnostics
 from .io import Clip, load_clip, parse_clip
+from .joints_map import fault_joints
 from .measures import compute
 from .normalise import normalise
-from .output import build_analysis
+from .output import build_analysis, validate_analysis
+from .phrasing import BACKENDS, phrase
 
 # On the dummy takes the matched span always covers ≥76% of the follower clip. Much less than
 # that usually means a follower slower than ½x, which aligns to a subsegment (see align.dtw).
@@ -25,7 +29,7 @@ MIN_AVAILABLE = 0.5
 FPS_TOLERANCE = 0.01
 
 
-PHRASING_BACKENDS = ("template",)
+PHRASING_BACKENDS = tuple(BACKENDS)
 
 
 class AnalysisError(ValueError):
@@ -38,7 +42,8 @@ class PipelineResult:
 
     `follower` is the follower clip on its own frames; `follower_positions` is it resampled onto
     the expected clock (what was aligned), and `to_original[j]` is the follower file's frame for
-    resampled frame `j`. `alignment` indexes the resampled frames.
+    resampled frame `j`. `alignment` indexes the resampled frames. `guard` is the movement
+    guard's verdict (a refused take has no faults).
     """
     analysis: dict
     alignment: Alignment | None
@@ -46,6 +51,7 @@ class PipelineResult:
     follower: Clip
     follower_positions: np.ndarray
     to_original: np.ndarray
+    guard: GuardResult | None = None
 
 
 def analyse(expected, follower, rules=None):
@@ -55,7 +61,7 @@ def analyse(expected, follower, rules=None):
     return run(expected, follower, rules).analysis
 
 
-def run(expected, follower, rules=None, *, phrasing="template"):
+def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=None):
     """`analyse` keeping the clips and the alignment (`PipelineResult`).
 
     A ref may carry the parsed JSON under `doc` (an upload held in memory): the clip is parsed
@@ -63,6 +69,7 @@ def run(expected, follower, rules=None, *, phrasing="template"):
     """
     if phrasing not in PHRASING_BACKENDS:
         raise AnalysisError(f"phrasing must be one of {list(PHRASING_BACKENDS)}, got {phrasing!r}")
+    rules = rules or load_rules()
     exp_ref, fol_ref = _ref(expected, "expected"), _ref(follower, "follower")
     exp = normalise(_load(exp_ref))
     fol = normalise(_load(fol_ref))
@@ -81,11 +88,29 @@ def run(expected, follower, rules=None, *, phrasing="template"):
         alignment = align(exp.positions, fol_positions)
     except ValueError as e:
         raise AnalysisError(f"{fol_ref['path']}: cannot align with {exp_ref['path']} ({e})") from e
-    faults = [replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
-              for f in detect(exp_m, fol_m, alignment, rules)]
+    # A different movement is refused before detection: DTW always finds a closest phase.
+    guard = check_movement(alignment, exp_m, fol_m, rules)
+    faults = [] if not guard.ok else [
+        replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
+        for f in detect(exp_m, fol_m, alignment, rules)]
     span = tuple(int(to_original[j]) for j in alignment.follower_span)
-    analysis = build_analysis(exp_ref, fol_ref, faults, diagnostics=_diagnostics(alignment, span, len(fol.t)))
-    return PipelineResult(analysis, alignment, exp, fol, fol_positions, np.asarray(to_original))
+    diagnostics = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(guard, rules))
+    analysis = build_analysis(exp_ref, fol_ref, faults, diagnostics=diagnostics,
+                              status={"code": guard.code, "text": guard.text})
+    analysis = _phrased(analysis, phrasing, phrasing_client)
+    return PipelineResult(analysis, alignment, exp, fol, fol_positions, np.asarray(to_original), guard)
+
+
+def _phrased(analysis, backend, client):
+    """Canonical joints and the coaching line per fault, and the `phrasing` record (ADR-0005,
+    ADR-0006). Scored fields never depend on the backend: only `coaching` and `phrasing` do."""
+    for f in analysis["faults"]:
+        f["joints"] = fault_joints(f)
+    lines, record = phrase(analysis["faults"], backend, client=client)
+    for f, line in zip(analysis["faults"], lines):
+        f["coaching"] = line
+    analysis["phrasing"] = record
+    return validate_analysis(analysis, source="<built analysis>")
 
 
 def clip_fps(clip):
@@ -138,7 +163,7 @@ def _ref(ref, key):
     return dict(ref, path=str(ref["path"]))
 
 
-def _diagnostics(alignment, span, n_follower):
+def _diagnostics(alignment, span, n_follower, guard):
     start, end = span
     share = (end - start + 1) / n_follower
     warnings = []
@@ -149,4 +174,5 @@ def _diagnostics(alignment, span, n_follower):
     return {"alignment_residual": round(float(alignment.residual), 4),
             "alignment_measures": list(alignment.measures),
             "follower_span": [start, end],
-            "warnings": warnings}
+            "warnings": warnings,
+            "guard": guard}

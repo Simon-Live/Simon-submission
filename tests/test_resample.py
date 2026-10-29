@@ -10,7 +10,7 @@ from part5.pipeline import analyse, resample
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED = ROOT / "fixtures/input/expected/exercise/animation.json"
-TAKE = ROOT / "fixtures/input/followers/exercise/exercise_front_good_07_foot_out-left+trunk_lean-center/skeleton.json"
+TAKE = ROOT / "fixtures/input/followers/exercise/exercise_front_good_08_arms_wider-both+elbow_bent-right/skeleton.json"
 
 
 def decimate(src, dst, step):

@@ -35,3 +35,20 @@ contracts-sync:
 .PHONY: check-5-contract
 check-5-contract:
 	@uv run python -m part5.contract --check
+
+# Opt-in live call to Muse Spark through Baseten (one fixed fault record, needs the key file). Exit 0 only
+# when a valid line came back. Never part of test, check-5 or the publish check.
+.PHONY: smoke-muse-spark
+smoke-muse-spark:
+	META_LIVE=1 uv run python -m part5.phrasing.smoke
+
+# Held-out set for one attempt (docs/specs/calibration.md, ADR-0003): run once per seed, in the order
+# 29, 31, 37, after the attempt's freeze commit. Replaces fixtures/input/heldout/. SEED is required.
+.PHONY: heldout-data
+heldout-data:
+	@case "$(SEED)" in \
+	  29|31|37) ;; \
+	  "") echo "heldout-data: SEED is required (29, then 31, then 37): make heldout-data SEED=29" >&2; exit 2 ;; \
+	  *) echo "heldout-data: SEED=$(SEED) is not a held-out seed (29, 31, 37); seed 5 is the tuning set" >&2; exit 2 ;; \
+	esac
+	python3 scripts/make_dummy_followers.py --seed $(SEED) --out fixtures/input/heldout --dropout-variant

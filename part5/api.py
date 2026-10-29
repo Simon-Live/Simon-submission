@@ -24,7 +24,8 @@ from pathlib import Path
 
 from . import __version__, contract
 from .io import InputError
-from .pipeline import PHRASING_BACKENDS, AnalysisError, run
+from .phrasing import BACKENDS, TEMPLATE
+from .pipeline import AnalysisError, run
 from .replay import build_replay
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -125,11 +126,17 @@ def table():
     return build_table()
 
 
+def offered_phrasing():
+    """The backends this server can run now: template always, a model backend only when it is
+    available here (muse-spark needs the key file and META_LIVE=1 on the server; the key stays here)."""
+    return [name for name, module in BACKENDS.items() if name == TEMPLATE or module.unavailable() is None]
+
+
 def _samples_listing():
     t = table()
     return {"expected": [s.listing for s in t.expected.values()],
             "followers": [s.listing for s in t.follower.values()],
-            "phrasing": list(PHRASING_BACKENDS)}
+            "phrasing": offered_phrasing()}
 
 
 # ----------------------------------------------------------------------------- responses
@@ -256,9 +263,9 @@ def _analyse(body):
     large = len(body) > MAX_UPLOAD_BYTES
     expected, expected_field = _resolve("expected", request.get("expected"), large)
     follower, follower_field = _resolve("follower", request.get("follower"), large)
-    phrasing = request.get("phrasing", "template")
-    if not isinstance(phrasing, str):
-        raise ApiError(400, "phrasing", f"phrasing: must be one of {list(PHRASING_BACKENDS)}")
+    phrasing = request.get("phrasing", TEMPLATE)
+    if phrasing not in offered_phrasing():
+        raise ApiError(400, "phrasing", f"phrasing: must be one of {offered_phrasing()}")
     try:
         return _respond(200, _in_worker(_analysis, expected, follower, phrasing))
     except (InputError, AnalysisError) as e:

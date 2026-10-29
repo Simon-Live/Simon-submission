@@ -1,10 +1,10 @@
 """Generate dummy follower takes in Part 4's `simon.animation.v1` format, with fault labels.
 
 Reads only the expected clips in fixtures/input/expected/<set>/animation.json (copied from
-Part 4's shipped output) and writes:
+Part 4's shipped output) and writes, under --out (default fixtures/input/followers):
 
-  fixtures/input/followers/<set>/<take_id>/skeleton.json   one follower take, same format
-  fixtures/input/followers/labels.json                     ground truth for every take
+  <out>/<set>/<take_id>/skeleton.json   one follower take, same format
+  <out>/labels.json                     ground truth for every take (names the seed)
 
 Each take is the expected clip performed by a different follower. The body is rescaled,
 the timing is warped and has an idle lead-in, there is small natural variation, and the
@@ -12,9 +12,19 @@ the timing is warped and has an idle lead-in, there is small natural variation, 
 two deliberate faults. Faults rotate a limb chain about its joint, so bone lengths are
 kept. Each label records the joint, side, measure, direction, magnitude and frame range.
 
-Deterministic: `python3 scripts/make_dummy_followers.py [--seed 5]`.
+Grid per set, angle and lighting: 2 correct takes, 6 single-fault takes (one per fault type,
+including knee_caving) and 1 double-fault take, 9 takes; 12 cells make 108 takes per seed.
+
+--dropout-variant adds, for every side and 45 degree take, a copy with a per-joint `conf` series
+(lower on the far side and in low light) and short far-side dropouts (a joint null, or its `conf`
+below 0.3, in bursts of a few frames). The copy's id ends in `_dropout` and its label says
+`variant: "dropout"`. The clean takes are the same bytes with or without the flag.
+
+Deterministic: `python3 scripts/make_dummy_followers.py [--seed 5] [--out DIR] [--dropout-variant]`.
+Seed 5 is the tuning set (docs/specs/calibration.md); held-out seeds come from `make heldout-data`.
 """
 import argparse
+import copy
 import json
 import math
 import random
@@ -56,9 +66,17 @@ FAULTS = {
     "trunk_lean": {"measure": "trunk_lean_forward", "body_part": "torso", "direction": "more",
                    "sides": ["center"], "deg": (15, 25),
                    "text": {"center": "leaning forward more than the example"}},
+    # ADR-0004: the knee moves toward the midline about the hip to ankle axis; deg is knee_valgus.
+    "knee_caving": {"measure": "knee_valgus", "body_part": "legs", "direction": "more",
+                    "sides": ["left", "right"], "deg": (15, 25),
+                    "text": {"left": "left knee caving in", "right": "right knee caving in"}},
 }
 JOINT_OF = {"upper_arm_direction": "shoulder", "thigh_direction": "hip", "knee_flexion": "knee",
-            "elbow_flexion": "elbow", "trunk_lean_forward": "spine"}
+            "elbow_flexion": "elbow", "trunk_lean_forward": "spine", "knee_valgus": "knee"}
+# Toward the midline, per side: the negative of the "out" direction of part5.measures.OUT.
+INWARD = {"left": [-1.0, 0.0, 0.0], "right": [1.0, 0.0, 0.0]}
+# Pairs a double-fault take may combine (knee_caving stays out: it shares the leg with foot_out).
+DOUBLE_POOL = ["arms_wider", "foot_out", "trunk_lean", "elbow_bent"]
 
 
 # --- small vector helpers (stdlib only, so this runs before the project scaffold exists) ---
@@ -92,8 +110,20 @@ def seg_angle(a, b):
     return math.degrees(math.acos(max(-1.0, min(1.0, dot(unit(a), unit(b))))))
 
 
+def knee_valgus(f, s):
+    """Master spec `knee_valgus`: how far the knee sits inside the hip to ankle line, in degrees.
+
+    d = ((k - h) - proj_(a - h)(k - h)) . inward, valgus = atan2(d, |k - h|); positive is caving.
+    """
+    h, k, a = f[f"{s}_hip"], f[f"{s}_knee"], f[f"{s}_ankle"]
+    thigh, axis = sub(k, h), unit(sub(a, h))
+    off = sub(thigh, scale(axis, dot(thigh, axis)))
+    return math.degrees(math.atan2(dot(off, INWARD[s]), norm(thigh)))
+
+
 def measure(f, m, s):
     """The quantity a fault changes, so the label holds the size the follower really shows."""
+    if m == "knee_valgus": return knee_valgus(f, s)
     if m == "upper_arm_direction": return sub(f[f"{s}_elbow"], f[f"{s}_shoulder"])
     if m == "thigh_direction": return sub(f[f"{s}_knee"], f[f"{s}_hip"])
     if m == "knee_flexion": return 180 - angle_at(f[f"{s}_hip"], f[f"{s}_knee"], f[f"{s}_ankle"])
@@ -184,6 +214,34 @@ def fault_elbow_bent(frames, side, deg, w):
     return deg
 
 
+def cave_knee(f, side, target_deg):
+    """Rotate the knee about the hip to ankle axis until `knee_valgus` reads `target_deg`.
+
+    Both bone lengths stay. Where the knee bend is too small to reach the target, the knee goes as
+    far inward as the bend allows.
+    """
+    h, k, a = f[f"{side}_hip"], f[f"{side}_knee"], f[f"{side}_ankle"]
+    axis, thigh = unit(sub(a, h)), sub(k, h)
+    off = sub(thigh, scale(axis, dot(thigh, axis)))
+    inward = sub(INWARD[side], scale(axis, dot(INWARD[side], axis)))
+    reach = norm(off) * norm(inward)
+    if reach < 1e-9:
+        return
+    # Signed angle from the knee offset to the inward direction; rotating by theta leaves
+    # the inward offset |off| |inward| cos(phi - theta), which must equal |k - h| tan(target).
+    phi = math.atan2(dot(axis, cross(off, inward)), dot(off, inward))
+    want = max(-1.0, min(1.0, norm(thigh) * math.tan(math.radians(target_deg)) / reach))
+    theta = [math.remainder(phi - sign * math.acos(want), 2 * math.pi) for sign in (1, -1)]
+    f[f"{side}_knee"] = rotate(k, h, axis, math.degrees(min(theta, key=abs)))
+
+
+def fault_knee_caving(frames, side, deg, w):
+    for f, wi in zip(frames, w):
+        if wi > 0:
+            cave_knee(f, side, knee_valgus(f, side) + deg * wi)
+    return deg
+
+
 def fault_trunk_lean(frames, side, deg, w):
     for f, wi in zip(frames, w):
         # +deg about x through the hip midpoint (origin) tips y-up toward +z (anterior).
@@ -193,7 +251,7 @@ def fault_trunk_lean(frames, side, deg, w):
 
 
 APPLY = {"arms_wider": fault_arms_wider, "foot_out": fault_foot_out, "knees_shallow": fault_knees_shallow,
-         "elbow_bent": fault_elbow_bent, "trunk_lean": fault_trunk_lean}
+         "elbow_bent": fault_elbow_bent, "trunk_lean": fault_trunk_lean, "knee_caving": fault_knee_caving}
 
 
 def natural_variation(frames, rng):
@@ -311,7 +369,7 @@ def build_take(expected, take_id, angle, light, faults, rng):
     }
     meta = {"take_id": take_id, "set": expected["set"], "movement": expected["movement"],
             "angle": angle, "camera_yaw_deg": ANGLES[angle], "lighting": light,
-            "correct": not labels, "body_scale": round(body, 3), "speed": round(speed, 3),
+            "variant": "clean", "label_source": "synthetic", "correct": not labels, "body_scale": round(body, 3), "speed": round(speed, 3),
             "lead_in_frames": lead_in, "frame_count": len(frames), "faults": labels}
     return doc, meta
 
@@ -319,45 +377,125 @@ def build_take(expected, take_id, angle, light, faults, rng):
 def fault_plan(rng):
     """One take per fault type with a random side, plus one take with two faults."""
     plan = [[(t, rng.choice(FAULTS[t]["sides"]))] for t in FAULTS]
-    a, b = rng.sample(["arms_wider", "foot_out", "trunk_lean", "elbow_bent"], 2)
+    a, b = rng.sample(DOUBLE_POOL, 2)
     plan.append([(a, rng.choice(FAULTS[a]["sides"])), (b, rng.choice(FAULTS[b]["sides"]))])
     return plan
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--seed", type=int, default=5)
-    args = ap.parse_args()
-    rng = random.Random(args.seed)
+# --- the dropout variant (#25): per-joint conf, and short far-side dropouts ---
+CONF_BASE = {"good": 0.95, "low": 0.8}
+CONF_FAR_LOSS = 0.25       # confidence a joint loses on the far side from a 90 degree camera
+CONF_FLOOR = 0.4           # outside a burst every joint stays above part5.io's 0.3 cutoff
+DROPOUT_ANGLES = ("45", "side")
+# Far-side joints that drop out. Never a hip: the hip midpoint must stay at the origin.
+DROPOUT_JOINTS = ["right_elbow", "right_wrist", "right_knee", "right_ankle"]
 
+
+def conf_series(joint, yaw_deg, light, n, rng):
+    """Per-frame confidence of one joint: lower in low light and on the far side, with slow drift."""
+    base = CONF_BASE[light]
+    if joint.startswith("right_") and yaw_deg > 0:
+        base -= CONF_FAR_LOSS * yaw_deg / 90.0
+    return [round(min(1.0, max(CONF_FLOOR, base + x)), 3) for x in smooth_noise(n, 0.03, rng)]
+
+
+def dropout_bursts(frames, conf, rng):
+    """Two to four bursts of 3 to 8 frames: a far-side joint is null, or its conf drops below 0.3."""
+    n, bursts = len(frames), []
+    for _ in range(rng.randint(2, 4)):
+        joint, length = rng.choice(DROPOUT_JOINTS), rng.randint(3, 8)
+        start, lost = rng.randint(0, n - length), rng.random() < 0.5
+        for i in range(start, start + length):
+            if lost:
+                frames[i]["joints"][joint] = None
+                conf[joint][i] = 0.0
+            else:
+                conf[joint][i] = round(rng.uniform(0.05, 0.25), 3)
+        bursts.append({"joint": joint, "follower_frames": [start, start + length - 1],
+                       "mode": "null" if lost else "low_conf"})
+    return sorted(bursts, key=lambda b: (b["follower_frames"][0], b["joint"]))
+
+
+def dropout_copy(doc, meta, seed):
+    """The same take with per-joint conf and far-side bursts; its own random stream, so the clean
+    takes are the same bytes with or without --dropout-variant."""
+    rng = random.Random(f"{seed}/{meta['take_id']}/dropout")
+    out = copy.deepcopy(doc)
+    n = len(out["frames"])
+    conf = {j: conf_series(j, meta["camera_yaw_deg"], meta["lighting"], n, rng) for j in doc["joints"]}
+    bursts = dropout_bursts(out["frames"], conf, rng)
+    for i, fr in enumerate(out["frames"]):
+        fr["conf"] = {j: conf[j][i] for j in doc["joints"]}
+    new_meta = {**copy.deepcopy(meta), "take_id": f"{meta['take_id']}_dropout", "variant": "dropout",
+                "dropouts": bursts}
+    return out, new_meta
+
+
+# --- writing the set ---
+def rel(path):
+    """Path relative to the repo when inside it, else as given (a temp directory in tests)."""
+    path = Path(path).resolve()
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def write_take(out, doc, meta, exp_path):
+    path = out / meta["set"] / meta["take_id"] / "skeleton.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, separators=(",", ":")) + "\n")
+    meta["expected"] = rel(exp_path)
+    meta["follower"] = rel(path)
+
+
+def generate(seed, out=OUT, dropout_variant=False, sets=SETS, angles=tuple(ANGLES), lights=tuple(LIGHTING),
+             expected_dir=EXPECTED):
+    """Write the set under `out` and return the labels document. Clean takes come first, in grid
+    order; the dropout copies follow in the same order."""
+    out, rng = Path(out), random.Random(seed)
     # Remove only what this script writes, so hand-written files (README.md) survive a rerun.
-    for set_name in SETS:
-        if (OUT / set_name).exists():
-            shutil.rmtree(OUT / set_name)
-    (OUT / "labels.json").unlink(missing_ok=True)
-    takes = []
-    for set_name in SETS:
-        exp_path = EXPECTED / set_name / "animation.json"
+    for set_name in sets:
+        if (out / set_name).exists():
+            shutil.rmtree(out / set_name)
+    (out / "labels.json").unlink(missing_ok=True)
+    clean, dropped = [], []
+    for set_name in sets:
+        exp_path = Path(expected_dir) / set_name / "animation.json"
         expected = json.loads(exp_path.read_text())
-        for angle in ANGLES:
-            for light in LIGHTING:
+        for angle in angles:
+            for light in lights:
                 plans = [[] for _ in range(CORRECT_TAKES_PER_CELL)] + fault_plan(rng)
                 for k, faults in enumerate(plans):
                     tag = "correct" if not faults else "+".join(f"{t}-{s}" for t, s in faults)
                     take_id = f"{set_name}_{angle}_{light}_{k:02d}_{tag}"
                     doc, meta = build_take(expected, take_id, angle, light, faults, rng)
-                    path = OUT / set_name / take_id / "skeleton.json"
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(json.dumps(doc, separators=(",", ":")) + "\n")
-                    meta["expected"] = str(exp_path.relative_to(ROOT))
-                    meta["follower"] = str(path.relative_to(ROOT))
-                    takes.append(meta)
-
+                    write_take(out, doc, meta, exp_path)
+                    clean.append(meta)
+                    if dropout_variant and angle in DROPOUT_ANGLES:
+                        d_doc, d_meta = dropout_copy(doc, meta, seed)
+                        write_take(out, d_doc, d_meta, exp_path)
+                        dropped.append(d_meta)
     labels = {"format": "simon.part5.labels.v1", "generator": "scripts/make_dummy_followers.py",
-              "seed": args.seed, "angles": ANGLES, "lighting": LIGHTING, "takes": takes}
-    (OUT / "labels.json").write_text(json.dumps(labels, indent=1) + "\n")
+              "seed": seed, "label_source": "synthetic", "angles": ANGLES, "lighting": LIGHTING,
+              "takes": clean + dropped}
+    (out / "labels.json").write_text(json.dumps(labels, indent=1) + "\n")
+    return labels
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--seed", type=int, default=5)
+    ap.add_argument("--out", default=str(OUT), help="output directory (default fixtures/input/followers)")
+    ap.add_argument("--dropout-variant", action="store_true",
+                    help="add a dropout copy (per-joint conf, far-side bursts) of every side and 45 degree take")
+    args = ap.parse_args(argv)
+    labels = generate(args.seed, Path(args.out), args.dropout_variant)
+    takes = labels["takes"]
     n_fault = sum(len(t["faults"]) for t in takes)
-    print(f"wrote {len(takes)} takes ({sum(t['correct'] for t in takes)} correct, {n_fault} labelled faults) to {OUT.relative_to(ROOT)}")
+    dropped = sum(t["variant"] == "dropout" for t in takes)
+    print(f"wrote {len(takes)} takes ({sum(t['correct'] for t in takes)} correct, {n_fault} labelled faults, "
+          f"{dropped} dropout copies) to {rel(args.out)}")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from part5.detect import Fault
+from part5.evaluate import LABEL_TYPE_TO_MEASURE
 from part5.output import (GENERIC_MEASURES, OutputError, build_analysis, fault_to_dict,
                           load_analysis, validate_analysis, write_analysis)
 
@@ -33,8 +34,7 @@ def test_shipped_examples_validate_and_match_their_labels():
         assert a["expected"]["path"] == take["expected"]
         assert a["follower"]["path"] == take["follower"]
         got = {(f["measure"], f["side"], f["direction"]) for f in a["faults"]}
-        want = {({"foot_out": "foot_out", "trunk_lean": "trunk_lean_forward"}[f["type"]],
-                 f["side"], f["direction"]) for f in take["faults"]}
+        want = {(LABEL_TYPE_TO_MEASURE[f["type"]], f["side"], f["direction"]) for f in take["faults"]}
         assert got == want, name
 
 
@@ -58,7 +58,37 @@ def test_fault_dict_carries_text_and_signed_magnitude():
 
 def test_measure_vocabulary_matches_detect_generics():
     assert "foot_out" in GENERIC_MEASURES and "trunk_lean_forward" in GENERIC_MEASURES
-    assert len(GENERIC_MEASURES) == 12
+    assert "knee_valgus" in GENERIC_MEASURES and len(GENERIC_MEASURES) == 13
+
+
+def test_knee_valgus_fault_builds_validates_and_reads_in_plain_words():
+    for side, joint, text in (("left", "left_knee", "left knee caving in"), ("both", "knee", "knees caving in")):
+        d = doc([make_fault(measure="knee_valgus", side=side, joint=joint, body_part="legs", direction="more",
+                            magnitude_deg=14.0, peak_deg=18.0, threshold_deg=8.0)])
+        f = d["faults"][0]
+        assert (f["measure"], f["measure_kind"], f["joint"], f["text"]) == ("knee_valgus", "direction", joint, text)
+        assert validate_analysis(d)
+    with pytest.raises(OutputError, match="joint must be"):
+        validate_analysis(doc([make_fault(measure="knee_valgus", side="left", joint="left_ankle",
+                                          body_part="legs", direction="more")]))
+
+
+def test_fault_dict_lists_every_run_and_the_document_names_its_schema_version():
+    d = doc([make_fault(runs=((19, 30), (35, 43)))])
+    assert d["faults"][0]["runs"] == [[19, 30], [35, 43]]
+    assert d["schema_version"] == "1.1.0"
+    assert doc([make_fault()])["faults"][0]["runs"] == [[19, 43]]  # a single run is the fault's frames
+    assert list(d)[:2] == ["format", "schema_version"]
+
+
+def test_status_is_optional_and_a_refusal_has_no_faults():
+    ok = {"code": "ok", "text": "Compared with the expected movement."}
+    refused = {"code": "different_movement", "text": "This take does not look like the expected movement."}
+    assert "status" not in doc([make_fault()])
+    assert build_analysis("e.json", "f.json", [make_fault()], status=ok)["status"] == ok
+    assert build_analysis("e.json", "f.json", [], status=refused)["faults"] == []
+    with pytest.raises(OutputError, match="goes with faults"):
+        build_analysis("e.json", "f.json", [make_fault()], status=refused)
 
 
 def test_build_and_write_never_leak_or_write_invalid_json(tmp_path):
@@ -106,6 +136,15 @@ def test_write_then_load_round_trips(tmp_path):
     (lambda d: d["faults"][0].update(expected_frames=[19.0, 43]), "integer frames"),
     (lambda d: d["faults"][0].update(phase=[0.2, 1.4]), "phase must satisfy"),
     (lambda d: d["faults"][0].update(text=""), "text must be a non-empty string"),
+    (lambda d: d.update(schema_version="2.0.0"), "schema_version must look like"),
+    (lambda d: d.update(schema_version=1.1), "schema_version must look like"),
+    (lambda d: d.update(status="ok"), "status must be an object"),
+    (lambda d: d.update(status={"code": "maybe", "text": "x"}), "status.code must be one of"),
+    (lambda d: d.update(status={"code": "ok", "text": ""}), "status.text must be a non-empty string"),
+    (lambda d: d["faults"][0].update(runs=[]), "runs must be a non-empty list"),
+    (lambda d: d["faults"][0].update(runs=[[3, 1]]), "runs must be a non-empty list"),
+    (lambda d: d["faults"][0].update(runs=[[1.5, 4]]), "runs must be a non-empty list"),
+    (lambda d: d["faults"][0].update(runs=[[1, 2, 3]]), "runs must be a non-empty list"),
 ])
 def test_malformed_analyses_fail_clearly(edit, msg):
     d = doc([make_fault()])

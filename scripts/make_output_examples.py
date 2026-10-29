@@ -17,7 +17,7 @@ from part5.output import write_analysis  # noqa: E402
 from part5.pipeline import analyse       # noqa: E402
 
 OUT = ROOT / "fixtures" / "output"
-EXAMPLES = [("exercise_front_good_07", "analysis.example.json"),
+EXAMPLES = [("exercise_front_good_08", "analysis.example.json"),
             ("exercise_front_good_00", "analysis.no-faults.example.json")]
 
 

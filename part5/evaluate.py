@@ -15,7 +15,13 @@ emits `both` when both sides fired (harsh). Changing either is a rule change, no
 
 This module only scores; producing the analyses over a corpus is #10/#14's job, and the
 thresholds that gate `make check-5` live in #14, not here.
+
+A take the movement guard refused (`status.code == "different_movement"`, no faults) counts in
+its slice's `refused`, and its labels score as misses. Takes labelled `variant: "dropout"` are
+scored in their own `dropout/<angle>` slices so they never mix into the lighting slices.
 """
+
+from .guard import DIFFERENT_MOVEMENT as REFUSED_CODE
 
 METRICS_FORMAT = "simon.part5.metrics.v1"
 
@@ -28,6 +34,7 @@ LABEL_TYPE_TO_MEASURE = {
     "knees_shallow": "knee_flexion",
     "elbow_bent": "elbow_flexion",
     "trunk_lean": "trunk_lean_forward",
+    "knee_caving": "knee_valgus",
 }
 # Fallback for labels without a known type (e.g. hand-written labels for real takes):
 # translate the label `measure` field instead.
@@ -37,6 +44,7 @@ LABEL_MEASURE_TO_MEASURE = {
     "knee_flexion": "knee_flexion",
     "elbow_flexion": "elbow_flexion",
     "trunk_lean_forward": "trunk_lean_forward",
+    "knee_valgus": "knee_valgus",
 }
 
 
@@ -84,9 +92,18 @@ def match_faults(predicted, labels):
     return len(matched_labels), matched_preds, matched_labels
 
 
+DROPOUT = "dropout"
+
+
 def _blank():
     return {"tp": 0, "fp": 0, "fn": 0, "takes": 0, "correct_takes": 0,
-            "faults_on_correct_takes": 0}
+            "faults_on_correct_takes": 0, "refused": 0}
+
+
+def _group(record):
+    """(lighting bucket, slice key) of a record: dropout takes get their own, else lighting/angle."""
+    lighting = DROPOUT if record.get("variant") == DROPOUT else record["lighting"]
+    return lighting, f"{lighting}/{record['angle']}"
 
 
 def _finalise(s):
@@ -100,20 +117,26 @@ def _finalise(s):
 
 def score(records):
     """Score a corpus. Each record: {"predicted": [fault dicts], "labels": [label faults],
-    "lighting": str, "angle": str, "correct": bool (a take with no labelled faults)}.
+    "lighting": str, "angle": str, "correct": bool (a take with no labelled faults),
+    optional "variant": "dropout", optional "refused": bool (the guard refused the take)}.
 
-    Returns the metrics document (JSON-ready): one entry per lighting × angle slice,
-    per-lighting aggregates, the good-light aggregate #14 gates on, and the overall line.
+    Returns the metrics document (JSON-ready): one entry per lighting × angle slice
+    (`dropout/<angle>` for dropout takes), per-lighting aggregates, the good-light aggregate
+    #14 gates on, and the overall line. A refused take has no predictions, so its labels are
+    misses, and it is counted in `refused`.
     """
     slices, by_lighting, overall = {}, {}, _blank()
     for r in records:
-        predicted, labels = r.get("predicted", []), r.get("labels", [])
+        refused = bool(r.get("refused"))
+        predicted, labels = ([] if refused else r.get("predicted", [])), r.get("labels", [])
         tp, _, _ = match_faults(predicted, labels)
         counts = {"tp": tp, "fp": len(predicted) - tp, "fn": len(labels) - tp, "takes": 1,
                   "correct_takes": 1 if not labels else 0,
-                  "faults_on_correct_takes": len(predicted) if not labels else 0}
-        for bucket in (slices.setdefault(f'{r["lighting"]}/{r["angle"]}', _blank()),
-                       by_lighting.setdefault(r["lighting"], _blank()), overall):
+                  "faults_on_correct_takes": len(predicted) if not labels else 0,
+                  "refused": 1 if refused else 0}
+        lighting, key = _group(r)
+        for bucket in (slices.setdefault(key, _blank()),
+                       by_lighting.setdefault(lighting, _blank()), overall):
             for k, v in counts.items():
                 bucket[k] += v
     return {"format": METRICS_FORMAT,
@@ -138,7 +161,8 @@ def records_from_corpus(labels_doc, analyses_by_take_id, allow_missing=False):
         analysis = analyses_by_take_id.get(take["take_id"], {"faults": []})
         records.append({"predicted": analysis.get("faults", []), "labels": take["faults"],
                         "lighting": take["lighting"], "angle": take["angle"],
-                        "correct": take["correct"]})
+                        "correct": take["correct"], "variant": take.get("variant"),
+                        "refused": analysis.get("status", {}).get("code") == REFUSED_CODE})
     return records
 
 

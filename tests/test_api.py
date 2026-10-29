@@ -65,7 +65,8 @@ def test_contract_serves_what_part5_contract_json_prints():
     assert {s["name"] for s in body["schemas"]} >= {"analysis", "metrics"}
 
 
-def test_samples_lists_the_two_expected_clips_and_every_labelled_take():
+def test_samples_lists_the_two_expected_clips_and_every_labelled_take(monkeypatch):
+    monkeypatch.delenv("META_LIVE", raising=False)
     status, _, body = call("GET", "/api/samples")
     assert status == 200
     assert {e["id"] for e in body["expected"]} == {"exercise", "dance"}
@@ -143,6 +144,20 @@ def test_an_upload_as_text_and_as_an_object_give_the_same_faults():
     assert as_object[0] == as_text[0] == 200
     assert as_object[2]["analysis"]["faults"] == as_text[2]["analysis"]["faults"] == sample
     assert as_text[2]["analysis"]["follower"] == {"path": "follower.upload"}
+
+
+def test_muse_spark_is_offered_only_with_the_key_file_and_meta_live(monkeypatch, tmp_path):
+    """Staging offers muse-spark only when the server has the key and META_LIVE=1; the key never leaves."""
+    key = tmp_path / "BASETEN_API_KEY"
+    monkeypatch.setenv("PART5_BASETEN_KEY_FILE", str(key))
+    monkeypatch.setenv("META_LIVE", "1")
+    assert "muse-spark" not in call("GET", "/api/samples")[2]["phrasing"]
+    assert error_of(analyse(*samples(), phrasing="muse-spark"))[:2] == (400, "phrasing")
+    key.write_text("sentinel-key-value\n")
+    status, _, raw = api.handle("GET", "/api/samples", b"", base_path="/")
+    assert "muse-spark" in json.loads(raw)["phrasing"] and b"sentinel-key-value" not in raw
+    monkeypatch.setenv("META_LIVE", "0")
+    assert "muse-spark" not in call("GET", "/api/samples")[2]["phrasing"]
 
 
 def test_phrasing_template_is_accepted_and_an_unknown_backend_is_a_400_on_phrasing():

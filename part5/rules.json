@@ -1,28 +1,85 @@
 {
-  "_comment": "Fault rules for part5.detect. Degrees and frames at the expected clip's rate. #15 tunes these.",
+  "_comment": "Fault rules for part5.detect. Degrees and frames at the expected clip's rate. Tuned on the seed 5 tuning set only (docs/thresholds.md, ADR-0003).",
   "smooth_frames": 5,
   "tolerance_frames": 0,
-  "default": {"threshold_deg": 10.0, "min_fraction": 0.25, "min_frames_floor": 8},
+  "default": {
+    "threshold_deg": 10.0,
+    "min_fraction": 0.38,
+    "min_frames_floor": 8,
+    "min_run_frames": 4,
+    "min_overlap": 0.3
+  },
   "measures": {
-    "elbow_flexion": {"threshold_deg": 12.0},
-    "knee_flexion": {"threshold_deg": 10.0},
-    "upper_arm_out": {"threshold_deg": 9.0},
-    "forearm_out": {"threshold_deg": 12.0},
-    "thigh_out": {"threshold_deg": 8.0},
-    "foot_out": {"threshold_deg": 6.0},
-    "upper_arm_forward": {"threshold_deg": 15.0},
-    "thigh_forward": {"threshold_deg": 15.0},
-    "trunk_lean_forward": {"threshold_deg": 9.0},
-    "trunk_lean_side": {"threshold_deg": 9.0},
-    "shoulder_tilt": {"threshold_deg": 9.0},
-    "head_forward": {"threshold_deg": 18.0}
+    "elbow_flexion": {
+      "threshold_deg": 20.0
+    },
+    "knee_flexion": {
+      "threshold_deg": 9.0
+    },
+    "upper_arm_out": {
+      "threshold_deg": 10.0
+    },
+    "forearm_out": {
+      "threshold_deg": 17.0
+    },
+    "thigh_out": {
+      "threshold_deg": 13.0
+    },
+    "foot_out": {
+      "threshold_deg": 6.0
+    },
+    "knee_valgus": {
+      "threshold_deg": 9.0
+    },
+    "upper_arm_forward": {
+      "threshold_deg": 15.0
+    },
+    "thigh_forward": {
+      "threshold_deg": 15.0
+    },
+    "trunk_lean_forward": {
+      "threshold_deg": 9.0
+    },
+    "trunk_lean_side": {
+      "threshold_deg": 9.0
+    },
+    "shoulder_tilt": {
+      "threshold_deg": 9.0
+    },
+    "head_forward": {
+      "threshold_deg": 18.0
+    }
+  },
+  "guard": {
+    "_comment": "Movement guard (ADR-0004): refuse when residual > max_residual or timing_corr < min_timing_corr. Midpoints of the gap on seed 5 (python -m part5.calibrate --guard): matched pairs against mismatch pairs; docs/thresholds.md gives both populations.",
+    "max_residual": 0.5677,
+    "min_timing_corr": 0.8336
   },
   "explained_by": {
-    "_comment": "A fault in the key measure is dropped when a fault in one of the listed measures, same side and same direction, overlaps it: the listed one is the cause, the key one follows from it.",
-    "thigh_out": ["foot_out"],
-    "forearm_out": ["upper_arm_out"],
-    "upper_arm_forward": ["trunk_lean_forward"],
-    "thigh_forward": ["trunk_lean_forward"],
-    "head_forward": ["trunk_lean_forward"]
+    "_comment": "A fault in the key measure is dropped when a kept fault in one of the listed measures, same side and same direction, overlaps it by min_overlap of the shorter one: the listed one is the cause, the key one follows from it.",
+    "thigh_out": [
+      "foot_out"
+    ],
+    "knee_flexion": [
+      "knee_valgus"
+    ],
+    "forearm_out": [
+      "upper_arm_out"
+    ],
+    "upper_arm_forward": [
+      "trunk_lean_forward"
+    ],
+    "thigh_forward": [
+      "trunk_lean_forward"
+    ],
+    "head_forward": [
+      "trunk_lean_forward"
+    ]
+  },
+  "explained_by_opposite": {
+    "_comment": "Like explained_by, but the kept fault is in the other direction: a knee caving in (knee_valgus more) pulls the thigh in (thigh_out less).",
+    "thigh_out": [
+      "knee_valgus"
+    ]
   }
 }

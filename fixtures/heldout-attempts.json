@@ -1,0 +1,208 @@
+{
+  "format": "simon.part5.heldout_attempts.v1",
+  "about": "Every held-out attempt of docs/specs/calibration.md, in seed order (29, 31, 37), pass or fail. One entry is appended when an attempt is scored and an entry is never edited or removed. Each entry: seed, freeze_commit (the commit that froze rules.json and the code), rules_sha256, approach (the approach family), passed, slices (the per-slice numbers as measured). docs/thresholds.md carries the same records.",
+  "attempts": [
+    {
+      "seed": 29,
+      "freeze_commit": "fbb0bea78decfc7cf0e0d48e756e3021ea5d8616",
+      "rules_sha256": "60f2e60b4bd60cea890ddbbce63c9d03ff82ff18f49e6284cb3cd48ff9aa62a4",
+      "approach": "baseline rule detection (per-measure thresholds, two-pass DTW alignment, persistence over runs, knee_valgus, movement guard on residual and timing correlation) with plateau-centre threshold selection on seed 5",
+      "passed": true,
+      "slices": {
+        "dropout/45": {
+          "tp": 31,
+          "fp": 6,
+          "fn": 1,
+          "takes": 36,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 1,
+          "refused": 0,
+          "precision": 0.8378,
+          "recall": 0.9688
+        },
+        "dropout/side": {
+          "tp": 30,
+          "fp": 17,
+          "fn": 2,
+          "takes": 36,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 5,
+          "refused": 0,
+          "precision": 0.6383,
+          "recall": 0.9375
+        },
+        "good/45": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "good/front": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "good/side": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "low/45": {
+          "tp": 15,
+          "fp": 5,
+          "fn": 1,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 0.75,
+          "recall": 0.9375
+        },
+        "low/front": {
+          "tp": 16,
+          "fp": 1,
+          "fn": 0,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 0.9412,
+          "recall": 1.0
+        },
+        "low/side": {
+          "tp": 14,
+          "fp": 17,
+          "fn": 2,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 5,
+          "refused": 0,
+          "precision": 0.4516,
+          "recall": 0.875
+        }
+      },
+      "scored": "2026-10-29",
+      "scored_at": "d592148daa834c89ef69cff3d99e5e6e8a9642ee",
+      "command": "make check-5",
+      "exit": 0
+    },
+    {
+      "seed": 31,
+      "freeze_commit": "fbb0bea78decfc7cf0e0d48e756e3021ea5d8616",
+      "rules_sha256": "60f2e60b4bd60cea890ddbbce63c9d03ff82ff18f49e6284cb3cd48ff9aa62a4",
+      "approach": "confirmation of attempt 1 (the same baseline rule detection and the same freeze, unchanged)",
+      "passed": true,
+      "slices": {
+        "dropout/45": {
+          "tp": 31,
+          "fp": 5,
+          "fn": 1,
+          "takes": 36,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 1,
+          "refused": 0,
+          "precision": 0.8611,
+          "recall": 0.9688
+        },
+        "dropout/side": {
+          "tp": 29,
+          "fp": 15,
+          "fn": 3,
+          "takes": 36,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 3,
+          "refused": 0,
+          "precision": 0.6591,
+          "recall": 0.9062
+        },
+        "good/45": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "good/front": {
+          "tp": 16,
+          "fp": 0,
+          "fn": 0,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "good/side": {
+          "tp": 16,
+          "fp": 2,
+          "fn": 0,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 0.8889,
+          "recall": 1.0
+        },
+        "low/45": {
+          "tp": 15,
+          "fp": 5,
+          "fn": 1,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 1,
+          "refused": 0,
+          "precision": 0.75,
+          "recall": 0.9375
+        },
+        "low/front": {
+          "tp": 15,
+          "fp": 0,
+          "fn": 1,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 0.9375
+        },
+        "low/side": {
+          "tp": 15,
+          "fp": 18,
+          "fn": 1,
+          "takes": 18,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 4,
+          "refused": 0,
+          "precision": 0.4545,
+          "recall": 0.9375
+        }
+      },
+      "scored": "2026-10-29",
+      "scored_at": "3be3b40ac6f3d1a2e33b79b5b723eb15f715c37c",
+      "command": "make check-5",
+      "exit": 0
+    }
+  ]
+}

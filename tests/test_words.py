@@ -52,6 +52,24 @@ def test_size_qualifier_bands(mag, foot, knee):
     assert describe(fault("knee_flexion", "less", "left", mag)) == knee
 
 
+def test_knee_valgus_phrases_read_as_the_spec_says():
+    assert phrase("knee_valgus", "more", "left") == "left knee caving in"
+    assert phrase("knee_valgus", "more", "right") == "right knee caving in"
+    assert phrase("knee_valgus", "more", "both") == "knees caving in"
+    assert phrase("knee_valgus", "less", "left") == "left knee pushed out"
+    assert phrase("knee_valgus", "less", "both") == "knees pushed out"
+
+
+@pytest.mark.parametrize("mag, text", [
+    (9, "left knee caving in slightly"),
+    (14, "left knee caving in"),
+    (30, "left knee caving in a lot"),
+])
+def test_knee_valgus_size_qualifier_goes_after_the_verb(mag, text):
+    assert describe(fault("knee_valgus", "more", "left", mag, thr=8.0)) == text
+    assert describe(fault("knee_valgus", "more", "left", mag, thr=8.0), qualify=False) == "left knee caving in"
+
+
 def test_qualifier_on_centre_and_plural():
     assert describe(fault("trunk_lean_forward", "more", "center", 12)) == "leaning forward slightly more than the example"
     assert describe(fault("upper_arm_out", "more", "both", 40)) == "elbows much wider than the example"

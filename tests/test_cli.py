@@ -36,7 +36,32 @@ def test_analyse_reproduces_the_shipped_example(tmp_path, monkeypatch, capsys):
     assert got["faults"] == example["faults"]
     assert got["diagnostics"] == example["diagnostics"]
     stdout = capsys.readouterr().out
-    assert "2 faults" in stdout and "left foot slightly too far out" in stdout
+    n = len(example["faults"])
+    assert f"{n} fault" in stdout and all(f["text"] in stdout for f in example["faults"])
+
+
+def test_ok_take_exits_0_and_the_file_says_ok(tmp_path, monkeypatch):
+    monkeypatch.chdir(ROOT)
+    example = json.loads(EXAMPLE.read_text())
+    out = tmp_path / "analysis.json"
+    assert cli.main(["analyse", "--expected", example["expected"]["path"],
+                     "--follower", example["follower"]["path"], "--out", str(out)]) == 0
+    assert json.loads(out.read_text())["status"]["code"] == "ok"
+
+
+def test_ac004_a_take_of_another_movement_exits_3_with_a_valid_refused_analysis(tmp_path, monkeypatch, capsys):
+    """AC-004: `different_movement`, `faults: []`, exit 3; the status text is printed."""
+    monkeypatch.chdir(ROOT)
+    out = tmp_path / "analysis.json"
+    code = cli.main(["analyse", "--expected", EXPECTED,
+                     "--follower", "fixtures/input/followers/dance/dance_front_good_00_correct/skeleton.json",
+                     "--out", str(out)])
+    assert code == 3
+    doc = json.loads(out.read_text())
+    assert doc["status"]["code"] == "different_movement" and doc["faults"] == []
+    assert doc["status"]["text"] in capsys.readouterr().out
+    from part5.output import load_analysis
+    assert load_analysis(out) == doc  # a valid analysis.json was written
 
 
 def test_bad_input_exits_1_with_the_file_named(tmp_path, capsys):
@@ -72,14 +97,26 @@ def test_far_too_fast_follower_exits_1(tmp_path, capsys):
     assert "cannot align" in capsys.readouterr().err
 
 
-def test_far_too_slow_follower_warns(tmp_path, capsys):
+def test_far_too_slow_follower_warns_and_is_refused_by_the_guard(tmp_path, capsys):
+    """Three times slower than the example is past what the alignment can follow: the span
+    warning is still written, and the movement guard refuses the take (exit 3)."""
     doc = json.loads((ROOT / EXPECTED).read_text())
     slow = tmp_path / "slow.json"
     _write_clip(slow, doc, [k for k in range(len(doc["frames"])) for _ in range(3)])
     out = tmp_path / "a.json"
-    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(slow), "--out", str(out)]) == 0
-    assert json.loads(out.read_text())["diagnostics"]["warnings"]
+    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(slow), "--out", str(out)]) == 3
+    written = json.loads(out.read_text())
+    assert written["diagnostics"]["warnings"] and written["status"]["code"] == "different_movement"
     assert "warning:" in capsys.readouterr().err
+
+
+def test_a_follower_twice_as_slow_is_still_compared(tmp_path):
+    doc = json.loads((ROOT / EXPECTED).read_text())
+    slow = tmp_path / "slow.json"
+    _write_clip(slow, doc, [k for k in range(len(doc["frames"])) for _ in range(2)])
+    out = tmp_path / "a.json"
+    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(slow), "--out", str(out)]) == 0
+    assert json.loads(out.read_text())["status"]["code"] == "ok"
 
 
 def test_follower_with_no_usable_joints_exits_1(tmp_path, capsys):
@@ -105,3 +142,18 @@ def test_bad_refs_raise_analysis_error(ref):
     from part5.pipeline import AnalysisError, analyse
     with pytest.raises(AnalysisError, match="expected must be"):
         analyse(ref, str(ROOT / EXPECTED))
+
+
+
+def test_analyse_takes_a_phrasing_backend_and_refuses_an_unknown_one(tmp_path):
+    """AC-010 error case: an unknown --phrasing exits 2 (argparse); template writes coaching = text."""
+    fol = ROOT / "fixtures/input/followers/exercise/exercise_45_good_02_arms_wider-left/skeleton.json"
+    args = ["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(fol)]
+    with pytest.raises(SystemExit) as exc:
+        cli.main(args + ["--out", str(tmp_path / "a.json"), "--phrasing", "nope"])
+    assert exc.value.code == 2
+    out = tmp_path / "b.json"
+    assert cli.main(args + ["--out", str(out), "--phrasing", "template"]) == 0
+    doc = json.loads(out.read_text())
+    assert doc["phrasing"]["backend"] == "template"
+    assert all(f["coaching"] == f["text"] for f in doc["faults"])

@@ -62,6 +62,18 @@ def _lateral(seg):
     return np.degrees(np.arctan2(seg[:, 0], seg[:, 1]))
 
 
+def _knee_valgus(hip, knee, ankle, side):
+    """How far the knee sits inside the hip to ankle line, degrees, positive = caving in.
+
+    d is the knee's offset from that line toward the midline; dividing by the thigh length
+    keeps it independent of body size, and a straight leg in the frontal plane reads 0.
+    """
+    thigh = knee - hip
+    axis = _unit(ankle - hip)
+    off = thigh - np.sum(thigh * axis, axis=-1, keepdims=True) * axis
+    return np.degrees(np.arctan2(off @ -OUT[side], np.linalg.norm(thigh, axis=-1)))
+
+
 def _mid(p, a, b):
     return (p[:, J[a]] + p[:, J[b]]) / 2
 
@@ -89,6 +101,9 @@ def _specs():
         MeasureSpec("shoulder_tilt", "shoulders", "center", "torso", "direction", "left shoulder higher than right"),
         MeasureSpec("head_forward", "neck", "center", "head", "direction", "head forward of the shoulders"),
     ]
+    # Last, so the order of the original measures (and the alignment built on it) is unchanged.
+    s += [MeasureSpec(f"{side}_knee_valgus", f"{side}_knee", side, "legs", "direction",
+                      "knee caving in, inside the hip to ankle line") for side in SIDES]
     return {m.name: m for m in s}
 
 
@@ -109,6 +124,7 @@ def compute(positions):
         out[f"{side}_thigh_out"] = _out_angle(kn - hp, side)
         out[f"{side}_thigh_forward"] = _forward_from_down(kn - hp)
         out[f"{side}_foot_out"] = _out_angle(an - hp, side)
+        out[f"{side}_knee_valgus"] = _knee_valgus(hp, kn, an, side)
     spine = _mid(p, "left_shoulder", "right_shoulder") - _mid(p, "left_hip", "right_hip")
     out["trunk_lean_forward"] = _sagittal(spine)
     for side in SIDES:

@@ -104,3 +104,80 @@ def test_dummy_fault_shows_up_in_its_measure():
     fol = compute(load_clip(ROOT / take["follower"]).positions)
     # Peak knee bend of the squat: the follower bends clearly less.
     assert np.nanmax(exp["left_knee_flexion"]) - np.nanmax(fol["left_knee_flexion"]) > 25
+
+
+# knee_valgus (ADR-0004): the knee's offset inside the hip to ankle line, over the thigh length.
+
+def leg_with_knee(side, knee_xyz):
+    """A standing pose whose `side` knee is at `knee_xyz` (the ankle stays under the hip)."""
+    return pose(**{f"{side}_knee": knee_xyz})
+
+
+def inward_swing(side, beta_deg):
+    """The knee of a leg swung `beta_deg` toward the midline about the hip, in the frontal plane."""
+    hip_x = 0.1 if side == "left" else -0.1
+    sign = -1 if side == "left" else 1  # toward the midline
+    b = np.radians(beta_deg)
+    return [hip_x + sign * 0.42 * np.sin(b), -0.42 * np.cos(b), 0]
+
+
+def test_ac002_straight_leg_reads_zero_on_both_sides():
+    """AC-002: a straight leg reads 0 plus or minus 0.5."""
+    r = m(pose())
+    assert r["left_knee_valgus"] == pytest.approx(0, abs=0.5)
+    assert r["right_knee_valgus"] == pytest.approx(0, abs=0.5)
+
+
+def test_ac002_bent_knee_in_the_sagittal_plane_reads_zero():
+    """A squat's forward knee is not caving: it stays in the plane of the hip to ankle line."""
+    r = m(pose(left_knee=[0.1, -0.4, 0.3], right_knee=[-0.1, -0.4, 0.3]))
+    assert r["left_knee_valgus"] == pytest.approx(0, abs=0.5)
+    assert r["right_knee_valgus"] == pytest.approx(0, abs=0.5)
+
+
+@pytest.mark.parametrize("side, other", [("left", "right"), ("right", "left")])
+def test_ac002_knee_caving_in_by_20_reads_20_on_that_side_only(side, other):
+    """AC-002: a knee displaced inward until the measure reads 20 degrees reads 20 plus or minus 1
+    on that side and 0 plus or minus 1 on the other.
+
+    For a leg swung inward by beta about the hip the measure is atan(sin(beta)), so 20 degrees of
+    the measure is a swing of asin(tan 20) = 21.3 degrees; a 20 degree swing reads 18.9."""
+    beta = np.degrees(np.arcsin(np.tan(np.radians(20))))
+    r = m(leg_with_knee(side, inward_swing(side, beta)))
+    assert r[f"{side}_knee_valgus"] == pytest.approx(20, abs=1)
+    assert r[f"{other}_knee_valgus"] == pytest.approx(0, abs=1)
+    r20 = m(leg_with_knee(side, inward_swing(side, 20)))
+    assert r20[f"{side}_knee_valgus"] == pytest.approx(np.degrees(np.arctan(np.sin(np.radians(20)))), abs=0.01)
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_knee_pushed_out_reads_negative(side):
+    r = m(leg_with_knee(side, inward_swing(side, -20)))
+    assert r[f"{side}_knee_valgus"] < -15
+
+
+def test_knee_valgus_rotation_about_the_hip_ankle_line_follows_the_formula():
+    """A bent knee (0.2 m off the hip to ankle line) rotated by phi about that line toward the
+    midline reads atan2(0.2 sin(phi), thigh length), and 0 at phi = 0."""
+    for phi in (0, 20, 45):
+        p = np.radians(phi)
+        knee = [0.1 - 0.2 * np.sin(p), -0.4, 0.2 * np.cos(p)]  # left: inward is -x
+        want = np.degrees(np.arctan2(0.2 * np.sin(p), np.hypot(0.4, 0.2)))
+        assert m(leg_with_knee("left", knee))["left_knee_valgus"] == pytest.approx(want, abs=1e-6)
+
+
+def test_knee_valgus_spec_and_masking():
+    spec = MEASURES["right_knee_valgus"]
+    assert (spec.joint, spec.side, spec.body_part, spec.kind) == ("right_knee", "right", "legs", "direction")
+    assert spec.description == "knee caving in, inside the hip to ankle line"
+    p = pose()
+    p[0, J["left_ankle"]] = np.nan
+    r = m(p)
+    assert np.isnan(r["left_knee_valgus"]) and not np.isnan(r["right_knee_valgus"])
+
+
+def test_knee_valgus_is_flat_on_the_expected_clips_so_alignment_does_not_time_by_it():
+    from part5.align import timing_measures
+    for name in ("exercise", "dance"):
+        res = compute(load_clip(ROOT / f"fixtures/input/expected/{name}/animation.json").positions)
+        assert not [n for n in timing_measures(res)[0] if n.endswith("knee_valgus")]

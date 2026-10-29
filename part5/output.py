@@ -7,12 +7,18 @@ Unknown extra fields are allowed, so the format can grow without breaking older 
 """
 import json
 import math
+import re
 from pathlib import Path
 
+from .guard import DIFFERENT_MOVEMENT, OK
+from .io import JOINTS
 from .measures import MEASURES
 from .words import describe
 
 FORMAT = "simon.analysis.v1"
+SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
+STATUS_CODES = (OK, DIFFERENT_MOVEMENT)
 UNIT = "degrees"
 SIDES = ("left", "right", "both", "center")
 DIRECTIONS = ("more", "less")
@@ -66,6 +72,7 @@ def fault_to_dict(fault):
         "unit": UNIT,
         "expected_frames": [int(fault.expected_frames[0]), int(fault.expected_frames[1])],
         "follower_frames": [int(fault.follower_frames[0]), int(fault.follower_frames[1])],
+        "runs": [[int(a), int(b)] for a, b in fault.runs],
         "phase": [float(fault.phase[0]), float(fault.phase[1])],
         "coverage": float(fault.coverage),
         "confidence": float(fault.confidence),
@@ -81,12 +88,13 @@ def _input_ref(ref, key):
     raise OutputError(f"{key} must be a path or an object with a 'path', got {ref!r}")
 
 
-def build_analysis(expected, follower, faults, diagnostics=None):
+def build_analysis(expected, follower, faults, diagnostics=None, status=None):
     """Assemble a validated analysis document.
 
     `expected`/`follower` identify the input clips: a path, or an object with at least
     `path` (extra ids like `take_id`/`set`/`movement` pass through). `faults` are
     `detect.Fault` objects (already sorted); an empty sequence means a correct take.
+    `status`, if given, is `{code, text}`: a refused take (`different_movement`) has no faults.
     `diagnostics`, if given, is carried as an optional object Part 7 may ignore.
     """
     try:
@@ -94,9 +102,12 @@ def build_analysis(expected, follower, faults, diagnostics=None):
     except (AttributeError, KeyError, TypeError, ValueError) as e:
         raise OutputError(f"<built analysis>: cannot build a fault object ({e})") from e
     doc = {"format": FORMAT,
+           "schema_version": SCHEMA_VERSION,
            "expected": _input_ref(expected, "expected"),
-           "follower": _input_ref(follower, "follower"),
-           "faults": faults}
+           "follower": _input_ref(follower, "follower")}
+    if status is not None:
+        doc["status"] = dict(status)
+    doc["faults"] = faults
     if diagnostics is not None:
         doc["diagnostics"] = diagnostics
     return validate_analysis(doc, source="<built analysis>")
@@ -144,16 +155,43 @@ def validate_analysis(doc, source="<analysis>"):
             fail(f"{key} must be an object with a non-empty string 'path'")
     if "diagnostics" in doc and not isinstance(doc["diagnostics"], dict):
         fail("diagnostics must be an object")
+    version = doc.get("schema_version")
+    if "schema_version" in doc and not (isinstance(version, str) and SCHEMA_VERSION_RE.match(version)):
+        fail(f"schema_version must look like '1.1.0', got {version!r}")
     faults = doc.get("faults")
     if not isinstance(faults, list):
         fail("faults must be a list")
+    if "status" in doc:
+        _validate_status(doc["status"], faults, fail)
     for i, f in enumerate(faults):
         _validate_fault(f, f"faults[{i}]", fail)
+    if "phrasing" in doc:
+        _validate_phrasing(doc["phrasing"], len(faults), fail)
     try:  # nothing anywhere (incl. diagnostics/extras) may make this invalid JSON downstream
         json.dumps(doc, allow_nan=False)
     except (TypeError, ValueError) as e:
         fail(f"document is not JSON-serialisable ({e})")
     return doc
+
+
+def _validate_status(status, faults, fail):
+    if not isinstance(status, dict):
+        fail("status must be an object")
+    if status.get("code") not in STATUS_CODES:
+        fail(f"status.code must be one of {STATUS_CODES}, got {status.get('code')!r}")
+    if not isinstance(status.get("text"), str) or not status["text"]:
+        fail("status.text must be a non-empty string")
+    if status["code"] == DIFFERENT_MOVEMENT and faults:
+        fail(f"status.code {DIFFERENT_MOVEMENT!r} goes with faults [], got {len(faults)} fault(s)")
+
+
+def _validate_runs(runs, where, fail):
+    ok = (isinstance(runs, (list, tuple)) and runs
+          and all(isinstance(r, (list, tuple)) and len(r) == 2 and all(_is_int(x) for x in r)
+                  and 0 <= r[0] <= r[1] for r in runs))
+    if not ok:
+        fail(f"{where}.runs must be a non-empty list of [start, end] integer frames with 0 <= start <= end, "
+             f"got {runs!r}")
 
 
 def _validate_fault(f, where, fail):
@@ -199,6 +237,8 @@ def _validate_fault(f, where, fail):
             fail(f"{where}.{key} must be [start, end] integer frames, got {v!r}")
         if v[0] < 0 or v[1] < v[0]:
             fail(f"{where}.{key} must satisfy 0 <= start <= end, got {v!r}")
+    if "runs" in f:
+        _validate_runs(f["runs"], where, fail)
     phase = f.get("phase")
     if not (isinstance(phase, (list, tuple)) and len(phase) == 2 and all(_is_number(x) for x in phase)):
         fail(f"{where}.phase must be [start, end] numbers in 0..1, got {phase!r}")
@@ -206,3 +246,18 @@ def _validate_fault(f, where, fail):
         fail(f"{where}.phase must satisfy 0 <= start <= end <= 1, got {phase!r}")
     if not isinstance(f.get("text"), str) or not f["text"]:
         fail(f"{where}.text must be a non-empty string")
+    if "joints" in f:
+        joints = f["joints"]
+        if not (isinstance(joints, list) and joints and all(j in JOINTS for j in joints)):
+            fail(f"{where}.joints must be a non-empty list of canonical joint names, got {joints!r}")
+    if "coaching" in f and (not isinstance(f["coaching"], str) or not f["coaching"]):
+        fail(f"{where}.coaching must be a non-empty string")
+
+
+def _validate_phrasing(record, n_faults, fail):
+    """The phrasing record: who phrased each coaching line and why a fault fell back (ADR-0005)."""
+    if not isinstance(record, dict) or not isinstance(record.get("backend"), str):
+        fail("phrasing must be an object with a string 'backend'")
+    per_fault = record.get("faults")
+    if not isinstance(per_fault, list) or len(per_fault) != n_faults:
+        fail(f"phrasing.faults must hold one entry per fault ({n_faults}), got {per_fault!r}")
