@@ -92,7 +92,7 @@ Top level:
   movement guard refused (it does not look like the expected movement at all) has code
   `different_movement`, a plain-words `text` to show the follower, and `faults: []`; read
   `status` before `faults`. An accepted take has `ok` and a short sentence.
-- `faults`: sorted by \(|magnitude|\) descending. An empty list means no faults were found —
+- `faults`: sorted by \(|magnitude|\) descending. An empty list means no faults were found:
   a correct take still gets a file. Always empty when `status.code` is `different_movement`.
 - `diagnostics` (optional): pipeline internals (alignment residual and the measures timing was
   taken from). Part 7 may ignore it; it is not part of the follower-facing contract.
@@ -161,8 +161,10 @@ Produced by `part5.evaluate.score` / `evaluate_corpus` (#13) and printed by `mak
   `variant: "dropout"`; every other angle is reported separately, per the README. Each entry
   has `tp`, `fp`, `fn`, `takes`, `correct_takes`, `faults_on_correct_takes`, `precision`,
   `recall` and `refused` (takes the movement guard refused; a refused take has no
-  predictions, so its labels count as misses). An empty denominator scores 1.0: nothing
-  predicted (or labelled) in that slice is not itself a failure — misses appear in the other
+  predictions, so its labels count as misses). A refused take with no labelled faults is a
+  wrong verdict on a correct take: it counts once in `faults_on_correct_takes`, so refusing
+  correct takes can never satisfy the "0 faults on correct takes" rule. An empty denominator scores 1.0: nothing
+  predicted (or labelled) in that slice is not itself a failure; misses appear in the other
   ratio. #14 gates on **every good-light angle slice separately** (`good/front`, `good/45`,
   `good/side` must each reach precision ≥ 0.85 and recall ≥ 0.75 with 0 faults on correct
   takes), so one weak angle cannot hide inside an aggregate; `good_light` is a summary only.

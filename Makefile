@@ -1,4 +1,4 @@
-.PHONY: check-5 test dummy-data output-examples test-contract contracts-check contracts-sync
+.PHONY: check-5 test demo dummy-data output-examples test-contract contracts-check contracts-sync
 
 # Done-check for Part 5 (see README.md): analyse every labelled take, print the metrics JSON,
 # exit 0 only if good light passes at every angle (P >= 0.85, R >= 0.75, 0 faults on correct takes).
@@ -7,6 +7,11 @@ check-5:
 
 test:
 	uv run pytest -q
+
+# The 3D replay page and the analysis API on http://127.0.0.1:8735/ (docs/specs/viewer.md, AC-V11).
+# Serves in the foreground from the committed fixtures; Ctrl-C stops it.
+demo:
+	uv run python -m part5 serve --port 8735
 
 # Regenerate the synthetic labelled follower takes (fixtures/input/followers/).
 dummy-data:
@@ -35,6 +40,12 @@ contracts-sync:
 .PHONY: check-5-contract
 check-5-contract:
 	@uv run python -m part5.contract --check
+
+# Real takes (docs/specs/real-takes.md): Part 3's kit against part3-squat, Part 2's mismatch takes and, once
+# delivered, the stock takes. Writes out/report-real/report.json. Reported, never gated.
+.PHONY: report-real
+report-real:
+	@uv run python -m part5 report-real
 
 # Opt-in live call to Muse Spark through Baseten (one fixed fault record, needs the key file). Exit 0 only
 # when a valid line came back. Never part of test, check-5 or the publish check.

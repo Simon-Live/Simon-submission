@@ -65,15 +65,62 @@ def test_contract_serves_what_part5_contract_json_prints():
     assert {s["name"] for s in body["schemas"]} >= {"analysis", "metrics"}
 
 
-def test_samples_lists_the_two_expected_clips_and_every_labelled_take(monkeypatch):
+KIT = json.loads((ROOT / "fixtures/input/contract/part3/followers/labels.json").read_text())
+MISMATCH = json.loads((ROOT / "fixtures/input/mismatch/manifest.json").read_text())
+REAL_IDS = ["part2-class", "part2-dance", "part2-single", "part2-stretch"]
+
+
+def test_samples_lists_the_three_expected_clips_and_every_take_on_offer(monkeypatch):
     monkeypatch.delenv("META_LIVE", raising=False)
     status, _, body = call("GET", "/api/samples")
     assert status == 200
-    assert {e["id"] for e in body["expected"]} == {"exercise", "dance"}
-    assert {e["label"] for e in body["expected"]} == {"Squat (exercise)", "Step touch (dance)"}
+    assert [e["id"] for e in body["expected"]] == ["exercise", "dance", "part3-squat"]
+    assert {e["label"] for e in body["expected"]} == {
+        "Squat (exercise)", "Step touch (dance)", "Squat for the real takes (part3-squat)"}
     ids = [t["id"] for t in body["followers"]]
-    assert ids == [t["take_id"] for t in LABELS["takes"]] and len(set(ids)) == len(ids)
+    generated = [t["take_id"] for t in LABELS["takes"]]
+    kit = [t["take_id"] for t in KIT["takes"]]
+    assert ids == generated + kit + REAL_IDS and len(set(ids)) == len(ids)
+    assert len(kit) == 15
     assert body["phrasing"] == ["template"]
+
+
+def test_the_kit_takes_are_listed_with_the_kit_labels_and_no_invented_light():
+    followers = {t["id"]: t for t in call("GET", "/api/samples")[2]["followers"]}
+    for take in KIT["takes"]:
+        listed = followers[take["take_id"]]
+        assert (listed["set"], listed["angle"], listed["light"], listed["source"]) == (
+            "part3-squat", take["angle"], None, "kit")
+        assert [f["text"] for f in listed["faults"]] == [f["text"] for f in take["faults"]]
+        what = take["faults"][0]["text"] if take["faults"] else "correct take"
+        assert listed["label"] == what[:1].upper() + what[1:]
+
+
+def test_the_part2_clips_are_labelled_from_the_manifest_and_flag_the_expected_refusals():
+    followers = {t["id"]: t for t in call("GET", "/api/samples")[2]["followers"]}
+    assert followers["part2-class"]["label"] == "Cat-cow yoga class (real clip, a different movement)"
+    assert followers["part2-dance"]["label"] == "Dancers crossing and swapping places (real clip, a different movement)"
+    assert followers["part2-single"]["label"] == "Provisional barbell back squat (real clip)"
+    assert followers["part2-stretch"]["label"] == "Seated cross-legged stretches (Pexels 6019962) (real clip, a different movement)"
+    assert [followers[i]["refusal_expected"] for i in REAL_IDS] == [True, True, False, True]
+    assert all(followers[i]["source"] == "real" and followers[i]["faults"] == [] for i in REAL_IDS)
+    assert [MISMATCH["fixtures"][i]["population"] for i in REAL_IDS] == ["mismatch", "mismatch", "matched_reference", "mismatch"]
+
+
+def test_a_duplicate_sample_id_stops_the_table_being_built(monkeypatch):
+    clash = KIT["takes"][0]["take_id"]
+    labels = json.loads(json.dumps(LABELS))
+    labels["takes"][0]["take_id"] = clash
+    real_read = Path.read_text
+
+    def read(self, *args, **kwargs):
+        text = real_read(self, *args, **kwargs)
+        return json.dumps(labels) if self.name == "labels.json" and self.parent.name == "followers" \
+            and "contract" not in self.parts else text
+
+    monkeypatch.setattr(Path, "read_text", read)
+    with pytest.raises(ValueError, match="share the id"):
+        api.build_table()
 
 
 def test_samples_carry_set_angle_light_and_the_fault_in_the_label():
@@ -86,13 +133,36 @@ def test_samples_carry_set_angle_light_and_the_fault_in_the_label():
     for t in followers.values():
         groups.setdefault((t["set"], t["angle"], t["light"]), []).append(t["id"])
     labelled = {(t["set"], t["angle"], t["lighting"]) for t in LABELS["takes"]}
-    assert set(groups) == labelled and {"exercise", "dance"} == {g[0] for g in groups}
+    generated = {g for g in groups if g[0] in ("exercise", "dance")}
+    assert generated == labelled
+    assert {g for g in groups if g[0] == "part3-squat"} == {("part3-squat", a, None) for a in ("front", "45", "side")} | {
+        ("part3-squat", None, None)}
 
 
 def test_every_sample_resolves_to_a_fixture_file_under_the_table():
     t = api.table()
-    assert set(t.expected) == {"exercise", "dance"} and len(t.follower) == len(LABELS["takes"])
+    assert set(t.expected) == {"exercise", "dance", "part3-squat"}
+    assert len(t.follower) == len(LABELS["takes"]) + len(KIT["takes"]) + len(REAL_IDS)
     assert all(s.path.is_file() and s.rel.startswith("fixtures/input/") for s in [*t.expected.values(), *t.follower.values()])
+
+
+def test_every_follower_in_the_list_is_analysed_against_its_own_expected_clip():
+    """AC-V11 and the M3 drive depend on every listed pair running; one run per set is enough here."""
+    for follower, expected in (("squat_side_knee_caving-left", "part3-squat"), ("part2-single", "part3-squat")):
+        status, _, body = analyse({"sample": expected}, {"sample": follower})
+        assert status == 200 and body["analysis"]["status"]["code"] == "ok", follower
+        assert body["analysis"]["follower"] == {"path": api.table().follower[follower].rel, "take_id": follower}
+        assert body["analysis"]["expected"]["set"] == "part3-squat"
+
+
+def test_AC_S06_a_yoga_or_dance_clip_against_the_squat_is_refused_with_no_faults():
+    for follower in ("part2-class", "part2-dance"):
+        status, _, body = analyse({"sample": "part3-squat"}, {"sample": follower})
+        assert status == 200 and body["analysis"]["status"]["code"] == "different_movement", follower
+        assert body["analysis"]["faults"] == [] and body["analysis"]["status"]["text"]
+        assert len(body["replay"]["exp_to_fol"]) == len(body["replay"]["expected"])  # the replay still comes back
+    dance = next(t["take_id"] for t in LABELS["takes"] if t["set"] == "dance")
+    assert analyse(*samples(follower=dance))[2]["analysis"]["status"]["code"] == "different_movement"
 
 
 # ----------------------------------------------------------------------------- analyse
@@ -210,6 +280,27 @@ def test_a_clip_over_6000_frames_is_a_400_before_it_is_parsed():
     assert (status, field) == (400, "follower.upload") and "6001" in message and "6000" in message
 
 
+def test_a_follower_that_would_be_resampled_past_6000_frames_is_a_400_naming_it():
+    # Three frames spanning 1000 s read as 30001 frames on the example's 30 fps clock.
+    doc = foot_doc()
+    doc["frames"] = doc["frames"][:3]
+    for frame, t in zip(doc["frames"], (0.0, 500.0, 1000.0)):
+        frame["t"] = t
+    started = time.monotonic()
+    status, field, message = error_of(analyse({"sample": "exercise"}, {"upload": doc}))
+    assert (status, field) == (400, "follower.upload")
+    assert message.startswith("follower.upload: ") and "30001" in message and "6000" in message
+    assert time.monotonic() - started < 5
+
+
+def test_an_expected_upload_with_a_huge_frame_rate_is_a_400_naming_it():
+    doc = json.loads(EXPECTED_PATH.read_text())
+    doc["fps"] = 1e6
+    status, field, message = error_of(analyse({"upload": doc}, {"sample": FOOT_OUT}))
+    assert (status, field) == (400, "expected.upload")
+    assert message.startswith("expected.upload: ") and "240" in message
+
+
 def test_a_clip_that_cannot_be_compared_names_the_side_in_the_message():
     doc = foot_doc()
     doc["format"] = "something.else"
@@ -306,6 +397,164 @@ def test_a_500_never_shows_a_trace_or_the_error(monkeypatch, caplog):
     assert status == 500 and json.loads(text)["error"]["field"] == "server"
     assert "Traceback" not in text and "secret detail" not in text and "private.py" not in text
     assert any(r.exc_info for r in caplog.records)  # the trace goes to the log, not the visitor
+
+
+# ----------------------------------------------------------------------------- real takes (AC-V09)
+
+REPORT = {"format": "simon.part5.real_report.v1", "gated": False, "takes": [], "summary": {}, "notes": []}
+
+
+@pytest.fixture
+def real_report(monkeypatch):
+    """A fake `part5.real.build_report`, so these tests do not need part5/real.py to exist."""
+    calls = []
+    monkeypatch.setattr(api, "_REAL_REPORT", {})
+    monkeypatch.setattr(api, "_build_real_report", lambda: calls.append(1) or REPORT)
+    return calls
+
+
+def test_AC_V09_real_takes_serves_the_report_and_builds_it_once_per_process(real_report):
+    first = call("GET", "/api/real-takes")
+    second = call("GET", "/api/real-takes")
+    assert first[0] == second[0] == 200 and first[2] == second[2] == REPORT
+    assert len(real_report) == 1
+
+
+def test_AC_V09_real_takes_answers_503_in_plain_words_when_the_report_cannot_be_built(monkeypatch):
+    monkeypatch.setattr(api, "_REAL_REPORT", {})
+
+    def broken():
+        raise ModuleNotFoundError("No module named 'part5.real'")
+
+    monkeypatch.setattr(api, "_build_real_report", broken)
+    response = call("GET", "/api/real-takes")
+    assert error_of(response) == (503, "real-takes", "The real-take report is not available on this server.")
+    assert "part5.real" not in json.dumps(response[2]) and "Traceback" not in json.dumps(response[2])
+
+
+def test_a_failed_real_report_is_not_cached_so_it_works_once_the_module_lands(monkeypatch):
+    monkeypatch.setattr(api, "_REAL_REPORT", {})
+    monkeypatch.setattr(api, "_build_real_report", lambda: 1 / 0)
+    assert call("GET", "/api/real-takes")[0] == 503
+    monkeypatch.setattr(api, "_build_real_report", lambda: REPORT)
+    assert call("GET", "/api/real-takes")[0] == 200
+
+
+def test_real_takes_answers_get_only():
+    status, headers, _ = call("POST", "/api/real-takes", {})
+    assert status == 405 and headers["Allow"] == "GET"
+
+
+def test_a_report_json_cannot_hold_is_a_503_not_a_500(monkeypatch):
+    monkeypatch.setattr(api, "_REAL_REPORT", {})
+    monkeypatch.setattr(api, "_build_real_report", lambda: {"x": float("nan")})
+    assert call("GET", "/api/real-takes")[0] == 503
+
+
+# ----------------------------------------------------------------------------- muse-spark rate limit
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.fixture
+def muse(monkeypatch, tmp_path):
+    """muse-spark offered (key file and META_LIVE=1 present) with a fake clock and no live call."""
+    (tmp_path / "BASETEN_API_KEY").write_text("sentinel-key-value\n")
+    monkeypatch.setenv("PART5_BASETEN_KEY_FILE", str(tmp_path / "BASETEN_API_KEY"))
+    monkeypatch.setenv("META_LIVE", "1")
+    clock = Clock()
+    monkeypatch.setattr(api, "_MUSE_LIMIT", api.ClientLimit(clock=clock))
+    monkeypatch.setattr(api, "_in_worker", lambda fn, *a: {"analysis": {"phrasing": {"backend": "muse-spark"}}, "replay": {}})
+    return clock
+
+
+def ask(client, phrasing="muse-spark"):
+    body = json.dumps({"expected": {"sample": "exercise"}, "follower": {"sample": FOOT_OUT}, "phrasing": phrasing}).encode()
+    status, headers, out = api.handle("POST", "/api/analyse", body, base_path="/", client=client)
+    return status, headers, json.loads(out)
+
+
+def test_muse_spark_allows_six_requests_a_minute_per_client_then_429_with_the_exact_text(muse):
+    for _ in range(6):
+        assert ask("10.0.0.1")[0] == 200
+        muse.now += 1
+    status, headers, body = ask("10.0.0.1")
+    assert status == 429
+    assert body == {"error": {"field": "phrasing", "message":
+                              "Too many Muse Spark requests. Wait a minute or pick template."}}
+    assert 1 <= int(headers["Retry-After"]) <= 60
+
+
+def test_muse_spark_limit_is_per_client_and_lifts_after_a_minute(muse):
+    for _ in range(6):
+        assert ask("10.0.0.1")[0] == 200
+    assert ask("10.0.0.1")[0] == 429 and ask("10.0.0.2")[0] == 200
+    muse.now += 61
+    assert ask("10.0.0.1")[0] == 200
+
+
+def test_muse_spark_runs_one_request_at_a_time_per_client(muse, monkeypatch):
+    seen = []
+
+    def during(fn, *a):
+        if not seen:
+            seen.append(None)                # only the outer request looks around
+            seen[0] = [ask("10.0.0.1")[0],   # a second request from the same client while one runs
+                       ask("10.0.0.2")[0]]   # another client is not held up
+        return {"analysis": {}, "replay": {}}
+
+    monkeypatch.setattr(api, "_in_worker", during)
+    assert ask("10.0.0.1")[0] == 200
+    assert seen == [[429, 200]]
+    assert ask("10.0.0.1")[0] == 200          # the slot is free again afterwards
+
+
+def test_template_requests_are_never_limited(muse):
+    for _ in range(6):
+        ask("10.0.0.1")
+    assert ask("10.0.0.1")[0] == 429
+    assert [ask("10.0.0.1", "template")[0] for _ in range(8)] == [200] * 8
+
+
+def test_a_failed_muse_spark_request_frees_the_slot_but_still_counts(muse, monkeypatch):
+    def boom(fn, *a):
+        raise api.AnalysisError("follower.upload: nope")
+
+    monkeypatch.setattr(api, "_in_worker", boom)
+    assert ask("10.0.0.1")[0] == 400
+    assert api._MUSE_LIMIT._running == set() and len(api._MUSE_LIMIT._starts["10.0.0.1"]) == 1
+
+
+def test_the_key_never_appears_in_any_response(muse):
+    text = json.dumps([ask("10.0.0.1"), call("GET", "/api/samples")[2]])
+    assert "sentinel-key-value" not in text
+    assert b"sentinel-key-value" not in api.handle("GET", "/api/samples", b"", base_path="/")[2]
+
+
+def test_idle_clients_are_forgotten_so_the_table_does_not_grow(muse):
+    for n in range(20):
+        ask(f"10.0.1.{n}")
+    muse.now += 120
+    ask("10.0.2.1")
+    assert set(api._MUSE_LIMIT._starts) == {"10.0.2.1"}
+
+
+@pytest.mark.parametrize("peer,forwarded,expected", [
+    ("127.0.0.1", "203.0.113.9", "203.0.113.9"),
+    ("127.0.0.1", "198.51.100.1, 203.0.113.9", "203.0.113.9"),   # the last hop is the one the gateway wrote
+    ("127.0.0.1", "not an address", "127.0.0.1"),
+    ("127.0.0.1", None, "127.0.0.1"),
+    ("192.0.2.7", "203.0.113.9", "192.0.2.7"),                  # a direct caller cannot name itself
+    ("::1", "2001:db8::1", "2001:db8::1"),
+    (None, None, "local"),
+])
+def test_client_key_trusts_forwarded_for_only_from_this_machine(peer, forwarded, expected):
+    assert api.client_key(peer, forwarded) == expected
 
 
 # ----------------------------------------------------------------------------- base path

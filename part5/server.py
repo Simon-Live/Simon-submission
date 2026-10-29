@@ -4,6 +4,8 @@ Everything lives under the base path (`/` by default, `/simon-part-5/` on stagin
 `<base>api/...` go to `part5.api.handle`; every other address under the base is looked up in a
 table of the files under `web/` made at start, so no request value becomes a file path.
 """
+import gzip
+import hashlib
 import mimetypes
 import signal
 import sys
@@ -16,11 +18,12 @@ from . import api
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 SOCKET_TIMEOUT_S = 30
+GZIP_OVER_BYTES = 4096  # only the larger files are worth compressing (the vendored three.js is 1.3 MB)
 NOT_FOUND = "Nothing is served at this address."
 CONTENT_TYPES = {".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
                  ".css": "text/css; charset=utf-8", ".html": "text/html; charset=utf-8",
                  ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8",
-                 ".md": "text/plain; charset=utf-8"}
+                 ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
 
 
 def static_table(web_dir=WEB_DIR):
@@ -32,6 +35,8 @@ def static_table(web_dir=WEB_DIR):
 
 
 def content_type(path):
+    if path.name == "LICENSE":  # the vendored library's licence has no suffix
+        return CONTENT_TYPES[".txt"]
     return CONTENT_TYPES.get(path.suffix) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
@@ -71,15 +76,19 @@ class Handler(BaseHTTPRequestHandler):
             body = self._read_body()
             if body is None:
                 return
+        client = api.client_key(self.client_address[0], self.headers.get("X-Forwarded-For"))
         status, headers, payload = api.handle("GET" if method == "HEAD" else method, self.path, body,
-                                              base_path=self.server.base_path)
+                                              base_path=self.server.base_path, client=client)
         self._send(status, headers, payload, head=method == "HEAD")
 
     def _read_body(self):
-        """The POST body, or None after answering 411 or 413 (the body is then not read)."""
+        """The POST body, or None after answering 400, 411 or 413 (the body is then not read)."""
         raw = self.headers.get("Content-Length")
-        if raw is None or not raw.isdigit():
+        if raw is None:
             self._refuse(*api.error_response(411, "body", "The request needs a Content-Length."))
+            return None
+        if not (raw.isascii() and raw.isdigit()):  # "²" is a digit to str.isdigit() and not to int()
+            self._refuse(*api.error_response(400, "body", "The Content-Length must be a whole number of bytes."))
             return None
         if int(raw) > api.MAX_BODY_BYTES:
             self._refuse(*api.error_response(413, "upload", api.too_large_message("upload")))
@@ -90,9 +99,17 @@ class Handler(BaseHTTPRequestHandler):
         path = self.server.static.get(rel)
         if path is None:
             return self._send(*api.error_response(404, "path", NOT_FOUND), head=method == "HEAD")
-        headers = {"Content-Type": content_type(path), "Cache-Control": "no-cache",
-                   "X-Content-Type-Options": "nosniff"}
-        self._send(200, headers, path.read_bytes(), head=method == "HEAD")
+        data = path.read_bytes()
+        etag = '"' + hashlib.sha256(data).hexdigest()[:20] + '"'
+        headers = {"Content-Type": content_type(path), "Cache-Control": "no-cache", "ETag": etag,
+                   "Vary": "Accept-Encoding", "X-Content-Type-Options": "nosniff"}
+        if self.headers.get("If-None-Match") == etag:  # the browser already holds this exact file
+            return self._send(304, headers, b"")
+        if len(data) > GZIP_OVER_BYTES and "gzip" in self.headers.get("Accept-Encoding", ""):
+            if etag not in self.server.gzipped:
+                self.server.gzipped[etag] = gzip.compress(data, compresslevel=6, mtime=0)
+            data, headers["Content-Encoding"] = self.server.gzipped[etag], "gzip"
+        self._send(200, headers, data, head=method == "HEAD")
 
     def _redirect(self, location):
         self._send(301, {"Location": location, "Content-Type": "text/plain; charset=utf-8"}, b"Moved.\n")
@@ -121,6 +138,7 @@ class Server(ThreadingHTTPServer):
     def __init__(self, address, base_path, static):
         super().__init__(address, Handler)
         self.base_path, self.static = base_path, static
+        self.gzipped = {}  # etag -> compressed bytes of the larger static files
 
 
 def make_server(host="127.0.0.1", port=8725, base_path="/", web_dir=WEB_DIR):

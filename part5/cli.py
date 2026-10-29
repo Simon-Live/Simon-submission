@@ -3,6 +3,7 @@ import argparse
 import sys
 
 from . import contract, doctor
+from . import real
 from .guard import DIFFERENT_MOVEMENT
 from .io import InputError
 from .output import OutputError, write_analysis
@@ -26,12 +27,15 @@ def build_parser():
     sv.add_argument("--base-path", default="/", help="URL path the page and API live under (default /)")
     contract.add_parser(sub)
     doctor.add_parser(sub)
+    real.add_parser(sub)  # report-real (docs/specs/real-takes.md)
     return p
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
     if args.command in ("contract", "doctor"):
+        return args.run(args)
+    if args.command == "report-real":
         return args.run(args)
     if args.command == "analyse":
         try:

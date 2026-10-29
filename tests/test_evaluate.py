@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from part5.evaluate import canonical_label, evaluate_corpus, match_faults, matches, score
+from part5.evaluate import (canonical_label, evaluate_corpus, is_refused, match_faults, match_pairs, matches,
+                            score, slice_name)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -52,6 +53,25 @@ def test_matching_is_one_to_one_and_maximal():
     labs = [label(side="both"), label(side="right")]
     tp, _, _ = match_faults(preds, labs)
     assert tp == 2
+
+
+def test_match_pairs_says_which_prediction_satisfies_which_label():
+    """The pairs behind `match_faults`' counts: {label index: prediction index}, one prediction per label."""
+    preds = [pred(side="left"), pred(side="right")]
+    labs = [label(side="both"), label(side="right")]
+    pairs = match_pairs(preds, labs)
+    assert pairs == {0: 0, 1: 1}  # left takes the `both` label so right is free for the right-only label
+    assert match_pairs([pred(), pred()], [label()]) == {0: 0}
+    assert match_pairs([], [label()]) == {} and match_pairs([pred()], []) == {}
+    tp, matched_preds, matched_labels = match_faults(preds, labs)
+    assert (tp, matched_preds, matched_labels) == (len(pairs), set(pairs.values()), set(pairs))
+
+
+def test_slice_name_and_is_refused_are_the_ones_score_and_check_use():
+    assert slice_name({"lighting": "low", "angle": "45"}) == "low/45"
+    assert slice_name({"lighting": "good", "angle": "side", "variant": "dropout"}) == "dropout/side"
+    assert is_refused({"status": {"code": "different_movement"}}) and not is_refused({"status": {"code": "ok"}})
+    assert not is_refused({"faults": []}) and not is_refused({"status": None})
 
 
 def toy_records():
@@ -134,9 +154,27 @@ def test_ac_k04_a_refused_take_counts_in_refused_and_its_labels_are_misses():
 
 
 def test_a_refused_take_scores_no_predictions_even_if_faults_were_listed():
-    s = score([{"predicted": [pred()], "labels": [], "lighting": "good", "angle": "front",
-                "correct": True, "refused": True}])["slices"]["good/front"]
-    assert (s["fp"], s["faults_on_correct_takes"], s["refused"]) == (0, 0, 1)
+    s = score([{"predicted": [pred(), pred()], "labels": [label()], "lighting": "good", "angle": "front",
+                "correct": False, "refused": True}])["slices"]["good/front"]
+    assert (s["tp"], s["fp"], s["fn"], s["faults_on_correct_takes"], s["refused"]) == (0, 0, 1, 0, 1)
+
+
+def test_a_refused_correct_take_counts_once_in_faults_on_correct_takes():
+    """A wrong verdict on a correct take must not pass the "0 faults on correct takes" rule."""
+    refused = {"predicted": [], "labels": [], "lighting": "good", "angle": "front", "correct": True, "refused": True}
+    s = score([refused])["slices"]["good/front"]
+    assert (s["fp"], s["correct_takes"], s["faults_on_correct_takes"], s["refused"]) == (0, 1, 1, 1)
+    listed = score([{**refused, "predicted": [pred(), pred()]}])["slices"]["good/front"]
+    assert listed["faults_on_correct_takes"] == 1  # one refusal, never the faults it would have listed
+    accepted = score([{**refused, "refused": False, "predicted": [pred(), pred()]}])["slices"]["good/front"]
+    assert accepted["faults_on_correct_takes"] == 2
+
+
+def test_a_refused_correct_take_through_the_corpus_adds_to_every_level():
+    labels = {"takes": [take("a"), take("b")]}
+    metrics = evaluate_corpus(labels, {"a": REFUSED, "b": {"status": {"code": "ok", "text": "y"}, "faults": []}})
+    assert metrics["slices"]["good/front"]["faults_on_correct_takes"] == 1
+    assert metrics["overall"]["faults_on_correct_takes"] == 1 == metrics["good_light"]["faults_on_correct_takes"]
 
 
 def test_dropout_takes_get_their_own_slice_and_stay_out_of_the_lighting_slices():

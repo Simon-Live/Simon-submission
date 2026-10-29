@@ -9,11 +9,16 @@ Endpoints, relative to the base path (docs/specs/staging.md):
     GET  api/samples   the expected clips and labelled takes on offer
     POST api/analyse   {expected, follower, phrasing} -> {analysis, replay}
     GET  api/contract  what `part5 contract --json` prints (schemas and compatibility table)
+    GET  api/real-takes the real-take report (part5.real), built on first use and kept for the process
 
 Errors are `{error: {field, message}}`: 400 names the field that broke, 404 an unknown sample,
-413 an upload over 16 MiB, 503 an analysis over 60 s. A 500 never carries a trace.
+413 an upload over 16 MiB, 429 too many Muse Spark requests from one client, 503 an analysis over
+60 s or a report that is not available. A 500 never carries a trace.
 """
+import collections
+import contextlib
 import functools
+import ipaddress
 import json
 import logging
 import re
@@ -25,18 +30,28 @@ from pathlib import Path
 from . import __version__, contract
 from .io import InputError
 from .phrasing import BACKENDS, TEMPLATE
-from .pipeline import AnalysisError, run
+from .phrasing.muse_spark import NAME as MUSE_SPARK
+from .pipeline import MAX_FRAMES, AnalysisError, run
 from .replay import build_replay
 
 ROOT = Path(__file__).resolve().parent.parent
 LABELS = "fixtures/input/followers/labels.json"
+KIT_SET = "part3-squat"
+KIT_EXPECTED = "fixtures/input/expected/part3-squat/animation.json"
+KIT_LABELS = "fixtures/input/contract/part3/followers/labels.json"
+MISMATCH_MANIFEST = "fixtures/input/mismatch/manifest.json"
 MAX_UPLOAD_BYTES = 16 * 1024 * 1024
 # Two uploads of at most 16 MiB each plus the request around them.
 MAX_BODY_BYTES = 2 * MAX_UPLOAD_BYTES + 64 * 1024
-MAX_FRAMES = 6000
 ANALYSIS_TIMEOUT_S = 60.0
 MAX_MESSAGE_CHARS = 400
 SIDES = ("expected", "follower")
+# Muse Spark is a paid live model: one request at a time per client, at most 6 a minute (staging.md).
+MUSE_PER_MINUTE = 6
+MUSE_WINDOW_S = 60.0
+MUSE_LIMIT_MESSAGE = "Too many Muse Spark requests. Wait a minute or pick template."
+REAL_UNAVAILABLE = "The real-take report is not available on this server."
+LOCAL_CLIENT = "local"
 
 log = logging.getLogger("part5.api")
 _ONE_ANALYSIS = threading.Lock()
@@ -84,11 +99,18 @@ def _inside_fixtures(root, rel):
     return path
 
 
+def _sentence(text):
+    return text[:1].upper() + text[1:]
+
+
 def _take_label(take):
     number = re.search(r"_(\d+)_", take["take_id"])
-    what = "; ".join(f["text"] for f in take["faults"]) or "correct take"
-    what = what[0].upper() + what[1:]
+    what = _sentence("; ".join(f["text"] for f in take["faults"]) or "correct take")
     return f"Take {int(number.group(1)):02d}: {what}" if number else what
+
+
+def _fault_listing(faults):
+    return [{"type": f["type"], "side": f["side"], "text": f["text"]} for f in faults]
 
 
 def _expected_sample(root, take):
@@ -100,24 +122,66 @@ def _expected_sample(root, take):
                  "label": f"{movement.replace('_', ' ').capitalize()} ({set_name})"})
 
 
+def _kit_expected_sample(root):
+    """Part 4's squat for Part 3's kit. The file does not name its movement; the kit's labels do."""
+    return Sample(
+        id=KIT_SET, path=_inside_fixtures(root, KIT_EXPECTED), rel=KIT_EXPECTED,
+        ids={"set": KIT_SET, "movement": "squat"},
+        listing={"id": KIT_SET, "set": KIT_SET, "movement": "squat",
+                 "label": f"Squat for the real takes ({KIT_SET})"})
+
+
 def _follower_sample(root, take):
-    faults = [{"type": f["type"], "side": f["side"], "text": f["text"]} for f in take["faults"]]
     return Sample(
         id=take["take_id"], path=_inside_fixtures(root, take["follower"]), rel=take["follower"],
         ids={"take_id": take["take_id"]},
         listing={"id": take["take_id"], "set": take["set"], "movement": take["movement"],
-                 "angle": take["angle"], "light": take["lighting"],
-                 "label": _take_label(take), "faults": faults})
+                 "angle": take["angle"], "light": take["lighting"], "source": "generated",
+                 "label": _take_label(take), "faults": _fault_listing(take["faults"])})
+
+
+def _kit_follower_samples(root):
+    """Part 3's labelled follower kit: takes of a squat scored against `part3-squat`."""
+    labels = json.loads((root / KIT_LABELS).read_text())
+    base = Path(KIT_LABELS).parent.parent  # the labels name each file from the kit folder, one level up
+    for take in labels["takes"]:
+        rel = (base / take["follower"]).as_posix()
+        what = take["faults"][0]["text"] if take["faults"] else "correct take"
+        yield Sample(
+            id=take["take_id"], path=_inside_fixtures(root, rel), rel=rel, ids={"take_id": take["take_id"]},
+            listing={"id": take["take_id"], "set": KIT_SET, "movement": take["movement"],
+                     "angle": take["angle"], "light": None, "source": "kit",
+                     "label": _sentence(what), "faults": _fault_listing(take["faults"])})
+
+
+def _real_follower_samples(root):
+    """Part 2's committed clips run through Part 3: a yoga class, dancers and a barbell squat."""
+    manifest = json.loads((root / MISMATCH_MANIFEST).read_text())
+    for name, entry in manifest["fixtures"].items():
+        rel = (Path(MISMATCH_MANIFEST).parent / name / "skeleton.json").as_posix()
+        refused = entry["population"] == "mismatch"
+        what = _sentence(entry["content"].split(",")[0])
+        note = "real clip, a different movement" if refused else "real clip"
+        yield Sample(
+            id=name, path=_inside_fixtures(root, rel), rel=rel, ids={"take_id": name},
+            listing={"id": name, "set": KIT_SET, "movement": None, "angle": None, "light": None,
+                     "source": "real", "label": f"{what} ({note})", "faults": [],
+                     "refusal_expected": refused})
 
 
 def build_table(root=ROOT):
-    """The in-memory sample table: one expected clip per set and every labelled take."""
+    """The in-memory sample table: the expected clips and every take on offer (ids are unique)."""
     labels = json.loads((root / LABELS).read_text())
     expected, follower = {}, {}
     for take in labels["takes"]:
         if take["set"] not in expected:
             expected[take["set"]] = _expected_sample(root, take)
         follower[take["take_id"]] = _follower_sample(root, take)
+    expected[KIT_SET] = _kit_expected_sample(root)
+    for sample in (*_kit_follower_samples(root), *_real_follower_samples(root)):
+        if sample.id in follower:
+            raise ValueError(f"two samples share the id {sample.id}")
+        follower[sample.id] = sample
     return Table(expected, follower)
 
 
@@ -256,7 +320,70 @@ def _in_worker(fn, *args):
     return out["value"]
 
 
-def _analyse(body):
+class ClientLimit:
+    """At most `per_minute` starts per client in any `window_s`, and one running at a time per client.
+
+    Used for Muse Spark requests (staging.md). Clients are plain strings (an address); nothing about a
+    request is stored but that string and the times of its recent starts.
+    """
+
+    def __init__(self, per_minute=MUSE_PER_MINUTE, window_s=MUSE_WINDOW_S, clock=time.monotonic):
+        self.per_minute, self.window_s, self.clock = per_minute, window_s, clock
+        self._lock = threading.Lock()
+        self._starts = {}   # client -> deque of start times inside the window
+        self._running = set()
+
+    def _prune(self, now):
+        for client in list(self._starts):
+            starts = self._starts[client]
+            while starts and now - starts[0] >= self.window_s:
+                starts.popleft()
+            if not starts and client not in self._running:
+                del self._starts[client]
+
+    def start(self, client):
+        now = self.clock()
+        with self._lock:
+            self._prune(now)
+            starts = self._starts.setdefault(client, collections.deque())
+            if client in self._running or len(starts) >= self.per_minute:
+                wait = 5 if client in self._running else max(1, int(self.window_s - (now - starts[0]) + 0.999))
+                raise ApiError(429, "phrasing", MUSE_LIMIT_MESSAGE, {"Retry-After": str(wait)})
+            starts.append(now)
+            self._running.add(client)
+
+    def finish(self, client):
+        with self._lock:
+            self._running.discard(client)
+
+    @contextlib.contextmanager
+    def slot(self, client):
+        self.start(client)
+        try:
+            yield
+        finally:
+            self.finish(client)
+
+
+_MUSE_LIMIT = ClientLimit()
+
+
+def client_key(peer, forwarded_for=None):
+    """The address a request counts against. Behind the gateway every connection comes from this
+    machine, so the last hop the gateway recorded in `X-Forwarded-For` stands for the visitor.
+
+    `X-Forwarded-For` is read only from a loopback peer, because the gateway is the loopback proxy in
+    front of this server. That is a deliberate trade-off: a caller already on this machine can name any
+    client, and the limit it dodges only guards the paid Muse Spark path."""
+    if forwarded_for and peer in ("127.0.0.1", "::1"):
+        try:
+            return str(ipaddress.ip_address(forwarded_for.split(",")[-1].strip()))
+        except ValueError:
+            pass
+    return peer or LOCAL_CLIENT
+
+
+def _analyse(body, client):
     if len(body) > MAX_BODY_BYTES:
         raise ApiError(413, "upload", too_large_message("upload"))
     request = _read_request(body)
@@ -266,21 +393,46 @@ def _analyse(body):
     phrasing = request.get("phrasing", TEMPLATE)
     if phrasing not in offered_phrasing():
         raise ApiError(400, "phrasing", f"phrasing: must be one of {offered_phrasing()}")
+    limited = _MUSE_LIMIT.slot(client) if phrasing == MUSE_SPARK else contextlib.nullcontext()
     try:
-        return _respond(200, _in_worker(_analysis, expected, follower, phrasing))
+        with limited:
+            return _respond(200, _in_worker(_analysis, expected, follower, phrasing))
     except (InputError, AnalysisError) as e:
         message = _plain(e)
         fields = {expected["path"]: expected_field, follower["path"]: follower_field}
         raise ApiError(400, _field_of(message, fields), message) from None
 
 
+# ----------------------------------------------------------------------------- real takes
+
+_REAL_REPORT = {}  # the report, once built: it is the same for every visitor
+
+
+def _build_real_report():
+    """`part5.real.build_report()`, imported only when the page asks (the report is built on first use)."""
+    from . import real
+    return real.build_report()
+
+
+def _real_takes(body, client):
+    try:
+        if "report" not in _REAL_REPORT:
+            _REAL_REPORT["report"] = _in_worker(_build_real_report)
+        return _respond(200, _REAL_REPORT["report"])
+    except ApiError:
+        raise
+    except Exception:  # a fixture that will not load, a value JSON cannot hold
+        log.exception("the real-take report could not be built")
+        raise ApiError(503, "real-takes", REAL_UNAVAILABLE) from None
+
+
 # ----------------------------------------------------------------------------- routing
 
-def _health(body):
+def _health(body, client):
     return _respond(200, {"ok": True, "version": __version__})
 
 
-def _samples(body):
+def _samples(body, client):
     return _respond(200, _samples_listing())
 
 
@@ -289,7 +441,7 @@ def _contract_document():
     return contract.contract_document()
 
 
-def _contract(body):
+def _contract(body, client):
     return _respond(200, _contract_document())
 
 
@@ -298,10 +450,11 @@ ROUTES = {
     "api/samples": ("GET", _samples),
     "api/analyse": ("POST", _analyse),
     "api/contract": ("GET", _contract),
+    "api/real-takes": ("GET", _real_takes),
 }
 
 
-def _route(method, path, body, base_path):
+def _route(method, path, body, base_path, client):
     base = normalise_base_path(base_path)
     route = path.split("?", 1)[0].split("#", 1)[0]
     entry = ROUTES.get(route[len(base):]) if route.startswith(base) else None
@@ -310,13 +463,16 @@ def _route(method, path, body, base_path):
     verb, fn = entry
     if method != verb:
         raise ApiError(405, "method", f"This address answers {verb} only.", {"Allow": verb})
-    return fn(body)
+    return fn(body, client)
 
 
-def handle(method, path, body, *, base_path):
-    """One request -> `(status, headers, body bytes)`. Never raises, never shows a trace."""
+def handle(method, path, body, *, base_path, client=LOCAL_CLIENT):
+    """One request -> `(status, headers, body bytes)`. Never raises, never shows a trace.
+
+    `client` is the address the request counts against for rate limits (see `client_key`).
+    """
     try:
-        return _route(method, path, body, base_path)
+        return _route(method, path, body, base_path, client)
     except ApiError as e:
         return error_response(e.status, e.field, e.message, e.headers)
     except Exception:  # the trace goes to the server log, never to the visitor

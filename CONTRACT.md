@@ -46,7 +46,7 @@ Which producer file works with Part 5, as checked against the producer commit in
 <!-- part5-compatibility:begin -->
 | Producer | File | format | Part 5 role | Verdict | Fix | Checked against |
 |---|---|---|---|---|---|---|
-| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | run Part 3 `--view part5` on it; `doctor` exits 1 with "run Part 3 --view part5" | Part 2 b45a91d |
+| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | run Part 3 `--view part5` on it; `doctor` exits 1 with "run Part 3 --view part5" | Part 2 1f2adc5 |
 | Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works |  | Part 3 65a5aad |
 | Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works |  | Part 3 65a5aad |
 | Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` | Part 3 65a5aad |
@@ -69,7 +69,7 @@ Which producer file works with Part 5, as checked against the producer commit in
 | 2 | usage: a missing or unknown option | no |
 | 3 | a refused analysis is written: `status.code` is `different_movement` and `faults` is empty by design | yes |
 
-Exit 3 means a valid `analysis.json` was written and it is a refusal: read `status`, do not read an empty `faults` as a correct take. Until the movement guard is in, `analyse` never exits 3; the contract is stated now so a reader can be written once.
+Exit 3 means a valid `analysis.json` was written and it is a refusal: read `status`, do not read an empty `faults` as a correct take. `analyse` exits 3 whenever the movement guard refuses a take.
 
 ## Part 7's duties
 
@@ -107,14 +107,14 @@ Part 5's own schemas for these inputs are `input-animation` and `input-skeleton`
 | `fixtures/input/contract/part3/native/skeleton.json` | Part 3 `fixtures/conformance/followers/squat_front_correct/skeleton.native.json`, `65a5aad` |
 | `fixtures/input/contract/part4/exercise/animation.json` | `moalborati/simon-part-4-animate-keyframes` `fixtures/output/exercise/animation.json`, verbatim, commit `dc3d9f2`. The clip now carries `"producer": "part4"` |
 | `contracts/part4/animation.schema.json` | `moalborati/simon-part-4-animate-keyframes` `contracts/animation.schema.json` (`simon.animation.v1`), verbatim, commit `dc3d9f2`. Part 4 also publishes `keyframes.schema.json` and `skeleton.schema.json`; this part does not read them. |
-| `fixtures/input/expected/<set>/animation.json` | Part 4 `fixtures/output/<set>/animation.json`, pinned at `366d628` (see "Known drift") |
+| `fixtures/input/expected/<set>/animation.json` | Part 4 `fixtures/output/<set>/animation.json`, pinned at `dc3d9f2` (see `fixtures/input/expected/SOURCE.md`) |
 
 Never edit a copy by hand. Change it upstream, then run `make contracts-sync`. `make contracts-check` reads local checkouts from `PART3_DIR` and `PART4_DIR` when set, otherwise it clones both repos from GitHub. It reads files only and imports no upstream code.
 
 
-## Known drift
+## Pinned copies
 
-`fixtures/input/expected/` still holds Part 4's output at `366d628`. Part 4 main (`dc3d9f2`, measured at `f1693dc`) changed the bones and the joint positions of both clips by up to 0.12 m in exercise and 0.13 m in dance; the `interpolated` flags are unchanged. `make dummy-data` builds every follower take from these clips, so they are refreshed together with the takes and the labels, not by the sync. `make contracts-check` prints this as a note and does not fail on it.
+`fixtures/input/expected/` holds Part 4's output at `dc3d9f2` (Part 4 main when the copies were refreshed, together with the follower takes and their labels). `make dummy-data` builds every follower take from these clips, so they change only with the takes and the labels, never after a held-out seed is scored. They are the `pinned` entries of `contracts/sources.json`: `make contracts-check` reports a note, never a failure, if Part 4's files change after the pin.
 
 ## Fault labels
 
@@ -125,10 +125,10 @@ Part 3's kit names its faults differently from Part 5's labels. Mapping from Par
 | `feet_wide` | `foot_out` | `ankle_lateral_offset`, metres, one label for both feet | `thigh_direction`, degrees, one label per side |
 | `elbows_out` | `arms_wider` | `upper_arm_abduction`, degrees, both shoulders | `upper_arm_direction`, degrees, per side or `both` |
 | `shallow_squat` | `knees_shallow` | `knee_angle_at_bottom`, interior angle, grows as the knee straightens | `knee_flexion`, bend (180 minus interior), shrinks |
-| `knee_caving` | none | `thigh_inward_turn_at_bottom`, degrees, one knee | none |
+| `knee_caving` | `knee_caving` | `thigh_inward_turn_at_bottom`, degrees, one knee | `knee_valgus`, degrees, the knee's offset inside the hip to ankle line, one label per side |
 | `correct` | a take with `correct: true` and no faults | none | none |
 
-Only `elbows_out` and `arms_wider` measure the same thing. A size in metres for `feet_wide` is not a size for `foot_out`. Part 5 has no knee-valgus type, and Part 3's kit has no `elbow_bent` or `trunk_lean`.
+Only `elbows_out` and `arms_wider` measure the same thing. A size in metres for `feet_wide` is not a size for `foot_out`. Part 3's `knee_caving` maps to Part 5's `knee_valgus` measure (a knee caving in), but the two sizes are different angles: the kit's is a thigh turn at the bottom of the squat, Part 5's is the knee's offset from the hip to ankle line. Part 3's kit has no `elbow_bent` or `trunk_lean`.
 
 ## Neighbours (status 2026-10-28)
 
@@ -137,7 +137,7 @@ Parts 1, 3, 4 and 6 are done. This part follows the contracts they already set. 
 | Part | Status | What Part 5 follows |
 |---|---|---|
 | 3 Skeleton consistency | done | Follower clips come from `python3 -m part3 run ... --view part5`: `simon.animation.v1` with a required `fps`, the 17 joints in order, metres, the hip-centred frame. Part 3 writes the source clock (15 fps for its kit takes). Run it with `--fps 30` to put a follower on Part 4's 30 fps clock before aligning (issue #35). The fault-label mapping is in Part 3's `CONTRACT.md` and in this PR. |
-| 4 Animate | done | The expected clip is Part 4's `animation.json` (`simon.animation.v1`, 30 fps, `interpolated` on filled frames, and a required `"producer": "part4"` constant) at main `dc3d9f2`, which publishes its own schemas under `contracts/`. The copies in `fixtures/input/expected/` come from Part 4 `366d628`, and their joint positions differ by up to 0.13 m. `make contracts-check` reports this as a note. Refreshing them regenerates the dummy takes, so this PR leaves it to the Part 5 owners. |
+| 4 Animate | done | The expected clip is Part 4's `animation.json` (`simon.animation.v1`, 30 fps, `interpolated` on filled frames, and a required `"producer": "part4"` constant) at main `dc3d9f2`, which publishes its own schemas under `contracts/`. The copies in `fixtures/input/expected/` are Part 4 `dc3d9f2` (see "Pinned copies"). |
 | 1 Key frames | done | Key frames sit on the original video clock (`frame`, `t_ms`). Part 4 has already used them to build the expected clip. If Part 5 aligns by key frame, match on `t_ms`. |
 | 6 Catalog | done | A catalog entry holds the expected movement's files (`manifest.json` v1, see Part 6's `CONTRACT.md`). Part 6 does not read `analysis.json`; Part 7 shows it. |
 

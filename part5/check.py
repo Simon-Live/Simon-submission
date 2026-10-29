@@ -2,7 +2,8 @@
 
 Prints one `simon.part5.check.v1` document (docs/specs/check-5.md, contracts/metrics.schema.json)
 on stdout and a short summary on stderr. Exit 0 only when the gate passes, 1 when it fails,
-2 when a labelled take can't be analysed or a set is missing or unusable.
+2 when a labelled take can't be analysed, a set is missing or unusable, or part5/rules.json is not
+the file frozen for the seed (no freeze record, or another hash, in docs/thresholds.md).
 
 The gate is the held-out set (`fixtures/input/heldout/`, whose labels.json names the seed: 29,
 then 31, then 37; ADR-0003): good light at each angle separately must reach precision >= 0.85 and
@@ -17,8 +18,9 @@ import re
 import sys
 from pathlib import Path
 
+from . import real
 from .detect import RULES_PATH
-from .evaluate import evaluate_corpus
+from .evaluate import evaluate_corpus, is_refused, slice_name
 from .pipeline import analyse
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -100,22 +102,6 @@ def load_labels(directory, what):
     return doc
 
 
-def group_of(take):
-    """The slice family of a take: its lighting, or "dropout" for a dropout copy."""
-    return "dropout" if take.get("variant") == "dropout" else take["lighting"]
-
-
-def slice_name(take):
-    return f"{group_of(take)}/{take['angle']}"
-
-
-def grouped(labels_doc):
-    """The labels with each dropout copy's lighting set to "dropout", so evaluate keys its slices
-    dropout/<angle> and the good-light slices stay clean takes only."""
-    takes = [{**t, "lighting": group_of(t)} for t in labels_doc["takes"]]
-    return {**labels_doc, "takes": takes}
-
-
 def analyse_set(labels_doc, root=None):
     """Analyse every labelled take. Returns ({take_id: analysis}, errors): one message per take
     that can't be analysed, so the caller can name them all at once."""
@@ -134,34 +120,8 @@ def analyse_set(labels_doc, root=None):
     return analyses, errors
 
 
-# --- scoring ---
-def is_refused(analysis):
-    return (analysis.get("status") or {}).get("code") == "different_movement"
-
-
-def add_refused(metrics, labels_doc, analyses):
-    """Set `refused` (takes the movement guard refused; their labels already score as misses) on
-    every slice, lighting group and the overall line."""
-    by_slice, by_group = {}, {}
-    for take in labels_doc["takes"]:
-        if is_refused(analyses[take["take_id"]]):
-            by_slice[slice_name(take)] = by_slice.get(slice_name(take), 0) + 1
-            by_group[group_of(take)] = by_group.get(group_of(take), 0) + 1
-    for name, s in metrics["slices"].items():
-        s["refused"] = by_slice.get(name, 0)
-    for name, s in metrics.get("by_lighting", {}).items():
-        s["refused"] = by_group.get(name, 0)
-    if metrics.get("good_light"):
-        metrics["good_light"]["refused"] = by_group.get("good", 0)
-    metrics["overall"]["refused"] = sum(by_slice.values())
-
-
-def score_set(labels_doc, analyses):
-    metrics = evaluate_corpus(grouped(labels_doc), analyses)
-    add_refused(metrics, labels_doc, analyses)
-    return metrics
-
-
+# --- scoring (`part5.evaluate`: dropout copies get their own `dropout/<angle>` slices, and every slice,
+# lighting group and the overall line carries `refused`) ---
 def slices_starting(metrics, prefix):
     return {k: v for k, v in metrics["slices"].items() if k.startswith(prefix)}
 
@@ -243,15 +203,39 @@ def rules_hash(path=RULES_PATH):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def require_frozen(seed, sha, frozen):
+    """A seed is scored only against the rules frozen for it (ADR-0003): docs/thresholds.md must
+    record a rules_sha256 for the seed and it must equal the hash of part5/rules.json now."""
+    if not frozen.get("rules_sha256"):
+        raise CheckError([f"check-5: docs/thresholds.md has no freeze record (rules_sha256) for seed {seed}; "
+                          "freeze part5/rules.json and record its hash there before scoring the seed"])
+    if frozen["rules_sha256"] != sha:
+        raise CheckError([f"check-5: part5/rules.json differs from the hash frozen for seed {seed} in "
+                          "docs/thresholds.md; a seed is scored once, against the rules frozen for it"])
+
+
 # --- the real-take blocks ---
+def require_unchanged_scores(seed, metrics, attempts):
+    """A scored seed is retired (ADR-0003): rerunning it only verifies, so its slices must equal the
+    recorded attempt. A difference means scoring code changed after the freeze, which needs a new
+    attempt on the next seed, so the check refuses instead of publishing the new numbers."""
+    rec = next((a for a in attempts if a["seed"] == seed), None)
+    if rec is None or rec.get("slices") == metrics["slices"]:
+        return
+    names = set(rec.get("slices", {})) | set(metrics["slices"])
+    changed = sorted(n for n in names if rec.get("slices", {}).get(n) != metrics["slices"].get(n))
+    raise CheckError([f"check-5: seed {seed} scores differently from its recorded attempt in "
+                      f"fixtures/heldout-attempts.json ({', '.join(changed)}); scoring changed after the "
+                      "freeze, which needs a new attempt on the next seed (docs/specs/calibration.md)"])
+
+
 def real_blocks(root=None):
-    """The kit and stock report blocks (real-takes.md). The adapter that scores them is TICKET-025."""
-    stock = Path(root or ROOT) / "fixtures" / "input" / "eval" / "real"
-    return {"kit": {"gated": False, "source": "Part 3 conformance kit", "takes": [],
-                    "note": "the real-take adapter is not wired in yet (TICKET-025); run part5 report-real once it is"},
-            "stock": {"gated": False, "source": "fixtures/input/eval/real", "takes": [],
-                      "note": ("stock takes not delivered yet (TICKET-026)" if not stock.is_dir()
-                               else "the real-take adapter is not wired in yet (TICKET-025)")}}
+    """The kit and stock report blocks (real-takes.md), from `part5.real`. Reported and never gated:
+    fixtures that are missing or malformed leave the blocks empty with the reason, never a failed check."""
+    try:
+        return real.check_blocks(real.build_report(Path(root or ROOT)))
+    except real.RealError as e:
+        return real.unavailable_blocks(e)
 
 
 # --- the document ---
@@ -270,16 +254,18 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
     if tune["seed"] != TUNING_SEED:
         raise CheckError([f"check-5: {rel(tuning)}/labels.json names seed {tune['seed']}; "
                           f"the tuning set is seed {TUNING_SEED}"])
+    sha = rules_hash(rules_path)
+    text = thresholds_path.read_text() if thresholds_path.is_file() else ""
+    frozen = thresholds_record(held["seed"], text)
+    require_frozen(held["seed"], sha, frozen)
     (held_analyses, held_errors), (tune_analyses, tune_errors) = analyse_set(held, root), analyse_set(tune, root)
     if held_errors or tune_errors:
         raise CheckError(held_errors + tune_errors)
-    held_metrics, tune_metrics = score_set(held, held_analyses), score_set(tune, tune_analyses)
+    held_metrics, tune_metrics = evaluate_corpus(held, held_analyses), evaluate_corpus(tune, tune_analyses)
+    require_unchanged_scores(held["seed"], held_metrics, attempts)
 
     g = gate(held_metrics)
-    sha = rules_hash(rules_path)
-    text = thresholds_path.read_text() if thresholds_path.is_file() else ""
-    recorded = {**thresholds_record(held["seed"], text),
-                **{k: v for a in attempts if a["seed"] == held["seed"] for k, v in a.items()}}
+    recorded = {**frozen, **{k: v for a in attempts if a["seed"] == held["seed"] for k, v in a.items()}}
     current = current_attempt(held["seed"], g["passed"], held_metrics, sha, recorded)
     doc = {
         "format": FORMAT,
@@ -295,10 +281,6 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
                    "refusals": {k: v["refused"] for k, v in held_metrics["slices"].items()}},
         "rules_sha256": sha,
     }
-    frozen = recorded.get("rules_sha256")
-    if frozen and frozen != sha:
-        print(f"check-5: warning: part5/rules.json differs from the hash frozen for seed {held['seed']} "
-              f"in docs/thresholds.md", file=sys.stderr)
     rows = take_report("heldout", held, held_analyses) + take_report("tuning", tune, tune_analyses)
     return doc, rows
 

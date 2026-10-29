@@ -37,6 +37,7 @@ same shape as the expected clip.
 Its size is `knee_valgus` (ADR-0004: how far the knee sits inside the hip to ankle line, as an angle). Where
 the knee is barely bent the knee cannot go that far, so the label's `magnitude_deg` (the median over the
 full-strength window) is lower than the drawn size, most on the step touch.
+
 **Labels.** `labels.json` names the generator `seed` and holds one entry per take: angle, lighting,
 `variant` (`clean`, or `dropout` for the copies below), `label_source` (`synthetic`), `correct`, body scale,
 speed, lead-in, and `faults[]`. Each fault has `type, measure, body_part, joints, side, direction`, plus

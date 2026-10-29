@@ -127,7 +127,7 @@ def seed5_run(take, expected):
 
 
 def test_ac005_every_seed_5_take_is_accepted_against_its_own_expected_clip():
-    """AC-005: none of the 96 tuning takes (low light and double faults included) is refused."""
+    """AC-005: none of the 108 tuning takes (low light and double faults included) is refused."""
     limits = load_rules()["guard"]
     residuals, corrs = [], []
     for t in LABELS["takes"]:

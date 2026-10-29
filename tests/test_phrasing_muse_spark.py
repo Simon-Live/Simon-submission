@@ -3,11 +3,13 @@
 No test here opens a socket: the client is a scripted fake, and the guard in `test_phrasing` turns
 any real connection into a failure.
 """
+import email
 import io
 import json
 import re
 import urllib.error
 import urllib.request
+import urllib.response
 
 import pytest
 
@@ -353,6 +355,11 @@ def test_ac_nfr_002_without_an_injected_client_the_call_goes_through_urllib(live
 def test_the_urllib_client_posts_json_with_the_headers_and_timeout(monkeypatch):
     seen = {}
 
+    class Opener:
+        @staticmethod
+        def open(http, timeout):
+            return fake_urlopen(http, timeout)
+
     class Response:
         status = 200
 
@@ -370,7 +377,7 @@ def test_the_urllib_client_posts_json_with_the_headers_and_timeout(monkeypatch):
                     headers={k.lower(): v for k, v in http.header_items()})
         return Response()
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(local_llm, "_OPENER", Opener)
     request = local_llm.chat_request("https://example.invalid/x", "m", FOOT, headers={"Authorization": "Bearer k"},
                                      max_tokens=600, timeout_s=7)
     result = local_llm.urllib_client(request)
@@ -378,6 +385,56 @@ def test_the_urllib_client_posts_json_with_the_headers_and_timeout(monkeypatch):
     assert seen["method"] == "POST" and seen["timeout"] == 7 and seen["url"] == "https://example.invalid/x"
     assert json.loads(seen["data"])["max_tokens"] == 600
     assert seen["headers"]["authorization"] == "Bearer k" and seen["headers"]["content-type"] == "application/json"
+
+
+class FakeServer(urllib.request.BaseHandler):
+    """Stands in for the network: the first address answers with a redirect to a second one, which
+    answers 200. Every request that reaches it is recorded."""
+    handler_order = 100
+
+    def __init__(self, status=302):
+        self.status, self.opened = status, []
+
+    def http_open(self, req):
+        self.opened.append(req)
+        start = req.full_url == "http://start.invalid/chat"
+        headers = email.message_from_string("Location: http://elsewhere.invalid/steal\r\n\r\n" if start else "\r\n")
+        reply = urllib.response.addinfourl(io.BytesIO(b"" if start else b"{}"), headers, req.full_url,
+                                           self.status if start else 200)
+        reply.msg = "Found" if start else "OK"
+        return reply
+
+
+REDIRECTED = local_llm.chat_request("http://start.invalid/chat", "m", FOOT, headers={"Authorization": "Bearer k"},
+                                    max_tokens=600, timeout_s=7)
+
+
+def test_a_default_opener_would_forward_the_authorization_header_to_the_redirect_target():
+    """The control: why the production client refuses redirects."""
+    server = FakeServer()
+    opener = urllib.request.build_opener(server)
+    http = urllib.request.Request(REDIRECTED["url"], data=b"{}", method="POST", headers=REDIRECTED["headers"])
+    assert opener.open(http, timeout=7).status == 200
+    assert [r.full_url for r in server.opened] == ["http://start.invalid/chat", "http://elsewhere.invalid/steal"]
+    assert server.opened[1].get_header("Authorization") == "Bearer k"
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_the_urllib_client_never_follows_a_redirect_so_the_key_goes_nowhere_else(monkeypatch, status):
+    server = FakeServer(status)
+    monkeypatch.setattr(local_llm, "_OPENER", local_llm.no_redirect_opener(server))
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        local_llm.urllib_client(REDIRECTED)
+    assert caught.value.code == status
+    assert [r.full_url for r in server.opened] == ["http://start.invalid/chat"]  # the Location was never asked
+
+
+def test_a_redirect_is_reported_as_a_plain_http_failure_through_send(monkeypatch):
+    server = FakeServer(307)
+    monkeypatch.setattr(local_llm, "_OPENER", local_llm.no_redirect_opener(server))
+    outcome = local_llm.send(local_llm.urllib_client, REDIRECTED)
+    assert outcome.status == 307 and outcome.body is None and outcome.error.reason == "HTTP 307"
+    assert len(server.opened) == 1
 
 
 def test_last_usage_reads_the_newest_line(live):

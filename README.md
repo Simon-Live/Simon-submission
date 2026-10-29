@@ -1,8 +1,8 @@
-# Simon Part 5 — Compare 3D animations and analyse faults
+# Simon Part 5: compare 3D animations and analyse faults
 
 
 Part of **Simon** → hub repo: https://github.com/moalborati/simon (scope and the other parts live there; this repo is only this part).
-This repo is **only** Simon Part 5. It is a black box: it reads its input files and writes its output files, and knows nothing about the other parts. Keep it that way — that isolation is what lets agents work here with a small context.
+This repo is **only** Simon Part 5. It is a black box: it reads its input files and writes its output files, and knows nothing about the other parts. Keep it that way: that isolation is what lets agents work here with a small context.
 
 Simon in one line (all you need): a trainer records an expected movement once; a follower performs it to camera; the follower's 3D movement is compared against the expected one and the differences are reported in plain words. This part is one step of that.
 
@@ -14,7 +14,7 @@ The expected `animation.json` (or `skeleton.json`) plus a follower's `skeleton.j
 
 ## Output
 
-`analysis.json` — per fault: what differed, which joint/body part, the size of the difference, and a plain-words line (e.g. "left foot too far out", "elbows wider than the example").
+`analysis.json`. Per fault: what differed, which joint/body part, the size of the difference, and a plain-words line (e.g. "left foot too far out", "elbows wider than the example"). A take of a different movement gets `status.code: "different_movement"` and no faults. Fields: `docs/schemas.md`; schema: `contracts/analysis.schema.json`.
 
 ## Shared-file context (only what this part touches)
 
@@ -28,11 +28,11 @@ none (rule maths is the measurement; plain-words analysis from the measurements)
 
 On labelled follower clips (correct and deliberate-fault takes, several angles): fault precision ≥0.85 and recall ≥0.75 in good light, every other angle reported separately; on correct takes it reports no faults.
 
-Done-check: `make check-5` — prints a metrics JSON and exits 0 only when every threshold passes. Write the check as part of this work; until it exists, the stub in the Makefile fails honestly.
+Done-check: `make check-5` prints a metrics JSON and exits 0 only when every threshold passes. It gates good light at front, 45 and side on a held-out set (`fixtures/input/heldout/`, whose `labels.json` names the seed); the thresholds are tuned on the seed 5 set only, and every held-out attempt is recorded in `docs/thresholds.md` and `fixtures/heldout-attempts.json`.
 
 ## Demos
 
-- **Isolated:** A follower clip replayed with each fault listed and the joint highlighted.
+- **Isolated:** A follower clip replayed with each fault listed and the joint highlighted (`make demo`, http://127.0.0.1:8735/).
 - **Integrated:** In Part 7, this analysis is what the follower is shown after a take.
 
 ## Rules
@@ -44,14 +44,35 @@ Done-check: `make check-5` — prints a metrics JSON and exits 0 only when every
 ## Dev setup
 
 ```bash
-uv sync                # Python ≥3.10 + numpy, pytest
+uv sync                # Python ≥3.10 + numpy; pytest and jsonschema for the tests
 make test              # unit tests
-make dummy-data        # regenerate fixtures/input/followers/ (synthetic labelled takes)
-uv run part5 analyse --expected fixtures/input/expected/exercise/animation.json \
-  --follower fixtures/input/followers/exercise/<take_id>/skeleton.json --out out/analysis.json
 make check-5           # done-check
-make test-contract     # Part 3 and Part 4 files through part5.io (CONTRACT.md)
-make contracts-check   # exit 1 when a copy under contracts/ drifts from Parts 3 and 4
 ```
+
+| Command | What it does | Exit |
+|---|---|---|
+| `make check-5` | Analyses every labelled take and prints the `simon.part5.check.v1` metrics JSON on stdout, a summary on stderr. Gates the held-out good-light slices; reports seed 5, low light, dropout and real takes. | 0 gate passed, 1 gate failed, 2 a take or set is missing, the held-out seed has no freeze record, `rules.json` differs from the frozen hash, or a scored seed scores differently from its recorded attempt |
+| `make test` | Unit tests. | 0 |
+| `make check-5-contract` | Validates every schema and committed fixture, and rebuilds the shipped `fixtures/output/analysis*.json` byte for byte. | 0 |
+| `make report-real` | Real takes, reported and never gated: Part 3's kit against Part 4's `part3-squat`, and Part 2's takes. Writes `out/report-real/report.json`. | 0 when every real take was analysed |
+| `make demo` | The replay page on http://127.0.0.1:8735/ (foreground). | |
+| `make dummy-data` | Regenerates the seed 5 set in `fixtures/input/followers/`. | 0 |
+| `make heldout-data SEED=<n>` | Writes a held-out set to `fixtures/input/heldout/`. Only seeds 29, 31 and 37, each once, under the protocol in `docs/thresholds.md`. | 0; 2 without a held-out seed |
+| `make output-examples` | Rewrites the two shipped `fixtures/output/analysis*.json`. | 0 |
+| `make smoke-muse-spark` | One live Muse Spark call through Baseten (needs the key file). Never part of `make test` or `make check-5`. | 0 when a valid line came back |
+| `make test-contract` | Part 3 and Part 4 files through `part5.io` (`CONTRACT.md`). | 0 |
+| `make contracts-check`, `make contracts-sync` | Compare, or refresh, the copies under `contracts/` with Parts 3 and 4. | 0; 1 on drift, 2 when an upstream cannot be read |
+
+```bash
+uv run part5 analyse --expected fixtures/input/expected/exercise/animation.json \
+  --follower fixtures/input/followers/exercise/<take_id>/skeleton.json --out out/analysis.json \
+  [--phrasing template|local-llm|muse-spark]
+uv run python -m part5 contract [--schema <name>] [--json]       # schemas and compatibility table
+uv run python -m part5 doctor <file> [--for part5|part7] [--json] # is this file accepted, and the fix
+uv run python -m part5 serve [--port 8725] [--base-path /]       # the web page and the analysis API
+uv run python -m part5 report-real [--out out/report-real/report.json]
+```
+
+`part5 analyse` exits 0 when it wrote an analysis with `status.code: "ok"`, 3 when it wrote a refused one (`different_movement`, no faults), 1 for an input or write error and 2 for a usage error. `--phrasing` changes only each fault's `coaching` line and the `phrasing` record, never a scored field; `template` is the default. `muse-spark` sends only the measured fault record, and only when the key file (`PART5_BASETEN_KEY_FILE`, default `~/.config/firm/operator-keys/BASETEN_API_KEY`) exists and `META_LIVE=1`; otherwise the template line is kept and the reason recorded.
 
 Work is coordinated in GitHub issues: checklist #17, team chat #18.

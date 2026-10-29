@@ -140,3 +140,87 @@ def test_follower_frames_index_the_original_follower_file():
     for f in res.analysis["faults"]:
         assert 0 <= f["follower_frames"][0] <= f["follower_frames"][1] < res.follower.n_frames
     assert np.all(np.diff(res.to_original) >= 0)
+
+
+def _follower_over(span_s, frames=3):
+    doc = json.loads(TAKE.read_text())
+    doc["frames"] = doc["frames"][:frames]
+    for i, frame in enumerate(doc["frames"]):
+        frame["t"] = span_s * i / (frames - 1)
+    return {"path": "upload:follower", "doc": doc}
+
+
+def test_the_resampled_follower_length_is_bounded_before_resampling(monkeypatch):
+    called = []
+    monkeypatch.setattr("part5.pipeline.resample", lambda *args: called.append(args))
+    with pytest.raises(AnalysisError, match=r"upload:follower: 30001 frames .* the limit is 6000"):
+        run(str(EXPECTED), _follower_over(1000.0))
+    assert called == []
+
+
+def test_the_length_bound_counts_the_frames_resample_would_make():
+    from part5.pipeline import MAX_FRAMES, resampled_length
+    assert resampled_length(np.array([0.0, (MAX_FRAMES - 1) / 30]), 30.0) == MAX_FRAMES
+    assert resampled_length(np.array([0.0, MAX_FRAMES / 30]), 30.0) == MAX_FRAMES + 1
+
+
+def test_the_length_bound_holds_for_a_span_too_big_for_a_float():
+    follower = _follower_over(1.0)
+    for frame, t in zip(follower["doc"]["frames"], (-1e308, 0.0, 1e308)):
+        frame["t"] = t
+    with pytest.raises(AnalysisError, match="the limit is 6000"):
+        run(str(EXPECTED), follower)
+
+
+def test_an_expected_clip_over_the_frame_rate_limit_is_refused_naming_it():
+    doc = json.loads(EXPECTED.read_text())
+    doc["fps"] = 1e6
+    with pytest.raises(AnalysisError, match=r"upload:expected: 1e\+06 frames per second, the limit is 240"):
+        run({"path": "upload:expected", "doc": doc}, str(TAKE))
+
+
+def test_the_committed_clips_are_well_inside_the_bounds():
+    from part5.io import load_clip
+    from part5.pipeline import MAX_FPS, MAX_FRAMES, clip_fps, resampled_length
+    for path in (*(ROOT / "fixtures/input/followers").rglob("skeleton.json"), EXPECTED):
+        assert resampled_length(load_clip(path).t, 30.0) < MAX_FRAMES / 4, path
+    assert clip_fps(load_clip(EXPECTED)) <= MAX_FPS
+
+
+def test_an_expected_clip_whose_frame_times_overflow_is_refused_not_a_crash():
+    """Frame times of +-1.7e308 increase but their step overflows: no usable frame rate, an AnalysisError
+    (the API answers 400 with it), never a ZeroDivisionError."""
+    doc = json.loads(EXPECTED.read_text())
+    doc.pop("fps", None)
+    doc["frames"] = doc["frames"][:3]
+    for frame, t in zip(doc["frames"], (-1.7e308, 0.0, 1.7e308)):
+        frame["t"] = t
+    with pytest.raises(AnalysisError, match="no usable frame rate"):
+        run({"path": "upload:expected", "doc": doc}, str(TAKE))
+
+
+def test_a_pair_too_long_to_compare_together_is_refused_before_resampling(monkeypatch):
+    """Each clip under MAX_FRAMES, but expected x follower frames over MAX_CELLS: refused, since the
+    alignment's cost arrays grow with that product (delivery review residual 1)."""
+    from part5.pipeline import MAX_CELLS, MAX_FRAMES
+    exp = json.loads(EXPECTED.read_text())
+    n = 2100  # 2100 x 2100 frame pairs is over MAX_CELLS while each clip is under MAX_FRAMES
+    assert n < MAX_FRAMES and n * n > MAX_CELLS
+    frames = exp["frames"]
+    exp["frames"] = [dict(frames[i % len(frames)], index=i, t=i / exp["fps"]) for i in range(n)]
+    called = []
+    monkeypatch.setattr("part5.pipeline.resample", lambda *args: called.append(args))
+    with pytest.raises(AnalysisError, match="too long to compare together"):
+        run({"path": "upload:expected", "doc": exp}, _follower_over((n - 1) / exp["fps"]))
+    assert called == []
+
+
+def test_one_analysis_of_a_300_frame_pair_is_well_under_two_seconds():
+    """The master spec's NFR (Performance: one analysis under 2 s on a 300-frame take)."""
+    import time
+    doc = json.loads(TAKE.read_text())
+    frames = doc["frames"]
+    doc["frames"] = [dict(frames[i % len(frames)], t=i / 30) for i in range(300)]
+    start = time.perf_counter()
+    run(str(EXPECTED), {"path": "upload:follower", "doc": doc})
+    assert time.perf_counter() - start < 2.0

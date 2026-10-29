@@ -34,6 +34,11 @@ export function getSamples() {
   return request("api/samples");
 }
 
+// The report on real takes (AC-V09). A server without it answers 503 with a plain message.
+export function getRealTakes() {
+  return request("api/real-takes");
+}
+
 export function analyse(expected, follower, phrasing = "template") {
   return request("api/analyse", {
     method: "POST",

@@ -10,6 +10,7 @@ reads the files only; no Part 2 or Part 3 code is imported or copied.
 | `part2-class/` | `fixtures/output/class/pose3d.json` | 89, 5 | Yoga class doing cat-cow, 7 people (Part 3 keeps one) | yes |
 | `part2-dance/` | `fixtures/output/dance/pose3d.json` | 79, 5 | Dancers crossing and swapping places, camera pans | yes |
 | `part2-single/` | `fixtures/output/single/pose3d.json` | 107, 15 | Two barbell back squats (provisional, see below) | no, a matched squat pair |
+| `part2-stretch/` | `fixtures/output/scored/single/pose3d.json` (Part 2 `1f2adc5`, sha256 `dfb1d3fda718c1203563d03c42da9425a45b164f603ee48873ee79bab331663d`) | 111, 5 | Seated cross-legged stretches (Pexels 6019962), the clip Part 2's single input names | yes, reported only (added after the held-out freeze, so the guard is not retuned for it) |
 
 ## Where they came from
 
@@ -44,3 +45,13 @@ population; after it, the result is reported without retuning.
 compared with (`fixtures/input/expected/part3-squat/animation.json`). `python -m part5.calibrate --guard`
 reads it, prints the `single` exclusion with the reason above, and exits 2 naming a file that is missing.
 When `single` becomes a mismatch, change its `population` there and replace its `skeleton.json`.
+
+## The seated stretch (added 2026-10-29, after the held-out freeze)
+
+Part 2 published the seated stretch as `fixtures/output/scored/single/pose3d.json` at upstream
+`1f2adc5` (IECB `iem-20261029T071053Z-simon-part-2-25a8`) and keeps `fixtures/output/single/` as the
+team's provisional squat. `part2-stretch/skeleton.json` is that file through Part 3 `65a5aad` with the
+command above, in a temporary clone, as a black box (exit 0). Against `part3-squat` it is refused
+(`part5 analyse` exit 3: residual 0.7159, timing_corr 0.1318, span_share 0.3676). It joins the
+mismatch takes that are reported (the neighbour check and `make report-real`); the guard limits were
+frozen before it existed and are not retuned for it (stakeholder-proxy decision, STATUS.md).

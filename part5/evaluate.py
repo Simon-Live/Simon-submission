@@ -10,14 +10,16 @@ Predicted faults are `analysis.json` fault objects (see docs/schemas.md); labels
 
 Two edges of the one-way `both` rule, so nobody is surprised later: a `both` label satisfied
 by a left-only prediction does not count the missed right side (lenient), while a `both`
-prediction against a one-sided label scores 0 — an FP and an FN — even though detection only
+prediction against a one-sided label scores 0 (an FP and an FN) even though detection only
 emits `both` when both sides fired (harsh). Changing either is a rule change, not a bug fix.
 
 This module only scores; producing the analyses over a corpus is #10/#14's job, and the
 thresholds that gate `make check-5` live in #14, not here.
 
 A take the movement guard refused (`status.code == "different_movement"`, no faults) counts in
-its slice's `refused`, and its labels score as misses. Takes labelled `variant: "dropout"` are
+its slice's `refused`, and its labels score as misses. A refused take with no labels (a correct
+take) is a wrong verdict, so it counts once in `faults_on_correct_takes`: refusing a correct take
+must not satisfy the "no faults on correct takes" rule. Takes labelled `variant: "dropout"` are
 scored in their own `dropout/<angle>` slices so they never mix into the lighting slices.
 """
 
@@ -70,8 +72,8 @@ def matches(pred, label):
     return ls == "both" or pred.get("side") == ls
 
 
-def match_faults(predicted, labels):
-    """Maximum one-to-one matching. Returns (tp, matched_pred_idx, matched_label_idx)."""
+def match_pairs(predicted, labels):
+    """Maximum one-to-one matching as {label index: prediction index}."""
     adj = [[j for j, lab in enumerate(labels) if matches(p, lab)] for p in predicted]
     owner = [-1] * len(labels)  # label j -> prediction index
 
@@ -87,9 +89,13 @@ def match_faults(predicted, labels):
 
     for i in range(len(predicted)):
         augment(i, [False] * len(labels))
-    matched_labels = {j for j, i in enumerate(owner) if i != -1}
-    matched_preds = {i for i in owner if i != -1}
-    return len(matched_labels), matched_preds, matched_labels
+    return {j: i for j, i in enumerate(owner) if i != -1}
+
+
+def match_faults(predicted, labels):
+    """Maximum one-to-one matching. Returns (tp, matched_pred_idx, matched_label_idx)."""
+    pairs = match_pairs(predicted, labels)
+    return len(pairs), set(pairs.values()), set(pairs)
 
 
 DROPOUT = "dropout"
@@ -106,6 +112,16 @@ def _group(record):
     return lighting, f"{lighting}/{record['angle']}"
 
 
+def slice_name(record):
+    """The slice a labelled take or score record is counted in, e.g. "good/side" or "dropout/45"."""
+    return _group(record)[1]
+
+
+def is_refused(analysis):
+    """Did the movement guard refuse this analysis document?"""
+    return (analysis.get("status") or {}).get("code") == REFUSED_CODE
+
+
 def _finalise(s):
     """Add precision/recall. An empty denominator scores 1.0 (nothing predicted/labelled,
     nothing wrong); it never hides misses, which live in the other ratio."""
@@ -113,6 +129,11 @@ def _finalise(s):
     s["precision"] = round(s["tp"] / (s["tp"] + s["fp"]), 4) if s["tp"] + s["fp"] else 1.0
     s["recall"] = round(s["tp"] / (s["tp"] + s["fn"]), 4) if s["tp"] + s["fn"] else 1.0
     return s
+
+
+def _wrong_verdicts(predicted, refused):
+    """What a correct take is charged: each fault listed on it, or one for the refusal."""
+    return 1 if refused else len(predicted)
 
 
 def score(records):
@@ -123,7 +144,8 @@ def score(records):
     Returns the metrics document (JSON-ready): one entry per lighting × angle slice
     (`dropout/<angle>` for dropout takes), per-lighting aggregates, the good-light aggregate
     #14 gates on, and the overall line. A refused take has no predictions, so its labels are
-    misses, and it is counted in `refused`.
+    misses, and it is counted in `refused`; a refused correct take also counts once in
+    `faults_on_correct_takes`.
     """
     slices, by_lighting, overall = {}, {}, _blank()
     for r in records:
@@ -132,7 +154,7 @@ def score(records):
         tp, _, _ = match_faults(predicted, labels)
         counts = {"tp": tp, "fp": len(predicted) - tp, "fn": len(labels) - tp, "takes": 1,
                   "correct_takes": 1 if not labels else 0,
-                  "faults_on_correct_takes": len(predicted) if not labels else 0,
+                  "faults_on_correct_takes": _wrong_verdicts(predicted, refused) if not labels else 0,
                   "refused": 1 if refused else 0}
         lighting, key = _group(r)
         for bucket in (slices.setdefault(key, _blank()),
@@ -162,7 +184,7 @@ def records_from_corpus(labels_doc, analyses_by_take_id, allow_missing=False):
         records.append({"predicted": analysis.get("faults", []), "labels": take["faults"],
                         "lighting": take["lighting"], "angle": take["angle"],
                         "correct": take["correct"], "variant": take.get("variant"),
-                        "refused": analysis.get("status", {}).get("code") == REFUSED_CODE})
+                        "refused": is_refused(analysis)})
     return records
 
 

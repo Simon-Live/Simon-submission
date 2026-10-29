@@ -25,7 +25,7 @@ ID_BASE = "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/"
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 # Commits of the neighbours whose files the Part 2 and Part 6 rows were checked against: the heads
 # that scripts/neighbour-check.sh recorded. Parts 3 and 4 come from contracts/sources.lock.json.
-NEIGHBOUR_COMMITS = {"part2": "b45a91d", "part6": "fc3249a"}
+NEIGHBOUR_COMMITS = {"part2": "1f2adc5", "part6": "fc3249a"}
 TABLE_COLUMNS = ("Producer", "File", "format", "Part 5 role", "Verdict", "Fix", "Checked against")
 TABLE_KEYS = ("producer", "file", "format", "part5_role", "verdict", "fix", "checked_against")
 HANDOFF_FILE = "`{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}`"

@@ -2,11 +2,8 @@
 docs/thresholds.md. Small subsets of the committed seed 5 takes keep these fast; no held-out seed is read."""
 import json
 import shutil
-import sys
-import types
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from part5 import calibrate
@@ -27,25 +24,6 @@ def subset(tmp_path, keep=KEEP, prefixes=("exercise_front_good_", "dance_front_g
     d.mkdir(exist_ok=True)
     (d / "labels.json").write_text(json.dumps({**LABELS, "seed": seed, "takes": takes}))
     return d
-
-
-def fake_guard(monkeypatch):
-    """A stand-in for part5.guard.movement_stats (the guard lane provides the real one)."""
-    mod = types.ModuleType("part5.guard")
-
-    def movement_stats(alignment, exp_m, fol_m):
-        j, cors = alignment.exp_to_fol, []
-        for name in alignment.measures:
-            e, f = np.asarray(exp_m[name]), np.asarray(fol_m[name])[j]
-            ok = np.isfinite(e) & np.isfinite(f)
-            if ok.sum() > 3 and e[ok].std() > 0 and f[ok].std() > 0:
-                cors.append(float(np.corrcoef(e[ok], f[ok])[0, 1]))
-        start, end = alignment.follower_span
-        return {"residual": float(alignment.residual), "timing_corr": float(np.median(cors)),
-                "span_share": (end - start + 1) / len(fol_m["left_knee_flexion"])}
-
-    mod.movement_stats = movement_stats
-    monkeypatch.setitem(sys.modules, "part5.guard", mod)
 
 
 def run(capsys, *args):
@@ -189,20 +167,11 @@ def test_the_sweep_does_not_touch_rules_json(tmp_path, capsys):
 
 
 # ----------------------------------------------------------------- the guard
-def test_guard_without_movement_stats_exits_2_with_a_plain_message(tmp_path, capsys, monkeypatch):
-    monkeypatch.setitem(sys.modules, "part5.guard", None)  # an import of it now fails
-    code, out, err = run(capsys, "--set", str(subset(tmp_path)), "--guard", *SWEEP_ARGS)
-    assert code == 2 and out == ""
-    assert err.strip() == ("calibrate: part5.guard.movement_stats is missing; the guard (TICKET-015) "
-                           "provides it, so --guard can't run yet")
-
-
 def test_guard_prints_both_populations_the_limits_and_the_single_exclusion(tmp_path, capsys, monkeypatch):
-    fake_guard(monkeypatch)
     code, out, err = run(capsys, "--set", str(subset(tmp_path, SMALL_KEEP)), "--guard", "--only", "foot_out", "--radius", "1")
     assert code == 0, err
     assert "== movement guard ==" in out and "matched: 6 pairs" in out
-    assert "mismatch: 8 pairs" in out  # 6 exercise vs dance and dance vs exercise, plus Part 2 class and dance
+    assert "mismatch: 9 pairs" in out  # 6 exercise vs dance and dance vs exercise, plus Part 2 class, dance, stretch
     for stat in calibrate.GUARD_STATS:
         assert stat in out
     assert "excluded from the mismatch population: part2-single (provisional barbell back squat" in out
@@ -238,14 +207,12 @@ def test_the_limit_rounds_so_that_a_matched_edge_still_passes():
 
 
 def test_a_missing_mismatch_manifest_exits_2_with_the_plain_message(tmp_path, capsys, monkeypatch):
-    fake_guard(monkeypatch)
     monkeypatch.setattr(calibrate, "MISMATCH_DIR", tmp_path / "no-mismatch")
     code, out, err = run(capsys, "--set", str(subset(tmp_path, KEEP[:2])), "--guard", "--only", "foot_out", "--radius", "1")
     assert code == 2 and "manifest.json missing; run the neighbour check or TICKET-015 fixtures" in err
 
 
 def test_a_missing_mismatch_skeleton_exits_2_naming_the_file(tmp_path, capsys, monkeypatch):
-    fake_guard(monkeypatch)
     copy = tmp_path / "mismatch"
     shutil.copytree(ROOT / "fixtures/input/mismatch", copy)
     (copy / "part2-class" / "skeleton.json").unlink()
@@ -255,7 +222,6 @@ def test_a_missing_mismatch_skeleton_exits_2_naming_the_file(tmp_path, capsys, m
 
 
 def test_single_joins_the_mismatch_population_when_the_manifest_says_it_is_a_stretch(tmp_path, capsys, monkeypatch):
-    fake_guard(monkeypatch)
     copy = tmp_path / "mismatch"
     shutil.copytree(ROOT / "fixtures/input/mismatch", copy)
     doc = json.loads((copy / "manifest.json").read_text())
@@ -264,7 +230,7 @@ def test_single_joins_the_mismatch_population_when_the_manifest_says_it_is_a_str
     monkeypatch.setattr(calibrate, "MISMATCH_DIR", copy)
     code, out, err = run(capsys, "--set", str(subset(tmp_path, SMALL_KEEP)), "--guard", "--only", "foot_out", "--radius", "1")
     assert code == 0, err
-    assert "mismatch: 9 pairs" in out and "excluded from the mismatch population" not in out
+    assert "mismatch: 10 pairs" in out and "excluded from the mismatch population" not in out
 
 
 # ----------------------------------------------------------------- docs/thresholds.md
@@ -286,7 +252,6 @@ def test_write_thresholds_creates_the_file_with_an_attempts_marker(tmp_path):
 
 
 def test_write_thresholds_flag_writes_the_chosen_values_the_guard_and_the_statement(tmp_path, capsys, monkeypatch):
-    fake_guard(monkeypatch)
     doc = tmp_path / "thresholds.md"
     monkeypatch.setattr(calibrate, "THRESHOLDS_DOC", doc)
     code, out, err = run(capsys, "--set", str(subset(tmp_path, SMALL_KEEP)), "--guard", "--write-thresholds",
@@ -312,7 +277,7 @@ def test_the_committed_skeleton_has_the_sections_and_the_attempts_marker():
 def test_the_mismatch_fixtures_and_their_provenance_are_committed():
     base = ROOT / "fixtures/input/mismatch"
     manifest = json.loads((base / "manifest.json").read_text())["fixtures"]
-    assert sorted(manifest) == ["part2-class", "part2-dance", "part2-single"]
+    assert sorted(manifest) == ["part2-class", "part2-dance", "part2-single", "part2-stretch"]
     for name, entry in manifest.items():
         assert (base / name / "skeleton.json").is_file() and (ROOT / entry["against"]).is_file()
     assert manifest["part2-single"]["population"] == "matched_reference"

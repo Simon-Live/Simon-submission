@@ -35,6 +35,7 @@ from .align import align
 from .check import MIN_PRECISION, MAX_FAULTS_ON_CORRECT, rel
 from .detect import RULES_PATH, detect, load_rules
 from .evaluate import matches, score
+from .guard import movement_stats
 from .io import load_clip
 from .measures import compute
 from .normalise import normalise
@@ -58,7 +59,7 @@ GUARD_STATS = ("residual", "timing_corr", "span_share")
 
 
 class CalibrateError(Exception):
-    """Calibration can't run (exit 2): a refused set, a missing fixture or a missing guard."""
+    """Calibration can't run (exit 2): a refused set or a missing fixture."""
 
 
 # --- loading and caching ---
@@ -88,6 +89,7 @@ class Clips:
         """(expected measures, follower measures on the expected clock, alignment)."""
         exp, exp_m = self.expected(expected_path)
         fol = normalise(self._load(str(follower_path)))
+        # No availability or frame-count check as in pipeline.run: calibration reads committed fixtures only.
         positions, _ = resample(fol.positions, fol.t, clip_fps(exp))
         return exp_m, compute(positions), align(exp.positions, positions)
 
@@ -325,15 +327,6 @@ def type_lines(hits):
 
 
 # --- the guard (ADR-0004) ---
-def movement_stats_fn():
-    try:
-        from .guard import movement_stats
-    except (ImportError, AttributeError) as e:
-        raise CalibrateError("calibrate: part5.guard.movement_stats is missing; the guard (TICKET-015) "
-                             "provides it, so --guard can't run yet") from e
-    return movement_stats
-
-
 def manifest(directory=None):
     path = Path(directory or MISMATCH_DIR) / "manifest.json"
     if not path.is_file():
@@ -501,7 +494,7 @@ def calibrate(labels, rules, guard=False, only=None, radius=None, mismatch_dir=N
     """Run the sweep (and the guard). Returns (stdout lines, thresholds.md text)."""
     clips = Clips()
     prepared = prepare_set(labels, clips)
-    stats_fn = movement_stats_fn() if guard else None
+    stats_fn = movement_stats if guard else None
     results, final = run_sweep(prepared, rules, only, radius)
     metrics = evaluate(prepared, final)
     hits = recall_by_type(prepared, final)

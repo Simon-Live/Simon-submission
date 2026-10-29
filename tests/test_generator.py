@@ -58,11 +58,9 @@ def test_knee_valgus_helper_follows_the_master_spec_formula():
                 assert gen.knee_valgus(f, side) == pytest.approx(valgus_reference(f, side), abs=1e-9)
 
 
-def test_generator_valgus_agrees_with_the_part5_measure_once_it_exists():
+def test_generator_valgus_agrees_with_the_part5_measure():
     positions = np.array([[f[j] for j in JOINTS] for f in expected_frames()])
     measures = compute(positions)
-    if "left_knee_valgus" not in measures:
-        pytest.skip("part5.measures has no knee_valgus yet")
     frames = expected_frames()
     for side in ("left", "right"):
         want = [gen.knee_valgus(f, side) for f in frames]

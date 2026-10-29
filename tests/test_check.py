@@ -157,10 +157,20 @@ class World:
         return code, out, err
 
 
+RULES_SHA = hashlib.sha256((ROOT / "part5/rules.json").read_bytes()).hexdigest()
+
+
+def freeze_section(seed, sha=RULES_SHA):
+    return f"## Attempt 1: seed {seed}\nFreeze commit: `abc1234`\nrules_sha256: `{sha}`\nApproach family: rule maths\n"
+
+
 def world(tmp_path, monkeypatch, seed=29, held=None, tuning=None):
+    """A temp world whose docs/thresholds.md freezes the real rules.json for `seed`, unless the test wrote its own."""
     w = World(tmp_path, monkeypatch)
     w.add("heldout", seed, *(held or green("h")))
     w.add("followers", 5, *(tuning or green("t", dropout=False)))
+    if not (tmp_path / "thresholds.md").exists():
+        (tmp_path / "thresholds.md").write_text(freeze_section(seed))
     return w
 
 
@@ -249,6 +259,16 @@ def test_ac_k04_refusals_that_pull_recall_under_the_bar_fail_through_recall_only
     assert doc["report"]["refusals"]["good/side"] == 2
 
 
+def test_ac_k04_a_refused_correct_take_is_a_fault_on_a_correct_take_and_fails_the_gate(tmp_path, monkeypatch, capsys):
+    takes, analyses = green("h")
+    correct = next(t["take_id"] for t in takes if t["correct"] and (t["angle"], t["lighting"]) == ("45", "good"))
+    analyses[correct] = {"faults": [], "status": {"code": "different_movement"}}
+    code, out, _ = world(tmp_path, monkeypatch, held=(takes, analyses)).run(capsys)
+    doc = json.loads(out)
+    assert code == 1 and doc["gate"]["failures"] == ["good/45: 1 fault(s) on correct takes"]
+    assert doc["gate"]["metrics"]["slices"]["good/45"]["refused"] == 1
+
+
 def test_ac_k05_stdout_is_one_json_document_that_validates(tmp_path, monkeypatch, capsys):
     code, out, err = world(tmp_path, monkeypatch).run(capsys)
     doc = json.loads(out)  # the whole of stdout parses: nothing else was printed there
@@ -264,9 +284,8 @@ def test_ac_k06_two_runs_are_byte_identical(tmp_path, monkeypatch, capsys):
 
 
 def test_ac_k07_names_the_tuning_seed_the_gate_seed_and_the_rules(tmp_path, monkeypatch, capsys):
-    sha = hashlib.sha256((ROOT / "part5/rules.json").read_bytes()).hexdigest()
-    (tmp_path / "thresholds.md").write_text(
-        f"## Attempt 1: seed 29\nFreeze commit: `abc1234`\nrules_sha256: `{sha}`\nApproach family: rule maths\n")
+    sha = RULES_SHA
+    (tmp_path / "thresholds.md").write_text(freeze_section(29))
     code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
     doc = json.loads(out)
     assert doc["tuning"]["seed"] == 5 and doc["tuning"]["set"].endswith("followers")
@@ -276,10 +295,35 @@ def test_ac_k07_names_the_tuning_seed_the_gate_seed_and_the_rules(tmp_path, monk
     assert "warning" not in err
 
 
-def test_ac_k07_warns_when_rules_changed_after_the_freeze(tmp_path, monkeypatch, capsys):
-    (tmp_path / "thresholds.md").write_text(f"## Attempt 1: seed 29\nrules_sha256: `{'0' * 64}`\n")
+def test_ac_k07_exits_2_when_rules_changed_after_the_freeze(tmp_path, monkeypatch, capsys):
+    (tmp_path / "thresholds.md").write_text(freeze_section(29, sha="0" * 64))
     code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
-    assert code == 0 and "warning: part5/rules.json differs from the hash frozen for seed 29" in err
+    assert code == 2 and out == ""
+    assert "part5/rules.json differs from the hash frozen for seed 29 in docs/thresholds.md" in err
+    assert not (tmp_path / "out/metrics.json").exists()
+
+
+def test_ac_k07_exits_2_when_the_current_seed_has_no_freeze_record(tmp_path, monkeypatch, capsys):
+    # A record for another seed does not freeze this one; neither does a section without a hash.
+    for text in (freeze_section(31), "## Attempt 1: seed 29\nFreeze commit: `abc1234`\n", ""):
+        (tmp_path / "thresholds.md").write_text(text)
+        code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
+        assert code == 2 and out == ""
+        assert "docs/thresholds.md has no freeze record (rules_sha256) for seed 29" in err
+
+
+def test_ac_k07_exits_2_when_thresholds_md_is_missing(tmp_path, monkeypatch, capsys):
+    w = world(tmp_path, monkeypatch, seed=29)
+    (tmp_path / "thresholds.md").unlink()
+    code, out, err = w.run(capsys)
+    assert code == 2 and out == "" and "no freeze record" in err
+
+
+def test_ac_k07_an_attempts_entry_does_not_stand_in_for_the_freeze_record(tmp_path, monkeypatch, capsys):
+    w = world(tmp_path, monkeypatch, seed=29)
+    (tmp_path / "thresholds.md").write_text("")
+    w.attempts([{**recorded(29, True), "rules_sha256": RULES_SHA}])
+    assert w.run(capsys)[0] == 2
 
 
 def test_ac_k07_gate_seed_is_read_from_the_labels_for_each_held_out_seed(tmp_path, monkeypatch, capsys):
@@ -376,11 +420,21 @@ def test_ac_k09_a_green_then_a_red_attempt_exits_1(tmp_path, monkeypatch, capsys
 
 def test_ac_k09_rerunning_the_current_set_lists_it_once_and_keeps_its_freeze_commit(tmp_path, monkeypatch, capsys):
     w = world(tmp_path, monkeypatch, seed=29)
-    w.attempts([recorded(29, False, commit="feedbee")])
+    _, first, _ = w.run(capsys)
+    slices = json.loads(first)["gate"]["metrics"]["slices"]
+    w.attempts([{**recorded(29, True, commit="feedbee"), "slices": slices}])
     code, out, _ = w.run(capsys)
     doc = json.loads(out)
     assert code == 0 and len(doc["attempts"]) == 1
     assert doc["attempts"][0]["freeze_commit"] == "feedbee" and doc["attempts"][0]["passed"] is True
+
+
+def test_a_scored_seed_that_scores_differently_from_its_record_exits_2(tmp_path, monkeypatch, capsys):
+    """ADR-0003: a retired seed is only verified; changed scores mean scoring changed after the freeze."""
+    w = world(tmp_path, monkeypatch, seed=29)
+    w.attempts([recorded(29, True, commit="feedbee")])  # its slices differ from this world's scores
+    code, out, err = w.run(capsys)
+    assert code == 2 and out == "" and "scores differently from its recorded attempt" in err and "good/45" in err
 
 
 def test_a_retired_seed_is_refused(tmp_path, monkeypatch, capsys):
@@ -411,11 +465,71 @@ def test_tuning_metrics_cover_the_whole_seed_5_set_and_never_gate(tmp_path, monk
 
 
 def test_kit_and_stock_blocks_are_present_and_say_why_they_are_empty(tmp_path, monkeypatch, capsys):
+    """The temp world has no real-take fixtures: the blocks stay empty, name the missing file and never fail the check."""
     code, out, _ = world(tmp_path, monkeypatch).run(capsys)
     report = json.loads(out)["report"]
-    assert report["kit"]["gated"] is False and report["kit"]["takes"] == [] and "TICKET-025" in report["kit"]["note"]
+    assert code == 0
+    assert report["kit"]["gated"] is False and report["kit"]["takes"] == []
+    assert "real-take report not available" in report["kit"]["note"] and "labels.json not found" in report["kit"]["note"]
     assert report["stock"]["gated"] is False and report["stock"]["takes"] == [] and report["stock"]["note"]
     assert report["stock"]["source"] == "fixtures/input/eval/real"
+
+
+def test_kit_and_stock_blocks_carry_the_real_take_report(tmp_path, monkeypatch, capsys):
+    """AC-R01, AC-R03: against the repo's fixtures the blocks hold the 15 kit takes, the stock takes and
+    Part 2's takes (the fallback set alone, without stock, is tested in tests/test_real.py)."""
+    real_root = Path(check.__file__).resolve().parent.parent
+    blocks = check.real_blocks(real_root)
+    kit, stock = blocks["kit"], blocks["stock"]
+    assert kit["gated"] is False and stock["gated"] is False
+    assert kit["source"] == "Part 3 conformance kit" and stock["source"] == "fixtures/input/eval/real"
+    assert len(kit["takes"]) == 15 and {t["source"] for t in kit["takes"]} == {"part3-kit"}
+    assert set(kit["summary"]["by_type"]) == {"feet_wide", "elbows_out", "shallow_squat", "knee_caving", "correct"}
+    ids = [t["take_id"] for t in stock["takes"]]
+    assert ids[-4:] == ["part2-class", "part2-dance", "part2-single", "part2-stretch"]
+    assert {t["source"] for t in stock["takes"][:-4]} == {"stock"} and len(ids) > 4
+    assert all(t["label_source"] == "visual" for t in stock["takes"][:-4])
+    report = {"low_light": {"gated": False}, "dropout": {"gated": False}, **blocks, "refusals": {}}
+    assert [e.message for e in jsonschema.Draft202012Validator(SCHEMA["properties"]["report"]).iter_errors(report)] == []
+
+
+def test_ac_r05_every_real_take_missed_still_exits_on_the_gate_alone(tmp_path, monkeypatch, capsys):
+    """Every kit label missed and a Part 2 mismatch take accepted: the gate is green, so exit 0."""
+    missed = {"labels": [{"type": "feet_wide"}], "matched": [], "missed": [{"type": "feet_wide"}], "faults": [],
+              "unlabelled": [], "status": "ok", "guard": {}}
+    report = {"gated": False, "takes": [
+        {"take_id": "kit-a", "source": "part3-kit", **missed},
+        {"take_id": "part2-class", "source": "part2-fallback", "expected_refusal": True, "refused_as_expected": False,
+         **missed}],
+        "summary": {"kit": {"tp": 0, "fp": 0, "fn": 1}, "stock": {"tp": 0, "fp": 0, "fn": 0},
+                    "part2": {"expected_refusals": 1, "refused_as_expected": 0, "matched_references": 0}},
+        "notes": ["kit: all missed", "stock: nothing"]}
+    monkeypatch.setattr(check.real, "build_report", lambda root=None: report)
+    w = world(tmp_path, monkeypatch)
+    code, out, err = w.run(capsys)
+    doc = json.loads(out)
+    assert code == 0 and doc["gate"]["passed"] is True and err.strip().splitlines()[-1] == "check-5: PASS"
+    assert errors_of(doc) == []
+    assert doc["report"]["kit"]["takes"][0]["missed"] and doc["report"]["kit"]["gated"] is False
+    assert doc["report"]["stock"]["takes"][0]["refused_as_expected"] is False
+
+
+def test_ac_r05_a_failing_real_report_leaves_the_gate_to_decide(tmp_path, monkeypatch, capsys):
+    def broken(root=None):
+        raise check.real.RealError(["report-real: squat_front_correct: some/file.json not found"])
+
+    monkeypatch.setattr(check.real, "build_report", broken)
+    code, out, _ = world(tmp_path, monkeypatch).run(capsys)
+    report = json.loads(out)["report"]
+    assert code == 0 and report["kit"]["takes"] == [] and report["stock"]["takes"] == []
+    assert "squat_front_correct: some/file.json not found" in report["kit"]["note"]
+    assert errors_of(json.loads(out)) == []
+
+
+def test_ac_r05_a_red_gate_still_fails_with_real_blocks_present(tmp_path, monkeypatch, capsys):
+    held = green("h", {("45", "good", "clean"): {"extra": 1}})
+    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
+    assert code == 1 and json.loads(out)["gate"]["failures"] == ["good/45: precision 0.8 is below 0.85"]
 
 
 def test_data_source_says_the_gate_is_synthetic(tmp_path, monkeypatch, capsys):
@@ -481,7 +595,9 @@ def test_the_committed_thresholds_record_exactly_the_scored_attempts():
 
 # ----------------------------------------------------------------- AC-K-NFR-01
 def test_nfr_the_real_pipeline_runs_offline_with_sockets_blocked(tmp_path, monkeypatch, capsys):
-    """Real analyse on one seed 5 cell, used as both sets (relabelled 29 here, in a temp dir only)."""
+    """AC-NFR-001 and AC-K-NFR-01 (offline; the full make check-5 measures about 8 s on this host, the
+    bound is 10 minutes): real analyse on one seed 5 cell, used as both sets (relabelled 29 here, in a
+    temp dir only)."""
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     cell_takes = [t for t in labels["takes"] if t["take_id"].startswith("exercise_front_good_")]
     assert len(cell_takes) == 9
@@ -493,9 +609,10 @@ def test_nfr_the_real_pipeline_runs_offline_with_sockets_blocked(tmp_path, monke
         (tmp_path / name).mkdir()
         (tmp_path / name / "labels.json").write_text(json.dumps({**labels, "seed": seed, "takes": cell_takes}))
     for attr, path in (("ROOT", tmp_path), ("HELDOUT", tmp_path / "heldout"), ("TUNING", tmp_path / "followers"),
-                       ("ATTEMPTS", tmp_path / "none.json"), ("THRESHOLDS_DOC", tmp_path / "none.md"),
+                       ("ATTEMPTS", tmp_path / "none.json"), ("THRESHOLDS_DOC", tmp_path / "thresholds.md"),
                        ("OUT_DIR", tmp_path / "out")):
         monkeypatch.setattr(check, attr, path)
+    (tmp_path / "thresholds.md").write_text(freeze_section(29))
 
     def no_network(*a, **k):
         raise AssertionError("check-5 opened a socket")

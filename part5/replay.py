@@ -12,9 +12,10 @@ from .pipeline import clip_fps
 DECIMALS = 4
 
 # Joint-name pairs the viewer draws as bones. The torso sides stand in for the spine, which has
-# no joint of its own among the 17.
+# no joint of its own among the 17, and the nose to each shoulder stands in for the neck.
 BONE_NAMES = [
     ("nose", "left_eye"), ("nose", "right_eye"), ("left_eye", "left_ear"), ("right_eye", "right_ear"),
+    ("nose", "left_shoulder"), ("nose", "right_shoulder"),
     ("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"),
     ("left_shoulder", "left_hip"), ("right_shoulder", "right_hip"),
     ("left_shoulder", "left_elbow"), ("left_elbow", "left_wrist"),

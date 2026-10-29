@@ -27,6 +27,13 @@ MIN_SPAN_SHARE = 0.6
 MIN_AVAILABLE = 0.5
 # Frame rates closer than this are treated as equal; otherwise the follower is resampled.
 FPS_TOLERANCE = 0.01
+# Work is bounded before the follower is resampled (docs/specs/staging.md): at most this many
+# frames per clip once on the expected clip's clock, and no expected clip faster than MAX_FPS.
+MAX_FRAMES = 6000
+MAX_FPS = 240
+# The alignment builds expected x follower cost arrays per timing measure, so the pair is bounded
+# too: 4,000,000 cells (about 2000 x 2000 frames) keeps one analysis near 1 GB at its peak.
+MAX_CELLS = 4_000_000
 
 
 PHRASING_BACKENDS = tuple(BACKENDS)
@@ -77,7 +84,8 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     fol_ref.pop("doc", None)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
     # `to_original` maps each resampled frame back to the follower file's own frame index.
-    fol_positions, to_original = resample(fol.positions, fol.t, clip_fps(exp))
+    fps = _bounded_fps(exp, exp_ref, fol, fol_ref)
+    fol_positions, to_original = resample(fol.positions, fol.t, fps)
     exp_m, fol_m = compute(exp.positions), compute(fol_positions)
     for ref, m in ((exp_ref, exp_m), (fol_ref, fol_m)):
         available = np.mean([np.isfinite(m[n]).mean() for n in ALIGN_MEASURES])
@@ -125,6 +133,32 @@ def clip_fps(clip):
     return 1.0 / float(np.median(steps)) if len(steps) else 1.0
 
 
+def resampled_length(t, fps):
+    """How many frames `resample` puts on the `fps` grid over `t` (a float, so a huge span can't overflow)."""
+    if len(t) < 2:
+        return float(len(t))
+    return float(np.floor((float(t[-1]) - float(t[0])) * fps + 1e-9)) + 1
+
+
+def _bounded_fps(exp, exp_ref, fol, fol_ref):
+    """The expected clip's frame rate, after refusing work no honest clip needs: a frame rate over
+    MAX_FPS, or a follower that would be longer than MAX_FRAMES once resampled to it."""
+    fps = clip_fps(exp)
+    if not (np.isfinite(fps) and fps > 0):
+        raise AnalysisError(f"{exp_ref['path']}: frame times give no usable frame rate ({fps!r})")
+    if fps > MAX_FPS:
+        raise AnalysisError(f"{exp_ref['path']}: {fps:g} frames per second, the limit is {MAX_FPS}")
+    frames = resampled_length(fol.t, fps)
+    if frames > MAX_FRAMES:
+        raise AnalysisError(f"{fol_ref['path']}: {frames:.0f} frames at the example's {fps:g} frames per "
+                            f"second ({float(fol.t[-1]) - float(fol.t[0]):g} s), the limit is {MAX_FRAMES}")
+    cells = frames * exp.n_frames
+    if cells > MAX_CELLS:
+        raise AnalysisError(f"{fol_ref['path']}: {frames:.0f} follower frames against {exp.n_frames} expected "
+                            f"frames are too long to compare together (the limit is {MAX_CELLS:,} frame pairs)")
+    return fps
+
+
 def resample(positions, t, fps, tolerance=FPS_TOLERANCE):
     """Linear resampling of (F, 17, 3) positions onto a uniform `fps` grid over `t`.
 
@@ -136,7 +170,7 @@ def resample(positions, t, fps, tolerance=FPS_TOLERANCE):
     steps = np.diff(t)
     if n < 2 or (np.allclose(steps, 1.0 / fps, rtol=tolerance)):
         return positions, np.arange(n)
-    grid = t[0] + np.arange(int(np.floor((t[-1] - t[0]) * fps + 1e-9)) + 1) / fps
+    grid = t[0] + np.arange(int(resampled_length(t, fps))) / fps
     hi = np.clip(np.searchsorted(t, grid, side="right"), 1, n - 1)
     lo = hi - 1
     w = ((grid - t[lo]) / (t[hi] - t[lo]))[:, None, None]

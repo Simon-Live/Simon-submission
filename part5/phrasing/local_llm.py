@@ -88,12 +88,28 @@ def chat_request(url, model, fault, *, headers, max_tokens, timeout_s, options=N
             "body": body, "timeout_s": timeout_s}
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: a request that carries an Authorization header goes to the one URL
+    chosen for it and nowhere else. The 3xx answer surfaces as an `HTTPError`, reported as "HTTP 3xx"."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def no_redirect_opener(*handlers):
+    return urllib.request.build_opener(NoRedirect, *handlers)
+
+
+_OPENER = no_redirect_opener()
+
+
 def urllib_client(request):
-    """The production client: one POST with a timeout. A non-2xx answer raises `HTTPError`."""
+    """The production client: one POST with a timeout, no redirect followed. A non-2xx answer
+    (a 3xx included) raises `HTTPError`."""
     http = urllib.request.Request(
         request["url"], data=json.dumps(request["body"]).encode(), method="POST",
         headers={"User-Agent": "part5-phrasing", **request["headers"]})
-    with urllib.request.urlopen(http, timeout=request["timeout_s"]) as response:
+    with _OPENER.open(http, timeout=request["timeout_s"]) as response:
         return HttpResult(response.status, json.loads(response.read()))
 
 
