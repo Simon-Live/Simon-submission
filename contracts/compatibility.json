@@ -1,0 +1,82 @@
+[
+  {
+    "producer_file": "pose3d.json, one person",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 3",
+    "result": "works",
+    "option": "",
+    "evidence": "Part 3 CONTRACT row for Part 2 7e11a7f; neighbour check"
+  },
+  {
+    "producer_file": "pose3d.json, several people",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 3",
+    "result": "works with option",
+    "option": "Part 3 `--person <id>` or `--all-people`, or the `pose3d_person_<id>.json` file",
+    "evidence": "Part 3 CONTRACT row"
+  },
+  {
+    "producer_file": "pose3d.json with `mirrored`",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 3",
+    "result": "works",
+    "option": "Part 3 `--flip auto` reads it",
+    "evidence": "Part 3 ADR-0005"
+  },
+  {
+    "producer_file": "pose3d.json with `provenance`, `t0_pts_ms`",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 3",
+    "result": "works",
+    "option": "",
+    "evidence": "extra keys ignored (Part 3 CONTRACT)"
+  },
+  {
+    "producer_file": "pose3d.json",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 4",
+    "result": "via Part 3",
+    "option": "Part 3 `--view part4`",
+    "evidence": "Part 4 reads Part 3's skeleton"
+  },
+  {
+    "producer_file": "pose3d.json",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 5",
+    "result": "via Part 3",
+    "option": "Part 3 `--view part5`",
+    "evidence": "Part 5 `analyse` reads skeleton.json"
+  },
+  {
+    "producer_file": "pose3d.json",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 6",
+    "result": "works with its generic reader only",
+    "option": "none; Part 6 has no Part 2 kind",
+    "evidence": "Part 6 CONTRACT \"What every reader accepts\""
+  },
+  {
+    "producer_file": "pose3d.json, tracks.json",
+    "version": "part2.pose3d/2026-10-28, part2.tracks/2026-10-28",
+    "consumer": "Part 7",
+    "result": "works",
+    "option": "",
+    "evidence": "Part 7 stitches through the files named here"
+  },
+  {
+    "producer_file": "tracks.json",
+    "version": "part2.tracks/2026-10-28",
+    "consumer": "none today",
+    "result": "n/a",
+    "option": "",
+    "evidence": "PR #47: Part 3 does not read it"
+  },
+  {
+    "producer_file": "pose3d.json, tracks.json (`t_ms`, `t0_pts_ms`)",
+    "version": "part2.pose3d/2026-10-28, part2.tracks/2026-10-28",
+    "consumer": "Part 1 (time join)",
+    "result": "works with option",
+    "option": "join on `t_ms` when both sides count from the first decoded frame; when `t0_pts_ms` is present and not 0, file time = `t_ms` + `t0_pts_ms`",
+    "evidence": "`frames.py` rule; `doctor` warns"
+  }
+]

@@ -24,25 +24,31 @@ CKPT_DIR = os.environ.get("SAM3D_CKPT", "/workspace/checkpoints/sam-3d-body-dino
 INTRINSICS_SAMPLES = 5
 
 
-def load_estimator():
-    """SAM 3D Body with the ViTDet person detector and MoGe-2 field-of-view estimator."""
+def load_estimator(device="cuda", repo=None, ckpt_dir=None, detector_path="", fov_path=""):
+    """SAM 3D Body with the ViTDet person detector and MoGe-2 field-of-view estimator on `device`.
+
+    repo and ckpt_dir default to SAM3D_REPO and SAM3D_CKPT. detector_path (a directory holding the ViTDet
+    checkpoint) and fov_path (MoGe-2 model.pt) default to "", the upstream downloads; the gpu backend
+    (part2/backends/gpu_sam3db.py) passes the files its profile verified.
+    """
     import torch
 
-    sys.path.insert(0, SAM3D_REPO)
+    repo, ckpt_dir = repo or SAM3D_REPO, ckpt_dir or CKPT_DIR
+    sys.path.insert(0, repo)
     cwd = os.getcwd()
-    os.chdir(SAM3D_REPO)  # upstream tools/ resolve config paths relative to the repo root
+    os.chdir(repo)  # upstream tools/ resolve config paths relative to the repo root
     try:
         from sam_3d_body import SAM3DBodyEstimator, load_sam_3d_body
         from tools.build_detector import HumanDetector
         from tools.build_fov_estimator import FOVEstimator
 
-        device = torch.device("cuda")
-        model, cfg = load_sam_3d_body(f"{CKPT_DIR}/model.ckpt", device=device, mhr_path=f"{CKPT_DIR}/assets/mhr_model.pt")
+        device = torch.device(device)
+        model, cfg = load_sam_3d_body(f"{ckpt_dir}/model.ckpt", device=device, mhr_path=f"{ckpt_dir}/assets/mhr_model.pt")
         return SAM3DBodyEstimator(
             sam_3d_body_model=model, model_cfg=cfg,
-            human_detector=HumanDetector(name="vitdet", device=device, path=""),
+            human_detector=HumanDetector(name="vitdet", device=device, path=detector_path),
             human_segmentor=None,
-            fov_estimator=FOVEstimator(name="moge2", device=device, path=""),
+            fov_estimator=FOVEstimator(name="moge2", device=device, path=fov_path),
         )
     finally:
         os.chdir(cwd)

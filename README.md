@@ -20,6 +20,8 @@ Video frames. Two modes: a one-person recording (trainer or single follower) and
 
 Canonical 17 joints (subject's left/right): nose, left_eye, right_eye, left_ear, right_ear, left_shoulder, right_shoulder, left_elbow, right_elbow, left_wrist, right_wrist, left_hip, right_hip, left_knee, right_knee, left_ankle, right_ankle. Coordinate frame: origin at the hip midpoint per frame; x = subject's left (horizontal), y = world up, z = anterior (x × y); metres and degrees. `tracks.json` shape: `{frames: [{frame, people: [{id, bbox, mask_rle, confidence}]}]}`. `pose3d.json` shape: `{frames: [{frame, t_ms, people: [{id, joints: {<joint>: {x, y, z, conf}}}]}]}`.
 
+What each field promises downstream, and the check that keeps it in sync with Part 3: `CONTRACT.md`.
+
 ## Frontier model
 
 SAM 3D Body (3D); SAM 3.1 (multi-person tracking)

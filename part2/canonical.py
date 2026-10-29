@@ -19,8 +19,9 @@ from pathlib import Path
 
 import numpy as np
 
+from part2 import contract
 from part2.joints import CANONICAL
-from part2.schema import validate_pose3d
+from part2.schema import optional_top, validate_pose3d, write_json
 
 CAMERA_UP = np.array([0.0, -1.0, 0.0])
 OUTSIDE_CONF = 0.3
@@ -49,8 +50,11 @@ def to_camera(kp_can: np.ndarray, R: np.ndarray, t: np.ndarray) -> np.ndarray:
     return kp_can @ R.T + t
 
 
-def convert(body3d: dict, smooth: bool = False) -> tuple[dict, dict]:
-    """Return (pose3d, camera) documents for a body3d.json document."""
+def convert(body3d: dict, smooth: bool = False, extras: dict | None = None) -> tuple[dict, dict]:
+    """Return (pose3d, camera) documents for a body3d.json document.
+
+    The optional top-level keys of pose3d.json (`mirrored`, `t0_pts_ms`, `provenance`) come from
+    `body3d` when a backend recorded them there, overridden by the non-None values in `extras`."""
     w, h = body3d["image_size"]
     frames = body3d["frames"]
     if smooth:
@@ -74,20 +78,26 @@ def convert(body3d: dict, smooth: bool = False) -> tuple[dict, dict]:
             cams.append({"id": p["id"], "R": np.round(R, 6).tolist(), "t": np.round(t, 5).tolist()})
         pose_frames.append({"frame": f["frame"], "t_ms": f["t_ms"], "people": people})
         cam_frames.append({"frame": f["frame"], "people": cams})
-    pose3d = {"frames": pose_frames}
+    pose3d = {"frames": pose_frames, **optional_top(body3d, extras)}
     validate_pose3d(pose3d)
     camera = {"camera_frame": body3d["camera_frame"], "world_up": "camera up (level camera assumed)", "K": body3d["K"], "image_size": body3d["image_size"],
               "frames": cam_frames}
     return pose3d, camera
 
 
-def write(body3d_path, out_dir, smooth: bool = False) -> tuple[Path, Path]:
+def write(body3d_path, out_dir, smooth: bool = False, extras: dict | None = None) -> tuple[Path, Path]:
+    pose3d, camera = convert(json.loads(Path(body3d_path).read_text()), smooth=smooth, extras=extras)
+    return write_docs(out_dir, pose3d, camera)
+
+
+def write_docs(out_dir, pose3d: dict, camera: dict) -> tuple[Path, Path]:
+    """Check both documents against the contract, then write pose3d.json and camera.json.
+    A document that breaks it raises ContractError and nothing is written."""
+    contract.validate(pose3d, "pose3d")
+    contract.validate(camera, "camera")
     out_dir = Path(out_dir)
-    pose3d, camera = convert(json.loads(Path(body3d_path).read_text()), smooth=smooth)
-    paths = out_dir / "pose3d.json", out_dir / "camera.json"
-    paths[0].write_text(json.dumps(pose3d))
-    paths[1].write_text(json.dumps(camera))
-    return paths
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return write_json(out_dir / "pose3d.json", pose3d), write_json(out_dir / "camera.json", camera)
 
 
 def project_pose3d(pose3d: dict, camera: dict) -> dict:

@@ -1,16 +1,19 @@
 """Frame ingest: a video or a directory of images -> numbered frames plus frames.json.
 
-frames.json: {"source": str, "frames": [{"frame": int, "t_ms": float, "file": str}]}
+frames.json: {"source": str, "t0_pts_ms": float (video only), "frames": [{"frame": int, "t_ms": float, "file": str}]}
 `frame` and `t_ms` are the values later written into pose3d.json / tracks.json. `frame` is
 strictly increasing but not necessarily contiguous (an image dir's own frames.json numbering
-is kept); `t_ms` is relative to the first source frame and is the real timestamp of the
-pictured frame.
+is kept); `t_ms` is relative to the first decoded source frame (`pts[k] - pts[0]`) and is the
+real timestamp of the pictured frame. `t0_pts_ms` is that first frame's own PTS in ms, copied
+into pose3d.json and tracks.json so a reader can rebase onto the file clock.
 """
 import json
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+from part2.schema import is_number, write_json
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 MANIFEST = "frames.json"
@@ -29,13 +32,20 @@ def ingest(src: Path, out_dir: Path, fps: float | None = None) -> list[dict]:
         raise ValueError(f"fps must be > 0, got {fps}")
     src, out_dir = Path(src), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    frames = _from_dir(src, out_dir, fps) if src.is_dir() else _from_video(src, out_dir, fps)
-    (out_dir / MANIFEST).write_text(json.dumps({"source": str(src), "frames": frames}, indent=1))
+    frames, t0_pts_ms = _from_dir(src, out_dir, fps) if src.is_dir() else _from_video(src, out_dir, fps)
+    manifest = {"source": str(src), **({} if t0_pts_ms is None else {"t0_pts_ms": t0_pts_ms}), "frames": frames}
+    write_json(out_dir / MANIFEST, manifest, indent=1)
     return frames
 
 
 def load(frames_dir: Path) -> list[dict]:
     return json.loads((Path(frames_dir) / MANIFEST).read_text())["frames"]
+
+
+def load_meta(frames_dir: Path) -> dict:
+    """The optional top-level keys of frames.json that pose3d.json and tracks.json copy: `t0_pts_ms`."""
+    doc = json.loads((Path(frames_dir) / MANIFEST).read_text())
+    return {k: doc[k] for k in ("t0_pts_ms",) if k in doc}
 
 
 def _clear(out_dir: Path) -> None:
@@ -53,7 +63,8 @@ def _run(cmd: list[str]) -> str:
         raise RuntimeError(f"{cmd[0]} not found; install ffmpeg") from None
 
 
-def _from_video(src: Path, out_dir: Path, fps: float | None) -> list[dict]:
+def _from_video(src: Path, out_dir: Path, fps: float | None) -> tuple[list[dict], float]:
+    """(frame records, the first decoded frame's PTS in ms)"""
     if not src.is_file():
         raise FileNotFoundError(src)
     pts = _probe_timestamps(src)
@@ -72,7 +83,7 @@ def _from_video(src: Path, out_dir: Path, fps: float | None) -> list[dict]:
             name = f"{i:06d}.jpg"
             files[k].rename(out_dir / name)
             frames.append({"frame": i, "t_ms": round((pts[k] - pts[0]) * 1000, 3), "file": name})
-    return frames
+    return frames, round(pts[0] * 1000, 3)
 
 
 def _nearest_per_step(pts: list[float], fps: float) -> list[int]:
@@ -95,13 +106,16 @@ def _probe_timestamps(src: Path) -> list[float]:
     return [float(line.strip().rstrip(",")) for line in out.splitlines() if line.strip().rstrip(",") not in ("", "N/A")]
 
 
-def _from_dir(src: Path, out_dir: Path, fps: float | None) -> list[dict]:
+def _from_dir(src: Path, out_dir: Path, fps: float | None) -> tuple[list[dict], float | None]:
+    """(frame records, `t0_pts_ms` from the directory's own frames.json, else None)"""
     images = sorted(p for p in src.iterdir() if p.suffix.lower() in IMAGE_EXTS)
     if not images:
         raise ValueError(f"no images ({', '.join(sorted(IMAGE_EXTS))}) in {src}")
-    given = src / MANIFEST
+    given, t0_pts_ms = src / MANIFEST, None
     if given.exists():
-        recs = {r["file"]: r for r in json.loads(given.read_text())["frames"]}
+        manifest = json.loads(given.read_text())
+        t0_pts_ms = manifest.get("t0_pts_ms") if is_number(manifest.get("t0_pts_ms")) else None
+        recs = {r["file"]: r for r in manifest["frames"]}
         missing = [p.name for p in images if p.name not in recs]
         if missing:
             raise ValueError(f"{given} has no entry for {missing[:3]}")
@@ -123,4 +137,4 @@ def _from_dir(src: Path, out_dir: Path, fps: float | None) -> list[dict]:
         if not in_place:
             shutil.copyfile(p, out_dir / name)
         frames.append({"frame": n, "t_ms": t, "file": name})
-    return frames
+    return frames, t0_pts_ms

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browse outputs | Simon Part 2</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-browse">
+  <header class="site-header">
+    <a class="brand" href="./"><img src="icon.svg" alt="" width="28" height="28"><span>Simon Part 2</span></a>
+    <nav id="site-nav" aria-label="Pages">
+      <a href="index.html" aria-current="page">Browse</a>
+      <a href="contract.html">Contract</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Browse outputs</h1>
+    <p class="lede">Each output is a clip the pipeline already ran. Pick one, then drag the skeleton to turn it.</p>
+
+    <div class="picker">
+      <label for="output-select">Output</label>
+      <select id="output-select" disabled></select>
+    </div>
+    <p id="source-line" class="meta"></p>
+    <p id="status" role="status" class="meta">Loading the outputs.</p>
+    <p id="alert" role="alert" class="alert" hidden></p>
+
+    <div class="panels">
+      <section class="panel picture-panel" aria-labelledby="picture-heading">
+        <h2 id="picture-heading">Picture</h2>
+        <div class="stage">
+          <img id="frame-img" alt="" hidden>
+          <p id="frame-empty" class="empty" hidden>This output has no stored pictures. The 3D skeleton plays on its own.</p>
+        </div>
+      </section>
+      <section class="panel skeleton-panel" aria-labelledby="skeleton-heading">
+        <h2 id="skeleton-heading">3D skeleton</h2>
+        <div class="stage">
+          <canvas id="viewer" role="img" aria-label="3D skeleton view" tabindex="0"></canvas>
+        </div>
+        <ul id="legend" class="legend" aria-label="People" hidden></ul>
+        <p class="hint">Drag to turn. Scroll or pinch to zoom.</p>
+      </section>
+    </div>
+
+    <div class="controls">
+      <div class="group" role="group" aria-label="Camera">
+        <button type="button" id="view-front">Front</button>
+        <button type="button" id="view-side">Side</button>
+        <button type="button" id="view-top">Top</button>
+        <button type="button" id="view-reset">Reset</button>
+      </div>
+      <div class="group scrub">
+        <button type="button" id="play-toggle">Play</button>
+        <label for="frame-slider">Frame</label>
+        <input type="range" id="frame-slider" min="0" max="0" value="0" step="1" disabled>
+        <span id="frame-info" class="meta"></span>
+      </div>
+    </div>
+  </main>
+
+  <script src="viewer.js"></script>
+  <script src="browse.js"></script>
+</body>
+</html>

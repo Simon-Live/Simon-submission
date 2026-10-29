@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-2-images-to-3d/contracts/frames.schema.json",
+  "title": "Part 2 frames.json",
+  "description": "Written by part2 frames next to the extracted images: one record per kept frame. frame and t_ms are the values later written into pose3d.json and tracks.json. t_ms counts from the first decoded frame; t0_pts_ms is that frame's own presentation time.",
+  "x-simon-version": "part2.frames/2026-10-28",
+  "x-direction": "output",
+  "x-producer": "Part 2",
+  "x-consumers": [
+    "Part 2"
+  ],
+  "type": "object",
+  "required": [
+    "frames"
+  ],
+  "properties": {
+    "source": {
+      "type": "string",
+      "description": "The video or directory the frames came from."
+    },
+    "t0_pts_ms": {
+      "type": "number",
+      "description": "Optional. The first decoded frame's presentation time in milliseconds, so a reader can rebase t_ms onto the file clock: file time = t_ms + t0_pts_ms."
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": [
+        "frame",
+        "t_ms",
+        "file"
+      ],
+      "properties": {
+        "frame": {
+          "type": "integer"
+        },
+        "t_ms": {
+          "type": "number"
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Image file name inside the frames directory."
+        }
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-.PHONY: hpc-sync hpc-setup hpc-run hpc-status hpc-outputs setup test run-single run-multi check-2 gpu-outputs gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
+.PHONY: setup-gpu smoke-gpu setup-cpu check-2-cpu contract-sync contract-check check-2-contract hpc-sync hpc-setup hpc-run hpc-status hpc-outputs setup test run-single run-multi check-2 gpu-outputs gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
 
 POD := user-part2-gpu
 INPUT ?=
@@ -9,6 +9,40 @@ setup:
 
 test:
 	uv run pytest -q
+
+# Local GPU profile gpu-cu128 (torch 2.8 cu128 for the RTX 5090; docs/specs/backends-gpu-cpu.md). The team's
+# torch 2.5.1 profile for k3s and HPC (k8s/, hpc/) is separate and unchanged.
+GPU_PY := $(HOME)/.local/state/simon-part-2/venvs/gpu-cu128/bin/python
+
+setup-gpu:
+	bash envs/gpu-cu128/setup.sh
+
+smoke-gpu:
+	$(GPU_PY) -m part2.backends gpu --smoke
+
+# CPU profile (RTMPose-x through rtmlib on ONNX Runtime CPU, lifters fixed-bones and motionbert). The PyTorch CPU
+# index also carries older tqdm builds, hence the index strategy; every pin in envs/cpu/requirements.txt is exact.
+setup-cpu:
+	uv sync
+	uv pip install --index-strategy unsafe-best-match -r envs/cpu/requirements.txt
+
+# The CPU backend's 3D bar (mean joint distance to the GPU reference, bone length CV); outside the README DoD.
+check-2-cpu:
+	@uv run --quiet python -m part2.eval_3d
+
+# Downstream contract (CONTRACT.md). contract-sync refreshes contracts/consumers/part3-pose3d.schema.json
+# (Part 3's own schema, a byte copy) from Part 3's main and exits 1 when it changed, so drift shows up;
+# contract-check compares only. Both need a gh login with access to Part 3's repo.
+contract-sync:
+	uv run --quiet python -m part2.contract sync
+
+contract-check:
+	uv run --quiet python -m part2.contract sync --check
+
+# Every committed output against its schema, the Part 3 copy and `doctor --for part3`; prints a metrics
+# JSON (files, valid, failures) and exits 0 only when all pass. Needs no GPU and no network.
+check-2-contract:
+	@uv run --quiet python -m part2.contract check
 
 # make run-single INPUT=clip.mp4 [OUT=out/clip]
 run-single:

@@ -116,12 +116,20 @@ def test_cli_run_multi_without_gpu_env_keeps_tracks(tmp_path, capsys, monkeypatc
     monkeypatch.setattr(builtins, "__import__", lambda n, *a, **k: (_ for _ in ()).throw(ImportError(n)) if n == "torch" else real_import(n, *a, **k))
 
     mask = [[0, 1], [1, 1]]
-    monkeypatch.setattr(track, "load_sam31_tracker", lambda: lambda frames_dir, recs: {
+    # the tracker is resolved through part2.trackers: name api-sam31, with a fake key dir and ledger
+    keydir = tmp_path / "keys"
+    keydir.mkdir(mode=0o700)
+    (keydir / "MODEL_API_KEY").write_text("fake")
+    (keydir / "MODEL_API_KEY").chmod(0o600)
+    monkeypatch.setenv("PART2_KEY_DIR", str(keydir))
+    monkeypatch.setenv("PART2_TRACKER", "api-sam31")
+    monkeypatch.setenv("META_SPEND_LEDGER", str(tmp_path / "ledger.jsonl"))
+    monkeypatch.setattr(track, "load_sam31_tracker", lambda: lambda frames_dir, recs, **kw: {
         r["frame"]: [{"id": 4, "bbox": [0, 0, 2, 2], "mask": mask, "confidence": 0.9}] for r in recs})
     d = _image_dir(tmp_path, ["a.jpg", "b.jpg"])
     assert cli.main(["run", "--mode", "multi", "--input", str(d), "--out", str(tmp_path / "o"), "--fps", "30"]) == 1
     out = capsys.readouterr()
-    assert "1 tracked people" in out.out and "GPU environment" in out.err
+    assert "1 tracked people" in out.out and "part2: the cpu backend needs" in out.err
     doc = json.loads((tmp_path / "o" / "tracks.json").read_text())
     assert [len(f["people"]) for f in doc["frames"]] == [1, 1]
 
@@ -138,4 +146,76 @@ def test_cli_single_without_gpu_env_says_so(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(builtins, "__import__", lambda n, *a, **k: (_ for _ in ()).throw(ImportError(n)) if n == "torch" else real_import(n, *a, **k))
     d = _image_dir(tmp_path, ["a.jpg"])
     assert cli.main(["run", "--mode", "single", "--input", str(d), "--out", str(tmp_path / "o"), "--fps", "30"]) == 1
-    assert "GPU environment" in capsys.readouterr().err
+    assert "part2: the cpu backend needs" in capsys.readouterr().err
+
+
+# --- AC-C06: t_ms starts at 0 and t0_pts_ms carries the first PTS ---------------------------------
+
+def _offset_clip(tmp_path, offset_s):
+    """1 s synthetic video at 10 fps whose first presentation time is `offset_s`."""
+    path = tmp_path / f"offset{offset_s}.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=duration=1:size=64x48:rate=10",
+                    "-pix_fmt", "yuv420p", "-output_ts_offset", str(offset_s), str(path)], check=True)
+    return path
+
+
+@needs_ffmpeg
+def test_first_pts_not_zero_gives_t_ms_from_zero_and_t0_pts_ms_equal_to_the_offset(tmp_path):
+    recs = frames.ingest(_offset_clip(tmp_path, 2.5), tmp_path / "f")
+    assert [r["t_ms"] for r in recs] == pytest.approx([i * 100 for i in range(10)])
+    assert frames.load_meta(tmp_path / "f") == {"t0_pts_ms": pytest.approx(2500)}
+    manifest = json.loads((tmp_path / "f" / "frames.json").read_text())
+    assert manifest["t0_pts_ms"] == pytest.approx(2500) and list(manifest) == ["source", "t0_pts_ms", "frames"]
+
+
+@needs_ffmpeg
+def test_resampling_keeps_the_same_time_origin(tmp_path):
+    recs = frames.ingest(_offset_clip(tmp_path, 2.5), tmp_path / "f", fps=5)
+    assert [r["t_ms"] for r in recs] == pytest.approx([0, 200, 400, 600, 800])
+    assert frames.load_meta(tmp_path / "f")["t0_pts_ms"] == pytest.approx(2500)
+
+
+@needs_ffmpeg
+def test_a_video_that_starts_at_zero_writes_t0_pts_ms_zero(clip, tmp_path):
+    frames.ingest(clip, tmp_path / "f")
+    assert frames.load_meta(tmp_path / "f") == {"t0_pts_ms": 0}
+
+
+@needs_ffmpeg
+def test_frames_command_writes_t0_pts_ms_that_validates(tmp_path):
+    from part2 import contract
+
+    assert cli.main(["frames", "--input", str(_offset_clip(tmp_path, 1.25)), "--out", str(tmp_path / "f")]) == 0
+    doc = json.loads((tmp_path / "f" / "frames.json").read_text())
+    contract.validate(doc, "frames")
+    assert doc["t0_pts_ms"] == pytest.approx(1250)
+
+
+def test_image_dir_has_no_t0_pts_ms_unless_its_own_manifest_carries_one(tmp_path):
+    d = _image_dir(tmp_path, ["a.jpg", "b.jpg"])
+    frames.ingest(d, tmp_path / "f", fps=4)
+    assert frames.load_meta(tmp_path / "f") == {} and "t0_pts_ms" not in json.loads((tmp_path / "f" / "frames.json").read_text())
+    own = [{"file": "a.jpg", "frame": 0, "t_ms": 0}, {"file": "b.jpg", "frame": 1, "t_ms": 40}]
+    (d / "frames.json").write_text(json.dumps({"t0_pts_ms": 7.5, "frames": own}))
+    frames.ingest(d, tmp_path / "g")
+    assert frames.load_meta(tmp_path / "g") == {"t0_pts_ms": 7.5}
+    (d / "frames.json").write_text(json.dumps({"t0_pts_ms": "soon", "frames": own}))  # not a number: dropped, not copied
+    frames.ingest(d, tmp_path / "h")
+    assert frames.load_meta(tmp_path / "h") == {}
+
+
+def test_manifest_is_written_without_nan(tmp_path):
+    from part2.schema import ContractError
+
+    d = _image_dir(tmp_path, ["a.jpg"])
+    (d / "frames.json").write_text('{"frames": [{"file": "a.jpg", "frame": 0, "t_ms": NaN}]}')
+    with pytest.raises(ContractError, match="frames.json.frames.*NaN or infinity"):
+        frames.ingest(d, tmp_path / "f")
+    assert not (tmp_path / "f" / "frames.json").exists()
+
+
+def test_contract_md_states_the_t_ms_rule():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parent.parent / "CONTRACT.md").read_text()
+    assert "t_ms = (pts[k] - pts[0]) * 1000" in text and "t0_pts_ms" in text and "t_ms + t0_pts_ms" in text

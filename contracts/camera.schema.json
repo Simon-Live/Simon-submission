@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-2-images-to-3d/contracts/camera.schema.json",
+  "title": "Part 2 camera.json",
+  "description": "Per person and frame the pose that puts canonical joints back into the camera: p_cam = R @ p_canonical + t, then project with K. Camera frame is OpenCV (x right, y down, z forward), metres. Parts 3 to 5 do not need it.",
+  "x-simon-version": "part2.camera/2026-10-28",
+  "x-direction": "output",
+  "x-producer": "Part 2",
+  "x-consumers": [],
+  "type": "object",
+  "required": [
+    "camera_frame",
+    "K",
+    "image_size",
+    "frames"
+  ],
+  "properties": {
+    "camera_frame": {
+      "type": "string",
+      "description": "opencv."
+    },
+    "world_up": {
+      "type": "string",
+      "description": "How up was taken; Part 2 assumes a level camera."
+    },
+    "K": {
+      "$ref": "#/$defs/mat3",
+      "description": "3x3 intrinsics, fixed for the clip."
+    },
+    "image_size": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "integer",
+        "exclusiveMinimum": 0
+      },
+      "description": "[width, height] in pixels."
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    }
+  },
+  "$defs": {
+    "mat3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {
+          "type": "number"
+        }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": [
+        "frame",
+        "people"
+      ],
+      "properties": {
+        "frame": {
+          "type": "integer"
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "R",
+              "t"
+            ],
+            "properties": {
+              "id": {
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "R": {
+                "$ref": "#/$defs/mat3"
+              },
+              "t": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

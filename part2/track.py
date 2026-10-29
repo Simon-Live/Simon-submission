@@ -15,6 +15,7 @@ from pathlib import Path
 
 from part2 import frames as frames_mod
 from part2.schema import validate_tracks
+from part2.schema import write_json
 
 
 def mask_to_rle(mask) -> dict:
@@ -88,8 +89,8 @@ def build_tracks(frame_records, detections) -> dict:
     """Assemble a tracks document.
 
     frame_records: records from part2.frames.load ({frame, t_ms, file}).
-    detections: {frame: [{id, bbox, mask, confidence}]} — mask is a 2D binary
-    array; ids must already be stable across frames (that's the tracker's job).
+    detections: {frame: [{id, bbox, mask, confidence}]}, where mask is a 2D
+    binary array; ids must already be stable across frames (that's the tracker's job).
     Frames with no detections are kept with an empty people list.
     """
     known = {int(r["frame"]) for r in frame_records}
@@ -115,20 +116,27 @@ def build_tracks(frame_records, detections) -> dict:
     return doc
 
 
-def track(frames_dir, out_path, tracker=None) -> dict:
+def track(frames_dir, out_path, tracker=None, *, purpose: str = "bulk") -> dict:
     """Run tracking on a frames dir and write tracks.json.
 
-    tracker defaults to the SAM 3.1 GPU tracker; tests inject a fake with the
-    same call: tracker(frames_dir, frame_records) -> detections dict.
+    tracker: a registry name (part2.trackers.names()) or None, resolved through
+    the registry (the name, then PART2_TRACKER, then the `purpose` order:
+    "scored" or "bulk"; docs/specs/tracker-registry.md). The written file
+    carries the provenance block. A callable is used as is (tests):
+    tracker(frames_dir, frame_records) -> detections dict.
     """
     frames_dir = Path(frames_dir)
     recs = frames_mod.load(frames_dir)
-    tracker = tracker or load_sam31_tracker()
+    if tracker is None or isinstance(tracker, str):
+        from part2 import trackers
+
+        chosen, skipped = trackers.select(tracker, purpose=purpose, n_frames=len(recs))
+        return chosen.track(frames_dir, out_path, skipped=skipped)
     detections = tracker(frames_dir, recs)
     doc = build_tracks(recs, detections)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(doc))
+    write_json(out_path, doc)
     return doc
 
 
@@ -140,6 +148,13 @@ def derive_fps(frame_records) -> float:
         return 30.0
     gaps.sort()
     return 1000.0 / gaps[len(gaps) // 2]
+
+
+def _child_env() -> dict:
+    """This process's environment without key variables, for ffmpeg and ffprobe children."""
+    import os
+
+    return {k: v for k, v in os.environ.items() if k not in ("MODEL_API_KEY", "HF_TOKEN")}
 
 
 def _ffmpeg_exe() -> str:
@@ -172,7 +187,7 @@ def _count_frames(video_path, ffmpeg: str) -> int:
         return int(subprocess.run(
             ["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
              "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(video_path)],
-            check=True, capture_output=True, text=True).stdout.strip())
+            check=True, capture_output=True, text=True, env=_child_env()).stdout.strip())
     try:
         import cv2
 
@@ -190,7 +205,7 @@ def _count_frames(video_path, ffmpeg: str) -> int:
         pass
     r = subprocess.run([ffmpeg, "-v", "info", "-i", str(video_path),
                         "-map", "0:v:0", "-c", "copy", "-f", "null", "-"],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=_child_env())
     counts = re.findall(r"frame=\s*(\d+)", r.stderr)
     if not counts:
         raise RuntimeError(f"could not count frames in encoded video {video_path}")
@@ -217,7 +232,7 @@ def encode_video(frames_dir, frame_records, out_path) -> float:
                         "-r", f"{fps:.3f}", "-i", str(list_path),
                         "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path)],
-                       check=True, capture_output=True)
+                       check=True, capture_output=True, env=_child_env())
     count = _count_frames(out_path, ffmpeg)
     if count != len(frame_records):
         raise RuntimeError(f"encoded video has {count} frames for {len(frame_records)} "
@@ -321,5 +336,5 @@ def api_tracker(frames_dir, frame_records, prompt: str = "person", budget=None):
 
 
 def load_sam31_tracker():
-    """The default tracker: SAM 3.1 through the Meta Model API (#4/#10)."""
+    """SAM 3.1 through the Meta Model API (#4/#10): the api-sam31 adapter's client."""
     return api_tracker

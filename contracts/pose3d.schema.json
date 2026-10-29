@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-2-images-to-3d/contracts/pose3d.schema.json",
+  "title": "Part 2 pose3d.json",
+  "description": "One 3D skeleton per person per frame in the canonical frame (origin at the hip midpoint, x subject's left, y up, z anterior, metres). Exactly the 17 canonical joints. t_ms counts from the first decoded frame. Extra keys are ignored. Frame numbers must also strictly increase and person ids be unique within a frame, which a schema cannot say; python -m part2 doctor checks both. NaN and infinity are not allowed anywhere.",
+  "x-simon-version": "part2.pose3d/2026-10-28",
+  "x-direction": "output",
+  "x-producer": "Part 2",
+  "x-consumers": [
+    "Part 3",
+    "Part 7"
+  ],
+  "type": "object",
+  "required": [
+    "frames"
+  ],
+  "properties": {
+    "frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    },
+    "mirrored": {
+      "type": "boolean",
+      "description": "Optional. true when the saved video is a mirror image of the scene; written by part2 run --mirrored; absent means not mirrored."
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Optional. Part 2 does not write it; Part 3 uses it only when frames carry no t_ms."
+    },
+    "t0_pts_ms": {
+      "type": "number",
+      "description": "Optional. The first decoded frame's presentation time in milliseconds, so a reader can rebase t_ms onto the file clock: file time = t_ms + t0_pts_ms."
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "person_id": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "An integer or a string. In multi-person files it is the tracks.json id."
+    },
+    "joint": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "z",
+        "conf"
+      ],
+      "description": "One joint: metres in the canonical frame and a confidence in 0 to 1.",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "conf": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "joints": {
+      "type": "object",
+      "required": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "nose": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ankle": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ankle": {
+          "$ref": "#/$defs/joint"
+        }
+      }
+    },
+    "person": {
+      "type": "object",
+      "required": [
+        "id",
+        "joints"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/person_id"
+        },
+        "joints": {
+          "$ref": "#/$defs/joints"
+        }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": [
+        "frame",
+        "t_ms",
+        "people"
+      ],
+      "properties": {
+        "frame": {
+          "type": "integer",
+          "description": "Index from frames.json."
+        },
+        "t_ms": {
+          "type": "number",
+          "description": "Milliseconds from the first decoded frame of the input."
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/person"
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Optional. What produced this file. Readers ignore it; removing it keeps the file valid. Extra keys are allowed.",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "description": "The x-simon-version of this file's schema."
+        },
+        "backend": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The 3D backend that ran, for example gpu."
+        },
+        "tracker": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The tracker that ran; null when none did (one-person mode)."
+        },
+        "lifter": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The 2D to 3D lifter, for the cpu backend; null otherwise."
+        },
+        "refine": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Refinement rungs applied, in order."
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/model"
+          }
+        },
+        "part2_commit": {
+          "type": "string",
+          "description": "git commit of Part 2 that wrote the file; a +dirty suffix marks uncommitted changes, unknown when git was not available."
+        },
+        "created_utc": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "licence_notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "name",
+        "source",
+        "weights_sha256"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where the weights come from."
+        },
+        "weights_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the weights file; null when the model is hosted or the file was not hashed."
+        }
+      }
+    }
+  }
+}

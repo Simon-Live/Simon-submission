@@ -9,8 +9,9 @@ canonical frame (part2.canonical), and writes:
 import json
 from pathlib import Path
 
-from part2.canonical import convert
-from part2.schema import validate_pose3d
+from part2 import contract
+from part2.canonical import convert, write_docs
+from part2.schema import optional_top, write_json
 
 
 def tracks_to_boxes(tracks: dict) -> dict:
@@ -20,31 +21,31 @@ def tracks_to_boxes(tracks: dict) -> dict:
 
 
 def split_people(pose3d: dict) -> dict:
-    """{id: pose3d doc with only that person's stream}."""
+    """{id: pose3d doc with only that person's stream}; the optional top-level keys are copied."""
     ids = sorted({p["id"] for f in pose3d["frames"] for p in f["people"]}, key=str)
     return {pid: {"frames": [
         {"frame": f["frame"], "t_ms": f["t_ms"],
          "people": [p for p in f["people"] if p["id"] == pid]}
-        for f in pose3d["frames"]]} for pid in ids}
+        for f in pose3d["frames"]], **optional_top(pose3d)} for pid in ids}
 
 
-def write_pose_streams(body3d_doc: dict, out_dir, smooth: bool = False) -> dict:
-    """Canonical-convert a body3d doc and write combined + per-person pose3d files."""
+def write_pose_streams(body3d_doc: dict, out_dir, smooth: bool = False, extras: dict | None = None) -> dict:
+    """Canonical-convert a body3d doc and write combined + per-person pose3d files. `extras` are the
+    optional top-level keys of canonical.convert. Every file is checked before any is written."""
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    pose3d, camera = convert(body3d_doc, smooth=smooth)
-    validate_pose3d(pose3d)
-    (out_dir / "pose3d.json").write_text(json.dumps(pose3d))
-    (out_dir / "camera.json").write_text(json.dumps(camera))
+    pose3d, camera = convert(body3d_doc, smooth=smooth, extras=extras)
     per_person = split_people(pose3d)
+    for doc in per_person.values():
+        contract.validate(doc, "pose3d")
+    write_docs(out_dir, pose3d, camera)
     for stale in out_dir.glob("pose3d_person_*.json"):  # ids from an earlier run into this dir
         stale.unlink()
     for pid, doc in per_person.items():
-        (out_dir / f"pose3d_person_{pid}.json").write_text(json.dumps(doc))
+        write_json(out_dir / f"pose3d_person_{pid}.json", doc)
     return {"pose3d": pose3d, "camera": camera, "people": sorted(per_person, key=str)}
 
 
-def run(frames_dir, out_dir, estimator=None, smooth: bool = False) -> dict:
+def run(frames_dir, out_dir, estimator=None, smooth: bool = False, extras: dict | None = None) -> dict:
     """Full #11 step on an out dir that already has frames/ and tracks.json."""
     from part2 import body3d
 
@@ -52,4 +53,4 @@ def run(frames_dir, out_dir, estimator=None, smooth: bool = False) -> dict:
     tracks = json.loads((out_dir / "tracks.json").read_text())
     body3d_doc = body3d.estimate(frames_dir, out_dir / "body3d.json",
                                  boxes=tracks_to_boxes(tracks), estimator=estimator)
-    return write_pose_streams(body3d_doc, out_dir, smooth=smooth)
+    return write_pose_streams(body3d_doc, out_dir, smooth=smooth, extras=extras)
