@@ -26,7 +26,8 @@ shared files in the top-level README; nothing else is needed to read them.
 
 - 89 frames (5 fps, 17.6 s), 7 people, ids 0–6, all present in every frame. Yoga class doing cat–cow on mats.
 - These are the exact outputs `make check-2` scored on `f47e03f`: multi-person **pass**, coverage 1.0
-  against the hand-verified ID keyframes, 0 ID swaps.
+  against the hand-verified ID keyframes, 0 ID swaps. `make check-2` now scores `scored/class/` (below)
+  instead.
 - Source clip: "People Doing the Cat Cow Pose in a Yoga Class" by Yan Krukau, Pexels video 8480627,
   Pexels licence (see `fixtures/input/class/SOURCE.md`).
 - Produced by `make hpc-outputs`: SAM 3.1 tracking via the Meta API, then SAM 3D Body per tracked box on
@@ -53,10 +54,11 @@ Made on this host by `make outputs` (2026-10-29; the gpu dirs on its RTX 5090), 
 
 | Dir | Files | Backend | Tracker | Frames | People | Scored as |
 |---|---|---|---|---|---|---|
-| `single/` | `pose3d.json`, `camera.json` | gpu (SAM 3D Body, ViTDet boxes, MoGe-2 focal) | none | 111 | 1 | `one_person` |
+| `single/` | `pose3d.json`, `camera.json` | gpu (SAM 3D Body, ViTDet boxes), refined `focal` then `kp2d-fit` | none | 111 | 1 | `one_person` |
 | `class/` | `tracks.json`, `pose3d.json`, `camera.json` | gpu | `api-sam31` (the scored order) | 89 | 7 | `multi_person` |
 | `class-local-open/` | same as `class/` | gpu | `local-open` | 89 | 7 | `multi_person_local_open`, never gated |
 | `cpu-single/` | `pose3d.json`, `camera.json` | cpu (RTMPose-x, lifter `fixed-bones`) | none | 111 | 1 | `cpu_backend_3d` against `single/` |
+| `coco-single/` | `<image id>/pose3d.json`, `<image id>/camera.json` | gpu, refined `focal` then `kp2d-fit` | none | one photo per image, 20 images | 1 per image | `one_person_coco` |
 
 `stamp.json` names the backend, tracker, lifter, refine rungs and models with their weight digests, and holds
 the sha256 of the code the run imported, of the input frames, of the environment lock and of each output file.
@@ -65,11 +67,20 @@ and says which. The CPU backend misses the 3D bar (mean joint distance 0.2682 m 
 its 3D is approximate.
 
 ```
-make outputs                  # single, class, class-local-open on the GPU (TRACKER=, MODES=, SCORED= optional)
+make outputs                  # single, class, class-local-open, coco-single on the GPU; single and coco-single refined with focal,kp2d-fit (REFINE=none for unrefined; TRACKER=, MODES=, SCORED= optional)
 make outputs BACKEND=cpu      # cpu-single (LIFTER= optional)
 make check-2                  # scores scored/; SCORED=out scores out/<mode>/ instead
 make check-2-cpu              # the cpu_backend_3d block alone
 ```
+
+`coco-single/` reads the COCO images from a local cache: `uv run python -m part2.coco_set images` downloads
+them and checks each sha256 against `fixtures/input/coco/SOURCE.md`. The images are not in the repo.
+
+## `parity/`: the SAM 3.1 parity pass
+
+`parity/sam31.json` records `local-sam31` against `api-sam31` on the class clip (2026-10-29): the same id count,
+every id matched by mask IoU, coverage equal, so `pass` is true. It compares two tracker outputs and reads no
+labels. With it committed, the bulk tracker order runs `local-sam31` first.
 
 ## `stock/`: follower takes for Part 5 (`pose3d.json` + `camera.json` + `SOURCE.md`)
 

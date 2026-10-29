@@ -8,6 +8,13 @@ no copy: no login, no token file). Library loggers are held at WARNING during th
 under ~/.cache/huggingface. Runs in the gpu-cu128 venv (torch, sam3). In the bulk order this tracker runs
 only with a committed parity pass (fixtures/output/parity/sam31.json).
 
+The predictor runs in a child process of the same interpreter (`python -m part2.trackers.local_sam31`), under
+the GPU lock held here. SAM 3.1 enters torch.autocast(cuda, bfloat16) in its constructor and never leaves it,
+turns on TF32 matmul and keeps its GPU memory; in one process that state reached the SAM 3D Body stage and
+failed it ("addmm_sparse_cuda" not implemented for 'BFloat16'). It now ends with the child. The token stays
+in this process (the download is done here); the child gets paths only and returns its detections in a file
+inside a private temporary directory.
+
 The predictor protocol is SAM 3's video predictor session API:
     handle_request({"type": "start_session", "resource_path": dir}) -> {"session_id": ...}
     handle_request({"type": "add_prompt", "session_id": s, "frame_index": 0, "text": "person"})
@@ -17,14 +24,17 @@ The predictor protocol is SAM 3's video predictor session API:
 """
 import contextlib
 import hashlib
+import json
 import logging
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import numpy as np
 
-from part2.trackers import NoPerson, Tracker, TrackerError, call_with_key, gpu_lock
+from part2.trackers import ROOT, NoPerson, Tracker, TrackerError, call_with_key, gpu_lock
 
 MODEL_ID = "facebook/sam3.1"
 REVISION = "daa63191845a41281374e725f4c9e51c7a824460"  # Hugging Face commit of facebook/sam3.1, 2026-10-29
@@ -32,6 +42,7 @@ CHECKPOINT = "sam3.1_multiplex.pt"
 KEY = "HF_TOKEN"
 PROMPT = "person"
 QUIET_LOGGERS = ("huggingface_hub", "urllib3", "httpx", "httpcore", "requests", "filelock")
+WORKER_MODULE = "part2.trackers.local_sam31"
 
 
 class NotGranted(TrackerError):
@@ -134,6 +145,50 @@ def text_prompt_track(predictor, frames_dir, frame_records, prompt: str = PROMPT
     return out
 
 
+def run_in_child(checkpoint, frames_dir, frame_records) -> dict:
+    """text_prompt_track with the real predictor, in a child process; the same detections, frame keys as ints.
+
+    The child's argv holds paths only and its environment is this one with this part2 first on PYTHONPATH, so
+    it runs the same code. Its stdout and stderr are ours (SAM 3 progress and any traceback show as before).
+    """
+    with tempfile.TemporaryDirectory(prefix="part2-sam31-") as tmp:
+        records, out = Path(tmp) / "records.json", Path(tmp) / "result.json"
+        records.write_text(json.dumps(list(frame_records)))
+        argv = [sys.executable, "-m", WORKER_MODULE, "--checkpoint", str(checkpoint),
+                "--frames", str(Path(frames_dir).resolve()), "--records", str(records), "--out", str(out)]
+        path = os.pathsep.join(filter(None, [str(ROOT), os.environ.get("PYTHONPATH")]))
+        code = subprocess.run(argv, env={**os.environ, "PYTHONPATH": path}, check=False).returncode
+        result = json.loads(out.read_text()) if out.exists() else {}
+    if "detections" in result:
+        return {int(k): v for k, v in result["detections"].items()}
+    if result.get("no_person"):
+        raise NoPerson()
+    why = result.get("error") or f"the SAM 3.1 process exited with code {code}"
+    raise TrackerError(f"tracker local-sam31: {why}")
+
+
+def worker_main(argv=None) -> int:
+    """The child: build the predictor, track, write {"detections"}, {"no_person"} or {"error"} to --out."""
+    import argparse
+    import traceback
+
+    p = argparse.ArgumentParser(prog=f"python -m {WORKER_MODULE}")
+    for flag in ("--checkpoint", "--frames", "--records", "--out"):
+        p.add_argument(flag, required=True, type=Path)
+    a = p.parse_args(argv)
+    try:
+        recs = json.loads(a.records.read_text())
+        result = {"detections": text_prompt_track(build_predictor(a.checkpoint), a.frames, recs)}
+    except NoPerson:
+        result = {"no_person": True}
+    except Exception as e:  # noqa: BLE001 (reported to the parent, which raises TrackerError)
+        traceback.print_exc()
+        first = next((line for line in str(e).splitlines() if line.strip()), "")
+        result = {"error": f"{type(e).__name__}: {first}"[:300]}
+    a.out.write_text(json.dumps(result))
+    return 1 if "error" in result else 0
+
+
 class LocalSam31(Tracker):
     name = "local-sam31"
     key = KEY
@@ -143,7 +198,7 @@ class LocalSam31(Tracker):
 
     def __init__(self, downloader=None, predictor_factory=None, **_):
         self._download = downloader or hf_download  # downloader(token) -> checkpoint path
-        self._factory = predictor_factory or build_predictor  # factory(checkpoint path) -> predictor
+        self._factory = predictor_factory  # factory(checkpoint path) -> predictor, in this process (tests)
         self._fakes = downloader is not None and predictor_factory is not None
         self._sha = None
 
@@ -167,5 +222,10 @@ class LocalSam31(Tracker):
         self._sha = _sha256(ckpt)
         lock = contextlib.nullcontext() if self._fakes else gpu_lock()
         with lock:
+            if self._factory is None:
+                return run_in_child(ckpt, frames_dir, frame_records)
             return text_prompt_track(self._factory(ckpt), frames_dir, frame_records)
 
+
+if __name__ == "__main__":
+    sys.exit(worker_main())

@@ -1,4 +1,4 @@
-# Class fixture — source
+# Class fixture: source
 
 - **Clip:** "People Doing the Cat Cow Pose in a Yoga Class" by Yan Krukau, Pexels video 8480627
   <https://www.pexels.com/video/people-doing-the-cat-cow-pose-in-a-yoga-class-8480627/>

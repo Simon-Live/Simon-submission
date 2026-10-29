@@ -33,18 +33,20 @@ check-2-cpu:
 
 # Regenerate the scored outputs on this host with a part2.stamp/2 each (docs/specs/check-2.md, ADR-0006):
 #   make outputs [BACKEND=gpu] [TRACKER=name] [MODES=single,class] [SCORED=out]   single, class, class-local-open
+#   make outputs BACKEND=gpu MODES=single,coco-single REFINE=kp2d-fit         one-person ladder rungs (part2.refine); default for single and coco-single: focal,kp2d-fit (the ladder's choice); REFINE=none for unrefined
 #   make outputs BACKEND=cpu [LIFTER=name]                                       cpu-single
 # Runs in the gpu-cu128 venv when it exists (the cpu backend with no GPU visible), else in the uv venv.
 BACKEND ?= gpu
 TRACKER ?=
 LIFTER ?=
 MODES ?=
+REFINE ?=
 SCORED ?=
 SCORED_ENV = $(if $(SCORED),PART2_SCORED_DIR=$(SCORED) )
 OUTPUTS_PY ?= $(if $(wildcard $(GPU_PY)),$(GPU_PY),uv run --quiet python)
 
 outputs:
-	$(if $(filter cpu,$(BACKEND)),CUDA_VISIBLE_DEVICES= )PYTHONPATH=$(CURDIR) $(OUTPUTS_PY) -m part2.outputs --backend $(BACKEND) $(if $(TRACKER),--tracker $(TRACKER)) $(if $(LIFTER),--lifter $(LIFTER)) $(if $(MODES),--modes $(MODES)) $(if $(SCORED),--scored $(SCORED))
+	$(if $(filter cpu,$(BACKEND)),CUDA_VISIBLE_DEVICES= )PYTHONPATH=$(CURDIR) $(OUTPUTS_PY) -m part2.outputs --backend $(BACKEND) $(if $(TRACKER),--tracker $(TRACKER)) $(if $(LIFTER),--lifter $(LIFTER)) $(if $(MODES),--modes $(MODES)) $(if $(SCORED),--scored $(SCORED)) $(if $(REFINE),--refine $(REFINE))
 
 # Stock follower takes for Part 5 (docs/specs/stock-takes.md): download each Pexels clip into ~/.cache, frames at
 # 10 fps, the one-person run, then fixtures/output/stock/pexels-<id>/{pose3d.json, camera.json, SOURCE.md}.

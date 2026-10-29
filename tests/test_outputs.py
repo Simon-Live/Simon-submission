@@ -2,6 +2,7 @@
 
 The 3D backend and the tracker are fakes; everything after them (canonical frame, contract checks, multi3d
 streams, the stamp) is the real code, run in a temp root that holds a copy of part2/."""
+import dataclasses
 import fcntl
 import json
 import sys
@@ -101,6 +102,8 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(trackers, "select", lambda flag, purpose="bulk", n_frames=None: calls.append(("select", flag)) or
                         (FakeTracker(flag), []))
     _fake_coco(root, monkeypatch)
+    # Mode defaults off: these tests run the one-person modes without the chosen rungs unless a test sets them.
+    monkeypatch.setattr(outputs, "MODES", [dataclasses.replace(m, refine=()) for m in outputs.MODES])
     return types.SimpleNamespace(root=root, lock=lock, calls=calls, scored=root / "fixtures" / "output" / "scored")
 
 

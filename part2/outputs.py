@@ -4,6 +4,7 @@ Spec: docs/specs/check-2.md ("Scored outputs and stamps", AC-K08, error "backend
 ADR-0003 (tracker order), ADR-0002 (backends).
 
     python -m part2.outputs [--backend gpu|cpu] [--tracker NAME] [--lifter NAME] [--modes a,b] [--scored DIR]
+                            [--refine RUNGS]
 
 MODES lists every scored mode: its dir name, the backend that makes it, its frames, how it runs and which
 tracker it uses. `--backend gpu` (default) runs the gpu modes (`single`, `class` by the scored tracker order,
@@ -12,6 +13,10 @@ tracker it uses. `--backend gpu` (default) runs the gpu modes (`single`, `class`
 files replace scored/<mode>/ and stamp.json is written last, with the hashes taken before inference started.
 GPU inference runs under the host GPU lock (`gpu_guard`). Exit 0 when every mode ran, 1 when one failed or
 the backend cannot run here, 2 for an unknown name.
+
+`--refine kp2d-fit[,...]` (one-person ladder, ADR-0004) runs those part2.refine rungs on each one-person mode's
+body3d.json before the canonical frame (single, coco-single, cpu-single; any other mode with it exits 2); the
+stamp names the rungs and adds their code and models, pose3d.json's provenance.refine lists them.
 """
 import argparse
 import contextlib
@@ -40,6 +45,8 @@ class Mode:
     run: Callable               # run(ctx) -> {"files": [rel paths in ctx.work], "frames": n, "people": n}
     tracker: str | None = None  # None: no tracker; "scored": the scored order; else a fixed registry name
     modules: tuple = ()         # the mode's own code modules (stamp code_files)
+    one_person: bool = False    # takes --refine rungs
+    refine: tuple = ()          # the rungs `make outputs` applies by default (the ladder's chosen rung, ADR-0004)
 
 
 @dataclass
@@ -50,6 +57,37 @@ class Ctx:
     backend: object
     tracker: object = None
     skipped: list = field(default_factory=list)
+    refine: list = field(default_factory=list)
+    model2d: object = None
+
+
+def refined(ctx: Ctx, doc: dict, frames_dir: Path, work_dir: Path) -> dict:
+    """doc after the run's refine rungs, written to work_dir/body3d.json (the unrefined one kept as
+    body3d-unrefined.json); doc itself when there are none."""
+    if not ctx.refine:
+        return doc
+    from part2 import refine
+
+    if ctx.model2d is None:
+        ctx.model2d = refine.load_2d(ctx.refine)
+    (work_dir / "body3d-unrefined.json").write_text(json.dumps(doc))
+    out = refine.apply(ctx.refine, doc, frames_dir, model2d=ctx.model2d, backend=ctx.backend,
+                       lock=lambda: _locked(ctx), work_dir=work_dir)
+    (work_dir / "body3d.json").write_text(json.dumps(out))
+    return out
+
+
+def extras_for(ctx: Ctx, meta: dict) -> dict:
+    """cli._pose_extras plus the refine rungs and their models in provenance."""
+    from part2 import cli, refine
+
+    extras = cli._pose_extras(meta, PARAMS["mirrored"], ctx.backend)
+    if ctx.refine:
+        prov = extras["provenance"]
+        extras["provenance"] = {**prov, "refine": list(ctx.refine),
+                                "models": list(prov.get("models", [])) + refine.models(ctx.refine),
+                                "licence_notes": list(prov.get("licence_notes", [])) + refine.licence_notes(ctx.refine)}
+    return extras
 
 
 def gpu_guard(wait_s: float | None = None):
@@ -66,12 +104,13 @@ def _locked(ctx: Ctx):
 
 
 def run_single(ctx: Ctx) -> dict:
-    from part2 import canonical, cli, frames
+    from part2 import canonical, frames
 
     frames_dir = ctx.root / ctx.mode.frames
     with _locked(ctx):
         doc = ctx.backend.estimate(frames_dir, ctx.work / "body3d.json")
-    extras = cli._pose_extras(frames.load_meta(frames_dir), PARAMS["mirrored"], ctx.backend)
+    doc = refined(ctx, doc, frames_dir, ctx.work)
+    extras = extras_for(ctx, frames.load_meta(frames_dir))
     canonical.write(ctx.work / "body3d.json", ctx.work, smooth=PARAMS["smooth"], extras=extras)
     people = {p["id"] for f in doc["frames"] for p in f["people"]}
     return {"files": ["pose3d.json", "camera.json"], "frames": len(doc["frames"]), "people": len(people)}
@@ -95,7 +134,7 @@ def run_multi(ctx: Ctx) -> dict:
 def run_coco(ctx: Ctx) -> dict:
     """coco-single (TICKET-037): one photo run per selected COCO image into <image_id>/{pose3d,camera}.json, the
     layout part2.eval_coco scores. Images come from the cache (sha256 checked), never from the tree."""
-    from part2 import canonical, cli, coco_set, frames
+    from part2 import canonical, coco_set, frames
 
     recs = coco_set.load_manifest()["images"]
     files = []
@@ -104,20 +143,25 @@ def run_coco(ctx: Ctx) -> dict:
         run_dir = ctx.work / str(r["image_id"])
         run_dir.mkdir(parents=True, exist_ok=True)
         with _locked(ctx):
-            ctx.backend.estimate(src, run_dir / "body3d.json")
-        extras = cli._pose_extras(frames.load_meta(src), PARAMS["mirrored"], ctx.backend)
+            doc = ctx.backend.estimate(src, run_dir / "body3d.json")
+        refined(ctx, doc, src, run_dir)
+        extras = extras_for(ctx, frames.load_meta(src))
         canonical.write(run_dir / "body3d.json", run_dir, smooth=False, extras=extras)
         files += [f"{r['image_id']}/pose3d.json", f"{r['image_id']}/camera.json"]
     return {"files": files, "frames": len(recs), "people": len(recs)}
 
 
+# The ladder's choice (progress/ladder.md rows 24 and 25): rung 3, `focal` then `kp2d-fit`, the first rung green on
+# both one-person sets. `make outputs` applies it by default so it reproduces the committed outputs.
+CHOSEN_RUNGS = ("focal", "kp2d-fit")
 MULTI = ("part2.track", "part2.multi3d")
 MODES = [
-    Mode("single", "gpu", "fixtures/input/single/frames", run_single),
+    Mode("single", "gpu", "fixtures/input/single/frames", run_single, one_person=True, refine=CHOSEN_RUNGS),
     Mode("class", "gpu", "fixtures/input/class/frames", run_multi, tracker="scored", modules=MULTI),
     Mode("class-local-open", "gpu", "fixtures/input/class/frames", run_multi, tracker="local-open", modules=MULTI),
-    Mode("cpu-single", "cpu", "fixtures/input/single/frames", run_single),
-    Mode("coco-single", "gpu", "fixtures/input/coco/images", run_coco, modules=("part2.coco_set",)),
+    Mode("cpu-single", "cpu", "fixtures/input/single/frames", run_single, one_person=True),
+    Mode("coco-single", "gpu", "fixtures/input/coco/images", run_coco, modules=("part2.coco_set",), one_person=True,
+         refine=CHOSEN_RUNGS),
 ]
 
 
@@ -158,23 +202,32 @@ def host_gpu(backend_name: str) -> str | None:
     return torch.cuda.get_device_name(0)
 
 
-def run_mode(mode: Mode, backend, root: Path, scored: Path, tracker_flag=None, lifter=None) -> dict:
-    """Run one mode into a scratch dir, then replace scored/<mode>/ with its outputs and the stamp."""
+def run_mode(mode: Mode, backend, root: Path, scored: Path, tracker_flag=None, lifter=None, refine=(),
+             shared: dict | None = None) -> dict:
+    """Run one mode into a scratch dir, then replace scored/<mode>/ with its outputs and the stamp. `shared`
+    keeps the 2D model the refine rungs load across modes."""
     from part2 import frames, stamp
 
     frames_dir = root / mode.frames
     n_frames = len(frames.load(frames_dir)) if mode.tracker else 0  # coco-single has images.json, no frames.json
     tracker, skipped = pick_tracker(mode, tracker_flag, n_frames)
     pre = stamp.prepare(root, mode.name, backend.name, frames_dir, mode.modules,
-                        tracker=tracker.name if tracker else None, lifter=lifter)
+                        tracker=tracker.name if tracker else None, lifter=lifter, refine=refine)
     work = root / WORK / mode.name
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     t0 = time.perf_counter()
-    res = mode.run(Ctx(mode, root, work, backend, tracker, list(skipped)))
+    shared = {} if shared is None else shared
+    ctx = Ctx(mode, root, work, backend, tracker, list(skipped), list(refine), shared.get("model2d"))
+    res = mode.run(ctx)
+    shared["model2d"] = ctx.model2d
     seconds = round(time.perf_counter() - t0, 1)
     tprov = res.get("tracker_provenance") or {}
     models = list(backend.provenance().get("models", [])) + list(tprov.get("models", []))
+    if refine:
+        from part2 import refine as refine_mod
+
+        models += refine_mod.models(refine)
     dest = scored / mode.name
     shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True)
@@ -185,7 +238,7 @@ def run_mode(mode: Mode, backend, root: Path, scored: Path, tracker_flag=None, l
     facts.update({k: tprov[k] for k in ("fallback_from", "fallback_reason", "spend_usd") if k in tprov})
     stamp.finish(pre, dest, res["files"], models=models, host_gpu=host_gpu(backend.name), run=facts)
     return {"dir": stamp.rel(dest, root), "backend": backend.name, "tracker": pre["tracker"], "lifter": lifter,
-            **facts}
+            **({"refine": list(refine)} if refine else {}), **facts}
 
 
 def backend_for(name: str, lifter: str | None):
@@ -202,7 +255,7 @@ def backend_for(name: str, lifter: str | None):
 
 
 def main(argv=None, root: Path = ROOT) -> int:
-    from part2 import backends, lifters, trackers
+    from part2 import backends, lifters, refine, trackers
 
     ap = argparse.ArgumentParser(prog="python -m part2.outputs", description="Regenerate the scored outputs.")
     ap.add_argument("--backend", default="gpu", help="gpu (single, class, class-local-open) or cpu (cpu-single)")
@@ -210,6 +263,8 @@ def main(argv=None, root: Path = ROOT) -> int:
     ap.add_argument("--lifter", help="cpu backend: fixed-bones or motionbert (default: PART2_LIFTER, else DEFAULT)")
     ap.add_argument("--modes", help="comma-separated subset of the backend's modes")
     ap.add_argument("--scored", help=f"output root (default: {SCORED_ENV}, else {DEFAULT_SCORED})")
+    ap.add_argument("--refine", default="", help="one-person modes: comma-separated ladder rungs (part2.refine); "
+                    "default: each mode's chosen rungs; `none` runs no rung")
     a = ap.parse_args(argv)
     try:
         backends.resolve(a.backend)
@@ -217,6 +272,11 @@ def main(argv=None, root: Path = ROOT) -> int:
         if a.tracker:
             trackers.get(a.tracker)
         modes = modes_for(a.backend, [n for n in (a.modes or "").split(",") if n])
+        explicit = a.refine.strip() not in ("", "none")
+        rungs = refine.resolve(a.refine) if explicit else []
+        if explicit and any(not m.one_person for m in modes):
+            raise ValueError(f"--refine applies to one-person modes only; pass --modes "
+                             f"{','.join(m.name for m in modes if m.one_person) or 'single'}")
     except (backends.UnknownBackend, lifters.UnknownLifter, trackers.UnknownTracker, ValueError) as e:
         print(f"outputs: {e}", file=sys.stderr)
         return 2
@@ -224,11 +284,12 @@ def main(argv=None, root: Path = ROOT) -> int:
     if backend is None:
         print(refusal, file=sys.stderr)
         return 1
-    scored, summary, failed = scored_dir(root, a.scored), {}, False
+    scored, summary, failed, shared = scored_dir(root, a.scored), {}, False, {}
     for mode in modes:
         print(f"outputs: {mode.name} ({a.backend}) ...", file=sys.stderr, flush=True)
         try:
-            summary[mode.name] = run_mode(mode, backend, root, scored, a.tracker, lifter)
+            mode_rungs = rungs if explicit else ([] if a.refine.strip() == "none" else list(mode.refine))
+            summary[mode.name] = run_mode(mode, backend, root, scored, a.tracker, lifter, mode_rungs, shared)
         except (RuntimeError, ValueError, FileNotFoundError, OSError) as e:
             failed = True
             summary[mode.name] = {"error": f"{type(e).__name__}: {e}"}

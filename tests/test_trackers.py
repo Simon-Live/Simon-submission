@@ -497,6 +497,131 @@ def test_local_sam31_shape_and_provenance(env, tmp_path):
     assert m["name"] == "sam3.1" and len(m["weights_sha256"]) == 64
 
 
+# A stand-in for the sam3 package, loaded wherever build_predictor runs. Like SAM 3.1's real predictor it
+# enters process-wide state in its constructor and never leaves it (there: torch.autocast(cuda, bf16)
+# .__enter__(); here: an environment variable), and it emits FakeSam3's detections.
+FAKE_SAM3_BUILDER = '''
+import fcntl, json, os, sys
+from pathlib import Path
+import numpy as np
+
+H, W, SECRET = {h}, {w}, {secret!r}
+
+
+class _Model:
+    def init_state(self, resource_path, offload_video_to_cpu=False):
+        return None
+
+
+class _Predictor:
+    def __init__(self, checkpoint_path):
+        os.environ["FAKE_SAM3_AUTOCAST"] = "bfloat16"
+        if os.environ.get("FAKE_SAM3_FAIL"):
+            raise RuntimeError(os.environ["FAKE_SAM3_FAIL"] + "\\nmore detail")
+        self.model = _Model()
+        with open(os.environ["PART2_GPU_LOCK"], "a") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                held = False
+                fcntl.flock(f, fcntl.LOCK_UN)
+            except BlockingIOError:
+                held = True
+        seen = [*sys.argv, *os.environ.values()]
+        Path(os.environ["FAKE_SAM3_SPY"]).write_text(json.dumps({{
+            "pid": os.getpid(), "checkpoint": checkpoint_path, "gpu_lock_held": held,
+            "secret_seen": any(SECRET[i:i + 8] in v for v in seen for i in range(len(SECRET) - 7))}}))
+
+    def handle_request(self, req):
+        if req["type"] == "start_session":
+            self.n = len(list(Path(req["resource_path"]).glob("*.jpg")))
+            return {{"session_id": "s1"}}
+        return {{}}
+
+    def handle_stream_request(self, req):
+        for i in range(self.n):
+            masks, ids = [], []
+            for k in range(int(os.environ.get("FAKE_SAM3_PEOPLE", "2"))):
+                m = np.zeros((H, W), bool)
+                m[2:20, 2 + 20 * k:12 + 20 * k] = True
+                masks.append(m)
+                ids.append(7 - k)
+            yield {{"frame_index": i, "outputs": {{"out_obj_ids": ids, "out_binary_masks": masks,
+                                                 "out_probs": [0.95] * len(ids)}}}}
+
+
+def build_sam3_multiplex_video_predictor(checkpoint_path=None, use_fa3=True, async_loading_frames=True):
+    return _Predictor(checkpoint_path)
+'''
+
+
+@pytest.fixture
+def fake_sam3_package(env, tmp_path, monkeypatch):
+    """The stand-in sam3 importable here and in any child process; the sticky state starts "off"."""
+    pkg = tmp_path / "fake-site" / "sam3"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    (pkg / "model_builder.py").write_text(FAKE_SAM3_BUILDER.format(h=H, w=W, secret=FAKE))
+    monkeypatch.syspath_prepend(str(pkg.parent))
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(filter(None, [str(pkg.parent), os.environ.get("PYTHONPATH")])))
+    monkeypatch.setenv("FAKE_SAM3_AUTOCAST", "off")
+    monkeypatch.setenv("FAKE_SAM3_SPY", str(tmp_path / "spy.json"))
+    yield tmp_path / "spy.json"
+    for name in ("sam3.model_builder", "sam3"):
+        sys.modules.pop(name, None)
+
+
+def test_local_sam31_leaves_no_predictor_state_in_the_parent_given_a_predictor_that_enters_autocast(
+        env, tmp_path, fake_sam3_package):
+    put_key(env.keys, "HF_TOKEN")
+    ckpt = tmp_path / "sam3.1_multiplex.pt"
+    ckpt.write_bytes(b"weights")
+    t = local_sam31.LocalSam31(downloader=lambda tok: str(ckpt))
+    d, recs = make_frames(tmp_path, n=3)
+    got = t.detect(d, recs)
+    assert os.environ["FAKE_SAM3_AUTOCAST"] == "off"  # the predictor's sticky state stayed in its own process
+    spy = json.loads(fake_sam3_package.read_text())
+    assert spy["pid"] != os.getpid() and spy["checkpoint"] == str(ckpt)
+    assert spy["gpu_lock_held"] and not spy["secret_seen"]
+    assert got == local_sam31.text_prompt_track(FakeSam3(), d, recs)  # same detections as in process
+    assert list(got) == [r["frame"] for r in recs] and all(isinstance(k, int) for k in got)
+
+
+def test_local_sam31_child_failure_is_a_tracker_error(env, tmp_path, fake_sam3_package, monkeypatch, capfd):
+    put_key(env.keys, "HF_TOKEN")
+    monkeypatch.setenv("FAKE_SAM3_FAIL", "\"addmm_sparse_cuda\" not implemented for 'BFloat16'")
+    (tmp_path / "w.pt").write_bytes(b"weights")
+    t = local_sam31.LocalSam31(downloader=lambda tok: str(tmp_path / "w.pt"))
+    d, recs = make_frames(tmp_path)
+    with pytest.raises(trackers.TrackerError) as e:
+        t.detect(d, recs)
+    assert str(e.value) == ("tracker local-sam31: RuntimeError: \"addmm_sparse_cuda\" not implemented for "
+                            "'BFloat16'")
+    assert "Traceback" in capfd.readouterr().err and os.environ["FAKE_SAM3_AUTOCAST"] == "off"
+
+
+def test_local_sam31_child_with_nobody_found_raises_no_person(env, tmp_path, fake_sam3_package, monkeypatch):
+    put_key(env.keys, "HF_TOKEN")
+    monkeypatch.setenv("FAKE_SAM3_PEOPLE", "0")
+    (tmp_path / "w.pt").write_bytes(b"weights")
+    t = local_sam31.LocalSam31(downloader=lambda tok: str(tmp_path / "w.pt"))
+    d, recs = make_frames(tmp_path)
+    with pytest.raises(trackers.NoPerson):
+        t.detect(d, recs)
+
+
+def test_local_sam31_child_that_dies_reports_its_exit_code(env, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(local_sam31.subprocess, "run",
+                        lambda argv, env, check: calls.append((argv, env)) or types.SimpleNamespace(returncode=-9))
+    d, recs = make_frames(tmp_path)
+    with pytest.raises(trackers.TrackerError) as e:
+        local_sam31.run_in_child(tmp_path / "w.pt", d, recs)
+    assert str(e.value) == "tracker local-sam31: the SAM 3.1 process exited with code -9"
+    argv, child_env = calls[0]
+    assert argv[:3] == [sys.executable, "-m", "part2.trackers.local_sam31"]
+    assert child_env["PYTHONPATH"].split(os.pathsep)[0] == str(trackers.ROOT)
+
+
 def test_known_kwargs_only_drops_undeclared_arguments():
     def init_state(resource_path, offload_video_to_cpu=False):
         return resource_path, offload_video_to_cpu

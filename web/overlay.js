@@ -99,12 +99,21 @@
       }
       if (st.ids.length > 1) {
         const top = pts.filter(Boolean).reduce((m, q) => (q[1] < m[1] ? q : m), [0, Infinity]);
-        const p = at(top);
+        const text = 'id ' + id;
         ctx.font = `${12 * st.dpr}px system-ui, sans-serif`;
+        const [x, y] = labelAt(at(top), ctx.measureText(text).width, k);
         ctx.lineWidth = 3 * st.dpr; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-        ctx.strokeText('id ' + id, p[0] + 6 * st.dpr, p[1] - 8 * st.dpr);
-        ctx.fillText('id ' + id, p[0] + 6 * st.dpr, p[1] - 8 * st.dpr);
+        ctx.strokeText(text, x, y);
+        ctx.fillText(text, x, y);
       }
+    }
+
+    /* Where a label of width w starts (alphabetic baseline): above right of p, moved back inside the picture. */
+    function labelAt(p, w, k) {
+      const d = st.dpr, pad = 2 * d, size = 12 * d;
+      const left = k.ox * d, top = k.oy * d, right = (k.ox + st.size[0] * k.s) * d, bottom = (k.oy + st.size[1] * k.s) * d;
+      return [Math.max(left + pad, Math.min(p[0] + 6 * d, right - w - pad)),
+              Math.max(top + size, Math.min(p[1] - 8 * d, bottom - pad))];
     }
 
     function draw() {

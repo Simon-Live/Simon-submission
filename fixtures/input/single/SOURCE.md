@@ -1,4 +1,4 @@
-# Single-person fixture — source
+# Single-person fixture: source
 
 - **Clip:** "Side View of a Woman Stretching in a Health Club", Pexels video 6019962
   <https://www.pexels.com/video/side-view-of-a-woman-stretching-in-a-health-club-6019962/>

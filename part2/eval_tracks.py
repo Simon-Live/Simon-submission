@@ -1,7 +1,7 @@
 """Multi-person done criterion (#13): tracking coverage + ID swaps vs hand-labelled keyframes.
 
 gt_tracks.json (from the #6 tool): {keyframes_only: true,
-  frames: [{frame, people: [{id, bbox: [x, y, w, h]}]}]} — keyframes only (~1 s apart).
+  frames: [{frame, people: [{id, bbox: [x, y, w, h]}]}]}. Keyframes only (~1 s apart).
 A keyframe with no people counts as unlabelled and is excluded everywhere.
 
 Per labelled keyframe, GT boxes are matched to predicted tracks.json boxes in the

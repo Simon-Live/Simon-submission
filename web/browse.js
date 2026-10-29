@@ -165,7 +165,10 @@
     for (const k of columns) { const th = make('th', k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()), head); th.scope = 'col'; }
     for (const row of rows) {
       const tr = make('tr', undefined, $('compat').tBodies[0]);
-      for (const k of columns) make('td', cellText(row[k]), tr);
+      for (const k of columns) {        // text cells may quote code in backticks, as CONTRACT.md does
+        const td = make('td', undefined, tr), v = row[k];
+        if (typeof v === 'string') inline(td, v); else td.textContent = cellText(v);
+      }
     }
   }
 

@@ -19,6 +19,7 @@ from part2.joints import BONES, CANONICAL
 ROOT = Path(__file__).resolve().parent.parent
 VIEWER = ROOT / "web" / "viewer.js"
 OVERLAY = ROOT / "web" / "overlay.js"
+BROWSE = ROOT / "web" / "browse.js"
 OUT = ROOT / "fixtures" / "output"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
@@ -30,7 +31,7 @@ const fs = require('fs');
 const readJSON = p => JSON.parse(fs.readFileSync(p, 'utf8'));
 function stub(size = 300) {{
   const handlers = {{}}, calls = [], styles = new Set();
-  const ctx = new Proxy({{}}, {{
+  const ctx = new Proxy({{ measureText: text => ({{ width: 7 * text.length }}) }}, {{
     get(t, k) {{ return k in t ? t[k] : (...a) => {{ calls.push([k, ...a]); }}; }},
     set(t, k, v) {{ if (k === 'strokeStyle' || k === 'fillStyle') styles.add(v); t[k] = v; return true; }},
   }});
@@ -351,6 +352,81 @@ def test_overlay_without_data_draws_nothing_and_one_person_has_no_label():
     """ % (json.dumps(str(OUT / "single" / "pose3d.json")), json.dumps(str(OUT / "single" / "camera.json"))))
     assert got["empty"] == {"people": [], "strokes": 0}
     assert got["one"] == {"people": [0], "labels": 0} and got["cleared"] == []
+
+
+LABELS_INSIDE = """
+      const labels = [];
+      for (let i = 0; i < frames; i++) {
+        s.calls.length = 0; o.setFrame(i);
+        for (const c of s.calls.filter(c => c[0] === 'fillText')) labels.push([c[1], c[2], c[3]]);
+      }
+      const k = O.fit(cam.image_size[0], cam.image_size[1], size, size);
+      const box = [k.ox, k.oy, k.ox + cam.image_size[0] * k.s, k.oy + cam.image_size[1] * k.s];
+      const outside = labels.filter(([t, x, y]) => x < box[0] || x + 7 * t.length > box[2] || y - 12 < box[1] || y > box[3]);
+      return {n: labels.length, outside};
+"""
+
+
+def test_overlay_labels_stay_inside_the_picture_given_a_person_at_its_corner():
+    # Person 0's only joint projects past the right edge and above the top of a 100 x 50 picture.
+    pose = {"frames": [{"frame": 0, "t_ms": 0, "people": [
+        {"id": 0, "joints": {"nose": {"x": 1.2, "y": -0.35, "z": 1}}},
+        {"id": 1, "joints": {"nose": {"x": -0.49, "y": 0.24, "z": 1}}}]}]}
+    camera = {"K": [[100, 0, 50], [0, 100, 25], [0, 0, 1]], "image_size": [100, 50], "frames": [
+        {"frame": 0, "people": [{"id": i, "R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "t": [0, 0, 0]} for i in (0, 1)]}]}
+    got = run_js("const size = 200, s = stub(size), o = O.create(s.canvas), cam = %s, frames = 1;"
+                 "o.setData(%s, cam);" % (json.dumps(camera), json.dumps(pose)) + LABELS_INSIDE)
+    assert got == {"n": 2, "outside": []}
+
+
+def test_overlay_labels_stay_inside_the_picture_on_every_class_frame():
+    got = run_js("const size = 320, s = stub(size), o = O.create(s.canvas), cam = readJSON(%s), pose = readJSON(%s);"
+                 "const frames = pose.frames.length; o.setData(pose, cam);" % (
+                     json.dumps(str(OUT / "class" / "camera.json")), json.dumps(str(OUT / "class" / "pose3d.json")))
+                 + LABELS_INSIDE)
+    assert got["n"] > 5 * 80 and got["outside"] == []
+
+
+# ---- browse.js contract page -------------------------------------------------------------------------------
+
+CONTRACT_PAGE = """
+function el(tag) {
+  return { tag, children: [], dataset: {}, hidden: false, className: '',
+    append(...xs) { for (const x of xs) this.children.push(typeof x === 'string' ? { tag: '#text', text: x } : x); },
+    replaceChildren(...xs) { this.children = []; this.append(...xs); },
+    set textContent(v) { this.children = [{ tag: '#text', text: String(v) }]; },
+    get textContent() { return this.children.map(c => (c.tag === '#text' ? c.text : c.textContent)).join(''); } };
+}
+const table = () => Object.assign(el('table'), { tHead: el('thead'), tBodies: [el('tbody')] });
+const els = { status: el('p'), alert: el('p'), schemas: table(), 'schemas-empty': el('p'), compat: table(),
+              'compat-empty': el('p'), 'contract-doc': el('article') };
+global.window = global;
+global.document = { getElementById: id => els[id] || null, createElement: el };
+global.fetch = async url => ({ ok: true, json: async () => DATA, text: async () => '# Contract' });
+const shape = n => (n.tag === '#text' ? n.text : [n.tag, ...n.children.map(shape)]);
+"""
+
+
+def run_contract_page(data, body):
+    code = (f"const DATA = {json.dumps(data)};\n" + CONTRACT_PAGE + f"require({json.dumps(str(BROWSE))});\n"
+            "(async () => { while (!window.app.ready) await new Promise(r => setTimeout(r, 5));\n"
+            f"console.log(JSON.stringify((() => {{ {body} }})())); }})();")
+    done = subprocess.run(["node", "-e", code], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def test_contract_compatibility_cells_render_backticks_as_code_given_a_quoted_option():
+    rows = [{"producer_file": "pose3d.json with `mirrored`", "consumer": "Part 3",
+             "option": "Part 3 `--person <id>` or `--all-people`", "evidence": None, "count": 3}]
+    got = run_contract_page({"schemas": [], "compatibility": rows},
+                            "return {head: els.compat.tHead.children.map(shape), "
+                            "body: els.compat.tBodies[0].children.map(shape)};")
+    assert got["head"] == [["tr", ["th", "Producer file"], ["th", "Consumer"], ["th", "Option"], ["th", "Evidence"],
+                            ["th", "Count"]]]
+    assert got["body"] == [["tr", ["td", "pose3d.json with ", ["code", "mirrored"], ""], ["td", "Part 3"],
+                            ["td", "Part 3 ", ["code", "--person <id>"], " or ", ["code", "--all-people"], ""],
+                            ["td", ""], ["td", "3"]]]
 
 
 def test_a_picked_person_is_shown_alone_in_the_canonical_frame():

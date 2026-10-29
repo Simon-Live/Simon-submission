@@ -12,9 +12,10 @@ directly. GitHub does not render HTML, so download a viewer before opening it.
 | `overlay-class.mp4` | Class clip with all 7 tracked people's 3D joints projected back onto the video, coloured by track id | same class clip |
 | `overlay-dance.mp4` | Stress test: 5 dancers crossing and swapping places while the camera pans; every tracked dancer's 3D joints projected back onto the video, coloured by track id | "Women Dancing All Together", Pexels video [8956007](https://www.pexels.com/video/women-dancing-all-together-8956007/), Pexels licence |
 | `viewer-dance-person3.html`, `viewer-dance-person1.html` | 3D skeletons of two dancers from that clip (pink top, striped shirt) | same dance clip |
+| `staging-walkthrough.mp4` | The staging walkthrough | n/a |
 
-Produced by `part2 demo viewer --embed` / `part2 demo overlay` from SAM 3D Body runs on the HPC cluster (V100),
-tracking by SAM 3.1 via the Meta API. `viewer-single-side.html` and `viewer-class-person0.html`
+The viewers and overlays were produced by `part2 demo viewer --embed` / `part2 demo overlay` from SAM 3D Body
+runs on the HPC cluster (V100), tracking by SAM 3.1 via the Meta API. `viewer-single-side.html` and `viewer-class-person0.html`
 are rendered from the `make hpc-outputs` run scored by `make check-2` on `f47e03f`. The squat and
 dance viewers and the overlays come from separate demo runs.
 
