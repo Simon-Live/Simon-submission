@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/metrics.schema.json",
+  "title": "Part 5 make check-5 document (simon.part5.check.v1)",
+  "version": "1.0.0",
+  "description": "The JSON make check-5 prints. gate carries the held-out result and decides the exit code; tuning and report are reported and never gated. Extra fields are allowed.",
+  "type": "object",
+  "required": [
+    "format",
+    "data_source",
+    "gate",
+    "attempts",
+    "tuning",
+    "report",
+    "rules_sha256"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.part5.check.v1"
+    },
+    "data_source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "gate": {
+      "type": "object",
+      "required": [
+        "set",
+        "seed",
+        "slices",
+        "thresholds",
+        "passed",
+        "failures",
+        "metrics"
+      ],
+      "properties": {
+        "set": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "slices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "thresholds": {
+          "type": "object",
+          "required": [
+            "precision",
+            "recall",
+            "faults_on_correct_takes"
+          ],
+          "properties": {
+            "precision": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "recall": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "faults_on_correct_takes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics_v1"
+        }
+      }
+    },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "seed",
+          "freeze_commit",
+          "rules_sha256",
+          "approach",
+          "passed",
+          "slices"
+        ],
+        "properties": {
+          "seed": {
+            "type": "integer"
+          },
+          "freeze_commit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rules_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "approach": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "slices": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "tuning": {
+      "type": "object",
+      "required": [
+        "set",
+        "seed",
+        "gated",
+        "metrics"
+      ],
+      "properties": {
+        "set": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "gated": {
+          "const": false
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics_v1"
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "required": [
+        "low_light",
+        "dropout",
+        "kit",
+        "stock",
+        "refusals"
+      ],
+      "properties": {
+        "low_light": {
+          "type": "object",
+          "required": [
+            "gated"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "slices": {
+              "type": "object"
+            }
+          }
+        },
+        "dropout": {
+          "type": "object",
+          "required": [
+            "gated"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "slices": {
+              "type": "object"
+            }
+          }
+        },
+        "kit": {
+          "type": "object",
+          "required": [
+            "gated"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "takes": {
+              "type": "array"
+            }
+          }
+        },
+        "stock": {
+          "type": "object",
+          "required": [
+            "gated"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "takes": {
+              "type": "array"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        "refusals": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "rules_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "slice": {
+      "type": "object",
+      "required": [
+        "tp",
+        "fp",
+        "fn",
+        "takes",
+        "correct_takes",
+        "faults_on_correct_takes",
+        "precision",
+        "recall"
+      ],
+      "properties": {
+        "tp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "takes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "correct_takes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "faults_on_correct_takes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "precision": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "recall": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Takes the movement guard refused; their labels score as misses."
+        }
+      }
+    },
+    "metrics_v1": {
+      "type": "object",
+      "required": [
+        "format",
+        "slices"
+      ],
+      "properties": {
+        "format": {
+          "const": "simon.part5.metrics.v1"
+        },
+        "slices": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/slice"
+          },
+          "description": "Keyed <lighting>/<angle>, for example good/front."
+        }
+      }
+    }
+  }
+}

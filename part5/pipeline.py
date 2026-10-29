@@ -3,14 +3,14 @@
 `analyse` returns a validated `simon.analysis.v1` document (see docs/schemas.md) without
 writing anything, so the CLI, `make check-5` and the example script share one code path.
 """
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
 
-from .align import ALIGN_MEASURES, align
+from .align import ALIGN_MEASURES, Alignment, align
 from .detect import detect
-from .io import load_clip
+from .io import Clip, load_clip, parse_clip
 from .measures import compute
 from .normalise import normalise
 from .output import build_analysis
@@ -25,17 +25,49 @@ MIN_AVAILABLE = 0.5
 FPS_TOLERANCE = 0.01
 
 
+PHRASING_BACKENDS = ("template",)
+
+
 class AnalysisError(ValueError):
     """The takes loaded but can't be compared (e.g. the follower is far too fast)."""
+
+
+@dataclass
+class PipelineResult:
+    """One analysis with what the replay needs: the normalised clips and the alignment.
+
+    `follower` is the follower clip on its own frames; `follower_positions` is it resampled onto
+    the expected clock (what was aligned), and `to_original[j]` is the follower file's frame for
+    resampled frame `j`. `alignment` indexes the resampled frames.
+    """
+    analysis: dict
+    alignment: Alignment | None
+    expected: Clip
+    follower: Clip
+    follower_positions: np.ndarray
+    to_original: np.ndarray
 
 
 def analyse(expected, follower, rules=None):
     """`expected`/`follower` are paths, or objects with `path` plus ids that pass through
     to the output (e.g. `take_id`). Raises `io.InputError` for a bad file, `AnalysisError`
     if the takes can't be aligned."""
+    return run(expected, follower, rules).analysis
+
+
+def run(expected, follower, rules=None, *, phrasing="template"):
+    """`analyse` keeping the clips and the alignment (`PipelineResult`).
+
+    A ref may carry the parsed JSON under `doc` (an upload held in memory): the clip is parsed
+    from it, `path` names it in the output, and `doc` itself never reaches the output.
+    """
+    if phrasing not in PHRASING_BACKENDS:
+        raise AnalysisError(f"phrasing must be one of {list(PHRASING_BACKENDS)}, got {phrasing!r}")
     exp_ref, fol_ref = _ref(expected, "expected"), _ref(follower, "follower")
-    exp = normalise(load_clip(exp_ref["path"]))
-    fol = normalise(load_clip(fol_ref["path"]))
+    exp = normalise(_load(exp_ref))
+    fol = normalise(_load(fol_ref))
+    exp_ref.pop("doc", None)
+    fol_ref.pop("doc", None)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
     # `to_original` maps each resampled frame back to the follower file's own frame index.
     fol_positions, to_original = resample(fol.positions, fol.t, clip_fps(exp))
@@ -52,7 +84,8 @@ def analyse(expected, follower, rules=None):
     faults = [replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
               for f in detect(exp_m, fol_m, alignment, rules)]
     span = tuple(int(to_original[j]) for j in alignment.follower_span)
-    return build_analysis(exp_ref, fol_ref, faults, diagnostics=_diagnostics(alignment, span, len(fol.t)))
+    analysis = build_analysis(exp_ref, fol_ref, faults, diagnostics=_diagnostics(alignment, span, len(fol.t)))
+    return PipelineResult(analysis, alignment, exp, fol, fol_positions, np.asarray(to_original))
 
 
 def clip_fps(clip):
@@ -89,6 +122,12 @@ def resample(positions, t, fps, tolerance=FPS_TOLERANCE):
     out[at_hi] = positions[hi[at_hi]]
     nearest = np.where(grid - t[lo] <= t[hi] - grid, lo, hi)
     return out, nearest
+
+
+def _load(ref):
+    if "doc" in ref:
+        return parse_clip(ref["doc"], source=ref["path"])
+    return load_clip(ref["path"])
 
 
 def _ref(ref, key):

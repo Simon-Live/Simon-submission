@@ -1,5 +1,11 @@
 # Part 5 file contracts
 
+This page is the field reference. The same contract is published as JSON Schemas in `contracts/`
+(`analysis`, `input-animation`, `input-skeleton`, `labels`, `metrics`, each with a `version`).
+`python -m part5 contract` prints them with the compatibility table, `python -m part5 doctor <file>`
+checks one file and `make check-5-contract` proves the schemas, the fixtures and the golden outputs
+agree. `CONTRACT.md` says who sends what and what Part 7 must do with `analysis.json`.
+
 ## Inputs
 
 ### Expected clip: `animation.json` (`simon.animation.v1`, from Part 4)
@@ -53,7 +59,9 @@ through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); va
 `OutputError` with the file and field that broke the contract. Unknown extra fields are allowed,
 so the format can grow without breaking older readers. Live examples, generated from dummy
 takes by `make output-examples`: `fixtures/output/analysis.example.json` (two faults) and
-`fixtures/output/analysis.no-faults.example.json` (a correct take).
+`fixtures/output/analysis.no-faults.example.json` (a correct take). The machine-readable form is
+`contracts/analysis.schema.json` (version 1.1.0): it adds optional fields to this shape, so a 1.0
+document validates against it, and `CONTRACT.md` names what Part 7 must read first.
 
 ```json
 {

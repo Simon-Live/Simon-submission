@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compare your take with the example</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Compare your take with the example</h1>
+      <p class="lead">Pick an example movement and a recorded take, then press Analyse. The result lists each way the take differs from the example, in plain words.</p>
+    </header>
+
+    <form id="picker" data-testid="picker">
+      <div class="field">
+        <label for="expected-picker">Example movement</label>
+        <select id="expected-picker" data-testid="expected-picker" disabled></select>
+      </div>
+      <div class="field">
+        <label for="follower-picker">Your take</label>
+        <select id="follower-picker" data-testid="follower-picker" aria-describedby="take-hint" disabled></select>
+        <p class="hint" id="take-hint">These takes are generated for testing. Each is labelled with the fault it was made with, or as a correct take.</p>
+      </div>
+      <button type="submit" id="analyse" data-testid="analyse" disabled>Analyse</button>
+      <p id="form-error" class="error" role="alert" data-testid="form-error" hidden></p>
+    </form>
+
+    <section id="result" aria-labelledby="result-heading">
+      <h2 id="result-heading">Result</h2>
+      <p id="result-status" role="status" data-testid="result-status">Results appear here after you press Analyse.</p>
+      <ul id="fault-list" class="faults" data-testid="fault-list" aria-label="Faults found" hidden></ul>
+      <p><a id="download" class="download" data-testid="download" download="analysis.json" hidden>Download analysis.json</a></p>
+    </section>
+
+    <noscript><p class="error">This page needs JavaScript to run an analysis.</p></noscript>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

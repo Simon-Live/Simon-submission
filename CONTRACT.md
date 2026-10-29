@@ -1,12 +1,85 @@
-# Part 5 input contract
+# Part 5 contract
 
-What Part 5 reads, from which part, and the schema each file is checked against. Field rules are in `docs/schemas.md`; this page says who sends what.
+What Part 5 reads and writes, which part sends what, and how to check a file before you stitch. Field rules are in `docs/schemas.md`; this page says who sends what and what each side must do.
+
+## Check a file now
 
 ```bash
-make test-contract     # every file below through part5.io.load_clip, and against its schema
-make contracts-check   # exit 1 when a copy differs from Part 3 or Part 4 main
-make contracts-sync    # refresh the copies and contracts/sources.lock.json
+python -m part5 doctor skeleton.json                  # a clip Part 5 would read (expected or follower)
+python -m part5 doctor analysis.json --for part7      # an analysis a viewer would read
+python -m part5 contract                              # the schemas and the compatibility table below
+python -m part5 contract --schema analysis            # one schema, exactly as stored
+make check-5-contract                                 # schemas, fixtures and golden outputs agree
+make test-contract                                    # every file below through part5.io.load_clip, and against its schema
+make contracts-check                                  # exit 1 when a copy differs from Part 3 or Part 4 main
+make contracts-sync                                   # refresh the copies and contracts/sources.lock.json
 ```
+
+`doctor` names the file's kind and version, validates it and, when the consumer would reject it, says which field is wrong and which option fixes it:
+
+```
+$ python -m part5 doctor skeleton.native.json
+skeleton.native.json: simon.skeleton/1 (Part 3 native); rejected for part5
+  no "format" field: this is Part 3's native skeleton.json (simon.skeleton/1); fix: rerun Part 3 with --view part5
+```
+
+Exit codes of `doctor`: 0 accepted, 1 rejected, 2 unreadable (missing, not a file, not JSON). `--json` prints one object. `--for part7` checks an `analysis.json` instead of a clip. `contract` and `doctor` run offline, and Part 5 never fetches a URL, a hand-off's included.
+
+## Schemas
+
+Each schema is JSON Schema draft 2020-12 with an `$id` and a top-level `version`. Any validator reads them; Python is not needed.
+
+| Name | Version | File | Describes |
+|---|---|---|---|
+| `analysis` | `1.1.0` | `contracts/analysis.schema.json` | Part 5 analysis.json (simon.analysis.v1) |
+| `input-animation` | `1.0.0` | `contracts/input-animation.schema.json` | Part 5 input clip (simon.animation.v1) |
+| `input-skeleton` | `1.0.0` | `contracts/input-skeleton.schema.json` | Part 5 expected skeleton (simon.skeleton.v1) |
+| `labels` | `1.0.0` | `contracts/labels.schema.json` | Part 5 labels.json (evaluation labels) |
+| `metrics` | `1.0.0` | `contracts/metrics.schema.json` | Part 5 make check-5 document (simon.part5.check.v1) |
+
+The copies of Part 3's and Part 4's schemas stay under `contracts/part3/` and `contracts/part4/`, exactly as they were published. The analysis schema is `1.1.0`: it adds optional fields to `simon.analysis.v1`, so a `1.0` document still validates and `format` does not change.
+
+## Compatibility
+
+Which producer file works with Part 5, as checked against the producer commit in the last column. `works` needs no option. `works with an option` needs the fix shown. `rejected` names what makes the file acceptable. The Part 3 and Part 4 commits come from `contracts/sources.lock.json`; the Part 2 and Part 6 commits are their `main` heads on the day Part 5 last ran its own check against them.
+
+<!-- part5-compatibility:begin -->
+| Producer | File | format | Part 5 role | Verdict | Fix | Checked against |
+|---|---|---|---|---|---|---|
+| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | run Part 3 `--view part5` on it; `doctor` exits 1 with "run Part 3 --view part5" | Part 2 b45a91d |
+| Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works |  | Part 3 65a5aad |
+| Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works |  | Part 3 65a5aad |
+| Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` | Part 3 65a5aad |
+| Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 dc3d9f2 |
+| Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
+| Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
+| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `status` before `faults` | Part 5 (this repo) |
+| Part 5 | `part5 analyse` exit code | 0 ok analysis written, 1 input or write error, 2 usage, 3 refused analysis written | for Part 7 | works with a mapping | Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the contract (Part 3 CONTRACT.md, row for Part 7): treat 0 and 3 as "written, read `status`", 1 and 2 as failures | Part 7 90aa473 (as Part 3 CONTRACT.md records it) |
+| Part 5 | `labels.json` | none | evaluation | works |  | Part 5 (this repo) |
+<!-- part5-compatibility:end -->
+
+## What Part 5 writes
+
+`part5 analyse --expected <file> --follower <file> --out <analysis.json>` writes `analysis.json` (`simon.analysis.v1`, schema `1.1.0`). The exit code says what happened to the file:
+
+| Exit | Meaning | `analysis.json` written |
+|---|---|---|
+| 0 | the analysis is written and its `status.code` is `ok` | yes |
+| 1 | an input or the output breaks the contract: a malformed clip, less than half the body measurable, takes that cannot be aligned, an output that cannot be written | no |
+| 2 | usage: a missing or unknown option | no |
+| 3 | a refused analysis is written: `status.code` is `different_movement` and `faults` is empty by design | yes |
+
+Exit 3 means a valid `analysis.json` was written and it is a refusal: read `status`, do not read an empty `faults` as a correct take. Until the movement guard is in, `analyse` never exits 3; the contract is stated now so a reader can be written once.
+
+## Part 7's duties
+
+1. **Read `status` before `faults`.** A refused take has `status.code: "different_movement"`, a `status.text` that says why in plain words and `faults: []`. Show it as a refusal, never as "no faults". A file with no `status` block is a schema `1.0` file: read it as `ok`.
+2. **Treat exit 0 and exit 3 as "written, read `status`".** Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the contract (Part 3 `CONTRACT.md`, row for Part 7). Map 0 and 3 to "written" and 1 and 2 to failures.
+3. **Highlight `faults[].joints`.** It lists canonical joint names. A `1.0` file has no `joints`; then map the fault's `joint`: a sided joint is itself; side `both` is `left_X` and `right_X`; `spine` is both shoulders and both hips; `shoulders` is both shoulders; `neck` is the nose and both shoulders.
+4. **Ignore fields you do not know.** New fields are added without changing `format`; `schema_version` says which additions to expect. `diagnostics` is for people debugging a take and is not shown to the follower.
+5. **Show `coaching` when it is there, `text` when it is not.** `text` is a lowercase fragment ("left foot too far out"); capitalise it for display. For the template phrasing `coaching` equals `text`.
+
+`python -m part5 doctor analysis.json --for part7` checks all of this on a file and warns when `status.code` is not `ok`.
 
 ## What Part 5 accepts
 
@@ -19,6 +92,8 @@ make contracts-sync    # refresh the copies and contracts/sources.lock.json
 | evaluation labels | `labels.json` | `simon.part3.follower_labels/1` | Part 3 | `contracts/part3/follower-labels.schema.json` | not read by `part5.io`; used by tests |
 
 Common to every accepted file: the 17 joints in canonical order, positions in metres as `[x, y, z]`, hip midpoint at the origin per frame, x the subject's left, y world up, z anterior, `t` in seconds and strictly increasing.
+
+Part 5's own schemas for these inputs are `input-animation` and `input-skeleton`. They also allow a joint set to `null` and a per frame `conf`, which an estimator that lost a joint writes and the Part 3 and Part 4 schemas do not describe.
 
 ## Where the copies come from
 
@@ -66,4 +141,4 @@ Parts 1, 3, 4 and 6 are done. This part follows the contracts they already set. 
 | 1 Key frames | done | Key frames sit on the original video clock (`frame`, `t_ms`). Part 4 has already used them to build the expected clip. If Part 5 aligns by key frame, match on `t_ms`. |
 | 6 Catalog | done | A catalog entry holds the expected movement's files (`manifest.json` v1, see Part 6's `CONTRACT.md`). Part 6 does not read `analysis.json`; Part 7 shows it. |
 
-Part 5's output, `analysis.json` (`simon.analysis.v1`, PR #31), goes to Part 7.
+Part 5's output, `analysis.json` (`simon.analysis.v1`), goes to Part 7. What Part 7 must do with it is in "Part 7's duties" above.

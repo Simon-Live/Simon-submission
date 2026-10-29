@@ -28,3 +28,10 @@ contracts-check:
 # Refresh those copies and contracts/sources.lock.json from Parts 3 and 4.
 contracts-sync:
 	uv run python scripts/sync_contracts.py
+
+# Contract check: the five schemas are valid, every committed fixture validates and loads through
+# part5.io, and the golden analysis outputs rebuild byte for byte. Prints a JSON summary and exits 0
+# only when it has no failures.
+.PHONY: check-5-contract
+check-5-contract:
+	@uv run python -m part5.contract --check
