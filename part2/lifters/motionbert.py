@@ -19,7 +19,6 @@ Deviation from the spec text ("normalised to [-1, 1] by the image size"), chosen
 fixture's 2D: crop_scale gave output x, y within 0.057 of the input 2D (fraction of body span) and a mean
 H36M bone CV of 0.163, against 0.127 and 0.178 for centring on the image and dividing by min(w, h) / 2.
 """
-import hashlib
 import importlib.util
 import os
 import sys
@@ -29,6 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
+from part2.hashing import sha256_file
 from part2.lifters import J, bone_lengths, hip_mid, place_root, rays
 from part2.lifters.fixed_bones import CONF_MIN, fit_lengths
 
@@ -194,14 +194,6 @@ def _url(rel: str) -> str:
     return f"https://huggingface.co/{REPO}/resolve/{REVISION}/{rel}"
 
 
-def sha256(path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def ensure_files(root: Path | None = None, fetch=None) -> Path:
     """Download any missing pinned file into the cache and check every digest; returns the cache root."""
     root = Path(root or cache_dir())
@@ -211,7 +203,7 @@ def ensure_files(root: Path | None = None, fetch=None) -> Path:
         if not path.is_file():
             path.parent.mkdir(parents=True, exist_ok=True)
             fetch(_url(rel), path)
-        if sha256(path) != digest:
+        if sha256_file(path) != digest:
             raise RuntimeError(f"motionbert: {path} does not match its pinned SHA-256; delete it and rerun")
     return root
 

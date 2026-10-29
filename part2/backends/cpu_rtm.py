@@ -12,7 +12,6 @@ Writes body3d.json in the shape documented in part2/body3d.py, plus a top-level 
 
 Nothing heavy is imported at module import: rtmlib, onnxruntime and cv2 load inside Rtm2D.
 """
-import hashlib
 import importlib.util
 import json
 import os
@@ -28,6 +27,7 @@ from part2 import frames as frames_mod
 from part2 import lifters
 from part2.backends import REFUSAL, BackendUnavailable
 from part2.body3d import choose_subject, project
+from part2.hashing import sha256_file
 from part2.joints import CANONICAL
 
 NAME = "cpu"
@@ -235,11 +235,7 @@ def _sha256(path: Path) -> str | None:
     st = path.stat()
     key = (str(path), st.st_size, st.st_mtime)
     if key not in _SHA_CACHE:
-        h = hashlib.sha256()
-        with open(path, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
-        _SHA_CACHE[key] = h.hexdigest()
+        _SHA_CACHE[key] = sha256_file(path)
     return _SHA_CACHE[key]
 
 

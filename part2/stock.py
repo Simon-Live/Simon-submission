@@ -1,15 +1,17 @@
-"""`part2 stock` / `make stock-outputs`: the three Pexels follower takes for Part 5 (TICKET-028).
+"""`part2 stock` / `make stock-outputs`: the Pexels follower takes for Part 5 (TICKET-028).
 
-Spec: docs/specs/stock-takes.md (AC-T01 to AC-T05, error rows, edge cases). ADR-0005 (licences), ADR-0006.
+Spec: docs/specs/stock-takes.md (AC-T01 to AC-T07, error rows, edge cases). ADR-0005 (licences), ADR-0006.
 
-    part2 stock [--clip pexels-5034562|pexels-5034577|pexels-8837221] [--backend gpu|cpu]
+    part2 stock [--clip pexels-5034562|pexels-5034577|pexels-8837221|pexels-5034562-0to7s] [--backend gpu|cpu]
 
-Per clip: download DOWNLOAD_URL into the cache (PART2_STOCK_DIR, else ~/.cache/simon-part-2/stock), read the
-title and author from PAGE_URL at run time, read the file facts with ffprobe, sample frames at 10 fps with
-`part2 frames`, run the one-person pipeline (no tracker; the gpu backend under the host GPU lock), check the
-result as `make check-2-contract` does, then write fixtures/output/stock/pexels-<id>/{pose3d.json, camera.json,
-SOURCE.md}. The video, the frames and the scratch run stay in the cache; nothing is written to the output dir
-before every check passed. Exit 0 when every clip converted, 1 when one failed, 2 for an unknown backend.
+A take is a whole clip (`pexels-<id>`) or a cut of one listed in CUTS (`pexels-<id>-<start>to<end>s`, seconds).
+Per take: download DOWNLOAD_URL into the cache (PART2_STOCK_DIR, else ~/.cache/simon-part-2/stock; a cut reuses
+its clip's download), read the title and author from PAGE_URL at run time, read the file facts with ffprobe,
+sample frames at 10 fps with `part2 frames` (a cut keeps the frames inside its time range), run the one-person
+pipeline (no tracker; the gpu backend under the host GPU lock), check the result as `make check-2-contract` does,
+then write fixtures/output/stock/<take>/{pose3d.json, camera.json, SOURCE.md}. The video, the frames and the
+scratch run stay in the cache; nothing is written to the output dir before every check passed. Exit 0 when every
+take converted, 1 when one failed, 2 for an unknown backend.
 """
 import contextlib
 import json
@@ -19,6 +21,7 @@ import shutil
 import sys
 import tempfile
 import time
+import typing
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -40,14 +43,37 @@ NOT_STATED = "not stated on the page"
 CHALLENGE = "challenges.cloudflare.com"  # a bot check page, not the video page
 SIDECAR = "download.json"
 OUTPUT_FILES = ("pose3d.json", "camera.json")
+EDGE_MS = 0.5  # a frame timed within this many ms of a cut's end is inside the cut (t_ms is rounded)
 
 
 class StockError(RuntimeError):
     """A clip could not be converted; str() is the whole user-facing line (exit 1)."""
 
 
+class Take(typing.NamedTuple):
+    """A whole clip (`end` None) or the cut `start` to `end` seconds of it; `why` says why Part 5 asked for it."""
+    clip: str
+    start: float = 0.0
+    end: float | None = None
+    why: str | None = None
+
+
 def clip_id(clip: str) -> str:
     return clip.removeprefix("pexels-")
+
+
+def num(x: float) -> str:
+    """A number as SOURCE.md prints it: at most 3 decimals, no trailing zeros."""
+    return f"{x:.3f}".rstrip("0").rstrip(".")
+
+
+def take_name(t: Take) -> str:
+    """The take's folder name: `pexels-<id>` for a whole clip, `pexels-<id>-<start>to<end>s` for a cut."""
+    return t.clip if t.end is None else f"{t.clip}-{num(t.start)}to{num(t.end)}s"
+
+
+CUTS = (Take(EXPECTED, 0.0, 7.0, "its alignment cannot skip the bottle reach and the standing that follow the squats"),)
+TAKES = {take_name(t): t for t in [*map(Take, CLIPS), *CUTS]}  # what `part2 stock` runs without --clip, in order
 
 
 def cache_dir() -> Path:
@@ -69,7 +95,7 @@ def _safe_name(url: str, clip: str) -> str:
 
 def _cached(d: Path) -> dict | None:
     """The recorded download in `d` when its file is there with the recorded size and sha256, else None."""
-    from part2.coco_set import sha256_file
+    from part2.hashing import sha256_file
 
     try:
         rec = json.loads((d / SIDECAR).read_text())
@@ -83,7 +109,7 @@ def _cached(d: Path) -> dict | None:
 def download(clip: str, d: Path) -> dict:
     """The clip's video in `d` with its record {name, size, sha256, url, downloaded_utc}: the cached file when
     its size and sha256 match the record, else a fresh download. A failed download leaves no file behind."""
-    from part2.coco_set import sha256_file
+    from part2.hashing import sha256_file
 
     rec = _cached(d)
     if rec:
@@ -215,9 +241,45 @@ def probe(video: Path) -> dict:
             "duration_s": float(doc["format"]["duration"])}
 
 
-def num(x: float) -> str:
-    """A number as SOURCE.md prints it: at most 3 decimals, no trailing zeros."""
-    return f"{x:.3f}".rstrip("0").rstrip(".")
+def check_range(take: str, duration: float) -> tuple[float, float]:
+    """(start, end) in seconds of the take inside a clip of `duration` s; refuses a range the clip does not hold."""
+    t = TAKES[take]
+    start, end = t.start, duration if t.end is None else t.end
+    if start < 0:
+        raise StockError(f"stock: {take}: start {num(start)} s is before the clip")
+    if end <= start:
+        raise StockError(f"stock: {take}: end {num(end)} s is not after start {num(start)} s")
+    if end > duration:
+        raise StockError(f"stock: {take}: end {num(end)} s is past the clip ({num(duration)} s)")
+    return start, end
+
+
+def cut_frames(frames_dir: Path, take: str, start: float, end: float) -> list[dict]:
+    """Keep the frames timed `start` to `end` s (both ends included) and drop the rest. The kept frames are
+    renumbered from 0 with `t_ms` counted from the first of them, and `t0_pts_ms` moves to that frame's PTS, so
+    `t0_pts_ms + t_ms` is still the file clock. Frame files are named by position, so renaming in order is safe."""
+    from part2 import frames
+    from part2.schema import write_json
+
+    manifest = Path(frames_dir) / frames.MANIFEST
+    doc = json.loads(manifest.read_text())
+    keep = [r for r in doc["frames"] if start * 1000 - EDGE_MS <= r["t_ms"] <= end * 1000 + EDGE_MS]
+    if not keep:
+        raise StockError(f"stock: {take}: no frame between {num(start)} and {num(end)} s")
+    kept = {r["file"] for r in keep}
+    for r in doc["frames"]:
+        if r["file"] not in kept:
+            (frames_dir / r["file"]).unlink()
+    t0, recs = keep[0]["t_ms"], []
+    for i, r in enumerate(keep):
+        name = f"{i:06d}{Path(r['file']).suffix}"
+        if name != r["file"]:
+            (frames_dir / r["file"]).rename(frames_dir / name)
+        recs.append({"frame": i, "t_ms": round(r["t_ms"] - t0, 3), "file": name})
+    if "t0_pts_ms" in doc:
+        doc["t0_pts_ms"] = round(doc["t0_pts_ms"] + t0, 3)
+    write_json(manifest, {**doc, "frames": recs}, indent=1)
+    return recs
 
 
 def _locked(backend):
@@ -226,51 +288,69 @@ def _locked(backend):
     return outputs.gpu_guard() if backend.name == "gpu" else contextlib.nullcontext()
 
 
-def _pose_extras(frames_dir: Path, backend, clip: str) -> dict:
-    """cli._pose_extras (one-person mode: no tracker) plus the source clip in the provenance (AC-T04)."""
+def _pose_extras(frames_dir: Path, backend, take: str, span: tuple[float, float]) -> dict:
+    """cli._pose_extras (one-person mode: no tracker) plus the source clip in the provenance (AC-T04) and, for a
+    cut, its time range in seconds (AC-T07)."""
     from part2 import cli, frames, provenance
 
+    t = TAKES[take]
     extras = cli._pose_extras(frames.load_meta(frames_dir), False, backend)
-    extras["provenance"].update({"source_clip": clip, "source_url": PAGE_URL.format(id=clip_id(clip))})
+    extras["provenance"].update({"source_clip": t.clip, "source_url": PAGE_URL.format(id=clip_id(t.clip))})
+    if t.end is not None:
+        extras["provenance"]["source_range_s"] = list(span)
     provenance.validate(extras["provenance"])
     return extras
 
 
-def run_pipeline(clip: str, backend, video: Path, work: Path) -> dict:
-    """Frames at FPS, the one-person run and the contract checks in `work`; {frames, people, provenance}."""
+def run_pipeline(take: str, backend, video: Path, work: Path, span: tuple[float, float]) -> dict:
+    """Frames at FPS (a cut keeps those inside `span`), the one-person run and the contract checks in `work`;
+    {frames, people, provenance}."""
     from part2 import canonical, contract, frames
     from part2.schema import ContractError
 
     shutil.rmtree(work, ignore_errors=True)
     recs = frames.ingest(video, work / "frames", FPS)
+    if TAKES[take].end is not None:
+        recs = cut_frames(work / "frames", take, *span)
     with _locked(backend):
         doc = backend.estimate(work / "frames", work / "body3d.json")
     if not any(f["people"] for f in doc["frames"]):
-        raise StockError(f"stock: no person in {clip}")
+        raise StockError(f"stock: no person in {take}")
     try:
-        canonical.write(work / "body3d.json", work, smooth=False, extras=_pose_extras(work / "frames", backend, clip))
+        canonical.write(work / "body3d.json", work, smooth=False,
+                        extras=_pose_extras(work / "frames", backend, take, span))
     except ContractError as e:
-        raise StockError(f"stock: {clip} breaks the contract at {e.path}: {e.msg}") from None
+        raise StockError(f"stock: {take} breaks the contract at {e.path}: {e.msg}") from None
     for name, kind in zip(OUTPUT_FILES, ("pose3d", "camera")):
         problem = contract._file_problem(work / name, kind)
         if problem:
-            raise StockError(f"stock: {clip} breaks the contract at {problem}")
+            raise StockError(f"stock: {take} breaks the contract at {problem}")
     pose = json.loads((work / "pose3d.json").read_text())
     people = {p["id"] for f in pose["frames"] for p in f["people"]}
     return {"frames": len(recs), "people": len(people), "provenance": pose["provenance"]}
 
 
-def source_md(clip: str, page: dict, dl: dict, facts: dict, run: dict) -> str:
+def _range_line(take: str, span: tuple[float, float], duration: float) -> str:
+    t = TAKES[take]
+    if t.end is None:
+        return f"- **Time range used:** 0 to {num(duration)} s (the whole clip)."
+    return (f"- **Time range used:** {num(span[0])} to {num(span[1])} s of the {num(duration)} s clip. This take is a "
+            f"cut of {t.clip} made for Part 5: {t.why}.")
+
+
+def source_md(take: str, page: dict, dl: dict, facts: dict, run: dict, span: tuple[float, float]) -> str:
     """SOURCE.md: every value fetched, read from the file or ffprobe, or taken from the run's provenance."""
-    vid, angle, prov = clip_id(clip), CLIPS[clip], run["provenance"]
+    clip, cut, prov = TAKES[take].clip, TAKES[take].end is not None, run["provenance"]
+    vid, angle = clip_id(clip), CLIPS[clip]
     title = f'"{page["title"]}"' if page["title"] else "title not available"
     status = f"HTTP {page['status']}" if page["note"] is None else page["note"]
     gap = "" if page["note"] is None else "; the title and author were not available"
-    use = f"angle: {angle}" + ("; Part 5's expected take" if clip == EXPECTED else "")
+    role = ("a cut of " if cut else "") + "Part 5's expected take"
+    use = f"angle: {angle}" + (f"; {role}" if clip == EXPECTED else "")
     tracker = prov.get("tracker") or "none (one-person mode)"
     return "\n".join([
-        f"# Stock take {clip}: source", "",
-        f"Generated by `part2 stock --clip {clip}`. Do not edit by hand.", "",
+        f"# Stock take {take}: source", "",
+        f"Generated by `part2 stock --clip {take}`. Do not edit by hand.", "",
         f"- **Clip:** {title}, Pexels video {vid}", f"  <{page['url']}>",
         f"- **Author:** {page['author'] or NOT_STATED}",
         f"- **Page:** read {page['read_utc'][:10]} (UTC), {status}{gap}.",
@@ -278,29 +358,32 @@ def source_md(clip: str, page: dict, dl: dict, facts: dict, run: dict) -> str:
         f"- **Original file:** `{dl['name']}`, {dl['size']} bytes, {facts['width']}×{facts['height']}, "
         f"{num(facts['fps'])} fps, {num(facts['duration_s'])} s; downloaded {dl['downloaded_utc'][:10]} (UTC) from",
         f"  <{dl['url']}>; sha256 `{dl['sha256']}`. The video is not in this repo; re-download it from that URL.",
-        f"- **Time range used:** 0 to {num(facts['duration_s'])} s (the whole clip).",
+        _range_line(take, span, facts["duration_s"]),
         f"- **Frames:** sampled at {num(FPS)} fps with `part2 frames`: {run['frames']} frames.",
         f"- **Produced by:** `part2 stock`, `part2_commit` `{prov.get('part2_commit')}`, backend {prov.get('backend')}, "
         f"tracker {tracker}, lifter {prov.get('lifter') or 'none'}.",
         f"- **Use:** follower take for Part 5 ({use}), decision D2 on Part 5 #18.", ""])
 
 
-def convert(clip: str, backend, out_root: Path | None = None, cache: Path | None = None) -> dict:
-    """One clip end to end; the output dir is written only after every check passed."""
+def convert(take: str, backend, out_root: Path | None = None, cache: Path | None = None) -> dict:
+    """One take end to end; the output dir is written only after every check passed."""
     t0 = time.perf_counter()
+    clip = TAKES[take].clip
     d = (cache or cache_dir()) / clip
     dl = download(clip, d)
     page = read_page(clip)
     facts = probe(d / dl["name"])
-    run = run_pipeline(clip, backend, d / dl["name"], d / "run")
-    out = Path(out_root or OUT_ROOT) / clip
+    span = check_range(take, facts["duration_s"])
+    work = d / ("run" if take == clip else f"run-{take}")
+    run = run_pipeline(take, backend, d / dl["name"], work, span)
+    out = Path(out_root or OUT_ROOT) / take
     out.mkdir(parents=True, exist_ok=True)
     for name in OUTPUT_FILES:
-        shutil.copyfile(d / "run" / name, out / name)
-    (out / "SOURCE.md").write_text(source_md(clip, page, dl, facts, run))
-    return {"clip": clip, "dir": str(out), "title": page["title"], "author": page["author"] or NOT_STATED,
+        shutil.copyfile(work / name, out / name)
+    (out / "SOURCE.md").write_text(source_md(take, page, dl, facts, run, span))
+    return {"clip": take, "dir": str(out), "title": page["title"], "author": page["author"] or NOT_STATED,
             "page": page["note"] or f"HTTP {page['status']}", "sha256": dl["sha256"], "reused_download": dl["reused"],
-            "time_range_s": [0, round(facts["duration_s"], 3)], "frames": run["frames"], "people": run["people"],
+            "time_range_s": [span[0], round(span[1], 3)], "frames": run["frames"], "people": run["people"],
             "seconds": round(time.perf_counter() - t0, 1)}
 
 
@@ -318,7 +401,7 @@ def command(clip: str | None = None, backend_name: str | None = None, out_root: 
         print(refusal.replace("outputs: ", "stock: "), file=sys.stderr)
         return 1
     summary, failed = [], False
-    for c in [clip] if clip else list(CLIPS):
+    for c in [clip] if clip else list(TAKES):
         print(f"stock: {c} ({backend.name}) ...", file=sys.stderr, flush=True)
         try:
             summary.append(convert(c, backend, out_root))

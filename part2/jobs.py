@@ -13,8 +13,8 @@ Spec: docs/specs/run-app.md (Jobs; AC-A08, AC-A09, AC-A12), docs/specs/tracker-r
 States: queued -> waiting-gpu -> running -> done | failed | cancelled. Each job runs `part2 run` as a subprocess
 in its own process group (start_new_session), with the GPU venv python when it exists. A job that uses the GPU
 waits until the host's GPU lock is free and 12 GiB are free, re-checked every 15 s for 10 minutes. The worker then
-holds the lock for the whole run, except for a class run whose SAM tracker takes the lock itself
-(part2.trackers.gpu_lock): the worker lets go just before starting it, so the run never waits on its own parent.
+lets go of the lock and starts the run, which takes it around each GPU stage itself (`part2 run` around the gpu
+backend's estimate, a SAM tracker while it tracks), so the run never waits on its own parent.
 The server never holds a key: the run reads key files through part2.keys, and MODEL_API_KEY and HF_TOKEN are
 removed from its environment. Spend: the staging ledger ($10) and a per-job ledger in the job dir ($0.50).
 """
@@ -48,7 +48,7 @@ PYTHON_ENV = "PART2_JOB_PYTHON"
 GPU_PYTHON = "~/.local/state/simon-part-2/venvs/gpu-cu128/bin/python"
 STAGING_LEDGER = "~/.simon/meta_spend_staging.jsonl"
 KEY_VARS = ("MODEL_API_KEY", "HF_TOKEN")       # never handed to a run; it reads the key files itself
-GPU_TRACKERS = (None, "local-open")            # Automatic runs local-sam31 or local-open: GPU, under the lock
+GPU_TRACKERS = (None, "local-open")            # Automatic runs local-sam31 or local-open: GPU, the tracker locks
 # The CPU backend missed the 3D bar with both lifters (part2/lifters/__init__.py DEFAULT note, AC-B10), so
 # its results are labelled "3D approximate". Set True once TICKET-016 records a pass.
 CPU_3D_BAR_PASSED = False
@@ -425,24 +425,20 @@ class JobQueue:
         return job.mode == "class" and job.tracker in GPU_TRACKERS
 
     def _run(self, job: Job) -> None:
-        lock = None
-        try:
-            if job.cancel_event.is_set():
+        """Wait for the GPU (lock free and 12 GiB) when the job needs it, then run it without holding the lock:
+        `part2 run` takes it around each GPU stage itself (AC-B-NFR-03), so it never waits on its own parent."""
+        if job.cancel_event.is_set():
+            return
+        if self.needs_gpu(job):
+            lock = self._wait_for_gpu(job)
+            if lock is None:
                 return
-            if self.needs_gpu(job):
-                lock = self._wait_for_gpu(job)
-                if lock is None:
-                    return
-                if self.run_takes_lock(job):
-                    self.release(lock)
-                    lock = None
-            with self._cv:
-                if job.state in FINISHED:
-                    return
-                self._set(job, state="running", started=self.clock())
-            self._execute(job)
-        finally:
             self.release(lock)
+        with self._cv:
+            if job.state in FINISHED:
+                return
+            self._set(job, state="running", started=self.clock())
+        self._execute(job)
 
     def _wait_for_gpu(self, job: Job):
         """The held GPU lock once 12 GiB are free, or None (cancelled, or failed after the wait limit)."""

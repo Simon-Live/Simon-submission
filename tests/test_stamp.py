@@ -163,6 +163,21 @@ def test_finish_refuses_to_stamp_a_file_that_was_not_written(tmp_path):
     assert not (tmp_path / "o" / "stamp.json").exists()
 
 
+def test_stamp_finish_refuses_nan_given_a_nan_run_fact(tmp_path):
+    """stamp.json is strict JSON: a NaN or infinity in the run facts is refused and no stamp is written."""
+    root = make_root(tmp_path)
+    pre = stamp.prepare(root, "single", "gpu", root / "fixtures/input/single/frames", profile="gpu-cu128")
+    out = tmp_path / "o"
+    out.mkdir()
+    (out / "pose3d.json").write_text("{}")
+    for bad in (float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            stamp.finish(pre, out, ["pose3d.json"], run={"seconds": bad})
+        assert not (out / stamp.NAME).exists()
+    stamp.finish(pre, out, ["pose3d.json"], run={"seconds": 1.5})
+    assert json.loads((out / stamp.NAME).read_text())["run"] == {"seconds": 1.5}
+
+
 # ---- AC-K08: same tree, same hashes ---------------------------------------------------------------------
 
 def test_prepare_twice_with_no_change_gives_identical_hashes(tmp_path):

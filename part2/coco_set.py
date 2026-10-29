@@ -17,7 +17,6 @@ offset, no rounding); a labelled but occluded one (v=1) becomes null, the labels
 seated set), so it is not scored.
 """
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -30,6 +29,7 @@ from pathlib import Path
 import numpy as np
 
 from part2.eval_reproj import body_height_px
+from part2.hashing import sha256_file
 from part2.joints import CANONICAL
 from part2.schema import write_json
 
@@ -84,14 +84,6 @@ class SelectionError(ValueError):
 
 def cache_dir() -> Path:
     return Path(os.environ.get(CACHE_ENV) or Path.home() / ".cache" / "simon-part-2" / "coco")
-
-
-def sha256_file(path) -> str:
-    h = hashlib.sha256()
-    with Path(path).open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def download(url: str, path: Path) -> None:

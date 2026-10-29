@@ -529,6 +529,7 @@ class _Predictor:
         seen = [*sys.argv, *os.environ.values()]
         Path(os.environ["FAKE_SAM3_SPY"]).write_text(json.dumps({{
             "pid": os.getpid(), "checkpoint": checkpoint_path, "gpu_lock_held": held,
+            "key_vars": sorted(k for k in ("HF_TOKEN", "MODEL_API_KEY") if k in os.environ),
             "secret_seen": any(SECRET[i:i + 8] in v for v in seen for i in range(len(SECRET) - 7))}}))
 
     def handle_request(self, req):
@@ -584,6 +585,22 @@ def test_local_sam31_leaves_no_predictor_state_in_the_parent_given_a_predictor_t
     assert spy["gpu_lock_held"] and not spy["secret_seen"]
     assert got == local_sam31.text_prompt_track(FakeSam3(), d, recs)  # same detections as in process
     assert list(got) == [r["frame"] for r in recs] and all(isinstance(k, int) for k in got)
+
+
+def test_local_sam31_child_env_has_no_key_given_keys_in_the_environment(env, tmp_path, fake_sam3_package, monkeypatch):
+    """The environment channel of part2.keys: HF_TOKEN and MODEL_API_KEY set as variables stay in this process."""
+    monkeypatch.setenv("HF_TOKEN", FAKE)
+    monkeypatch.setenv("MODEL_API_KEY", FAKE)
+    ckpt = tmp_path / "sam3.1_multiplex.pt"
+    ckpt.write_bytes(b"weights")
+    tokens = []
+    t = local_sam31.LocalSam31(downloader=lambda tok: tokens.append(tok) or str(ckpt))
+    d, recs = make_frames(tmp_path, n=2)
+    t.detect(d, recs)
+    spy = json.loads(fake_sam3_package.read_text())
+    assert tokens == [FAKE]                                    # the download still got the token from the variable
+    assert spy["key_vars"] == [] and not spy["secret_seen"]    # the child got neither variable nor value
+    assert os.environ["HF_TOKEN"] == FAKE                       # this process's environment is left as it was
 
 
 def test_local_sam31_child_failure_is_a_tracker_error(env, tmp_path, fake_sam3_package, monkeypatch, capfd):

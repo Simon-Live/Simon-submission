@@ -258,7 +258,7 @@ def test_capabilities_doc_from_a_probe():
     assert not {"api-sam31", "local-sam31"} & {t["name"] for t in doc["trackers"]}
     assert [s["id"] for s in doc["samples"]] == ["single", "class"] and "dir" not in doc["samples"][0]
     assert doc["limits"] == {"video_mb": 200.0, "video_s": 60.0, "photo_mb": 20.0, "photo_px": 8000, "fps": 10,
-                             "max_frames": 600, "queue": 5}
+                             "max_frames": 601, "queue": 5}
 
 
 def test_capabilities_name_plain_reasons_and_never_echo_the_probe():
@@ -412,6 +412,21 @@ def test_a_video_job_stores_the_sniffed_video(queue, tmp_path):
     assert job.kind == "video" and Path(job.input) == job.dir / "input.mp4" and Path(job.input).is_file()
 
 
+@needs_ffmpeg
+def test_runapi_refuses_422_given_more_frames_after_ingest_than_the_cap(queue, tmp_path):
+    """The cap counts the frames the job's own ingest writes (part2 frames at the intake rate), not the source's."""
+    from part2 import frames
+
+    src = video(tmp_path / "v.mp4", 2.0, fps=25)
+    n = len(frames.ingest(src, tmp_path / "ingested", fps=runapi.Limits().fps))
+    assert n < 50                                              # 50 source frames, fewer after ingest at 10 fps
+    e = err(post, queue, {"mode": "single"}, src.read_bytes(), limits=runapi.Limits(max_frames=n - 1))
+    assert e.status == 422 and e.message == "Videos can be at most 60 seconds long."
+    assert job_dirs(queue) == [] and queue.pending() == 0
+    out = post(queue, {"mode": "single"}, src.read_bytes(), limits=runapi.Limits(max_frames=n))
+    assert queue.get(out["id"]).kind == "video"
+
+
 def test_refused_uploads_leave_nothing_behind(queue):
     e = err(post, queue, {"mode": "single"}, b"plain text, not a video\n" * 10)
     assert e.status == 415
@@ -470,3 +485,8 @@ def test_every_error_message_is_plain():
     for code, text in runapi.MESSAGES.items():
         msg = text.format(name="gpu")
         assert "Traceback" not in msg and "/" not in msg and "Error" not in msg and msg.endswith("."), code
+
+
+def test_the_frame_cap_admits_a_full_60_s_video_at_the_intake_rate():
+    lim = runapi.Limits()
+    assert lim.max_frames == int(lim.video_s * lim.fps) + 1  # frames at 0, 0.1, ..., 60.0 s

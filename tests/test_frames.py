@@ -1,11 +1,13 @@
 import json
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from part2 import cli, frames
 
+ROOT = Path(__file__).resolve().parent.parent
 needs_ffmpeg = pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg not installed")
 
 
@@ -71,6 +73,21 @@ def test_variable_frame_rate_resample_uses_real_timestamps(tmp_path):
     picked = [r["t_ms"] for r in frames.ingest(vfr, tmp_path / "f", fps=10)]
     assert picked == pytest.approx(all_t)  # every source frame is nearest to some 100 ms step, none duplicated
     assert [r["t_ms"] for r in frames.ingest(vfr, tmp_path / "g", fps=2)] == pytest.approx([0, 500, 1100, 1400])
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("ext", [".jpg", ".png"])
+def test_photo_one_frame(tmp_path, ext, capsys):
+    """AC-003: `part2 frames` on one photo (a committed fixture frame, saved as .jpg or .png) writes one record, t_ms 0."""
+    from PIL import Image
+
+    photo = tmp_path / f"photo{ext}"
+    Image.open(ROOT / "fixtures" / "input" / "single" / "frames" / "000000.jpg").save(photo)
+    out = tmp_path / "f"
+    assert cli.main(["frames", "--input", str(photo), "--out", str(out)]) == 0
+    assert "1 frames ->" in capsys.readouterr().out
+    recs = frames.load(out)
+    assert recs == [{"frame": 0, "t_ms": 0.0, "file": "000000.jpg"}] and (out / "000000.jpg").is_file()
 
 
 def _image_dir(tmp_path, names):

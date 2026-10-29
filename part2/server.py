@@ -37,8 +37,7 @@ CSP = "default-src 'self'; img-src 'self' data: blob:"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json",
          ".md": "text/markdown; charset=utf-8", ".jpg": "image/jpeg"}
-# The fixed table of static files in web/. run.html, run.js and overlay.js arrive with M4; until
-# the file exists the name answers 404.
+# The fixed table of static files in web/; any other name answers 404.
 STATIC = {"": "index.html", **{n: n for n in (
     "index.html", "contract.html", "run.html", "browse.js", "viewer.js", "run.js", "overlay.js",
     "style.css", "icon.svg")}}

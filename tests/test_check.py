@@ -270,12 +270,14 @@ def test_other_blocks_exit_0_or_1(root, capsys):
 def test_no_scored_dir_fails_every_mode_with_missing_output(root, capsys):
     _write(root / "fixtures/input/single/labels_2d.json", _setup()[2])
     _write(root / "fixtures/input/class/gt_tracks.json", {"frames": []})
+    _write(root / check.COCO_LABELS, {"images": []})
     assert check.main([], root=root) == 1
     r = json.loads(capsys.readouterr().out)
     assert r["one_person"]["status"] == "missing output fixtures/output/scored/single/pose3d.json; run make outputs"
     assert r["multi_person"]["status"] == "missing output fixtures/output/scored/class/tracks.json; run make outputs"
     assert r["multi_person_local_open"]["status"].startswith("missing output fixtures/output/scored/class-local-open/")
-    assert r["one_person_coco"]["status"] == check.COCO_NOT_BUILT and r["pass"] is False
+    assert r["one_person_coco"]["status"] == "missing output fixtures/output/scored/coco-single/stamp.json; run make outputs"
+    assert r["one_person_coco"]["pass"] is False and r["pass"] is False
 
 
 def test_missing_fixture_inputs_are_named(tmp_path, monkeypatch):
@@ -298,20 +300,12 @@ def test_the_gate_needs_the_coco_block(root, monkeypatch):
     _single(root)
     _class(root)
     r = check.run(root)
-    assert r["one_person_coco"] == {"pass": False, "status": check.COCO_NOT_BUILT} and r["pass"] is False
+    assert r["one_person_coco"]["pass"] is False and r["pass"] is False
+    assert r["one_person_coco"]["status"] == f"missing fixture input {check.COCO_LABELS}"
     _coco(root, monkeypatch, passing=False)
     r = check.run(root)
     assert r["one_person_coco"]["pass"] is False and r["one_person"]["pass"] is True and r["pass"] is False
     assert r["one_person_coco"]["outputs"]["dir"] == "fixtures/output/scored/coco-single"
-
-
-def test_coco_without_its_scorer_says_so(root, monkeypatch):
-    _write(root / check.COCO_LABELS, {"images": []})
-    out = root / "fixtures/output/scored/coco-single"
-    _write(out / "a.json", {})
-    stamped(root, "coco-single", files=("a.json",))
-    monkeypatch.setitem(sys.modules, "part2.eval_coco", None)
-    assert check.check_coco(root)["status"] == "not available: part2.eval_coco missing (TICKET-037)"
 
 
 # ---- AC-K14: local-open reported, never gated -----------------------------------------------------------

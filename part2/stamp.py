@@ -21,6 +21,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from part2 import hashing
+
 SCHEMA = "part2.stamp/2"
 NAME = "stamp.json"
 BASE_MODULES = ("part2.frames", "part2.joints", "part2.canonical")
@@ -45,14 +47,9 @@ def sha256_bytes(data: bytes) -> str:
 
 
 def sha256_file(path) -> str | None:
+    """part2.hashing.sha256_file, or None when the file is not there (a stamp records a missing file as None)."""
     path = Path(path)
-    if not path.is_file():
-        return None
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return hashing.sha256_file(path) if path.is_file() else None
 
 
 def rel(path, root) -> str:
@@ -203,7 +200,8 @@ def finish(pre: dict, out_dir, files, models=(), host_gpu=None, run=None, create
     missing = [f for f, h in doc["files_sha256"].items() if h is None]
     if missing:
         raise FileNotFoundError(f"cannot stamp {out_dir}: {', '.join(missing)} not written")
-    (out_dir / NAME).write_text(json.dumps(doc, indent=1, sort_keys=False) + "\n")
+    text = json.dumps(doc, indent=1, sort_keys=False, allow_nan=False) + "\n"  # strict JSON: NaN refused unwritten
+    (out_dir / NAME).write_text(text)
     return doc
 
 

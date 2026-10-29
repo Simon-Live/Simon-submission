@@ -3,6 +3,7 @@
 The GPU stages are replaced by fakes: a stand-in `torch` module and a `body3d.estimate` that writes a
 body3d.json for the frames it is given. Everything after that (canonical frame, contract checks, files)
 is the real code."""
+import contextlib
 import json
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ import pytest
 from test_canonical import _body3d
 
 from conftest import fake_key
-from part2 import backends, body3d, cli, contract, frames, track
+from part2 import backends, body3d, cli, contract, frames, gpu_guard, track, trackers
 from part2.schema import ContractError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -248,6 +249,123 @@ def test_provenance_names_the_backend_and_the_tracker_that_ran(gpu, tmp_path, ca
     assert (pprov["backend"], pprov["detector"]) == ("gpu", "fake")
     assert [m["name"] for m in pprov["models"]][0] == "fake-3d"
     assert "tracker api-sam31" in capsys.readouterr().out
+
+
+class FakeLock:
+    """part2.gpu_guard.gpu_lock stand-in: counts each hold; taking it while held is the deadlock a real flock is."""
+
+    def __init__(self):
+        self.held, self.takes = False, 0
+
+    def __call__(self, wait_s=None, poll_s=1.0):
+        return self._hold()
+
+    @contextlib.contextmanager
+    def _hold(self):
+        assert not self.held, "the GPU lock was taken while this process already held it"
+        self.held, self.takes = True, self.takes + 1
+        try:
+            yield
+        finally:
+            self.held = False
+
+
+@pytest.mark.parametrize("mode", ["single", "multi"])
+def test_cli_estimate_runs_under_the_gpu_lock_given_the_gpu_backend(gpu, tmp_path, monkeypatch, mode):
+    """AC-B-NFR-03: `part2 run` holds the host GPU lock around the gpu backend's estimate and not around the tracker
+    stage, where a SAM tracker takes the same lock itself."""
+    lock, seen, real_track = FakeLock(), {}, track.track
+
+    def estimate(frames_dir, out_path, boxes=None, estimator=None):
+        seen["estimate"] = lock.held
+        return _fake_estimate(frames_dir, out_path, boxes)
+
+    def tracking(*a, **kw):
+        seen["track"] = lock.held
+        return real_track(*a, **kw)
+
+    monkeypatch.setattr(gpu_guard, "gpu_lock", lock)
+    monkeypatch.setattr(body3d, "estimate", estimate)
+    monkeypatch.setattr(track, "track", tracking)
+    code, _ = _run(tmp_path, mode=mode)
+    assert code == 0 and seen["estimate"] is True and lock.takes == 1 and lock.held is False
+    assert seen.get("track") is (False if mode == "multi" else None)
+
+
+def test_cli_takes_no_gpu_lock_given_the_cpu_backend(tmp_path, monkeypatch):
+    lock = FakeLock()
+    monkeypatch.setattr(gpu_guard, "gpu_lock", lock)
+
+    class FakeCpu(_FakeBackend):
+        name, lifter = "cpu", None
+
+    _use_fake_backend(monkeypatch)
+    monkeypatch.setattr(backends, "get", lambda name: FakeCpu())
+    code, _ = _run(tmp_path, "--backend", "cpu")
+    assert code == 0 and lock.takes == 0
+
+
+def test_a_busy_gpu_lock_stops_the_run_with_the_plain_message(gpu, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(gpu_guard, "gpu_lock", lambda wait_s=None, poll_s=1.0: trackers.gpu_lock(wait_s=0.1, poll_s=0.02))
+    with trackers.gpu_lock():
+        code, out = _run(tmp_path)
+    assert code == 1 and "part2: another GPU job is running" in capsys.readouterr().err
+    assert not (out / "pose3d.json").exists()
+
+
+# --- AC-003: photo input --------------------------------------------------------------------------
+
+@needs_ffmpeg
+def test_run_photo(gpu, tmp_path):
+    """`part2 run --mode single --input photo.jpg` on a committed fixture frame: one frame, one person."""
+    photo = tmp_path / "photo.jpg"
+    shutil.copyfile(ROOT / "fixtures" / "input" / "single" / "frames" / "000000.jpg", photo)
+    out = tmp_path / "out"
+    assert cli.main(["run", "--mode", "single", "--input", str(photo), "--out", str(out)]) == 0
+    assert frames.load(out / "frames") == [{"frame": 0, "t_ms": 0.0, "file": "000000.jpg"}]
+    pose = _load(out / "pose3d.json")
+    assert len(pose["frames"]) == 1 and [p["id"] for p in pose["frames"][0]["people"]] == [0]
+    contract.validate(pose, "pose3d")
+
+
+# --- --refine: the ladder's rungs on a one-person run (ADR-0004) -----------------------------------
+
+def test_run_refine_applies_the_rungs_and_names_them(gpu, tmp_path, monkeypatch):
+    from test_refine_outputs import Fake2D
+
+    from part2 import refine
+    from part2.backends import cpu_rtm
+
+    loads = []
+    monkeypatch.setattr(refine, "load_2d", lambda names: loads.append(list(names)) or Fake2D())
+    monkeypatch.setattr(cpu_rtm, "_sha256", lambda path: None)
+    code, out = _run(tmp_path, "--refine", "kp2d_fit")
+    assert code == 0 and loads == [["kp2d-fit"]]
+    before, after = _load(out / "body3d-unrefined.json"), _load(out / "body3d.json")
+    assert before["frames"][0]["people"][0]["kp3d_cam"] != after["frames"][0]["people"][0]["kp3d_cam"]
+    prov = _load(out / "pose3d.json")["provenance"]
+    assert prov["refine"] == ["kp2d-fit"] and prov["models"][-1]["name"].startswith("rtmpose-x")
+    assert any("RTMPose-x" in n for n in prov["licence_notes"])
+
+
+def test_run_without_refine_is_the_unrefined_pipeline(gpu, tmp_path, monkeypatch):
+    from part2 import refine
+
+    monkeypatch.setattr(refine, "apply", lambda *a, **k: pytest.fail("no rung may run without --refine"))
+    imgs = _image_dir(tmp_path)
+    for extra in ((), ("--refine", "none")):
+        code, out = _run(tmp_path, *extra, name=f"out{len(extra)}", src=imgs)
+        assert code == 0 and not (out / "body3d-unrefined.json").exists()
+        assert _load(out / "pose3d.json")["provenance"]["refine"] == []
+
+
+def test_run_refine_refuses_an_unknown_rung_or_multi_mode(gpu, tmp_path, capsys):
+    code, out = _run(tmp_path, "--refine", "nope")
+    assert code == 2 and 'part2: unknown refine rung "nope"' in capsys.readouterr().err
+    assert not out.exists()
+    code, out = _run(tmp_path, "--refine", "kp2d-fit", mode="multi", name="m", src=tmp_path / "imgs")
+    assert code == 2 and "part2: --refine applies to --mode single only" in capsys.readouterr().err
+    assert not out.exists()
 
 
 def test_progress_lines_only_when_asked(gpu, tmp_path, capsys, monkeypatch):

@@ -21,7 +21,6 @@ stamp names the rungs and adds their code and models, pose3d.json's provenance.r
 import argparse
 import contextlib
 import json
-import os
 import shutil
 import sys
 import time
@@ -29,9 +28,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from part2.check import DEFAULT_SCORED, SCORED_ENV, scored_dir  # one rule for the scored dir, shared with check-2
+
 ROOT = Path(__file__).resolve().parent.parent
-SCORED_ENV = "PART2_SCORED_DIR"
-DEFAULT_SCORED = "fixtures/output/scored"
 WORK = "out/.outputs-work"
 NO_CUDA = "outputs: backend gpu needs CUDA (make setup-gpu)"
 PARAMS = {"smooth": False, "mirrored": False}  # pipeline options of every run, recorded in the stamp
@@ -66,36 +65,26 @@ def refined(ctx: Ctx, doc: dict, frames_dir: Path, work_dir: Path) -> dict:
     body3d-unrefined.json); doc itself when there are none."""
     if not ctx.refine:
         return doc
-    from part2 import refine
+    from part2 import cli, refine
 
     if ctx.model2d is None:
         ctx.model2d = refine.load_2d(ctx.refine)
-    (work_dir / "body3d-unrefined.json").write_text(json.dumps(doc))
-    out = refine.apply(ctx.refine, doc, frames_dir, model2d=ctx.model2d, backend=ctx.backend,
-                       lock=lambda: _locked(ctx), work_dir=work_dir)
-    (work_dir / "body3d.json").write_text(json.dumps(out))
-    return out
+    return cli._refine(ctx.refine, doc, frames_dir, work_dir, ctx.backend, model2d=ctx.model2d,
+                       lock=lambda: _locked(ctx))
 
 
 def extras_for(ctx: Ctx, meta: dict) -> dict:
-    """cli._pose_extras plus the refine rungs and their models in provenance."""
-    from part2 import cli, refine
+    """cli._pose_extras with the refine rungs and their models in provenance (the same keys `part2 run --refine`
+    writes)."""
+    from part2 import cli
 
-    extras = cli._pose_extras(meta, PARAMS["mirrored"], ctx.backend)
-    if ctx.refine:
-        prov = extras["provenance"]
-        extras["provenance"] = {**prov, "refine": list(ctx.refine),
-                                "models": list(prov.get("models", [])) + refine.models(ctx.refine),
-                                "licence_notes": list(prov.get("licence_notes", [])) + refine.licence_notes(ctx.refine)}
-    return extras
+    return cli._pose_extras(meta, PARAMS["mirrored"], ctx.backend, refine=ctx.refine)
 
 
 def gpu_guard(wait_s: float | None = None):
-    """The host's one-GPU-job lock: part2.gpu_guard.gpu_lock when present, else part2.trackers.gpu_lock."""
-    try:
-        from part2.gpu_guard import gpu_lock
-    except ImportError:
-        from part2.trackers import gpu_lock
+    """The host's one-GPU-job lock (part2.gpu_guard.gpu_lock)."""
+    from part2.gpu_guard import gpu_lock
+
     return gpu_lock() if wait_s is None else gpu_lock(wait_s=wait_s)
 
 
@@ -175,12 +164,6 @@ def modes_for(backend: str, names=None) -> list[Mode]:
     if unknown:
         raise ValueError(f'backend {backend} does not make mode "{unknown[0]}"; choose {", ".join(known)}')
     return [known[n] for n in names]
-
-
-def scored_dir(root: Path, flag=None) -> Path:
-    """The flag, then PART2_SCORED_DIR, then fixtures/output/scored; relative paths are under root."""
-    d = Path(flag or os.environ.get(SCORED_ENV) or DEFAULT_SCORED)
-    return d if d.is_absolute() else root / d
 
 
 def pick_tracker(mode: Mode, flag: str | None, n_frames: int):

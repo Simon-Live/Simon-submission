@@ -14,15 +14,16 @@
   "part2/body3d.py": "a1392f633dad90ea80b6434ff0b478848305a9b438bbe1b46b421fda09ff0fab",
   "part2/canonical.py": "c093d8ac4abe3e2650290eb3e4b89b3b718c5ae5b5853bcbb71c0fd29105a7f1",
   "part2/frames.py": "80951fffde382b7aa3db5e0825e4b0b820e7db11d6251ed085f48e67ad218c8f",
+  "part2/hashing.py": "78d43a3527c832b4e17c637ed874b40ea5833b81f571a9c718978bfd0c01001f",
   "part2/joints.py": "22bb9bb9e6671c558dc6ba6300eff2377a1eb853491ac44dbe5c2803534ad93f",
   "part2/meta_api.py": "6add1c2f2deee0611b061ada1d46fc871c1c2651425f1b8820dc9e91649470f5",
   "part2/multi3d.py": "f7f0285564e45aee9218be06f531e6366d19a7e1619c01e6afbbb818484c6784",
   "part2/track.py": "645a432b72ce55c23c50077ff915d2f921c457ab3ff47d63aecda54c9a45d45b",
   "part2/trackers/__init__.py": "bfcefaa5569dba90644125767a7ed0a129eeccca6ea6da3ffd41bb08a6e8422a",
-  "part2/trackers/bytetrack.py": "6afe70281f94c64ceeb1ee3d56fa2ca35f98d9c0f50ff7ef9d45b3870238e5f2",
-  "part2/trackers/local_open.py": "d8118e93bc50cbf8aa2161c67c5a1b467ada6f95e2971986ccf1f6350bb280c2"
+  "part2/trackers/bytetrack.py": "ed4782fe404a4761bad5961fe40c745dbb1316b97e7abaa504900bf54c721b7e",
+  "part2/trackers/local_open.py": "60e76eecfe4877ef18fd5afda46a8ff8ab4da9683a104e06a2d5032e731f259d"
  },
- "code_sha256": "256d4e079748a0c588a6db929d1f386196555205ae62e0b019f9d7ab9acf40e5",
+ "code_sha256": "f93ac32d8fceaeb4c6db016b5cd8ca875ed67e95f56d17422bda4de6229dfcaa",
  "frames_dir": "fixtures/input/class/frames",
  "frames_sha256": "9de0db9dd793ab193f017efdae96f7cdcee8fdb55782ed8a450e1b55c8607f45",
  "models": [
@@ -58,16 +59,16 @@
   }
  ],
  "files_sha256": {
-  "camera.json": "e2188a38e7243720f6a33f65c7b439a45521c3a80fa0f2d83262fbed0e59fbfc",
-  "pose3d.json": "99d8b2fc853ccb0de6ffae02851cd0beec3656380afa7409becd6c865046cc9e",
-  "tracks.json": "8dcdadeb2a1f347e876f4ff889f31bd4c63c93c503518e7ccb77071a17b38ef4"
+  "camera.json": "54297c35cd24a05716da52b6da03bd45086ad42ee8034882b89a01340c57e0fc",
+  "pose3d.json": "0833673d43a29bbac40de8f165cbcca46e84d17742feee19d0dca7fc360b7141",
+  "tracks.json": "904a9d4cbac176b8dd5bc0ce722586a762c8e6f44dfd253f80349716447f900d"
  },
- "created_utc": "2026-10-29T04:24:46Z",
+ "created_utc": "2026-10-29T07:31:45Z",
  "host_gpu": "NVIDIA GeForce RTX 5090",
  "run": {
   "frames": 89,
   "people": 7,
-  "seconds": 167.9,
+  "seconds": 127.7,
   "params": {
    "smooth": false,
    "mirrored": false

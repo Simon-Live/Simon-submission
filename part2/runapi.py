@@ -88,7 +88,7 @@ class Limits:
     video_s: float = 60.0
     photo_px: int = 8000
     fps: int = jobs.FPS
-    max_frames: int = 600
+    max_frames: int = 601                    # 60 s at 10 fps keeps both ends: 601 frames, so a 60 s video passes
 
     @property
     def body_bytes(self) -> int:
@@ -254,8 +254,24 @@ def _number(v) -> float:
         return 0.0
 
 
+def ingest_frame_count(path: Path, fps: float) -> int:
+    """How many frames the job's own ingest (`part2 frames` at `fps`) writes for this video, counted without
+    writing one: part2.frames' nearest source frame per 1/fps step over the decoded timestamps. 415 when the
+    timestamps cannot be read, 422 when there are none."""
+    from part2 import frames
+
+    try:
+        pts = frames._probe_timestamps(path)
+    except (RuntimeError, ValueError):
+        raise ApiError(415, "unsupported") from None
+    if not pts:
+        raise ApiError(422, "no_frames")
+    return len(frames._nearest_per_step(pts, fps))
+
+
 def probe_video(path: Path, limits: Limits, timeout_s: float = 60.0) -> str:
-    """The extension for a video ffprobe reads as mp4, mov or webm with frames; 415, or 422 when too long."""
+    """The extension for a video ffprobe reads as mp4, mov or webm with frames; 415, or 422 when too long (over
+    the duration cap, or over max_frames once ingested at the intake rate)."""
     exe = shutil.which("ffprobe")
     if exe is None:
         raise ApiError(503, "no_ffprobe")
@@ -274,6 +290,8 @@ def probe_video(path: Path, limits: Limits, timeout_s: float = 60.0) -> str:
     if not _number(video[0].get("nb_read_packets")) or duration <= 0:
         raise ApiError(422, "no_frames")
     if duration > limits.video_s:
+        raise ApiError(422, "too_long")
+    if ingest_frame_count(path, limits.fps) > limits.max_frames:
         raise ApiError(422, "too_long")
     return VIDEO_FORMATS[fmt]
 

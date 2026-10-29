@@ -126,6 +126,9 @@ def test_scored_dir_flag_env_default(tmp_path, monkeypatch):
     monkeypatch.setenv("PART2_SCORED_DIR", "out")
     assert outputs.scored_dir(tmp_path) == tmp_path / "out"
     assert outputs.scored_dir(tmp_path, "/abs/x") == outputs.Path("/abs/x")
+    from part2 import check
+
+    assert outputs.scored_dir is check.scored_dir  # make outputs writes where make check-2 reads
 
 
 def test_gpu_run_writes_every_mode_with_a_fresh_stamp(env, monkeypatch, capsys):
@@ -245,7 +248,7 @@ def test_a_busy_gpu_fails_the_mode_with_the_lock_message(env, monkeypatch, capsy
     assert "outputs: single: another GPU job is running" in capsys.readouterr().err
 
 
-def test_gpu_guard_uses_part2_gpu_guard_when_it_exists(monkeypatch):
+def test_gpu_guard_is_part2_gpu_guard_gpu_lock(monkeypatch):
     seen = []
     fake = types.ModuleType("part2.gpu_guard")
     fake.gpu_lock = lambda **kw: seen.append(kw) or outputs.contextlib.nullcontext()

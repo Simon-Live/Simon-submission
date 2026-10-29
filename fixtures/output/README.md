@@ -84,12 +84,14 @@ labels. With it committed, the bulk tracker order runs `local-sam31` first.
 
 ## `stock/`: follower takes for Part 5 (`pose3d.json` + `camera.json` + `SOURCE.md`)
 
-Three openly licensed Pexels clips run through Part 2 one-person mode on the gpu backend at 10 fps, made by
-`make stock-outputs` (`part2 stock`). Each folder's `SOURCE.md` names the clip, the licence, the downloaded file's
-sha256, the time range and the Part 2 commit that made it. The videos are not in the repo.
+Three openly licensed Pexels clips run through Part 2 one-person mode on the gpu backend at 10 fps, plus one cut
+of the side clip made for Part 5, all made by `make stock-outputs` (`part2 stock`). Each folder's `SOURCE.md` names
+the clip, the licence, the downloaded file's sha256, the time range and the Part 2 commit that made it. The videos
+are not in the repo.
 
 | Folder | Pexels video | Angle | Frames |
 |---|---|---|---|
 | `stock/pexels-5034562/` | 5034562 | side (Part 5's expected take) | 154 |
 | `stock/pexels-5034577/` | 5034577 | front | 166 |
 | `stock/pexels-8837221/` | 8837221 | three-quarter | 256 |
+| `stock/pexels-5034562-0to7s/` | 5034562, 0 to 7 s | side (a cut of Part 5's expected take, made for Part 5) | 70 |

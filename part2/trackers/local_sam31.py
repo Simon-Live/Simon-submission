@@ -23,7 +23,6 @@ The predictor protocol is SAM 3's video predictor session API:
     handle_request({"type": "close_session", "session_id": s})
 """
 import contextlib
-import hashlib
 import json
 import logging
 import os
@@ -34,6 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
+from part2.hashing import sha256_file
 from part2.trackers import ROOT, NoPerson, Tracker, TrackerError, call_with_key, gpu_lock
 
 MODEL_ID = "facebook/sam3.1"
@@ -75,14 +75,6 @@ def hf_download(token: str) -> str:
         return hf_hub_download(MODEL_ID, CHECKPOINT, revision=REVISION, token=token)
     except GatedRepoError:
         raise NotGranted() from None
-
-
-def _sha256(path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def known_kwargs_only(fn):
@@ -148,16 +140,19 @@ def text_prompt_track(predictor, frames_dir, frame_records, prompt: str = PROMPT
 def run_in_child(checkpoint, frames_dir, frame_records) -> dict:
     """text_prompt_track with the real predictor, in a child process; the same detections, frame keys as ints.
 
-    The child's argv holds paths only and its environment is this one with this part2 first on PYTHONPATH, so
-    it runs the same code. Its stdout and stderr are ours (SAM 3 progress and any traceback show as before).
+    The child's argv holds paths only and its environment is this one without the key variables (MODEL_API_KEY,
+    HF_TOKEN: part2.keys reads either as its second channel) and with this part2 first on PYTHONPATH, so it runs
+    the same code. Its stdout and stderr are ours (SAM 3 progress and any traceback show as before).
     """
+    from part2.track import _child_env
+
     with tempfile.TemporaryDirectory(prefix="part2-sam31-") as tmp:
         records, out = Path(tmp) / "records.json", Path(tmp) / "result.json"
         records.write_text(json.dumps(list(frame_records)))
         argv = [sys.executable, "-m", WORKER_MODULE, "--checkpoint", str(checkpoint),
                 "--frames", str(Path(frames_dir).resolve()), "--records", str(records), "--out", str(out)]
         path = os.pathsep.join(filter(None, [str(ROOT), os.environ.get("PYTHONPATH")]))
-        code = subprocess.run(argv, env={**os.environ, "PYTHONPATH": path}, check=False).returncode
+        code = subprocess.run(argv, env={**_child_env(), "PYTHONPATH": path}, check=False).returncode
         result = json.loads(out.read_text()) if out.exists() else {}
     if "detections" in result:
         return {int(k): v for k, v in result["detections"].items()}
@@ -219,7 +214,7 @@ class LocalSam31(Tracker):
     def detect(self, frames_dir, frame_records):
         with quiet_http_logs():
             ckpt = Path(call_with_key(self.name, KEY, self._download))
-        self._sha = _sha256(ckpt)
+        self._sha = sha256_file(ckpt)
         lock = contextlib.nullcontext() if self._fakes else gpu_lock()
         with lock:
             if self._factory is None:

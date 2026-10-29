@@ -3,11 +3,16 @@
     part2 frames --input clip.mp4 --out out/clip/frames [--fps 30]
     part2 run --mode single|multi --input clip.mp4 --out out/clip [--fps 30] [--mirrored]
               [--backend gpu|cpu] [--lifter fixed-bones|motionbert] [--tracker NAME] [--tracker-order scored|bulk]
+              [--refine RUNGS]   (single: the ladder's rungs, part2.refine; focal,kp2d-fit is what make outputs uses)
     part2 contract [--json] [--schema NAME]      (also: python -m part2 contract)
     part2 doctor FILE [--for part3|part5|part6] [--json]
-    part2 stock [--clip pexels-<id>] [--backend gpu|cpu]   (make stock-outputs)
+    part2 stock [--clip pexels-<id>[-<start>to<end>s]] [--backend gpu|cpu]   (make stock-outputs)
+
+With the gpu backend, `part2 run` holds the host GPU lock (part2.gpu_guard) around each 3D estimate and refine
+re-run; a SAM tracker takes the same lock itself while it tracks, so the two are never nested (AC-B-NFR-03).
 """
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -27,10 +32,19 @@ def _progress(stage: str, done: int, total: int) -> None:
         print(f"progress {stage} {done} {total}", flush=True)
 
 
-def _pose_extras(meta: dict, mirrored: bool, backend, tracks_prov: dict | None = None) -> dict:
+def _gpu_locked(backend):
+    """The host GPU lock for a gpu backend's inference; nothing for the cpu backend."""
+    if backend.name != "gpu":
+        return contextlib.nullcontext()
+    from part2 import gpu_guard
+
+    return gpu_guard.gpu_lock()
+
+
+def _pose_extras(meta: dict, mirrored: bool, backend, tracks_prov: dict | None = None, refine=()) -> dict:
     """The optional top-level keys of the pose3d.json this run writes: the time origin, the mirror flag and
     the provenance of what ran (the backend's models plus, in multi mode, the tracker that ran and any
-    fallback; one-person mode runs no tracker)."""
+    fallback; one-person mode runs no tracker; with refine rungs, the rungs and their models)."""
     bprov = backend.provenance()
     tprov = tracks_prov or {}
     models = [m for m in list(bprov.get("models", [])) + list(tprov.get("models", []))]
@@ -38,7 +52,27 @@ def _pose_extras(meta: dict, mirrored: bool, backend, tracks_prov: dict | None =
     extra.update({k: tprov[k] for k in _FALLBACK if tprov.get(k)})
     prov = provenance.block(backend.name, tprov.get("tracker"), bprov.get("lifter"), bprov.get("refine", ()),
                             models, kind="pose3d", licence_notes=bprov.get("licence_notes", ()), **extra)
+    if refine:
+        from part2 import refine as rungs
+
+        prov = {**prov, "refine": list(refine), "models": list(prov.get("models", [])) + rungs.models(refine),
+                "licence_notes": list(prov.get("licence_notes", [])) + rungs.licence_notes(refine)}
     return {"t0_pts_ms": meta.get("t0_pts_ms"), "mirrored": True if mirrored else None, "provenance": prov}
+
+
+def _refine(rungs, doc: dict, frames_dir: Path, work_dir: Path, backend, model2d=None, lock=None) -> dict:
+    """doc after the refine rungs (part2.refine.apply, ADR-0004), written to work_dir/body3d.json with the unrefined
+    one kept as body3d-unrefined.json; doc itself when there are none. A rung that re-runs the 3D model does so
+    under `lock` (a context manager factory; default: the host GPU lock for the gpu backend)."""
+    if not rungs:
+        return doc
+    from part2 import refine
+
+    (work_dir / "body3d-unrefined.json").write_text(json.dumps(doc))
+    out = refine.apply(rungs, doc, frames_dir, model2d=model2d, backend=backend,
+                       lock=lock or (lambda: _gpu_locked(backend)), work_dir=work_dir)
+    (work_dir / "body3d.json").write_text(json.dumps(out))
+    return out
 
 
 def _tracks_extras(meta: dict, doc: dict, backend_name: str) -> dict:
@@ -78,6 +112,9 @@ def main(argv: list[str] | None = None) -> int:
                        "(default: PART2_TRACKER, else the tracker order)")
     p_run.add_argument("--tracker-order", choices=["scored", "bulk"], default="bulk",
                        help="multi: the order walked when no tracker is named (make outputs: scored)")
+    p_run.add_argument("--refine", default="none",
+                       help="single: comma-separated ladder rungs (part2.refine) run on the 3D before the canonical "
+                       "frame; focal,kp2d-fit gives the scored outputs (make outputs); default none")
 
     p_ev = sub.add_parser("eval-reproj", help="one-person metric: reprojection error vs hand-clicked joints (#12)")
     p_ev.add_argument("--pose3d", required=True, type=Path)
@@ -116,8 +153,9 @@ def main(argv: list[str] | None = None) -> int:
 
     from part2 import stock
 
-    p_st = sub.add_parser("stock", help="Pexels follower takes for Part 5 -> fixtures/output/stock/pexels-<id>/")
-    p_st.add_argument("--clip", choices=list(stock.CLIPS), help="one clip (default: all three)")
+    p_st = sub.add_parser("stock", help="Pexels follower takes for Part 5 -> fixtures/output/stock/<take>/")
+    p_st.add_argument("--clip", choices=list(stock.TAKES),
+                      help="one take: a whole clip or a cut <clip>-<start>to<end>s (default: every take)")
     p_st.add_argument("--backend", choices=list(backends.CHOICES), help="default: PART2_BACKEND, else gpu when CUDA is available")
 
     args = parser.parse_args(argv)
@@ -160,12 +198,15 @@ def main(argv: list[str] | None = None) -> int:
             recs = frames.ingest(args.input, args.out, args.fps)
             print(f"{len(recs)} frames -> {args.out}")
             return 0
-        from part2 import lifters
+        from part2 import lifters, refine
 
         try:
             backend = backends.get(backends.resolve(args.backend))
             lifter = lifters.resolve(args.lifter)
-        except (backends.UnknownBackend, lifters.UnknownLifter) as e:
+            rungs = [] if args.refine.strip() in ("", "none") else refine.resolve(args.refine)
+            if rungs and args.mode != "single":
+                raise ValueError("--refine applies to --mode single only")
+        except (backends.UnknownBackend, lifters.UnknownLifter, ValueError) as e:
             print(f"part2: {e}", file=sys.stderr)
             return 2
         if backend.name == "cpu":
@@ -176,11 +217,15 @@ def main(argv: list[str] | None = None) -> int:
         meta = frames.load_meta(args.out / "frames")
         if args.mode == "single":
             _progress("pose", 0, len(recs))
-            backend.estimate(args.out / "frames", args.out / "body3d.json")
+            with _gpu_locked(backend):
+                doc = backend.estimate(args.out / "frames", args.out / "body3d.json")
+            if rungs:
+                _refine(rungs, doc, args.out / "frames", args.out, backend, model2d=refine.load_2d(rungs))
+                print(f"refined by {', '.join(rungs)} (unrefined kept as {args.out / 'body3d-unrefined.json'})")
             _progress("write", 0, 1)
             print(f"camera-space 3D ({backend.name}) -> {args.out / 'body3d.json'}")
             pose_path, cam_path = canonical.write(args.out / "body3d.json", args.out, smooth=args.smooth,
-                                                  extras=_pose_extras(meta, args.mirrored, backend))
+                                                  extras=_pose_extras(meta, args.mirrored, backend, refine=rungs))
             print(f"{pose_path} + {cam_path}")
             _progress("write", 1, 1)
             return 0
@@ -200,7 +245,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{len(ids)} tracked people -> {args.out / 'tracks.json'} "
                   f"(tracker {doc['provenance'].get('tracker')}{'; ' + note if note else ''})")
             _progress("pose", 0, len(recs))
-            b3d = backend.estimate(args.out / "frames", args.out / "body3d.json", boxes=multi3d.tracks_to_boxes(doc))
+            with _gpu_locked(backend):  # after tracking: a SAM tracker took and dropped the same lock itself
+                b3d = backend.estimate(args.out / "frames", args.out / "body3d.json", boxes=multi3d.tracks_to_boxes(doc))
             _progress("write", 0, 1)
             res = multi3d.write_pose_streams(b3d, args.out, smooth=args.smooth,
                                              extras=_pose_extras(meta, args.mirrored, backend, doc["provenance"]))

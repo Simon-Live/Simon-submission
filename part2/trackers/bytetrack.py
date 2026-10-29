@@ -10,11 +10,11 @@ with score-fused IoU, a second association of low-score boxes, unconfirmed track
 
 `PersonDetector` is shared with local-open (rtmlib and onnxruntime are imported lazily, at first use).
 """
-import hashlib
 from pathlib import Path
 
 import numpy as np
 
+from part2.hashing import sha256_file
 from part2.trackers import NoPerson, Tracker
 
 DETECTOR_URL = ("https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/"
@@ -56,11 +56,7 @@ class PersonDetector:
 
     def weights_sha256(self) -> str:
         if self._sha is None:
-            h = hashlib.sha256()
-            with self.path.open("rb") as f:
-                for chunk in iter(lambda: f.read(1 << 20), b""):
-                    h.update(chunk)
-            self._sha = h.hexdigest()
+            self._sha = sha256_file(self.path)
         return self._sha
 
     def model_record(self) -> dict:

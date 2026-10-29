@@ -10,15 +10,16 @@
  "env_lock_sha256": "f6335d220b1febc14f8aafb618ea3797551b53feb987a9614349e7fc3a28f3c6",
  "code_files": {
   "part2/backends/__init__.py": "a5742c4fec5cb5611de1292164b0ee0181d91ddfdf2df1206f7e38fe9174f804",
-  "part2/backends/cpu_rtm.py": "23a7a0edc72e5f02878e1d60fd5cc3118ecfbf7aed8bffe0cbfbc6b743cec7fa",
+  "part2/backends/cpu_rtm.py": "a994d080db7d358b2822855dd83814dfe6b18b85e0917f43ca6c67a451407193",
   "part2/body3d.py": "a1392f633dad90ea80b6434ff0b478848305a9b438bbe1b46b421fda09ff0fab",
   "part2/canonical.py": "c093d8ac4abe3e2650290eb3e4b89b3b718c5ae5b5853bcbb71c0fd29105a7f1",
   "part2/frames.py": "80951fffde382b7aa3db5e0825e4b0b820e7db11d6251ed085f48e67ad218c8f",
+  "part2/hashing.py": "78d43a3527c832b4e17c637ed874b40ea5833b81f571a9c718978bfd0c01001f",
   "part2/joints.py": "22bb9bb9e6671c558dc6ba6300eff2377a1eb853491ac44dbe5c2803534ad93f",
   "part2/lifters/__init__.py": "ef0540ca10c204da8b5f424e52387145f288dfa3dc3ba81f3e87e54cf89d23d0",
   "part2/lifters/fixed_bones.py": "83cfcf02456aa06236d4b1f74803747d6537071fba3288a9d12728ac510f31be"
  },
- "code_sha256": "318f8f9e666646c7de118c1b951d08a0419f55061f0c069b1226ae135c13c65f",
+ "code_sha256": "5e9bf93596e5cfa95df7ecdafd80817316a085899a16394c0c11edaa6d20e650",
  "frames_dir": "fixtures/input/single/frames",
  "frames_sha256": "80a75a298f8a947c35060e20ad3020c1f04133cf4ba3d628fccb644a4a676df2",
  "models": [
@@ -35,14 +36,14 @@
  ],
  "files_sha256": {
   "camera.json": "62010cd02bac3b3fc646fb416f2dfa048ce210344fed4930361edfea39353acf",
-  "pose3d.json": "8ddbb1080dd6c391b912cba8d6580043130d9c47338f0f44177f6dc90955bd7d"
+  "pose3d.json": "a8e24b66b79974367eedb55ed50627434ccd94a52c6d4a9b4a1d78ef066995ac"
  },
- "created_utc": "2026-10-29T04:20:00Z",
+ "created_utc": "2026-10-29T07:36:40Z",
  "host_gpu": null,
  "run": {
   "frames": 111,
   "people": 1,
-  "seconds": 127.1,
+  "seconds": 125.1,
   "params": {
    "smooth": false,
    "mirrored": false

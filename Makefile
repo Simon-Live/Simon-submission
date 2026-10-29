@@ -49,8 +49,9 @@ outputs:
 	$(if $(filter cpu,$(BACKEND)),CUDA_VISIBLE_DEVICES= )PYTHONPATH=$(CURDIR) $(OUTPUTS_PY) -m part2.outputs --backend $(BACKEND) $(if $(TRACKER),--tracker $(TRACKER)) $(if $(LIFTER),--lifter $(LIFTER)) $(if $(MODES),--modes $(MODES)) $(if $(SCORED),--scored $(SCORED)) $(if $(REFINE),--refine $(REFINE))
 
 # Stock follower takes for Part 5 (docs/specs/stock-takes.md): download each Pexels clip into ~/.cache, frames at
-# 10 fps, the one-person run, then fixtures/output/stock/pexels-<id>/{pose3d.json, camera.json, SOURCE.md}.
-#   make stock-outputs [BACKEND=gpu] [CLIP=pexels-5034562]      all three clips without CLIP
+# 10 fps, the one-person run, then fixtures/output/stock/<take>/{pose3d.json, camera.json, SOURCE.md}. A take is a
+# whole clip (pexels-<id>) or a cut listed in part2/stock.py CUTS (pexels-5034562-0to7s: 0 to 7 s of 5034562).
+#   make stock-outputs [BACKEND=gpu] [CLIP=pexels-5034562-0to7s]      every take without CLIP
 CLIP ?=
 
 stock-outputs:

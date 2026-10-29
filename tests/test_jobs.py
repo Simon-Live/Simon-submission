@@ -335,25 +335,26 @@ def held_by_parent(job) -> bool:
     return json.loads((job.dir / "out" / "lock.json").read_text())["held_by_parent"]
 
 
-def test_the_worker_holds_the_gpu_lock_through_a_run_that_never_takes_it(make_queue):
+def test_jobs_worker_holds_no_gpu_lock_given_a_running_job_of_any_mode(make_queue):
+    """AC-B-NFR-03: the run takes the lock around each GPU stage itself (part2 run around the gpu estimate, a SAM
+    tracker around tracking), so the worker lets go before it starts the run, whatever the mode."""
     q = make_queue()
-    single = submit(q, "lock", backend="gpu")
-    bytetrack = submit(q, "lock", mode="class", backend="gpu", tracker="bytetrack")
-    assert wait_for(q, single)["state"] == wait_for(q, bytetrack)["state"] == "done"
-    assert held_by_parent(single) and held_by_parent(bytetrack)
+    runs = [submit(q, "lock", backend="gpu"),
+            submit(q, "lock", mode="class", backend="gpu", tracker="bytetrack"),
+            submit(q, "lock", mode="class", backend="gpu"),
+            submit(q, "lock", mode="class", backend="cpu", tracker="local-open")]
+    assert [wait_for(q, j)["state"] for j in runs] == ["done"] * 4
+    assert [held_by_parent(j) for j in runs] == [False] * 4
     probe = gpu_guard.try_lock()
-    assert probe is not None                          # and released it afterwards
+    assert probe is not None
     gpu_guard.release(probe)
 
 
 def test_a_class_run_with_a_sam_tracker_takes_the_lock_itself(make_queue):
-    q = make_queue()
-    auto = submit(q, "lock", mode="class", backend="gpu")
-    named = submit(q, "lock", mode="class", backend="cpu", tracker="local-open")
-    assert wait_for(q, auto)["state"] == wait_for(q, named)["state"] == "done"
-    assert not held_by_parent(auto) and not held_by_parent(named)     # trackers.gpu_lock never waits on its parent
-    assert q.run_takes_lock(auto) and not q.run_takes_lock(jobs.Job(id="0" * 12, dir=Path("/x"), mode="single",
-                                                                     kind="video"))
+    q = make_queue(start=False)
+    job = lambda **kw: jobs.Job(id="0" * 12, dir=Path("/x"), **{"kind": "video", **kw})  # noqa: E731
+    assert q.run_takes_lock(job(mode="class", backend="gpu")) and q.run_takes_lock(job(mode="class", tracker="local-open"))
+    assert not q.run_takes_lock(job(mode="single")) and not q.run_takes_lock(job(mode="class", tracker="bytetrack"))
 
 
 def test_a_job_past_the_timeout_is_killed_with_its_process_group(make_queue):

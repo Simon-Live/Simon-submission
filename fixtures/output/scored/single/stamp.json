@@ -13,18 +13,19 @@
  "env_lock_sha256": "f6335d220b1febc14f8aafb618ea3797551b53feb987a9614349e7fc3a28f3c6",
  "code_files": {
   "part2/backends/__init__.py": "a5742c4fec5cb5611de1292164b0ee0181d91ddfdf2df1206f7e38fe9174f804",
-  "part2/backends/cpu_rtm.py": "23a7a0edc72e5f02878e1d60fd5cc3118ecfbf7aed8bffe0cbfbc6b743cec7fa",
+  "part2/backends/cpu_rtm.py": "a994d080db7d358b2822855dd83814dfe6b18b85e0917f43ca6c67a451407193",
   "part2/backends/gpu_sam3db.py": "a6f236a7402fbc980f9f9709c7a105dbb0c79e6788a4a5cd2451ee09d2b8eada",
   "part2/body3d.py": "a1392f633dad90ea80b6434ff0b478848305a9b438bbe1b46b421fda09ff0fab",
   "part2/canonical.py": "c093d8ac4abe3e2650290eb3e4b89b3b718c5ae5b5853bcbb71c0fd29105a7f1",
   "part2/frames.py": "80951fffde382b7aa3db5e0825e4b0b820e7db11d6251ed085f48e67ad218c8f",
+  "part2/hashing.py": "78d43a3527c832b4e17c637ed874b40ea5833b81f571a9c718978bfd0c01001f",
   "part2/joints.py": "22bb9bb9e6671c558dc6ba6300eff2377a1eb853491ac44dbe5c2803534ad93f",
   "part2/lifters/__init__.py": "ef0540ca10c204da8b5f424e52387145f288dfa3dc3ba81f3e87e54cf89d23d0",
   "part2/refine/__init__.py": "f867819a0809803192d7199c6fd5e2bd1cdb53536cfd2d7cb8fb01089f819387",
   "part2/refine/focal.py": "bb622e45cccfb58bcfa38c91626e8558241f05de0d27aeba508da9788ee97537",
   "part2/refine/kp2d_fit.py": "42388b596cf7b2df2064b3ec32c06b29b6c1f0604e7822c53ba77922111a651d"
  },
- "code_sha256": "8b6cf82da11bf05960c9e43e659ca89e611db709a61ec1105d5f835bba005b2f",
+ "code_sha256": "b19b0061ed66cdc09fed7c7d7146201c062eded01267e656831db2e94e1b3fd4",
  "frames_dir": "fixtures/input/single/frames",
  "frames_sha256": "80a75a298f8a947c35060e20ad3020c1f04133cf4ba3d628fccb644a4a676df2",
  "models": [
@@ -55,15 +56,15 @@
   }
  ],
  "files_sha256": {
-  "camera.json": "1796e93a7baaa13384728058316cc7ec8bf862862e3d91386aea252a33e92bdf",
-  "pose3d.json": "dfb1d3fda718c1203563d03c42da9425a45b164f603ee48873ee79bab331663d"
+  "camera.json": "e857e523ed96627668d081590f4d3ab42704ad6fd4348cd1482f8cee00b22a72",
+  "pose3d.json": "edcb1d78ea51cd6d41eab65d86205d3e5bf5db331202e5caf449d0424597a68b"
  },
- "created_utc": "2026-10-29T05:54:45Z",
+ "created_utc": "2026-10-29T07:29:37Z",
  "host_gpu": "NVIDIA GeForce RTX 5090",
  "run": {
   "frames": 111,
   "people": 1,
-  "seconds": 831.2,
+  "seconds": 816.0,
   "params": {
    "smooth": false,
    "mirrored": false

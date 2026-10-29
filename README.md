@@ -132,6 +132,8 @@ Results on the committed outputs (the gpu dirs were made on an RTX 5090):
 | `multi_person_local_open` (never gated) | `class-local-open`: `local-open` | min coverage 0.111, mean 0.873: fail |
 | `cpu_backend_3d` (outside the definition of done) | `cpu-single`: `fixed-bones`, against the refined `single` | 0.2656 m, bone CV 0.0117: fail |
 
+`single` and `coco-single` are refined: `make outputs` runs them with `focal` then `kp2d-fit`, `part2 run --mode single --backend gpu --refine focal,kp2d-fit` does the same for one input, and a plain `part2 run` is the unrefined pipeline.
+
 The top-level `pass` needs `one_person`, `one_person_coco` and `multi_person`; on these outputs `make check-2` exits 0 (recorded at `ac242c9`, outputs `f642222`).
 
 Without refinement, SAM 3D Body on this host had 3 seated frames and 1 COCO image over the line (max 5.294% and 5.213%), close to the team's HPC record (3 of 20 over, max 5.29%). Two refinement steps in `part2/refine/` bring both sets under it: `focal` re-runs SAM 3D Body at 0.7 to 2.0 times MoGe-2's focal length and keeps the run that agrees best with RTMPose-x 2D keypoints, then `kp2d-fit` fits each frame to those keypoints while keeping the bone lengths fixed per person. Their parameters were fixed from label-free measures (agreement with RTMPose on unlabelled frames and the dance clip, smoothness, bone length stability) before each scoring, and every scoring is counted. The margins are thin. Thresholds, labels, the body-height rule and the every-frame rule stay as written above.

@@ -33,7 +33,6 @@ SCORED_TRACKER = "api-sam31"
 OPEN_TRACKER = "local-open"
 BODY_HEIGHT = "clip max of clicked nose to ankle-midpoint distance in px (stricter than full stature)"
 COCO_LABELS = "fixtures/input/coco/labels_2d.json"
-COCO_NOT_BUILT = f"not built: {COCO_LABELS} is missing (TICKET-037)"
 
 
 def scored_dir(root: Path = ROOT, flag=None) -> Path:
@@ -82,18 +81,13 @@ def check_single(root: Path = ROOT, scored: Path | None = None) -> dict:
 def check_coco(root: Path = ROOT, scored: Path | None = None) -> dict:
     """`one_person_coco` (TICKET-037): scored/coco-single against fixtures/input/coco/labels_2d.json with the
     unchanged eval_reproj rules, each image its own clip, through part2.eval_coco.block (metrics with "pass",
-    no per-frame rows). Until the set exists the block fails as not built, so the gate never passes without it."""
+    no per-frame rows). A missing label file or a missing or stale output fails the block with the reason."""
     scored = scored or scored_dir(root)
     out = scored / "coco-single"
-    if not (root / COCO_LABELS).is_file():
-        return {"pass": False, "status": COCO_NOT_BUILT}
     problem = ready(root, out, [COCO_LABELS], [])
     if problem:
         return _fail(problem, out, root)
-    try:
-        eval_coco = importlib.import_module("part2.eval_coco")
-    except ImportError:
-        return {"pass": False, "status": "not available: part2.eval_coco missing (TICKET-037)"}
+    eval_coco = importlib.import_module("part2.eval_coco")  # the module in sys.modules (tests put a fake there)
     m = eval_coco.block(out, root / COCO_LABELS)
     return {**m, "outputs": stamp.describe(out, root)}
 

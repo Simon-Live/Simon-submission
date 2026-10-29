@@ -10,13 +10,13 @@ track lost within 3 s whose last box it overlaps by IoU over 0.3. Masks of two t
 IoU 0.8 keep the older id on the larger mask. A one-frame input is detection only, ids by box area.
 """
 import contextlib
-import hashlib
 import os
 import tempfile
 from pathlib import Path
 
 import numpy as np
 
+from part2.hashing import sha256_file
 from part2.trackers import NoPerson, Tracker, gpu_lock
 from part2.trackers.bytetrack import DETECTOR_NAME, PersonDetector, read_image
 
@@ -140,14 +140,6 @@ def reprompt_track(frame_records, detect_at, propagator, params=None) -> dict:
     return out
 
 
-def _sha256(path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 class Sam2Propagator:
     """SAM 2.1 video predictor over the frames dir (record order), masks offloaded to CPU."""
 
@@ -158,7 +150,7 @@ class Sam2Propagator:
 
         self.torch = torch
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.weights_sha256 = _sha256(hf_hub_download(model_id, CHECKPOINT))
+        self.weights_sha256 = sha256_file(hf_hub_download(model_id, CHECKPOINT))
         self._tmp = tempfile.TemporaryDirectory()
         for i, r in enumerate(frame_records):
             os.symlink((Path(frames_dir) / r["file"]).resolve(), Path(self._tmp.name) / f"{i}.jpg")

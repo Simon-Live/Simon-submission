@@ -1,8 +1,10 @@
-"""Shared test setup: no test reads the operator's key files or spends on the real Meta ledger.
+"""Shared test setup: no test reads the operator's key files, spends on the real Meta ledger or takes the host's
+GPU lock.
 
 Every test starts with PART2_KEY_DIR pointing at an empty directory (mode 700), MODEL_API_KEY and
-HF_TOKEN unset, and META_SPEND_LEDGER in a temp dir. A test that needs a key writes a fake one with
-`fake_key`.
+HF_TOKEN unset, META_SPEND_LEDGER in a temp dir and PART2_GPU_LOCK in a temp dir (a `part2 run` with the gpu
+backend takes the lock around its estimate; a held host lock would make it wait). A test that needs a key writes a
+fake one with `fake_key`.
 """
 import os
 
@@ -17,6 +19,7 @@ def _isolated_keys_and_ledger(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.setenv("META_SPEND_LEDGER", str(tmp_path_factory.mktemp("ledger") / "meta_spend.jsonl"))
+    monkeypatch.setenv("PART2_GPU_LOCK", str(tmp_path_factory.mktemp("gpu-lock") / "gpu.lock"))
     return keys
 
 
