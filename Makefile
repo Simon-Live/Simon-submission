@@ -1,9 +1,9 @@
-.PHONY: check-5 test dummy-data output-examples
+.PHONY: check-5 test dummy-data output-examples test-contract contracts-check contracts-sync
 
-# Done-check for Part 5 (see README.md). Replace the stub with the real check:
-# it must print a metrics JSON and exit 0 only when every threshold passes.
+# Done-check for Part 5 (see README.md): analyse every labelled take, print the metrics JSON,
+# exit 0 only if good light passes at every angle (P >= 0.85, R >= 0.75, 0 faults on correct takes).
 check-5:
-	@echo "check-5: not implemented yet" && exit 1
+	@uv run python -m part5.check
 
 test:
 	uv run pytest -q
@@ -15,3 +15,16 @@ dummy-data:
 # Regenerate the shipped analysis.json examples (fixtures/output/).
 output-examples:
 	uv run python scripts/make_output_examples.py
+
+# Input contract (CONTRACT.md): load every Part 3 and Part 4 file through part5.io and validate it.
+test-contract:
+	uv run pytest -q tests/test_contract.py
+
+# Compare the copies under contracts/ and fixtures/input/contract/ with Parts 3 and 4 (exit 1 on drift).
+# PART3_DIR / PART4_DIR point at local checkouts; otherwise the repos are cloned from GitHub.
+contracts-check:
+	uv run python scripts/sync_contracts.py --check
+
+# Refresh those copies and contracts/sources.lock.json from Parts 3 and 4.
+contracts-sync:
+	uv run python scripts/sync_contracts.py

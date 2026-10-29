@@ -3,6 +3,7 @@
 `analyse` returns a validated `simon.analysis.v1` document (see docs/schemas.md) without
 writing anything, so the CLI, `make check-5` and the example script share one code path.
 """
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,8 @@ MIN_SPAN_SHARE = 0.6
 # Below this share of usable measure values a take is mostly missing joints, and "no faults"
 # would only mean "nothing could be measured". The dummy takes are all at 100%.
 MIN_AVAILABLE = 0.5
+# Frame rates closer than this are treated as equal; otherwise the follower is resampled.
+FPS_TOLERANCE = 0.01
 
 
 class AnalysisError(ValueError):
@@ -33,18 +36,59 @@ def analyse(expected, follower, rules=None):
     exp_ref, fol_ref = _ref(expected, "expected"), _ref(follower, "follower")
     exp = normalise(load_clip(exp_ref["path"]))
     fol = normalise(load_clip(fol_ref["path"]))
-    exp_m, fol_m = compute(exp.positions), compute(fol.positions)
+    # Alignment works in frames, so put the follower on the expected clip's clock first;
+    # `to_original` maps each resampled frame back to the follower file's own frame index.
+    fol_positions, to_original = resample(fol.positions, fol.t, clip_fps(exp))
+    exp_m, fol_m = compute(exp.positions), compute(fol_positions)
     for ref, m in ((exp_ref, exp_m), (fol_ref, fol_m)):
         available = np.mean([np.isfinite(m[n]).mean() for n in ALIGN_MEASURES])
         if available < MIN_AVAILABLE:
             raise AnalysisError(f"{ref['path']}: only {available:.0%} of the body could be measured "
                                 "(joints missing or below the confidence cutoff)")
     try:
-        alignment = align(exp.positions, fol.positions)
+        alignment = align(exp.positions, fol_positions)
     except ValueError as e:
         raise AnalysisError(f"{fol_ref['path']}: cannot align with {exp_ref['path']} ({e})") from e
-    faults = detect(exp_m, fol_m, alignment, rules)
-    return build_analysis(exp_ref, fol_ref, faults, diagnostics=_diagnostics(alignment, len(fol.positions)))
+    faults = [replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
+              for f in detect(exp_m, fol_m, alignment, rules)]
+    span = tuple(int(to_original[j]) for j in alignment.follower_span)
+    return build_analysis(exp_ref, fol_ref, faults, diagnostics=_diagnostics(alignment, span, len(fol.t)))
+
+
+def clip_fps(clip):
+    """The clip's frame rate: `fps` if given, else from the median step of `t`.
+
+    The median-step clock assumes roughly uniform timing; for event-timed keyframes
+    (`simon.skeleton.v1`) it is a heuristic, as aligning to sparse keyframes already is.
+    """
+    if clip.fps:
+        return float(clip.fps)
+    steps = np.diff(clip.t)
+    return 1.0 / float(np.median(steps)) if len(steps) else 1.0
+
+
+def resample(positions, t, fps, tolerance=FPS_TOLERANCE):
+    """Linear resampling of (F, 17, 3) positions onto a uniform `fps` grid over `t`.
+
+    A joint missing (NaN) in either neighbouring frame stays missing, so gaps aren't
+    bridged. Returns the positions and, per new frame, the nearest original frame index.
+    Clips already at `fps` (and uniformly timed) come back unchanged.
+    """
+    n = len(t)
+    steps = np.diff(t)
+    if n < 2 or (np.allclose(steps, 1.0 / fps, rtol=tolerance)):
+        return positions, np.arange(n)
+    grid = t[0] + np.arange(int(np.floor((t[-1] - t[0]) * fps + 1e-9)) + 1) / fps
+    hi = np.clip(np.searchsorted(t, grid, side="right"), 1, n - 1)
+    lo = hi - 1
+    w = ((grid - t[lo]) / (t[hi] - t[lo]))[:, None, None]
+    out = positions[lo] * (1 - w) + positions[hi] * w
+    # On an original frame, take it as is (w is 1 at the last frame, where hi is clipped).
+    at_lo, at_hi = np.isclose(w[:, 0, 0], 0.0), np.isclose(w[:, 0, 0], 1.0)
+    out[at_lo] = positions[lo[at_lo]]
+    out[at_hi] = positions[hi[at_hi]]
+    nearest = np.where(grid - t[lo] <= t[hi] - grid, lo, hi)
+    return out, nearest
 
 
 def _ref(ref, key):
@@ -55,8 +99,8 @@ def _ref(ref, key):
     return dict(ref, path=str(ref["path"]))
 
 
-def _diagnostics(alignment, n_follower):
-    start, end = (int(x) for x in alignment.follower_span)
+def _diagnostics(alignment, span, n_follower):
+    start, end = span
     share = (end - start + 1) / n_follower
     warnings = []
     if share < MIN_SPAN_SHARE:

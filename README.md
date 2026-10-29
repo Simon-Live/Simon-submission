@@ -10,7 +10,7 @@ Source task: moalborati/simon issue #59. Scope source: `docs/MINI-APPS.md` in mo
 
 ## Input
 
-The expected `animation.json` (or `skeleton.json`) plus a follower's `skeleton.json`. Fixtures in `fixtures/input/`.
+The expected `animation.json` (or `skeleton.json`) plus a follower's `skeleton.json`. Fixtures in `fixtures/input/`. What Part 5 accepts, and from which part, is in `CONTRACT.md`.
 
 ## Output
 
@@ -50,6 +50,8 @@ make dummy-data        # regenerate fixtures/input/followers/ (synthetic labelle
 uv run part5 analyse --expected fixtures/input/expected/exercise/animation.json \
   --follower fixtures/input/followers/exercise/<take_id>/skeleton.json --out out/analysis.json
 make check-5           # done-check
+make test-contract     # Part 3 and Part 4 files through part5.io (CONTRACT.md)
+make contracts-check   # exit 1 when a copy under contracts/ drifts from Parts 3 and 4
 ```
 
 Work is coordinated in GitHub issues: checklist #17, team chat #18.

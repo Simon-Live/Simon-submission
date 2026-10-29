@@ -85,6 +85,11 @@ Top level:
   idle lead-in or tail, but it is also what a follower much slower than the example, or one
   doing several repetitions, looks like.
 
+Follower and expected clips may have different frame rates: the follower is resampled onto
+the expected clip's clock (its `fps`, or the median step of `t`) before alignment, and every
+follower frame number in the output (`follower_frames`, `diagnostics.follower_span`) indexes
+the follower file as written.
+
 `part5 analyse` exits 0 when it wrote the file, and 1 with a message naming the file when an
 input is malformed, less than half the body can be measured, or the takes can't be aligned
 (a follower more than 2x faster than the example).
@@ -130,3 +135,9 @@ Produced by `part5.evaluate.score` / `evaluate_corpus` (#13) and printed by `mak
   takes), so one weak angle cannot hide inside an aggregate; `good_light` is a summary only.
   Low-light slices are reported, not gated. A labelled take with no analysis is an error
   (the missing `take_id`s are listed), never scored as "no predictions".
+
+`make check-5` (#14, `part5/check.py`) prints this document with a `gate` block added:
+`thresholds`, `gated_slices` (`good/front`, `good/45`, `good/side` → true/false), `failures`
+(one plain line per failed criterion) and `passed`. It exits 0 only when `passed` is true; a
+take that can't be analysed, or a gated slice with no takes, no labelled faults or no correct
+takes (nothing to measure a criterion on), also fails the check.

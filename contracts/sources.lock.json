@@ -1,0 +1,136 @@
+{
+  "derived": {},
+  "files": {
+    "contracts/part3/animation-part5.schema.json": {
+      "from": "contracts/animation-part5.schema.json",
+      "sha256": "f3aac3089e28088a0bb65b907e17c972d236d22e2ca60d633da49b22a89a1908",
+      "upstream": "part3"
+    },
+    "contracts/part3/follower-labels.schema.json": {
+      "from": "contracts/follower-labels.schema.json",
+      "sha256": "2b27addeb62f5e2083cbd9dba9ab8bb5e4034a45fb5cfde7ce6e710086ca2816",
+      "upstream": "part3"
+    },
+    "contracts/part3/skeleton-part4.schema.json": {
+      "from": "contracts/skeleton-part4.schema.json",
+      "sha256": "f68621554d4adece4a595efedc8c7f22419159ec0a51aa0050e2132bcfcebc8e",
+      "upstream": "part3"
+    },
+    "contracts/part3/skeleton.schema.json": {
+      "from": "contracts/skeleton.schema.json",
+      "sha256": "0ed471d14f6e34b1b1fb7c68bc5e9a46a3923de2579f9c2c7c562ea4a7f3a427",
+      "upstream": "part3"
+    },
+    "contracts/part4/animation.schema.json": {
+      "from": "contracts/animation.schema.json",
+      "sha256": "eb48534a6cfd07a5d2bc912ed56cce26b5ee1a1752ee9f561a69777664ed6956",
+      "upstream": "part4"
+    },
+    "fixtures/input/contract/part3/followers/labels.json": {
+      "from": "fixtures/conformance/followers/labels.json",
+      "sha256": "d9613a0f42cd3b03df215f283421c21586545fdcbb0a16722b8e6a98a5bd3465",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_45_correct/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_45_correct/skeleton.json",
+      "sha256": "4a08679c15c4043761ac2e63a60133db3c2c2284ca587ac39ab4d6c61dce5902",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_45_elbows_out/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_45_elbows_out/skeleton.json",
+      "sha256": "3064bd6d54b8bf145c983557063c466e963d62e96aa26dc29eb66420c19c05c3",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_45_feet_wide/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_45_feet_wide/skeleton.json",
+      "sha256": "d8fadbcc7d7eee591d11aa3cd272287681f8a783935bbed110a208d99aeb8338",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_45_knee_caving-right/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_45_knee_caving-right/skeleton.json",
+      "sha256": "6c3ec960c09a7d635cb6e44daa1c8ddc9844f656b4b8ea580c399a9e07183176",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_45_shallow_squat/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_45_shallow_squat/skeleton.json",
+      "sha256": "79e9234ae7b8dc47928c47c744f944f51321f0edb55e2d144602367ac9c1853f",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_front_correct/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_front_correct/skeleton.json",
+      "sha256": "8dfa7fc4e7a4d723b9c74e4e3e0b45f6c0e3771cfedfcb4d1c9ba89f5fdad473",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_front_elbows_out/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_front_elbows_out/skeleton.json",
+      "sha256": "0a6f8f408cd98876c1a323129b59ad8c97183383ee43864b7e4ab91b074710e6",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_front_feet_wide/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_front_feet_wide/skeleton.json",
+      "sha256": "9d8d15a64571b3a387dbc57305c5de9860a23c465a71497b0763023da0446ee1",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_front_knee_caving-left/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_front_knee_caving-left/skeleton.json",
+      "sha256": "b42f877b4de7afd20ce34a9282d17697664c336ef1c16e54cf6674e13d85d9bb",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_front_shallow_squat/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_front_shallow_squat/skeleton.json",
+      "sha256": "668bc3ae7124f5da4d50eb86b3035691dea02daf8c7c4258b4e3f84af9d25aab",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_side_correct/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_side_correct/skeleton.json",
+      "sha256": "cdff3bba357bd6925aaccde0cc46757b5d3dac073d56e09b042b8141a94e7923",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_side_elbows_out/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_side_elbows_out/skeleton.json",
+      "sha256": "da04df5bffb2a3c3b686759c43540f1969e0363faadc0c55c41730796093793b",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_side_feet_wide/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_side_feet_wide/skeleton.json",
+      "sha256": "3edfdb3c6cd7d74fc125f55e65f1b67b40774e669b918d3d85946f1863200c64",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_side_knee_caving-left/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_side_knee_caving-left/skeleton.json",
+      "sha256": "c027db70805bf1eb8888a67a7620d9a5b4689950e304408cc86c81d5fcc5128a",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/followers/squat_side_shallow_squat/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_side_shallow_squat/skeleton.json",
+      "sha256": "a76152ce548e4561a4c165ec2318f5fb73667e623e4c3a24f8cc2d0c6d635455",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/native/skeleton.json": {
+      "from": "fixtures/conformance/followers/squat_front_correct/skeleton.native.json",
+      "sha256": "eb6d134a7e4bdd9c3301311f0390dff598ccbdda16fdb59a713dff48b4d1b900",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part3/view-part4/skeleton.json": {
+      "from": "fixtures/conformance/golden/view-part4-every-10/skeleton.json",
+      "sha256": "59053141e46b01ce4a0369cfe7a2df26df421eb75d06c6c522ee531fad5a9ccc",
+      "upstream": "part3"
+    },
+    "fixtures/input/contract/part4/exercise/animation.json": {
+      "from": "fixtures/output/exercise/animation.json",
+      "sha256": "7cef03fac6378a4251297fd24e9286dc8c1e0f5399e38ce83047c071d0e39a47",
+      "upstream": "part4"
+    }
+  },
+  "format": "simon.part5.contract_lock.v1",
+  "upstreams": {
+    "part3": {
+      "commit": "65a5aad69010bc8d84b1d7cb5b4f2e5eecf2e265",
+      "repo": "moalborati/simon-part-3-skeleton-consistency"
+    },
+    "part4": {
+      "commit": "dc3d9f2e70a0d3e95efb60bea1e5ab7fc307d284",
+      "repo": "moalborati/simon-part-4-animate-keyframes"
+    }
+  }
+}

@@ -1,0 +1,354 @@
+{
+  "format": "simon.part3.follower_labels/1",
+  "generator": "python3 -m part3.conformance build",
+  "seed": 20261027,
+  "angles": {
+    "front": 0,
+    "45": 45,
+    "side": 90
+  },
+  "takes": [
+    {
+      "take_id": "squat_front_correct",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "front",
+      "camera_yaw_deg": 0,
+      "correct": true,
+      "faults": [],
+      "follower": "followers/squat_front_correct/skeleton.json",
+      "input": "followers/squat_front_correct/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_front_feet_wide",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "front",
+      "camera_yaw_deg": 0,
+      "correct": false,
+      "faults": [
+        {
+          "type": "feet_wide",
+          "measure": "ankle_lateral_offset",
+          "body_part": "legs",
+          "joints": [
+            "left_ankle",
+            "right_ankle"
+          ],
+          "side": "both",
+          "direction": "more",
+          "magnitude_m": 0.1,
+          "text": "feet too wide",
+          "measured_in_output": 0.1149
+        }
+      ],
+      "follower": "followers/squat_front_feet_wide/skeleton.json",
+      "input": "followers/squat_front_feet_wide/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_front_elbows_out",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "front",
+      "camera_yaw_deg": 0,
+      "correct": false,
+      "faults": [
+        {
+          "type": "elbows_out",
+          "measure": "upper_arm_abduction",
+          "body_part": "arms",
+          "joints": [
+            "left_shoulder",
+            "right_shoulder"
+          ],
+          "side": "both",
+          "direction": "more",
+          "magnitude_deg": 20.0,
+          "text": "elbows too far out",
+          "measured_in_output": 18.1089
+        }
+      ],
+      "follower": "followers/squat_front_elbows_out/skeleton.json",
+      "input": "followers/squat_front_elbows_out/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_front_shallow_squat",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "front",
+      "camera_yaw_deg": 0,
+      "correct": false,
+      "faults": [
+        {
+          "type": "shallow_squat",
+          "measure": "knee_angle_at_bottom",
+          "body_part": "legs",
+          "joints": [
+            "left_knee",
+            "right_knee"
+          ],
+          "side": "both",
+          "direction": "less",
+          "magnitude_deg": 25.0,
+          "text": "knees not bent enough at the bottom",
+          "measured_in_output": 26.3726
+        }
+      ],
+      "follower": "followers/squat_front_shallow_squat/skeleton.json",
+      "input": "followers/squat_front_shallow_squat/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_front_knee_caving-left",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "front",
+      "camera_yaw_deg": 0,
+      "correct": false,
+      "faults": [
+        {
+          "type": "knee_caving",
+          "measure": "thigh_inward_turn_at_bottom",
+          "body_part": "legs",
+          "joints": [
+            "left_knee"
+          ],
+          "side": "left",
+          "direction": "more",
+          "magnitude_deg": 12.0,
+          "text": "left knee caves in at the bottom",
+          "measured_in_output": 11.9851
+        }
+      ],
+      "follower": "followers/squat_front_knee_caving-left/skeleton.json",
+      "input": "followers/squat_front_knee_caving-left/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_45_correct",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "45",
+      "camera_yaw_deg": 45,
+      "correct": true,
+      "faults": [],
+      "follower": "followers/squat_45_correct/skeleton.json",
+      "input": "followers/squat_45_correct/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_45_feet_wide",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "45",
+      "camera_yaw_deg": 45,
+      "correct": false,
+      "faults": [
+        {
+          "type": "feet_wide",
+          "measure": "ankle_lateral_offset",
+          "body_part": "legs",
+          "joints": [
+            "left_ankle",
+            "right_ankle"
+          ],
+          "side": "both",
+          "direction": "more",
+          "magnitude_m": 0.1,
+          "text": "feet too wide",
+          "measured_in_output": 0.1011
+        }
+      ],
+      "follower": "followers/squat_45_feet_wide/skeleton.json",
+      "input": "followers/squat_45_feet_wide/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_45_elbows_out",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "45",
+      "camera_yaw_deg": 45,
+      "correct": false,
+      "faults": [
+        {
+          "type": "elbows_out",
+          "measure": "upper_arm_abduction",
+          "body_part": "arms",
+          "joints": [
+            "left_shoulder",
+            "right_shoulder"
+          ],
+          "side": "both",
+          "direction": "more",
+          "magnitude_deg": 20.0,
+          "text": "elbows too far out",
+          "measured_in_output": 19.8591
+        }
+      ],
+      "follower": "followers/squat_45_elbows_out/skeleton.json",
+      "input": "followers/squat_45_elbows_out/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_45_shallow_squat",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "45",
+      "camera_yaw_deg": 45,
+      "correct": false,
+      "faults": [
+        {
+          "type": "shallow_squat",
+          "measure": "knee_angle_at_bottom",
+          "body_part": "legs",
+          "joints": [
+            "left_knee",
+            "right_knee"
+          ],
+          "side": "both",
+          "direction": "less",
+          "magnitude_deg": 25.0,
+          "text": "knees not bent enough at the bottom",
+          "measured_in_output": 27.1876
+        }
+      ],
+      "follower": "followers/squat_45_shallow_squat/skeleton.json",
+      "input": "followers/squat_45_shallow_squat/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_45_knee_caving-right",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "45",
+      "camera_yaw_deg": 45,
+      "correct": false,
+      "faults": [
+        {
+          "type": "knee_caving",
+          "measure": "thigh_inward_turn_at_bottom",
+          "body_part": "legs",
+          "joints": [
+            "right_knee"
+          ],
+          "side": "right",
+          "direction": "more",
+          "magnitude_deg": 12.0,
+          "text": "right knee caves in at the bottom",
+          "measured_in_output": 11.6014
+        }
+      ],
+      "follower": "followers/squat_45_knee_caving-right/skeleton.json",
+      "input": "followers/squat_45_knee_caving-right/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_side_correct",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "side",
+      "camera_yaw_deg": 90,
+      "correct": true,
+      "faults": [],
+      "follower": "followers/squat_side_correct/skeleton.json",
+      "input": "followers/squat_side_correct/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_side_feet_wide",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "side",
+      "camera_yaw_deg": 90,
+      "correct": false,
+      "faults": [
+        {
+          "type": "feet_wide",
+          "measure": "ankle_lateral_offset",
+          "body_part": "legs",
+          "joints": [
+            "left_ankle",
+            "right_ankle"
+          ],
+          "side": "both",
+          "direction": "more",
+          "magnitude_m": 0.1,
+          "text": "feet too wide",
+          "measured_in_output": 0.0984
+        }
+      ],
+      "follower": "followers/squat_side_feet_wide/skeleton.json",
+      "input": "followers/squat_side_feet_wide/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_side_elbows_out",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "side",
+      "camera_yaw_deg": 90,
+      "correct": false,
+      "faults": [
+        {
+          "type": "elbows_out",
+          "measure": "upper_arm_abduction",
+          "body_part": "arms",
+          "joints": [
+            "left_shoulder",
+            "right_shoulder"
+          ],
+          "side": "both",
+          "direction": "more",
+          "magnitude_deg": 20.0,
+          "text": "elbows too far out",
+          "measured_in_output": 19.6317
+        }
+      ],
+      "follower": "followers/squat_side_elbows_out/skeleton.json",
+      "input": "followers/squat_side_elbows_out/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_side_shallow_squat",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "side",
+      "camera_yaw_deg": 90,
+      "correct": false,
+      "faults": [
+        {
+          "type": "shallow_squat",
+          "measure": "knee_angle_at_bottom",
+          "body_part": "legs",
+          "joints": [
+            "left_knee",
+            "right_knee"
+          ],
+          "side": "both",
+          "direction": "less",
+          "magnitude_deg": 25.0,
+          "text": "knees not bent enough at the bottom",
+          "measured_in_output": 24.0808
+        }
+      ],
+      "follower": "followers/squat_side_shallow_squat/skeleton.json",
+      "input": "followers/squat_side_shallow_squat/input/pose3d.json"
+    },
+    {
+      "take_id": "squat_side_knee_caving-left",
+      "set": "followers",
+      "movement": "squat",
+      "angle": "side",
+      "camera_yaw_deg": 90,
+      "correct": false,
+      "faults": [
+        {
+          "type": "knee_caving",
+          "measure": "thigh_inward_turn_at_bottom",
+          "body_part": "legs",
+          "joints": [
+            "left_knee"
+          ],
+          "side": "left",
+          "direction": "more",
+          "magnitude_deg": 12.0,
+          "text": "left knee caves in at the bottom",
+          "measured_in_output": 13.6672
+        }
+      ],
+      "follower": "followers/squat_side_knee_caving-left/skeleton.json",
+      "input": "followers/squat_side_knee_caving-left/input/pose3d.json"
+    }
+  ]
+}

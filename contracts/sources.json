@@ -1,0 +1,25 @@
+{
+  "format": "simon.part5.contract_sources.v1",
+  "about": "What Part 5 copies from Parts 3 and 4, and from where. scripts/sync_contracts.py reads this file; contracts/sources.lock.json records the commit and sha256 of every copy. See CONTRACT.md.",
+  "upstreams": {
+    "part3": {"repo": "moalborati/simon-part-3-skeleton-consistency", "ref": "main"},
+    "part4": {"repo": "moalborati/simon-part-4-animate-keyframes", "ref": "main"}
+  },
+  "copies": [
+    {"upstream": "part3", "from": "contracts/animation-part5.schema.json", "to": "contracts/part3/animation-part5.schema.json"},
+    {"upstream": "part3", "from": "contracts/skeleton.schema.json", "to": "contracts/part3/skeleton.schema.json"},
+    {"upstream": "part3", "from": "contracts/skeleton-part4.schema.json", "to": "contracts/part3/skeleton-part4.schema.json"},
+    {"upstream": "part3", "from": "contracts/follower-labels.schema.json", "to": "contracts/part3/follower-labels.schema.json"},
+    {"upstream": "part3", "from": "fixtures/conformance/followers/labels.json", "to": "fixtures/input/contract/part3/followers/labels.json"},
+    {"upstream": "part3", "from": "fixtures/conformance/followers/*/skeleton.json", "to": "fixtures/input/contract/part3/followers/*/skeleton.json"},
+    {"upstream": "part3", "from": "fixtures/conformance/followers/squat_front_correct/skeleton.native.json", "to": "fixtures/input/contract/part3/native/skeleton.json"},
+    {"upstream": "part3", "from": "fixtures/conformance/golden/view-part4-every-10/skeleton.json", "to": "fixtures/input/contract/part3/view-part4/skeleton.json"},
+    {"upstream": "part4", "from": "fixtures/output/exercise/animation.json", "to": "fixtures/input/contract/part4/exercise/animation.json"},
+    {"upstream": "part4", "from": "contracts/animation.schema.json", "to": "contracts/part4/animation.schema.json"}
+  ],
+  "derived": [],
+  "pinned": [
+    {"upstream": "part4", "from": "fixtures/output/exercise/animation.json", "to": "fixtures/input/expected/exercise/animation.json", "commit": "366d6287f53cec4834ac0d5203118f84e9ac6c2f", "why": "make dummy-data builds every follower take from this clip; refresh it together with the takes"},
+    {"upstream": "part4", "from": "fixtures/output/dance/animation.json", "to": "fixtures/input/expected/dance/animation.json", "commit": "366d6287f53cec4834ac0d5203118f84e9ac6c2f", "why": "make dummy-data builds every follower take from this clip; refresh it together with the takes"}
+  ]
+}
