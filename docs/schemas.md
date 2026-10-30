@@ -190,3 +190,24 @@ Produced by `part5.evaluate.score` / `evaluate_corpus` (#13) and printed by `mak
 (one plain line per failed criterion) and `passed`. It exits 0 only when `passed` is true; a
 take that can't be analysed, or a gated slice with no takes, no labelled faults or no correct
 takes (nothing to measure a criterion on), also fails the check.
+
+## Always analysed: `warnings`, `match`, `score.capped_by` (1.4.0, ADR-0012)
+
+A take is always analysed. `status.code` is `ok` for every analysis; the former refusals are entries in the
+top-level `warnings: [{code, text}]`:
+
+| code | when |
+|---|---|
+| `low_match` | the movement guard would have refused: `residual` above `guard.max_residual` or `timing_corr` below `guard.min_timing_corr` (or the take could not be aligned at all) |
+| `moving_part_out_of_frame` | the part the example moves is not in frame in the take |
+| `not_enough_visible` | fewer than 3 measures are usable in both clips |
+| `no_usable_measures` | no measure can carry timing, or most of the body could not be measured: no faults, score 0 |
+
+`match` is `{quality: "ok"|"low", residual, timing_corr, limits}` (null numbers when unmeasured); `quality` is `low`
+exactly when the guard would have refused. Both are written only with at least one warning, and then
+`schema_version` is `1.4.0`; a document without warnings is byte-identical to what it was. Alignment and
+detection use the usable measures (with fewer than 3, any visible one); on a low match every fault carries
+`confidence: "low"`. `score` is never null; any warning caps `score.value` at 59 (grade F) and
+`score.capped_by` lists the codes. `part5 analyse` exits 0 for every written analysis, 1 for an unreadable or
+invalid input file, and no longer uses 3. Earlier text in this file that says a take is refused, or that exit 3
+is a refusal, describes documents before 1.4.0.

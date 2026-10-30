@@ -11,7 +11,8 @@ import re
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-from .guard import DIFFERENT_MOVEMENT, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE, OK
+from .guard import (DIFFERENT_MOVEMENT, LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NOT_ENOUGH_VISIBLE,
+                    OK)
 from .io import JOINTS
 from .measures import MEASURES
 from .lateral import lateral_for
@@ -20,9 +21,13 @@ from .words import describe, describe_timed
 FORMAT = "simon.analysis.v1"
 SCHEMA_VERSION = "1.2.0"
 SCHEMA_VERSION_REPS = "1.3.0"   # a document with the rep fields (ADR-0010); one without stays 1.2.0
+SCHEMA_VERSION_WARNINGS = "1.4.0"   # a document with `warnings` and `match` (ADR-0012); one without keeps its version
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
-REFUSED_CODES = (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME)   # no faults, no score
+# Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
+REFUSED_CODES = (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME)
 STATUS_CODES = (OK, *REFUSED_CODES)
+WARNING_CODES = (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE, NO_USABLE_MEASURES)
+LOW_CONFIDENCE = "low"   # a fault's `confidence` on a low match (ADR-0012)
 UNIT = "degrees"
 SIDES = ("left", "right", "both", "center")
 DIRECTIONS = ("more", "less")
@@ -115,7 +120,8 @@ def _input_ref(ref, key):
     raise OutputError(f"{key} must be a path or an object with a 'path', got {ref!r}")
 
 
-def build_analysis(expected, follower, faults, diagnostics=None, status=None, times=None, score=NO_SCORE):
+def build_analysis(expected, follower, faults, diagnostics=None, status=None, times=None, score=NO_SCORE,
+                   warnings=None, match=None):
     """Assemble a validated analysis document.
 
     `expected`/`follower` identify the input clips: a path, or an object with at least
@@ -124,22 +130,32 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
     `status`, if given, is `{code, text}`: a refused take (`different_movement`) has no faults.
     `diagnostics`, if given, is carried as an optional object Part 7 may ignore.
     `times` is one `fault_to_dict` times entry per fault (1.2.0 time fields). `score` is the
-    `score` block (a dict, or None for a refused take); left out entirely when not given.
+    `score` block (a dict, or None in a document written before ADR-0012); left out entirely when not given.
+    `warnings` (`[{code, text}]`) and `match` (`{quality, residual, timing_corr, limits}`) are the 1.4.0 fields
+    (ADR-0012): given with at least one warning, the document is 1.4.0, and on a low match every fault's
+    `confidence` is "low". Without warnings the document is exactly what it was.
     """
     times = times if times is not None else [None] * len(faults)
     try:
         faults = [fault_to_dict(f, t) for f, t in zip(faults, times, strict=True)]
     except (AttributeError, KeyError, TypeError, ValueError) as e:
         raise OutputError(f"<built analysis>: cannot build a fault object ({e})") from e
+    warned = bool(warnings)
+    if warned and (match or {}).get("quality") == "low":
+        for f in faults:
+            f["confidence"] = LOW_CONFIDENCE
     by_reps = any("reps" in f for f in faults) or "reps" in (diagnostics or {}).get("guard", {}) \
         or "visibility" in (diagnostics or {})
     doc = {"format": FORMAT,
-           "schema_version": SCHEMA_VERSION_REPS if by_reps else SCHEMA_VERSION,
+           "schema_version": SCHEMA_VERSION_WARNINGS if warned else SCHEMA_VERSION_REPS if by_reps else SCHEMA_VERSION,
            "expected": _input_ref(expected, "expected"),
            "follower": _input_ref(follower, "follower")}
     if status is not None:
         doc["status"] = dict(status)
     doc["faults"] = faults
+    if warned:
+        doc["warnings"] = [dict(w) for w in warnings]
+        doc["match"] = match
     if diagnostics is not None:
         doc["diagnostics"] = diagnostics
     if score is not NO_SCORE:
@@ -199,6 +215,8 @@ def validate_analysis(doc, source="<analysis>"):
         _validate_status(doc["status"], faults, fail)
     for i, f in enumerate(faults):
         _validate_fault(f, f"faults[{i}]", fail)
+    if "warnings" in doc:
+        _validate_warnings(doc["warnings"], doc.get("match"), fail)
     if "phrasing" in doc:
         _validate_phrasing(doc["phrasing"], len(faults), fail)
     if "score" in doc and doc["score"] is not None and not isinstance(doc["score"], dict):
@@ -210,6 +228,24 @@ def validate_analysis(doc, source="<analysis>"):
     except (TypeError, ValueError) as e:
         fail(f"document is not JSON-serialisable ({e})")
     return doc
+
+
+def _validate_warnings(warnings, match, fail):
+    """The 1.4.0 `warnings` and `match` (ADR-0012)."""
+    if not (isinstance(warnings, list) and warnings):
+        fail("warnings must be a non-empty list of {code, text}")
+    for i, w in enumerate(warnings):
+        if not isinstance(w, dict) or w.get("code") not in WARNING_CODES:
+            fail(f"warnings[{i}].code must be one of {WARNING_CODES}, got {(w or {}).get('code') if isinstance(w, dict) else w!r}")
+        if not isinstance(w.get("text"), str) or not w["text"]:
+            fail(f"warnings[{i}].text must be a non-empty string")
+    if not isinstance(match, dict) or match.get("quality") not in ("ok", "low"):
+        fail("match must be an object with quality 'ok' or 'low' when there are warnings")
+    for key in ("residual", "timing_corr"):
+        if match.get(key) is not None and not _is_number(match[key]):
+            fail(f"match.{key} must be a number or null, got {match[key]!r}")
+    if not isinstance(match.get("limits"), dict):
+        fail("match.limits must be an object")
 
 
 def _validate_status(status, faults, fail):
@@ -267,8 +303,10 @@ def _validate_fault(f, where, fail):
     if f["threshold_deg"] <= 0:
         fail(f"{where}.threshold_deg must be positive, got {f['threshold_deg']!r}")
     for key in ("coverage", "confidence"):
+        if key == "confidence" and f.get(key) == LOW_CONFIDENCE:
+            continue
         if not _is_number(f.get(key)) or not 0 <= f[key] <= 1:
-            fail(f"{where}.{key} must be a number in 0..1, got {f.get(key)!r}")
+            fail(f"{where}.{key} must be a number in 0..1{' or \"low\"' if key == 'confidence' else ''}, got {f.get(key)!r}")
     for key in ("expected_frames", "follower_frames"):
         v = f.get(key)
         if not (isinstance(v, (list, tuple)) and len(v) == 2 and all(_is_int(x) for x in v)):

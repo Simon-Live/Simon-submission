@@ -172,7 +172,7 @@ def test_validation_names_a_bad_time_field(result, key, value):
         validate_analysis(a)
 
 
-def test_score_hook_is_absent_by_default_and_null_when_refused(result):
+def test_score_hook_is_absent_by_default_and_called_on_every_take(result):
     assert "score" not in result.analysis
     block = {"version": "simon.score.v1", "value": 90, "grade": "A"}
     scored = run(str(EXPECTED), str(TAKE), score=lambda r: block)
@@ -180,9 +180,8 @@ def test_score_hook_is_absent_by_default_and_null_when_refused(result):
     fixed = run(str(EXPECTED), str(TAKE), score=block)
     assert fixed.analysis["score"] == block
     other = ROOT / next(t for t in LABELS["takes"] if t["set"] != LABEL["set"])["follower"]
-    refused = run(str(EXPECTED), str(other), score=lambda r: pytest.fail("not called"))
-    if refused.analysis["status"]["code"] != "ok":
-        assert refused.analysis["score"] is None
+    other_run = run(str(EXPECTED), str(other), score=lambda r: block)   # ADR-0012: called even on a low match
+    assert other_run.analysis["score"] == block
 
 
 def test_a_score_on_a_refused_take_is_invalid(result):

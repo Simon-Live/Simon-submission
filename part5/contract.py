@@ -47,13 +47,12 @@ TABLE_ROWS = (
      HANDOFF_FILE + " with `type: \"simon:follow\"`", "none", "none", "works with an option", HANDOFF_FIX,
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
-     "Part 7 reads `status` before `faults`", "Part 5 (this repo)"),
+     "Part 7 reads `warnings` and `score` (ADR-0012)", "Part 5 (this repo)"),
     ("Part 5", "`part5 analyse` exit code",
-     "0 ok analysis written, 1 input or write error, 2 usage, 3 refused analysis written",
+     "0 analysis written (with or without warnings), 1 unreadable or invalid input file or write error, 2 usage; 3 is no longer used (ADR-0012)",
      "for Part 7", "works with a mapping",
      "Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the "
-     "contract (Part 3 CONTRACT.md, row for Part 7): treat 0 and 3 as \"written, read `status`\", 1 and 2 as "
-     "failures", "Part 7 90aa473 (as Part 3 CONTRACT.md records it)"),
+     "contract (Part 3 CONTRACT.md, row for Part 7): 0 is \"written\" (read `warnings`), 1 and 2 are failures; 3 is no longer produced", "Part 7 90aa473 (as Part 3 CONTRACT.md records it)"),
     ("Part 5", "`labels.json`", "none", "evaluation", "works", "", "Part 5 (this repo)"),
 )
 

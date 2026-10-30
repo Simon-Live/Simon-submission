@@ -19,8 +19,8 @@ LABELS = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
 OTHER = {"exercise": "dance", "dance": "exercise"}
 SCHEMA = json.loads((ROOT / "contracts/analysis.schema.json").read_text())
 
-# The plain-words status text of a refusal, locked here word for word (master spec, Movement guard).
-REFUSAL_TEXT = ("This take does not look like the expected movement, so no faults are listed. "
+# The plain-words warning text of a low match, locked here word for word (ADR-0012).
+REFUSAL_TEXT = ("This take doesn't closely match the trainer's movement, so the grade is capped at F. "
                 "Check that you picked the right movement and that the whole movement is in the take.")
 
 
@@ -96,7 +96,7 @@ def test_check_movement_refuses_on_residual_or_on_timing_correlation(residual, c
     a, exp, fol = synthetic(n, residual, {"a": wave(n)}, {"a": mix})
     r = check_movement(a, exp, fol, rules)
     assert r.ok is ok
-    assert r.code == ("ok" if ok else "different_movement")
+    assert r.code == ("ok" if ok else "different_movement")   # the guard's verdict; the document's status stays ok
     assert (r.text == REFUSAL_TEXT) is (not ok)
     assert r.stats["timing_corr"] == pytest.approx(corr, abs=1e-6)
 
@@ -139,18 +139,19 @@ def test_ac005_every_seed_5_take_is_accepted_against_its_own_expected_clip():
     assert max(residuals) < limits["max_residual"] and min(corrs) > limits["min_timing_corr"]
 
 
-def test_ac004_every_take_of_the_other_movement_is_refused_with_no_faults():
-    """AC-004 on the synthetic mismatch pairs: each dance take against the exercise clip and each
-    exercise take against the dance clip is `different_movement` with `faults: []`; AC-011: the
-    refused document validates against contracts/analysis.schema.json."""
+def test_ac004_every_take_of_the_other_movement_is_a_low_match_graded_f():
+    """AC-004 on the synthetic mismatch pairs (ADR-0012): each dance take against the exercise clip and each
+    exercise take against the dance clip is analysed with a `low_match` warning, grade F and low-confidence
+    faults; AC-011: the document validates against contracts/analysis.schema.json."""
     limits = load_rules()["guard"]
     validator = jsonschema.Draft202012Validator(SCHEMA)
     residuals, corrs = [], []
     for t in LABELS["takes"]:
         res = seed5_run(t, f"fixtures/input/expected/{OTHER[t['set']]}/animation.json")
         a = res.analysis
-        assert a["status"] == {"code": "different_movement", "text": REFUSAL_TEXT}, t["take_id"]
-        assert a["faults"] == [], t["take_id"]
+        assert a["status"]["code"] == "ok", t["take_id"]
+        assert a["warnings"] == [{"code": "low_match", "text": REFUSAL_TEXT}], t["take_id"]
+        assert a["match"]["quality"] == "low" and all(f["confidence"] == "low" for f in a["faults"]), t["take_id"]
         assert res.guard.ok is False
         assert sorted(a["diagnostics"]["guard"]) == ["limits", "residual", "span_share", "timing_corr"]
         assert not list(validator.iter_errors(a)), t["take_id"]
@@ -170,15 +171,15 @@ def test_the_limits_sit_in_the_gap_between_the_matched_and_the_other_movement_po
     assert max(s["timing_corr"] for s in cross) < limits["min_timing_corr"] < min(s["timing_corr"] for s in matched)
 
 
-def test_ac011_a_refused_analysis_is_written_and_validates(tmp_path):
+def test_ac011_a_low_match_analysis_is_written_and_validates(tmp_path):
     take = next(t for t in LABELS["takes"] if t["set"] == "dance")
     res = seed5_run(take, "fixtures/input/expected/exercise/animation.json")
     out = tmp_path / "analysis.json"
     write_analysis(out, res.analysis)
     doc = json.loads(out.read_text())
     assert not list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(doc))
-    assert doc["schema_version"] == "1.2.0" and doc["status"]["code"] == "different_movement"
-    assert doc["faults"] == [] and "diagnostics" in doc
+    assert doc["schema_version"] == "1.4.0" and doc["status"]["code"] == "ok"
+    assert doc["warnings"][0]["code"] == "low_match" and "diagnostics" in doc
 
 
 def test_a_mostly_idle_take_gets_the_span_warning_and_is_not_refused(tmp_path):
@@ -215,6 +216,8 @@ def test_ac004_part2_clips_through_part3_follow_the_manifest_against_the_squat(n
     entry = MISMATCH[name]
     res = run(str(ROOT / entry["against"]), str(ROOT / f"fixtures/input/mismatch/{name}/skeleton.json"))
     if entry["population"] == "mismatch":
-        assert res.analysis["status"]["code"] == "different_movement" and res.analysis["faults"] == []
+        assert res.analysis["status"]["code"] == "ok" and res.analysis["match"]["quality"] == "low"
+        assert [w["code"] for w in res.analysis["warnings"]] == ["low_match"]
     else:
+        assert "warnings" not in res.analysis
         assert res.analysis["status"]["code"] == "ok", res.guard.stats

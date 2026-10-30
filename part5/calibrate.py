@@ -418,15 +418,15 @@ def guard_lines(pops, limits, overlap):
               f"  timing_corr: matched min {limits['gap_timing_corr'][0]:.4f}, mismatch max {limits['gap_timing_corr'][1]:.4f}",
               f"  limits: max_residual {limits['max_residual']:.4f}  min_timing_corr {limits['min_timing_corr']:.4f}"]
     for r in pops["reference"]:
-        verdict = "refused" if refused(r, limits) else "passes"
+        verdict = "low match (analysed with a warning, grade F)" if refused(r, limits) else "passes"
         lines.append(f"  matched reference (never tuned on) {r['label']}: residual {r['residual']:.4f} "
                      f"timing_corr {r['timing_corr']:.4f} span_share {r['span_share']:.4f} {verdict}")
     if overlap["matched_refused"] or overlap["mismatch_passed"]:
         lines.append("  OVERLAP: populations meet; the limits keep every matched take passing")
-        lines += [f"    matched take refused: {t}" for t in overlap["matched_refused"]]
+        lines += [f"    matched take graded F as a low match: {t}" for t in overlap["matched_refused"]]
         lines += [f"    mismatch pair passes: {t}" for t in overlap["mismatch_passed"]]
     else:
-        lines.append("  separation: every matched take passes and every mismatch pair is refused")
+        lines.append("  separation: every matched take passes and every mismatch pair is a low match")
     return lines
 
 
@@ -460,7 +460,7 @@ def guard_section(pops, limits, overlap):
     lines += [f"- Excluded from the mismatch population: {e}" for e in pops["excluded"]]
     bad = overlap["matched_refused"] + overlap["mismatch_passed"]
     lines.append("- Overlap, takes named: " + ("; ".join(
-        [f"matched take refused: {t}" for t in overlap["matched_refused"]]
+        [f"matched take graded F as a low match: {t}" for t in overlap["matched_refused"]]
         + [f"mismatch pair passes: {t}" for t in overlap["mismatch_passed"]]) if bad else "none"))
     return lines
 

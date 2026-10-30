@@ -49,17 +49,20 @@ def test_ok_take_exits_0_and_the_file_says_ok(tmp_path, monkeypatch):
     assert json.loads(out.read_text())["status"]["code"] == "ok"
 
 
-def test_ac004_a_take_of_another_movement_exits_3_with_a_valid_refused_analysis(tmp_path, monkeypatch, capsys):
-    """AC-004: `different_movement`, `faults: []`, exit 3; the status text is printed."""
+def test_ac004_a_take_of_another_movement_exits_0_with_a_low_match_warning_and_grade_f(tmp_path, monkeypatch, capsys):
+    """AC-004, ADR-0012: status ok, a `low_match` warning, grade F, exit 0; the warning text is printed."""
     monkeypatch.chdir(ROOT)
     out = tmp_path / "analysis.json"
     code = cli.main(["analyse", "--expected", EXPECTED,
                      "--follower", "fixtures/input/followers/dance/dance_front_good_00_correct/skeleton.json",
                      "--out", str(out)])
-    assert code == 3
+    assert code == 0
     doc = json.loads(out.read_text())
-    assert doc["status"]["code"] == "different_movement" and doc["faults"] == []
-    assert doc["status"]["text"] in capsys.readouterr().out
+    assert doc["status"]["code"] == "ok" and doc["schema_version"] == "1.4.0"
+    assert [w["code"] for w in doc["warnings"]] == ["low_match"] and doc["match"]["quality"] == "low"
+    assert doc["score"]["grade"] == "F" and doc["score"]["value"] <= 59
+    assert all(f["confidence"] == "low" for f in doc["faults"])
+    assert doc["warnings"][0]["text"] in capsys.readouterr().out
     from part5.output import load_analysis
     assert load_analysis(out) == doc  # a valid analysis.json was written
 
@@ -88,25 +91,28 @@ def _write_clip(path, doc, keep):
     path.write_text(json.dumps(doc))
 
 
-def test_far_too_fast_follower_exits_1(tmp_path, capsys):
+def test_far_too_fast_follower_is_analysed_unaligned_with_grade_f(tmp_path, capsys):
     doc = json.loads((ROOT / EXPECTED).read_text())
     fast = tmp_path / "fast.json"
     _write_clip(fast, doc, range(0, len(doc["frames"]), 3))
-    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(fast),
-                     "--out", str(tmp_path / "a.json")]) == 1
-    assert "cannot align" in capsys.readouterr().err
+    out = tmp_path / "a.json"
+    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(fast), "--out", str(out)]) == 0
+    doc = json.loads(out.read_text())
+    assert [w["code"] for w in doc["warnings"]] == ["low_match"] and doc["faults"] == []
+    assert doc["match"]["residual"] is None and doc["score"]["value"] == 0 and doc["score"]["grade"] == "F"
 
 
-def test_far_too_slow_follower_warns_and_is_refused_by_the_guard(tmp_path, capsys):
+def test_far_too_slow_follower_warns_and_is_a_low_match(tmp_path, capsys):
     """Three times slower than the example is past what the alignment can follow: the span
-    warning is still written, and the movement guard refuses the take (exit 3)."""
+    warning is still written, and the take is a low match graded F (exit 0, ADR-0012)."""
     doc = json.loads((ROOT / EXPECTED).read_text())
     slow = tmp_path / "slow.json"
     _write_clip(slow, doc, [k for k in range(len(doc["frames"])) for _ in range(3)])
     out = tmp_path / "a.json"
-    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(slow), "--out", str(out)]) == 3
+    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(slow), "--out", str(out)]) == 0
     written = json.loads(out.read_text())
-    assert written["diagnostics"]["warnings"] and written["status"]["code"] == "different_movement"
+    assert written["diagnostics"]["warnings"] and written["status"]["code"] == "ok"
+    assert written["score"]["grade"] == "F" and "low_match" in [w["code"] for w in written["warnings"]]
     assert "warning:" in capsys.readouterr().err
 
 
@@ -119,16 +125,18 @@ def test_a_follower_twice_as_slow_is_still_compared(tmp_path):
     assert json.loads(out.read_text())["status"]["code"] == "ok"
 
 
-def test_follower_with_no_usable_joints_exits_1(tmp_path, capsys):
+def test_follower_with_no_usable_joints_is_analysed_with_no_usable_measures(tmp_path, capsys):
     doc = json.loads((ROOT / EXPECTED).read_text())
     for f in doc["frames"]:
         f["conf"] = {j: 0.0 for j in f["joints"]}
         f["joints"] = {j: None for j in f["joints"]}
     blind = tmp_path / "blind.json"
     blind.write_text(json.dumps(doc))
-    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(blind),
-                     "--out", str(tmp_path / "a.json")]) == 1
-    assert "could be measured" in capsys.readouterr().err
+    out = tmp_path / "a.json"
+    assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(blind), "--out", str(out)]) == 0
+    doc = json.loads(out.read_text())
+    assert [w["code"] for w in doc["warnings"]] == ["no_usable_measures"] and doc["faults"] == []
+    assert doc["score"]["value"] == 0 and doc["score"]["grade"] == "F"
 
 
 def test_unwritable_out_exits_1(tmp_path, capsys):

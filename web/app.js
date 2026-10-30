@@ -267,9 +267,9 @@ function realRow(take) {
   const row = make("li", "real-take");
   row.dataset.testid = "real-take-row";
   row.append(make("h3", "", take.take_id));
-  const refused = take.status === "different_movement";
+  const refused = take.low_match === true;
   row.append(make("p", "hint", [SOURCES[take.source] ?? take.source, LABEL_SOURCES[take.label_source] ?? take.label_source,
-    take.expected && `compared with ${take.expected.split("/").at(-2) ?? take.expected}`, refused && "refused as a different movement"].filter(Boolean).join(", ")));
+    take.expected && `compared with ${take.expected.split("/").at(-2) ?? take.expected}`, refused && "analysed with a warning and grade F: a different movement"].filter(Boolean).join(", ")));
   if (take.verdict) row.append(make("p", "", take.verdict));
   // Labels and faults found always; the match columns only when they hold something.
   const lines = [["Labels", take.labels, true], ["Faults found", take.faults, true], ["Matched", take.matched],

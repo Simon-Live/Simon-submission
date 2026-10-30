@@ -6,7 +6,8 @@ Exit 0 accepted, 1 rejected, 2 unreadable (missing, not a file, not JSON). The s
 the verdict line says which validators ran. The command is offline: it reads one file and never
 fetches a URL, hand-off files included.
 """
-# ADR-0004: a refused analysis (status.code different_movement) is valid and has faults [] by design.
+# ADR-0004: a refused analysis (status.code different_movement, schema before 1.4.0) is valid and has faults [] by design.
+# ADR-0012: from 1.4.0 status.code is always ok and a top-level `warnings` list says why the grade is F.
 # ASM-005: Part 7 reads status before faults; --for part7 warns when status.code is not ok.
 # ASM-001: only simon.animation.v1 and simon.skeleton.v1 are read as clips.
 import json
@@ -269,6 +270,8 @@ def _for_part7(r, doc):
     elif status.get("code") != "ok":
         r.warnings.append(f"status.code is {status['code']!r} and faults is empty by design: show status.text "
                           'as a refusal, not as "no faults"')
+    for w in doc.get("warnings", []):   # 1.4.0, ADR-0012: analysed all the same, the grade is capped at F
+        r.warnings.append(f"warning {w['code']}: {w['text']}")
     if "schema_version" not in doc:
         r.notes.append("no schema_version, so this is a 1.0 file: faults[].joints is absent and the viewer "
                        "needs its own joint mapping")

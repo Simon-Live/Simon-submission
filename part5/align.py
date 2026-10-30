@@ -176,3 +176,13 @@ def align(expected_positions, follower_positions, usable=None):
         if np.isnan(fol_phase[j]):
             fol_phase[j] = i / max(n - 1, 1)
     return Alignment(path, exp_to_fol, fol_phase, mean_cost, names)
+
+
+def diagonal_alignment(n_expected, n_follower):
+    """A straight-line stand-in for a take that could not be aligned (ADR-0012): expected frame `i` shows
+    follower frame `i * (n_follower - 1) / (n_expected - 1)`, so a replay still plays. Its residual is NaN
+    and it names no timing measure; nothing is scored from it."""
+    exp_to_fol = np.rint(np.linspace(0, n_follower - 1, n_expected)).astype(int)
+    path = [(i, int(j)) for i, j in enumerate(exp_to_fol)]
+    phase = np.linspace(0.0, 1.0, n_follower)
+    return Alignment(path, exp_to_fol, phase, float("nan"), [])

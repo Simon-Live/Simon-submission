@@ -234,23 +234,27 @@ def test_the_fast_and_the_slow_follower_agree_with_the_trainer_on_the_verdict(fa
     assert fast.analysis["status"]["code"] == slow.analysis["status"]["code"] == "ok"
 
 
-# --- different movements stay refused ---
+# --- different movements are analysed with a low_match warning and grade F (ADR-0012) ---
+def low_match(a):
+    return a["status"]["code"] == "ok" and [w["code"] for w in a["warnings"]] == ["low_match"] \
+        and a["match"]["quality"] == "low" and a["schema_version"] == "1.4.0"
+
+
 @pytest.mark.parametrize("name", ["part2-dance", "part2-class", "part2-single", "part2-stretch"])
-def test_part2_outputs_are_refused_against_the_lateral_raise(name):
-    a = run(str(TRAINER), str(MISMATCH / name / "skeleton.json")).analysis
-    assert a["status"]["code"] == "different_movement" and a["faults"] == []
+def test_part2_outputs_are_a_low_match_against_the_lateral_raise(name):
+    a = run(str(TRAINER), str(MISMATCH / name / "skeleton.json"), score=score_block).analysis
+    assert low_match(a) and a["score"]["grade"] == "F" and a["score"]["capped_by"] == ["low_match"]
 
 
-def test_the_stock_squat_is_refused_against_the_lateral_raise_and_the_other_way_round():
-    assert run(str(TRAINER), str(SQUAT)).analysis["status"]["code"] == "different_movement"
-    assert run(str(SQUAT), str(TRAINER)).analysis["status"]["code"] == "different_movement"
-    assert run(str(SQUAT), str(FAST)).analysis["status"]["code"] == "different_movement"
+def test_the_stock_squat_is_a_low_match_against_the_lateral_raise_and_the_other_way_round():
+    assert low_match(run(str(TRAINER), str(SQUAT)).analysis)
+    assert low_match(run(str(SQUAT), str(TRAINER)).analysis)
+    assert low_match(run(str(SQUAT), str(FAST)).analysis)
 
 
 @pytest.mark.parametrize("name", ["part2-dance", "part2-class", "part2-stretch"])
 def test_a_short_stock_squat_rep_does_not_accept_a_long_take_that_matches_one_stretch(name):
-    a = run(str(SQUAT), str(MISMATCH / name / "skeleton.json")).analysis
-    assert a["status"]["code"] == "different_movement" and a["faults"] == []
+    assert low_match(run(str(SQUAT), str(MISMATCH / name / "skeleton.json")).analysis)
 
 
 def test_the_stock_squat_front_view_is_now_compared_rep_by_rep():

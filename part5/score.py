@@ -36,6 +36,7 @@ S_MAX = 4.0          # similarity costs at most this many points (calibration ru
 SINGLE_FLOOR = 10.5  # the smallest counted fault must cost more than 10 points (never an A)
 WORST_SINGLE = 30.0  # the worst single good-light fault still lands at 70 or above (a C)
 BANDS = [[90, "A"], [80, "B"], [70, "C"], [60, "D"], [0, "F"]]
+WARNING_CAP = 59     # a take with any warning never scores above this, so its grade is F (ADR-0012)
 
 
 def params_of(rules):
@@ -86,9 +87,9 @@ def mean_z(aligned, rules):
 
 
 def features(analysis, aligned, rules):
-    """What the score is computed from: {"faults": [{r, dur, cov}], "mean_z": float}, or None for a refused take."""
-    if (analysis.get("status") or {}).get("code") != "ok":
-        return None
+    """What the score is computed from: {"faults": [{r, dur, cov}], "mean_z": float}, or None when nothing is measurable."""
+    if (analysis.get("status") or {}).get("code") not in ("ok", None):
+        return None   # a document written before ADR-0012 that was refused
     z = mean_z(aligned, rules)
     if z is None:
         return None
@@ -107,13 +108,31 @@ def components(feats, p):
     return f, s
 
 
+def zero_block(rules=None):
+    """The score of a take nothing could be measured on: 0, grade F (ADR-0012)."""
+    p = params_of(rules or load_rules())
+    return {"version": VERSION, "value": 0, "grade": grade(0, p["bands"]),
+            "components": {"faults": 0.0, "similarity": 0.0}, "params_sha256": params_sha256(p)}
+
+
+def cap_by_warnings(block, analysis, rules=None):
+    """`block` capped at WARNING_CAP when the analysis carries warnings (ADR-0012), with `capped_by` naming them.
+    A take without warnings, or already at or under the cap, keeps its value; `capped_by` is recorded either way."""
+    codes = [w["code"] for w in analysis.get("warnings") or []]
+    if not codes:
+        return block
+    p = params_of(rules or load_rules())
+    value = min(block["value"], WARNING_CAP)
+    return dict(block, value=value, grade=grade(value, p["bands"]), capped_by=codes)
+
+
 def compute(analysis, aligned, rules=None):
-    """The `score` block of the analysis, or None for a refused take (never a 0)."""
+    """The `score` block of the analysis, or `zero_block` when nothing is measurable (never null, ADR-0012)."""
     rules = rules or load_rules()
     p = params_of(rules)
     feats = features(analysis, aligned, rules)
     if feats is None:
-        return None
+        return zero_block(rules)
     f, s = components(feats, p)
     value = max(0, min(100, int(round_half_up(100 - f - s))))
     return {"version": VERSION, "value": value, "grade": grade(value, p["bands"]),

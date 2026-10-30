@@ -35,7 +35,7 @@ def test_an_unknown_phrasing_backend_is_an_analysis_error():
 
 
 DANCE_TAKE = ROOT / "fixtures/input/followers/dance/dance_front_good_00_correct/skeleton.json"
-REFUSAL_TEXT = ("This take does not look like the expected movement, so no faults are listed. "
+WARNING_TEXT = ("This take doesn't closely match the trainer's movement, so the grade is capped at F. "
                 "Check that you picked the right movement and that the whole movement is in the take.")
 
 
@@ -91,13 +91,17 @@ def test_ac010_an_injected_client_phrases_through_the_pipeline_and_never_changes
     assert "sentinel-key-value" not in json.dumps(muse)
 
 
-def test_a_take_of_another_movement_is_refused_before_detection():
+def test_a_take_of_another_movement_is_analysed_with_a_low_match_warning():
+    """ADR-0012: status ok, a low_match warning, every fault listed with confidence "low", never refused."""
     res = run(str(EXPECTED), str(DANCE_TAKE))
     a = res.analysis
-    assert a["status"] == {"code": "different_movement", "text": REFUSAL_TEXT}
-    assert a["faults"] == [] and res.guard.ok is False
+    assert a["status"]["code"] == "ok" and res.guard.ok is False
+    assert a["warnings"] == [{"code": "low_match", "text": WARNING_TEXT}]
+    assert a["match"]["quality"] == "low" and a["match"]["residual"] == a["diagnostics"]["guard"]["residual"]
+    assert a["match"]["limits"] == a["diagnostics"]["guard"]["limits"]
     assert a["diagnostics"]["guard"]["residual"] > a["diagnostics"]["guard"]["limits"]["max_residual"]
-    assert a["schema_version"] == "1.2.0"
+    assert all(f["confidence"] == "low" for f in a["faults"])
+    assert a["schema_version"] == "1.4.0"
 
 
 def test_the_guard_limits_come_from_the_rules_passed_in():
@@ -105,7 +109,7 @@ def test_the_guard_limits_come_from_the_rules_passed_in():
     strict = load_rules()
     strict["guard"]["max_residual"] = 0.01
     res = run(str(EXPECTED), str(TAKE), strict)
-    assert res.analysis["status"]["code"] == "different_movement" and res.analysis["faults"] == []
+    assert res.analysis["status"]["code"] == "ok" and res.analysis["match"]["quality"] == "low"
     assert res.analysis["diagnostics"]["guard"]["limits"]["max_residual"] == 0.01
 
 
@@ -130,9 +134,9 @@ def test_ac_nfr_002_analysis_makes_no_network_call(monkeypatch, tmp_path):
     monkeypatch.setattr(socket, "socket", no_network)
     monkeypatch.setattr(socket, "create_connection", no_network)
     assert run(str(EXPECTED), str(TAKE)).analysis["status"]["code"] == "ok"
-    assert run(str(EXPECTED), str(DANCE_TAKE)).analysis["status"]["code"] == "different_movement"
+    assert run(str(EXPECTED), str(DANCE_TAKE)).analysis["match"]["quality"] == "low"
     assert cli.main(["analyse", "--expected", str(EXPECTED), "--follower", str(DANCE_TAKE),
-                     "--out", str(tmp_path / "a.json")]) == 3
+                     "--out", str(tmp_path / "a.json")]) == 0
 
 
 def test_follower_frames_index_the_original_follower_file():

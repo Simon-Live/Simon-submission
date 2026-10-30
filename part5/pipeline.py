@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .align import ALIGN_MEASURES, Alignment, align
+from .align import ALIGN_MEASURES, Alignment, align, diagonal_alignment
 from .detect import detect, load_rules
 from .guard import GuardResult, check_movement
 from .guard import diagnostics as guard_diagnostics
@@ -19,7 +19,8 @@ from .normalise import normalise
 from .output import build_analysis, validate_analysis
 from .phrasing import BACKENDS, phrase
 from .repwise import RepRun, compare, rep_entries, reference_entry
-from .guard import MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE
+from .guard import (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NO_USABLE_TEXT, NOT_ENOUGH_VISIBLE, OK,
+                    OK_TEXT, REFUSAL_TEXT)
 from .visibility import (NOT_ENOUGH_TEXT, clip_usable, hide_unseen, load_conf, measures_of, moving_check,
                          moving_text, resolve, usable_from_conf)
 
@@ -41,6 +42,7 @@ MAX_CELLS = 4_000_000
 
 
 PHRASING_BACKENDS = tuple(BACKENDS)
+WARNING_ORDER = (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE, NO_USABLE_MEASURES)
 
 
 class AnalysisError(ValueError):
@@ -54,7 +56,7 @@ class PipelineResult:
     `follower` is the follower clip on its own frames; `follower_positions` is it resampled onto
     the expected clock (what was aligned), and `to_original[j]` is the follower file's frame for
     resampled frame `j`. `alignment` indexes the resampled frames. `guard` is the movement
-    guard's verdict (a refused take has no faults).
+    guard's verdict (None when the take could not be aligned, ADR-0012).
     """
     analysis: dict
     alignment: Alignment | None
@@ -82,8 +84,8 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     from it, `path` names it in the output, and `doc` itself never reaches the output.
 
     `score` (ADR-0007) is the hook for `part5.score`: a callable taking the `PipelineResult` and
-    returning the `score` block, or a ready block. Given, the analysis carries a `score` key,
-    which is None for a refused take (the callable is not called). Absent, no `score` key.
+    returning the `score` block, or a ready block. Given, the analysis carries a `score` key, never null
+    (ADR-0012). Absent, no `score` key.
 
     `expected_visibility` (ADR-0011) is the trainer's own skeleton or pose3d file, whose `conf` says which
     measures the example shows; without it an expected clip that carries no `conf` takes the follower's.
@@ -98,74 +100,112 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     fol_ref.pop("doc", None)
     extra_conf = None if expected_visibility is None else load_conf(expected_visibility)
     vis = resolve(clip_usable(exp), clip_usable(fol), usable_from_conf(extra_conf))
-    if not vis.enough:
-        return _visibility_refusal(exp_ref, fol_ref, exp, fol, vis, score, NOT_ENOUGH_VISIBLE, NOT_ENOUGH_TEXT,
-                                   (phrasing, phrasing_client, live, selected_by))
-    usable = vis.align_usable
+    notes = {}   # warning code -> text (ADR-0012): the take is analysed all the same, best effort
     moving_info = None
     exp, fol = hide_unseen(exp, vis), hide_unseen(fol, vis)
-    if not vis.full:   # ADR-0011: the part the example moves must be in frame in the take
+    if not vis.enough:
+        notes[NOT_ENOUGH_VISIBLE] = NOT_ENOUGH_TEXT
+    elif not vis.full:   # ADR-0011: the part the example moves should be in frame in the take
         moving_info = moving_check(exp.positions, vis, [exp.conf, extra_conf])
         if moving_info["moving_measures"] and not moving_info["moving_usable"]:
-            return _visibility_refusal(exp_ref, fol_ref, exp, fol, vis, score, MOVING_PART_OUT_OF_FRAME,
-                                       moving_text(moving_info["moving_measures"]),
-                                       (phrasing, phrasing_client, live, selected_by), moving=moving_info)
+            notes[MOVING_PART_OUT_OF_FRAME] = moving_text(moving_info["moving_measures"])
+    usable = vis.align_usable   # None: the full-body choice; fewer than 3 measures are still used
+    ctx = _Context(exp_ref, fol_ref, exp, fol, vis, moving_info, notes,
+                   (phrasing, phrasing_client, live, selected_by), score)
+    if usable is not None and not usable:   # nothing the camera sees can carry timing
+        return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
     # `to_original` maps each resampled frame back to the follower file's own frame index.
     fps = _bounded_fps(exp, exp_ref, fol, fol_ref)
     fol_positions, to_original = resample(fol.positions, fol.t, fps)
     exp_m, fol_m = measures_of(exp.positions, vis), measures_of(fol_positions, vis)
     align_names = list(ALIGN_MEASURES) if usable is None else usable
-    for ref, m in ((exp_ref, exp_m), (fol_ref, fol_m)):
-        available = np.mean([np.isfinite(m[n]).mean() for n in align_names])
-        if available < MIN_AVAILABLE:
-            raise AnalysisError(f"{ref['path']}: only {available:.0%} of the body could be measured "
-                                "(joints missing or below the confidence cutoff)")
+    for m in (exp_m, fol_m):
+        if np.mean([np.isfinite(m[n]).mean() for n in align_names]) < MIN_AVAILABLE:
+            return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT)   # mostly missing joints: nothing to compare
     try:
         alignment = align(exp.positions, fol_positions, usable)
-        # A different movement is refused before detection: DTW always finds a closest phase.
-        guard, align_error = check_movement(alignment, exp_m, fol_m, rules), None
-    except ValueError as e:   # e.g. a follower with more reps than the whole-clip band can follow
-        alignment, guard, align_error = None, None, e
-    # Refused as a whole, and a clip holds several reps: compare one repetition at a time (ADR-0010).
+        guard = check_movement(alignment, exp_m, fol_m, rules)
+    except ValueError:   # e.g. a follower with more reps than the whole-clip band can follow
+        alignment, guard = None, None
+    # Low match as a whole, and a clip holds several reps: compare one repetition at a time (ADR-0010).
     rep_run = None if guard is not None and guard.ok else \
         compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times, vis)
-    if guard is None and not (rep_run is not None and rep_run.guard.ok):
-        raise AnalysisError(f"{fol_ref['path']}: cannot align with {exp_ref['path']} ({align_error})") from align_error
-    if rep_run is not None and rep_run.guard.ok:
+    accepted = rep_run is not None and rep_run.guard.ok
+    if guard is None and not accepted:   # cannot be aligned at all: analysed unaligned, never refused
+        return _unaligned(ctx, LOW_MATCH, REFUSAL_TEXT)
+    if accepted:
         guard, faults, times = rep_run.guard, rep_run.faults, rep_run.times
         diagnostics = _rep_diagnostics(rep_run, exp, fol, fps, rules)
         alignment = next(r.alignment for r in rep_run.reps if r.ok)
     else:
-        faults = [] if not guard.ok else [
-            replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
-            for f in detect(exp_m, fol_m, alignment, rules)]
+        faults = [replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
+                  for f in detect(exp_m, fol_m, alignment, rules)]
         span = tuple(int(to_original[j]) for j in alignment.follower_span)
         diagnostics = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(guard, rules))
         times = [_fault_times(f, exp, fol, fol_positions, alignment, to_original) for f in faults]
+    if not guard.ok:
+        notes[LOW_MATCH] = REFUSAL_TEXT
     if not vis.full:   # additive to 1.3.0; a full-body take has no `visibility`, so its document is unchanged
         diagnostics["visibility"] = vis.diagnostics(moving_info)
-    analysis = build_analysis(exp_ref, fol_ref, faults, diagnostics=diagnostics,
-                              status={"code": guard.code, "text": guard.text}, times=times)
-    analysis = _phrased(analysis, phrasing, phrasing_client, live, selected_by)
-    accepted = rep_run is not None and rep_run.guard.ok
-    result = PipelineResult(analysis, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
+    result = PipelineResult(None, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
                             reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None)
-    if score is not None:
-        block = None if not guard.ok else score(result) if callable(score) else score
+    return _finish(ctx, result, faults, times, diagnostics, guard.stats, not guard.ok, rules)
+
+
+@dataclass
+class _Context:
+    """What `run` has settled before the comparison: the refs, the clips, the visibility and the warnings so far."""
+    exp_ref: dict
+    fol_ref: dict
+    exp: Clip
+    fol: Clip
+    vis: object
+    moving: dict | None
+    notes: dict
+    phrasing: tuple
+    score: object
+
+
+def _match(stats, low, rules):
+    """`match` (ADR-0012): the guard's two numbers, null when unmeasured, and the limits in force."""
+    def num(key):
+        v = (stats or {}).get(key)
+        return None if v is None or not np.isfinite(v) else round(float(v), 4)
+
+    return {"quality": "low" if low else "ok", "residual": num("residual"), "timing_corr": num("timing_corr"),
+            "limits": {k: rules["guard"][k] for k in ("max_residual", "min_timing_corr")}}
+
+
+def _warning_list(notes):
+    return [{"code": c, "text": notes[c]} for c in WARNING_ORDER if c in notes]
+
+
+def _finish(ctx, result, faults, times, diagnostics, stats, low, rules):
+    """Build, phrase and score the document of a take; a take with any warning is capped at F (score_block)."""
+    warnings = _warning_list(ctx.notes)
+    analysis = build_analysis(ctx.exp_ref, ctx.fol_ref, faults, diagnostics=diagnostics,
+                              status={"code": OK, "text": OK_TEXT}, times=times,
+                              warnings=warnings or None, match=_match(stats, low, rules) if warnings else None)
+    analysis = _phrased(analysis, *ctx.phrasing)
+    result.analysis = analysis
+    if ctx.score is not None:
+        block = ctx.score(result) if callable(ctx.score) else ctx.score
         result.analysis = validate_analysis(dict(analysis, score=block), source="<built analysis>")
     return result
 
 
-def _visibility_refusal(exp_ref, fol_ref, exp, fol, vis, score, code, text, phrasing, moving=None):
-    """A refusal because of what the camera sees (ADR-0011): no alignment, no faults, no score."""
-    diagnostics = {"warnings": [], "visibility": vis.diagnostics(moving)}
-    analysis = build_analysis(exp_ref, fol_ref, [], diagnostics=diagnostics,
-                              status={"code": code, "text": text})
-    analysis = _phrased(analysis, *phrasing)
-    if score is not None:
-        analysis = validate_analysis(dict(analysis, score=None), source="<built analysis>")
-    return PipelineResult(analysis, None, exp, fol, fol.positions, np.arange(fol.n_frames), None)
+def _unaligned(ctx, code, text):
+    """A take nothing could be aligned or measured on (ADR-0012): analysed with a warning, no faults, score 0,
+    and a straight-line stand-in alignment so the replay still plays."""
+    ctx.notes[code] = text
+    diagnostics = {"warnings": []}
+    if not ctx.vis.full:
+        diagnostics["visibility"] = ctx.vis.diagnostics(ctx.moving)
+    n_fol = ctx.fol.n_frames
+    result = PipelineResult(None, diagonal_alignment(ctx.exp.n_frames, n_fol), ctx.exp, ctx.fol, ctx.fol.positions,
+                            np.arange(n_fol), None)
+    return _finish(ctx, result, [], [], diagnostics, None, True, load_rules())
 
 
 def _fault_times(fault, exp, fol, fol_positions, alignment, to_original):

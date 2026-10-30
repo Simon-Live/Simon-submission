@@ -40,19 +40,24 @@ def aligned_of(result):
 
 def score_block(result, rules=None):
     """The `score` hook for `pipeline.run` (ADR-0007): the block `score.compute` builds for this result.
-    A take compared rep by rep (ADR-0010) is scored per accepted rep and the blocks are averaged."""
-    if result.reps:
+    A take compared rep by rep (ADR-0010) is scored per accepted rep and the blocks are averaged.
+    Never None (ADR-0012): a take with no alignment scores 0, and any warning caps the value at 59."""
+    if result.guard is None:   # not aligned: nothing to score
+        block = score.zero_block(rules)
+    elif result.reps:
         blocks = [score.compute(r.analysis, aligned_of(r), rules) for r in result.reps if r.ok]
-        return score.aggregate(blocks, rules) if blocks and all(blocks) else None
-    return score.compute(result.analysis, aligned_of(result), rules)
+        block = score.aggregate(blocks, rules)
+    else:
+        block = score.compute(result.analysis, aligned_of(result), rules)
+    return score.cap_by_warnings(block, result.analysis, rules)
 
 
 def analyse(expected, follower, rules=None):
-    """`pipeline.analyse` plus the score under `analysis["score"]` (None when refused), unless the pipeline already set it."""
+    """`pipeline.analyse` plus the score under `analysis["score"]` (never None), unless the pipeline already set it."""
     result = run(expected, follower, rules)
     analysis = result.analysis
     if "score" not in analysis:
-        analysis["score"] = score_block(result, rules) if result.alignment is not None else None
+        analysis["score"] = score_block(result, rules)
     return analysis
 
 

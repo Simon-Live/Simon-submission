@@ -16,14 +16,13 @@ emits `both` when both sides fired (harsh). Changing either is a rule change, no
 This module only scores; producing the analyses over a corpus is #10/#14's job, and the
 thresholds that gate `make check-5` live in #14, not here.
 
-A take the movement guard refused (`status.code == "different_movement"`, no faults) counts in
-its slice's `refused`, and its labels score as misses. A refused take with no labels (a correct
-take) is a wrong verdict, so it counts once in `faults_on_correct_takes`: refusing a correct take
-must not satisfy the "no faults on correct takes" rule. Takes labelled `variant: "dropout"` are
+A take analysed with a warning (ADR-0012: it is graded F and its faults carry low confidence) counts in
+its slice's `refused` (the key keeps its name; the meaning is "analysed with a warning and grade F"), and its
+labels score as misses. Such a take with no labels (a correct take) is a wrong verdict, so it counts once in
+`faults_on_correct_takes`: a correct take that earns a warning must not satisfy the "no faults on correct
+takes" rule. Takes labelled `variant: "dropout"` are
 scored in their own `dropout/<angle>` slices so they never mix into the lighting slices.
 """
-
-from .guard import DIFFERENT_MOVEMENT as REFUSED_CODE
 
 METRICS_FORMAT = "simon.part5.metrics.v1"
 
@@ -118,8 +117,9 @@ def slice_name(record):
 
 
 def is_refused(analysis):
-    """Did the movement guard refuse this analysis document?"""
-    return (analysis.get("status") or {}).get("code") == REFUSED_CODE
+    """Was this analysis written with a warning (so graded F, ADR-0012)? A document before ADR-0012 that was
+    refused (status other than ok) counts the same."""
+    return bool(analysis.get("warnings")) or (analysis.get("status") or {}).get("code", "ok") != "ok"
 
 
 def _finalise(s):

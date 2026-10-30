@@ -76,14 +76,16 @@ def test_a_rising_score_in_the_sweep_is_detected_with_injected_scores(tmp_path):
     assert any("rises from 90 at 4 degrees to 95 at 8 degrees" in f for f in score_report.sweep_failures(sweeps))
 
 
-def test_analyse_adds_the_score_to_the_analysis_and_a_refused_take_gets_none():
+def test_analyse_adds_the_score_to_the_analysis_and_a_low_match_is_capped_at_f():
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     t = next(x for x in labels["takes"] if x["lighting"] == "good" and not x["faults"])
     a = score_report.analyse({"path": str(ROOT / t["expected"])}, {"path": str(ROOT / t["follower"])})
     assert a["score"]["grade"] == "A" and a["score"]["params_sha256"] == score.params_sha256(load_rules()["score"])
     other = ROOT / "fixtures/input/expected/dance/animation.json"
     refused = score_report.analyse({"path": str(other)}, {"path": str(ROOT / t["follower"])})
-    assert refused["status"]["code"] != "ok" and refused["score"] is None
+    assert refused["status"]["code"] == "ok" and refused["match"]["quality"] == "low"
+    assert refused["score"]["grade"] == "F" and refused["score"]["capped_by"] == ["low_match"]
+    assert "capped_by" not in a["score"] and "warnings" not in a
 
 
 def test_the_cli_prints_the_distribution_and_the_verdicts(capsys):

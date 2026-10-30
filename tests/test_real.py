@@ -188,12 +188,12 @@ def test_ac_r01_an_extra_true_fault_is_listed_as_unlabelled_not_hidden(tmp_path,
     assert (take["matched"][0]["fault_side"], take["matched"][0]["label_side"]) == ("both", "both")
 
 
-def test_ac_r01_a_refused_kit_take_scores_its_labels_as_misses(tmp_path, monkeypatch):
+def test_ac_r01_a_low_match_kit_take_scores_its_labels_as_misses(tmp_path, monkeypatch):
     root = kit_world(tmp_path, monkeypatch, [("t", [kit_label("feet_wide")], [])])
     monkeypatch.setattr(real, "analyse", lambda exp, fol: {**CANNED, "faults": [],
-                                                           "status": {"code": "different_movement", "text": ""}})
+                                                           "warnings": [{"code": "low_match", "text": ""}]})
     [take] = real.kit_takes(root, [])
-    assert take["status"] == "different_movement" and take["matched"] == [] and len(take["missed"]) == 1
+    assert take["low_match"] is True and take["warning_codes"] == ["low_match"] and take["matched"] == [] and len(take["missed"]) == 1
     assert real._counts([take])["refused"] == 1
 
 
@@ -402,23 +402,23 @@ def test_ac_r05_check_blocks_split_the_kit_from_the_other_real_takes(report, fal
 
 
 # ----------------------------------------------------------------- AC-R06
-def test_ac_r06_class_and_dance_are_refused_as_expected(report):
+def test_ac_r06_class_and_dance_are_analysed_with_a_warning_and_grade_f_as_expected(report):
     for name in ("part2-class", "part2-dance", "part2-stretch"):
         t = by_id(report, name)
-        assert t["status"] == "different_movement" and t["faults"] == []
+        assert t["status"] == "ok" and t["warning_codes"] == ["low_match"] and t["score"]["grade"] == "F"
         assert t["expected_refusal"] is True and t["refused_as_expected"] is True
         assert t["source"] == "part2-fallback" and t["population"] == "mismatch"
         assert t["expected"] == "fixtures/input/expected/part3-squat/animation.json"
         assert set(t["guard"]) >= {"residual", "timing_corr", "span_share", "limits"}
-        assert t["verdict"].startswith("refused as expected")
+        assert t["verdict"].startswith("analysed with a warning and grade F, as expected")
     assert report["summary"]["part2"] == {"expected_refusals": 3, "refused_as_expected": 3, "matched_references": 1}
 
 
-def test_ac_r06_the_cli_exits_3_on_each_refused_take(tmp_path, capsys):
+def test_ac_r06_the_cli_exits_0_on_each_low_match_take(tmp_path, capsys):
     for name in ("part2-class", "part2-dance", "part2-stretch"):
         code = cli.main(["analyse", "--expected", str(ROOT / real.KIT_EXPECTED), "--follower",
                          str(ROOT / real.MISMATCH_DIR / name / "skeleton.json"), "--out", str(tmp_path / "a.json")])
-        assert code == 3, name
+        assert code == 0, name
     capsys.readouterr()
 
 
@@ -432,7 +432,7 @@ def test_ac_r06_single_is_a_matched_reference_while_it_is_the_provisional_squat(
     assert any(n.startswith("part2: part2-single: ") and "provisional barbell squat" in n for n in report["notes"])
 
 
-def test_ac_r06_a_mismatch_take_the_guard_accepts_is_reported_as_not_refused(tmp_path):
+def test_ac_r06_a_mismatch_take_the_guard_accepts_is_reported_as_not_warned(tmp_path):
     mismatch = tmp_path / real.MISMATCH_DIR
     mismatch.mkdir(parents=True)
     (mismatch / "part2-single").symlink_to(ROOT / real.MISMATCH_DIR / "part2-single")
@@ -443,7 +443,7 @@ def test_ac_r06_a_mismatch_take_the_guard_accepts_is_reported_as_not_refused(tmp
     shutil.copy(ROOT / real.KIT_EXPECTED, expected)
     [t] = real.part2_takes(tmp_path, [])
     assert t["expected_refusal"] is True and t["refused_as_expected"] is False
-    assert t["verdict"].startswith("NOT refused")
+    assert t["verdict"].startswith("NOT warned")
 
 
 def test_ac_r06_an_unknown_population_is_named(tmp_path):
@@ -526,7 +526,7 @@ def test_the_command_writes_the_report_and_prints_a_summary(tmp_path, report, ca
     assert json.loads(out.read_text()) == report
     err = capsys.readouterr().err
     assert "report-real: kit 15 takes against part3-squat: tp " in err
-    assert "knee_caving" in err and "knee_valgus" in err and "part2-class: different_movement" in err
+    assert "knee_caving" in err and "knee_valgus" in err and "part2-class: low_match" in err
     assert err.rstrip().endswith(f"report-real: wrote {out}")
 
 

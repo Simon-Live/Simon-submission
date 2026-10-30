@@ -5,7 +5,7 @@ Three sources, one document (`simon.part5.real_report.v1`):
 - Part 3's labelled follower kit (15 takes), each analysed against Part 4's `part3-squat` and scored
   with the kit type map (kit `feet_wide` is `foot_out` more, and so on).
 - Part 2's committed `class`, `dance` and `single` outputs through Part 3 (`fixtures/input/mismatch/`):
-  a mismatch take must be refused by the movement guard; a matched reference (`single` while it is
+  a mismatch take must be analysed with a `low_match` warning and grade F (ADR-0012); a matched reference (`single` while it is
   the provisional squat) is analysed and reported.
 - Stock takes (`fixtures/input/eval/real/`, Pexels clips through Parts 2 and 3), labelled by eye
   (`label_source: visual`) and scored against the stock expected clip each label names. None exist until
@@ -15,7 +15,7 @@ Three sources, one document (`simon.part5.real_report.v1`):
 `make check-5` carries the same data under `report.kit` and `report.stock` (`check_blocks`).
 """
 # ADR-0003: real takes are reported and never gated; every block carries gated: false.
-# ADR-0004: a refused take (different_movement) is an analysed take; for a mismatch fixture it is the pass.
+# ADR-0012: a take is always analysed; a mismatch fixture passes when it carries a low_match warning and grade F.
 # ASM-006: stock takes arrive from Part 2's published upstream; until then the fallback set is reported.
 import json
 import re
@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 from .evaluate import canonical_label, match_pairs
-from .guard import DIFFERENT_MOVEMENT
+from .guard import LOW_MATCH
 from .score_report import analyse
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -140,8 +140,13 @@ def _score(faults, labels):
     return matched, missed, unlabelled
 
 
+def _state(take):
+    """How a take ended, in words: `ok`, or `low_match` (analysed with a warning and graded F, ADR-0012)."""
+    return LOW_MATCH if take["low_match"] else take["status"]
+
+
 def _score_of(analysis):
-    """The value and grade of the take's score (ADR-0007), or None for a refused take."""
+    """The value and grade of the take's score (ADR-0007, never null from ADR-0012)."""
     s = analysis.get("score")
     return {"value": s["value"], "grade": s["grade"]} if s else None
 
@@ -157,6 +162,7 @@ def _entry(root, take_id, source, expected, follower, label_source, labels, erro
         errors.append(f"report-real: {take_id}: {e}")
         return None
     status = analysis["status"]["code"]
+    codes = [w["code"] for w in analysis.get("warnings", [])]
     faults = analysis["faults"]
     matched, missed, unlabelled = _score(faults, labels)
     diag = analysis.get("diagnostics", {})
@@ -166,7 +172,8 @@ def _entry(root, take_id, source, expected, follower, label_source, labels, erro
             "label_source": label_source, **extra,
             "labels": [_label(lab) for lab in labels], "faults": [_fault(f) for f in faults],
             "matched": matched, "missed": missed, "unlabelled": unlabelled,
-            "status": status, "guard": diag.get("guard", {}), "warnings": diag.get("warnings", []),
+            "status": status, "warning_codes": codes, "low_match": LOW_MATCH in codes,
+            "guard": diag.get("guard", {}), "warnings": diag.get("warnings", []),
             "score": _score_of(analysis)}
 
 
@@ -221,11 +228,11 @@ def part2_takes(root, errors):
                        content=spec.get("content"), population=population)
         if entry is None:
             continue
-        refused = entry["status"] == DIFFERENT_MOVEMENT
+        refused = entry["low_match"]
         if population == "mismatch":
             entry["expected_refusal"], entry["refused_as_expected"] = True, refused
-            entry["verdict"] = ("refused as expected: a different movement from the squat" if refused else
-                                "NOT refused: the guard accepted a take that is a different movement")
+            entry["verdict"] = ("analysed with a warning and grade F, as expected: a different movement from the squat" if refused else
+                                "NOT warned: the guard accepted a take that is a different movement")
         else:
             entry["expected_refusal"], entry["refused_as_expected"] = False, None
             entry["verdict"] = "matched reference, not an expected refusal (see reason)"
@@ -304,7 +311,7 @@ def _counts(takes):
     fp = sum(len(t["unlabelled"]) for t in takes)
     fn = sum(len(t["missed"]) for t in takes)
     return {"tp": tp, "fp": fp, "fn": fn, "precision": _ratio(tp, tp + fp), "recall": _ratio(tp, tp + fn),
-            "takes": len(takes), "refused": sum(t["status"] == DIFFERENT_MOVEMENT for t in takes)}
+            "takes": len(takes), "refused": sum(t["low_match"] for t in takes)}
 
 
 def _kit_summary(takes):
@@ -365,12 +372,13 @@ def _part2_notes(part2):
     mismatch = [t for t in part2 if t["expected_refusal"]]
     if mismatch:
         notes.append(f"{NOTE_PART2}{', '.join(t['take_id'] for t in mismatch)} against the squat are expected "
-                     f"refusals: {sum(t['refused_as_expected'] for t in mismatch)} of {len(mismatch)} refused")
+                     f"to be analysed with a warning and grade F: {sum(t['refused_as_expected'] for t in mismatch)} "
+                     f"of {len(mismatch)} were")
     return notes
 
 
 def _reps_summary(takes):
-    return {"takes": len(takes), "accepted": sum(t["status"] != DIFFERENT_MOVEMENT for t in takes),
+    return {"takes": len(takes), "accepted": sum(not t["low_match"] for t in takes),
             "reps": sum(len(t.get("reps") or []) for t in takes),
             "reps_passed": sum(r["ok"] for t in takes for r in t.get("reps") or [])}
 
@@ -378,9 +386,9 @@ def _reps_summary(takes):
 def _reps_note(t):
     reps = t.get("reps") or []
     if not reps:
-        return f"{NOTE_REPS}{t['take_id']}: {t['status']}, compared as a whole clip"
+        return f"{NOTE_REPS}{t['take_id']}: {_state(t)}, compared as a whole clip"
     score = t["score"]["value"] if t["score"] else "none"
-    return (f"{NOTE_REPS}{t['take_id']}: {t['status']}, {sum(r['ok'] for r in reps)} of {len(reps)} reps passed "
+    return (f"{NOTE_REPS}{t['take_id']}: {_state(t)}, {sum(r['ok'] for r in reps)} of {len(reps)} reps passed "
             f"against the expected clip's {t['expected_reference']['kind'].replace('_', ' ')}, score {score}, "
             f"{len(t['faults'])} fault(s) as found, unlabelled")
 
@@ -441,7 +449,7 @@ def summary_lines(report):
               for t in report["takes"] if "knee_valgus_found" in t]
     st = s["stock"]
     lines.append(f"report-real: stock {st['takes']} takes: tp {st['tp']} fp {st['fp']} fn {st['fn']}")
-    lines += [f"report-real: {t['take_id']}: {t['status']}, {t['verdict']}" for t in report["takes"] if "verdict" in t]
+    lines += [f"report-real: {t['take_id']}: {_state(t)}, {t['verdict']}" for t in report["takes"] if "verdict" in t]
     r = s["reps"]
     lines.append(f"report-real: reps {r['takes']} real multi-rep takes: {r['accepted']} accepted, "
                  f"{r['reps_passed']} of {r['reps']} reps passed")

@@ -155,14 +155,20 @@ def test_every_follower_in_the_list_is_analysed_against_its_own_expected_clip():
         assert body["analysis"]["expected"]["set"] == "part3-squat"
 
 
-def test_AC_S06_a_yoga_or_dance_clip_against_the_squat_is_refused_with_no_faults():
+def _analysed_with_low_match(analysis):
+    """ADR-0012: a different movement is analysed, with a low_match warning and grade F."""
+    return (analysis["status"]["code"] == "ok" and analysis["match"]["quality"] == "low"
+            and [w["code"] for w in analysis["warnings"]] == ["low_match"]
+            and analysis["score"]["grade"] == "F" and analysis["score"]["capped_by"] == ["low_match"])
+
+
+def test_AC_S06_a_yoga_or_dance_clip_against_the_squat_is_analysed_with_a_warning_and_grade_f():
     for follower in ("part2-class", "part2-dance"):
         status, _, body = analyse({"sample": "part3-squat"}, {"sample": follower})
-        assert status == 200 and body["analysis"]["status"]["code"] == "different_movement", follower
-        assert body["analysis"]["faults"] == [] and body["analysis"]["status"]["text"]
+        assert status == 200 and _analysed_with_low_match(body["analysis"]), follower
         assert len(body["replay"]["exp_to_fol"]) == len(body["replay"]["expected"])  # the replay still comes back
     dance = next(t["take_id"] for t in LABELS["takes"] if t["set"] == "dance")
-    assert analyse(*samples(follower=dance))[2]["analysis"]["status"]["code"] == "different_movement"
+    assert _analysed_with_low_match(analyse(*samples(follower=dance))[2]["analysis"])
 
 
 # ----------------------------------------------------------------------------- analyse

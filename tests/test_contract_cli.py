@@ -37,7 +37,7 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.3.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.4.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
                                           ("metrics", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
@@ -232,11 +232,11 @@ def test_commits_come_from_the_lock_file_and_the_neighbour_check():
 def test_ac_c12_exit_code_mapping_is_in_the_table_and_contract_md():
     row = next(r for r in contract.table_rows() if r["file"] == "`part5 analyse` exit code")
     assert row["verdict"] == "works with a mapping"
-    assert "3 refused analysis written" in row["format"]
-    assert 'treat 0 and 3 as "written, read `status`"' in row["fix"]
+    assert "3 is no longer used" in row["format"]
+    assert '0 is "written" (read `warnings`)' in row["fix"]
     text = (ROOT / "CONTRACT.md").read_text()
-    assert "Exit 3 means a valid `analysis.json` was written and it is a refusal" in text
-    assert "Read `status` before `faults`" in text
+    assert "`analyse` never refuses a take" in text
+    assert "Read `warnings` and `score`" in text
 
 
 def test_contract_md_carries_the_generated_table_and_schema_list():

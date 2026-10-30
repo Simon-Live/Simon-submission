@@ -9,6 +9,7 @@ from part5 import cli
 from part5.io import JOINTS
 from part5.measures import MEASURES, VIEW_MEASURES
 from part5.pipeline import run
+from part5.score_report import score_block
 from part5.visibility import (MIN_USABLE_MEASURES, MOVING_RANGE_DEG, UNSEEN_CONF, load_visibility, moving_text,
                               resolve, seen_mask, usable_from_conf)
 
@@ -145,21 +146,23 @@ def test_the_expected_clips_own_visibility_narrows_the_pair(tmp_path):
 
 def test_a_head_only_clip_is_not_enough_visible(tmp_path):
     ref = with_unseen(follower("exercise_45_good_00"), HEAD_ONLY + ["left_ear", "right_ear"])
-    res = run(str(EXPECTED), ref, score=lambda r: {"value": 1})
+    res = run(str(EXPECTED), ref, score=score_block)
     a = res.analysis
-    assert a["status"]["code"] == "not_enough_visible" and a["faults"] == [] and a["score"] is None
-    assert "more of the body" in a["status"]["text"]
+    assert a["status"]["code"] == "ok" and a["score"]["grade"] == "F" and a["score"]["value"] <= 59
+    assert "not_enough_visible" in a["score"]["capped_by"] and a["schema_version"] == "1.4.0"
+    assert "not_enough_visible" in [w["code"] for w in a["warnings"]]
+    assert "more of the body" in next(w["text"] for w in a["warnings"] if w["code"] == "not_enough_visible")
     assert a["diagnostics"]["visibility"]["usable_measures"] < MIN_USABLE_MEASURES
-    assert res.alignment is None and a["schema_version"] == "1.3.0"
+    assert res.alignment is not None   # ADR-0012: a replay still plays
 
 
-def test_cli_exits_3_for_not_enough_visible_and_takes_expected_visibility(tmp_path, capsys):
+def test_cli_exits_0_for_not_enough_visible_and_takes_expected_visibility(tmp_path, capsys):
     path = tmp_path / "head.json"
     doc = with_unseen(follower("exercise_45_good_00"), HEAD_ONLY + ["left_ear", "right_ear"])["doc"]
     path.write_text(json.dumps(doc))
     out = tmp_path / "a.json"
-    assert cli.main(["analyse", "--expected", str(EXPECTED), "--follower", str(path), "--out", str(out)]) == 3
-    assert json.loads(out.read_text())["status"]["code"] == "not_enough_visible"
+    assert cli.main(["analyse", "--expected", str(EXPECTED), "--follower", str(path), "--out", str(out)]) == 0
+    assert "not_enough_visible" in [w["code"] for w in json.loads(out.read_text())["warnings"]]
     assert "more of the body" in capsys.readouterr().out
     out2 = tmp_path / "b.json"
     assert cli.main(["analyse", "--expected", str(EXPECTED), "--follower", str(follower("exercise_45_good_00")),
@@ -175,12 +178,12 @@ def test_the_salute_trainer_shows_head_shoulders_and_the_raised_wrist():
 
 
 @needs_salute
-def test_the_salute_against_a_different_upper_body_movement_is_refused():
+def test_the_salute_against_a_different_upper_body_movement_is_a_low_match():
     """The real lateral raise cut to the upper body (hips and legs at conf 0.3) is not a salute."""
     ref = with_unseen(RAISE, HIPS_AND_LEGS)
     a = run(str(SALUTE / "expected.json"), ref,
             expected_visibility=str(SALUTE / "trainer-skeleton.json")).analysis
-    assert a["status"]["code"] == "different_movement" and a["faults"] == []
+    assert a["status"]["code"] == "ok" and "low_match" in [w["code"] for w in a["warnings"]]
 
 
 @needs_salute
@@ -193,23 +196,24 @@ def test_the_salute_no_longer_compares_invented_legs():
 
 @needs_salute
 def test_the_salute_pair_names_the_right_arm_as_out_of_frame():
-    """AC-VIS-5: the arm the example moves is not in the take, so it is not a `different_movement`."""
+    """AC-VIS-5: the arm the example moves is not in the take: a `moving_part_out_of_frame` warning, grade F (ADR-0012)."""
     res = run(str(SALUTE / "expected.json"), str(SALUTE / "follower.json"),
-              expected_visibility=str(SALUTE / "trainer-skeleton.json"), score=lambda r: {"value": 1})
+              expected_visibility=str(SALUTE / "trainer-skeleton.json"), score=score_block)
     a = res.analysis
-    assert a["status"]["code"] == "moving_part_out_of_frame" and a["faults"] == [] and a["score"] is None
-    assert a["status"]["text"].startswith("Your right arm is mostly out of frame, so it can't be compared.")
-    assert "left" not in a["status"]["text"] and "leg" not in a["status"]["text"]
+    assert a["status"]["code"] == "ok" and a["score"]["grade"] == "F" and a["score"]["value"] <= 59
+    text = next(w["text"] for w in a["warnings"] if w["code"] == "moving_part_out_of_frame")
+    assert text.startswith("Your right arm is mostly out of frame, so it can't be compared.")
+    assert "left" not in text and "leg" not in text
     vis = a["diagnostics"]["visibility"]
-    assert vis["moving_measures"] and vis["moving_usable"] == [] and a["schema_version"] == "1.3.0"
+    assert vis["moving_measures"] and vis["moving_usable"] == [] and a["schema_version"] == "1.4.0"
     assert all(m.startswith("right_") for m in vis["moving_measures"])
 
 
 @needs_salute
-def test_the_salute_cli_exits_3_with_the_text(tmp_path, capsys):
+def test_the_salute_cli_exits_0_with_the_warning_text(tmp_path, capsys):
     out = tmp_path / "a.json"
     assert cli.main(["analyse", "--expected", str(SALUTE / "expected.json"), "--follower", str(SALUTE / "follower.json"),
-                     "--expected-visibility", str(SALUTE / "trainer-skeleton.json"), "--out", str(out)]) == 3
+                     "--expected-visibility", str(SALUTE / "trainer-skeleton.json"), "--out", str(out)]) == 0
     assert "right arm" in capsys.readouterr().out
 
 

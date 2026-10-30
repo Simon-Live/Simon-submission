@@ -1,4 +1,4 @@
-"""Movement guard: refuse a take that is not the expected movement at all (ADR-0004).
+"""Movement guard: tell a take that is not the expected movement at all (ADR-0004, ADR-0012).
 
 DTW always finds a closest phase, so cat-cow yoga against the squat still yields faults. Two
 statistics from the alignment tell a different movement from a sloppy copy of the right one:
@@ -9,19 +9,22 @@ statistics from the alignment tell a different movement from a sloppy copy of th
   between the expected series and the follower series sampled along the path, so a follower
   that bends when the example straightens scores low even if the poses are near.
 
-A take is refused when `residual` is above `guard.max_residual` or `timing_corr` is below
-`guard.min_timing_corr` (both in `rules.json`). `span_share` is reported, never a reason to refuse.
+A take is a low match (analysed all the same, ADR-0012, with a warning and grade F) when `residual` is above `guard.max_residual` or `timing_corr` is below
+`guard.min_timing_corr` (both in `rules.json`). `span_share` is reported, never a reason for a low match.
 """
 from dataclasses import dataclass
 
 import numpy as np
 
-OK, DIFFERENT_MOVEMENT = "ok", "different_movement"
+OK, DIFFERENT_MOVEMENT = "ok", "different_movement"   # DIFFERENT_MOVEMENT: the guard verdict; no longer a status code (ADR-0012)
+LOW_MATCH, NO_USABLE_MEASURES = "low_match", "no_usable_measures"   # warning codes (ADR-0012)
 MOVING_PART_OUT_OF_FRAME = "moving_part_out_of_frame"   # ADR-0011: the part the example moves is not in frame
 NOT_ENOUGH_VISIBLE = "not_enough_visible"   # ADR-0011: too little of the body in frame to compare
 OK_TEXT = "Compared with the expected movement."
-REFUSAL_TEXT = ("This take does not look like the expected movement, so no faults are listed. "
+REFUSAL_TEXT = ("This take doesn't closely match the trainer's movement, so the grade is capped at F. "
                 "Check that you picked the right movement and that the whole movement is in the take.")
+NO_USABLE_TEXT = ("Nothing in this take could be compared with the example, so the grade is F. "
+                  "Make sure you are in frame and the whole movement is in the take.")
 MIN_CORR_FRAMES = 3     # fewer measurable frames than this give no correlation
 FLAT = 1e-9             # a series with a smaller spread is constant
 

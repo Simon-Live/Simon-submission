@@ -5,15 +5,12 @@ import sys
 
 from . import contract, doctor
 from . import real
-from .guard import DIFFERENT_MOVEMENT, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE
 from .io import InputError
 from .output import OutputError, write_analysis
 from .replay import write_replay
 from .pipeline import PHRASING_BACKENDS, AnalysisError, run
 from .phrasing import select_backend
 from .score_report import score_block
-
-EXIT_REFUSED = 3  # a valid analysis.json was written, but the take is a different movement
 
 
 def build_parser():
@@ -68,11 +65,10 @@ def main(argv=None):
                 return 1
         for w in doc["diagnostics"]["warnings"]:
             print(f"part5 analyse: warning: {w}", file=sys.stderr)
-        if doc.get("status", {}).get("code") in (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME):
-            print(f"{args.out}: {doc['status']['text']}")
-            return EXIT_REFUSED
         n = len(doc["faults"])
         print(f"{args.out}: {n} fault{'s' if n != 1 else ''}" + "".join(f"\n  - {f['text']}" for f in doc["faults"]))
+        for w in doc.get("warnings", []):   # ADR-0012: a take is always analysed; the warning says why it is graded F
+            print(f"  ! {w['text']}")
         return 0
     if args.command == "serve":
         from .server import serve

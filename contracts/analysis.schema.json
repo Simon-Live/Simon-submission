@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/analysis.schema.json",
   "title": "Part 5 analysis.json (simon.analysis.v1)",
-  "version": "1.3.0",
-  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score; 1.3.0: faults[].reps, diagnostics.guard.reps, diagnostics.expected_reference and score.per_rep, for a take compared one repetition at a time). A document without them keeps schema_version 1.2.0. A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed.",
+  "version": "1.4.0",
+  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score; 1.3.0: faults[].reps, diagnostics.guard.reps, diagnostics.expected_reference and score.per_rep, for a take compared one repetition at a time). A document without them keeps schema_version 1.2.0. A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed. 1.4.0 (ADR-0012): a take is always analysed. status.code is ok for every analysis; what used to be a refusal is an entry in the top-level warnings ([{code, text}]: low_match, moving_part_out_of_frame, not_enough_visible, no_usable_measures), with match ({quality ok|low, residual, timing_corr, limits}); on a low match each fault has confidence \"low\"; score is never null, is capped at 59 (grade F) when any warning is present, and then names the codes in score.capped_by. A document without warnings keeps its earlier schema_version.",
   "type": "object",
   "required": [
     "format",
@@ -38,7 +38,8 @@
             "different_movement",
             "not_enough_visible",
             "moving_part_out_of_frame"
-          ]
+          ],
+          "description": "ok for every analysis from 1.4.0; the other values only in documents written before ADR-0012."
         },
         "text": {
           "type": "string",
@@ -51,7 +52,7 @@
       "items": {
         "$ref": "#/$defs/fault"
       },
-      "description": "Sorted by absolute magnitude, largest first. Empty for a correct take and for a refusal."
+      "description": "Sorted by absolute magnitude, largest first. Empty for a correct take, for a refusal in a document before 1.4.0, and when nothing was detected."
     },
     "phrasing": {
       "type": "object",
@@ -282,7 +283,7 @@
         "object",
         "null"
       ],
-      "description": "simon.score.v1 for an ok take, null for a refused one. Absent when the producer does not score.",
+      "description": "simon.score.v1. Never null from 1.4.0 (0, grade F when nothing could be measured); capped at 59 with capped_by when the document has warnings. null only in a refused document of 1.3.0 or earlier. Absent when the producer does not score.",
       "properties": {
         "version": {
           "const": "simon.score.v1"
@@ -338,6 +339,70 @@
               }
             }
           }
+        },
+        "capped_by": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "1.4.0: the warning codes that capped the value at 59."
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "minItems": 1,
+      "description": "1.4.0: why the grade is capped at F; present only when the take had a warning.",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "text"
+        ],
+        "properties": {
+          "code": {
+            "enum": [
+              "low_match",
+              "moving_part_out_of_frame",
+              "not_enough_visible",
+              "no_usable_measures"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "match": {
+      "type": "object",
+      "description": "1.4.0: how closely the take matches the trainer's movement; present with warnings. quality is low when the guard would have refused.",
+      "required": [
+        "quality",
+        "limits"
+      ],
+      "properties": {
+        "quality": {
+          "enum": [
+            "ok",
+            "low"
+          ]
+        },
+        "residual": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "timing_corr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "limits": {
+          "type": "object"
         }
       }
     }
@@ -370,7 +435,8 @@
           "faults": {
             "maxItems": 0
           }
-        }
+        },
+        "$comment": "documents written before ADR-0012 (1.3.0 and earlier): a refusal has no faults"
       }
     }
   ],
@@ -554,9 +620,17 @@
           "maximum": 1
         },
         "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
+          "oneOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "const": "low"
+            }
+          ],
+          "description": "A number in 0..1, or \"low\" on a low match (1.4.0)."
         },
         "text": {
           "type": "string",

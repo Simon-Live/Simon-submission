@@ -97,15 +97,29 @@ def test_similarity_is_clipped_per_value_and_bounded_by_s_max(rules):
 
 
 def test_a_measure_missing_everywhere_is_skipped_not_scored_zero(rules):
-    assert score.compute(analysis(), aligned(nan=True), rules) is None
+    assert score.compute(analysis(), aligned(nan=True), rules) == score.zero_block(rules)
     al = aligned(0.5)
     al["follower"]["elbow_flexion"] = np.full(N, np.nan)
     assert score.compute(analysis(), al, rules)["components"]["similarity"] == 2.0
 
 
-def test_ac_s03_a_refused_take_has_no_score_never_a_zero(rules):
-    assert score.compute(analysis(code="different_movement"), aligned(), rules) is None
-    assert score.compute({"faults": []}, aligned(), rules) is None
+def test_adr_0012_nothing_measurable_scores_zero_grade_f_never_null(rules):
+    zero = score.zero_block(rules)
+    assert zero["value"] == 0 and zero["grade"] == "F" and zero["components"] == {"faults": 0.0, "similarity": 0.0}
+    assert score.compute(analysis(code="different_movement"), aligned(), rules) == zero   # a pre-ADR-0012 refusal
+
+
+def test_adr_0012_any_warning_caps_the_value_at_59_and_names_the_codes(rules):
+    good = score.compute(analysis(), aligned(), rules)
+    assert good["value"] >= 90
+    assert score.cap_by_warnings(good, analysis(), rules) == good   # no warnings: byte for byte what it was
+    capped = score.cap_by_warnings(good, dict(analysis(), warnings=[{"code": "low_match", "text": "x"},
+                                                                     {"code": "not_enough_visible", "text": "y"}]), rules)
+    assert capped["value"] == 59 and capped["grade"] == "F" and capped["capped_by"] == ["low_match", "not_enough_visible"]
+    assert capped["components"] == good["components"]
+    low = score.zero_block(rules)
+    assert score.cap_by_warnings(low, dict(analysis(), warnings=[{"code": "no_usable_measures", "text": "x"}]),
+                                 rules)["value"] == 0
 
 
 def test_the_params_hash_is_the_sha256_of_the_score_block(rules):
