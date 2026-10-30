@@ -14,7 +14,7 @@ The expected `animation.json` (or `skeleton.json`) plus a follower's `skeleton.j
 
 ## Output
 
-`analysis.json`. Per fault: what differed, which joint/body part, the size of the difference, and a plain-words line (e.g. "left foot too far out", "elbows wider than the example"). A take of a different movement gets `status.code: "different_movement"` and no faults. Fields: `docs/schemas.md`; schema: `contracts/analysis.schema.json`.
+`analysis.json`. Per fault: what differed, which joint/body part, the size of the difference, and a plain-words line (e.g. "left foot too far out", "elbows wider than the example"). A take of a different movement is still analysed: it carries a `low_match` warning and its grade is capped at F (ADR-0012). Fields: `docs/schemas.md`; schema: `contracts/analysis.schema.json`.
 
 ## Shared-file context (only what this part touches)
 
@@ -73,6 +73,11 @@ uv run python -m part5 serve [--port 8725] [--base-path /]       # the web page 
 uv run python -m part5 report-real [--out out/report-real/report.json]
 ```
 
-`part5 analyse` exits 0 when it wrote an analysis with `status.code: "ok"`, 3 when it wrote a refused one (`different_movement`, no faults), 1 for an input or write error and 2 for a usage error. `--phrasing` changes only each fault's `coaching` line and the `phrasing` record, never a scored field; `template` is the default. `muse-spark` sends only the measured fault record, and only when the key file (`PART5_BASETEN_KEY_FILE`, default `~/.config/firm/operator-keys/BASETEN_API_KEY`) exists and `META_LIVE=1`; otherwise the template line is kept and the reason recorded.
+`part5 analyse` exits 0 when it wrote an analysis (with or without `warnings`), 1 for an input or write error and 2 for a usage error; exit 3 is no longer used (ADR-0012). `--phrasing` changes only each fault's `coaching` line and the `phrasing` record, never a scored field; `template` is the default. `muse-spark` sends only the measured fault record, and only when the key file named by `PART5_BASETEN_KEY_FILE` exists and live mode is on (`--live`, `SIMON5_LIVE=1` or `META_LIVE=1`); otherwise the template line is kept and the reason recorded.
+
+## Develop and debug
+
+- [`docs/dev/DEVELOPING.md`](docs/dev/DEVELOPING.md): setup from a fresh clone, keys, commands, the done-checks, debugging the output fields, tests, how Part 7 calls this part, known issues.
+- [`docs/design/README.md`](docs/design/README.md): the design specs and architecture decision records behind the code.
 
 Work is coordinated in GitHub issues: checklist #17, team chat #18.
