@@ -15,11 +15,13 @@ from .guard import diagnostics as guard_diagnostics
 from .io import Clip, load_clip, parse_clip
 from .joints_map import fault_joints
 from .lateral import lateral_m
-from .measures import compute
 from .normalise import normalise
 from .output import build_analysis, validate_analysis
 from .phrasing import BACKENDS, phrase
 from .repwise import RepRun, compare, rep_entries, reference_entry
+from .guard import MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE
+from .visibility import (NOT_ENOUGH_TEXT, clip_usable, hide_unseen, load_conf, measures_of, moving_check,
+                         moving_text, resolve, usable_from_conf)
 
 # On the dummy takes the matched span always covers ≥76% of the follower clip. Much less than
 # that usually means a follower slower than ½x, which aligns to a subsegment (see align.dtw).
@@ -73,7 +75,7 @@ def analyse(expected, follower, rules=None):
 
 
 def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=None, score=None,
-        live=False, selected_by=None):
+        live=False, selected_by=None, expected_visibility=None):
     """`analyse` keeping the clips and the alignment (`PipelineResult`).
 
     A ref may carry the parsed JSON under `doc` (an upload held in memory): the clip is parsed
@@ -82,6 +84,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     `score` (ADR-0007) is the hook for `part5.score`: a callable taking the `PipelineResult` and
     returning the `score` block, or a ready block. Given, the analysis carries a `score` key,
     which is None for a refused take (the callable is not called). Absent, no `score` key.
+
+    `expected_visibility` (ADR-0011) is the trainer's own skeleton or pose3d file, whose `conf` says which
+    measures the example shows; without it an expected clip that carries no `conf` takes the follower's.
     """
     if phrasing not in PHRASING_BACKENDS:
         raise AnalysisError(f"phrasing must be one of {list(PHRASING_BACKENDS)}, got {phrasing!r}")
@@ -91,25 +96,40 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     fol = normalise(_load(fol_ref))
     exp_ref.pop("doc", None)
     fol_ref.pop("doc", None)
+    extra_conf = None if expected_visibility is None else load_conf(expected_visibility)
+    vis = resolve(clip_usable(exp), clip_usable(fol), usable_from_conf(extra_conf))
+    if not vis.enough:
+        return _visibility_refusal(exp_ref, fol_ref, exp, fol, vis, score, NOT_ENOUGH_VISIBLE, NOT_ENOUGH_TEXT,
+                                   (phrasing, phrasing_client, live, selected_by))
+    usable = vis.align_usable
+    moving_info = None
+    exp, fol = hide_unseen(exp, vis), hide_unseen(fol, vis)
+    if not vis.full:   # ADR-0011: the part the example moves must be in frame in the take
+        moving_info = moving_check(exp.positions, vis, [exp.conf, extra_conf])
+        if moving_info["moving_measures"] and not moving_info["moving_usable"]:
+            return _visibility_refusal(exp_ref, fol_ref, exp, fol, vis, score, MOVING_PART_OUT_OF_FRAME,
+                                       moving_text(moving_info["moving_measures"]),
+                                       (phrasing, phrasing_client, live, selected_by), moving=moving_info)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
     # `to_original` maps each resampled frame back to the follower file's own frame index.
     fps = _bounded_fps(exp, exp_ref, fol, fol_ref)
     fol_positions, to_original = resample(fol.positions, fol.t, fps)
-    exp_m, fol_m = compute(exp.positions), compute(fol_positions)
+    exp_m, fol_m = measures_of(exp.positions, vis), measures_of(fol_positions, vis)
+    align_names = list(ALIGN_MEASURES) if usable is None else usable
     for ref, m in ((exp_ref, exp_m), (fol_ref, fol_m)):
-        available = np.mean([np.isfinite(m[n]).mean() for n in ALIGN_MEASURES])
+        available = np.mean([np.isfinite(m[n]).mean() for n in align_names])
         if available < MIN_AVAILABLE:
             raise AnalysisError(f"{ref['path']}: only {available:.0%} of the body could be measured "
                                 "(joints missing or below the confidence cutoff)")
     try:
-        alignment = align(exp.positions, fol_positions)
+        alignment = align(exp.positions, fol_positions, usable)
         # A different movement is refused before detection: DTW always finds a closest phase.
         guard, align_error = check_movement(alignment, exp_m, fol_m, rules), None
     except ValueError as e:   # e.g. a follower with more reps than the whole-clip band can follow
         alignment, guard, align_error = None, None, e
     # Refused as a whole, and a clip holds several reps: compare one repetition at a time (ADR-0010).
     rep_run = None if guard is not None and guard.ok else \
-        compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times)
+        compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times, vis)
     if guard is None and not (rep_run is not None and rep_run.guard.ok):
         raise AnalysisError(f"{fol_ref['path']}: cannot align with {exp_ref['path']} ({align_error})") from align_error
     if rep_run is not None and rep_run.guard.ok:
@@ -123,6 +143,8 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         span = tuple(int(to_original[j]) for j in alignment.follower_span)
         diagnostics = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(guard, rules))
         times = [_fault_times(f, exp, fol, fol_positions, alignment, to_original) for f in faults]
+    if not vis.full:   # additive to 1.3.0; a full-body take has no `visibility`, so its document is unchanged
+        diagnostics["visibility"] = vis.diagnostics(moving_info)
     analysis = build_analysis(exp_ref, fol_ref, faults, diagnostics=diagnostics,
                               status={"code": guard.code, "text": guard.text}, times=times)
     analysis = _phrased(analysis, phrasing, phrasing_client, live, selected_by)
@@ -133,6 +155,17 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         block = None if not guard.ok else score(result) if callable(score) else score
         result.analysis = validate_analysis(dict(analysis, score=block), source="<built analysis>")
     return result
+
+
+def _visibility_refusal(exp_ref, fol_ref, exp, fol, vis, score, code, text, phrasing, moving=None):
+    """A refusal because of what the camera sees (ADR-0011): no alignment, no faults, no score."""
+    diagnostics = {"warnings": [], "visibility": vis.diagnostics(moving)}
+    analysis = build_analysis(exp_ref, fol_ref, [], diagnostics=diagnostics,
+                              status={"code": code, "text": text})
+    analysis = _phrased(analysis, *phrasing)
+    if score is not None:
+        analysis = validate_analysis(dict(analysis, score=None), source="<built analysis>")
+    return PipelineResult(analysis, None, exp, fol, fol.positions, np.arange(fol.n_frames), None)
 
 
 def _fault_times(fault, exp, fol, fol_positions, alignment, to_original):

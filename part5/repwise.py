@@ -22,7 +22,7 @@ import numpy as np
 from .align import Alignment, align
 from .detect import detect
 from .guard import DIFFERENT_MOVEMENT, OK, OK_TEXT, REFUSAL_TEXT, GuardResult, check_movement
-from .measures import compute
+from .visibility import measures_of
 from .output import fault_to_dict
 from .reps import Segmentation, segment
 
@@ -89,13 +89,13 @@ def _reference(exp, exp_m, span):
     return clip, {k: np.asarray(v)[a:b + 1] for k, v in exp_m.items()}
 
 
-def _one_rep(index, pos, orig, span, ref, ref_m, rules):
+def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None):
     """Align, guard and detect one follower rep against the reference."""
     try:
-        alignment = align(ref.positions, pos)
+        alignment = align(ref.positions, pos, None if vis is None else vis.align_usable)
     except ValueError:  # the rep cannot be aligned at all: it does not pass
         return RepResult(index, span, False, None, None, ref, pos, orig)
-    fol_m = compute(pos)
+    fol_m = measures_of(pos, vis)
     guard = check_movement(alignment, ref_m, fol_m, rules)
     ok = bool(guard.ok and guard.stats["span_share"] >= MIN_REP_SPAN_SHARE)
     faults = []
@@ -179,12 +179,12 @@ def reference_entry(run, exp, fps):
             "measure": es.measure}
 
 
-def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times):
+def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times, vis=None):
     """The repetition-by-repetition comparison, or `None` when neither clip has more than one rep.
 
     `fol_positions` is the follower on the expected clip's clock and `to_original` maps its frames to the
     follower file's. `fault_times` is `pipeline._fault_times` (passed in to keep the modules apart)."""
-    fol_m = compute(fol_positions)
+    fol_m = measures_of(fol_positions, vis)
     es = segment(exp_m, fps)
     fs = segment(fol_m, fps, prefer=(es.measure, es.bound) if es.bound else None)
     if es.reps == 1 and fs.reps == 1:
@@ -198,7 +198,7 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
         else:
             pos, idx = _resample_rep(fol_positions, a, b, n)
             orig = np.asarray(to_original)[idx]
-        reps.append(_one_rep(k, pos, orig, (int(orig[0]), int(orig[-1])), ref, ref_m, rules))
+        reps.append(_one_rep(k, pos, orig, (int(orig[0]), int(orig[-1])), ref, ref_m, rules, vis))
     guard = _verdict(reps)
     kept = aggregate_faults(reps) if guard.ok else []
     kept_keys = {_fault_key(f) for f, _, _ in kept}

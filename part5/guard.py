@@ -17,6 +17,8 @@ from dataclasses import dataclass
 import numpy as np
 
 OK, DIFFERENT_MOVEMENT = "ok", "different_movement"
+MOVING_PART_OUT_OF_FRAME = "moving_part_out_of_frame"   # ADR-0011: the part the example moves is not in frame
+NOT_ENOUGH_VISIBLE = "not_enough_visible"   # ADR-0011: too little of the body in frame to compare
 OK_TEXT = "Compared with the expected movement."
 REFUSAL_TEXT = ("This take does not look like the expected movement, so no faults are listed. "
                 "Check that you picked the right movement and that the whole movement is in the take.")

@@ -67,13 +67,13 @@ Which producer file works with Part 5, as checked against the producer commit in
 | 0 | the analysis is written and its `status.code` is `ok` | yes |
 | 1 | an input or the output breaks the contract: a malformed clip, less than half the body measurable, takes that cannot be aligned, an output that cannot be written | no |
 | 2 | usage: a missing or unknown option | no |
-| 3 | a refused analysis is written: `status.code` is `different_movement` and `faults` is empty by design | yes |
+| 3 | a refused analysis is written: `status.code` is `different_movement`, `not_enough_visible` or `moving_part_out_of_frame` and `faults` is empty by design | yes |
 
 Exit 3 means a valid `analysis.json` was written and it is a refusal: read `status`, do not read an empty `faults` as a correct take. `analyse` exits 3 whenever the movement guard refuses a take.
 
 ## Part 7's duties
 
-1. **Read `status` before `faults`.** A refused take has `status.code: "different_movement"`, a `status.text` that says why in plain words and `faults: []`. Show it as a refusal, never as "no faults". A file with no `status` block is a schema `1.0` file: read it as `ok`.
+1. **Read `status` before `faults`.** A refused take has `status.code: "different_movement"` (or `"not_enough_visible"` or `"moving_part_out_of_frame"`: too little of the body, or the part the example moves, is in frame; show `status.text`, which says what to change; ADR-0011), a `status.text` that says why in plain words and `faults: []`. Show it as a refusal, never as "no faults". A file with no `status` block is a schema `1.0` file: read it as `ok`.
 2. **Treat exit 0 and exit 3 as "written, read `status`".** Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the contract (Part 3 `CONTRACT.md`, row for Part 7). Map 0 and 3 to "written" and 1 and 2 to failures.
 3. **Highlight `faults[].joints`.** It lists canonical joint names. A `1.0` file has no `joints`; then map the fault's `joint`: a sided joint is itself; side `both` is `left_X` and `right_X`; `spine` is both shoulders and both hips; `shoulders` is both shoulders; `neck` is the nose and both shoulders.
 4. **Ignore fields you do not know.** New fields are added without changing `format`; `schema_version` says which additions to expect. `diagnostics` is for people debugging a take and is not shown to the follower.

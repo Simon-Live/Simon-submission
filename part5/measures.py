@@ -110,6 +110,30 @@ def _specs():
 MEASURES = _specs()
 
 
+def _measure_joints():
+    """The joints each measure reads (ADR-0011), by measure name."""
+    def of(side, *parts):
+        return [f"{side}_{x}" for x in parts]
+
+    trunk = ["left_shoulder", "right_shoulder", "left_hip", "right_hip"]
+    out = {}
+    for side in SIDES:
+        out[f"{side}_elbow_flexion"] = of(side, "shoulder", "elbow", "wrist")
+        out[f"{side}_knee_flexion"] = out[f"{side}_knee_valgus"] = of(side, "hip", "knee", "ankle")
+        out[f"{side}_upper_arm_out"] = of(side, "shoulder", "elbow")
+        out[f"{side}_forearm_out"] = of(side, "elbow", "wrist")
+        out[f"{side}_thigh_out"] = out[f"{side}_thigh_forward"] = of(side, "hip", "knee")
+        out[f"{side}_foot_out"] = of(side, "hip", "ankle")
+        out[f"{side}_upper_arm_forward"] = of(side, "shoulder", "elbow") + trunk  # relative to the trunk
+    out["trunk_lean_forward"] = out["trunk_lean_side"] = trunk
+    out["shoulder_tilt"] = ["left_shoulder", "right_shoulder"]
+    out["head_forward"] = ["nose"] + trunk
+    return out
+
+
+MEASURE_JOINTS = _measure_joints()
+
+
 def compute(positions):
     """positions (F, 17, 3) → {measure name: (F,) degrees}. NaN propagates from masked joints."""
     p = np.asarray(positions, float)
@@ -137,6 +161,45 @@ def compute(positions):
     out["shoulder_tilt"] = np.degrees(np.arctan2(sl[:, 1], np.hypot(sl[:, 0], sl[:, 2])))
     head = p[:, J["nose"]] - _mid(p, "left_shoulder", "right_shoulder")
     out["head_forward"] = _sagittal(head) - out["trunk_lean_forward"]
+    return out
+
+
+# Head-and-shoulder "view" measures (ADR-0011). They read only the joints a seated or close-up selfie
+# shows (face, shoulders, a raised wrist) and take no hip. They are used only when a pair is compared on
+# fewer measures than the full body: for timing and the guard's statistics, never as a reported fault.
+VIEW_MEASURES = {
+    "head_roll": ("left_ear", "right_ear"),
+    "head_turn": ("left_ear", "right_ear"),
+    "head_pitch": ("nose", "left_ear", "right_ear"),
+    "shoulder_turn": ("left_shoulder", "right_shoulder"),
+    "neck_lean_side": ("nose", "left_shoulder", "right_shoulder"),
+    "neck_lean_forward": ("nose", "left_shoulder", "right_shoulder"),
+    **{f"{side}_wrist_height": (f"{side}_shoulder", f"{side}_wrist") for side in SIDES},
+    **{f"{side}_wrist_out": (f"{side}_shoulder", f"{side}_wrist") for side in SIDES},
+}
+
+
+def _yaw(v):
+    return np.degrees(np.arctan2(v[:, 2], v[:, 0]))
+
+
+def compute_view(positions):
+    """positions (F, 17, 3) -> {view measure name: (F,) degrees}; NaN propagates from masked joints."""
+    p = np.asarray(positions, float)
+    ears = p[:, J["left_ear"]] - p[:, J["right_ear"]]
+    neck = p[:, J["nose"]] - _mid(p, "left_shoulder", "right_shoulder")
+    face = p[:, J["nose"]] - _mid(p, "left_ear", "right_ear")
+    sl = p[:, J["left_shoulder"]] - p[:, J["right_shoulder"]]
+    out = {"head_roll": np.degrees(np.arctan2(ears[:, 1], np.hypot(ears[:, 0], ears[:, 2]))),
+           "head_turn": _yaw(ears),
+           "head_pitch": np.degrees(np.arctan2(face[:, 1], face[:, 2])),
+           "shoulder_turn": _yaw(sl),
+           "neck_lean_side": _lateral(neck),
+           "neck_lean_forward": _sagittal(neck)}
+    for side in SIDES:
+        arm = p[:, J[f"{side}_wrist"]] - p[:, J[f"{side}_shoulder"]]
+        out[f"{side}_wrist_height"] = np.degrees(np.arctan2(arm[:, 1], np.hypot(arm[:, 0], arm[:, 2])))
+        out[f"{side}_wrist_out"] = _out_angle(arm, side)
     return out
 
 

@@ -179,7 +179,9 @@ def test_real_lateral_raise_followers_are_accepted_rep_by_rep(which, n_reps, req
 
 def test_the_slow_follower_reports_its_faults_once_with_reps_and_the_files_clock(slow):
     faults = slow.analysis["faults"]
-    assert faults, "the 2 slow reps carry faults"
+    # ADR-0011: its knees and ankles are outside the image (conf 0.3), so they are no longer compared; the
+    # 2 faults it carried (63 points) came from those invented legs and hips, and the measured arms are clean.
+    assert "right_knee_flexion" in slow.analysis["diagnostics"]["visibility"]["excluded"]
     keys = [(f["measure"], f["side"], f["direction"]) for f in faults]
     assert len(keys) == len(set(keys))                              # once each, not once per rep
     for f in faults:

@@ -11,7 +11,7 @@ import re
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-from .guard import DIFFERENT_MOVEMENT, OK
+from .guard import DIFFERENT_MOVEMENT, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE, OK
 from .io import JOINTS
 from .measures import MEASURES
 from .lateral import lateral_for
@@ -21,7 +21,8 @@ FORMAT = "simon.analysis.v1"
 SCHEMA_VERSION = "1.2.0"
 SCHEMA_VERSION_REPS = "1.3.0"   # a document with the rep fields (ADR-0010); one without stays 1.2.0
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
-STATUS_CODES = (OK, DIFFERENT_MOVEMENT)
+REFUSED_CODES = (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME)   # no faults, no score
+STATUS_CODES = (OK, *REFUSED_CODES)
 UNIT = "degrees"
 SIDES = ("left", "right", "both", "center")
 DIRECTIONS = ("more", "less")
@@ -130,7 +131,8 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
         faults = [fault_to_dict(f, t) for f, t in zip(faults, times, strict=True)]
     except (AttributeError, KeyError, TypeError, ValueError) as e:
         raise OutputError(f"<built analysis>: cannot build a fault object ({e})") from e
-    by_reps = any("reps" in f for f in faults) or "reps" in (diagnostics or {}).get("guard", {})
+    by_reps = any("reps" in f for f in faults) or "reps" in (diagnostics or {}).get("guard", {}) \
+        or "visibility" in (diagnostics or {})
     doc = {"format": FORMAT,
            "schema_version": SCHEMA_VERSION_REPS if by_reps else SCHEMA_VERSION,
            "expected": _input_ref(expected, "expected"),
@@ -201,7 +203,7 @@ def validate_analysis(doc, source="<analysis>"):
         _validate_phrasing(doc["phrasing"], len(faults), fail)
     if "score" in doc and doc["score"] is not None and not isinstance(doc["score"], dict):
         fail("score must be an object or null")
-    if isinstance(doc.get("score"), dict) and doc.get("status", {}).get("code") == DIFFERENT_MOVEMENT:
+    if isinstance(doc.get("score"), dict) and doc.get("status", {}).get("code") in REFUSED_CODES:
         fail("score must be null for a refused take")
     try:  # nothing anywhere (incl. diagnostics/extras) may make this invalid JSON downstream
         json.dumps(doc, allow_nan=False)
@@ -217,8 +219,8 @@ def _validate_status(status, faults, fail):
         fail(f"status.code must be one of {STATUS_CODES}, got {status.get('code')!r}")
     if not isinstance(status.get("text"), str) or not status["text"]:
         fail("status.text must be a non-empty string")
-    if status["code"] == DIFFERENT_MOVEMENT and faults:
-        fail(f"status.code {DIFFERENT_MOVEMENT!r} goes with faults [], got {len(faults)} fault(s)")
+    if status["code"] in REFUSED_CODES and faults:
+        fail(f"status.code {status['code']!r} goes with faults [], got {len(faults)} fault(s)")
 
 
 def _validate_runs(runs, where, fail, key="runs"):

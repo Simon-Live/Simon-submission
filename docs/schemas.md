@@ -107,6 +107,12 @@ Top level:
   `span_share` (matched share of the follower frames), and `limits` (`max_residual`,
   `min_timing_corr`, from `part5/rules.json`). A take is refused when `residual` is above its
   limit or `timing_corr` below its limit; `span_share` only ever warns.
+  `diagnostics.visibility` (1.3.0, ADR-0011) is present only when the take was compared on the measures the camera
+  sees, not the full body: `usable_measures` (count), `excluded` (the measures left out) and `rule`. Part 2 marks a
+  joint outside the image with conf 0.3. `status.code` `not_enough_visible` (faults `[]`, score null) says fewer than
+  3 measures were usable: ask for more of the body in frame. `status.code` `moving_part_out_of_frame` (faults `[]`,
+  score null) says none of the measures that move in the expected clip is usable in the take; `status.text` names the
+  body part, and `diagnostics.visibility.moving_measures` and `moving_usable` list the measures.
   `diagnostics.guard.reps` (1.3.0, only for a take compared one repetition at a time, ADR-0010) lists each follower
   repetition: `span_s` (start and end on the follower file's clock), `residual`, `timing_corr` (null when the rep could
   not be aligned) and `ok`; `residual` and `timing_corr` above are then medians over the reps.

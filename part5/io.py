@@ -39,6 +39,7 @@ class Clip:
     mask: np.ndarray         # (F, 17) True where the joint is usable
     interpolated: np.ndarray  # (F,) bool
     meta: dict = field(default_factory=dict)
+    conf: np.ndarray | None = None   # (F, 17) per-joint confidence; None when no frame carries `conf`
 
     @property
     def n_frames(self):
@@ -84,6 +85,8 @@ def parse_clip(doc, source="<input>"):
     pos = np.full((n, len(JOINTS), 3), np.nan)
     mask = np.zeros((n, len(JOINTS)), bool)
     interp = np.zeros(n, bool)
+    conf_all = np.ones((n, len(JOINTS)))
+    has_conf = False
     for i, fr in enumerate(frames):
         where = f"{FORMATS[fmt]}[{i}]"
         if not isinstance(fr, dict):
@@ -127,6 +130,8 @@ def parse_clip(doc, source="<input>"):
                 fail(f"{where}.joints.{name} must be [x, y, z] finite numbers, got {p!r}")
             pos[i, j] = p
             mask[i, j] = conf.get(name, 1.0) >= MIN_CONF
+            conf_all[i, j] = conf.get(name, 1.0)
+        has_conf = has_conf or bool(conf)
     if np.any(np.diff(t) <= 0):
         fail("frame times must strictly increase")
 
@@ -137,4 +142,4 @@ def parse_clip(doc, source="<input>"):
 
     meta = {k: doc[k] for k in ("set", "movement", "duration_s", "frame_count") if k in doc}
     meta["source"] = source
-    return Clip(fmt, fps, t, pos, mask, interp, meta)
+    return Clip(fmt, fps, t, pos, mask, interp, meta, conf_all if has_conf else None)

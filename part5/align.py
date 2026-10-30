@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .measures import MEASURES, compute
+from .measures import MEASURES, VIEW_MEASURES, compute, compute_view
 
 # Measures that drive alignment; head_forward is noisy and adds little timing information.
 # knee_valgus (ADR-0004) is a fault measure only, so alignment stays as it was before it was added.
@@ -49,19 +49,22 @@ def features(measures, names, scale):
     return _fill_nan(np.stack([measures[n] for n in names], axis=1)) / scale
 
 
-def timing_measures(exp_measures, min_spread=MIN_SPREAD_DEG):
-    """Measures that move in the expected clip carry timing; static ones only add noise."""
+def timing_measures(exp_measures, min_spread=MIN_SPREAD_DEG, usable=None):
+    """Measures that move in the expected clip carry timing; static ones only add noise.
+    `usable` (ADR-0011) limits the candidates to the measures the camera sees; None means all."""
+    candidates = [n for n in ALIGN_MEASURES + list(VIEW_MEASURES) if usable is not None and n in usable] \
+        if usable is not None else list(ALIGN_MEASURES)
     with warnings.catch_warnings():  # all-NaN measures are handled below
         warnings.simplefilter("ignore", RuntimeWarning)
-        sds = {n: np.nanstd(exp_measures[n]) for n in ALIGN_MEASURES}
+        sds = {n: np.nanstd(exp_measures[n]) for n in candidates}
     names, spread = [], []
-    for n in ALIGN_MEASURES:
+    for n in candidates:
         sd = sds[n]
         if np.isfinite(sd) and sd >= min_spread:
             names.append(n)
             spread.append(sd)
     if not names:  # a nearly static clip: fall back to everything, floored
-        names = list(ALIGN_MEASURES)
+        names = list(candidates)
         # An all-NaN measure (a joint masked for the whole clip) has no spread; its column is
         # 0-filled by `features`, so any finite floor will do.
         spread = [sds[n] if np.isfinite(sds[n]) and sds[n] > min_spread else min_spread
@@ -144,9 +147,18 @@ def _cost(fe, ff, clip=COST_CLIP_Z):
     return np.sqrt(np.minimum(d2, clip * clip).mean(axis=2))
 
 
-def align(expected_positions, follower_positions):
-    exp_m, fol_m = compute(expected_positions), compute(follower_positions)
-    names, scale = timing_measures(exp_m)
+def _measures(positions, usable):
+    """`compute`, plus the head-and-shoulder view measures when timing is taken from a visible subset."""
+    m = compute(positions)
+    if usable is not None:
+        m.update(compute_view(positions))
+    return m
+
+
+def align(expected_positions, follower_positions, usable=None):
+    """`usable` is the list of measures to take timing from (ADR-0011); None means all of them."""
+    exp_m, fol_m = _measures(expected_positions, usable), _measures(follower_positions, usable)
+    names, scale = timing_measures(exp_m, usable=usable)
     fe, ff = features(exp_m, names, scale), features(fol_m, names, scale)
     # Two passes: a fault held all the way through (e.g. elbows wider) is a constant offset in
     # one measure, and it shouldn't pull the timing. Align, take the median follower − expected

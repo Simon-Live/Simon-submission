@@ -123,6 +123,7 @@ def test_follower_with_no_usable_joints_exits_1(tmp_path, capsys):
     doc = json.loads((ROOT / EXPECTED).read_text())
     for f in doc["frames"]:
         f["conf"] = {j: 0.0 for j in f["joints"]}
+        f["joints"] = {j: None for j in f["joints"]}
     blind = tmp_path / "blind.json"
     blind.write_text(json.dumps(doc))
     assert cli.main(["analyse", "--expected", str(ROOT / EXPECTED), "--follower", str(blind),

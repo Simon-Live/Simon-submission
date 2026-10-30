@@ -5,7 +5,7 @@ import sys
 
 from . import contract, doctor
 from . import real
-from .guard import DIFFERENT_MOVEMENT
+from .guard import DIFFERENT_MOVEMENT, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE
 from .io import InputError
 from .output import OutputError, write_analysis
 from .replay import write_replay
@@ -22,6 +22,8 @@ def build_parser():
     a = sub.add_parser("analyse", help="compare a follower take against the expected clip")
     a.add_argument("--expected", required=True, help="expected animation.json or skeleton.json")
     a.add_argument("--follower", required=True, help="follower skeleton.json")
+    a.add_argument("--expected-visibility", help="the trainer's own skeleton.json or pose3d.json (Part 2): its conf says "
+                   "which body parts the example shows (ADR-0011); optional when the expected clip has no conf")
     a.add_argument("--out", required=True, help="where to write analysis.json")
     a.add_argument("--replay", help="also write the replay file (simon.replay.v1) here")
     a.add_argument("--live", action="store_true",
@@ -49,7 +51,8 @@ def main(argv=None):
         try:
             backend, selected_by = select_backend(args.phrasing, args.live)
             result = run(args.expected, args.follower, phrasing=backend, score=score_block,
-                         live=args.live, selected_by=selected_by)
+                         live=args.live, selected_by=selected_by,
+                         expected_visibility=args.expected_visibility)
             doc = write_analysis(args.out, result.analysis)
         except (InputError, AnalysisError, OutputError) as e:
             print(f"part5 analyse: {e}", file=sys.stderr)
@@ -65,7 +68,7 @@ def main(argv=None):
                 return 1
         for w in doc["diagnostics"]["warnings"]:
             print(f"part5 analyse: warning: {w}", file=sys.stderr)
-        if doc.get("status", {}).get("code") == DIFFERENT_MOVEMENT:
+        if doc.get("status", {}).get("code") in (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME):
             print(f"{args.out}: {doc['status']['text']}")
             return EXIT_REFUSED
         n = len(doc["faults"])

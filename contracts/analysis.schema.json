@@ -35,7 +35,9 @@
         "code": {
           "enum": [
             "ok",
-            "different_movement"
+            "different_movement",
+            "not_enough_visible",
+            "moving_part_out_of_frame"
           ]
         },
         "text": {
@@ -235,6 +237,43 @@
               ]
             }
           }
+        },
+        "visibility": {
+          "type": "object",
+          "description": "1.3.0: present when the take was compared on fewer measures than the full body because the camera did not see the rest (ADR-0011): usable_measures (how many), excluded (the measures left out) and rule (the sentence that decided).",
+          "required": [
+            "usable_measures",
+            "excluded"
+          ],
+          "properties": {
+            "usable_measures": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "excluded": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rule": {
+              "type": "string"
+            },
+            "moving_measures": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Measures that move in the expected clip (robust range above 20 degrees) among those the example shows."
+            },
+            "moving_usable": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Those of moving_measures the take also shows; none of them means status moving_part_out_of_frame."
+            }
+          }
         }
       }
     },
@@ -310,7 +349,11 @@
           "status": {
             "properties": {
               "code": {
-                "const": "different_movement"
+                "enum": [
+                  "different_movement",
+                  "not_enough_visible",
+                  "moving_part_out_of_frame"
+                ]
               }
             },
             "required": [
