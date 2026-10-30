@@ -1,0 +1,334 @@
+"""Documented setup and contract/doctor checks for Parts 1 to 6 at their pins (TICKET-011)."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+from part7 import config, pins, runner
+from part7.parts import p4_animate
+
+SETUP_TIMEOUT_S = 600.0
+GPU_CHECK_TIMEOUT_S = 180.0
+# Prints the torch build and device; exits 3 when CUDA is not usable from the venv.
+_GPU_PROBE = (
+    "import sys; sys.path.insert(0, sys.argv[1]); import torch; ok = torch.cuda.is_available(); "
+    "print('torch', torch.__version__, 'cuda', ok, torch.cuda.get_device_name(0) if ok else '-'); "
+    "sys.exit(0 if ok else 3)"
+)
+
+
+def _default_setup_commands(part: str, clone: Path) -> list[list[str]]:
+    if part == "1":
+        if (clone / ".venv" / ".installed").is_file() and (clone / ".venv" / "bin" / "python").is_file():
+            return []
+        return [["make", ".venv/.installed"]]
+    if part == "2":
+        return [["uv", "sync"]]
+    if part == "3":
+        venv_py = clone / ".venv" / "bin" / "python"
+        venv_pip = clone / ".venv" / "bin" / "pip"
+        cmds: list[list[str]] = []
+        if not venv_py.is_file():
+            cmds.append(["python3", "-m", "venv", ".venv"])
+        cmds.append([str(venv_pip), "install", "-q", "-r", "requirements.txt"])
+        return cmds
+    if part == "4":
+        return []
+    if part == "5":
+        return [["uv", "sync"]]
+    if part == "6":
+        return []
+    return []
+
+
+def _default_doctor_command(part: str, clone: Path) -> tuple[list[str], dict[str, str] | None, str]:
+    if part == "1":
+        py = clone / ".venv" / "bin" / "python"
+        return (
+            [str(py), "-m", "unittest", "keyframe_finder.schema_test"],
+            None,
+            "keyframe_finder.schema_test",
+        )
+    if part == "2":
+        return (
+            ["uv", "run", "part2", "run", "--help"],
+            None,
+            "part2 run --backend",
+        )
+    if part == "3":
+        py = clone / ".venv" / "bin" / "python"
+        return (
+            [str(py), "-m", "part3", "contract", "--json"],
+            None,
+            "part3 contract",
+        )
+    if part == "4":
+        mod = p4_animate._mod_name(clone)
+        fixture = clone / "fixtures" / "output" / "exercise" / "animation.json"
+        return (
+            ["python3", "-m", f"{mod}.contract", "validate", "animation", str(fixture)],
+            {"PYTHONPATH": str(clone / "src")},
+            f"{mod}.contract validate",
+        )
+    if part == "5":
+        return (
+            ["uv", "run", "python", "-m", "part5", "contract"],
+            None,
+            "part5 contract",
+        )
+    if part == "6":
+        return (
+            ["python3", "-m", "part6", "contract"],
+            None,
+            "part6 contract",
+        )
+    return (["true"], None, "true")
+
+
+def _contract_version_is_1(stdout: str) -> bool:
+    """Part 6's `contract` prints a JSON document whose `contract_version` must be 1."""
+    try:
+        doc = json.loads(stdout)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(doc, dict) and doc.get("contract_version") == 1
+
+
+def _gpu_venv_check(clone: Path) -> tuple[list[str], dict[str, str], str] | None:
+    """Read-only probe of Part 2's shared GPU venv (ASM-012); None when the venv does not exist."""
+    gpu_py = config.part2_gpu_venv_path() / "bin" / "python"
+    if not gpu_py.is_file():
+        return None
+    return (
+        [str(gpu_py), "-c", _GPU_PROBE, str(clone)],
+        {"PYTHONPATH": str(clone)},
+        "part2 gpu venv: torch sees CUDA",
+    )
+
+
+def _setup_checks(part: str, clone: Path) -> list[tuple[list[str], dict[str, str] | None, str]]:
+    """Checks that follow a part's setup commands: Parts 4 and 6 have no setup, Part 2 has the GPU venv."""
+    if part in ("4", "6"):
+        return [_default_doctor_command(part, clone)]
+    if part == "2":
+        probe = _gpu_venv_check(clone)
+        return [probe] if probe is not None else []
+    return []
+
+
+def setup_all(
+    lock: pins.Lock | None = None,
+    state: Path | str | None = None,
+    commands: dict[str, list[list[str]]] | None = None,
+) -> dict[str, Any]:
+    """Run each part's documented setup commands in its pinned clone, then its checks.
+
+    `commands` replaces the setup commands of the parts it names and turns the default checks off
+    (tests use it with stub commands). Each part's result carries `duration_s`, the sum of its steps.
+    """
+    lk = lock or pins.load()
+    log_dir = config.state_root(state) / "logs" / "setup"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    results: dict[str, Any] = {}
+    all_ok = True
+
+    for part in pins.PART_IDS:
+        clone = lk.path(part, state=state)
+        sha12 = lk.sha12(part)
+        if not clone.is_dir():
+            all_ok = False
+            results[part] = {
+                "ok": False,
+                "commit": sha12,
+                "steps": [],
+                "duration_s": 0.0,
+                "error": f"part {part}: clone missing at {clone}",
+            }
+            continue
+
+        part_cmds = (
+            commands[part]
+            if (commands is not None and part in commands)
+            else _default_setup_commands(part, clone)
+        )
+        checks = _setup_checks(part, clone) if commands is None else []
+        steps: list[runner.Step] = []
+        part_ok = True
+        err_msg: str | None = None
+        notes: list[str] = []
+
+        for idx, cmd in enumerate(part_cmds):
+            step = runner.run(
+                part,
+                cmd,
+                cwd=clone,
+                timeout_s=SETUP_TIMEOUT_S,
+                log_path=log_dir / f"part{part}-setup-{idx}.log",
+                lock=lk,
+            )
+            steps.append(step)
+            if step["exit"] != 0:
+                part_ok = False
+                err_msg = f"part {part}: setup command {' '.join(cmd)} failed at {sha12}"
+                break
+
+        if part_ok:
+            for idx, (argv, env_extra, label) in enumerate(checks):
+                step = runner.run(
+                    part,
+                    argv,
+                    cwd=clone,
+                    env_extra=env_extra,
+                    timeout_s=GPU_CHECK_TIMEOUT_S,
+                    log_path=log_dir / f"part{part}-check-{idx}.log",
+                    lock=lk,
+                )
+                steps.append(step)
+                check_ok = step["exit"] == 0
+                if check_ok and part == "6":
+                    check_ok = _contract_version_is_1(step.stdout)
+                if not check_ok:
+                    part_ok = False
+                    err_msg = f"part {part}: check {label} failed at {sha12}"
+                    break
+
+        if part == "2" and commands is None and part_ok and not checks:
+            notes.append("gpu venv not found: Part 2 runs with --backend cpu or through its uv environment")
+
+        if not part_ok:
+            all_ok = False
+        results[part] = {
+            "ok": part_ok,
+            "commit": sha12,
+            "steps": steps,
+            "duration_s": round(sum(float(s["duration_s"]) for s in steps), 4),
+            "error": err_msg,
+            "notes": notes,
+        }
+
+    return {"ok": all_ok, "parts": results}
+
+
+def doctor_parts(
+    lock: pins.Lock | None = None,
+    state: Path | str | None = None,
+    commands: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Verify each part's contract or help command at its pinned commit."""
+    lk = lock or pins.load()
+    log_dir = config.state_root(state) / "logs" / "doctor-parts"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    results: dict[str, Any] = {}
+    all_ok = True
+
+    for part in pins.PART_IDS:
+        clone = lk.path(part, state=state)
+        sha12 = lk.sha12(part)
+        default_cmd, env_extra, label = _default_doctor_command(part, clone)
+        if commands is not None and part in commands:
+            cmd = commands[part]
+            env_extra = None
+            label = " ".join(cmd)
+        else:
+            cmd = default_cmd
+
+        if not clone.is_dir():
+            all_ok = False
+            results[part] = {
+                "ok": False,
+                "commit": sha12,
+                "step": None,
+                "error": f"part {part}: {label} not found at {sha12}",
+            }
+            continue
+
+        exe_path = Path(cmd[0])
+        if exe_path.is_absolute() and not exe_path.exists():
+            all_ok = False
+            results[part] = {
+                "ok": False,
+                "commit": sha12,
+                "step": None,
+                "error": f"part {part}: {label} not found at {sha12}",
+            }
+            continue
+
+        try:
+            step = runner.run(
+                part,
+                cmd,
+                cwd=clone,
+                env_extra=env_extra,
+                timeout_s=config.TIMEOUTS["doctor"],
+                log_path=log_dir / f"part{part}-doctor.log",
+                lock=lk,
+            )
+        except OSError:
+            all_ok = False
+            results[part] = {
+                "ok": False,
+                "commit": sha12,
+                "step": None,
+                "error": f"part {part}: {label} not found at {sha12}",
+            }
+            continue
+
+        stdout = step.get("stdout", "")
+        part_ok = step["exit"] == 0
+        if part_ok and commands is None:
+            if part == "2" and "--backend" not in stdout:
+                part_ok = False
+            elif part == "6" and not _contract_version_is_1(stdout):
+                part_ok = False
+
+        err_msg = None if part_ok else f"part {part}: {label} not found at {sha12}"
+        if not part_ok:
+            all_ok = False
+
+        results[part] = {
+            "ok": part_ok,
+            "commit": sha12,
+            "step": step,
+            "error": err_msg,
+        }
+
+    return {"ok": all_ok, "parts": results}
+
+
+def cli_setup_parts(
+    lock: pins.Lock | None = None,
+    state: Path | str | None = None,
+) -> int:
+    """CLI entry point for `part7 setup-parts`."""
+    try:
+        res = setup_all(lock=lock, state=state)
+    except Exception as exc:
+        print(f"setup-parts: {exc}", file=sys.stderr)
+        return 1
+    for p_info in res["parts"].values():
+        if p_info.get("error"):
+            print(p_info["error"], file=sys.stderr)
+    print(json.dumps(res, indent=2))
+    return 0 if res["ok"] else 1
+
+
+def cli_doctor_parts(
+    lock: pins.Lock | None = None,
+    state: Path | str | None = None,
+) -> int:
+    """CLI entry point for `part7 doctor-parts`."""
+    try:
+        res = doctor_parts(lock=lock, state=state)
+    except Exception as exc:
+        print(f"doctor-parts: {exc}", file=sys.stderr)
+        return 1
+    for p_info in res["parts"].values():
+        if p_info.get("error"):
+            print(p_info["error"], file=sys.stderr)
+    print(json.dumps(res, indent=2))
+    return 0 if res["ok"] else 1

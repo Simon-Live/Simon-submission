@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>people harness</title>
+<link rel="stylesheet" href="../../../web/styles.css">
+<main id="app"></main>
+<div id="switch"></div>
+<script type="module">
+// The fake API is installed by the test through page.route; this page only mounts the screens.
+// ?screen=picker&mode=single|group&job=<id>&trim=<ms>   ?screen=board&job=<id>   ?screen=switch
+import { openPeoplePicker } from "../../../web/people.js";
+import { mountGroupResult } from "../../../web/group-result.js";
+import { mountModeSwitch } from "../../../web/group.js";
+const q = new URLSearchParams(location.search);
+const root = document.getElementById("app");
+window.__events = [];
+if (q.get("screen") === "board") {
+  window.__cleanup = mountGroupResult(root, q.get("job") || "g1");
+  window.__ready = true;
+} else if (q.get("screen") === "switch") {
+  window.__switch = mountModeSwitch(document.getElementById("switch"), { onChange: (m) => window.__events.push(m) });
+  window.__ready = true;
+} else {
+  window.__ready = true;
+  window.__result = "pending";
+  openPeoplePicker(root, {
+    peopleJob: q.get("job") || "p1", mode: q.get("mode") || "single",
+    trimMs: q.get("trim") ? Number(q.get("trim")) : undefined, pollMs: 100,
+  }).then((r) => { window.__result = r; });
+}
+</script>

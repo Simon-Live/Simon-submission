@@ -1,0 +1,24 @@
+/* Progress bar, spinner and skeleton (progress.js). Tokens come from styles.css. */
+.pg { margin: 16px 0; }
+.pg-text { margin: 0 0 8px; font-size: 16px; }
+.pg-elapsed { margin: 8px 0 0; color: var(--muted, #787774); font-size: 14px; }
+.pg-bar { position: relative; height: 8px; border-radius: 4px; background: var(--soft, #f7f6f3); border: 1px solid var(--line, #eaeaea); overflow: hidden; }
+.pg-fill { display: block; height: 100%; background: var(--blue-ink, #1f6c9f); transition: width 0.25s ease-out; }
+.pg-bar[data-mode="indeterminate"] .pg-fill { position: absolute; width: 35%; animation: pg-slide 1.4s ease-in-out infinite; }
+@keyframes pg-slide { from { left: -35%; } to { left: 100%; } }
+.pg-loading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 0; color: var(--muted, #787774); font-size: 14px; }
+.pg-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line, #eaeaea); border-top-color: var(--blue-ink, #1f6c9f); animation: pg-spin 0.8s linear infinite; }
+@keyframes pg-spin { to { transform: rotate(360deg); } }
+.pg-skel { flex-basis: 100%; display: grid; gap: 8px; }
+.pg-skel i { display: block; height: 14px; border-radius: 4px; background: var(--soft, #f7f6f3); animation: pg-pulse 1.4s ease-in-out infinite; }
+.pg-skel i:nth-child(2) { width: 80%; }
+.pg-skel i:nth-child(3) { width: 55%; }
+@keyframes pg-pulse { 50% { opacity: 0.45; } }
+.pg-loading.compact { position: absolute; inset: 0; z-index: 3; justify-content: center; padding: 0; background: rgba(255, 255, 255, 0.7); }
+.pg-stage-note { color: var(--muted, #787774); font-size: 13px; margin-left: 8px; }
+.pg-reason { margin: 8px 0 0; color: var(--muted, #787774); font-size: 14px; }
+@media (prefers-reduced-motion: reduce) {
+  .pg-bar[data-mode="indeterminate"] .pg-fill { animation: none; left: 0; width: 100%; opacity: 0.5; }
+  .pg-spinner, .pg-skel i { animation: none; }
+  .pg-fill { transition: none; }
+}

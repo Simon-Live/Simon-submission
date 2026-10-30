@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>result harness</title>
+<style>html,body{margin:0;background:#0c1118}</style>
+<div id="app"></div>
+<script type="module">
+import { mountResult, mountViewer } from "../../../web/result.js";
+const q = new URLSearchParams(location.search);
+const [analysis, replay] = await Promise.all(
+  ["analysis-1.2.0.json", "replay.json"].map((f) => fetch(`../../../fixtures/input/${f}`).then((r) => r.json())),
+);
+const c = q.get("case") || "ok";
+if (c === "refused" || c === "noreplay") {
+  analysis.score = null; analysis.faults = [];
+  analysis.status = { code: "different_movement", text: "This looks like a different movement from the one you were asked to copy." };
+}
+if (c === "oldrefusal") { // the current pin: exit 3, status refusal, no score, no faults
+  analysis.score = null; analysis.faults = [];
+  analysis.status = { code: "not_enough_visible", text: "Only your upper body was in view." };
+}
+if (c === "partial") { // schema 1.4.0: status ok, warnings, low-confidence faults, a score capped at 59
+  analysis.warnings = [{ code: "moving_part_out_of_frame", text: "Your legs were out of frame." }, { code: "low_match", text: "Low match with the trainer." }];
+  analysis.match = { quality: "low", residual: 0.4, timing_corr: 0.2, limits: {} };
+  analysis.faults.forEach((f) => { f.confidence = "low"; });
+  analysis.score = { ...analysis.score, value: 41, grade: "F", capped_by: ["moving_part_out_of_frame", "low_match"] };
+}
+if (c === "nofaults") analysis.faults = [];
+if (c === "fallback") analysis.phrasing.faults[1] = { backend: "template", model: null, fallback_reason: "live phrasing timed out" };
+const root = document.getElementById("app");
+if (c === "viewer") window.__r = await mountViewer(root, { replay });
+else window.__r = await mountResult(root, { analysis, replay: c === "badreplay" ? { fps: 0 } : c === "noreplay" ? undefined : replay });
+window.__ready = true;
+</script>

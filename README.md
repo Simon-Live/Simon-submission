@@ -1,8 +1,8 @@
-# Simon Part 7 — Stitching into one app
+# Simon Part 7: Stitching into one app
 
 
 Part of **Simon** → hub repo: https://github.com/moalborati/simon (scope and the other parts live there; this repo is only this part).
-This repo is **only** Simon Part 7. It is a black box: it reads its input files and writes its output files, and knows nothing about the other parts. Keep it that way — that isolation is what lets agents work here with a small context.
+This repo is **only** Simon Part 7. It is a black box: it reads its input files and writes its output files, and knows nothing about the other parts. Keep it that way: that isolation is what lets agents work here with a small context.
 
 Simon in one line (all you need): a trainer records an expected movement once; a follower performs it to camera; the follower's 3D movement is compared against the expected one and the differences are reported in plain words. This part is one step of that.
 
@@ -28,12 +28,17 @@ none (stitches Parts 1–6 through their shared files)
 
 End to end on a movement the app was never hand-configured for: record it via Part 6, follow it, and the faults reported match running Parts 2–5 directly on the same recorded follower clip.
 
-Done-check: `make check-7` — prints a metrics JSON and exits 0 only when every threshold passes. Write the check as part of this work; until it exists, the stub in the Makefile fails honestly.
+Done-check: `make check-7` prints a metrics JSON and exits 0 only when every threshold passes. Write the check as part of this work; until it exists, the stub in the Makefile fails honestly.
 
 ## Demos
 
-- **Isolated:** n/a — this part is the integrated demo.
+- **Isolated:** n/a, this part is the integrated demo.
 - **Integrated:** The submission demo: one take records an exercise, a follower is analysed against it.
+
+## Develop and debug
+
+- [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md): set up a host from a fresh clone, run the app (`make dev`), debug a job, run the tests, re-pin the parts.
+- [docs/design/](docs/design/README.md): the specs and architecture decisions behind the code.
 
 ## Rules
 

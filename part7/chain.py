@@ -1,0 +1,536 @@
+"""Trainer chain (Parts 1, 2, 3, 4) and follower chain (Parts 2, 3, 5) with hand-off doctors (TICKET-014, 021)."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import shutil
+import sys
+import threading
+from typing import Any, Callable
+
+from part7 import config, crop, people, pins, runner
+from part7.parts import (
+    p1_keyframes,
+    p2_pose,
+    p3_skeleton,
+    p4_animate,
+    p5_analyse,
+    p6_catalog,
+)
+
+
+def _utc_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+class _Stop(Exception):
+    """A chain step failed; carries the result dict to return."""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__(result.get("error"))
+        self.result = result
+
+
+def _step_failed(label: str, step: runner.Step) -> str:
+    return f"the {label} step took too long" if step.get("timed_out") else f"the {label} step failed"
+
+
+class _Run:
+    """Shared state of one chain run: steps, notes, the stage callback and the failure result."""
+
+    def __init__(self, video: Path, report: Callable[[str], None] | None, extra: dict[str, Any]) -> None:
+        self.video = video
+        self.report = report
+        self.steps: list[runner.Step] = []
+        self.notes: list[str] = []
+        self.extra = extra
+
+    def stage(self, name: str) -> None:
+        if self.report is not None:
+            self.report(name)
+
+    def fail(self, stage: str, reason: str) -> _Stop:
+        return _Stop(
+            {
+                "ok": False, "status": "failed", "stage": stage, "error": f"failed:{stage}: {reason}",
+                "clip": str(self.video), "steps": self.steps, "files": {},
+                "note": "; ".join(self.notes) if self.notes else None, **self.extra,
+            }
+        )
+
+    def check(self, stage: str, step: runner.Step, what: str, part: int) -> runner.Step:
+        """Record a doctor or validate step; raise when it rejects `what`."""
+        self.steps.append(step)
+        if step["exit"] != 0:
+            raise self.fail(stage, f"{what} was rejected by part {part}")
+        return step
+
+
+def _pose(
+    run: _Run, video: Path, work: Path, backend: str, lk: pins.Lock, state: Any, person: people.PersonSel | None = None
+) -> Path:
+    """Part 2 on `video` holding the GPU lock, then Part 2's doctor; return `pose3d.json`.
+
+    With `person` the 3D is the people job's choice (`people.pose_for`), or already done (`person.pose3d`).
+    """
+    if person is not None and person.pose3d is not None:
+        return person.pose3d
+    run.stage("pose")
+    try:
+        if person is not None:
+            step, pose3d, note = people.pose_for(person, person.ids or [person.id], video, work, backend, lk, state)
+            if note:
+                run.notes.append(note)
+        else:
+            step, pose3d = p2_pose.run(video, work, backend=backend, lock=lk, state=state)
+    except TimeoutError:
+        raise run.fail("pose", "the GPU is busy, try again later") from None
+    except RuntimeError:
+        raise run.fail("pose", "the 3D step is not available") from None
+    run.steps.append(step)
+    if step["exit"] != 0 or not pose3d.is_file():
+        raise run.fail("pose", _step_failed("3D", step))
+    run.check("pose", p2_pose.doctor(pose3d, work, lock=lk, state=state), "pose3d.json", 2)
+    return pose3d
+
+
+def _has_people(path: Path) -> bool:
+    """False when Part 1's file says `people: []` (processor.md fallback row)."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True  # the doctor already read it; an odd file is not this check's business
+    return not (isinstance(doc, dict) and doc.get("people") == [])
+
+
+def _keyframes(
+    run: _Run, video: Path, work: Path, lk: pins.Lock, state: Any, keys_dir: Any
+) -> tuple[Path | None, int]:
+    """Part 1 with the fallback of `processor.md`; return `(keyframes.json or None, provenance part)`.
+
+    Part 1 gets `SIMON7_PART1_TIMEOUT_S` (default 90); a timeout is a fallback to Part 3 `every:10`, never a failure.
+    """
+    timeout_s = config.part1_timeout_s()
+    step, kf_path, note = p1_keyframes.run(
+        video, work, lock=lk, state=state, keys_dir=keys_dir, timeout_s=timeout_s
+    )
+    if step is not None and step.get("timed_out"):
+        note = f"key frames from Part 3, Part 1 took longer than {timeout_s:g} s"
+    if step is not None:
+        run.steps.append(step)
+    if note:
+        run.notes.append(note)
+    if kf_path is None or not Path(kf_path).is_file():
+        return (None, 3)
+    doc = p1_keyframes.doctor(kf_path, work, lock=lk, state=state)
+    run.steps.append(doc)
+    if doc["exit"] != 0:
+        run.notes.append("key frames from Part 3, Part 1 keyframes rejected by Part 6 doctor")
+        return (None, 3)
+    if not _has_people(Path(kf_path)):
+        run.notes.append("key frames from Part 3, Part 1 found no person")
+        return (None, 3)
+    return (Path(kf_path), 1)
+
+
+class _Part1:
+    """Part 1 on its own thread beside Part 2; `join` merges its steps and notes into the run (they are independent)."""
+
+    def __init__(self, run: _Run, video: Path, work: Path, lk: pins.Lock, state: Any, keys_dir: Any) -> None:
+        self._run = run
+        self._side = _Run(run.video, None, {})
+        self._out: tuple[Path | None, int] = (None, 3)
+        self._thread = threading.Thread(
+            target=self._work, args=(video, work, lk, state, keys_dir), name="part7-part1", daemon=True
+        )
+        self._thread.start()
+
+    def _work(self, video: Path, work: Path, lk: pins.Lock, state: Any, keys_dir: Any) -> None:
+        try:
+            self._out = _keyframes(self._side, video, work, lk, state, keys_dir)
+        except Exception:  # Part 1 never fails the job; Part 3 chooses the key frames
+            self._side.notes.append("key frames from Part 3, Part 1 failed unexpectedly")
+            self._out = (None, 3)
+
+    def join(self) -> tuple[Path | None, int]:
+        self._thread.join()
+        self._run.steps.extend(self._side.steps)
+        self._run.notes.extend(self._side.notes)
+        return self._out
+
+
+def _skeleton(
+    run: _Run, pose3d: Path, kf_arg: Path | str, work: Path, lk: pins.Lock, state: Any, person: str | None = None
+) -> tuple[Path, Path]:
+    """Part 3 `--view part4`; return `(skeleton.json, keyframes.v1.json)`."""
+    run.stage("skeleton")
+    steps, skel, kf_v1, note = p3_skeleton.part4(pose3d, kf_arg, work, lock=lk, state=state, person=person)
+    run.steps.extend(steps)
+    if note:
+        run.notes.append(note)
+    if steps[-1]["exit"] != 0 or not skel.is_file() or not kf_v1.is_file():
+        raise run.fail("skeleton", _step_failed("skeleton", steps[-1]))
+    run.check("skeleton", p3_skeleton.doctor(skel, "part4", work, lock=lk, state=state), "skeleton.json", 3)
+    return (skel, kf_v1)
+
+
+def _animation(run: _Run, skel: Path, kf_v1: Path, work: Path, lk: pins.Lock, state: Any) -> Path:
+    """Part 4 validate, animate, validate, then Part 5's loader check; return `animation.json`."""
+    run.stage("animation")
+    run.check("animation", p4_animate.validate("skeleton", skel, work, lock=lk, state=state), "skeleton.json", 4)
+    run.check("animation", p4_animate.validate("keyframes", kf_v1, work, lock=lk, state=state), "keyframes.json", 4)
+    step, out = p4_animate.run(skel, kf_v1, work, lock=lk, state=state)
+    run.steps.append(step)
+    if step["exit"] != 0 or not out.is_file():
+        raise run.fail("animation", "the animation step failed")  # Part 4 exit 1, AC-R7
+    final = work / "animation.json"
+    if out.resolve() != final.resolve():
+        shutil.copyfile(out, final)
+    run.check("animation", p4_animate.validate("animation", final, work, lock=lk, state=state), "animation.json", 4)
+    run.check(
+        "animation", p5_analyse.doctor(final, work, consumer="part5", lock=lk, state=state), "animation.json", 5
+    )
+    return final
+
+
+def _catalog(
+    run: _Run, folder: Path, catalog: Path, name: str, category: str, kf_part: int, work: Path,
+    lk: pins.Lock, state: Any,
+) -> str:
+    """Part 6 `import` with provenance, then Part 6 doctor on the entry; return the entry id."""
+    run.stage("catalog")
+    parts = {"keyframes": kf_part, "skeleton": 3, "animation": 4}
+    step, manifest = p6_catalog.import_entry(catalog, folder, name, category, parts, work, lock=lk, state=state)
+    run.steps.append(step)
+    if step["exit"] != 0 or not manifest or not manifest.get("id"):
+        raise run.fail("catalog", "the catalog did not accept the entry")
+    doc = p6_catalog.doctor(Path(catalog) / str(manifest["id"]), work, lock=lk, state=state)
+    run.steps.append(doc)
+    if doc["exit"] != 0:
+        raise run.fail("catalog", "the catalog did not accept the entry")
+    return str(manifest["id"])
+
+
+def _part1_video(run: _Run, video: Path, work: Path, person: people.PersonSel | None) -> Path:
+    """The video Part 1 sees: a copy cropped to `person` (people.md), else `video` itself."""
+    if person is None or person.people_work is None:
+        return video
+    try:
+        cropped = crop.cropped_for_person(video, person.people_work / "tracks.json", person.id, work / "person.mp4")
+    except (ValueError, RuntimeError, OSError):
+        run.notes.append(f"Part 1 saw the whole picture, the crop to person {person.id} failed")
+        return video
+    run.notes.append(f"Part 1 ran on a copy cropped to person {person.id}")
+    return cropped
+
+
+def trainer(
+    video: Path | str,
+    work: Path | str,
+    report: Callable[[str], None] | None = None,
+    lock: pins.Lock | None = None,
+    backend: str = "gpu",
+    state: Path | str | None = None,
+    keys_dir: Path | str | None = None,
+    catalog: Path | str | None = None,
+    name: str = "Chain trainer",
+    category: str = "exercise",
+    person: people.PersonSel | None = None,
+) -> dict[str, Any]:
+    """Run the trainer chain of `processor.md` (Parts 1, 2, 3, 4, then Part 6 `import` into `catalog`).
+
+    `video` is the normalized H.264 MP4. Stages reported: keyframes, pose, skeleton, animation, catalog.
+    Without `catalog` the chain ends after Part 4 (no entry is made). With `person` the chain is about that
+    one person of a people job: Part 1 sees a copy cropped to them and Part 3 gets `--person`.
+    """
+    lk = lock or pins.load()
+    video_p, work_p = Path(video), Path(work)
+    work_p.mkdir(parents=True, exist_ok=True)
+    run = _Run(video_p, report, {"parts": {"keyframes": 3, "skeleton": 3, "animation": 4}})
+    try:
+        run.stage("keyframes")
+        part1 = _Part1(run, _part1_video(run, video_p, work_p, person), work_p, lk, state, keys_dir)
+        try:
+            pose3d = _pose(run, video_p, work_p, backend, lk, state, person)
+        finally:
+            kf_path, kf_part = part1.join()  # Part 1 and Part 2 run together; Part 3 needs both
+        run.extra["parts"] = {"keyframes": kf_part, "skeleton": 3, "animation": 4}
+        skel, kf_v1 = _skeleton(
+            run, pose3d, kf_path if kf_path is not None else "every:10", work_p, lk, state, person and person.id
+        )
+        final_anim = _animation(run, skel, kf_v1, work_p, lk, state)
+        final_kf = work_p / "keyframes.json"
+        if kf_part == 3 or not final_kf.is_file():
+            shutil.copyfile(kf_v1, final_kf)
+        entry_id = None
+        if catalog is not None:
+            folder = work_p / "import"
+            folder.mkdir(parents=True, exist_ok=True)
+            for src, dst in (
+                (final_kf, "keyframes.json"), (skel, "skeleton.json"),
+                (final_anim, "animation.json"), (video_p, "video.mp4"),
+            ):
+                shutil.copyfile(src, folder / dst)
+            entry_id = _catalog(run, folder, Path(catalog), name, category, kf_part, work_p, lk, state)
+    except _Stop as stop:
+        return stop.result
+    return {
+        "ok": True, "status": "done", "stage": "done", "clip": str(video_p), "steps": run.steps,
+        "files": {
+            "keyframes": str(final_kf), "skeleton": str(skel), "animation": str(final_anim),
+            "pose3d": str(pose3d), "keyframes_v1": str(kf_v1),
+        },
+        "parts": run.extra["parts"], "entry_id": entry_id,
+        "note": "; ".join(run.notes) if run.notes else None, "error": None,
+    }
+
+
+# processor.md "Always analysed": a take is never refused. When Part 2 finds no person, or Part 3 or Part 5 cannot run,
+# Part 7 writes the analysis itself (status ok, one warning, score 0, grade F). A busy GPU, a missing tool or a
+# timeout are infrastructure and stay failures.
+_OWN_WARNING = {
+    "pose": ("no_person", "No person was found in this take."),
+    "skeleton": ("no_usable_measures", "Nothing in this take could be measured against the trainer."),
+    "analyse": ("no_usable_measures", "Nothing in this take could be measured against the trainer."),
+}
+_INFRA_REASONS = ("busy", "not available", "took too long")
+
+
+def _is_analysis_case(result: dict[str, Any]) -> bool:
+    """True when a failed follower chain result is about the take (not the machine)."""
+    reason = str(result.get("error") or "")
+    return result.get("stage") in _OWN_WARNING and not any(m in reason for m in _INFRA_REASONS)
+
+
+def write_own_analysis(path: Path, stage: str, reason: str) -> Path:
+    """Write Part 7's own analysis for a take Part 5 could not see: ok, one warning, score 0, grade F."""
+    code, text = _OWN_WARNING[stage]
+    doc = {
+        "format": "simon.analysis.v1", "schema_version": "1.4.0", "source": "part7",
+        "status": {"code": "ok", "text": text},
+        "warnings": [{"code": code, "text": text, "reason": reason}],
+        "match": {"quality": "low", "residual": None, "timing_corr": None, "limits": {}},
+        "faults": [],
+        "score": {"version": "simon.score.v1", "value": 0, "grade": "F", "components": None, "capped_by": [code]},
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def follower(
+    video: Path | str,
+    expected: Path | str,
+    work: Path | str,
+    report: Callable[[str], None] | None = None,
+    lock: pins.Lock | None = None,
+    backend: str = "gpu",
+    state: Path | str | None = None,
+    phrasing: str = "template",
+    person: people.PersonSel | None = None,
+    expected_visibility: Path | str | None = None,
+) -> dict[str, Any]:
+    """`_follower_chain`, except that a failure about the take itself still ends in an analysis (an F with a warning)."""
+    res = _follower_chain(
+        video, expected, work, report, lock, backend, state, phrasing, person, expected_visibility
+    )
+    if res.get("ok") or not _is_analysis_case(res):
+        return res
+    stage = str(res["stage"])
+    reason = str(res.get("error") or "").split(": ", 1)[-1]
+    analysis = write_own_analysis(Path(work) / "analysis.json", stage, reason)
+    note = "; ".join(x for x in (res.get("note"), f"analysed by Part 7 alone: {reason}") if x)
+    return {
+        "ok": True, "status": "ok", "stage": "done", "clip": res.get("clip"), "steps": res.get("steps", []),
+        "files": {"analysis": str(analysis)}, "note": note, "error": None,
+    }
+
+
+def _follower_chain(
+    video: Path | str,
+    expected: Path | str,
+    work: Path | str,
+    report: Callable[[str], None] | None = None,
+    lock: pins.Lock | None = None,
+    backend: str = "gpu",
+    state: Path | str | None = None,
+    phrasing: str = "template",
+    person: people.PersonSel | None = None,
+    expected_visibility: Path | str | None = None,
+) -> dict[str, Any]:
+    """Run the follower chain of `journey.md` (Parts 2, 3 `--view part5 --fps 30`, 5) with every doctor.
+
+    With `person` the analysis is that person's (Part 3 `--person`) in a clip of several. With
+    `expected_visibility` (the trainer's `skeleton.json`) Part 5 gets `--expected-visibility`.
+    """
+    lk = lock or pins.load()
+    video_p, expected_p, work_p = Path(video), Path(expected), Path(work)
+    work_p.mkdir(parents=True, exist_ok=True)
+    run = _Run(video_p, report, {})
+    try:
+        pose3d = _pose(run, video_p, work_p, backend, lk, state, person)
+        run.stage("skeleton")
+        step, follower_path = p3_skeleton.part5(pose3d, work_p, lock=lk, state=state, person=person and person.id)
+        run.steps.append(step)
+        if step["exit"] != 0 or not follower_path.is_file():
+            raise run.fail("skeleton", _step_failed("skeleton", step))
+        run.check(
+            "skeleton", p3_skeleton.doctor(follower_path, "part5", work_p, lock=lk, state=state), "follower.json", 3
+        )
+        run.stage("analyse")
+        run.check(
+            "analyse", p5_analyse.doctor(follower_path, work_p, consumer="part5", lock=lk, state=state),
+            "follower.json", 5,
+        )
+        step, analysis, status_code, notes = p5_analyse.run(
+            expected_p, follower_path, work_p, lock=lk, state=state, phrasing=phrasing,
+            expected_visibility=expected_visibility,
+        )
+        run.steps.append(step)
+        run.notes.extend(notes)
+        if step["exit"] not in (0, 3) or not analysis.is_file():
+            raise run.fail("analyse", _step_failed("analysis", step))
+        run.check(
+            "analyse", p5_analyse.doctor(analysis, work_p, consumer="part7", lock=lk, state=state),
+            "analysis.json", 5,
+        )
+    except _Stop as stop:
+        return stop.result
+    replay = work_p / "replay.json"
+    return {
+        "ok": True, "status": status_code, "stage": "done", "clip": str(video_p), "steps": run.steps,
+        "files": {
+            "pose3d": str(pose3d), "follower": str(follower_path), "analysis": str(analysis),
+            **({"replay": str(replay)} if replay.is_file() else {}),
+        },
+        "note": "; ".join(run.notes) if run.notes else None, "error": None,
+    }
+
+
+def _resolve_clip_path(clip_id_or_path: str, state: Path | str | None = None) -> Path:
+    direct = Path(clip_id_or_path)
+    if direct.is_file():
+        return direct.resolve()
+    vdir = config.videos_dir(state)
+    candidates = [
+        vdir / clip_id_or_path / "clip.mp4",
+        vdir / f"{clip_id_or_path}.mp4",
+    ]
+    for cand in candidates:
+        if cand.is_file():
+            return cand.resolve()
+    return candidates[0]
+
+
+def _default_clips_from_manifest() -> tuple[str | None, list[str]]:
+    mpath = config.manifest_path()
+    if not mpath.is_file():
+        return (None, [])
+    try:
+        doc = json.loads(mpath.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return (None, [])
+    clips = doc.get("clips") or []
+    t_id: str | None = None
+    f_ids: list[str] = []
+    for item in clips:
+        if not isinstance(item, dict):
+            continue
+        cid = str(item.get("id") or "")
+        role = str(item.get("role") or "")
+        if not cid:
+            continue
+        if role == "trainer" and t_id is None:
+            t_id = cid
+        elif role in ("follower", "mismatch"):
+            f_ids.append(cid)
+    return (t_id, f_ids)
+
+
+def cli_chain(
+    trainer_id: str | None = None,
+    follower_ids: list[str] | None = None,
+    state: Path | str | None = None,
+    lock: pins.Lock | None = None,
+    backend: str = "gpu",
+) -> int:
+    """CLI entry point for `part7 chain` (`make chain`)."""
+    lk = lock or pins.load()
+    def_trainer, def_followers = _default_clips_from_manifest()
+    chosen_trainer = trainer_id or def_trainer
+    chosen_followers = follower_ids if follower_ids is not None else def_followers
+
+    if not chosen_trainer:
+        print("chain: no trainer clip specified and videos/manifest.json not found", file=sys.stderr)
+        return 2
+
+    stamp = _utc_stamp()
+    cdir = config.check_dir(state)
+    cdir.mkdir(parents=True, exist_ok=True)
+    run_work = cdir / f"chain-work-{stamp}"
+    out_json_path = cdir / f"chain-{stamp}.json"
+
+    trainer_video = _resolve_clip_path(chosen_trainer, state=state)
+    trainer_res = trainer(
+        trainer_video,
+        run_work / "trainer",
+        lock=lk,
+        backend=backend,
+        state=state,
+        catalog=run_work / "catalog",
+        name="Chain trainer",
+    )
+
+    followers_res: list[dict[str, Any]] = []
+    overall_ok = bool(trainer_res.get("ok"))
+
+    if not overall_ok:
+        if trainer_res.get("error"):
+            print(trainer_res["error"], file=sys.stderr)
+    else:
+        expected_anim = Path(trainer_res["files"]["animation"])
+        for idx, fid in enumerate(chosen_followers):
+            f_video = _resolve_clip_path(fid, state=state)
+            f_res = follower(
+                f_video,
+                expected_anim,
+                run_work / f"follower-{idx}-{Path(fid).stem}",
+                lock=lk,
+                backend=backend,
+                state=state,
+                phrasing="template",
+            )
+            followers_res.append(
+                {
+                    "clip": fid,
+                    "steps": f_res["steps"],
+                    "status": f_res["status"],
+                    "ok": f_res["ok"],
+                    "error": f_res.get("error"),
+                }
+            )
+            if not f_res["ok"]:
+                overall_ok = False
+                if f_res.get("error"):
+                    print(f_res["error"], file=sys.stderr)
+                break
+
+    summary = {
+        "pins": lk.pins_short(),
+        "trainer": {
+            "clip": chosen_trainer,
+            "steps": trainer_res["steps"],
+            "ok": trainer_res["ok"],
+            "note": trainer_res.get("note"),
+            "parts": trainer_res.get("parts"),
+            "error": trainer_res.get("error"),
+        },
+        "followers": followers_res,
+        "ok": overall_ok,
+    }
+    text = json.dumps(summary, indent=2)
+    out_json_path.write_text(text + "\n", encoding="utf-8")
+    print(text)
+    return 0 if overall_ok else 1

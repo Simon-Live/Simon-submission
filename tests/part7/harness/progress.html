@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<base href="/">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>progress harness</title>
+<link rel="stylesheet" href="/web/styles.css">
+<main id="app"></main>
+<script type="module">
+// Mounts uploadVideo with a large blob and the progress bar; the test serves a throttled api/uploads.
+import { uploadVideo } from "/web/api.js";
+import { createProgress } from "/web/progress.js";
+const p = createProgress({ testid: "upload-progress", label: "Uploading your take", text: "Uploading your take" });
+document.getElementById("app").append(p.el);
+window.__seen = [];
+window.__done = false;
+uploadVideo(new Blob([new Uint8Array(6 * 1024 * 1024)], { type: "video/webm" }), {
+  onProgress: (sent, total) => { const f = sent / total; window.__seen.push(Math.round(f * 100)); p.setValue(f); p.setText(`Uploading your take, ${Math.round(f * 100)}%`); },
+}).then((r) => { window.__done = r; });
+</script>

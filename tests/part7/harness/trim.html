@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trim harness</title>
+<link rel="stylesheet" href="../../../web/styles.css">
+</head>
+<body>
+<main id="app"></main>
+<script type="module">
+// Test harness for the trim editor, labels, catalog tags and Watch labels (tests/part7/trim.browser.mjs).
+import { openTrimEditor } from "../../../web/trim.js";
+import { mountLabels } from "../../../web/labels.js";
+import { mountCatalog } from "../../../web/catalog.js";
+import { mountWatch } from "../../../web/watch.js";
+
+const q = new URLSearchParams(location.search);
+const root = document.getElementById("app");
+const kase = q.get("case");
+window.__ready = false;
+window.__result = undefined;
+if (kase === "trim") {
+  const blob = await (await fetch(`/clips/${q.get("clip")}`)).blob();
+  window.__promise = openTrimEditor(root, { blob, source: q.get("source") || "recording", manual: q.get("manual") === "1", countdownUsed: q.get("countdown") === "1" })
+    .then((r) => { window.__result = r; window.__done = true; });
+} else if (kase === "labels") {
+  window.__labels = mountLabels(root);
+} else if (kase === "catalog") {
+  mountCatalog(root);
+} else if (kase === "watch") {
+  mountWatch(root, q.get("id") || "e1");
+}
+window.__ready = true;
+</script>
+</body>
+</html>

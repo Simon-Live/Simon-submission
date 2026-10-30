@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Simon</title>
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{"imports": {"three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/"}}
+</script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#/" data-testid="home-link">Simon</a>
+  <nav class="bar-nav" aria-label="Main"><a href="#/record" data-testid="nav-record">Record</a></nav>
+</header>
+<main id="app" tabindex="-1" aria-live="polite"></main>
+<noscript><p class="notice">Simon needs JavaScript. Turn it on and reload.</p></noscript>
+<script type="module" src="app.js"></script>
+</body>
+</html>

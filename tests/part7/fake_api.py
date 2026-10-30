@@ -1,0 +1,162 @@
+"""Test helper only: serves web/ plus a tiny fake of the Part 7 API and the Part 6 proxy.
+
+Not the product server (part7/server.py). Run: python3 fake_api.py <port>
+`GET __test/state` returns what the fake saw (uploads, jobs created) for the driver's witnesses.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+import tempfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+WEB = ROOT / "web"
+FIXTURES = ROOT / "fixtures" / "input"
+MIME = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".md": "text/plain"}
+
+ENTRIES = [
+    {"id": "lateral-raise", "name": "Dumbbell lateral raise", "category": "exercise", "files_source": "import",
+     "video_uri": "video.webm", "animation": "animation.json", "skeleton": "skeleton.json"},
+    {"id": "reverse-lunge", "name": "Reverse lunge", "category": "exercise", "files_source": "fixture",
+     "video_uri": None, "animation": None, "skeleton": "skeleton.json"},
+    {"id": "salsa-basic", "name": "Salsa basic step", "category": "dance", "files_source": "fixture",
+     "video_uri": None, "animation": "animation.json", "skeleton": "skeleton.json"},
+]
+TRAINER_STAGES = ["upload", "keyframes", "pose", "skeleton", "animation", "catalog"]
+FOLLOW_STAGES = ["upload", "pose", "skeleton", "analyse"]
+
+STATE = {"uploads": [], "jobs": {}, "polls": {}, "range_requests": 0}
+_video = {}
+
+
+def video_bytes() -> bytes:
+    if "b" not in _video:
+        out = Path(tempfile.mkdtemp()) / "t.webm"
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=15",
+                        "-t", "3", "-c:v", "libvpx", "-b:v", "200k", str(out)], check=True)
+        _video["b"] = out.read_bytes()
+    return _video["b"]
+
+
+def animation() -> dict:
+    return {"fps": 30, "frames": [{"t": i / 30, "joints": {}} for i in range(30)]}
+
+
+def job_view(job_id: str) -> tuple[int, dict]:
+    job = STATE["jobs"].get(job_id)
+    if not job:
+        return 404, {"error": "unknown job"}
+    n = STATE["polls"][job_id] = STATE["polls"].get(job_id, 0) + 1
+    stages = TRAINER_STAGES if job["kind"] == "trainer" else FOLLOW_STAGES
+    base = {"id": job_id, "kind": job["kind"], "entry_id": job.get("entry_id"), "result": None, "note": ""}
+    if job_id.startswith("bad"):
+        return 200, {**base, "status": "failed", "stage": "pose", "note": "No person was found in the video.", "queue_position": None}
+    if n == 1:
+        return 200, {**base, "status": "queued", "stage": stages[0], "queue_position": 2}
+    if n - 2 < len(stages):
+        return 200, {**base, "status": "running", "stage": stages[n - 2], "queue_position": None}
+    entry = "lateral-raise" if job["kind"] == "trainer" else job.get("entry_id")
+    return 200, {**base, "status": "done", "stage": stages[-1], "entry_id": entry, "queue_position": None}
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):  # quiet
+        pass
+
+    def send(self, code, body=b"", ctype="application/json", extra=None):
+        if not isinstance(body, bytes):
+            body = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Accept-Ranges", "bytes")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def do_GET(self):
+        path = self.path.split("?")[0].lstrip("/")
+        if path == "api/config":
+            return self.send(200, {"base": "", "limits": {"max_seconds": 60, "max_bytes": 95000000, "recorder_bps": 2500000},
+                                   "phrasing": "template", "movement": "lateral-raise", "fixture_result": True})
+        if path == "api/health":
+            return self.send(200, {"ok": True})
+        if path == "__test/state":
+            return self.send(200, STATE)
+        if path == "catalog/api/entries":
+            return self.send(200, {"entries": ENTRIES})
+        m = re.match(r"catalog/api/entries/([^/]+)(?:/(.+))?$", path)
+        if m:
+            return self.entry(m.group(1), m.group(2))
+        if path == "catalog/":
+            return self.send(200, b"<!doctype html><title>Entry</title><p>Part 6 entry page</p>", "text/html")
+        m = re.match(r"api/jobs/([^/]+)$", path)
+        if m:
+            return self.send(*job_view(m.group(1)))
+        if path == "api/fixture-result":
+            return self.send(200, {"analysis": json.loads((FIXTURES / "analysis-1.2.0.json").read_text()),
+                                   "replay": json.loads((FIXTURES / "replay.json").read_text())})
+        m = re.match(r"api/results/([^/]+)/(analysis|replay)\.json$", path)
+        if m:
+            f = "analysis-1.2.0.json" if m.group(2) == "analysis" else "replay.json"
+            return self.send(200, (FIXTURES / f).read_bytes())
+        return self.static(path)
+
+    def entry(self, eid, file):
+        entry = next((e for e in ENTRIES if e["id"] == eid), None)
+        if not entry:
+            return self.send(404, {"error": "not found"})
+        if file is None:
+            return self.send(200, entry)
+        if file == "animation.json":
+            return self.send(200, animation())
+        if file == "video.webm":
+            data, rng = video_bytes(), self.headers.get("Range")
+            if rng:
+                STATE["range_requests"] += 1
+                a, _, b = rng.removeprefix("bytes=").partition("-")
+                start = int(a or 0)
+                end = int(b) if b else len(data) - 1
+                return self.send(206, data[start:end + 1], "video/webm",
+                                 {"Content-Range": f"bytes {start}-{end}/{len(data)}"})
+            return self.send(200, data, "video/webm")
+        return self.send(404, {"error": "not found"})
+
+    def static(self, path):
+        p = (WEB / (path or "index.html")).resolve()
+        if p.is_dir():
+            p = p / "index.html"
+        if WEB not in p.parents or not p.is_file():
+            return self.send(404, {"error": "not found"})
+        return self.send(200, p.read_bytes(), MIME.get(p.suffix, "application/octet-stream"))
+
+    def do_POST(self):
+        path = self.path.split("?")[0].lstrip("/")
+        body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if path == "api/uploads":
+            if not (self.headers.get("Content-Type") or "").startswith("video/"):
+                return self.send(400, {"error": "not a video"})
+            STATE["uploads"].append({"size": len(body), "type": self.headers.get("Content-Type")})
+            return self.send(201, {"upload_id": f"u{len(STATE['uploads'])}", "duration_ms": 3000, "width": 320, "height": 240})
+        data = json.loads(body or b"{}")
+        if path in ("api/trainer", "api/follow"):
+            kind = "trainer" if path.endswith("trainer") else "follow"
+            if kind == "follow" and data.get("entry_id") == "nope":
+                return self.send(404, {"error": "unknown entry"})
+            jid = f"bad{len(STATE['jobs'])}" if data.get("name") == "Fails" else f"job{len(STATE['jobs']) + 1}"
+            STATE["jobs"][jid] = {"kind": kind, **data}
+            return self.send(202, {"job": {"id": jid}})
+        return self.send(404, {"error": "not found"})
+
+
+if __name__ == "__main__":
+    ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()

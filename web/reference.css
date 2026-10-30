@@ -1,0 +1,37 @@
+/* Trainer reference panel (reference.js). Phone first: picture-in-picture over the preview. */
+.ref-row { position: relative; width: 100%; aspect-ratio: 3 / 4; max-height: 60dvh; }
+.ref-row > .cam { position: absolute; inset: 0; max-height: none; aspect-ratio: auto; height: 100%; }
+.ref { position: absolute; right: 8px; bottom: 8px; z-index: 4; width: 36%; min-width: 120px; background: #000;
+  border: 2px solid #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4); }
+.ref-stage { position: relative; aspect-ratio: 3 / 4; background: #000; cursor: pointer; }
+.ref-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+.ref[data-mirror="true"] .ref-media { transform: scaleX(-1); }
+.ref-figure canvas { width: 100%; height: 100%; }
+.ref-bar { display: flex; gap: 4px; padding: 4px; background: rgba(17, 17, 17, 0.85); }
+.ref-btn { flex: 1; min-height: 44px; padding: 0 6px; font-size: 12px; }
+.ref-offset { display: none; }
+/* Swapped: the trainer fills the frame and the camera shrinks into the corner. */
+.ref-row[data-swap="true"] > .ref { inset: 0; width: auto; min-width: 0; border: 0; border-radius: 8px; display: flex; flex-direction: column; }
+.ref-row[data-swap="true"] > .ref .ref-stage { flex: 1; aspect-ratio: auto; }
+.ref-row[data-swap="true"] > .cam { inset: 8px 8px auto auto; width: 36%; min-width: 120px; height: auto; aspect-ratio: 3 / 4;
+  z-index: 5; border: 2px solid #fff; }
+/* Trim editor: the reference beside the take. */
+.trim-ref-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
+.trim-ref-row > .ref { position: static; width: auto; min-width: 0; border: 0; box-shadow: none; background: transparent; overflow: visible; }
+.trim-ref-row > .ref .ref-stage { aspect-ratio: 3 / 4; max-height: 42dvh; margin: 0 auto; border-radius: 8px; overflow: hidden; }
+.ref[data-mode="trim"] .ref-bar { background: transparent; padding: 4px 0; }
+.ref[data-mode="trim"] .ref-btn[data-testid="reference-swap"] { display: none; }
+.ref[data-mode="trim"] .ref-offset { display: grid; gap: 4px; padding: 4px 0; font-size: 13px; }
+.ref[data-mode="trim"] .ref-offset input { width: 100%; min-height: 44px; }
+.ref-first { max-width: 40%; max-height: 28%; border-radius: 6px; border: 2px solid #fff; object-fit: cover; }
+.ref-first[data-mirror="true"] { transform: scaleX(-1); }
+/* Desktop: the reference beside the camera. */
+@media (min-width: 720px) {
+  .ref-row { aspect-ratio: auto; max-height: none; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ref-row > .cam { position: relative; inset: auto; height: auto; aspect-ratio: 4 / 3; max-height: 60dvh; }
+  .ref { position: static; width: auto; box-shadow: none; border: 1px solid var(--line, #ddd); }
+  .ref-stage { aspect-ratio: 4 / 3; max-height: 60dvh; }
+  .ref-row[data-swap="true"] > .cam { order: 2; inset: auto; width: auto; min-width: 0; border: 0; aspect-ratio: 4 / 3; }
+  .ref-row[data-swap="true"] > .ref { position: static; order: 1; display: block; border: 1px solid var(--line, #ddd); }
+  .ref-row[data-swap="true"] > .ref .ref-stage { aspect-ratio: 4 / 3; }
+}

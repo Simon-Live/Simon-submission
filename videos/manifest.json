@@ -1,0 +1,172 @@
+{
+  "schema": "part7.videos/1",
+  "movement": {
+    "id": "lateral-raise",
+    "name": "Lateral raise",
+    "rule": [
+      {
+        "candidate": "lateral-raise",
+        "verdict": "selected",
+        "reason": "Meets criteria 1 to 4: not in the exclusion list; main motion moves Part 5 measure upper_arm_out by >= 30 deg peak to peak; performed standing with whole body in frame (>= 2 repetitions in <= 20 s, >= 1 s each); openly licensed Pexels trainer and >= 2 follower clips by different people discovered; 0 grep hits across pinned Parts 1 to 6."
+      },
+      {
+        "candidate": "front-raise",
+        "verdict": "not_evaluated",
+        "reason": "Earlier candidate lateral-raise in CANDIDATES order already met criteria 1 to 4."
+      },
+      {
+        "candidate": "overhead-press",
+        "verdict": "not_evaluated",
+        "reason": "Earlier candidate lateral-raise in CANDIDATES order already met criteria 1 to 4."
+      },
+      {
+        "candidate": "knee-raise",
+        "verdict": "not_evaluated",
+        "reason": "Earlier candidate lateral-raise in CANDIDATES order already met criteria 1 to 4."
+      }
+    ]
+  },
+  "clips": [
+    {
+      "id": "pexels-5319084",
+      "role": "trainer",
+      "angle": "front",
+      "url": "https://www.pexels.com/video/5319084/",
+      "download": "https://www.pexels.com/download/video/5319084/",
+      "licence": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "author": "not stated on the page",
+      "title": "A Man Working Out Using Dumbbell · Free Stock Video",
+      "title_source": "huggingface.co/datasets/jovianzm/Pexels-400k (public index of Pexels clip titles)",
+      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium on 2026-10-30; author not read",
+      "range_s": [
+        1.7,
+        12.0
+      ],
+      "note": "One man, standing, whole body in frame, dumbbell lateral raise, 3 repetitions of about 3.3 s inside the range.",
+      "original_sha256": "6180ed5c4a2a161a5cfd2b990f597d0da32e4a0bba9637255a14416af6c17548",
+      "downloaded_at": "2026-10-30T15:08:36Z",
+      "original": {
+        "file": "5319084-uhd_3840_2160_25fps.mp4",
+        "size_bytes": 26390444,
+        "width": 3840,
+        "height": 2160,
+        "fps": 25.0,
+        "duration_s": 20.32
+      },
+      "clip_sha256": "502947d3d4f15a47b8f4e503ae6997117d5bb336b79bf55875ec701136859b6a",
+      "duration_s": 10.32,
+      "width": 1920,
+      "height": 1080,
+      "fps": 25.0
+    },
+    {
+      "id": "pexels-8836968",
+      "role": "follower",
+      "angle": "front",
+      "url": "https://www.pexels.com/video/8836968/",
+      "download": "https://www.pexels.com/download/video/8836968/",
+      "licence": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "author": "not stated on the page",
+      "title": "Woman Lifting Dumbbells · Free Stock Video",
+      "title_source": "huggingface.co/datasets/jovianzm/Pexels-400k (public index of Pexels clip titles)",
+      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium on 2026-10-30; author not read",
+      "range_s": [
+        13.0,
+        30.5
+      ],
+      "note": "One woman, standing, framed from head to hips, dumbbell lateral raise, 2 slow repetitions inside the range.",
+      "original_sha256": "1b5a1461455577ca44a795d7254713ad212681f0500271471634da817b45c677",
+      "downloaded_at": "2026-10-30T15:08:40Z",
+      "original": {
+        "file": "8836968-uhd_4096_2160_25fps.mp4",
+        "size_bytes": 48531358,
+        "width": 4096,
+        "height": 2160,
+        "fps": 25.0,
+        "duration_s": 37.0
+      },
+      "clip_sha256": "6d6a2810f1d983b072a2551e4d4e8a6ad292c7693790b1cfbbbc311cd9bfcf7f",
+      "duration_s": 17.52,
+      "width": 2048,
+      "height": 1080,
+      "fps": 25.0
+    },
+    {
+      "id": "pexels-40297504",
+      "role": "follower",
+      "angle": "front",
+      "url": "https://www.pexels.com/video/40297504/",
+      "download": "https://www.pexels.com/download/video/40297504/",
+      "licence": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "author": "not stated on the page",
+      "title": "not available (page answered HTTP 403 and the id is absent from the public title index)",
+      "title_source": "none: the title could not be read",
+      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium on 2026-10-30; author not read",
+      "range_s": [
+        2.0,
+        12.5
+      ],
+      "note": "One man, standing, framed from head to hips, wide-angle low camera in dim blue light, dumbbells motion-blurred, about 4 dumbbell lateral raises of about 2.3 s inside the range.",
+      "original_sha256": "8edf14cd1e00d0dfa29c153d5de6b75950357481a8eaad3188e6139bd3b86bf9",
+      "downloaded_at": "2026-10-30T15:08:44Z",
+      "original": {
+        "file": "17212887_1920_1080_25fps.mp4",
+        "size_bytes": 6548925,
+        "width": 1920,
+        "height": 1080,
+        "fps": 25.0,
+        "duration_s": 16.12
+      },
+      "clip_sha256": "38318d41d8ef3fb94a38b376c1e1e1653e4d3137f947545154d14f412e0c17df",
+      "duration_s": 10.52,
+      "width": 1920,
+      "height": 1080,
+      "fps": 25.0
+    },
+    {
+      "id": "pexels-5034562",
+      "role": "mismatch",
+      "angle": "side",
+      "url": "https://www.pexels.com/video/5034562/",
+      "download": "https://www.pexels.com/download/video/5034562/",
+      "licence": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "author": "not stated on the page",
+      "title": "Woman Doing Squat Exercise · Free Stock Video",
+      "title_source": "huggingface.co/datasets/jovianzm/Pexels-400k (public index of Pexels clip titles)",
+      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium on 2026-10-30; author not read",
+      "range_s": [
+        0.0,
+        6.8
+      ],
+      "note": "One woman, standing, side view, bodyweight squats (a different movement from the lateral raise) inside the range.",
+      "original_sha256": "cdad47486ae88606f0684dea2e237f9f9491f967706663dffcf627812f81435c",
+      "downloaded_at": "2026-10-30T15:08:48Z",
+      "original": {
+        "file": "5034562-uhd_3840_2160_30fps.mp4",
+        "size_bytes": 40621552,
+        "width": 3840,
+        "height": 2160,
+        "fps": 29.97,
+        "duration_s": 15.315
+      },
+      "clip_sha256": "b151d36ebfe3a4611ffc8e0109668b6f314e5e5be2d51e66e32bbfa5b445602b",
+      "duration_s": 6.807,
+      "width": 1920,
+      "height": 1080,
+      "fps": 29.97
+    }
+  ],
+  "frozen": {
+    "at": "2026-10-30T15:09:16Z",
+    "ticket": "TICKET-013",
+    "clips": {
+      "pexels-8836968": "6d6a2810f1d983b072a2551e4d4e8a6ad292c7693790b1cfbbbc311cd9bfcf7f",
+      "pexels-40297504": "38318d41d8ef3fb94a38b376c1e1e1653e4d3137f947545154d14f412e0c17df",
+      "pexels-5034562": "b151d36ebfe3a4611ffc8e0109668b6f314e5e5be2d51e66e32bbfa5b445602b"
+    }
+  }
+}
