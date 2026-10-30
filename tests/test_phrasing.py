@@ -36,6 +36,9 @@ def clean_env(monkeypatch, tmp_path):
     """Hermetic: no live gate, no model, and the key and ledger point into tmp, never at the real files."""
     for name in ("META_LIVE", "SIMON5_LIVE", "PART5_OLLAMA_MODEL", "PART5_MUSE_PER_MINUTE", "PART5_PHRASING_BUDGET_S"):
         monkeypatch.delenv(name, raising=False)
+    # Scripted clients answer in call order, so these tests run one call at a time; the concurrent
+    # tests (test_phrasing_concurrent) set PART5_PHRASING_CONCURRENCY themselves.
+    monkeypatch.setenv("PART5_PHRASING_CONCURRENCY", "1")
     muse_spark._calls.clear()  # the process-wide rate limit starts empty in every test
     monkeypatch.setenv("PART5_BASETEN_KEY_FILE", str(tmp_path / "no-key-here"))
     monkeypatch.setenv("PART5_BASETEN_USAGE_FILE", str(tmp_path / "usage.jsonl"))

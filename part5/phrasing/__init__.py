@@ -19,6 +19,7 @@ is "<backend>: <what>". A reason never holds a key, a path's contents or a model
 """
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from . import local_llm, muse_spark, template
 from .local_llm import BackendError
@@ -28,6 +29,7 @@ BACKENDS = {TEMPLATE: template, local_llm.NAME: local_llm, muse_spark.NAME: muse
 NO_FAULTS = "no faults to phrase"
 BUDGET_ENV, BUDGET_S = "PART5_PHRASING_BUDGET_S", 20.0  # phrasing time one analysis may spend
 BUDGET_SPENT = "time budget spent"
+CONCURRENCY_ENV, CONCURRENCY = "PART5_PHRASING_CONCURRENCY", 4  # live calls in flight at once
 
 
 def select_backend(explicit=None, live=False):
@@ -49,6 +51,13 @@ def _budget_s():
         return float(os.environ.get(BUDGET_ENV, BUDGET_S))
     except ValueError:
         return BUDGET_S
+
+
+def _concurrency():
+    try:
+        return max(1, int(os.environ.get(CONCURRENCY_ENV, CONCURRENCY)))
+    except ValueError:
+        return CONCURRENCY
 
 
 def _one(module, fault, timeout_s, client):
@@ -81,7 +90,8 @@ def phrase(faults, backend=TEMPLATE, *, timeout_s=10, client=None, live=False, s
     `client` is the HTTP client for the model backends, a callable taking the request dict and
     returning an `HttpResult` or raising; tests inject one, production uses stdlib `urllib`.
     `live` is the `--live` flag. A model call starts only while the time spent so far plus
-    `timeout_s` fits in `budget_s` (default `PART5_PHRASING_BUDGET_S`, 20 s). `selected_by`, when
+    `timeout_s` fits in `budget_s` (default `PART5_PHRASING_BUDGET_S`, 20 s). Model calls run on a thread pool
+    (`PART5_PHRASING_CONCURRENCY`, default 4); lines keep fault order and each fault falls back alone. `selected_by`, when
     given, is copied into the record. Raises ValueError for an unknown backend.
     """
     if backend not in BACKENDS:
@@ -93,12 +103,15 @@ def phrase(faults, backend=TEMPLATE, *, timeout_s=10, client=None, live=False, s
         entries = [_entry(TEMPLATE, reason) for _ in faults]
         return template.lines(faults), _with(_record(backend, module, entries, reason), selected_by)
     budget = _budget_s() if budget_s is None else budget_s
-    start, results = clock(), []
-    for fault in faults:
+    start = clock()
+
+    def run(fault):  # the budget is checked when the call would start, not when it was queued
         if clock() - start + timeout_s > budget:
-            results.append((template.fallback_text(fault), _entry(TEMPLATE, BUDGET_SPENT)))
-        else:
-            results.append(_one(module, fault, timeout_s, client))
+            return template.fallback_text(fault), _entry(TEMPLATE, BUDGET_SPENT)
+        return _one(module, fault, timeout_s, client)
+
+    with ThreadPoolExecutor(max_workers=min(_concurrency(), len(faults))) as pool:
+        results = list(pool.map(run, faults))  # map keeps fault order
     entries = [entry for _, entry in results]
     return [line for line, _ in results], _with(_record(backend, module, entries, None), selected_by)
 

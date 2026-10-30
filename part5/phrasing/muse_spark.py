@@ -11,12 +11,13 @@ The key is the file `~/.config/firm/operator-keys/BASETEN_API_KEY` (`PART5_BASET
 tests). It is read at the call, stripped, and used for the `Authorization` header and nothing else:
 never printed, logged, written, put in a reason, or stored beyond the request. Live calls need the
 key file AND live mode (`--live`, `SIMON5_LIVE=1` or `META_LIVE=1`; #20, ADR-0008). A process makes
-at most 30 calls a minute (`PART5_MUSE_PER_MINUTE`). Every call, whether it succeeds or not, appends one usage line
+at most 30 calls a minute (`PART5_MUSE_PER_MINUTE`), counted under a lock because calls run on a thread pool. Every call, whether it succeeds or not, appends one usage line
 (token counts, model, UTC time, HTTP status; never the key or the text) to
 `~/.simon/baseten_usage.jsonl` (`PART5_BASETEN_USAGE_FILE` for tests).
 """
 import json
 import os
+import threading
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -36,6 +37,8 @@ KEY_ENV, USAGE_ENV, LIVE_ENV = "PART5_BASETEN_KEY_FILE", "PART5_BASETEN_USAGE_FI
 LIVE_ENVS = (LIVE_ENV, "SIMON5_LIVE")  # either switches live mode on (ADR-0008)
 PER_MINUTE_ENV, PER_MINUTE = "PART5_MUSE_PER_MINUTE", 30
 _calls = deque()  # monotonic times of this process's recent model calls, for the rate limit
+_slot_lock = threading.Lock()  # phrasing runs calls on a thread pool: the limit is claimed under it
+_ledger_lock = threading.Lock()  # and each ledger line is appended under it
 
 
 def key_path():
@@ -73,11 +76,12 @@ def _per_minute():
 
 def _take_slot(now):
     """Claim one of this process's calls for the minute ending `now`; BackendError when none is left."""
-    while _calls and now - _calls[0] >= 60:
-        _calls.popleft()
-    if len(_calls) >= _per_minute():
-        raise BackendError("rate limited")
-    _calls.append(now)
+    with _slot_lock:
+        while _calls and now - _calls[0] >= 60:
+            _calls.popleft()
+        if len(_calls) >= _per_minute():
+            raise BackendError("rate limited")
+        _calls.append(now)
 
 
 def _read_key():
@@ -134,7 +138,9 @@ def line(fault, *, timeout_s, client):
     with _open_ledger() as ledger:
         outcome = send(client or urllib_client, request)
         try:
-            ledger.write(json.dumps(_usage_line(outcome), sort_keys=True) + "\n")
+            with _ledger_lock:
+                ledger.write(json.dumps(_usage_line(outcome), sort_keys=True) + "\n")
+                ledger.flush()
         except OSError:
             raise BackendError("usage ledger not writable") from None
     if outcome.error:
