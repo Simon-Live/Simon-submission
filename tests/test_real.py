@@ -389,11 +389,12 @@ def test_ac_r05_every_block_is_marked_not_gated(report):
 def test_ac_r05_check_blocks_split_the_kit_from_the_other_real_takes(report, fallback_report):
     stock_ids = [t["take_id"] for t in real.check_blocks(report)["stock"]["takes"]]
     assert stock_ids[-4:] == ["part2-class", "part2-dance", "part2-single", "part2-stretch"]
-    assert set(stock_ids[:-4]) == {t["take_id"] for t in report["takes"] if t["source"] == "stock"}
+    assert set(stock_ids[:-4]) == {t["take_id"] for t in report["takes"] if t["source"] in ("stock", "lateral-raise")}
     report = fallback_report
     blocks = real.check_blocks(report)
     assert [t["take_id"] for t in blocks["kit"]["takes"]] == kit_ids()
-    assert [t["take_id"] for t in blocks["stock"]["takes"]] == ["part2-class", "part2-dance", "part2-single", "part2-stretch"]
+    assert [t["take_id"] for t in blocks["stock"]["takes"]] == ["pexels-40297504", "pexels-8836968", "part2-class",
+                                                                "part2-dance", "part2-single", "part2-stretch"]
     assert blocks["kit"]["summary"] == report["summary"]["kit"]
     assert blocks["stock"]["summary"]["part2"] == report["summary"]["part2"]
     assert "fallback set is used" in blocks["stock"]["note"] and "knee_valgus was found" in blocks["kit"]["note"]
@@ -733,3 +734,15 @@ def test_script_writes_nothing_when_doctor_rejects_the_output(tmp_path):
     bad.write_text("{}")
     run = imp.run(imp.part2_sha, "main", env={"FAKE_PART3_SKELETON": str(bad)})
     assert run.returncode == 3 and "part5 doctor rejects the Part 3 output" in run.stderr and not imp.out.exists()
+
+
+# ----------------------------------------------------------------- real multi-rep takes (ADR-0010)
+def test_the_lateral_raise_followers_are_reported_rep_by_rep(report):
+    takes = [t for t in report["takes"] if t["source"] == "lateral-raise"]
+    assert [t["take_id"] for t in takes] == ["pexels-40297504", "pexels-8836968"]
+    for t in takes:
+        assert t["status"] == "ok" and t["score"] is not None and t["expected_reference"]["kind"] == "first_rep"
+        assert t["reps"] and all(r["ok"] for r in t["reps"]) and t["label_source"] == "none"
+    assert [len(t["reps"]) for t in takes] == [8, 2]
+    assert report["summary"]["reps"] == {"takes": 2, "accepted": 2, "reps": 10, "reps_passed": 10}
+    assert sum(n.startswith("reps: ") for n in report["notes"]) == 2

@@ -19,6 +19,7 @@ from .words import describe, describe_timed
 
 FORMAT = "simon.analysis.v1"
 SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION_REPS = "1.3.0"   # a document with the rep fields (ADR-0010); one without stays 1.2.0
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 STATUS_CODES = (OK, DIFFERENT_MOVEMENT)
 UNIT = "degrees"
@@ -100,6 +101,8 @@ def fault_to_dict(fault, times=None):
         if times.get("lateral_m") is not None:
             d["lateral_m"] = float(times["lateral_m"])
         d["text_timed"] = f"{describe_timed(fault)} at {d['at_s']:.1f} s"
+        if times.get("reps") is not None:
+            d["reps"] = [int(i) for i in times["reps"]]
     return d
 
 
@@ -127,8 +130,9 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
         faults = [fault_to_dict(f, t) for f, t in zip(faults, times, strict=True)]
     except (AttributeError, KeyError, TypeError, ValueError) as e:
         raise OutputError(f"<built analysis>: cannot build a fault object ({e})") from e
+    by_reps = any("reps" in f for f in faults) or "reps" in (diagnostics or {}).get("guard", {})
     doc = {"format": FORMAT,
-           "schema_version": SCHEMA_VERSION,
+           "schema_version": SCHEMA_VERSION_REPS if by_reps else SCHEMA_VERSION,
            "expected": _input_ref(expected, "expected"),
            "follower": _input_ref(follower, "follower")}
     if status is not None:
@@ -314,3 +318,7 @@ def _validate_times(f, where, fail):
         fail(f"{where}.lateral_m must be a number, got {f['lateral_m']!r}")
     if "text_timed" in f and (not isinstance(f["text_timed"], str) or not f["text_timed"]):
         fail(f"{where}.text_timed must be a non-empty string")
+    if "reps" in f:
+        v = f["reps"]
+        if not (isinstance(v, list) and v and all(_is_int(x) and x >= 0 for x in v)):
+            fail(f"{where}.reps must be a non-empty list of rep indices (integers from 0), got {v!r}")

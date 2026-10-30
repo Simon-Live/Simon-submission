@@ -496,8 +496,8 @@ def test_kit_and_stock_blocks_carry_the_real_take_report(tmp_path, monkeypatch, 
     assert set(kit["summary"]["by_type"]) == {"feet_wide", "elbows_out", "shallow_squat", "knee_caving", "correct"}
     ids = [t["take_id"] for t in stock["takes"]]
     assert ids[-4:] == ["part2-class", "part2-dance", "part2-single", "part2-stretch"]
-    assert {t["source"] for t in stock["takes"][:-4]} == {"stock"} and len(ids) > 4
-    assert all(t["label_source"] == "visual" for t in stock["takes"][:-4])
+    assert {t["source"] for t in stock["takes"][:-4]} == {"stock", "lateral-raise"} and len(ids) > 4
+    assert all(t["label_source"] == ("none" if t["source"] == "lateral-raise" else "visual") for t in stock["takes"][:-4])
     report = {"low_light": {"gated": False}, "dropout": {"gated": False}, **blocks, "refusals": {}}
     assert [e.message for e in jsonschema.Draft202012Validator(SCHEMA["properties"]["report"]).iter_errors(report)] == []
 

@@ -33,7 +33,8 @@ KIT_DIR = "fixtures/input/contract/part3/followers"
 KIT_EXPECTED = "fixtures/input/expected/part3-squat/animation.json"
 MISMATCH_DIR = "fixtures/input/mismatch"
 STOCK_DIR = "fixtures/input/eval/real"
-KIT_SOURCE, STOCK_SOURCE, PART2_SOURCE = "part3-kit", "stock", "part2-fallback"
+REPS_DIR = "fixtures/input/real/lateral-raise"
+KIT_SOURCE, STOCK_SOURCE, PART2_SOURCE, REPS_SOURCE = "part3-kit", "stock", "part2-fallback", "lateral-raise"
 
 # Part 3 kit `type` -> (Part 5 measure, direction); docs/specs/real-takes.md "Kit type map".
 KIT_TYPE_MAP = {
@@ -56,7 +57,7 @@ PROVENANCE_FIELDS = (
     ("part3_commit", ("part3_commit",)),
 )
 # Notes are plain sentences prefixed with the block they belong to, so `check_blocks` can split them.
-NOTE_KIT, NOTE_STOCK, NOTE_PART2 = "kit: ", "stock: ", "part2: "
+NOTE_KIT, NOTE_STOCK, NOTE_PART2, NOTE_REPS = "kit: ", "stock: ", "part2: ", "reps: "
 
 
 class RealError(Exception):
@@ -159,6 +160,8 @@ def _entry(root, take_id, source, expected, follower, label_source, labels, erro
     faults = analysis["faults"]
     matched, missed, unlabelled = _score(faults, labels)
     diag = analysis.get("diagnostics", {})
+    reps = diag.get("guard", {}).get("reps")
+    extra = dict(extra, **({"reps": reps, "expected_reference": diag.get("expected_reference")} if reps else {}))
     return {"take_id": take_id, "source": source, "expected": expected, "follower": follower,
             "label_source": label_source, **extra,
             "labels": [_label(lab) for lab in labels], "faults": [_fault(f) for f in faults],
@@ -273,6 +276,24 @@ def stock_takes(root, errors):
     return takes
 
 
+# --- real multi-rep takes (ADR-0010) ---
+def rep_takes(root, errors):
+    """The lateral-raise followers: real multi-rep takes (a trainer's three slow reps against a follower's
+    eight fast reps and another's two slow ones), compared rep by rep. Unlabelled: faults are reported as found."""
+    if not (Path(root) / REPS_DIR / "manifest.json").is_file():   # a root without them (a small temp tree) has none
+        return []
+    doc = _read_json(root, f"{REPS_DIR}/manifest.json", "reps", errors)
+    if doc is None:
+        return []
+    takes = []
+    for take in _takes_of(doc, f"{REPS_DIR}/manifest.json", errors):
+        entry = _entry(root, take["take_id"], REPS_SOURCE, doc["expected"], take["follower"], "none", [], errors,
+                       movement=take.get("movement"))
+        if entry is not None:
+            takes.append(entry)
+    return takes
+
+
 # --- summaries and notes ---
 def _ratio(num, den):
     return round(num / den, 4) if den else None
@@ -348,8 +369,25 @@ def _part2_notes(part2):
     return notes
 
 
-def _notes(root, kit, stock, part2):
-    return _kit_notes(kit) + _stock_notes(root, stock) + _part2_notes(part2)
+def _reps_summary(takes):
+    return {"takes": len(takes), "accepted": sum(t["status"] != DIFFERENT_MOVEMENT for t in takes),
+            "reps": sum(len(t.get("reps") or []) for t in takes),
+            "reps_passed": sum(r["ok"] for t in takes for r in t.get("reps") or [])}
+
+
+def _reps_note(t):
+    reps = t.get("reps") or []
+    if not reps:
+        return f"{NOTE_REPS}{t['take_id']}: {t['status']}, compared as a whole clip"
+    score = t["score"]["value"] if t["score"] else "none"
+    return (f"{NOTE_REPS}{t['take_id']}: {t['status']}, {sum(r['ok'] for r in reps)} of {len(reps)} reps passed "
+            f"against the expected clip's {t['expected_reference']['kind'].replace('_', ' ')}, score {score}, "
+            f"{len(t['faults'])} fault(s) as found, unlabelled")
+
+
+def _notes(root, kit, stock, part2, lateral=()):
+    return (_kit_notes(kit) + _stock_notes(root, stock) + _part2_notes(part2)
+            + [_reps_note(t) for t in lateral])
 
 
 # --- the report ---
@@ -358,11 +396,13 @@ def build_report(root=ROOT):
     writes nothing. Raises `RealError` naming each fixture that is missing or malformed."""
     root, errors = Path(root), []
     kit, part2, stock = kit_takes(root, errors), part2_takes(root, errors), stock_takes(root, errors)
+    lateral = rep_takes(root, errors)
     if errors:
         raise RealError(errors)
-    return {"format": FORMAT, "gated": False, "takes": kit + stock + part2,
-            "summary": {"kit": _kit_summary(kit), "stock": _counts(stock), "part2": _part2_summary(part2)},
-            "notes": _notes(root, kit, stock, part2)}
+    return {"format": FORMAT, "gated": False, "takes": kit + stock + lateral + part2,
+            "summary": {"kit": _kit_summary(kit), "stock": _counts(stock), "part2": _part2_summary(part2),
+                        "reps": _reps_summary(lateral)},
+            "notes": _notes(root, kit, stock, part2, lateral)}
 
 
 def _notes_of(report, *prefixes):
@@ -377,8 +417,9 @@ def check_blocks(report):
     return {"kit": {"gated": False, "source": "Part 3 conformance kit", "expected": KIT_EXPECTED, "takes": kit,
                     "summary": report["summary"]["kit"], "note": _notes_of(report, NOTE_KIT)},
             "stock": {"gated": False, "source": STOCK_DIR, "takes": rest,
-                      "summary": {**report["summary"]["stock"], "part2": report["summary"]["part2"]},
-                      "note": _notes_of(report, NOTE_STOCK, NOTE_PART2)}}
+                      "summary": {**report["summary"]["stock"], "part2": report["summary"]["part2"],
+                                  **({"reps": report["summary"]["reps"]} if "reps" in report["summary"] else {})},
+                      "note": _notes_of(report, NOTE_STOCK, NOTE_PART2, NOTE_REPS)}}
 
 
 def unavailable_blocks(error):
@@ -401,6 +442,9 @@ def summary_lines(report):
     st = s["stock"]
     lines.append(f"report-real: stock {st['takes']} takes: tp {st['tp']} fp {st['fp']} fn {st['fn']}")
     lines += [f"report-real: {t['take_id']}: {t['status']}, {t['verdict']}" for t in report["takes"] if "verdict" in t]
+    r = s["reps"]
+    lines.append(f"report-real: reps {r['takes']} real multi-rep takes: {r['accepted']} accepted, "
+                 f"{r['reps_passed']} of {r['reps']} reps passed")
     lines += [f"report-real: note: {n}" for n in report["notes"]]
     return lines
 

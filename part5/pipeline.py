@@ -19,6 +19,7 @@ from .measures import compute
 from .normalise import normalise
 from .output import build_analysis, validate_analysis
 from .phrasing import BACKENDS, phrase
+from .repwise import RepRun, compare, rep_entries, reference_entry
 
 # On the dummy takes the matched span always covers ≥76% of the follower clip. Much less than
 # that usually means a follower slower than ½x, which aligns to a subsegment (see align.dtw).
@@ -60,6 +61,8 @@ class PipelineResult:
     follower_positions: np.ndarray
     to_original: np.ndarray
     guard: GuardResult | None = None
+    reps: list | None = None   # RepResult per follower rep when the take was compared rep by rep (ADR-0010)
+    rep_run: RepRun | None = None
 
 
 def analyse(expected, follower, rules=None):
@@ -100,20 +103,32 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
                                 "(joints missing or below the confidence cutoff)")
     try:
         alignment = align(exp.positions, fol_positions)
-    except ValueError as e:
-        raise AnalysisError(f"{fol_ref['path']}: cannot align with {exp_ref['path']} ({e})") from e
-    # A different movement is refused before detection: DTW always finds a closest phase.
-    guard = check_movement(alignment, exp_m, fol_m, rules)
-    faults = [] if not guard.ok else [
-        replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
-        for f in detect(exp_m, fol_m, alignment, rules)]
-    span = tuple(int(to_original[j]) for j in alignment.follower_span)
-    diagnostics = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(guard, rules))
-    times = [_fault_times(f, exp, fol, fol_positions, alignment, to_original) for f in faults]
+        # A different movement is refused before detection: DTW always finds a closest phase.
+        guard, align_error = check_movement(alignment, exp_m, fol_m, rules), None
+    except ValueError as e:   # e.g. a follower with more reps than the whole-clip band can follow
+        alignment, guard, align_error = None, None, e
+    # Refused as a whole, and a clip holds several reps: compare one repetition at a time (ADR-0010).
+    rep_run = None if guard is not None and guard.ok else \
+        compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times)
+    if guard is None and not (rep_run is not None and rep_run.guard.ok):
+        raise AnalysisError(f"{fol_ref['path']}: cannot align with {exp_ref['path']} ({align_error})") from align_error
+    if rep_run is not None and rep_run.guard.ok:
+        guard, faults, times = rep_run.guard, rep_run.faults, rep_run.times
+        diagnostics = _rep_diagnostics(rep_run, exp, fol, fps, rules)
+        alignment = next(r.alignment for r in rep_run.reps if r.ok)
+    else:
+        faults = [] if not guard.ok else [
+            replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
+            for f in detect(exp_m, fol_m, alignment, rules)]
+        span = tuple(int(to_original[j]) for j in alignment.follower_span)
+        diagnostics = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(guard, rules))
+        times = [_fault_times(f, exp, fol, fol_positions, alignment, to_original) for f in faults]
     analysis = build_analysis(exp_ref, fol_ref, faults, diagnostics=diagnostics,
                               status={"code": guard.code, "text": guard.text}, times=times)
     analysis = _phrased(analysis, phrasing, phrasing_client, live, selected_by)
-    result = PipelineResult(analysis, alignment, exp, fol, fol_positions, np.asarray(to_original), guard)
+    accepted = rep_run is not None and rep_run.guard.ok
+    result = PipelineResult(analysis, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
+                            reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None)
     if score is not None:
         block = None if not guard.ok else score(result) if callable(score) else score
         result.analysis = validate_analysis(dict(analysis, score=block), source="<built analysis>")
@@ -218,6 +233,19 @@ def _ref(ref, key):
     if not (isinstance(ref, dict) and isinstance(ref.get("path"), (str, Path)) and str(ref["path"])):
         raise AnalysisError(f"{key} must be a path or an object with a 'path', got {ref!r}")
     return dict(ref, path=str(ref["path"]))
+
+
+def _rep_diagnostics(rep_run, exp, fol, fps, rules):
+    """`diagnostics` of a take compared rep by rep: the usual fields (the residual a median over the
+    accepted reps, the span from the first rep to the last) plus `guard.reps` and `expected_reference`."""
+    accepted = [r for r in rep_run.reps if r.ok]
+    first = accepted[0].alignment
+    alignment = replace(first, residual=float(np.median([r.alignment.residual for r in accepted])))
+    span = (rep_run.reps[0].span[0], rep_run.reps[-1].span[1])
+    out = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(rep_run.guard, rules))
+    out["guard"]["reps"] = rep_entries(rep_run.reps, fol)
+    out["expected_reference"] = reference_entry(rep_run, exp, fps)
+    return out
 
 
 def _diagnostics(alignment, span, n_follower, guard):

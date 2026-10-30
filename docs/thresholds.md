@@ -213,3 +213,31 @@ faults B or C: fail on both. The A takes among good-light single faults are faul
 47: `dance_side_good_07_knee_caving-right_dropout`; seed 53: `dance_45_good_04_knees_shallow-both` and its
 dropout copy), so the cause is detection recall, which the score does not hide. Low light is reported, not graded.
 The monotonic sweep passes in `make check-5`. No param changed after the freeze.
+
+## Repetitions
+
+Constants of `part5/reps.py` and `part5/repwise.py` (ADR-0010), fixed from seed 5 and the documented real takes
+(`fixtures/input/real/lateral-raise/`, the stock squat), never from the held-out seeds. The guard limits and the
+detection rules above are not changed.
+
+| constant | value | why |
+| --- | ---: | --- |
+| `MIN_PROMINENCE` | 0.35 of the range | a turn must stand out; the real lateral raises cut at 3, 8 and 2 reps |
+| `MIN_REP_S` | 0.6 s | the fastest real rep is 1.2 s |
+| `SMOOTH_S` | 0.25 s | removes pose jitter before the turning points |
+| `MIN_RANGE_DEG` | 15 | a measure that moves less has no repetitions |
+| `PREFER_SHARE` | 0.5 | the follower cuts on the expected clip's measure when it moves it half as much as its best |
+| `MIN_REP_SPAN_SHARE` | 0.6 | a rep passes only when the matched span covers most of it |
+| `MIN_FAULT_SHARE` | 0.5 | a fault counts when found in half of the accepted reps |
+
+Real lateral raise against the trainer (3 reps), whole clip then rep by rep, frozen guard limits:
+
+| follower | whole clip `timing_corr` | reps passed | rep residual | rep `timing_corr` |
+| --- | ---: | ---: | --- | --- |
+| 40297504 (8 reps, 1.3 s) | 0.53 | 8 of 8 | 0.35 to 0.45 | 0.94 to 0.98 |
+| 8836968 (2 reps, 7.7 s) | 0.50 | 2 of 2 | 0.35 to 0.43 | 0.96 to 0.97 |
+
+The synthetic dance clips are periodic (54 of the 108 seed 5 followers, and the expected dance, have two cycles of
+the arm measure), so a pair is compared rep by rep only after the whole-clip guard refuses it. Different movements
+stay refused: the stock squat, Part 2's dance, class, single and stretch against the trainer, and the squat against
+the dance, class and stretch.

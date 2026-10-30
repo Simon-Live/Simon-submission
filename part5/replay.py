@@ -53,6 +53,8 @@ def build_replay(result):
     """
     if result.alignment is None:
         raise ValueError("a replay needs the alignment, and this analysis has none")
+    if result.reps:
+        return _rep_replay(result)
     exp_to_fol = np.asarray(result.to_original)[np.asarray(result.alignment.exp_to_fol)]
     return {
         "format": FORMAT,
@@ -66,6 +68,38 @@ def build_replay(result):
         "expected_t": [round(float(x), 6) for x in result.expected.t],
         "follower_t": [round(float(x), 6) for x in result.follower.t],
         "coordinate_frame": dict(COORDINATE_FRAME),
+    }
+
+
+def _follower_frames(rep):
+    """The follower file's frame shown at each reference frame of one rep; a rep that could not be aligned
+    plays straight through its resampled frames."""
+    idx = np.arange(len(rep.to_original)) if rep.alignment is None else np.asarray(rep.alignment.exp_to_fol)
+    return [int(rep.to_original[j]) for j in idx]
+
+
+def _rep_replay(result):
+    """The replay of a take compared rep by rep (ADR-0010): the expected reference repeated once per
+    follower rep, and the whole follower take played against it. `reps` lists, per follower rep, the
+    expected frames it is shown against, the follower file's frames and whether the guard passed it."""
+    ref, reps = result.reps[0].expected, result.reps
+    n, k = ref.n_frames, len(reps)
+    fps = float(clip_fps(ref))
+    exp_to_fol = [f for r in reps for f in _follower_frames(r)]
+    return {
+        "format": FORMAT,
+        "schema_version": SCHEMA_VERSION,
+        "fps": fps,
+        "expected": frames_json(np.tile(ref.positions, (k, 1, 1))),
+        "follower": frames_json(result.follower.positions),
+        "exp_to_fol": exp_to_fol,
+        "joints": list(JOINTS),
+        "bones": [list(b) for b in BONES],
+        "expected_t": [round(i / fps, 6) for i in range(n * k)],
+        "follower_t": [round(float(x), 6) for x in result.follower.t],
+        "coordinate_frame": dict(COORDINATE_FRAME),
+        "reps": [{"expected_frames": [i * n, (i + 1) * n - 1], "follower_frames": list(r.span), "ok": bool(r.ok)}
+                 for i, r in enumerate(reps)],
     }
 
 

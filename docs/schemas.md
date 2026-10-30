@@ -107,6 +107,14 @@ Top level:
   `span_share` (matched share of the follower frames), and `limits` (`max_residual`,
   `min_timing_corr`, from `part5/rules.json`). A take is refused when `residual` is above its
   limit or `timing_corr` below its limit; `span_share` only ever warns.
+  `diagnostics.guard.reps` (1.3.0, only for a take compared one repetition at a time, ADR-0010) lists each follower
+  repetition: `span_s` (start and end on the follower file's clock), `residual`, `timing_corr` (null when the rep could
+  not be aligned) and `ok`; `residual` and `timing_corr` above are then medians over the reps.
+  `diagnostics.expected_reference` (1.3.0) says which part of the expected clip the reps were compared with:
+  `kind` `first_rep` or `whole`, its `frames` and `span_s`, `expected_reps`, `follower_reps` and the cut `measure`.
+  A fault of such a take has `reps` (1.3.0): the 0-based follower repetitions it was found in, and its time fields are
+  those of the first; `score.per_rep` lists each accepted repetition's `value` and `grade`. Such a document has
+  `schema_version` `1.3.0`; any other keeps `1.2.0`.
 
 Follower and expected clips may have different frame rates: the follower is resampled onto
 the expected clip's clock (its `fps`, or the median step of `t`) before alignment, and every

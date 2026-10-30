@@ -38,9 +38,13 @@ def aligned_of(result):
             "exp_to_fol": result.alignment.exp_to_fol}
 
 
-def score_block(result):
-    """The `score` hook for `pipeline.run` (ADR-0007): the block `score.compute` builds for this result."""
-    return score.compute(result.analysis, aligned_of(result))
+def score_block(result, rules=None):
+    """The `score` hook for `pipeline.run` (ADR-0007): the block `score.compute` builds for this result.
+    A take compared rep by rep (ADR-0010) is scored per accepted rep and the blocks are averaged."""
+    if result.reps:
+        blocks = [score.compute(r.analysis, aligned_of(r), rules) for r in result.reps if r.ok]
+        return score.aggregate(blocks, rules) if blocks and all(blocks) else None
+    return score.compute(result.analysis, aligned_of(result), rules)
 
 
 def analyse(expected, follower, rules=None):
@@ -48,7 +52,7 @@ def analyse(expected, follower, rules=None):
     result = run(expected, follower, rules)
     analysis = result.analysis
     if "score" not in analysis:
-        analysis["score"] = score.compute(analysis, aligned_of(result), rules) if result.alignment is not None else None
+        analysis["score"] = score_block(result, rules) if result.alignment is not None else None
     return analysis
 
 
@@ -203,7 +207,7 @@ def scored_set(labels_doc, rules=None, base=ROOT):
     rules = rules or load_rules()
     out = {}
     for t, r in run_set(labels_doc, rules, base):
-        out[t["take_id"]] = score.compute(r.analysis, aligned_of(r), rules) if r.alignment is not None else None
+        out[t["take_id"]] = score_block(r, rules) if r.alignment is not None else None
     return out
 
 

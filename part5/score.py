@@ -141,3 +141,19 @@ def calibrate(rows, min_fraction):
     cap = base + k * (worst["r"] - 1)
     return {"version": VERSION, "z0": round(z0, 3), "z1": round(z1, 3), "s_max": S_MAX, "base": base,
             "slope": k, "cap": round(cap, 1), "bands": BANDS, "calibrated_on": "seed 5"}
+
+
+def aggregate(blocks, rules=None):
+    """One `score` block from the blocks of several reps (ADR-0010): the components are the means, the
+    value and grade follow from them, and `per_rep` lists each rep's value and grade. One block is
+    returned as it is."""
+    if len(blocks) == 1:
+        return blocks[0]
+    p = params_of(rules or load_rules())
+    f = sum(b["components"]["faults"] for b in blocks) / len(blocks)
+    s = sum(b["components"]["similarity"] for b in blocks) / len(blocks)
+    value = max(0, min(100, int(round_half_up(100 - f - s))))
+    return {"version": VERSION, "value": value, "grade": grade(value, p["bands"]),
+            "components": {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))},
+            "params_sha256": blocks[0]["params_sha256"],
+            "per_rep": [{"value": b["value"], "grade": b["grade"]} for b in blocks]}
