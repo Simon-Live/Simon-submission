@@ -194,6 +194,46 @@ The same rows are in `contracts/compatibility.json` and are printed by `python -
 | pose3d.json, tracks.json | part2.pose3d/2026-10-28, part2.tracks/2026-10-28 | Part 7 | works |  | Part 7 stitches through the files named here |
 | tracks.json | part2.tracks/2026-10-28 | none today | n/a |  | PR #47: Part 3 does not read it |
 | pose3d.json, tracks.json (`t_ms`, `t0_pts_ms`) | part2.pose3d/2026-10-28, part2.tracks/2026-10-28 | Part 1 (time join) | works with option | join on `t_ms` when both sides count from the first decoded frame; when `t0_pts_ms` is present and not 0, file time = `t_ms` + `t0_pts_ms` | `frames.py` rule; `doctor` warns |
+| tracks.json from `part2 track`; pose3d.json from `part2 run --mode multi --tracks --ids` | part2.tracks/2026-10-28, part2.pose3d/2026-10-28 | Part 7 (people picker) | works |  | tests/test_cli_track.py; same files, no new field |
+
+## How Part 7 runs a take
+
+Part 7 turns a viewer's recorded or uploaded take into `pose3d.json` with one command:
+
+```
+part2 run --mode single --input <take.webm|take.mp4|take.mov> --out <dir> --fps 10 --backend gpu [--mirrored]
+```
+
+| Option | Why |
+|---|---|
+| `--mode single` | one person per take |
+| `--input` | the file as recorded: WebM from a browser (VP8 or VP9), MP4 or MOV from a phone; a rotate tag is applied, so frames come out upright |
+| `--out <dir>` | required; `frames/`, `pose3d.json` and `camera.json` are written there |
+| `--fps 10` | the rate the web app also uses (60 s gives at most 601 frames) |
+| `--backend gpu` | the GPU backend; `cpu` is the slower choice on a host without CUDA |
+| `--mirrored` | only for a front-camera recording saved as a mirror image; writes `mirrored: true`, which Part 3 `--flip auto` reads |
+
+Then Part 7 runs Part 3 on `<dir>/pose3d.json` with `--view part5` for Part 5. The command line reads a WebM
+that carries no duration (a MediaRecorder file). The run app's upload check does too once TICKET-039 lands
+(`docs/specs/journey-followup.md`).
+
+### Several people in one take (`track`, then `run --tracks --ids`)
+
+Part 7 first asks who is in the clip, then computes 3D for the people the viewer chose:
+
+```
+part2 track --input <take> --out <dir> --fps 10 [--tracker <name>]
+part2 run --mode multi --input <take> --out <dir2> --fps 10 --backend gpu --tracks <dir>/tracks.json --ids <id>,<id>
+```
+
+| Command | Result |
+|---|---|
+| `part2 track` | `frames/` and `tracks.json` only, no 3D. The tracker order is the one of `run --mode multi` (`--tracker`, `--tracker-order`). Exit 0 written, 1 input error, 2 bad option (unknown tracker). |
+| `run --tracks <tracks.json>` | uses that file as it is: no tracker runs and the ids stay as they are. Pass the same `--input` and `--fps` that made it; a frame the file lacks is exit 1. |
+| `run --ids <id,...>` | 3D runs for the listed people only. `pose3d.json` holds those people, plus `pose3d_person_<id>.json` each. An id that `tracks.json` lacks is exit 1 and the message names it. |
+
+`--tracks` and `--ids` apply to `--mode multi` only (exit 2 with `--mode single`). `--ids` without `--tracks`
+tracks first, then filters. The files keep their versions; nothing new is written into them.
 
 ## How Part 7 runs a take
 

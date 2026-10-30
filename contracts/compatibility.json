@@ -78,5 +78,13 @@
     "result": "works with option",
     "option": "join on `t_ms` when both sides count from the first decoded frame; when `t0_pts_ms` is present and not 0, file time = `t_ms` + `t0_pts_ms`",
     "evidence": "`frames.py` rule; `doctor` warns"
+  },
+  {
+    "producer_file": "tracks.json from `part2 track`; pose3d.json from `part2 run --mode multi --tracks --ids`",
+    "version": "part2.tracks/2026-10-28, part2.pose3d/2026-10-28",
+    "consumer": "Part 7 (people picker)",
+    "result": "works",
+    "option": "",
+    "evidence": "tests/test_cli_track.py; same files, no new field"
   }
 ]

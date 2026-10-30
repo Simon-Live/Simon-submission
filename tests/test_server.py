@@ -242,8 +242,11 @@ def raw_exchange(port, request: bytes) -> tuple:
     with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
         s.sendall(request)
         data = b""
-        while chunk := s.recv(4096):
-            data += chunk
+        try:
+            while chunk := s.recv(4096):
+                data += chunk
+        except ConnectionResetError:  # the server closes with part of an oversize request unread: TCP resets after the reply
+            pass
     head, _, body = data.partition(b"\r\n\r\n")
     return head.decode(), body
 

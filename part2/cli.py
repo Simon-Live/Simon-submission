@@ -4,6 +4,8 @@
     part2 run --mode single|multi --input clip.mp4 --out out/clip [--fps 30] [--mirrored]
               [--backend gpu|cpu] [--lifter fixed-bones|motionbert] [--tracker NAME] [--tracker-order scored|bulk]
               [--refine RUNGS]   (single: the ladder's rungs, part2.refine; focal,kp2d-fit is what make outputs uses)
+    part2 run --mode multi ... [--tracks tracks.json] [--ids ID,ID]   (reuse tracks; 3D only for the listed ids)
+    part2 track --input clip.mp4 --out out/clip [--fps 10] [--tracker NAME] [--tracker-order scored|bulk]
     part2 contract [--json] [--schema NAME]      (also: python -m part2 contract)
     part2 doctor FILE [--for part3|part5|part6] [--json]
     part2 stock [--clip pexels-<id>[-<start>to<end>s]] [--backend gpu|cpu]   (make stock-outputs)
@@ -75,10 +77,12 @@ def _refine(rungs, doc: dict, frames_dir: Path, work_dir: Path, backend, model2d
     return out
 
 
-def _tracks_extras(meta: dict, doc: dict, backend_name: str) -> dict:
+def _tracks_extras(meta: dict, doc: dict, backend_name: str | None) -> dict:
     """The tracker's own provenance block (it names the tracker, its models and any fallback), stamped with
     the contract version and the backend this run uses (AC-C08), plus the time origin."""
-    prov = {**(doc.get("provenance") or {}), "contract_version": contract.version("tracks"), "backend": backend_name}
+    prov = {**(doc.get("provenance") or {}), "contract_version": contract.version("tracks")}
+    if backend_name:  # `part2 track` runs no 3D backend, so it names none
+        prov["backend"] = backend_name
     return {"t0_pts_ms": meta.get("t0_pts_ms"), "provenance": prov}
 
 
@@ -87,6 +91,63 @@ def _stamp_tracks(path: Path, doc: dict, extras: dict) -> None:
     doc.update({k: v for k, v in extras.items() if v is not None})
     contract.validate(doc, "tracks")
     write_json(path, doc)
+
+
+def _parse_ids(text: str | None) -> list[str] | None:
+    """The --ids list as strings (None when not given); an empty entry is a bad option."""
+    if text is None:
+        return None
+    ids = [t.strip() for t in text.split(",")]
+    if not all(ids):
+        raise ValueError(f"--ids {text!r} has an empty id")
+    return ids
+
+
+def _tracked_ids(doc: dict) -> dict[str, object]:
+    """{str(id): id} for every person in a tracks document."""
+    return {str(p["id"]): p["id"] for f in doc["frames"] for p in f["people"]}
+
+
+def _track_stage(args, recs, meta, backend_name) -> dict:
+    """Track the frames (or reuse --tracks), write out/tracks.json and return the document. Raises
+    trackers.UnknownTracker for a bad tracker name."""
+    from part2 import track, trackers
+
+    tracks_path = args.out / "tracks.json"
+    given = getattr(args, "tracks", None)
+    if given is not None:  # reuse: no tracker runs, ids are kept as given (TICKET-041)
+        doc = json.loads(Path(given).read_text())
+        contract.validate(doc, "tracks")
+        have = {f["frame"] for f in doc["frames"]}
+        missing = [r["frame"] for r in recs if r["frame"] not in have]
+        if missing:
+            raise ValueError(f"--tracks {given} has no entry for frame {missing[0]} of this input "
+                             f"(was it made with the same --input and --fps?)")
+        write_json(tracks_path, doc)
+        print(f"{len(_tracked_ids(doc))} tracked people reused from {given} (no tracking run)")
+        return doc
+    _progress("track", 0, len(recs))
+    doc = track.track(args.out / "frames", tracks_path, tracker=args.tracker, purpose=args.tracker_order)
+    _stamp_tracks(tracks_path, doc, _tracks_extras(meta, doc, backend_name))
+    note = trackers.describe_fallback(doc["provenance"])
+    print(f"{len(_tracked_ids(doc))} tracked people -> {tracks_path} "
+          f"(tracker {doc['provenance'].get('tracker')}{'; ' + note if note else ''})")
+    return doc
+
+
+def _pick_boxes(doc: dict, ids: list[str] | None) -> dict:
+    """The 3D boxes of the listed ids only (all people without --ids). An unknown id is a ValueError naming it."""
+    from part2 import multi3d
+
+    if ids is None:
+        return multi3d.tracks_to_boxes(doc)
+    known = _tracked_ids(doc)
+    for i in ids:
+        if i not in known:
+            raise ValueError(f"unknown person id {i} in --ids; tracks.json has {', '.join(sorted(known, key=str)) or 'nobody'}")
+    keep = set(ids)
+    return multi3d.tracks_to_boxes({**doc, "frames": [
+        {**f, "people": [p for p in f["people"] if str(p["id"]) in keep]} for f in doc["frames"]]})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -115,6 +176,18 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--refine", default="none",
                        help="single: comma-separated ladder rungs (part2.refine) run on the 3D before the canonical "
                        "frame; focal,kp2d-fit gives the scored outputs (make outputs); default none")
+
+    p_run.add_argument("--tracks", type=Path, help="multi: reuse this tracks.json (no tracking run, ids unchanged)")
+    p_run.add_argument("--ids", help="multi: comma-separated person ids; 3D runs for these people only")
+
+    p_tr = sub.add_parser("track", help="frames + tracks.json only, no 3D (Part 7 people picker)")
+    p_tr.add_argument("--input", required=True, type=Path, help="video file or directory of images")
+    p_tr.add_argument("--out", required=True, type=Path, help="output directory (frames/ and tracks.json)")
+    p_tr.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
+    p_tr.add_argument("--tracker", help="api-sam31, local-sam31, local-open or bytetrack "
+                      "(default: PART2_TRACKER, else the tracker order)")
+    p_tr.add_argument("--tracker-order", choices=["scored", "bulk"], default="bulk",
+                      help="the order walked when no tracker is named")
 
     p_ev = sub.add_parser("eval-reproj", help="one-person metric: reprojection error vs hand-clicked joints (#12)")
     p_ev.add_argument("--pose3d", required=True, type=Path)
@@ -198,9 +271,24 @@ def main(argv: list[str] | None = None) -> int:
             recs = frames.ingest(args.input, args.out, args.fps)
             print(f"{len(recs)} frames -> {args.out}")
             return 0
+        if args.command == "track":
+            from part2 import trackers
+
+            recs = frames.ingest(args.input, args.out / "frames", args.fps)
+            _progress("frames", len(recs), len(recs))
+            print(f"{len(recs)} frames -> {args.out / 'frames'}")
+            try:
+                _track_stage(args, recs, frames.load_meta(args.out / "frames"), None)
+            except trackers.UnknownTracker as e:
+                print(f"part2: {e}", file=sys.stderr)
+                return 2
+            return 0
         from part2 import lifters, refine
 
         try:
+            ids = _parse_ids(args.ids)
+            if (args.tracks is not None or ids is not None) and args.mode != "multi":
+                raise ValueError("--tracks and --ids apply to --mode multi only")
             backend = backends.get(backends.resolve(args.backend))
             lifter = lifters.resolve(args.lifter)
             rungs = [] if args.refine.strip() in ("", "none") else refine.resolve(args.refine)
@@ -230,26 +318,20 @@ def main(argv: list[str] | None = None) -> int:
             _progress("write", 1, 1)
             return 0
         if args.mode == "multi":
-            from part2 import multi3d, track, trackers
+            from part2 import multi3d, trackers
 
             try:
-                _progress("track", 0, len(recs))
-                doc = track.track(args.out / "frames", args.out / "tracks.json", tracker=args.tracker,
-                                  purpose=args.tracker_order)
+                doc = _track_stage(args, recs, meta, backend.name)
             except trackers.UnknownTracker as e:
                 print(f"part2: {e}", file=sys.stderr)
                 return 2
-            _stamp_tracks(args.out / "tracks.json", doc, _tracks_extras(meta, doc, backend.name))
-            ids = {p["id"] for f in doc["frames"] for p in f["people"]}
-            note = trackers.describe_fallback(doc["provenance"])
-            print(f"{len(ids)} tracked people -> {args.out / 'tracks.json'} "
-                  f"(tracker {doc['provenance'].get('tracker')}{'; ' + note if note else ''})")
+            boxes = _pick_boxes(doc, ids)
             _progress("pose", 0, len(recs))
             with _gpu_locked(backend):  # after tracking: a SAM tracker took and dropped the same lock itself
-                b3d = backend.estimate(args.out / "frames", args.out / "body3d.json", boxes=multi3d.tracks_to_boxes(doc))
+                b3d = backend.estimate(args.out / "frames", args.out / "body3d.json", boxes=boxes)
             _progress("write", 0, 1)
             res = multi3d.write_pose_streams(b3d, args.out, smooth=args.smooth,
-                                             extras=_pose_extras(meta, args.mirrored, backend, doc["provenance"]))
+                                             extras=_pose_extras(meta, args.mirrored, backend, doc.get("provenance")))
             print(f"pose3d for people {res['people']} -> {args.out / 'pose3d.json'} "
                   f"(+ pose3d_person_<id>.json each)")
             _progress("write", 1, 1)
