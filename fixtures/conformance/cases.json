@@ -92,6 +92,26 @@
   ]
  },
  {
+  "id": "view-part4-part1-keyframes-densify-10",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "part4",
+   "--body",
+   "part4-rig",
+   "--keyframes",
+   "fixtures/conformance/inputs/keyframes.part1.json",
+   "--keyframes-densify",
+   "every:10",
+   "--keyframes-out",
+   "keyframes.json"
+  ],
+  "outputs": [
+   "skeleton.json",
+   "keyframes.json"
+  ]
+ },
+ {
   "id": "view-part4-part4-keyframes",
   "input": "fixtures/input/part2-single/pose3d.json",
   "args": [

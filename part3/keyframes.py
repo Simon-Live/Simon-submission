@@ -4,10 +4,11 @@ Three sources become one timeline on Part 4's 30 fps clock: Part 1's `keyframes.
 the video clock), Part 4's `simon.keyframes.v1` (ticks as given) and `every:<n>` (a key every n ticks).
 """
 
+import dataclasses
 import math
+import os
 import pathlib
 import re
-from dataclasses import dataclass
 
 from part3 import io
 from part3.resample import cap_for, shown
@@ -17,11 +18,13 @@ FPS = 30
 EVERY_PREFIX = "every:"
 EVERY_MIN, EVERY_MAX = 1, 300
 PART4_FORMAT = "simon.keyframes.v1"
+DENSIFY_ENV = "PART3_KEYFRAMES_DENSIFY"
+DENSIFY_OFF = "off"
 _EVERY = re.compile(r"every:([0-9]+)")
 _EPS = 1e-9  # keeps a last frame that lands exactly on a tick from rounding down to the tick before
 
 
-@dataclass
+@dataclasses.dataclass
 class Timeline:
     """The key ticks of a clip: `keys` is [(index, name)] strictly increasing in index.
 
@@ -37,6 +40,7 @@ class Timeline:
     source_kind: str
     person: object
     t0_ms: float = 0.0
+    densify: object = None  # {"every", "selected_by", "added"} once `densify` ran, else None
 
 
 def frame_count(t0_ms, t_last_ms, max_frames=None):
@@ -76,7 +80,7 @@ def read(source):
     """
     if isinstance(source, dict):
         return source
-    if _is_every(source):
+    if is_every(source):
         every_n(source)
         return source
     if isinstance(source, (str, pathlib.Path)):
@@ -84,7 +88,7 @@ def read(source):
     raise ContractError("keyframes", "expected a file path, every:<n> or a parsed keyframes object")
 
 
-def _is_every(source):
+def is_every(source):
     return isinstance(source, str) and source.startswith(EVERY_PREFIX)
 
 
@@ -106,6 +110,62 @@ def every_n(spec):
     return int(match.group(1))
 
 
+def _n_of(spec, label, prefix=""):
+    """The n of an `every:<n>` text, else ContractError(label, prefix + message)."""
+    match = _EVERY.fullmatch(spec) if isinstance(spec, str) else None
+    if match is None or not EVERY_MIN <= int(match.group(1)) <= EVERY_MAX:
+        raise ContractError(label, f"{prefix}n must be a whole number from {EVERY_MIN} to {EVERY_MAX}")
+    return int(match.group(1))
+
+
+# --- densifying (spec journey-followup.md "Densify rule", TICKET-036) --------------------------
+
+def _parse_densify(value, label, prefix=""):
+    """n for `every:<n>`, DENSIFY_OFF for `off`; ContractError(label, prefix + message) otherwise."""
+    if value == DENSIFY_OFF:
+        return DENSIFY_OFF
+    if isinstance(value, str) and value.startswith(EVERY_PREFIX):
+        return _n_of(value, label, prefix)
+    raise ContractError(label, f"{prefix}expected {EVERY_PREFIX}<n> or {DENSIFY_OFF}")
+
+
+def resolve_densify(flag=None, api=None, env=None, config=None):
+    """(n, selected_by) of the densify setting, first set wins: flag, environment, config file, API, default.
+
+    `flag` and `api` are `every:<n>` or `off` (API: also a whole number n); `env` None means `os.environ`;
+    `config` is a `part3.config.Config` or None. `off` on a channel stops the lookup: (None, None).
+    Raises ContractError naming the channel for a bad value.
+    """
+    env = os.environ if env is None else env
+    text = env.get(DENSIFY_ENV) or None
+    cfg_value = getattr(config, "densify", None)
+    label = getattr(config, "label", "")
+    for value, kind, name, prefix in (
+            (flag, "flag", f"--keyframes-densify {flag}", ""), (text, "env", DENSIFY_ENV, ""),
+            (cfg_value, "config", label, "keyframes.densify: "), (api, "api", "keyframes_densify=", "")):
+        if value is None:
+            continue
+        n = _parse_densify(value, name, prefix)
+        return (None, None) if n == DENSIFY_OFF else (n, kind)
+    return None, None
+
+
+def densify(timeline, n, selected_by):
+    """A new Timeline: the named keys kept and a filler `key_<index>` every `n` ticks between the anchors.
+
+    Anchors are tick 0, the surviving named keys and the last tick; fillers restart at each anchor and stay
+    strictly below the next one. `timeline.densify` records n, the channel and the fillers written.
+    """
+    named = dict(timeline.keys)
+    anchors = sorted({0, timeline.frame_count - 1, *named})
+    ticks = set(anchors)
+    for low, high in zip(anchors, anchors[1:]):
+        ticks.update(range(low + n, high, n))
+    keys = [(index, named.get(index, f"key_{index}")) for index in sorted(ticks)]
+    return dataclasses.replace(timeline, keys=keys, dropped=[dict(d) for d in timeline.dropped],
+                               densify={"every": n, "selected_by": selected_by, "added": len(keys) - len(named)})
+
+
 # --- loading -----------------------------------------------------------------------------------
 
 def load(source, t0_ms, t_last_ms, person=None, label=None, max_frames=None):
@@ -122,7 +182,7 @@ def load(source, t0_ms, t_last_ms, person=None, label=None, max_frames=None):
     doc = read(source)
     count = frame_count(t0_ms, t_last_ms, max_frames)
     base = dict(fps=FPS, frame_count=count, duration_s=round((count - 1) / FPS, 6), t0_ms=float(t0_ms))
-    if _is_every(source):
+    if is_every(source):
         return Timeline(keys=_every_keys(every_n(source), count), dropped=[], source_kind="every",
                         person=None, **base)
     kind = _kind(doc, label)

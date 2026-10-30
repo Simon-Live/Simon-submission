@@ -123,7 +123,12 @@ def _timeline_schema():
         "fps": {"const": 30}, "duration_s": {"type": "number", "minimum": 0},
         "frame_count": {"type": "integer", "minimum": 1}, "t0_ms": {"type": "number"},
         "source_kind": {"enum": ["part1", "part4", "every"]}, "person": {"type": ["integer", "string", "null"]},
-        "dropped": {"type": "array", "items": dropped}},
+        "dropped": {"type": "array", "items": dropped},
+        "densify": {"type": "object", "properties": {
+            "every": {"type": "integer", "minimum": 1, "maximum": 300},
+            "selected_by": {"enum": ["flag", "env", "config", "api"]},
+            "added": {"type": "integer", "minimum": 0}}, "required": ["every", "selected_by", "added"],
+            "description": "Present only when --keyframes-densify ran: n, the channel and the filler keys written."}},
         "required": ["fps", "duration_s", "frame_count", "t0_ms", "source_kind", "dropped"]}
 
 

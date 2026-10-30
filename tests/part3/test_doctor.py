@@ -471,3 +471,19 @@ def test_animation_failing_part5_blames_the_producer_unless_part3_wrote_it(check
     del clip["producer"]
     out = check(clip, "--for", "part5")[1]
     assert "fix the producer of this file" in out
+
+
+# --- AC-D10: key spacing notes (TICKET-036) -----------------------------------------------------
+
+GOLDEN = ROOT / "fixtures" / "conformance" / "golden"
+
+
+def test_d10_doctor_notes_wide_key_gaps_and_a_densified_file(capsys):
+    outputs = {}
+    for name in ("view-part4-part1-keyframes", "view-part4-part1-keyframes-densify-10"):
+        assert doctor.main([str(GOLDEN / name / "skeleton.json"), "--for", "part4"]) == 0
+        outputs[name] = capsys.readouterr().out
+    sparse, dense = outputs["view-part4-part1-keyframes"], outputs["view-part4-part1-keyframes-densify-10"]
+    assert "keys are up to 32 ticks apart" in sparse and "--keyframes-densify every:10" in sparse
+    assert "note: densified every 10 ticks (18 keys added, selected by flag)" in dense
+    assert "ticks apart" not in dense

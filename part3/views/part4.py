@@ -11,6 +11,7 @@ import copy
 
 import numpy as np
 
+from part3 import config as config_file
 from part3 import keyframes as kf
 from part3 import rig
 from part3.joints import COORDINATE_FRAME, JOINTS
@@ -30,12 +31,15 @@ GAP_PAGE_TEXT = "Every key falls where the person is missing from the clip, so t
 GAP_REASON = "the input frame nearest the key has no person (the person is missing there)"
 
 
-def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, **_):
+def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, keyframes_densify=None,
+           densify_flag=None, env=None, config=None, **_):
     """A new dict: the native `skeleton` unchanged plus the Part 4 fields.
 
     `keyframes` is a file path (Part 1 or Part 4 keyframes), `"every:<n>"` or a parsed keyframes dict;
     `keyframes_person` picks the Part 1 person; `max_frames` caps the timeline's ticks (None: the cap
-    of `resample.MAX_FRAMES`). Raises ViewError when `keyframes` is missing; ContractError when it is
+    of `resample.MAX_FRAMES`). `keyframes_densify` (the API channel), `densify_flag` (the command-line channel), `env` and
+    `config` feed `keyframes.resolve_densify` (`every:<n>` or `off`); they apply to a keyframes file only and are ignored for `every:<n>`
+    (`env` None: `os.environ`; `config` None discovers a file, False reads none). Raises ViewError when `keyframes` is missing; ContractError when it is
     unreadable, of an unknown kind or leaves no key inside the clip; FrameCapError when the timeline would
     be longer than the cap; LongWayError (a ViewError) when Part 4 would reject the keys (a joint turning
     the long way between two of them).
@@ -46,9 +50,11 @@ def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, **_
     frames = skeleton["frames"]
     t0_ms, t_last_ms = frames[0]["t_ms"], frames[-1]["t_ms"]
     timeline = kf.load(keyframes, t0_ms, t_last_ms, person=keyframes_person, max_frames=max_frames)
+    named_ticks = {index for index, _ in timeline.keys}
+    timeline = _densified(timeline, keyframes, (densify_flag, keyframes_densify), env, config)
     offsets = _written_offsets(skeleton["bone_lengths_m"])
     holders = [(f["t_ms"], f) for f in frames if f["people"]]
-    keys, residual, previous = [], [], None
+    keys, residual, previous, kept = [], [], None, []
     every = [(f["t_ms"], f) for f in frames]
     for index, name in timeline.keys:
         t_ms = kf.tick_time_ms(t0_ms, index)
@@ -59,9 +65,12 @@ def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, **_
         previous = key["local_rotations"]
         keys.append(key)
         residual.append(distances)
+        kept.append((index, name))
     if not keys:
         raise ViewError("--keyframes", "every key falls where the person is missing from the clip",
                         GAP_PAGE_TEXT)
+    if timeline.densify:  # a filler dropped for a missing person is not an added key
+        timeline.densify["added"] = sum(1 for index, _ in kept if index not in named_ticks)
     _check_long_way(keys)
     out = copy.deepcopy(skeleton)
     out.update({
@@ -72,10 +81,21 @@ def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, **_
         "virtual_joints": list(VIRTUAL_JOINTS),
         "rest_offsets_m": offsets,
         "timeline": _timeline_block(timeline),
-        "rig": {"convention": rig.CONVENTION, "fit": _fit_block(timeline.keys, residual)},
+        "rig": {"convention": rig.CONVENTION, "fit": _fit_block(kept, residual)},
         "keyframes": keys,
     })
     return out
+
+
+def _densified(timeline, keyframes, channels, env, config):
+    """`timeline` densified when a channel asks for it and the source is a keyframes file, else as given.
+
+    A dropped filler (nobody at its tick) is counted out of `added` after the keys are built."""
+    if kf.is_every(keyframes):
+        return timeline
+    flag, api = channels
+    n, selected_by = kf.resolve_densify(flag=flag, api=api, env=env, config=config_file.load(config, env))
+    return timeline if n is None else kf.densify(timeline, n, selected_by)
 
 
 def keyframes_doc(rendered):
@@ -144,7 +164,8 @@ def _key(index, name, frame, offsets, previous=None):
 def _timeline_block(timeline):
     return {"fps": timeline.fps, "duration_s": timeline.duration_s, "frame_count": timeline.frame_count,
             "t0_ms": timeline.t0_ms, "source_kind": timeline.source_kind, "person": timeline.person,
-            "dropped": copy.deepcopy(timeline.dropped)}
+            "dropped": copy.deepcopy(timeline.dropped),
+            **({"densify": dict(timeline.densify)} if timeline.densify else {})}
 
 
 def _fit_block(keys, residual):

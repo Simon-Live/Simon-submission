@@ -92,6 +92,16 @@
     },
     {
       "producer": "Part 3",
+      "file": "skeleton.json (part4 view, densified)",
+      "version": "simon.skeleton.v1",
+      "consumer": "Part 4",
+      "consumer_version": "9f4c073",
+      "result": "works",
+      "option": "--view part4 --keyframes <keyframes.json> --keyframes-densify every:10",
+      "evidence": "conformance case view-part4-part1-keyframes-densify-10: the named keys of Part 1 keep their names and a key every 10 ticks is added between them; Part 4's rules (key t = index / 30, strictly increasing indices, forward kinematics within 1 mm, no joint turning the long way) hold, and timeline.densify records n, the channel and the keys added"
+    },
+    {
+      "producer": "Part 3",
       "file": "keyframes.json (written by --keyframes-out)",
       "version": "simon.keyframes.v1",
       "consumer": "Part 4",

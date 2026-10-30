@@ -18,7 +18,7 @@ import numpy as np
 
 from part3 import adapters, bones, facing, flips, io, mirror, people, profiles, resample, schema, standard
 from part3 import person as person_step
-from part3 import temporal, views
+from part3 import keyframes, temporal, views
 from part3.joints import BONES, GROUP_ORDER, JOINTS
 from part3.schema import ContractError, FrameRateError, OptionError
 
@@ -254,6 +254,9 @@ def _parser():
     run.add_argument("--config", help="a part3.toml (default: PART3_CONFIG, then ./part3.toml)")
     run.add_argument("--view", default="native", help="native (default), part4 or part5")
     run.add_argument("--keyframes", help="keyframes.json of Part 1 or Part 4, or every:<n> (--view part4)")
+    run.add_argument("--keyframes-densify", metavar="every:<n>|off",
+                     help="keep the keys of the --keyframes file and add a key every n ticks between them "
+                          "(--view part4; env PART3_KEYFRAMES_DENSIFY, config [keyframes] densify)")
     run.add_argument("--keyframes-person", help="the person of a Part 1 keyframes file (default: the first)")
     run.add_argument("--keyframes-out", help="also write the simon.keyframes.v1 file here (--view part4)")
     run.add_argument("--fps", help="resample onto a uniform grid of this many frames per second (1 to 240)")
@@ -283,7 +286,8 @@ def _id_arg(text):
 
 
 def _keyframes_options(args):
-    return {"keyframes": args.keyframes, "keyframes_person": _id_arg(args.keyframes_person)}
+    return {"keyframes": args.keyframes, "keyframes_person": _id_arg(args.keyframes_person),
+            "densify_flag": args.keyframes_densify, "config": args.config}
 
 
 def _render_one(args):
@@ -325,8 +329,21 @@ def _check_options(args):
                                                "beside each skeleton)")
     if args.keyframes_out and args.view != "part4":
         raise ContractError("--keyframes-out", "only applies to --view part4")
+    _check_densify(args)
     if args.keyframes_out and _same_file(args.keyframes_out, args.target):
         raise OptionError("--keyframes-out", "must differ from --out")  # one file cannot hold both documents
+
+
+def _check_densify(args):
+    """Raise OptionError or ContractError for `--keyframes-densify` misuse or a bad value (the flag only)."""
+    if args.keyframes_densify is None:
+        return
+    if args.view != "part4":
+        raise OptionError("--keyframes-densify", "only applies to --view part4")
+    if args.keyframes is not None and keyframes.is_every(args.keyframes):
+        raise OptionError("--keyframes-densify", "only applies to a keyframes file (every:<n> already keys "
+                                                 "every n ticks)")
+    keyframes.resolve_densify(flag=args.keyframes_densify, env={}, config=None)
 
 
 def _same_file(first, second):
@@ -411,7 +428,7 @@ def _run(args):
         files = _documents(doc, digest, args, selection)
     except ContractError as error:
         return _refuse(error)
-    return _write(files, args.source, mkdir=args.all_people)
+    return _write(files, args.source, mkdir=True)
 
 
 def _delegate(name, rest):

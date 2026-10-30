@@ -1,8 +1,9 @@
 """The optional `part3.toml` file (spec integration-contract.md "Body profiles").
 
 Lookup: an explicit path (`--config`, API `config=<path>`), else the `PART3_CONFIG` environment
-variable, else `./part3.toml` when it exists. `config=False` never reads a file. The only table read
-is `[body]` with `profile` (a string) and `stature` (a number); other keys are ignored.
+variable, else `./part3.toml` when it exists. `config=False` never reads a file. The tables read are
+`[body]` with `profile` (a string) and `stature` (a number), and `[keyframes]` with `densify` (`every:<n>` or
+`off`, checked only when a part4 keyframes run uses it); other keys are ignored.
 """
 
 import dataclasses
@@ -25,6 +26,7 @@ class Config:
     dir: pathlib.Path
     profile: object = None
     stature: object = None
+    densify: object = None
 
 
 def _read(path, label, channel):
@@ -51,10 +53,19 @@ def _body_table(data, label):
     return body
 
 
+def _densify_value(data, label):
+    table = data.get("keyframes", {})
+    if not isinstance(table, dict):
+        raise ContractError(label, "keyframes: expected a table")
+    return table.get("densify")
+
+
 def _load_file(path, label, channel):
-    body = _body_table(_read(path, label, channel), label)
+    data = _read(path, label, channel)
+    body = _body_table(data, label)
     resolved = pathlib.Path(path).resolve()
-    return Config(resolved, label, resolved.parent, body.get("profile"), body.get("stature"))
+    return Config(resolved, label, resolved.parent, body.get("profile"), body.get("stature"),
+                  _densify_value(data, label))
 
 
 def load(config=None, env=None):

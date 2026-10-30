@@ -40,7 +40,7 @@ def names():
     return list(NAMES) + [name for name in _registry() if name not in NAMES]
 
 
-LIMITS = ("max_frames",)  # resource limits for the server and the API, not options a view can be refused for
+LIMITS = ("max_frames", "keyframes_densify", "densify_flag", "env", "config")  # limits and ignorable channels, never refused
 
 
 def reject_options(opts, view):
@@ -51,7 +51,7 @@ def reject_options(opts, view):
 
 
 def render(skeleton, view="native", **opts):
-    """The `view` document for a native `skeleton`; `opts` (keyframes, keyframes_person, max_frames) go to the view as given.
+    """The `view` document for a native `skeleton`; `opts` (keyframes, keyframes_person, max_frames, keyframes_densify, env, config) go to the view as given.
 
     `max_frames` (None: the cap, `resample.MAX_FRAMES`) bounds the part4 timeline; the other views have
     none and ignore it. Raises ContractError("--view", ...) for a view that is not registered.

@@ -102,10 +102,9 @@ def test_bad_flip_value_exits_two_and_names_the_allowed_values(tmp_path):
     assert not out.exists()
 
 
-def test_output_in_a_missing_directory_exits_one(tmp_path):
+def test_output_in_a_missing_directory_is_created(tmp_path):
     result = run("run", "--in", REAL_CLIP, "--out", tmp_path / "nope" / "skeleton.json")
-    assert result.returncode == 1
-    assert "cannot write" in result.stderr and not (tmp_path / "nope").exists()
+    assert result.returncode == 0 and (tmp_path / "nope" / "skeleton.json").is_file()
 
 
 def test_empty_frames_and_no_person_exit_two_with_a_reason(tmp_path):

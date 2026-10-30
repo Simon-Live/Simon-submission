@@ -296,10 +296,10 @@ def copy_kit(stand_in_kit, tmp_path):
 def test_ac_k01_a_clean_kit_passes_and_the_metrics_count_cases_files_and_faults(stand_in_kit):
     metrics, failures = run_check(*stand_in_kit)
     assert failures == [] and metrics["pass"] is True
-    assert metrics["cases"] == 21 and metrics["takes"] == 15
+    assert metrics["cases"] == 22 and metrics["takes"] == 15
     assert metrics["faults_visible"] == metrics["faults_total"] == 12
     assert metrics["correct_takes_clean"] == metrics["correct_takes_total"] == 3
-    assert metrics["files_rebuilt_identical"] == metrics["files_rebuilt_total"] == 83
+    assert metrics["files_rebuilt_identical"] == metrics["files_rebuilt_total"] == 85
     assert metrics["files_validated"] == metrics["files_validated_total"] > 50 and metrics["failures"] == 0
 
 

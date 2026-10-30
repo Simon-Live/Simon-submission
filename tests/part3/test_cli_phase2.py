@@ -283,12 +283,15 @@ def test_all_people_output_that_is_a_file_exits_one(tmp_path, capsys):
     assert code == 1 and "cannot write" in err
 
 
-def test_a_single_output_in_a_missing_folder_still_exits_one(tmp_path, capsys):
+def test_a_single_output_in_a_missing_folder_is_created(tmp_path, capsys):
     code, err, _ = go(tmp_path, capsys, name="nope/skeleton.json")
-    assert code == 1 and "cannot write" in err and not (tmp_path / "nope").exists()
+    assert code == 0 and err == "" and (tmp_path / "nope" / "skeleton.json").is_file()
 
 
 def part4_run(tmp_path, capsys, *, skeleton="skeleton.json", keyframes="keyframes.json"):
+    for name in (skeleton, keyframes):  # "nope/x.json": a file named nope, so the folder cannot be made
+        if "/" in name:
+            (tmp_path / name.split("/")[0]).write_text("in the way")
     args = ["run", "--in", REAL_CLIP, "--out", tmp_path / skeleton, "--view", "part4", "--keyframes", "every:30",
             "--keyframes-out", tmp_path / keyframes]
     return run(args, capsys)
@@ -306,7 +309,7 @@ def test_r11_a_run_that_writes_two_files_leaves_exactly_those_two(tmp_path, caps
 def test_r11_a_keyframes_out_that_cannot_be_written_leaves_no_skeleton_behind(tmp_path, capsys):
     code, err = part4_run(tmp_path, capsys, keyframes="nope/keyframes.json")
     assert code == 1 and f"{tmp_path / 'nope' / 'keyframes.json'}: cannot write" in err
-    assert left_over(tmp_path) == []
+    assert left_over(tmp_path) == ["nope"]
 
 
 def test_r11_a_keyframes_out_that_fails_at_the_rename_removes_the_skeleton_it_had_placed(tmp_path, capsys):
@@ -319,7 +322,7 @@ def test_r11_a_keyframes_out_that_fails_at_the_rename_removes_the_skeleton_it_ha
 def test_r11_a_skeleton_that_cannot_be_written_leaves_no_keyframes_behind(tmp_path, capsys):
     code, err = part4_run(tmp_path, capsys, skeleton="nope/skeleton.json")
     assert code == 1 and f"{tmp_path / 'nope' / 'skeleton.json'}: cannot write" in err
-    assert left_over(tmp_path) == []
+    assert left_over(tmp_path) == ["nope"]
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can write to a read-only file")
@@ -335,7 +338,7 @@ def test_r11_a_failed_run_leaves_the_files_that_were_there_untouched(tmp_path, c
     (tmp_path / "skeleton.json").write_text("old skeleton")
     code, _ = part4_run(tmp_path, capsys, keyframes="nope/keyframes.json")
     assert code == 1 and (tmp_path / "skeleton.json").read_text() == "old skeleton"
-    assert left_over(tmp_path) == ["skeleton.json"]
+    assert left_over(tmp_path) == ["nope", "skeleton.json"]
 
 
 def test_r11_a_failed_all_people_run_leaves_no_file_in_the_folders_it_made(tmp_path, capsys, real_doc):

@@ -75,7 +75,8 @@ How another part plugs in:
    python3 -m part3 run --in pose3d.json --out part4/skeleton.json \
        --view part4 --keyframes part1/keyframes.json --keyframes-out part4/keyframes.json
    # Part 5 follower: simon.animation.v1
-   python3 -m part3 run --in pose3d.json --out follower/skeleton.json --view part5
+   python3 -m part3 run --in pose3d.json --out follower/skeleton.json --view part5 --fps 30
+   # (--fps 30 puts the follower on a uniform 30 fps clock)
    # Everyone else: the native simon.skeleton/1 (default)
    python3 -m part3 run --in pose3d.json --out skeleton.json
    ```

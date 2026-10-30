@@ -75,6 +75,8 @@ def cases():
         _case("view-native", SQUAT, ["--view", "native"]),
         _case("view-part4-part1-keyframes", SQUAT,
               ["--view", "part4", "--body", "part4-rig", "--keyframes", p1, *out]),
+        _case("view-part4-part1-keyframes-densify-10", SQUAT,
+              ["--view", "part4", "--body", "part4-rig", "--keyframes", p1, "--keyframes-densify", "every:10", *out]),
         _case("view-part4-part4-keyframes", SQUAT, ["--view", "part4", "--keyframes", p4, *out]),
         _case("view-part4-every-10", SQUAT, ["--view", "part4", "--keyframes", "every:10", *out]),
         # ASM-012: the cases above without --body get part4-rig from the view; a named body wins over that default

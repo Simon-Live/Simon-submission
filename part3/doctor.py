@@ -263,7 +263,26 @@ def _validate_part4_view(doc, info):
     if isinstance(fit, dict) and is_finite(fit.get("max_m")):
         notes.append(f"rig.fit: key poses were snapped to Part 4's rig; worst residual {fit['max_m'] * 1000:.1f} mm "
                      f"at {fit.get('worst_joint')} (key {fit.get('worst_index')}) against the native frame")
+    notes += _densify_notes(doc)
     return errors or _key_bone_errors(doc), notes, ctx
+
+
+SPARSE_KEY_GAP = 10  # ticks; a wider gap between consecutive keys earns the note below
+
+
+def _densify_notes(doc):
+    """The notes about key spacing: the densify record of a densified file, else a warning about wide gaps."""
+    timeline = doc.get("timeline") if isinstance(doc.get("timeline"), dict) else {}
+    record = timeline.get("densify")
+    if isinstance(record, dict):
+        return [f"densified every {record.get('every')} ticks ({record.get('added')} keys added, "
+                f"selected by {record.get('selected_by')})"]
+    keys = [k.get("index") for k in doc.get("keyframes", []) if isinstance(k, dict) and is_int(k.get("index"))]
+    gap = max((b - a for a, b in zip(keys, keys[1:])), default=0)
+    if gap <= SPARSE_KEY_GAP:
+        return []
+    return [f"keys are up to {gap} ticks apart; Part 4 animates between them, so a fast movement strays from "
+            f"the take; rerun with --keyframes-densify every:{SPARSE_KEY_GAP}"]
 
 
 def _validate_part4_other(doc, info):

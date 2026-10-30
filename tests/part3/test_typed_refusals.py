@@ -24,6 +24,7 @@ PATH_KEYWORDS = ("path", "option")  # the first parameter of ContractError and O
 CLI_ONLY = {
     ("cli.py", "--person"): ("process_all refuses --person with --all-people; the run app calls process only", 1),
     ("cli.py", "--keyframes-out"): ("_check_options runs in main() before any file is read", 3),
+    ("cli.py", "--keyframes-densify"): ("_check_densify runs in main() before any file is read", 2),
     ("person.py", "--person "): ("the run app never passes a person id", 1),
     ("resample.py", "--fps"): ("check_fps sees only the 30 or 60 that parse_options accepted", 1),
     ("keyframes.py", "--keyframes "): ("the run app's spec is the fixed every:10", 1),
