@@ -15,10 +15,10 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_it_exits_0_and_prints_the_line_and_the_token_counts(live, capsys):  # noqa: F811
-    client = Client(reply("left foot sticking out too far", 91, 52, 47))
+    client = Client(reply("Your left foot drifts too far to the left at 1.9 s", 91, 52, 47))
     assert smoke.main(client=client) == 0
     out = capsys.readouterr()
-    assert "line: left foot sticking out too far" in out.out
+    assert "line: Your left foot drifts too far to the left at 1.9 s" in out.out
     assert "tokens: prompt 91, completion 52, reasoning 47" in out.out
     assert "model: meta-models/muse-spark-open-1026" in out.out
     assert SENTINEL not in out.out + out.err
@@ -26,13 +26,13 @@ def test_it_exits_0_and_prints_the_line_and_the_token_counts(live, capsys):  # n
 
 
 def test_it_asks_about_the_fixed_fault_record(live):  # noqa: F811
-    client = Client(reply("left foot sticking out too far"))
+    client = Client(reply("Your left foot drifts too far to the left at 1.9 s"))
     smoke.main(client=client)
     user = json.loads(client.requests[0]["body"]["messages"][1]["content"])
     assert user["measure"] == "foot_out" and user["side"] == "left" and user["direction"] == "more"
 
 
-@pytest.mark.parametrize("bad", [reply(""), reply("right foot too far out"), reply("left foot 14 degrees out"),
+@pytest.mark.parametrize("bad", [reply(""), reply("Your right foot drifts too far to the left at 1.9 s"), reply("Your left foot is 14 degrees too far to the left at 1.9 s"),
                                  TimeoutError()])
 def test_it_exits_1_when_no_valid_line_came_back(live, capsys, bad):  # noqa: F811
     assert smoke.main(client=Client(bad)) == 1

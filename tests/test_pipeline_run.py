@@ -42,7 +42,7 @@ REFUSAL_TEXT = ("This take does not look like the expected movement, so no fault
 def test_an_accepted_take_carries_the_schema_version_status_runs_and_guard():
     res = run(str(EXPECTED), str(TAKE))
     a = res.analysis
-    assert a["schema_version"] == "1.1.0"
+    assert a["schema_version"] == "1.2.0"
     assert a["status"] == {"code": "ok", "text": "Compared with the expected movement."}
     assert res.guard is not None and res.guard.ok
     g = a["diagnostics"]["guard"]
@@ -50,7 +50,7 @@ def test_an_accepted_take_carries_the_schema_version_status_runs_and_guard():
     assert set(g["limits"]) == {"max_residual", "min_timing_corr"}
     assert g["residual"] == pytest.approx(res.guard.stats["residual"], abs=1e-4)
     assert a["faults"] and all(f["runs"] and f["expected_frames"] in f["runs"] for f in a["faults"])
-    assert all(f["joints"] and f["coaching"] == f["text"] for f in a["faults"])
+    assert all(f["joints"] and f["coaching"] == f["text_timed"] for f in a["faults"])  # ADR-0008
     assert a["phrasing"]["backend"] == "template" and len(a["phrasing"]["faults"]) == len(a["faults"])
 
 
@@ -86,7 +86,7 @@ def test_ac010_an_injected_client_phrases_through_the_pipeline_and_never_changes
     plain = run(str(EXPECTED), str(TAKE)).analysis
     muse = run(str(EXPECTED), str(TAKE), phrasing="muse-spark", phrasing_client=client).analysis
     assert all(r["fallback_reason"] for r in muse["phrasing"]["faults"])
-    assert [f["text"] for f in muse["faults"]] == [f["coaching"] for f in muse["faults"]]
+    assert [f["text_timed"] for f in muse["faults"]] == [f["coaching"] for f in muse["faults"]]  # fallback is the timed template line
     assert [f["magnitude_deg"] for f in muse["faults"]] == [f["magnitude_deg"] for f in plain["faults"]]
     assert "sentinel-key-value" not in json.dumps(muse)
 
@@ -97,7 +97,7 @@ def test_a_take_of_another_movement_is_refused_before_detection():
     assert a["status"] == {"code": "different_movement", "text": REFUSAL_TEXT}
     assert a["faults"] == [] and res.guard.ok is False
     assert a["diagnostics"]["guard"]["residual"] > a["diagnostics"]["guard"]["limits"]["max_residual"]
-    assert a["schema_version"] == "1.1.0"
+    assert a["schema_version"] == "1.2.0"
 
 
 def test_the_guard_limits_come_from_the_rules_passed_in():

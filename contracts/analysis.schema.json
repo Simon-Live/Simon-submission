@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/analysis.schema.json",
   "title": "Part 5 analysis.json (simon.analysis.v1)",
-  "version": "1.1.0",
-  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard). A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed.",
+  "version": "1.2.0",
+  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score). A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed.",
   "type": "object",
   "required": [
     "format",
@@ -152,6 +152,47 @@
               "type": "object"
             }
           }
+        }
+      }
+    },
+    "score": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "simon.score.v1 for an ok take, null for a refused one. Absent when the producer does not score.",
+      "properties": {
+        "version": {
+          "const": "simon.score.v1"
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "grade": {
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "F"
+          ]
+        },
+        "components": {
+          "type": "object",
+          "properties": {
+            "faults": {
+              "type": "number"
+            },
+            "similarity": {
+              "type": "number"
+            }
+          }
+        },
+        "params_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     }
@@ -423,6 +464,61 @@
         "coaching": {
           "type": "string",
           "description": "The phrasing backend's line. Optional (schema 1.1.0)."
+        },
+        "follower_t_s": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Seconds on the follower file's own clock at follower_frames[0] and [1]."
+        },
+        "at_s": {
+          "type": "number",
+          "description": "follower_t_s[0] rounded half up to 0.1 s."
+        },
+        "follower_runs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "integer",
+                "minimum": 0
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "Every run in follower file frames, same order as runs."
+        },
+        "lateral": {
+          "enum": [
+            "left",
+            "right",
+            null
+          ],
+          "description": "Which way the part is off, in the subject's own frame (like side); null when no direction applies."
+        },
+        "lateral_m": {
+          "type": "number",
+          "description": "foot_out on one side only: metres further out (positive) than the example."
+        },
+        "text_timed": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The timed words plus ' at <at_s> s'."
         }
       },
       "allOf": [

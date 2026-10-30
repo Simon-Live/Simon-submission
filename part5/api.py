@@ -29,9 +29,10 @@ from pathlib import Path
 
 from . import __version__, contract
 from .io import InputError
-from .phrasing import BACKENDS, TEMPLATE
+from .phrasing import BACKENDS, TEMPLATE, select_backend
 from .phrasing.muse_spark import NAME as MUSE_SPARK
 from .pipeline import MAX_FRAMES, AnalysisError, run
+from .score_report import score_block
 from .replay import build_replay
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -285,8 +286,8 @@ def _field_of(message, fields_by_path):
 
 # ----------------------------------------------------------------------------- analysis
 
-def _analysis(expected, follower, phrasing):
-    result = run(expected, follower, phrasing=phrasing)
+def _analysis(expected, follower, phrasing, selected_by=None):
+    result = run(expected, follower, phrasing=phrasing, score=score_block, selected_by=selected_by)
     return {"analysis": result.analysis, "replay": build_replay(result)}
 
 
@@ -390,13 +391,13 @@ def _analyse(body, client):
     large = len(body) > MAX_UPLOAD_BYTES
     expected, expected_field = _resolve("expected", request.get("expected"), large)
     follower, follower_field = _resolve("follower", request.get("follower"), large)
-    phrasing = request.get("phrasing", TEMPLATE)
+    phrasing, selected_by = select_backend(request.get("phrasing"), False)
     if phrasing not in offered_phrasing():
         raise ApiError(400, "phrasing", f"phrasing: must be one of {offered_phrasing()}")
     limited = _MUSE_LIMIT.slot(client) if phrasing == MUSE_SPARK else contextlib.nullcontext()
     try:
         with limited:
-            return _respond(200, _in_worker(_analysis, expected, follower, phrasing))
+            return _respond(200, _in_worker(_analysis, expected, follower, phrasing, selected_by))
     except (InputError, AnalysisError) as e:
         message = _plain(e)
         fields = {expected["path"]: expected_field, follower["path"]: follower_field}

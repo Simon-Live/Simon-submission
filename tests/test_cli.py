@@ -156,4 +156,4 @@ def test_analyse_takes_a_phrasing_backend_and_refuses_an_unknown_one(tmp_path):
     assert cli.main(args + ["--out", str(out), "--phrasing", "template"]) == 0
     doc = json.loads(out.read_text())
     assert doc["phrasing"]["backend"] == "template"
-    assert all(f["coaching"] == f["text"] for f in doc["faults"])
+    assert all(f["coaching"] == f["text_timed"] for f in doc["faults"])  # ADR-0008: the template line is timed

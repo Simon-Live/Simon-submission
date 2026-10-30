@@ -3,13 +3,23 @@
 `build_replay(result)` takes a `pipeline.PipelineResult` and returns plain JSON data. The
 timeline runs on the expected clip's frames. At expected frame `i` the follower shows its own
 file's frame `exp_to_fol[i]`, so the viewer never needs the resampled clock the alignment used.
+
+`simon.replay.v1` (contracts/replay.schema.json, ADR-0009) is that payload plus `format`,
+`schema_version`, `expected_t`, `follower_t` and `coordinate_frame`; `write_replay` writes it.
 """
+import json
+from pathlib import Path
+
 import numpy as np
 
 from .io import JOINTS
 from .pipeline import clip_fps
 
 DECIMALS = 4
+FORMAT = "simon.replay.v1"
+SCHEMA_VERSION = "1.0.0"
+COORDINATE_FRAME = {"origin": "hip_midpoint", "x": "subject_left", "y": "world_up", "z": "anterior",
+                    "unit": "metres"}
 
 # Joint-name pairs the viewer draws as bones. The torso sides stand in for the spine, which has
 # no joint of its own among the 17, and the nose to each shoulder stands in for the neck.
@@ -45,10 +55,24 @@ def build_replay(result):
         raise ValueError("a replay needs the alignment, and this analysis has none")
     exp_to_fol = np.asarray(result.to_original)[np.asarray(result.alignment.exp_to_fol)]
     return {
+        "format": FORMAT,
+        "schema_version": SCHEMA_VERSION,
         "fps": float(clip_fps(result.expected)),
         "expected": frames_json(result.expected.positions),
         "follower": frames_json(result.follower.positions),
         "exp_to_fol": [int(i) for i in exp_to_fol],
         "joints": list(JOINTS),
         "bones": [list(b) for b in BONES],
+        "expected_t": [round(float(x), 6) for x in result.expected.t],
+        "follower_t": [round(float(x), 6) for x in result.follower.t],
+        "coordinate_frame": dict(COORDINATE_FRAME),
     }
+
+
+def write_replay(path, result):
+    """Write `build_replay(result)` to `path` (parents made); returns the payload. OSError propagates."""
+    payload = build_replay(result)
+    text = json.dumps(payload, allow_nan=False) + "\n"
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(text)
+    return payload

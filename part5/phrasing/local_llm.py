@@ -17,6 +17,7 @@ import urllib.request
 from dataclasses import dataclass
 
 from ..measures import MEASURES
+from .prompt import timed_messages
 
 NAME = "local-llm"
 URL = "http://127.0.0.1:11434/v1/chat/completions"
@@ -76,6 +77,8 @@ def _measure_meaning(measure):
 
 
 def messages(fault):
+    if fault.get("at_s") is not None:  # a timed fault, ADR-0008
+        return timed_messages(fault)
     return [{"role": "system", "content": SYSTEM + _measure_meaning(fault["measure"])},
             {"role": "user", "content": json.dumps(fault_record(fault), sort_keys=True)}]
 
@@ -155,8 +158,8 @@ def model():
     return os.environ.get(MODEL_ENV, "").strip() or None
 
 
-def unavailable():
-    """None when Ollama can be tried, else the reason it cannot."""
+def unavailable(live=False):
+    """None when Ollama can be tried, else the reason it cannot. `live` is ignored: it is local."""
     if shutil.which("ollama") is None:
         return "ollama not found"
     if model() is None:

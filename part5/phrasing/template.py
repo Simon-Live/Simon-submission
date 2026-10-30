@@ -16,9 +16,14 @@ NAME = "template"
 MAX_CHARS = 160
 
 
+def fallback_text(fault):
+    """The template line for a fault: the timed words when the fault carries them (ADR-0008), else `text`."""
+    return fault.get("text_timed") or fault["text"]
+
+
 def lines(faults):
-    """Each fault's template text, in fault order."""
-    return [f["text"] for f in faults]
+    """Each fault's template line, in fault order."""
+    return [fallback_text(f) for f in faults]
 
 
 # ---- body parts -------------------------------------------------------------------------------
@@ -147,8 +152,8 @@ def _body(fault, text):
     return f"adds another body part ({extra[0]})" if extra else None
 
 
-def _direction(fault, text):
-    hits = set()
+def _direction(fault, text, hits=None):
+    hits = set(hits or ())
     for rx, direction in RULES[fault["measure"]]:
         text, count = rx.subn(" ", text)
         if count:
@@ -160,9 +165,84 @@ def _direction(fault, text):
     return None if hits == {fault["direction"]} else "wrong direction"
 
 
-def line_problem(fault, line):
-    """None when `line` fairly phrases the measured `fault`, else the short reason it does not."""
+# ---- timed mode (ADR-0008) ---------------------------------------------------------------------
+# Landmarks a timed line may name besides the measure's own body part: reference points, never a
+# second fault. A line must still name one of the measure's own parts (NAMES).
+LANDMARKS = {
+    "foot_out": ("hip", "shoulder"), "knee_valgus": ("foot", "hip"), "thigh_out": ("foot",),
+    "upper_arm_out": ("trunk",), "forearm_out": ("elbow",),
+}
+_TIME = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s?(?:seconds?|secs?|s)\b")
+_LATERAL = re.compile(r"\b(?:too far (?:to the )?|to the |toward the )(left|right)\b")
+_OPPOSITE = {"more": "less", "less": "more"}
+
+
+def _time(fault, text):
+    """(problem, text with the time removed). The time is `at_s` to 0.1 s, said once, with seconds."""
+    at_s = fault.get("at_s")
+    if at_s is None:
+        return "no time to check against", text
+    found = _TIME.findall(text)
+    if not found:
+        return "does not say the time", text
+    if len(found) > 1:
+        return "says the time more than once", text
+    if round(float(found[0]), 1) != round(float(at_s), 1):
+        return "wrong time", text
+    return None, _TIME.sub(" ", text)
+
+
+def _timed_side(fault, text):
+    """The measured side must be named; the only other side word allowed is the fault's `lateral`."""
+    side, lateral = fault["side"], fault.get("lateral")
+    if lateral is None or side not in ("left", "right") or fault["measure"] in SIDE_IS_DIRECTION:
+        return _side(fault, text)
+    named = set(SIDE_WORDS.findall(_LATERAL.sub(" ", text)))  # "too far <side>" is the direction's job
+    return None if side in named and named <= {side, lateral} else "wrong side"
+
+
+def _timed_body(fault, text):
+    found = {g for g, rx in _GROUP_RX.items() if rx.search(text)}
+    own = set(NAMES.get(fault["measure"], ()))
+    if not (found & own) and not (own == {"trunk"} and _TRUNK_CUES.search(text)):
+        return "does not name the body part"
+    extra = sorted(found - own - set(LANDMARKS.get(fault["measure"], ())))
+    return f"adds another body part ({extra[0]})" if extra else None
+
+
+def _timed_direction(fault, text):
+    """`too far <lateral>` counts as the fault's direction; the other side's word as the opposite."""
+    lateral, hits = fault.get("lateral"), set()
+    if lateral:
+        for word in _LATERAL.findall(text):
+            hits.add(fault["direction"] if word == lateral else _OPPOSITE[fault["direction"]])
+        text = _LATERAL.sub(" ", text)
+    return _direction(fault, text, hits)
+
+
+def _timed_problem(fault, text):
+    problem = _shape(fault, text)
+    if problem:
+        return problem
+    problem, text = _time(fault, text)
+    if problem:
+        return problem
+    for check in (_numbers, _timed_side, _timed_body, _timed_direction):
+        problem = check(fault, text)
+        if problem:
+            return problem
+    return None
+
+
+def line_problem(fault, line, timed=False):
+    """None when `line` fairly phrases the measured `fault`, else the short reason it does not.
+
+    `timed=True` is the live-mode test (ADR-0008): the line must say `fault["at_s"]` once, may name
+    `fault["lateral"]` as a direction and may name the measure's landmarks.
+    """
     text = line.strip().lower().replace("’", "'")
+    if timed:
+        return _timed_problem(fault, text)
     for check in (_shape, _numbers, _side, _body, _direction):
         problem = check(fault, text)
         if problem:

@@ -3,6 +3,7 @@
 Template text only (README: no frontier model). Sides are the subject's own left/right.
 A per-side phrase has a {side} slot; "both" uses the plural phrase without a side.
 """
+from .lateral import lateral_for
 
 # measure → direction → (one side, both sides). Centre measures have one phrase per direction.
 # Slots: {side}; {q} = "slightly " / "" / "much "; {nq} = "not quite" / "not" / "nowhere near"
@@ -74,4 +75,25 @@ def phrase(measure, direction, side, size="plain"):
 def describe(fault, qualify=True):
     """`fault` has measure, direction, side, magnitude_deg, threshold_deg (a detect.Fault)."""
     size = band(fault.magnitude_deg, fault.threshold_deg) if qualify else "plain"
+    return phrase(fault.measure, fault.direction, fault.side, size)
+
+
+# Timed vocabulary (ADR-0009): measure → body noun for "{side} <noun> too far <lateral>".
+LATERAL_NOUNS = {"foot_out": "foot", "thigh_out": "knee", "upper_arm_out": "arm", "forearm_out": "hand"}
+# measure → (one side, both sides) for "too low"; only the direction "less".
+LOW_PHRASES = {"thigh_forward": ("{side} thigh {q}too low", "thighs {q}too low"),
+               "upper_arm_forward": ("{side} arm {q}too low", "arms {q}too low")}
+
+
+def describe_timed(fault, qualify=True):
+    """The timed words for a `detect.Fault`: "too far right" and "too low" where `describe` says
+    "out" or "not raised enough". Everything else is the plain line."""
+    size = band(fault.magnitude_deg, fault.threshold_deg) if qualify else "plain"
+    q = QUALIFIERS[size][0]
+    lateral = lateral_for(fault.measure, fault.direction, fault.side)
+    if fault.measure in LATERAL_NOUNS and lateral:
+        return f"{fault.side} {LATERAL_NOUNS[fault.measure]} {q}too far {lateral}"
+    if fault.measure in LOW_PHRASES and fault.direction == "less" and fault.side in ("left", "right", "both"):
+        one, both = LOW_PHRASES[fault.measure]
+        return (both if fault.side == "both" else one).format(side=fault.side, q=q)
     return phrase(fault.measure, fault.direction, fault.side, size)

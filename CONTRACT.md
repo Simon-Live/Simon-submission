@@ -31,13 +31,13 @@ Each schema is JSON Schema draft 2020-12 with an `$id` and a top-level `version`
 
 | Name | Version | File | Describes |
 |---|---|---|---|
-| `analysis` | `1.1.0` | `contracts/analysis.schema.json` | Part 5 analysis.json (simon.analysis.v1) |
+| `analysis` | `1.2.0` | `contracts/analysis.schema.json` | Part 5 analysis.json (simon.analysis.v1) |
 | `input-animation` | `1.0.0` | `contracts/input-animation.schema.json` | Part 5 input clip (simon.animation.v1) |
 | `input-skeleton` | `1.0.0` | `contracts/input-skeleton.schema.json` | Part 5 expected skeleton (simon.skeleton.v1) |
 | `labels` | `1.0.0` | `contracts/labels.schema.json` | Part 5 labels.json (evaluation labels) |
 | `metrics` | `1.0.0` | `contracts/metrics.schema.json` | Part 5 make check-5 document (simon.part5.check.v1) |
 
-The copies of Part 3's and Part 4's schemas stay under `contracts/part3/` and `contracts/part4/`, exactly as they were published. The analysis schema is `1.1.0`: it adds optional fields to `simon.analysis.v1`, so a `1.0` document still validates and `format` does not change.
+The copies of Part 3's and Part 4's schemas stay under `contracts/part3/` and `contracts/part4/`, exactly as they were published. The analysis schema is `1.2.0`: it adds optional fields to `simon.analysis.v1`, so a `1.0` document still validates and `format` does not change.
 
 ## Compatibility
 
@@ -60,7 +60,7 @@ Which producer file works with Part 5, as checked against the producer commit in
 
 ## What Part 5 writes
 
-`part5 analyse --expected <file> --follower <file> --out <analysis.json>` writes `analysis.json` (`simon.analysis.v1`, schema `1.1.0`). The exit code says what happened to the file:
+`part5 analyse --expected <file> --follower <file> --out <analysis.json>` writes `analysis.json` (`simon.analysis.v1`, schema `1.2.0`). The exit code says what happened to the file:
 
 | Exit | Meaning | `analysis.json` written |
 |---|---|---|

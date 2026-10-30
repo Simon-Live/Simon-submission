@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
     "set": "exercise",
@@ -47,10 +47,23 @@
       "coverage": 1.0,
       "confidence": 1.0,
       "text": "right elbow bent more than the example",
+      "follower_t_s": [
+        0.667,
+        2.167
+      ],
+      "at_s": 0.7,
+      "follower_runs": [
+        [
+          20,
+          65
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "right elbow bent more than the example at 0.7 s",
       "joints": [
         "right_elbow"
       ],
-      "coaching": "right elbow bent more than the example"
+      "coaching": "right elbow bent more than the example at 0.7 s"
     },
     {
       "measure": "upper_arm_out",
@@ -84,11 +97,24 @@
       "coverage": 1.0,
       "confidence": 1.0,
       "text": "elbows wider than the example",
+      "follower_t_s": [
+        0.4,
+        2.1
+      ],
+      "at_s": 0.4,
+      "follower_runs": [
+        [
+          12,
+          63
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "elbows wider than the example at 0.4 s",
       "joints": [
         "left_shoulder",
         "right_shoulder"
       ],
-      "coaching": "elbows wider than the example"
+      "coaching": "elbows wider than the example at 0.4 s"
     }
   ],
   "diagnostics": {
@@ -127,10 +153,12 @@
     "faults": [
       {
         "backend": "template",
+        "model": null,
         "fallback_reason": null
       },
       {
         "backend": "template",
+        "model": null,
         "fallback_reason": null
       }
     ]

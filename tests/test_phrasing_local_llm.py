@@ -24,7 +24,7 @@ def test_no_ollama_binary_falls_back_to_template_with_a_reason(monkeypatch):
     assert lines == [f["text"] for f in FAULTS] and client.requests == []
     assert record["requested"] == "local-llm" and record["backend"] == "template"
     assert record["fallback_reason"] == "ollama not found" and record["model"] is None
-    assert record["faults"] == [{"backend": "template", "fallback_reason": "ollama not found"}] * 3
+    assert record["faults"] == [{"backend": "template", "model": None, "fallback_reason": "ollama not found"}] * 3
 
 
 def test_this_host_has_no_ollama_so_the_real_lookup_falls_back_too():
@@ -76,7 +76,7 @@ def test_the_local_request_carries_only_the_measured_record(ollama):
 def test_one_failing_fault_alone_falls_back(ollama, bad, reason):
     lines, record = phrasing.phrase(FAULTS, "local-llm", client=Client(reply(GOOD[0]), bad, reply(GOOD[2])))
     assert lines == [GOOD[0], KNEE["text"], GOOD[2]]
-    assert record["faults"][1] == {"backend": "template", "fallback_reason": reason}
+    assert record["faults"][1] == {"backend": "template", "model": None, "fallback_reason": reason}
     assert record["backend"] == "local-llm"
 
 

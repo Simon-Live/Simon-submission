@@ -1,0 +1,43 @@
+{
+  "format": "simon.part5.score-heldout.v1",
+  "note": "Append-only (ADR-0007). Each seed was generated once after the score freeze commit and scored once; no param changed afterwards. Measured, pass or fail.",
+  "attempts": [
+    {
+      "seed": 47,
+      "freeze_commit": "0aab25b",
+      "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+      "generator": "python3 scripts/make_dummy_followers.py --seed 47 --out <temp dir>/seed-47 --dropout-variant",
+      "scorer": "python -m part5.score_report --set <temp dir>/seed-47",
+      "labels_sha256": "083adc3f44466e666a039116747c3213b50457096c941373c64d1dfa1e8b3ddd",
+      "slices": {
+        "good/0": {"n": 20, "min": 100, "median": 100.0, "max": 100, "grades": {"A": 20}},
+        "good/1": {"n": 60, "min": 72, "median": 81.0, "max": 100, "grades": {"A": 1, "B": 36, "C": 23}},
+        "good/2": {"n": 10, "min": 58, "median": 63.0, "max": 67, "grades": {"D": 6, "F": 4}},
+        "low/0": {"n": 20, "min": 67, "median": 98.0, "max": 100, "grades": {"A": 11, "B": 3, "C": 4, "D": 2}},
+        "low/1": {"n": 60, "min": 27, "median": 77.5, "max": 99, "grades": {"A": 3, "B": 23, "C": 12, "D": 10, "F": 12}},
+        "low/2": {"n": 10, "min": 26, "median": 48.0, "max": 63, "grades": {"D": 1, "F": 9}}
+      },
+      "targets": {"correct good-light all A": "pass", "single faults B or C": "fail", "double faults D or F": "pass"},
+      "misses": ["dance_side_good_07_knee_caving-right_dropout: fault not detected, scored A"]
+    },
+    {
+      "seed": 53,
+      "freeze_commit": "0aab25b",
+      "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+      "generator": "python3 scripts/make_dummy_followers.py --seed 53 --out <temp dir>/seed-53 --dropout-variant",
+      "scorer": "python -m part5.score_report --set <temp dir>/seed-53",
+      "labels_sha256": "8edc5c111daef68230d81bcc37e683126bcac9c18c0892327450d12e6b8f164a",
+      "slices": {
+        "good/0": {"n": 20, "min": 100, "median": 100.0, "max": 100, "grades": {"A": 20}},
+        "good/1": {"n": 60, "min": 72, "median": 81.0, "max": 100, "grades": {"A": 2, "B": 40, "C": 18}},
+        "good/2": {"n": 10, "min": 56, "median": 61.0, "max": 63, "grades": {"D": 8, "F": 2}},
+        "low/0": {"n": 20, "min": 42, "median": 91.0, "max": 100, "grades": {"A": 10, "B": 3, "C": 2, "D": 4, "F": 1}},
+        "low/1": {"n": 60, "min": 32, "median": 76.0, "max": 99, "grades": {"A": 6, "B": 21, "C": 8, "D": 17, "F": 8}},
+        "low/2": {"n": 10, "min": 14, "median": 57.5, "max": 64, "grades": {"D": 4, "F": 6}}
+      },
+      "targets": {"correct good-light all A": "pass", "single faults B or C": "fail", "double faults D or F": "pass"},
+      "misses": ["dance_45_good_04_knees_shallow-both: fault not detected, scored A",
+                 "dance_45_good_04_knees_shallow-both_dropout: fault not detected, scored A"]
+    }
+  ]
+}

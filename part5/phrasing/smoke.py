@@ -1,8 +1,8 @@
 """Opt-in live smoke for Muse Spark: `make smoke-muse-spark` (never part of `make test`, `make check-5`
 or the publish check).
 
-Makes one real call on one fixed fault record and exits 0 only when a valid line came back. It prints
-the line and the token counts from the usage ledger, and never the key. Without the key file or with
+Makes one real call on one fixed timed fault record (ADR-0008) and exits 0 only when a line came back
+that passes the timed validator. It prints the line and the token counts from the usage ledger, and never the key. Without the key file or with
 `META_LIVE` unset it exits 1 and says why, so a missing key is never mistaken for a pass.
 """
 import sys
@@ -13,6 +13,7 @@ FAULT = {
     "measure": "foot_out", "joint": "left_ankle", "side": "left", "direction": "more",
     "body_part": "legs", "magnitude_deg": 14.2, "threshold_deg": 6.0,
     "expected_frames": [20, 52], "text": "left foot too far out",
+    "at_s": 1.9, "lateral": "left", "text_timed": "left foot too far left at 1.9 s",
 }
 
 

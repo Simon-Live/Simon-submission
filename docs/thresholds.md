@@ -150,3 +150,66 @@ Held-out result as measured (`make check-5` exit 0 at `3be3b40`, 2026-10-29): **
 
 Seed 31 is the current held-out set (`fixtures/input/heldout/`). Seed 37 is unused; no further
 attempt is needed while the gate stays green.
+
+## Score
+
+`simon.score.v1` (ADR-0007, `docs/specs/journey-followup.md` J-4). Params live under `score` in `part5/rules.json`,
+calibrated on seed 5 only by `python -m part5.calibrate --set fixtures/input/followers --score`; `part5/score.py`
+computes the score and `part5/score_report.py` reports and sweeps it.
+
+| param | value | rule |
+| --- | ---: | --- |
+| z0 | 0.289 | 95th percentile of the correct good-light takes' mean z |
+| z1 | 0.732 | the worst seed 5 take's mean z |
+| s_max | 4.0 | similarity costs at most 4 points |
+| base | 16 | the smallest counted fault (r = 1, shortest run, full coverage) costs more than 10 points |
+| slope | 5.9 | the worst single good-light fault still lands at 70 or above with the full similarity cost |
+| cap | 31.1 | `base + slope * (r - 1)` at that worst fault's r |
+
+AC-S01: the calibration reproduces the research prototype exactly (`z0 0.289`, `z1 0.732`, `s_max 4.0`,
+`base 16`, `slope 5.9`, `cap 31.1`); there is no difference to explain. Seed 5 and the current held-out set
+(seed 31) reproduce the prototype's per-slice grade tables.
+
+### Freeze check for the detection rules
+`make check-5` compares the detection rules, not the whole file: `part5/rules.json` without its `score` key,
+serialised with `json.dumps(rules, sort_keys=True, separators=(",", ":"))`, hashed with sha256. The value
+below was computed the same way from the file frozen at `fbb0bea` (the whole-file hash `60f2e60b...` of the
+attempts above still passes on its own):
+
+```
+git show fbb0bea:part5/rules.json | python3 -c 'import json,sys,hashlib; d={k:v for k,v in json.load(sys.stdin).items() if k!="score"}; print(hashlib.sha256(json.dumps(d,sort_keys=True,separators=(",",":")).encode()).hexdigest())'
+```
+
+detection_sha256: `b76e6ca378557910a75f5f2ecedbab80452d4b3c0d87cae328b9f5c79967da6a`
+
+Changing any detection key changes this hash and `make check-5` exits 2.
+
+### Gate and report
+`make check-5` gates, in addition to the precision and recall gate: every correct (no labelled fault) good-light
+take of the held-out set scores A, and the score never rises as `foot_out` right (0 to 28 degrees, steps of 4),
+`arms_wider` both (0 to 35, steps of 5) and `trunk_lean` centre (0 to 30, steps of 5) grow, built on the
+exercise clip with `random.Random(1234)`. Everything else is reported under `report.score` (held-out, seed 5,
+kit, stock): low light is never graded against a target.
+
+### Held-out score report
+Seeds 47 and 53, each generated once after the score freeze commit `0aab25b` and scored once, params unchanged
+(`params_sha256` `e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62`). Generator:
+`python3 scripts/make_dummy_followers.py --seed <n> --out <temp dir>/seed-<n> --dropout-variant`, scorer
+`python -m part5.score_report --set <temp dir>/seed-<n>`. `labels.json` sha256: seed 47
+`083adc3f44466e666a039116747c3213b50457096c941373c64d1dfa1e8b3ddd`, seed 53
+`8edc5c111daef68230d81bcc37e683126bcac9c18c0892327450d12e6b8f164a`. Machine record: `fixtures/score-heldout.json`.
+
+| slice (light/labelled faults) | seed 47 | seed 53 |
+| --- | --- | --- |
+| good/0 | A 20 | A 20 |
+| good/1 | A 1, B 36, C 23 | A 2, B 40, C 18 |
+| good/2 | D 6, F 4 | D 8, F 2 |
+| low/0 | A 11, B 3, C 4, D 2 | A 10, B 3, C 2, D 4, F 1 |
+| low/1 | A 3, B 23, C 12, D 10, F 12 | A 6, B 21, C 8, D 17, F 8 |
+| low/2 | D 1, F 9 | D 4, F 6 |
+
+Targets, as measured: correct good-light takes all A: pass on both. Double faults D or F: pass on both. Single
+faults B or C: fail on both. The A takes among good-light single faults are faults the detector did not find (seed
+47: `dance_side_good_07_knee_caving-right_dropout`; seed 53: `dance_45_good_04_knees_shallow-both` and its
+dropout copy), so the cause is detection recall, which the score does not hide. Low light is reported, not graded.
+The monotonic sweep passes in `make check-5`. No param changed after the freeze.

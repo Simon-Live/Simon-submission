@@ -40,6 +40,7 @@ from .io import load_clip
 from .measures import compute
 from .normalise import normalise
 from .pipeline import clip_fps, resample
+from . import score_report
 
 ROOT = Path(__file__).resolve().parent.parent
 TUNING_SEED = 5
@@ -511,16 +512,30 @@ def calibrate(labels, rules, guard=False, only=None, radius=None, mismatch_dir=N
     return lines, render_thresholds(results, metrics, pops, limits, overlap, hits)
 
 
+def write_score_block(labels, rules_path=RULES_PATH):
+    """--score: calibrate the score params (ADR-0007) and write them under "score" in the rules file."""
+    rules = load_rules(rules_path)
+    block = score_report.calibrate_set(labels, rules)
+    Path(rules_path).write_text(json.dumps({**rules, "score": block}, indent=2) + "\n")
+    print(f"calibrate: seed {labels['seed']}, wrote the score block to {rel(rules_path)}: "
+          + json.dumps({k: v for k, v in block.items() if k != "bands"}))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m part5.calibrate", description=__doc__.splitlines()[0])
     ap.add_argument("--set", default=str(TUNING), help="the tuning set (default fixtures/input/followers)")
     ap.add_argument("--guard", action="store_true", help="also calibrate the movement guard limits")
     ap.add_argument("--write-thresholds", action="store_true", help="write docs/thresholds.md")
     ap.add_argument("--radius", type=int, default=None, help=f"threshold grid half-width in degrees (default {RADIUS_DEG})")
+    ap.add_argument("--score", action="store_true",
+                    help="calibrate the simon.score.v1 params on this set and write the score block of part5/rules.json")
     ap.add_argument("--only", default="", help="comma-separated keys to sweep (default all)")
     args = ap.parse_args(argv)
     try:
         labels = load_set(args.set)
+        if args.score:
+            return write_score_block(labels)
         only = {x for x in args.only.split(",") if x}
         lines, doc = calibrate(labels, load_rules(RULES_PATH), args.guard, only, args.radius)
     except CalibrateError as e:

@@ -8,20 +8,24 @@ Unknown extra fields are allowed, so the format can grow without breaking older 
 import json
 import math
 import re
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from .guard import DIFFERENT_MOVEMENT, OK
 from .io import JOINTS
 from .measures import MEASURES
-from .words import describe
+from .lateral import lateral_for
+from .words import describe, describe_timed
 
 FORMAT = "simon.analysis.v1"
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 STATUS_CODES = (OK, DIFFERENT_MOVEMENT)
 UNIT = "degrees"
 SIDES = ("left", "right", "both", "center")
 DIRECTIONS = ("more", "less")
+NO_SCORE = object()  # build_analysis(score=NO_SCORE): no `score` key at all
+LATERALS = ("left", "right", None)
 
 
 class OutputError(ValueError):
@@ -56,10 +60,19 @@ def generic_measures():
 GENERIC_MEASURES = generic_measures()
 
 
-def fault_to_dict(fault):
-    """One `detect.Fault` → its `analysis.json` fault object, text included."""
+def round_half_up_tenth(seconds):
+    """`seconds` to 0.1 s, halves up, decimal-safe (1.85 → 1.9, 1.849 → 1.8)."""
+    return float(Decimal(repr(round(float(seconds), 3))).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def fault_to_dict(fault, times=None):
+    """One `detect.Fault` → its `analysis.json` fault object, text included.
+
+    `times`, if given, is `{follower_t_s, follower_runs, lateral_m?}` (ADR-0009): the 1.2.0
+    time fields. `lateral` and `text_timed` follow from the fault and `at_s`.
+    """
     spec = _spec(fault.measure, fault.side)
-    return {
+    d = {
         "measure": fault.measure,
         "measure_kind": spec.kind if spec else None,
         "joint": fault.joint,
@@ -78,6 +91,16 @@ def fault_to_dict(fault):
         "confidence": float(fault.confidence),
         "text": describe(fault),
     }
+    if times is not None:
+        t0, t1 = (round(float(x), 3) for x in times["follower_t_s"])
+        d["follower_t_s"] = [t0, t1]
+        d["at_s"] = round_half_up_tenth(t0)
+        d["follower_runs"] = [[int(a), int(b)] for a, b in times["follower_runs"]]
+        d["lateral"] = lateral_for(fault.measure, fault.direction, fault.side)
+        if times.get("lateral_m") is not None:
+            d["lateral_m"] = float(times["lateral_m"])
+        d["text_timed"] = f"{describe_timed(fault)} at {d['at_s']:.1f} s"
+    return d
 
 
 def _input_ref(ref, key):
@@ -88,7 +111,7 @@ def _input_ref(ref, key):
     raise OutputError(f"{key} must be a path or an object with a 'path', got {ref!r}")
 
 
-def build_analysis(expected, follower, faults, diagnostics=None, status=None):
+def build_analysis(expected, follower, faults, diagnostics=None, status=None, times=None, score=NO_SCORE):
     """Assemble a validated analysis document.
 
     `expected`/`follower` identify the input clips: a path, or an object with at least
@@ -96,9 +119,12 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None):
     `detect.Fault` objects (already sorted); an empty sequence means a correct take.
     `status`, if given, is `{code, text}`: a refused take (`different_movement`) has no faults.
     `diagnostics`, if given, is carried as an optional object Part 7 may ignore.
+    `times` is one `fault_to_dict` times entry per fault (1.2.0 time fields). `score` is the
+    `score` block (a dict, or None for a refused take); left out entirely when not given.
     """
+    times = times if times is not None else [None] * len(faults)
     try:
-        faults = [fault_to_dict(f) for f in faults]
+        faults = [fault_to_dict(f, t) for f, t in zip(faults, times, strict=True)]
     except (AttributeError, KeyError, TypeError, ValueError) as e:
         raise OutputError(f"<built analysis>: cannot build a fault object ({e})") from e
     doc = {"format": FORMAT,
@@ -110,6 +136,8 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None):
     doc["faults"] = faults
     if diagnostics is not None:
         doc["diagnostics"] = diagnostics
+    if score is not NO_SCORE:
+        doc["score"] = score
     return validate_analysis(doc, source="<built analysis>")
 
 
@@ -157,7 +185,7 @@ def validate_analysis(doc, source="<analysis>"):
         fail("diagnostics must be an object")
     version = doc.get("schema_version")
     if "schema_version" in doc and not (isinstance(version, str) and SCHEMA_VERSION_RE.match(version)):
-        fail(f"schema_version must look like '1.1.0', got {version!r}")
+        fail(f"schema_version must look like '1.2.0', got {version!r}")
     faults = doc.get("faults")
     if not isinstance(faults, list):
         fail("faults must be a list")
@@ -167,6 +195,10 @@ def validate_analysis(doc, source="<analysis>"):
         _validate_fault(f, f"faults[{i}]", fail)
     if "phrasing" in doc:
         _validate_phrasing(doc["phrasing"], len(faults), fail)
+    if "score" in doc and doc["score"] is not None and not isinstance(doc["score"], dict):
+        fail("score must be an object or null")
+    if isinstance(doc.get("score"), dict) and doc.get("status", {}).get("code") == DIFFERENT_MOVEMENT:
+        fail("score must be null for a refused take")
     try:  # nothing anywhere (incl. diagnostics/extras) may make this invalid JSON downstream
         json.dumps(doc, allow_nan=False)
     except (TypeError, ValueError) as e:
@@ -185,12 +217,12 @@ def _validate_status(status, faults, fail):
         fail(f"status.code {DIFFERENT_MOVEMENT!r} goes with faults [], got {len(faults)} fault(s)")
 
 
-def _validate_runs(runs, where, fail):
+def _validate_runs(runs, where, fail, key="runs"):
     ok = (isinstance(runs, (list, tuple)) and runs
           and all(isinstance(r, (list, tuple)) and len(r) == 2 and all(_is_int(x) for x in r)
                   and 0 <= r[0] <= r[1] for r in runs))
     if not ok:
-        fail(f"{where}.runs must be a non-empty list of [start, end] integer frames with 0 <= start <= end, "
+        fail(f"{where}.{key} must be a non-empty list of [start, end] integer frames with 0 <= start <= end, "
              f"got {runs!r}")
 
 
@@ -250,6 +282,7 @@ def _validate_fault(f, where, fail):
         joints = f["joints"]
         if not (isinstance(joints, list) and joints and all(j in JOINTS for j in joints)):
             fail(f"{where}.joints must be a non-empty list of canonical joint names, got {joints!r}")
+    _validate_times(f, where, fail)
     if "coaching" in f and (not isinstance(f["coaching"], str) or not f["coaching"]):
         fail(f"{where}.coaching must be a non-empty string")
 
@@ -261,3 +294,23 @@ def _validate_phrasing(record, n_faults, fail):
     per_fault = record.get("faults")
     if not isinstance(per_fault, list) or len(per_fault) != n_faults:
         fail(f"phrasing.faults must hold one entry per fault ({n_faults}), got {per_fault!r}")
+
+
+def _validate_times(f, where, fail):
+    """The optional 1.2.0 fields of a fault (ADR-0009); a 1.1.0 fault has none of them."""
+    if "follower_t_s" in f:
+        v = f["follower_t_s"]
+        if not (isinstance(v, (list, tuple)) and len(v) == 2 and all(_is_number(x) for x in v) and v[0] <= v[1]):
+            fail(f"{where}.follower_t_s must be [start_s, end_s] numbers with start <= end, got {v!r}")
+    if "at_s" in f and not _is_number(f["at_s"]):
+        fail(f"{where}.at_s must be a number, got {f['at_s']!r}")
+    if "follower_runs" in f:
+        _validate_runs(f["follower_runs"], where, fail, "follower_runs")
+        if "runs" in f and len(f["follower_runs"]) != len(f["runs"]):
+            fail(f"{where}.follower_runs must have one entry per run ({len(f['runs'])}), got {len(f['follower_runs'])}")
+    if "lateral" in f and f["lateral"] not in LATERALS:
+        fail(f"{where}.lateral must be 'left', 'right' or null, got {f['lateral']!r}")
+    if "lateral_m" in f and not _is_number(f["lateral_m"]):
+        fail(f"{where}.lateral_m must be a number, got {f['lateral_m']!r}")
+    if "text_timed" in f and (not isinstance(f["text_timed"], str) or not f["text_timed"]):
+        fail(f"{where}.text_timed must be a non-empty string")

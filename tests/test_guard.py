@@ -177,7 +177,7 @@ def test_ac011_a_refused_analysis_is_written_and_validates(tmp_path):
     write_analysis(out, res.analysis)
     doc = json.loads(out.read_text())
     assert not list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(doc))
-    assert doc["schema_version"] == "1.1.0" and doc["status"]["code"] == "different_movement"
+    assert doc["schema_version"] == "1.2.0" and doc["status"]["code"] == "different_movement"
     assert doc["faults"] == [] and "diagnostics" in doc
 
 

@@ -1,0 +1,205 @@
+"""simon.score.v1 (ADR-0007, docs/specs/journey-followup.md J-4): the formula, the bands, the refusal,
+the params hash, the detection freeze hash and the seed 5 calibration."""
+import copy
+import hashlib
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from part5 import calibrate, check, score, score_report
+from part5.detect import load_rules
+from part5.measures import MEASURES
+
+ROOT = Path(__file__).resolve().parent.parent
+N = 10
+PARAMS = {"version": "simon.score.v1", "z0": 0.0, "z1": 1.0, "s_max": 4.0, "base": 10, "slope": 5.0, "cap": 30.0,
+          "bands": [[90, "A"], [80, "B"], [70, "C"], [60, "D"], [0, "F"]], "calibrated_on": "test"}
+
+
+@pytest.fixture
+def rules():
+    return {**load_rules(), "score": copy.deepcopy(PARAMS)}
+
+
+def aligned(z=0.0, n=N, nan=False):
+    """Every measure off by `z` times its threshold on every frame (identity alignment)."""
+    base = load_rules()
+    exp = {m: np.zeros(n) for m in MEASURES}
+    fol = {m: np.full(n, z * score.threshold_of(m, base)) for m in MEASURES}
+    if nan:
+        fol = {m: np.full(n, np.nan) for m in MEASURES}
+    return {"expected": exp, "follower": fol, "exp_to_fol": list(range(n))}
+
+
+def fault(mag=20.0, thr=10.0, runs=((0, 4),), cov=1.0):
+    return {"magnitude_deg": mag, "threshold_deg": thr, "runs": [list(r) for r in runs], "coverage": cov,
+            "expected_frames": list(runs[0])}
+
+
+def analysis(faults=(), code="ok"):
+    return {"status": {"code": code}, "faults": list(faults)}
+
+
+def test_a_take_with_no_faults_and_no_error_is_100_a(rules):
+    s = score.compute(analysis(), aligned(0.0), rules)
+    assert (s["value"], s["grade"]) == (100, "A") and s["components"] == {"faults": 0.0, "similarity": 0.0}
+    assert s["version"] == "simon.score.v1"
+
+
+def test_ac_s02_formula_faults_and_similarity(rules):
+    # r = 2: penalty 10 + 5 * 1 = 15; dur 0.5: weight 0.75 -> F 11.25; mean_z 0.5 -> S 2.0; 100 - 13.25 = 86.75
+    s = score.compute(analysis([fault()]), aligned(0.5), rules)
+    assert s["components"] == {"faults": 11.25, "similarity": 2.0}
+    assert (s["value"], s["grade"]) == (87, "B")
+
+
+def test_ac_s02_the_penalty_is_capped(rules):
+    s = score.compute(analysis([fault(mag=100.0, runs=((0, 9),))]), aligned(0.0), rules)
+    assert s["components"]["faults"] == 30.0 and s["value"] == 70
+
+
+def test_ac_s02_coverage_and_every_run_count(rules):
+    s = score.compute(analysis([fault(mag=10.0, runs=((0, 1), (5, 6)), cov=0.5)]), aligned(0.0), rules)
+    # r = 1: penalty 10, dur 0.4: weight 0.7, coverage 0.5 -> 3.5; 96.5 rounds half up to 97
+    assert s["components"]["faults"] == 3.5 and s["value"] == 97
+
+
+def test_ac_s02_a_signed_magnitude_counts_by_size(rules):
+    a = score.compute(analysis([fault(mag=-20.0)]), aligned(), rules)
+    b = score.compute(analysis([fault(mag=20.0)]), aligned(), rules)
+    assert a == b
+
+
+def test_ac_s02_round_half_up_at_a_half(rules):
+    # F = 10 * 1.0 * 0.75 = 7.5 -> 92.5 -> 93 (half up, not banker's 92)
+    s = score.compute(analysis([fault(mag=10.0, runs=((0, 9),), cov=0.75)]), aligned(), rules)
+    assert s["value"] == 93
+    assert [float(score.round_half_up(*a)) for a in ((2.675, 2), (0.5,), (1.5,))] == [2.68, 1, 2]
+
+
+def test_ac_s02_clamped_at_0_and_100(rules):
+    many = [fault(mag=100.0, runs=((0, 9),)) for _ in range(6)]
+    assert score.compute(analysis(many), aligned(2.0), rules)["value"] == 0
+    assert score.compute(analysis(), aligned(0.0), rules)["value"] == 100
+
+
+@pytest.mark.parametrize("value, letter", [(100, "A"), (90, "A"), (89, "B"), (80, "B"), (79, "C"), (70, "C"),
+                                           (69, "D"), (60, "D"), (59, "F"), (0, "F")])
+def test_ac_s02_band_edges(value, letter):
+    assert score.grade(value) == letter == score.grade(value, PARAMS["bands"])
+
+
+def test_similarity_is_clipped_per_value_and_bounded_by_s_max(rules):
+    s = score.compute(analysis(), aligned(50.0), rules)  # every error clipped to 2 thresholds: S capped at s_max
+    assert s["components"]["similarity"] == 4.0 and s["value"] == 96
+
+
+def test_a_measure_missing_everywhere_is_skipped_not_scored_zero(rules):
+    assert score.compute(analysis(), aligned(nan=True), rules) is None
+    al = aligned(0.5)
+    al["follower"]["elbow_flexion"] = np.full(N, np.nan)
+    assert score.compute(analysis(), al, rules)["components"]["similarity"] == 2.0
+
+
+def test_ac_s03_a_refused_take_has_no_score_never_a_zero(rules):
+    assert score.compute(analysis(code="different_movement"), aligned(), rules) is None
+    assert score.compute({"faults": []}, aligned(), rules) is None
+
+
+def test_the_params_hash_is_the_sha256_of_the_score_block(rules):
+    want = hashlib.sha256(json.dumps(PARAMS, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    assert score.compute(analysis(), aligned(), rules)["params_sha256"] == want == score.params_sha256(PARAMS)
+
+
+def test_the_shipped_rules_have_a_score_block_and_compute_reads_it():
+    rules = load_rules()
+    assert score.params_of(rules)["version"] == "simon.score.v1"
+    assert score.compute(analysis(), aligned())["params_sha256"] == score.params_sha256(rules["score"])
+    with pytest.raises(ValueError, match="no simon.score.v1"):
+        score.params_of({"default": {}})
+
+
+def test_a_bigger_fault_never_scores_higher(rules):
+    values = [score.compute(analysis([fault(mag=m)]), aligned(0.3), rules)["value"] for m in range(10, 80, 5)]
+    assert values == sorted(values, reverse=True) and values[0] > values[-1]
+
+
+def test_a_longer_fault_never_scores_higher(rules):
+    values = [score.compute(analysis([fault(runs=((0, e),))]), aligned(), rules)["value"] for e in range(0, 10)]
+    assert values == sorted(values, reverse=True)
+
+
+def test_fault_features_use_expected_frames_without_runs():
+    f = {"magnitude_deg": -12.0, "threshold_deg": 6.0, "expected_frames": [2, 5], "coverage": 0.9}
+    assert score.fault_features(f, 20) == {"r": 2.0, "dur": 0.2, "cov": 0.9}
+
+
+# --- calibration (AC-S01) ---
+def rows():
+    r = [{"lighting": "good", "n_labelled": 0, "faults": [], "mean_z": z} for z in np.linspace(0.1, 0.3, 20)]
+    r += [{"lighting": "good", "n_labelled": 1, "faults": [{"r": 3.0, "dur": 0.5, "cov": 1.0}], "mean_z": 0.5},
+          {"lighting": "low", "n_labelled": 0, "faults": [], "mean_z": 0.9}]
+    return r
+
+
+def test_calibrate_follows_the_stated_rules():
+    p = score.calibrate(rows(), 0.4)
+    assert p["z1"] == 0.9 and p["z0"] == pytest.approx(0.29, abs=0.02) and p["s_max"] == 4.0
+    assert p["base"] == 16  # ceil(10.5 / (0.5 + 0.5 * 0.4)) in floating point (15.000000000000002)
+    assert p["calibrated_on"] == "seed 5" and p["version"] == "simon.score.v1"
+
+
+def test_calibrated_worst_single_fault_lands_at_70_or_more():
+    p = score.calibrate(rows(), 0.4)
+    feats = {"faults": [{"r": 3.0, "dur": 0.5, "cov": 1.0}], "mean_z": p["z1"]}
+    f, s = score.components(feats, p)
+    assert 100 - f - s >= 70 - 1e-9
+    smallest = {"faults": [{"r": 1.0, "dur": 0.4, "cov": 1.0}], "mean_z": 0.0}
+    assert 100 - score.components(smallest, p)[0] < 90  # the smallest counted fault is never an A
+
+
+def test_ac_s01_seed_5_reproduces_the_research_prototype_and_the_shipped_block():
+    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
+    block = score_report.calibrate_set(labels)
+    assert {k: block[k] for k in ("z0", "z1", "s_max", "base", "slope", "cap")} == {
+        "z0": 0.289, "z1": 0.732, "s_max": 4.0, "base": 16, "slope": 5.9, "cap": 31.1}
+    assert block == load_rules()["score"]
+
+
+def test_calibrate_score_writes_only_the_score_key(tmp_path):
+    rules_path = tmp_path / "rules.json"
+    original = {k: v for k, v in load_rules().items() if k != "score"}
+    rules_path.write_text(json.dumps(original, indent=2) + "\n")
+    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
+    assert calibrate.write_score_block(labels, rules_path) == 0
+    written = json.loads(rules_path.read_text())
+    assert {k: v for k, v in written.items() if k != "score"} == original and written["score"] == load_rules()["score"]
+
+
+# --- the freeze hash for the detection rules (AC-S06) ---
+DETECTION_SHA = "b76e6ca378557910a75f5f2ecedbab80452d4b3c0d87cae328b9f5c79967da6a"
+
+
+def test_ac_s06_the_detection_hash_ignores_the_score_block_and_equals_the_recorded_one():
+    assert check.detection_hash() == DETECTION_SHA
+    text = (ROOT / "docs/thresholds.md").read_text()
+    assert check.recorded_detection_hash(text) == DETECTION_SHA
+
+
+def test_ac_s06_any_detection_key_changes_the_hash_and_the_score_block_does_not(tmp_path):
+    rules = load_rules()
+    path = tmp_path / "rules.json"
+    path.write_text(json.dumps({**rules, "score": {"version": "other"}}))
+    assert check.detection_hash(path) == DETECTION_SHA
+    rules["default"]["threshold_deg"] += 1
+    path.write_text(json.dumps(rules))
+    assert check.detection_hash(path) != DETECTION_SHA
+
+
+def test_the_recorded_hash_is_read_from_the_score_section_only():
+    sha = "a" * 64
+    assert check.recorded_detection_hash(f"## Score\n\n### Freeze\ndetection_sha256: `{sha}`\n## Next\n") == sha
+    assert check.recorded_detection_hash(f"## Other\ndetection_sha256: `{sha}`\n") is None
+    assert check.recorded_detection_hash(f"## Score\nx\n## Next\ndetection_sha256: `{sha}`\n") is None

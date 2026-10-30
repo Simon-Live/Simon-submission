@@ -24,7 +24,7 @@ from pathlib import Path
 
 from .evaluate import canonical_label, match_pairs
 from .guard import DIFFERENT_MOVEMENT
-from .pipeline import analyse
+from .score_report import analyse
 
 ROOT = Path(__file__).resolve().parent.parent
 FORMAT = "simon.part5.real_report.v1"
@@ -139,6 +139,12 @@ def _score(faults, labels):
     return matched, missed, unlabelled
 
 
+def _score_of(analysis):
+    """The value and grade of the take's score (ADR-0007), or None for a refused take."""
+    s = analysis.get("score")
+    return {"value": s["value"], "grade": s["grade"]} if s else None
+
+
 def _entry(root, take_id, source, expected, follower, label_source, labels, errors, **extra):
     """Analyse one take against its expected clip and score it; None (with an error) when it can't be."""
     if not _missing(root, take_id, (expected, follower), errors):
@@ -157,7 +163,8 @@ def _entry(root, take_id, source, expected, follower, label_source, labels, erro
             "label_source": label_source, **extra,
             "labels": [_label(lab) for lab in labels], "faults": [_fault(f) for f in faults],
             "matched": matched, "missed": missed, "unlabelled": unlabelled,
-            "status": status, "guard": diag.get("guard", {}), "warnings": diag.get("warnings", [])}
+            "status": status, "guard": diag.get("guard", {}), "warnings": diag.get("warnings", []),
+            "score": _score_of(analysis)}
 
 
 # --- Part 3's kit ---

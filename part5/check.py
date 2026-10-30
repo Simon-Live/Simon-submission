@@ -21,7 +21,7 @@ from pathlib import Path
 from . import real
 from .detect import RULES_PATH
 from .evaluate import evaluate_corpus, is_refused, slice_name
-from .pipeline import analyse
+from .score_report import analyse, correct_good_failures, distribution, entries_of, run_sweep, sweep_failures, verdicts
 
 ROOT = Path(__file__).resolve().parent.parent
 FORMAT = "simon.part5.check.v1"
@@ -36,6 +36,7 @@ GATED = ("good/front", "good/45", "good/side")
 MIN_PRECISION = 0.85
 MIN_RECALL = 0.75
 MAX_FAULTS_ON_CORRECT = 0
+DETECTION_SHA_PATTERN = r"detection_sha256:?\s*`?([0-9a-f]{64})"
 DATA_SOURCE = ("synthetic: held-out takes (seed {seed}, from {path}/labels.json) from "
                "scripts/make_dummy_followers.py; thresholds tuned on seed 5 only")
 
@@ -177,7 +178,7 @@ def thresholds_record(seed, text):
 
 def current_attempt(seed, passed, metrics, rules_sha, recorded):
     return {"seed": seed, "freeze_commit": recorded.get("freeze_commit", "not recorded"),
-            "rules_sha256": rules_sha, "approach": recorded.get("approach", "not recorded"),
+            "rules_sha256": recorded.get("rules_sha256", rules_sha), "approach": recorded.get("approach", "not recorded"),
             "passed": passed, "slices": metrics["slices"]}
 
 
@@ -203,15 +204,58 @@ def rules_hash(path=RULES_PATH):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def require_frozen(seed, sha, frozen):
+def detection_hash(path=RULES_PATH):
+    """sha256 of the detection rules: part5/rules.json without its `score` key, serialised with sorted
+    keys and compact separators (ADR-0007). The score params are not detection rules."""
+    rules = {k: v for k, v in json.loads(Path(path).read_text()).items() if k != "score"}
+    return hashlib.sha256(json.dumps(rules, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def recorded_detection_hash(text):
+    """The `detection_sha256` docs/thresholds.md records under "Score", or None."""
+    section = re.search(r"^##\s+Score\b[^\n]*\n(.*?)(?=^#{1,2}\s|\Z)", text, re.M | re.S)
+    m = re.search(DETECTION_SHA_PATTERN, section.group(1), re.I) if section else None
+    return m.group(1) if m else None
+
+
+def require_frozen(seed, sha, frozen, detection=None, recorded_detection=None):
     """A seed is scored only against the rules frozen for it (ADR-0003): docs/thresholds.md must
-    record a rules_sha256 for the seed and it must equal the hash of part5/rules.json now."""
+    record a rules_sha256 for the seed and it must equal the hash of part5/rules.json now, or (ADR-0007)
+    the detection rules, without the `score` key, must equal the `detection_sha256` recorded under "Score"."""
     if not frozen.get("rules_sha256"):
         raise CheckError([f"check-5: docs/thresholds.md has no freeze record (rules_sha256) for seed {seed}; "
                           "freeze part5/rules.json and record its hash there before scoring the seed"])
+    if detection is not None and detection == recorded_detection:
+        return
     if frozen["rules_sha256"] != sha:
         raise CheckError([f"check-5: part5/rules.json differs from the hash frozen for seed {seed} in "
                           "docs/thresholds.md; a seed is scored once, against the rules frozen for it"])
+
+
+# --- the score (ADR-0007): the gate adds correct good-light takes at A and a monotonic sweep ---
+def score_gate(g, labels_doc, analyses, sweeps):
+    """`g` (the precision and recall gate) with the score criteria added to its failures; `passed` needs all."""
+    failures = g["failures"] + correct_good_failures(labels_doc, analyses) + sweep_failures(sweeps)
+    return {**g, "failures": failures, "passed": not failures, "sweep": {k: [list(p) for p in v] for k, v in sweeps.items()}}
+
+
+def real_grades(block):
+    """{grade: count} of the scored real takes in a kit or stock block."""
+    grades = {}
+    for t in block.get("takes", []):
+        if t.get("score"):
+            grades[t["score"]["grade"]] = grades.get(t["score"]["grade"], 0) + 1
+    return grades
+
+
+def score_block(held, held_analyses, tune, tune_analyses, real_report):
+    """The reported (never gated beyond `gate`) grade distribution per slice of every set: held-out, seed 5,
+    kit and stock. Low light is reported, never graded against a target."""
+    held_dist = distribution(entries_of(held, held_analyses))
+    return {"gated": False, "version": "simon.score.v1",
+            "heldout": {"seed": held["seed"], "slices": held_dist, "targets": verdicts(held_dist)},
+            "tuning": {"seed": tune["seed"], "slices": distribution(entries_of(tune, tune_analyses))},
+            "kit": {"grades": real_grades(real_report["kit"])}, "stock": {"grades": real_grades(real_report["stock"])}}
 
 
 # --- the real-take blocks ---
@@ -254,32 +298,35 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
     if tune["seed"] != TUNING_SEED:
         raise CheckError([f"check-5: {rel(tuning)}/labels.json names seed {tune['seed']}; "
                           f"the tuning set is seed {TUNING_SEED}"])
-    sha = rules_hash(rules_path)
+    sha, detection = rules_hash(rules_path), detection_hash(rules_path)
     text = thresholds_path.read_text() if thresholds_path.is_file() else ""
     frozen = thresholds_record(held["seed"], text)
-    require_frozen(held["seed"], sha, frozen)
+    require_frozen(held["seed"], sha, frozen, detection, recorded_detection_hash(text))
     (held_analyses, held_errors), (tune_analyses, tune_errors) = analyse_set(held, root), analyse_set(tune, root)
     if held_errors or tune_errors:
         raise CheckError(held_errors + tune_errors)
+    real_report = real_blocks(root)
     held_metrics, tune_metrics = evaluate_corpus(held, held_analyses), evaluate_corpus(tune, tune_analyses)
     require_unchanged_scores(held["seed"], held_metrics, attempts)
 
-    g = gate(held_metrics)
+    g = score_gate(gate(held_metrics), held, held_analyses, run_sweep(OUT_DIR / "sweep"))
     recorded = {**frozen, **{k: v for a in attempts if a["seed"] == held["seed"] for k, v in a.items()}}
     current = current_attempt(held["seed"], g["passed"], held_metrics, sha, recorded)
     doc = {
         "format": FORMAT,
         "data_source": DATA_SOURCE.format(seed=held["seed"], path=rel(heldout)),
         "gate": {"set": rel(heldout), "seed": held["seed"], "slices": list(GATED),
-                 "thresholds": g["thresholds"], "passed": g["passed"], "failures": g["failures"],
+                 "thresholds": g["thresholds"], "passed": g["passed"], "failures": g["failures"], "sweep": g["sweep"],
                  "metrics": held_metrics},
         "attempts": attempts_list(held["seed"], current, attempts),
         "tuning": {"set": rel(tuning), "seed": tune["seed"], "gated": False, "metrics": tune_metrics},
         "report": {"low_light": {"gated": False, "slices": slices_starting(held_metrics, "low/")},
                    "dropout": {"gated": False, "slices": slices_starting(held_metrics, "dropout/")},
-                   **real_blocks(root),
-                   "refusals": {k: v["refused"] for k, v in held_metrics["slices"].items()}},
+                   **real_report,
+                   "refusals": {k: v["refused"] for k, v in held_metrics["slices"].items()},
+                   "score": score_block(held, held_analyses, tune, tune_analyses, real_report)},
         "rules_sha256": sha,
+        "detection_sha256": detection,
     }
     rows = take_report("heldout", held, held_analyses) + take_report("tuning", tune, tune_analyses)
     return doc, rows
@@ -303,6 +350,12 @@ def summary(doc):
             lines.append(f"check-5: {name:11s} P {s['precision']:.2f}  R {s['recall']:.2f}  "
                          f"faults on correct takes {s['faults_on_correct_takes']}  "
                          f"refused {s.get('refused', 0)}  {'pass' if ok else 'FAIL'}")
+    sc = doc["report"]["score"]["heldout"]
+    for key, d in sc["slices"].items():
+        grades = ", ".join(f"{g} {c}" for g, c in d["grades"].items())
+        target = f"  target verdict {sc['targets'][key]}" if key in sc["targets"] else "  (reported)"
+        lines.append(f"check-5: score {key:7s} n {d['n']:3d}  min {d['min']}  median {d['median']}  max {d['max']}  "
+                     f"{grades}{target}")
     failures = doc["gate"]["failures"]
     if failures:
         lines += [f"  {f}" for f in failures]

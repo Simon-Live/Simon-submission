@@ -1,4 +1,5 @@
 """Command line entry point: `part5 analyse --expected … --follower … --out analysis.json`."""
+import os
 import argparse
 import sys
 
@@ -7,7 +8,10 @@ from . import real
 from .guard import DIFFERENT_MOVEMENT
 from .io import InputError
 from .output import OutputError, write_analysis
+from .replay import write_replay
 from .pipeline import PHRASING_BACKENDS, AnalysisError, run
+from .phrasing import select_backend
+from .score_report import score_block
 
 EXIT_REFUSED = 3  # a valid analysis.json was written, but the take is a different movement
 
@@ -19,12 +23,16 @@ def build_parser():
     a.add_argument("--expected", required=True, help="expected animation.json or skeleton.json")
     a.add_argument("--follower", required=True, help="follower skeleton.json")
     a.add_argument("--out", required=True, help="where to write analysis.json")
-    a.add_argument("--phrasing", choices=PHRASING_BACKENDS, default="template",
+    a.add_argument("--replay", help="also write the replay file (simon.replay.v1) here")
+    a.add_argument("--live", action="store_true",
+                   help="live mode (ADR-0008): Muse Spark phrases each fault unless --phrasing names a backend")
+    a.add_argument("--phrasing", choices=PHRASING_BACKENDS, default=None,
                    help="who phrases the coaching line per fault (default template; scored fields never change)")
     sv = sub.add_parser("serve", help="serve the web page and the analysis API")
     sv.add_argument("--host", default="127.0.0.1", help="address to listen on (default 127.0.0.1)")
     sv.add_argument("--port", type=int, default=8725, help="port to listen on (default 8725)")
     sv.add_argument("--base-path", default="/", help="URL path the page and API live under (default /)")
+    sv.add_argument("--live", action="store_true", help="live mode: Muse Spark is the default phrasing (ADR-0008)")
     contract.add_parser(sub)
     doctor.add_parser(sub)
     real.add_parser(sub)  # report-real (docs/specs/real-takes.md)
@@ -39,13 +47,22 @@ def main(argv=None):
         return args.run(args)
     if args.command == "analyse":
         try:
-            doc = write_analysis(args.out, run(args.expected, args.follower, phrasing=args.phrasing).analysis)
+            backend, selected_by = select_backend(args.phrasing, args.live)
+            result = run(args.expected, args.follower, phrasing=backend, score=score_block,
+                         live=args.live, selected_by=selected_by)
+            doc = write_analysis(args.out, result.analysis)
         except (InputError, AnalysisError, OutputError) as e:
             print(f"part5 analyse: {e}", file=sys.stderr)
             return 1
         except OSError as e:  # e.g. --out is a directory or not writable
             print(f"part5 analyse: cannot write {args.out} ({e.strerror or e})", file=sys.stderr)
             return 1
+        if args.replay:
+            try:
+                write_replay(args.replay, result)
+            except OSError as e:
+                print(f"part5 analyse: cannot write {args.replay} ({e.strerror or e})", file=sys.stderr)
+                return 1
         for w in doc["diagnostics"]["warnings"]:
             print(f"part5 analyse: warning: {w}", file=sys.stderr)
         if doc.get("status", {}).get("code") == DIFFERENT_MOVEMENT:
@@ -56,6 +73,8 @@ def main(argv=None):
         return 0
     if args.command == "serve":
         from .server import serve
+        if args.live:
+            os.environ["SIMON5_LIVE"] = "1"   # read by phrasing.select_backend in every request
         return serve(args.host, args.port, args.base_path)
     return 1
 

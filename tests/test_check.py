@@ -70,6 +70,11 @@ def test_ac_k02_a_slice_with_no_correct_takes_fails():
     assert g["failures"] == ["good/45: no correct takes, so faults on correct takes can't be measured"]
 
 
+A_SCORE = {"version": "simon.score.v1", "value": 95, "grade": "A",
+           "components": {"faults": 5.0, "similarity": 0.0}, "params_sha256": "d" * 64}
+RISING_FREE_SWEEP = {"foot_out right": [(0, 100), (4, 100), (8, 90)], "trunk_lean center": [(0, 100), (5, 87)]}
+
+
 # ----------------------------------------------------------------- a synthetic world
 def fault_label(side="left"):
     return {"type": "arms_wider", "measure": "upper_arm_direction", "body_part": "arms", "side": side,
@@ -135,10 +140,14 @@ class World:
         monkeypatch.setattr(check, "THRESHOLDS_DOC", tmp_path / "thresholds.md")
         monkeypatch.setattr(check, "OUT_DIR", tmp_path / "out")
         monkeypatch.setattr(check, "analyse", self.analyse)
+        monkeypatch.setattr(check, "run_sweep", lambda out_dir: dict(RISING_FREE_SWEEP))
         (tmp_path / "exp.json").write_text("{}")
 
     def analyse(self, expected, follower):
-        return self.analyses[follower["take_id"]]
+        a = self.analyses[follower["take_id"]]
+        if "score" not in a:  # ADR-0007: every ok take carries a score; a refused one has none
+            a = {**a, "score": A_SCORE if a["status"]["code"] == "ok" else None}
+        return a
 
     def add(self, directory, seed, takes, analyses):
         d = self.root / directory
@@ -624,3 +633,86 @@ def test_nfr_the_real_pipeline_runs_offline_with_sockets_blocked(tmp_path, monke
     doc = json.loads(out)
     assert code in (0, 1) and time.time() - started < 600
     assert errors_of(doc) == [] and doc["gate"]["metrics"]["slices"]["good/front"]["takes"] == 9
+
+
+# ----------------------------------------------------------------- the score (ADR-0007, AC-S04, AC-S06)
+def with_score(analyses, take_id, value, grade):
+    analyses[take_id] = {**analyses[take_id], "score": {**A_SCORE, "value": value, "grade": grade}}
+
+
+def test_ac_s04_a_correct_good_light_take_below_a_exits_1_and_names_it(tmp_path, monkeypatch, capsys):
+    held = green("h")
+    with_score(held[1], "h_front_good_clean_c0", 88, "B")
+    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
+    doc = json.loads(out)
+    assert code == 1 and doc["gate"]["passed"] is False
+    assert doc["gate"]["failures"] == ["h_front_good_clean_c0: scored 88 (B), a correct good-light take must be an A"]
+
+
+def test_ac_s04_an_ok_take_with_no_score_fails_the_gate(tmp_path, monkeypatch, capsys):
+    held = green("h")
+    held[1]["h_side_good_clean_c1"] = {**held[1]["h_side_good_clean_c1"], "score": None}
+    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
+    assert code == 1 and "h_side_good_clean_c1: no score" in json.loads(out)["gate"]["failures"][0]
+
+
+def test_ac_s04_a_rising_sweep_exits_1_and_names_the_step(tmp_path, monkeypatch, capsys):
+    w = world(tmp_path, monkeypatch)
+    monkeypatch.setattr(check, "run_sweep", lambda out_dir: {"arms_wider both": [(0, 100), (5, 80), (10, 84)]})
+    code, out, _ = w.run(capsys)
+    assert code == 1
+    assert json.loads(out)["gate"]["failures"] == [
+        "sweep arms_wider both: score rises from 80 at 5 degrees to 84 at 10 degrees"]
+
+
+def test_ac_s04_low_light_and_faulty_takes_never_gate(tmp_path, monkeypatch, capsys):
+    held = green("h")
+    for tid in list(held[1]):
+        if "_low_" in tid or tid.rsplit("_", 1)[1].startswith("f"):
+            with_score(held[1], tid, 20, "F")
+    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
+    doc = json.loads(out)
+    assert code == 0 and errors_of(doc) == []
+    sc = doc["report"]["score"]
+    assert sc["gated"] is False and sc["heldout"]["slices"]["good/0"]["grades"] == {"A": 10}
+    assert sc["heldout"]["slices"]["low/0"]["grades"] == {"F": 10}
+    assert sc["heldout"]["targets"]["good/0"] == "pass" and sc["tuning"]["seed"] == 5
+
+
+def test_ac_s04_the_summary_prints_the_grade_distribution(tmp_path, monkeypatch, capsys):
+    _, _, err = world(tmp_path, monkeypatch).run(capsys)
+    assert "check-5: score good/0" in err and "A 10" in err and "{" not in err
+
+
+def freeze_by_detection(tmp_path):
+    section = f"\n## Score\n\n### Freeze check\ndetection_sha256: `{check.detection_hash()}`\n"
+    (tmp_path / "thresholds.md").write_text(freeze_section(29, sha="0" * 64) + section)
+
+
+def test_ac_s06_the_detection_hash_stands_in_for_the_whole_file_hash(tmp_path, monkeypatch, capsys):
+    freeze_by_detection(tmp_path)
+    code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
+    doc = json.loads(out)
+    assert code == 0, err
+    assert doc["detection_sha256"] == check.detection_hash() and doc["attempts"][-1]["rules_sha256"] == "0" * 64
+
+
+def test_ac_s06_a_changed_detection_key_exits_2(tmp_path, monkeypatch, capsys):
+    freeze_by_detection(tmp_path)
+    rules = json.loads(check.RULES_PATH.read_text())
+    rules["default"]["threshold_deg"] += 1
+    changed = tmp_path / "rules.json"
+    changed.write_text(json.dumps(rules))
+    monkeypatch.setattr(check, "RULES_PATH", changed)
+    code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
+    assert code == 2 and out == "" and "part5/rules.json differs from the hash frozen for seed 29" in err
+
+
+def test_ac_s06_editing_only_the_score_block_leaves_the_detection_freeze_passing(tmp_path, monkeypatch, capsys):
+    freeze_by_detection(tmp_path)
+    rules = json.loads(check.RULES_PATH.read_text())
+    rules["score"]["slope"] += 1
+    changed = tmp_path / "rules.json"
+    changed.write_text(json.dumps(rules))
+    monkeypatch.setattr(check, "RULES_PATH", changed)
+    assert world(tmp_path, monkeypatch, seed=29).run(capsys)[0] == 0

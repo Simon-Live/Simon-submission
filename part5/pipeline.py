@@ -14,6 +14,7 @@ from .guard import GuardResult, check_movement
 from .guard import diagnostics as guard_diagnostics
 from .io import Clip, load_clip, parse_clip
 from .joints_map import fault_joints
+from .lateral import lateral_m
 from .measures import compute
 from .normalise import normalise
 from .output import build_analysis, validate_analysis
@@ -68,11 +69,16 @@ def analyse(expected, follower, rules=None):
     return run(expected, follower, rules).analysis
 
 
-def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=None):
+def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=None, score=None,
+        live=False, selected_by=None):
     """`analyse` keeping the clips and the alignment (`PipelineResult`).
 
     A ref may carry the parsed JSON under `doc` (an upload held in memory): the clip is parsed
     from it, `path` names it in the output, and `doc` itself never reaches the output.
+
+    `score` (ADR-0007) is the hook for `part5.score`: a callable taking the `PipelineResult` and
+    returning the `score` block, or a ready block. Given, the analysis carries a `score` key,
+    which is None for a refused take (the callable is not called). Absent, no `score` key.
     """
     if phrasing not in PHRASING_BACKENDS:
         raise AnalysisError(f"phrasing must be one of {list(PHRASING_BACKENDS)}, got {phrasing!r}")
@@ -103,18 +109,35 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         for f in detect(exp_m, fol_m, alignment, rules)]
     span = tuple(int(to_original[j]) for j in alignment.follower_span)
     diagnostics = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(guard, rules))
+    times = [_fault_times(f, exp, fol, fol_positions, alignment, to_original) for f in faults]
     analysis = build_analysis(exp_ref, fol_ref, faults, diagnostics=diagnostics,
-                              status={"code": guard.code, "text": guard.text})
-    analysis = _phrased(analysis, phrasing, phrasing_client)
-    return PipelineResult(analysis, alignment, exp, fol, fol_positions, np.asarray(to_original), guard)
+                              status={"code": guard.code, "text": guard.text}, times=times)
+    analysis = _phrased(analysis, phrasing, phrasing_client, live, selected_by)
+    result = PipelineResult(analysis, alignment, exp, fol, fol_positions, np.asarray(to_original), guard)
+    if score is not None:
+        block = None if not guard.ok else score(result) if callable(score) else score
+        result.analysis = validate_analysis(dict(analysis, score=block), source="<built analysis>")
+    return result
 
 
-def _phrased(analysis, backend, client):
+def _fault_times(fault, exp, fol, fol_positions, alignment, to_original):
+    """The 1.2.0 time fields of one fault (ADR-0009): the follower file's own clock at the fault,
+    every run mapped to the follower file's frames, and the foot offset."""
+    def original(i):  # expected frame -> follower file frame
+        return int(to_original[alignment.exp_to_fol[i]])
+
+    t = fol.t
+    return {"follower_t_s": [float(t[fault.follower_frames[0]]), float(t[fault.follower_frames[1]])],
+            "follower_runs": [[original(s), original(e)] for s, e in fault.runs],
+            "lateral_m": lateral_m(fault, exp.positions, fol_positions, alignment.exp_to_fol)}
+
+
+def _phrased(analysis, backend, client, live=False, selected_by=None):
     """Canonical joints and the coaching line per fault, and the `phrasing` record (ADR-0005,
     ADR-0006). Scored fields never depend on the backend: only `coaching` and `phrasing` do."""
     for f in analysis["faults"]:
         f["joints"] = fault_joints(f)
-    lines, record = phrase(analysis["faults"], backend, client=client)
+    lines, record = phrase(analysis["faults"], backend, client=client, live=live, selected_by=selected_by)
     for f, line in zip(analysis["faults"], lines):
         f["coaching"] = line
     analysis["phrasing"] = record

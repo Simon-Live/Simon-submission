@@ -9,7 +9,7 @@ import pytest
 from part5 import phrasing
 from part5.detect import generic
 from part5.measures import MEASURES
-from part5.phrasing import template
+from part5.phrasing import muse_spark, template
 from part5.words import PHRASES, QUALIFIERS, phrase as words_phrase
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,8 +34,9 @@ def no_network(monkeypatch):
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch, tmp_path):
     """Hermetic: no live gate, no model, and the key and ledger point into tmp, never at the real files."""
-    for name in ("META_LIVE", "PART5_OLLAMA_MODEL"):
+    for name in ("META_LIVE", "SIMON5_LIVE", "PART5_OLLAMA_MODEL", "PART5_MUSE_PER_MINUTE", "PART5_PHRASING_BUDGET_S"):
         monkeypatch.delenv(name, raising=False)
+    muse_spark._calls.clear()  # the process-wide rate limit starts empty in every test
     monkeypatch.setenv("PART5_BASETEN_KEY_FILE", str(tmp_path / "no-key-here"))
     monkeypatch.setenv("PART5_BASETEN_USAGE_FILE", str(tmp_path / "usage.jsonl"))
 
@@ -63,7 +64,7 @@ def test_template_returns_each_faults_text_in_order():
     assert lines == [f["text"] for f in FAULTS]
     assert record == {"requested": "template", "backend": "template", "model": None,
                       "fallback_reason": None,
-                      "faults": [{"backend": "template", "fallback_reason": None}] * 3}
+                      "faults": [{"backend": "template", "model": None, "fallback_reason": None}] * 3}
 
 
 def test_template_is_the_default_and_needs_no_network_or_files():
