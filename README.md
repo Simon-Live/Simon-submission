@@ -123,3 +123,8 @@ The Compare page at `/compare` takes 2 to 6 inputs, each a sample or your own fi
 To serve the app under a path prefix, pass `--base`: `python3 -m part3.server --port 7120 --base /simon-part-3/`. Every URL in the page is relative, so it works under any prefix.
 
 Limits: at most 2 runs at once, a 20 s run limit, a 16 MB upload limit and 3000 frames per Compare input. A request never selects a `file:` profile, and the server reads neither `PART3_BODY` nor `part3.toml`. The app has no accounts; put it behind your own access control if you expose it.
+
+## Develop and debug
+
+- [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md): setup from a fresh clone, environment variables, commands, the done-checks, tests, debugging, how Part 7 calls Part 3, and known limits.
+- [docs/design/README.md](docs/design/README.md): the specifications and decision records behind the code.
