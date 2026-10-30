@@ -236,3 +236,20 @@ def test_contract_md_states_the_t_ms_rule():
 
     text = (Path(__file__).resolve().parent.parent / "CONTRACT.md").read_text()
     assert "t_ms = (pts[k] - pts[0]) * 1000" in text and "t0_pts_ms" in text and "t_ms + t0_pts_ms" in text
+
+
+@needs_ffmpeg
+def test_j06_a_rotate_tagged_mp4_comes_out_upright(tmp_path):
+    from PIL import Image
+
+    from part2 import runapi
+
+    plain, tagged = tmp_path / "plain.mp4", tmp_path / "rot.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=10",
+                    "-pix_fmt", "yuv420p", str(plain)], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-display_rotation", "90", "-i", str(plain), "-c", "copy",
+                    str(tagged)], check=True)
+    recs = frames.ingest(tagged, tmp_path / "f")
+    with Image.open(tmp_path / "f" / recs[0]["file"]) as first:
+        assert first.size == (240, 320)
+    assert runapi.probe_video(tagged, runapi.Limits()) == ".mp4"

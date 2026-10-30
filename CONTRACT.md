@@ -195,6 +195,27 @@ The same rows are in `contracts/compatibility.json` and are printed by `python -
 | tracks.json | part2.tracks/2026-10-28 | none today | n/a |  | PR #47: Part 3 does not read it |
 | pose3d.json, tracks.json (`t_ms`, `t0_pts_ms`) | part2.pose3d/2026-10-28, part2.tracks/2026-10-28 | Part 1 (time join) | works with option | join on `t_ms` when both sides count from the first decoded frame; when `t0_pts_ms` is present and not 0, file time = `t_ms` + `t0_pts_ms` | `frames.py` rule; `doctor` warns |
 
+## How Part 7 runs a take
+
+Part 7 turns a viewer's recorded or uploaded take into `pose3d.json` with one command:
+
+```
+part2 run --mode single --input <take.webm|take.mp4|take.mov> --out <dir> --fps 10 --backend gpu [--mirrored]
+```
+
+| Option | Why |
+|---|---|
+| `--mode single` | one person per take |
+| `--input` | the file as recorded: WebM from a browser (VP8 or VP9), MP4 or MOV from a phone; a rotate tag is applied, so frames come out upright |
+| `--out <dir>` | required; `frames/`, `pose3d.json` and `camera.json` are written there |
+| `--fps 10` | the rate the web app also uses (60 s gives at most 601 frames) |
+| `--backend gpu` | the GPU backend; `cpu` is the slower choice on a host without CUDA |
+| `--mirrored` | only for a front-camera recording saved as a mirror image; writes `mirrored: true`, which Part 3 `--flip auto` reads |
+
+Then Part 7 runs Part 3 on `<dir>/pose3d.json` with `--view part5` for Part 5. The command line reads a WebM
+that carries no duration (a MediaRecorder file). The run app's upload check does too once TICKET-039 lands
+(`docs/specs/journey-followup.md`).
+
 ## Differences between Part 2's validators and Part 3's schema
 
 Part 3's side was read at Part 3 `6d339d5` (the commit in `contracts/consumers/part3-pose3d.schema.source.json`),

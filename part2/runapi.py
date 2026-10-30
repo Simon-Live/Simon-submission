@@ -254,10 +254,9 @@ def _number(v) -> float:
         return 0.0
 
 
-def ingest_frame_count(path: Path, fps: float) -> int:
-    """How many frames the job's own ingest (`part2 frames` at `fps`) writes for this video, counted without
-    writing one: part2.frames' nearest source frame per 1/fps step over the decoded timestamps. 415 when the
-    timestamps cannot be read, 422 when there are none."""
+def _timestamps(path: Path) -> list[float]:
+    """The decoded frame timestamps of a video in seconds (the list `part2 frames` works from). 415 when they
+    cannot be read, 422 when there are none."""
     from part2 import frames
 
     try:
@@ -266,7 +265,16 @@ def ingest_frame_count(path: Path, fps: float) -> int:
         raise ApiError(415, "unsupported") from None
     if not pts:
         raise ApiError(422, "no_frames")
-    return len(frames._nearest_per_step(pts, fps))
+    return pts
+
+
+def ingest_frame_count(path: Path, fps: float, pts: list[float] | None = None) -> int:
+    """How many frames the job's own ingest (`part2 frames` at `fps`) writes for this video, counted without
+    writing one: part2.frames' nearest source frame per 1/fps step over the decoded timestamps (`pts` when the
+    caller has them already). 415 when the timestamps cannot be read, 422 when there are none."""
+    from part2 import frames
+
+    return len(frames._nearest_per_step(_timestamps(path) if pts is None else pts, fps))
 
 
 def probe_video(path: Path, limits: Limits, timeout_s: float = 60.0) -> str:
@@ -286,12 +294,16 @@ def probe_video(path: Path, limits: Limits, timeout_s: float = 60.0) -> str:
     video = [s for s in doc.get("streams") or [] if isinstance(s, dict) and s.get("codec_type") == "video"]
     if fmt not in VIDEO_FORMATS or not video:
         raise ApiError(415, "unsupported")
-    duration = _number(doc["format"].get("duration")) or max(_number(s.get("duration")) for s in video)
-    if not _number(video[0].get("nb_read_packets")) or duration <= 0:
+    if not _number(video[0].get("nb_read_packets")):
         raise ApiError(422, "no_frames")
+    duration = _number(doc["format"].get("duration")) or max(_number(s.get("duration")) for s in video)
+    pts = None  # read at most once: the duration of a file without one, and the frame count below
+    if duration <= 0:  # a browser (MediaRecorder) WebM has neither duration: measure it by its frame timestamps
+        pts = _timestamps(path)
+        duration = pts[-1] - pts[0]
     if duration > limits.video_s:
         raise ApiError(422, "too_long")
-    if ingest_frame_count(path, limits.fps) > limits.max_frames:
+    if ingest_frame_count(path, limits.fps, pts) > limits.max_frames:
         raise ApiError(422, "too_long")
     return VIDEO_FORMATS[fmt]
 

@@ -490,3 +490,78 @@ def test_every_error_message_is_plain():
 def test_the_frame_cap_admits_a_full_60_s_video_at_the_intake_rate():
     lim = runapi.Limits()
     assert lim.max_frames == int(lim.video_s * lim.fps) + 1  # frames at 0, 0.1, ..., 60.0 s
+
+
+# ---- browser recordings without a duration (journey-followup.md, TICKET-039) -------------------------------
+
+def video_without_duration(path: Path, seconds: float, fps=30, codec="libvpx", audio=True, frames=None) -> Path:
+    """A WebM written to a pipe with `-live 1`, as MediaRecorder writes one: no container or stream duration."""
+    args = ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"testsrc2=size=64x48:rate={fps}"]
+    args += ["-f", "lavfi", "-i", "sine=frequency=440"] if audio else []
+    args += (["-frames:v", str(frames)] if frames else ["-t", str(seconds)])
+    args += ["-c:v", codec] + (["-c:a", "libopus"] if audio else []) + ["-live", "1", "-f", "webm", "pipe:1"]
+    path.write_bytes(subprocess.run(args, check=True, capture_output=True, timeout=180).stdout)
+    return path
+
+
+def has_no_duration(path: Path) -> bool:
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=duration",
+                          "-of", "csv=p=0", str(path)], capture_output=True, text=True, check=True).stdout
+    values = [v for v in out.replace(",", "\n").split() if v]
+    return bool(values) and all(v == "N/A" for v in values)
+
+
+@needs_ffmpeg
+def test_j01_a_webm_without_any_duration_is_accepted(tmp_path):
+    take = video_without_duration(tmp_path / "take.webm", 2)
+    assert has_no_duration(take)  # the precondition: never passes on a file that has a duration
+    assert runapi.probe_video(take, runapi.Limits()) == ".webm"
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("codec", ["libvpx", "libvpx-vp9"])
+def test_j02_vp8_and_vp9_with_opus_work_and_the_count_matches_the_ingest(tmp_path, codec):
+    from part2 import frames
+
+    take = video_without_duration(tmp_path / "take.webm", 2, codec=codec)
+    assert has_no_duration(take) and runapi.probe_video(take, runapi.Limits()) == ".webm"
+    written = frames.ingest(take, tmp_path / "f", fps=10)
+    assert runapi.ingest_frame_count(take, 10) == len(written)
+
+
+@needs_ffmpeg
+def test_j03_the_60_s_limit_holds_without_a_duration(tmp_path):
+    # the span is pts[-1] - pts[0] (spec Dissent Review): 61 frames at 1 fps span 60 s, so 62 frames make the refused 61 s
+    long = video_without_duration(tmp_path / "long.webm", 62, fps=1, audio=False)  # 62 frames: a 61 s span
+    assert has_no_duration(long)
+    e = err(runapi.probe_video, long, runapi.Limits())
+    assert e.status == 422 and e.message == "Videos can be at most 60 seconds long."
+    assert runapi.probe_video(video_without_duration(tmp_path / "ok.webm", 59, fps=1, audio=False),
+                              runapi.Limits()) == ".webm"
+
+
+@needs_ffmpeg
+def test_j04_the_frame_cap_holds_without_a_duration(tmp_path):
+    take = video_without_duration(tmp_path / "take.webm", 5, audio=False)
+    e = err(runapi.probe_video, take, runapi.Limits(max_frames=5, fps=10))
+    assert (e.status, e.code) == (422, "too_long")
+
+
+@needs_ffmpeg
+def test_j05_a_file_with_a_duration_reads_its_timestamps_exactly_once(tmp_path, monkeypatch):
+    from part2 import frames
+
+    calls = []
+    real = frames._probe_timestamps
+    monkeypatch.setattr(frames, "_probe_timestamps", lambda path: calls.append(path) or real(path))
+    assert runapi.probe_video(video(tmp_path / "a.webm", 1.0, fmt="webm"), runapi.Limits()) == ".webm"
+    assert len(calls) == 1
+    calls.clear()
+    assert runapi.probe_video(video_without_duration(tmp_path / "b.webm", 1), runapi.Limits()) == ".webm"
+    assert len(calls) == 1
+
+
+@needs_ffmpeg
+def test_one_decoded_frame_and_no_duration_is_accepted(tmp_path):
+    take = video_without_duration(tmp_path / "one.webm", 1, audio=False, frames=1)
+    assert runapi.probe_video(take, runapi.Limits()) == ".webm"
