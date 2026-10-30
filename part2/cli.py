@@ -177,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
                        help="single: comma-separated ladder rungs (part2.refine) run on the 3D before the canonical "
                        "frame; focal,kp2d-fit gives the scored outputs (make outputs); default none")
 
+    p_run.add_argument("--worker", type=Path, help="socket of a running `part2 serve-worker`; used when it is up, "
+                       "else this process runs the job itself")
     p_run.add_argument("--tracks", type=Path, help="multi: reuse this tracks.json (no tracking run, ids unchanged)")
     p_run.add_argument("--ids", help="multi: comma-separated person ids; 3D runs for these people only")
 
@@ -188,6 +190,12 @@ def main(argv: list[str] | None = None) -> int:
                       "(default: PART2_TRACKER, else the tracker order)")
     p_tr.add_argument("--tracker-order", choices=["scored", "bulk"], default="bulk",
                       help="the order walked when no tracker is named")
+
+    p_tr.add_argument("--worker", type=Path, help="socket of a running `part2 serve-worker` (in-process when down)")
+
+    p_sw = sub.add_parser("serve-worker", help="keep the models loaded and serve run and track requests on a socket")
+    p_sw.add_argument("--socket", required=True, type=Path, help="Unix socket path to listen on")
+    p_sw.add_argument("--backend", help="gpu or cpu (default as for run)")
 
     p_ev = sub.add_parser("eval-reproj", help="one-person metric: reprojection error vs hand-clicked joints (#12)")
     p_ev.add_argument("--pose3d", required=True, type=Path)
@@ -232,6 +240,18 @@ def main(argv: list[str] | None = None) -> int:
     p_st.add_argument("--backend", choices=list(backends.CHOICES), help="default: PART2_BACKEND, else gpu when CUDA is available")
 
     args = parser.parse_args(argv)
+    if args.command == "serve-worker":
+        from part2 import worker
+
+        worker.serve(str(args.socket), args.backend)
+        return 0
+    if getattr(args, "worker", None) is not None:
+        from part2 import worker
+
+        code = worker.forward(str(args.worker), worker.strip_worker(list(sys.argv[1:] if argv is None else argv))[0])
+        if code is not None:
+            return code
+        print(f"part2: no worker at {args.worker}; running in this process", file=sys.stderr)
     if args.command == "stock":
         return stock.command(args.clip, args.backend)
     if args.command == "demo":

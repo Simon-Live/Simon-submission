@@ -235,26 +235,32 @@ part2 run --mode multi --input <take> --out <dir2> --fps 10 --backend gpu --trac
 `--tracks` and `--ids` apply to `--mode multi` only (exit 2 with `--mode single`). `--ids` without `--tracks`
 tracks first, then filters. The files keep their versions; nothing new is written into them.
 
-## How Part 7 runs a take
+### Warm worker (`serve-worker`, `run --worker`)
 
-Part 7 turns a viewer's recorded or uploaded take into `pose3d.json` with one command:
+Loading the models costs about 20 to 35 s per `part2 run`. A worker loads them once:
 
 ```
-part2 run --mode single --input <take.webm|take.mp4|take.mov> --out <dir> --fps 10 --backend gpu [--mirrored]
+part2 serve-worker --socket <path> [--backend gpu]          # long-lived; prints "listening on <path>" when ready
+part2 run --worker <path> --mode single --input ... --out ...   # same arguments, same files as without --worker
+part2 track --worker <path> --input ... --out ...
 ```
 
-| Option | Why |
+With no worker listening at `<path>` (missing socket, connection refused) the command runs in its own process and
+says so on stderr, so Part 7 can pass `--worker` always. A worker that dies mid-request gives exit 1 and the job
+is not re-run in-process.
+
+Protocol, for a client that does not call the CLI: a Unix stream socket, one request per connection, newline-delimited JSON.
+
+| Direction | Message |
 |---|---|
-| `--mode single` | one person per take |
-| `--input` | the file as recorded: WebM from a browser (VP8 or VP9), MP4 or MOV from a phone; a rotate tag is applied, so frames come out upright |
-| `--out <dir>` | required; `frames/`, `pose3d.json` and `camera.json` are written there |
-| `--fps 10` | the rate the web app also uses (60 s gives at most 601 frames) |
-| `--backend gpu` | the GPU backend; `cpu` is the slower choice on a host without CUDA |
-| `--mirrored` | only for a front-camera recording saved as a mirror image; writes `mirrored: true`, which Part 3 `--flip auto` reads |
+| client to worker | `{"argv": ["run", "--mode", "single", ...], "cwd": "<absolute dir>", "env": {"PART2_PROGRESS": "1"}}`, argv without `--worker`; relative paths in argv resolve against `cwd`; only `PART2_*` env is applied |
+| worker to client | `{"stream": "stdout" or "stderr", "data": "<text>"}` as the job prints (the `progress <stage> <done> <total>` lines arrive here), zero or more |
+| worker to client, last | `{"exit": <n>}`, the exit code `part2 <argv>` would give (0 written, 1 input or contract error, 2 bad option); the worker also answers exit 2 for a command other than `run` or `track` |
 
-Then Part 7 runs Part 3 on `<dir>/pose3d.json` with `--view part5` for Part 5. The command line reads a WebM
-that carries no duration (a MediaRecorder file). The run app's upload check does too once TICKET-039 lands
-(`docs/specs/journey-followup.md`).
+Concurrency: one request at a time per worker. A second client connects and waits in the socket queue (8 deep)
+until the first finishes; Part 7 should queue its own jobs or run one worker per GPU slot (about 10 GiB each).
+The host GPU lock still applies to every request. A request that raises does not stop the worker. Restart the
+worker after a `git pull` of Part 2 (code and models are loaded once). Spec: `docs/specs/warm-worker.md`.
 
 ## Differences between Part 2's validators and Part 3's schema
 
