@@ -56,6 +56,12 @@ make run-single INPUT=clip.mp4     # also run-multi; writes out/<clip>/
 
 `part2 frames` writes numbered frames plus `frames.json` (`frame`, `t_ms`, `file`); those `frame`/`t_ms` values are the ones in `pose3d.json` and `tracks.json`. GPU inference runs on the k3s cluster: see `k8s/README.md`. Tasks and progress: issues #2–#16, checklist #17, team chat #18.
 
+## Develop and debug
+
+- `docs/dev/DEVELOPING.md`: setup from a fresh clone (CPU and GPU profiles, weights, keys), the commands, the
+  done-checks, debugging, the tests, the contract with Part 7 and known limits.
+- `docs/design/README.md`: the specs and ADRs behind each choice.
+
 ## Backends
 
 `part2 run --backend gpu|cpu` picks the 3D backend. The flag wins over `PART2_BACKEND`. With neither, the backend is `gpu` when CUDA is available in the running interpreter, else `cpu`. `make run-single` runs in the uv venv, which has no CUDA build of torch, so there it uses `cpu`. Both backends write the same files.
