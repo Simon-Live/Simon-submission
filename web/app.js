@@ -10,6 +10,7 @@ import { mountGroupResult } from "./group-result.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading } from "./progress.js";
 import { mountBuildStamp } from "./build.js";
+import { mountShell } from "./shell.js";
 
 installErrorCapture(); // uncaught errors and failed fetches reach the server log (observability.md)
 const root = document.getElementById("app");
@@ -93,5 +94,6 @@ function show() {
 }
 
 window.addEventListener("hashchange", show);
+mountShell({ switchHost: document.getElementById("kind-switch") });
 show();
 mountBuildStamp(document.getElementById("build"));

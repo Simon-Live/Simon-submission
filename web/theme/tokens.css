@@ -1,0 +1,91 @@
+/* Simon design tokens (brand design 2026-10-31). THE ONLY FILE WITH LITERAL COLORS, FONTS AND SIZES.
+   Every stylesheet and every script that draws reads these names; change the brand here and nowhere else.
+   Layers: palette (raw values) -> semantic tokens (what a value is for) -> legacy aliases (names the existing
+   Part 7 stylesheets already use, pointed at the semantic tokens). */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+:root {
+  color-scheme: dark;
+
+  /* palette */
+  --palette-black: #0a0a0a;
+  --palette-grey-900: #141414;
+  --palette-grey-850: #1c1c1c;
+  --palette-grey-800: #262626;
+  --palette-grey-500: #9a9a92;
+  --palette-white: #f4f4ef;
+  --palette-pure-white: #ffffff;
+  --palette-pure-black: #000000;
+  --palette-lime: #c6f35a;
+  --palette-coral: #ff6b4a;
+  --palette-amber: #ffc83d;
+
+  /* semantic: surfaces and text */
+  --color-bg: var(--palette-black);
+  --color-surface: var(--palette-grey-900);
+  --color-raised: var(--palette-grey-850);
+  --color-line: var(--palette-grey-800);
+  --color-text: var(--palette-white);
+  --color-text-muted: var(--palette-grey-500);
+  --color-media-bg: var(--palette-pure-black);
+  --color-on-media: var(--palette-pure-white);
+
+  /* semantic: brand and states */
+  --color-accent: var(--palette-lime);
+  --color-on-accent: var(--palette-black);
+  --color-accent-soft: rgb(198 243 90 / 14%);
+  --color-good: var(--palette-lime);
+  --color-bad: var(--palette-coral);
+  --color-bad-soft: rgb(255 107 74 / 14%);
+  --color-warn: var(--palette-amber);
+
+  /* semantic: overlays on top of video or the page */
+  --color-header-glass: rgb(10 10 10 / 92%);
+  --color-scrim: rgb(0 0 0 / 70%);
+  --color-scrim-soft: rgb(0 0 0 / 55%);
+
+  /* typography */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", ui-monospace, monospace;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 15px;
+  --text-lg: 22px;
+  --text-xl: 32px;
+  --text-display: 64px;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-black: 800;
+
+  /* shape and space */
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --tap-target: 44px;
+  --button-height: 48px;
+  --header-blur: 10px;
+
+  /* motion */
+  --splash-fade: 0.45s;
+
+  /* legacy aliases: the names the existing Part 7 stylesheets use */
+  --bg: var(--color-bg);
+  --surface: var(--color-surface);
+  --ink: var(--color-text);
+  --muted: var(--color-text-muted);
+  --line: var(--color-line);
+  --soft: var(--color-raised);
+  --blue-bg: var(--color-accent-soft); --blue-ink: var(--color-accent);
+  --green-bg: var(--color-accent-soft); --green-ink: var(--color-good);
+  --red-bg: var(--color-bad-soft); --red-ink: var(--color-bad);
+  --font: var(--font-sans);
+  --mono: var(--font-mono);
+  --tap: var(--tap-target);
+}

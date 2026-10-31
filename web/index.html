@@ -3,16 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="dark">
 <title>Simon</title>
 <link rel="stylesheet" href="styles.css">
+<!-- brand theme: tokens first (the only file with literal colors), then components and screens on those tokens -->
+<link rel="stylesheet" href="theme/tokens.css">
+<link rel="stylesheet" href="theme/base.css">
+<link rel="stylesheet" href="theme/library.css">
 <script type="importmap">
 {"imports": {"three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/"}}
 </script>
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="#/" data-testid="home-link">Simon</a>
+  <a class="brand" href="#/" data-testid="home-link">simon</a>
+  <div id="kind-switch"></div>
   <nav class="bar-nav" aria-label="Main"><a href="#/record" data-testid="nav-record">Record</a></nav>
   <div id="build" class="build" role="group" aria-label="Build" hidden></div>
 </header>
