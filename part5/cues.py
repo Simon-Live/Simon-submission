@@ -22,6 +22,10 @@ KINDS = ("position", "range", "tempo")
 TEMPO_FAST, TEMPO_SLOW = 0.85, 1.15
 SLOW_DOWN = "Slow down to match the trainer"
 SPEED_UP = "Speed up to match the trainer"
+# Tempo cues that reassure and ask for nothing (ADR-0016 Amendment 2, AC-PROF-07): `rehab` replaces SPEED_UP with the
+# first. "What to work on first" lists actions (`part5.insights`), so a tempo cue in this set stays in `tempo.cue` and
+# is no item. A profile that replaces a tempo cue with an action keeps its item, whatever the action says.
+REASSURANCE_CUES = frozenset({"Slower is fine"})
 
 # measure -> kind, {direction: (one side with {side}, both sides)}; centre measures have one string per direction.
 CUES = {

@@ -6,10 +6,10 @@ A scored take (ADR-0013 timeline) has one insight per distinct cue among its mis
 the cue cost the score: the sum of its misses' points over the compared windows, divided by their number,
 because the score is the mean of the windows. `at_s` and `window` are the cue's first miss, so a viewer
 can seek there. When the take as a whole was more than 15% faster or slower than the example, a tempo
-insight is added last and always kept (`score.tempo`), except a slow take under a profile that replaced the speed-up
-nudge with a reassurance ("Slower is fine", `rehab`): that cue is not an action, so it stays in `tempo.cue` and is no
-item. A take without a timeline has one insight per distinct fault cue in the order of `faults` (largest first) with
-`points` null.
+insight is added last and always kept (`score.tempo`), except when its cue is a reassurance (`cues.REASSURANCE_CUES`:
+"Slower is fine", which `rehab` writes in place of the speed-up nudge): that cue is not an action, so it stays in
+`tempo.cue` and is no item. A take without a timeline has one insight per distinct fault cue in the order of `faults`
+(largest first) with `points` null.
 
 Every word is template text (part5.cues, part5.words), so the same take always gets the same insights.
 
@@ -20,7 +20,7 @@ and a tempo item keep the plain-words templates below.
 """
 import re
 
-from .cues import SPEED_UP, TEMPO_SLOW
+from .cues import REASSURANCE_CUES
 from .words import phrase
 
 MAX_INSIGHTS = 5
@@ -113,10 +113,11 @@ def _why(miss, n_windows, n_compared, basis, fault=None):
 
 
 def _reassures(tempo):
-    """True for a slow take (ratio above `TEMPO_SLOW`) whose cue is not the speed-up nudge: a profile replaced it
-    (`rehab`: "Slower is fine"). That is a reassurance, not an action, and "what to work on first" lists actions, so the
-    cue stays in `tempo.cue` and `score.tempo.cue` but is no item here (Writer ruling of 2026-10-31, AC-PROF-07)."""
-    return tempo["ratio"] > TEMPO_SLOW and tempo["cue"] != SPEED_UP
+    """True when the take's tempo cue is a reassurance, one of `cues.REASSURANCE_CUES` (`rehab`: "Slower is fine"). That
+    is not an action and "what to work on first" lists actions, so the cue stays in `tempo.cue` and `score.tempo.cue`
+    but is no item here (Writer ruling of 2026-10-31, AC-PROF-07). Any other cue is an item, including one a profile
+    wrote in place of the speed-up nudge."""
+    return tempo["cue"] in REASSURANCE_CUES
 
 
 def _tempo_insight(score):

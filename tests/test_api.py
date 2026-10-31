@@ -1,12 +1,14 @@
 """part5.api.handle: the analysis API without sockets (docs/specs/staging.md, AC-S02 to AC-S09)."""
 import json
+import re
 import threading
 import time
 from pathlib import Path
 
 import pytest
 
-from part5 import api, pipeline, score_report
+from part5 import api, pipeline, score_report, words
+from part5.evaluate import canonical_label
 
 ROOT = Path(__file__).resolve().parent.parent
 LABELS = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
@@ -267,6 +269,96 @@ def test_a_label_naming_a_foot_file_outside_the_fixtures_is_refused_when_the_tab
     with pytest.raises(FileNotFoundError, match="not a fixture file"):
         api._feet_file(ROOT, {"follower_feet": "part5/rules.json"}, "follower_feet")
     assert api._feet_file(ROOT, {"take_id": "t"}, "follower_feet") == {}
+
+
+# --- the picker and the listing word a foot take as the analysis does (AC-S10, delivery review N1) -------------------
+FOOT_MEASURES = ("foot_rotation", "ankle_inversion")
+FOOT_LABELLED = [t for t in LABELS["takes"] if any(canonical_label(f)[0] in FOOT_MEASURES for f in t["faults"])]
+TAKE_11 = next(t for t in LABELS["takes"] if t["take_id"] == "exercise_front_good_11_ankle_rolled_in-left")
+# The way each ankle roll is worded, whatever the size word: `more` is the ankle rolling out, `less` rolling in.
+ROLL_WORDS = {"more": "rolling out", "less": "rolling in"}
+
+
+def listed_followers():
+    return {t["id"]: t for t in call("GET", "/api/samples")[2]["followers"]}
+
+
+def sentence(text):
+    return text[:1].upper() + text[1:]
+
+
+def test_every_foot_take_is_worded_in_the_picker_and_the_listing_as_the_analysis_words_it():
+    followers = listed_followers()
+    assert len(FOOT_LABELLED) == 48 and {canonical_label(f)[0] for t in FOOT_LABELLED for f in t["faults"]} == set(FOOT_MEASURES)
+    for take in FOOT_LABELLED:
+        listed = followers[take["take_id"]]
+        assert len(listed["faults"]) == len(take["faults"]) == 1
+        measure, side, direction = canonical_label(take["faults"][0])
+        want = words.phrase(measure, direction, side)   # the analysis's words for this measure, direction and side
+        assert listed["faults"][0] == {"type": take["faults"][0]["type"], "side": side, "text": want}, take["take_id"]
+        assert listed["label"].endswith(f": {sentence(want)}"), (take["take_id"], listed["label"])
+        if measure == "ankle_inversion":   # said again without the shared helper: the roll's own direction words
+            assert ROLL_WORDS[direction] in want and ROLL_WORDS[{"more": "less", "less": "more"}[direction]] not in want
+
+
+def test_the_ankle_label_ids_and_the_label_file_keep_their_old_words_and_only_the_page_changes():
+    followers = listed_followers()
+    rolled = [t for t in FOOT_LABELLED if t["faults"][0]["type"] in ("ankle_rolled_in", "ankle_rolled_out")]
+    assert len(rolled) == 24
+    assert {t["faults"][0]["text"].split()[-1] for t in rolled} == {"in", "out"}   # the label file still says "rolled in/out"
+    for take in rolled:
+        assert followers[take["take_id"]]["id"] == take["take_id"]
+        assert followers[take["take_id"]]["faults"][0]["type"] == take["faults"][0]["type"]
+        assert "rolled" not in followers[take["take_id"]]["label"]
+
+
+def test_a_take_with_no_foot_fault_keeps_the_words_of_its_label():
+    followers = listed_followers()
+    others = [t for t in LABELS["takes"] if t not in FOOT_LABELLED]
+    assert len(others) + len(FOOT_LABELLED) == len(LABELS["takes"]) and others
+    for take in others:
+        listed = followers[take["take_id"]]
+        assert [f["text"] for f in listed["faults"]] == [f["text"] for f in take["faults"]], take["take_id"]
+        what = "; ".join(f["text"] for f in take["faults"]) or "correct take"
+        assert listed["label"].endswith(f": {sentence(what)}"), take["take_id"]
+
+
+def test_every_generated_take_label_starts_with_the_takes_own_number_the_45_degree_ones_included():
+    """Take ids are `<set>_<angle>_<light>_<NN>_<faults>`: the first digit group of a 45 degree id is the angle, not the take."""
+    followers = listed_followers()
+    for take in LABELS["takes"]:
+        number = take["take_id"].split("_")[3]
+        assert number.isdigit() and len(number) == 2, take["take_id"]
+        assert followers[take["take_id"]]["label"].startswith(f"Take {number}: "), (take["take_id"], followers[take["take_id"]]["label"])
+    assert {t["angle"] for t in LABELS["takes"]} == {"front", "45", "side"}
+    assert followers["exercise_45_good_11_ankle_rolled_in-left"]["label"] == "Take 11: Left ankle rolling out"
+    assert followers["dance_45_low_02_arms_wider-left"]["label"].startswith("Take 02: ")
+
+
+def test_front_and_side_labels_keep_the_number_they_had():
+    """Before this the number was the first digit group of the id, which is the take's own for a front or side take."""
+    followers = listed_followers()
+    plain = [t for t in LABELS["takes"] if t["angle"] != "45"]
+    assert len(plain) == 104
+    for take in plain:
+        first_group = re.search(r"_(\d+)_", take["take_id"]).group(1)
+        assert followers[take["take_id"]]["label"].startswith(f"Take {first_group}: "), take["take_id"]
+    assert followers["exercise_front_good_09_foot_turned_out-right"]["label"] == "Take 09: Right foot turned out more than the example"
+
+
+def test_take_11_picker_label_and_its_analysed_fault_line_point_the_same_way():
+    """The finding: the picker said "Left ankle rolled in" over a result that said "left ankle rolling out slightly"."""
+    listed = listed_followers()[TAKE_11["take_id"]]
+    assert listed["label"] == "Take 11: Left ankle rolling out"
+    status, _, body = analyse(*samples(follower=TAKE_11["take_id"]))
+    assert status == 200
+    ankle = [f for f in body["analysis"]["faults"] if f["measure"] == "ankle_inversion"]
+    assert len(ankle) == 1 and (ankle[0]["side"], ankle[0]["direction"]) == ("left", "more")
+    picked = listed["faults"][0]["text"]
+    sized = {words.phrase("ankle_inversion", "more", "left", size) for size in words.QUALIFIERS}
+    assert picked == "left ankle rolling out" and ankle[0]["text"] in sized   # the same words, the size word aside
+    assert ROLL_WORDS["more"] in picked and ROLL_WORDS["more"] in ankle[0]["text"] and ROLL_WORDS["more"] in ankle[0]["text_timed"]
+    assert "rolling in" not in listed["label"] + ankle[0]["text"] + ankle[0]["text_timed"]
 
 
 def test_a_dance_take_against_the_dance_clip_is_analysed():

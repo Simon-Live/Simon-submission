@@ -32,7 +32,8 @@ import time
 from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 
-from . import __version__, contract, profiles
+from . import __version__, contract, profiles, words
+from .evaluate import canonical_label
 from .io import InputError
 from .phrasing import BACKENDS, TEMPLATE, select_backend
 from .phrasing.muse_spark import NAME as MUSE_SPARK
@@ -52,6 +53,8 @@ MAX_BODY_BYTES = 2 * MAX_UPLOAD_BYTES + 64 * 1024
 ANALYSIS_TIMEOUT_S = 60.0
 MAX_MESSAGE_CHARS = 400
 SIDES = ("expected", "follower")
+# The label measures (through `evaluate.LABEL_TYPE_TO_MEASURE`) whose fault the page words as the analysis does (ADR-0015).
+FOOT_WORDED = frozenset({"foot_rotation", "ankle_inversion"})
 # Muse Spark is a paid live model: one request at a time per client, at most 6 a minute (staging.md).
 MUSE_PER_MINUTE = 6
 MUSE_WINDOW_S = 60.0
@@ -112,14 +115,33 @@ def _sentence(text):
     return text[:1].upper() + text[1:]
 
 
+def _fault_text(fault):
+    """The words the page shows for a label's fault. A foot fault (ADR-0015) is worded as the analysis words that measure,
+    direction and side (`words.phrase`, no quality word), because the label file keeps its old wording on purpose
+    ("ankle rolled in" for the planted roll that now reads "rolling out", docs/specs/foot-keypoints.md "The ankle label
+    ids read the old way round") and a picker that says "rolled in" over a result that says "rolling out" points the
+    wrong way (AC-S10). Every other label keeps its own `text`. Label ids and fixture bytes are unchanged."""
+    measure, side, direction = canonical_label(fault)
+    if measure in FOOT_WORDED:
+        return words.phrase(measure, direction, side)
+    return fault["text"]
+
+
+def _take_number(take):
+    """The take's own number, the digits after its light field in the id ("exercise_45_good_11_ankle_rolled_in-left" is 11).
+    The first digit group is the angle for a 45 degree take, so it cannot be used; None when the id has no such field."""
+    found = re.search(rf"_{re.escape(str(take['lighting']))}_(\d+)(?:_|$)", take["take_id"])
+    return int(found.group(1)) if found else None
+
+
 def _take_label(take):
-    number = re.search(r"_(\d+)_", take["take_id"])
-    what = _sentence("; ".join(f["text"] for f in take["faults"]) or "correct take")
-    return f"Take {int(number.group(1)):02d}: {what}" if number else what
+    number = _take_number(take)
+    what = _sentence("; ".join(_fault_text(f) for f in take["faults"]) or "correct take")
+    return f"Take {number:02d}: {what}" if number is not None else what
 
 
 def _fault_listing(faults):
-    return [{"type": f["type"], "side": f["side"], "text": f["text"]} for f in faults]
+    return [{"type": f["type"], "side": f["side"], "text": _fault_text(f)} for f in faults]
 
 
 def _feet_file(root, take, key):

@@ -123,7 +123,8 @@ from `profile`; a page for a server with no modes sends no `profile`. Where the 
 checks run on a stubbed listing and a stubbed answer that echoes the mode asked for, and say so in their names. The
 delivery fixes add (AC-S10) a foot-fault take (Take 09, the right foot turned out) analysed with Template wording: the
 page shows a foot rotation fault line and not "No faults found", and the answer carries `diagnostics.feet` with
-repo-relative sources; and (AC-V10) at 390 px every visible tab, button, select, file picker and the scrubber is at
+repo-relative sources; Take 11 (the left ankle roll), whose picker label and shown ankle line name the same roll
+direction; and (AC-V10) at 390 px every visible tab, button, select, file picker and the scrubber is at
 least 44 px tall. The exit code is the verdict.
 
 ## QA recipes and video
@@ -172,6 +173,26 @@ B1). Tests (`tests/test_api.py`): `test_a_sample_take_is_analysed_with_the_foot_
 `test_the_feet_sources_in_the_answer_are_repo_relative_never_this_servers_path`,
 `test_every_generated_sample_carries_its_label_feet_and_every_other_sample_none`,
 `test_a_take_with_no_foot_files_is_analysed_as_before`; `staging/verify.mjs` (`driveFootFault`).
+
+The picker words a foot take as the analysis does (delivery review N1). Given `GET api/samples`, then for a take whose
+label type maps to `foot_rotation` or `ankle_inversion` (`evaluate.LABEL_TYPE_TO_MEASURE`, the 48 foot takes) the
+picker `label` and the listed `faults[].text` are `words.phrase(measure, direction, side)` for the label's own measure,
+direction and side, without a quality word, and `faults[].type` and `side` are the label's own. Take 11 (the left ankle
+roll) reads "Take 11: Left ankle rolling out" and its analysed fault line reads "left ankle rolling out slightly", so the
+two point the same way; before this criterion the picker said "rolled in" over a result that said "rolling out", because
+the label file keeps its old wording on purpose (`foot-keypoints.md`, "The ankle label ids read the old way round").
+Every other label keeps its own `text`. Every generated take's picker label starts "Take NN:" with the take's own number,
+the digits after the light field of its id (`part5/api.py` `_take_number`); the 45 degree takes were all numbered "Take 45"
+because the first digit group of their id is the angle, and front and side labels keep their numbers. Tests
+(`tests/test_api.py`):
+`test_every_generated_take_label_starts_with_the_takes_own_number_the_45_degree_ones_included`,
+`test_front_and_side_labels_keep_the_number_they_had`,
+`test_every_foot_take_is_worded_in_the_picker_and_the_listing_as_the_analysis_words_it`,
+`test_the_ankle_label_ids_and_the_label_file_keep_their_old_words_and_only_the_page_changes`,
+`test_a_take_with_no_foot_fault_keeps_the_words_of_its_label`,
+`test_take_11_picker_label_and_its_analysed_fault_line_point_the_same_way`; `staging/verify.mjs` (`driveFootLabel`, called
+by `driveFootFault`) picks Take 11 and checks the option's roll word, the listed fault's and the ankle line the page then
+shows.
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |
@@ -226,6 +247,10 @@ Kept: it lets the browser render without parsing uploads twice and keeps the ali
 - 2026-10-31 (delivery review B1, lane delivery-fixes): `part5/api.py` passes a sample's foot side files to the pipeline
   (AC-S10, `docs/design/specs/foot-keypoints.md` AC-FOOT-18), and `staging/verify.mjs` drives Take 09. The page's controls are
   at least 44 px tall at phone width (R8, `viewer.md` AC-V10).
+
+- 2026-10-31 (delivery review N1): `part5/api.py` words a foot take's picker label and its listed `faults[].text` in the
+  analysis vocabulary (AC-S10), so Take 11 no longer says "rolled in" over a result that says "rolling out". The label
+  file keeps its words; `api/samples` still lists the label's own `type` and `side`.
 
 ## Deviations from PRD
 None.

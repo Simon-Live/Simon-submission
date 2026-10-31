@@ -451,6 +451,10 @@ Wiring (`tests/test_feet.py` for AC-FOOT-09 to 11, `tests/test_feet_faults.py` f
   The analysis API is the last caller (delivery review B1, `staging.md` AC-S10): a labelled sample carries the file its
   label names, the request hands the names to `pipeline.run` through `feet_kwargs`, and its `diagnostics.feet` sources
   are rewritten to the repository-relative names (`score_report.feet_diagnostics`, shared with the real-take report).
+  The page words a foot take as the analysis does (delivery review N1, `staging.md` AC-S10): the picker label and the
+  listed expected faults (`api/samples` `faults[].text`) of a label whose measure is `foot_rotation` or `ankle_inversion`
+  are `words.phrase(measure, direction, side)` with no quality word, so Take 11 reads "Left ankle rolling out" over a
+  result that says "left ankle rolling out slightly". The label file's `text` is not rewritten.
 - AC-FOOT-19 (calibration, data lane): steps 1 to 4 above on seed 5 only, the go/no-go result recorded in
   `docs/thresholds.md` before the freeze commit; the freeze commit predates the generation of seed 37
   (`tests/test_heldout_protocol.py` already asserts the order).
@@ -536,10 +540,17 @@ known foot faults, or a real-take disagreement with seed 37 (ASM-013).
 Short-term: a `both` cue per direction. Long-term: per-foot nuance. Trigger: an operator ask.
 ### The ankle label ids read the old way round
 Short-term: the label types `ankle_rolled_in` (`ankle_inversion` `more`) and `ankle_rolled_out` (`less`) keep their ids,
-and the label `text` ("left ankle rolled in") keeps its wording, while the analysis now says "rolling out" for `more` and
-"rolling in" for `less` (ADR-0015 Amendment 2). Why: the take id seeds the foot's random stream, so a new id would move
-every foot byte of every set. Matching never reads the words. Long-term: rename the types in a schema 2.0 with a new
-set. Trigger: the next regeneration of the tuning set for any other reason.
+and the label file's `text` ("left ankle rolled in") keeps its wording, while the analysis now says "rolling out" for
+`more` and "rolling in" for `less` (ADR-0015 Amendment 2). Why: the take id seeds the foot's random stream, so a new id
+would move every foot byte of every set. Matching never reads the words. The page does not repeat the old words (delivery
+review N1): once the API read a sample take's foot files (`staging.md` AC-S10) a visitor sees both, and the review found
+10 of the 12 good-light ankle takes showing a result that points the opposite way from the take's name in the picker.
+So `part5/api.py` words the label types
+whose measure is `foot_rotation` or `ankle_inversion` in the analysis vocabulary (`words.phrase` for the label's measure,
+direction and side, through `evaluate.LABEL_TYPE_TO_MEASURE`) in the picker label and in `api/samples` `faults[].text`;
+label ids, the `type` and `side` in the listing, the label file and every fixture byte are unchanged, and every other
+label keeps its own `text`. Long-term: rename the types in a schema 2.0 with a new set, after which the label file's
+`text` can follow the analysis too. Trigger: the next regeneration of the tuning set for any other reason.
 ### Rep mode hides the feet
 Short-term: a take compared rep by rep reports no foot fault. Long-term: per-rep foot series. Trigger: a real take of
 a repeated movement with a known foot fault.

@@ -177,8 +177,9 @@ tests: `tests/test_profile_run_choice.py`.
 The final reviewer's wording question (does a patient far slower than the example read "Slower is fine" as approval?) was
 left to a Writer pass. Writer ruling, recorded by the orchestrator with the writer skill, verbatim: "What to work on first
 lists actions. 'Slower is fine' is a reassurance, so under rehab a slow tempo keeps its cue in `tempo.cue` and
-`score.tempo.cue` but adds no item to `insights`." Done in `part5/insights.py`: a take whose ratio is above 1.15 and whose
-cue is not "Speed up to match the trainer" adds no tempo item; a ratio below 0.85 under rehab, and every `fitness` and
-`dance` take, keep theirs. `profiles.json`, the cue words and the score do not change. Spec: `docs/design/specs/profiles.md`
-(AC-PROF-07, amendment); tests: `tests/test_profiles.py`. This narrows ADR-0014's "a tempo item is added last and always
-kept" for that one case.
+`score.tempo.cue` but adds no item to `insights`." Done in `part5/insights.py`: a take whose tempo cue is one of the named
+reassurances, `cues.REASSURANCE_CUES` (today "Slower is fine"), adds no tempo item; a ratio below 0.85 under rehab, and every
+`fitness` and `dance` take, keep theirs. The rule is that named set and not "any cue but the default speed-up nudge"
+(delivery review R3), so a future profile that replaces `speed_up` with an action keeps its item. `profiles.json`, the cue
+words and the score do not change. Spec: `docs/design/specs/profiles.md` (AC-PROF-07, amendment); tests:
+`tests/test_profiles.py`. This narrows ADR-0014's "a tempo item is added last and always kept" for that one case.

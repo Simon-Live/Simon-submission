@@ -10,3 +10,5 @@ out/
 .idea/
 
 # Agent harness worktrees (firm only)
+
+# hook output written by the precompact hook (not product, not workspace state)

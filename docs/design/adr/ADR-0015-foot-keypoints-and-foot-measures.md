@@ -184,7 +184,10 @@ the other side; the live validator takes "out" words as `more` and "in" words as
 lines may name no knee or thigh, because the measure reads neither. The label type ids `ankle_rolled_in` and
 `ankle_rolled_out` are kept unchanged as identifiers (the take id seeds the foot's random stream): `ankle_rolled_in`
 is the planted roll for `ankle_inversion` `more`, which now reads "rolling out", and `ankle_rolled_out` the one for
-`less`, which reads "rolling in". No measured number changes.
+`less`, which reads "rolling in". No measured number changes. The label file keeps its old `text`, but the staging page
+does not show it for a foot take: the picker label and `api/samples` `faults[].text` use the analysis words for the
+label's measure, direction and side (delivery review N1; `docs/design/specs/foot-keypoints.md`, "The ankle label ids read the
+old way round", and `docs/design/specs/staging.md` AC-S10), so a take's name and its result point the same way.
 
 ## Code Backlinks (updated as code is written)
 - `part5/feet.py` (the side file, the time mapping, usable and hidden), `part5/measures.py` (`_foot_rotation`,

@@ -438,12 +438,17 @@ Amendment, 2026-10-31 (delivery review B3). The first version had the tempo item
 and left to a later Writer pass whether a patient far slower than the example reads that as approval rather than as a
 pace to hold. Writer ruling, recorded by the orchestrator with the writer skill, verbatim: "What to work on first lists
 actions. 'Slower is fine' is a reassurance, so under rehab a slow tempo keeps its cue in `tempo.cue` and
-`score.tempo.cue` but adds no item to `insights`." Built in `insights._reassures`: a take whose ratio is above 1.15 and
-whose cue is not the speed-up nudge is no insight, so a profile that replaces `speed_up` (rehab) adds no tempo item and the
-fault items may take all 5 places; a ratio below 0.85, and every `fitness` and `dance` take, keep their tempo item. Tests
-(`tests/test_profiles.py`): `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue` (seed 5),
-`test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` (rehab, fitness and dance, slow and fast, hand-made
-scores), `test_a_left_out_tempo_item_gives_its_place_back_to_the_other_insights`.
+`score.tempo.cue` but adds no item to `insights`." Built in `insights._reassures`: a tempo cue that is one of the named
+reassurances, `cues.REASSURANCE_CUES` (today only "Slower is fine"), is no insight, so rehab's slow take adds no tempo item
+and the fault items may take all 5 places; a ratio below 0.85, and every `fitness` and `dance` take, keep their tempo
+item. The rule is the named set and not "any cue but the default speed-up nudge" (delivery review R3): a profile that
+replaced `speed_up` with an action, such as "Pick up the pace", keeps its item, and a new reassurance has to be added to
+the set to be left out. Tests (`tests/test_profiles.py`): `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue`
+(seed 5), `test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` (rehab, fitness and dance, slow and fast,
+hand-made scores), `test_a_left_out_tempo_item_gives_its_place_back_to_the_other_insights`,
+`test_the_reassurance_cues_are_named_and_rehabs_replacement_is_one_of_them` and
+`test_a_reassurance_cue_adds_no_tempo_item_and_an_action_cue_keeps_it` (a reassurance drops the item, an action cue keeps
+it).
 
 ### AC-PROF-08: dance weights tempo, the score params stay frozen
 Given the `dance` profile and windows with known tempo ratios
@@ -764,8 +769,9 @@ operator's request: "weights tempo in the score").
 | Ticket: foot measures covered (TICKET-040) | AC-PROF-03 | `test_every_measure_has_a_kind` | done |
 | Final review: rep mode never reports a take-level fault `fitness` does not | AC-PROF-05 | `test_the_reviewers_split_is_dropped_because_fitness_does_not_report_it`, `test_compare_under_a_profile_drops_the_split_fitness_does_not_report` | done |
 | Ticket: the staging page offers the mode, and the request carries it | AC-PROF-15 | QA recipe `qa/recipes/compare/analyse-rehab-mode.md`, `staging/verify.mjs`, `tests/test_web_logic.py` | done |
-| Delivery review R1: a profile fault reports the run that overlaps the fitness fault's | AC-PROF-16 | `tests/test_profile_run_choice.py` | done |
+| Fix-batch review R1 (`progress/review-20261031-fix-batch.md`): a profile fault reports the run that overlaps the fitness fault's | AC-PROF-16 | `tests/test_profile_run_choice.py` | done |
 | Delivery review B3 (Writer ruling): "Slower is fine" is a reassurance, not an item of "what to work on first" | AC-PROF-07 | `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue`, `test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` | done |
+| Delivery review R3: the reassurance is a named set (`cues.REASSURANCE_CUES`), so an action cue in its place keeps its item | AC-PROF-07 | `test_the_reassurance_cues_are_named_and_rehabs_replacement_is_one_of_them`, `test_a_reassurance_cue_adds_no_tempo_item_and_an_action_cue_keeps_it` | done |
 | Delivery review R1: a model line that praises falls back under a profile and the mode is kept | AC-PROF-05, phrasing AC-P09 | `test_a_praising_model_line_falls_back_under_a_profile_and_the_profile_is_kept` | done |
 
 ## Test Scenarios (maps 1:1 to acceptance criteria)

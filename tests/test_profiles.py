@@ -673,6 +673,25 @@ def test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights(profile, ratio
         assert doc["score"]["tempo"] == {"ratio": ratio, "cue": "Slower is fine"}   # the cue itself is kept
 
 
+def test_the_reassurance_cues_are_named_and_rehabs_replacement_is_one_of_them():
+    """The rule is the named set `cues.REASSURANCE_CUES`, not "any cue but the default" (delivery review R3)."""
+    rehab = profiles.tempo_of(profiles.effective_rules(load_rules(), "rehab"))["cues"]
+    assert cues.REASSURANCE_CUES == frozenset({"Slower is fine"}) and rehab["speed_up"] in cues.REASSURANCE_CUES
+    assert not {cues.SPEED_UP, cues.SLOW_DOWN} & cues.REASSURANCE_CUES
+
+
+@pytest.mark.parametrize("cue, kept", [("Slower is fine", False), ("Pick up the pace", True), ("Speed up a little", True),
+                                       (cues.SPEED_UP, True)])
+def test_a_reassurance_cue_adds_no_tempo_item_and_an_action_cue_keeps_it(cue, kept):
+    """A profile that wrote an action in place of the speed-up nudge keeps its item; only a reassurance drops it."""
+    tempo = cues.tempo_block(1.3, {"speed_up": cue})
+    assert tempo == {"ratio": 1.3, "cue": cue}
+    window = {"t_s": [0, 5], "compared": True, "misses": [], "tempo": tempo}
+    doc = {"faults": [], "score": {"basis": "windows", "timeline": [window], "tempo": tempo}}
+    items = insights_of(doc)
+    assert [i["cue"] for i in items] == ([cue] if kept else []) and all(i["kind"] == "tempo" for i in items)
+
+
 def test_a_left_out_tempo_item_gives_its_place_back_to_the_other_insights():
     rehab = insights_of(synthetic_tempo_doc("rehab", 1.3, misses=7))
     fitness = insights_of(synthetic_tempo_doc("fitness", 1.3, misses=7))

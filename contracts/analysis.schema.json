@@ -602,7 +602,7 @@
     "insights": {
       "type": "array",
       "maxItems": 5,
-      "description": "1.5.0 (ADR-0014): what to work on first. With a score timeline, one item per distinct cue among the misses, ranked by points (their share of the score: summed over the compared windows, divided by their number); at_s and window are the cue's first miss. A tempo item (points null) is added last and always kept when score.tempo has a cue. Without a timeline, one item per distinct fault cue in the order of faults, points null.",
+      "description": "1.5.0 (ADR-0014): what to work on first. With a score timeline, one item per distinct cue among the misses, ranked by points (their share of the score: summed over the compared windows, divided by their number); at_s and window are the cue's first miss. A tempo item (points null) is added last and kept when score.tempo has a cue, except a reassurance: under the rehab profile a slow take has the cue \"Slower is fine\" in score.tempo and no tempo item, because this list holds actions (ADR-0016, amendment 2). Without a timeline, one item per distinct fault cue in the order of faults, points null.",
       "items": {
         "type": "object",
         "required": [
