@@ -72,6 +72,7 @@ def test_the_local_request_carries_only_the_measured_record(ollama):
     (reply(""), "local-llm: empty content"),
     (HttpResult(404, {"error": "model not found"}), "local-llm: HTTP 404"),
     (reply("left knee not bent enough"), "local-llm: wrong side"),
+    (reply("right knee not bent enough, nice effort"), "local-llm: adds praise"),    # AC-P09: untimed lines too
 ])
 def test_one_failing_fault_alone_falls_back(ollama, bad, reason):
     lines, record = phrasing.phrase(FAULTS, "local-llm", client=Client(reply(GOOD[0]), bad, reply(GOOD[2])))

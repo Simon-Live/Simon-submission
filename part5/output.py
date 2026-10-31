@@ -18,6 +18,7 @@ from .measures import ALL_SPECS, FOOT_MEASURES
 from .cues import KINDS as CUE_KINDS
 from .cues import MAX_WORDS as CUE_MAX_WORDS
 from .cues import cue_for
+from . import profiles
 from .insights import MAX_INSIGHTS, insights_of
 from .lateral import lateral_for
 from .words import describe, describe_timed
@@ -27,8 +28,10 @@ FORMAT = "simon.analysis.v1"
 # (ADR-0014) every new document carries cues and `insights`, so every new document is 1.5.0; a reader tells
 # the earlier groups apart by their fields, which stay optional. 1.6.0 (ADR-0015) adds the foot measures
 # `foot_rotation` and `ankle_inversion` (body part "feet") and `diagnostics.feet`; every new document is 1.6.0.
-SCHEMA_VERSION = "1.6.0"
+# 1.7.0 (ADR-0016) adds `profile`, the analysis profile that produced the document (always present in a new one).
+SCHEMA_VERSION = "1.7.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
+PROFILE_SINCE = (1, 7, 0)   # from this schema version on, `profile` is required
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
 REFUSED_CODES = (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME)
 STATUS_CODES = (OK, *REFUSED_CODES)
@@ -128,7 +131,7 @@ def _input_ref(ref, key):
 
 
 def build_analysis(expected, follower, faults, diagnostics=None, status=None, times=None, score=NO_SCORE,
-                   warnings=None, match=None):
+                   warnings=None, match=None, profile=profiles.IDENTITY):
     """Assemble a validated analysis document.
 
     `expected`/`follower` identify the input clips: a path, or an object with at least
@@ -143,6 +146,8 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
     `warnings` (`[{code, text}]`) and `match` (`{quality, residual, timing_corr, limits}`) are the 1.4.0 fields
     (ADR-0012): given with at least one warning, the document is 1.4.0, and on a low match every fault's
     `confidence` is "low". Without warnings the document is exactly what it was.
+    `profile` (1.7.0, ADR-0016) names the analysis profile and is written into every document, after `schema_version`;
+    `fitness`, the default, is today's analysis.
     """
     times = times if times is not None else [None] * len(faults)
     try:
@@ -155,6 +160,7 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
             f["confidence"] = LOW_CONFIDENCE
     doc = {"format": FORMAT,
            "schema_version": SCHEMA_VERSION,
+           "profile": profile,
            "expected": _input_ref(expected, "expected"),
            "follower": _input_ref(follower, "follower")}
     if status is not None:
@@ -218,6 +224,7 @@ def validate_analysis(doc, source="<analysis>"):
     version = doc.get("schema_version")
     if "schema_version" in doc and not (isinstance(version, str) and SCHEMA_VERSION_RE.match(version)):
         fail(f"schema_version must look like '1.2.0', got {version!r}")
+    _validate_profile(doc, version, fail)
     faults = doc.get("faults")
     if not isinstance(faults, list):
         fail("faults must be a list")
@@ -240,6 +247,16 @@ def validate_analysis(doc, source="<analysis>"):
     except (TypeError, ValueError) as e:
         fail(f"document is not JSON-serialisable ({e})")
     return doc
+
+
+def _validate_profile(doc, version, fail):
+    """The 1.7.0 `profile` (ADR-0016): a non-empty string, required from 1.7.0 on; a document before it has none
+    and is read as `fitness`. Which names exist is data in part5/profiles.json, not checked here."""
+    if "profile" in doc and not (isinstance(doc["profile"], str) and doc["profile"]):
+        fail(f"profile must be a non-empty string, got {doc['profile']!r}")
+    since_1_7 = isinstance(version, str) and tuple(map(int, version.split("."))) >= PROFILE_SINCE
+    if since_1_7 and "profile" not in doc:
+        fail(f"profile is required from schema_version {'.'.join(map(str, PROFILE_SINCE))}")
 
 
 def _validate_feet(feet, fail):

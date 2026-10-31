@@ -39,10 +39,18 @@ export function getRealTakes() {
   return request("api/real-takes");
 }
 
-export function analyse(expected, follower, phrasing = "template") {
+// The body of an analysis request (AC-V21, AC-PROF-15). `profile` is the mode the visitor chose; it is sent only when the
+// page offered a mode, so a server whose api/samples lists none is never sent the field.
+export function analyseBody(expected, follower, phrasing = "template", profile = null) {
+  const body = { expected, follower, phrasing };
+  if (typeof profile === "string" && profile !== "") body.profile = profile;
+  return body;
+}
+
+export function analyse(expected, follower, phrasing = "template", profile = null) {
   return request("api/analyse", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ expected, follower, phrasing }),
+    body: JSON.stringify(analyseBody(expected, follower, phrasing, profile)),
   });
 }

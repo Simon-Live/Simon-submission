@@ -126,7 +126,7 @@ button.link {
 #phrasing-status { margin: 0 0 1rem; }
 
 .score { margin: 0 0 0.35rem; font-size: 1.25rem; font-weight: 700; }
-#score-note { margin: 0 0 0.75rem; }
+#score-note, #profile-note { margin: 0 0 0.75rem; }
 
 /* A warning is not an error: amber, not the red of a fault. The colour is not the only cue; the heading says it. */
 .warning {

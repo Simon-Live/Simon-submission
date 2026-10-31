@@ -130,10 +130,11 @@ It's 6 months from now and this decision was a disaster. Why?
    `make test`; `profiles_sha256` is printed with every check.
 3. The `detect.py` branch changed `fitness` after the freeze and seed 37's record no longer reproduced. Likelihood: L,
    Impact: H, Mitigation: the `fitness` path returns the rules object itself and runs today's statements; the baseline
-   hash of 108 seed 5 analyses and the unchanged held-out record are both tests; the flag ships last.
+   hash of 156 seed 5 analyses and the unchanged held-out record are both tests; the flag ships last.
 4. Rep mode counted a fault under a profile that `fitness` did not (the half-of-reps rule over one-sided and two-sided
-   reports). Likelihood: L, Impact: L, Mitigation: stated in the spec as outside the proof; the rule is left alone because
-   changing it would move `fitness`; revisit on the first rep-mode take that shows it.
+   reports). Likelihood: L, Impact: L, Mitigation: a profile's take-level faults are filtered to those the `fitness`
+   half rule also reports for the same take (`repwise.only_what_fitness_reports`; the `fitness` path is untouched and
+   runs no second detection), with a test of the split.
 
 ## Dissent (MANDATORY)
 Reviewed by: TICKET-042 profiles lane (implementer, self-review); the independent review is the one consolidated review
@@ -158,3 +159,16 @@ Concerns:
 - `part5/detect.py` (the baseline pass), `part5/cues.py` and `part5/score.py` (tempo), `part5/pipeline.py`,
   `part5/output.py`, `part5/cli.py`, `part5/api.py`, `part5/check.py` (information hash) (to build)
 <!-- In code: # ADR-0016: reason -->
+
+## Amendment 1 (2026-10-31): which run a profile fault reports (delivery review residual R1)
+Under a profile the looser config trims a fault's counted runs, so two of them could end up level and the earliest won
+while `fitness` reported the later one: Squat, take 03, foot out right, read 1.9 s under `fitness` and 0.8 s under
+`rehab`. Stakeholder-proxy ruling, verbatim: "decided by stakeholder-proxy, confidence medium, 2026-10-31: R1 fixed now in
+the profile branch only; a profile fault reports its counted run overlapping the fitness fault's reported run
+(longest-earliest only when none overlaps); fitness, detection hashes and seed 37 check-5 stdout must stay identical".
+Done: in the profile branch of `part5/detect.py` each profile fault reports the counted run that shares the most
+frames with the run its `fitness` counterpart reports (equal shares: the longest, then the earliest; the longest,
+then the earliest, when none shares a frame). The `fitness` path is unchanged, so its documents, the detection hashes and
+the seed 37 `make check-5` stdout do not move; the profile's magnitude, threshold, `runs`, coverage and confidence are what
+they were, so loosen-only still holds. Spec: `docs/design/specs/profiles.md` ("Which run a profile fault reports", AC-PROF-16);
+tests: `tests/test_profile_run_choice.py`.

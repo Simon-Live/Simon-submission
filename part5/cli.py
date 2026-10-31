@@ -3,7 +3,7 @@ import os
 import argparse
 import sys
 
-from . import contract, doctor
+from . import contract, doctor, profiles
 from . import real
 from .io import InputError
 from .output import OutputError, write_analysis
@@ -11,6 +11,15 @@ from .replay import write_replay
 from .pipeline import PHRASING_BACKENDS, AnalysisError, run
 from .phrasing import select_backend
 from .score_report import score_block
+
+
+def _profile_choices():
+    """The profile names for `--profile`, in file order. A profiles file that will not load leaves the choice open so
+    that `part5 contract`, `doctor` and `serve` still run; `analyse` then reports the file (ADR-0016)."""
+    try:
+        return profiles.names()
+    except profiles.ProfileError:
+        return None
 
 
 def build_parser():
@@ -35,6 +44,10 @@ def build_parser():
                    help="live mode (ADR-0008): Muse Spark phrases each fault unless --phrasing names a backend")
     a.add_argument("--phrasing", choices=PHRASING_BACKENDS, default=None,
                    help="who phrases the coaching line per fault (default template; scored fields never change)")
+    a.add_argument("--profile", choices=_profile_choices(), default=None,
+                   help="who the take is judged for (default fitness, the analysis as it is): dance and rehab are "
+                   "looser about where a body part sits, rehab says 'Slower is fine' about pace, dance charges the "
+                   "pace in the score; the tolerances are set by hand (docs/specs/profiles.md)")
     sv = sub.add_parser("serve", help="serve the web page and the analysis API")
     sv.add_argument("--host", default="127.0.0.1", help="address to listen on (default 127.0.0.1)")
     sv.add_argument("--port", type=int, default=8725, help="port to listen on (default 8725)")
@@ -55,14 +68,15 @@ def main(argv=None):
     if args.command == "analyse":
         try:
             backend, selected_by = select_backend(args.phrasing, args.live)
+            profile = profiles.require(args.profile if args.profile is not None else profiles.default())
             result = run(args.expected, args.follower, phrasing=backend, score=score_block,
                          live=args.live, selected_by=selected_by,
                          expected_visibility=args.expected_visibility,
                          expected_feet=args.expected_feet, follower_feet=args.follower_feet,
                          expected_feet_person=args.expected_feet_person,
-                         follower_feet_person=args.follower_feet_person)
+                         follower_feet_person=args.follower_feet_person, profile=profile)
             doc = write_analysis(args.out, result.analysis)
-        except (InputError, AnalysisError, OutputError) as e:
+        except (InputError, AnalysisError, OutputError, profiles.ProfileError) as e:
             print(f"part5 analyse: {e}", file=sys.stderr)
             return 1
         except OSError as e:  # e.g. --out is a directory or not writable

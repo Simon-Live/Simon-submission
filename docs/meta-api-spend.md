@@ -31,12 +31,16 @@ fault.
 Every call, whether it succeeds or not, appends one line to `~/.simon/baseten_usage.jsonl` (`PART5_BASETEN_USAGE_FILE`
 in tests): UTC time, model, HTTP status and token counts. The key and the text never go in it.
 
-Totals on the maintainers' host, read from that file on 2026-10-31:
+Totals on the maintainers' host, read from that file on 2026-10-31 (last line 17:33:28Z):
 
 | Calls | HTTP 200 | Prompt tokens | Completion tokens | Of which reasoning |
 |---|---|---|---|---|
-| 40 | 40 | 21,111 | 31,772 | 30,673 |
+| 160 | 160 | 88,311 | 132,536 | 128,118 |
 
-Calls by day: 1 on 2026-10-29, 37 on 2026-10-30, 2 on 2026-10-31. `docs/phrasing-review.md` counts 88 calls for
-its review, more than the ledger holds; the ledger is the record. No price per token is recorded here, so the spend
-is given in tokens.
+Calls by day: 1 on 2026-10-29, 37 on 2026-10-30, 122 on 2026-10-31. `docs/phrasing-review.md` counts 88 calls for
+its first review, more than the ledger held then; the ledger is the record. No price per token is recorded here, so
+the spend is given in tokens.
+
+The 2026-10-31 no-praise re-review (`docs/phrasing-review.md`, "Re-review 2026-10-31") is 20 of those calls: HTTP 200
+each, 12,324 prompt tokens, 14,363 completion tokens, 13,872 of them reasoning (the ledger held 140 lines before it
+and 160 after).

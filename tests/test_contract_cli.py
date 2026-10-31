@@ -1,4 +1,4 @@
-"""The integration contract (docs/specs/integration-contract.md): the six published schemas, the
+"""The integration contract (docs/specs/integration-contract.md): the seven published schemas, the
 compatibility table, `part5 contract` and `make check-5-contract` (AC-C01 to AC-C04, AC-C12, AC-C-NFR-01), and
 the J1 additions (docs/specs/journey-followup.md AC-C02, AC-C03: the replay schema and row, the goldens).
 AC-C10 (plain errors from `make contracts-check`) is covered by tests/test_sync_contracts.py."""
@@ -38,9 +38,9 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.6.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.7.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
-                                          ("metrics", "1.2.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
+                                          ("metrics", "1.3.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
     schema = json.loads((ROOT / "contracts" / f"{name}.schema.json").read_text())
     assert schema["$id"] == f"{BASE}{name}.schema.json"
@@ -766,3 +766,18 @@ def test_part5_contract_lists_the_feet_schema(capsys):
     assert "input-feet" in capsys.readouterr().out
     assert cli.main(["contract", "--schema", "input-feet"]) == 0
     assert capsys.readouterr().out == (ROOT / "contracts/input-feet.schema.json").read_text()
+
+
+# ---------------------------------------------------------------- the profile row (ADR-0016, AC-PROF-12)
+def test_the_table_and_contract_md_carry_the_profile_row_and_the_analysis_row_names_profile():
+    rows = contract.table_rows()
+    row = next(r for r in rows if r["file"].startswith("analysis profile"))
+    assert row["verdict"] == "works with an option" and row["part5_role"] == "option for Part 7"
+    assert "probe `part5 analyse --help` for `--profile`" in row["fix"] and "omitted means `fitness`" in row["fix"]
+    analysis = next(r for r in rows if r["file"] == "`analysis.json`")
+    assert "1.2.0 to 1.7.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
+    text = (ROOT / "CONTRACT.md").read_text()
+    assert contract.table_markdown([row]).splitlines()[-1] in text
+    assert "[--profile {dance,rehab,fitness}]" in text
+    assert "9. **Pass the mode, and read a score within its profile.**" in text
+    assert any(r["file"].startswith("analysis profile") for r in contract.contract_document()["table"])

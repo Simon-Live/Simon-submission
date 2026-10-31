@@ -5,7 +5,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from part5.io import JOINTS, InputError, load_clip, parse_clip
+from part5 import cli
+from part5.io import JOINTS, InputError, load_clip, parse_clip, read_json
+from part5.visibility import load_conf
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED = ROOT / "fixtures/input/expected/exercise/animation.json"
@@ -87,3 +89,40 @@ def test_unreadable_file(tmp_path):
     p.write_text("{not json")
     with pytest.raises(InputError, match="cannot read JSON"):
         load_clip(p)
+
+
+# --- a file nested too deeply for the JSON parser is a bad file, never a traceback ---
+DEEP = "[" * 100_000 + "]" * 100_000
+
+
+def deep_file(tmp_path):
+    path = tmp_path / "deep.json"
+    path.write_text(DEEP)
+    return path
+
+
+@pytest.mark.parametrize("reader", [read_json, load_clip, load_conf], ids=["read_json", "load_clip", "load_conf"])
+def test_a_file_nested_too_deeply_is_the_plain_input_error(tmp_path, reader):
+    path = deep_file(tmp_path)
+    with pytest.raises(InputError) as e:
+        reader(path)
+    assert str(e.value) == f"{path}: cannot read JSON (nested too deeply)" and e.value.__cause__ is None
+
+
+def test_a_clip_that_is_not_utf8_text_is_the_plain_input_error_too(tmp_path):
+    path = tmp_path / "binary.json"
+    path.write_bytes(b"\xff\xfe\x00")
+    with pytest.raises(InputError, match="cannot read JSON"):
+        load_clip(path)
+
+
+@pytest.mark.parametrize("which", ["expected", "follower"])
+def test_the_cli_exits_1_without_a_traceback_for_a_file_nested_too_deeply(tmp_path, capsys, which):
+    deep = deep_file(tmp_path)
+    other = EXPECTED
+    args = {"expected": str(other), "follower": str(other), which: str(deep)}
+    code = cli.main(["analyse", "--expected", args["expected"], "--follower", args["follower"],
+                     "--out", str(tmp_path / "analysis.json")])
+    err = capsys.readouterr().err
+    assert code == 1 and err == f"part5 analyse: {deep}: cannot read JSON (nested too deeply)\n"
+    assert not (tmp_path / "analysis.json").exists()

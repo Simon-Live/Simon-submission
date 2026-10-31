@@ -10,7 +10,11 @@ compares one repetition at a time instead:
   detected on its own, with the frozen limits;
 - the take is accepted when a strict majority of the follower reps pass (and at least one);
 - a fault is reported once when it is detected in at least half of the accepted reps, placed on the expected
-  file's own frames (the reference rep's first frame added to the rep-local ones, `_on_expected_file`).
+  file's own frames (the reference rep's first frame added to the rep-local ones, `_on_expected_file`);
+- under a profile (ADR-0016) the reps are also detected with the profile's `fitness` rules (`profiles.fitness_rules`),
+  that half rule is applied to those too, and only the take-level faults `fitness` also reports, covered in the sense
+  of `profiles.covered_by`, are kept. Each rep's faults are covered by construction, but a fault seen on one side in
+  some reps and on both in others can pass the half rule under a profile and not under `fitness`.
 
 `compare` returns `None` when neither clip has more than one rep (nothing new to try). A pair the
 whole-clip guard accepts never gets here, so a single-rep take is analysed exactly as before. The reps together
@@ -26,6 +30,7 @@ from .detect import detect
 from .guard import DIFFERENT_MOVEMENT, OK, OK_TEXT, REFUSAL_TEXT, GuardResult, check_movement
 from .visibility import measures_of
 from .output import fault_to_dict
+from .profiles import covered_by, fitness_rules
 from .reps import Segmentation, segment
 
 MIN_FAULT_SHARE = 0.5   # a fault counts when detected in at least this share of the accepted reps
@@ -51,7 +56,8 @@ class RepResult:
 
     `expected` is the reference clip, `follower_positions` the rep resampled to the reference's frame
     count, `to_original[j]` the follower file's frame shown at rep frame `j`, `alignment` indexes the rep
-    frames. `faults` have their follower frames mapped to the file's own. `analysis` is the small
+    frames. `faults` have their follower frames mapped to the file's own. `fitness_faults` are the same rep's faults
+    under the `fitness` rules, filled only for a profile other than fitness. `analysis` is the small
     `{status, faults}` document the score reads (only the faults the take reports).
     """
     index: int
@@ -64,6 +70,7 @@ class RepResult:
     to_original: np.ndarray
     faults: list = field(default_factory=list)
     analysis: dict = field(default_factory=dict)
+    fitness_faults: list = field(default_factory=list)
 
 
 @dataclass
@@ -102,8 +109,15 @@ def _reference(exp, exp_m, span):
     return clip, {k: np.asarray(v)[a:b + 1] for k, v in exp_m.items()}
 
 
-def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None):
-    """Align, guard and detect one follower rep against the reference."""
+def _detected(ref_m, fol_m, alignment, rules, orig):
+    """`detect` on one rep, the follower frames mapped to the file's own."""
+    return [replace(f, follower_frames=tuple(int(orig[j]) for j in f.follower_frames))
+            for f in detect(ref_m, fol_m, alignment, rules)]
+
+
+def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None, fitness=None):
+    """Align, guard and detect one follower rep against the reference. `fitness`, the fitness rules of a profile's
+    effective `rules`, makes the rep also detect with those."""
     try:
         alignment = align(ref.positions, pos, None if vis is None else vis.align_usable)
     except AlignmentError:  # the rep cannot be aligned at all: it does not pass; any other error is a bug
@@ -111,11 +125,12 @@ def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None):
     fol_m = measures_of(pos, vis)
     guard = check_movement(alignment, ref_m, fol_m, rules)
     ok = bool(guard.ok and guard.stats["span_share"] >= MIN_REP_SPAN_SHARE)
-    faults = []
+    faults, fitness_faults = [], []
     if ok:
-        faults = [replace(f, follower_frames=tuple(int(orig[j]) for j in f.follower_frames))
-                  for f in detect(ref_m, fol_m, alignment, rules)]
-    return RepResult(index, span, ok, guard, alignment, ref, pos, orig, faults)
+        faults = _detected(ref_m, fol_m, alignment, rules, orig)
+        if fitness is not None:
+            fitness_faults = _detected(ref_m, fol_m, alignment, fitness, orig)
+    return RepResult(index, span, ok, guard, alignment, ref, pos, orig, faults, fitness_faults=fitness_faults)
 
 
 def _aggregate(occurrences):
@@ -130,19 +145,29 @@ def _aggregate(occurrences):
                    confidence=round(float(median(f.confidence for f in occurrences)), 3))
 
 
-def aggregate_faults(reps):
-    """`(faults, rep_lists)` over the accepted reps: a fault (same measure, side and direction) is kept
-    when detected in at least `MIN_FAULT_SHARE` of them, or always when there is a single rep.
-    `rep_lists[i]` holds the indices of the reps fault `i` was found in. Sorted by size, like `detect`."""
+def aggregate_faults(reps, which="faults"):
+    """`[(fault, rep_indices, occurrences)]` over the accepted reps: a fault (same measure, side and direction) is
+    kept when detected in at least `MIN_FAULT_SHARE` of them, or always when there is a single rep. `rep_indices`
+    are the reps the fault was found in. Sorted by size, like `detect`. `which` names the per-rep list read:
+    `faults`, or `fitness_faults` for the take-level result `fitness` itself would give."""
     accepted = [r for r in reps if r.ok]
     groups = {}
     for r in accepted:
-        for f in r.faults:
+        for f in getattr(r, which):
             groups.setdefault(_fault_key(f), []).append((r, f))
     kept = [(_aggregate([f for _, f in occ]), [r.index for r, _ in occ], occ)
             for occ in groups.values() if len(occ) >= MIN_FAULT_SHARE * len(accepted)]
     kept.sort(key=lambda k: -abs(k[0].magnitude_deg))
     return kept
+
+
+def only_what_fitness_reports(kept, reps):
+    """`kept` (a profile's aggregated faults) without those `fitness` does not report for the same take: the half
+    rule on each rep's `fitness_faults` gives the take's fitness faults, and a kept fault stays when it is covered
+    by them (`profiles.covered_by`). The reps' own faults are covered by construction (`detect`); this closes the
+    one gap left, a fault that is split over sides differently in different reps."""
+    reported = [_fault_key(f) for f, _, _ in aggregate_faults(reps, "fitness_faults")]
+    return [k for k in kept if covered_by(_fault_key(k[0]), reported)]
 
 
 def _times(kept, fol, fault_times):
@@ -223,6 +248,8 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
     follower_frames = len(fol_positions) if fs.reps == 1 else fs.reps * n   # a lone segment is aligned whole
     if max_cells is not None and follower_frames * n > max_cells:
         raise TooManyPairs(follower_frames, n)
+    fitness = fitness_rules(rules)
+    under_profile = fitness is not rules   # ADR-0016: only a profile's rules differ from their fitness rules
     reps = []
     for k, (a, b) in enumerate(fs.spans):
         if fs.reps == 1:  # one follower segment: the whole take, as the whole-clip comparison saw it
@@ -230,9 +257,12 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
         else:
             pos, idx = _resample_rep(fol_positions, a, b, n)
             orig = np.asarray(to_original)[idx]
-        reps.append(_one_rep(k, pos, orig, (int(orig[0]), int(orig[-1])), ref, ref_m, rules, vis))
+        reps.append(_one_rep(k, pos, orig, (int(orig[0]), int(orig[-1])), ref, ref_m, rules, vis,
+                             fitness if under_profile else None))
     guard = _verdict(reps)
     kept = aggregate_faults(reps) if guard.ok else []
+    if under_profile:   # a profile never reports a take-level fault that fitness does not (the fitness path is untouched)
+        kept = only_what_fitness_reports(kept, reps)
     kept_keys = {_fault_key(f) for f, _, _ in kept}
     for r in reps:
         mine = [f for f in r.faults if _fault_key(f) in kept_keys]

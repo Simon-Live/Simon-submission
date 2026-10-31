@@ -19,6 +19,7 @@ from .joints_map import fault_joints
 from .lateral import lateral_m
 from .normalise import normalise
 from .output import build_analysis, validate_analysis
+from . import profiles
 from .phrasing import BACKENDS, phrase
 from .repwise import RepRun, TooManyPairs, compare, rep_entries, reference_entry
 from .guard import (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NO_USABLE_TEXT, NOT_ENOUGH_VISIBLE, OK,
@@ -74,22 +75,26 @@ class PipelineResult:
     reps: list | None = None   # RepResult per follower rep when the take was compared rep by rep (ADR-0010)
     rep_run: RepRun | None = None
     vis: object = None
+    rules: dict | None = None   # the effective rules the take was detected and scored with (ADR-0016)
+    profile: str = profiles.IDENTITY
 
 
 def analyse(expected, follower, rules=None, *, expected_feet=None, follower_feet=None,
-            expected_feet_person=0, follower_feet_person=0):
+            expected_feet_person=0, follower_feet_person=0, profile=None):
     """`expected`/`follower` are paths, or objects with `path` plus ids that pass through
     to the output (e.g. `take_id`). Raises `io.InputError` for a bad file and `AnalysisError` for a bad ref, an
     unknown phrasing backend or a pair over the work bounds (frames, frame rate, frame pairs). A readable pair
     within the bounds is always analysed (ADR-0012): one that does not match the example, or shows too little of
-    the body, comes back with a warning and grade F, never a refusal. The `*_feet` arguments are `run`'s."""
+    the body, comes back with a warning and grade F, never a refusal. The `*_feet` arguments and `profile` are
+    `run`'s."""
     return run(expected, follower, rules, expected_feet=expected_feet, follower_feet=follower_feet,
-               expected_feet_person=expected_feet_person, follower_feet_person=follower_feet_person).analysis
+               expected_feet_person=expected_feet_person, follower_feet_person=follower_feet_person,
+               profile=profile).analysis
 
 
 def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=None, score=None,
         live=False, selected_by=None, expected_visibility=None, expected_feet=None, follower_feet=None,
-        expected_feet_person=0, follower_feet_person=0):
+        expected_feet_person=0, follower_feet_person=0, profile=None):
     """`analyse` keeping the clips and the alignment (`PipelineResult`).
 
     A ref may carry the parsed JSON under `doc` (an upload held in memory): the clip is parsed
@@ -106,10 +111,15 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     files that carry the heel and toe points (`extra_joints`) of each clip's person (`*_feet_person`, matched to
     `people[].id`). Given for either clip, the document carries `diagnostics.feet`; the foot measures are compared
     when both clips have them and hidden, with the reason, when not. Without either, nothing changes.
+
+    `profile` (ADR-0016) names the analysis profile, one of `profiles.names()`; None means `fitness`, the identity,
+    which leaves `rules` untouched. Any other profile detects and scores with `profiles.effective_rules(rules, profile)`
+    (kept on the result as `rules`), and the document names the profile. An unknown name is a `profiles.ProfileError`.
     """
     if phrasing not in PHRASING_BACKENDS:
         raise AnalysisError(f"phrasing must be one of {list(PHRASING_BACKENDS)}, got {phrasing!r}")
-    rules = rules or load_rules()
+    rules = profiles.effective_rules(rules or load_rules(), profile)
+    profile = profiles.IDENTITY if profile is None else profile
     exp_ref, fol_ref = _ref(expected, "expected"), _ref(follower, "follower")
     exp = normalise(_load(exp_ref))
     fol = normalise(_load(fol_ref))
@@ -131,7 +141,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
             notes[MOVING_PART_OUT_OF_FRAME] = moving_text(moving_info["moving_measures"])
     usable = vis.align_usable   # None: the full-body choice; fewer than 3 measures are still used
     ctx = _Context(exp_ref, fol_ref, exp, fol, vis, moving_info, notes,
-                   (phrasing, phrasing_client, live, selected_by), score, feet)
+                   (phrasing, phrasing_client, live, selected_by), score, feet, rules, profile)
     if usable is not None and not usable:   # nothing the camera sees can carry timing
         return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT, rules)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
@@ -175,7 +185,8 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     if feet is not None:   # additive to 1.6.0: only when a feet file was given for either clip
         diagnostics["feet"] = (feet.hidden(REP_MODE_REASON) if accepted else feet).diagnostics()
     result = PipelineResult(None, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
-                            reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None, vis=vis)
+                            reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None, vis=vis,
+                            rules=rules, profile=profile)
     return _finish(ctx, result, faults, times, diagnostics, guard.stats, not guard.ok, rules)
 
 
@@ -192,6 +203,8 @@ class _Context:
     phrasing: tuple
     score: object
     feet: object = None   # the `feet.FootPair`, None when no feet file was given
+    rules: dict | None = None   # the effective rules (ADR-0016): the caller's rules, relaxed when a profile is named
+    profile: str = profiles.IDENTITY
 
 
 def _foot_series(feet, fol_t, fps):
@@ -225,7 +238,8 @@ def _finish(ctx, result, faults, times, diagnostics, stats, low, rules):
     warnings = _warning_list(ctx.notes)
     analysis = build_analysis(ctx.exp_ref, ctx.fol_ref, faults, diagnostics=diagnostics,
                               status={"code": OK, "text": OK_TEXT}, times=times,
-                              warnings=warnings or None, match=_match(stats, low, rules) if warnings else None)
+                              warnings=warnings or None, match=_match(stats, low, rules) if warnings else None,
+                              profile=ctx.profile)
     analysis = _phrased(analysis, *ctx.phrasing)
     result.analysis = analysis
     if ctx.score is not None:
@@ -248,7 +262,7 @@ def _unaligned(ctx, code, text, rules):
         diagnostics["feet"] = ctx.feet.hidden(UNALIGNED_REASON).diagnostics()
     n_fol = ctx.fol.n_frames
     result = PipelineResult(None, diagonal_alignment(ctx.exp.n_frames, n_fol), ctx.exp, ctx.fol, ctx.fol.positions,
-                            np.arange(n_fol), None, vis=ctx.vis)
+                            np.arange(n_fol), None, vis=ctx.vis, rules=rules, profile=ctx.profile)
     return _finish(ctx, result, [], [], diagnostics, None, True, rules)
 
 

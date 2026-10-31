@@ -146,5 +146,11 @@ Kept: real takes are reported with their guard stats, so a wrong refusal is visi
 ### Concern 2: precision first may starve recall at the side angle
 Kept: the objective is #15's stated order; the per-angle recall is printed.
 
+## Amendments
+- 2026-10-31 (TICKET-042, `docs/design/specs/profiles.md`, ADR-0016): profiles are never calibrated. Their values are set by hand,
+  the per-profile precision and recall are reported on seed 5 only (`make report-profiles`), no profile is run on a
+  held-out seed, and no held-out seed is spent on one. The frozen detection rules and score params are not read
+  differently by any profile.
+
 ## Deviations from PRD
 None.

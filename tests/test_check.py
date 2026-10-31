@@ -16,7 +16,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from part5 import check
+from part5 import check, profiles
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = json.loads((ROOT / "contracts/metrics.schema.json").read_text())
@@ -330,7 +330,7 @@ def test_ac_k12_a_1_1_0_document_without_the_refusals_flag_still_validates_and_a
     base = {"low_light": {"gated": False}, "dropout": {"gated": False}, "kit": {"gated": False},
             "stock": {"gated": False}, "refusals": {"good/front": 0}}
     validator = jsonschema.Draft202012Validator(SCHEMA["properties"]["report"])
-    assert SCHEMA["version"] == "1.2.0" and list(validator.iter_errors(base)) == []
+    assert SCHEMA["version"] == "1.3.0" and list(validator.iter_errors(base)) == []
     assert list(validator.iter_errors({**base, "refusals": {"gated": False, "good/front": 0}})) == []
     assert list(validator.iter_errors({**base, "refusals": {"gated": True, "good/front": 0}}))
     assert list(validator.iter_errors({**base, "refusals": {"gated": False, "good/front": -1}}))
@@ -757,3 +757,36 @@ def test_the_committed_tuning_set_names_a_foot_file_pair_for_every_take():
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     assert len(labels["takes"]) == 156
     assert all((ROOT / t["expected_feet"]).is_file() and (ROOT / t["follower_feet"]).is_file() for t in labels["takes"])
+
+
+# ----------------------------------------------------------------- profiles (ADR-0016, AC-PROF-13)
+def test_check_reports_profiles_sha256(tmp_path, monkeypatch, capsys):
+    code, out, err = world(tmp_path, monkeypatch).run(capsys)
+    doc = json.loads(out)
+    assert code == 0 and doc["profiles_sha256"] == profiles.file_sha256() == check.profiles_hash()
+    assert list(doc)[-3:] == ["rules_sha256", "detection_sha256", "profiles_sha256"] and errors_of(doc) == []
+    assert doc["rules_sha256"] == RULES_SHA and doc["detection_sha256"] == check.detection_hash()
+
+
+def test_check_numbers_unchanged_by_profiles(tmp_path, monkeypatch, capsys):
+    """The profiles file is information: another file changes `profiles_sha256` and nothing else in the document, and
+    `part5/rules.json` is not touched by profiles (check-5 runs fitness only)."""
+    w = world(tmp_path, monkeypatch)
+    code, out, _ = w.run(capsys)
+    first = json.loads(out)
+    other = json.loads(profiles.PROFILES_PATH.read_text())
+    other["profiles"]["dance"]["kinds"]["position"]["threshold_multiplier"] = 3.0
+    (tmp_path / "other-profiles.json").write_text(json.dumps(other))
+    monkeypatch.setattr(profiles, "PROFILES_PATH", tmp_path / "other-profiles.json")
+    code_b, out_b, _ = w.run(capsys)
+    second = json.loads(out_b)
+    assert code == code_b == 0 and second["profiles_sha256"] != first["profiles_sha256"]
+    assert {k: v for k, v in second.items() if k != "profiles_sha256"} == \
+           {k: v for k, v in first.items() if k != "profiles_sha256"}
+    assert first["rules_sha256"] == RULES_SHA
+
+
+def test_check_exits_2_when_the_profiles_file_is_missing(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(profiles, "PROFILES_PATH", tmp_path / "gone.json")
+    code, out, err = world(tmp_path, monkeypatch).run(capsys)
+    assert code == 2 and out == "" and "gone.json not found" in err

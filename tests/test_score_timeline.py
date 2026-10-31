@@ -53,6 +53,40 @@ def test_each_window_lists_its_misses_and_they_add_up_to_its_value():
     assert block["value"] == round(sum(w["value"] for w in block["timeline"]) / 6)
 
 
+# --- one window, made in one place for a whole-clip take and for a take compared rep by rep (ADR-0014, ADR-0016) ----
+NO_CHARGE = {"cues": {}, "weight": 0.0, "cap": 0.0}
+DANCE_CHARGE = {"cues": {}, "weight": 40.0, "cap": 20.0}
+
+
+def _scored_window(tempo=NO_CHARGE, ratio=1.0, timed=True, frames=None, faults=None):
+    n = 90
+    analysis = {"status": {"code": "ok"}, "faults": [] if faults is None else faults}
+    frames = np.arange(n) if frames is None else frames
+    return score.timeline_window((0.0, 3.0), analysis, _aligned(n), frames, RULES, score.params_of(RULES), tempo, ratio, timed)
+
+
+def test_a_window_with_nothing_to_score_is_only_shown():
+    assert _scored_window(frames=np.arange(0)) == {"t_s": (0.0, 3.0), "compared": False}
+
+
+def test_a_window_is_the_window_score_under_t_s_with_its_tempo_block_when_timed():
+    w = _scored_window(ratio=1.0)
+    assert list(w)[0] == "t_s" and w["t_s"] == (0.0, 3.0) and "compared" not in w
+    assert w["tempo"]["ratio"] == 1.0 and "tempo" not in w["components"]          # the plain rules charge no tempo
+    plain = score.window_score({"status": {"code": "ok"}, "faults": []}, _aligned(90), np.arange(90), RULES,
+                               score.params_of(RULES))
+    assert {k: v for k, v in w.items() if k not in ("t_s", "tempo")} == plain
+    assert "tempo" not in _scored_window(ratio=1.0, timed=False)                         # an untimed take has no tempo block
+
+
+def test_only_a_profile_that_charges_tempo_charges_the_window_for_it():
+    off, on = _scored_window(NO_CHARGE, ratio=1.4), _scored_window(DANCE_CHARGE, ratio=1.4)
+    assert "tempo" not in off["components"] and on["components"]["tempo"] == pytest.approx(10.0)   # 40 per 1.0 outside 1.15 + band
+    assert on["value"] == off["value"] - 10
+    unmeasured = _scored_window(DANCE_CHARGE, ratio=None)
+    assert unmeasured["components"]["tempo"] == 0.0 and unmeasured["tempo"]["ratio"] is None
+
+
 # --- the acceptance criteria of ADR-0013 (docs/adr/ADR-0013-score-timeline-length-agnostic.md) ------------------
 def _spans(seconds, fps=30):
     n = int(seconds * fps)

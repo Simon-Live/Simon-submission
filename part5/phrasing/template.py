@@ -6,9 +6,9 @@ cannot phrase.
 
 `line_problem` is the word test for a line from a language model. Per fault it must name the same
 body part and side, carry the direction's meaning, add no number and add no other body part (a
-proxy for "no fault the record does not hold"). It is deliberately strict and word based: a line
-it cannot place falls back to the template, which is always safe. The template's own lines pass it
-(tested), so the two vocabularies cannot drift apart.
+proxy for "no fault the record does not hold"); a line, timed or not, also carries no praise. It is
+deliberately strict and word based: a line it cannot place falls back to the template, which is
+always safe. The template's own lines pass it (tested), so the two vocabularies cannot drift apart.
 """
 import re
 
@@ -193,6 +193,23 @@ _TIME = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s?(?:seconds?|secs?|s)\b")
 _LATERAL = re.compile(r"\b(?:too far (?:to the )?|to the |toward the )(left|right)\b")
 _OPPOSITE = {"more": "less", "less": "more"}
 
+# A fault line reports a fault: it carries no praise (ADR-0008 Amendments, R2). Live Muse Spark wrote
+# "Your knees are not bent enough at 1.4 s, nice effort." because the prompt once offered the phrase. The prompt
+# no longer does, and this list is the guard: a line with one of these phrases, in any case, falls back to the
+# template line. It guards the timed and the untimed line alike. The words of a phrase may be joined by spaces or
+# hyphens ("nice-effort"), and a zero-width character hides nothing (see `_praise`).
+PRAISE_PHRASES = (
+    "nice effort", "good effort", "great effort", "solid effort", "great job", "good job", "nice job", "well done",
+    "nicely done", "nice work", "good work", "great work", "excellent work", "nice going", "well played",
+    "nice try", "great start", "looking good", "you're doing great", "you are doing great", "congratulations",
+    "congrats", "bravo",
+)
+_PRAISE = re.compile(
+    r"\b(?:" + "|".join(r"[\s\-]+".join(map(re.escape, p.split())) for p in PRAISE_PHRASES) + r")\b", re.I)
+# U+200B, U+200C, U+200D, U+2060 and U+FEFF, by name so that no invisible character sits in this source file
+_ZERO_WIDTH = re.compile("[\N{ZERO WIDTH SPACE}\N{ZERO WIDTH NON-JOINER}\N{ZERO WIDTH JOINER}\N{WORD JOINER}"
+                         "\N{ZERO WIDTH NO-BREAK SPACE}]")
+
 
 def _time(fault, text):
     """(problem, text with the time removed). The time is `at_s` to 0.1 s, said once, with seconds."""
@@ -237,10 +254,18 @@ def _timed_direction(fault, text):
     return _direction(fault, text, hits)
 
 
+def _praise(text):
+    """The reason `adds praise` when `text` holds one of `PRAISE_PHRASES`, else None.
+
+    A zero-width character (U+200B, U+200C, U+200D, U+2060, U+FEFF) is invisible, so the line is read twice: with
+    each one removed (it may sit inside a word) and with each one read as a space (it may be all that separates
+    two words).
+    """
+    seen = (_ZERO_WIDTH.sub("", text), _ZERO_WIDTH.sub(" ", text))
+    return "adds praise" if any(_PRAISE.search(t) for t in seen) else None
+
+
 def _timed_problem(fault, text):
-    problem = _shape(fault, text)
-    if problem:
-        return problem
     problem, text = _time(fault, text)
     if problem:
         return problem
@@ -254,13 +279,17 @@ def _timed_problem(fault, text):
 def line_problem(fault, line, timed=False):
     """None when `line` fairly phrases the measured `fault`, else the short reason it does not.
 
-    `timed=True` is the live-mode test (ADR-0008): the line must say `fault["at_s"]` once, may name
+    Timed or not, a line is one short line and carries no praise (`PRAISE_PHRASES`; the reason is "adds praise").
+    `timed=True` is the live-mode test (ADR-0008): the line must also say `fault["at_s"]` once, may name
     `fault["lateral"]` as a direction and may name the measure's landmarks.
     """
     text = line.strip().lower().replace("’", "'")
+    problem = _shape(fault, text) or _praise(text)
+    if problem:
+        return problem
     if timed:
         return _timed_problem(fault, text)
-    for check in (_shape, _numbers, _side, _body, _direction):
+    for check in (_numbers, _side, _body, _direction):
         problem = check(fault, text)
         if problem:
             return problem

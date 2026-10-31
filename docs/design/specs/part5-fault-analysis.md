@@ -158,7 +158,8 @@ guard accepts is analysed as before, so seed 5, the held-out seeds and the golde
 - Persistence: a fault counts when the frames of all runs past threshold in one direction, each run at
   least `min_run_frames` long (default 4 at the expected clock), sum to at least `min_fraction` of the
   expected clip (floor `min_frames_floor`). `expected_frames` and `follower_frames` stay the longest
-  run (unchanged meaning); the new additive field `runs` lists every counted run as
+  run (unchanged meaning; under a profile other than fitness, the run that overlaps the fitness fault's run most,
+  `profiles.md`); the new additive field `runs` lists every counted run as
   `[[start, end], ...]` in expected frames; `magnitude_deg` is the median over all counted runs.
 - Overlap: `_drop_explained` and `_merge_sides` require an overlap of at least `min_overlap` (default
   0.5) of the shorter run's frames, and only faults that are kept can explain others away.
@@ -265,7 +266,8 @@ ACs (tests/test_cues.py):
   use) are plain, because no call was made or the limit is not the model's; a call that ran and failed reads
   `<backend>: <what>` (`muse-spark: timeout after 10 s`, `muse-spark: HTTP 500`, `muse-spark: <word test reason>`).
 - Validation, per fault: the line must name the same body part and side and carry the direction's
-  meaning (word test), and must add no number and no fault that the record does not hold. A line that
+  meaning (word test), and must add no number, no fault that the record does not hold and no praise (journey-followup.md
+  AC-P09: "nice effort", "great job" and the rest of `PRAISE_PHRASES`; the reason is `<backend>: adds praise`). A line that
   fails, a timeout, an HTTP error or empty content falls back to `text` for that fault, and the
   `phrasing` record lists the backend that ran and the fallback reason per fault.
 - Never used in tests or `check-5`: tests drive the adapter through an injected client. A separate

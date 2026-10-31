@@ -11,6 +11,8 @@ Follow-up of 2026-10-31 (lane stage-j1): verify, recipes and walkthrough follow 
 (timed line and score) and ADR-0014 (insights); see `viewer.md` AC-V06 and AC-V14 to AC-V18.
 Staging QA fixes of 2026-10-31 (lane fix-ux): `viewer.md` AC-V19 (the hint follows the pick) and AC-V20 (a stale result
 is marked and cannot be downloaded); the recipes name the files their drives save.
+Mode select of 2026-10-31 (lane profiles-web, TICKET-042, ADR-0016): the API takes an optional `profile`, `api/samples`
+lists the modes, and verify and a recipe drive the page's "Mode" select (`viewer.md` AC-V21, `profiles.md` AC-PROF-15).
 Milestones: S0 (target 2026-10-29), M3 (target 2026-11-01). Use cases: uc-analyse-take, uc-correct-take,
 uc-wrong-movement, uc-real-takes.
 
@@ -37,8 +39,8 @@ As a follower, I pick or upload the expected movement and my take and see each f
 | Method and path | Request | Response |
 |---|---|---|
 | `GET api/health` | | `{ok: true, version}` |
-| `GET api/samples` | | `{expected: [{id, set, movement, label}], followers: [{id, set, angle, light, label, faults}], phrasing: [<offered backends>], phrasing_default: <one of them>}` from committed fixtures |
-| `POST api/analyse` | `{expected: {sample: id} \| {upload: <json>}, follower: {sample: id} \| {upload: <json>}, phrasing: "template" \| "local-llm" \| "muse-spark"}` | `{analysis: <simon.analysis.v1>, replay: {fps, expected: [[[x,y,z] x17] per frame], follower: [...], exp_to_fol: [follower frame per expected frame], joints, bones}}` |
+| `GET api/samples` | | `{expected: [{id, set, movement, label}], followers: [{id, set, angle, light, label, faults}], phrasing: [<offered backends>], phrasing_default: <one of them>, profiles: [<mode names>], profile_default: "fitness"}` from committed fixtures; `profiles` and `profile_default` are listed by a server that knows modes (`profiles.md`) and absent from an older one |
+| `POST api/analyse` | `{expected: {sample: id} \| {upload: <json>}, follower: {sample: id} \| {upload: <json>}, phrasing: "template" \| "local-llm" \| "muse-spark", profile?: "dance" \| "rehab" \| "fitness"}` | `{analysis: <simon.analysis.v1>, replay: {fps, expected: [[[x,y,z] x17] per frame], follower: [...], exp_to_fol: [follower frame per expected frame], joints, bones}}` |
 | `GET api/real-takes` | | the real-take report (`real-takes.md`) |
 | `GET api/contract` | | `python -m part5 contract --json` output |
 
@@ -60,6 +62,12 @@ As a follower, I pick or upload the expected movement and my take and see each f
   the template. Verify, the walkthrough and the recipes that do not test wording choose Template themselves. Requests asking for `muse-spark` are rate limited per
   client address (one at a time, at most 6 per minute); over the limit the server answers HTTP 429
   `{error: {field: "phrasing", message: "Too many Muse Spark requests. Wait a minute or pick template."}}`.
+- Modes (TICKET-042, ADR-0016, `profiles.md`): `profile` is optional; omitted or `null` means `fitness`, a name that is
+  not in `profiles` is HTTP 400 with field `profile`, and every `analysis` carries the `profile` that scored it. The page
+  offers a "Mode" select only when `api/samples` lists `profiles`, starts it on `profile_default`, sends its value as
+  `profile` and names a mode other than `fitness` in the result (`viewer.md` AC-V21). A server that lists no modes gets no
+  select and no `profile`, so the page and the API can be merged in either order. Verify and the recipes keep the
+  Template wording in every mode.
 - No value from a request becomes a filesystem path: sample ids resolve through an in-memory table built
   at start; uploads are parsed in memory and never written.
 - Code: `part5/api.py` (pure functions), `part5/replay.py`, `part5/server.py`
@@ -71,7 +79,9 @@ As a follower, I pick or upload the expected movement and my take and see each f
   with the cleared environment; uses `uv run` only when `uv` is on the cleared PATH, otherwise
   `python3` with numpy importable, decided at TICKET-008 and recorded), `down.sh`, `health.sh` (only
   `STAGING_PORT`, default base path, exit 0 when `api/health` answers), `verify.sh [<base-url>]`,
-  `verify.mjs`, `walkthrough.mjs`, `DEMO.md` (visitor sections only under "For visitors").
+  `verify.mjs` (with the modules it imports, each under 800 lines: `verify-kit.mjs` for the helpers every drive shares,
+  `verify-modes.mjs` for the Mode select, `verify-wording.mjs` for the wording select), `walkthrough.mjs`, `DEMO.md`
+  (visitor sections only under "For visitors").
 - No secret is committed or copied into the staging tree; the only key the server may read is the
   operator key file above, from its firm location.
 - `staging.sh up simon-part-5` then `staging.sh verify simon-part-5` exit 0. The registry
@@ -96,7 +106,14 @@ grade, each fault row starts with a timed line matching `/ at \d+\.\d s/` (templ
 call), the insights list shows when the file has insights, and the preview shows the score. The staging QA fixes add:
 the hint under the wording select follows a pick and returns when the default is picked again (AC-V19), and a result
 made for another choice is marked with the stale line and loses its download link until Analyse is pressed again
-(AC-V20: a changed take, example, upload or wording; the saved file is the last pair's). The exit code is the verdict.
+(AC-V20: a changed take, example, upload, wording or mode; the saved file is the last pair's). The Mode follow-up adds
+(AC-V21, AC-PROF-15): the select appears exactly when `api/samples` lists modes (checked on the server's own listing and
+on stubbed listings that give none, an empty list, three modes, a default of rehab and a default that is not offered);
+an untouched page sends and shows `fitness`; Analyse with Rehab on a feet-wide take sends `profile: "rehab"`, the result
+names the mode and the saved file says `rehab`; the fitness analysis equals the one a request naming no mode gets, apart
+from `profile`; a page for a server with no modes sends no `profile`. Where the server does not list modes yet, those
+checks run on a stubbed listing and a stubbed answer that echoes the mode asked for, and say so in their names. The exit
+code is the verdict.
 
 ## QA recipes and video
 - Recipes with the `qa-recipe` skill (ADR-0020), one per use case driven on staging: each edge driven by
@@ -177,6 +194,11 @@ ASM-011 (stdlib server load and the runtime in the cleared environment, `docs/as
 Kept: Parts 3 and 6 run the same way on this gateway; no dependency to vendor.
 ### Concern 2: replay payload duplicates frames already in the clips
 Kept: it lets the browser render without parsing uploads twice and keeps the alignment server side.
+
+## Amendments
+- 2026-10-31 (TICKET-042, `docs/design/specs/profiles.md`): `POST api/analyse` takes an optional `profile` (`dance`, `rehab` or
+  `fitness`; omitted or `null` means `fitness`; any other value is a 400 with field `profile`, before any file is read),
+  and `GET api/samples` gains `profiles` and `profile_default`. The `analysis` carries `profile`.
 
 ## Deviations from PRD
 None.

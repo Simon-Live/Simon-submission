@@ -20,14 +20,12 @@ file directly, one per clip (`--expected-feet`, `--follower-feet`), and never to
 """
 # ADR-0015: foot points enter as a side input; this module is the only reader of Part 2's `extra_joints`.
 # ASM-013: synthetic side files in the same shape are a proxy for Part 2's estimated feet.
-import json
 import math
 from dataclasses import dataclass, field, replace
-from pathlib import Path
 
 import numpy as np
 
-from .io import InputError
+from .io import InputError, read_json
 from .measures import FOOT_MEASURES, SIDES, compute_feet
 
 FOOT_POINTS = ("left_big_toe", "left_small_toe", "left_heel", "right_big_toe", "right_small_toe", "right_heel")
@@ -40,17 +38,12 @@ MIN_MATCH_S = 0.008     # the least time window a clip frame may take a side fra
 # decimals puts it a few hundred nanoseconds over, so the window gets this much slack and the tie still matches.
 TIME_SLACK_S = 1e-6
 NAN3 = np.full(3, np.nan)
+MAX_IDS_SHOWN = 8       # `_ids_present` names this many ids, then counts the rest
+MAX_ID_CHARS = 40       # and cuts a longer id to this many characters
 
 
 def _is_number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
-
-
-def _read(path):
-    try:
-        return json.loads(Path(path).read_text())
-    except (OSError, ValueError) as e:   # a missing file, bytes that are not UTF-8 or text that is not JSON
-        raise InputError(f"{path}: cannot read JSON ({e})") from e
 
 
 def _point(raw, where, source):
@@ -111,12 +104,23 @@ def _median_step(frames):
 
 
 def _ids_present(frames):
-    """Every `people[].id` in the file as text for an error message, e.g. `[0, 7, 'a']`: the numbers in order, then
-    any other id as written (a text id is named too, so the reader sees why `--expected-feet-person 0` skips it)."""
-    ids = [p["id"] for _, _, people in frames for p in people if "id" in p]
-    numbers = sorted({i for i in ids if _is_number(i)})
-    others = sorted({repr(i) for i in ids if not _is_number(i)})
-    return "[" + ", ".join([repr(i) for i in numbers] + others) + "]"
+    """The `people[].id`s in the file as text for an error message, e.g. `[0, 7, 'a']`: the numbers in order, then
+    any other id as written (a text id is named too, so the reader sees why `--expected-feet-person 0` skips it).
+    A file with many ids lists the first `MAX_IDS_SHOWN` and counts the rest (`[0, 1, ...] and 992 more (1000 in all)`),
+    and a long text id is cut to `MAX_ID_CHARS`, so the message stays one short line."""
+    numbers, others = set(), set()
+    for _, _, people in frames:
+        for p in people:
+            if "id" not in p:
+                continue
+            if _is_number(p["id"]):
+                numbers.add(p["id"])
+            else:
+                others.add(repr(p["id"]))
+    named = [repr(i) for i in sorted(numbers)] + sorted(others)
+    shown = ", ".join(n if len(n) <= MAX_ID_CHARS else n[:MAX_ID_CHARS - 3] + "..." for n in named[:MAX_IDS_SHOWN])
+    more = len(named) - MAX_IDS_SHOWN
+    return f"[{shown}]" + (f" and {more} more ({len(named)} in all)" if more > 0 else "")
 
 
 def _carries_points(person):
@@ -138,7 +142,7 @@ def _parse(path, person):
     """(t, points, has_points, mirrored, step) of one person in a Part 2 pose3d.json: `t` seconds on the file's own
     clock, one (n, 3) array per name in BODY_POINTS and FOOT_POINTS, whether any frame carries `extra_joints`, and
     the file's median frame step over all its frames."""
-    mirrored, frames = _frames(_read(path), path)
+    mirrored, frames = _frames(read_json(path), path)
     times, rows, has_points = [], [], False
     for where, t, people in frames:
         mine = next((p for p in people if _is_number(p.get("id")) and p["id"] == person), None)
@@ -166,7 +170,7 @@ def _parse(path, person):
 def check_file(path):
     """Read the file at `path` the way `load_side` does, for every person it holds, and return its `file_summary`.
     For `make check-5-contract`, which loads each committed feet file. Raises `InputError`."""
-    info = file_summary(_read(path), str(path))
+    info = file_summary(read_json(path), str(path))
     for person in info["people"]:
         _parse(path, person)
     return info

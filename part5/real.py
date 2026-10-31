@@ -172,6 +172,17 @@ def _score_of(analysis):
     return {"value": s["value"], "grade": s["grade"]} if s else None
 
 
+def _feet_diagnostics(block, names):
+    """`diagnostics.feet` with each side's `source` as the path from the report's root (`names`, the form `expected`
+    and `follower` have), not the absolute path `pipeline.run` was given, so the report does not depend on where the
+    repository is checked out. A side with no file keeps its null source."""
+    out = dict(block)
+    for key, side in zip(FEET_KEYS, ("expected", "follower")):
+        if names.get(key) and out[side].get("source"):
+            out[side] = {**out[side], "source": names[key]}
+    return out
+
+
 def _entry(root, take_id, source, expected, follower, label_source, labels, errors, feet_label=None, **extra):
     """Analyse one take against its expected clip and score it; None (with an error) when it can't be.
 
@@ -193,7 +204,7 @@ def _entry(root, take_id, source, expected, follower, label_source, labels, erro
     diag = analysis.get("diagnostics", {})
     reps = diag.get("guard", {}).get("reps")
     extra = dict(extra, **({"reps": reps, "expected_reference": diag.get("expected_reference")} if reps else {}),
-                 **({"feet": diag["feet"]} if "feet" in diag else {}))
+                 **({"feet": _feet_diagnostics(diag["feet"], feet)} if "feet" in diag else {}))
     return {"take_id": take_id, "source": source, "expected": expected, "follower": follower,
             "label_source": label_source, **extra,
             "labels": [_label(lab) for lab in labels], "faults": [_fault(f) for f in faults],

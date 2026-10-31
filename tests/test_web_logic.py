@@ -19,6 +19,7 @@ from part5.measures import MEASURES
 ROOT = Path(__file__).resolve().parent.parent
 JOINTS_URL = (ROOT / "web/joints.js").as_uri()
 VIEWER_URL = (ROOT / "web/viewer.js").as_uri()
+API_URL = (ROOT / "web/api.js").as_uri()
 NODE = shutil.which("node")
 
 
@@ -221,3 +222,83 @@ def test_AC_V02_selecting_a_fault_pauses_jumps_and_lights_its_joints_only_while_
     out = run_node(script, {"map": exp_to_fol, "fault": fault})
     assert out["at"] == {"frame": reference_target(exp_to_fol, fault), "playing": False, "lit": fault["joints"]}
     assert out["before"] == [] and out["after"] == [] and out["cleared"] == []
+
+
+# ----------------------------------------------------------------------------- AC-V21: the Mode select (AC-PROF-15)
+
+def mode_page(call, payload):
+    """Evaluate `call` over `payload` with joints.js as `j` and api.js as `a`, the modules the page imports."""
+    script = (f'import * as j from "{JOINTS_URL}";\nimport * as a from "{API_URL}";\n'
+              f"console.log(JSON.stringify({call}));")
+    return run_node(script, payload)
+
+
+MODES = ["dance", "rehab", "fitness"]
+
+
+@pytest.mark.parametrize("samples,offered,default", [
+    ({"profiles": MODES, "profile_default": "fitness"}, MODES, "fitness"),
+    ({"profiles": MODES, "profile_default": "rehab"}, MODES, "rehab"),                # the server's own default is followed
+    ({"profiles": MODES, "profile_default": "gym"}, MODES, "fitness"),                # a default that is not offered is replaced
+    ({"profiles": MODES}, MODES, "fitness"),                                          # no default named
+    ({"profiles": ["dance", "rehab"]}, ["dance", "rehab"], "dance"),                  # no fitness on offer: the first mode
+    ({"profiles": ["dance", "", 3, None, "rehab"]}, ["dance", "rehab"], "dance"),     # only names are modes
+    ({}, [], None),                                                                   # an older server: no mode, no select
+    ({"profiles": []}, [], None),
+    ({"profiles": "rehab"}, [], None),
+])
+def test_AC_V21_the_page_offers_exactly_the_modes_api_samples_lists_and_starts_on_the_default(samples, offered, default):
+    got = mode_page("({ offered: j.profilesOffered(payload), start: j.defaultProfile(payload) })", samples)
+    assert got == {"offered": offered, "start": default}
+
+
+def test_AC_V21_a_mode_is_shown_with_a_capital_and_sent_in_lower_case():
+    assert mode_page("payload.map(j.profileLabel)", MODES) == ["Dance", "Rehab", "Fitness"]
+    body = mode_page("a.analyseBody({ sample: 'x' }, { sample: 'y' }, 'template', payload)", "rehab")
+    assert body["profile"] == "rehab"
+
+
+def test_AC_V21_the_page_offers_what_the_real_api_samples_lists():
+    listing = api._samples_listing()
+    got = mode_page("({ offered: j.profilesOffered(payload), start: j.defaultProfile(payload) })", listing)
+    assert got["offered"] == listing.get("profiles", [])      # none today on a server that does not know modes
+    assert got["start"] == (listing["profile_default"] if got["offered"] else None)
+
+
+@pytest.mark.parametrize("profile,carries", [("rehab", True), ("dance", True), ("fitness", True),
+                                             (None, False), ("", False), (3, False)])
+def test_AC_V21_the_request_carries_the_chosen_mode_and_no_profile_when_none_was_offered(profile, carries):
+    body = mode_page("a.analyseBody({ sample: 'e' }, { upload: 't' }, 'template', payload)", profile)
+    assert body["expected"] == {"sample": "e"} and body["follower"] == {"upload": "t"} and body["phrasing"] == "template"
+    assert ("profile" in body) is carries
+    assert (body["profile"] == profile) if carries else True
+
+
+def test_AC_V21_a_request_for_a_server_without_modes_is_the_one_the_page_always_sent():
+    both = mode_page("[a.analyseBody({ sample: 'e' }, { sample: 'f' }), a.analyseBody({ sample: 'e' }, { sample: 'f' }, 'local-llm', null)]", None)
+    assert both == [{"expected": {"sample": "e"}, "follower": {"sample": "f"}, "phrasing": "template"},
+                    {"expected": {"sample": "e"}, "follower": {"sample": "f"}, "phrasing": "local-llm"}]
+
+
+def test_AC_V21_the_page_builds_the_request_only_through_the_shared_body():
+    source = (ROOT / "web/api.js").read_text()
+    assert "JSON.stringify(analyseBody(expected, follower, phrasing, profile))" in source
+    assert "JSON.stringify({ expected, follower, phrasing })" not in source
+
+
+@pytest.mark.parametrize("analysis,note", [
+    ({"profile": "rehab"}, "Scored with rehab coaching rules."),
+    ({"profile": "dance"}, "Scored with dance coaching rules."),
+    ({"profile": "fitness"}, None),            # the standard mode is not announced
+    ({}, None),                                # a document from before 1.7.0 is read as fitness
+    ({"profile": ""}, None),
+    ({"profile": 7}, None),
+    (None, None),
+])
+def test_AC_V21_the_result_names_a_mode_other_than_fitness(analysis, note):
+    assert mode_page("j.profileNote(payload)", analysis) == note
+
+
+def test_AC_V21_no_mode_sentence_has_an_em_dash_an_en_dash_or_a_spaced_hyphen():
+    notes = [mode_page("j.profileNote(payload)", {"profile": name}) for name in ("dance", "rehab")]
+    assert not [n for n in notes if any(mark in n for mark in (chr(0x2014), chr(0x2013), " - "))]

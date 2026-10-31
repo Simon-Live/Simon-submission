@@ -14,15 +14,13 @@ invented legs, and a comparison that counts them measures the estimator, not the
   as `not_enough_visible`.
 A pair whose full-body measures are all usable (conf 1.0 or none) is compared exactly as before.
 """
-import json
 from dataclasses import dataclass, replace
-from pathlib import Path
 
 import numpy as np
 
 from .align import ALIGN_MEASURES
 from .guard import NOT_ENOUGH_VISIBLE  # noqa: F401  (the status code, re-exported)
-from .io import JOINTS, InputError
+from .io import JOINTS, InputError, read_json
 from .measures import MEASURE_JOINTS, MEASURES, VIEW_MEASURES, compute, compute_view
 from .reps import robust_range
 
@@ -102,11 +100,7 @@ def _conf_of_doc(doc, source):
 
 def load_conf(path):
     """(F, 17) conf of the trainer's own skeleton (`--expected-visibility`), or None when it carries no `conf`."""
-    try:
-        doc = json.loads(Path(path).read_text())
-    except (OSError, json.JSONDecodeError) as e:
-        raise InputError(f"{path}: cannot read JSON ({e})") from e
-    return _conf_of_doc(doc, str(path))
+    return _conf_of_doc(read_json(path), str(path))
 
 
 @dataclass

@@ -260,7 +260,7 @@ def foot_analysis(tmp_path_factory):
 
 
 def test_ac_foot_15_the_document_validates_against_the_1_6_0_schema_and_the_loader(foot_analysis):
-    assert SCHEMA["version"] == "1.6.0" and foot_analysis["schema_version"] == "1.6.0"
+    assert SCHEMA["version"] == "1.7.0" and foot_analysis["schema_version"] == "1.7.0"
     jsonschema.Draft202012Validator(SCHEMA).validate(foot_analysis)
     validate_analysis(foot_analysis)
     assert foot_analysis["diagnostics"]["feet"]["compared"] == FOUR
@@ -378,7 +378,7 @@ def test_ac_foot_17_the_cli_takes_the_four_options_and_writes_the_foot_fault(tmp
     assert cli.main(cli_args(tmp_path)) == 0
     out = capsys.readouterr().out
     doc = json.loads((tmp_path / "analysis.json").read_text())
-    assert doc["schema_version"] == "1.6.0" and "left foot turned out" in out
+    assert doc["schema_version"] == "1.7.0" and "left foot turned out" in out
     assert [f["measure"] for f in foot_faults(doc)] == ["foot_rotation"]
     assert doc["diagnostics"]["feet"]["expected"]["source"].endswith("e.json")
 
@@ -396,6 +396,7 @@ def test_ac_foot_17_the_person_options_pick_the_person(tmp_path, capsys):
 
 @pytest.mark.parametrize("name,doc,message", [
     ("not-json", "{nope", "cannot read JSON"),
+    ("too-deep", "[" * 100_000 + "]" * 100_000, "cannot read JSON (nested too deeply)"),
     ("no-frames", {"frames": []}, "not a Part 2 pose3d.json"),
 ])
 def test_ac_foot_17_an_unusable_feet_file_exits_1_with_a_plain_message_and_writes_nothing(tmp_path, capsys, name, doc, message):
@@ -403,7 +404,7 @@ def test_ac_foot_17_an_unusable_feet_file_exits_1_with_a_plain_message_and_write
     bad.write_text(doc if isinstance(doc, str) else json.dumps(doc))
     code = cli.main(cli_args(tmp_path, expected=False, follower=False) + ["--expected-feet", str(bad)])
     err = capsys.readouterr().err
-    assert code == 1 and err.startswith(f"part5 analyse: {bad}: ") and message in err
+    assert code == 1 and err.startswith(f"part5 analyse: {bad}: ") and message in err and "Traceback" not in err
     assert not (tmp_path / "analysis.json").exists()
 
 

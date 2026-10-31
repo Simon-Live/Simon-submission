@@ -48,6 +48,13 @@ check-5-contract:
 report-real:
 	@uv run python -m part5 report-real
 
+# Per-profile precision, recall and grades on the seed 5 tuning set (docs/specs/profiles.md, ADR-0016). Reported as
+# measured: no target, never gated, never run on a held-out seed (a set that names another seed is refused, exit 2).
+# Writes out/report-profiles/report.json.
+.PHONY: report-profiles
+report-profiles:
+	@uv run python -m part5.profiles_report --json-out out/report-profiles/report.json
+
 # Opt-in live call to Muse Spark through Baseten (one fixed fault record, needs the key file). Exit 0 only
 # when a valid line came back. Never part of test, check-5 or the publish check.
 .PHONY: smoke-muse-spark

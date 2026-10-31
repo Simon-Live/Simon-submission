@@ -2,8 +2,9 @@
 // 3D, switch the wording, read the real-take report and see the result preview.
 import { analyse, getRealTakes, getSamples } from "./api.js";
 import {
-  LOW_CONFIDENCE_NOTE, STALE_SENTENCE, WORDINGS, cappedNote, defaultWording, faultLine, faultsOf, insightItems, isLowConfidence,
-  isStale, jointLabel, noticesOf, resultSentence, scoreSentence, sizeSentence, wordingHint,
+  LOW_CONFIDENCE_NOTE, STALE_SENTENCE, WORDINGS, cappedNote, defaultProfile, defaultWording, faultLine, faultsOf, insightItems,
+  isLowConfidence, isStale, jointLabel, noticesOf, profileLabel, profileNote, profilesOffered, resultSentence, scoreSentence,
+  sizeSentence, wordingHint,
 } from "./joints.js";
 import { make, renderPreview } from "./preview.js";
 import { mountViewer } from "./viewer.js";
@@ -25,6 +26,7 @@ const el = {
   form: $("picker"), analyse: $("analyse"), error: $("form-error"), status: $("result-status"), result: $("result"),
   stale: $("result-stale"), faults: $("fault-list"), download: $("download"), phrasing: $("phrasing"), phrasingError: $("phrasing-error"),
   phrasingHint: $("phrasing-hint"), phrasingStatus: $("phrasing-status"), score: $("score"), scoreNote: $("score-note"),
+  profileField: $("profile-field"), profile: $("profile"), profileNote: $("profile-note"),
   warnings: $("warning-panel"), warningList: $("warning-list"), insightsPanel: $("insights-panel"), insights: $("insights"),
   other: $("show-other-movements"), previewScreen: $("preview-screen"), previewFields: $("preview-fields"),
   picker: { expected: $("expected-picker"), follower: $("follower-picker") },
@@ -35,9 +37,10 @@ const el = {
 };
 const viewer = mountViewer($("viewer"));
 let reading = Promise.resolve(); // a file the visitor just chose may still be being read
-// `shown` is the key of the choice the result on screen was made for (AC-V20); `wording` is the server's default wording.
+// `shown` is the key of the choice the result on screen was made for (AC-V20); `wording` is the server's default wording;
+// `profiles` are the modes api/samples lists (none from a server that does not know modes, AC-V21).
 const state = { samples: { expected: [], followers: [], phrasing: ["template"] }, upload: { expected: null, follower: null },
-  faults: [], rows: [], real: "idle", downloadUrl: null, shown: null, busy: false, wording: "template" };
+  faults: [], rows: [], real: "idle", downloadUrl: null, shown: null, busy: false, wording: "template", profiles: [] };
 
 // ------------------------------------------------------------------------------ tabs
 
@@ -131,8 +134,11 @@ async function onFile(side) {
 // A visitor's file is sent as text; the server answers any problem with it in plain words.
 const sideSpec = (side) => (state.upload[side] ? { upload: state.upload[side].text } : { sample: el.picker[side].value });
 
-// The choice on the page, as the request that Analyse would send: the example, the take and the wording.
-const currentChoice = () => [sideSpec("expected"), sideSpec("follower"), el.phrasing.value];
+// The mode the select is on, or null when the server offered none (the request then carries no `profile`, AC-V21).
+const profileValue = () => (state.profiles.length ? el.profile.value : null);
+
+// The choice on the page, as the request that Analyse would send: the example, the take, the wording and the mode.
+const currentChoice = () => [sideSpec("expected"), sideSpec("follower"), el.phrasing.value, profileValue()];
 const choiceKey = (choice) => JSON.stringify(choice);
 
 // AC-V20: a result made for another choice is marked and its download is taken away, so a saved analysis.json always
@@ -162,6 +168,15 @@ function fillWordings() {
 function onWordingChange() {
   showWordingHint();
   refreshStale();
+}
+
+// AC-V21, ADR-0016: the Mode select is there only when api/samples lists modes, and starts on the server's default mode.
+function fillProfiles() {
+  state.profiles = profilesOffered(state.samples);
+  el.profileField.hidden = state.profiles.length === 0;
+  if (state.profiles.length === 0) return;
+  el.profile.replaceChildren(...state.profiles.map((name) => new Option(profileLabel(name), name)));
+  el.profile.value = defaultProfile(state.samples);
 }
 
 // ------------------------------------------------------------------------------ errors
@@ -229,6 +244,13 @@ function showNotices(analysis) {
   el.warningList.replaceChildren(...notices.map((text) => make("li", "", text)));
 }
 
+// AC-V21: which mode scored the result, when it is not the standard one.
+function showProfileNote(analysis) {
+  const note = profileNote(analysis);
+  el.profileNote.hidden = note === null;
+  el.profileNote.textContent = note ?? "";
+}
+
 // AC-V16: the things to work on first, in the order the file ranks them.
 function insightRow({ cue, why }) {
   const item = make("li", "insight");
@@ -273,6 +295,7 @@ async function showResult({ analysis, replay }) {
   state.faults = faults;
   el.status.textContent = resultSentence(analysis);
   showScore(analysis.score);
+  showProfileNote(analysis);
   showNotices(analysis);
   showInsights(analysis);
   state.rows = [];
@@ -411,17 +434,19 @@ async function start() {
   el.picker.expected.replaceChildren(...state.samples.expected.map((s) => new Option(s.label, s.id)));
   fillFollowers();
   fillWordings();
+  fillProfiles();
   el.picker.expected.addEventListener("change", () => clearUpload("expected"));
   el.picker.follower.addEventListener("change", () => clearUpload("follower"));
   el.other.addEventListener("change", () => { fillFollowers(); refreshStale(); });
   el.phrasing.addEventListener("change", onWordingChange);
+  el.profile.addEventListener("change", refreshStale);
   el.form.addEventListener("submit", onSubmit);
   for (const side of SIDES) {
     el.file[side].addEventListener("change", () => { reading = onFile(side); });
     el.clear[side].addEventListener("click", () => clearUpload(side));
     showUploadNote(side);
   }
-  for (const control of [el.picker.expected, el.picker.follower, el.phrasing, el.other, el.analyse,
+  for (const control of [el.picker.expected, el.picker.follower, el.phrasing, el.profile, el.other, el.analyse,
     ...SIDES.map((s) => el.file[s])]) control.disabled = false;
 }
 

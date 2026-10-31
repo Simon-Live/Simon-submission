@@ -11,6 +11,9 @@ then 31, then 37; ADR-0003): good light at each angle separately must reach prec
 recall >= 0.75 with no faults on correct takes, and no gated slice may be empty. Everything else
 is reported and never gated: the seed 5 tuning slices, low light, the dropout variant, Part 3's
 kit, the stock takes and the movement guard's refusals. Offline and deterministic.
+
+Every take is analysed with no profile named, which is `fitness`, the rules unchanged (ADR-0016): `dance` and `rehab`
+are never run here. The document carries `profiles_sha256`, the hash of part5/profiles.json, for information only.
 """
 import argparse
 import hashlib
@@ -19,7 +22,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import real
+from . import profiles, real
 from .detect import RULES_PATH
 from .evaluate import evaluate_corpus, is_refused, slice_name
 from .score import params_sha256
@@ -242,6 +245,16 @@ def require_frozen(seed, sha, frozen, detection=None, recorded_detection=None):
                           "docs/thresholds.md; a seed is scored once, against the rules frozen for it"])
 
 
+def profiles_hash(path=profiles.PROFILES_PATH):
+    """sha256 of part5/profiles.json, printed as `profiles_sha256` for information only (ADR-0016): the gate runs the
+    fitness profile, which is the rules unchanged, so this file never decides the exit code. It hashes bytes and parses
+    nothing; a missing file is exit 2, like a missing set."""
+    try:
+        return profiles.file_sha256(path)
+    except OSError as e:
+        raise CheckError([f"check-5: {rel(path)} not found"]) from e
+
+
 def score_params_hash(path=RULES_PATH):
     """sha256 of the `score` block of part5/rules.json, as `score.params_sha256` writes it into every score."""
     return params_sha256(json.loads(Path(path).read_text()).get("score"))
@@ -321,7 +334,7 @@ def real_blocks(root=None):
 
 # --- the document ---
 def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=None, rules_path=None, root=None,
-              score_record_path=None):
+              score_record_path=None, profiles_path=None):
     """Analyse and score both sets. Returns (document, per-take rows); raises CheckError.
     Each default is the module constant, read when called."""
     heldout, tuning = Path(heldout or HELDOUT), Path(tuning or TUNING)
@@ -337,6 +350,7 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
         raise CheckError([f"check-5: {rel(tuning)}/labels.json names seed {tune['seed']}; "
                           f"the tuning set is seed {TUNING_SEED}"])
     sha, detection = rules_hash(rules_path), detection_hash(rules_path)
+    profiles_sha = profiles_hash(profiles_path or profiles.PROFILES_PATH)
     text = thresholds_path.read_text() if thresholds_path.is_file() else ""
     frozen = thresholds_record(held["seed"], text)
     require_frozen(held["seed"], sha, frozen, detection, recorded_detection_hash(text))
@@ -366,6 +380,7 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
                    "score": score_block(held, held_analyses, tune, tune_analyses, real_report)},
         "rules_sha256": sha,
         "detection_sha256": detection,
+        "profiles_sha256": profiles_sha,   # information only (ADR-0016); the gate above is the fitness profile
     }
     rows = take_report("heldout", held, held_analyses) + take_report("tuning", tune, tune_analyses)
     return doc, rows

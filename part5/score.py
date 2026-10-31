@@ -18,6 +18,11 @@ Formula (params under `score` in part5/rules.json): per fault `r = |magnitude_de
 `penalty = min(cap, base + slope * (r - 1))`, `dur` the share of N the fault's runs cover, `F = sum of
 penalty * (0.5 + 0.5 * dur) * coverage`; `z = |follower - expected| / threshold` per measure and frame
 (clipped to [0, 2]), `S = s_max * clip((mean_z - z0) / (z1 - z0), 0, 1)`; `value = clamp(round_half_up(100 - F - S))`.
+
+Under the dance profile (ADR-0016) each window is also charged a tempo term T, `profiles.tempo_points` of the window's
+tempo ratio, taken off the value (`100 - F - S - T`) and shown as `components.tempo`. It is a run-time term of the
+profile, not a score param: `params_sha256` and the frozen `score` block are the same in every profile. Thresholds in
+`rules` are the profile's own, so a score is only comparable within one profile.
 """
 import hashlib
 import json
@@ -26,6 +31,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 import numpy as np
 
+from . import profiles
 from .cues import tempo_block
 from .detect import load_rules
 from .measures import MEASURES
@@ -200,9 +206,22 @@ def miss_entry(fault, points):
     return out
 
 
-def window_score(analysis, aligned, frames, rules, p):
+def tempo_charge(ratio, tempo):
+    """Points a window's tempo costs under a profile's `tempo` block (ADR-0016, dance), or None when the profile
+    charges no tempo (weight 0), in which case the window has no `components.tempo`. The charge is worked from the
+    ratio as the document shows it (rounded to 0.01), so a reader can reproduce it from `tempo.ratio`."""
+    if not tempo["weight"] > 0:
+        return None
+    shown = None if ratio is None else round(float(ratio), 2)
+    return profiles.tempo_points(shown, tempo["weight"], tempo["cap"])
+
+
+def window_score(analysis, aligned, frames, rules, p, tempo_points=None):
     """`{value, components, misses}` of the expected `frames` (an index array) of a take, or None when
-    nothing in them can be measured. The unrounded value is kept for the take's mean."""
+    nothing in them can be measured. The unrounded value is kept for the take's mean.
+
+    `tempo_points` (ADR-0016) is the window's tempo charge from `tempo_charge`: None for a profile that charges no
+    tempo (no `components.tempo` key, the score as it always was), else points taken off the value."""
     if (analysis.get("status") or {}).get("code") not in ("ok", None):
         return None
     frames = np.asarray(frames)
@@ -221,11 +240,27 @@ def window_score(analysis, aligned, frames, rules, p):
         feats.append(x)
         misses.append(miss_entry(fault, penalty(x["r"], p) * (MIN_COVER + 0.5 * x["dur"]) * x["cov"]))
     f, s = components({"faults": feats, "mean_z": z}, p)
-    raw = max(0.0, min(100.0, 100 - f - s))
+    raw = max(0.0, min(100.0, 100 - f - s - (tempo_points or 0.0)))
     value = int(round_half_up(raw))
-    return {"raw": raw, "value": value, "grade": grade(value, p["bands"]),
-            "components": {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))},
+    parts = {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))}
+    if tempo_points is not None:
+        parts["tempo"] = float(round_half_up(tempo_points, 2))
+    return {"raw": raw, "value": value, "grade": grade(value, p["bands"]), "components": parts,
             "misses": sorted(misses, key=lambda m: (m["at_s"] is None, m["at_s"] or 0))}
+
+
+def timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=True):
+    """One entry of a take's timeline: the `window_score` of the expected `frames` under `t_s` = `span`, charged
+    what the profile's `tempo` block charges for the window's tempo `ratio` (follower over example time, None when
+    unmeasured; ADR-0016) and, when `timed`, carrying that tempo block (ADR-0014). `{t_s, compared: False}` when
+    nothing in the window can be scored. The windows of a take compared as a whole and of one compared rep by rep
+    are both made here."""
+    scored = window_score(analysis, aligned, frames, rules, p, tempo_charge(ratio, tempo)) if np.size(frames) else None
+    if not scored:
+        return {"t_s": span, "compared": False}
+    if timed:
+        scored["tempo"] = tempo_block(ratio, tempo["cues"])
+    return {"t_s": span, **scored}
 
 
 def timeline_block(windows, basis, rules=None, tempo=NO_TEMPO):
@@ -234,14 +269,14 @@ def timeline_block(windows, basis, rules=None, tempo=NO_TEMPO):
     take's follower/example time ratio (or None, unmeasured) and becomes `score.tempo` (ADR-0014)."""
     p = params_of(rules or load_rules())
     scored = [w for w in windows if w.get("compared", True)]
-    extra = {} if tempo is NO_TEMPO else {"tempo": tempo_block(tempo)}
+    cues = profiles.tempo_of(rules or {})["cues"]   # the profile's tempo words (ADR-0016); none for plain rules
+    extra = {} if tempo is NO_TEMPO else {"tempo": tempo_block(tempo, cues)}
     if not scored:
         return dict(zero_block(rules), basis=basis, timeline=[_public(w) for w in windows], **extra)
     value = int(round_half_up(sum(w["raw"] for w in scored) / len(scored)))
-    f = sum(w["components"]["faults"] for w in scored) / len(scored)
-    s = sum(w["components"]["similarity"] for w in scored) / len(scored)
-    return {"version": VERSION, "value": value, "grade": grade(value, p["bands"]),
-            "components": {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))},
+    parts = {key: float(round_half_up(sum(w["components"][key] for w in scored) / len(scored), 2))
+             for key in ("faults", "similarity", *(("tempo",) if "tempo" in scored[0]["components"] else ()))}
+    return {"version": VERSION, "value": value, "grade": grade(value, p["bands"]), "components": parts,
             "params_sha256": params_sha256(p), "basis": basis, "timeline": [_public(w) for w in windows], **extra}
 
 
@@ -273,12 +308,10 @@ def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW
     index, spans = windows_of(frame_times, window_s)
     fol_t = np.asarray(frame_times, dtype=float)
     exp_t = None if expected_times is None else np.asarray(expected_times, dtype=float)
+    tempo = profiles.tempo_of(rules)   # ADR-0016: the profile's tempo words and, for dance, its charge
     windows = []
     for k, span in enumerate(spans):
         frames = np.flatnonzero(index == k)
-        scored = window_score(analysis, aligned, frames, rules, p) if frames.size else None
-        if scored and exp_t is not None:
-            scored["tempo"] = tempo_block(span_ratio(fol_t[frames], exp_t[frames]))
-        windows.append({"t_s": span, **scored} if scored else {"t_s": span, "compared": False})
-    tempo = NO_TEMPO if exp_t is None else span_ratio(fol_t, exp_t)
-    return timeline_block(windows, "windows", rules, tempo)
+        ratio = span_ratio(fol_t[frames], exp_t[frames]) if exp_t is not None and frames.size else None
+        windows.append(timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=exp_t is not None))
+    return timeline_block(windows, "windows", rules, NO_TEMPO if exp_t is None else span_ratio(fol_t, exp_t))

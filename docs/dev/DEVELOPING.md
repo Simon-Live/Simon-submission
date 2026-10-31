@@ -65,12 +65,16 @@ uv run part5 analyse \
 #   --replay <file>               also write the replay (simon.replay.v1)
 #   --expected-visibility <file>  the trainer's own skeleton.json or pose3d.json, whose conf says what the example shows
 #   --phrasing template|local-llm|muse-spark   who writes faults[].coaching (default template)
+#   --profile dance|rehab|fitness  how picky the take is judged (default fitness, the analysis as it was)
+#   --expected-feet / --follower-feet <pose3d.json>   Part 2's heel and toe points, for the two foot measures
+#   --expected-feet-person / --follower-feet-person N the people[].id to read in those files (default 0)
 #   --live                        live mode: muse-spark becomes the default phrasing
 
 uv run python -m part5 doctor <file> [--for part5|part7] [--json]   # 0 accepted, 1 rejected, 2 unreadable
 #   a clip, an analysis.json (--for part7) or a replay.json (simon.replay.v1, either --for)
 uv run python -m part5 contract [--schema <name>] [--json]           # schemas and the compatibility table
 uv run python -m part5 report-real [--out <file>]                    # real takes, reported, never gated
+uv run python -m part5.profiles_report [--json-out <file>]           # dance, rehab, fitness on seed 5 (make report-profiles)
 uv run python -m part5 serve [--host 127.0.0.1] [--port 8725] [--base-path /] [--live]
 uv run python -m part5.score_report --set <dir with labels.json> [--json]   # grade distribution of a set
 ```
@@ -85,9 +89,10 @@ measures, detect, words, then score (`part5/score.py`) and phrasing (`part5/phra
 
 | Target | What it runs | What it gates | Exit |
 |---|---|---|---|
-| `make check-5` | `python -m part5.check`: analyses every labelled take, prints the `simon.part5.check.v1` JSON on stdout and a summary on stderr | the held-out set in `fixtures/input/heldout/`: good light at front, 45 and side, each with precision 0.85 or more, recall 0.75 or more and no faults on correct takes; every correct good-light held-out take scores A; the score never rises as a swept fault grows. Seed 5, low light, dropout, Part 3's kit and the stock takes are reported, not gated | 0 passed; 1 a gated criterion failed; 2 a take or set is missing, a take cannot be analysed, the held-out seed has no freeze record, or `part5/rules.json` differs from the hash frozen in `docs/thresholds.md` |
+| `make check-5` | `python -m part5.check`: analyses every labelled take under the `fitness` profile, prints the `simon.part5.check.v1` JSON (with `profiles_sha256`, for information) on stdout and a summary on stderr | the held-out set in `fixtures/input/heldout/`: good light at front, 45 and side, each with precision 0.85 or more, recall 0.75 or more and no faults on correct takes; every correct good-light held-out take scores A; the score never rises as a swept fault grows. Seed 5, low light, dropout, Part 3's kit and the stock takes are reported, not gated | 0 passed; 1 a gated criterion failed; 2 a take or set is missing, a take cannot be analysed, `part5/profiles.json` is missing, the held-out seed has no freeze record, or `part5/rules.json` differs from the hash frozen in `docs/thresholds.md` |
 | `make check-5-contract` | `python -m part5.contract --check` | every schema in `contracts/` is valid, every committed fixture validates and loads through `part5.io` (a replay is checked for lengths, indexes and times), and `fixtures/output/analysis*.json` and `replay.example.json` rebuild byte for byte, the score included | 0 only with no failures; prints `{schemas, validated, rebuilt_identical, failures}` |
 | `make report-real` | `python -m part5 report-real` | nothing: Part 3's labelled kit against `part3-squat`, Part 2's mismatch takes, the real lateral-raise takes and any stock takes, written to `out/report-real/report.json` | 0 when every real take was analysed; 2 when a set cannot be read or the report cannot be written |
+| `make report-profiles` | `python -m part5.profiles_report --json-out out/report-profiles/report.json` | nothing: `dance`, `rehab` and `fitness` on the seed 5 tuning set, precision, recall and grades as measured; a held-out set is refused | 0; 2 for a held-out set or a set that cannot be read |
 | `make test` | `uv run pytest -q` | the unit tests | pytest's exit code |
 | `make test-contract` | `pytest tests/test_contract.py` | Part 3 and Part 4 files load through `part5.io` and match their schemas | pytest's exit code |
 | `make contracts-check` | `scripts/sync_contracts.py --check` | the copies under `contracts/part3/`, `contracts/part4/` and `fixtures/input/contract/` match Parts 3 and 4 | 0 equal; 1 drift; 2 an upstream cannot be read |
@@ -236,8 +241,24 @@ directory:
    --phrasing template` (or `--phrasing muse-spark --live` for live phrasing), with
    `PART5_PHRASING_CONCURRENCY=4`.
 
-Part 7 reads `--help` to find which of `--replay`, `--expected-visibility` and `--live` the pinned commit
-offers, so keep those flag names stable.
+Part 7 reads `--help` to find which of `--replay`, `--expected-visibility`, `--live`, `--profile` and the
+feet flags the pinned commit offers, so keep those flag names stable.
+
+Two optional inputs change what the call can do:
+
+- **Profiles** (`part5/profiles.json`, `docs/specs/profiles.md`): `--profile dance|rehab|fitness`, or the
+  `profile` field of `POST api/analyse`, is the operator's mode. Send nothing for `fitness`, the default and the
+  analysis as it always was. `dance` and `rehab` only loosen how picky detection is, so for the same take they report
+  no fault `fitness` does not (also take by take in rep mode); their tolerances are set by hand, and a score is
+  read within its profile, never compared across profiles. Every document carries `profile`. A name that is not
+  one of the three is exit 2 on the command line and HTTP 400 on the API; `GET api/samples` lists the names
+  (`profiles`, `profile_default`).
+- **Feet** (`--expected-feet`, `--follower-feet`, with `--expected-feet-person` and `--follower-feet-person`
+  for the `people[].id`): Part 2's own `pose3d.json`, which alone carries the heel and toe points (Part 3 does not).
+  Both clips need one for the foot measures (`foot_rotation`, `ankle_inversion`) to be compared, and a take
+  compared rep by rep does not compare them; with either file alone, or none, they are hidden and
+  `diagnostics.feet` says why. A file that cannot be read, is nested too
+  deeply or is not a Part 2 `pose3d.json` is exit 1 with a plain message.
 
 ## Known issues and limits
 

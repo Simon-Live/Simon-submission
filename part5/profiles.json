@@ -1,0 +1,31 @@
+{
+  "_comment": "Analysis profiles (docs/specs/profiles.md, ADR-0016). Set by hand; not tuned on any seed. Every number only loosens: a multiplier is at least 1, an addition at least 0. fitness is the identity.",
+  "version": "simon.profiles.v1",
+  "default": "fitness",
+  "profiles": {
+    "dance": {
+      "kinds": {
+        "range": {"threshold_multiplier": 1.0, "min_fraction_multiplier": 1.0, "min_run_frames_add": 0},
+        "position": {"threshold_multiplier": 1.25, "min_fraction_multiplier": 1.15, "min_run_frames_add": 2}
+      },
+      "measures": {},
+      "tempo": {"cues": {}, "weight": 40.0, "cap": 20.0}
+    },
+    "rehab": {
+      "kinds": {
+        "range": {"threshold_multiplier": 1.0, "min_fraction_multiplier": 1.0, "min_run_frames_add": 0},
+        "position": {"threshold_multiplier": 1.5, "min_fraction_multiplier": 1.0, "min_run_frames_add": 0}
+      },
+      "measures": {},
+      "tempo": {"cues": {"speed_up": "Slower is fine"}, "weight": 0.0, "cap": 0.0}
+    },
+    "fitness": {
+      "kinds": {
+        "range": {"threshold_multiplier": 1.0, "min_fraction_multiplier": 1.0, "min_run_frames_add": 0},
+        "position": {"threshold_multiplier": 1.0, "min_fraction_multiplier": 1.0, "min_run_frames_add": 0}
+      },
+      "measures": {},
+      "tempo": {"cues": {}, "weight": 0.0, "cap": 0.0}
+    }
+  }
+}

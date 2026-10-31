@@ -47,15 +47,43 @@ def test_ac_t03_seeds_follow_29_31_37_none_skipped_and_the_set_on_disk_is_the_la
     assert json.loads((HELDOUT / "labels.json").read_text())["seed"] == seeds[-1]
 
 
-def test_ac_t03_a_retry_names_a_new_family_and_a_confirmation_keeps_the_freeze():
-    for i, a in enumerate(ATTEMPTS[1:], start=1):
-        before = ATTEMPTS[:i]
-        same_freeze = (a["freeze_commit"], a["rules_sha256"]) == (before[-1]["freeze_commit"], before[-1]["rules_sha256"])
+def freeze_of(attempt):
+    return attempt["freeze_commit"], attempt["rules_sha256"]
+
+
+def retry_problems(attempts):
+    """What breaks docs/specs/calibration.md in a list of attempts, in seed order: a changed freeze must name an approach
+    family no earlier attempt used, and one that follows a green attempt (operator ruling 2026-10-31, TICKET-040: a
+    new measure) needs that green attempt confirmed, i.e. the two attempts before it share a freeze and both passed."""
+    problems = []
+    for i, a in enumerate(attempts[1:], start=1):
+        before = attempts[:i]
+        same_freeze = freeze_of(a) == freeze_of(before[-1])
         if before[-1]["passed"] and same_freeze:  # a confirmation of the green attempt: nothing changed
             continue
-        # a retry after a red attempt, or (operator ruling 2026-10-31, TICKET-040) a new measure after a green one:
-        # either way a changed freeze must name an approach family no earlier attempt used
-        assert not same_freeze and all(a["approach"] != b["approach"] for b in before), a["seed"]
+        if same_freeze or any(a["approach"] == b["approach"] for b in before):
+            problems.append(f"seed {a['seed']}: a retry needs a changed freeze and an approach family no attempt used")
+        if before[-1]["passed"]:
+            green, confirmation = before[-2:] if len(before) >= 2 else (None, before[-1])
+            if green is None or not (green["passed"] and confirmation["passed"]) \
+                    or freeze_of(green) != freeze_of(confirmation):
+                problems.append(f"seed {a['seed']}: a new measure only follows a green, confirmed attempt")
+    return problems
+
+
+def test_ac_t03_a_retry_names_a_new_family_and_a_confirmation_keeps_the_freeze():
+    assert retry_problems(ATTEMPTS) == []
+
+
+def test_ac_t03_a_new_measure_needs_a_confirmed_green_attempt_before_it():
+    green = {"seed": 29, "freeze_commit": "a", "rules_sha256": "x", "approach": "baseline", "passed": True}
+    confirmation = {**green, "seed": 31, "approach": "confirmation"}
+    measure = {"seed": 37, "freeze_commit": "b", "rules_sha256": "y", "approach": "a new measure", "passed": False}
+    assert retry_problems([green, confirmation, measure]) == []
+    assert retry_problems([green, measure]) != []                                    # no confirmation in between
+    assert retry_problems([green, {**confirmation, "passed": False}, measure]) == []   # a retry after a red confirmation
+    assert retry_problems([green, {**confirmation, "freeze_commit": "c"}, measure]) != []   # a changed freeze is a retry
+    assert retry_problems([green, confirmation, {**measure, "approach": "baseline"}]) != []  # not a new family
 
 
 def test_ac_t02_thresholds_md_carries_each_attempts_freeze_and_rules_hash():

@@ -148,6 +148,167 @@ def test_the_untimed_test_is_unchanged_and_still_bans_numbers():
     assert template.line_problem(RIGHT_FOOT, "right foot too far out at 1.9 s") == "adds a number"
 
 
+# ---- no praise in a fault line (AC-P09) ----------------------------------------------------------
+REQUIRED_PRAISE = ("nice effort", "great job", "well done", "good job", "nice work")
+KNEE = timed("knee_flexion", "both", "less", None, at_s=1.4, joint="knee")
+SPARK_LINE = "Your knees are not bent enough at 1.4 s, nice effort."   # the line QA flagged on 2026-10-31
+
+
+def test_the_praise_list_holds_the_five_phrases_the_ruling_names():
+    assert set(REQUIRED_PRAISE) <= set(template.PRAISE_PHRASES)
+
+
+def test_the_line_qa_flagged_is_a_valid_fault_line_but_for_its_praise():
+    assert problem(KNEE, SPARK_LINE) == "adds praise"
+    assert problem(KNEE, SPARK_LINE.replace(", nice effort", "")) is None
+
+
+@pytest.mark.parametrize("phrase", template.PRAISE_PHRASES)
+@pytest.mark.parametrize("shape", [
+    "Your knees are not bent enough at 1.4 s, {p}.",     # an ending
+    "{p}, your knees are not bent enough at 1.4 s.",     # an opening
+    "Your knees are not bent {p} enough at 1.4 s.",      # in the middle
+])
+@pytest.mark.parametrize("case", [str, str.upper, str.title])
+def test_each_praise_phrase_is_rejected_in_any_place_and_any_case(phrase, shape, case):
+    assert problem(KNEE, shape.format(p=case(phrase))) == "adds praise"
+
+
+def test_praise_is_matched_across_extra_spaces_and_a_curly_apostrophe_line():
+    assert problem(KNEE, "Your knees are not bent enough at 1.4 s, nice   effort.") == "adds praise"
+    assert problem(KNEE, "Your knees aren’t bent enough at 1.4 s, well done.") == "adds praise"
+
+
+@pytest.mark.parametrize("line", [
+    "Your knees are not bent enough at 1.4 s.",
+    "Your knees are not bent enough at 1.4 s, keep going.",
+    "Your knees are not bent enough at 1.4 s, almost there.",
+    "Your knees are not bent enough at 1.4 s, which is a good place to look.",   # "good" alone is not praise
+    "Your knees are not bent enough at 1.4 s, as well as the example shows.",    # nor "well" alone
+])
+def test_a_line_without_praise_passes_as_before(line):
+    assert problem(KNEE, line) is None, line
+
+
+def test_a_praise_phrase_inside_a_longer_word_is_not_praise():
+    assert not template._PRAISE.search("a bravoure, a congratsx and a nicework")
+
+
+def test_no_template_phrase_in_any_size_carries_praise():
+    from part5 import words
+    for measure, by_direction in words.PHRASES.items():
+        for direction, entry in by_direction.items():
+            slots = (entry,) if isinstance(entry, str) else entry
+            for size in words.QUALIFIERS:
+                q, nq, aq = words.QUALIFIERS[size]
+                for slot in slots:
+                    line = slot.format(side="left", q=q, nq=nq, aq=aq)
+                    assert not template._PRAISE.search(line), (measure, direction, line)
+
+
+# ---- more praise forms, hyphens, zero-width characters, and the untimed path (AC-P09) -------------
+NEW_FORMS = ("nice try", "great start", "looking good", "excellent work", "solid effort", "you're doing great",
+             "you are doing great")   # the forms the review of the first praise list found missing
+# Named, so that no invisible character sits in this source file (U+200B, U+200C, U+200D, U+2060, U+FEFF).
+ZERO_WIDTH = ("\N{ZERO WIDTH SPACE}", "\N{ZERO WIDTH NON-JOINER}", "\N{ZERO WIDTH JOINER}", "\N{WORD JOINER}",
+              "\N{ZERO WIDTH NO-BREAK SPACE}")
+ZWSP = ZERO_WIDTH[0]
+PLAIN_KNEE = make_fault("knee_flexion", "right", "less", "right knee not bent enough", "right_knee")   # untimed
+
+
+def plain(line):
+    return template.line_problem(PLAIN_KNEE, line)
+
+
+def test_the_praise_list_holds_every_form_the_review_found_missing():
+    assert set(NEW_FORMS) <= set(template.PRAISE_PHRASES)
+
+
+def test_the_lines_below_are_fault_lines_but_for_the_praise_they_carry():
+    assert problem(KNEE, "Your knees are not bent enough at 1.4 s.") is None
+    assert plain("Your right knee is not bent enough.") is None
+
+
+@pytest.mark.parametrize("form", NEW_FORMS)
+@pytest.mark.parametrize("case", [str, str.upper, str.title])
+def test_each_new_form_is_praise_at_the_end_the_start_and_the_middle_on_both_paths(form, case):
+    said = case(form)
+    for line in (f"Your knees are not bent enough at 1.4 s, {said}.", f"{said}, your knees are not bent enough at 1.4 s.",
+                 f"Your knees are not bent {said} enough at 1.4 s."):
+        assert problem(KNEE, line) == "adds praise", line
+    for line in (f"Your right knee is not bent enough, {said}.", f"{said}, your right knee is not bent enough.",
+                 f"Your right knee is not bent {said} enough."):
+        assert plain(line) == "adds praise", line
+
+
+@pytest.mark.parametrize("line", [
+    "Your knees are not bent enough at 1.4 s. You’re doing great.",       # the curly apostrophe a model writes
+    "Your knees are not bent enough at 1.4 s. You’re Doing Great!",
+])
+def test_you_are_doing_great_is_caught_with_a_curly_apostrophe(line):
+    assert problem(KNEE, line) == "adds praise"
+
+
+@pytest.mark.parametrize("phrase", template.PRAISE_PHRASES)
+@pytest.mark.parametrize("sep", ["-", " - ", "--", "\N{NO-BREAK SPACE}", "\t"],
+                         ids=["hyphen", "spaced hyphen", "two hyphens", "no-break space", "tab"])
+def test_the_words_of_a_phrase_may_be_joined_by_hyphens_or_other_white_space(phrase, sep):
+    said = sep.join(phrase.split())
+    assert problem(KNEE, f"Your knees are not bent enough at 1.4 s, {said}.") == "adds praise"
+    assert plain(f"Your right knee is not bent enough, {said}.") == "adds praise"
+
+
+def test_the_hyphenated_nice_effort_the_review_named_is_praise():
+    assert problem(KNEE, "Your knees are not bent enough at 1.4 s, nice-effort.") == "adds praise"
+    assert plain("Your right knee is not bent enough, nice-effort.") == "adds praise"
+
+
+@pytest.mark.parametrize("zero_width", ZERO_WIDTH, ids=[f"U+{ord(z):04X}" for z in ZERO_WIDTH])
+@pytest.mark.parametrize("phrase", template.PRAISE_PHRASES)
+@pytest.mark.parametrize("hide", [
+    lambda p, z: p.replace(" ", z),            # "nice<z>effort": the character is all that separates the words
+    lambda p, z: p.replace(" ", f" {z}"),      # after the space
+    lambda p, z: p.replace(" ", f"{z} "),      # before the space
+    lambda p, z: p[0] + z + p[1:],             # inside the first word
+    lambda p, z: z + p + z,                    # round the phrase
+], ids=["only separator", "after space", "before space", "inside a word", "round the phrase"])
+def test_a_zero_width_character_hides_no_praise(zero_width, phrase, hide):
+    said = hide(phrase, zero_width)
+    assert problem(KNEE, f"Your knees are not bent enough at 1.4 s, {said}.") == "adds praise"
+    assert plain(f"Your right knee is not bent enough, {said}.") == "adds praise"
+
+
+def test_the_zero_width_nice_effort_the_review_named_is_praise():
+    assert problem(KNEE, f"Your knees are not bent enough at 1.4 s, nice{ZWSP}effort.") == "adds praise"
+    assert plain(f"Your right knee is not bent enough, nice{ZWSP}effort.") == "adds praise"
+
+
+@pytest.mark.parametrize("ending", [
+    "good form otherwise", "well aligned otherwise", "keep going", "well-aligned otherwise", "good-natured",
+    "try to keep it solid", "a good start position", "you are doing the squat", "looking at the mirror",
+    "done with one rep", "it is a well known cue", "nicely paced",
+])
+def test_lines_that_only_share_a_word_with_a_praise_phrase_pass_on_both_paths(ending):
+    assert problem(KNEE, f"Your knees are not bent enough at 1.4 s, {ending}.") is None, ending
+    assert plain(f"Your right knee is not bent enough, {ending}.") is None, ending
+
+
+def test_zero_width_characters_in_a_line_without_praise_do_not_make_praise():
+    assert problem(KNEE, f"Your knees are not bent enough at 1.4 s, keep{ZWSP}going.") is None
+    assert plain(f"Your right knee is not bent enough, good{ZWSP} form otherwise.") is None
+    assert plain(f"Your right knee is not bent enough, well{ZWSP}aligned otherwise.") is None
+
+
+def test_the_untimed_test_rejects_praise_with_the_same_reason_as_the_timed_one():
+    assert plain("Your right knee is not bent enough, nice effort.") == "adds praise"
+    assert plain("Your right knee is not bent enough, nice effort.") == problem(KNEE, SPARK_LINE)
+
+
+def test_the_untimed_test_checks_the_shape_before_the_praise():
+    assert plain("") == "empty line"
+    assert plain("nice effort\nright knee not bent enough") == "more than one line"
+
+
 # ---- live default (AC-P01) ----------------------------------------------------------------------
 def test_select_backend(monkeypatch):
     assert phrasing.select_backend() == ("template", "default")
@@ -223,6 +384,26 @@ def test_a_validator_failure_names_the_check_and_never_the_model_text(live):  # 
     out = phrasing.phrase_fault(RIGHT_FOOT, client=Client(reply("Your left foot is 12 degrees off at 1.9 s")))
     assert out["text"] == RIGHT_FOOT["text_timed"] and out["backend"] == "template" and out["model"] is None
     assert out["fallback_reason"] == "muse-spark: adds a number" and "12" not in out["fallback_reason"]
+
+
+@pytest.mark.parametrize("praise", REQUIRED_PRAISE)
+def test_a_praised_line_falls_back_to_the_template_line_for_that_fault_alone(live, praise):  # noqa: F811
+    faults = [timed(at_s=1.9), timed("thigh_out", "left", "less", "right", at_s=3.2), timed(at_s=4.0)]
+    good = ["Your right foot drifts too far to the right at 1.9 s", f"Your left knee is too far right at 3.2 s, {praise}.",
+            "Your right foot is too far right at 4.0 s, keep going."]
+    lines, record = phrasing.phrase(faults, "muse-spark", client=Client(reply(good[0]), reply(good[1]), reply(good[2])))
+    assert lines == [good[0], faults[1]["text_timed"], good[2]]
+    # The reason is the existing "muse-spark: <what>" kind (a free string in the schema), and it holds none of the model's text.
+    assert record["faults"][1] == {"backend": "template", "model": None, "fallback_reason": "muse-spark: adds praise"}
+    assert praise not in json.dumps(record)
+    assert [record["faults"][i]["backend"] for i in (0, 2)] == ["muse-spark"] * 2
+    assert record["fallback_reason"] == "muse-spark: adds praise"
+
+
+def test_the_flagged_spark_line_never_reaches_the_user(live):  # noqa: F811
+    out = phrasing.phrase_fault(KNEE, client=Client(reply(SPARK_LINE)))
+    assert out == {"text": KNEE["text_timed"], "model": None, "backend": "template",
+                   "fallback_reason": "muse-spark: adds praise"}
 
 
 def test_the_template_backend_writes_text_timed():
@@ -307,6 +488,23 @@ def test_ac_p08_the_timed_prompt_asks_for_normal_punctuation_with_a_comma_before
     assert prompt.SYSTEM_TIMED in system
     assert "Use normal punctuation: put a comma before a closing phrase" in system
     assert "end the sentence with a full stop" in system
+
+
+def test_ac_p09_the_timed_prompt_offers_no_praise_and_asks_for_none():
+    """No live call and no key: the prompt asks for a fault line without praise and holds no praise phrase,
+    because a phrase in a prompt comes back in nearly every line."""
+    system = prompt.timed_messages(RIGHT_FOOT)[0]["content"]
+    lowered = system.lower()
+    assert "nice effort" not in lowered
+    assert [p for p in template.PRAISE_PHRASES if p in lowered] == []
+    assert "almost there" not in lowered
+    assert "carries no praise or congratulation" in system and "Say what is off" in system
+    assert '"keep going"' in system     # an encouraging ending is still allowed
+
+
+def test_the_prompt_example_and_the_ending_it_allows_pass_the_validator():
+    assert problem(RIGHT_FOOT, EXAMPLE) is None
+    assert problem(RIGHT_FOOT, EXAMPLE + ", keep going.") is None
 
 
 def test_review_keeps_no_copy_of_the_time_and_direction_rules():

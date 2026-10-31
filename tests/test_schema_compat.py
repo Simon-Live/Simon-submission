@@ -68,14 +68,14 @@ def test_the_vendored_schema_is_the_1_1_0_one():
 
 def test_ac_c01_a_fresh_unwarned_document_with_a_score_validates_against_both_schemas(unwarned):
     doc, _ = unwarned
-    assert "warnings" not in doc and doc["schema_version"] == "1.6.0" and doc["score"] and doc["faults"]
+    assert "warnings" not in doc and doc["schema_version"] == "1.7.0" and doc["score"] and doc["faults"]
     assert violations(OLD_SCHEMA, doc) == [] and violations(SCHEMA, doc) == []
 
 
 @pytest.mark.parametrize("name", GOLDENS)
 def test_ac_c01_the_golden_outputs_validate_against_the_1_1_0_schema(name):
     doc = json.loads((ROOT / "fixtures/output" / name).read_text())
-    assert doc["schema_version"] == "1.6.0"
+    assert doc["schema_version"] == "1.7.0"
     assert violations(OLD_SCHEMA, doc) == [] and violations(SCHEMA, doc) == []
 
 

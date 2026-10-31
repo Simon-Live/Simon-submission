@@ -122,5 +122,7 @@ def _tempo_insight(score):
     r = tempo["ratio"]
     share = f"{r:.1f} times" if r >= 1 else f"{round(r * 100)}% of"
     why = f"{whose} {share} the trainer's time"
-    return {"cue": tempo["cue"], "why": why, "kind": "tempo", "at_s": at_s, "window": window, "points": None,
+    # ADR-0016: under the dance profile tempo costs points, and the item says how many; null as in ADR-0014 otherwise.
+    points = (score.get("components") or {}).get("tempo")
+    return {"cue": tempo["cue"], "why": why, "kind": "tempo", "at_s": at_s, "window": window, "points": points,
             "measure": None, "side": None, "joint": None}

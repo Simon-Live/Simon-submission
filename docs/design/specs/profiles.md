@@ -74,7 +74,8 @@ anyone hiding a real range-of-motion miss.
   `upper_arm_forward`, `thigh_forward`); position measures say where a body part sits (`forearm_out`, `thigh_out`,
   `foot_out`, `knee_valgus`, `trunk_lean_forward`, `trunk_lean_side`, `shoulder_tilt`, `head_forward`, and, once
   TICKET-040 is merged, `foot_rotation` and `ankle_inversion`). A profile never keeps its own list of measures: a new
-  measure gets its kind from the cue table, so the two foot measures are covered the moment they have a cue.
+  measure gets its kind from the cue table. The one exception is the two foot measures, named in `profiles.py` as
+  position measures (ADR-0015) so they are covered before their cue entries are merged; the cue table takes over then.
 - **Effective rules**: `rules.json` after a profile is applied: a new dict, the input untouched.
 - **Baseline**: the unrelaxed per-measure detection config (`fitness`) a non-fitness profile relaxes.
 
@@ -117,12 +118,12 @@ One JSON object, read by `part5.profiles.load()`, validated on every read. Not p
 | Key | Meaning | Rule |
 |---|---|---|
 | `version` | `simon.profiles.v1` | exact |
-| `default` | the profile used when none is named | must be a key of `profiles`; `fitness` |
-| `profiles` | name to profile; the file order is the order shown in `--help` and `api/samples`, and a page shows the name with a capital | names are lower case words (`^[a-z][a-z0-9_]*$`); `fitness` must exist |
+| `default` | the profile used when none is named | must be `fitness` (omitted means fitness everywhere) |
+| `profiles` | name to profile; the file order is the order shown in `--help` and `api/samples`, and a page shows the name with a capital | names are lower case words (`^[a-z][a-z0-9_]*$`); `fitness` must exist and be the identity; unknown keys anywhere are refused |
 | `kinds.<kind>` | the tolerance for every measure of that cue kind | both `range` and `position` present |
-| `measures.<name>` | a tolerance for one measure; it replaces the kind's tolerance for that measure, key by key | name must be a key of `cues.CUES`; may be empty; no shipped profile uses it |
+| `measures.<name>` | a tolerance for one measure; it replaces the kind's tolerance for that measure, key by key | name must have a cue kind (`kind_of`); may be empty; no shipped profile uses it; the key is required, `{}` when unused |
 | `threshold_multiplier` | effective `threshold_deg` is the measure's `rules.json` threshold times this, rounded to 6 places | number, at least 1 |
-| `min_fraction_multiplier` | effective `min_fraction` (and `min_frames`, if a rules entry has one, rounded up) is the rules value times this | number, at least 1; `apply` refuses a product over 1 |
+| `min_fraction_multiplier` | effective `min_fraction` (and `min_frames`, if a rules entry has one, rounded up) is the rules value times this | number, at least 1; `effective_rules` refuses a product over 1 |
 | `min_run_frames_add` | effective `min_run_frames` is the rules value (default 4) plus this | integer, at least 0 |
 | `tempo.cues` | tempo cues replaced in this profile | keys only `speed_up` and `slow_down`; each value at most 6 words (`cues.MAX_WORDS`), capitalised, no dash |
 | `tempo.weight` | dance: score points charged per 1.0 of tempo ratio outside the 0.85 to 1.15 band | number, at least 0; 0 charges nothing |
@@ -132,7 +133,9 @@ One JSON object, read by `part5.profiles.load()`, validated on every read. Not p
 - `fitness`: the identity (below).
 - `rehab`: position measures at 1.5 times their threshold; range measures at 1; persistence unchanged; the "speed up"
   cue becomes "Slower is fine". The ticket asks for wider position tolerances, range-of-motion faults kept, and a pace
-  that is not pushed. 1.5 is a round number (a patient is allowed half as much again).
+  that is not pushed. 1.5 is a round number (a patient is allowed half as much again). The cue stays "Slower is fine"
+  as this spec requires, and whether a patient far slower than the example reads it as approval rather than as a pace
+  to hold is the final reviewer's wording question, left for a later Writer pass.
 - `dance`: position measures at 1.25 times their threshold, a position deviation must last 15% longer (`min_fraction`
   times 1.15) and at least 2 frames more per run; range measures unchanged; tempo costs 40 points per 1.0 of ratio
   outside the cue band, at most 20 per window. The dancer's posture is style, the lift and the bend are choreography,
@@ -148,7 +151,7 @@ One JSON object, read by `part5.profiles.load()`, validated on every read. Not p
   The numbers are recorded as measured (docs/thresholds.md "Profiles").
 
 ## Applying a profile
-`part5.profiles.apply(rules, name=None)` returns the **effective rules**.
+`part5.profiles.effective_rules(rules, name=None)` returns the **effective rules**.
 - `name` of `None` or `fitness`: returns `rules` itself, the same object. Nothing else runs, so the `fitness` code path is
   exactly today's.
 - Otherwise a new dict: for every measure in `cues.CUES`, `measures[g]` is the full config
@@ -158,10 +161,12 @@ One JSON object, read by `part5.profiles.load()`, validated on every read. Not p
   `min_frames_floor` and `score` are copied unchanged. A new key `profile` holds
   `{"name", "baseline", "tempo"}`: `baseline[g]` is the unrelaxed full config of each measure (what `fitness` uses),
   `tempo` is the profile's tempo block.
-- A measure that is in `rules["measures"]` and not in `cues.CUES`, or the other way round, is a `ProfileError` (every
-  generic measure has a cue; `tests/test_cues.py`).
+- A measure in `rules["measures"]` that has no cue kind is a `ProfileError` (every generic measure has a cue;
+  `tests/test_cues.py`). A measure in `cues.CUES` that `rules["measures"]` lacks gets an entry built from `default`, as
+  detection already reads it, except the two foot measures (ADR-0015: no default threshold): rules that lack their entry do
+  not report them, and a profile must not switch them on. Rules that already carry a `profile` key are refused (profiles do not stack).
 - The pipeline calls it once per analysis: `run(..., profile=None)` does
-  `rules = profiles.apply(rules or load_rules(), profile)` before anything reads `rules`, and keeps `rules` and the
+  `rules = profiles.effective_rules(rules or load_rules(), profile)` before anything reads `rules`, and keeps `rules` and the
   profile name on `PipelineResult` so the score hook reads the same effective rules. `repwise.compare` receives the
   effective rules and passes them to `detect`, so rep mode is covered.
 
@@ -171,7 +176,8 @@ direction it builds the fault twice, with the baseline config and with the effec
 1. the baseline faults go through `_drop_explained` exactly as today (explanation is judged at the `fitness`
    thresholds, so an explained fault stays explained in every profile);
 2. each surviving baseline fault is replaced by its effective counterpart (same measure, side, direction), and dropped
-   if the effective config finds none (the deviation no longer clears the looser threshold or lasts long enough);
+   if the effective config finds none (the deviation no longer clears the looser threshold or lasts long enough); the
+   counterpart reports the run chosen as described under "Which run a profile fault reports";
 3. `_merge_sides` merges what is left, as today.
 Why it is loosen-only: effective thresholds are at least the baseline's, so the frames flagged under the profile are a
 subset of those flagged at baseline. Every run counted under the profile (at least the longer minimum run) lies inside a
@@ -180,11 +186,29 @@ least as large as the baseline's, is at most the baseline's counted total. So wh
 measure, side and direction, the baseline finds it too, and step 1 only ever removes from the baseline set. The reported
 fault carries the profile's numbers: `threshold_deg` is the effective threshold, `magnitude_deg`, `runs` and
 `confidence` come from the effective config.
+**Which run a profile fault reports (AC-PROF-16).** On one side, `expected_frames` (and so `follower_frames`, `phase`,
+`follower_t_s`, `at_s` and the timed text) is one of the fault's own counted `runs`, chosen against the `fitness` fault
+it replaces (the baseline fault of the same measure, side and direction, whose reported run is its longest run): the
+profile run that shares the most frames with that run (equal shares: the longest, then the earliest); only when no
+profile run shares a frame with it, the longest run, the earliest on a tie, as for `fitness`. The choice is made on each
+side before the sides merge. Without this, the looser config trims the runs and two of them
+can end up level, so the earliest wins while `fitness` reports the later one and the headline moment jumps between
+modes (Squat, take 03, foot out right: `fitness` frames 50 to 76 of the example at 1.9 s, `rehab` 20 to 38 at 0.8 s,
+now 58 to 76 at 2.2 s; `dance` 52 to 76 at 2.0 s and unchanged). `fitness` takes no part in the choice: it has no `profile`
+key and reports its longest run as before, so its documents and the baseline hashes do not move. Only the reported
+run changes; the profile's magnitude, threshold, `runs`, coverage and confidence are what they were. On one side,
+`expected_frames` is therefore the longest counted run only for `fitness`; for a profile it is one of `runs`, and
+`follower_runs[k]` of that run equals `follower_frames`. A fault merged to side `both` (the same measure and direction
+on both sides, in `fitness` and in every profile) reports the span from the earlier start to the later end of its two
+sides' reported runs, so its `expected_frames` need not be one of `runs`: for example `expected_frames` (5, 79) with `runs`
+((5, 30), (40, 79)). The size a profile reports can rise above the `fitness` one for the same fault, because only the
+frames past the profile's threshold count toward the median.
+Verification: `tests/test_profile_run_choice.py` (AC-PROF-16).
 The smoothing, the alignment, the movement guard, visibility and the cue vocabulary are not touched by any profile.
 
 ### The identity rule for fitness
 `fitness` has every multiplier 1.0, every `min_run_frames_add` 0, no `measures` entry, no tempo cue override and a tempo
-`weight` of 0. Consequences, all tested (AC-PROF-02): `apply(rules, "fitness") is rules`; `--profile fitness` and no
+`weight` of 0. Consequences, all tested (AC-PROF-02): `effective_rules(rules, "fitness") is rules`; `--profile fitness` and no
 flag give byte-identical files (both carry `"profile": "fitness"`); and for every take of seed 5 the `fitness` analysis,
 without `profile` and `schema_version`, hashes to the value recorded before any wiring edit
 (`fixtures/profiles-fitness-baseline.json`, written once by `python -m part5.profiles_report --write-baseline` at the
@@ -195,15 +219,19 @@ first phase 2 commit). The only difference from a pre-feature document is the `p
 in `sides(p.side)`, some `fitness` fault `f` has the same `measure` and `direction` and `s` in `sides(f.side)`;
 `sides("both")` is `{left, right}` and `sides(x)` is `{x}` otherwise. (A fault that `fitness` reports on both sides may be
 reported on one side by a profile.) **Invariant:** every fault a profile reports is covered. A test proves it for
-`dance` and `rehab` on all 108 takes of seed 5 and on the Part 3 kit takes, which are reported material and not held-out
+`dance` and `rehab` on all 156 takes of seed 5 (108 before TICKET-040 added the foot-fault takes) and on the Part 3 kit takes, which are reported material and not held-out
 (AC-PROF-05); a construction test proves it where seed 5 would not show it (AC-PROF-04).
 **Scope.** The invariant is about faults. It does not cover the score: a profile's thresholds change `r` and the
 similarity term (so the score can only be compared within a profile), and the dance tempo charge deliberately lowers
 the score. It does not cover tempo cues (the swapped cue is a different text for the same event). In rep mode the
-per-rep faults are covered by construction; the take-level rule ("found in at least half of the accepted reps") is the
-`fitness` rule applied to each profile's per-rep faults and is left alone, because changing it would move `fitness`.
-A contrived split (a fault seen on both sides in some reps and on one side in others) could pass the half rule under a
-profile and not under `fitness`; the seed 5 and kit tests do not show it and no test claims otherwise.
+per-rep faults are covered by construction. The take-level rule ("found in at least half of the accepted reps") is
+left as it is for `fitness`, and for a profile other than `fitness` it is applied twice: to the profile's per-rep
+faults and to the same reps' faults under the `fitness` rules (`profiles.fitness_rules`, a second `detect` per accepted
+rep, only for `dance` and `rehab`). A profile's take-level fault is kept only when it is covered by the faults the
+`fitness` half rule reports for the take (`repwise.only_what_fitness_reports`). Without that, a fault seen on one side
+in some reps and on both in others could pass the half rule under a profile and not under `fitness` (4 reps, `fitness`
+left in rep 1 and both in rep 2, `rehab` splits rep 2 into left: left is in 2 of 4 reps under `rehab` and in 1 under
+`fitness`). AC-PROF-05 tests the case.
 **What it buys.** On any correct take where `fitness` reports 0 faults, every profile reports 0, so the gate's "0 faults
 on correct takes" holds for `dance` and `rehab` without a held-out run of their own (ADR-0016). Recall is not guaranteed.
 
@@ -217,7 +245,8 @@ follower is faster and the cue is "Slow down to match the trainer" (`slow_down`)
   wording is confirmed by the Writer skill before this spec is marked Implemented.
 - **Dance weight, at run time.** The frozen score params (`rules.json` `score`, `params_sha256`, ADR-0007) are not
   touched and not read differently. When the profile's `tempo.weight` is above 0, each compared window is charged
-  `T = min(cap, weight * max(0, 0.85 - ratio, ratio - 1.15))` points (0 when the ratio is unmeasured); the window's
+  `T = min(cap, weight * max(0, 0.85 - ratio, ratio - 1.15))` points (0 when the ratio is unmeasured; `ratio` is the
+  one the document shows, rounded to 0.01, so a reader can reproduce the charge from `tempo.ratio`); the window's
   unrounded value becomes `clamp(100 - F - S - T, 0, 100)`, its grade comes from the frozen bands, its
   `components.tempo` is `T` rounded to 2 places, and the take's value and `components.tempo` are means over the compared
   windows as `faults` and `similarity` already are (ADR-0013), so the components still add up to the value. A profile
@@ -267,16 +296,25 @@ no surface offers a profile before the pipeline echoes it.
 that is not a name in the file (wrong case, empty, not text) is **HTTP 400** with `{error: {field: "profile",
 message: "profile: must be one of ['dance', 'rehab', 'fitness']"}}`, before any file is parsed or analysis started.
 `GET api/samples` gains `profiles` (the names in file order) and `profile_default` (`fitness`), additive, so a page can
-build a select; the response of `api/analyse` is unchanged apart from `analysis.profile`.
-**Module** `part5.profiles` (no import of another Part; imports `json`, `hashlib`, `pathlib`, `part5.cues` and the
-constant `part5.detect.DEFAULT_MIN_RUN_FRAMES`; `detect` reads `rules["profile"]` and never imports `profiles`, so
-`pipeline` and `output` can import it without a cycle):
+build a select; the response of `api/analyse` is unchanged apart from `analysis.profile`. When `part5/profiles.json`
+will not load, `api/samples` still answers 200 and leaves both fields out (the page shows no select); only
+`api/analyse` fails, as the 500 below.
+**Module** `part5.profiles` (no import of another Part; imports `json`, `hashlib`, `pathlib`, `part5.cues`, the
+constant `part5.detect.DEFAULT_MIN_RUN_FRAMES` and `generic`, and `part5.measures.FOOT_MEASURES`; `detect` reads
+`rules["profile"]` and never imports `profiles`, so `pipeline`, `repwise` and `output` can import it without a cycle):
 - `ProfileError(ValueError)`; `PROFILES_PATH`.
 - `load(path=PROFILES_PATH) -> dict`: the validated document; `ProfileError` names the file and the field.
 - `names(doc=None) -> list[str]`, `default(doc=None) -> str`, `require(name, doc=None) -> str` (the name, or a
   `ProfileError` whose message is the `profile: must be one of [...]` sentence the API returns).
-- `kind_of(measure) -> "range" | "position"`: from `cues.CUES`; `ProfileError` for a measure it lacks.
-- `apply(rules, name=None, doc=None) -> dict`: above.
+- `kind_of(measure) -> "range" | "position"`: from `cues.CUES`, which holds both foot measures (`foot_rotation`,
+  `ankle_inversion`, `FOOT_GENERIC`, position measures by ADR-0015). `ProfileError` for any other measure.
+- `effective_rules(rules, name=None, doc=None) -> dict`: above.
+- `fitness_rules(rules) -> dict`: the rules an effective-rules dict was made from (`rules` itself when it has no
+  `profile`; else a copy with the baseline config of each measure and no `profile` key). Rep mode detects with it.
+- `sides_of(side)`, `covered_by(key, fitness_keys) -> bool`: the covered definition on `(measure, side, direction)` keys;
+  `profiles_report.covered` and `repwise.only_what_fitness_reports` both use it.
+- `tempo_points(ratio, weight, cap) -> float`: the dance charge for one window (the formula under Tempo); `score.py`
+  calls it, so the formula has one home.
 - `tempo_of(rules) -> {"cues", "weight", "cap"}`: from `rules["profile"]["tempo"]`, or, when the rules have no
   `profile` key, the identity block `{"cues": {}, "weight": 0.0, "cap": 0.0}`.
 - `file_sha256(path=PROFILES_PATH) -> str`: sha256 of the file's bytes.
@@ -285,8 +323,9 @@ constant `part5.detect.DEFAULT_MIN_RUN_FRAMES`; `detect` reads `rules["profile"]
 [--set DIR] [--json-out PATH]` prints the seed 5 report; `--write-baseline` writes the fitness baseline.
 **Other modules (wiring, phase 2).** `pipeline.run(..., profile=None)`, `PipelineResult.rules` and `.profile`;
 `output.build_analysis(..., profile)`; `cues.tempo_cue/tempo_block(ratio, overrides=None)`;
-`score.tempo_points(ratio, weight, cap)`, `window_score(..., tempo_points=0.0)`, and the timeline builders read the
-profile's tempo block from the rules they are given; `score_report.score_block(result, rules=None)` falls back to
+`score.window_score(..., tempo_points=None)` (None: the profile charges no tempo and the window has no
+`components.tempo`; a number, 0.0 included: the window is charged and carries it), and the timeline builders read the profile's tempo block from the rules
+they are given and charge `profiles.tempo_points`; `score_report.score_block(result, rules=None)` falls back to
 `result.rules`; `insights._tempo_insight` reads `score.components.tempo`.
 
 ## Per-profile report on seed 5 (`make report-profiles`)
@@ -310,19 +349,23 @@ Then it returns dance, rehab and fitness in that order, `default` is `fitness`, 
 file with any of these raises `ProfileError` naming the field: no `fitness`, `default` not a profile, a missing kind, a
 multiplier below 1, `min_run_frames_add` negative or not an integer, `min_fraction_multiplier` below 1, a tempo cue key
 other than `speed_up` and `slow_down`, a tempo cue over 6 words, with a dash or empty, a negative `weight` or `cap`, a
-`measures` key that is not in `cues.CUES`, a profile name that is not lower case words. Nothing in the file can make a
-profile stricter than `fitness`. Tests: `test_shipped_file_is_valid`, `test_loader_rejects` (parametrized over each
-case), `test_apply_rejects_a_min_fraction_past_one`.
+`measures` key with no cue kind, a profile name that is not lower case words, a key the format does not know (a typo
+must not pass as an identity), a `default` other than `fitness`, and a `fitness` entry that is not the identity. Nothing
+in the file can make a profile stricter than `fitness`. Tests: `test_shipped_file_is_valid`, `test_loader_rejects`
+(parametrized over each case), `test_loader_names_the_file_when_it_cannot_read_it`,
+`test_nothing_in_the_shipped_file_makes_a_profile_stricter`, `test_require_accepts_a_name_and_says_which_names_exist`,
+`test_effective_rules_rejects_a_min_fraction_past_one`.
 
 ### AC-PROF-02: fitness is the identity
 Given the `fitness` profile
 When it is applied, or named on the CLI or the API, or left out
 Then `profiles.json` has every multiplier 1.0, every add 0, no `measures` entry, no tempo cue and a weight of 0;
-`apply(rules, "fitness")` and `apply(rules, None)` return `rules` itself; the CLI writes byte-identical files with
+`effective_rules(rules, "fitness")` and `effective_rules(rules, None)` return `rules` itself; the CLI writes byte-identical files with
 `--profile fitness` and with no flag; the API answers the same `analysis` for `profile: "fitness"`, `null` and omitted;
-and for each of the 108 takes of seed 5 the `fitness` analysis minus `profile` and `schema_version` hashes to the value
+and for each of the 156 takes of seed 5 the `fitness` analysis minus `profile` and `schema_version` hashes to the value
 in `fixtures/profiles-fitness-baseline.json`. Tests: `test_fitness_entry_is_all_ones`,
-`test_apply_fitness_returns_the_rules_unchanged`, `test_fitness_matches_the_prefeature_baseline`;
+`test_effective_rules_fitness_returns_the_rules_unchanged`, `test_fitness_has_the_identity_tempo_block`,
+`test_fitness_matches_the_prefeature_baseline` (the last with the wiring);
 `tests/test_profiles_wiring.py`: `test_cli_fitness_equals_no_flag`, `test_api_fitness_equals_omitted`.
 
 ### AC-PROF-03: effective rules
@@ -335,8 +378,10 @@ multiplier, `min_fraction` is multiplied, `min_run_frames` has the add; range me
 mutated; `default`, `guard`, `explained_by*`, `score` and the smoothing keys are equal to the input's; every measure in
 `cues.CUES` and every key of `rules["measures"]` has a kind. A deviation held for fewer frames than the relaxed run
 length is reported by `fitness` and not by `dance`. Tests: `test_thresholds_scale_by_kind`,
-`test_every_measure_has_a_kind` (includes the two foot measures once they exist),
-`test_measure_override_beats_kind`, `test_apply_does_not_mutate_or_touch_score`, `test_persistence_relaxation`.
+`test_every_measure_has_a_kind`, `test_the_foot_measures_take_the_position_tolerance`,
+`test_measure_override_beats_kind`, `test_effective_rules_does_not_mutate_or_touch_score`,
+`test_effective_rules_records_the_baseline_and_the_tempo_block`, `test_min_frames_is_scaled_and_rounded_up_without_float_noise`,
+`test_persistence_relaxation`.
 
 ### AC-PROF-04: an explained fault stays explained
 Given synthetic differences where a position cause clears its `fitness` threshold but not its `rehab` threshold, and its
@@ -354,11 +399,19 @@ not arise; AC-PROF-05 covers it on real data. Tests:
 construction is what holds the invariant and the test would notice if it were dropped).
 
 ### AC-PROF-05: dance and rehab never report a fault fitness does not
-Given all 108 takes of seed 5 and the Part 3 kit takes (`fixtures/input/contract/part3/followers`)
+Given all 156 takes of seed 5 and the Part 3 kit takes (`fixtures/input/contract/part3/followers`)
 When each is analysed under `fitness`, `dance` and `rehab`
 Then every fault of `dance` and of `rehab` is covered by the take's `fitness` faults (definition above), and a take
 with no `fitness` fault has no fault under either profile. The helper handles `both`. Never run on a held-out set.
-Tests: `test_dance_and_rehab_never_report_a_fault_fitness_does_not` (seed 5 and kit), `test_covered_handles_both_sides`.
+Tests: `test_dance_and_rehab_never_report_a_fault_fitness_does_not` (seed 5 and kit), `test_covered_handles_both_sides`,
+`test_covered_by_is_the_same_definition_on_keys`.
+Rep mode: a take compared repetition by repetition keeps a profile's take-level fault only when the `fitness` half rule
+over the same reps also reports it (covered). Tests (`tests/test_reps.py`, `tests/test_profiles.py`):
+`test_the_reviewers_split_is_dropped_because_fitness_does_not_report_it` (4 reps: `fitness` left in rep 1 and both in
+rep 2, `rehab` left in each of those two reps), `test_a_fault_fitness_reports_on_both_sides_may_stay_on_one_side_under_a_profile`,
+`test_compare_under_a_profile_drops_the_split_fitness_does_not_report` and `..._keeps_a_fault_fitness_reports` (through
+`repwise.compare` on the real 8-rep take), `test_compare_under_fitness_is_untouched_and_runs_no_second_detection`,
+`test_real_rep_takes_under_a_profile_report_only_what_fitness_reports`, `test_fitness_rules_detect_what_the_plain_rules_detect`.
 
 ### AC-PROF-06: range faults are kept
 Given the same takes
@@ -371,8 +424,10 @@ Given a window or take whose tempo ratio is above 1.15
 When the profile is `rehab`
 Then `tempo.cue`, `score.tempo.cue` and the tempo item of `insights` read "Slower is fine" (3 words, kind `tempo`) and the
 ratio is unchanged; a ratio below 0.85 still reads "Slow down to match the trainer"; `fitness` and `dance` still read
-"Speed up to match the trainer". Tests: `test_cue_overrides`, `test_rehab_says_slower_is_fine_end_to_end` (a seed 5
-take whose ratio exceeds 1.15, found by the test).
+"Speed up to match the trainer". Tests: `test_rehab_replaces_only_the_speed_up_cue` and
+`test_tempo_of_reads_the_effective_rules_and_hands_back_a_copy` (the data, written before the wiring), then with it
+`test_cue_overrides` and `test_rehab_says_slower_is_fine_end_to_end` (a seed 5 take whose ratio exceeds 1.15, found by
+the test).
 
 ### AC-PROF-08: dance weights tempo, the score params stay frozen
 Given the `dance` profile and windows with known tempo ratios
@@ -381,10 +436,12 @@ Then each compared window is charged `min(cap, weight * max(0, 0.85 - r, r - 1.1
 is `clamp(round_half_up(100 - F - S - T))`, the grade comes from the frozen bands, `components.tempo` is present in the
 windows and the take (their means) and `faults + similarity + tempo` equals `100 - value` within rounding; a window with
 no measured ratio is charged 0; `rehab` and `fitness` have no `components.tempo` key and score as before;
-`score.params_sha256` equals the `fitness` take's and the hash of `rules.json`'s `score` block, and `apply` leaves that
+`score.params_sha256` equals the `fitness` take's and the hash of `rules.json`'s `score` block, and `effective_rules` leaves that
 block byte-equal; the tempo insight's `points` equals the take's `components.tempo` for dance and is null otherwise.
-Tests: `test_tempo_points_formula`, `test_dance_score_adds_up`, `test_only_dance_has_a_tempo_component`,
-`test_score_params_are_untouched_by_a_profile`, `test_tempo_insight_points_for_dance_only`.
+Tests: `test_tempo_points_formula`, `test_tempo_points_without_a_weight_cost_nothing_and_a_small_cap_wins` and
+`test_only_dance_charges_tempo` (the pure parts, written before the wiring), then with it `test_dance_score_adds_up`,
+`test_only_dance_has_a_tempo_component`, `test_score_params_are_untouched_by_a_profile`,
+`test_tempo_insight_points_for_dance_only`.
 
 ### AC-PROF-09: `analysis.profile` is always present; schema 1.7.0
 Given any analysis built by `pipeline.run` (the CLI, the API, `make check-5`, `make output-examples`, the real-take report)
@@ -425,9 +482,11 @@ Then the first prints the `profile <name>` note and exits 0, the second prints t
 ### AC-PROF-13: check-5 runs fitness only and does not move
 Given the frozen held-out record
 When `make check-5` runs after the feature
-Then it exits 0, `gate.metrics.slices` and `attempts` equal the committed record in `fixtures/heldout-attempts.json` (seed
-31, and seed 37 once TICKET-040 has scored it; the existing `require_unchanged_scores` passes), `rules_sha256` and `detection_sha256` equal their pre-feature values,
-`git diff <base> -- part5/rules.json` is empty, and the only addition is `profiles_sha256`, equal to
+Then it has the same exit code (1: seed 37 is the recorded red held-out), failures and metrics as the attempt 3 record
+at `c4f04f6` (amended 2026-10-31 by the stakeholder-proxy: after TICKET-040's red held-out, exit 0 cannot hold). So
+`gate.metrics.slices` and `attempts` equal the committed record in `fixtures/heldout-attempts.json` (seeds 31 and 37;
+the existing `require_unchanged_scores` passes), `rules_sha256` and `detection_sha256` equal their pre-feature values,
+`git diff <base> -- part5/rules.json` is empty, and the only addition is `profiles_sha256`, informational and equal to
 `profiles.file_sha256()`. Tests (`tests/test_check.py`, amended): `test_check_reports_profiles_sha256`,
 `test_check_numbers_unchanged_by_profiles`; delivery commands in the plan below.
 
@@ -449,6 +508,18 @@ has `profile` `rehab`; with the select untouched the request carries `fitness`; 
 rendered page; negative assertion: an untouched page sends and shows `fitness`), `staging/verify.mjs`
 (an API call with `profile: "rehab"`), `tests/test_web_logic.py` for the pure helper that builds the request.
 
+### AC-PROF-16: a profile fault reports the run that overlaps the fitness fault's reported run
+Given a take whose `fitness` fault of one measure, side and direction reports one counted run
+When the same take is analysed under `dance` or `rehab`
+Then each profile fault on one side reports its own counted run that shares the most frames with the run `fitness`
+reports (equal shares: the longest, then the earliest; when none shares a frame, the longest, then the earliest), the
+profile's magnitude, threshold, `runs`, coverage and confidence do not change, `fitness` reports its longest run as
+before, and `fitness` documents, the detection hashes and the seed 37 `make check-5` stdout stay identical. A fault merged
+to side `both` reports the span of its two sides' reported runs, so its `expected_frames` need not be one of `runs`.
+Decided by the stakeholder-proxy, recorded in ADR-0016 (Amendment 1). Verification: `tests/test_profile_run_choice.py`
+(the choice and its tie rules, the merged `both` span, Squat take 03 under `fitness`, `dance` and `rehab`, `fitness`
+rules untouched); the `fitness` identity is AC-PROF-02 and `make check-5` is AC-PROF-13.
+
 ### Rule-Based ACs
 - AC-PROF-NFR-01: determinism. Two runs of the same take and profile with the template phrasing write byte-identical
   files. Verification method: test (`test_profiles_are_deterministic`).
@@ -465,20 +536,21 @@ rendered page; negative assertion: an untouched page sends and shows `fitness`),
 |---|---|---|---|
 | Unknown profile on the CLI | argparse usage error, exit 2, nothing written | argparse's `argument --profile: invalid choice: ...`, naming the three choices | AC-PROF-10 |
 | Unknown or non-text profile on the API | 400, field `profile` | `profile: must be one of ['dance', 'rehab', 'fitness']` | AC-PROF-10 |
-| `profiles.json` invalid | `ProfileError` (a `ValueError`); CLI exit 1 with `part5 analyse: <file>: <field>: ...`, nothing written; API HTTP 500 with the generic message and the trace in the server log, as for a broken `rules.json`; `make check-5` still prints the file's hash (it hashes bytes and parses nothing) | names the file and the field | AC-PROF-01 |
+| `profiles.json` invalid | `ProfileError` (a `ValueError`); CLI exit 1 with `part5 analyse: <file>: <field>: ...`, nothing written; API HTTP 500 with the generic message and the trace in the server log, as for a broken `rules.json`, while `GET api/samples` answers 200 without `profiles` and `profile_default` (`test_api_samples_omit_the_modes_when_the_profiles_file_will_not_load`); `make check-5` still prints the file's hash (it hashes bytes and parses nothing) | names the file and the field | AC-PROF-01 |
 | `profiles.json` missing | as above for the CLI and the API; `make check-5` exits 2 (`check-5: part5/profiles.json not found`), like a missing set | names the file | AC-PROF-13 |
-| A rules entry makes `min_fraction` times the multiplier exceed 1 | `ProfileError` from `apply` | `profile <name>: <measure> min_fraction <x> times <m> is over 1` | AC-PROF-01 |
+| A rules entry makes `min_fraction` times the multiplier exceed 1 | `ProfileError` from `effective_rules` | `profile <name>: <measure> min_fraction <x> times <m> is over 1` | AC-PROF-01 |
 | `--report` on a held-out set | exit 2, nothing analysed | `the profile report runs on the tuning set only (seed 5), not seed N` | AC-PROF-14 |
 | `--report` set missing | exit 2 | as `check.py`: `<set> has no labels.json` | AC-PROF-14 |
 
 ## Edge Cases
 - A profile name in a different case (`Rehab`): unknown, rejected on both surfaces (AC-PROF-10).
 - `--profile` with `--live` or any `--phrasing`: independent; the profile never changes `coaching` or `phrasing`.
-- A measure with no cue entry: `ProfileError` at `apply`, caught by the cue-table test long before a user sees it (AC-PROF-03).
+- A measure with no cue kind: `ProfileError` at `effective_rules`, caught by the cue-table test long before a user sees it (AC-PROF-03).
 - A take with a warning (low match, F cap): profile applies as usual; `capped_by` and the 59 cap stay (AC-PROF-08).
 - A zero-score take (nothing aligned): no windows, no `components.tempo`, `profile` still echoed (AC-PROF-09).
 - Unmeasured tempo (window under 1 s of example time): no cue, no charge, in every profile (AC-PROF-07, 08).
-- Rep mode: the effective rules reach each rep's detection; see the invariant's scope for the take-level rule (AC-PROF-05).
+- Rep mode: the effective rules reach each rep's detection, and the take-level faults are filtered to those `fitness`
+  also reports; see the invariant's scope (AC-PROF-05).
 - A fault `fitness` reports on `both` sides that a profile keeps on one: allowed, covered (AC-PROF-05).
 - TICKET-040 not merged: `rules.json` and `cues.py` lack the foot measures; profiles need no change, the tests that
   name them skip nothing because they iterate over the measures present (AC-PROF-03).
@@ -514,9 +586,11 @@ Short-term: round numbers a person chose, recorded as hand-set. Long-term: value
 Migration path: Part 7 or the operator supplies labelled takes; a new profile version and a new ADR calibrate them on a
 tuning set, with a held-out set per the protocol. Trigger to revisit: the first labelled take set, or a user report that a
 profile nags or misses.
-### Rep-mode take rule left alone
-Short-term: the half-of-reps rule is the `fitness` rule on each profile's faults. Long-term: count at side granularity.
-Migration path: change `repwise` aggregation with its own held-out check. Trigger: a rep-mode take that shows the split.
+### Rep-mode take rule: a second detection per rep for a profile
+Short-term: the half-of-reps rule is unchanged for `fitness`; a profile detects each accepted rep twice (its own rules and
+the `fitness` rules) and keeps only the take-level faults `fitness` also reports. Long-term: count at side granularity
+in one pass. Migration path: change `repwise` aggregation with its own held-out check. Trigger: a profile's rep-mode
+time becoming a cost, or a rep-mode take whose side split `fitness` handles differently from what a user expects.
 
 ## Non-Requirements (Explicitly NOT Building)
 - A stricter profile or a user-defined profile, because loosen-only is the design and the profile set is three names.
@@ -544,21 +618,26 @@ Migration path: change `repwise` aggregation with its own held-out check. Trigge
 - A tempo cue override must also reach the insights, which copy the cue from `score.tempo` (found in `insights.py`).
 
 ## Files (every new or changed source file; the write gate reads this table)
-Phase 1 (this commit) writes only the first three rows. Everything else is phase 2.
+Phase 1 wrote the first three rows. Phase 2a (unwired, new files only) wrote `part5/profiles.json`, `part5/profiles.py`
+and `tests/test_profiles.py`. Everything else waits for held-out seed 37 to be scored (operator ruling) and for
+TICKET-040 to merge: `fixtures/profiles-fitness-baseline.json` in particular is written at the first wiring commit, from
+the tree with TICKET-040 merged, because TICKET-040 regenerates seed 5 with feet and adds `diagnostics.feet`, so a
+baseline taken before it would be stale the day it lands.
 | File | Change | Ticket | Published |
 |---|---|---|---|
 | `docs/design/specs/profiles.md` | this spec | TICKET-042 | yes |
 | `docs/design/adr/ADR-0016-analysis-profiles.md` | decision | TICKET-042 | yes |
 | `docs/design/specs/profiles.md`, `docs/design/adr/ADR-0016-analysis-profiles.md`, `docs/design/README.md` | neutralised copies written by `make design-copies`, and their two lines in the hand-written index (`tests/test_design_copies.py` fails without them) | TICKET-042 | yes |
 | `part5/profiles.json` (new) | the three profiles, hand-set | TICKET-042 | yes |
-| `part5/profiles.py` (new) | `load`, `names`, `default`, `require`, `kind_of`, `apply`, `tempo_of`, `file_sha256` | TICKET-042 | yes |
+| `part5/profiles.py` (new) | `load`, `names`, `default`, `require`, `kind_of`, `effective_rules`, `tempo_of`, `tempo_points`, `file_sha256` | TICKET-042 | yes |
 | `part5/profiles_report.py` (new) | the seed 5 report (`make report-profiles`) and `--write-baseline` | TICKET-042 | yes |
 | `tests/test_profiles.py` (new) | AC-PROF-01 to 08, NFR-01 | TICKET-042 | yes |
 | `tests/test_profiles_wiring.py` (new) | AC-PROF-09 to 11, 13, 14 | TICKET-042 | yes |
+| `tests/test_profile_run_choice.py` (new) | AC-PROF-16: the run a profile fault reports | TICKET-042 | yes |
 | `fixtures/profiles-fitness-baseline.json` (new) | sha256 per seed 5 take of the fitness analysis, written once before any wiring edit | TICKET-042 | yes |
-| `part5/detect.py` | baseline/effective detection when `rules["profile"]` is present; the `fitness` path unchanged | TICKET-042 | yes |
+| `part5/detect.py` | baseline/effective detection when `rules["profile"]` is present, and the run a profile fault reports (`_reported_run`, AC-PROF-16); the `fitness` path unchanged | TICKET-042 | yes |
 | `part5/cues.py` | `tempo_cue` and `tempo_block` take `overrides` | TICKET-042 | yes |
-| `part5/score.py` | `tempo_points`, the tempo term in `window_score`, `timeline_block`, `compute_timeline` | TICKET-042 | yes |
+| `part5/score.py` | the tempo term (`profiles.tempo_points`) in `window_score`, `timeline_block`, `compute_timeline` | TICKET-042 | yes |
 | `part5/score_report.py` | `score_block` reads `result.rules`; `_rep_timeline` passes the tempo overrides and charge | TICKET-042 | yes |
 | `part5/insights.py` | the tempo item's `points` | TICKET-042 | yes |
 | `part5/pipeline.py` | `run(..., profile=None)`, `PipelineResult.rules` and `.profile`, `build_analysis(profile=...)` | TICKET-042 | yes |
@@ -581,8 +660,11 @@ Phase 1 (this commit) writes only the first three rows. Everything else is phase
 ## Delivery Verification Plan
 - Phase 1 (this commit): `python3 scripts/make_design_copies.py --check` exits 0; `uv run pytest -q
   tests/test_design_copies.py` passes; `firm/check-em-dash.sh` on the tree exits 0. No code is touched.
-- Phase 2, in order: write `fixtures/profiles-fitness-baseline.json` first, from the pre-wiring tree; then the module,
-  hooks and wiring, with `--profile` last; then `uv run pytest -q tests/test_profiles.py tests/test_profiles_wiring.py`.
+- Phase 2a (new files only, nothing wired): `uv run pytest -q tests/test_profiles.py tests/test_design_copies.py`; the
+  em-dash gate; `make check-5` exits 0 with the same numbers as before (no existing module changed).
+- Phase 2b, after seed 37 is scored and TICKET-040 is merged, in order: write `fixtures/profiles-fitness-baseline.json`
+  first, from the tree before any wiring edit; then the hooks and wiring, with `--profile` last; then
+  `uv run pytest -q tests/test_profiles.py tests/test_profiles_wiring.py`.
 - Merge gate: `make test` 0; `make check-5` 0 with `gate.metrics.slices` and `attempts` equal to the committed record,
   `rules_sha256` and `detection_sha256` unchanged, `git diff <base> -- part5/rules.json` empty; `make check-5-contract` 0;
   `make output-examples` then `git diff --stat fixtures/output` shows only `profile` and the version;
@@ -612,7 +694,7 @@ Not applicable: no new milestone; the existing floors in `progress/ratchets.json
 ### Boundary Layer Testing Plan
 | Mapping Function | Input Format | Output Format | Test File |
 |-----------------|-------------|---------------|-----------|
-| `profiles.apply` | `rules.json` dict and a profile name | effective rules with `profile.baseline` | `tests/test_profiles.py` |
+| `profiles.effective_rules` | `rules.json` dict and a profile name | effective rules with `profile.baseline` | `tests/test_profiles.py` |
 | `profiles.kind_of` | measure name | `range` or `position` from `cues.CUES` | `tests/test_profiles.py` |
 | `api._analyse` profile reading | request JSON `profile` | a name or a 400 | `tests/test_profiles_wiring.py` |
 
@@ -630,7 +712,7 @@ Resolution: ADDRESSED_IN_SPEC.
 ### Concern 2: the second detection pass is clever code on the gate's path
 Challenge: touching `detect.py` after the freeze could move `fitness`. Impact if right: a changed check-5 number after
 seed 37 is spent. Mitigation: the new branch runs only when `rules["profile"]` exists; `fitness` returns the rules
-object itself; the baseline hash of all 108 seed 5 takes and the unchanged held-out record prove it; the construction
+object itself; the baseline hash of all 156 seed 5 takes and the unchanged held-out record prove it; the construction
 is covered by its own failing-if-removed test. Resolution: ADDRESSED_IN_SPEC.
 
 ### Concern 3: dance tempo charge makes the dance score lower than fitness for the same take
@@ -651,15 +733,16 @@ operator's request: "weights tempo in the score").
 ## Requirements Traceability
 | Requirement Source | Spec AC | Test | Status |
 |-------------------|---------|------|--------|
-| Ticket: own file, `rules.json` and both hashes unchanged, `profiles_sha256` information | AC-PROF-01, AC-PROF-13 | `tests/test_profiles.py`, `tests/test_check.py` | pending |
-| Ticket: fitness identity and default, `profile` always present | AC-PROF-02, AC-PROF-09 | `test_fitness_*`, `test_every_entry_point_writes_profile` | pending |
-| Ticket: dance and rehab only loosen, a test proves it | AC-PROF-04, AC-PROF-05, AC-PROF-06 | `test_dance_and_rehab_never_report_a_fault_fitness_does_not` | pending |
-| Ticket: rehab widens position, keeps range, says "Slower is fine" | AC-PROF-03, 06, 07 | `test_thresholds_scale_by_kind`, `test_cue_overrides` | pending |
-| Ticket: dance loosens position and weights tempo at run time, score params frozen | AC-PROF-03, AC-PROF-08 | `test_dance_score_adds_up`, `test_score_params_are_untouched_by_a_profile` | pending |
-| Ticket: check-5 fitness only, per-profile seed 5 report, never gated or held-out, values by hand | AC-PROF-13, AC-PROF-14 | `test_report_refuses_a_heldout_set` | pending |
-| Ticket: unknown profile exit 2 / 400, next minor schema, goldens, doctor, contract row | AC-PROF-09, 10, 12 | `test_cli_unknown_profile_exits_2`, `test_api_unknown_profile_is_400` | pending |
-| Ticket: `--help` shows `--profile` only when wired | AC-PROF-11 | `test_help_lists_profile`, `test_every_profile_flows_through_cli_and_api` | pending |
-| Ticket: foot measures covered (TICKET-040) | AC-PROF-03 | `test_every_measure_has_a_kind` | pending |
+| Ticket: own file, `rules.json` and both hashes unchanged, `profiles_sha256` information | AC-PROF-01, AC-PROF-13 | `tests/test_profiles.py`, `tests/test_check.py` | done |
+| Ticket: fitness identity and default, `profile` always present | AC-PROF-02, AC-PROF-09 | `test_fitness_*`, `test_every_entry_point_writes_profile` | done |
+| Ticket: dance and rehab only loosen, a test proves it | AC-PROF-04, AC-PROF-05, AC-PROF-06 | `test_dance_and_rehab_never_report_a_fault_fitness_does_not` | done |
+| Ticket: rehab widens position, keeps range, says "Slower is fine" | AC-PROF-03, 06, 07 | `test_thresholds_scale_by_kind`, `test_cue_overrides` | done |
+| Ticket: dance loosens position and weights tempo at run time, score params frozen | AC-PROF-03, AC-PROF-08 | `test_dance_score_adds_up`, `test_score_params_are_untouched_by_a_profile` | done |
+| Ticket: check-5 fitness only, per-profile seed 5 report, never gated or held-out, values by hand | AC-PROF-13, AC-PROF-14 | `test_report_refuses_a_heldout_set` | done |
+| Ticket: unknown profile exit 2 / 400, next minor schema, goldens, doctor, contract row | AC-PROF-09, 10, 12 | `test_cli_unknown_profile_exits_2`, `test_api_unknown_profile_is_400` | done |
+| Ticket: `--help` shows `--profile` only when wired | AC-PROF-11 | `test_help_lists_profile`, `test_every_profile_flows_through_cli_and_api` | done |
+| Ticket: foot measures covered (TICKET-040) | AC-PROF-03 | `test_every_measure_has_a_kind` | done |
+| Final review: rep mode never reports a take-level fault `fitness` does not | AC-PROF-05 | `test_the_reviewers_split_is_dropped_because_fitness_does_not_report_it`, `test_compare_under_a_profile_drops_the_split_fitness_does_not_report` | done |
 
 ## Test Scenarios (maps 1:1 to acceptance criteria)
 - AC-PROF-01 to AC-PROF-08 and AC-PROF-NFR-01 to `tests/test_profiles.py`, the test names listed in each AC.

@@ -201,9 +201,40 @@ export function wordingHint(chosen, offered, serverDefault = chosen) {
   return `Template is preselected because this server uses it unless you choose another wording. ${joined(others)} can also be chosen.`;
 }
 
+// ------------------------------------------------------------------------------ the mode (analysis profile)
+// AC-V21, AC-PROF-15, ADR-0016: `api/samples` lists the modes this server can analyse under (`profiles`) and the one it
+// uses when a request names none (`profile_default`). A server that lists none (an older one) gets no select and is
+// sent no `profile`. A mode is named in lower case on the wire and shown with a capital.
+
+export const IDENTITY_PROFILE = "fitness";
+
+// The modes to offer, in the server's order: its non-empty names, or an empty list.
+export function profilesOffered(samples) {
+  const listed = samples && Array.isArray(samples.profiles) ? samples.profiles : [];
+  return listed.filter((name) => typeof name === "string" && name !== "");
+}
+
+export const profileLabel = (name) => name.charAt(0).toUpperCase() + name.slice(1);
+
+// The mode to preselect: the server's own default when it is offered, else fitness when offered, else the first
+// offered mode; null when no mode is offered.
+export function defaultProfile(samples) {
+  const offered = profilesOffered(samples);
+  if (offered.includes(samples.profile_default)) return samples.profile_default;
+  return offered.includes(IDENTITY_PROFILE) ? IDENTITY_PROFILE : (offered[0] ?? null);
+}
+
+// "Scored with rehab coaching rules." for an analysis made under a mode other than fitness. Null for fitness, and
+// for a document with no `profile` (written before schema 1.7.0), which is read as fitness.
+export function profileNote(analysis) {
+  const name = analysis && analysis.profile;
+  if (typeof name !== "string" || name === "" || name === IDENTITY_PROFILE) return null;
+  return `Scored with ${name} coaching rules.`;
+}
+
 // ------------------------------------------------------------------------------ a result the choice has left behind
-// AC-V20: the choice a result was made for is kept as one string (the request's example, take and wording). When the
-// choice on the page differs from it, the result on screen is for the previous choice.
+// AC-V20: the choice a result was made for is kept as one string (the request's example, take, wording and mode). When
+// the choice on the page differs from it, the result on screen is for the previous choice.
 
 export const STALE_SENTENCE = "This result is for the previous choice. Press Analyse to compare the new one.";
 

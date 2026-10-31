@@ -23,7 +23,7 @@ and `scripts/sync_contracts.py`; this spec adds Part 5's own schemas at the top 
 1. Part 7 is an empty scaffold, so the consumer side of the table is a promise, not a test. Answer: the
    `--for part7` verdict is defined by the analysis schema plus one rule (read `status` before `faults`),
    and the result preview screen (`viewer.md`) exercises it.
-2. Six schemas and a hand-written loader can drift. Answer: `make check-5-contract` validates every
+2. Seven schemas and a hand-written loader can drift. Answer: `make check-5-contract` validates every
    committed fixture against its schema and loads it through `part5.io`; a disagreement fails.
 3. `simon.analysis.v1` grows new fields (status, joints, runs, coaching, phrasing). A v1.0 reader that
    ignores `status` shows "no faults" on a refused take (before ADR-0012; since then it ignores `warnings` and
@@ -37,12 +37,13 @@ that a mismatch is found in seconds with the fix named.
 ## Schemas (`contracts/`, published)
 | Name | File | `version` | Describes |
 |---|---|---|---|
-| `analysis` | `contracts/analysis.schema.json` | `1.5.0` (`1.1.0` when this spec was written) | Part 5's output, `simon.analysis.v1` with the additive fields of the master spec and `journey-followup.md` |
+| `analysis` | `contracts/analysis.schema.json` | `1.7.0` (`1.1.0` when this spec was written) | Part 5's output, `simon.analysis.v1` with the additive fields of the master spec, `journey-followup.md`, `foot-keypoints.md` (`diagnostics.feet`) and `profiles.md` (`profile`) |
 | `input-animation` | `contracts/input-animation.schema.json` | `1.0.0` | expected or follower clip in `simon.animation.v1` (frames, optional `null` joints and `conf`) |
 | `input-skeleton` | `contracts/input-skeleton.schema.json` | `1.0.0` | expected clip in `simon.skeleton.v1` (keyframes) |
 | `labels` | `contracts/labels.schema.json` | `1.0.0` | `labels.json` of the synthetic sets and the real takes (`label_source` optional) |
-| `metrics` | `contracts/metrics.schema.json` | `1.2.0` | the `make check-5` document (`simon.part5.check.v1`, `check-5.md`), with the score report (`gate.sweep`, `report.score`); 1.2.0 adds `report.refusals.gated: false` |
+| `metrics` | `contracts/metrics.schema.json` | `1.3.0` | the `make check-5` document (`simon.part5.check.v1`, `check-5.md`), with the score report (`gate.sweep`, `report.score`); 1.2.0 adds `report.refusals.gated: false`; 1.3.0 adds `profiles_sha256` |
 | `replay` | `contracts/replay.schema.json` | `1.0.0` | the `replay.json` of `part5 analyse --replay` (`simon.replay.v1`, `journey-followup.md` J-3) |
+| `input-feet` | `contracts/input-feet.schema.json` | `1.0.0` | the optional feet side file: a Part 2 `pose3d.json` with `extra_joints`, no `format` (`--expected-feet`, `--follower-feet`, ADR-0015) |
 
 Each schema is JSON Schema draft 2020-12 with `$id` `https://github.com/moalborati/simon-part-5-fault-analysis/contracts/<name>.schema.json`
 and a top-level `version` string. Extra properties are allowed wherever `docs/schemas.md` allows them.
@@ -50,23 +51,25 @@ The copies from Parts 3 and 4 stay under `contracts/part3/` and `contracts/part4
 them; `contracts/sources.json` and `sources.lock.json` record their commits.
 
 ## Compatibility table (in `CONTRACT.md`, printed by `part5 contract`)
-| Producer | File | `format` | Part 5 role | Verdict | Fix |
-|---|---|---|---|---|---|
-| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 `CONTRACT.md`) | none | rejected | as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input (exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with "run Part 3 --view part5" |
-| Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works | |
-| Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works | |
-| Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` |
-| Part 4 | `animation.json` | `simon.animation.v1` | expected | works | |
-| Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs |
-| Part 6 Follow hand-off (framed message, Part 6 `CONTRACT.md` "The hand-off to Part 7") | the same object with `type: "simon:follow"` | none | none | works with an option | same fix; `doctor` names it as the hand-off |
-| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); before 1.4.0 it read `status` before `faults` |
-| Part 5 `analyse --replay <replay.json>` | `replay.json` | `simon.replay.v1` | output for Part 7 | works | optional second file; times are in `expected_t` and `follower_t` |
-| Part 5 `analyse --live` | live mode (`--live`, `serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`) | `simon.analysis.v1` with `phrasing.selected_by` `live` | option for Part 7 | works with an option | needs the Baseten key file on the host; the template stays the default for tests and `make check-5` |
-| Part 5 | `part5 analyse` exit code | 0 analysis written (with or without warnings), 1 unreadable or invalid input file or write error, 2 usage; 3 is no longer used (ADR-0012) | for Part 7 | works with a mapping | Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the contract (Part 3 `CONTRACT.md`, row for Part 7): 0 is "written" (read `warnings`), 1 and 2 are failures |
-| Part 5 | `labels.json` | none | evaluation | works | |
+| Producer | File | `format` | Part 5 role | Verdict | Fix | Checked against |
+|---|---|---|---|---|---|---|
+| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input (exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with "run Part 3 --view part5" | Part 2 2e06d58 |
+| Part 2 foot points | `pose3d.json` with `extra_joints` | `part2.pose3d/2026-10-28` (Part 2 CONTRACT.md "Extra joints (optional)") | optional feet side input (`--expected-feet`, `--follower-feet`) | works with an option | pass the trainer's and the follower's own Part 2 `pose3d.json` beside the Part 3 `skeleton.json` (Part 3 does not carry `extra_joints`); a file without them is accepted and the foot measures are hidden, with the reason in `diagnostics.feet`; `doctor` accepts it with a note | Part 2 e8ac336 |
+| Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works |  | Part 3 fd96379 |
+| Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works |  | Part 3 fd96379 |
+| Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` | Part 3 fd96379 |
+| Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 dc3d9f2 |
+| Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
+| Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
+| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.7.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, `profile`) are all optional; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its `profile` | Part 5 (this repo) |
+| Part 5 `analyse --replay <replay.json>` | `replay.json` | `simon.replay.v1` | output for Part 7 | works | optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>` | Part 5 (this repo) |
+| Part 5 `analyse --live` | live mode (`--live`, `serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`) | `simon.analysis.v1` with `phrasing.selected_by` `live` | option for Part 7 | works with an option | needs the Baseten key file on the host that runs Part 5; without it each fault keeps its timed template line (`fallback_reason: "no key"`); the template stays the default for tests and `make check-5` | Part 5 (this repo) |
+| Part 5 `analyse --profile` | analysis profile (`--profile {dance,rehab,fitness}`, API field `profile`) | `simon.analysis.v1` 1.7.0 with `profile` | option for Part 7 | works with an option | pass the operator's mode as `--profile` or as the `profile` field of `POST api/analyse`; probe `part5 analyse --help` for `--profile` before relying on it; omitted means `fitness`, the analysis as it was; every document names its `profile`, and a score is read within one profile (a dance 84 and a fitness 84 differ) | Part 5 (this repo) |
+| Part 5 | `part5 analyse` exit code | 0 analysis written (with or without warnings), 1 unreadable or invalid input file or write error, 2 usage; 3 is no longer used (ADR-0012) | for Part 7 | works with a mapping | Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the contract (Part 3 CONTRACT.md, row for Part 7): 0 is "written" (read `warnings`), 1 and 2 are failures; 3 is no longer produced | Part 7 90aa473 (as Part 3 CONTRACT.md records it) |
+| Part 5 | `labels.json` | none | evaluation | works |  | Part 5 (this repo) |
 
-Each row also names the producer's commit it was checked against (filled by TICKET-009 from
-`contracts/sources.lock.json` and the neighbour check; never typed from memory).
+The last column is the producer commit each row was checked against (from `contracts/sources.lock.json` and the
+neighbour check; never typed from memory).
 
 ## API / Interface Contract
 ```
@@ -78,7 +81,7 @@ make check-5-contract        # uv run python -m part5.contract --check
   verbatim (for any JSON Schema validator); `--json` prints `{schemas: [...], table: [...]}`. Exit 0;
   an unknown schema name exits 2 naming the valid names.
 - `doctor` reads one file, names its kind and version (`simon.animation.v1`, `simon.skeleton.v1`,
-  `simon.skeleton/1 (Part 3 native)`, `simon:follow v1 hand-off (Part 6)` (event detail or framed message), `part2.pose3d (Part 2)`, `simon.analysis.v1 1.5.0`,
+  `simon.skeleton/1 (Part 3 native)`, `simon:follow v1 hand-off (Part 6)` (event detail or framed message), `part2.pose3d (Part 2)`, `simon.analysis.v1 1.7.0`,
   `simon.replay.v1 1.0.0`, `labels`), validates it against the matching schema and, for `--for part5` (default), loads it through
   `part5.io`. Output: one verdict line, then one line per problem: field path, what is wrong, the option
   that fixes it. `--for part7` checks an `analysis.json` for Part 7, warns when `status.code` is not `ok` or the take
@@ -192,6 +195,15 @@ Kept: the schema is what other parts can run without Python; the loader is what 
 ### Concern 2: versioning an additive change as 1.1.0 while `format` stays `simon.analysis.v1`
 Kept: a format string change would break every v1 reader for fields they may ignore; the schema
 version tells a careful reader what to expect.
+
+## Amendments
+- 2026-10-31 (TICKET-042, `docs/design/specs/profiles.md`): the analysis schema is `1.7.0` (`profile`, always written, optional
+  in the schema) and the metrics schema `1.3.0` (`profiles_sha256`); the table has a row "Part 5 `analyse --profile`" and
+  the analysis row names `profile`; `part5 doctor --for part7` notes the profile ("scores compare within one profile",
+  or "read it as fitness" for a document before `1.7.0`); `CONTRACT.md` carries the same rows and a Part 7 duty.
+- 2026-10-31 (final QA): the two tables above are the ones `part5 contract` prints: seven schemas (`input-feet` added),
+  the rows "Part 2 foot points" and "Part 5 `analyse --profile`", the current `--replay` and `--live` rows and the
+  "Checked against" column.
 
 ## Deviations from PRD
 None.

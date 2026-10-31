@@ -184,5 +184,12 @@ Kept: `refused` is printed per slice, so a recall drop caused by refusals is vis
 ### Concern 2: one document mixes gate and report
 Kept: one command, one JSON is what #14 asked for; `gated: false` marks every report block.
 
+## Amendments
+- 2026-10-31 (TICKET-042, `docs/design/specs/profiles.md`): `make check-5` runs the `fitness` profile only (no profile named,
+  the rules unchanged) and prints `profiles_sha256`, the hash of `part5/profiles.json`, for information at the end of
+  the document; it never reads the profiles file's contents and never calls the per-profile report. A missing
+  `part5/profiles.json` is exit 2 (`check-5: part5/profiles.json not found`). The gate, `rules_sha256`,
+  `detection_sha256` and the recorded attempts are as they were.
+
 ## Deviations from PRD
 None.

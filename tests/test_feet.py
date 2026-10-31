@@ -409,6 +409,43 @@ def test_ac_foot_10_a_text_id_is_named_in_the_ids_present_message(tmp_path):
         load(path, person=1)
 
 
+def people_with_ids(tmp_path, ids):
+    doc = doc_of()
+    doc["frames"][0]["people"] = [{"id": i, "joints": {}} for i in ids]
+    return write(tmp_path, doc)
+
+
+def test_ac_foot_10_many_ids_are_listed_by_a_short_head_and_a_count(tmp_path):
+    path = people_with_ids(tmp_path, range(1000))
+    with pytest.raises(InputError) as e:
+        load(path, person=5000)
+    assert str(e.value) == f"{path}: person 5000 is in no frame (ids present: [0, 1, 2, 3, 4, 5, 6, 7] and 992 more (1000 in all))"
+    exactly = people_with_ids(tmp_path, range(feet.MAX_IDS_SHOWN))   # at the limit: listed whole, no count
+    with pytest.raises(InputError) as e:
+        load(exactly, person=5000)
+    assert str(e.value).endswith("(ids present: [0, 1, 2, 3, 4, 5, 6, 7])")
+
+
+def test_ac_foot_10_a_long_text_id_and_a_huge_id_list_stay_one_short_line(tmp_path):
+    path = people_with_ids(tmp_path, ["x" * 10_000, *range(100_000)])
+    with pytest.raises(InputError) as e:
+        load(path, person=-1)
+    assert len(str(e.value)) < 300 and str(e.value).endswith("[0, 1, 2, 3, 4, 5, 6, 7] and 99993 more (100001 in all))")
+    only_text = people_with_ids(tmp_path, ["y" * 10_000])
+    with pytest.raises(InputError) as e:
+        load(only_text, person=-1)
+    assert len(str(e.value)) < 200 and "'" + "y" * 36 + "..." in str(e.value)
+
+
+def test_ac_foot_09_a_file_nested_too_deeply_is_an_input_error_not_a_traceback(tmp_path):
+    deep = tmp_path / "deep.json"
+    deep.write_text("[" * 100_000 + "]" * 100_000)
+    for read in (load, feet.check_file):
+        with pytest.raises(InputError) as e:
+            read(deep)
+        assert str(e.value) == f"{deep}: cannot read JSON (nested too deeply)"
+
+
 def test_ac_foot_10_a_person_present_in_some_frames_only_still_loads(tmp_path):
     doc = doc_of()
     del doc["frames"][2]["people"][1]
@@ -429,7 +466,7 @@ def test_ac_foot_11_no_feet_file_changes_nothing_but_the_version(plain):
     again = run(str(EXPECTED), str(TAKE), score=score_block, expected_feet=None, follower_feet=None)
     assert again.analysis == plain.analysis
     assert "feet" not in plain.analysis["diagnostics"]
-    assert plain.analysis["schema_version"] == "1.6.0"
+    assert plain.analysis["schema_version"] == "1.7.0"
     assert foot_faults(plain.analysis) == []
 
 
@@ -448,7 +485,7 @@ def test_ac_foot_11_the_follower_alone_having_feet_hides_the_measures_with_the_r
     assert info["compared"] == [] and info["hidden_reason"] == "no expected feet file was given"
     assert info["expected"] == {"source": None, "person": 0, "frames_matched": 0, "usable": []}
     assert info["follower"]["usable"] == FOUR and info["follower"]["frames_matched"] > 0
-    assert foot_faults(a) == [] and a["schema_version"] == "1.6.0"
+    assert foot_faults(a) == [] and a["schema_version"] == "1.7.0"
 
 
 def test_ac_foot_11_a_file_without_extra_joints_is_not_an_error_and_says_why(tmp_path):

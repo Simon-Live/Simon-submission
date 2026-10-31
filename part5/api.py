@@ -7,8 +7,11 @@ written. `part5.server` is the thin HTTP layer around this module.
 Endpoints, relative to the base path (docs/specs/staging.md):
     GET  api/health    {ok, version}
     GET  api/samples   the expected clips and labelled takes on offer, the wordings offered and this
-                       server's default wording (`phrasing_default`, one of the offered; the page preselects it)
-    POST api/analyse   {expected, follower, phrasing} -> {analysis, replay}
+                       server's default wording (`phrasing_default`, one of the offered; the page preselects it),
+                       and the analysis profiles (`profiles`, in file order, and `profile_default`, ADR-0016;
+                       both left out when part5/profiles.json will not load)
+    POST api/analyse   {expected, follower, phrasing, profile} -> {analysis, replay}; `profile` is optional and
+                       omitted or null means fitness; a name that is not in part5/profiles.json is a 400
     GET  api/contract  what `part5 contract --json` prints (schemas and compatibility table)
     GET  api/real-takes the real-take report (part5.real), built on first use and kept for the process
 
@@ -28,7 +31,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__, contract
+from . import __version__, contract, profiles
 from .io import InputError
 from .phrasing import BACKENDS, TEMPLATE, select_backend
 from .phrasing.muse_spark import NAME as MUSE_SPARK
@@ -209,12 +212,23 @@ def default_phrasing(offered=None):
     return chosen if chosen in offered else TEMPLATE
 
 
+def _profile_listing():
+    """`profiles` (the modes, in file order) and `profile_default` for api/samples. A profiles file that will not load
+    lists neither, as a server that does not know modes does (the page then shows no mode select, AC-V21), and the
+    samples still list; an analyse request then fails as a server fault (`_profile_of`)."""
+    try:
+        doc = profiles.load()
+    except profiles.ProfileError:
+        return {}
+    return {"profiles": profiles.names(doc), "profile_default": profiles.default(doc)}
+
+
 def _samples_listing():
     t = table()
     offered = offered_phrasing()
     return {"expected": [s.listing for s in t.expected.values()],
             "followers": [s.listing for s in t.follower.values()],
-            "phrasing": offered, "phrasing_default": default_phrasing(offered)}
+            "phrasing": offered, "phrasing_default": default_phrasing(offered), **_profile_listing()}
 
 
 # ----------------------------------------------------------------------------- responses
@@ -299,9 +313,24 @@ def _field_of(message, fields_by_path):
 
 # ----------------------------------------------------------------------------- analysis
 
-def _analysis(expected, follower, phrasing, selected_by=None):
-    result = run(expected, follower, phrasing=phrasing, score=score_block, selected_by=selected_by)
+def _analysis(expected, follower, phrasing, selected_by=None, profile=None):
+    result = run(expected, follower, phrasing=phrasing, score=score_block, selected_by=selected_by, profile=profile)
     return {"analysis": result.analysis, "replay": build_replay(result)}
+
+
+def _profile_of(request):
+    """The profile a request names (ADR-0016): the default (fitness) when the field is omitted or null, else one of the
+    names in part5/profiles.json. Anything else, a wrong case, empty text, a number or a list, is a 400 naming the
+    field, before any file is read. A profiles file that will not load is not the visitor's fault: it raises
+    `profiles.ProfileError`, which `handle` answers as a 500."""
+    doc = profiles.load()
+    value = request.get("profile")
+    if value is None:
+        return profiles.default(doc)
+    try:
+        return profiles.require(value, doc)
+    except profiles.ProfileError as e:
+        raise ApiError(400, "profile", str(e)) from None
 
 
 def _in_worker(fn, *args):
@@ -401,6 +430,7 @@ def _analyse(body, client):
     if len(body) > MAX_BODY_BYTES:
         raise ApiError(413, "upload", too_large_message("upload"))
     request = _read_request(body)
+    profile = _profile_of(request)
     large = len(body) > MAX_UPLOAD_BYTES
     expected, expected_field = _resolve("expected", request.get("expected"), large)
     follower, follower_field = _resolve("follower", request.get("follower"), large)
@@ -415,7 +445,7 @@ def _analyse(body, client):
     limited = _MUSE_LIMIT.slot(client) if phrasing == MUSE_SPARK and phrasing in offered else contextlib.nullcontext()
     try:
         with limited:
-            return _respond(200, _in_worker(_analysis, expected, follower, phrasing, selected_by))
+            return _respond(200, _in_worker(_analysis, expected, follower, phrasing, selected_by, profile))
     except (InputError, AnalysisError) as e:
         message = _plain(e)
         fields = {expected["path"]: expected_field, follower["path"]: follower_field}

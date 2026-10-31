@@ -198,6 +198,11 @@ FAILURES = [
     ("wrong direction", reply("right knee bent more than the example"), "muse-spark: wrong direction"),
     ("extra fault", reply("right knee not bent enough and head forward"),
      "muse-spark: adds another body part (head)"),
+    ("praise", reply("right knee not bent enough, nice effort"), "muse-spark: adds praise"),   # AC-P09: untimed too
+    ("hyphenated praise", reply("right knee not bent enough, nice-effort"), "muse-spark: adds praise"),
+    ("zero-width praise", reply("right knee not bent enough, nice\N{ZERO WIDTH SPACE}effort"),
+     "muse-spark: adds praise"),
+    ("you are doing great", reply("right knee not bent enough. You're doing great!"), "muse-spark: adds praise"),
 ]
 
 

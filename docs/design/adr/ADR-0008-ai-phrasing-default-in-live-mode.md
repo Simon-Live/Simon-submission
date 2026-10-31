@@ -68,6 +68,26 @@ the default backend is `muse-spark`, and an explicit `--phrasing` always wins. `
   the API records for a request that names none. Verify, the walkthrough and every recipe that does not test
   wording choose Template explicitly, so none of them makes a live call (viewer.md AC-V19).
 
+- **No praise in a fault line (2026-10-31, delivery review residual R2)**: live Muse Spark wrote "Your knees are not
+  bent enough at 1.4 s, nice effort." (QA runs 20261031T070638Z, 093546Z and 170636Z; a blind auditor), because the timed
+  prompt offered "Nice effort" and "almost there" as examples. Stakeholder-proxy ruling, confidence medium, verbatim:
+  "R2 fixed now; the timed prompt is rewritten through the writer skill with no praise in a fault line, the timed
+  validator rejects praise phrases and falls back to the template line, proven by tests, a 20-line live re-review and a
+  re-drive of uc-timed-coaching." Done: the prompt names no praise phrase and asks for none (an ending such as "keep
+  going" is allowed); the timed validator rejects `template.PRAISE_PHRASES` (word-bounded, any case) with the reason
+  `muse-spark: adds praise`, and the fault falls back to `text_timed`. `fallback_reason` is a free string in the schema,
+  so the schema is unchanged. This only makes the validator stricter. The untimed test is unchanged. Measured in
+  `docs/phrasing-review.md` ("Re-review 2026-10-31").
+- **The praise check also guards the untimed line, and the list is wider (2026-10-31, review residuals)**: the
+  independent review of the R2 fix found that the untimed validator had no praise check, so a live fault line without a
+  time that praised would pass, and that common forms went through ("nice try", "great start", "looking good",
+  "excellent work", "solid effort", "you're doing great", "you are doing great", a hyphenated "nice-effort", a
+  zero-width character between the words). Done: `template.line_problem` runs the same praise check on both paths, so an
+  untimed praised line falls back with `<backend>: adds praise`; the list holds those forms; the words of a phrase may be
+  joined by spaces or hyphens; zero-width characters (U+200B, U+200C, U+200D, U+2060, U+FEFF) are ignored, as removed
+  and as a space. This supersedes "The untimed test is unchanged" above for praise only. Still stricter only: a line
+  that failed before fails now, and one that fails now falls back to the template line.
+
 ## Consequences
 - **Positive**: users read friendly, timed lines; a wrong fact still cannot pass.
 - **Negative**: live analyses take longer (up to 20 s) and cost tokens; the landmark list is a judgement.

@@ -6,17 +6,19 @@ through unchanged: no seed 5 take is ever compared rep by rep.
 """
 import copy
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import jsonschema
 import numpy as np
 import pytest
 
-from part5 import reps, repwise
-from part5.detect import Fault
+from part5 import pipeline, profiles, profiles_report, reps, repwise
+from part5.detect import Fault, load_rules
 from part5.pipeline import run
 from part5.replay import build_replay
 from part5.score_report import score_block
+from part5.visibility import measures_of
 
 ROOT = Path(__file__).resolve().parent.parent
 LATERAL = ROOT / "fixtures/input/real/lateral-raise"
@@ -151,7 +153,7 @@ def slow():
 def test_real_lateral_raise_followers_are_accepted_rep_by_rep(which, n_reps, request):
     a = request.getfixturevalue(which).analysis
     jsonschema.Draft202012Validator(SCHEMA).validate(a)
-    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.6.0"
+    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.7.0"
     guard = a["diagnostics"]["guard"]
     assert len(guard["reps"]) == n_reps and all(r["ok"] for r in guard["reps"])
     for r in guard["reps"]:   # the frozen limits, the numbers of the diagnosis
@@ -200,6 +202,95 @@ def test_the_replay_tiles_the_expected_rep_against_the_whole_follower_take(fast)
     assert r["exp_to_fol"][0] < r["exp_to_fol"][n] < r["exp_to_fol"][-1]   # the follower moves on
 
 
+# --- a profile in rep mode never reports a take-level fault that fitness does not (ADR-0016, AC-PROF-05) ---
+def side_fault(side, measure="thigh_out", direction="more"):
+    return replace(fault(measure), side=side, direction=direction, joint=f"{side}_hip")
+
+
+def profile_rep(index, faults, fitness_faults):
+    return repwise.RepResult(index, (0, 1), True, None, None, None, None, None, faults, fitness_faults=fitness_faults)
+
+
+def test_the_reviewers_split_is_dropped_because_fitness_does_not_report_it():
+    """4 reps. fitness: left in rep 0, both in rep 1, so neither is in half the reps and the take reports nothing.
+    rehab splits rep 1 into left: left is then in 2 of 4 and passes the half rule on its own, which fitness never did."""
+    reps4 = [profile_rep(0, [side_fault("left")], [side_fault("left")]),
+             profile_rep(1, [side_fault("left")], [side_fault("both")]),
+             profile_rep(2, [], []), profile_rep(3, [], [])]
+    assert repwise.aggregate_faults(reps4, "fitness_faults") == []
+    kept = repwise.aggregate_faults(reps4)
+    assert [(f.measure, f.side) for f, _, _ in kept] == [("thigh_out", "left")]   # the gap: the profile alone keeps it
+    assert repwise.only_what_fitness_reports(kept, reps4) == []
+
+
+def test_a_fault_fitness_reports_on_both_sides_may_stay_on_one_side_under_a_profile():
+    reps4 = [profile_rep(i, [side_fault("left")], [side_fault("both")]) for i in range(2)] + \
+            [profile_rep(2, [], []), profile_rep(3, [], [])]
+    kept = repwise.only_what_fitness_reports(repwise.aggregate_faults(reps4), reps4)
+    assert [(f.measure, f.side) for f, _, _ in kept] == [("thigh_out", "left")] and kept[0][1] == [0, 1]
+    other = [profile_rep(i, [side_fault("left")], [side_fault("right")]) for i in range(2)]
+    assert repwise.only_what_fitness_reports(repwise.aggregate_faults(other), other) == []   # the other side is not covered
+    wrong_way = [profile_rep(i, [side_fault("left", direction="less")], [side_fault("left")]) for i in range(2)]
+    assert repwise.only_what_fitness_reports(repwise.aggregate_faults(wrong_way), wrong_way) == []
+
+
+def compare_under(res, rules):
+    return repwise.compare(res.expected, res.follower, measures_of(res.expected.positions, res.vis),
+                           res.follower_positions, res.to_original, pipeline.clip_fps(res.expected), rules,
+                           pipeline._fault_times, res.vis)
+
+
+def script_detect(monkeypatch, profile_sides, fitness_sides):
+    """`repwise.detect` answering, rep by rep, with these sides: one list for the profile's rules, one for fitness's."""
+    calls = {"profile": 0, "fitness": 0}
+
+    def scripted(ref_m, fol_m, alignment, rules):
+        kind = "profile" if "profile" in rules else "fitness"
+        i, calls[kind] = calls[kind], calls[kind] + 1
+        return [side_fault(side) for side in (profile_sides if kind == "profile" else fitness_sides)[i]]
+
+    monkeypatch.setattr(repwise, "detect", scripted)
+    return calls
+
+
+def test_compare_under_a_profile_drops_the_split_fitness_does_not_report(fast, monkeypatch):
+    """The same split through `compare` on the real 8-rep take: fitness left, left, both, both (2 of 8 each, nothing
+    reported), rehab left in the first four (4 of 8, enough on its own)."""
+    rules = profiles.effective_rules(load_rules(), "rehab")
+    calls = script_detect(monkeypatch, [["left"]] * 4 + [[]] * 4, [["left"]] * 2 + [["both"]] * 2 + [[]] * 4)
+    run_ = compare_under(fast, rules)
+    assert calls == {"profile": 8, "fitness": 8} and run_.guard.ok and len(run_.reps) == 8
+    assert run_.faults == [] and run_.times == []
+    assert all(r.analysis["faults"] == [] and r.analysis["status"]["code"] == "ok" for r in run_.reps)
+
+
+def test_compare_under_a_profile_keeps_a_fault_fitness_reports(fast, monkeypatch):
+    rules = profiles.effective_rules(load_rules(), "rehab")
+    script_detect(monkeypatch, [["left"]] * 4 + [[]] * 4, [["both"]] * 4 + [[]] * 4)
+    run_ = compare_under(fast, rules)
+    assert [(f.measure, f.side) for f in run_.faults] == [("thigh_out", "left")] and run_.times[0]["reps"] == [0, 1, 2, 3]
+    assert [len(r.analysis["faults"]) for r in run_.reps] == [1, 1, 1, 1, 0, 0, 0, 0]
+
+
+def test_compare_under_fitness_is_untouched_and_runs_no_second_detection(fast, monkeypatch):
+    calls = script_detect(monkeypatch, [], [["left"]] * 4 + [[]] * 4)
+    run_ = compare_under(fast, load_rules())
+    assert calls == {"profile": 0, "fitness": 8}   # the plain rules are the fitness rules: one detect per rep
+    assert [(f.measure, f.side) for f in run_.faults] == [("thigh_out", "left")]   # 4 of 8 reps, as before
+    assert all(r.fitness_faults == [] for r in run_.reps)
+
+
+@pytest.mark.parametrize("which", ["fast", "slow"])
+@pytest.mark.parametrize("name", ["dance", "rehab"])
+def test_real_rep_takes_under_a_profile_report_only_what_fitness_reports(which, name, request):
+    base = request.getfixturevalue(which)
+    under = run(str(TRAINER), str(FAST if which == "fast" else SLOW), profile=name)
+    assert under.analysis["profile"] == name and under.reps
+    assert profiles_report.uncovered(under.analysis["faults"], base.analysis["faults"]) == []
+    if not base.analysis["faults"]:
+        assert under.analysis["faults"] == []
+
+
 # --- tempo: faster than the whole-clip band can follow, and slower ---
 def retimed(path, speed):
     """The clip played `speed` times faster: every frame time divided by it."""
@@ -233,7 +324,7 @@ def test_the_fast_and_the_slow_follower_agree_with_the_trainer_on_the_verdict(fa
 # --- different movements are analysed with a low_match warning and grade F (ADR-0012) ---
 def low_match(a):
     return a["status"]["code"] == "ok" and [w["code"] for w in a["warnings"]] == ["low_match"] \
-        and a["match"]["quality"] == "low" and a["schema_version"] == "1.6.0"
+        and a["match"]["quality"] == "low" and a["schema_version"] == "1.7.0"
 
 
 @pytest.mark.parametrize("name", ["part2-dance", "part2-class", "part2-single", "part2-stretch"])
@@ -263,6 +354,6 @@ def test_no_seed5_take_is_compared_rep_by_rep_and_its_document_has_no_rep_fields
     for take in SEED5["takes"]:
         r = run(str(ROOT / take["expected"]), {"path": str(ROOT / take["follower"]), "take_id": take["take_id"]})
         assert r.reps is None, take["take_id"]
-        assert r.analysis["schema_version"] == "1.6.0", take["take_id"]
+        assert r.analysis["schema_version"] == "1.7.0", take["take_id"]
         assert "reps" not in r.analysis["diagnostics"]["guard"] and "expected_reference" not in r.analysis["diagnostics"]
         assert all("reps" not in f for f in r.analysis["faults"])

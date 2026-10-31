@@ -54,6 +54,11 @@
             </div>
           </div>
         </div>
+        <div class="field profile" id="profile-field" data-testid="profile-field" hidden>
+          <label for="profile">Mode</label>
+          <select id="profile" data-testid="profile" aria-describedby="profile-hint" disabled></select>
+          <p class="hint" id="profile-hint" data-testid="profile-hint">The mode sets how much leeway the comparison allows. A score is only comparable with scores from the same mode.</p>
+        </div>
         <div class="field phrasing">
           <label for="phrasing">Wording of the faults</label>
           <select id="phrasing" data-testid="phrasing" aria-describedby="phrasing-hint phrasing-error" disabled></select>
@@ -70,6 +75,7 @@
         <p id="result-status" role="status" data-testid="result-status">Results appear here after you press Analyse.</p>
         <p id="score" class="score" data-testid="score" hidden></p>
         <p id="score-note" class="hint" data-testid="score-note" hidden></p>
+        <p id="profile-note" class="hint" data-testid="profile-note" hidden></p>
         <div id="warning-panel" class="warning" data-testid="warning-panel" role="group" aria-labelledby="warning-heading" hidden>
           <h3 id="warning-heading">Before you trust this result</h3>
           <ul id="warning-list" data-testid="warning-list"></ul>

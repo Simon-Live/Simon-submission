@@ -141,7 +141,8 @@ sole's side of the foot plane (toes swapped, or a foot rolled 90 degrees or more
   mode"); so does a take that could not be aligned.
 - **`diagnostics.feet`** is `{expected, follower, compared, hidden_reason}`, present exactly when a feet file was
   given for either clip. `expected` and `follower` are `{source, person, frames_matched, usable}` (`source` is the
-  path or null, `frames_matched` how many of the clip's frames took a side frame, `usable` the measures seen in 80% of
+  path as given (in `report-real` the path as the label or the take folder names it, relative to the report root for every
+  committed label and folder, real-takes.md AC-R08) or null, `frames_matched` how many of the clip's frames took a side frame, `usable` the measures seen in 80% of
   them). `compared` lists the measures the pair was compared on. `hidden_reason` is null when any was compared, and
   otherwise plain words: `no expected feet file was given`, `the follower feet file has no extra_joints (no foot
   points)`, `no foot measure is seen in 80% of the follower frames`, `no foot measure is usable in both clips`,
@@ -478,10 +479,10 @@ Wiring (`tests/test_feet.py` for AC-FOOT-09 to 11, `tests/test_feet_faults.py` f
 ## Error Cases
 | Condition | Behavior | Message | AC |
 |---|---|---|---|
-| The feet file cannot be read or is not JSON | `InputError`, exit 1, nothing written | `<file>: cannot read JSON (...)` | AC-FOOT-09, 17 |
+| The feet file cannot be read, is not JSON, or is nested too deeply to parse | `InputError`, exit 1, nothing written, no traceback (`io.read_json`, which the clip and `--expected-visibility` readers share) | `<file>: cannot read JSON (...)`, `(nested too deeply)` for the last | AC-FOOT-09, 17 |
 | Not a Part 2 pose3d.json (no `frames`, a frame without numeric `t_ms` or a `people` list, a `people` entry that is not an object, `t0_pts_ms` or `mirrored` of the wrong type) | same | `<file>: not a Part 2 pose3d.json (...)`, `<file>: frames[i].t_ms must be a number, got ...`, `<file>: frames[i].people[j] must be an object, got int` | AC-FOOT-09 |
 | A point is not an object, or a coordinate or `conf` is text | same | `<file>: frames[i].people[id N].extra_joints.<name>.x must be a number or null, got ...` | AC-FOOT-09 |
-| The person id is in no frame | same | `<file>: person N is in no frame (ids present: [...])` | AC-FOOT-10 |
+| The person id is in no frame | same | `<file>: person N is in no frame (ids present: [...])`; past 8 ids the list is the first 8 and `and K more (T in all)`, an id longer than 40 characters is cut | AC-FOOT-10 |
 | No clip frame matches a frame of the file in time | same | `<file>: no frame of the <expected or follower> clip matches a frame of this file in time (file a to b s, clip c to d s)` | AC-FOOT-10 |
 | A feet file for one clip only, or a file with no `extra_joints` | analysed; the foot measures are hidden; `diagnostics.feet` says so | none | AC-FOOT-11 |
 | Every foot point under `FOOT_MIN_CONF` | the file counts as having points but no usable measure | none | AC-FOOT-09, 11 |

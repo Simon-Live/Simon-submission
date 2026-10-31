@@ -336,6 +336,16 @@ def _for_part7(r, doc):
     _time_notes(r, doc)
     _score_notes(r, doc)
     _feet_notes(r, doc)
+    _profile_notes(r, doc)
+
+
+def _profile_notes(r, doc):
+    """1.7.0 (ADR-0016): the analysis profile. A score is only comparable inside one profile; a document before 1.7.0
+    names none (validate_analysis rejects a 1.7.0 document that lacks it, so it never gets here)."""
+    if "profile" in doc:
+        r.notes.append(f"profile {doc['profile']}: scores compare within one profile")
+    else:
+        r.notes.append("no profile (written before 1.7.0): read it as fitness")
 
 
 def _time_notes(r, doc):

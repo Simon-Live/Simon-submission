@@ -51,10 +51,11 @@ make check-5           # done-check
 
 | Command | What it does | Exit |
 |---|---|---|
-| `make check-5` | Analyses every labelled take and prints the `simon.part5.check.v1` metrics JSON on stdout, a summary on stderr. Gates the held-out good-light slices; reports seed 5, low light, dropout and real takes. | 0 gate passed, 1 gate failed, 2 a take or set is missing, the held-out seed has no freeze record, `rules.json` differs from the frozen hash, the `score` params in `rules.json` differ from the hash frozen in `fixtures/score-heldout.json`, or a scored seed scores differently from its recorded attempt |
+| `make check-5` | Analyses every labelled take and prints the `simon.part5.check.v1` metrics JSON on stdout, a summary on stderr. Gates the held-out good-light slices; reports seed 5, low light, dropout and real takes. Runs the `fitness` profile only and prints `profiles_sha256` (the hash of `part5/profiles.json`) for information. | 0 gate passed, 1 gate failed, 2 a take or set is missing, `part5/profiles.json` is missing, the held-out seed has no freeze record, `rules.json` differs from the frozen hash, the `score` params in `rules.json` differ from the hash frozen in `fixtures/score-heldout.json`, or a scored seed scores differently from its recorded attempt |
 | `make test` | Unit tests. | 0 |
 | `make check-5-contract` | Validates every schema and committed fixture, and rebuilds the shipped `fixtures/output/analysis*.json` byte for byte. | 0 |
 | `make report-real` | Real takes, reported and never gated: Part 3's kit against Part 4's `part3-squat`, and Part 2's takes. Writes `out/report-real/report.json`. | 0 when every real take was analysed |
+| `make report-profiles` | Per-profile precision, recall and grades on the seed 5 tuning set (`dance`, `rehab`, `fitness`), reported as measured and never gated; a held-out set is refused (exit 2). Writes `out/report-profiles/report.json`. | 0 |
 | `make demo` | The replay page on http://127.0.0.1:8735/ (foreground). | |
 | `make dummy-data` | Regenerates the seed 5 set in `fixtures/input/followers/`. | 0 |
 | `make heldout-data SEED=<n>` | Writes a held-out set to `fixtures/input/heldout/`. Only seeds 29, 31 and 37, each once, under the protocol in `docs/thresholds.md`. | 0; 2 without a held-out seed |
@@ -66,7 +67,8 @@ make check-5           # done-check
 ```bash
 uv run part5 analyse --expected fixtures/input/expected/exercise/animation.json \
   --follower fixtures/input/followers/exercise/<take_id>/skeleton.json --out out/analysis.json \
-  [--phrasing template|local-llm|muse-spark]
+  [--phrasing template|local-llm|muse-spark] [--profile dance|rehab|fitness] \
+  [--expected-feet pose3d.json --follower-feet pose3d.json]
 uv run python -m part5 contract [--schema <name>] [--json]       # schemas and compatibility table
 uv run python -m part5 doctor <file> [--for part5|part7] [--json] # is this file accepted, and the fix
 uv run python -m part5 serve [--port 8725] [--base-path /]       # the web page and the analysis API

@@ -4,11 +4,24 @@ For each measure, diff[i] = follower(matched frame) − expected(frame i), media
 single-frame spikes. A fault is every run of at least `min_run_frames` frames where the diff stays
 past the measure's threshold in one direction, if those runs together cover at least
 `min_fraction` of the expected clip (floor `min_frames_floor`). The longest run is the fault's
-frames; `runs` lists them all (#30). Then:
+frames (a profile's fault: see below); `runs` lists them all (#30). Then:
 - faults that follow from a kept fault (rules["explained_by"], same direction, or
   rules["explained_by_opposite"], the other direction: a knee caving in pulls the thigh in) are dropped;
-- the same measure and direction on both sides, with overlapping frames, merges into side "both".
+- the same measure and direction on both sides, with overlapping frames, merges into side "both"; its frames are the
+  span from the earlier start to the later end of the two sides' reported runs, so a merged fault's frames can span
+  several of its `runs` instead of being one of them.
 Both steps need the faults to share at least `min_overlap` of the shorter one's frames.
+
+With profile rules (ADR-0016, `profiles.effective_rules`) each fault is built twice, at the baseline (fitness) config
+and at the profile's looser one: explanation is judged on the baseline faults, and each survivor is replaced by its
+profile counterpart or dropped when the looser config no longer finds it. A profile therefore reports no fault that
+fitness does not, in one detection (a fault fitness reports on both sides may stay on one side). Before any merge,
+the frames of a profile fault on one side are the one of its own counted runs that shares the most frames with the
+run fitness reports for the same measure, side and direction: a mode names the moment fitness names. Equal overlap is
+broken by the longest run, then by the earliest. When no run shares a frame with the fitness run, the longest run
+(the earliest on a tie) is reported, as for fitness. A take compared
+repetition by repetition runs one detection per rep, and `repwise.compare` then keeps only the take-level faults
+that fitness reports for the take too.
 
 The foot measures (ADR-0015, `measures.FOOT_MEASURES`) are visited only when both measure dicts carry them, which
 the pipeline arranges for a pair with usable feet on both sides, and only when `rules["measures"]` has an entry
@@ -42,12 +55,14 @@ class Fault:
     magnitude_deg: float    # median signed diff over all counted runs (follower − expected)
     peak_deg: float         # largest |diff| in the counted runs, signed
     threshold_deg: float
-    expected_frames: tuple  # inclusive longest run, expected-clip frames
-    follower_frames: tuple  # matched follower frames for that run
+    expected_frames: tuple  # inclusive reported run, expected-clip frames: the longest run (a profile's: see _reported_run)
+    follower_frames: tuple  # matched follower frames for that run (a merged side "both" fault: the span of its sides')
     phase: tuple            # 0..1 of the expected movement
     coverage: float         # fraction of the counted frames with both measures available
     confidence: float       # 0..1, from the margin over the threshold and coverage
-    runs: tuple = ()        # every counted run, inclusive expected-clip frames (the longest is expected_frames)
+    runs: tuple = ()        # every counted run, inclusive expected-clip frames; expected_frames is one of them, except on
+                            # a merged side "both" fault: it spans its two sides' reported runs, e.g. (5, 79) over
+                            # the runs ((5, 30), (40, 79))
 
     def __post_init__(self):
         if not self.runs:
@@ -125,19 +140,30 @@ def detect(exp_m, fol_m, alignment: Alignment, rules=None):
     rules = rules or load_rules()
     diffs = differences(exp_m, fol_m, alignment, rules.get("tolerance_frames", 0))
     n = len(alignment.exp_to_fol)
-    raw = []
+    # ADR-0016: rules from `profiles.effective_rules` carry a `profile` holding the unrelaxed config of each measure.
+    # Plain rules (fitness) have none, `relaxed` stays empty and everything below is what detection did before profiles.
+    profile = rules.get("profile")
+    raw, relaxed = [], {}
     for name, d in diffs.items():
         g, side = generic(name)
         if name in FOOT_MEASURES and g not in rules["measures"]:
             continue   # ADR-0015: a foot measure has no default threshold; without a rules entry it is computed, not reported
         cfg = {**rules["default"], **rules["measures"].get(g, {})}
+        base = cfg if profile is None else profile["baseline"].get(g, cfg)
         sm = _median_filter(d, rules.get("smooth_frames", 1))
         for sign, direction in ((1, "more"), (-1, "less")):
-            fault = _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n)
-            if fault is not None:
-                raw.append(fault)
+            fault = _fault(name, g, side, direction, sign, d, sm, base, alignment, n)
+            if fault is None:
+                continue
+            raw.append(fault)
+            if profile is not None:   # the same fault at the profile's own tolerances; None when it no longer holds
+                # It reports the run that overlaps the fitness fault's reported run most, so a mode keeps the headline moment.
+                relaxed[id(fault)] = _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n,
+                                            fitness_run=fault.expected_frames)
     overlap = rules["default"].get("min_overlap", DEFAULT_MIN_OVERLAP)
     kept = _drop_explained(raw, rules.get("explained_by", {}), overlap, rules.get("explained_by_opposite", {}))
+    if profile is not None:   # explanation was judged at the baseline; what survives is re-tested at the profile's config
+        kept = [r for r in (relaxed[id(f)] for f in kept) if r is not None]
     return _merge_sides(kept, overlap)
 
 
@@ -153,14 +179,30 @@ def _counted_runs(flags, cfg, n):
     return runs if sum(e - s + 1 for s, e in runs) >= min_frames else []
 
 
-def _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n):
+def _reported_run(runs, fitness_run):
+    """The run a fault reports. Fitness (`fitness_run` None): the longest, the earliest on a tie. A profile fault
+    (ADR-0016): the counted run that shares the most frames with the run fitness reports for the same measure, side
+    and direction (the longest, then the earliest, among equals), and the longest rule only when none shares a frame.
+    The looser config trims the runs, so without this a mode could report a different moment than fitness does."""
+    longest = max(runs, key=lambda r: r[1] - r[0])
+    if fitness_run is None:
+        return longest
+
+    def shared(run):
+        return max(0, min(run[1], fitness_run[1]) - max(run[0], fitness_run[0]) + 1)
+
+    best = max(runs, key=lambda r: (shared(r), r[1] - r[0]))
+    return best if shared(best) else longest
+
+
+def _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n, fitness_run=None):
     thr = cfg["threshold_deg"]
     with np.errstate(invalid="ignore"):
         flags = sign * sm > thr
     runs = _counted_runs(flags, cfg, n)
     if not runs:
         return None
-    s, e = max(runs, key=lambda r: r[1] - r[0])  # the longest run, the earliest on a tie
+    s, e = _reported_run(runs, fitness_run)
     vals = np.concatenate([sm[a:b + 1] for a, b in runs])
     mag = float(np.nanmedian(vals))
     peak = float(vals[np.nanargmax(np.abs(vals))])

@@ -46,13 +46,20 @@ class Clip:
         return len(self.t)
 
 
+def read_json(path):
+    """The JSON document at `path`, or an `InputError` naming the file when it is missing or unreadable, is not UTF-8
+    text or not JSON, or is nested too deeply to parse (a `RecursionError` is a bad file, never a traceback)."""
+    try:
+        return json.loads(Path(path).read_text())
+    except RecursionError:
+        raise InputError(f"{path}: cannot read JSON (nested too deeply)") from None
+    except (OSError, ValueError) as e:   # ValueError: bytes that are not UTF-8 and text that is not JSON
+        raise InputError(f"{path}: cannot read JSON ({e})") from e
+
+
 def load_clip(path):
     path = Path(path)
-    try:
-        doc = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as e:
-        raise InputError(f"{path}: cannot read JSON ({e})") from e
-    return parse_clip(doc, source=str(path))
+    return parse_clip(read_json(path), source=str(path))
 
 
 def parse_clip(doc, source="<input>"):

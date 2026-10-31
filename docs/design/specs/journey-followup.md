@@ -67,7 +67,7 @@ As Part 7, I want all of it in versioned files I can validate.
 |---|---|---|
 | `follower_t_s` | `[start_s, end_s]`, numbers | the follower file's own `t` (seconds, as written in the file) at `follower_frames[0]` and `follower_frames[1]`; 3 decimals |
 | `at_s` | number | `follower_t_s[0]` rounded half up to 0.1 s |
-| `follower_runs` | list of `[start, end]`, integers | one entry per `runs` entry, same order: each expected frame `s` and `e` mapped through the alignment (`exp_to_fol`) and then `to_original` to the follower file's frame index; `follower_runs[k]` for the longest run equals `follower_frames` |
+| `follower_runs` | list of `[start, end]`, integers | one entry per `runs` entry, same order: each expected frame `s` and `e` mapped through the alignment (`exp_to_fol`) and then `to_original` to the follower file's frame index; `follower_runs[k]` for the reported run (the longest; under a profile other than fitness, the one `profiles.md` names) equals `follower_frames`; a fault merged to side `both` reports the span of its two sides' runs, so none of its entries need equal `follower_frames` |
 | `text_timed` | string | the timed words line (J-2 vocabulary) plus ` at {at_s:.1f} s`, for example `right foot too far right at 1.9 s` |
 
 `text`, `follower_frames` and every 1.1.0 field keep their meaning and values. A clip whose frames carry no `t`
@@ -166,9 +166,9 @@ Muse Spark through Baseten as today (`part5/phrasing/muse_spark.py`): model `met
 file, `max_tokens` 2048 (at least 512), timeout 10 s per call, stdlib
 `urllib`, usage ledger `~/.simon/baseten_usage.jsonl`. Live calls need the key file and live mode (the live switch
 replaces "`META_LIVE=1` only"). The request carries: measure, body part, joint, side, direction, `lateral`,
-magnitude, threshold, `at_s` formatted to 0.1 s, and `text_timed`; the instruction asks for one friendly coaching
-sentence in plain words that includes the time, as in "Your right foot drifts too far to the right at 1.9 s; keep it
-under your hip".
+magnitude, threshold, `at_s` formatted to 0.1 s, and `text_timed`; the instruction asks for one calm, friendly
+coaching sentence in plain words that includes the time and carries no praise (AC-P09), as in "Your right foot drifts
+too far to the right at 1.9 s; keep it under your hip".
 
 Validator (`part5.phrasing.template.line_problem(fault, line, timed=True)`), all must hold:
 - one line, at most 160 characters;
@@ -178,7 +178,10 @@ Validator (`part5.phrasing.template.line_problem(fault, line, timed=True)`), all
 - the body part is one the measure allows (today's `NAMES`), plus only these landmarks: `foot_out`: hip, shoulder;
   `knee_valgus`: foot, hip; `thigh_out`: foot; `upper_arm_out`: trunk; `forearm_out`: elbow; no other body part;
 - the direction's meaning: today's rules, plus `(too far |to the |toward the )<lateral>` counting as the fault's
-  direction when `lateral` is set, and the other side's word counting as the wrong direction.
+  direction when `lateral` is set, and the other side's word counting as the wrong direction;
+- no praise (AC-P09, 2026-10-31): none of `PRAISE_PHRASES` ("nice effort", "great job", "well done", "good job", "nice
+  work" and the rest of the list), word-bounded and in any case, the words joined by spaces or hyphens, zero-width
+  characters ignored; the reason is `adds praise`. The untimed test holds a line to the same check.
 
 Per fault, a failed check, a timeout, an HTTP error, empty content, the rate limit or the time budget falls back to
 `text_timed`. `coaching` is then `text_timed`; the `template` backend also writes `coaching = text_timed` in 1.2.0.
@@ -261,7 +264,7 @@ when analysed, then `follower_t_s` is [1.9, 3.0] and `at_s` is 1.9; given a foll
 the times are the file's own (6.9, 8.0), not shifted.
 #### AC-T02: every run mapped
 Given a fault with three `runs`, then `follower_runs` has three entries in the same order, each mapped through
-`exp_to_fol` and `to_original`, and the entry of the longest run equals `follower_frames`.
+`exp_to_fol` and `to_original`, and the entry of the reported run (the longest, or under a profile other than fitness the one `profiles.md` names) equals `follower_frames`.
 #### AC-T03: rounding
 Given `follower_t_s[0]` of 1.85 and 1.849, then `at_s` is 1.9 and 1.8 (half up, decimal-safe).
 #### AC-T04: timed text
@@ -345,9 +348,26 @@ the validator verdict, a readability mark and a fact-fidelity mark, the ledger t
 line that passed the validator but misstates a fact opens a ticket.
 #### AC-P08: the timed prompt asks for normal punctuation (TICKET-041)
 Given the system message of the timed prompt (`part5/phrasing/prompt.py`), then it asks for normal punctuation: a comma
-before a closing phrase such as "nice effort" or "keep going", and a full stop at the end (the 2026-10-31 live line
-read "nice effort keep going"). The validator is not touched, so the prompt cannot widen what a line may claim.
-Verification: `tests/test_phrasing_timed.py` (the prompt text only; no live call, the key is never read).
+before a closing phrase such as "keep going", and a full stop at the end (the 2026-10-31 live line
+read "nice effort keep going"). The validator is not touched by this AC, so the prompt cannot widen what a line may
+claim. Verification: `tests/test_phrasing_timed.py` (the prompt text only; no live call, the key is never read).
+#### AC-P09: no praise in a fault line (ADR-0008, R2)
+Given the timed prompt, then it names no praise phrase ("nice effort" and "almost there" are gone) and asks for a line
+with no praise or congratulation at the start or the end; an ending such as "keep going" is allowed. Given a model
+line that holds one of `template.PRAISE_PHRASES` ("nice effort", "great job", "well done", "good job", "nice work",
+"nice try", "great start", "looking good", "excellent work", "solid effort", "you're doing great", "you are doing great"
+and the rest of the list), in any case and any place, with the words of the phrase joined by spaces or hyphens
+("nice-effort") and with or without zero-width characters (U+200B, U+200C, U+200D, U+2060, U+FEFF; one that is the only
+separator of two words reads as a space), then the validator rejects it with the reason `adds praise` on both paths,
+the timed (`timed=True`) and the untimed one, so a live fault line without a time is held to it too. That fault's
+`coaching` is its `text_timed` (timed) or its `text` (untimed), its record names `backend: template`, `model: null` and
+`fallback_reason: "<backend>: adds praise"` (`muse-spark: adds praise`, or `local-llm: adds praise` for the local model;
+a free string in the schema, so the schema is unchanged), and the other faults keep the model's lines. A line without
+praise passes as before: "good form otherwise", "well aligned otherwise" and "keep going" are not praise, and the rest
+of the untimed test is unchanged. Verification: `tests/test_phrasing_timed.py` (the validator on both paths, injected
+client, no live call), `tests/test_phrasing_muse_spark.py` and `tests/test_phrasing_local_llm.py` (an untimed praised
+line falls back with the backend's reason), and the live re-review in `docs/phrasing-review.md` ("Re-review
+2026-10-31"), which is opt-in and never part of `make test`.
 ### J-6 contract
 #### AC-C01: old readers
 Given a 1.2.0 `analysis.json`, then it validates against the 1.1.0 schema at `28d20ef` and loads through the 1.1.0
@@ -378,7 +398,7 @@ Given the publish, then a fresh clone of upstream passes `make test`, `make chec
 |---|---|---|---|
 | Replay path not writable | exit 1; the analysis stays | `part5 analyse: cannot write <path> (<reason>)` | AC-R02 |
 | Live mode without the key file | template with time, per fault | `fallback_reason: "no key"` | AC-P01 |
-| Model line fails the validator | that fault falls back | `"muse-spark: <reason>"` | AC-P03, AC-P04 |
+| Model line fails the validator (praise included: `adds praise`) | that fault falls back | `"muse-spark: <reason>"` | AC-P03, AC-P04, AC-P09 |
 | Timeout, HTTP error, empty content | that fault falls back | unchanged reasons: `"muse-spark: timeout after 10 s"`, `"muse-spark: HTTP <code>"`, `"muse-spark: empty content"` | AC-P04 |
 | Rate limit or budget | that fault falls back | `"rate limited"`, `"time budget spent"` (plain, as the code writes them: they are not a call's failure) | AC-P05 |
 | Detection rules changed after the freeze | `check-5` exit 2 | unchanged freeze message | AC-S06 |

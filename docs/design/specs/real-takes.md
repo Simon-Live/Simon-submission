@@ -169,3 +169,11 @@ line reads `report-real: reps 2 real multi-rep takes: 2 of 2 matched the example
 the tab sentence reads `Multi-rep clips: 2 of 2 matched the example, 10 of 10 repetitions matched it rep by rep.`
 The JSON keys `summary.reps.accepted` and `summary.reps.reps_passed` keep their names and values, and the movement
 guard behind them is unchanged. Verified by `tests/test_real.py` and `staging/verify.mjs`.
+
+### AC-R08: the foot files are named as the label or the take folder names them, from the root
+A take analysed with a `feet.json` beside its clip (or named by its label) carries `feet.expected.source` and
+`feet.follower.source` as the path the label or the take folder names, which is relative to the report root for every
+committed label and folder (`fixtures/input/eval/real/<take_id>/feet.json`), so `report.json` and `make check-5` print
+no path of the checkout. The report echoes the name as given, the same treatment `expected` and `follower` get: a label
+that itself names an absolute feet path would show that absolute path, and no committed label does. `part5 analyse
+--expected-feet` still writes the path it was given. Verified by `tests/test_real_feet.py`.

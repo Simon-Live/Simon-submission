@@ -1,7 +1,7 @@
 """Short imperative coaching cues for faults, misses and tempo (ADR-0014).
 
     cue_for(measure, direction, side) -> (cue, cue_kind)
-    tempo_cue(ratio) -> cue or None
+    tempo_cue(ratio, overrides=None) -> cue or None     (overrides: a profile's tempo cues, ADR-0016)
 
 A cue says what to do, in at most MAX_WORDS words: "Bend your knees more", "Raise your left arm higher".
 It is template text from the fault's `measure`, `direction` and `side` only, so the same fault always gets
@@ -76,18 +76,22 @@ def cue_for(measure, direction, side):
     return one.format(side=side), kind
 
 
-def tempo_cue(ratio):
-    """The tempo cue for a follower/example time ratio, or None when it is within 15% or unmeasured."""
+def tempo_cue(ratio, overrides=None):
+    """The tempo cue for a follower/example time ratio, or None when it is within 15% or unmeasured.
+
+    `overrides` is a profile's `tempo.cues` (ADR-0016): `{"speed_up": ..., "slow_down": ...}` replaces that cue's
+    words only; the ratio that earns the cue does not change."""
+    overrides = overrides or {}
     if ratio is None:
         return None
     if ratio < TEMPO_FAST:
-        return SLOW_DOWN
+        return overrides.get("slow_down", SLOW_DOWN)
     if ratio > TEMPO_SLOW:
-        return SPEED_UP
+        return overrides.get("speed_up", SPEED_UP)
     return None
 
 
-def tempo_block(ratio):
+def tempo_block(ratio, overrides=None):
     """A window's `tempo`: `{ratio, cue}` (ratio rounded to 0.01, both null when unmeasured)."""
     r = None if ratio is None else round(float(ratio), 2)
-    return {"ratio": r, "cue": tempo_cue(r)}
+    return {"ratio": r, "cue": tempo_cue(r, overrides)}

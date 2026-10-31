@@ -17,8 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import score
-from .cues import tempo_block
+from . import profiles, score
 from .detect import load_rules
 from .insights import insights_of
 from .output import fault_to_dict
@@ -50,7 +49,11 @@ def score_block(result, rules=None):
     """The `score` hook for `pipeline.run` (ADR-0007, ADR-0013): the take scored window by window with the
     `score.compute` formula, and the mean of the windows. A take compared rep by rep (ADR-0010) has one window
     per rep, scored on that rep's own misses; a take compared as a whole has windows of about 5 s.
-    Never None (ADR-0012): a take with no alignment scores 0, and any warning caps the value at 59."""
+    Never None (ADR-0012): a take with no alignment scores 0, and any warning caps the value at 59.
+
+    `rules` defaults to the rules the take was analysed with (`result.rules`), so a profile's thresholds and tempo
+    block reach the score (ADR-0016)."""
+    rules = result.rules if rules is None else rules
     if result.guard is None:   # not aligned: nothing to score
         block = score.zero_block(rules)
     elif result.reps:
@@ -68,25 +71,25 @@ def _rep_timeline(result, rules):
     the take reports), a rep that did not match the example is shown but not scored. `per_rep` stays (1.3.0)."""
     rules = rules or load_rules()
     p = score.params_of(rules)
+    tempo = profiles.tempo_of(rules)   # ADR-0016: the profile's tempo words and, for dance, its charge
     fol, windows, ratios = result.follower, [], []
     for r in result.reps:
         span = (float(fol.t[r.span[0]]), float(fol.t[r.span[1]]))
         if not r.ok:
             windows.append({"t_s": span, "compared": False})
             continue
+        ratio = score.span_ratio(span, (float(r.expected.t[0]), float(r.expected.t[-1])))   # ADR-0014: rep over example rep
         faults = []
         for f in r.faults:
             # the take's coaching line carries the first rep's time, so each rep says its own (text_timed)
             faults.append(fault_to_dict(f, _fault_times(f, r.expected, fol, r.follower_positions, r.alignment,
                                                         r.to_original)))
         aligned = aligned_of(r, result.vis)
-        scored = score.window_score({"status": {"code": "ok"}, "faults": faults}, aligned,
-                                    np.arange(len(aligned["exp_to_fol"])), rules, p)
-        if scored:   # ADR-0014: the rep's tempo is its length over the example rep's
-            ratio = score.span_ratio(span, (float(r.expected.t[0]), float(r.expected.t[-1])))
-            scored["tempo"] = tempo_block(ratio)
+        window = score.timeline_window(span, {"status": {"code": "ok"}, "faults": faults}, aligned,
+                                       np.arange(len(aligned["exp_to_fol"])), rules, p, tempo, ratio)
+        if window.get("compared", True):
             ratios.append(ratio)
-        windows.append({"t_s": span, **scored} if scored else {"t_s": span, "compared": False})
+        windows.append(window)
     timed = [x for x in ratios if x is not None]
     block = score.timeline_block(windows, "reps", rules, float(np.median(timed)) if timed else None)
     block["per_rep"] = [{"value": w["value"], "grade": w["grade"]} for w in block["timeline"] if w["compared"]]

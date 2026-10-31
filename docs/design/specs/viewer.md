@@ -12,6 +12,8 @@ Staging page follow-up (lane stage-j1, 2026-10-31): the page follows ADR-0012 (a
 residual R1 (2026-10-31): the wording select starts on the server's live default (AC-V19, ADR-0008).
 Staging QA fixes (lane fix-ux, 2026-10-31): the wording hint follows the current choice (AC-V19) and a result
 that no longer matches the choice is marked and loses its download (AC-V20).
+Mode select (lane profiles-web, 2026-10-31, TICKET-042, ADR-0016): the "Mode" select, the mode line in the result and
+the mode as part of the stale-result choice (AC-V21); `profiles.md` AC-PROF-15 is the same behaviour seen from the field.
 Upstream: #16 (isolated demo). Milestone: M3.
 
 ## Overview
@@ -43,10 +45,10 @@ As a follower, I see my take replayed over the expected one and tap a fault to s
 | File | Role |
 |---|---|
 | `index.html` | page shell, import map for `vendor/three/` |
-| `app.js` | state, pickers, Analyse, fault list, download (offered only while the result matches the choice, AC-V20), screens |
-| `api.js` | calls to `api/*` relative to the base path |
+| `app.js` | state, pickers, the Mode select (only when `api/samples` lists modes, AC-V21), Analyse, fault list, download (offered only while the result matches the choice, AC-V20), screens |
+| `api.js` | calls to `api/*` relative to the base path; `analyseBody`, the pure builder of the analysis request (it adds `profile` only when the page offered a mode, AC-V21) |
 | `viewer.js` | three.js scene: follower, ghost, bones, highlight, playback, camera presets |
-| `joints.js` | bones list, the fallback joint mapping, `sizeSentence` (the fault's size in words, shared by the fault list and the preview) and the sentences about a result, as pure functions the Compare tab, the preview and the Node tests share: `faultLine`, `isLowConfidence`, `noticesOf`, `faultsOf`, `scoreSentence`, `cappedNote`, `resultSentence`, `insightItems`, `insightSentence`, and for the wording and the stale result `defaultWording`, `wordingHint`, `isStale`, `STALE_SENTENCE` |
+| `joints.js` | bones list, the fallback joint mapping, `sizeSentence` (the fault's size in words, shared by the fault list and the preview) and the sentences about a result, as pure functions the Compare tab, the preview and the Node tests share: `faultLine`, `isLowConfidence`, `noticesOf`, `faultsOf`, `scoreSentence`, `cappedNote`, `resultSentence`, `insightItems`, `insightSentence`, and for the wording and the stale result `defaultWording`, `wordingHint`, `isStale`, `STALE_SENTENCE`, and for the mode `profilesOffered`, `defaultProfile`, `profileLabel`, `profileNote` |
 | `preview.js` | result preview screen |
 | `style.css`, `icon.svg` | look and icon |
 | `vendor/three/` | `three.module.js`, `OrbitControls.js`, `LICENSE`, unchanged (r170 ships no `three.core.js`; it arrived in r171) |
@@ -69,7 +71,9 @@ expected frame]}`. The timeline runs on expected frames; at expected frame i the
 ## Controls (each has a `data-testid`)
 Expected picker, follower picker, upload expected, upload follower, Analyse, play, pause, scrub slider,
 speed, Front, Side, Top, ghost toggle, each fault row, download `analysis.json`, phrasing select and its hint
-(`phrasing-hint`), real takes tab, preview tab. Result landmarks: `score` and `score-note`, `warning-panel` (with
+(`phrasing-hint`), the Mode select (`profile`, its field `profile-field` and hint `profile-hint`; present only when
+`api/samples` lists modes), real takes tab, preview tab. Result landmarks: `score` and `score-note`, `profile-note`
+(the mode line of AC-V21), `warning-panel` (with
 `warning-list`), `insights` (its items are `insight`), `result-stale` (the line of AC-V20). Orbit and zoom by
 pointer and touch.
 
@@ -79,6 +83,7 @@ Read from `analysis`; every field is optional, so a document from before 1.2.0 s
 |---|---|---|
 | Status line (`result-status`) | `faults`, `warnings` | "N faults found."; "No faults found. This take follows the example." only when there are no warnings; "No faults are listed. Read the warning first." when there are warnings and no faults |
 | Score (`score`, `score-note`) | `score.value`, `score.grade`, `score.capped_by` | "Score: 84 out of 100, grade B"; when `capped_by` has codes, a line "The grade is limited to F because the take does not closely match the example." naming each code in plain words; nothing when `score` is absent or null |
+| Mode line (`profile-note`) | `profile` | "Scored with rehab coaching rules." when `profile` is a name other than `fitness`; hidden for `fitness` and for a document with no `profile` (written before 1.7.0, read as fitness) |
 | Warning panel (`warning-panel`) | `warnings[].text` | a group headed "Before you trust this result" listing each text; hidden when there are none |
 | Fault row | `coaching`, `text_timed`, `text`, `confidence` | the row's first line is `coaching`, else `text_timed`, else `text` (an empty string counts as absent); `confidence: "low"` adds "Low confidence: this take is a poor match for the example." |
 | Insights (`insights`) | `insights[].cue`, `.why` | at most 5 items in the file's order (already ranked), each "<cue>. <why>"; hidden when there are none |
@@ -182,8 +187,8 @@ Negative assertion: after the page loads, with a default of Template, the select
 Muse Spark is offered; with a default that is not offered the select is never empty. After the visitor picks a
 wording other than the default, the hint must not still say that wording is preselected.
 ### AC-V20: a result that no longer matches the choice is marked and cannot be downloaded
-Given a result on screen, when the visitor changes the example, the take, an uploaded file (chosen or cleared) or the
-wording so that the choice differs from the one the result was made for, then the Result section shows the line "This
+Given a result on screen, when the visitor changes the example, the take, an uploaded file (chosen or cleared), the
+wording or the mode (AC-V21) so that the choice differs from the one the result was made for, then the Result section shows the line "This
 result is for the previous choice. Press Analyse to compare the new one." (`result-stale`, a `role="status"`
 paragraph under the Result heading), the section's border turns dashed amber (`data-stale="true"`), and the link
 "Download analysis.json" is hidden, so a saved `analysis.json` always belongs to the pair the visitor chose when
@@ -201,6 +206,32 @@ the link; Analyse again hides the line and offers the link; a changed wording do
 last pair's). The recipe `compare/download-analysis` drives it by hand.
 Negative assertion: while the line is shown the page must not offer "Download analysis.json"; after a successful
 Analyse the line must not be shown.
+### AC-V21: the Mode select offers the server's modes and the result names the one that scored it
+Given `api/samples` with `profiles` (the modes the server can analyse under, in its order, for example `dance`, `rehab`,
+`fitness`) and `profile_default` (`fitness`), when the page loads, then a select "Mode" (`profile`, with the hint
+`profile-hint`, "The mode sets how much leeway the comparison allows. A score is only comparable with scores from the same
+mode.") lists exactly those modes, each with a capital ("Dance", "Rehab", "Fitness"), and starts on `profile_default`. A
+default that is not among the listed modes is replaced by `fitness` when it is listed, else by the first mode, so the
+select is never empty. Given `api/samples` with no `profiles`, or an empty list (a server that does not know modes yet),
+the select and its label are not on the page and the request carries no `profile`, so the page works on that server as it
+did before. Analyse sends the select's value as `profile`, in the lower case the API takes ("rehab"); a visitor who never
+touched the select sends `fitness`, because the select starts on it. `analyseBody` in `web/api.js` builds the request,
+adding `profile` only when a mode was offered. The result region shows "Scored with rehab coaching rules."
+(`profile-note`, under the score and its note) when `analysis.profile` is a name other than `fitness`; it is hidden for
+`fitness` and for a document with no `profile` (written before schema 1.7.0, read as fitness). The mode is part of the
+choice of AC-V20: after a result, changing only the mode shows the stale line and hides the download link until Analyse is
+pressed again, and choosing the mode the result was made with brings the link back. The preview screen is unchanged.
+Verified by `tests/test_web_logic.py` (the modes offered, the start, the request body and the mode line, run in Node, and
+the real `api/samples` answer), `tests/staging/test_web_files.py` (the markup and the wiring), `tests/staging/test_web_result.py`
+(the mode in the stale rule) and `staging/verify.mjs` (listings that give no modes, an empty list, three modes with
+fitness, a default of rehab and a default that is not offered; Analyse on a feet-wide take with the select untouched
+sends and shows fitness, with Rehab sends `profile: "rehab"`, names the mode and saves a file that says rehab; the fitness
+analysis equals the one a request naming no mode gets, apart from `profile`; every analysis keeps the Template wording).
+When the server lists no modes, verify hands the page a stubbed listing and a stubbed answer that echoes the mode asked for,
+so the page's own part is proven before the API carries the field. The recipe `compare/analyse-rehab-mode` drives it by hand.
+Negative assertion: an untouched page must not send or show a mode other than fitness and must show no mode line; a page
+for a server that lists no modes must have no Mode select and must send no `profile`; after Rehab, an Analyse with Fitness
+must not still show "Scored with rehab coaching rules."
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |
@@ -238,7 +269,9 @@ ASM-010 (WebGL availability in the verify browser, `docs/assumptions/ASM-010.yam
   verify drives a faulty take and checks both (AC-V14, AC-V15), the warned take (AC-V17) and the insights
   (AC-V16); the recipe `compare/live-timed-line-and-score` drives it by hand with the Muse Spark wording
   the page starts on (AC-V19). Every other recipe that presses Analyse chooses Template first, and
-  verify and the walkthrough choose it for every analysis, so neither makes a live call.
+  verify and the walkthrough choose it for every analysis, so neither makes a live call. The recipe
+  `compare/analyse-rehab-mode` drives the Mode select (AC-V21) and leaves the Mode select untouched in every other
+  recipe, which therefore analyses under `fitness` as before.
 
 ## Dissent Review
 ### Concern 1: overlay versus side by side

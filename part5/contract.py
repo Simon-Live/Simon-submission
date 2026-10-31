@@ -64,9 +64,10 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.6.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`) are "
-     "all optional; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built "
-     "on the 1.6.0 schema, whose `measure` and `body_part` enums list them", "Part 5 (this repo)"),
+     "the 1.2.0 to 1.7.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
+     "`profile`) are all optional; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
+     "reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its "
+     "`profile`", "Part 5 (this repo)"),
     ("Part 5 `analyse --replay <replay.json>`", "`replay.json`", "`simon.replay.v1`", "output for Part 7", "works",
      "optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>`",
      "Part 5 (this repo)"),
@@ -74,6 +75,12 @@ TABLE_ROWS = (
      "`simon.analysis.v1` with `phrasing.selected_by` `live`", "option for Part 7", "works with an option",
      "needs the Baseten key file on the host that runs Part 5; without it each fault keeps its timed template line "
      "(`fallback_reason: \"no key\"`); the template stays the default for tests and `make check-5`", "Part 5 (this repo)"),
+    ("Part 5 `analyse --profile`", "analysis profile (`--profile {dance,rehab,fitness}`, API field `profile`)",
+     "`simon.analysis.v1` 1.7.0 with `profile`", "option for Part 7", "works with an option",
+     "pass the operator's mode as `--profile` or as the `profile` field of `POST api/analyse`; probe "
+     "`part5 analyse --help` for `--profile` before relying on it; omitted means `fitness`, the analysis as it was; "
+     "every document names its `profile`, and a score is read within one profile (a dance 84 and a fitness 84 differ)",
+     "Part 5 (this repo)"),
     ("Part 5", "`part5 analyse` exit code",
      "0 analysis written (with or without warnings), 1 unreadable or invalid input file or write error, 2 usage; 3 is no longer used (ADR-0012)",
      "for Part 7", "works with a mapping",

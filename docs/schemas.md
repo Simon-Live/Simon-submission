@@ -88,7 +88,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.6.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.7.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -97,7 +97,7 @@ so the format can grow without breaking older readers. Live examples, generated 
 takes by `make output-examples` through the same pipeline and score hook `part5 analyse` uses (with the
 `template` phrasing, whatever the environment): `fixtures/output/analysis.example.json` (two faults),
 `fixtures/output/analysis.no-faults.example.json` (a correct take) and `fixtures/output/replay.example.json`
-(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.6.0):
+(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.7.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
 Part 7 must read first.
 
@@ -112,11 +112,13 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.4.0` | `warnings`, `match`, `score.capped_by`, a fault `confidence` of `"low"` (ADR-0012) | the take earned a warning |
 | `1.5.0` | `faults[].cue`, `cue_kind`; `score.basis`, `timeline`, `tempo`; `insights` (ADR-0013, ADR-0014) | every new document |
 | `1.6.0` | faults with `measure` `foot_rotation` or `ankle_inversion` (`body_part` `feet`); `diagnostics.feet` (ADR-0015) | every new document is `1.6.0`; the foot fields appear only when a feet file was given for either clip |
+| `1.7.0` | `profile`; `score.components.tempo` and the same on each window, dance only (ADR-0016) | every new document is `1.7.0`, and `profile` is always present; the tempo points appear only under the dance profile |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.6.0",
+  "schema_version": "1.7.0",
+  "profile": "fitness",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
   "status": {"code": "ok", "text": "Compared with the expected movement."},
@@ -155,6 +157,15 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 Top level:
 - `format`: exactly `simon.analysis.v1`.
 - `schema_version` (optional, 1.1.0): a string `1.x.y`, see the table. A 1.0 document has none.
+- `profile` (1.7.0, ADR-0016): the analysis profile that produced the document, a non-empty string, today `dance`,
+  `rehab` or `fitness` (the names are data in `part5/profiles.json`, so the schema has no enum). Always present in a
+  new document and required by `validate_analysis` from `1.7.0`; a document without it is read as `fitness`. `fitness`
+  is the default and is the analysis as it was before profiles. `dance` and `rehab` loosen the position tolerances of
+  detection (never the range ones) and, for the same take, never report a fault `fitness` does not (one `fitness`
+  reports on both sides may be kept on one side; also for a take compared repetition by repetition). **A score is read within its profile**:
+  a dance 84 and a fitness 84 mean different things, because the thresholds the score is measured against move with
+  the profile and dance charges tempo. The tolerances are set by hand and not calibrated on any labelled dancer or
+  patient (`docs/specs/profiles.md`).
 - `expected` / `follower`: objects identifying the input clips. `path` (non-empty string) is
   required; other ids (`set`, `movement`, `take_id`, …) pass through untouched.
 - `status` (optional, 1.1.0): `{code, text}`. From `1.4.0` `code` is always `ok`: a take is always analysed
@@ -238,7 +249,8 @@ Per fault:
   counted run of the smoothed per-frame diffs; `peak_deg` is the largest smoothed diff in the
   counted runs (same sign); `threshold_deg` is the rule threshold it crossed. `unit` is `degrees`.
 - `expected_frames` / `follower_frames`: inclusive `[start, end]` frame range of the longest
-  counted run in each clip. `phase` is the same range as a 0..1 fraction of the expected movement.
+  counted run in each clip (under a `profile` other than `fitness`, the counted run that overlaps the fitness
+  fault's run most; `docs/specs/profiles.md`). `phase` is the same range as a 0..1 fraction of the expected movement.
 - `runs` (optional, 1.1.0): every counted run as `[[start, end], ...]` in expected frames, in
   order. A fault counts when its runs of at least `min_run_frames` frames sum to `min_fraction`
   of the clip, so a fault held in several stretches is one fault with several runs; for a single
@@ -266,13 +278,17 @@ Per fault:
 `1.4.0` (a take nothing could be measured on scores 0, grade F); before that a refused take had `score: null`.
 `value` is an integer 0 to 100 and `grade` is A (90 and above), B (80 to 89), C (70 to 79), D (60 to 69) or F;
 `components.faults` and `components.similarity` are the points taken off for the faults and for the take's overall
-difference from the example, `params_sha256` the hash of the `score` block of `part5/rules.json` (ADR-0007).
+difference from the example (under the dance profile also `components.tempo`, the points the pace cost, on the take and
+on each window; the three add up to `100 - value` within rounding), `params_sha256` the hash of the `score` block of `part5/rules.json` (ADR-0007).
 - `basis`, `timeline` (1.5.0, ADR-0013): the score is the mean of the compared windows. A take compared as a whole
   is cut into windows of about 5 s (`basis` `windows`); a take compared one repetition at a time has one window per
   rep (`basis` `reps`). Each `timeline[]` entry is `{t_s, compared, value, grade, components, misses, tempo}` (an
   uncompared rep is `{t_s, compared: false}`); `misses[]` holds `{text, measure, side, joint, t_s, at_s, points,
   cue, cue_kind, direction}`, every miss the window lost points to, so the number can be justified.
-- `tempo` (1.5.0): `{ratio, cue}`, see "Coaching cues and insights" below. Tempo is not scored.
+- `tempo` (1.5.0): `{ratio, cue}`, see "Coaching cues and insights" below. Tempo is not scored, except under the dance
+  profile (ADR-0016): each compared window is charged `min(cap, weight * max(0, 0.85 - ratio, ratio - 1.15))` points
+  (weight 40, cap 20), a run-time term outside the frozen `score` params, so `params_sha256` is the same in every profile.
+  Under `rehab` the cue for a ratio above 1.15 reads "Slower is fine" instead of "Speed up to match the trainer".
 - `per_rep` (1.3.0): each accepted repetition's `value` and `grade`.
 - `capped_by` (1.4.0): the warning codes that capped `value` at 59, present only with `warnings`.
 
@@ -322,7 +338,8 @@ Produced by `part5.evaluate.score` / `evaluate_corpus` (#13) and printed by `mak
 `failures` (one plain line per failed criterion), `passed`, `sweep` and the metrics above under `metrics`), the same
 metrics for seed 5 under `tuning`, the recorded `attempts`, a `report` of what is reported and never gated (low
 light, dropout, the real kit and stock takes, `refusals`, `score`; every block carries `gated: false`, and `refusals` is the map of slice to count with that one extra key) and the `rules_sha256` and `detection_sha256` of
-the frozen rules. It exits 0 only when `passed` is true; a take that can't be analysed, or a gated slice with no
+the frozen rules, plus `profiles_sha256` (1.3.0, ADR-0016), the hash of `part5/profiles.json`, printed for information only
+(the gate runs the `fitness` profile, which is the rules unchanged). It exits 0 only when `passed` is true; a take that can't be analysed, or a gated slice with no
 takes, no labelled faults or no correct takes (nothing to measure a criterion on), also fails the check. Since
 ADR-0007 the gate also needs every correct good-light take to score A and the monotonicity `sweep` never to rise;
 `report.score` is the score distribution per slice of every set (`n`, `min`, `median`, `max`, `grades`) and the
