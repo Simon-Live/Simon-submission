@@ -1,0 +1,106 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.5.0",
+  "expected": {
+    "path": "~/.local/state/simon-part-7/serverless/jobs/994306b52be0/work/expected.json"
+  },
+  "follower": {
+    "path": "~/.local/state/simon-part-7/serverless/jobs/994306b52be0/work/follower/follower.json"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [],
+  "diagnostics": {
+    "alignment_residual": 0.2987,
+    "alignment_measures": [
+      "left_knee_flexion",
+      "left_upper_arm_out",
+      "left_upper_arm_forward",
+      "left_forearm_out",
+      "left_thigh_forward",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward",
+      "trunk_lean_side"
+    ],
+    "follower_span": [
+      0,
+      299
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.2987,
+      "timing_corr": 0.9482,
+      "span_share": 1.0,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    }
+  },
+  "insights": [],
+  "phrasing": {
+    "requested": "template",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "faults": [],
+    "selected_by": "flag"
+  },
+  "score": {
+    "version": "simon.score.v1",
+    "value": 100,
+    "grade": "A",
+    "components": {
+      "faults": 0.0,
+      "similarity": 0.09
+    },
+    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.0,
+          4.983
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.18
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": 0.97,
+          "cue": null
+        },
+        "compared": true
+      },
+      {
+        "t_s": [
+          4.983,
+          9.967
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.0
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": 1.03,
+          "cue": null
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 1.0,
+      "cue": null
+    }
+  }
+}
