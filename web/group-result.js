@@ -3,6 +3,7 @@
 import { getJob, ApiError } from "./api.js";
 import { h, clear, stateBlock, linkButton, num } from "./ui.js";
 import { ensurePeopleStyles, cropUrl } from "./people.js";
+import { hasMajorQuality } from "./quality-result.js";
 
 export const REFUSALS = {
   different_movement: "This looks like a different movement from the trainer's.",
@@ -36,6 +37,7 @@ export function boardRows(result) {
       scorable: !refused && !warned, // only a take Part 5 scored "ok" can join a challenge
       refusal: refused ? (p.status_text || p.reason || REFUSALS[p.status_code] || MSG_REFUSED) : "",
       warning: warned ? (p.status_text || REFUSALS[p.status_code] || MSG_REFUSED) : "",
+      ...(hasMajorQuality(p) ? { majorQuality: true } : {}),
     };
   });
 }
@@ -68,13 +70,14 @@ export function mountGroupResult(root, jobId) {
         ? h("p", { class: "pp-refusal", "data-testid": `group-refusal-${r.id}`, text: r.refusal })
         : h("p", { class: "pp-faults", text: faultText(r.faults) });
       const warn = r.warning ? h("p", { class: "pp-refusal", "data-testid": `group-warning-${r.id}`, text: r.warning }) : null;
+      const quality = r.majorQuality ? h("span", { class: "pp-quality-chip", "data-testid": `group-quality-${r.id}`, text: "Video quality" }) : null;
       list.append(h("li", { class: "pp-row-item" },
         h("a", { class: "pp-row", href, "data-testid": `group-row-${r.id}`, "data-refused": String(r.refused), "aria-label": `${r.label}, ${r.refused ? "not scored" : `score ${r.score}, grade ${r.grade}`}` },
           h("span", { class: "pp-rank", "aria-hidden": "true", text: r.refused ? "" : String(i + 1) }),
           img,
           h("span", { class: "pp-row-main" },
             h("span", { class: "pp-row-label", text: r.label }),
-            meta, warn),
+            meta, warn, quality),
           h("span", { class: "pp-row-nums" },
             h("span", { class: "pp-score", "data-testid": `group-score-${r.id}`, text: r.refused ? "No score" : String(r.score) }),
             r.grade ? h("span", { class: "pp-grade", "data-testid": `group-grade-${r.id}`, "data-grade": r.grade, text: r.grade })

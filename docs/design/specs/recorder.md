@@ -36,6 +36,20 @@ Both capture screens (trainer `#/record`, follower `#/follow/<id>`) gain:
 - Duration selector: Manual, 5 s, 10 s, 15 s, 20 s, 30 s, 45 s, 60 s (default 15 s). With a duration, recording stops by
   itself at that time; Stop still works. Manual records until Stop or 90 s.
 - Framing hint on the preview: "Step back until your whole body fits, or at least everything that moves."
+- Before-recording tips (video quality feedback, `web/quality-check.js`, `web/quality-constants.js`,
+  `web/prerecord-quality.css`). While the preview is open and NOT recording, it is sampled about twice a second
+  (500 ms) into a 160x90 canvas. The pure function `measurePreview(frame, previous)` returns mean luma (dark),
+  centre versus border luma (backlit), the share of pixels at luma 250 or more (overexposed), Laplacian variance
+  (blurry), border frame difference (camera moving) and border edge density (busy background);
+  `previewCodes(readings)` maps them to the shared codes `dark`, `backlit`, `overexposed`, `blurry`,
+  `camera_moving` plus the browser-only `busy_background` ("A busy background can confuse tracking. A plain wall
+  behind you works best."). At most two tips show under the preview in `prerecord-tips`
+  (`aria-live="polite"`), one `prerecord-tip-<code>` each, using the shared tip texts. A tip stays until its
+  reading has been good for about 2 s (no flicker). Tips never block Record; sampling stops while recording,
+  and the framing hint and camera status texts are unchanged. Once per take `clientLog("info",
+  "prerecord_quality", {...})` records mean readings and the thresholds, numbers only, never an image. These
+  are advice only: they never decide major or minor and never touch a score. All thresholds live in
+  `PRERECORD_THRESHOLDS`.
 - The selected countdown and duration are remembered per device (localStorage, wrapped in try/catch).
 - Raw capture limit: 90 s. MediaRecorder settings are unchanged (2.5 Mbit/s, first supported of webm vp9,
   webm, mp4).
@@ -74,7 +88,7 @@ screen and on the Watch screen; catalog search matches name, category and tags.
 
 ## data-testid
 `countdown-select`, `duration-select`, `countdown` (the overlay digits), `countdown-cancel`, `rec-timer`,
-`framing-hint`, `trim`, `trim-start`, `trim-end`, `trim-play`, `trim-set-start`, `trim-set-end`,
+`framing-hint`, `prerecord-tips`, `prerecord-tip-<code>`, `trim`, `trim-start`, `trim-end`, `trim-play`, `trim-set-start`, `trim-set-end`,
 `trim-length`, `trim-error`, `trim-continue`, `tags`, `tag-input`, `notes`, `entry-tags` (Watch),
 `entry-notes` (Watch), `take-labels`, `take-tags`, `take-notes` (result), `record-again`, `people-checking`, and from `people.md` the picker ids `people`, `people-continue`, `person-<id>`,
 `person-trainer-<id>`, `person-label-<id>`.

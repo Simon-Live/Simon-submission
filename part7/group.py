@@ -38,6 +38,7 @@ def _follower_row(job_id: str, pid: str, label: str, res: dict[str, Any]) -> dic
         "id": pid, "label": label, "status_code": summary.get("status_code") or res.get("status"),
         "score": summary.get("score"), "grade": summary.get("grade"), "faults": summary.get("faults", 0),
         "analysis": f"{base}/analysis.json", "replay": f"{base}/replay.json" if "replay" in res["files"] else None,
+        **({"quality": summary["quality"]} if "quality" in summary else {}),
     }
 
 

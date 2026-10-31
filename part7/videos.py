@@ -12,6 +12,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -20,8 +22,9 @@ from typing import Any
 
 from part7 import config, media, movement
 
-SCHEMA = "part7.videos/1"
-ROLES: tuple[str, ...] = ("trainer", "follower", "mismatch")
+SCHEMA = "part7.videos/1.1"
+SUPPORTED_SCHEMAS = ("part7.videos/1", SCHEMA)
+ROLES: tuple[str, ...] = ("trainer", "follower", "mismatch", "degraded")
 ANGLES: tuple[str, ...] = ("front", "side", "three-quarter", "back")
 FROZEN_ROLES: tuple[str, ...] = ("follower", "mismatch")
 FROZEN_TICKET = "TICKET-013"
@@ -33,6 +36,8 @@ DOWNLOAD_TIMEOUT_S = 120
 CHUNK_BYTES = 1024 * 1024
 NOT_STATED = "not stated on the page"
 USED_LINE = "Used by Simon Part 7 as a test video; not modified except trimming and re-encoding."
+DEGRADED_USED_LINE = "Used by Simon Part 7 as a test video; deliberately degraded using the recipe below."
+DEGRADATION_FILTERS = {"dark": "eq=brightness=-0.35:gamma=0.6"}
 
 CLIP_REQUIRED_STR = (
     "id",
@@ -176,8 +181,8 @@ def validate_manifest(data: Any, require_frozen: bool = True) -> list[str]:
     if not isinstance(data, dict):
         return ["manifest must be a JSON object"]
     errors: list[str] = []
-    if data.get("schema") != SCHEMA:
-        errors.append(f"schema must be {SCHEMA}")
+    if data.get("schema") not in SUPPORTED_SCHEMAS:
+        errors.append(f"schema must be one of {list(SUPPORTED_SCHEMAS)}")
     errors.extend(movement.validate_movement(data.get("movement")))
     clips = data.get("clips")
     if not isinstance(clips, list) or not clips:
@@ -186,6 +191,25 @@ def validate_manifest(data: Any, require_frozen: bool = True) -> list[str]:
         errors.extend(_clip_field_errors(clip, i))
     if all(isinstance(c, dict) for c in clips):
         errors.extend(clip_set_errors(clips))
+        by_id = {c.get("id"): c for c in clips}
+        for clip in clips:
+            if "derived_from" not in clip and clip.get("role") != "degraded":
+                continue
+            source = by_id.get(clip.get("derived_from"))
+            recipe = clip.get("recipe")
+            if not isinstance(source, dict) or source.get("role") != "follower" or source.get("derived_from"):
+                errors.append(f"{clip['id']}: derived_from must name an original follower clip")
+            elif (clip.get("source_clip_sha256") != source.get("clip_sha256")
+                  or not source.get("clip_sha256")):
+                errors.append(f"{clip['id']}: source_clip_sha256 must match its source clip")
+            if clip.get("role") != "degraded":
+                errors.append(f"{clip['id']}: a derived clip must have role degraded")
+            if (not isinstance(recipe, dict) or recipe.get("code") not in DEGRADATION_FILTERS
+                    or recipe.get("filter") != DEGRADATION_FILTERS.get(recipe.get("code"))):
+                errors.append(f"{clip['id']}: recipe must name a supported degradation code and filter")
+            if isinstance(source, dict) and any(clip.get(k) != source.get(k)
+                                                  for k in ("url", "licence", "licence_url", "author")):
+                errors.append(f"{clip['id']}: derivative must preserve source attribution and licence")
     if require_frozen:
         errors.extend(frozen_errors(data))
     return errors
@@ -290,6 +314,51 @@ def ensure_clip(entry: dict[str, Any], clip_dir: Path) -> None:
     )
 
 
+def ensure_degraded(entry: dict[str, Any], source: dict[str, Any], root: Path) -> None:
+    """Generate a local derivative from the already trimmed, hash-verified good follower.
+
+    One encoder thread and a fixed recipe make repeated runs deterministic with the same ffmpeg
+    build. As with the original clips, a different build cannot silently replace recorded bytes.
+    """
+    src = root / source["id"] / "clip.mp4"
+    if not src.is_file() or sha256_file(src) != entry["source_clip_sha256"]:
+        raise VideoError(f"videos: {entry['id']} source clip is missing or changed")
+    out_dir = root / entry["id"]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    original = out_dir / "original.mp4"
+    if not original.is_file():
+        shutil.copyfile(src, original)
+    if sha256_file(original) != entry["source_clip_sha256"]:
+        raise VideoError(f"videos: {entry['id']} original.mp4 changed since it was recorded")
+    entry["original_sha256"] = entry["source_clip_sha256"]
+    entry["original"] = _original_facts(original, source["id"] + "-clip.mp4")
+    entry.setdefault("downloaded_at", source.get("downloaded_at", utc_now()))
+    dest = out_dir / "clip.mp4"
+    recorded = entry.get("clip_sha256")
+    if dest.is_file() and recorded and sha256_file(dest) == recorded:
+        return
+    temporary = out_dir / "clip.tmp.mp4"
+    argv = ["ffmpeg", "-nostdin", "-y", "-v", "error", "-i", str(original),
+            "-vf", entry["recipe"]["filter"], "-map_metadata", "-1", "-c:v", "libx264",
+            "-threads", "1", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+            "-an", "-movflags", "+faststart", str(temporary)]
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=300, check=False)
+        if result.returncode != 0 or not temporary.is_file():
+            raise VideoError(f"videos: {entry['id']} degradation failed: {result.stderr}")
+        digest = sha256_file(temporary)
+        if recorded and digest != recorded:
+            raise VideoError(f"videos: {entry['id']} changed since it was recorded (another ffmpeg build?)")
+        os.replace(temporary, dest)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise VideoError(f"videos: {entry['id']} degradation failed: {exc}") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+    entry["clip_sha256"] = digest
+    info = media.probe(dest)
+    entry.update(duration_s=round(info["duration_s"], 3), width=info["width"], height=info["height"], fps=info["fps"])
+
+
 # ---- SOURCE.md -------------------------------------------------------------------------------
 
 
@@ -316,13 +385,20 @@ def render_source_md(entry: dict[str, Any]) -> str:
         f"- original_sha256: {entry['original_sha256']}",
         f"- Time range used: {rng[0]} s to {rng[1]} s",
         f"- Clip: {entry['width']}x{entry['height']}, {entry['fps']} fps, {entry['duration_s']} s",
-        f"- clip_sha256: {entry['clip_sha256']}",
+        f"- clip_sha256: {entry.get('clip_sha256') or 'pending first local build with make videos'}",
         f"- Role: {entry['role']}",
         f"- Angle: {entry['angle']}",
     ]
     if entry.get("note"):
         lines.append(f"- Note: {entry['note']}")
-    lines += ["", USED_LINE]
+    lines += ["", DEGRADED_USED_LINE if entry.get("derived_from") else USED_LINE]
+    if entry.get("derived_from"):
+        lines += ["", f"- Derived from trimmed clip: {entry['derived_from']}",
+                  f"- Source clip sha256: {entry['source_clip_sha256']}",
+                  f"- Intended signal: {entry['recipe']['code']}",
+                  f"- ffmpeg filter: `{entry['recipe']['filter']}`",
+                  "- Encoder: libx264, threads 1, preset veryfast, crf 18, yuv420p; audio and metadata removed.",
+                  "- Quality impact: determined only by Part 5; no major result is presumed from picture appearance."]
     if entry["licence"].startswith("CC BY"):
         lines += [
             "",
@@ -352,10 +428,16 @@ def fetch_all(manifest_file: Path | None = None, state: Path | None = None) -> N
         raise VideoError("videos: manifest invalid: " + "; ".join(errors))
     root = config.videos_dir(state)
     try:
-        for entry in data["clips"]:
+        # Originals first even when a derivative appears before its parent in the manifest.
+        entries = sorted(data["clips"], key=lambda c: bool(c.get("derived_from")))
+        by_id = {c["id"]: c for c in entries}
+        for entry in entries:
             clip_dir = root / entry["id"]
-            ensure_original(entry, clip_dir)
-            ensure_clip(entry, clip_dir)
+            if entry.get("derived_from"):
+                ensure_degraded(entry, by_id[entry["derived_from"]], root)
+            else:
+                ensure_original(entry, clip_dir)
+                ensure_clip(entry, clip_dir)
             write_source_md(entry, mpath)
             print(f"videos: {entry['id']} ok ({entry['role']}, {entry['duration_s']} s)")
     finally:

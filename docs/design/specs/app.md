@@ -91,6 +91,29 @@ and `score` is never null: any warning caps it at 59 (grade F) with `score.cappe
 - The group board reads a row with no score the same way (0, F, its warning line `group-warning-<id>`); only a
   row whose chain failed on infrastructure (`status_code` `error`) shows "No score" with its reason.
 
+## Video quality on the result (simon.quality.v1; `web/quality-result.js`, `part7/quality.py`)
+Part 5 writes an additive top-level `quality` in `analysis.json` (`issues[]` with `impact` major/minor, `rule`
+M1 to M4 or null, `text`, `tip`, `at_s`, `spans_s`, `affects`; `expected_issues` is information about the
+trainer's video and never affects the follower). Part 7 only displays it and never decides impact or cap.
+- Major: the cap already arrives as `quality_<code>` warnings and `score.capped_by`. The warning banner shows each
+  warning's `tip` under its line (`warning-tip-<code>`); a warning that carries `cause` (for example
+  `moving_part_out_of_frame` with `body_cut_off`) shows its tip and sets `data-cause`. A major issue with no
+  matching warning still appears in the banner. Record again stays.
+- Minor: a "Tips for your next take" section (`quality-tips`, one `quality-tip-<code>` each). A tip with `at_s`
+  has a time chip "At 1.2 s" (`quality-time-<code>`) that dispatches `simon:seek {at_s}` like the coaching
+  moments. No score change is mentioned.
+- Score panel: when `capped_by` has a `quality_*` code it says "Capped at 59 because of the video quality."
+  (`quality-cap`).
+- Group: the same per person on `#/result/<job>/<pid>`, plus a "Video quality" chip (`group-quality-<id>`) on a
+  board row whose person has a major issue. Person picker: `people_quality` in `tracks.json` shows "small in
+  frame" or "partly out of frame" (`person-quality-<id>`) under that person's crop; it never blocks selection.
+- Own analysis: `chain.write_own_analysis` (no_person / no_usable_measures) copies `quality.issues` from Part 2's
+  `pose3d.json` or `tracks.json` (the selected person only) as `impact: "minor"`, `rule: null`, with the shared tip
+  as text and tip, so a take with no person found in a dark room still says "The room was dark...". The score
+  stays 0, grade F, and its schema_version is `1.5.0` (`part7/quality_constants.py`). No quality in the input means
+  no `quality` key. The reader ignores the schema version and unknown fields.
+- With no quality anywhere every screen looks as before.
+
 ## Web (`web/`)
 Hash routes, relative URLs only, no build step, three@0.170.0 vendored (sha256 in
 `web/vendor/README.md`, fetched from the npm registry tarball, never from another part's repo).

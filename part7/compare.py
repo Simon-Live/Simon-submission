@@ -10,6 +10,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+from part7.quality_constants import QUALITY_SCORE_CAP
+
 DEG_ABS: float = 2.0
 M_ABS: float = 0.01
 REL_TOL: float = 0.10
@@ -125,6 +127,45 @@ def score_equal(app_analysis: dict[str, Any], direct_analysis: dict[str, Any]) -
     if app_st == "ok":
         return app_v is not None and app_v == direct_v
     return app_v is None and direct_v is None
+
+
+def quality_codes(analysis: dict[str, Any], impact: str) -> list[str]:
+    """Sorted unique reported codes. Signal level never determines an issue's impact here."""
+    quality = analysis.get("quality") if isinstance(analysis, dict) else None
+    issues = quality.get("issues") if isinstance(quality, dict) else None
+    if not isinstance(issues, list):
+        return []
+    return sorted({issue["code"] for issue in issues if isinstance(issue, dict)
+                   and issue.get("impact") == impact and isinstance(issue.get("code"), str)
+                   and issue["code"]})
+
+
+def quality_capped_by(analysis: dict[str, Any]) -> list[str]:
+    """Quality causes of the cap, independent of other existing warning causes."""
+    score = analysis.get("score") if isinstance(analysis, dict) else None
+    capped = score.get("capped_by") if isinstance(score, dict) else None
+    return sorted({code for code in capped if isinstance(code, str) and code.startswith("quality_")}) \
+        if isinstance(capped, list) else []
+
+
+def quality_cap_valid(analysis: dict[str, Any]) -> bool:
+    """A major has the promised cap/F and cause; a minor cannot introduce a quality cap."""
+    major = quality_codes(analysis, "major")
+    causes = quality_capped_by(analysis)
+    if causes != sorted(f"quality_{code}" for code in major):
+        return False
+    if not major:
+        return True
+    value = score_value(analysis)
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and 0 <= value <= QUALITY_SCORE_CAP
+            and effective_grade(analysis) == "F")
+
+
+def quality_cap_equal(app_analysis: dict[str, Any], direct_analysis: dict[str, Any]) -> bool:
+    """Both paths apply valid, identical quality caps; legacy analyses remain compatible."""
+    return (quality_cap_valid(app_analysis) and quality_cap_valid(direct_analysis)
+            and quality_capped_by(app_analysis) == quality_capped_by(direct_analysis))
 
 
 def text_timed_present(analysis: dict[str, Any]) -> bool:
@@ -262,6 +303,8 @@ def match(app_analysis: dict[str, Any], direct_analysis: dict[str, Any]) -> dict
         "magnitudes_within": magnitudes_within,
         "status_equal": status_equal,
         "warnings_equal": warning_codes(app_analysis) == warning_codes(direct_analysis),
+        "quality_major_codes_equal": quality_codes(app_analysis, "major") == quality_codes(direct_analysis, "major"),
+        "quality_cap_equal": quality_cap_equal(app_analysis, direct_analysis),
         "faults_compared": faults_compared,
         "at_s_equal": all_at_s_equal,
         "app_status": app_st,

@@ -65,7 +65,7 @@ def test_manifest_movement_rule_valid() -> None:
     mpath = config.manifest_path()
     assert mpath.exists(), "videos/manifest.json must exist"
     data = json.loads(mpath.read_text(encoding="utf-8"))
-    assert data.get("schema") == "part7.videos/1"
+    assert data.get("schema") in ("part7.videos/1", "part7.videos/1.1")
     mov = data.get("movement")
     errors = movement.validate_movement(mov)
     assert errors == [], f"Unexpected movement validation errors: {errors}"

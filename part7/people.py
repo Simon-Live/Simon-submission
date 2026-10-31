@@ -15,7 +15,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from part7 import applog, config, crop, media, modules, runner, stagelog
+from part7 import applog, config, crop, media, modules, quality, runner, stagelog
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
 
@@ -311,6 +311,9 @@ def people_job(
             raise JobFailed("track", "the picture of the clip could not be made")
         public = [{k: v for k, v in p.items() if k not in ("best_frame", "best_box")} for p in people]
         result = {"people": public, "frame": "people/frame.jpg", "auto_id": auto_id(people)}
+        signals = quality.people_quality(tracks)
+        if signals:
+            result["people_quality"] = {p["id"]: signals[p["id"]] for p in public if p["id"] in signals}
         (ctx.work / "people.json").write_text(json.dumps(result), encoding="utf-8")
         found = ", ".join(f"{p['id']} (coverage {p['coverage']}, box {p['box_mid']})" for p in people)
         applog.log(f"people found in {len(frames)} tracked frames: {found}; auto_id {result['auto_id']}", ctx.id, ctx.dir)

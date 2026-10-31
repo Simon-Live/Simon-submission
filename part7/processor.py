@@ -93,6 +93,7 @@ def _score_summary(analysis: Path) -> dict[str, Any]:
         "grade": score.get("grade") if isinstance(score, dict) else ("F" if no_score else None),
         "faults": len(doc.get("faults") or []) if isinstance(doc, dict) else 0,
         "status_code": status.get("code") if isinstance(status, dict) else None,
+        **({"quality": doc["quality"]} if isinstance(doc, dict) and isinstance(doc.get("quality"), dict) else {}),
     }
 
 

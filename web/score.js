@@ -1,5 +1,6 @@
 // Score panel (TICKET-046, app.md "Score", journey.md step 8). Part 7 shows Part 5's
 // `score` (simon.score.v1) as written and computes nothing.
+import { qualityCapText } from "./quality-result.js";
 
 // Part 5's published bands (app.md "Score"). Display only: the grade shown is the one in the file.
 export const BANDS = [
@@ -78,6 +79,8 @@ export function renderScore(root, analysis) {
     gradeBtn.setAttribute("aria-expanded", String(open));
   });
   panel.append(top, barWrap, rule);
+  const cap = qualityCapText(analysis);
+  if (cap) panel.append(el("p", { class: "sr-quality-cap", "data-testid": "quality-cap", text: cap }));
   root.append(panel);
   return panel;
 }

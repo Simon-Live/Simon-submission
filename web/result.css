@@ -126,6 +126,18 @@
 .sr-warning-text + .sr-warning-text { margin-top: 6px; }
 .sr-warning { margin-bottom: 12px; }
 
+/* Quality copy comes from the analysis and stays separate from movement faults. */
+.sr-warning-tip { margin: 6px 0 0; color: var(--sr-text); font-size: 15px; text-wrap: pretty; }
+.sr-warning-tip + .sr-warning-text { margin-top: 14px; }
+.sr-quality-cap { margin: 12px 0 0; color: var(--sr-muted); font-size: 14px; }
+.sr-quality-tips { padding: 18px; border: 1px solid var(--sr-line); border-radius: 18px; background: var(--sr-surface); }
+.sr-quality-list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.sr-quality-tip { display: grid; justify-items: start; gap: 6px; }
+.sr-quality-text, .sr-quality-advice { margin: 0; overflow-wrap: anywhere; }
+.sr-quality-text { font-weight: 600; }
+.sr-quality-advice { color: var(--sr-muted); }
+.sr-quality-time { color: var(--sr-hot); font-variant-numeric: tabular-nums; }
+
 /* score timeline (Part 5 ADR-0013) */
 .sr-timeline { background: var(--sr-surface); border: 1px solid var(--sr-line); border-radius: 18px; padding: 18px; }
 .sr-tl-note { margin: 0 0 12px; color: var(--sr-muted); font-size: 14px; }

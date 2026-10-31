@@ -98,8 +98,12 @@ def test_committed_source_md_holds_every_field_and_matches_the_manifest() -> Non
     for clip in repo_manifest()["clips"]:
         text = (config.REPO_ROOT / "videos" / clip["id"] / "SOURCE.md").read_text(encoding="utf-8")
         for field in SOURCE_FIELDS:
+            if field == videos.USED_LINE and clip.get("derived_from"):
+                field = videos.DEGRADED_USED_LINE
             assert field in text, f"{clip['id']} SOURCE.md lacks {field}"
-        assert clip["original_sha256"] in text and clip["clip_sha256"] in text
+        assert clip["original_sha256"] in text
+        if clip.get("clip_sha256"):
+            assert clip["clip_sha256"] in text
         assert text == videos.render_source_md(clip)
 
 
@@ -191,7 +195,7 @@ def test_build_frozen_covers_followers_and_mismatch_only() -> None:
     assert frozen["ticket"] == "TICKET-013"
     trainer = next(c["id"] for c in data["clips"] if c["role"] == "trainer")
     assert trainer not in frozen["clips"]
-    assert len(frozen["clips"]) == len(data["clips"]) - 1
+    assert len(frozen["clips"]) == len([c for c in data["clips"] if c["role"] in videos.FROZEN_ROLES])
 
 
 def test_render_source_md_adds_attribution_for_cc_by() -> None:
@@ -406,3 +410,63 @@ def test_list_prints_every_clip_and_the_movement(sandbox: dict[str, Any], capsys
 def test_unknown_action_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert videos.cli_videos("explode") == 2
     assert "unknown action" in capsys.readouterr().err
+
+
+def test_manifest_accepts_old_schema_and_validates_degradation_provenance() -> None:
+    data = repo_manifest()
+    data["schema"] = "part7.videos/1"
+    assert videos.validate_manifest(data) == []
+    degraded = next(c for c in data["clips"] if c["role"] == "degraded")
+    assert degraded["recipe"] == {"code": "dark", "filter": "eq=brightness=-0.35:gamma=0.6"}
+    for key, value, fragment in (("source_clip_sha256", "wrong", "source_clip_sha256"),
+                                 ("derived_from", "missing", "derived_from"),
+                                 ("recipe", {"code": "dark", "filter": "movie=private"}, "recipe"),
+                                 ("licence", "CC0", "licence")):
+        bad = copy.deepcopy(data)
+        next(c for c in bad["clips"] if c["role"] == "degraded")[key] = value
+        assert any(fragment in error for error in videos.validate_manifest(bad))
+
+
+@NEEDS_FFMPEG
+def test_derived_dark_clip_is_local_deterministic_darker_and_verified(sandbox: dict[str, Any]) -> None:
+    videos.fetch_all()
+    data = videos.load_manifest(sandbox["manifest"])
+    parent = data["clips"][1]
+    child = copy.deepcopy(parent)
+    child.update(id="pexels-2-dark", role="degraded", derived_from=parent["id"],
+                 source_clip_sha256=parent["clip_sha256"],
+                 recipe={"code": "dark", "filter": videos.DEGRADATION_FILTERS["dark"]},
+                 range_s=[0.0, parent["duration_s"]])
+    child.pop("clip_sha256")
+    data["clips"].insert(0, child)  # dependency ordering must not rely on manifest order
+    data["frozen"] = videos.build_frozen(data)
+    videos.save_manifest(data, sandbox["manifest"])
+    videos.fetch_all()
+    assert len(sandbox["calls"]) == 4  # no extra download for a derivative
+    data = videos.load_manifest(sandbox["manifest"])
+    child = data["clips"][0]
+    parent_path = config.videos_dir() / parent["id"] / "clip.mp4"
+    child_path = config.videos_dir() / child["id"] / "clip.mp4"
+    first_digest = videos.sha256_file(child_path)
+    assert first_digest == child["clip_sha256"] != parent["clip_sha256"]
+    assert videos.verify_all() == []
+
+    def mean_luma(path: Path) -> float:
+        decoded = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-frames:v", "1",
+                                  "-vf", "scale=32:24,format=gray", "-f", "rawvideo", "-"],
+                                 capture_output=True, check=True).stdout
+        return sum(decoded) / len(decoded)
+
+    assert mean_luma(child_path) < mean_luma(parent_path) / 2
+    child_path.unlink()
+    videos.fetch_all()
+    assert videos.sha256_file(child_path) == first_digest
+    text = (sandbox["manifest"].parent / child["id"] / "SOURCE.md").read_text()
+    assert videos.DEGRADED_USED_LINE in text and parent["clip_sha256"] in text
+    assert child["recipe"]["filter"] in text
+
+
+def test_degraded_source_mismatch_fails_before_ffmpeg(tmp_path: Path) -> None:
+    entry = {"id": "dark", "source_clip_sha256": "a" * 64}
+    with pytest.raises(videos.VideoError, match="source clip is missing or changed"):
+        videos.ensure_degraded(entry, {"id": "source"}, tmp_path)
