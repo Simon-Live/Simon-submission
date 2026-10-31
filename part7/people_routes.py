@@ -138,25 +138,29 @@ def _post_group(h: Any) -> None:
     req = _group_request(h, doc)
     if req is None:
         return
+    practice = h._practice(doc)  # mode is kept and used; a section is ignored for a group (practice-and-modes.md)
+    if practice is None:
+        return
+    mode = practice.get("mode")
     app, visitor = h.app, h._visitor()
     key = quota.visitor_key(visitor)
     fn = group.group_job(
         people_work=req["work"], trainer_id=req["trainer"], follower_ids=req["followers"], name=req["name"],
         category=req["category"], catalog=app.child.catalog_dir, labels=req["labels"],
         entry_labels=req["entry_labels"], labels_state=app.state, save_entry=req["save_entry"],
-        lock=app.lock, backend=app.backend, phrasing=app.phrasing,
+        lock=app.lock, backend=app.backend, phrasing=app.phrasing, mode=mode,
     )
     with _LOCK:
         active = app.__dict__.setdefault("group_jobs", {})
         previous = app.queue.get(active[key]) if key in active else None
         if previous and previous["status"] in GROUP_ACTIVE:
             return h._error(429, MSG_BUSY)
-        job = _submit_group(h, fn, 1 + len(req["followers"]))
+        job = _submit_group(h, fn, 1 + len(req["followers"]), **({"mode": mode} if mode else {}))
         if job is not None and key:
             active[key] = job["id"]
 
 
-def _submit_group(h: Any, fn: jobs.JobFn, gpu_jobs: int) -> dict[str, Any] | None:
+def _submit_group(h: Any, fn: jobs.JobFn, gpu_jobs: int, **record: Any) -> dict[str, Any] | None:
     """Reserve 1 trainer job and the follower GPU jobs, queue `fn`; answers 202, 429 or 503."""
     app, visitor = h.app, h._visitor()
     if not app.queue.has_room():
@@ -167,7 +171,7 @@ def _submit_group(h: Any, fn: jobs.JobFn, gpu_jobs: int) -> dict[str, Any] | Non
         for kind in kinds:
             app.quota.reserve(kind, visitor)
             taken.append(kind)
-        job = app.queue.submit("group", fn)
+        job = app.queue.submit("group", fn, **record)
     except (quota.VisitorQuotaError, quota.DailyCapError, jobs.QueueFullError) as exc:
         for kind in taken:
             app.quota.release(kind, visitor)

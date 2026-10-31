@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>breakdown harness</title>
+<link rel="stylesheet" href="../../../web/result.css">
+<style>html,body{margin:0;background:#0c1118}</style>
+<div id="app" class="simon-result"></div>
+<script type="module">
+// A minimal static stand-in for web/result.js after Lane A's change: coaching rows carrying data-cue-kind
+// (insight-<i>, fault-<i>, timeline-<i>-miss-<k>) and an empty breakdown-slot. The mount call is the one result.js makes.
+const q = new URLSearchParams(location.search);
+const analysis = await fetch(`../fixtures/input/${q.get("case") || "breakdown-rushing"}.json`).then((r) => r.json());
+const root = document.getElementById("app");
+const row = (id, kind, text) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.setAttribute("data-testid", id); b.textContent = text;
+  if (kind) b.setAttribute("data-cue-kind", kind);
+  return b;
+};
+const score = document.createElement("section");
+score.setAttribute("data-testid", "score-panel");
+score.textContent = `Score ${analysis.score.value}`;
+const slot = document.createElement("div");
+slot.setAttribute("data-testid", "breakdown-slot");
+root.append(score, slot);
+(analysis.insights || []).forEach((x, i) => root.append(row(`insight-${i}`, x.kind, x.cue)));
+(analysis.faults || []).forEach((f, i) => root.append(row(`fault-${i}`, f.cue_kind, f.text)));
+((analysis.score.timeline || [])).forEach((w, i) => (w.misses || []).forEach((m, k) => root.append(row(`timeline-${i}-miss-${k}`, m.cue_kind, m.text))));
+window.__seeks = [];
+window.addEventListener("simon:seek", (e) => window.__seeks.push(e.detail));
+import("../../../web/breakdown.js").then((m) => m.mountBreakdown?.(slot, { job: "fixture", pid: null, analysis, jobRecord: null }))
+  .catch(() => {}).finally(() => { window.__ready = true; });
+window.__remount = () => import("../../../web/breakdown.js").then((m) => m.mountBreakdown(slot, { job: "fixture", pid: null, analysis, jobRecord: null }));
+</script>

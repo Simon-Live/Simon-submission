@@ -42,15 +42,25 @@ function mountResultRoute(el, job, pid) {
   return () => { live = false; };
 }
 
+/** `#/challenge/<id>`: the leaderboard, loaded on first use. */
+function mountChallengeRoute(el, id) {
+  let stop = () => {};
+  let live = true;
+  import("./challenge.js").then((m) => { if (live) stop = m.mountChallenge(el, id); });
+  return () => { live = false; stop(); };
+}
+
 export const ROUTES = [
   [/^$/, (el) => mountCatalog(el)],
   [/^watch\/([^/]+)$/, (el, m) => mountWatch(el, m[1])],
   [/^record$/, (el) => mountRecord(el)],
   [/^follow\/([^/]+)$/, (el, m) => mountFollow(el, m[1])],
+  [/^follow\/([^/]+)\/c\/([^/]+)$/, (el, m) => mountFollow(el, m[1], m[2])], // a challenge taken (challenges.md)
   [/^job\/([^/]+)$/, (el, m) => mountJob(el, m[1])],
   [/^result\/([^/]+)$/, (el, m) => mountResultRoute(el, m[1])],
   [/^result\/([^/]+)\/([^/]+)$/, (el, m) => mountResultRoute(el, m[1], m[2])],
   [/^group\/([^/]+)$/, (el, m) => mountGroupResult(el, m[1])],
+  [/^challenge\/([^/]+)$/, (el, m) => mountChallengeRoute(el, m[1])],
 ];
 
 export function resolve(hash) {

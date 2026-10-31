@@ -1,0 +1,47 @@
+/* Challenges: leaderboard, sponsor banner, list and share step (challenges.md). Phone first (412 wide). */
+.ch-screen, .ch-actions-box { --ch-gold: #8a5a00; }
+.ch-tag {
+  display: inline-block; padding: 2px 10px; border-radius: 999px; background: #fff4dc; color: var(--ch-gold, #8a5a00);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.ch-sponsor { margin: 0 0 16px; padding: 14px 16px; border: 1px solid #f0d9a0; border-radius: 14px; background: #fffaf0; display: grid; gap: 4px; }
+.ch-sponsor p { margin: 0; }
+.ch-sponsor .ch-tag { justify-self: start; }
+.ch-sponsor-name { font-weight: 700; font-size: 18px; }
+.ch-sponsor-tagline { color: var(--muted); }
+.ch-prize { font-size: 15px; }
+.ch-sponsor-link { justify-self: start; min-height: var(--tap); display: inline-flex; align-items: center; font-weight: 600; color: var(--blue-ink); }
+.ch-movement { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: center; margin-bottom: 12px; }
+.ch-movement:not(:has(video)) { grid-template-columns: minmax(0, 1fr); }
+.ch-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 12px; background: var(--soft); }
+.ch-movement-name { margin: 0 0 2px; font-weight: 650; }
+.ch-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 8px; }
+.ch-board { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ch-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; min-height: 64px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+}
+.ch-row:first-child { border-color: #f0d9a0; background: #fffaf0; }
+.ch-rank { font: 700 16px var(--font); color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.ch-who { display: grid; gap: 4px; min-width: 0; }
+.ch-name { font-weight: 650; overflow-wrap: anywhere; }
+.ch-badge { justify-self: start; padding: 2px 10px; border-radius: 999px; background: var(--blue-bg); color: var(--blue-ink); font-size: 13px; font-weight: 600; }
+.ch-nums { display: flex; align-items: center; gap: 10px; }
+.ch-score { font: 750 26px/1 var(--font); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ch-grade { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; font: 750 18px/1 var(--font); background: var(--green-bg); color: var(--green-ink); }
+.ch-grade[data-grade="C"] { background: #fff4dc; color: #8a5a00; }
+.ch-grade[data-grade="D"] { background: #ffe9d6; color: #94410b; }
+.ch-grade[data-grade="F"] { background: var(--red-bg); color: var(--red-ink); }
+.ch-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ch-list-item { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-decoration: none; min-height: var(--tap); }
+.ch-list-item .ch-tag { justify-self: start; }
+.ch-list-title { font-weight: 650; }
+
+/* actions on the result screen and the share step */
+.ch-actions-box { margin: 16px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.ch-actions-box h2 { margin-top: 0; }
+.ch-actions-box .field { margin-top: 8px; }
+.ch-card-preview { display: block; width: 100%; max-width: 320px; height: auto; border-radius: 12px; border: 1px solid var(--line); margin: 8px 0; }
+.ch-link { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: var(--soft); font: 14px var(--mono); overflow-wrap: anywhere; }
+.ch-error { color: var(--red-ink); font-size: 14px; margin: 8px 0 0; }
+.ch-offer-link { background: none; border: 0; padding: 8px 0; color: inherit; font: inherit; font-size: 14px; text-decoration: underline; cursor: pointer; min-height: 44px; }

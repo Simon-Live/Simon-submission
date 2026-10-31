@@ -60,17 +60,20 @@ export function mountWatch(root, id) {
     // The inner mountCompare element carries data-testid="viewer"; a second one here made the locator ambiguous.
     const figure = h("div", { class: "figure" });
     const labelBox = h("div", { class: "labels" });
+    const challengeBox = h("div", { class: "challenges", "data-testid": "watch-challenges" });
     clear(screen).append(
       h("div", { class: "head" },
         h("div", {}, h("h1", { text: entry.name || eid }), h("p", { class: "hint", text: entry.category || "" })),
         linkButton(`#/follow/${encodeURIComponent(eid)}`, "Follow this movement", "follow", "primary")),
       labelBox,
+      challengeBox,
       video,
       h("h2", { text: "3D figure" }),
       figure,
       h("h2", { text: "Details" }),
       h("iframe", { class: "frame", src: entryPageUrl(eid), title: `${entry.name} in the catalog`, loading: "lazy", "data-testid": "watch-frame" }));
     mountLabelsView(labelBox, eid);
+    import("./challenge.js").then((m) => m.mountChallengeList(challengeBox, eid)).catch(() => {});
     mountFigure(figure, { ...entry, id: eid });
   }).catch((err) => {
     const missing = err instanceof ApiError && err.status === 404;

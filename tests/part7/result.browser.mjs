@@ -45,6 +45,7 @@ const attr = (page, id, a) => tid(page, id).getAttribute(a);
 const pel = async (page, which) => (await attr(page, "compare", `data-pelvis-${which}`)).split(",").map(Number);
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 async function drag(page, dx, dy) {
+  await page.locator("canvas").scrollIntoViewIfNeeded(); // the canvas sits below the score, insights and timeline
   const box = await page.locator("canvas").boundingBox();
   const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
   await page.mouse.move(cx, cy);
@@ -109,6 +110,7 @@ try {
 
   // wheel zoom changes the render
   const before = await page.locator("canvas").screenshot();
+  await page.locator("canvas").scrollIntoViewIfNeeded(); // the canvas sits below the score, insights and timeline
   const box = await page.locator("canvas").boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, -400);

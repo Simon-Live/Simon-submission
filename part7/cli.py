@@ -68,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Part 6 follow hand-off template with {id} (dev only; staging omits it).",
     )
 
+    # part7 challenge create|list|close
+    from part7 import challenge_cli
+
+    challenge_cli.add_parser(sub)
+
     # part7 check
     sub.add_parser("check", help="Run make check-7 end to end.")
 
@@ -119,6 +124,11 @@ def main(argv: list[str] | None = None) -> int:
             state=state,
             follow_url=args.follow_url,
         )
+
+    if args.command == "challenge":
+        from part7 import challenge_cli
+
+        return challenge_cli.main(args)
 
     if args.command == "check":
         from part7 import check7

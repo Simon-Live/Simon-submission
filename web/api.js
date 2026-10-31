@@ -177,8 +177,9 @@ const extras = (trim, labels, person) => ({
 });
 export const createTrainerJob = (upload_id, name, category, trim, labels, person) =>
   postJSON("api/trainer", { upload_id, name, category, ...extras(trim, labels, person) });
-export const createFollowJob = (upload_id, entry_id, trim, labels, person) =>
-  postJSON("api/follow", { upload_id, entry_id, ...extras(trim, labels, person) });
+// practice-and-modes.md: `more` is {mode?, section?}
+export const createFollowJob = (upload_id, entry_id, trim, labels, person, more) =>
+  postJSON("api/follow", { upload_id, entry_id, ...extras(trim, labels, person), ...(more || {}) });
 /** POST api/people: finds everyone in the trimmed clip; the picker polls the job. */
 export const createPeopleJob = (upload_id, trim) => postJSON("api/people", { upload_id, ...(trim ? { trim } : {}) });
 /** POST api/group: {upload_id, trim, people_job, trainer_id, follower_ids, name, category, labels, save_entry}. */

@@ -10,6 +10,7 @@ import { mountModeSwitch } from "./group.js";
 import { openPeoplePicker } from "./people.js";
 import { mountReference } from "./reference.js";
 import { h } from "./ui.js";
+import { loadChoice, MODES } from "./modes.js";
 import { createProgress } from "./progress.js";
 
 export const NAME_ERROR = "Give the movement a name.";
@@ -30,9 +31,10 @@ const hasLabels = (l) => !!l && (l.tags.length > 0 || l.notes.trim().length > 0)
  * Pure: the request to send once everything is chosen.
  * @returns {{kind: "trainer"|"group"|"follow", args: any[]}}
  */
-export function buildSubmit({ role, mode, upload, trim, peopleJob, choice, name, category, labels, entryId }) {
+export function buildSubmit({ role, mode, upload, trim, peopleJob, choice, name, category, labels, entryId, extra = {} }) {
   if (role === "follower") {
-    return { kind: "follow", args: [upload, entryId, trim, hasLabels(labels) ? labels : undefined, { people_job: peopleJob, person_id: choice.person_id }] };
+    const more = Object.keys(extra).length ? [extra] : []; // mode and section (practice-and-modes.md)
+    return { kind: "follow", args: [upload, entryId, trim, hasLabels(labels) ? labels : undefined, { people_job: peopleJob, person_id: choice.person_id }, ...more] };
   }
   if (mode === "group") {
     return {
@@ -40,6 +42,7 @@ export function buildSubmit({ role, mode, upload, trim, peopleJob, choice, name,
       args: [{
         upload_id: upload, trim, people_job: peopleJob, trainer_id: choice.trainer_id, follower_ids: choice.follower_ids,
         name, category, labels: { ...choice.labels, ...(hasLabels(labels) ? labels : {}) }, save_entry: true,
+        ...(extra.mode ? { mode: extra.mode } : {}),
       }],
     };
   }
@@ -51,9 +54,12 @@ export function buildSubmit({ role, mode, upload, trim, peopleJob, choice, name,
  * A follower may pass the catalog `entry`: its video (or 3D animation) is the reference beside the take.
  * Returns the cleanup function.
  */
-export function mountTakeFlow(root, { role, entryId, entry, limits, onDone = (id, kind) => { location.hash = kind === "group" ? `#/job/${id}` : `#/job/${id}`; } }) {
+export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onReference, countdownDefault, onDone = (id, kind) => { location.hash = kind === "group" ? `#/job/${id}` : `#/job/${id}`; } }) {
   const trainer = role === "trainer";
   const reference = trainer ? null : mountReference(entry);
+  if (reference && onReference) onReference(reference);
+  // a trainer's group job carries the stored mode when there is one; a follower's fields come from the caller
+  const extraFields = extra || (() => { const m = loadChoice(); return MODES.includes(m) ? { mode: m } : {}; });
   let capture = null;
   let labels = null;
   let trim = null;
@@ -154,7 +160,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, onDone = (id
   }
 
   labels = mountLabels(labelBox);
-  capture = mountCapture(capBox, limits, { reference });
+  capture = mountCapture(capBox, limits, { reference, countdownDefault });
   capture.onChange(onTake);
 
   submit.addEventListener("click", async () => {
@@ -175,7 +181,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, onDone = (id
     try {
       const req = buildSubmit({
         role, mode, upload, trim, peopleJob, choice, name: name.value.trim(), category: category.value,
-        labels: labels.value(), entryId,
+        labels: labels.value(), entryId, extra: extraFields(),
       });
       const make = { trainer: createTrainerJob, group: createGroupJob, follow: createFollowJob }[req.kind];
       const { job } = await make(...req.args);
@@ -187,5 +193,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, onDone = (id
       paintSubmit();
     }
   });
-  return () => { alive = false; if (capture) capture.destroy(); if (reference) reference.destroy(); };
+  const stop = () => { alive = false; if (capture) capture.destroy(); if (reference) reference.destroy(); };
+  stop.setCountdownDefault = (n) => { if (capture) capture.setCountdownDefault(n); };
+  return stop;
 }

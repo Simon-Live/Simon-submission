@@ -1,0 +1,276 @@
+{
+ "format": "simon.analysis.v1",
+ "schema_version": "1.5.0",
+ "status": {
+  "code": "ok",
+  "text": "Compared with the expected movement."
+ },
+ "faults": [],
+ "insights": [
+  {
+   "cue": "Raise your left arm higher",
+   "why": "Left arm too close to the body (3 of 8 reps)",
+   "kind": "range",
+   "at_s": 4.6,
+   "window": 3,
+   "points": 5.3,
+   "measure": "upper_arm_out",
+   "side": "left",
+   "joint": "left_shoulder"
+  },
+  {
+   "cue": "Straighten your right arm more",
+   "why": "Right elbow bent more than the example (3 of 8 reps)",
+   "kind": "range",
+   "at_s": 5.8,
+   "window": 4,
+   "points": 5.0,
+   "measure": "elbow_flexion",
+   "side": "right",
+   "joint": "right_elbow"
+  },
+  {
+   "cue": "Move your hands out wider",
+   "why": "Hands too close in (2 of 8 reps)",
+   "kind": "position",
+   "at_s": 5.8,
+   "window": 4,
+   "points": 3.8,
+   "measure": "forearm_out",
+   "side": "both",
+   "joint": "elbow"
+  },
+  {
+   "cue": "Move your right hand out",
+   "why": "Right hand too close in (2 of 8 reps)",
+   "kind": "position",
+   "at_s": 7.1,
+   "window": 5,
+   "points": 3.5,
+   "measure": "forearm_out",
+   "side": "right",
+   "joint": "right_elbow"
+  },
+  {
+   "cue": "Speed up to match the trainer",
+   "why": "Your reps took 140% of the trainer's time",
+   "kind": "tempo",
+   "at_s": 6.667,
+   "window": 5,
+   "points": null,
+   "measure": null,
+   "side": null,
+   "joint": null
+  }
+ ],
+ "score": {
+  "version": "simon.score.v1",
+  "value": 77,
+  "grade": "C",
+  "components": {
+   "faults": 19.43,
+   "similarity": 3.65
+  },
+  "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+  "basis": "reps",
+  "timeline": [
+   {
+    "t_s": [
+     0.333,
+     1.633
+    ],
+    "value": 97,
+    "grade": "A",
+    "components": {
+     "faults": 0.0,
+     "similarity": 3.2
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 1.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     1.633,
+     2.867
+    ],
+    "value": 97,
+    "grade": "A",
+    "components": {
+     "faults": 0.0,
+     "similarity": 3.32
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 1.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     2.867,
+     4.133
+    ],
+    "value": 97,
+    "grade": "A",
+    "components": {
+     "faults": 0.0,
+     "similarity": 3.27
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 1.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     4.133,
+     5.4
+    ],
+    "value": 83,
+    "grade": "B",
+    "components": {
+     "faults": 13.93,
+     "similarity": 3.48
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 1.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     5.4,
+     6.667
+    ],
+    "value": 69,
+    "grade": "D",
+    "components": {
+     "faults": 27.02,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "left arm too far right at 5.8 s",
+      "at_s": 5.8,
+      "t_s": [
+       5.8,
+       6.1
+      ],
+      "points": 2.4,
+      "cue": "Raise your left arm higher",
+      "cue_kind": "range",
+      "joint": "left_shoulder",
+      "side": "left",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 1.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     6.667,
+     7.867
+    ],
+    "value": 55,
+    "grade": "F",
+    "components": {
+     "faults": 41.53,
+     "similarity": 3.96
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 1.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     7.867,
+     9.1
+    ],
+    "value": 54,
+    "grade": "F",
+    "components": {
+     "faults": 41.84,
+     "similarity": 4.0
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 1.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     9.1,
+     10.467
+    ],
+    "value": 65,
+    "grade": "D",
+    "components": {
+     "faults": 31.13,
+     "similarity": 4.0
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 1.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   }
+  ],
+  "tempo": {
+   "ratio": 1.4,
+   "cue": "Speed up to match the trainer"
+  },
+  "per_rep": [
+   {
+    "value": 97,
+    "grade": "A"
+   },
+   {
+    "value": 97,
+    "grade": "A"
+   },
+   {
+    "value": 97,
+    "grade": "A"
+   },
+   {
+    "value": 83,
+    "grade": "B"
+   },
+   {
+    "value": 69,
+    "grade": "D"
+   },
+   {
+    "value": 55,
+    "grade": "F"
+   },
+   {
+    "value": 54,
+    "grade": "F"
+   },
+   {
+    "value": 65,
+    "grade": "D"
+   }
+  ]
+ }
+}

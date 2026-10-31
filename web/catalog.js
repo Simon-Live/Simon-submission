@@ -2,6 +2,7 @@
 import { listEntries } from "./api.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { getLabels, tagChips } from "./labels.js";
+import { ALL, loadChoice, matchesMode, mountModePicker } from "./modes.js";
 
 const SOURCE_LABEL = { fixture: "Sample", mock: "Sample", import: "Recorded", processor: "Processed", visitor: "Visitor" };
 
@@ -34,6 +35,8 @@ function row(entry, labels) {
 export function mountCatalog(root) {
   let entries = [];
   let labels = {};
+  let mode = loadChoice() || ALL; // the mode filter (modes.js); All shows everything
+  const picker = mountModePicker({ value: mode, withAll: true, testid: "mode-filter", onChange: (m) => { mode = m; render(); } });
   const search = h("input", {
     type: "search", class: "input", placeholder: "Search movements", "aria-label": "Search movements",
     "data-testid": "search", autocomplete: "off", oninput: () => render(),
@@ -46,14 +49,16 @@ export function mountCatalog(root) {
       h("div", { class: "head" },
         h("h1", { text: "Movements" }),
         linkButton("#/record", "Record a movement", "record", "primary")),
-      search, status, list));
+      picker.el, search, status, list));
 
   function render() {
-    const shown = entries.filter((e) => matches(e, search.value, labels));
+    const shown = entries.filter((e) => matchesMode(e, mode, labels) && matches(e, search.value, labels));
     clear(list).append(...shown.map((e) => row(e, labels)));
     clear(status);
     if (entries.length === 0) {
       status.append(stateBlock("empty", "No movements yet", "Record the first one and it shows up here."));
+    } else if (shown.length === 0 && mode !== ALL && !search.value.trim()) {
+      status.append(stateBlock("empty", "Nothing in this mode yet", "Pick All to see every movement, or tag a movement with this mode's name."));
     } else if (shown.length === 0) {
       status.append(stateBlock("empty", "No match", `Nothing matches "${search.value.trim()}". Try another word.`));
     }

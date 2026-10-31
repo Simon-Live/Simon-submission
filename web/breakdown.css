@@ -1,0 +1,17 @@
+/* Shape or timing panel, row tags, standard-body note (TICKET-074, TICKET-075). Inherits the result screen tokens. */
+.sb-panel { background: var(--sr-surface, #141b25); border: 1px solid var(--sr-line, #263143); border-radius: 18px; padding: 16px; color: var(--sr-text, #e9eef6); }
+.sb-panel h2 { margin: 0 0 8px; font-size: 18px; font-weight: 650; }
+.sb-verdict { margin: 0 0 12px; font-weight: 600; text-wrap: balance; }
+.sb-row { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0; }
+.sb-muted, .sb-note { color: var(--sr-muted, #95a3b8); font-size: 14px; margin: 8px 0 0; }
+.sb-timing { margin-top: 10px; border-top: 1px solid var(--sr-line, #263143); padding-top: 8px; }
+.sb-moments { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.sb-moment { width: 100%; min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--sr-line, #263143); background: var(--sr-raised, #1b2431); color: inherit; font: inherit; cursor: pointer; }
+.sb-chip, .sb-tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.sb-chip-rushing, .sb-tag-timing { background: #3a2a10; color: var(--sr-hot, #ffc83d); }
+.sb-chip-dragging { background: #2a2140; color: #c3a8ff; }
+.sb-tag { margin-left: 8px; vertical-align: middle; }
+.sb-tag-shape { background: #12303a; color: var(--sr-trainer, #8aa4ff); }
+.sb-body { margin-top: 10px; background: var(--sr-surface, #141b25); border: 1px solid var(--sr-line, #263143); border-radius: 14px; padding: 10px 14px; color: var(--sr-text, #e9eef6); }
+.sb-body summary { cursor: pointer; font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.sb-body p { margin: 8px 0 0; color: var(--sr-muted, #95a3b8); font-size: 14px; }

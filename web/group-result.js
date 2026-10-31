@@ -35,6 +35,7 @@ export function boardRows(result) {
       id: p.id,
       label: (p.label && String(p.label).trim()) || `Person ${p.id}`,
       score: refused ? score : score ?? 0, grade: refused ? grade : grade ?? "F", refused, faults,
+      scorable: !refused && !warned, // only a take Part 5 scored "ok" can join a challenge
       refusal: refused ? (p.status_text || p.reason || REFUSALS[p.status_code] || MSG_REFUSED) : "",
       warning: warned ? (p.status_text || REFUSALS[p.status_code] || MSG_REFUSED) : "",
     };
@@ -110,7 +111,11 @@ export function mountGroupResult(root, jobId) {
         scored.length ? watchBtn : null),
       panel,
       rows.length ? list : stateBlock("group-empty", "Nobody to show", "This group job has no people in it.", linkButton("#/", "Back to movements", "back-home")),
+      h("div", { "data-testid": "crew-slot" }),
       result.entry_id ? h("p", { class: "meta" }, h("a", { href: `#/watch/${encodeURIComponent(result.entry_id)}`, "data-testid": "group-entry", text: "Open the trainer's movement" })) : null);
+    if (result.entry_id && scored.length) {
+      import("./challenge-actions.js").then((m) => m.mountCrewChallenge?.(screen.querySelector('[data-testid="crew-slot"]'), { jobId, entryId: result.entry_id, rows: rows.filter((r) => r.scorable) })).catch(() => {});
+    }
   }
 
   async function load() {

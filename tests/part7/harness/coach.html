@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>coach harness</title>
+<style>html,body{margin:0;background:#0c1118}</style>
+<div id="app"></div>
+<script type="module">
+// The result screen with the follower video (coaching-moments.md). Cases:
+//   ok       Part 5 1.5.0 on the real fast lateral raise: weak parts, misses, tempo "rushing" (ratio 0.37)
+//   golden   1.5.0 golden example: faults only, no timeline
+//   flawless every window 98 and no misses
+//   novideo  as ok, but the video file does not exist
+import { mountResult } from "../../../web/result.js";
+const q = new URLSearchParams(location.search);
+const get = (f) => fetch(`../../../fixtures/input/${f}`).then((r) => r.json());
+let [analysis, replay] = await Promise.all([get("analysis-insights.json"), get("replay.json")]);
+const c = q.get("case") || "ok";
+const reps = 4, nF = replay.follower.length, span = nF / replay.fps;
+const tile = (track) => Array.from({ length: reps }, () => structuredClone(track)).flat();
+const times = (ts) => Array.from({ length: reps }, (_, k) => ts.map((t) => +(t + k * span).toFixed(6))).flat();
+replay = { ...replay, expected: tile(replay.expected), follower: tile(replay.follower),
+  expected_t: times(replay.expected_t), follower_t: times(replay.follower_t),
+  exp_to_fol: Array.from({ length: reps }, (_, k) => replay.exp_to_fol.map((f) => f + k * nF)).flat() };
+if (c === "golden") { analysis = await get("analysis-1.5.0.json"); }
+if (c === "flawless") {
+  analysis.score.value = 98; analysis.score.grade = "A"; analysis.insights = []; analysis.faults = [];
+  analysis.score.timeline.forEach((w) => { w.value = 98; w.grade = "A"; w.misses = []; w.components = { faults: 0, similarity: 2 }; });
+}
+const videoUrl = c === "novideo" ? "../fixtures/missing.webm" : "../fixtures/coach.webm";
+window.__r = await mountResult(document.getElementById("app"), { analysis, replay, videoUrl, job: "coach", record: null });
+window.__ready = true;
+</script>

@@ -2,7 +2,7 @@
 // openPeoplePicker polls the `people` job, shows the middle frame and the person crops, and resolves
 // with the choice. One person with enough coverage is chosen automatically in "single" mode.
 import { getJob } from "./api.js";
-import { h, clear } from "./ui.js";
+import { h, clear, ensureCss } from "./ui.js";
 import { createProgress, estimateText, TYPICAL_S } from "./progress.js";
 import {
   GROUP_MAX_FOLLOWERS, GROUP_MAX_MS, MSG_TOO_LONG, MSG_TOO_MANY, MSG_NEED_TWO, LABEL_MAX, groupProblem, cleanLabels,
@@ -21,16 +21,7 @@ export const cropUrl = (job, id) => `api/jobs/${encodeURIComponent(job)}/people/
 export const frameUrl = (job) => `api/jobs/${encodeURIComponent(job)}/people/frame.jpg`;
 export const pct = (v) => `${Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 100)}%`;
 
-let styled = false;
-export function ensurePeopleStyles() {
-  if (styled || document.querySelector("link[data-simon-people-css]")) { styled = true; return; }
-  styled = true;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = new URL("./people.css", import.meta.url).href;
-  link.setAttribute("data-simon-people-css", "");
-  document.head.append(link);
-}
+export function ensurePeopleStyles() { ensureCss("people.css", "data-simon-people-css"); }
 
 /**
  * @param opts.trimMs the trimmed length, so group mode can refuse a clip over 30 s

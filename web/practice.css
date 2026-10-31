@@ -1,0 +1,32 @@
+/* Modes and "Learn in sections" (practice-and-modes.md). Plain blocks on the app's own tokens. */
+.mode-picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.mode-btn {
+  min-height: var(--tap); padding: 0 16px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface); color: var(--ink); font: inherit; cursor: pointer;
+}
+.mode-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.mode-coaching { margin: 0 0 12px; }
+.mode-safety { padding: 10px 12px; border-radius: 8px; background: var(--blue-bg); color: var(--blue-ink); font-weight: 600; }
+.mode-framing { color: var(--muted); }
+.mode-note { margin: 0 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.mode-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+.mode-chip, .section-chip {
+  display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; border-radius: 999px;
+  background: var(--soft); font-size: 14px; font-weight: 600;
+}
+.section-chip { background: var(--green-bg); color: var(--green-ink); }
+.mode-scoring { color: var(--muted); font-size: 14px; }
+
+.practice { margin: 0 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.practice-switch { display: flex; align-items: center; gap: 10px; min-height: var(--tap); font-weight: 600; cursor: pointer; }
+.practice-switch input { width: 22px; height: 22px; }
+.ladder { list-style: none; margin: 8px 0 12px; padding: 0; display: grid; gap: 6px; }
+.step-btn {
+  display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--tap);
+  padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.step.on .step-btn { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.step-btn[data-state="passed"] { background: var(--green-bg); color: var(--green-ink); }
+.step-btn:disabled { background: var(--soft); color: var(--muted); cursor: not-allowed; }
+.step-note { font-size: 14px; color: var(--muted); }

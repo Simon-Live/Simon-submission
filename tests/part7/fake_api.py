@@ -14,6 +14,9 @@ import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fake_challenges  # noqa: E402  (challenge lane: in-memory api/challenges)
+
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 FIXTURES = ROOT / "fixtures" / "input"
@@ -110,6 +113,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?")[0].lstrip("/")
+        if path == "api/challenges" or path.startswith("api/challenges/"):
+            return fake_challenges.get(self, self.path)
+        if path.startswith("__harness/"):  # harness pages beside the tests, served at /__harness/<file>
+            page = (Path(__file__).resolve().parent / "harness" / path[len("__harness/"):]).resolve()
+            ok = page.is_file() and page.parent == (Path(__file__).resolve().parent / "harness")
+            return self.send(200, page.read_bytes(), MIME.get(page.suffix, "text/html")) if ok else self.send(404, {"error": "not found"})
         if path == "api/config":
             return self.send(200, {"base": "", "limits": {"max_seconds": 60, "max_bytes": 95000000, "recorder_bps": 2500000},
                                    "phrasing": "template", "movement": "lateral-raise", "fixture_result": True})
@@ -130,11 +139,22 @@ class Handler(BaseHTTPRequestHandler):
         if path == "api/fixture-result":
             return self.send(200, {"analysis": json.loads((FIXTURES / "analysis-1.2.0.json").read_text()),
                                    "replay": json.loads((FIXTURES / "replay.json").read_text())})
+        if re.match(r"api/results/([^/]+)/([^/]+/)?video\.mp4$", path):  # the follower clip (result_media.py), Range like the app
+            return self.follower_video()
         m = re.match(r"api/results/([^/]+)/(analysis|replay)\.json$", path)
         if m:
             f = "analysis-1.2.0.json" if m.group(2) == "analysis" else "replay.json"
             return self.send(200, (FIXTURES / f).read_bytes())
         return self.static(path)
+
+    def follower_video(self):
+        data, rng = video_bytes(), self.headers.get("Range")
+        STATE["follower_video"] = STATE.get("follower_video", 0) + 1
+        if rng:
+            a, _, b = rng.removeprefix("bytes=").partition("-")
+            start, end = int(a or 0), int(b) if b else len(data) - 1
+            return self.send(206, data[start:end + 1], "video/webm", {"Content-Range": f"bytes {start}-{end}/{len(data)}"})
+        return self.send(200, data, "video/webm")
 
     def entry(self, eid, file):
         entry = next((e for e in ENTRIES if e["id"] == eid), None)
@@ -175,6 +195,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "api/people":
             STATE["people_jobs"] += 1
             return self.send(202, {"job": f"pj{STATE['people_jobs']}"})
+        if path.startswith("api/challenges") or path == "__test/challenges":
+            return fake_challenges.post(self, self.path, body)
         if path == "api/client-log":  # the browser's own events (app.md "Client log"), as the real app answers
             return self.send(204)
         data = json.loads(body or b"{}")

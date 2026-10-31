@@ -108,12 +108,15 @@ def follow_job(
     trim: dict[str, int] | None = None,
     person: people.PersonSel | None = None,
     visibility: bytes | None = None,
+    mode: str | None = None,
 ) -> JobFn:
     """Return the job function for a follower upload against the entry's `expected` clip bytes.
 
     `visibility` is the trainer's `skeleton.json`; Part 5 uses it to refuse takes whose body is not visible.
 
     With a `trim`, `at_s` in the analysis is on the trimmed clip's clock and the result carries `trim`.
+    `mode` (modes.py) goes to Part 5 as `--profile` when the pin offers it. The caller has already cut `expected`
+    to a section when the request had one (sections.py).
     `person` (people.md) makes the analysis that of one person of a people job, on that job's trimmed clip.
     """
 
@@ -128,6 +131,7 @@ def follow_job(
         result = chain.follower(
             video, expected_path, ctx.work / "follower", report=ctx.set_stage, lock=lock, backend=backend,
             state=state, phrasing=phrasing, person=person, expected_visibility=visibility_path,
+            mode=mode,
         )
         if result.get("note"):
             ctx.add_note(str(result["note"]))

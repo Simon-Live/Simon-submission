@@ -25,9 +25,9 @@ def test_reference_testids(tid):
 def test_hooks_are_wired_for_the_follower_only():
     flow = src("take-flow.js")
     assert 'trainer ? null : mountReference(entry)' in flow
-    assert "mountCapture(capBox, limits, { reference })" in flow
+    assert "mountCapture(capBox, limits, { reference, countdownDefault })" in flow
     assert "editTake(editBox, take, info, reference)" in flow
-    assert "entry: { ...entry, id: eid }" in src("follow.js")
+    assert "entry: full" in src("follow.js")  # the catalog entry (with its id) is the take flow's reference
     cap = src("capture.js")
     assert "reference.startRecording()" in cap and "reference.stopRecording()" in cap and "showFirstFrame" in cap
     assert "reference.follow(" in src("trim.js") and "reference.dock(refRow" in src("trim.js")

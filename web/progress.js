@@ -1,7 +1,7 @@
 // Shared progress indicators (operator 2026-10-30: every wait gets a visible indicator, plain context and,
 // where known, an estimate). createProgress is the bar with text and elapsed time; showLoading and
 // hideLoading are the spinner and skeleton for screens that load JSON or 3D.
-import { h, mmss } from "./ui.js";
+import { h, mmss, ensureCss } from "./ui.js";
 
 /** Typical seconds per job stage [low, high], from app.md and the processor timings. api/config may override. */
 export const TYPICAL_S = {
@@ -10,16 +10,7 @@ export const TYPICAL_S = {
   normalizing: [3, 8], trimming: [2, 6], tracking: [8, 20],
 };
 
-let styled = false;
-export function ensureProgressStyles() {
-  if (styled || document.querySelector("link[data-simon-progress-css]")) { styled = true; return; }
-  styled = true;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = new URL("./progress.css", import.meta.url).href;
-  link.setAttribute("data-simon-progress-css", "");
-  document.head.append(link);
-}
+export function ensureProgressStyles() { ensureCss("progress.css", "data-simon-progress-css"); }
 
 /** "about 20 s", "about 1 to 3 min" for a [low, high] range in seconds. */
 export function estimateText([low, high]) {

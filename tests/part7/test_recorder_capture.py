@@ -50,7 +50,7 @@ def test_prefs_storage_wrapped_in_try_catch():
 def test_record_and_follow_are_thin_wrappers_over_one_take_flow():
     r, f, t, a = src("record"), src("follow"), src("take-flow"), src("api")
     for s in (r, f):
-        assert "mountTakeFlow" in s and "mountCapture" not in s and "editTake" not in s and len(s.splitlines()) < 50
+        assert "mountTakeFlow" in s and "mountCapture" not in s and "editTake" not in s and len(s.splitlines()) < (50 if s is r else 90)  # follow also hosts the mode picker and the practice ladder
     assert 'role: "trainer"' in r and 'role: "follower"' in f
     assert "editTake" in t and "capture.reset()" in t and "createPeopleJob(upload, trim)" in t
     assert "openPeoplePicker" in t and "mountModeSwitch" in t and "mountLabels" in t and "labels.value()" in t

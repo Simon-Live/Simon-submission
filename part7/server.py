@@ -23,8 +23,8 @@ from urllib.parse import urlsplit
 import uuid
 
 from part7 import (
-    applog, buildinfo, client_log, config, jobs, labels, media, modules, people, people_routes, processor, proxy, quota,
-    replay,
+    applog, buildinfo, challenge_routes, client_log, config, jobs, labels, media, modes, modules, people, people_routes,
+    processor, proxy, quota, replay, result_media, sections,
 )
 from part7.parts import p5_analyse
 
@@ -134,7 +134,14 @@ class _Handler(BaseHTTPRequestHandler):
         return self.headers.get("Cf-Connecting-Ip") or None
 
     def _body_json(self) -> dict[str, Any] | None:
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length < 0:  # reading a negative length would wait for a body that never ends
+            self.close_connection = True
+            self._error(400, "The request is not valid JSON.")
+            return None
         if length > JSON_BODY_MAX:
             self._error(413, "The request is too large.")
             return None
@@ -196,7 +203,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _api(self, route: str) -> None:
         method, parts = self.command, route.split("/")
+        if result_media.handle(self, method, route):  # the follower clip, with Range (coaching-moments.md)
+            return
         if people_routes.handle(self, method, route):  # people choice and group mode (people.md)
+            return
+        if challenge_routes.handle(self, method, route):  # challenges and leaderboards (challenges.md)
             return
         if method in ("GET", "HEAD"):
             if route == "health":
@@ -491,10 +502,18 @@ class _Handler(BaseHTTPRequestHandler):
                 take_labels = labels.validate(doc["labels"])
             except labels.LabelsError as exc:
                 return self._error(400, str(exc))
+        practice = self._practice(doc)  # mode and section (practice-and-modes.md); answers 400 itself
+        if practice is None:
+            return
         clip = self._clip_of(doc, raw)
         if clip is None:
             return
         trim, record, person = clip
+        record.update(practice)
+        ref = challenge_routes.follow_ref(self, doc, entry_id)  # optional challenge_id (challenges.md); answers 400 or 409
+        if ref is None:
+            return
+        record.update(ref)
         if take_labels is not None:
             record["labels"] = take_labels  # the follower's take labels live in the job record (recorder.md)
         manifest = self.app.child.get_entry(entry_id) if ID_RE.match(entry_id) else None
@@ -503,13 +522,28 @@ class _Handler(BaseHTTPRequestHandler):
         expected = self._expected_clip(entry_id, manifest)
         if expected is None:
             return
+        if record.get("section"):
+            try:
+                expected = sections.cut(expected, record["section"])
+            except sections.SectionError as exc:
+                return self._error(400, str(exc))
         skeleton = manifest.get("skeleton")
         visibility = self.app.child.get_entry_file(entry_id, str(skeleton)) if skeleton else None
         fn = processor.follow_job(
             raw, expected=expected, entry_id=entry_id, phrasing=self.app.phrasing, lock=self.app.lock,
             backend=self.app.backend, trim=trim, person=person, visibility=visibility,
+            mode=record.get("mode"),
         )
         self._enqueue("follow", fn, entry_id=entry_id, **record)
+
+    def _practice(self, doc: dict[str, Any]) -> dict[str, Any] | None:
+        """The optional `mode` and `section` of a request as job-record fields; answers 400 itself, returns None."""
+        try:
+            mode, section = modes.parse(doc.get("mode")), sections.parse(doc.get("section"))
+        except (modes.ModeError, sections.SectionError) as exc:
+            self._error(400, str(exc))
+            return None
+        return {**({"mode": mode} if mode else {}), **({"section": section} if section else {})}
 
     def _expected_clip(self, entry_id: str, manifest: dict[str, Any]) -> bytes | None:
         """The entry's animation, else its skeleton when Part 5 accepts it; answers 409 or 503 itself."""

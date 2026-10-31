@@ -6,7 +6,7 @@ import { h, mmss } from "./ui.js";
 import { clientLog } from "./api.js";
 import { openTrimEditor } from "./trim.js";
 import {
-  COUNTDOWNS, DURATIONS, RAW_LIMIT_S, countdownLabel, durationLabel, loadPrefs, savePrefs,
+  COUNTDOWNS, DURATIONS, RAW_LIMIT_S, countdownLabel, durationLabel, loadPrefs, savePrefs, hasSavedPrefs,
   runCountdown, recBadge, injectStyles,
 } from "./countdown.js";
 
@@ -59,7 +59,7 @@ function selectField(id, label, values, current, text, onchange) {
  * fn(take, {source, countdownUsed, manual}) when a take arrives; reset() returns to the preview.
  * `reference` (follower only, reference.js) is docked beside the preview, shown in the countdown, and plays from its end.
  */
-export function mountCapture(root, limits, { reference = null } = {}) {
+export function mountCapture(root, limits, { reference = null, countdownDefault = null } = {}) {
   let stream = null;
   let recorder = null;
   let chunks = [];
@@ -70,6 +70,7 @@ export function mountCapture(root, limits, { reference = null } = {}) {
   let listener = () => {};
   let counting = null;
   let prefs = loadPrefs();
+  if (COUNTDOWNS.includes(countdownDefault) && !hasSavedPrefs()) prefs.countdown = countdownDefault; // mode default (modes.js)
   let source = "recording";
   let countdownUsed = false;
   let manual = false;
@@ -345,6 +346,13 @@ export function mountCapture(root, limits, { reference = null } = {}) {
 
   return {
     getTake: () => take,
+    /** A mode's countdown default; ignored once the person chose one themselves. */
+    setCountdownDefault(n) {
+      if (!COUNTDOWNS.includes(n) || hasSavedPrefs()) return;
+      prefs.countdown = n;
+      const sel = opts.querySelector('[data-testid="countdown-select"]');
+      if (sel) sel.value = String(n);
+    },
     onChange: (fn) => { listener = fn; },
     reset() {
       setError("");

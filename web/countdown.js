@@ -24,6 +24,11 @@ export function loadPrefs(storage) {
   };
 }
 
+/** True when the person has chosen a countdown or duration before (a mode default must not override it). */
+export function hasSavedPrefs(storage) {
+  try { return (storage || globalThis.localStorage).getItem(KEY) != null; } catch { return false; }
+}
+
 export function savePrefs(prefs, storage) {
   try {
     (storage || globalThis.localStorage).setItem(KEY, JSON.stringify(prefs));

@@ -3,7 +3,7 @@
 // screen mirrors the trainer). Trim editor: it sits beside the take and its playhead follows the trim playhead.
 // No video: the entry's 3D animation in the single-figure viewer (result.js mountViewer).
 import { entryFileUrl, getEntryFile } from "./api.js";
-import { h } from "./ui.js";
+import { h, ensureCss } from "./ui.js";
 
 export const TEXT = {
   label: "Trainer reference",
@@ -23,16 +23,18 @@ export function referenceTime(takeMs, offsetMs, durationS) {
   return ((t % durationS) + durationS) % durationS;
 }
 
-let styled = false;
-function ensureStyles() {
-  if (styled || document.querySelector("link[data-simon-reference-css]")) { styled = true; return; }
-  styled = true;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = new URL("./reference.css", import.meta.url).href;
-  link.setAttribute("data-simon-reference-css", "");
-  document.head.append(link);
+/**
+ * Reference time in seconds inside a practice section: the take clock runs at the playback `rate`, looped in the
+ * section {start_s, end_s}. `rate` 0.5 means the reference moves half as fast as the take clock.
+ */
+export function sectionTime(takeMs, offsetMs, range, rate = 1) {
+  const len = range.end_s - range.start_s;
+  if (!(len > 0)) return range.start_s;
+  const t = ((takeMs + offsetMs) / 1000) * rate;
+  return range.start_s + (((t % len) + len) % len);
 }
+
+function ensureStyles() { ensureCss("reference.css", "data-simon-reference-css"); }
 
 /**
  * @param entry the catalog entry ({id, name, video_uri?, animation?})
@@ -41,7 +43,7 @@ function ensureStyles() {
 export function mountReference(entry, { mirrored = true } = {}) {
   if (!entry || (!entry.video_uri && !entry.animation)) return null;
   ensureStyles();
-  const state = { mirror: mirrored, swap: false, offset: 0, home: null, playing: false };
+  const state = { mirror: mirrored, swap: false, offset: 0, home: null, playing: false, range: null, rate: 1, loop: 0 };
   const hasVideo = Boolean(entry.video_uri);
 
   const video = hasVideo ? h("video", {
@@ -101,6 +103,17 @@ export function mountReference(entry, { mirrored = true } = {}) {
   });
 
   const seek = (s) => { try { video.currentTime = s; } catch { /* metadata not loaded yet */ } };
+  const stopLoop = () => { clearInterval(state.loop); state.loop = 0; };
+  // Practice section: the video loops inside the range at the step's playbackRate (practice.js).
+  const startLoop = () => {
+    stopLoop();
+    state.loop = setInterval(() => {
+      const r = state.range;
+      if (!r || video.paused) return;
+      if (video.currentTime >= r.end_s || video.currentTime < r.start_s - 0.25) seek(r.start_s);
+    }, 30);
+  };
+  if (video) video.addEventListener("ended", () => { if (state.range) { seek(state.range.start_s); video.play().catch(() => {}); } });
   const ctl = {
     el, lastMs: null,
     /** Put the panel in `host`; mode "live" (capture) or "trim". A "live" host is where undock returns. */
@@ -114,18 +127,39 @@ export function mountReference(entry, { mirrored = true } = {}) {
     /** The first frame as a data URL, "" when unknown (3D reference). */
     firstFrame: () => first,
     mirrored: () => state.mirror,
-    /** Recording began: from the start, muted, looping. */
+    /**
+     * Practice: loop `range` {start_s, end_s, rate} at its playbackRate, or the whole clip at 1x for null.
+     * The 3D reference has no clock to loop, so it ignores this.
+     */
+    setSection(range) {
+      state.range = range || null;
+      state.rate = range ? range.rate : 1;
+      el.dataset.section = range ? `${range.start_s}-${range.end_s}` : "";
+      el.dataset.rate = String(state.rate);
+      if (!video) return;
+      video.loop = !range;
+      video.playbackRate = state.rate;
+      if (range) { startLoop(); seek(range.start_s); } else stopLoop();
+    },
+    /** Practice: play (or pause) the current section so the person can watch it before recording. */
+    preview(on) {
+      if (!video) return;
+      if (!on) { video.pause(); return; }
+      if (state.range) seek(state.range.start_s);
+      video.play().catch(() => {});
+    },
+    /** Recording began: from the start of the section (else the clip), muted, looping. */
     startRecording() {
       if (!video) return;
       el.dataset.recording = "true";
-      seek(0);
+      seek(state.range ? state.range.start_s : 0);
       video.play().catch(() => {});
     },
     stopRecording() {
       delete el.dataset.recording;
       if (!video) return;
       video.pause();
-      seek(0);
+      seek(state.range ? state.range.start_s : 0);
     },
     /** Trim editor: follow the take's playhead (ms from the start of the take). */
     follow(takeMs, playing = false) {
@@ -133,8 +167,10 @@ export function mountReference(entry, { mirrored = true } = {}) {
       state.playing = playing;
       el.dataset.playing = String(playing);
       if (!video) return;
-      const want = referenceTime(takeMs, state.offset, video.duration);
+      const want = state.range ? sectionTime(takeMs, state.offset, state.range, state.rate)
+        : referenceTime(takeMs, state.offset, video.duration);
       if (playing) {
+        if (video.playbackRate !== state.rate) video.playbackRate = state.rate;
         if (video.paused) video.play().catch(() => {});
         if (Math.abs(video.currentTime - want) > DRIFT_S) seek(want);
       } else {
@@ -143,6 +179,7 @@ export function mountReference(entry, { mirrored = true } = {}) {
       }
     },
     destroy() {
+      stopLoop();
       if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
       el.remove();
     },

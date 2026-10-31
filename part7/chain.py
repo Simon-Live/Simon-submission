@@ -374,10 +374,11 @@ def follower(
     phrasing: str = "template",
     person: people.PersonSel | None = None,
     expected_visibility: Path | str | None = None,
+    mode: str | None = None,
 ) -> dict[str, Any]:
     """`_follower_chain`, except that a failure about the take itself still ends in an analysis (an F with a warning)."""
     res = _follower_chain(
-        video, expected, work, report, lock, backend, state, phrasing, person, expected_visibility
+        video, expected, work, report, lock, backend, state, phrasing, person, expected_visibility, mode
     )
     if res.get("ok") or not _is_analysis_case(res):
         return res
@@ -402,6 +403,7 @@ def _follower_chain(
     phrasing: str = "template",
     person: people.PersonSel | None = None,
     expected_visibility: Path | str | None = None,
+    mode: str | None = None,
 ) -> dict[str, Any]:
     """Run the follower chain of `journey.md` (Parts 2, 3 `--view part5 --fps 30`, 5) with every doctor.
 
@@ -427,7 +429,7 @@ def _follower_chain(
         with stagelog.stage(work_p, "analyse", run.steps, expected=expected_p.name, phrasing=phrasing,
                             visibility=bool(expected_visibility)) as end:
             analysis, status_code = _analyse(run, expected_p, follower_path, work_p, lk, state, phrasing,
-                                             expected_visibility)
+                                             expected_visibility, mode)
             end["status"] = status_code
     except _Stop as stop:
         return stop.result
@@ -444,7 +446,7 @@ def _follower_chain(
 
 def _analyse(
     run: _Run, expected: Path, follower_path: Path, work: Path, lk: modules.Modules, state: Any, phrasing: str,
-    expected_visibility: Path | str | None,
+    expected_visibility: Path | str | None, mode: str | None = None,
 ) -> tuple[Path, str]:
     """Part 5's loader check, `analyse` and its Part 7 doctor; return `(analysis.json, status code)`."""
     run.check(
@@ -452,6 +454,7 @@ def _analyse(
     )
     step, analysis, status_code, notes = p5_analyse.run(
         expected, follower_path, work, lock=lk, state=state, phrasing=phrasing, expected_visibility=expected_visibility,
+        mode=mode,
     )
     run.steps.append(step)
     run.notes.extend(notes)

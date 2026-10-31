@@ -57,6 +57,7 @@ def group_job(
     state: Path | str | None = None,
     backend: str = "gpu",
     phrasing: str = "live",
+    mode: str | None = None,
 ) -> JobFn:
     """Return the job function of `POST api/group` on the people job whose work folder is `people_work`."""
 
@@ -84,7 +85,7 @@ def group_job(
         if entry_id and entry_labels and labels_state is not None:
             entry_store.save(labels_state, str(entry_id), entry_labels)  # recorder.md "Labels": part7/labels.py
         rows = _followers(ctx, trained["files"]["animation"], trained["files"]["skeleton"], video, people_work, pose3d,
-                          follower_ids, labels or {}, lk, backend, state, phrasing)
+                          follower_ids, labels or {}, lk, backend, state, phrasing, mode)
         result = {"entry_id": entry_id, "trainer_id": trainer_id, "people": order(rows)}
         return {"entry_id": entry_id, "result": result}
 
@@ -115,7 +116,7 @@ def _pose_once(
 def _followers(
     ctx: JobContext, animation: str, skeleton: str, video: Path, people_work: Path, pose3d: Path,
     follower_ids: list[str], labels: dict[str, str], lk: modules.Modules, backend: str, state: Path | str | None,
-    phrasing: str,
+    phrasing: str, mode: str | None = None,
 ) -> list[dict[str, Any]]:
     """Run the follower chain for each id against the trainer's animation; a failure is a row, not the job."""
     rows: list[dict[str, Any]] = []
@@ -127,6 +128,7 @@ def _followers(
         res = chain.follower(
             video, animation, folder, lock=lk, backend=backend, state=state, phrasing=phrasing,
             person=PersonSel(id=pid, people_work=people_work, pose3d=pose3d), expected_visibility=skeleton,
+            mode=mode,
         )
         if res.get("note"):
             ctx.add_note(f"person {pid}: {res['note']}")

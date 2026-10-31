@@ -176,3 +176,35 @@
 .sr-tl-words .sr-cue { font-size: 14px; }
 .sr-tl-tempo { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--sr-trainer) 12%, var(--sr-raised));
   color: var(--sr-text); font-size: 14px; font-weight: 600; }
+
+/* coaching moments (coaching-moments.md): slots, body note, shape vs timing, the pinned video and the marks */
+.sr-slot:empty, .sr-moments-holder:empty, .sr-stage-holder:empty, .simon-result [hidden] { display: none; }
+.sr-moment { color: var(--sr-hot); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sr-insight-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.sr-tl-words .sr-moment { font-size: 13px; }
+
+.sr-zone { display: block; }
+.sr-zone-body { display: grid; gap: 16px; }
+.sr-coach { position: sticky; top: 0; z-index: 20; margin-bottom: 16px; background: var(--sr-surface); border: 1px solid var(--sr-line);
+  border-radius: 18px; overflow: hidden; box-shadow: 0 8px 18px -10px #000; }
+.sr-video-frame { background: #000; display: flex; justify-content: center; cursor: pointer; }
+.sr-video { display: block; max-width: 100%; max-height: 28vh; width: auto; height: auto; }
+.sr-coach-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; }
+.sr-worst { min-height: 44px; padding: 0 14px; }
+.sr-worst[aria-pressed="true"] { border-color: var(--sr-hot); color: var(--sr-hot); }
+.sr-worst-note { color: var(--sr-muted); font-size: 13px; flex: 1 1 auto; }
+.sr-coach-clock { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 650; }
+.sr-marks { position: relative; height: 44px; margin: 0 12px 10px; border-radius: 8px; background: var(--sr-raised); }
+.sr-mark { position: absolute; top: 0; bottom: 0; min-width: 24px; padding: 0; border: 0; border-radius: 6px; cursor: pointer; background: var(--sr-f); opacity: 0.85; }
+.sr-mark-miss { background: var(--sr-d); }
+.sr-mark:focus-visible { outline: 3px solid #fff; outline-offset: 1px; }
+.sr-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--sr-text); pointer-events: none; z-index: 1; }
+.sr-moments { background: var(--sr-surface); border: 1px solid var(--sr-line); border-radius: 18px; padding: 18px; }
+.sr-moments-rule { margin: 0 0 10px; color: var(--sr-muted); font-size: 14px; }
+.sr-moment-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sr-moment-row { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border: 1px solid var(--sr-line);
+  border-radius: 12px; background: var(--sr-raised); color: var(--sr-text); font: inherit; text-align: left; cursor: pointer; }
+.sr-moment-row:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.sr-tl-bar { overflow: visible; }
+.sr-tl-flag { position: absolute; top: -6px; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--sr-hot); box-shadow: 0 0 0 2px var(--sr-bg); }
+@media (min-width: 720px) { .sr-video { max-height: 36vh; } }

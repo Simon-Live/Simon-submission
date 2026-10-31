@@ -1,0 +1,27 @@
+{
+ "format": "simon.analysis.v1",
+ "schema_version": "1.2.0",
+ "status": {
+  "code": "ok",
+  "text": "Compared with the expected movement."
+ },
+ "faults": [
+  {
+   "cue_kind": "position",
+   "text": "left hand too low"
+  },
+  {
+   "cue_kind": "range",
+   "text": "right arm not straight"
+  },
+  {
+   "cue_kind": "range",
+   "text": "left arm not high"
+  }
+ ],
+ "insights": [],
+ "score": {
+  "value": 70,
+  "grade": "C"
+ }
+}

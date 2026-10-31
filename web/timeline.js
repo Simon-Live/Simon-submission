@@ -3,6 +3,7 @@
 // From Part 5 schema 1.5.0 (ADR-0014) each miss has a `cue` and each window a `tempo` cue; both show when present.
 // Part 7 shows `score.timeline` as written and computes nothing. Older pins have no timeline: nothing shows.
 import { el } from "./score.js";
+import { momentChip } from "./coach-view.js";
 
 const secs = (t) => `${Number(t).toFixed(1)} s`;
 
@@ -66,7 +67,7 @@ export function scoreSentence(score, windows) {
  * Render the timeline under the score panel. `getCompare` returns the 3D compare (seek, highlight) once it exists.
  * Returns the section, or null when the analysis has no timeline.
  */
-export function renderTimeline(root, analysis, getCompare = () => null) {
+export function renderTimeline(root, analysis, getCompare = () => null, flagged = new Set()) {
   const windows = timelineOf(analysis);
   if (!windows.length) return null;
   const score = analysis.score;
@@ -92,18 +93,22 @@ export function renderTimeline(root, analysis, getCompare = () => null) {
       "data-testid": `timeline-${i}`,
       "data-grade": compared ? w.grade : false,
       "data-compared": String(compared),
+      "data-review": compared && flagged.has(i) ? "true" : false,
       "aria-pressed": "false",
       "aria-label": compared ? `${label}: ${w.value}, grade ${w.grade}, ${misses} miss${misses === 1 ? "" : "es"}` : `${label}: not compared`,
       style: `left:${((w.t_s[0] - t0) / span) * 100}%;width:${((w.t_s[1] - w.t_s[0]) / span) * 100}%`,
     });
     bar.append(el("span", { class: "sr-tl-fill", style: `height:${compared ? Math.max(2, w.value) : 100}%` }));
     if (misses) bar.append(el("span", { class: "sr-tl-count", "aria-hidden": "true", text: String(misses) }));
+    if (compared && flagged.has(i)) bar.append(el("span", { class: "sr-tl-flag", "data-testid": `timeline-${i}-review`, title: "A moment to review", "aria-hidden": "true" }));
     chart.append(bar);
     return bar;
   });
   const axis = el("div", { class: "sr-tl-axis", "aria-hidden": "true" }, el("span", { text: secs(t0) }), el("span", { text: secs(t1) }));
 
+  let shown = 0;
   function show(i) {
+    shown = i;
     bars.forEach((b, k) => b.setAttribute("aria-pressed", String(k === i)));
     detail.replaceChildren();
     const w = windows[i];
@@ -116,20 +121,23 @@ export function renderTimeline(root, analysis, getCompare = () => null) {
     head.append(el("span", { class: "sr-tl-value", "data-grade": w.grade, text: ` ${w.value}/100 (${w.grade})` }));
     detail.append(head);
     const tempo = tempoLine(w);
-    if (tempo) detail.append(el("p", { class: "sr-tl-tempo", "data-testid": `timeline-${i}-tempo`, text: tempo }));
+    if (tempo) {
+      detail.append(el("p", { class: "sr-tl-tempo", "data-testid": `timeline-${i}-tempo`, text: tempo }));
+    }
     const misses = w.misses || [];
     if (!misses.length) detail.append(el("p", { class: "sr-tl-clean", text: "No misses here." }));
     const list = el("ul", { class: "sr-tl-misses" });
     misses.forEach((m, k) => {
       const words = el("span", { class: "sr-tl-words" });
+      if (m.at_s != null) words.append(momentChip(m.at_s, `moment-chip-timeline-${i}-${k}`));
       if (m.cue) words.append(el("span", { class: "sr-cue", "data-testid": `timeline-${i}-miss-${k}-cue`, text: m.cue }));
       words.append(el("span", { class: "sr-tl-miss-text", text: m.text }));
-      const row = el("button", { type: "button", class: "sr-tl-miss", "data-testid": `timeline-${i}-miss-${k}` },
+      const row = el("button", { type: "button", class: "sr-tl-miss", "data-testid": `timeline-${i}-miss-${k}`, "data-cue-kind": m.cue_kind || false },
         words, el("span", { class: "sr-tl-points", text: `−${Number(m.points).toFixed(1)}` }));
       row.addEventListener("click", () => {
         const cmp = getCompare();
         if (!cmp) return;
-        if (m.at_s != null) cmp.seek(m.at_s);
+        if (m.at_s != null) (cmp.jump || cmp.seek)(m.at_s);
         cmp.highlight(jointsFor(m, analysis));
       });
       list.append(el("li", {}, row));
@@ -151,6 +159,9 @@ export function renderTimeline(root, analysis, getCompare = () => null) {
   const worst = compared.length ? compared.reduce((a, b) => (b[0].value < a[0].value ? b : a))[1] : 0;
   root.append(section);
   show(worst);
-  section.showWindow = (i) => windows[i] && show(i);   // "What to work on" opens the insight's window
+  // "What to work on" opens the insight's window
+  section.showWindow = (i) => windows[i] && show(i);
+  // the compare mounts after the timeline: once it exists, put it where the open window starts (the first seek is lost)
+  section.seekShown = () => { const cmp = getCompare(); if (cmp && windows[shown]) cmp.seek(windows[shown].t_s[0]); };
   return section;
 }

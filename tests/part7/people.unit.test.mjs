@@ -70,6 +70,16 @@ test("AC-P4 board rows keep the server order, label fallback, fault count and pl
   assert.equal(err.refusal, "the 3D step is not available");
 });
 
+test("boardRows marks only a take Part 5 scored ok as scorable (a challenge needs status ok)", () => {
+  const rows = boardRows({ people: [
+    { id: 1, score: 90, grade: "A", status_code: "ok" },
+    { id: 2, score: 90, grade: "A" },
+    { id: 3, score: 40, grade: "F", status_code: "different_movement" },
+    { id: 4, score: null, grade: null, status_code: "error" },
+  ] });
+  assert.deepEqual(rows.map((r) => r.scorable), [true, true, false, false]);
+});
+
 test("board rows tolerate a missing result", () => {
   assert.deepEqual(boardRows(null), []);
   assert.deepEqual(boardRows({}), []);

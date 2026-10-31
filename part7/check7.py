@@ -20,7 +20,7 @@ from typing import Any, Callable
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
-from part7 import compare, config, gpu_lock, movement, modules, runner, videos
+from part7 import compare, config, gpu_lock, movement, modules, runner, setup_parts, videos
 from part7.parts import p2_pose, p3_skeleton, p4_animate, p6_catalog
 
 EXIT_OK = 0
@@ -399,6 +399,11 @@ def prerequisites(lock: modules.Modules, state: Path | None = None) -> str | Non
     for part in modules.PART_IDS:
         if not lock.path(part).is_dir():
             return f"check-7: run make setup-parts (part {part} missing)"
+    # TICKET-081: a fresh checkout has no part environments; set them up (idempotent per sha and checkout).
+    done = setup_parts.setup_all(lock=lock, state=state)
+    if not done["ok"]:
+        errors = "; ".join(str(i["error"]) for i in done["parts"].values() if i.get("error"))
+        return f"check-7: part setup failed: {errors}"
     problems = videos.verify_all(state=state)
     if problems:
         name = re.sub(r"^videos: (\S+).*", r"\1", problems[0])

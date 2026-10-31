@@ -229,8 +229,41 @@ def test_video_missing_names_the_clip(tmp_path: Path, monkeypatch: pytest.Monkey
     lk = stub_modules(tmp_path / "modules")
     for n in range(1, 7):
         lk.path(n).mkdir(parents=True)
+    monkeypatch.setattr(check7.setup_parts, "setup_all", lambda **kw: {"ok": True, "parts": {}})
     monkeypatch.setattr(check7.videos, "verify_all", lambda state=None: ["videos: pexels-1 clip.mp4 is missing (run make videos)"])
     assert check7.prerequisites(lk, state=tmp_path) == "check-7: run make videos (pexels-1 missing or changed)"
+
+
+def _lock_with_clones(tmp_path: Path) -> modules.Modules:
+    lk = stub_modules(tmp_path / "modules")
+    for n in range(1, 7):
+        lk.path(n).mkdir(parents=True)
+    return lk
+
+
+def test_part_setup_runs_for_every_part_before_the_videos_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(check7, "gpu_visible", lambda: True)
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(check7.setup_parts, "setup_all", lambda **kw: calls.append(kw) or {"ok": True, "parts": {}})
+    monkeypatch.setattr(check7.videos, "verify_all", lambda state=None: [])
+    lk = _lock_with_clones(tmp_path)
+    assert check7.prerequisites(lk, state=tmp_path) is None
+    assert len(calls) == 1 and calls[0]["lock"] is lk and "only" not in calls[0]
+
+
+def test_part_setup_failure_is_a_missing_prerequisite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                      capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(check7, "gpu_visible", lambda: True)
+    bad = {"ok": False, "parts": {"1": {"ok": True, "error": None}, "3": {"ok": False, "error": "part 3: setup step failed"}}}
+    monkeypatch.setattr(check7.setup_parts, "setup_all", lambda **kw: bad)
+    monkeypatch.setattr(check7.videos, "verify_all", lambda state=None: pytest.fail("videos checked after a setup failure"))
+    lk = _lock_with_clones(tmp_path)
+    assert check7.prerequisites(lk, state=tmp_path) == "check-7: part setup failed: part 3: setup step failed"
+    monkeypatch.setattr(modules, "load", lambda: lk)
+    assert check7.cli_check() == 2
+    out, err = capsys.readouterr()
+    assert err.startswith("check-7: part setup failed: ")
+    assert json.loads(out)["pass"] is False
 
 
 def test_clone_supports_finds_flag(tmp_path: Path) -> None:

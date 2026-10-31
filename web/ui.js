@@ -39,3 +39,16 @@ export function stateBlock(testid, title, body, ...actions) {
 export function linkButton(href, label, testid, kind = "secondary") {
   return h("a", { class: `btn ${kind}`, href, "data-testid": testid, text: label });
 }
+
+/** Adds `<link rel=stylesheet>` for a css file beside this module once; `marker` is the data attribute that tags it. */
+export function ensureCss(file, marker) {
+  if (document.querySelector(`link[${marker}]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = new URL(file, import.meta.url).href;
+  link.setAttribute(marker, "");
+  document.head.append(link);
+}
+
+/** A finite number, else null. */
+export const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);

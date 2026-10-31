@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>challenge harness</title>
+<base href="/">
+<link rel="stylesheet" href="styles.css">
+<main id="app"></main>
+<script type="module">
+// Served by fake_api.py at /__harness/challenge.html, the base is "/" so api/... and x.js are web/x.js.
+// ?screen=actions&job=job1&pid=&entry=lateral-raise&score=82   the result screen's challenge slot (contract item 1)
+//   &challenge=board1&mode=rehab                                the job record's challenge_id and mode
+// ?screen=crew&job=grp1&entry=salsa-basic                       the group result's crew challenge
+// ?screen=list&entry=lateral-raise                              the watch screen's Challenges section
+import { mountChallengeActions, mountCrewChallenge } from "./challenge-actions.js";
+import { mountChallengeList } from "./challenge.js";
+const q = new URLSearchParams(location.search);
+const root = document.getElementById("app");
+const screen = q.get("screen");
+if (screen === "crew") {
+  mountCrewChallenge(root, { jobId: q.get("job"), entryId: q.get("entry"), rows: [
+    { id: 1, label: "Front row left", refused: false, score: 88 }, { id: 2, label: "", refused: false, score: 73 },
+    { id: 3, label: "Back row", refused: true, score: null }, { id: 4, label: "Warned", refused: false, scorable: false, score: 0 }] });
+} else if (screen === "list") {
+  await mountChallengeList(root, q.get("entry"));
+} else {
+  const pid = q.get("pid");
+  await mountChallengeActions(root, {
+    job: q.get("job"), pid: pid || null, analysis: { score: { value: Number(q.get("score") || 61), grade: "D" } },
+    jobRecord: q.get("entry") ? { entry_id: q.get("entry"), ...(q.get("challenge") ? { challenge_id: q.get("challenge") } : {}), ...(q.get("mode") ? { mode: q.get("mode") } : {}) } : null,
+  });
+}
+window.__ready = true;
+</script>

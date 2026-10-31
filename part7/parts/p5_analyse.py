@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from part7 import config, modules, runner
+from part7 import config, modes, modules, runner
 from part7.parts import probe
 
 PHRASING_CONCURRENCY = "4"
@@ -31,9 +31,11 @@ def run(
     state: Path | str | None = None,
     phrasing: str = "template",
     expected_visibility: Path | str | None = None,
+    mode: str | None = None,
 ) -> tuple[runner.Step, Path, str, list[str]]:
     """Run Part 5 `analyse` (exits 0 and 3 write a file) and return `(step, analysis, status_code, notes)`.
 
+    `mode` becomes `--profile <mode>` only when Part 5's analyse help offers `--profile`, else a note is added.
     `--replay <work>/replay.json` is passed when the pin offers it; the notes name what the pin lacks.
     `expected_visibility` (the trainer's `skeleton.json`) becomes `--expected-visibility` when the pin has the
     flag; Part 5 then refuses a take whose visible body cannot be scored (`not_enough_visible`,
@@ -59,6 +61,13 @@ def run(
             extra += ["--expected-visibility", str(Path(expected_visibility).resolve())]
         else:
             notes.append("Part 5 at this pin cannot check what is visible, the take was scored without that check")
+
+    if mode is not None:
+        # ASM: Part 5 TICKET-042 adds `--profile`; until the pin has it, the mode changes coaching and practice only
+        if probe.has_flag(5, _ANALYSE_ARGV, clone, "--profile", lk):
+            extra += ["--profile", mode]
+        else:
+            notes.append(modes.NOTE_NO_PROFILE)
 
     step = runner.run(
         5,

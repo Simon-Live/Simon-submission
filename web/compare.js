@@ -272,6 +272,7 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
   wrap.append(bar, tools);
 
   let highlightNames = [];
+  const tickers = [];  // listeners of the clock: (t, playing), used to keep the follower video in step
   const jointIdx = new Map(model.joints.map((n, i) => [n, i]));
 
   const draw = () => {
@@ -284,6 +285,7 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
     clockEl.textContent = `${t.toFixed(1)} s`;
     clockEl.setAttribute("data-t", String(t));
     scrub.value = String(t);
+    for (const cb of tickers) cb(t, playing);
     if (playBtn.getAttribute("data-playing") !== String(playing)) {
       playBtn.setAttribute("data-playing", String(playing));
       playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
@@ -334,6 +336,12 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
     el: wrap,
     stage,
     seek(atS) { clock.seek(Number(atS)); },
+    /** The clock in follower seconds, and whether it is running. */
+    time: () => clock.t,
+    isPlaying: () => clock.playing,
+    duration: model.duration,
+    /** Call `cb(t, playing)` on every clock change; returns the function that stops it. */
+    onTick(cb) { tickers.push(cb); return () => tickers.splice(tickers.indexOf(cb), 1); },
     play() { clock.play(); startLoop(); },
     pause() { clock.pause(); },
     highlight(names = []) {
@@ -361,7 +369,7 @@ export function writeDrawStats(wrap, stats) {
 function noop(wrap) {
   return {
     el: wrap, stage: null,
-    seek() {}, play() {}, pause() {}, highlight() {},
+    seek() {}, play() {}, pause() {}, highlight() {}, time: () => 0, isPlaying: () => false, duration: 0, onTick: () => () => {},
     destroy() { wrap.remove(); },
   };
 }

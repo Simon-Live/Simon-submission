@@ -136,6 +136,7 @@ try {
 
   // 3. job screen: queue, stages, overall bar, estimate
   await tid("progress").waitFor();
+  await page.waitForFunction(() => /Place in line: 2/.test(document.querySelector('[data-testid="queue"]')?.textContent || ""), null, { timeout: 8000 }); // the first poll fills it
   assert.match(await text("queue"), /Place in line: 2/);
   await shot("5-job-queued");
   await page.waitForFunction(() => document.querySelector('[data-testid="stage-detail"]')?.textContent.includes("longest step"));

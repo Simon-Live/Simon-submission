@@ -3,6 +3,12 @@
 import { el, renderScore, hasScore } from "./score.js";
 import { renderTimeline, timelineOf, jointsFor } from "./timeline.js";
 import { mountCompare, mountViewer, normalizeReplay, ensureStyles, MSG_BAD_REPLAY } from "./compare.js";
+import { worstMoment, momentsToReview, flaggedWindows } from "./coaching.js";
+import { mountCoachStage, renderMomentList, momentChip } from "./coach-view.js";
+
+// How long the result waits for the follower video to say it loads before showing the rest without it.
+export const SETTLE_TIMEOUT_MS = 4000;
+const SEEK_EVENT = "simon:seek"; // dispatched by breakdown.js
 
 export { mountViewer };
 
@@ -102,11 +108,13 @@ function renderInsights(root, analysis, getCompare, getTimeline) {
   const list = el("ol", { class: "sr-insight-list" });
   items.forEach((x, i) => {
     const row = el("button", {
-      type: "button", class: "sr-insight", "data-testid": `insight-${i}`, "data-kind": x.kind || false,
+      type: "button", class: "sr-insight", "data-testid": `insight-${i}`, "data-kind": x.kind || false, "data-cue-kind": x.kind || false,
       "data-at-s": x.at_s ?? false, "data-window": x.window ?? false, "aria-pressed": "false",
     });
     const words = el("span", { class: "sr-insight-words" },
-      el("span", { class: "sr-insight-cue", "data-testid": `insight-${i}-cue`, text: x.cue }),
+      el("span", { class: "sr-insight-line" },
+        x.at_s != null ? momentChip(x.at_s, `moment-chip-insight-${i}`) : null,
+        el("span", { class: "sr-insight-cue", "data-testid": `insight-${i}-cue`, text: x.cue })),
       x.why ? el("span", { class: "sr-insight-why", "data-testid": `insight-${i}-why`, text: x.why }) : null);
     const chip = insightChip(x);
     row.append(words);
@@ -117,7 +125,7 @@ function renderInsights(root, analysis, getCompare, getTimeline) {
       if (tl && x.window != null) tl.showWindow(x.window);
       const cmp = getCompare();
       if (!cmp) return;
-      if (x.at_s != null) cmp.seek(x.at_s);
+      if (x.at_s != null) cmp.jump(x.at_s);
       cmp.highlight(jointsFor(x, analysis));
     });
     list.append(el("li", {}, row));
@@ -149,6 +157,7 @@ function renderFaults(root, analysis, getCompare) {
       "data-testid": `fault-${i}`,
       "data-at-s": f.at_s,
       "data-joints": (f.joints || []).join(","),
+      "data-cue-kind": f.cue_kind || false,
       "data-confidence": f.confidence || false,
       "aria-pressed": "false",
     });
@@ -174,7 +183,7 @@ function renderFaults(root, analysis, getCompare) {
     }
     row.setAttribute("aria-pressed", "true");
     if (cmp) {
-      cmp.seek(faults[i].at_s);
+      cmp.jump(faults[i].at_s);
       cmp.highlight(faults[i].joints || []);
     }
     row.scrollIntoView?.({ block: "nearest" });
@@ -196,20 +205,58 @@ function downloadLink(testid, label, filename, data, urls) {
   return el("a", { class: "sr-btn sr-dl", "data-testid": testid, href: url, download: filename, text: label });
 }
 
+
+/** The follower's clip of a finished job (result_media.py), or null for the example result. */
+export function videoUrlFor(job, pid) {
+  if (!job || job === "fixture") return null;
+  return `api/results/${encodeURIComponent(job)}/${pid ? `${encodeURIComponent(pid)}/` : ""}video.mp4`;
+}
+
+/** An empty slot another lane fills; `fillSlot` loads its module, and a missing module leaves it empty. */
+function makeSlot(root, testid) {
+  const slot = el("div", { class: "sr-slot", "data-testid": testid });
+  root.append(slot);
+  return slot;
+}
+const fillSlot = (slot, loader, ctx, cleanups = []) => {
+  loader().then((fn) => { const done = fn && fn(slot, ctx); if (typeof done === "function") cleanups.push(done); }).catch(() => {});
+};
+
+/** The coach stage's settled state, or "timeout" when the video neither loads nor errors in `ms`. */
+export function settledOrTimeout(coach, ms = SETTLE_TIMEOUT_MS) {
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve("timeout"), ms); });
+  return Promise.race([coach.whenSettled(), late]).finally(() => clearTimeout(timer));
+}
+
+/** The end of the score timeline, for the length of the marks strip when the 3D view is missing. */
+const timelineEnd = (analysis) => timelineOf(analysis).map((w) => w.t_s[1]);
+
 /**
  * Mount the full result screen into `root`.
- * @returns {{seek, highlight, compare, destroy}}
+ * `job` and `pid` name the result (the follower video is served for them; `videoUrl` overrides, for the harness).
+ * @returns {{seek, highlight, compare, coach, destroy}}
  */
-export async function mountResult(root, { analysis, replay, record = null } = {}) {
+export async function mountResult(root, { analysis, replay, record = null, job = null, pid = null, videoUrl } = {}) {
   ensureStyles();
   root.replaceChildren();
   root.classList.add("simon-result");
   const urls = [];
   let compare = null;
+  let coach = null;
   if (!analysis) {
     root.append(el("p", { class: "sr-note", role: "alert", text: "The analysis could not be read." }));
-    return { seek() {}, highlight() {}, compare: null, destroy() { root.replaceChildren(); } };
+    return { seek() {}, highlight() {}, compare: null, coach: null, destroy() { root.replaceChildren(); } };
   }
+  // what the coaching rows drive: the video and the 3D view together (or whichever exists)
+  const view = {
+    seek: (t) => (coach ? coach.seekTo(t) : compare && compare.seek(t)),
+    jump: (t) => (coach ? coach.goTo(t) : compare && compare.seek(t)),
+    highlight: (j) => compare && compare.highlight(j),
+  };
+  const getView = () => (coach || compare ? view : null);
+  const cleanups = [];
+  const ctx = { job: job || "fixture", pid: pid || null, analysis, jobRecord: record };
 
   const warnings = resultWarnings(analysis);
   if (warnings.length) {
@@ -219,15 +266,33 @@ export async function mountResult(root, { analysis, replay, record = null } = {}
     root.append(box);
   }
   const shown = withScore(analysis);
+  const real = hasScore(analysis);
+  const modeSlot = makeSlot(root, "mode-slot");
+  fillSlot(modeSlot, () => import("./modes.js").then((m) => m.mountModeNote), ctx, cleanups);
   renderScore(root, shown);
+  const breakdownSlot = makeSlot(root, "breakdown-slot");   // filled once the coaching rows exist (below)
+  const challengeSlot = makeSlot(root, "challenge-slot");
+  fillSlot(challengeSlot, () => import("./challenge-actions.js").then((m) => m.mountChallengeActions), ctx, cleanups);
+
+  // the zone keeps the video pinned while the coaching rows below it are used
+  const zone = el("div", { class: "sr-zone" });
+  const stageHolder = el("div", { class: "sr-stage-holder" });
+  const body = el("div", { class: "sr-zone-body" });
+  zone.append(stageHolder, body);
+  root.append(zone);
+
+  const moments = momentsToReview(analysis);
+  const worst = worstMoment(analysis);
   let timeline = null;
-  renderInsights(root, analysis, () => compare, () => timeline);
-  timeline = renderTimeline(root, shown, () => compare);
+  const momentsHolder = el("div", { class: "sr-moments-holder" });
+  body.append(momentsHolder);
+  renderInsights(body, analysis, getView, () => timeline);
+  timeline = renderTimeline(body, shown, getView, flaggedWindows(moments));
   const mine = takeLabels(record);
-  if (mine) root.append(mine);
+  if (mine) body.append(mine);
   if (replay || !warnings.length) {
     const slot = el("div", { class: "sr-compare-slot" });
-    root.append(slot);
+    body.append(slot);
     let model = null;
     try {
       model = normalizeReplay(replay);
@@ -236,21 +301,41 @@ export async function mountResult(root, { analysis, replay, record = null } = {}
     }
     if (model) compare = await mountCompare(slot, model, { testid: "compare" });
   }
-  renderFaults(root, analysis, () => compare);
+  const url = videoUrl === undefined ? videoUrlFor(job, pid) : videoUrl;
+  if (url && (real || worst)) {
+    const total = Math.max(compare ? compare.duration : 0, ...timelineEnd(shown));
+    coach = mountCoachStage(stageHolder, { compare, videoUrl: url, worst, moments, total });
+    if ((await settledOrTimeout(coach)) !== "ready") {
+      coach.destroy();
+      coach = null;
+    }
+  }
+  if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
+  if (timeline) timeline.seekShown();
+  renderFaults(body, analysis, getView);
+  fillSlot(breakdownSlot, () => import("./breakdown.js").then((m) => m.mountBreakdown), ctx, cleanups);
   if (warnings.length) {
-    root.append(el("a", { class: "sr-btn", href: recordAgainHref(record), "data-testid": "record-again", text: "Record again" }));
+    body.append(el("a", { class: "sr-btn", href: recordAgainHref(record), "data-testid": "record-again", text: "Record again" }));
   }
 
   const dl = el("section", { class: "sr-downloads", "aria-label": "Downloads" });
   dl.append(downloadLink("download-analysis", "Download analysis", "analysis.json", analysis, urls));
   if (replay) dl.append(downloadLink("download-replay", "Download replay", "replay.json", replay, urls));
-  root.append(dl);
+  body.append(dl);
+
+  // a tempo moment in the breakdown panel asks the view to go there (breakdown.js dispatches simon:seek {at_s})
+  const onSeek = (e) => { const at = e && e.detail && e.detail.at_s; if (typeof at === "number" && getView()) view.jump(at); };
+  document.addEventListener(SEEK_EVENT, onSeek);
 
   return {
     compare,
-    seek: (t) => compare && compare.seek(t),
-    highlight: (j) => compare && compare.highlight(j),
+    coach,
+    seek: (t) => view.seek(t),
+    highlight: (j) => view.highlight(j),
     destroy() {
+      document.removeEventListener(SEEK_EVENT, onSeek);
+      cleanups.splice(0).forEach((fn) => fn());
+      coach && coach.destroy();
       compare && compare.destroy();
       urls.forEach((u) => URL.revokeObjectURL(u));
       root.replaceChildren();

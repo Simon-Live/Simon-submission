@@ -24,6 +24,7 @@ _PATH_RE = re.compile(r"(?:[A-Za-z]:)?[~.\w-]*(?:/[^\s'\"):;,]*)+")
 _HOST_RE = re.compile(r"\b(?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|ai|app|local|internal|cloud)\b", re.I)
 _TOKEN_RE = re.compile(r"\b[A-Za-z0-9_-]{32,}\b")
 JOB_ID_RE = re.compile(r"^[0-9a-f]{12}$")
+PID_RE = re.compile(r"^[0-9A-Za-z_-]{1,40}$")  # a person of a group job; shared by result_media and challenge_routes
 
 
 class QueueFullError(Exception):
