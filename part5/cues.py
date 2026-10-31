@@ -11,8 +11,9 @@ the same cue; no phrasing backend rewrites it (the AI line is `coaching`, ADR-00
 the follower toward the example. Sides are the subject's own left and right, as in `part5.words`.
 
 `cue_kind`: `range` when the fix is how far a joint bends or a limb lifts, `position` when it is where a body
-part is placed or how it is aligned, `tempo` for speed. Foot rotation and ankle twist are not cues: the
-17 COCO joints end at the ankle, so nothing measures them (ADR-0014 names the keypoints that would).
+part is placed or how it is aligned, `tempo` for speed. Foot rotation and the ankle roll are cues only when the
+pair has foot points (ADR-0015: Part 2's heel and toe points, read from its pose3d.json); the 17 COCO joints end at
+the ankle, so without them nothing measures a foot (ADR-0014).
 """
 MAX_WORDS = 6
 KINDS = ("position", "range", "tempo")
@@ -42,6 +43,12 @@ CUES = {
                               "less": ("Step your {side} foot out", "Widen your stance")}),
     "knee_valgus": ("position", {"more": ("Push your {side} knee out", "Push your knees out"),
                                  "less": ("Let your {side} knee come in", "Let your knees come in")}),
+    # ADR-0015: `more` toe-out is the follower's foot turned out further than the example, so the cue turns it in.
+    "foot_rotation": ("position", {"more": ("Turn your {side} foot in", "Turn your feet in"),
+                                   "less": ("Turn your {side} foot out", "Turn your feet out")}),
+    # ADR-0015 Amendment 1: `more` is the foot on its outer edge (the ankle rolling out), `less` the inner edge down.
+    "ankle_inversion": ("position", {"more": ("Keep your {side} ankle straight", "Keep your ankles straight"),
+                                     "less": ("Stop your {side} ankle rolling in", "Stop your ankles rolling in")}),
     "trunk_lean_forward": ("position", {"more": "Keep your chest up", "less": "Lean forward more"}),
     "trunk_lean_side": ("position", {"more": "Lean less to your left", "less": "Lean less to your right"}),
     "shoulder_tilt": ("position", {"more": "Lower your left shoulder", "less": "Lower your right shoulder"}),

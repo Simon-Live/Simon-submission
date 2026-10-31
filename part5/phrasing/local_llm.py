@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
-from ..measures import MEASURES
+from ..measures import ALL_SPECS
 from .prompt import timed_messages
 
 NAME = "local-llm"
@@ -37,7 +37,8 @@ SYSTEM = (
     "- \"more\" means the person's value is larger than the example's, \"less\" means smaller. "
     "Say it as a comparison with the example, describing where the body is, not giving orders.\n"
     "- Mention only the body part of the measure. No second fault, no numbers, no units.\n"
-    "- Style examples: left foot too far out; elbows wider than the example; right knee not bent enough."
+    "- Style examples: left foot too far out; elbows wider than the example; right knee not bent enough; "
+    "left foot turned out more than the example; right ankle rolling in."
 )
 
 
@@ -72,7 +73,7 @@ def fault_record(fault):
 
 
 def _measure_meaning(measure):
-    spec = MEASURES.get(f"left_{measure}") or MEASURES.get(measure)
+    spec = ALL_SPECS.get(f"left_{measure}") or ALL_SPECS.get(measure)
     return f" The measure is: {spec.description}." if spec else ""
 
 

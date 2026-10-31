@@ -7,7 +7,9 @@ import numpy as np
 
 from .io import JOINTS
 
-OUT_MEASURES = ("foot_out", "thigh_out", "upper_arm_out", "forearm_out")
+# `more` is toward the fault's own side. ADR-0015: foot_rotation is the toes pointing out, ankle_inversion the foot on
+# its outer edge (the ankle rolling out); `less` is the other side (toes in, inner edge down).
+OUT_MEASURES = ("foot_out", "thigh_out", "upper_arm_out", "forearm_out", "foot_rotation", "ankle_inversion")
 OTHER = {"left": "right", "right": "left"}
 
 
@@ -19,7 +21,7 @@ def lateral_for(measure, direction, side):
         return None
     if measure in OUT_MEASURES:
         return side if direction == "more" else OTHER[side]
-    if measure == "knee_valgus":
+    if measure == "knee_valgus":   # toward the midline when `more`
         return OTHER[side] if direction == "more" else side
     return None
 

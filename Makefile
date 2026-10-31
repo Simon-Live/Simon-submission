@@ -13,9 +13,10 @@ test:
 demo:
 	uv run python -m part5 serve --port 8735
 
-# Regenerate the synthetic labelled follower takes (fixtures/input/followers/).
+# Regenerate the synthetic labelled follower takes (fixtures/input/followers/), with planted feet (--feet): a feet.json
+# per take, fixtures/input/expected-feet/<set>/feet.json, and the foot-fault takes (docs/specs/foot-keypoints.md).
 dummy-data:
-	python3 scripts/make_dummy_followers.py
+	python3 scripts/make_dummy_followers.py --feet
 
 # Regenerate the shipped analysis.json examples (fixtures/output/).
 output-examples:
@@ -55,6 +56,9 @@ smoke-muse-spark:
 
 # Held-out set for one attempt (docs/specs/calibration.md, ADR-0003): run once per seed, in the order
 # 29, 31, 37, after the attempt's freeze commit. Replaces fixtures/input/heldout/. SEED is required.
+# Seeds after 31 carry planted synthetic feet (--feet, TICKET-040); seeds 29 and 31 were scored without them, so
+# they regenerate without (docs/specs/foot-keypoints.md AC-FOOT-11).
+HELDOUT_FEET = $(if $(filter 29 31,$(SEED)),,--feet)
 .PHONY: heldout-data
 heldout-data:
 	@case "$(SEED)" in \
@@ -62,7 +66,7 @@ heldout-data:
 	  "") echo "heldout-data: SEED is required (29, then 31, then 37): make heldout-data SEED=29" >&2; exit 2 ;; \
 	  *) echo "heldout-data: SEED=$(SEED) is not a held-out seed (29, 31, 37); seed 5 is the tuning set" >&2; exit 2 ;; \
 	esac
-	python3 scripts/make_dummy_followers.py --seed $(SEED) --out fixtures/input/heldout --dropout-variant
+	python3 scripts/make_dummy_followers.py --seed $(SEED) --out fixtures/input/heldout --dropout-variant $(HELDOUT_FEET)
 
 # Held-out score report for one seed (docs/specs/journey-followup.md AC-S05, ADR-0007): generates the set under
 # out/score-heldout/seed-<SEED>/ and prints the per-slice score distribution and target verdicts. SEED is required.

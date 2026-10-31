@@ -9,6 +9,10 @@ frames; `runs` lists them all (#30). Then:
   rules["explained_by_opposite"], the other direction: a knee caving in pulls the thigh in) are dropped;
 - the same measure and direction on both sides, with overlapping frames, merges into side "both".
 Both steps need the faults to share at least `min_overlap` of the shorter one's frames.
+
+The foot measures (ADR-0015, `measures.FOOT_MEASURES`) are visited only when both measure dicts carry them, which
+the pipeline arranges for a pair with usable feet on both sides, and only when `rules["measures"]` has an entry
+for them: they have no default threshold. Everything above applies to them unchanged.
 """
 import json
 from dataclasses import asdict, dataclass
@@ -17,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from .align import Alignment
-from .measures import MEASURES
+from .measures import ALL_SPECS, FOOT_MEASURES, MEASURES
 
 RULES_PATH = Path(__file__).with_name("rules.json")
 DEFAULT_MIN_RUN_FRAMES = 4
@@ -99,7 +103,8 @@ def differences(exp_m, fol_m, alignment: Alignment, tolerance_frames=0):
     """
     j = alignment.exp_to_fol
     out = {}
-    for name in MEASURES:
+    # ADR-0015: the foot measures are visited only when both dicts carry them (a pair with usable feet on both sides).
+    for name in (*MEASURES, *(n for n in FOOT_MEASURES if n in exp_m and n in fol_m)):
         e, f = exp_m[name], fol_m[name][j]
         if tolerance_frames <= 0:
             out[name] = f - e
@@ -123,6 +128,8 @@ def detect(exp_m, fol_m, alignment: Alignment, rules=None):
     raw = []
     for name, d in diffs.items():
         g, side = generic(name)
+        if name in FOOT_MEASURES and g not in rules["measures"]:
+            continue   # ADR-0015: a foot measure has no default threshold; without a rules entry it is computed, not reported
         cfg = {**rules["default"], **rules["measures"].get(g, {})}
         sm = _median_filter(d, rules.get("smooth_frames", 1))
         for sign, direction in ((1, "more"), (-1, "less")):
@@ -159,7 +166,7 @@ def _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n):
     peak = float(vals[np.nanargmax(np.abs(vals))])
     coverage = float(np.concatenate([np.isfinite(d[a:b + 1]) for a, b in runs]).mean())
     margin = min(1.0, (abs(mag) - thr) / thr + 0.5)
-    spec = MEASURES[name]
+    spec = ALL_SPECS[name]
     return Fault(
         measure=g, side=side, joint=spec.joint, body_part=spec.body_part, direction=direction,
         magnitude_deg=round(mag, 1), peak_deg=round(peak, 1), threshold_deg=thr,

@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/input-feet.schema.json",
+  "title": "Part 5 feet side file (a Part 2 pose3d.json with extra_joints)",
+  "version": "1.0.0",
+  "description": "The optional feet side input of part5 analyse (--expected-feet, --follower-feet; ADR-0015): one Part 2 pose3d.json per clip, or a synthetic file in the same shape. It has no format key. Only people[].joints (the two hips; the knees and ankles are ignored) and people[].extra_joints (left_big_toe, left_small_toe, left_heel, right_big_toe, right_small_toe, right_heel) are read, each point as {x, y, z, conf}; a point is seen when its coordinates are numbers and conf is at least 0.5. t_ms minus t0_pts_ms (default 0), in milliseconds, is the file's clock; a top-level mirrored true swaps the left and right foot series. A file with no extra_joints is valid: the foot measures are then hidden. provenance says where a file came from (a synthetic one: source synthetic, generator, seed, which is null for a derived example file; a Part 2 one: contract_version, backend, extra_joints). Extra fields are allowed.",
+  "type": "object",
+  "required": [
+    "frames"
+  ],
+  "properties": {
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    },
+    "t0_pts_ms": {
+      "type": "number"
+    },
+    "mirrored": {
+      "type": "boolean"
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "generator": {
+          "type": "string"
+        },
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "backend": {
+          "type": "string"
+        },
+        "extra_joints": {
+          "type": "array"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "y": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "z": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "conf": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "points": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/point"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": [
+        "t_ms",
+        "people"
+      ],
+      "properties": {
+        "frame": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "t_ms": {
+          "type": "number"
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/person"
+          }
+        }
+      }
+    },
+    "person": {
+      "type": "object",
+      "required": [
+        "id",
+        "joints"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "joints": {
+          "$ref": "#/$defs/points"
+        },
+        "extra_joints": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/points"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

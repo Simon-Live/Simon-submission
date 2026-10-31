@@ -23,7 +23,8 @@ from . import real
 from .detect import RULES_PATH
 from .evaluate import evaluate_corpus, is_refused, slice_name
 from .score import params_sha256
-from .score_report import analyse, correct_good_failures, distribution, entries_of, run_sweep, sweep_failures, verdicts
+from .score_report import (FEET_KEYS, analyse, correct_good_failures, distribution, entries_of, feet_kwargs, run_sweep,
+                           sweep_failures, verdicts)
 
 ROOT = Path(__file__).resolve().parent.parent
 FORMAT = "simon.part5.check.v1"
@@ -116,13 +117,15 @@ def analyse_set(labels_doc, root=None):
     root, analyses, errors = Path(root or ROOT), {}, []
     for take in labels_doc["takes"]:
         take_id = take["take_id"]
-        missing = [p for p in (take["expected"], take["follower"]) if not (root / p).is_file()]
+        named = [take[key] for key in FEET_KEYS if take.get(key)]   # TICKET-040: Part 2 shaped foot side files
+        missing = [p for p in (take["expected"], take["follower"], *named) if not (root / p).is_file()]
         if missing:
             errors.append(f"check-5: {take_id}: {missing[0]} not found")
             continue
+        expected = {"path": str(root / take["expected"])}
+        follower = {"path": str(root / take["follower"]), "take_id": take_id}
         try:
-            analyses[take_id] = analyse({"path": str(root / take["expected"])},
-                                        {"path": str(root / take["follower"]), "take_id": take_id})
+            analyses[take_id] = analyse(expected, follower, **feet_kwargs(take, root))   # {} for a take naming none
         except ValueError as e:  # InputError, AnalysisError, OutputError
             errors.append(f"check-5: {take_id}: {e}")
     return analyses, errors

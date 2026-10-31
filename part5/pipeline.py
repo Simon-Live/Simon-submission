@@ -10,6 +10,7 @@ import numpy as np
 
 from .align import ALIGN_MEASURES, Alignment, AlignmentError, align, diagonal_alignment
 from .detect import detect, load_rules
+from .feet import load_side, pair_of
 from .guard import GuardResult, check_movement
 from .guard import diagnostics as guard_diagnostics
 from .insights import insights_of
@@ -40,6 +41,9 @@ MAX_FPS = 240
 # The alignment builds expected x follower cost arrays per timing measure, so the pair is bounded
 # too: 4,000,000 cells (about 2000 x 2000 frames) keeps one analysis near 1 GB at its peak.
 MAX_CELLS = 4_000_000
+# Why `diagnostics.feet` lists no compared measure when the foot measures were not used (ADR-0015).
+REP_MODE_REASON = "rep mode: the foot measures are not compared repetition by repetition"
+UNALIGNED_REASON = "the take could not be aligned, so nothing was compared"
 
 
 PHRASING_BACKENDS = tuple(BACKENDS)
@@ -72,17 +76,20 @@ class PipelineResult:
     vis: object = None
 
 
-def analyse(expected, follower, rules=None):
+def analyse(expected, follower, rules=None, *, expected_feet=None, follower_feet=None,
+            expected_feet_person=0, follower_feet_person=0):
     """`expected`/`follower` are paths, or objects with `path` plus ids that pass through
     to the output (e.g. `take_id`). Raises `io.InputError` for a bad file and `AnalysisError` for a bad ref, an
     unknown phrasing backend or a pair over the work bounds (frames, frame rate, frame pairs). A readable pair
     within the bounds is always analysed (ADR-0012): one that does not match the example, or shows too little of
-    the body, comes back with a warning and grade F, never a refusal."""
-    return run(expected, follower, rules).analysis
+    the body, comes back with a warning and grade F, never a refusal. The `*_feet` arguments are `run`'s."""
+    return run(expected, follower, rules, expected_feet=expected_feet, follower_feet=follower_feet,
+               expected_feet_person=expected_feet_person, follower_feet_person=follower_feet_person).analysis
 
 
 def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=None, score=None,
-        live=False, selected_by=None, expected_visibility=None):
+        live=False, selected_by=None, expected_visibility=None, expected_feet=None, follower_feet=None,
+        expected_feet_person=0, follower_feet_person=0):
     """`analyse` keeping the clips and the alignment (`PipelineResult`).
 
     A ref may carry the parsed JSON under `doc` (an upload held in memory): the clip is parsed
@@ -94,6 +101,11 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
 
     `expected_visibility` (ADR-0011) is the trainer's own skeleton or pose3d file, whose `conf` says which
     measures the example shows; without it an expected clip that carries no `conf` takes the follower's.
+
+    `expected_feet` and `follower_feet` (ADR-0015, docs/specs/foot-keypoints.md) are paths to Part 2 `pose3d.json`
+    files that carry the heel and toe points (`extra_joints`) of each clip's person (`*_feet_person`, matched to
+    `people[].id`). Given for either clip, the document carries `diagnostics.feet`; the foot measures are compared
+    when both clips have them and hidden, with the reason, when not. Without either, nothing changes.
     """
     if phrasing not in PHRASING_BACKENDS:
         raise AnalysisError(f"phrasing must be one of {list(PHRASING_BACKENDS)}, got {phrasing!r}")
@@ -103,6 +115,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     fol = normalise(_load(fol_ref))
     exp_ref.pop("doc", None)
     fol_ref.pop("doc", None)
+    # ADR-0015: the optional feet side files, each read on its own clip's clock; None when neither was given.
+    feet = pair_of(load_side("expected", expected_feet, expected_feet_person, exp.t),
+                   load_side("follower", follower_feet, follower_feet_person, fol.t))
     extra_conf = None if expected_visibility is None else load_conf(expected_visibility)
     vis = resolve(clip_usable(exp), clip_usable(fol), usable_from_conf(extra_conf))
     notes = {}   # warning code -> text (ADR-0012): the take is analysed all the same, best effort
@@ -116,7 +131,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
             notes[MOVING_PART_OUT_OF_FRAME] = moving_text(moving_info["moving_measures"])
     usable = vis.align_usable   # None: the full-body choice; fewer than 3 measures are still used
     ctx = _Context(exp_ref, fol_ref, exp, fol, vis, moving_info, notes,
-                   (phrasing, phrasing_client, live, selected_by), score)
+                   (phrasing, phrasing_client, live, selected_by), score, feet)
     if usable is not None and not usable:   # nothing the camera sees can carry timing
         return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT, rules)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
@@ -147,8 +162,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         diagnostics = _rep_diagnostics(rep_run, exp, fol, fps, rules)
         alignment = next(r.alignment for r in rep_run.reps if r.ok)
     else:
+        exp_f, fol_f = _foot_series(feet, fol.t, fps)
         faults = [replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
-                  for f in detect(exp_m, fol_m, alignment, rules)]
+                  for f in detect({**exp_m, **exp_f}, {**fol_m, **fol_f}, alignment, rules)]
         span = tuple(int(to_original[j]) for j in alignment.follower_span)
         diagnostics = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(guard, rules))
         times = [_fault_times(f, exp, fol, fol_positions, alignment, to_original) for f in faults]
@@ -156,6 +172,8 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         notes[LOW_MATCH] = REFUSAL_TEXT
     if not vis.full:   # additive to 1.3.0; a full-body take has no `visibility`, so its document is unchanged
         diagnostics["visibility"] = vis.diagnostics(moving_info)
+    if feet is not None:   # additive to 1.6.0: only when a feet file was given for either clip
+        diagnostics["feet"] = (feet.hidden(REP_MODE_REASON) if accepted else feet).diagnostics()
     result = PipelineResult(None, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
                             reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None, vis=vis)
     return _finish(ctx, result, faults, times, diagnostics, guard.stats, not guard.ok, rules)
@@ -173,6 +191,19 @@ class _Context:
     notes: dict
     phrasing: tuple
     score: object
+    feet: object = None   # the `feet.FootPair`, None when no feet file was given
+
+
+def _foot_series(feet, fol_t, fps):
+    """The foot series the pair is compared on (ADR-0015): `(expected, follower)` dicts by measure name, the
+    expected on its own frames and the follower on the expected clock like its joints. Empty without feet."""
+    if feet is None or not feet.compared:
+        return {}, {}
+    names = feet.compared
+    stacked = np.stack([feet.follower.series[n] for n in names], axis=1)[:, :, None]
+    resampled, _ = resample(stacked, fol_t, fps)
+    return ({n: feet.expected.series[n] for n in names},
+            {n: resampled[:, k, 0] for k, n in enumerate(names)})
 
 
 def _match(stats, low, rules):
@@ -213,6 +244,8 @@ def _unaligned(ctx, code, text, rules):
     diagnostics = {"warnings": []}
     if not ctx.vis.full:
         diagnostics["visibility"] = ctx.vis.diagnostics(ctx.moving)
+    if ctx.feet is not None:
+        diagnostics["feet"] = ctx.feet.hidden(UNALIGNED_REASON).diagnostics()
     n_fol = ctx.fol.n_frames
     result = PipelineResult(None, diagonal_alignment(ctx.exp.n_frames, n_fol), ctx.exp, ctx.fol, ctx.fol.positions,
                             np.arange(n_fol), None, vis=ctx.vis)

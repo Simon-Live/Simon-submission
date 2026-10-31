@@ -38,9 +38,9 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.5.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.6.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
-                                          ("metrics", "1.2.0"), ("replay", "1.0.0")])
+                                          ("metrics", "1.2.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
     schema = json.loads((ROOT / "contracts" / f"{name}.schema.json").read_text())
     assert schema["$id"] == f"{BASE}{name}.schema.json"
@@ -664,3 +664,105 @@ def test_contract_json_piped_into_a_reader_that_stops_early_is_quiet_and_exits_0
     err = proc.stderr.read()
     assert first.strip() == b"{" and proc.wait() == 0
     assert err == b""
+
+
+# ---------------------------------------------------------------- the feet side file (ADR-0015, input-feet)
+FEET_FIXTURES = ROOT / "tests/fixtures/feet"
+PART2_PROVENANCE = {"contract_version": "part2.pose3d/2026-10-28", "backend": "gpu",
+                    "extra_joints": ["left_big_toe", "left_small_toe", "left_heel", "right_big_toe",
+                                     "right_small_toe", "right_heel"]}
+
+
+def feet_doc(name="side-with-feet.json", **over):
+    return {**json.loads((FEET_FIXTURES / name).read_text()), **over}
+
+
+@pytest.mark.parametrize("provenance", [
+    {"source": "synthetic", "generator": "scripts/make_dummy_followers.py", "seed": 5},
+    {"source": "synthetic", "generator": "scripts/make_dummy_followers.py", "seed": None},   # a derived example file
+    PART2_PROVENANCE,
+    {"source": "synthetic", "note": "hand-made"},
+])
+def test_input_feet_schema_accepts_synthetic_and_part_2_provenance(provenance):
+    assert errors("input-feet", feet_doc(provenance=provenance)) == []
+
+
+def test_input_feet_schema_accepts_the_hand_made_files_a_file_without_extra_joints_and_mirrored():
+    assert errors("input-feet", feet_doc()) == [] and errors("input-feet", feet_doc("side-no-feet.json")) == []
+    assert errors("input-feet", feet_doc(mirrored=True)) == []
+    doc = feet_doc()
+    doc["frames"][0]["people"][0]["extra_joints"]["left_heel"] = None   # a point that was not found
+    doc["frames"][1]["people"][0]["extra_joints"] = None
+    assert errors("input-feet", doc) == []
+
+
+@pytest.mark.parametrize("change", [
+    lambda d: d.update(frames=[]),
+    lambda d: d.update(frames={}),
+    lambda d: d.update(t0_pts_ms="0"),
+    lambda d: d.update(mirrored="yes"),
+    lambda d: d.update(provenance=[]),
+    lambda d: d["frames"][0].pop("t_ms"),
+    lambda d: d["frames"][0].update(people={}),
+    lambda d: d["frames"][0]["people"][0].pop("id"),
+    lambda d: d["frames"][0]["people"][0].update(id="0"),
+    lambda d: d["frames"][0]["people"][0].update(joints=[]),
+    lambda d: d["frames"][0]["people"][0].update(extra_joints=[]),
+    lambda d: d["frames"][0]["people"][0]["extra_joints"].update(left_heel={"x": "0.1", "y": 0, "z": 0, "conf": 1}),
+    lambda d: d["frames"][0]["people"][0]["joints"].update(left_hip={"x": 0, "y": 0, "z": 0, "conf": "high"}),
+])
+def test_input_feet_schema_rejects_a_file_that_is_not_this_shape(change):
+    d = feet_doc()
+    change(d)
+    assert errors("input-feet", d)
+
+
+def test_classify_names_a_feet_file_by_its_shape_and_leaves_clips_and_native_alone():
+    keys, how = contract.classify("fixtures/input/followers/exercise/t/feet.json", feet_doc())
+    assert (keys, how) == (["input-feet"], "feet")
+    assert contract.classify("fixtures/input/expected-feet/exercise/feet.json", feet_doc("side-no-feet.json"))[1] == "feet"
+    assert contract.classify("x.json", {"frames": [{"joints": {}}], "schema": "simon.skeleton/1"})[1] == "rejected"
+    assert contract.classify("x.json", {"frames": [{"people": []}], "format": "simon.animation.v1"})[1] == "clip"
+    assert contract.classify("x.json", {"frames": []}) == (None, None)
+    assert contract.classify("x.json", {"frames": [{"frame": 0, "t_ms": 0, "joints": {}}]}) == (None, None)
+
+
+@pytest.fixture
+def feet_root(tmp_path):
+    """The contract and the three places a feet file lives: a take's folder, the example files and a real take."""
+    shutil.copytree(ROOT / "contracts", tmp_path / "contracts")
+    for d in ("fixtures/input/expected", "fixtures/input/followers", "fixtures/input/contract", "fixtures/output"):
+        (tmp_path / d).mkdir(parents=True)
+    for rel, doc in (("fixtures/input/followers/exercise/take/feet.json", feet_doc()),
+                     ("fixtures/input/expected-feet/exercise/feet.json",
+                      feet_doc("side-no-feet.json", provenance={"source": "synthetic", "generator": "g", "seed": None})),
+                     ("fixtures/input/eval/real/pexels/feet.json", feet_doc(provenance=PART2_PROVENANCE))):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(json.dumps(doc))
+    return tmp_path
+
+
+def test_check_validates_and_loads_every_feet_file_in_the_three_places(feet_root):
+    summary = contract.check(feet_root)
+    assert summary["failures"] == []
+    assert summary["validated"]["by_schema"] == {"input-feet": 3} and summary["validated"]["files"] == 3
+    assert summary["validated"]["loaded_through_part5"] == 3
+    assert any(s["name"] == "input-feet" and s["valid"] for s in summary["schemas"])
+
+
+def test_check_names_a_feet_file_that_breaks_the_schema_or_the_loader(feet_root):
+    bad = feet_root / "fixtures/input/followers/exercise/take/feet.json"
+    doc = json.loads(bad.read_text())
+    doc["frames"][1]["people"][0]["extra_joints"]["left_heel"]["x"] = "0.07"
+    bad.write_text(json.dumps(doc))
+    failures = contract.check(feet_root)["failures"]
+    assert any(f.startswith("fixtures/input/followers/exercise/take/feet.json") and "input-feet.schema.json" in f
+               for f in failures)
+    assert any("must be a number or null" in f for f in failures)    # part5.feet reads it the same way
+
+
+def test_part5_contract_lists_the_feet_schema(capsys):
+    assert cli.main(["contract"]) == 0
+    assert "input-feet" in capsys.readouterr().out
+    assert cli.main(["contract", "--schema", "input-feet"]) == 0
+    assert capsys.readouterr().out == (ROOT / "contracts/input-feet.schema.json").read_text()

@@ -58,7 +58,8 @@ def test_fault_dict_carries_text_and_signed_magnitude():
 
 def test_measure_vocabulary_matches_detect_generics():
     assert "foot_out" in GENERIC_MEASURES and "trunk_lean_forward" in GENERIC_MEASURES
-    assert "knee_valgus" in GENERIC_MEASURES and len(GENERIC_MEASURES) == 13
+    assert "knee_valgus" in GENERIC_MEASURES and len(GENERIC_MEASURES) == 15
+    assert GENERIC_MEASURES[-2:] == ["foot_rotation", "ankle_inversion"]   # ADR-0015: after the 13 body measures
 
 
 def test_knee_valgus_fault_builds_validates_and_reads_in_plain_words():
@@ -76,7 +77,7 @@ def test_knee_valgus_fault_builds_validates_and_reads_in_plain_words():
 def test_fault_dict_lists_every_run_and_the_document_names_its_schema_version():
     d = doc([make_fault(runs=((19, 30), (35, 43)))])
     assert d["faults"][0]["runs"] == [[19, 30], [35, 43]]
-    assert d["schema_version"] == "1.5.0"
+    assert d["schema_version"] == "1.6.0"
     assert doc([make_fault()])["faults"][0]["runs"] == [[19, 43]]  # a single run is the fault's frames
     assert list(d)[:2] == ["format", "schema_version"]
 

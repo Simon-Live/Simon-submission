@@ -28,6 +28,13 @@ PHRASES = {
                  "less": ("{side} foot {q}too far in", "feet {q}too close together")},
     "knee_valgus": {"more": ("{side} knee caving in{aq}", "knees caving in{aq}"),
                     "less": ("{side} knee pushed out{aq}", "knees pushed out{aq}")},
+    # ADR-0015: the foot measures. The ankle words say which way it rolls, not inversion or eversion: `more` is the
+    # foot on its outer edge (the ankle rolling out), `less` the inner edge down (the arch collapsing, the ankle
+    # caving in; ADR-0015 Amendment 1).
+    "foot_rotation": {"more": ("{side} foot turned out {q}more than the example", "feet turned out {q}more than the example"),
+                      "less": ("{side} foot {nq} turned out enough", "feet {nq} turned out enough")},
+    "ankle_inversion": {"more": ("{side} ankle rolling out{aq}", "ankles rolling out{aq}"),
+                        "less": ("{side} ankle rolling in{aq}", "ankles rolling in{aq}")},
     # Centre measures are phrased relative to the example: detection only knows
     # follower − expected, so "leaning to the right" would be wrong when the example leans left.
     "trunk_lean_forward": {"more": "leaning forward {q}more than the example",

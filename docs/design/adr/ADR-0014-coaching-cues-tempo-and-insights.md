@@ -65,7 +65,9 @@ not which way the foot points. Making foot cues possible needs per-foot keypoint
 the heel, the big toe and the small toe of each foot (the COCO-WholeBody foot points), carried by Part 3
 through `simon.animation.v1` as optional joints, then a `foot_rotation` measure (the heel-to-big-toe vector
 against the hip line, in the ground plane) and an `ankle_inversion` measure (the heel, ankle and toe midpoint
-angle). This is follow-up work.
+angle). Follow-up: TICKET-040, decided in ADR-0015 (amendment of 2026-10-31): Part 3 does not carry the points, so
+Part 5 reads them from Part 2's pose3d.json as an optional side input, and `ankle_inversion` is the roll of the foot
+plane against the shin, since the triangle named here is rigid. A cue may now name the ankle, in `ankle_inversion` cues only.
 
 ## Consequences
 - **Positive**: a result screen can show "what to work on" with no analysis of its own; each cue is checked

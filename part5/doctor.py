@@ -1,6 +1,7 @@
 """`part5 doctor <file> [--for part5|part7]`: name a file's kind and version, validate it and say, in
 plain words, what the consumer would reject and which option fixes it. It reads a clip, an analysis.json
-and a replay.json (`simon.replay.v1`, checked against its schema and for lengths, indexes and times).
+and a replay.json (`simon.replay.v1`, checked against its schema and for lengths, indexes and times). A Part 2
+pose3d.json is accepted as the optional feet side input (ADR-0015) with a note, not as a clip.
 
 Exit 0 accepted, 1 rejected, 2 unreadable (missing, not a file, not JSON). The schema runs through
 `jsonschema` when it is installed and the loaders (`part5.io`, `part5.output`) always run after it, so
@@ -17,7 +18,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import contract
+from . import contract, feet
 from .io import InputError, parse_clip
 from .output import OutputError, validate_analysis
 
@@ -249,9 +250,28 @@ def _for_part5_handoff(r, doc):
                        "download files.skeleton and run doctor on it")
 
 
+PART3_FIX = ("run Part 3 --view part5 "
+             "(python3 -m part3 run --in pose3d.json --out skeleton.json --view part5)")
+
+
 def _for_part5_pose3d(r, doc):
-    r.problems.append(Problem("", "Part 2 pose3d.json", "run Part 3 --view part5 "
-                              "(python3 -m part3 run --in pose3d.json --out skeleton.json --view part5)"))
+    """ADR-0015: a Part 2 pose3d.json is not a clip, but it is the optional feet side input (`--expected-feet`,
+    `--follower-feet`), so it is accepted with a note when its shape allows that, with or without `extra_joints`."""
+    r.validators.append("part5.feet.file_summary")
+    try:
+        info = feet.file_summary(doc, r.file)
+    except InputError as e:
+        message = str(e).removeprefix(f"{r.file}: ")
+        r.problems.append(Problem("", f"Part 2 pose3d.json that is not a feet side input either ({message})", PART3_FIX))
+        return
+    if info["with_points"]:
+        r.notes.append(f"feet side input for --expected-feet or --follower-feet: foot points in {info['with_points']} "
+                       f"of {info['frames']} frames, people ids {info['people']}"
+                       + ("; mirrored, so the left and right foot series are swapped" if info["mirrored"] else ""))
+    else:
+        r.notes.append("no foot points (no extra_joints in any frame; Part 2's cpu backend writes none): as a feet "
+                       "side input the foot measures would be hidden")
+    r.notes.append(f"not a clip: for the body pass Part 3's skeleton.json as --expected or --follower; {PART3_FIX}")
 
 
 def _for_part5_analysis(r, doc):
@@ -315,6 +335,7 @@ def _for_part7(r, doc):
     _cue_notes(r, doc)
     _time_notes(r, doc)
     _score_notes(r, doc)
+    _feet_notes(r, doc)
 
 
 def _time_notes(r, doc):
@@ -346,6 +367,19 @@ def _score_notes(r, doc):
     if isinstance(windows, list):
         r.notes.append(f"score.timeline has {len(windows)} window{'s' if len(windows) != 1 else ''} "
                        f"(basis {score.get('basis', 'windows')}): show {'them' if len(windows) != 1 else 'it'} as a timeline")
+
+
+def _feet_notes(r, doc):
+    """1.6.0 (ADR-0015): `diagnostics.feet` says whether the foot measures were compared and, if not, why."""
+    info = (doc.get("diagnostics") or {}).get("feet")
+    if not isinstance(info, dict):
+        return
+    foot_faults = [f for f in doc.get("faults", []) if f.get("body_part") == "feet"]
+    if info.get("compared"):
+        r.notes.append(f"foot measures compared ({', '.join(info['compared'])}); {len(foot_faults)} foot "
+                       f"fault{'s' if len(foot_faults) != 1 else ''} (body_part feet, joint an ankle)")
+    else:
+        r.notes.append(f"foot measures hidden (diagnostics.feet): {info.get('hidden_reason')}")
 
 
 def _cue_notes(r, doc):

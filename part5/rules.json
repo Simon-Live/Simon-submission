@@ -48,6 +48,12 @@
     },
     "head_forward": {
       "threshold_deg": 18.0
+    },
+    "foot_rotation": {
+      "threshold_deg": 14.0
+    },
+    "ankle_inversion": {
+      "threshold_deg": 14.0
     }
   },
   "guard": {

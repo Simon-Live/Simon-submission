@@ -218,6 +218,6 @@ def test_dropout_takes_get_their_own_slice_and_stay_out_of_the_lighting_slices()
 def test_real_labels_document_parses_into_records():
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     m = evaluate_corpus(labels, {}, allow_missing=True)
-    assert m["overall"]["takes"] == 108
-    assert m["overall"]["fn"] == 96 and m["overall"]["fp"] == 0 and m["overall"]["refused"] == 0
+    assert m["overall"]["takes"] == 156   # 108 base takes and the 48 foot-fault takes (TICKET-040)
+    assert m["overall"]["fn"] == 144 and m["overall"]["fp"] == 0 and m["overall"]["refused"] == 0   # 96 body + 48 foot labels
     assert set(m["slices"]) == {f"{li}/{an}" for li in ("good", "low") for an in ("front", "45", "side")}

@@ -92,6 +92,10 @@ LATERAL_ROWS = [
     ("foot_out", "less", "left", "right"), ("foot_out", "less", "right", "left"),
     ("thigh_out", "more", "right", "right"), ("upper_arm_out", "less", "left", "right"),
     ("forearm_out", "more", "left", "left"),
+    ("foot_rotation", "more", "left", "left"), ("foot_rotation", "less", "left", "right"),
+    ("ankle_inversion", "more", "left", "left"), ("ankle_inversion", "more", "right", "right"),   # outer edge down
+    ("ankle_inversion", "less", "left", "right"), ("ankle_inversion", "less", "right", "left"),   # inner edge down
+    ("ankle_inversion", "more", "both", None),
     ("knee_valgus", "more", "left", "right"), ("knee_valgus", "more", "right", "left"),
     ("knee_valgus", "less", "left", "left"), ("knee_valgus", "less", "right", "right"),
     ("trunk_lean_side", "more", "center", "left"), ("trunk_lean_side", "less", "center", "right"),

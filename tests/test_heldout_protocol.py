@@ -50,10 +50,12 @@ def test_ac_t03_seeds_follow_29_31_37_none_skipped_and_the_set_on_disk_is_the_la
 def test_ac_t03_a_retry_names_a_new_family_and_a_confirmation_keeps_the_freeze():
     for i, a in enumerate(ATTEMPTS[1:], start=1):
         before = ATTEMPTS[:i]
-        if before[-1]["passed"]:  # a confirmation of the green attempt: nothing changed
-            assert (a["freeze_commit"], a["rules_sha256"]) == (before[-1]["freeze_commit"], before[-1]["rules_sha256"])
-        else:  # a retry after a red attempt
-            assert all(a["approach"] != b["approach"] for b in before), a["seed"]
+        same_freeze = (a["freeze_commit"], a["rules_sha256"]) == (before[-1]["freeze_commit"], before[-1]["rules_sha256"])
+        if before[-1]["passed"] and same_freeze:  # a confirmation of the green attempt: nothing changed
+            continue
+        # a retry after a red attempt, or (operator ruling 2026-10-31, TICKET-040) a new measure after a green one:
+        # either way a changed freeze must name an approach family no earlier attempt used
+        assert not same_freeze and all(a["approach"] != b["approach"] for b in before), a["seed"]
 
 
 def test_ac_t02_thresholds_md_carries_each_attempts_freeze_and_rules_hash():
@@ -85,12 +87,35 @@ def test_ac_t03_each_seed_was_generated_by_exactly_one_commit(attempt):
     assert with_seed == [git("rev-parse", attempt["scored_at"]).stdout.strip()]
 
 
+def assert_regenerates(labels_dir, tmp_path, dropout_variant):
+    """Regenerate the set `labels_dir` holds from its own seed and compare every byte: each take's skeleton.json, and
+    when the labels name foot side files (seed 37 on, and the tuning set) each take's feet.json and the two expected
+    sets' feet.json too. The `feet` option follows the committed labels, so seeds 29 and 31 regenerate without feet."""
+    committed = json.loads((labels_dir / "labels.json").read_text())
+    feet = any("follower_feet" in t for t in committed["takes"])
+    regenerated = gen.generate(committed["seed"], tmp_path, dropout_variant=dropout_variant, feet=feet,
+                               expected_feet_dir=tmp_path / "expected-feet")
+    for take in committed["takes"]:
+        rel = Path(take["follower"]).relative_to(labels_dir.relative_to(ROOT))
+        assert (tmp_path / rel).read_bytes() == (ROOT / take["follower"]).read_bytes(), take["take_id"]
+        if feet:
+            assert (tmp_path / rel).with_name("feet.json").read_bytes() == (ROOT / take["follower_feet"]).read_bytes(), \
+                take["take_id"]
+            assert (tmp_path / "expected-feet" / take["set"] / "feet.json").read_bytes() \
+                == (ROOT / take["expected_feet"]).read_bytes(), take["take_id"]
+    assert feet == any("follower_feet" in t for t in regenerated["takes"])   # it regenerated what the labels carry
+    foot_paths = ("follower", "follower_feet", "expected_feet")   # the temp directory's own paths differ
+    strip = lambda doc: [{k: v for k, v in t.items() if k not in foot_paths} for t in doc["takes"]]  # noqa: E731
+    assert strip(regenerated) == strip(committed)
+    return feet
+
+
 def test_ac_t03_the_current_held_out_set_regenerates_byte_for_byte(tmp_path):
     seed = json.loads((HELDOUT / "labels.json").read_text())["seed"]
-    regenerated = gen.generate(seed, tmp_path, dropout_variant=True)
-    committed = json.loads((HELDOUT / "labels.json").read_text())
-    for take in committed["takes"]:
-        rel = Path(take["follower"]).relative_to("fixtures/input/heldout")
-        assert (tmp_path / rel).read_bytes() == (ROOT / take["follower"]).read_bytes(), take["take_id"]
-    strip = lambda doc: [{k: v for k, v in t.items() if k != "follower"} for t in doc["takes"]]
-    assert strip(regenerated) == strip(committed)
+    feet = assert_regenerates(HELDOUT, tmp_path, dropout_variant=True)
+    assert feet == (seed not in (29, 31))   # seeds 29 and 31 were scored without feet, 37 on carries them
+
+
+def test_ac_t03_regeneration_reproduces_the_feet_files_of_a_set_that_carries_them(tmp_path):
+    """The `feet` branch of the check above, run on the tuning set (seed 5, planted feet, no dropout copies)."""
+    assert assert_regenerates(ROOT / "fixtures/input/followers", tmp_path, dropout_variant=False) is True

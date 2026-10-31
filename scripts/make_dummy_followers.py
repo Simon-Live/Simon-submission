@@ -20,7 +20,16 @@ including knee_caving) and 1 double-fault take, 9 takes; 12 cells make 108 takes
 below 0.3, in bursts of a few frames). The copy's id ends in `_dropout` and its label says
 `variant: "dropout"`. The clean takes are the same bytes with or without the flag.
 
-Deterministic: `python3 scripts/make_dummy_followers.py [--seed 5] [--out DIR] [--dropout-variant]`.
+--feet (TICKET-040, ASM-013, docs/specs/foot-keypoints.md "Calibration plan") adds planted synthetic feet,
+written the way Part 2 writes them: a `pose3d.json` shaped side file `feet.json` beside every
+skeleton.json (the take's own 17 joints plus the six `extra_joints` foot points), one `feet.json` per
+expected set under fixtures/input/expected-feet/<set>/, `expected_feet` and `follower_feet` paths in each
+label, and four more takes per cell after the nine base ones (numbers 09 to 12): `foot_turned_out`,
+`foot_turned_in`, `ankle_rolled_in`, `ankle_rolled_out`. Everything foot-related draws from random streams
+of its own (keyed by the take id), so every skeleton.json and every earlier label key is the same bytes
+with or without the flag. A dropout copy masks the feet where it masks the ankle.
+
+Deterministic: `python3 scripts/make_dummy_followers.py [--seed 5] [--out DIR] [--dropout-variant] [--feet]`.
 Seed 5 is the tuning set (docs/specs/calibration.md); held-out seeds come from `make heldout-data`.
 """
 import argparse
@@ -33,8 +42,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED = ROOT / "fixtures" / "input" / "expected"
+EXPECTED_FEET = ROOT / "fixtures" / "input" / "expected-feet"
 OUT = ROOT / "fixtures" / "input" / "followers"
 SETS = ["exercise", "dance"]
+SIDES = ("left", "right")
 
 # Camera yaw about world up; the camera sits at (sin yaw, 0, cos yaw) from the subject.
 # 0° faces the subject (anterior), 90° is on the subject's left side.
@@ -77,6 +88,36 @@ JOINT_OF = {"upper_arm_direction": "shoulder", "thigh_direction": "hip", "knee_f
 INWARD = {"left": [-1.0, 0.0, 0.0], "right": [1.0, 0.0, 0.0]}
 # Pairs a double-fault take may combine (knee_caving stays out: it shares the leg with foot_out).
 DOUBLE_POOL = ["arms_wider", "foot_out", "trunk_lean", "elbow_bent"]
+BASE_TAKES_PER_CELL = CORRECT_TAKES_PER_CELL + len(FAULTS) + 1   # the nine takes whose bytes never change
+
+# --- planted feet (TICKET-040, ASM-013) ---
+# Part 2's names and order for the six foot points (`extra_joints` of pose3d.json).
+FOOT_JOINTS = ["left_big_toe", "left_small_toe", "left_heel", "right_big_toe", "right_small_toe", "right_heel"]
+# Rigid foot template at body scale 1, metres: (point, ahead of the ankle, toward the outer edge, below the ankle).
+FOOT_TEMPLATE = (("heel", -0.07, 0.0, 0.08), ("big_toe", 0.17, -0.035, 0.08), ("small_toe", 0.12, 0.035, 0.08))
+TOE_OUT_DEG = (4.0, 10.0)        # a take's natural toe-out against the pelvis's forward, drawn once per take
+EXPECTED_TOE_OUT_DEG = 7.0       # the expected clip's fixed toe-out
+FOOT_DRIFT_DEG = 1.2             # slow drift of each foot's heading, the size natural_variation gives other joints
+# Foot fault catalogue: `kind` yaw turns the foot about the vertical through the ankle (foot_rotation), roll turns the
+# foot plane about its long axis (ankle_inversion); `sign` is the change of the measure per degree applied.
+FOOT_FAULTS = {
+    "foot_turned_out": {"measure": "foot_rotation", "direction": "more", "kind": "yaw", "sign": 1.0,
+                        "sides": ["left", "right", "both"], "deg": (15, 25),
+                        "text": {"left": "left foot turned out too far", "right": "right foot turned out too far",
+                                 "both": "feet turned out more than the example"}},
+    "foot_turned_in": {"measure": "foot_rotation", "direction": "less", "kind": "yaw", "sign": -1.0,
+                       "sides": ["left", "right", "both"], "deg": (15, 25),
+                       "text": {"left": "left foot not turned out enough", "right": "right foot not turned out enough",
+                                "both": "feet not turned out enough"}},
+    "ankle_rolled_in": {"measure": "ankle_inversion", "direction": "more", "kind": "roll", "sign": 1.0,
+                        "sides": ["left", "right", "both"], "deg": (15, 25),
+                        "text": {"left": "left ankle rolled in", "right": "right ankle rolled in",
+                                 "both": "ankles rolled in"}},
+    "ankle_rolled_out": {"measure": "ankle_inversion", "direction": "less", "kind": "roll", "sign": -1.0,
+                         "sides": ["left", "right", "both"], "deg": (15, 25),
+                         "text": {"left": "left ankle rolled out", "right": "right ankle rolled out",
+                                  "both": "ankles rolled out"}},
+}
 
 
 # --- small vector helpers (stdlib only, so this runs before the project scaffold exists) ---
@@ -284,6 +325,21 @@ def time_warp(frames, speed, lead_in):
 
 
 def camera_noise(frames, joints, yaw_deg, light, rng):
+    """Jitter the joints, then put the hip midpoint back at the origin; returns the midpoint of each frame."""
+    jitter(frames, joints, yaw_deg, light, rng)
+    midpoints = [scale(add(f["left_hip"], f["right_hip"]), 0.5) for f in frames]  # keep the frame contract: hip midpoint at the origin
+    recentre(frames, joints, midpoints)
+    return midpoints
+
+
+def recentre(frames, joints, midpoints):
+    for f, hm in zip(frames, midpoints):
+        for j in joints:
+            f[j] = sub(f[j], hm)
+
+
+def jitter(frames, joints, yaw_deg, light, rng):
+    """Smooth 3D estimate noise for the camera angle and lighting, added to each listed joint in place."""
     n = len(frames)
     th = math.radians(yaw_deg)
     depth = [math.sin(th), 0.0, math.cos(th)]
@@ -300,10 +356,6 @@ def camera_noise(frames, joints, yaw_deg, light, rng):
         nd = smooth_noise(n, sig["depth"] * m, rng)
         for i, f in enumerate(frames):
             f[j] = add(f[j], add(add(scale(lat, nl[i]), scale(up, nu[i])), scale(depth, nd[i])))
-    for f in frames:  # keep the coordinate-frame contract: hip midpoint at the origin per frame
-        hm = scale(add(f["left_hip"], f["right_hip"]), 0.5)
-        for j in joints:
-            f[j] = sub(f[j], hm)
 
 
 def median(xs):
@@ -311,7 +363,75 @@ def median(xs):
     return s[len(s) // 2]
 
 
-def build_take(expected, take_id, angle, light, faults, rng):
+# --- planted feet: a rigid foot under each ankle, flat on the floor, carried by the pelvis's heading ---
+def plant_feet(frames, body, yaw, roll):
+    """The six foot points of every frame (Part 2's names), from that frame's own hips and ankles.
+
+    The pelvis's forward is the hip line (left minus right hip) in the ground plane turned a quarter turn
+    (x, z) -> (-z, x). `yaw[side][i]` is the toe-out of that foot against the forward in degrees (away from the
+    midline is positive, so `foot_rotation` reads it, less a constant for the big toe sitting inside the foot
+    axis); `roll[side][i]` turns the foot plane about its long axis through the ankle, positive with the outer edge
+    going down (`ankle_inversion` reads it). The template lengths scale with `body`.
+    """
+    out = []
+    for i, f in enumerate(frames):
+        hip = unit([f["left_hip"][0] - f["right_hip"][0], 0.0, f["left_hip"][2] - f["right_hip"][2]])
+        ahead_of_pelvis = [-hip[2], 0.0, hip[0]]
+        pts = {}
+        for side, sgn in (("left", 1.0), ("right", -1.0)):
+            psi, th = math.radians(yaw[side][i]), math.radians(roll[side][i])
+            heading = add(scale(ahead_of_pelvis, math.cos(psi)), scale(hip, sgn * math.sin(psi)))
+            outer = sub(scale(hip, sgn * math.cos(psi)), scale(ahead_of_pelvis, math.sin(psi)))
+            for name, ahead, lat, below in FOOT_TEMPLATE:
+                ahead, lat, below = ahead * body, lat * body, below * body
+                across = lat * math.cos(th) - below * math.sin(th)       # along the foot's outer edge
+                height = -lat * math.sin(th) - below * math.cos(th)      # along the world up
+                pts[f"{side}_{name}"] = add(f[f"{side}_ankle"], add(add(scale(heading, ahead), scale(outer, across)),
+                                                                    [0.0, height, 0.0]))
+        out.append(pts)
+    return out
+
+
+def follower_weight(w, u):
+    """The fault strength at expected-clip position `u` (None: the lead-in, before the clip starts)."""
+    if u is None:
+        return 0.0
+    i0 = int(math.floor(u))
+    i1 = min(i0 + 1, len(w) - 1)
+    return w[i0] + (w[i1] - w[i0]) * (u - i0)
+
+
+def plant_take_feet(frames, src_of, body, n, plan):
+    """The pre-noise feet of a take and the labels of its foot faults.
+
+    `plan` is {"rng": the take's own foot stream, "faults": [(type, side)]}; `n` the expected clip's frame count,
+    `src_of` each follower frame's position in it (time_warp). A foot fault adds `deg` to the toe-out (or the roll)
+    of its side(s), under the same cosine-ramped window as the body faults, so the label's size is exact.
+    """
+    rng, m = plan["rng"], len(frames)
+    base = rng.uniform(*TOE_OUT_DEG)
+    yaw = {s: [base + x for x in smooth_noise(m, FOOT_DRIFT_DEG, rng, a=0.97)] for s in SIDES}
+    roll = {s: [0.0] * m for s in SIDES}
+    labels = []
+    for ftype, side in plan["faults"]:
+        spec = FOOT_FAULTS[ftype]
+        w, start, end = envelope(n, rng)
+        amount = round(rng.uniform(*spec["deg"]), 1)
+        wf = [follower_weight(w, u) for u in src_of]
+        sides = list(SIDES) if side == "both" else [side]
+        series = yaw if spec["kind"] == "yaw" else roll
+        for s in sides:
+            series[s] = [v + spec["sign"] * amount * wi for v, wi in zip(series[s], wf)]
+        labels.append({"type": ftype, "measure": spec["measure"], "body_part": "feet",   # the analysis writes feet too
+                       "joints": [f"{s}_ankle" for s in sides], "side": side, "direction": spec["direction"],
+                       "magnitude_deg": amount, "peak_deg": amount, "_window": (start, end),
+                       "text": spec["text"][side]})
+    return plant_feet(frames, body, yaw, roll), labels
+
+
+def build_take(expected, take_id, angle, light, faults, rng, feet=None):
+    """One take and its meta. `feet` (a plan for plant_take_feet) adds the planted feet and any foot faults:
+    the feet come back in `meta["_feet"]` for the caller to write; `rng` is never read for them."""
     joints = expected["joints"]
     frames = [{j: list(fr["joints"][j]) for j in joints} for fr in expected["frames"]]
     n = len(frames)
@@ -341,7 +461,13 @@ def build_take(expected, take_id, angle, light, faults, rng):
     speed = rng.uniform(0.8, 1.25)
     lead_in = rng.randint(0, 15)
     frames, src_of = time_warp(frames, speed, lead_in)
-    camera_noise(frames, joints, ANGLES[angle], light, rng)
+    if feet is not None:   # after the 17 joints are final, before the camera noise (their own random stream)
+        planted, foot_labels = plant_take_feet(frames, src_of, body, n, feet)
+        labels += foot_labels
+    midpoints = camera_noise(frames, joints, ANGLES[angle], light, rng)
+    if feet is not None:
+        jitter(planted, FOOT_JOINTS, ANGLES[angle], light, feet["rng"])
+        recentre(planted, FOOT_JOINTS, midpoints)
 
     # Map each fault window from expected frames to follower frames.
     for lab in labels:
@@ -371,6 +497,8 @@ def build_take(expected, take_id, angle, light, faults, rng):
             "angle": angle, "camera_yaw_deg": ANGLES[angle], "lighting": light,
             "variant": "clean", "label_source": "synthetic", "correct": not labels, "body_scale": round(body, 3), "speed": round(speed, 3),
             "lead_in_frames": lead_in, "frame_count": len(frames), "faults": labels}
+    if feet is not None:
+        meta["_feet"] = planted   # per frame {foot point: [x, y, z]}; generate() takes it out before the labels are written
     return doc, meta
 
 
@@ -431,6 +559,76 @@ def dropout_copy(doc, meta, seed):
     return out, new_meta
 
 
+# --- the side files and the foot-fault takes (TICKET-040) ---
+FOOT_FORMAT_NOTE = "pose3d.json shape (Part 2), synthetic: planted feet (ASM-013)"
+
+
+def foot_plan(seed, take_id, faults=()):
+    """A take's foot stream and faults. The stream is keyed by the take id, so it never reads or moves the
+    base stream and a take's feet do not depend on the other takes."""
+    return {"rng": random.Random(f"{seed}/{take_id}/feet"), "faults": list(faults)}
+
+
+def foot_fault_plans(seed, set_name, angle, light):
+    """One take per foot fault type for a cell, each with a side drawn from the cell's own stream."""
+    rng = random.Random(f"{seed}/{set_name}/{angle}/{light}/foot-plan")
+    return [[(t, rng.choice(FOOT_FAULTS[t]["sides"]))] for t in FOOT_FAULTS]
+
+
+def pose3d_point(p, conf=1.0):
+    return {"x": round(p[0], 4), "y": round(p[1], 4), "z": round(p[2], 4), "conf": conf}
+
+
+def pose3d_doc(joint_names, frames, feet, provenance, joint_conf=None, foot_conf=None):
+    """Part 2's pose3d.json shape for one person: the 17 joints and the six `extra_joints` per frame.
+
+    `frames` are skeleton.json frames (`t`, `joints` as [x, y, z]); a joint's `conf` is 1.0 unless `joint_conf`
+    ({joint: [per frame]}) says otherwise, and likewise `foot_conf` for the foot points. Part 2 never writes a
+    null joint, so a masked joint keeps its position and carries a `conf` below the 0.3 cutoff instead.
+    """
+    out = []
+    for i, fr in enumerate(frames):
+        joints = {j: pose3d_point(fr["joints"][j], joint_conf[j][i] if joint_conf else 1.0) for j in joint_names}
+        extra = {j: pose3d_point(feet[i][j], foot_conf[j][i] if foot_conf else 1.0) for j in FOOT_JOINTS}
+        out.append({"frame": i, "t_ms": round(fr["t"] * 1000, 3),
+                    "people": [{"id": 0, "joints": joints, "extra_joints": extra}]})
+    return {"frames": out, "t0_pts_ms": 0.0, "provenance": provenance}
+
+
+def provenance(seed, note):
+    return {"source": "synthetic", "generator": "scripts/make_dummy_followers.py", "seed": seed, "note": note}
+
+
+def expected_feet_doc(expected):
+    """The expected clip's side file: Part 4's joints with feet planted at a fixed toe-out, no drift, no noise."""
+    n = len(expected["frames"])
+    frames = [{j: list(fr["joints"][j]) for j in expected["joints"]} for fr in expected["frames"]]
+    yaw = {s: [EXPECTED_TOE_OUT_DEG] * n for s in SIDES}
+    roll = {s: [0.0] * n for s in SIDES}
+    return pose3d_doc(expected["joints"], expected["frames"], plant_feet(frames, 1.0, yaw, roll),
+                      provenance(None, f"expected side: fixed {EXPECTED_TOE_OUT_DEG:g} degree toe-out, no noise; "
+                                       f"{FOOT_FORMAT_NOTE}"))
+
+
+def dropout_feet_doc(clean_doc, dropout_doc, feet, seed):
+    """The side file of a dropout copy: the clean positions with the copy's per-joint `conf`, and each foot masked
+    in the frames where its ankle is (the foot hangs off the ankle, so a lost ankle loses its foot)."""
+    joints = clean_doc["joints"]
+    conf = {j: [fr["conf"][j] for fr in dropout_doc["frames"]] for j in joints}
+    foot_conf = {}
+    for side in SIDES:
+        ankle = conf[f"{side}_ankle"]
+        for j in FOOT_JOINTS:
+            if j.startswith(side):
+                foot_conf[j] = [c if c < 0.3 else 1.0 for c in ankle]
+    return pose3d_doc(joints, clean_doc["frames"], feet, provenance(seed, FOOT_FORMAT_NOTE + ", dropout copy"),
+                      conf, foot_conf)
+
+
+def clean_feet_doc(doc, feet, seed):
+    return pose3d_doc(doc["joints"], doc["frames"], feet, provenance(seed, FOOT_FORMAT_NOTE))
+
+
 # --- writing the set ---
 def rel(path):
     """Path relative to the repo when inside it, else as given (a temp directory in tests)."""
@@ -441,44 +639,82 @@ def rel(path):
         return str(path)
 
 
-def write_take(out, doc, meta, exp_path):
+def write_take(out, doc, meta, exp_path, feet_doc=None, exp_feet_path=None):
+    """Write the take; with `feet_doc` also feet.json beside it. The two foot paths go into the label before
+    `expected` and `follower`, so an older label file only gains lines."""
     path = out / meta["set"] / meta["take_id"] / "skeleton.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc, separators=(",", ":")) + "\n")
+    if feet_doc is not None:
+        feet_path = path.with_name("feet.json")
+        feet_path.write_text(json.dumps(feet_doc, separators=(",", ":")) + "\n")
+        meta["expected_feet"] = rel(exp_feet_path)
+        meta["follower_feet"] = rel(feet_path)
     meta["expected"] = rel(exp_path)
     meta["follower"] = rel(path)
 
 
+def write_expected_feet(expected, path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(expected_feet_doc(expected), separators=(",", ":")) + "\n")
+
+
 def generate(seed, out=OUT, dropout_variant=False, sets=SETS, angles=tuple(ANGLES), lights=tuple(LIGHTING),
-             expected_dir=EXPECTED):
+             expected_dir=EXPECTED, feet=False, expected_feet_dir=EXPECTED_FEET):
     """Write the set under `out` and return the labels document. Clean takes come first, in grid
-    order; the dropout copies follow in the same order."""
+    order; the dropout copies follow in the same order.
+
+    With `feet`, every take also gets a feet.json, each expected set one under `expected_feet_dir`, and the
+    foot-fault takes follow the base takes in the clean list (their dropout copies the base copies)."""
     out, rng = Path(out), random.Random(seed)
     # Remove only what this script writes, so hand-written files (README.md) survive a rerun.
     for set_name in sets:
         if (out / set_name).exists():
             shutil.rmtree(out / set_name)
     (out / "labels.json").unlink(missing_ok=True)
-    clean, dropped = [], []
+    clean, dropped, foot_clean, foot_dropped = [], [], [], []
+    expected_of, exp_feet_of = {}, {}
     for set_name in sets:
         exp_path = Path(expected_dir) / set_name / "animation.json"
-        expected = json.loads(exp_path.read_text())
+        expected_of[set_name] = (json.loads(exp_path.read_text()), exp_path)
+        if feet:
+            exp_feet_of[set_name] = Path(expected_feet_dir) / set_name / "feet.json"
+            write_expected_feet(expected_of[set_name][0], exp_feet_of[set_name])
+
+    def emit(set_name, take_id, angle, light, faults, take_rng, plan, takes, copies):
+        expected, exp_path = expected_of[set_name]
+        doc, meta = build_take(expected, take_id, angle, light, faults, take_rng, plan)
+        planted = meta.pop("_feet", None)
+        write_take(out, doc, meta, exp_path, None if planted is None else clean_feet_doc(doc, planted, seed),
+                   exp_feet_of.get(set_name))
+        takes.append(meta)
+        if dropout_variant and angle in DROPOUT_ANGLES:
+            d_doc, d_meta = dropout_copy(doc, meta, seed)
+            write_take(out, d_doc, d_meta, exp_path,
+                       None if planted is None else dropout_feet_doc(doc, d_doc, planted, seed),
+                       exp_feet_of.get(set_name))
+            copies.append(d_meta)
+
+    for set_name in sets:
         for angle in angles:
             for light in lights:
                 plans = [[] for _ in range(CORRECT_TAKES_PER_CELL)] + fault_plan(rng)
                 for k, faults in enumerate(plans):
                     tag = "correct" if not faults else "+".join(f"{t}-{s}" for t, s in faults)
                     take_id = f"{set_name}_{angle}_{light}_{k:02d}_{tag}"
-                    doc, meta = build_take(expected, take_id, angle, light, faults, rng)
-                    write_take(out, doc, meta, exp_path)
-                    clean.append(meta)
-                    if dropout_variant and angle in DROPOUT_ANGLES:
-                        d_doc, d_meta = dropout_copy(doc, meta, seed)
-                        write_take(out, d_doc, d_meta, exp_path)
-                        dropped.append(d_meta)
+                    emit(set_name, take_id, angle, light, faults, rng, foot_plan(seed, take_id) if feet else None,
+                         clean, dropped)
+    if feet:   # the foot-fault takes come after every base take and read streams of their own, so nothing above moves
+        for set_name in sets:
+            for angle in angles:
+                for light in lights:
+                    for k, faults in enumerate(foot_fault_plans(seed, set_name, angle, light), BASE_TAKES_PER_CELL):
+                        take_id = f"{set_name}_{angle}_{light}_{k:02d}_" + "+".join(f"{t}-{s}" for t, s in faults)
+                        emit(set_name, take_id, angle, light, [], random.Random(f"{seed}/{take_id}/body"),
+                             foot_plan(seed, take_id, faults), foot_clean, foot_dropped)
     labels = {"format": "simon.part5.labels.v1", "generator": "scripts/make_dummy_followers.py",
               "seed": seed, "label_source": "synthetic", "angles": ANGLES, "lighting": LIGHTING,
-              "takes": clean + dropped}
+              "takes": clean + foot_clean + dropped + foot_dropped}
     (out / "labels.json").write_text(json.dumps(labels, indent=1) + "\n")
     return labels
 
@@ -489,13 +725,18 @@ def main(argv=None):
     ap.add_argument("--out", default=str(OUT), help="output directory (default fixtures/input/followers)")
     ap.add_argument("--dropout-variant", action="store_true",
                     help="add a dropout copy (per-joint conf, far-side bursts) of every side and 45 degree take")
+    ap.add_argument("--feet", action="store_true",
+                    help="add planted synthetic feet: a feet.json per take and expected set, and the foot-fault takes")
+    ap.add_argument("--expected-feet-dir", default=str(EXPECTED_FEET),
+                    help="where --feet writes each expected set's feet.json (default fixtures/input/expected-feet)")
     args = ap.parse_args(argv)
-    labels = generate(args.seed, Path(args.out), args.dropout_variant)
+    labels = generate(args.seed, Path(args.out), args.dropout_variant, feet=args.feet,
+                      expected_feet_dir=Path(args.expected_feet_dir))
     takes = labels["takes"]
     n_fault = sum(len(t["faults"]) for t in takes)
     dropped = sum(t["variant"] == "dropout" for t in takes)
     print(f"wrote {len(takes)} takes ({sum(t['correct'] for t in takes)} correct, {n_fault} labelled faults, "
-          f"{dropped} dropout copies) to {rel(args.out)}")
+          f"{dropped} dropout copies{', with feet' if args.feet else ''}) to {rel(args.out)}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Part 5's published contract: six JSON Schemas, the compatibility table, `part5 contract` and
+"""Part 5's published contract: seven JSON Schemas, the compatibility table, `part5 contract` and
 `make check-5-contract` (`python -m part5.contract --check`). Who sends what is in CONTRACT.md.
 
 `contract_document()` is exactly what `part5 contract --json` prints; the staging API serves it at
@@ -20,16 +20,20 @@ from collections import Counter
 from importlib import metadata
 from pathlib import Path
 
+from .feet import check_file
 from .io import InputError, load_clip
 from .output import OutputError, load_analysis, write_analysis
 
 ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_NAMES = ("analysis", "input-animation", "input-skeleton", "labels", "metrics", "replay")
+# input-feet (ADR-0015) is last, so the order of the first six is what it was.
+SCHEMA_NAMES = ("analysis", "input-animation", "input-skeleton", "labels", "metrics", "replay", "input-feet")
 ID_BASE = "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/"
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 # Commits of the neighbours whose files the Part 2 and Part 6 rows were checked against: the heads
 # that scripts/neighbour-check.sh recorded. Parts 3 and 4 come from contracts/sources.lock.json.
 NEIGHBOUR_COMMITS = {"part2": "2e06d58", "part6": "fc3249a"}  # progress/neighbour-check-20261031.json
+# The Part 2 commit whose CONTRACT.md ("Extra joints (optional)") publishes the foot points the feet row was checked against.
+PART2_FEET_COMMIT = "e8ac336"
 TABLE_COLUMNS = ("Producer", "File", "format", "Part 5 role", "Verdict", "Fix", "Checked against")
 TABLE_KEYS = ("producer", "file", "format", "part5_role", "verdict", "fix", "checked_against")
 HANDOFF_FILE = "`{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}`"
@@ -37,7 +41,15 @@ HANDOFF_FIX = "download `files.animation` and pass it as `--expected`; Part 5 ne
 # (producer, file, format, role, verdict, fix, checked against); {partN} is filled from a commit.
 TABLE_ROWS = (
     ("Part 2", "`pose3d.json`", "`part2.pose3d/2026-10-28` (Part 3 CONTRACT.md)", "none", "rejected",
-     "run Part 3 `--view part5` on it; `doctor` exits 1 with \"run Part 3 --view part5\"", "Part 2 {part2}"),
+     "as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input "
+     "(exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with \"run Part 3 "
+     "--view part5\"", "Part 2 {part2}"),
+    ("Part 2 foot points", "`pose3d.json` with `extra_joints`",
+     "`part2.pose3d/2026-10-28` (Part 2 CONTRACT.md \"Extra joints (optional)\")",
+     "optional feet side input (`--expected-feet`, `--follower-feet`)", "works with an option",
+     "pass the trainer's and the follower's own Part 2 `pose3d.json` beside the Part 3 `skeleton.json` (Part 3 does not "
+     "carry `extra_joints`); a file without them is accepted and the foot measures are hidden, with the reason in "
+     "`diagnostics.feet`; `doctor` accepts it with a note", f"Part 2 {PART2_FEET_COMMIT}"),
     ("Part 3 `run --view part5`", "`skeleton.json`", "`simon.animation.v1`", "follower or expected", "works",
      "", "Part 3 {part3}"),
     ("Part 3 `run --view part4`", "`skeleton.json`", "`simon.skeleton.v1`", "expected", "works", "",
@@ -52,7 +64,9 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.5.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`) are all optional", "Part 5 (this repo)"),
+     "the 1.2.0 to 1.6.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`) are "
+     "all optional; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built "
+     "on the 1.6.0 schema, whose `measure` and `body_part` enums list them", "Part 5 (this repo)"),
     ("Part 5 `analyse --replay <replay.json>`", "`replay.json`", "`simon.replay.v1`", "output for Part 7", "works",
      "optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>`",
      "Part 5 (this repo)"),
@@ -312,7 +326,7 @@ def _write_replay(path, result):
 # ---------------------------------------------------------------- make check-5-contract
 REQUIRED_DIRS = ("fixtures/input/expected", "fixtures/input/followers", "fixtures/input/contract",
                  "fixtures/output")
-OPTIONAL_DIRS = ("fixtures/input/heldout", "fixtures/input/eval/real")
+OPTIONAL_DIRS = ("fixtures/input/heldout", "fixtures/input/eval/real", "fixtures/input/expected-feet")
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
 
@@ -371,7 +385,16 @@ def classify(rel, doc):
         return (["part3/skeleton-part4"] if from_part3 else []) + ["input-skeleton"], "clip"
     if isinstance(doc, dict) and doc.get("schema") == "simon.skeleton/1" and "format" not in doc:
         return ["part3/skeleton"], "rejected"  # Part 3 native: part5.io must refuse it
+    if _is_feet_file(doc):
+        return ["input-feet"], "feet"          # ADR-0015: a Part 2 pose3d.json (or a synthetic one) with extra_joints
     return None, None
+
+
+def _is_feet_file(doc):
+    """A feet side file: no `format`, and `frames[0].people` a list (Part 2's pose3d.json shape)."""
+    frames = doc.get("frames") if isinstance(doc, dict) and "format" not in doc and "schema" not in doc else None
+    return isinstance(frames, list) and bool(frames) and isinstance(frames[0], dict) \
+        and isinstance(frames[0].get("people"), list)
 
 
 def fixture_paths(root, fail):
@@ -421,7 +444,10 @@ class _Run:
                 self.fail(f"{rel}: part5.io accepted a file it must reject (Part 3 native view)")
             return
         try:
-            (load_clip if how == "clip" else load_analysis)(path)
+            if how == "feet":
+                check_file(path)
+            else:
+                (load_clip if how == "clip" else load_analysis)(path)
         except (InputError, OutputError) as e:
             self.fail(str(e))
         else:

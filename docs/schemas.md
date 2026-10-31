@@ -1,7 +1,7 @@
 # Part 5 file contracts
 
 This page is the field reference. The same contract is published as JSON Schemas in `contracts/`
-(`analysis`, `input-animation`, `input-skeleton`, `labels`, `metrics`, `replay`, each with a `version`).
+(`analysis`, `input-animation`, `input-skeleton`, `labels`, `metrics`, `replay`, `input-feet`, each with a `version`).
 `python -m part5 contract` prints them with the compatibility table, `python -m part5 doctor <file>`
 checks one file and `make check-5-contract` proves the schemas, the fixtures and the golden outputs
 agree. `CONTRACT.md` says who sends what and what Part 7 must do with `analysis.json` and `replay.json`.
@@ -48,11 +48,47 @@ every frame `interpolated: false`. Two optional extensions are accepted:
 
 Validation: `part5.io.load_clip(path)` raises `InputError` with the file and field that broke the contract.
 
+### Feet side file (optional): a Part 2 `pose3d.json` with `extra_joints` (ADR-0015)
+
+Published as `contracts/input-feet.schema.json` (1.0.0); `make check-5-contract` validates every committed `feet.json`
+(`fixtures/input/followers`, `fixtures/input/expected-feet`, `fixtures/input/eval/real`) against it and loads it through
+`part5.feet`. A file has no `format` key; `provenance` says where it came from (synthetic: `source`, `generator`, `seed`,
+which is null for a derived example file; Part 2's: `contract_version`, `backend`, `extra_joints`).
+
+The 17 joints end at the ankle. Part 2 publishes the heel, big toe and small toe of each foot as `extra_joints`, and its
+contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own file, one per clip, beside the clip:
+`part5 analyse ... [--expected-feet PATH] [--follower-feet PATH] [--expected-feet-person N] [--follower-feet-person N]`
+(`part5.pipeline.run` and `analyse` take `expected_feet`, `follower_feet`, `expected_feet_person`, `follower_feet_person`).
+
+```json
+{"frames": [{"frame": 0, "t_ms": 0.0, "people": [{"id": 0,
+    "joints": {"left_hip": {"x": 0.1, "y": 0.0, "z": 0.0, "conf": 1.0}, "...": {}},
+    "extra_joints": {"left_big_toe": {"x": 0.1, "y": -0.9, "z": 0.1, "conf": 0.9}, "left_small_toe": {}, "left_heel": {},
+                     "right_big_toe": {}, "right_small_toe": {}, "right_heel": {}}}]}],
+ "t0_pts_ms": 0.0, "mirrored": false, "provenance": {"source": "synthetic"}}
+```
+
+- Only the two hips and the six foot points are read; the knees and ankles are ignored. A synthetic file uses the same shape.
+- `foot_rotation` and `ankle_inversion`, left and right, are computed per frame of the side file, inside the side file's own
+  frame, from its own joints and foot points. A point is seen when it is present, finite and `conf` is at least 0.5; a
+  measure is NaN in a frame where a point it reads is not seen. A top-level `mirrored: true` swaps the left and right series.
+- A clip frame at time `t` (the clip's own `t`, seconds) takes the side frame whose `(t_ms - t0_pts_ms) / 1000` is nearest,
+  within half the file's median frame step over all its frames (at least 0.008 s); otherwise the frame's foot values are NaN. `t0_pts_ms` defaults
+  to 0. `*-feet-person` is matched to `people[].id` (default 0).
+- A foot measure is usable in a clip when it is a number in at least 80% of its frames, and is compared only when usable on
+  both sides. A file with no `extra_joints`, or a pair where only one clip has feet, is not an error: the foot measures are
+  hidden for the pair and `diagnostics.feet.hidden_reason` says why. In rep mode they are hidden ("rep mode").
+- `InputError` (exit 1, `part5 analyse: <file>: ...`): the file is unreadable or not this shape, the person id is in no frame,
+  or no clip frame matches a frame of the file in time.
+- `labels.json` takes may carry `expected_feet` and `follower_feet` (paths from the repository root, like `expected` and
+  `follower`); the label types `foot_turned_out`, `foot_turned_in`, `ankle_rolled_in` and `ankle_rolled_out` map to
+  `foot_rotation more`, `foot_rotation less`, `ankle_inversion more` and `ankle_inversion less`.
+
 ## Labels for evaluation: `fixtures/input/followers/labels.json`
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.5.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.6.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -61,7 +97,7 @@ so the format can grow without breaking older readers. Live examples, generated 
 takes by `make output-examples` through the same pipeline and score hook `part5 analyse` uses (with the
 `template` phrasing, whatever the environment): `fixtures/output/analysis.example.json` (two faults),
 `fixtures/output/analysis.no-faults.example.json` (a correct take) and `fixtures/output/replay.example.json`
-(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.5.0):
+(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.6.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
 Part 7 must read first.
 
@@ -75,11 +111,12 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.3.0` | `faults[].reps`, `score.per_rep`, `diagnostics.guard.reps`, `diagnostics.expected_reference`, `diagnostics.visibility` | a take compared one repetition at a time (ADR-0010) |
 | `1.4.0` | `warnings`, `match`, `score.capped_by`, a fault `confidence` of `"low"` (ADR-0012) | the take earned a warning |
 | `1.5.0` | `faults[].cue`, `cue_kind`; `score.basis`, `timeline`, `tempo`; `insights` (ADR-0013, ADR-0014) | every new document |
+| `1.6.0` | faults with `measure` `foot_rotation` or `ankle_inversion` (`body_part` `feet`); `diagnostics.feet` (ADR-0015) | every new document is `1.6.0`; the foot fields appear only when a feet file was given for either clip |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.5.0",
+  "schema_version": "1.6.0",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
   "status": {"code": "ok", "text": "Compared with the expected movement."},
@@ -159,6 +196,12 @@ Top level:
   `kind` `first_rep` or `whole`, its `frames` and `span_s`, `expected_reps`, `follower_reps` and the cut `measure`.
   A fault of such a take has `reps` (1.3.0): the 0-based follower repetitions it was found in, and its time fields are
   those of the first; `score.per_rep` lists each accepted repetition's `value` and `grade`.
+  `diagnostics.feet` (1.6.0, ADR-0015) is present only when a feet file was given for either clip:
+  `{expected, follower, compared, hidden_reason}`. `expected` and `follower` are `{source, person, frames_matched, usable}`
+  (`source` null when no file was given for that clip, `frames_matched` how many of the clip's frames took a frame of the file
+  in time, `usable` the foot measures seen in at least 80% of them, named `left_foot_rotation` and so on); `compared` is
+  what the pair was compared on; `hidden_reason` is null when anything was compared and otherwise plain words (no file,
+  a file with no foot points, too few frames seen, rep mode, a take that could not be aligned).
 
 Follower and expected clips may have different frame rates: the follower is resampled onto
 the expected clip's clock (its `fps`, or the median step of `t`) before alignment, and every
@@ -177,6 +220,13 @@ Per fault:
   `measure_kind` is `angle` (a joint angle) or `direction` (a segment direction).
   `knee_valgus` is a direction: the angle of the knee's offset inside the hip to ankle line over
   the thigh length, so `more` reads "knee caving in" and `less` "knee pushed out".
+  `foot_rotation` and `ankle_inversion` (1.6.0, only with a feet file) are directions with `body_part` `feet` and `joint` an
+  ankle: `foot_rotation` is how far the toes point away from the midline against the pelvis's forward (`more` reads "foot
+  turned out", cue "Turn your left foot in"; `less` reads "foot not turned out enough", cue "Turn your left foot out");
+  `ankle_inversion` is how far the foot is rolled onto an edge, about its long axis, against the vertical (`more` is
+  the outer edge down, the sole turning toward the midline: it reads "ankle rolling out", cue "Keep your left ankle
+  straight"; `less` is the inner edge down: it reads "ankle rolling in", cue "Stop your left ankle rolling in").
+  A document with a foot fault needs a reader built on the 1.6.0 schema (the `measure` and `body_part` enums).
 - `joint` / `body_part` / `side`: where it differed. Sides are the subject's own
   (`left`/`right`/`both`/`center`). For `both`, `joint` is side-stripped (`shoulder`, not
   `left_shoulder`); centre measures use the virtual joints `spine`, `shoulders`, `neck`.

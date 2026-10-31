@@ -214,14 +214,16 @@ Every new `analysis.json` is `1.5.0` and says what to do, not only what was wron
   reuses that fault's timed words (`text_timed`, sentence case: "Right foot too far right at 1.9 s", then
   " (3 of 8 reps)" or " (2 times)" when the cue missed more than once); a miss no reported fault matches and a
   tempo item keep the plain-words templates (ADR-0014, amendment of 2026-10-31).
-- Template text only; no phrasing backend rewrites a cue. No cue for foot rotation or an ankle twist: the 17
-  joints end at the ankle (follow-up: heel and toe keypoints).
+- Template text only; no phrasing backend rewrites a cue. A cue for foot rotation or an ankle roll exists only when
+  the pair has foot points, read from Part 2's pose3d.json (ADR-0015, `foot-keypoints.md`); the 17 joints end at the
+  ankle, so without them there is none.
 
 ACs (tests/test_cues.py):
 - AC-CUE-01: every measure, direction and side the contract allows has a cue of 1 to 6 words, capitalised, no
   dash; opposite directions differ; a sided cue names its side.
 - AC-CUE-02: an unknown measure, direction or a side that does not go with the measure is a ValueError.
-- AC-CUE-03: no cue names the ankle, heel, toes or a twist.
+- AC-CUE-03: no cue names the heel, toes or a twist, and "ankle" appears only in an `ankle_inversion` cue (narrowed by
+  AC-FOOT-14, ADR-0015).
 - AC-CUE-04: tempo cue thresholds at 0.85 and 1.15 (inclusive bounds give no cue); a stretch under 1 s of the
   example has ratio null.
 - AC-CUE-05: on the dummy takes the take's tempo ratio is 1/speed of the generator within 0.05; on the real fast
@@ -307,7 +309,7 @@ a warning and grade F, `warnings` and `status.code: "ok"`), and 1 for an input, 
 | Tuning set | Seed 5, `fixtures/input/followers/`, regenerated once from the refreshed expected clips | ADR-0003 |
 | Held-out set | Seeds 29, 31, 37 in that order, `fixtures/input/heldout/` (own `labels.json` naming the seed); each generated once after a freeze commit, scored once, then retired | ADR-0003; never 5 |
 | Retuning | Never on held-out numbers; a retry needs a distinct approach family and the next seed; every attempt published; red after seed 37 ends DEGRADED with every attempt's numbers | ADR-0003, `calibration.md` |
-| Take grid | 2 sets x 3 angles x 2 lights x 9 takes: 2 correct, 6 single-fault (one per type, `knee_caving` added), 1 double | 54 per set, 108 per seed (clean); `--dropout-variant` adds 72 dropout copies, 180 per held-out seed (corrected 2026-10-29: the first text said 108 per set) |
+| Take grid | 2 sets x 3 angles x 2 lights x 9 takes: 2 correct, 6 single-fault (one per type, `knee_caving` added), 1 double; from seed 5's TICKET-040 regeneration and seed 37 on, 4 foot-fault takes more per cell (13 per cell, numbered 09 to 12) | 54 per set, 108 per seed (clean, no feet); `--dropout-variant` adds 72 dropout copies, 180 per held-out seed (seeds 29 and 31 stay 180). With feet: 13 per cell, 156 per seed (108 + 48 foot) and 260 with dropout copies (156 + 104) from seed 37 on; the seed 5 tuning set has 156 and no dropout copies (corrected 2026-10-29: the first text said 108 per set) |
 | Dropout variant | `--dropout-variant` adds one dropout copy of every side and 45 degree take with per-joint `conf` and far-side bursts (#25); slices `dropout/<angle>`, reported, never gated | #25 |
 | `knee_caving` size | Knee moved inward by 15 to 25 degrees of `knee_valgus` over the full-strength window, both sets | ADR-0004 |
 | Expected clips | Part 4 main `fixtures/output/{exercise,dance}/animation.json`, commit recorded in `fixtures/input/expected/SOURCE.md` and `contracts/sources.lock.json` | Refresh once (M2 start) |

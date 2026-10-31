@@ -14,7 +14,7 @@ from pathlib import Path
 from .guard import (DIFFERENT_MOVEMENT, LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NOT_ENOUGH_VISIBLE,
                     OK)
 from .io import JOINTS
-from .measures import MEASURES
+from .measures import ALL_SPECS, FOOT_MEASURES
 from .cues import KINDS as CUE_KINDS
 from .cues import MAX_WORDS as CUE_MAX_WORDS
 from .cues import cue_for
@@ -25,8 +25,9 @@ from .words import describe, describe_timed
 FORMAT = "simon.analysis.v1"
 # 1.2.0 time fields (ADR-0009), 1.3.0 rep fields (ADR-0010), 1.4.0 warnings and match (ADR-0012). From 1.5.0
 # (ADR-0014) every new document carries cues and `insights`, so every new document is 1.5.0; a reader tells
-# the earlier groups apart by their fields, which stay optional.
-SCHEMA_VERSION = "1.5.0"
+# the earlier groups apart by their fields, which stay optional. 1.6.0 (ADR-0015) adds the foot measures
+# `foot_rotation` and `ankle_inversion` (body part "feet") and `diagnostics.feet`; every new document is 1.6.0.
+SCHEMA_VERSION = "1.6.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
 REFUSED_CODES = (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME)
@@ -45,10 +46,10 @@ class OutputError(ValueError):
 
 
 def _spec(measure, side):
-    """The MEASURES spec for a side-less measure name and a fault side."""
+    """The spec (body or foot measure) for a side-less measure name and a fault side."""
     name = {"left": f"left_{measure}", "right": f"right_{measure}",
             "both": f"left_{measure}", "center": measure}.get(side, measure)
-    return MEASURES.get(name)
+    return ALL_SPECS.get(name)
 
 
 def _joint_for(measure, side):
@@ -61,7 +62,7 @@ def _joint_for(measure, side):
 def generic_measures():
     """Side-less measure names a fault may report (the `measure` vocabulary)."""
     out = []
-    for name in MEASURES:
+    for name in ALL_SPECS:
         g = name[len("left_"):] if name.startswith("left_") else \
             name[len("right_"):] if name.startswith("right_") else name
         if g not in out:
@@ -212,6 +213,8 @@ def validate_analysis(doc, source="<analysis>"):
             fail(f"{key} must be an object with a non-empty string 'path'")
     if "diagnostics" in doc and not isinstance(doc["diagnostics"], dict):
         fail("diagnostics must be an object")
+    if "feet" in doc.get("diagnostics", {}):
+        _validate_feet(doc["diagnostics"]["feet"], fail)
     version = doc.get("schema_version")
     if "schema_version" in doc and not (isinstance(version, str) and SCHEMA_VERSION_RE.match(version)):
         fail(f"schema_version must look like '1.2.0', got {version!r}")
@@ -237,6 +240,27 @@ def validate_analysis(doc, source="<analysis>"):
     except (TypeError, ValueError) as e:
         fail(f"document is not JSON-serialisable ({e})")
     return doc
+
+
+def _validate_feet(feet, fail):
+    """The 1.6.0 `diagnostics.feet` (ADR-0015): each clip's feet file, the foot measures compared and why not."""
+    where = "diagnostics.feet"
+    if not isinstance(feet, dict):
+        fail(f"{where} must be an object")
+    for key in ("expected", "follower"):
+        side = feet.get(key)
+        ok = (isinstance(side, dict) and (side.get("source") is None or isinstance(side["source"], str))
+              and _is_int(side.get("person")) and _is_int(side.get("frames_matched"))
+              and isinstance(side.get("usable"), list) and all(m in FOOT_MEASURES for m in side["usable"]))
+        if not ok:
+            fail(f"{where}.{key} must be {{source, person, frames_matched, usable}} with usable foot measure names, "
+                 f"got {side!r}")
+    compared = feet.get("compared")
+    if not (isinstance(compared, list) and all(m in FOOT_MEASURES for m in compared)):
+        fail(f"{where}.compared must be a list of foot measure names {list(FOOT_MEASURES)}, got {compared!r}")
+    reason = feet.get("hidden_reason")
+    if reason is not None and not (isinstance(reason, str) and reason):
+        fail(f"{where}.hidden_reason must be a non-empty string or null, got {reason!r}")
 
 
 def _validate_warnings(warnings, match, fail):

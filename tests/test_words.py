@@ -3,10 +3,10 @@ from types import SimpleNamespace as F
 import pytest
 
 from part5.detect import generic
-from part5.measures import MEASURES
+from part5.measures import ALL_SPECS
 from part5.words import PHRASES, describe, phrase
 
-GENERIC = {generic(m)[0]: generic(m)[1] for m in MEASURES}
+GENERIC = {generic(m)[0]: generic(m)[1] for m in ALL_SPECS}   # body and foot measures (ADR-0015)
 
 
 def fault(measure, direction, side, mag=20.0, thr=10.0):

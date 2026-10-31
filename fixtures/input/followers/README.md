@@ -11,9 +11,10 @@ joints and coordinate frame). Every frame has `interpolated: false`, and `bones[
 length measured on that take. the team decided on 2026-10-28 (#18) that the follower file uses the
 same shape as the expected clip.
 
-**Takes.** 2 sets × 3 camera angles (front 0°, 45°, side 90°) × 2 lighting conditions (good, low) × 9 takes:
+**Takes.** 2 sets × 3 camera angles (front 0°, 45°, side 90°) × 2 lighting conditions (good, low) × 13 takes:
 2 correct, 6 with a single fault (one per type, `knee_caving` included), 1 with two faults (never
-`knee_caving`). That is 108 takes in total (24 correct, 96 labelled faults).
+`knee_caving`), numbered 00 to 08, and 4 foot-fault takes (09 to 12, below). That is 156 takes in total (24 correct,
+144 labelled faults: 96 body and 48 foot). The first nine of a cell are the original grid and keep their bytes.
 
 **How a take is made:**
 1. Rescale the body uniformly (0.9–1.1).
@@ -50,5 +51,30 @@ speed, lead-in, and `faults[]`. Each fault has `type, measure, body_part, joints
 wrist, knee or ankle is `null` or has `conf` below 0.3; the label's `dropouts[]` lists them. The clean
 takes are the same bytes with or without the flag. This seed 5 set has no dropout copies; the held-out sets
 do (`make heldout-data`), and `make check-5` reports them as `dropout/<angle>` slices, never gated.
+
+**Planted feet (TICKET-040, `docs/specs/foot-keypoints.md`, ASM-013).** `make dummy-data` passes `--feet`, which
+adds the heel, big toe and small toe of each foot, written the way Part 2 writes them: a `feet.json` beside every
+`skeleton.json` in the shape of Part 2's `pose3d.json` (the take's own 17 joints and the six `extra_joints`, `conf`
+1.0, `provenance.source` `synthetic`), and one per expected set under `fixtures/input/expected-feet/<set>/feet.json`.
+Each label gains `expected_feet` and `follower_feet` (paths from the repo root). The foot is a rigid template planted
+flat under the ankle and carried by the pelvis's heading (toe-out 4 to 10° per take, 7° in the expected clip), with the
+take's camera noise on the six points. Everything foot-related draws from random streams of its own, so no
+`skeleton.json` and no earlier label key differs from the set made without `--feet`.
+
+| foot fault type | label measure | direction | sides | size |
+| --- | --- | --- | --- | --- |
+| foot_turned_out | foot_rotation | more | left / right / both | 15 to 25° |
+| foot_turned_in | foot_rotation | less | left / right / both | 15 to 25° |
+| ankle_rolled_in | ankle_inversion | more | left / right / both | 15 to 25° |
+| ankle_rolled_out | ankle_inversion | less | left / right / both | 15 to 25° |
+
+The ankle type ids are identifiers kept as they were: `ankle_rolled_in` is the roll the analysis words "ankle rolling
+out" (the outer edge down) and `ankle_rolled_out` the one it words "ankle rolling in"; matching never reads the words.
+The foot labels carry `body_part` `feet`.
+
+One take of each type per cell (numbers 09 to 12). The fault is in the feet only (turning the foot about the vertical
+through the ankle, or rolling the foot plane about its long axis), under the same cosine-ramped window as the body
+faults; the take's 17 joints are those of a correct take, and `magnitude_deg` is exact. A dropout copy masks a foot
+(`conf` below 0.3) in the frames where its ankle is masked.
 
 `--seed N` and `--out DIR` choose the seed and the folder (default `fixtures/input/followers`).

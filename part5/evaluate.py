@@ -36,6 +36,12 @@ LABEL_TYPE_TO_MEASURE = {
     "elbow_bent": "elbow_flexion",
     "trunk_lean": "trunk_lean_forward",
     "knee_caving": "knee_valgus",
+    # ADR-0015 (foot points): turned out is foot_rotation `more`, turned in is `less`; an ankle rolled in is
+    # ankle_inversion `more`, rolled out is `less`. The direction comes with the label, as for every type.
+    "foot_turned_out": "foot_rotation",
+    "foot_turned_in": "foot_rotation",
+    "ankle_rolled_in": "ankle_inversion",
+    "ankle_rolled_out": "ankle_inversion",
 }
 # Fallback for labels without a known type (e.g. hand-written labels for real takes):
 # translate the label `measure` field instead.

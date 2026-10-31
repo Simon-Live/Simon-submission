@@ -223,17 +223,32 @@ def test_ac_c09_json_mode_prints_the_object_for_an_unreadable_file(tmp_path, cap
 
 
 # ---------------------------------------------------------------- AC-C11
-def test_ac_c11_part2_pose3d_is_named_and_points_to_part3(tmp_path, capsys):
+def test_ac_c11_part2_pose3d_is_named_accepted_as_a_feet_input_and_not_a_clip(tmp_path, capsys):
+    """ADR-0015, AC-FOOT-15: without extra_joints it is accepted with the note "no foot points"; it is still not a
+    clip, and the note points to Part 3 for the body."""
     code, out, _ = run([write(tmp_path, "pose3d.json", pose3d()), "--for", "part5"], capsys)
-    assert code == 1
-    assert "part2.pose3d (Part 2); rejected for part5" in out
-    assert "Part 2 pose3d.json; fix: run Part 3 --view part5" in out
+    assert code == 0
+    assert "part2.pose3d (Part 2); accepted for part5" in out
+    assert "note: no foot points (no extra_joints in any frame" in out
+    assert "note: not a clip: for the body pass Part 3's skeleton.json as --expected or --follower; run Part 3 --view part5" in out
+    assert "validator: part5.feet.file_summary" in out
 
 
-def test_ac_c11_a_flat_pose3d_with_joints_and_t_ms_is_still_part2s(tmp_path, capsys):
+def test_ac_c11_part2_pose3d_with_extra_joints_is_accepted_as_a_feet_side_input(tmp_path, capsys):
+    doc = pose3d()
+    doc["frames"][0]["people"][0]["extra_joints"] = {"left_heel": {"x": 0.1, "y": -0.9, "z": -0.1, "conf": 1.0}}
+    doc["mirrored"] = True
+    code, out, _ = run([write(tmp_path, "pose3d.json", doc), "--for", "part5"], capsys)
+    assert code == 0 and "accepted for part5" in out
+    assert "note: feet side input for --expected-feet or --follower-feet: foot points in 1 of 1 frames, people ids [0]" in out
+    assert "mirrored, so the left and right foot series are swapped" in out and "no foot points" not in out
+
+
+def test_ac_c11_a_flat_pose3d_with_joints_and_t_ms_is_not_a_feet_input_either(tmp_path, capsys):
     doc = {"frames": [{"frame": 0, "t_ms": 0.0, "joints": pose3d()["frames"][0]["people"][0]["joints"]}]}
     code, out, _ = run([write(tmp_path, "pose3d.json", doc)], capsys)
     assert code == 1 and "run Part 3 --view part5" in out
+    assert "not a feet side input either" in out and "people must be a list" in out
 
 
 # ---------------------------------------------------------------- violations carry the field and the fix
@@ -480,7 +495,7 @@ def test_ac_r03_a_replay_with_extra_fields_is_accepted(tmp_path, capsys):
 
 # ---------------------------------------------------------------- what Part 7 reads (AC-C02, ADR-0012, ADR-0014)
 def warned_analysis():
-    """A 1.5.0 analysis of a take that earned a low_match warning: faults at confidence "low", the score capped at F."""
+    """A 1.6.0 analysis of a take that earned a low_match warning: faults at confidence "low", the score capped at F."""
     doc = json.loads(EXAMPLE.read_text())
     doc["warnings"] = [{"code": "low_match", "text": "This take doesn't closely match the trainer's movement, so the "
                                                      "grade is capped at F. Check that you picked the right movement."}]
@@ -492,11 +507,11 @@ def warned_analysis():
     return doc
 
 
-def test_part7_accepts_a_warned_1_5_0_analysis_and_notes_what_it_carries(tmp_path, capsys):
+def test_part7_accepts_a_warned_1_6_0_analysis_and_notes_what_it_carries(tmp_path, capsys):
     doc = warned_analysis()
-    assert doc["schema_version"] == "1.5.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
+    assert doc["schema_version"] == "1.6.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
     code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
-    assert code == 0 and "simon.analysis.v1 1.5.0; accepted for part7" in out
+    assert code == 0 and "simon.analysis.v1 1.6.0; accepted for part7" in out
     assert "warning: low_match: This take doesn't closely match" in out and "warning: warning" not in out
     assert 'note: 2 of 2 faults have confidence "low" (a low match)' in out
     assert "note: score 59 out of 100, grade F, capped at F by low_match" in out

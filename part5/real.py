@@ -24,7 +24,7 @@ from pathlib import Path
 
 from .evaluate import canonical_label, match_pairs
 from .guard import LOW_MATCH
-from .score_report import analyse
+from .score_report import FEET_KEYS, analyse, feet_kwargs
 
 ROOT = Path(__file__).resolve().parent.parent
 FORMAT = "simon.part5.real_report.v1"
@@ -69,6 +69,24 @@ class RealError(Exception):
     def __init__(self, messages):
         super().__init__("; ".join(messages))
         self.messages = list(messages)
+
+
+# --- the foot side files (TICKET-040, docs/specs/foot-keypoints.md): Part 2's pose3d.json kept beside a clip ---
+FEET_FILE = "feet.json"
+
+
+def _feet_names(root, expected, follower, label=None):
+    """The foot side files of a pair, as paths from `root`, keyed `expected_feet` and `follower_feet` like a labelled
+    take: the ones its `label` names, else the `feet.json` beside each clip when that file exists. The names become
+    `pipeline.run` options through `score_report.feet_kwargs`, the one place that does it for every labelled set."""
+    names = {}
+    for key, clip in zip(FEET_KEYS, (expected, follower)):
+        beside = str(Path(clip).with_name(FEET_FILE))
+        if (label or {}).get(key):
+            names[key] = label[key]
+        elif (Path(root) / beside).is_file():
+            names[key] = beside
+    return names
 
 
 # --- reading fixtures ---
@@ -154,13 +172,17 @@ def _score_of(analysis):
     return {"value": s["value"], "grade": s["grade"]} if s else None
 
 
-def _entry(root, take_id, source, expected, follower, label_source, labels, errors, **extra):
-    """Analyse one take against its expected clip and score it; None (with an error) when it can't be."""
-    if not _missing(root, take_id, (expected, follower), errors):
+def _entry(root, take_id, source, expected, follower, label_source, labels, errors, feet_label=None, **extra):
+    """Analyse one take against its expected clip and score it; None (with an error) when it can't be.
+
+    A pair whose clips have a foot side file (the ones `feet_label` names, else `feet.json` beside each clip) is
+    analysed with them, and the entry then carries `diagnostics.feet`."""
+    feet = _feet_names(root, expected, follower, feet_label)
+    if not _missing(root, take_id, (expected, follower, *feet.values()), errors):
         return None
     try:
         analysis = analyse({"path": str(Path(root) / expected)},
-                           {"path": str(Path(root) / follower), "take_id": take_id})
+                           {"path": str(Path(root) / follower), "take_id": take_id}, **feet_kwargs(feet, root))
     except ValueError as e:  # InputError, AnalysisError, OutputError
         errors.append(f"report-real: {take_id}: {e}")
         return None
@@ -170,7 +192,8 @@ def _entry(root, take_id, source, expected, follower, label_source, labels, erro
     matched, missed, unlabelled = _score(faults, labels)
     diag = analysis.get("diagnostics", {})
     reps = diag.get("guard", {}).get("reps")
-    extra = dict(extra, **({"reps": reps, "expected_reference": diag.get("expected_reference")} if reps else {}))
+    extra = dict(extra, **({"reps": reps, "expected_reference": diag.get("expected_reference")} if reps else {}),
+                 **({"feet": diag["feet"]} if "feet" in diag else {}))
     return {"take_id": take_id, "source": source, "expected": expected, "follower": follower,
             "label_source": label_source, **extra,
             "labels": [_label(lab) for lab in labels], "faults": [_fault(f) for f in faults],
@@ -285,7 +308,7 @@ def stock_takes(root, errors):
             errors.append(f"report-real: {take_id}: a stock label needs an expected clip and label_source visual")
             continue
         entry = _entry(root, take_id, STOCK_SOURCE, expected, f"{STOCK_DIR}/{take_id}/skeleton.json", "visual",
-                       list(take.get("faults", [])), errors, angle=take.get("angle"),
+                       list(take.get("faults", [])), errors, take, angle=take.get("angle"),
                        labeller=take.get("labeller") or doc.get("labeller"))
         if entry is not None:
             entry["provenance"] = _provenance(root, take_id)

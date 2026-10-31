@@ -1,7 +1,7 @@
 """Offline calibration on the seed 5 tuning set (docs/specs/calibration.md, ADR-0003, ADR-0004).
 
     python -m part5.calibrate --set fixtures/input/followers [--guard] [--write-thresholds]
-                              [--radius N] [--only NAME,NAME]
+                              [--radius N] [--only NAME,NAME] [--feet [--write] [--workers N]]
 
 Threshold sweep: for each key of part5/rules.json, one at a time and in file order, re-run fault
 detection over every cached take at each candidate value, and keep the best by the objective of
@@ -20,26 +20,38 @@ of the gap, and the overlap named when the populations meet.
 --write-thresholds: writes docs/thresholds.md above its attempts marker; the attempts below it are
 kept as they are (a red attempt is never dropped).
 
+--feet [--write] [--workers N] [--radius N] (TICKET-040, docs/specs/foot-keypoints.md "Calibration plan"): the
+same sweep for `foot_rotation` and `ankle_inversion` threshold_deg, one measure at a time, on the good-light
+takes of seed 5 run through `pipeline.run` with each take's foot side files (`expected_feet`, `follower_feet` in
+labels.json). The objective counts only the measure being swept. Then the go/no-go per measure at the chosen
+value, on the good-light slices at every angle: precision >= 0.85, recall >= 0.75, 0 faults on correct takes
+and both directions found. Faults a measure raises on takes labelled with something else are listed (they count
+in precision). `--write` writes the chosen values of the measures that are a GO into part5/rules.json and
+touches nothing for a NO-GO. Without the foot code of TICKET-040 in the checkout it exits 2 and says so. The
+default sweep leaves the foot-labelled takes out: it cannot see them.
+
 This tool reads the tuning set only: a set whose labels.json seed is not 5 exits 2 (AC-T01).
 """
 import argparse
 import copy
 import json
 import math
+import os
 import statistics
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 from .align import align
-from .check import MIN_PRECISION, MAX_FAULTS_ON_CORRECT, rel
+from .check import MIN_PRECISION, MIN_RECALL, MAX_FAULTS_ON_CORRECT, rel
 from .detect import RULES_PATH, detect, load_rules
-from .evaluate import matches, score
+from .evaluate import _finalise, canonical_label, match_faults, matches, score, slice_name
 from .guard import movement_stats
 from .io import load_clip
 from .measures import compute
 from .normalise import normalise
-from .pipeline import clip_fps, resample
+from .pipeline import clip_fps, resample, run
 from . import score_report
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -114,8 +126,14 @@ def load_set(directory):
     return labels
 
 
+def is_foot_take(take):
+    """A take labelled with a foot fault (TICKET-040): the body-measure sweep cannot see it, so --feet owns it."""
+    return any(canonical_label(lab)[0] in FOOT_MEASURES for lab in take["faults"])
+
+
 def prepare_set(labels, clips):
-    return [Prepared(t, *clips.pair(ROOT / t["expected"], ROOT / t["follower"])) for t in labels["takes"]]
+    return [Prepared(t, *clips.pair(ROOT / t["expected"], ROOT / t["follower"]))
+            for t in labels["takes"] if not is_foot_take(t)]
 
 
 # --- scoring one rules variant ---
@@ -239,15 +257,16 @@ def choose(rows, current):
     return best(rows), "", span
 
 
-def sweep_param(prepared, rules, param, radius=None):
-    """Evaluate every grid value of one key; extend the grid once if the plateau reaches its edge."""
+def sweep_param(prepared, rules, param, radius=None, evaluate_fn=None):
+    """Evaluate every grid value of one key; extend the grid once if the plateau reaches its edge.
+    `evaluate_fn(prepared, rules)` returns the metrics of one rules variant (default `evaluate`; --feet passes its own)."""
     current = get_path(rules, param.path)
     steps = radius if radius is not None and param.name.endswith("threshold_deg") else param.steps
     rows, note = {}, ""
     for attempt in (1, 2):
         for v in grid(param, current, steps * attempt):
             if v not in rows:
-                rows[v] = row(v, evaluate(prepared, with_value(rules, param.path, v)))
+                rows[v] = row(v, (evaluate_fn or evaluate)(prepared, with_value(rules, param.path, v)))
         chosen, note, span = choose(list(rows.values()), current)
         edge = ((span[0] == min(rows) and span[0] != param.low)
                 or (span[1] == max(rows) and span[1] != param.high))
@@ -490,6 +509,182 @@ def write_thresholds(path, text):
     path.write_text(text + "\n" + kept)
 
 
+# --- --feet: the two foot thresholds on seed 5 (TICKET-040, docs/specs/foot-keypoints.md "Calibration plan") ---
+# The foot measures run through `pipeline.run` with the take's own foot side files (Part 2's pose3d shape), once per
+# rules variant: the sweep is the one above (plateau middle of the best objective), the objective counts only the
+# measure being swept, and a measure ships only if it passes the go/no-go on the good-light slices.
+FOOT_MEASURES = ("foot_rotation", "ankle_inversion")
+DIRECTIONS = ("more", "less")
+FAULT_KEYS = ("measure", "side", "direction", "magnitude_deg")
+
+
+@dataclass
+class FootTake:
+    take: dict
+    expected: str    # absolute paths
+    follower: str
+    feet: dict       # {"expected_feet": path, "follower_feet": path}
+
+
+def feet_ready(rules):
+    """Raise a CalibrateError saying what is missing when the rules hold no threshold for a foot measure."""
+    for m in FOOT_MEASURES:
+        if "threshold_deg" not in rules.get("measures", {}).get(m, {}):
+            raise CalibrateError(f"calibrate --feet: {rel(RULES_PATH)} has no measures.{m}.threshold_deg "
+                                 "(the TICKET-040 foot code adds it); nothing to calibrate")
+
+
+def prepare_feet(labels, base=ROOT):
+    """The takes of a labelled set with their clip and foot side file paths; every one must name and have them."""
+    out = []
+    for t in labels["takes"]:
+        paths = {k: Path(base) / t[k] if t.get(k) else None for k in ("expected", "follower", "expected_feet", "follower_feet")}
+        absent = [k for k, p in paths.items() if p is None or not p.is_file()]
+        if absent:
+            raise CalibrateError(f"calibrate --feet: {t['take_id']} has no {absent[0]} file; "
+                                 "regenerate the tuning set with make dummy-data")
+        out.append(FootTake(t, str(paths["expected"]), str(paths["follower"]),
+                            {k: str(paths[k]) for k in ("expected_feet", "follower_feet")}))
+    return out
+
+
+def _faults_of(task):
+    """Worker: one take through pipeline.run under a rules variant; its faults as plain dicts."""
+    expected, follower, feet, rules = task
+    result = run({"path": expected}, {"path": follower}, rules, **feet)
+    return [{k: f.get(k) for k in FAULT_KEYS} for f in result.analysis["faults"]]
+
+
+class FootRuns:
+    """Every take through `run_fn` under a rules variant, in parallel and in take order, cached by the foot rules."""
+
+    def __init__(self, workers=1, run_fn=_faults_of):
+        self.workers, self.run_fn, self.cache = workers, run_fn, {}
+
+    def faults(self, takes, rules):
+        key = (tuple(p.take["take_id"] for p in takes), json.dumps({m: rules["measures"][m] for m in FOOT_MEASURES},
+                                                                   sort_keys=True))
+        if key not in self.cache:
+            tasks = [(p.expected, p.follower, p.feet, rules) for p in takes]
+            try:
+                if self.workers > 1:
+                    with ProcessPoolExecutor(self.workers) as pool:
+                        self.cache[key] = list(pool.map(self.run_fn, tasks, chunksize=4))
+                else:
+                    self.cache[key] = [self.run_fn(t) for t in tasks]
+            except ValueError as e:  # InputError, AnalysisError, OutputError
+                raise CalibrateError(f"calibrate --feet: {e}") from e
+        return self.cache[key]
+
+
+def foot_slices(takes, faults, measure):
+    """The slices (`good/front`, ...) of one foot measure over labelled `takes` and the `faults` found on each.
+
+    Only the measure's faults count as predictions and only its labels as labels. A take is *correct* when it
+    carries no labelled fault at all, so a fault on a take labelled with something else (an old fault type, the other
+    foot measure) is a false positive that counts in precision and is listed under `cofires`, not a fault on a correct
+    take. `directions` counts the matched labels per direction.
+    """
+    slices = {}
+    for t, found in zip(takes, faults):
+        predicted = [f for f in found if f["measure"] == measure]
+        labels = [lab for lab in t["faults"] if canonical_label(lab)[0] == measure]
+        tp, _, matched = match_faults(predicted, labels)
+        s = slices.setdefault(slice_name(t), {"tp": 0, "fp": 0, "fn": 0, "takes": 0, "correct_takes": 0,
+                                              "faults_on_correct_takes": 0, "directions": dict.fromkeys(DIRECTIONS, 0),
+                                              "cofires": []})
+        s["tp"] += tp
+        s["fp"] += len(predicted) - tp
+        s["fn"] += len(labels) - tp
+        s["takes"] += 1
+        s["correct_takes"] += t["correct"]
+        s["faults_on_correct_takes"] += len(predicted) if t["correct"] else 0
+        for j in matched:
+            s["directions"][labels[j]["direction"]] += 1
+        if predicted and not t["correct"] and not labels:
+            s["cofires"] += [f"{t['take_id']}: {f['side']} {f['direction']}" for f in predicted]
+    return {"slices": {k: _finalise(v) for k, v in sorted(slices.items())}}
+
+
+def feet_evaluator(runs, measure):
+    def evaluate_feet(prepared, rules):
+        return foot_slices([p.take for p in prepared], runs.faults(prepared, rules), measure)
+    return evaluate_feet
+
+
+def go_no_go(metrics):
+    """(go, reasons) for one foot measure: at every good-light angle precision >= 0.85, recall >= 0.75 and no fault on
+    a correct take, and both directions found at good light."""
+    reasons = []
+    for angle, cell in angle_cells(metrics, "good").items():
+        s = metrics["slices"].get(f"good/{angle}")
+        if cell is None or s["tp"] + s["fn"] == 0 or s["correct_takes"] == 0:
+            reasons.append(f"good/{angle}: needs labelled faults and correct takes")
+            continue
+        precision, recall, wrong = cell
+        reasons += ([f"good/{angle}: precision {precision:.2f} is below {MIN_PRECISION}"] if precision < MIN_PRECISION else [])
+        reasons += ([f"good/{angle}: recall {recall:.2f} is below {MIN_RECALL}"] if recall < MIN_RECALL else [])
+        reasons += ([f"good/{angle}: {wrong} fault(s) on correct takes"] if wrong > MAX_FAULTS_ON_CORRECT else [])
+    found = {d: sum(s["directions"][d] for k, s in metrics["slices"].items() if k.startswith("good/")) for d in DIRECTIONS}
+    reasons += [f"direction {d} is never found at good light" for d in DIRECTIONS if not found[d]]
+    return not reasons, reasons
+
+
+def feet_lines(results, finals, verdicts):
+    lines = sweep_lines(results) + change_lines(results)
+    for m in FOOT_MEASURES:
+        lines.append(f"== {m} slices at the chosen value ==")
+        for name, s in finals[m]["slices"].items():
+            lines.append(f"  {name:11s} tp {s['tp']:3d} fp {s['fp']:3d} fn {s['fn']:3d}  P {s['precision']:.2f}  "
+                         f"R {s['recall']:.2f}  faults on correct takes {s['faults_on_correct_takes']}  "
+                         f"found more {s['directions']['more']} less {s['directions']['less']}")
+            lines += [f"    fault on a take labelled with something else (counted in precision): {c}" for c in s["cofires"]]
+    lines.append("== go/no-go per foot measure (seed 5, good light, every angle) ==")
+    for m in FOOT_MEASURES:
+        go, reasons = verdicts[m]
+        lines.append(f"  {m}: {'GO' if go else 'NO-GO'}" + ("" if go else ": " + "; ".join(reasons)))
+    return lines
+
+
+def calibrate_feet(labels, rules, workers=1, radius=None, run_fn=_faults_of, base=ROOT):
+    """Sweep the two foot thresholds on the good-light takes of seed 5. Returns (stdout lines, {measure: chosen
+    value}, {measure: (go, reasons)}); the rules are never written here."""
+    feet_ready(rules)
+    prepared = prepare_feet(labels, base)
+    good = [p for p in prepared if slice_name(p.take).startswith("good/")]
+    runs, results, current = FootRuns(workers, run_fn), [], rules
+    for m in FOOT_MEASURES:
+        param = Param(f"{m} threshold_deg", ("measures", m, "threshold_deg"), 1.0, 1.0, math.inf, RADIUS_DEG)
+        result = sweep_param(good, current, param, radius, feet_evaluator(runs, m))
+        current = with_value(current, param.path, result["chosen"]["value"])
+        results.append(result)
+    faults = runs.faults(prepared, current)
+    finals = {m: foot_slices([p.take for p in prepared], faults, m) for m in FOOT_MEASURES}
+    verdicts = {m: go_no_go(finals[m]) for m in FOOT_MEASURES}
+    chosen = {m: get_path(current, ("measures", m, "threshold_deg")) for m in FOOT_MEASURES}
+    head = (f"calibrate --feet: seed {labels['seed']}, {len(prepared)} takes ({len(good)} at good light are swept); "
+            f"objective per measure on good light: precision >= {MIN_PRECISION} and {MAX_FAULTS_ON_CORRECT} faults on "
+            f"correct takes at every angle, then the highest minimum recall; the middle of the plateau is kept")
+    return [head] + feet_lines(results, finals, verdicts), chosen, verdicts
+
+
+def write_foot_thresholds(rules_path, chosen, verdicts):
+    """Write the chosen value of every measure that is a GO into the rules file (the others stay as they are).
+    Returns the lines to print."""
+    path = Path(rules_path)
+    rules = json.loads(path.read_text())
+    lines = []
+    for m in FOOT_MEASURES:
+        if verdicts[m][0]:
+            rules["measures"][m]["threshold_deg"] = chosen[m]
+            lines.append(f"calibrate --feet: wrote measures.{m}.threshold_deg = {chosen[m]:g} to {rel(path)}")
+        else:
+            lines.append(f"calibrate --feet: {m} is NO-GO, {rel(path)} left as it is for it (remove its rules entry by hand)")
+    if any(go for go, _ in verdicts.values()):
+        path.write_text(json.dumps(rules, indent=2) + "\n")
+    return lines
+
+
 # --- the command ---
 def calibrate(labels, rules, guard=False, only=None, radius=None, mismatch_dir=None):
     """Run the sweep (and the guard). Returns (stdout lines, thresholds.md text)."""
@@ -522,6 +717,15 @@ def write_score_block(labels, rules_path=RULES_PATH):
     return 0
 
 
+def feet_main(labels, args):
+    """--feet: the foot sweep and go/no-go; with --write the GO values go into the rules file. Exit 0 when run."""
+    lines, chosen, verdicts = calibrate_feet(labels, load_rules(RULES_PATH), args.workers, args.radius)
+    print("\n".join(lines))
+    if args.write:
+        print("\n".join(write_foot_thresholds(RULES_PATH, chosen, verdicts)))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m part5.calibrate", description=__doc__.splitlines()[0])
     ap.add_argument("--set", default=str(TUNING), help="the tuning set (default fixtures/input/followers)")
@@ -531,9 +735,22 @@ def main(argv=None):
     ap.add_argument("--score", action="store_true",
                     help="calibrate the simon.score.v1 params on this set and write the score block of part5/rules.json")
     ap.add_argument("--only", default="", help="comma-separated keys to sweep (default all)")
+    ap.add_argument("--feet", action="store_true",
+                    help="sweep the foot_rotation and ankle_inversion thresholds on the foot side files and print the "
+                         "go/no-go per measure (needs the foot code of TICKET-040)")
+    ap.add_argument("--write", action="store_true",
+                    help="with --feet: write the chosen value of every measure that is a GO into part5/rules.json")
+    ap.add_argument("--workers", type=int, default=min(os.cpu_count() or 1, 8),
+                    help="with --feet: processes running takes through the pipeline (default %(default)s)")
     args = ap.parse_args(argv)
+    if args.write and not args.feet:
+        print("calibrate: --write belongs to --feet (the other modes write with --write-thresholds or --score)",
+              file=sys.stderr)
+        return 2
     try:
         labels = load_set(args.set)
+        if args.feet:
+            return feet_main(labels, args)
         if args.score:
             return write_score_block(labels)
         only = {x for x in args.only.split(",") if x}

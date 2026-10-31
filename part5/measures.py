@@ -14,6 +14,15 @@ J = {name: i for i, name in enumerate(JOINTS)}
 SIDES = ("left", "right")
 OUT = {"left": np.array([1.0, 0, 0]), "right": np.array([-1.0, 0, 0])}  # away from the midline
 
+# ADR-0015: foot geometry, pure maths on arrays of 3-vectors (docs/specs/foot-keypoints.md). The foot measures are a
+# separate registry (FOOT_MEASURES, below), not part of MEASURES or compute(): their points come from Part 2's
+# pose3d.json as an optional side input (part5.feet), so a pair without it is untouched. The three limits below are
+# geometry guards, not detection thresholds: where the points cannot give a number the result is NaN, never a guess.
+# ASM-013: the synthetic feet the calibration will use are a proxy for Part 2's estimated feet.
+MIN_GROUND_SHARE = 0.25  # a hip line or foot axis needs this share of its length in the ground plane to have a heading
+MIN_CROSS_SHARE = 0.25   # world up needs this share of its length across the foot's long axis for a roll
+MIN_TOE_SPREAD = 0.1     # sine of the angle at the heel between the two toes; below it the toes and heel are collinear
+
 
 @dataclass(frozen=True)
 class MeasureSpec:
@@ -74,6 +83,70 @@ def _knee_valgus(hip, knee, ankle, side):
     return np.degrees(np.arctan2(off @ -OUT[side], np.linalg.norm(thigh, axis=-1)))
 
 
+def _side_sign(side):
+    """+1 for the subject's left, -1 for the right: the sign of `OUT[side]` along x."""
+    if side not in ("left", "right"):
+        raise ValueError(f"side must be 'left' or 'right', got {side!r}")
+    return float(OUT[side][0])
+
+
+def _foot_rotation(hip_l, hip_r, heel, big_toe, side):
+    """Toe-out of one foot against the pelvis, degrees, positive = the toes point away from the midline.
+
+    All arguments are (F, 3) points (or one (3,) point) in the canonical frame: x subject-left, y up, z anterior,
+    so the ground plane is x-z. The foot axis is the heel to big toe vector and the reference is the pelvis's
+    forward, the hip line (left minus right hip) turned a quarter turn in the ground plane, so a pelvis that
+    twists with the feet reads 0. Height is ignored: a heel raised off the floor does not change the heading.
+    The angle is signed per side by `OUT`, so a left foot turned out and a right foot turned out both read positive.
+
+    NaN where it has no meaning: a hip line or foot axis with under MIN_GROUND_SHARE of its length in the ground
+    plane (no heading), a foot 90 degrees or more from the pelvis's forward (heel and toe swapped, not a stance),
+    and any NaN input.
+    """
+    sign = _side_sign(side)
+    hip = np.asarray(hip_l, float) - np.asarray(hip_r, float)
+    foot = np.asarray(big_toe, float) - np.asarray(heel, float)
+    hx, hz, fx, fz = hip[..., 0], hip[..., 2], foot[..., 0], foot[..., 2]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        hip_ground, foot_ground = np.hypot(hx, hz), np.hypot(fx, fz)
+        across = (fx * hx + fz * hz) / hip_ground     # along the hip line, toward the subject's left
+        ahead = (fz * hx - fx * hz) / hip_ground      # along the pelvis's forward
+        ok = ((hip_ground >= MIN_GROUND_SHARE * np.linalg.norm(hip, axis=-1))
+              & (foot_ground >= MIN_GROUND_SHARE * np.linalg.norm(foot, axis=-1)) & (ahead > 0))
+        return np.where(ok, np.degrees(np.arctan2(sign * across, ahead)), np.nan)
+
+
+def _ankle_inversion(heel, big_toe, small_toe, side):
+    """Roll of the foot against the vertical, degrees, positive = the sole turns toward the midline (inversion).
+
+    Arguments are (F, 3) points (or one (3,) point) in the canonical frame (y up). The foot has a frame of its own:
+    its long axis runs from the heel to the middle of the two toes, its up is the normal of the plane through heel,
+    big toe and small toe (pointing out of the sole), and its outer edge is up crossed with the long axis, signed per
+    side. World up (0, 1, 0) seen down the long axis has a component along the foot's up and one along its outer edge:
+    the roll is atan2(-outer, up). A foot flat on the floor reads 0 whatever its heading or its pitch (a raised
+    heel); the outer edge going down reads positive on both sides, which is the sole turning toward the midline.
+    It does not read the shin: a knee travelling over the toes or caving in moves nothing (spec "ankle_inversion",
+    the seed 5 result of the first, shin-relative definition).
+
+    NaN where it has no meaning: the two toes and the heel nearly collinear (sine of the angle at the heel under
+    MIN_TOE_SPREAD, so no foot plane), a foot pitched so steeply that under MIN_CROSS_SHARE of world up lies across
+    its long axis (standing on the toes, no roll), world up on the sole's side of the foot plane (toes swapped, or a
+    foot rolled 90 degrees or more), and any NaN input.
+    """
+    sign = _side_sign(side)
+    heel, big, small = (np.asarray(x, float) for x in (heel, big_toe, small_toe))
+    to_big, to_small = big - heel, small - heel
+    with np.errstate(invalid="ignore", divide="ignore"):
+        plane = np.cross(to_big, to_small)
+        spread = np.linalg.norm(plane, axis=-1) / (np.linalg.norm(to_big, axis=-1) * np.linalg.norm(to_small, axis=-1))
+        up = _unit(plane * sign)
+        axis = _unit((big + small) / 2 - heel)
+        outer = _unit(np.cross(up, axis) * sign)
+        u_up, u_outer = up[..., 1], outer[..., 1]   # the y component is the dot product with world up
+        ok = (spread >= MIN_TOE_SPREAD) & (np.hypot(u_up, u_outer) >= MIN_CROSS_SHARE) & (u_up > 0)
+        return np.where(ok, np.degrees(np.arctan2(-u_outer, u_up)), np.nan)
+
+
 def _mid(p, a, b):
     return (p[:, J[a]] + p[:, J[b]]) / 2
 
@@ -108,6 +181,36 @@ def _specs():
 
 
 MEASURES = _specs()
+
+
+def _foot_specs():
+    """The foot measures (ADR-0015): left then right of each, reported at the ankle, body part "feet"."""
+    kinds = (("foot_rotation", "foot turned out from the pelvis's forward (heel to big toe, ground plane)"),
+             ("ankle_inversion", "foot rolled onto its outer edge, the ankle rolling out (roll about the foot's long axis)"))
+    return {f"{side}_{name}": MeasureSpec(f"{side}_{name}", f"{side}_ankle", side, "feet", "direction", text)
+            for name, text in kinds for side in SIDES}
+
+
+FOOT_MEASURES = _foot_specs()
+ALL_SPECS = {**MEASURES, **FOOT_MEASURES}   # every measure a fault may name, body and foot
+
+
+def compute_feet(points):
+    """The four foot series from `points`, {name: (F, 3)} with NaN where a point is not seen.
+
+    Names: left_hip, right_hip and `{side}_big_toe`, `{side}_small_toe`, `{side}_heel` (`foot_rotation` reads the
+    hips, the heel and the big toe; `ankle_inversion` the three foot points of its side). The points are read in
+    one frame (the side file's own), so no body clip is needed. NaN propagates: a frame with any point a measure
+    reads missing is NaN for that measure.
+    """
+    out = {}
+    for side in SIDES:
+        out[f"{side}_foot_rotation"] = _foot_rotation(points["left_hip"], points["right_hip"], points[f"{side}_heel"],
+                                                      points[f"{side}_big_toe"], side)
+    for side in SIDES:
+        out[f"{side}_ankle_inversion"] = _ankle_inversion(points[f"{side}_heel"], points[f"{side}_big_toe"],
+                                                          points[f"{side}_small_toe"], side)
+    return out
 
 
 def _measure_joints():

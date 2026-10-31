@@ -50,6 +50,8 @@ NAMES = {
     "thigh_forward": ("thigh", "knee", "hip"),
     "foot_out": ("foot", "thigh"),
     "knee_valgus": ("knee", "thigh"),
+    "foot_rotation": ("foot",),      # ADR-0015: the foot group includes the ankle, toes and heel
+    "ankle_inversion": ("foot",),
     "trunk_lean_forward": ("trunk",),
     "trunk_lean_side": ("trunk",),
     "shoulder_tilt": ("shoulder",),
@@ -92,6 +94,12 @@ _LEAN = r"lean\w*|forward|ahead|hunch\w*|slump\w*|stoop\w*|bent over|round\w*|ti
 _UPRIGHT = r"upright|straighter|taller|tall|back\w*|behind|arch\w*|vertical"
 _HEAD_FWD = r"forward|ahead|jut\w*|pok\w*|crane\w*|protrud\w*|out in front"
 _HEAD_BACK = r"back|behind|retract\w*|tuck\w*"
+# ADR-0015. A foot turned out is the fault `more`; "turned in" is the other way. An ankle "rolling out" (the foot
+# on its outer edge) is `more` and "rolling in" (the arch collapsing, the ankle caving in) is `less`, the same
+# out and in reading as OUT_IN (Amendment 1).
+_FOOT_IN = _IN + r"|turn\w* in|point\w* in|toe\w* in|pigeon\w*"
+_ANKLE_OUT = r"out|outward\w*|outside|wide\w*|splay\w*|roll\w* out"
+_ANKLE_IN = r"in|inward\w*|inside|collaps\w*|cav\w*|tuck\w*|roll\w* in"
 
 OUT_IN = [(_neg(_OUT), "less"), (_w(_IN), "less"), (_w(_OUT), "more")]
 RULES = {
@@ -102,6 +110,8 @@ RULES = {
     "elbow_flexion": [(_neg(_BENT), "less"), (_w(_STRAIGHT), "less"), (_w(_BENT), "more")],
     "knee_flexion": [(_neg(_BENT), "less"), (_w(_STRAIGHT), "less"), (_w(_BENT), "more")],
     "knee_valgus": [(_neg(_CAVE), "less"), (_w(_KNEE_OUT), "less"), (_w(_CAVE), "more")],
+    "foot_rotation": [(_neg(_OUT), "less"), (_w(_FOOT_IN), "less"), (_w(_OUT), "more")],
+    "ankle_inversion": [(_w(_ANKLE_OUT), "more"), (_w(_ANKLE_IN), "less")],
     "trunk_lean_forward": [(r"\b(?:lean|bend|tilt) (?:forward|ahead) (?:a bit |a little )?(?:more|further)\b", "less"),
                            (_neg(_LEAN), "less"), (_w(_UPRIGHT), "less"), (_w(_LEAN), "more")],
     "trunk_lean_side": [(r"\bleft\b", "more"), (r"\bright\b", "less")],
@@ -176,6 +186,8 @@ def _direction(fault, text, hits=None):
 LANDMARKS = {
     "foot_out": ("hip", "shoulder"), "knee_valgus": ("foot", "hip"), "thigh_out": ("foot",),
     "upper_arm_out": ("trunk",), "forearm_out": ("elbow",),
+    "foot_rotation": ("hip", "knee"),   # ADR-0015: the pelvis, and the leg a line may name
+    # ADR-0015: the ankle's roll reads the foot points alone (Amendment 1), so no knee or thigh is a reference for it
 }
 _TIME = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s?(?:seconds?|secs?|s)\b")
 _LATERAL = re.compile(r"\b(?:too far (?:to the )?|to the |toward the )(left|right)\b")

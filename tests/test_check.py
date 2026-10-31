@@ -676,12 +676,16 @@ def test_nfr_the_real_pipeline_runs_offline_with_sockets_blocked(tmp_path, monke
     bound is 10 minutes): real analyse on one seed 5 cell, used as both sets (relabelled 29 here, in a
     temp dir only)."""
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
-    cell_takes = [t for t in labels["takes"] if t["take_id"].startswith("exercise_front_good_")]
+    # the nine base takes of the cell; the four foot-fault takes (09 to 12) need the foot side files, which this
+    # temp dir does not hold (the labels' foot paths are dropped for the same reason)
+    cell_takes = [t for t in labels["takes"] if t["take_id"].startswith("exercise_front_good_")
+                  and t["take_id"].split("_")[3] < "09"]
     assert len(cell_takes) == 9
     shutil.copy(ROOT / "fixtures/input/expected/exercise/animation.json", tmp_path / "exp.json")
     for t in cell_takes:
         shutil.copy(ROOT / t["follower"], tmp_path / f"{t['take_id']}.json")
         t["expected"], t["follower"] = "exp.json", f"{t['take_id']}.json"
+        del t["expected_feet"], t["follower_feet"]
     for name, seed in (("heldout", 29), ("followers", 5)):
         (tmp_path / name).mkdir()
         (tmp_path / name / "labels.json").write_text(json.dumps({**labels, "seed": seed, "takes": cell_takes}))
@@ -701,3 +705,55 @@ def test_nfr_the_real_pipeline_runs_offline_with_sockets_blocked(tmp_path, monke
     doc = json.loads(out)
     assert code in (0, 1) and time.time() - started < 600
     assert errors_of(doc) == [] and doc["gate"]["metrics"]["slices"]["good/front"]["takes"] == 9
+
+
+# ----------------------------------------------------------------- the foot side files (TICKET-040)
+# A take whose labels name expected_feet and follower_feet is analysed with them, through score_report.feet_kwargs.
+def feet_take(root, **names):
+    for name in ("e.json", "f.json", "ef.json", "ff.json"):
+        (root / name).write_text("{}")
+    return {"take_id": "t0", "expected": "e.json", "follower": "f.json", **names}
+
+
+def recorder(monkeypatch):
+    """Swap `check.analyse` for a recorder of the foot options it is given."""
+    seen = []
+    monkeypatch.setattr(check, "analyse", lambda e, f, **feet: seen.append(feet) or {"faults": []})
+    return seen
+
+
+def test_a_take_that_names_foot_files_is_analysed_with_them(tmp_path, monkeypatch):
+    seen = recorder(monkeypatch)
+    take = feet_take(tmp_path, expected_feet="ef.json", follower_feet="ff.json")
+    analyses, errors = check.analyse_set({"takes": [take]}, tmp_path)
+    assert errors == [] and list(analyses) == ["t0"]
+    assert seen == [{"expected_feet": str(tmp_path / "ef.json"), "follower_feet": str(tmp_path / "ff.json")}]
+
+
+def test_a_take_without_foot_files_is_analysed_as_it_always_was(tmp_path, monkeypatch):
+    seen = recorder(monkeypatch)
+    analyses, errors = check.analyse_set({"takes": [feet_take(tmp_path)]}, tmp_path)
+    assert errors == [] and seen == [{}]
+
+
+def test_the_check_and_the_real_report_pick_the_same_foot_files_for_the_same_labels(tmp_path, monkeypatch):
+    """One way to turn a take's names into `pipeline.run` options: `score_report.feet_kwargs`."""
+    from part5 import real
+    seen = recorder(monkeypatch)
+    take = feet_take(tmp_path, expected_feet="ef.json", follower_feet="ff.json")
+    check.analyse_set({"takes": [take]}, tmp_path)
+    assert real._feet_names(tmp_path, "e.json", "f.json", take) == {"expected_feet": "ef.json", "follower_feet": "ff.json"}
+    assert check.feet_kwargs(real._feet_names(tmp_path, "e.json", "f.json", take), tmp_path) == seen[0]
+
+
+def test_a_named_foot_file_that_is_missing_is_an_error_naming_the_take(tmp_path, monkeypatch):
+    recorder(monkeypatch)
+    take = feet_take(tmp_path, expected_feet="ef.json", follower_feet="gone.json")
+    analyses, errors = check.analyse_set({"takes": [take]}, tmp_path)
+    assert analyses == {} and errors == ["check-5: t0: gone.json not found"]
+
+
+def test_the_committed_tuning_set_names_a_foot_file_pair_for_every_take():
+    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
+    assert len(labels["takes"]) == 156
+    assert all((ROOT / t["expected_feet"]).is_file() and (ROOT / t["follower_feet"]).is_file() for t in labels["takes"])

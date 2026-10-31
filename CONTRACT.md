@@ -8,6 +8,7 @@ What Part 5 reads and writes, which part sends what, and how to check a file bef
 python -m part5 doctor skeleton.json                  # a clip Part 5 would read (expected or follower)
 python -m part5 doctor analysis.json --for part7      # an analysis a viewer would read
 python -m part5 doctor replay.json                    # the replay file (simon.replay.v1) a viewer would draw
+python -m part5 doctor pose3d.json                    # a Part 2 pose3d.json as the optional feet side input (not a clip)
 python -m part5 contract                              # the schemas and the compatibility table below
 python -m part5 contract --schema analysis            # one schema, exactly as stored
 make check-5-contract                                 # schemas, fixtures and golden outputs agree
@@ -32,14 +33,15 @@ Each schema is JSON Schema draft 2020-12 with an `$id` and a top-level `version`
 
 | Name | Version | File | Describes |
 |---|---|---|---|
-| `analysis` | `1.5.0` | `contracts/analysis.schema.json` | Part 5 analysis.json (simon.analysis.v1) |
+| `analysis` | `1.6.0` | `contracts/analysis.schema.json` | Part 5 analysis.json (simon.analysis.v1) |
 | `input-animation` | `1.0.0` | `contracts/input-animation.schema.json` | Part 5 input clip (simon.animation.v1) |
 | `input-skeleton` | `1.0.0` | `contracts/input-skeleton.schema.json` | Part 5 expected skeleton (simon.skeleton.v1) |
 | `labels` | `1.0.0` | `contracts/labels.schema.json` | Part 5 labels.json (evaluation labels) |
 | `metrics` | `1.2.0` | `contracts/metrics.schema.json` | Part 5 make check-5 document (simon.part5.check.v1) |
 | `replay` | `1.0.0` | `contracts/replay.schema.json` | Part 5 replay.json (simon.replay.v1) |
+| `input-feet` | `1.0.0` | `contracts/input-feet.schema.json` | Part 5 optional feet side file (a Part 2 pose3d.json with `extra_joints`, no `format`) |
 
-The copies of Part 3's and Part 4's schemas stay under `contracts/part3/` and `contracts/part4/`, exactly as they were published. The analysis schema is `1.5.0`: it adds optional fields to `simon.analysis.v1`, so a `1.0` document still validates and `format` does not change. `1.3.0` adds `faults[].reps`, `diagnostics.guard.reps`, `diagnostics.expected_reference` and `score.per_rep`, written only for a take compared one repetition at a time (ADR-0010); `1.4.0` (ADR-0012) adds the top-level `warnings` and `match`, `score.capped_by` and a fault `confidence` of `"low"`, written only for a take that earned a warning; a document without warnings keeps its earlier `schema_version` (`1.2.0`, or `1.3.0` for a take compared by repetition). The replay (`simon.replay.v1`) of such a take adds an optional `reps` list. `1.5.0` (ADR-0014) adds coaching cues to every new document, which is therefore always `1.5.0`: `faults[].cue` and `cue_kind`, the same with `direction` on each `score.timeline[].misses[]`, `score.timeline[].tempo` and `score.tempo`, and the top-level `insights`. The earlier groups stay optional and are told apart by their fields. The `metrics` schema is `1.2.0`: `1.1.0` added the score report that `make check-5` writes (`gate.sweep`, `report.score`, `detection_sha256`) and `1.2.0` adds `report.refusals.gated` (always `false`, beside the slice keys, so every report block carries `gated: false`); a `1.0.0` or `1.1.0` check document still validates. The `replay` schema is `1.0.0` and describes the second file `part5 analyse --replay` writes (below).
+The copies of Part 3's and Part 4's schemas stay under `contracts/part3/` and `contracts/part4/`, exactly as they were published. The analysis schema is `1.6.0`: it adds optional fields to `simon.analysis.v1`, so a `1.0` document still validates and `format` does not change. `1.3.0` adds `faults[].reps`, `diagnostics.guard.reps`, `diagnostics.expected_reference` and `score.per_rep`, written only for a take compared one repetition at a time (ADR-0010); `1.4.0` (ADR-0012) adds the top-level `warnings` and `match`, `score.capped_by` and a fault `confidence` of `"low"`, written only for a take that earned a warning; a document without warnings keeps its earlier `schema_version` (`1.2.0`, or `1.3.0` for a take compared by repetition). The replay (`simon.replay.v1`) of such a take adds an optional `reps` list. `1.5.0` (ADR-0014) adds coaching cues to every new document, which is therefore always `1.5.0`: `faults[].cue` and `cue_kind`, the same with `direction` on each `score.timeline[].misses[]`, `score.timeline[].tempo` and `score.tempo`, and the top-level `insights`. `1.6.0` (ADR-0015) adds the foot measures to every new document's vocabulary: faults with `measure` `foot_rotation` or `ankle_inversion` (`body_part` `feet`, `joint` an ankle) and `diagnostics.feet`, both written only when a Part 2 `pose3d.json` with foot points was given for a clip (below); a document without them is exactly what `1.5.0` was apart from `schema_version`, which is `1.6.0` on every new document. The earlier groups stay optional and are told apart by their fields. The `metrics` schema is `1.2.0`: `1.1.0` added the score report that `make check-5` writes (`gate.sweep`, `report.score`, `detection_sha256`) and `1.2.0` adds `report.refusals.gated` (always `false`, beside the slice keys, so every report block carries `gated: false`); a `1.0.0` or `1.1.0` check document still validates. The `replay` schema is `1.0.0` and describes the second file `part5 analyse --replay` writes (below).
 
 ## Compatibility
 
@@ -48,14 +50,15 @@ Which producer file works with Part 5, as checked against the producer commit in
 <!-- part5-compatibility:begin -->
 | Producer | File | format | Part 5 role | Verdict | Fix | Checked against |
 |---|---|---|---|---|---|---|
-| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | run Part 3 `--view part5` on it; `doctor` exits 1 with "run Part 3 --view part5" | Part 2 2e06d58 |
+| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input (exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with "run Part 3 --view part5" | Part 2 2e06d58 |
+| Part 2 foot points | `pose3d.json` with `extra_joints` | `part2.pose3d/2026-10-28` (Part 2 CONTRACT.md "Extra joints (optional)") | optional feet side input (`--expected-feet`, `--follower-feet`) | works with an option | pass the trainer's and the follower's own Part 2 `pose3d.json` beside the Part 3 `skeleton.json` (Part 3 does not carry `extra_joints`); a file without them is accepted and the foot measures are hidden, with the reason in `diagnostics.feet`; `doctor` accepts it with a note | Part 2 e8ac336 |
 | Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works |  | Part 3 fd96379 |
 | Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works |  | Part 3 fd96379 |
 | Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` | Part 3 fd96379 |
 | Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 dc3d9f2 |
 | Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
 | Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
-| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.5.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`) are all optional | Part 5 (this repo) |
+| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.6.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`) are all optional; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them | Part 5 (this repo) |
 | Part 5 `analyse --replay <replay.json>` | `replay.json` | `simon.replay.v1` | output for Part 7 | works | optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>` | Part 5 (this repo) |
 | Part 5 `analyse --live` | live mode (`--live`, `serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`) | `simon.analysis.v1` with `phrasing.selected_by` `live` | option for Part 7 | works with an option | needs the Baseten key file on the host that runs Part 5; without it each fault keeps its timed template line (`fallback_reason: "no key"`); the template stays the default for tests and `make check-5` | Part 5 (this repo) |
 | Part 5 | `part5 analyse` exit code | 0 analysis written (with or without warnings), 1 unreadable or invalid input file or write error, 2 usage; 3 is no longer used (ADR-0012) | for Part 7 | works with a mapping | Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the contract (Part 3 CONTRACT.md, row for Part 7): 0 is "written" (read `warnings`), 1 and 2 are failures; 3 is no longer produced | Part 7 90aa473 (as Part 3 CONTRACT.md records it) |
@@ -64,7 +67,7 @@ Which producer file works with Part 5, as checked against the producer commit in
 
 ## What Part 5 writes
 
-`part5 analyse --expected <file> --follower <file> --out <analysis.json> [--replay <replay.json>] [--live]` writes `analysis.json` (`simon.analysis.v1`, schema `1.5.0`; documents written before ADR-0014 are `1.2.0`, `1.3.0` for a take compared one repetition at a time, or `1.4.0` when the take has a warning). A take is always analysed (ADR-0012): the exit code says what happened to the file:
+`part5 analyse --expected <file> --follower <file> --out <analysis.json> [--replay <replay.json>] [--live] [--expected-feet <pose3d.json>] [--follower-feet <pose3d.json>] [--expected-feet-person N] [--follower-feet-person N]` writes `analysis.json` (`simon.analysis.v1`, schema `1.6.0`; documents written before ADR-0015 are `1.5.0`, before ADR-0014 are `1.2.0`, `1.3.0` for a take compared one repetition at a time, or `1.4.0` when the take has a warning). A take is always analysed (ADR-0012): the exit code says what happened to the file:
 
 | Exit | Meaning | `analysis.json` written |
 |---|---|---|
@@ -95,6 +98,8 @@ Live mode is on with `part5 analyse --live`, `part5 serve --live`, `SIMON5_LIVE=
 
 7. **Show the time, the direction, the score and the replay.** `at_s` (and `follower_t_s`) is the moment on the follower file's own clock to seek to; `follower_runs` maps every run to follower frames. `lateral` (`left`, `right` or `null`) is the subject's own left and right, like `side`: mirror it only when you draw a mirrored view. `lateral_m` (metres, `foot_out` on one side) is how much further out the ankle is than the example's. `score` is `{version, value, grade, components, params_sha256}` plus `basis`, `timeline`, `tempo` and `capped_by` when present: show `value` out of 100 with `grade` A to F, the faults first, and each `timeline` window with its `misses`. A fault whose `confidence` is the string `"low"` came from a low match: show it as less certain. The replay (`replay.json`) is optional; `exp_to_fol` says which follower frame goes with each expected frame.
 
+8. **A foot fault needs a 1.6.0 reader, and then nothing else new.** From `1.6.0` a fault may name `foot_rotation` or `ankle_inversion` (`body_part` `feet`, `joint` `left_ankle`, `right_ankle` or `ankle` for side `both`). A document that holds such a fault is rejected by a reader built on the 1.5.0 or an earlier schema, because its `measure` and `body_part` enums do not list those values: update the reader to `contracts/analysis.schema.json` 1.6.0 first. A 1.6.0 document with no foot fault (every pair given no feet file, and every pair whose feet showed nothing) reads with an older schema too, apart from `schema_version`. With a 1.6.0 reader, `faults[].joints` is the ankle, so highlight it as for any fault, and show `cue` and `text_timed` as usual ("Turn your left foot out", "Keep your left ankle straight", "Stop your left ankle rolling in"). `diagnostics.feet` (debugging only) says whether the foot measures were compared and why not.
+
 `python -m part5 doctor analysis.json --for part7` checks all of this on a file, warns when `status.code` is not `ok` or the take has `warnings`, and notes the score (and what capped it), the timed faults and the faults at confidence `"low"`.
 
 ## What Part 5 accepts
@@ -105,11 +110,22 @@ Live mode is on with `part5 analyse --live`, `part5 serve --live`, `SIMON5_LIVE=
 | expected clip | `skeleton.json`, `--view part4` | `simon.skeleton.v1` | Part 3 | `contracts/part3/skeleton-part4.schema.json` | accepted; top-level `fps` is 30 and each key carries `t` |
 | follower clip | `skeleton.json`, `--view part5` | `simon.animation.v1` | Part 3 | `contracts/part3/animation-part5.schema.json` | accepted |
 | none | `skeleton.json`, native view | none (`schema: simon.skeleton/1`) | Part 3 | `contracts/part3/skeleton.schema.json` | rejected: `format must be one of ...`. Part 3's fix: `python3 -m part3 run ... --view part5` |
+| feet side file (optional, `--expected-feet`, `--follower-feet`) | `pose3d.json`, or a synthetic one in its shape | none (no `format`) | Part 2 | `contracts/input-feet.schema.json` | accepted; the foot measures are hidden when it has no `extra_joints` |
 | evaluation labels | `labels.json` | `simon.part3.follower_labels/1` | Part 3 | `contracts/part3/follower-labels.schema.json` | not read by `part5.io`; used by tests |
 
 Common to every accepted file: the 17 joints in canonical order, positions in metres as `[x, y, z]`, hip midpoint at the origin per frame, x the subject's left, y world up, z anterior, `t` in seconds and strictly increasing.
 
 Part 5's own schemas for these inputs are `input-animation` and `input-skeleton`. They also allow a joint set to `null` and a per frame `conf`, which an estimator that lost a joint writes and the Part 3 and Part 4 schemas do not describe.
+
+### The feet side input (optional, ADR-0015)
+
+Part 3 does not carry Part 2's heel and toe points (its `simon.animation.v1` has the 17 joints, and Part 2's CONTRACT.md "Extra joints (optional)" says Part 3 leaves `extra_joints` alone), so Part 5 reads them from Part 2's own `pose3d.json`, one file per clip, as a side input: `--expected-feet PATH`, `--follower-feet PATH`, with `--expected-feet-person N` and `--follower-feet-person N` (default 0, matched to `people[].id`). `part5.pipeline.run(..., expected_feet=, follower_feet=, expected_feet_person=, follower_feet_person=)` takes the same four.
+
+- **Shape.** Part 2's: `{"frames": [{"frame": int, "t_ms": float, "people": [{"id": int, "joints": {<17 COCO names>: {x, y, z, conf}}, "extra_joints": {left_big_toe, left_small_toe, left_heel, right_big_toe, right_small_toe, right_heel: {x, y, z, conf}}}]}], "t0_pts_ms": float, "mirrored": bool (optional), "provenance": {...}}`. A synthetic file uses the same shape (`provenance.source` `synthetic`). Only the two hips and the six foot points are read; unknown names, the knees and ankles included, are ignored.
+- **Measures.** `foot_rotation` and `ankle_inversion`, left and right, per side-file frame, inside the side file's own frame from its own joints and `extra_joints`. A point is seen when it is present, finite and `conf` is at least 0.5. If the top-level `mirrored` is true the left and right series are swapped.
+- **Time.** A clip frame at time `t` (the clip's own `t`, seconds) takes the side frame whose `(t_ms - t0_pts_ms) / 1000` is nearest, within half the file's median frame step over all its frames (at least 0.008 s); otherwise that frame's foot values are NaN. `t0_pts_ms` defaults to 0.
+- **Errors (exit 1, `part5 analyse: <file>: ...`).** The file is unreadable or not this shape (a `people` entry that is not an object is not this shape); the person id is in no frame (the message lists the ids present); no clip frame matches a frame of the file in time. **Not errors:** a file with no `extra_joints` (Part 2's cpu backend) or a pair where only one clip has feet: the foot measures are hidden for the pair and `diagnostics.feet.hidden_reason` says why. A foot measure is used when it is a number in at least 80% of the clip's frames, and only when usable on both sides. In rep mode they are hidden ("rep mode").
+- **Check.** `python -m part5 doctor pose3d.json` accepts a Part 2 `pose3d.json` as a feet side input (a note says whether it has foot points) and still says it is not a clip.
 
 ## Where the copies come from
 
@@ -145,6 +161,8 @@ Part 3's kit names its faults differently from Part 5's labels. Mapping from Par
 | `correct` | a take with `correct: true` and no faults | none | none |
 
 Only `elbows_out` and `arms_wider` measure the same thing. A size in metres for `feet_wide` is not a size for `foot_out`. Part 3's `knee_caving` maps to Part 5's `knee_valgus` measure (a knee caving in), but the two sizes are different angles: the kit's is a thigh turn at the bottom of the squat, Part 5's is the knee's offset from the hip to ankle line. Part 3's kit has no `elbow_bent` or `trunk_lean`.
+
+Part 5's own foot types (ADR-0015, `labels.json` only; Part 3's kit has none): `foot_turned_out` is `foot_rotation` `more`, `foot_turned_in` is `foot_rotation` `less`, `ankle_rolled_in` is `ankle_inversion` `more` and `ankle_rolled_out` is `ankle_inversion` `less`, each on `left`, `right` or `both`. A take may carry `expected_feet` and `follower_feet`, paths from the repository root to the pose3d.json files its feet come from, like `expected` and `follower`.
 
 ## Neighbours (status 2026-10-28)
 

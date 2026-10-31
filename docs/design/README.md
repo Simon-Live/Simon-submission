@@ -27,6 +27,8 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`neighbour-check.md`](specs/neighbour-check.md): maintainers' tooling, not in this repo: the chain through Parts 2, 3 and 4.
 - [`oneshot-watch.md`](specs/oneshot-watch.md): maintainers' tooling, not in this repo: relaunching an unattended run.
 - [`simon-publish.md`](specs/simon-publish.md): maintainers' tooling, not in this repo: how files reach this repository.
+- [`foot-keypoints.md`](specs/foot-keypoints.md): heel and toe points read from Part 2's pose3d.json as an optional side input, the `foot_rotation` and `ankle_inversion` measures, when they are hidden, their cues and how they are calibrated.
+- [`profiles.md`](specs/profiles.md): analysis profiles `dance`, `rehab` and `fitness`: the profiles file, the loosen-only rule, tempo, schema 1.7.0 and the seed 5 report (values set by hand).
 
 ## Architecture decision records
 
@@ -44,5 +46,7 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`ADR-0012-always-analyse.md`](adr/ADR-0012-always-analyse.md): Always analyse (warnings and an F cap replace every refusal).
 - [`ADR-0013-score-timeline-length-agnostic.md`](adr/ADR-0013-score-timeline-length-agnostic.md): Score by windows (reps or 5 s) and show them as a timeline; the score is a share of the take.
 - [`ADR-0014-coaching-cues-tempo-and-insights.md`](adr/ADR-0014-coaching-cues-tempo-and-insights.md): Coaching cues on faults and misses, tempo per window and per take, and ranked insights (schema 1.5.0).
+- [`ADR-0015-foot-keypoints-and-foot-measures.md`](adr/ADR-0015-foot-keypoints-and-foot-measures.md): accepted: foot points enter as an optional side input from Part 2's pose3d.json; foot rotation is measured against the pelvis and the ankle roll against world up.
+- [`ADR-0016-analysis-profiles.md`](adr/ADR-0016-analysis-profiles.md): analysis profiles live in their own file as loosen-only multipliers judged against fitness; tempo is scored in dance only.
 
 Related: `docs/schemas.md` (field reference), `docs/thresholds.md` (thresholds, guard limits and the held-out record).

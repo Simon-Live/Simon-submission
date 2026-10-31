@@ -52,7 +52,7 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 ## Compatibility table (in `CONTRACT.md`, printed by `part5 contract`)
 | Producer | File | `format` | Part 5 role | Verdict | Fix |
 |---|---|---|---|---|---|
-| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 `CONTRACT.md`) | none | rejected | run Part 3 `--view part5` on it; `doctor` exits 1 with "run Part 3 --view part5" |
+| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 `CONTRACT.md`) | none | rejected | as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input (exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with "run Part 3 --view part5" |
 | Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works | |
 | Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works | |
 | Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` |
@@ -95,8 +95,8 @@ make check-5-contract        # uv run python -m part5.contract --check
 
 ## Acceptance Criteria
 ### AC-C01: schemas published
-Given `contracts/`, when listed, then the six schemas exist, each with `$id` and `version`, and each is a
-valid draft 2020-12 schema.
+Given `contracts/`, when listed, then the seven schemas exist (the first six, and `input-feet` for the optional
+feet side file, ADR-0015), each with `$id` and `version`, and each is a valid draft 2020-12 schema.
 ### AC-C02: fixtures validate
 Given every file under `fixtures/input/expected/`, `fixtures/input/followers/`, `fixtures/input/heldout/`,
 `fixtures/input/contract/`, `fixtures/input/eval/real/` and `fixtures/output/`, when `make check-5-contract`
@@ -125,7 +125,9 @@ with `warnings`, exit 0 and each warning is listed; an analysis missing `format`
 Given a missing file or invalid JSON, `doctor` exits 2 naming the file.
 ### AC-C11: Part 2 pose3d
 Given a Part 2 `pose3d.json`, when `doctor --for part5` runs, then it names the file as Part 2's
-`pose3d.json`, exits 1 and says "run Part 3 --view part5".
+`pose3d.json`, accepts it as the optional feet side input (ADR-0015) and exits 0 with a note that it is not a clip
+and where the body comes from ("run Part 3 --view part5"). A `pose3d.json`-like file that is not that shape either
+exits 1 and says "run Part 3 --view part5".
 ### AC-C12: exit-code mapping published
 Given `python -m part5 contract`, then the table carries the `part5 analyse` exit-code row with the
 Part 7 mapping, and `CONTRACT.md` states that 0 means an analysis was written and that exit 3 is no longer
@@ -149,7 +151,7 @@ it exits 2 with a plain message naming the missing upstream path, never a traceb
 | Not JSON | exit 2 | `part5 doctor: <file>: not JSON (<line>:<col>)` | AC-C09 |
 | Schema violation | exit 1 | `<field path>: <what>; fix: <option>` | AC-C06 |
 | Hand-off object or framed message | exit 1 for part5 | `Part 6 hand-off; fix: download files.animation and pass it as --expected` | AC-C07 |
-| Part 2 `pose3d.json` | exit 1 | `Part 2 pose3d.json; fix: run Part 3 --view part5` | AC-C11 |
+| Part 2 `pose3d.json` | exit 0 with a note (a feet side input, not a clip); exit 1 when it is not that shape either | `Part 2 pose3d.json; fix: run Part 3 --view part5` | AC-C11 |
 | Missing upstream copy in `contracts-check` | exit 2 | `contracts-check: <repo> has no <path> at <commit>` | AC-C10 |
 
 ## Edge Cases

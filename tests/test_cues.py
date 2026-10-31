@@ -58,6 +58,8 @@ def test_opposite_directions_give_different_cues():
     ("trunk_lean_forward", "less", "center", "Lean forward more"),
     ("thigh_forward", "less", "both", "Lower your hips more"),
     ("knee_valgus", "more", "right", "Push your right knee out"),
+    ("foot_rotation", "less", "left", "Turn your left foot out"),     # ADR-0015, the ticket's two phrases word for word
+    ("ankle_inversion", "more", "left", "Keep your left ankle straight"),
 ])
 def test_the_cues_say_what_to_do_toward_the_example(measure, direction, side, want):
     assert cues.cue_for(measure, direction, side)[0] == want
@@ -70,11 +72,14 @@ def test_a_cue_outside_the_vocabulary_is_an_error(args):
         cues.cue_for(*args)
 
 
-def test_nothing_measures_the_foot_beyond_the_ankle_so_no_cue_claims_it():
+def test_only_the_ankle_cues_name_the_ankle_and_none_names_a_twist_toe_or_heel():
+    """AC-FOOT-14, narrowing AC-CUE-03 (ADR-0015): the body measures stay without foot measures, 'ankle' appears only
+    in an `ankle_inversion` cue, and no cue names a twist, the toes or the heel."""
     assert not any("foot" in m and "rot" in m or "ankle" in m for m in MEASURES)
     for measure, direction, side in _combos():
         cue = cues.cue_for(measure, direction, side)[0].lower()
-        assert "twist" not in cue and "ankle" not in cue and "toe" not in cue and "heel" not in cue
+        assert "twist" not in cue and "toe" not in cue and "heel" not in cue
+        assert ("ankle" in cue) == (measure == "ankle_inversion"), cue
 
 
 @pytest.mark.parametrize("ratio,want", [(None, None), (0.5, cues.SLOW_DOWN), (0.849, cues.SLOW_DOWN), (0.85, None),
@@ -261,7 +266,7 @@ def test_misses_written_before_cues_give_no_insights():
 
 def test_without_a_timeline_insights_follow_the_faults_with_no_points():
     a = json.loads(EXAMPLE.read_text())
-    assert a["schema_version"] == "1.5.0"
+    assert a["schema_version"] == "1.6.0"
     del a["score"]   # the golden is built with the score hook (like real output); this is a producer that does not score
     a["insights"] = insights_of(a)
     assert [x["cue"] for x in a["insights"]] == [f["cue"] for f in a["faults"]]

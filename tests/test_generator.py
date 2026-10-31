@@ -1,5 +1,7 @@
 """The synthetic follower generator: knee_caving (ADR-0004), the 9-take grid, the dropout variant (#25,
-AC-008), --out, determinism and the Makefile target that makes held-out sets."""
+AC-008), --out, determinism and the Makefile target that makes held-out sets; and --feet (TICKET-040, ASM-013):
+planted feet written as Part 2 pose3d side files, the four foot-fault takes per cell, and the proof that no base
+take changes."""
 import json
 import math
 import subprocess
@@ -11,7 +13,7 @@ import numpy as np
 import pytest
 
 from part5.io import JOINTS, load_clip
-from part5.measures import compute
+from part5.measures import _ankle_inversion, _foot_rotation, compute
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -177,14 +179,18 @@ def test_a_different_seed_gives_different_takes(tmp_path):
 
 
 def test_the_committed_seed_5_set_is_what_the_generator_writes(tmp_path):
-    """The tuning set is reproducible from the committed expected clips: same bytes, take by take."""
-    labels = gen.generate(5, tmp_path)
+    """The tuning set is reproducible from the committed expected clips: same bytes, take by take, feet included."""
+    labels = gen.generate(5, tmp_path, feet=True, expected_feet_dir=tmp_path / "expected-feet")
     committed = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     assert [t["take_id"] for t in labels["takes"]] == [t["take_id"] for t in committed["takes"]]
     for t in committed["takes"]:
-        fresh = (tmp_path / t["set"] / t["take_id"] / "skeleton.json").read_bytes()
-        assert fresh == (ROOT / t["follower"]).read_bytes(), t["take_id"]
-    strip = lambda d: [{k: v for k, v in t.items() if k != "follower"} for t in d["takes"]]  # noqa: E731
+        for name, path in (("skeleton.json", t["follower"]), ("feet.json", t["follower_feet"])):
+            assert (tmp_path / t["set"] / t["take_id"] / name).read_bytes() == (ROOT / path).read_bytes(), t["take_id"]
+    for set_name in gen.SETS:
+        fresh = (tmp_path / "expected-feet" / set_name / "feet.json").read_bytes()
+        assert fresh == (ROOT / "fixtures/input/expected-feet" / set_name / "feet.json").read_bytes()
+    paths = ("follower", "follower_feet", "expected_feet")
+    strip = lambda d: [{k: v for k, v in t.items() if k not in paths} for t in d["takes"]]  # noqa: E731
     assert strip(labels) == strip(committed)
 
 
@@ -296,6 +302,266 @@ def test_dropout_takes_load_through_part5_io_with_masked_joints(seed5_dropout):
     assert clip.mask.mean() < 1.0 and clip.mask[:, j["left_knee"]].all()
 
 
+# --- planted feet (TICKET-040, ASM-013, docs/specs/foot-keypoints.md) ---
+FOOT_TYPES = {"foot_turned_out": ("foot_rotation", "more"), "foot_turned_in": ("foot_rotation", "less"),
+              "ankle_rolled_in": ("ankle_inversion", "more"), "ankle_rolled_out": ("ankle_inversion", "less")}
+FOOT_KEYS = ("expected_feet", "follower_feet")
+# The template's big toe sits 0.035 m inside the foot axis, 0.24 m ahead of the heel: the heel to big toe vector
+# points atan(0.035 / 0.24) toward the midline of a foot whose axis is turned out by the planted toe-out.
+BIG_TOE_OFFSET_DEG = math.degrees(math.atan2(0.035, 0.24))
+
+
+@pytest.fixture(scope="module")
+def seed5_feet(tmp_path_factory):
+    out = tmp_path_factory.mktemp("seed5-feet")
+    return out, gen.generate(5, out, feet=True, expected_feet_dir=out / "expected-feet")
+
+
+@pytest.fixture(scope="module")
+def seed5_feet_dropout(tmp_path_factory):
+    out = tmp_path_factory.mktemp("seed5-feet-dropout")
+    return out, gen.generate(5, out, dropout_variant=True, feet=True, expected_feet_dir=out / "expected-feet")
+
+
+def side_arrays(doc):
+    """(joints (F, 17, 3), feet (F, 6, 3), joint conf (F, 17), foot conf (F, 6)) of a pose3d.json shaped side file."""
+    people = [fr["people"][0] for fr in doc["frames"]]
+    pts = lambda key, names: np.array([[[p[key][n][c] for c in "xyz"] for n in names] for p in people])  # noqa: E731
+    conf = lambda key, names: np.array([[p[key][n]["conf"] for n in names] for p in people])  # noqa: E731
+    return (pts("joints", JOINTS), pts("extra_joints", gen.FOOT_JOINTS),
+            conf("joints", JOINTS), conf("extra_joints", gen.FOOT_JOINTS))
+
+
+def foot_measures(doc):
+    """{(measure, side): series} read off a side file with the Part 5 geometry helpers."""
+    j, f, _, _ = side_arrays(doc)
+    at = lambda name: j[:, JOINTS.index(name)]  # noqa: E731
+    foot = lambda name: f[:, gen.FOOT_JOINTS.index(name)]  # noqa: E731
+    out = {}
+    for s in ("left", "right"):
+        out["foot_rotation", s] = _foot_rotation(at("left_hip"), at("right_hip"), foot(f"{s}_heel"), foot(f"{s}_big_toe"), s)
+        out["ankle_inversion", s] = _ankle_inversion(foot(f"{s}_heel"), foot(f"{s}_big_toe"), foot(f"{s}_small_toe"), s)
+    return out
+
+
+def test_feet_change_no_base_take_and_only_add_to_the_labels(tmp_path):
+    """The 17-joint data of every base take and every earlier label key are the same bytes with or without --feet."""
+    cell = dict(sets=["exercise"], angles=["45"], lights=["good"], dropout_variant=True)
+    a, b = tmp_path / "plain", tmp_path / "feet"
+    plain = gen.generate(5, a, **cell)
+    with_feet = gen.generate(5, b, feet=True, expected_feet_dir=tmp_path / "ef", **cell)
+    ta, tb = tree(a), tree(b)
+    skeletons = {k: v for k, v in ta.items() if k.endswith("skeleton.json")}
+    assert len(skeletons) == 18 and all(tb[k] == v for k, v in skeletons.items())
+    keep = lambda t: {k: v for k, v in t.items() if k not in (*FOOT_KEYS, "follower", "expected")}  # noqa: E731
+    for variant in ("clean", "dropout"):
+        before = [t for t in plain["takes"] if t["variant"] == variant]
+        after = [t for t in with_feet["takes"] if t["variant"] == variant]
+        assert len(before) == 9 and len(after) == 13                  # the four foot takes are appended, never inserted
+        assert [keep(t) for t in after[:9]] == [keep(t) for t in before]
+        assert all(t["faults"][0]["type"] in FOOT_TYPES for t in after[9:])
+
+
+def test_foot_takes_and_their_streams_do_not_depend_on_the_other_takes(tmp_path, seed5_feet):
+    """A take's feet come from a stream keyed by its id: generating one cell gives the same feet.json as the full set."""
+    out, labels = seed5_feet
+    gen.generate(5, tmp_path, sets=["exercise"], angles=["front"], lights=["good"], feet=True,
+                 expected_feet_dir=tmp_path / "ef")
+    for take_id in ("exercise_front_good_03_foot_out-right", "exercise_front_good_10_foot_turned_in-left"):
+        assert (tmp_path / "exercise" / take_id / "feet.json").read_bytes() == \
+               (out / "exercise" / take_id / "feet.json").read_bytes()
+        assert (tmp_path / "exercise" / take_id / "skeleton.json").read_bytes() == \
+               (out / "exercise" / take_id / "skeleton.json").read_bytes()
+
+
+def test_the_feet_grid_adds_four_takes_to_every_cell(seed5_feet):
+    out, labels = seed5_feet
+    takes = labels["takes"]
+    assert len(takes) == 156 == 108 + 12 * 4
+    assert [t["take_id"] for t in takes[:108]] == [t["take_id"] for t in gen.generate(5, out / "plain")["takes"]]
+    cells = {}
+    for t in takes[108:]:
+        cells.setdefault((t["set"], t["angle"], t["lighting"]), []).append(t)
+    assert len(cells) == 12
+    for cell in cells.values():
+        assert sorted(t["faults"][0]["type"] for t in cell) == sorted(FOOT_TYPES)
+        assert [t["take_id"].split("_")[3] for t in cell] == ["09", "10", "11", "12"]
+        assert all(len(t["faults"]) == 1 and not t["correct"] for t in cell)
+    assert len({t["take_id"] for t in takes}) == 156
+    assert sum(t["correct"] for t in takes) == 24 and sum(len(t["faults"]) for t in takes) == 96 + 48
+
+
+def test_a_foot_fault_label_names_the_measure_the_side_and_the_size(seed5_feet):
+    out, labels = seed5_feet
+    for t in labels["takes"][108:]:
+        (f,) = t["faults"]
+        measure, direction = FOOT_TYPES[f["type"]]
+        assert (f["measure"], f["direction"], f["body_part"]) == (measure, direction, "feet")
+        sides = ["left", "right"] if f["side"] == "both" else [f["side"]]
+        assert f["side"] in ("left", "right", "both") and f["joints"] == [f"{s}_ankle" for s in sides]
+        assert 15 <= f["magnitude_deg"] == f["peak_deg"] <= 25
+        s, e = f["follower_frames"]
+        assert 0 <= s < e < t["frame_count"] and f["expected_frames"][0] < f["expected_frames"][1]
+        assert f["text"].startswith(("left ", "right ", "feet ", "ankles ")) and f["text"].islower()
+        assert t["variant"] == "clean" and t["label_source"] == "synthetic"
+
+
+def test_every_take_names_its_two_side_files(seed5_feet):
+    out, labels = seed5_feet
+    for t in labels["takes"]:
+        assert t["expected_feet"].endswith(f"expected-feet/{t['set']}/feet.json")
+        assert Path(t["expected_feet"]).is_file() and Path(t["follower_feet"]).is_file()
+        assert Path(t["follower_feet"]).parent == Path(t["follower"]).parent
+        keys = list(t)
+        assert keys.index("expected_feet") < keys.index("follower_feet") < keys.index("expected")  # additive in the file
+
+
+def test_foot_fault_labels_validate_against_the_labels_schema_once_it_knows_them(seed5_feet):
+    schema = json.loads((ROOT / "contracts/labels.schema.json").read_text())
+    if "foot_turned_out" not in json.dumps(schema):
+        pytest.skip("contracts/labels.schema.json does not list the foot fault types yet (TICKET-040 core lane)")
+    jsonschema.Draft202012Validator(schema).validate(seed5_feet[1])
+
+
+def test_a_side_file_is_part2s_pose3d_shape_holding_the_takes_own_joints(seed5_feet):
+    out, labels = seed5_feet
+    take = labels["takes"][3]
+    skeleton, doc = load_json(take["follower"]), load_json(take["follower_feet"])
+    assert set(doc) == {"frames", "t0_pts_ms", "provenance"} and doc["t0_pts_ms"] == 0.0
+    assert doc["provenance"]["source"] == "synthetic" and doc["provenance"]["seed"] == 5
+    assert doc["provenance"]["generator"] == "scripts/make_dummy_followers.py"
+    assert len(doc["frames"]) == skeleton["frame_count"]
+    for i, (fr, sk) in enumerate(zip(doc["frames"], skeleton["frames"])):
+        assert fr["frame"] == i and fr["t_ms"] == pytest.approx(sk["t"] * 1000, abs=5e-4)
+        (person,) = fr["people"]
+        assert person["id"] == 0 and list(person["joints"]) == JOINTS and list(person["extra_joints"]) == gen.FOOT_JOINTS
+        assert all(set(p) == {"x", "y", "z", "conf"} and p["conf"] == 1.0
+                   for p in [*person["joints"].values(), *person["extra_joints"].values()])
+        assert [person["joints"][j][c] for j in JOINTS for c in "xyz"] == [v for j in JOINTS for v in sk["joints"][j]]
+    joints, feet, *_ = side_arrays(doc)
+    assert np.allclose((joints[:, JOINTS.index("left_hip")] + joints[:, JOINTS.index("right_hip")]) / 2, 0, atol=1e-3)
+    assert np.isfinite(feet).all()
+
+
+def test_expected_feet_are_planted_flat_under_the_ankles_at_a_fixed_toe_out(seed5_feet):
+    out, labels = seed5_feet
+    doc = load_json(out / "expected-feet" / "exercise" / "feet.json")
+    joints, feet, *_ = side_arrays(doc)
+    ankle = lambda s: joints[:, JOINTS.index(f"{s}_ankle")]  # noqa: E731
+    foot = lambda s, n: feet[:, gen.FOOT_JOINTS.index(f"{s}_{n}")]  # noqa: E731
+    for s in ("left", "right"):
+        for n in ("heel", "big_toe", "small_toe"):
+            assert np.allclose(foot(s, n)[:, 1], ankle(s)[:, 1] - 0.08, atol=3e-4)   # flat, 0.08 m below the ankle
+        ahead = np.linalg.norm((foot(s, "big_toe") - foot(s, "heel"))[:, [0, 2]], axis=1)
+        assert np.allclose(ahead, math.hypot(0.24, 0.035), atol=3e-4)                 # 0.17 + 0.07 ahead, 0.035 across
+        assert np.allclose(foot(s, "heel")[:, 2], ankle(s)[:, 2] - 0.07 * math.cos(math.radians(7)), atol=3e-4)
+    for (measure, s), series in foot_measures(doc).items():
+        if measure == "foot_rotation":   # hips on the x axis here, so the pelvis faces +z: 7 degrees out, less the offset
+            assert np.allclose(series, gen.EXPECTED_TOE_OUT_DEG - BIG_TOE_OFFSET_DEG, atol=0.1), s
+    assert doc["provenance"]["source"] == "synthetic" and doc["provenance"]["seed"] is None
+    assert all(c == 1.0 for c in side_arrays(doc)[3].ravel())
+
+
+def plain_take_feet(faults):
+    """Planted feet and labels for the exercise clip with no noise, the fault window at full strength mid-clip."""
+    frames = expected_frames()
+    n = len(frames)
+    plan = {"rng": gen.random.Random("feet-test"), "faults": faults}
+    feet, labels = gen.plant_take_feet(frames, [float(i) for i in range(n)], 1.0, n, plan)
+    return frames, feet, labels
+
+
+def read_foot(frames, feet, i, side, kind):
+    """The measure `kind` (yaw: foot_rotation, roll: ankle_inversion) of one foot in frame i, in degrees."""
+    f = frames[i]
+    p = {n.removeprefix(f"{side}_"): np.array(v) for n, v in feet[i].items() if n.startswith(side)}
+    a = lambda name: np.array(f[name])  # noqa: E731
+    if kind == "yaw":
+        return float(_foot_rotation(a("left_hip"), a("right_hip"), p["heel"], p["big_toe"], side))
+    return float(_ankle_inversion(p["heel"], p["big_toe"], p["small_toe"], side))
+
+
+@pytest.mark.parametrize("ftype, side", [("foot_turned_out", "left"), ("foot_turned_in", "right"),
+                                         ("foot_turned_out", "both"), ("ankle_rolled_in", "left"),
+                                         ("ankle_rolled_out", "right"), ("ankle_rolled_in", "both")])
+def test_a_foot_fault_moves_its_measure_by_exactly_the_label_size_and_nothing_else(ftype, side):
+    frames, base, _ = plain_take_feet([])
+    faulted, (label,) = plain_take_feet([(ftype, side)])[1:]
+    spec = gen.FOOT_FAULTS[ftype]
+    start, end = label["_window"]
+    mid = (start + end) // 2   # the ramps are 6 frames, so the middle of the window is at full strength
+    hit = ["left", "right"] if side == "both" else [side]
+    for s in ("left", "right"):
+        change = read_foot(frames, faulted, mid, s, spec["kind"]) - read_foot(frames, base, mid, s, spec["kind"])
+        want = spec["sign"] * label["magnitude_deg"] if s in hit else 0.0   # a foot that is not named is untouched
+        assert change == pytest.approx(want, abs=1e-6)
+        assert read_foot(frames, faulted, 0, s, spec["kind"]) == pytest.approx(read_foot(frames, base, 0, s, spec["kind"]), abs=1e-9)
+    assert 15 <= label["magnitude_deg"] <= 25 and label["measure"] == spec["measure"]
+
+
+def test_foot_takes_carry_the_fault_in_their_side_file(seed5_feet):
+    """The fault shows in the measure series: inside its window a turned foot sits about its size from where it is outside."""
+    out, labels = seed5_feet
+    shifts = []
+    for t in labels["takes"][108:]:
+        (f,) = t["faults"]
+        if t["lighting"] != "good" or t["angle"] != "front" or f["measure"] != "foot_rotation":
+            continue
+        series = foot_measures(load_json(t["follower_feet"]))
+        s0, e0 = f["follower_frames"]
+        for side in (["left", "right"] if f["side"] == "both" else [f["side"]]):
+            v = series[f["measure"], side]
+            outside = np.concatenate([v[:s0 - 4], v[e0 + 4:]])
+            sign = 1.0 if f["direction"] == "more" else -1.0
+            shifts.append(sign * (np.nanmedian(v[s0 + 8:e0 - 8]) - np.nanmedian(outside)) / f["magnitude_deg"])
+    assert len(shifts) >= 4 and np.median(shifts) == pytest.approx(1.0, abs=0.35) and min(shifts) > 0.3
+
+
+def test_the_far_foot_is_noisier_than_the_near_one(seed5_feet):
+    """The foot points carry the take's camera noise with the far side multiplied, like the 17 joints."""
+    out, labels = seed5_feet
+    spread = {}
+    for t in labels["takes"][:108]:
+        if t["correct"] and t["angle"] == "side" and t["lighting"] == "good":
+            j, f, *_ = side_arrays(load_json(t["follower_feet"]))
+            for s in ("left", "right"):
+                heel = f[:, gen.FOOT_JOINTS.index(f"{s}_heel")] - j[:, JOINTS.index(f"{s}_ankle")]
+                spread.setdefault(s, []).append(float(np.std(heel, axis=0).sum()))
+    assert np.mean(spread["right"]) > np.mean(spread["left"])
+
+
+def test_feet_output_is_deterministic_with_dropout_copies(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    gen.main(["--seed", "5", "--out", str(a), "--dropout-variant", "--feet", "--expected-feet-dir", str(a / "ef")])
+    gen.main(["--seed", "5", "--out", str(b), "--dropout-variant", "--feet", "--expected-feet-dir", str(b / "ef")])
+    ta, tb = tree(a), tree(b)
+    assert ta.keys() == tb.keys() and sum(k.endswith("/feet.json") for k in ta) == 156 + 104 + 2   # every take, every copy, both expected sets
+    assert all(ta[k].replace(str(a.resolve()).encode(), b"X") == tb[k].replace(str(b.resolve()).encode(), b"X")
+               for k in ta)
+
+
+def test_a_dropout_copy_masks_a_foot_where_it_masks_the_ankle(seed5_feet_dropout):
+    out, labels = seed5_feet_dropout
+    copies = [t for t in labels["takes"] if t["variant"] == "dropout"]
+    assert len(copies) == 104 and all(Path(t["follower_feet"]).parent == Path(t["follower"]).parent for t in copies)
+    masked = 0
+    for t in copies:
+        sk, doc = load_json(t["follower"]), load_json(t["follower_feet"])
+        joints, feet, jconf, fconf = side_arrays(doc)
+        assert np.isfinite(joints).all() and np.isfinite(feet).all()                  # Part 2 never writes a null
+        assert np.allclose(jconf, [[fr["conf"][j] for j in JOINTS] for fr in sk["frames"]])
+        for s in ("left", "right"):
+            ankle = jconf[:, JOINTS.index(f"{s}_ankle")]
+            foot = fconf[:, [gen.FOOT_JOINTS.index(f"{s}_{n}") for n in ("big_toe", "small_toe", "heel")]]
+            lost = ankle < 0.3
+            assert np.array_equal(foot < 0.3, np.repeat(lost[:, None], 3, axis=1))   # masked in the ankle's frames only
+            assert np.all(foot[~lost] == 1.0) and np.allclose(foot[lost], ankle[lost][:, None])
+            masked += int(lost.any())
+    assert masked > 0                      # at least one copy loses an ankle, so the test is not vacuous
+    clean = next(t for t in labels["takes"] if t["take_id"] == copies[0]["take_id"].removesuffix("_dropout"))
+    assert side_arrays(load_json(clean["follower_feet"]))[3].min() == 1.0   # a clean take is never masked
+
+
 # --- make heldout-data (never run with a real seed here) ---
 def make(*args):
     return subprocess.run(["make", *args], cwd=ROOT, capture_output=True, text=True)
@@ -331,3 +597,15 @@ def test_heldout_data_dry_run_names_the_generator_command(seed):
     assert r.returncode == 0
     assert f"python3 scripts/make_dummy_followers.py --seed {seed} --out fixtures/input/heldout --dropout-variant" in r.stdout
     assert heldout_state() == before
+
+
+@pytest.mark.parametrize("seed, feet", [("29", False), ("31", False), ("37", True)])
+def test_heldout_data_passes_feet_only_for_the_seeds_scored_with_them(seed, feet):
+    """Seeds 29 and 31 were scored without feet and regenerate without (AC-FOOT-11); seed 37 is the first with."""
+    r = make("-n", "heldout-data", f"SEED={seed}")
+    assert r.returncode == 0 and (" --feet" in r.stdout) is feet
+
+
+def test_dummy_data_writes_the_seed_5_set_with_feet():
+    r = make("-n", "dummy-data")
+    assert r.returncode == 0 and "python3 scripts/make_dummy_followers.py --feet" in r.stdout

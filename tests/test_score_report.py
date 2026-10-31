@@ -4,6 +4,7 @@ from pathlib import Path
 
 from part5 import score, score_report
 from part5.detect import load_rules
+from part5.evaluate import match_pairs
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -92,7 +93,25 @@ def test_the_cli_prints_the_distribution_and_the_verdicts(capsys):
     assert score_report.main(["--set", str(ROOT / "fixtures/input/followers"), "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc["seed"] == 5 and doc["distribution"]["good/0"]["grades"] == {"A": 12}
-    assert doc["verdicts"] == {"good/0": "pass", "good/1": "pass", "good/2": "pass"}
+    assert doc["verdicts"]["good/0"] == "pass" and doc["verdicts"]["good/2"] == "pass"
+    # good/1 is covered by the next test: on seed 5 it misses its target for the foot faults that are not found
+
+
+def test_every_good_light_single_fault_take_outside_b_or_c_has_a_labelled_fault_no_prediction_matches():
+    """Seed 5 `good/1` misses its target (B or C) once the foot fault takes are in the set: three foot faults are not
+    found, and a take whose one fault is missed scores A (docs/specs/foot-keypoints.md "Seed 5 result"). TARGETS is
+    unchanged and no foot take is dropped; this pins the cause, so a take outside B or C for any other reason fails."""
+    labels = score_report.load_labels(ROOT / "fixtures/input/followers")
+    labels["takes"] = [t for t in labels["takes"] if t["lighting"] == "good" and len(t["faults"]) == 1]
+    assert len(labels["takes"]) == 60
+    outside = []
+    for t, result in score_report.run_set(labels):
+        block = score_report.score_block(result) if result.alignment is not None else None
+        if block and block["grade"] not in score_report.TARGETS["good/1"]:
+            missed = len(t["faults"]) - len(match_pairs(result.analysis["faults"], t["faults"]))
+            outside.append((t["take_id"], block["grade"], missed))
+    assert all(missed >= 1 for _, _, missed in outside), outside
+    assert len(outside) == 3, outside     # the three missed foot faults named in the spec
 
 
 def test_the_cli_text_report_marks_low_light_as_reported(capsys):

@@ -149,8 +149,46 @@ Held-out result as measured (`make check-5` exit 0 at `3be3b40`, 2026-10-29): **
 | low/front | no | 15 | 0 | 1 | 18 | 4 | 0 | 1.00 | 0.94 | 0 |
 | low/side | no | 15 | 18 | 1 | 18 | 4 | 4 | 0.45 | 0.94 | 0 |
 
-Seed 31 is the current held-out set (`fixtures/input/heldout/`). Seed 37 is unused; no further
-attempt is needed while the gate stays green.
+Seed 31 was the held-out set until attempt 3 below.
+
+### Attempt 3: seed 37
+Freeze commit: `fb1d6e816c99ab8a0c276c0d8c46d603b872c392`
+rules_sha256: `37f163c9f3de634c7f467a706c8bc6fb915bef3ee6c8c8d1ffb19ae032e5f68c`
+Date: 2026-10-31
+Approach family: a new measure, foot keypoints (`foot_rotation` and `ankle_inversion` from Part 2's `extra_joints`; TICKET-040, ADR-0015)
+
+Rationale. Part 2 published foot points (`extra_joints`, moalborati/simon-part-2-images-to-3d e8ac336) and the operator
+asked for foot cues (TICKET-040, ADR-0014's "What is not measured"). The detection rules gain two thresholds,
+`foot_rotation` 14 and `ankle_inversion` 14 degrees, chosen on seed 5 only by `python -m part5.calibrate --feet`
+(`progress/calibrate-feet-seed5-attempt-b.log`, rechecked unchanged in `attempt-c.log` after the pre-freeze review): both
+GO at good light at every angle (0 faults on correct takes, precision 1.00, recall 0.75 or more, both directions found).
+Every earlier key and value is unchanged, so the body measures behave as in attempts 1 and 2: seed 31's slices are
+identical with the foot code in place (scored without the freeze check before the freeze). This is a new measure, so it
+needs its own held-out score: seed 37, the last held-out seed, generated once with feet (`make heldout-data SEED=37`,
+13 takes per cell, 260 with the dropout copies), scored once. Its gated good-light slices count the foot labels (8 per
+angle) beside the body labels (16 per angle). A red result is published here and ends the run DEGRADED; green leaves no
+seed to confirm it on. Not tuned on seed 37 before or after.
+
+Held-out result as measured (`make check-5` at `45f8752`, 2026-10-31T15:20Z: the check exited 1, which make reports as
+2): **failed**, 3 criteria. good/side has 1 fault on a correct take: `dance_side_good_01_correct`, `ankle_inversion`
+right `more` 21.5 degrees at 2.5 s ("right ankle rolling out"), the far foot in side view; the same take and its
+dropout copy score 87 (B) where a correct good-light take must be an A. Precision and recall pass at every gated angle
+(front 1.00 and 0.92, 45 0.96 and 0.96, side 0.88 and 0.96).
+
+| slice | gated | tp | fp | fn | takes | correct takes | faults on correct takes | precision | recall | refused |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| dropout/45 | no | 41 | 20 | 7 | 52 | 8 | 3 | 0.67 | 0.85 | 0 |
+| dropout/side | no | 41 | 41 | 7 | 52 | 8 | 6 | 0.50 | 0.85 | 0 |
+| good/45 | yes | 23 | 1 | 1 | 26 | 4 | 0 | 0.96 | 0.96 | 0 |
+| good/front | yes | 22 | 0 | 2 | 26 | 4 | 0 | 1.00 | 0.92 | 0 |
+| good/side | yes | 23 | 3 | 1 | 26 | 4 | 1 | 0.88 | 0.96 | 0 |
+| low/45 | no | 20 | 18 | 4 | 26 | 4 | 4 | 0.53 | 0.83 | 0 |
+| low/front | no | 19 | 8 | 5 | 26 | 4 | 1 | 0.70 | 0.79 | 0 |
+| low/side | no | 19 | 42 | 5 | 26 | 4 | 5 | 0.31 | 0.79 | 0 |
+
+Seed 37 is retired: it is the last held-out seed (29, 31, 37), it is never rescored, regenerated or used to tune, and
+the rules are not reverted (scoring it again under the old rules would be a rescore). `make check-5` now exits 1 on it.
+The held-out protocol is used up; any further attempt needs an operator ruling on ADR-0003.
 
 ## Score
 
@@ -174,14 +212,18 @@ AC-S01: the calibration reproduces the research prototype exactly (`z0 0.289`, `
 ### Freeze check for the detection rules
 `make check-5` compares the detection rules, not the whole file: `part5/rules.json` without its `score` key,
 serialised with `json.dumps(rules, sort_keys=True, separators=(",", ":"))`, hashed with sha256. The value
-below was computed the same way from the file frozen at `fbb0bea` (the whole-file hash `60f2e60b...` of the
-attempts above still passes on its own):
+below was computed the same way from the file frozen at `fb1d6e8` for attempt 3 (the foot thresholds added);
+until then it was `b76e6ca3...`, the file frozen at `fbb0bea` for attempts 1 and 2:
 
 ```
-git show fbb0bea:part5/rules.json | python3 -c 'import json,sys,hashlib; d={k:v for k,v in json.load(sys.stdin).items() if k!="score"}; print(hashlib.sha256(json.dumps(d,sort_keys=True,separators=(",",":")).encode()).hexdigest())'
+git show fb1d6e8:part5/rules.json | python3 -c 'import json,sys,hashlib; d={k:v for k,v in json.load(sys.stdin).items() if k!="score"}; print(hashlib.sha256(json.dumps(d,sort_keys=True,separators=(",",":")).encode()).hexdigest())'
 ```
 
-detection_sha256: `b76e6ca378557910a75f5f2ecedbab80452d4b3c0d87cae328b9f5c79967da6a`
+detection_sha256: `e340940f4fdc97a2761b7795b8d2c3a7177b75154acd449148b6e905431291ae`
+
+Re-frozen at attempt 3 (2026-10-31): the score params are unchanged (`params_sha256` as recorded in
+`fixtures/score-heldout.json`), but the held-out score report on seeds 47 and 53 below was measured under the earlier
+detection rules (`b76e6ca3...`), and the cost of a foot fault in the score was never measured on a held-out score seed.
 
 Changing any detection key changes this hash and `make check-5` exits 2.
 

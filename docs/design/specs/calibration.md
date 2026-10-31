@@ -51,6 +51,9 @@ As the team, I want thresholds chosen on data the gate never sees, so that a gre
 - Still red after the last seed: DEGRADED with every attempt's numbers.
 - After a green attempt, confirm on the next unused seed (report both). A red confirmation counts as a
   red attempt; a green attempt on seed 37 is reported with "no seed left to confirm".
+- Amendment (operator ruling 2026-10-31, TICKET-040): after a green, confirmed attempt, a new measure is a new approach
+  family and needs its own held-out score on the next unused seed. Attempt 3 (seed 37, foot keypoints) was that case;
+  it was red (`docs/thresholds.md`), so the held-out seeds are used up.
 
 ## Sweeps (`part5/calibrate.py`, offline, deterministic)
 - Thresholds: per measure, `threshold_deg` over a grid of 1 degree steps around the current value; then

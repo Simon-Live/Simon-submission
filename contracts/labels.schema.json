@@ -127,6 +127,14 @@
         "follower": {
           "type": "string"
         },
+        "expected_feet": {
+          "type": "string",
+          "description": "ADR-0015: path (relative to the repository root, like expected) of the Part 2 pose3d.json, or a synthetic one in its shape, that carries the example's heel and toe points; absent when the take has none."
+        },
+        "follower_feet": {
+          "type": "string",
+          "description": "ADR-0015: the same for the follower."
+        },
         "faults": {
           "type": "array",
           "items": {
@@ -192,8 +200,13 @@
             "knees_shallow",
             "elbow_bent",
             "trunk_lean",
-            "knee_caving"
-          ]
+            "knee_caving",
+            "foot_turned_out",
+            "foot_turned_in",
+            "ankle_rolled_in",
+            "ankle_rolled_out"
+          ],
+          "description": "The last four are the foot types (ADR-0015): foot_turned_out is foot_rotation more, foot_turned_in foot_rotation less, ankle_rolled_in ankle_inversion more, ankle_rolled_out ankle_inversion less."
         },
         "measure": {
           "type": "string",
@@ -204,7 +217,8 @@
             "arms",
             "legs",
             "torso",
-            "head"
+            "head",
+            "feet"
           ]
         },
         "joints": {

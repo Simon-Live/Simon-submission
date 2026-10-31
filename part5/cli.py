@@ -21,6 +21,14 @@ def build_parser():
     a.add_argument("--follower", required=True, help="follower skeleton.json")
     a.add_argument("--expected-visibility", help="the trainer's own skeleton.json or pose3d.json (Part 2): its conf says "
                    "which body parts the example shows (ADR-0011); optional when the expected clip has no conf")
+    a.add_argument("--expected-feet", help="optional: the example's Part 2 pose3d.json with the heel and toe points "
+                   "(extra_joints); with --follower-feet it adds the foot measures (ADR-0015)")
+    a.add_argument("--follower-feet", help="optional: the follower's Part 2 pose3d.json with the heel and toe points; "
+                   "Part 3 does not carry them, so they are read from Part 2's own file")
+    a.add_argument("--expected-feet-person", type=int, default=0, metavar="N",
+                   help="people[].id to read in --expected-feet (default 0)")
+    a.add_argument("--follower-feet-person", type=int, default=0, metavar="N",
+                   help="people[].id to read in --follower-feet (default 0)")
     a.add_argument("--out", required=True, help="where to write analysis.json")
     a.add_argument("--replay", help="also write the replay file (simon.replay.v1) here")
     a.add_argument("--live", action="store_true",
@@ -49,7 +57,10 @@ def main(argv=None):
             backend, selected_by = select_backend(args.phrasing, args.live)
             result = run(args.expected, args.follower, phrasing=backend, score=score_block,
                          live=args.live, selected_by=selected_by,
-                         expected_visibility=args.expected_visibility)
+                         expected_visibility=args.expected_visibility,
+                         expected_feet=args.expected_feet, follower_feet=args.follower_feet,
+                         expected_feet_person=args.expected_feet_person,
+                         follower_feet_person=args.follower_feet_person)
             doc = write_analysis(args.out, result.analysis)
         except (InputError, AnalysisError, OutputError) as e:
             print(f"part5 analyse: {e}", file=sys.stderr)

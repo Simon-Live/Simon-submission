@@ -93,9 +93,21 @@ def _rep_timeline(result, rules):
     return block
 
 
-def analyse(expected, follower, rules=None):
-    """`pipeline.analyse` plus the score under `analysis["score"]` (never None), unless the pipeline already set it."""
-    result = run(expected, follower, rules)
+FEET_KEYS = ("expected_feet", "follower_feet")
+
+
+def feet_kwargs(take, base=ROOT):
+    """The foot side files a labelled take names, as keyword arguments for `pipeline.run` (ADR-0015).
+
+    A take in labels.json may carry `expected_feet` and `follower_feet`, paths from the repository root (`base`) like
+    `expected` and `follower`; the person is the default, id 0. A take that names none gets {} and is analysed as before."""
+    return {key: str(resolve(take[key], base)) for key in FEET_KEYS if take.get(key)}
+
+
+def analyse(expected, follower, rules=None, **feet):
+    """`pipeline.analyse` plus the score under `analysis["score"]` (never None), unless the pipeline already set it.
+    `feet` is `feet_kwargs(take)`: the side files `pipeline.run` takes."""
+    result = run(expected, follower, rules, **feet)
     analysis = result.analysis
     if "score" not in analysis:
         analysis["score"] = score_block(result, rules)
@@ -122,11 +134,12 @@ def load_labels(directory):
 
 
 def run_set(labels_doc, rules=None, base=ROOT):
-    """[(label, PipelineResult)] for every take of the set (paths in the labels resolve against `base`)."""
+    """[(label, PipelineResult)] for every take of the set (paths in the labels resolve against `base`; a take's
+    `expected_feet` and `follower_feet` go to `run`, so a take with foot side files is analysed with its feet)."""
     out = []
     for t in labels_doc["takes"]:
         exp, fol = resolve(t["expected"], base), resolve(t["follower"], base)
-        out.append((t, run(str(exp), {"path": str(fol), "take_id": t["take_id"]}, rules)))
+        out.append((t, run(str(exp), {"path": str(fol), "take_id": t["take_id"]}, rules, **feet_kwargs(t, base))))
     return out
 
 

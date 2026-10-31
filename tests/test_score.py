@@ -193,7 +193,7 @@ def test_calibrate_score_writes_only_the_score_key(tmp_path):
 
 
 # --- the freeze hash for the detection rules (AC-S06) ---
-DETECTION_SHA = "b76e6ca378557910a75f5f2ecedbab80452d4b3c0d87cae328b9f5c79967da6a"
+DETECTION_SHA = "e340940f4fdc97a2761b7795b8d2c3a7177b75154acd449148b6e905431291ae"  # frozen at fb1d6e8 for attempt 3 (was b76e6ca3, fbb0bea)
 
 
 def test_ac_s06_the_detection_hash_ignores_the_score_block_and_equals_the_recorded_one():
