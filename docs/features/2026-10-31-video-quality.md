@@ -41,3 +41,26 @@ Depends on the Part 2, Part 3 and Part 5 video-quality PRs (links in the Part 7 
   are logged with each take for calibration.
 - The real `make check-7` needs the GPU host and the Parts 2, 3 and 5 quality implementations; until then the
   degraded gate fails honestly rather than passing on a fabricated result.
+
+## Requires the team's attention
+Found while running the tests on a Mac with no GPU. None of it comes from the video-quality change.
+
+- **`make check-7` has not run for this change.** It needs an NVIDIA GPU (`nvidia-smi`) and runs the real Parts 2 to
+  5. On the dev Mac it stops with `check-7: nvidia-smi found no GPU` (exit 2, "a prerequisite is missing"). The
+  dark-follower gate (a major issue and a score of 59 or less) and the calibration numbers and run-time overhead for
+  the Part 2 PR are therefore untested against real output. Someone with the GPU host needs to run `make check-7`
+  with the Parts 2, 3 and 5 quality changes merged or pinned, and paste the output into the PR.
+- **`tests/test_parts.py::test_p4_and_p5_adapters` fails.** The test puts a fake `uv` on the `PATH` that drops the word
+  `run` and executes the rest. Part 7 now calls Part 5 as `uv run python <p5_mode_runner.py>` (the modes work), so
+  the stand-in runs the string `python` as a file and Part 5 exits 2 instead of 3. The stub needs to match how
+  `p5_analyse` builds its command now.
+- **`modules/part-5` shows as modified.** The submodule checkout is at `d7df0de` while the repo pins `aea23ae`
+  (the release 6 commit). It was already like this before the video-quality work and is not committed. Someone should
+  decide which pin is right and reset the submodule.
+- **`tests/part7/feature_checks.unit.test.mjs` fails** because `staging/feature-checks.mjs` is not in the repo.
+- **Own-analysis schema version.** Part 7's own `analysis.json` is now `1.5.0`, but Part 5's `1.5.0` already means
+  "insights" and its quality fixtures say `1.6.0`. The Part 7 reader ignores the version, so nothing breaks, but the
+  numbers should be agreed with Part 5.
+- **Dev setup.** A stray `~/package.json` (no `"type"`) makes Node 26 read the repo's `.js` files as CommonJS, so
+  `node --test` fails on the ES module imports until a `{"type": "module"}` `package.json` is placed in the repo or
+  the stray one is removed. The repo has no `package.json` of its own.
