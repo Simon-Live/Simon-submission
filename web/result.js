@@ -1,6 +1,7 @@
 // The result screen: score panel, 3D compare, timed fault list, downloads (journey.md steps 6 to 8,
 // TICKET-045, 046, 047). Part 7 shows Part 5's analysis as written and computes nothing.
 import { el, renderScore, hasScore } from "./score.js";
+import { renderTimeline, timelineOf } from "./timeline.js";
 import { mountCompare, mountViewer, normalizeReplay, ensureStyles, MSG_BAD_REPLAY } from "./compare.js";
 
 export { mountViewer };
@@ -76,7 +77,12 @@ function renderFaults(root, analysis, getCompare) {
   const section = el("section", { class: "sr-faults", "aria-labelledby": "sr-faults-h" });
   section.append(el("h2", { id: "sr-faults-h", text: "What to fix" }));
   if (!faults.length) {
-    section.append(el("p", { class: "sr-empty", "data-testid": "no-faults", text: "No faults found in this take." }));
+    // the take-level list keeps a fault only when most reps show it; single-rep misses are on the timeline
+    const onTimeline = timelineOf(analysis).some((w) => (w.misses || []).length);
+    const text = onTimeline
+      ? "No mistake repeated through the take. Each part's own misses are in Score over time above."
+      : "No faults found in this take.";
+    section.append(el("p", { class: "sr-empty", "data-testid": "no-faults", text }));
     root.append(section);
     return;
   }
@@ -158,6 +164,7 @@ export async function mountResult(root, { analysis, replay, record = null } = {}
   }
   const shown = withScore(analysis);
   renderScore(root, shown);
+  renderTimeline(root, shown, () => compare);
   const mine = takeLabels(record);
   if (mine) root.append(mine);
   if (replay || !warnings.length) {

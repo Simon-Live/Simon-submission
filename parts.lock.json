@@ -1,6 +1,6 @@
 {
   "schema": "part7.parts-lock/1",
-  "pinned_at": "2026-10-30T19:25:42Z",
+  "pinned_at": "2026-10-31T02:49:11Z",
   "parts": {
     "1": {
       "repo": "https://github.com/moalborati/simon-part-1-keyframes.git",
@@ -33,10 +33,10 @@
     },
     "5": {
       "repo": "https://github.com/moalborati/simon-part-5-fault-analysis.git",
-      "sha": "0e1ee132369da4a8a434d027c4c9b43de922548b",
-      "pinned_at": "2026-10-30T19:25:42Z",
-      "status": "Journey follow-up open: TICKET-032..038",
-      "repin_due": true
+      "sha": "05312b71f4bf6edc8888ffabc8fe80f3938fb970",
+      "pinned_at": "2026-10-31T02:49:11Z",
+      "status": "upstream main",
+      "repin_due": false
     },
     "6": {
       "repo": "https://github.com/moalborati/simon-part-6-recording-catalog.git",
