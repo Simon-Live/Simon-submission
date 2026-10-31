@@ -7,7 +7,7 @@ where to look. Design background: [../design/README.md](../design/README.md).
 ## What the app is
 
 A phone web app that stitches Parts 1 to 6 into one journey. Part 7 never imports another part's
-code: it runs each part's published CLI from a pinned clone and passes files between them.
+code: it runs each part's published CLI from its submodule under `modules/` and passes files between them.
 
 The journey has eight steps (`docs/design/specs/journey.md`):
 
@@ -28,35 +28,38 @@ The journey has eight steps (`docs/design/specs/journey.md`):
 
 | Piece | Code | What it does |
 |---|---|---|
-| CLI | `part7/cli.py` | `python -m part7 pin, setup-parts, doctor-parts, videos, chain, serve, check` |
+| CLI | `part7/cli.py` | `python -m part7 setup-parts, parts-status, doctor-parts, videos, chain, serve, check` |
 | HTTP server | `part7/server.py` | stdlib `ThreadingHTTPServer` on 127.0.0.1 only; serves `web/`, the `api/` routes and the Part 6 proxy |
 | Job queue | `part7/jobs.py` | `SIMON7_GPU_WORKERS` threads (default 2), at most 8 jobs queued or running, one record per job on disk |
 | Jobs | `part7/processor.py`, `part7/chain.py` | trainer and follow jobs: normalize the upload with ffmpeg, then run the part chain with a doctor check on every hand-off |
 | Part adapters | `part7/parts/p1_keyframes.py` to `p6_catalog.py` | the exact argv for each part, run through `part7/runner.py` (own process group, timeout, key redaction in logs) |
 | GPU admission | `part7/gpu_lock.py` | Part 2's file lock plus a wait for 12288 MiB free (`nvidia-smi`); gives up after 30 min |
-| Pins | `part7/pins.py`, `parts.lock.json` | one commit per part; clones under `<state>/parts/<n>@<sha12>` |
+| Part modules | `.gitmodules`, `modules/part-1` to `modules/part-6` | git submodules on the latest `main` of each part repo |
 | Part 6 child | `part7/parts/p6_catalog.py` | `python3 -m part6 serve` on a free local port; Part 7 proxies `catalog/` to it |
 | People and groups | `part7/people.py`, `people_routes.py`, `group.py` | choose one person in a clip of several, or analyse a group |
 | Web app | `web/` | plain ES modules, no build step; `web/vendor/` holds the third-party files |
 
 ### The parts harness
 
-- `parts.lock.json` names each part's repo and 40-character commit (`sha`). Part 2 also records
-  `entry_point` (`backend` when its `run --help` offers `--backend`).
-- `python -m part7 pin --materialize` (`make pin`) clones each pinned commit, detached, to
-  `~/.local/state/simon-part-7/parts/<n>@<sha12>`. A clone already there must be at that commit or
-  the command stops. Git LFS files are not fetched (`GIT_LFS_SKIP_SMUDGE=1`).
-- `python -m part7 setup-parts` (`make setup-parts`) runs each part's own setup in its clone:
+- `.gitmodules` names each part's repo with `branch = main`. `make parts` runs `git submodule sync`,
+  `git submodule update --init --remote --recursive` (every module moves to the latest `main`) and
+  then `setup-parts`. There is no pin file; a fresh clone is `git clone --recursive`.
+- `python -m part7 parts-status [--check-remote]` prints each part's `path`, `sha`, `short`, `url`,
+  `branch` and `remote_sha` as JSON. With `--check-remote` it exits 3 when any part's remote `main`
+  differs from the checked-out sha and 0 when all are current (staging's `stale.sh` uses it).
+- `python -m part7 setup-parts` (run by `make parts`) runs each part's own setup in its module:
   Part 1 `make .venv/.installed`, Part 2 `uv sync`, Part 3 a `.venv` plus `pip install -r
   requirements.txt`, Part 5 `uv sync`; Parts 4 and 6 need none and get a contract check instead. It
   also probes Part 2's GPU venv (below) for CUDA and notes when the venv is missing.
-- `python -m part7 doctor-parts` runs each part's contract or help command at its pin.
+- `python -m part7 doctor-parts` runs each part's contract or help command at its checked-out commit.
 
 ## Prerequisites
 
 - Linux with `git`, `make` and Python 3.12 or newer (`pyproject.toml`).
 - [uv](https://docs.astral.sh/uv/) on `PATH` (the Makefile and the runner add `~/.local/bin`).
-- `ffmpeg` and `ffprobe` (every upload is normalized to H.264 MP4 and may be trimmed).
+- `ffmpeg` and `ffprobe` 5.1 or newer (every upload is normalized to H.264 MP4 and may be trimmed; a clip
+  with a missing or unbelievable frame rate is re-timed with `-fps_mode cfr`, which first shipped in 5.1).
+  `ffmpeg -version` prints the version.
 - Node 22 or newer, only for the browser and unit tests.
 - An NVIDIA GPU with CUDA and `nvidia-smi`. Each Part 2 call waits for 12288 MiB of free GPU memory;
   two jobs run at once only when free memory covers both. The timings below were measured on an
@@ -64,19 +67,19 @@ The journey has eight steps (`docs/design/specs/journey.md`):
 - Part 2's GPU environment. The server always asks Part 2 for `--backend gpu` and runs it with
   `~/.local/state/simon-part-2/venvs/gpu-cu128/bin/python` when that exists
   (`SIMON7_PART2_GPU_VENV` overrides the path); without it, Part 2 runs through its own `uv`
-  environment. Build it once from the Part 2 clone:
+  environment. Build it once from `modules/part-2`:
 
   ```bash
-  cd ~/.local/state/simon-part-7/parts/2@<sha12>   # after `make pin`
+  cd modules/part-2   # after `make parts`
   make setup-gpu    # bash envs/gpu-cu128/setup.sh
   make smoke-gpu    # one fixture frame on the GPU
   ```
 
   The script installs torch with CUDA 12.8 wheels into a uv-managed CPython 3.12 venv, clones SAM 3D
-  Body at the commit Part 2 pins, downloads the weights (SAM 3D Body, MoGe-2, ViTDet) and checks
+  Body at the commit Part 2 names, downloads the weights (SAM 3D Body, MoGe-2, ViTDet) and checks
   their SHA-256. It tries to build detectron2 for 45 minutes at most and falls back to the rtmlib
   person detector when the build fails. It writes nothing inside the repo. Part 2's `README.md` and
-  `CONTRACT.md` at the pin are the reference.
+  `CONTRACT.md` in `modules/part-2` are the reference.
 
 ## Keys
 
@@ -87,7 +90,7 @@ and each file mode 600. Values never appear in a log: `part7/runner.py` replaces
 
 | Key | Used for | Who reads it, and how |
 |---|---|---|
-| `MODEL_API_KEY` | Meta Model API: Part 1 keyframes and Part 2's `api-sam31` tracker | Part 7 checks the file before calling Part 1 or asking for `api-sam31`, then writes it to `<part 1 clone>/.env` (mode 600) for the length of the Part 1 call only. Part 2 reads its own key file (`PART2_KEY_DIR`, same default directory), the environment variable second. |
+| `MODEL_API_KEY` | Meta Model API: Part 1 keyframes and Part 2's `api-sam31` tracker | Part 7 checks the file before calling Part 1 or asking for `api-sam31`, then writes it to `<modules/part-1>/.env` (mode 600) for the length of the Part 1 call only. Part 2 reads its own key file (`PART2_KEY_DIR`, same default directory), the environment variable second. |
 | `HF_TOKEN` | the gated `facebook/sam3.1` weights for Part 2's `local-sam31` tracker | Part 2 only, from `PART2_KEY_DIR` or the environment variable |
 | `BASETEN_API_KEY` | Muse Spark phrasing of fault text in Part 5 | Part 5 only, from `~/.config/firm/operator-keys/BASETEN_API_KEY` or the file named by `PART5_BASETEN_KEY_FILE`; it logs usage in `~/.simon/baseten_usage.jsonl` |
 
@@ -101,12 +104,13 @@ phrasing; set `SIMON7_PHRASING=template` to ask for template text from the start
 
 1. Clone and install Part 7's own environment (it has no runtime dependencies; pytest for dev):
    ```bash
-   git clone https://github.com/moalborati/simon-part-7-stitching-app.git
+   git clone --recursive https://github.com/moalborati/simon-part-7-stitching-app.git
    cd simon-part-7-stitching-app
    make setup                 # uv sync
    ```
-2. Clone Parts 1 to 6 at the pinned commits: `make pin` (`uv run python -m part7 pin --materialize`).
-3. Set up each part: `make setup-parts`. It exits 1 and prints the failing part when a setup fails.
+2. Bring Parts 1 to 6 to the latest `main` and set each one up: `make parts`. It exits non-zero and
+   names the part when one fails. (A clone made without `--recursive` needs this step to fill `modules/`.)
+3. Check what is checked out: `uv run python -m part7 parts-status`.
 4. Build Part 2's GPU venv (Prerequisites above) and put the key files in place (Keys above).
 5. Start the server:
    ```bash
@@ -151,11 +155,10 @@ All read from the environment (`part7/config.py`, `part7/quota.py`, `part7/serve
 | `SIMON7_P2_WARM_WORKERS` | off | `1` starts one Part 2 `serve-worker` per job thread, keeping the 3D model loaded. Off because on the staging host the two warm workers held about 20 GB and follow-side tracking stalled behind them for 6 to 12 minutes. |
 | `SIMON7_PART1_TIMEOUT_S` | 90 | seconds the trainer job waits for Part 1; past it, the job falls back to keyframes every 10 frames instead of failing |
 | `SIMON7_LIMITS` | off | `on` enforces the daily caps (`SIMON7_DAILY_GPU` default 40 jobs, `SIMON7_DAILY_TRAINER` default 10) and the per-visitor caps (10 GPU and 3 trainer jobs a day). Jobs are counted either way under `<state>/quota/`. |
-| `SIMON7_STATE_DIR` | `~/.local/state/simon-part-7` | root for `parts/`, `videos/`, `dev/`, `check/` |
+| `SIMON7_STATE_DIR` | `~/.local/state/simon-part-7` | root for `videos/`, `dev/`, `check/` |
 | `SIMON7_KEYS_DIR` | `~/.config/firm/operator-keys` | where Part 7 looks for key files |
 | `SIMON7_PART2_GPU_VENV` | `~/.local/state/simon-part-2/venvs/gpu-cu128` | Part 2's GPU venv |
 | `SIMON7_GPU_LOCK_PATH` | `~/.local/state/simon-part-2/gpu.lock` | the GPU lock shared with Part 2 |
-| `SIMON7_LOCK_PATH` | `parts.lock.json` in the repo | another lock file (tests) |
 | `SIMON7_VIDEOS_MANIFEST` | `videos/manifest.json` | another test-video manifest |
 | `STAGING_BASE_PATH` | unset | default `--base-path`; when set, no default `--follow-url` is passed to Part 6 |
 
@@ -188,7 +191,8 @@ Job folders are removed 7 days after their last change. `job.json` holds `id`, `
 `error`, `result` (paths under `api/results/<id>/`) and the `created_at`, `started_at`,
 `finished_at` times. `GET api/jobs/<id>` returns the same record plus `queue_position`.
 
-Step logs are named after the call: `part1.log`, `part2.log`, `part2_track.log`,
+Step logs are named after the call: `part1.log`, `part2.log`, `part2_track.api.log` (the api-sam31
+tracker), `part2_track.log` (Part 2's default tracker order),
 `part3_part4.log`, `part3_part5.log`, `part4_animate.log`, `part5_analyse.log`, `part6_import.log`,
 and a `*_doctor_*` or `*_validate_*` log for each hand-off check. Each log holds the part's own output, redacted.
 
@@ -230,7 +234,7 @@ From Part 5 schema 1.4.0 a take is never refused. A problem with the take become
 | `moving_part_out_of_frame` | Part 5 | the body part the trainer's example moves is out of frame | the framing; Part 5 gets the trainer's `skeleton.json` as `--expected-visibility` |
 | `not_enough_visible` | Part 5 | too little of the body is in frame to score | the framing; `part3_part5.log` and the follower skeleton |
 | `no_usable_measures` | Part 5, or Part 7 when Part 3 or Part 5 could not run on the take | nothing could be measured against the trainer | `part3_part5.log` and `part5_analyse.log`; a Part 7 analysis has `"source": "part7"` and the reason in `warnings[0].reason` |
-| `no_person` | Part 7 | Part 2 found no person | `part2.log` and `part2_track.log` |
+| `no_person` | Part 7 | Part 2 found no person | `part2.log`, `part2_track.api.log` and `part2_track.log` |
 
 Part 7 writes its own analysis (status `ok`, score 0, grade F) only when the failure is about the
 take. A busy GPU, a missing tool or a timeout stays a failed job (`part7/chain.py`,
@@ -308,23 +312,25 @@ The API underneath, for scripting: `POST api/uploads` (raw body, at most 95,000,
 - Uploads: at most 95,000,000 bytes and 90 s raw; the clip sent to the parts is 1 to 60 s after
   trimming.
 
-## Re-pinning to newer parts
+## Updating the parts
+
+Parts always follow the latest `main` of their repos, so updating is one command:
 
 ```bash
-make repin       # pin --update --materialize, setup-parts, then make chain
+make parts       # sync, submodule update --remote, setup-parts
+make chain       # optional: run the whole chain on the new parts
 ```
 
-Or one part at a time:
+`make parts` is idempotent per commit. To see whether a part has moved without changing anything, run
+`uv run python -m part7 parts-status --check-remote` (exit 3 means a remote `main` is ahead). Staging
+does this on a timer and redeploys itself within about 10 minutes of a part push.
 
-```bash
-uv run python -m part7 pin --update 5 --materialize   # re-read Part 5's upstream main
-uv run python -m part7 setup-parts
-uv run python -m part7 doctor-parts
-```
+When a part push breaks Part 7:
 
-`pin --update` with no part names updates all six. It reads `refs/heads/main` of each repo with
-`git ls-remote`, writes the new commit to `parts.lock.json` and clones it next to the old clone
-(old clones stay under `<state>/parts/` until removed). When a local checkout of a part exists at
-`~/simon-part-<n>`, its last `STATUS:` line is copied into the lock's `status` field. Restart the
-server afterwards: it reads the lock at start. Then run `make test`, `make chain` and `make check-7`,
-and commit `parts.lock.json`.
+1. `make parts`, then `make test` and `make check-7` to reproduce.
+2. Read the failing part's own log in the job record, and `uv run python -m part7 doctor-parts` for
+   its contract check.
+3. Fix it where it belongs: in the part repo (tell its owner), or in Part 7's adapter under
+   `part7/parts/` when the part changed its contract on purpose.
+4. To investigate against the last good commit, check it out inside the module
+   (`git -C modules/part-N checkout <sha>`). The next `make parts` moves it back to `main`.

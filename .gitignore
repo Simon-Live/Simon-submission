@@ -8,3 +8,6 @@ dist/
 out/
 *.mp4
 !fixtures/**/*.json
+# drive screenshots of drive_capture.mjs and drive_reference.mjs: rewritten on every run, compared by no test
+tests/part7/screens/capture/
+tests/part7/screens/[0-9]-*.png

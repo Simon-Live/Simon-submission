@@ -153,3 +153,26 @@
   border: 1px solid var(--sr-line); border-radius: 10px; background: var(--sr-raised); color: var(--sr-text); font: inherit; text-align: left; cursor: pointer; }
 .sr-tl-points { color: var(--sr-f); font-weight: 650; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .sr-tl-clean, .sr-tl-sim { margin: 6px 0 0; color: var(--sr-muted); font-size: 14px; }
+
+/* what to work on (Part 5 ADR-0014): ranked cues near the score; the cue on faults and timeline misses */
+.sr-insights { background: var(--sr-surface); border: 1px solid var(--sr-line); border-radius: 18px; padding: 18px; }
+.sr-insight-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sr-insight {
+  width: 100%; min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px 10px 14px; border: 1px solid var(--sr-line); border-radius: 14px; background: var(--sr-raised);
+  color: var(--sr-text); font: inherit; text-align: left; cursor: pointer; transition: background 0.12s ease, border-color 0.12s ease;
+}
+.sr-insight:hover { background: #222d3d; }
+.sr-insight:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.sr-insight[aria-pressed="true"] { border-color: var(--sr-hot); box-shadow: inset 4px 0 0 var(--sr-hot); }
+.sr-insight-words { display: grid; gap: 2px; min-width: 0; }
+.sr-insight-cue { font-size: 17px; font-weight: 700; text-wrap: balance; }
+.sr-insight-why { color: var(--sr-muted); font-size: 14px; text-wrap: pretty; }
+.sr-insight-chip { flex: none; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px;
+  color: var(--sr-f); background: color-mix(in srgb, var(--sr-f) 14%, transparent); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sr-insight-chip.sr-tempo { color: var(--sr-trainer); background: color-mix(in srgb, var(--sr-trainer) 16%, transparent); }
+.sr-cue { color: var(--sr-you); font-size: 15px; font-weight: 700; }
+.sr-tl-words { display: grid; gap: 2px; min-width: 0; }
+.sr-tl-words .sr-cue { font-size: 14px; }
+.sr-tl-tempo { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--sr-trainer) 12%, var(--sr-raised));
+  color: var(--sr-text); font-size: 14px; font-weight: 600; }

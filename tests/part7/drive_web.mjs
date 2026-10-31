@@ -37,6 +37,12 @@ const page = await ctx.newPage();
 page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
 
+// The trim step ends every take; its Continue button hands the range to the people check.
+const continueFromTrim = async () => {
+  await tid(page, "trim-continue").waitFor({ timeout: 20000 });
+  await tid(page, "trim-continue").click();
+};
+
 let step = "start";
 try {
   // 1. Home
@@ -90,30 +96,30 @@ try {
   assert.equal(await page.locator("[data-testid=trainer-video]").count(), 0);
   await shot(page, "04-watch-not-found");
 
-  // 2. Record: camera
+  // 2. Record: camera. The take flow is record, trim, people check, details, save (take-flow.js).
   step = "record-camera";
   await page.goto(`${BASE}#/record`);
   await tid(page, "cam-start").waitFor();
   await shot(page, "05-record");
+  assert.equal(await tid(page, "preview").evaluate((v) => getComputedStyle(v).transform), "matrix(-1, 0, 0, 1, 0, 0)");
+  await tid(page, "countdown-select").selectOption("0");
+  await tid(page, "duration-select").selectOption("5");
+  await tid(page, "cam-start").click();
+  await continueFromTrim();
+  await tid(page, "name").waitFor();
+  assert.equal(await page.locator("[data-testid=people]").count(), 0, "one person skips the picker");
   await tid(page, "save").click();
   await tid(page, "name-error").waitFor();
   assert.equal(Object.keys((await state()).jobs).length, 0);
   assert.match(page.url(), /#\/record/);
   await shot(page, "06-record-name-error");
-  await tid(page, "cam-start").click();
-  await tid(page, "cam-stop").waitFor();
-  await page.waitForFunction(() => /^0:0[2-9]/.test(document.querySelector("[data-testid=timer]").textContent), null, { timeout: 8000 });
-  assert.match(await tid(page, "timer").innerText(), / \/ 1:00$/);
-  assert.equal(await tid(page, "preview").evaluate((v) => getComputedStyle(v).transform), "matrix(-1, 0, 0, 1, 0, 0)");
-  await shot(page, "07-record-recording");
-  await tid(page, "cam-stop").click();
-  await tid(page, "take-preview").waitFor();
   await tid(page, "name").fill("Dumbbell lateral raise");
   await shot(page, "08-record-take");
   await tid(page, "save").click();
   await page.waitForURL(/#\/job\/job1/);
   const st = await state();
   assert.ok(st.uploads[0].size > 1000 && st.uploads[0].type.startsWith("video/webm"), JSON.stringify(st.uploads));
+  assert.equal(st.people_jobs, 1, "the people check ran once, after the trim");
 
   // 5. Job stages
   step = "job";
@@ -136,7 +142,7 @@ try {
   writeFileSync(file, videoBytes);
   await page.goto(`${BASE}#/record`);
   await tid(page, "upload").setInputFiles(file);
-  await tid(page, "take-info").waitFor();
+  await continueFromTrim();
   await tid(page, "name").fill("Fails");
   await tid(page, "save").click();
   await page.waitForURL(/#\/job\/bad/);
@@ -160,11 +166,11 @@ try {
   // 4. Follow
   step = "follow";
   await page.goto(`${BASE}#/follow/lateral-raise`);
-  await tid(page, "analyse").waitFor();
-  await tid(page, "analyse").click();
-  await tid(page, "form-error").waitFor();
+  await tid(page, "upload").waitFor();
+  assert.equal(await tid(page, "analyse").isVisible(), false, "Analyse waits for a take");
   await tid(page, "upload").setInputFiles(file);
-  await tid(page, "take-info").waitFor();
+  await continueFromTrim();
+  await tid(page, "analyse").waitFor();
   await shot(page, "14-follow");
   await tid(page, "analyse").click();
   await page.waitForURL(/#\/job\/job\d+/);

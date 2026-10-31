@@ -1,0 +1,227 @@
+// Playwright drive of both record screens (TICKET-063): trainer `#/record` and follower `#/follow/e1` at 412x915
+// and 1280x800 with Chromium's fake camera. Proves, without clicking anything first, that the live preview shows
+// on open; that no person picture on the follower screen uses `object-fit: cover`; that the trainer reference and
+// the camera never overlap; that the recorded file keeps the camera track's full frame (ffprobe on the upload);
+// and that the capture events reach api/client-log. A refused camera keeps Try again and Upload.
+//   PLAYWRIGHT_DIR=/path/to/node_modules/playwright WEB_DIR=web FAKE_CAM=<y4m> \
+//     node tests/part7/drive_capture.mjs <out-dir>
+// WEB_DIR lets the same drive run against an older web/ to record the state before a fix (failures are listed,
+// the drive goes on, and the exit code is 1).
+import http from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const WEB = path.resolve(process.env.WEB_DIR || path.resolve(here, "../../web"));
+const out = path.resolve(process.argv[2] || path.join(here, "screens", "capture"));
+fs.mkdirSync(out, { recursive: true });
+const work = fs.mkdtempSync(path.join(os.tmpdir(), "simon-cap-"));
+const CAM = process.env.FAKE_CAM || "";
+
+// A portrait trainer clip (a phone held upright): from the fake camera clip when given, else a test pattern.
+const MP4 = path.join(work, "trainer.mp4");
+const src = CAM ? ["-ss", "1", "-t", "5", "-i", CAM, "-vf", "crop=ih*9/16:ih,scale=360:640"] : ["-f", "lavfi", "-i", "testsrc2=size=360x640:rate=25:duration=5"];
+execFileSync("ffmpeg", ["-v", "error", ...src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "5", "-movflags", "+faststart", "-y", MP4]);
+const mp4 = fs.readFileSync(MP4);
+const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_DIR || "playwright");
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
+
+const logs = [];
+const uploads = [];
+const probe = (file) => {
+  const o = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", file]).toString().trim();
+  const [w, hgt] = o.split(",").map(Number);
+  return { width: w, height: hgt };
+};
+const body = (req) => new Promise((resolve) => { const parts = []; req.on("data", (c) => parts.push(c)); req.on("end", () => resolve(Buffer.concat(parts))); });
+const server = http.createServer(async (req, res) => {
+  const pathname = decodeURIComponent(new URL(req.url, "http://x").pathname);
+  if (req.method === "POST" && pathname === "/api/client-log") {
+    logs.push(JSON.parse((await body(req)).toString()));
+    res.writeHead(204).end();
+    return;
+  }
+  if (req.method === "POST" && pathname === "/api/uploads") { // the real file, read back as the server would
+    const file = path.join(work, `up${uploads.length}.webm`);
+    fs.writeFileSync(file, await body(req));
+    const dims = probe(file);
+    uploads.push(dims);
+    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ upload_id: `u${uploads.length}`, duration_ms: 4000, ...dims }));
+    return;
+  }
+  if (pathname === "/catalog/api/entries/e1/trainer.mp4") {
+    const m = /bytes=(\d+)-(\d*)/.exec(req.headers.range || "");
+    if (!m) { res.writeHead(200, { "content-type": "video/mp4", "accept-ranges": "bytes", "content-length": mp4.length }).end(mp4); return; }
+    const a = Number(m[1]), b = m[2] ? Number(m[2]) : mp4.length - 1;
+    res.writeHead(206, { "content-type": "video/mp4", "accept-ranges": "bytes", "content-range": `bytes ${a}-${b}/${mp4.length}`, "content-length": b - a + 1 });
+    res.end(mp4.subarray(a, b + 1));
+    return;
+  }
+  const rel = pathname.replace(/^\//, "") || "index.html";
+  const file = path.resolve(WEB, rel);
+  if (!file.startsWith(WEB) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404).end("no"); return; }
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream" });
+  fs.createReadStream(file).pipe(res);
+});
+await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const BASE = `http://127.0.0.1:${server.address().port}/`;
+
+const failures = [];
+const check = (name, ok, extra = "") => {
+  console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? ` (${extra})` : ""}`);
+  if (!ok) failures.push(name);
+};
+
+const browser = await chromium.launch({
+  args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required",
+    ...(CAM ? [`--use-file-for-fake-video-capture=${CAM}`] : [])],
+});
+
+// Every visible video or img in the capture area and the reference panel, with its fit and displayed picture.
+const pictures = (page) => page.evaluate(() => {
+  const els = [...document.querySelectorAll(".capture video, .capture img, .ref video, .ref img, .trim video, .rc-over img")];
+  return els.filter((el) => el.getClientRects().length && getComputedStyle(el).display !== "none" && !el.hidden).map((el) => {
+    const r = el.getBoundingClientRect();
+    const nw = el.videoWidth || el.naturalWidth || 0, nh = el.videoHeight || el.naturalHeight || 0;
+    const fit = getComputedStyle(el).objectFit;
+    let pic = { x: r.x, y: r.y, width: r.width, height: r.height };
+    if (nw && nh && fit === "contain") {
+      const s = Math.min(r.width / nw, r.height / nh);
+      pic = { x: r.x + (r.width - nw * s) / 2, y: r.y + (r.height - nh * s) / 2, width: nw * s, height: nh * s };
+    }
+    return { id: el.dataset.testid || el.className || el.tagName, fit, natural: `${nw}x${nh}`, pic };
+  });
+});
+const overlap = (a, b) => Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) *
+  Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+
+async function noCover(page, where) {
+  const list = await pictures(page);
+  const cover = list.filter((p) => p.fit === "cover");
+  check(`${where}: no person picture uses object-fit cover`, cover.length === 0, cover.map((p) => p.id).join(", ") || `${list.length} checked`);
+  return list;
+}
+
+async function run(role, viewport) {
+  const tag = `${role}-${viewport.width}`;
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 }); // no camera grant: a first visit
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+  page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
+  await page.route("**/api/config", (r) => r.fulfill({ json: { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } } }));
+  await page.route("**/catalog/api/entries/e1", (r) => r.fulfill({ json: { id: "e1", name: "Lateral raise", video_uri: "trainer.mp4" } }));
+  await page.route("**/catalog/api/entries", (r) => r.fulfill({ json: { entries: [] } }));
+  await page.route("**/api/labels", (r) => r.fulfill({ json: {} }));
+  await page.route("**/api/people", (r) => r.fulfill({ json: { job: "pj1" } }));
+  await page.route("**/api/jobs/pj1", (r) => r.fulfill({ json: { id: "pj1", kind: "people", status: "done", result: { people: [], auto_id: null } } }));
+  const tid = (id) => page.getByTestId(id);
+  const shot = (name) => page.screenshot({ path: path.join(out, `${tag}-${name}.png`) });
+  const since = logs.length;
+
+  await page.goto(`${BASE}${role === "trainer" ? "#/record" : "#/follow/e1"}`);
+  await tid("preview").waitFor({ state: "attached" });
+  const live = await page.waitForFunction(() => document.querySelector('[data-testid="preview"]').videoWidth > 0, null, { timeout: 8000 })
+    .then(() => true, () => false);
+  check(`${tag}: live preview shows on open, before Record`, live);
+  if (role === "follower") await page.waitForFunction(() => document.querySelector('[data-testid="reference-video"]').readyState >= 1, null, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(400);
+  await shot("1-open");
+  const open = await noCover(page, `${tag} open`);
+  if (role === "follower") {
+    const cam = open.find((p) => p.id === "preview"), ref = await tid("reference").boundingBox();
+    check(`${tag}: the trainer panel does not cover the camera picture`, cam && ref && overlap(cam.pic, ref) < 1);
+    await tid("reference-swap").click();
+    await page.waitForTimeout(300);
+    await shot("2-swapped");
+    const sw = await noCover(page, `${tag} swapped`);
+    const cam2 = sw.find((p) => p.id === "preview"), ref2 = await tid("reference").boundingBox();
+    check(`${tag}: swapped, the camera picture is not covered`, cam2 && ref2 && overlap(cam2.pic, ref2) < 1);
+    check(`${tag}: swapped, the trainer is the larger view`, cam2 && ref2 && ref2.width > cam2.pic.width);
+    await tid("reference-swap").click();
+  } else {
+    check(`${tag}: no trainer panel on Record`, (await tid("reference").count()) === 0);
+  }
+
+  await tid("countdown-select").selectOption("3");
+  await tid("duration-select").selectOption("5");
+  await tid("cam-start").click();
+  await tid("countdown").waitFor();
+  if (role === "follower") await tid("reference-first").waitFor({ timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  await shot("3-countdown");
+  await noCover(page, `${tag} countdown`);
+  if (role === "follower") {
+    const inside = await page.evaluate(() => {
+      const img = document.querySelector('[data-testid="reference-first"]'), cam = document.querySelector(".cam");
+      if (!img) return false;
+      const a = img.getBoundingClientRect(), b = cam.getBoundingClientRect();
+      return a.top >= b.top - 0.5 && a.left >= b.left - 0.5 && a.bottom <= b.bottom + 0.5 && a.right <= b.right + 0.5;
+    });
+    check(`${tag}: the countdown's first frame is whole inside the camera box`, inside);
+  }
+  await page.waitForFunction(() => !document.querySelector('[data-testid="rec-timer"]').hidden, null, { timeout: 6000 });
+  await page.waitForTimeout(1200);
+  await shot("4-recording");
+  await noCover(page, `${tag} recording`);
+
+  await tid("trim-continue").waitFor({ timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector(".trim")?.dataset.duration, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(800);
+  await shot("5-trim");
+  await noCover(page, `${tag} trim`);
+  const sizes = await page.evaluate(() => { const c = document.querySelector(".cam"); return { track: c.dataset.trackSize || "", take: c.dataset.takeSize || "" }; });
+  check(`${tag}: the recorded take keeps the camera frame`, sizes.take !== "" && sizes.take === sizes.track, `track ${sizes.track}, take ${sizes.take}`);
+
+  await tid("trim-continue").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="people"], [data-testid="people-error"], .save-step:not([hidden])'), null, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  const up = uploads[uploads.length - 1];
+  check(`${tag}: the uploaded file has the camera frame (ffprobe)`, up && `${up.width}x${up.height}` === sizes.track, up ? `${up.width}x${up.height}` : "no upload");
+  const events = logs.slice(since).map((l) => l.event);
+  for (const ev of ["camera_opened", "recorder_started", "take_recorded", "take_dimensions", "trim_chosen", "upload_done"]) {
+    check(`${tag}: client log ${ev}`, events.includes(ev));
+  }
+  const bad = logs.slice(since).filter((l) => !["info", "warn", "error"].includes(l.level) || l.event.length > 64 || JSON.stringify(l.detail).length > 4096 || typeof l.page !== "string");
+  check(`${tag}: client log bodies follow the contract`, bad.length === 0 && events.length > 0, `${events.length} events`);
+  const opened = logs.slice(since).find((l) => l.event === "camera_opened");
+  check(`${tag}: camera_opened has the frame size and no device label`, Boolean(opened) && !("label" in opened.detail)
+    && opened.detail.width > 0 && opened.detail.height > 0, opened ? JSON.stringify(opened.detail) : "missing");
+  check(`${tag}: no console errors`, errors.length === 0, errors.join("; "));
+  await ctx.close();
+}
+
+async function refused() {
+  const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await ctx.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("denied", "NotAllowedError"));
+  });
+  const page = await ctx.newPage();
+  await page.route("**/api/config", (r) => r.fulfill({ json: { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } } }));
+  const since = logs.length;
+  await page.goto(`${BASE}#/record`);
+  await page.getByTestId("cam-open").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  const text = await page.getByTestId("cam-open").textContent().catch(() => "");
+  check("refused: Try again shows and Upload stays", text === "Try again" && await page.getByTestId("upload").count() === 1, text);
+  await page.waitForTimeout(300);
+  check("refused: client log camera_refused", logs.slice(since).some((l) => l.event === "camera_refused" && l.level === "warn"));
+  await page.screenshot({ path: path.join(out, "refused-412.png") });
+  await ctx.close();
+}
+
+for (const viewport of [{ width: 412, height: 915 }, { width: 1280, height: 800 }]) {
+  for (const role of ["follower", "trainer"]) {
+    try { await run(role, viewport); } catch (e) { check(`${role}-${viewport.width}: drive ran`, false, e.message.split("\n")[0]); }
+  }
+}
+try { await refused(); } catch (e) { check("refused: drive ran", false, e.message.split("\n")[0]); }
+fs.writeFileSync(path.join(out, "client-log.json"), JSON.stringify(logs, null, 2));
+await browser.close();
+server.close();
+fs.rmSync(work, { recursive: true, force: true });
+console.log(failures.length ? `FAIL drive_capture: ${failures.length} failed` : "PASS drive_capture");
+process.exit(failures.length ? 1 : 0);

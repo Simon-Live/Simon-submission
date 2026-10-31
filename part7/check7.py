@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import socket
 import subprocess
 import sys
@@ -21,7 +20,7 @@ from typing import Any, Callable
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
-from part7 import compare, config, movement, pins, runner, videos
+from part7 import compare, config, gpu_lock, movement, modules, runner, videos
 from part7.parts import p2_pose, p3_skeleton, p4_animate, p6_catalog
 
 EXIT_OK = 0
@@ -157,9 +156,9 @@ def _step_record(path: str, clip: str, step: dict[str, Any]) -> dict[str, Any]:
 
 
 class DirectPath:
-    """Parts 2 to 5 by their CLIs at the pins, with the argv the app path uses."""
+    """Parts 2 to 5 by their CLIs in the modules, with the argv the app path uses."""
 
-    def __init__(self, lock: pins.Lock, work: Path, state: Path | None = None) -> None:
+    def __init__(self, lock: modules.Modules, work: Path, state: Path | None = None) -> None:
         self.lock = lock
         self.work = Path(work)
         self.state = state
@@ -178,7 +177,7 @@ class DirectPath:
         return pose
 
     def _p3(self, argv_tail: list[str], work: Path, clip: Path, flags: list[str]) -> Path:
-        clone = self.lock.path("3", state=self.state)
+        clone = self.lock.path("3")
         argv = [p3_skeleton._python_for(clone), "-m", "part3", "run", *argv_tail]
         for flag, value in flags:
             if clone_supports(clone, flag):
@@ -214,7 +213,7 @@ class DirectPath:
         follower = work / "follower.json"
         tail = ["--in", str(pose), "--out", str(follower), "--view", "part5", "--fps", "30"]
         self._p3(tail, work, clip, [("--body", BODY)])
-        clone = self.lock.path("5", state=self.state)
+        clone = self.lock.path("5")
         out = work / "analysis.json"
         argv = ["uv", "run", "python", "-m", "part5", "analyse", "--expected", str(animation),
                 "--follower", str(follower), "--out", str(out)]
@@ -331,7 +330,7 @@ def run_check(
     clips: list[dict[str, Any]],
     clip_path: Callable[[dict[str, Any]], Path],
     movement_info: dict[str, Any],
-    lock: pins.Lock,
+    lock: modules.Modules,
     entry_facts: Callable[[dict[str, Any], Path], dict[str, Any]],
     app_pins: dict[str, str] | None = None,
     pose_diff: Callable[[Path, Path], tuple[bool, float]] | None = None,
@@ -364,7 +363,7 @@ def run_check(
             d["pose3d_identical"], d["pose3d_max_joint_diff_m"] = pose_diff(Path(a["pose3d"]), Path(d["pose3d"]))
         takes.append(take_metrics(clip, a, d))
     steps = list(getattr(direct, "steps", []))
-    short = lock.pins_short()
+    short = lock.shas_short()
     pins_ok = (app_pins is None or dict(app_pins) == short) and all(
         s.get("commit") == short.get(str(s.get("part"))) for s in steps
     )
@@ -386,22 +385,19 @@ def run_check(
 
 
 def gpu_visible() -> bool:
-    if not shutil.which("nvidia-smi"):
+    smi = gpu_lock.nvidia_smi_path()
+    if not smi:
         return False
-    res = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, check=False)
+    res = subprocess.run([smi, "-L"], capture_output=True, text=True, check=False)
     return res.returncode == 0 and "GPU" in res.stdout
 
 
-def prerequisites(lock: pins.Lock, state: Path | None = None) -> str | None:
+def prerequisites(lock: modules.Modules, state: Path | None = None) -> str | None:
     """Return the stderr line naming what is missing, or None."""
     if not gpu_visible():
         return "check-7: nvidia-smi found no GPU"
-    for part in pins.PART_IDS:
-        try:
-            ok = lock.path(part, state=state).is_dir()
-        except pins.PinError:
-            ok = False
-        if not ok:
+    for part in modules.PART_IDS:
+        if not lock.path(part).is_dir():
             return f"check-7: run make setup-parts (part {part} missing)"
     problems = videos.verify_all(state=state)
     if problems:
@@ -434,7 +430,7 @@ def _wait_healthy(client: AppClient, proc: subprocess.Popen[str]) -> None:
     raise AppError("check-7: the app did not start")
 
 
-def _entry_facts(run_dir: Path, lock: pins.Lock) -> Callable[[dict[str, Any], Path], dict[str, Any]]:
+def _entry_facts(run_dir: Path, lock: modules.Modules) -> Callable[[dict[str, Any], Path], dict[str, Any]]:
     app_state = run_dir / "app"
 
     def facts(app_t: dict[str, Any], _clip: Path) -> dict[str, Any]:
@@ -475,7 +471,7 @@ def _app_input_sha(app_state: Path) -> Callable[[str, Path], str]:
 
 def cli_check() -> int:
     """Entry point of `part7 check`: one JSON on stdout, logs on stderr, exit 0 only on pass."""
-    lock = pins.load()
+    lock = modules.load()
     missing = prerequisites(lock)
     if missing:
         print(missing, file=sys.stderr)
@@ -488,7 +484,8 @@ def cli_check() -> int:
     run_dir = config.check_dir() / stamp
     (run_dir / "app").mkdir(parents=True, exist_ok=True)
     port = _free_port()
-    env = {**os.environ, "SIMON7_PHRASING": PHRASING}
+    # TICKET-067: the direct path reads the test clip as is, so the app keeps its size (`inputs_identical`).
+    env = {**os.environ, "SIMON7_PHRASING": PHRASING, "SIMON7_CLIP_MAX_SIDE": "0"}
     proc = subprocess.Popen(
         [sys.executable, "-m", "part7", "serve", "--port", str(port), "--state", str(run_dir / "app")],
         cwd=str(config.REPO_ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

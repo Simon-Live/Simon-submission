@@ -52,6 +52,67 @@ async function request(url, init) {
   return body;
 }
 
+export const LOG_LEVELS = ["info", "warn", "error"];
+export const LOG_EVENT_MAX = 64;
+export const LOG_DETAIL_MAX = 4096; // bytes of `detail` as compact UTF-8 JSON (part7/client_log.py DETAIL_MAX)
+export const LOG_BODY_MAX = LOG_DETAIL_MAX + 1024; // bytes of the whole body (client_log.py BODY_MAX)
+export const LOG_PAGE_MAX = 200; // the server keeps this many characters of `page`
+const LOG_MARGIN = 64; // number formatting may differ between JSON.stringify and Python's json.dumps
+
+const utf8 = new TextEncoder();
+/** Bytes of `text` as UTF-8, how the server measures. */
+export const utf8Bytes = (text) => utf8.encode(text).length;
+
+/** The longest prefix of `text` (whole code points) for which `fits(prefix)` holds; binary search. */
+function longestFitting(text, fits) {
+  const chars = Array.from(text);
+  let lo = 0;
+  let hi = chars.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (fits(chars.slice(0, mid).join(""))) lo = mid; else hi = mid - 1;
+  }
+  return chars.slice(0, lo).join("");
+}
+
+/**
+ * The api/client-log body: level checked, event cut to 64 chars, page to 200, and `detail` at most 4 KB as
+ * UTF-8 JSON, so quotes (escaped to two bytes) or non-ASCII text (two to four bytes) never make a 413.
+ */
+export function clientLogBody(level, event, detail, page = "") {
+  let json = "{}";
+  try { json = JSON.stringify(detail && typeof detail === "object" ? detail : { value: detail }) || "{}"; } catch { json = "{}"; }
+  const body = {
+    level: LOG_LEVELS.includes(level) ? level : "info",
+    event: Array.from(String(event || "event")).slice(0, LOG_EVENT_MAX).join(""), // code points, as the server counts
+    detail: JSON.parse(json),
+    page: Array.from(String(page || "")).slice(0, LOG_PAGE_MAX).join(""),
+  };
+  const detailMax = LOG_DETAIL_MAX - LOG_MARGIN;
+  if (utf8Bytes(json) > detailMax) {
+    const head = longestFitting(json, (h) => utf8Bytes(JSON.stringify({ truncated: true, head: h })) <= detailMax);
+    body.detail = { truncated: true, head };
+  }
+  const bodyMax = LOG_BODY_MAX - LOG_MARGIN;
+  if (utf8Bytes(JSON.stringify(body)) > bodyMax) { // a page of escaped characters (6 bytes each) can still pass it
+    body.page = longestFitting(body.page, (p) => utf8Bytes(JSON.stringify({ ...body, page: p })) <= bodyMax);
+  }
+  return body;
+}
+
+/**
+ * Fire and forget: POST one client event to api/client-log so the server log shows what the browser saw
+ * (camera, recorder, take size, trim, upload). Never throws and never blocks the caller.
+ */
+export function clientLog(level, event, detail = {}) {
+  try {
+    const page = globalThis.location ? globalThis.location.hash : "";
+    const body = JSON.stringify(clientLogBody(level, event, detail, page));
+    const sent = fetch("api/client-log", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true });
+    if (sent && typeof sent.catch === "function") sent.catch(() => {});
+  } catch { /* logging must never break the screen */ }
+}
+
 const postJSON = (url, data) => request(url, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -70,6 +131,7 @@ export function getConfig() {
 }
 
 export const getHealth = () => request("api/health");
+export const getVersion = () => request("api/version");
 export const listEntries = async () => (await request("catalog/api/entries")).entries || [];
 export const getEntry = (id) => request(`catalog/api/entries/${encodeURIComponent(id)}`);
 export const entryFileUrl = (id, file) =>

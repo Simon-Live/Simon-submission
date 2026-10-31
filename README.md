@@ -20,6 +20,16 @@ The Simon app: pick (or record) an expected movement from the catalog → watch 
 
 Black-box rule is strictest here: this repo calls the other parts through their files/demos only. No importing another part's code.
 
+## How Part 7 uses Parts 1 to 6
+
+Parts 1 to 6 are git submodules at `modules/part-1` to `modules/part-6`. Each one follows the latest `main` of its the team part repo. There is no pin file and nothing to reconcile: whatever the part repos publish is what Part 7 runs. Part 7 still reads them only through their CLIs and shared files.
+
+- **Clone:** `git clone --recursive https://github.com/moalborati/simon-part-7-stitching-app.git`. Without `--recursive`, run `make parts` after cloning.
+- **Update and set up the parts:** `make parts` brings every module to the latest `main` and sets each part up. It is safe to repeat: a part that has not moved is skipped. It stops and names the part when one fails.
+- **See what is checked out:** `uv run python -m part7 parts-status` prints each part's path, commit, URL and branch as JSON. Add `--check-remote` to also read each part's remote `main`; it exits 3 when any part has moved on and 0 when all are current.
+- **When a part pushes:** staging notices and redeploys itself within about 10 minutes. It runs `make parts` and restarts the app on the new commits. If `make parts` fails, the old app keeps running.
+- **When a part push breaks Part 7:** run `make parts`, then `make test` and `make check-7` to see the failure. The fix belongs in the part repo (ask its owner) or, if Part 7 must adapt to a changed contract, in Part 7's adapter under `part7/parts/`. To get back to a working state right away, check out the last good commit inside that module (`git -C modules/part-N checkout <sha>`); `make parts` moves it forward again, so this is for a short investigation only.
+
 ## Frontier model
 
 none (stitches Parts 1–6 through their shared files)
@@ -37,7 +47,7 @@ Done-check: `make check-7` prints a metrics JSON and exits 0 only when every thr
 
 ## Develop and debug
 
-- [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md): set up a host from a fresh clone, run the app (`make dev`), debug a job, run the tests, re-pin the parts.
+- [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md): set up a host from a fresh clone, run the app (`make dev`), debug a job, run the tests, update the parts.
 - [docs/design/](docs/design/README.md): the specs and architecture decisions behind the code.
 
 ## Rules

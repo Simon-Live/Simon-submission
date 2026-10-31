@@ -1,9 +1,44 @@
 // Score timeline (Part 5 ADR-0013): the take window by window, so the score can be justified. Part 5 scores
 // each rep (or each ~5 s slice) and the take's score is their mean; every miss lists the points it cost.
+// From Part 5 schema 1.5.0 (ADR-0014) each miss has a `cue` and each window a `tempo` cue; both show when present.
 // Part 7 shows `score.timeline` as written and computes nothing. Older pins have no timeline: nothing shows.
 import { el } from "./score.js";
 
 const secs = (t) => `${Number(t).toFixed(1)} s`;
+
+// Part 5 CONTRACT "Highlight faults[].joints": a generic joint of side `both` is its left and right joint;
+// the centre joints name the joints that carry them.
+const CENTRE_JOINTS = {
+  spine: ["left_shoulder", "right_shoulder", "left_hip", "right_hip"],
+  shoulders: ["left_shoulder", "right_shoulder"],
+  neck: ["nose", "left_shoulder", "right_shoulder"],
+};
+
+/** The canonical joints to highlight for a miss or an insight `{joint, side, cue}`: the matching fault's own
+ * `joints` when the analysis has one with the same cue, else from `joint` and `side`. */
+export function jointsFor(item, analysis) {
+  if (!item) return [];
+  const fault = item.cue && ((analysis && analysis.faults) || []).find((f) => f.cue === item.cue && Array.isArray(f.joints));
+  if (fault) return fault.joints;
+  const j = item.joint;
+  if (!j) return [];
+  if (CENTRE_JOINTS[j]) return CENTRE_JOINTS[j];
+  if (item.side === "both" && !/^(left|right)_/.test(j)) return [`left_${j}`, `right_${j}`];
+  return [j];
+}
+
+/** "37% of the trainer's time" or "2.4 times the trainer's time" for a Part 5 tempo ratio. */
+export function tempoShare(ratio) {
+  const r = Number(ratio);
+  return r >= 1 ? `${r.toFixed(1)} times the trainer's time` : `${Math.round(r * 100)}% of the trainer's time`;
+}
+
+/** The window's tempo line (Part 5 ADR-0014), or null when the window has no tempo cue. */
+export function tempoLine(w) {
+  const t = w && w.tempo;
+  if (!t || !t.cue || t.ratio == null) return null;
+  return `${t.cue}: this took ${tempoShare(t.ratio)}.`;
+}
 
 /** The windows of the score timeline, or [] when the analysis has none. */
 export function timelineOf(analysis) {
@@ -80,18 +115,22 @@ export function renderTimeline(root, analysis, getCompare = () => null) {
     }
     head.append(el("span", { class: "sr-tl-value", "data-grade": w.grade, text: ` ${w.value}/100 (${w.grade})` }));
     detail.append(head);
+    const tempo = tempoLine(w);
+    if (tempo) detail.append(el("p", { class: "sr-tl-tempo", "data-testid": `timeline-${i}-tempo`, text: tempo }));
     const misses = w.misses || [];
     if (!misses.length) detail.append(el("p", { class: "sr-tl-clean", text: "No misses here." }));
     const list = el("ul", { class: "sr-tl-misses" });
     misses.forEach((m, k) => {
+      const words = el("span", { class: "sr-tl-words" });
+      if (m.cue) words.append(el("span", { class: "sr-cue", "data-testid": `timeline-${i}-miss-${k}-cue`, text: m.cue }));
+      words.append(el("span", { class: "sr-tl-miss-text", text: m.text }));
       const row = el("button", { type: "button", class: "sr-tl-miss", "data-testid": `timeline-${i}-miss-${k}` },
-        el("span", { class: "sr-tl-miss-text", text: m.text }),
-        el("span", { class: "sr-tl-points", text: `−${Number(m.points).toFixed(1)}` }));
+        words, el("span", { class: "sr-tl-points", text: `−${Number(m.points).toFixed(1)}` }));
       row.addEventListener("click", () => {
         const cmp = getCompare();
         if (!cmp) return;
         if (m.at_s != null) cmp.seek(m.at_s);
-        cmp.highlight(m.joint ? [m.joint] : []);
+        cmp.highlight(jointsFor(m, analysis));
       });
       list.append(el("li", {}, row));
     });
@@ -112,5 +151,6 @@ export function renderTimeline(root, analysis, getCompare = () => null) {
   const worst = compared.length ? compared.reduce((a, b) => (b[0].value < a[0].value ? b : a))[1] : 0;
   root.append(section);
   show(worst);
+  section.showWindow = (i) => windows[i] && show(i);   // "What to work on" opens the insight's window
   return section;
 }

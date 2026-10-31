@@ -125,6 +125,8 @@ class JobQueue:
             if not isinstance(job, dict) or not isinstance(job.get("id"), str):
                 continue
             if job.get("status") in ("queued", "running"):
+                applog.log(f"was {job.get('status')} at {job.get('stage') or 'upload'} when the server stopped; "
+                           "marked failed", job["id"], record.parent, logging.WARNING)
                 self._mark_failed(job, job.get("stage") or "upload", "the server restarted")
                 self._write(job)
             self._jobs[job["id"]] = job
@@ -239,8 +241,16 @@ class JobQueue:
                 self._running.discard(job_id)
                 self._cond.notify_all()
 
+    def _start_line(self, job_id: str) -> str:
+        with self._cond:
+            job = dict(self._jobs[job_id])
+        keys_ = ("kind", "people_job", "person_id", "trainer_id", "follower_ids", "entry_id", "trim", "duration_ms")
+        return "start: " + " ".join(f"{k}={json.dumps(job[k])}" for k in keys_ if job.get(k) is not None)
+
     def _run_one(self, job_id: str, fn: JobFn) -> None:
         ctx = JobContext(self, job_id)
+        t0 = time.monotonic()
+        applog.log(self._start_line(job_id), job_id, ctx.dir)
         try:
             outcome = fn(ctx)
             outcome = outcome if isinstance(outcome, dict) else {}
@@ -248,9 +258,14 @@ class JobQueue:
             for key in ("result", "entry_id"):
                 if outcome.get(key) is not None:
                     fields[key] = outcome[key]
+            with self._cond:
+                note = self._jobs[job_id].get("note")
+            # logged before the record says done, so whoever waits for `done` finds the line already written
+            applog.log(f"done in {time.monotonic() - t0:.1f} s" + (f"; note: {note}" if note else ""), job_id, ctx.dir)
             self.update(job_id, **fields)
         except JobFailed as exc:
-            applog.log(f"failed at {exc.stage}: {applog.cause(exc)}", job_id, ctx.dir, logging.WARNING)
+            applog.log(f"failed at {exc.stage} after {time.monotonic() - t0:.1f} s: {applog.cause(exc)}", job_id,
+                       ctx.dir, logging.WARNING)
             self._fail(job_id, exc.stage, sanitize_reason(exc.reason))
         except Exception as exc:  # the traceback stays in the job log only
             (ctx.dir / "steps").mkdir(exist_ok=True)

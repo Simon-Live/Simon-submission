@@ -14,7 +14,6 @@ def test_config_state_root_override(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     custom = tmp_path / "custom-state"
     monkeypatch.setenv("SIMON7_STATE_DIR", str(custom))
     assert config.state_root() == custom.resolve()
-    assert config.parts_dir() == (custom / "parts").resolve()
     assert config.videos_dir() == (custom / "videos").resolve()
     assert config.dev_dir() == (custom / "dev").resolve()
     assert config.staging_dir() == (custom / "staging").resolve()
@@ -33,14 +32,9 @@ def test_normalize_base_path() -> None:
 def test_cli_parser_subcommands() -> None:
     parser = cli.build_parser()
 
-    args_pin = parser.parse_args(["pin", "--update", "2", "5", "--materialize"])
-    assert args_pin.command == "pin"
-    assert args_pin.update == ["2", "5"]
-    assert args_pin.materialize is True
-
-    args_pin_all = parser.parse_args(["pin", "--update"])
-    assert args_pin_all.command == "pin"
-    assert args_pin_all.update == []
+    args_status = parser.parse_args(["parts-status", "--check-remote"])
+    assert args_status.command == "parts-status" and args_status.check_remote is True
+    assert parser.parse_args(["parts-status"]).check_remote is False
 
     args_setup = parser.parse_args(["setup-parts"])
     assert args_setup.command == "setup-parts"
@@ -75,5 +69,13 @@ def test_python_m_part7_help() -> None:
         check=False,
     )
     assert res.returncode == 0
-    for cmd in ("pin", "setup-parts", "doctor-parts", "videos", "chain", "serve", "check"):
+    for cmd in ("parts-status", "setup-parts", "doctor-parts", "videos", "chain", "serve", "check"):
         assert cmd in res.stdout
+
+
+def test_modules_dir_resolves_to_repo_modules_and_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SIMON7_MODULES_DIR", raising=False)
+    assert config.modules_dir() == config.REPO_ROOT / "modules"
+    assert config.part_dir(3) == config.REPO_ROOT / "modules" / "part-3"
+    monkeypatch.setenv("SIMON7_MODULES_DIR", str(tmp_path))
+    assert config.part_dir("6") == tmp_path.resolve() / "part-6"

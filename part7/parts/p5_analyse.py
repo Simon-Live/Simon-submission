@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from part7 import config, pins, runner
+from part7 import config, modules, runner
 from part7.parts import probe
 
 PHRASING_CONCURRENCY = "4"
 _ANALYSE_ARGV = ["uv", "run", "python", "-m", "part5", "analyse"]
 
 
-def phrasing_args(clone: Path, phrasing: str, lock: pins.Lock | None = None) -> tuple[list[str], str | None]:
+def phrasing_args(clone: Path, phrasing: str, lock: modules.Modules | None = None) -> tuple[list[str], str | None]:
     """Return the `--phrasing` argv for `live` or `template` and a note when the pin cannot do `live`."""
     argv = _ANALYSE_ARGV
     if phrasing == "live":
@@ -27,7 +27,7 @@ def run(
     expected: Path | str,
     follower: Path | str,
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     phrasing: str = "template",
     expected_visibility: Path | str | None = None,
@@ -39,8 +39,8 @@ def run(
     flag; Part 5 then refuses a take whose visible body cannot be scored (`not_enough_visible`,
     `moving_part_out_of_frame`).
     """
-    lk = lock or pins.load()
-    clone = lk.path("5", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("5")
     work_p = Path(work)
     work_p.mkdir(parents=True, exist_ok=True)
     out_path = work_p / "analysis.json"
@@ -92,12 +92,12 @@ def doctor(
     path: Path | str,
     work: Path | str,
     consumer: str = "part7",
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> runner.Step:
     """Run Part 5's `doctor <path> --for <consumer>` command."""
-    lk = lock or pins.load()
-    clone = lk.path("5", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("5")
     work_p = Path(work)
     return runner.run(
         5,

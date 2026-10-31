@@ -2,7 +2,7 @@
 // 3D view, one colour each, with show and hide per person. Reuses compare.js (model, frame picking,
 // clock) and viewer3d.js (the stage); compare.js itself is unchanged.
 import { el } from "./score.js";
-import { normalizeReplay, pickFrames, createClock, ensureStyles, MSG_NO_WEBGL, TRAINER_COLOR } from "./compare.js";
+import { normalizeReplay, pickFrames, createClock, ensureStyles, bodyReport, logBody, writeDrawStats, MSG_NO_WEBGL, TRAINER_COLOR } from "./compare.js";
 
 export const PALETTE = [0x3ddc97, 0xffc83d, 0xff7a90, 0x5cd6ff, 0xc792ff, 0xff9447, 0x9be15d, 0xf5f5f5];
 export const hex = (c) => `#${c.toString(16).padStart(6, "0")}`;
@@ -22,6 +22,16 @@ export function posesAt(t, models, hidden = new Set(), ids = models.map((_, i) =
     poses.push(hidden.has(ids[i]) ? null : m.follower[pickFrames(t, m).follower]);
   });
   return poses;
+}
+
+/** Pure: per figure of `posesAt`, the joint indices to dim (TICKET-065: unseen joints are dimmed). */
+export function dimsAt(t, models, hidden = new Set(), ids = models.map((_, i) => i)) {
+  const first = pickFrames(t, models[0]);
+  const dims = [models[0].expectedUnseen[first.expected]];
+  models.forEach((m, i) => {
+    dims.push(hidden.has(ids[i]) ? [] : m.followerUnseen[pickFrames(t, m).follower]);
+  });
+  return dims;
 }
 
 /**
@@ -77,6 +87,11 @@ export async function mountMultiCompare(root, people) {
     return { el: wrap, stage: null, destroy() { wrap.remove(); } };
   }
   stage.setMode("overlay");
+  // one log line for the view: the trainer's ghost comes from the first person, so only theirs reports it
+  const reports = usable.map((u, i) => [u.id, bodyReport(i === 0 ? u.model : { ...u.model, expectedUnseen: [], expectedNever: [] })])
+    .filter(([, r]) => r).map(([id, r]) => `${id}: ${r}`);
+  logBody("multi-compare", reports.length ? reports.join(" | ") : null);
+  stage.onRender(() => writeDrawStats(wrap, stage.drawStats()));
 
   const duration = Math.max(...models.map((m) => m.duration));
   const playBtn = el("button", { type: "button", class: "sr-btn sr-play", "data-testid": "play", "aria-label": "Play", "data-playing": "false" });
@@ -94,7 +109,7 @@ export async function mountMultiCompare(root, people) {
   wrap.append(el("div", { class: "sr-bar" }, playBtn, scrub, clockEl), toggles);
   if (skipped.length) note(`${skipped.length} take${skipped.length === 1 ? " has" : "s have"} no 3D replay and ${skipped.length === 1 ? "is" : "are"} left out.`);
 
-  const draw = () => stage.setPoses(posesAt(clock.t, models, hidden, ids));
+  const draw = () => stage.setPoses(posesAt(clock.t, models, hidden, ids), dimsAt(clock.t, models, hidden, ids));
   const clock = createClock(duration, (t, playing) => {
     clockEl.textContent = `${t.toFixed(1)} s`;
     clockEl.setAttribute("data-t", String(t));

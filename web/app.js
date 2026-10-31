@@ -8,6 +8,7 @@ import { mountJob } from "./job.js";
 import { mountGroupResult } from "./group-result.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading } from "./progress.js";
+import { mountBuildStamp } from "./build.js";
 
 const root = document.getElementById("app");
 let cleanup = () => {};
@@ -77,3 +78,4 @@ function show() {
 
 window.addEventListener("hashchange", show);
 show();
+mountBuildStamp(document.getElementById("build"));

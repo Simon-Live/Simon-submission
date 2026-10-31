@@ -171,7 +171,7 @@ def test_union_box_has_margin_even_sides_and_stays_inside() -> None:
 
 def test_union_box_scales_from_the_track_size_to_the_video() -> None:
     frames = tracks_doc({0: 5}, mask=[120, 160])["frames"]  # boxes in a 160x120 picture, video is 320x240
-    x, y, w, h = crop.union_box(frames, "0", 320, 240, margin=0.0)
+    x, y, w, h = crop.union_box(frames, "0", 320, 240, margin=0.0, pad=0.0)
     assert (x, y, w, h) == (20, 80, 160, 160) or (w, h) == (160, 240 - 80)
 
 

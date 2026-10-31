@@ -204,8 +204,8 @@ def grep_clones_for_movement(
     movement_name: str,
     parts_root: Path | None = None,
 ) -> list[str]:
-    """Grep every materialized part clone for the movement's id or display name."""
-    root = parts_root if parts_root is not None else config.parts_dir()
+    """Grep every part module for the movement's id or display name."""
+    root = parts_root if parts_root is not None else config.modules_dir()
     if not root.exists():
         return []
     hits: list[str] = []

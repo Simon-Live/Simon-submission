@@ -7,10 +7,25 @@
 <script type="module">
 import { mountResult, mountViewer } from "../../../web/result.js";
 const q = new URLSearchParams(location.search);
-const [analysis, replay] = await Promise.all(
+let [analysis, replay] = await Promise.all(
   ["analysis-1.2.0.json", "replay.json"].map((f) => fetch(`../../../fixtures/input/${f}`).then((r) => r.json())),
 );
 const c = q.get("case") || "ok";
+const fixture = (f) => fetch(`../../../fixtures/input/${f}`).then((r) => r.json());
+// Part 5 1.5.0 on the real fast lateral raise: insights, cues and a tempo cue per rep. That take has no replay
+// fixture, so the harness replay is played four times over (12.8 s) to cover the take's 10.5 s and give the
+// insights a compare to seek.
+if (c === "insights") {
+  analysis = await fixture("analysis-insights.json");
+  const reps = 4, nF = replay.follower.length, span = nF / replay.fps;
+  const tile = (track) => Array.from({ length: reps }, () => structuredClone(track)).flat();
+  const times = (ts) => Array.from({ length: reps }, (_, k) => ts.map((t) => +(t + k * span).toFixed(6))).flat();
+  replay = { ...replay, expected: tile(replay.expected), follower: tile(replay.follower),
+    expected_t: times(replay.expected_t), follower_t: times(replay.follower_t),
+    exp_to_fol: Array.from({ length: reps }, (_, k) => replay.exp_to_fol.map((f) => f + k * nF)).flat() };
+}
+// Part 5's 1.5.0 golden example: two faults with cues and joints, the insights that point at them
+if (c === "insights-golden") analysis = await fixture("analysis-1.5.0.json");
 if (c === "refused" || c === "noreplay") {
   analysis.score = null; analysis.faults = [];
   analysis.status = { code: "different_movement", text: "This looks like a different movement from the one you were asked to copy." };
@@ -28,7 +43,19 @@ if (c === "partial") { // schema 1.4.0: status ok, warnings, low-confidence faul
 if (c === "nofaults") analysis.faults = [];
 if (c === "fallback") analysis.phrasing.faults[1] = { backend: "template", model: null, fallback_reason: "live phrasing timed out" };
 const root = document.getElementById("app");
+// TICKET-065: the replay's trainer track written as a Part 4 animation.json (virtual-joint spine, no torso sides)
+const part4Bones = [["left_hip", "right_hip"], ["hip_mid", "shoulder_mid"], ["left_shoulder", "right_shoulder"], ["left_hip", "left_knee"],
+  ["left_knee", "left_ankle"], ["right_hip", "right_knee"], ["right_knee", "right_ankle"], ["left_shoulder", "left_elbow"], ["left_elbow", "left_wrist"],
+  ["right_shoulder", "right_elbow"], ["right_elbow", "right_wrist"], ["nose", "left_eye"], ["nose", "right_eye"], ["left_eye", "left_ear"], ["right_eye", "right_ear"]];
+const animation = () => ({ format: "simon.animation.v1", fps: replay.fps, joints: replay.joints,
+  bones: part4Bones.map(([parent, child]) => ({ name: parent + "-" + child, parent, child })),
+  frames: replay.expected.map((f, i) => ({ index: i, t: i / replay.fps, joints: Object.fromEntries(replay.joints.map((n, j) => [n, f[j]]).filter(([, p]) => p)) })) });
+const wrist = replay.joints.indexOf("left_wrist");
+const hideWrist = (track) => track.forEach((f, i) => { if (i) f[wrist] = null; }); // unseen after frame 0
+if (c === "unseen") { hideWrist(replay.expected); hideWrist(replay.follower); }
+if (c === "animation-unseen") hideWrist(replay.expected);
 if (c === "viewer") window.__r = await mountViewer(root, { replay });
+else if (c === "animation" || c === "animation-unseen") window.__r = await mountViewer(root, { animation: animation() });
 else window.__r = await mountResult(root, { analysis, replay: c === "badreplay" ? { fps: 0 } : c === "noreplay" ? undefined : replay });
 window.__ready = true;
 </script>

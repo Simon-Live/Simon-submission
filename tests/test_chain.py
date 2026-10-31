@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 import pytest
 
-from part7 import chain, pins, runner
+from part7 import chain, modules, runner
+from support import stub_modules
 from part7.parts import (
     p1_keyframes,
     p2_pose,
@@ -17,23 +18,9 @@ from part7.parts import (
 )
 
 
-def _dummy_lock(state: Path) -> pins.Lock:
-    raw = {
-        "schema": "part7.parts-lock/1",
-        "pinned_at": "2026-10-29T14:52:00Z",
-        "parts": {
-            str(n): {
-                "repo": f"https://example.com/part-{n}.git",
-                "sha": f"{n}" * 40,
-                "pinned_at": "2026-10-29T14:52:00Z",
-                "status": "STATUS: DONE",
-                "repin_due": False,
-                **({"entry_point": "backend"} if n == 2 else {}),
-            }
-            for n in range(1, 7)
-        },
-    }
-    return pins.Lock(raw)
+def _dummy_lock(state: Path) -> modules.Modules:
+    lk = stub_modules(state / "modules")
+    return lk
 
 
 def _ok_step(part: int, cmd: str = "stub") -> runner.Step:

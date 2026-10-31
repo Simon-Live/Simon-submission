@@ -153,7 +153,7 @@ def _capture_runner(monkeypatch: pytest.MonkeyPatch, outputs: list[runner.Step])
 def _p3(tmp_path: Path, kf: Any) -> tuple[list[Any], Path, Path, str | None]:
     state = tmp_path / "state"
     lk = make_lock()
-    lk.path("3", state=state).mkdir(parents=True)
+    lk.path("3").mkdir(parents=True, exist_ok=True)
     pose = tmp_path / "pose3d.json"
     pose.write_text("{}")
     return p3_skeleton.part4(pose, kf, tmp_path / "w", lock=lk, state=state)
@@ -203,13 +203,13 @@ def test_probe_reads_help_once_per_clone(tmp_path: Path, monkeypatch: pytest.Mon
 def test_part2_and_follower_argv_follow_the_journey(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     argvs = _capture_runner(monkeypatch, [step(2)])
     state, lk = tmp_path / "s", make_lock()
-    lk.path("2", state=state).mkdir(parents=True)
+    lk.path("2").mkdir(parents=True, exist_ok=True)
     video = tmp_path / "v.mp4"
     video.write_bytes(b"x")
     p2_pose.run(video, tmp_path / "w", backend="cpu", lock=lk, state=state)
     assert argvs[0][argvs[0].index("--fps") + 1] == "10" and argvs[0][argvs[0].index("--backend") + 1] == "cpu"
     argvs.clear()
-    lk.path("3", state=state).mkdir(parents=True)
+    lk.path("3").mkdir(parents=True, exist_ok=True)
     p3_skeleton.part5(tmp_path / "p.json", tmp_path / "w", lock=lk, state=state)
     a = argvs[0]
     assert a[a.index("--view") + 1] == "part5" and a[a.index("--fps") + 1] == "30" and a[a.index("--body") + 1] == "simon-standard"
@@ -225,7 +225,7 @@ def test_part5_argv_follows_the_pin(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     probe.clear_cache()
     argvs = _capture_runner(monkeypatch, [step(5, 0, flags)])
     state, lk = tmp_path / "s", make_lock()
-    lk.path("5", state=state).mkdir(parents=True)
+    lk.path("5").mkdir(parents=True, exist_ok=True)
     _, _, _, notes = p5_analyse.run(tmp_path / "e.json", tmp_path / "f.json", tmp_path / "w", lock=lk, state=state,
                                     phrasing=phrasing)
     run_argv = argvs[-1]

@@ -16,7 +16,7 @@ const SHOTS = process.env.SHOTS_DIR || path.join(here, "screens");
 fs.mkdirSync(SHOTS, { recursive: true });
 const analysis = JSON.parse(fs.readFileSync(path.join(here, "../../fixtures/input/analysis-1.2.0.json")));
 
-const { server, port } = await serveRoot();
+const { server, port, logs } = await serveRoot();
 const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
 const errors = [];
 let passed = 0;
@@ -270,6 +270,117 @@ try {
     await p.screenshot({ path: path.join(SHOTS, "10-viewer-single.png") });
     await p.context().close();
     ok("single-figure viewer for Watch");
+  }
+  // TICKET-066 (journey.md step 8b): "What to work on" taps drive the 3D compare and the score timeline
+  {
+    const fixture = (f) => JSON.parse(fs.readFileSync(path.join(here, "../../fixtures/input", f)));
+    const near = async (p, atS) => {
+      const t = Number(await attr(p, "clock", "data-t"));
+      assert.ok(Math.abs(t - atS) <= 1 / 30, `clock ${t}, insight at ${atS}`);
+    };
+    const noSideScroll = async (p, name) => {
+      const sw = await p.evaluate(() => document.documentElement.scrollWidth);
+      assert.ok(sw <= 412, `${name}: scrollWidth ${sw}`);
+    };
+    // without a matching fault, an insight lights its own joint, both sides for `side: both`, none for tempo
+    const ownJoints = (x) => (!x.joint ? "" : x.side === "both" && !/^(left|right)_/.test(x.joint) ? `left_${x.joint},right_${x.joint}` : x.joint);
+
+    const ins = fixture("analysis-insights.json");
+    const p = await open("insights");
+    assert.ok(await tid(p, "compare").isVisible(), "the insights analysis has a compare to seek");
+    assert.equal(await p.locator(".sr-insight").count(), ins.insights.length);
+    for (const [i, x] of ins.insights.entries()) {
+      assert.equal(await tid(p, `insight-${i}-cue`).textContent(), x.cue);
+      await tid(p, `insight-${i}`).click();
+      await near(p, x.at_s);
+      assert.equal(await attr(p, "compare", "data-highlighted-joints"), ownJoints(x), `insight ${i} joints`);
+      assert.equal(await attr(p, `insight-${i}`, "aria-pressed"), "true");
+      assert.equal(await p.locator('.sr-insight[aria-pressed="true"]').count(), 1);
+      assert.equal(await attr(p, `timeline-${x.window}`, "aria-pressed"), "true", `insight ${i} opens window ${x.window}`);
+      assert.equal(await p.locator('.sr-tl-bar[aria-pressed="true"]').count(), 1);
+    }
+    await tid(p, "insight-0").scrollIntoViewIfNeeded();
+    await p.screenshot({ path: path.join(SHOTS, "13-insight-tapped.png"), fullPage: true });
+    let missCues = 0;
+    for (const [i, w] of ins.score.timeline.entries()) {
+      await tid(p, `timeline-${i}`).click();
+      const cues = (w.misses || []).map((m) => m.cue).filter(Boolean);
+      assert.equal(await p.locator(`[data-testid^="timeline-${i}-miss-"][data-testid$="-cue"]`).count(), cues.length);
+      for (const [k, m] of (w.misses || []).entries()) {
+        if (!m.cue) continue;
+        assert.equal(await tid(p, `timeline-${i}-miss-${k}-cue`).textContent(), m.cue);
+        missCues++;
+      }
+    }
+    assert.ok(missCues > 0, "the fixture's windows carry miss cues");
+    await noSideScroll(p, "insights");
+    await p.context().close();
+    ok(`insights: ${ins.insights.length} taps seek the compare to at_s, light the joints, set aria-pressed and open the window; ${missCues} miss cues equal the analysis`);
+
+    const gold = fixture("analysis-1.5.0.json");
+    const g = await open("insights-golden");
+    for (const [i, x] of gold.insights.entries()) {
+      const fault = gold.faults.find((f) => f.cue === x.cue);
+      assert.ok(fault, `insight ${i} has a matching fault`);
+      await tid(g, `insight-${i}`).click();
+      await near(g, x.at_s);
+      assert.equal(await attr(g, "compare", "data-highlighted-joints"), fault.joints.join(","), `insight ${i} lights its fault's joints`);
+      assert.equal(await attr(g, `insight-${i}`, "aria-pressed"), "true");
+    }
+    for (const [i, f] of gold.faults.entries()) assert.equal(await tid(g, `fault-${i}-cue`).textContent(), f.cue);
+    await noSideScroll(g, "insights-golden");
+    await g.context().close();
+    ok("insights (Part 5 golden): a tap lights the matching fault's joints; fault cues equal the analysis");
+
+    for (const kase of ["ok", "partial"]) { // 1.2.0, and the same with the 1.4.0 fields: written before insights
+      const o = await open(kase);
+      assert.equal(await o.getByTestId("insights").count(), 0, `${kase}: no insights section`);
+      assert.equal(await o.locator('[data-testid$="-cue"]').count(), 0, `${kase}: no cue elements`);
+      assert.ok(await tid(o, "fault-0").isVisible());
+      await o.context().close();
+    }
+    ok("an analysis older than 1.5.0 shows no insights section and no cues");
+  }
+  // TICKET-065 (compare-view.md AC-C9, AC-C10): the same body in every view for the same data
+  {
+    const stats = async (p, id) => Object.fromEntries(await Promise.all(["data-joints-drawn", "data-joints-dimmed", "data-bones-drawn"]
+      .map(async (a) => [a, (await attr(p, id, a)).split(",")])));
+    const seekT = async (p, id, t) => {
+      await p.locator(`[data-testid="${id}"] [data-testid="scrub"]`).evaluate((s, v) => { s.value = String(v); s.dispatchEvent(new Event("input", { bubbles: true })); }, t);
+      await p.waitForTimeout(250);
+    };
+    const cmp = await open("ok");
+    const c = await stats(cmp, "compare");
+    const anim = await open("animation");
+    const a = await stats(anim, "viewer");
+    assert.deepEqual(c["data-joints-drawn"], ["17", "17"]);
+    assert.deepEqual(a["data-joints-drawn"], ["17"]);
+    assert.deepEqual(a["data-bones-drawn"], c["data-bones-drawn"].slice(0, 1), "Watch animation draws the compare's bones");
+    assert.equal(a["data-bones-drawn"][0], "18");
+    await anim.screenshot({ path: path.join(SHOTS, "11-viewer-part4-animation.png") });
+    await cmp.context().close();
+    await anim.context().close();
+    ok("AC-C9 the Watch animation (Part 4 bones) draws the compare's 17 joints and 18 bones");
+
+    const u = await open("unseen");
+    const ua = await open("animation-unseen");
+    await seekT(u, "compare", 1.0);
+    await seekT(ua, "viewer", 1.0);
+    const us = await stats(u, "compare");
+    const as = await stats(ua, "viewer");
+    assert.deepEqual(us["data-joints-drawn"], ["17", "17"], "an unseen joint is still drawn");
+    assert.deepEqual(us["data-joints-dimmed"], ["1", "1"]);
+    assert.deepEqual(as["data-joints-drawn"], ["17"]);
+    assert.deepEqual(as["data-joints-dimmed"], ["1"], "Watch dims the same trainer joint as the compare");
+    await u.screenshot({ path: path.join(SHOTS, "12-compare-unseen-dimmed.png") });
+    await u.context().close();
+    await ua.context().close();
+    ok("AC-C10 an unseen joint is dimmed, not dropped, in the compare and on Watch");
+    // every earlier page had a full body: the two unseen pages are the only views that logged, once each
+    const dimmed = logs.filter((l) => l && l.event === "body_dimmed");
+    assert.deepEqual(dimmed.map((l) => l.detail.view).sort(), ["compare", "viewer"]);
+    assert.ok(dimmed.every((l) => l.level === "warn" && /dims left_wrist/.test(l.detail.report)), JSON.stringify(dimmed));
+    ok("a view that dims joints posts one body_dimmed client log event");
   }
   assert.deepEqual(errors, []);
   ok("no console errors");

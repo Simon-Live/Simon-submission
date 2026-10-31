@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from part7 import config, jobs, keys, quota, replay
+from part7 import config, jobs, keys, modules, quota, replay
 from part7.jobs import JobFailed, JobQueue, QueueFullError, sanitize_reason
 
 
@@ -188,19 +188,16 @@ def test_fixture_replay_is_valid() -> None:
     (lambda d: d.pop("exp_to_fol"), "exp_to_fol: is required"),
     (lambda d: d.update(format="other"), "replay.format"),
     (lambda d: d.update(fps="30"), "replay.fps"),
-    (lambda d: d["expected"][0].__setitem__(0, [1, 2]), "replay.expected[0]"),
     (lambda d: d["expected_t"].pop(), "expected_t"),
     (lambda d: d["exp_to_fol"].__setitem__(0, 5000), "points past"),
 ])
 def test_broken_replay_is_rejected(mutate: Any, needle: str, monkeypatch: Any) -> None:
-    # The built-in schema's own checks; the pin's schema is covered by the next test.
-    monkeypatch.setattr(replay, "schema_for", lambda *a, **k: replay.BUILTIN_SCHEMA)
     doc = json.loads(FIXTURE.read_text())
     mutate(doc)
     assert needle in " ".join(replay.validate(doc))
 
 
-def test_schema_at_the_pin_wins_over_the_builtin(tmp_path: Path) -> None:
+def test_schema_comes_from_the_part_5_module(tmp_path: Path) -> None:
     from support import lock_with_schema
 
     lk, state = lock_with_schema(tmp_path, {"type": "object", "required": ["only"]})
@@ -260,3 +257,8 @@ def test_limits_off_counts_but_never_refuses(tmp_path, monkeypatch) -> None:
     for _ in range(5):
         q.reserve("trainer", "203.0.113.9")
     assert q.gpu_jobs_today() == 5
+
+
+def test_missing_schema_fails_closed(tmp_path: Path) -> None:
+    lk = modules.Modules(root=tmp_path, shas={"5": "5" * 40})
+    assert "missing" in " ".join(replay.validate(json.loads(FIXTURE.read_text()), lk))

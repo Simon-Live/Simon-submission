@@ -77,7 +77,7 @@ test("AC-C7 a bad replay is refused with the product message", () => {
   assert.ok(Math.abs(m.duration - replay.follower_t.at(-1)) < 1e-9);
 });
 
-test("null joint positions are accepted (the bone is hidden by the stage)", () => {
+test("null joint positions are accepted (TICKET-065: held and dimmed, see body.unit.test.mjs)", () => {
   const r = structuredClone(replay);
   r.follower[3][5] = null;
   assert.doesNotThrow(() => normalizeReplay(r));
@@ -90,7 +90,8 @@ test("animation.json is normalised to one figure", () => {
   };
   const m = normalizeAnimation(anim);
   assert.deepEqual(m.bones, [[0, 1]]);
-  assert.equal(m.frames[1][1], null);
+  assert.deepEqual(m.frames[1][1], [0, 1, 0]); // TICKET-065: an unseen joint holds its last seen place
+  assert.deepEqual(m.unseen[1], [1]);
   assert.equal(m.duration, 0.5);
   assert.throws(() => normalizeAnimation(null), (e) => e.message === "This movement has no 3D animation yet.");
 });

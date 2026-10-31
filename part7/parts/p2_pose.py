@@ -7,7 +7,7 @@ import contextlib
 from pathlib import Path
 from typing import Any, Callable
 
-from part7 import config, gpu_lock, keys, p2_worker, pins, runner
+from part7 import config, gpu_lock, keys, p2_worker, modules, runner
 from part7.parts import p1_keyframes, probe
 
 API_TRACKER = "api-sam31"
@@ -22,14 +22,14 @@ def _command(backend: str, sub: list[str], clone: Path) -> tuple[list[str], dict
     return (["uv", "run", "part2", *sub], None)
 
 
-def has_worker(lk: pins.Lock, clone: Path) -> bool:
+def has_worker(lk: modules.Modules, clone: Path) -> bool:
     """True when the pinned `part2 run` offers `--worker` (a warm model process, `part2 serve-worker`)."""
     base = _command("cpu", [], clone)[0]
     return probe.has_flag(2, [*base, "run"], clone, "--worker", lk)
 
 
 def start_workers(
-    slots: int, state: Path | str, lock: pins.Lock | None = None, backend: str = "gpu"
+    slots: int, state: Path | str, lock: modules.Modules | None = None, backend: str = "gpu"
 ) -> bool:
     """Start one warm Part 2 worker per job slot under `<state>/p2-workers` when the pin has `run --worker`.
 
@@ -39,8 +39,8 @@ def start_workers(
     # set SIMON7_P2_WARM_WORKERS=1 to try them again once they are proven on real jobs.
     if os.environ.get("SIMON7_P2_WARM_WORKERS", "0") != "1":
         return False
-    lk = lock or pins.load()
-    clone = lk.path("2", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("2")
     if backend != "gpu" or slots < 1 or not has_worker(lk, clone):
         return False
     argv, env = _command(backend, ["serve-worker"], clone)
@@ -52,7 +52,7 @@ def start_workers(
 
 
 def _execute(
-    sub: list[str], backend: str, work_p: Path, log_name: str, lk: pins.Lock, clone: Path,
+    sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
     acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None,
 ) -> runner.Step:
     # a warm worker already holds the model in GPU memory, so its job needs no free memory, only an admission turn
@@ -61,7 +61,8 @@ def _execute(
         if sock is not None:
             sub = [*sub, "--worker", str(sock)]
         argv, env_extra = _command(backend, sub, clone)
-        kwargs = {"hold_flock": False, "concurrent": True, **({"min_free_mib": 0} if sock else {}), **(gpu_lock_kwargs or {})}
+        kwargs = {"hold_flock": False, "concurrent": True, "job_dir": work_p, **({"min_free_mib": 0} if sock else {}),
+                  **(gpu_lock_kwargs or {})}
         ctx = gpu_lock.acquire(**kwargs) if (backend == "gpu" and acquire_lock) else contextlib.nullcontext()
         with ctx:
             return runner.run(
@@ -74,7 +75,7 @@ def run(
     video: Path | str,
     work: Path | str,
     backend: str = "gpu",
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     acquire_lock: bool = True,
     state: Path | str | None = None,
     gpu_lock_kwargs: dict[str, Any] | None = None,
@@ -87,12 +88,9 @@ def run(
     `multi` runs `--mode multi` (everyone, also writes `tracks.json`); `tracks` and `ids` add
     `--tracks <file> --ids <id,id>` (people.md "Part 2 follow-up": no re-tracking, 3D for those ids only).
     """
-    lk = lock or pins.load()
-    info = lk.part_info("2")
-    if info.get("entry_point") == "missing":
-        raise RuntimeError("part 2: --backend entry point is missing at the pinned commit")
+    lk = lock or modules.load()
 
-    clone = lk.path("2", state=state)
+    clone = lk.path("2")
     work_p = Path(work)
     out_dir = work_p / "part2"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -112,7 +110,7 @@ def track(
     video: Path | str,
     work: Path | str,
     backend: str = "gpu",
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     acquire_lock: bool = True,
     state: Path | str | None = None,
     gpu_lock_kwargs: dict[str, Any] | None = None,
@@ -122,9 +120,12 @@ def track(
 
     `tracker="auto"` asks for `--tracker api-sam31` while the Meta budget allows (see `api_tracker_allowed`) and
     runs Part 2's default order if that run fails; a name forces it, None leaves Part 2's default order.
+    A named attempt writes its own log (`_tracker_log`); when the fallback runs, its step carries the failed
+    attempt under `first_try`.
+    The api-sam31 run skips Part 7's GPU admission; the default-order run (it may load local SAM) keeps it.
     """
-    lk = lock or pins.load()
-    clone = lk.path("2", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("2")
     work_p = Path(work)
     out_dir = work_p / "part2_track"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -132,16 +133,27 @@ def track(
     if tracker == "auto":
         tracker = API_TRACKER if api_tracker_allowed(lk, clone, state) else None
     if tracker:
-        step = _execute(
-            [*sub, "--tracker", tracker], backend, work_p, "part2_track.log", lk, clone, acquire_lock, gpu_lock_kwargs
+        # TICKET-067: at the pin a named tracker never falls back (`trackers.select`) and api-sam31 loads no torch and
+        # no local model: it uploads a video to the Meta API, so it needs no GPU admission (parts-harness.md "GPU").
+        admit = acquire_lock and tracker != API_TRACKER
+        named = _execute(
+            [*sub, "--tracker", tracker], backend, work_p, _tracker_log(tracker), lk, clone, admit, gpu_lock_kwargs
         )
-        if step["exit"] == 0 and (out_dir / "tracks.json").is_file():
-            return (step, out_dir / "tracks.json")
+        if named["exit"] == 0 and (out_dir / "tracks.json").is_file():
+            return (named, out_dir / "tracks.json")
+        step = _execute(sub, backend, work_p, "part2_track.log", lk, clone, acquire_lock, gpu_lock_kwargs)
+        step["first_try"] = named  # the job keeps both attempts, each with its own log
+        return (step, out_dir / "tracks.json")
     step = _execute(sub, backend, work_p, "part2_track.log", lk, clone, acquire_lock, gpu_lock_kwargs)
     return (step, out_dir / "tracks.json")
 
 
-def api_tracker_allowed(lk: pins.Lock, clone: Path, state: Path | str | None = None) -> bool:
+def _tracker_log(tracker: str) -> str:
+    """The step log of a named tracker attempt: `part2_track.api.log` for api-sam31, else `part2_track.<name>.log`."""
+    return "part2_track.api.log" if tracker == API_TRACKER else f"part2_track.{tracker}.log"
+
+
+def api_tracker_allowed(lk: modules.Modules, clone: Path, state: Path | str | None = None) -> bool:
     """True when the pin's `track` offers `--tracker` with `api-sam31`, the key file exists and Part 1's spend cap holds."""
     if not keys.has_key("MODEL_API_KEY"):
         return False
@@ -151,10 +163,10 @@ def api_tracker_allowed(lk: pins.Lock, clone: Path, state: Path | str | None = N
     return "--tracker" in text and API_TRACKER in text
 
 
-def capabilities(lock: pins.Lock | None = None, state: Path | str | None = None) -> dict[str, bool]:
+def capabilities(lock: modules.Modules | None = None, state: Path | str | None = None) -> dict[str, bool]:
     """What the pinned Part 2 offers for people choice: `track` and `ids` (run `--tracks --ids`)."""
-    lk = lock or pins.load()
-    clone = lk.path("2", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("2")
     base = [*_command("cpu", [], clone)[0]]
     track_ok = bool(probe.help_text(2, [*base, "track"], clone, lk))
     return {
@@ -166,12 +178,12 @@ def capabilities(lock: pins.Lock | None = None, state: Path | str | None = None)
 def doctor(
     pose3d_path: Path | str,
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> runner.Step:
     """Run Part 2's `doctor <pose3d.json> --for part3` check."""
-    lk = lock or pins.load()
-    clone = lk.path("2", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("2")
     work_p = Path(work)
     return runner.run(
         2,

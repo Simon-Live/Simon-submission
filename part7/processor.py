@@ -10,31 +10,27 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from part7 import chain, media, people, pins
+from part7 import chain, media, people, modules
 from part7.jobs import JobContext, JobFailed, JobFn
 
 REASON_UNREADABLE = "the video could not be read"
 
 
-def _normalized(ctx: JobContext, raw: Path, trim: dict[str, int] | None = None) -> Path:
-    """Normalize to H.264 MP4, then cut to `trim` so Part 1 or Part 2 sees only that range."""
-    ctx.set_stage("upload")
-    try:
-        video = media.normalize(raw, ctx.work / "video.mp4")
-        if trim is None:
-            return video
-        clipped = media.trim(video, ctx.work / "trimmed.mp4", trim["start_ms"], trim["end_ms"])
-        ctx.set_fields(trimmed_duration_ms=media.probe(clipped)["duration_ms"])
-        return clipped
-    except (ValueError, RuntimeError, OSError):
-        raise JobFailed("upload", REASON_UNREADABLE) from None
-
-
 def _clip(ctx: JobContext, raw: Path, person: people.PersonSel | None, trim: dict[str, int] | None) -> Path:
-    """The people job's trimmed clip when `person` names one, else `raw` normalized and cut to `trim`."""
+    """The people job's trimmed clip when `person` names one, else `raw` normalized and cut to `trim`.
+
+    Both branches end in `people.prepare_clip` (the people job ran it before), so trainer and follow jobs see
+    the same normalize, trim and frame rate (people.md "One clip path").
+    """
     if person is not None and person.people_work is not None:
         return people.reused_clip(ctx, person)
-    return _normalized(ctx, raw, trim)
+    video = people.prepare_clip(ctx, raw, trim, name="video.mp4")
+    if trim is not None:
+        try:
+            ctx.set_fields(trimmed_duration_ms=media.probe(video)["duration_ms"])
+        except ValueError:
+            raise JobFailed("upload", REASON_UNREADABLE) from None
+    return video
 
 
 def _raise_if_failed(result: dict[str, Any]) -> None:
@@ -52,7 +48,7 @@ def trainer_job(
     name: str,
     category: str,
     catalog: Path,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     backend: str = "gpu",
     trim: dict[str, int] | None = None,
@@ -106,7 +102,7 @@ def follow_job(
     expected: bytes,
     entry_id: str,
     phrasing: str = "template",
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     backend: str = "gpu",
     trim: dict[str, int] | None = None,

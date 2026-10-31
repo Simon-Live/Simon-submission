@@ -1,7 +1,7 @@
 // The result screen: score panel, 3D compare, timed fault list, downloads (journey.md steps 6 to 8,
 // TICKET-045, 046, 047). Part 7 shows Part 5's analysis as written and computes nothing.
 import { el, renderScore, hasScore } from "./score.js";
-import { renderTimeline, timelineOf } from "./timeline.js";
+import { renderTimeline, timelineOf, jointsFor } from "./timeline.js";
 import { mountCompare, mountViewer, normalizeReplay, ensureStyles, MSG_BAD_REPLAY } from "./compare.js";
 
 export { mountViewer };
@@ -72,6 +72,61 @@ export function fallbackSummary(analysis) {
 
 const atLabel = (f) => `at ${Number(f.at_s).toFixed(1)} s`;
 
+/** Part 5's `insights` (schema 1.5.0, ADR-0014), or null when the analysis was written before them. */
+export function insightsOf(analysis) {
+  const list = analysis && analysis.insights;
+  if (!Array.isArray(list)) return null;
+  return list.filter((x) => x && typeof x.cue === "string" && x.cue);
+}
+
+/** The chip of an insight: what it cost the score, or "Tempo" (tempo is not scored). */
+export function insightChip(x) {
+  if (x.kind === "tempo") return { text: "Tempo", label: "Tempo, not scored" };
+  if (x.points == null) return null;
+  const p = Number(x.points).toFixed(1);
+  return { text: `−${p}`, label: `Costs ${p} points of your score` };
+}
+
+/** "What to work on": Part 5's ranked insights near the score. A tap seeks the 3D compare to the insight's
+ * `at_s`, highlights its joints and opens its window on the score timeline. Older analyses show nothing. */
+function renderInsights(root, analysis, getCompare, getTimeline) {
+  const items = insightsOf(analysis);
+  if (!items) return null;
+  const section = el("section", { class: "sr-insights", "data-testid": "insights", "aria-labelledby": "sr-insights-h" });
+  section.append(el("h2", { id: "sr-insights-h", text: "What to work on" }));
+  if (!items.length) {
+    section.append(el("p", { class: "sr-empty", "data-testid": "insights-empty", text: "Nothing to work on in this take." }));
+    root.append(section);
+    return section;
+  }
+  const list = el("ol", { class: "sr-insight-list" });
+  items.forEach((x, i) => {
+    const row = el("button", {
+      type: "button", class: "sr-insight", "data-testid": `insight-${i}`, "data-kind": x.kind || false,
+      "data-at-s": x.at_s ?? false, "data-window": x.window ?? false, "aria-pressed": "false",
+    });
+    const words = el("span", { class: "sr-insight-words" },
+      el("span", { class: "sr-insight-cue", "data-testid": `insight-${i}-cue`, text: x.cue }),
+      x.why ? el("span", { class: "sr-insight-why", "data-testid": `insight-${i}-why`, text: x.why }) : null);
+    const chip = insightChip(x);
+    row.append(words);
+    if (chip) row.append(el("span", { class: `sr-insight-chip${x.kind === "tempo" ? " sr-tempo" : ""}`, "aria-label": chip.label, text: chip.text }));
+    row.addEventListener("click", () => {
+      list.querySelectorAll(".sr-insight").forEach((r) => r.setAttribute("aria-pressed", String(r === row)));
+      const tl = getTimeline();
+      if (tl && x.window != null) tl.showWindow(x.window);
+      const cmp = getCompare();
+      if (!cmp) return;
+      if (x.at_s != null) cmp.seek(x.at_s);
+      cmp.highlight(jointsFor(x, analysis));
+    });
+    list.append(el("li", {}, row));
+  });
+  section.append(list);
+  root.append(section);
+  return section;
+}
+
 function renderFaults(root, analysis, getCompare) {
   const faults = analysis.faults || [];
   const section = el("section", { class: "sr-faults", "aria-labelledby": "sr-faults-h" });
@@ -98,6 +153,7 @@ function renderFaults(root, analysis, getCompare) {
       "aria-pressed": "false",
     });
     const text = el("span", { class: "sr-fault-text", text: f.text_timed || f.text || f.coaching || "" });
+    if (f.cue) row.append(el("span", { class: "sr-cue", "data-testid": `fault-${i}-cue`, text: f.cue }));
     const meta = el("span", { class: "sr-fault-meta" }, el("span", { class: "sr-chip", "data-testid": `fault-${i}-at`, text: atLabel(f) }));
     if (f.confidence === "low") meta.append(el("span", { class: "sr-chip sr-low", "data-testid": `fault-${i}-low`, text: "Low confidence" }));
     for (const j of f.joints || []) meta.append(el("span", { class: "sr-joint", text: j.replace(/_/g, " ") }));
@@ -164,7 +220,9 @@ export async function mountResult(root, { analysis, replay, record = null } = {}
   }
   const shown = withScore(analysis);
   renderScore(root, shown);
-  renderTimeline(root, shown, () => compare);
+  let timeline = null;
+  renderInsights(root, analysis, () => compare, () => timeline);
+  timeline = renderTimeline(root, shown, () => compare);
   const mine = takeLabels(record);
   if (mine) root.append(mine);
   if (replay || !warnings.length) {

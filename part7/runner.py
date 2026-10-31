@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 import signal
@@ -10,11 +11,12 @@ import threading
 import time
 from typing import Any, Callable, TextIO
 
-from part7 import config, keys, pins
+from part7 import applog, config, keys, modules, stagelog
 
 
 MAX_CAPTURED_CHARS = 8_000_000
 KILL_GRACE_S = 10.0
+ARGV_LOG_CHARS = 300
 
 
 class Step(dict):
@@ -57,11 +59,11 @@ class Step(dict):
             self[name] = value
 
 
-def _resolve_commit(part: int | str, lock: pins.Lock | None = None) -> str:
+def _resolve_commit(part: int | str, lock: modules.Modules | None = None) -> str:
     lk = lock
     if lk is None:
         try:
-            lk = pins.load()
+            lk = modules.load()
         except Exception:
             return "unknown"
     try:
@@ -95,6 +97,26 @@ def _kill_group(proc: subprocess.Popen[str], sig: int) -> None:
         pass
 
 
+def _short_argv(cmd: list[str]) -> str:
+    """The command with each path shortened to its last part, at most `ARGV_LOG_CHARS` long."""
+    text = " ".join(Path(a).name if "/" in a and " " not in a else a for a in cmd)
+    return text if len(text) <= ARGV_LOG_CHARS else text[: ARGV_LOG_CHARS - 3] + "..."
+
+
+def _log_call(part: int | str, cmd: list[str], log_path: Path, step: "Step | None" = None) -> None:
+    """Part 7's log line for one part call that has a step log: at start, or at the end with exit and time."""
+    in_job = log_path.parent.name == "steps"  # `<work>/steps/<part>.log`; setup logs live elsewhere
+    job_dir = log_path.parent.parent if in_job else None
+    job = applog.job_id_of(job_dir) if job_dir is not None else None
+    if step is None:
+        applog.log(f"part {part} start: {_short_argv(cmd)} (log {log_path})", job, job_dir)
+    elif step["exit"] == 0:
+        applog.log(f"part {part} exit 0 in {step['duration_s']:.1f} s ({log_path.name})", job, job_dir)
+    else:
+        applog.log(f"part {part} failed in {step['duration_s']:.1f} s: {stagelog.step_failure(step)}", job, job_dir,
+                   logging.WARNING)
+
+
 def run(
     part: int | str,
     argv: list[str],
@@ -102,7 +124,7 @@ def run(
     env_extra: dict[str, str] | None = None,
     timeout_s: float = 180.0,
     log_path: Path | str | None = None,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     kill_grace_s: float = KILL_GRACE_S,
 ) -> Step:
     """Run a part command in its own process group with timeout and log redaction.
@@ -130,6 +152,7 @@ def run(
         lpath = Path(log_path)
         lpath.parent.mkdir(parents=True, exist_ok=True)
         sink = lpath.open("w", encoding="utf-8")
+        _log_call(part, cmd, lpath)
 
     chunks: list[str] = []
     timed_out = False
@@ -174,7 +197,7 @@ def run(
     duration_s = round(time.monotonic() - start, 4)
     out = "".join(chunks)
     part_val: int | str = int(part) if str(part).isdigit() else str(part)
-    return Step(
+    step = Step(
         part=part_val,
         commit=commit,
         argv=cmd,
@@ -185,3 +208,6 @@ def run(
         log=str(lpath) if log_path is not None else out,
         stdout=out,
     )
+    if log_path is not None:
+        _log_call(part, cmd, lpath, step)
+    return step

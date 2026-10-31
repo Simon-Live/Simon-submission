@@ -69,15 +69,16 @@ for (const id of ["reference-video", "reference-mirror", "reference-swap"]) asse
 assert.equal(await tid("reference").getAttribute("data-mirror"), "true", "mirrored by default");
 assert.equal(await refPlaying(), false, "paused before recording");
 const over = await box("preview"), pip = await box("reference");
-assert.ok(pip.width < over.width * 0.5 && pip.y + pip.height <= over.y + over.height + 1 && pip.x >= over.x, "picture-in-picture over the preview on a phone");
-log("panel shows as picture-in-picture over the preview");
-await shot("1-follow-pip");
+// TICKET-063: beside the camera, never over it (an overlay hid the follower's legs).
+assert.ok(pip.width < over.width && pip.x >= over.x + over.width - 1 && Math.abs(pip.y - over.y) < 2, "panel beside the preview on a phone");
+log("panel shows beside the preview, not over it");
+await shot("1-follow-beside");
 
 // Swap and mirror on the live screen.
 await tid("reference-swap").click();
 assert.equal(await tid("reference").getAttribute("data-swap"), "true");
 const big = await box("reference"), small = await box("preview");
-assert.ok(big.width > small.width * 2, "swap makes the trainer large and the camera small");
+assert.ok(big.width > small.width * 1.5 && big.x + big.width <= small.x + 1, "swap makes the trainer large and the camera small, side by side");
 await shot("2-follow-swapped");
 await tid("reference-swap").click();
 assert.equal(await tid("reference").getAttribute("data-swap"), "false");
@@ -138,7 +139,7 @@ await shot("5-trim-follow");
 log("follows the trim playhead, with the offset slider");
 assert.equal(await tid("reference-swap").isVisible(), false, "no swap in the trim editor");
 
-// Back to the preview: the panel returns over the camera.
+// Back to the preview: the panel returns beside the camera.
 await tid("trim-back").click();
 await tid("reference").waitFor();
 assert.equal(await tid("reference").getAttribute("data-mode"), "live");

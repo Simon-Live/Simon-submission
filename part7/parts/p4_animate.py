@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 
-from part7 import config, pins, runner
+from part7 import config, modules, runner
 
 
 def _mod_name(clone: Path) -> str:
@@ -21,12 +21,12 @@ def validate(
     kind: str,
     path: Path | str,
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> runner.Step:
     """Run Part 4's `contract validate <kind> <path>` check."""
-    lk = lock or pins.load()
-    clone = lk.path("4", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("4")
     mod = _mod_name(clone)
     work_p = Path(work)
     return runner.run(
@@ -51,12 +51,12 @@ def run(
     skeleton: Path | str,
     keyframes_v1: Path | str,
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> tuple[runner.Step, Path]:
     """Copy `skeleton.json` and `keyframes.json` into `<work>/part4/` and run Part 4 `animate`."""
-    lk = lock or pins.load()
-    clone = lk.path("4", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("4")
     mod = _mod_name(clone)
     work_p = Path(work)
     dir4 = work_p / "part4"
@@ -94,7 +94,7 @@ def doctor(
     path: Path | str,
     work: Path | str,
     kind: str = "animation",
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> runner.Step:
     """Validate an output or input file against Part 4's contract."""

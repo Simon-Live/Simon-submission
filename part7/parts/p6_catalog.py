@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from part7 import config, pins, runner
+from part7 import config, modules, runner
 
 
 def _free_port() -> int:
@@ -47,7 +47,7 @@ class Child:
         state: Path | str | None = None,
         port: int = 0,
         max_recordings: int = 30,
-        lock: pins.Lock | None = None,
+        lock: modules.Modules | None = None,
         parts_state: Path | str | None = None,
     ) -> None:
         if catalog_dir is not None:
@@ -93,8 +93,8 @@ class Child:
         return f"http://127.0.0.1:{self.port}{self.base_path}{s}"
 
     def _spawn(self) -> int:
-        lk = self._lock or pins.load()
-        clone6 = lk.path("6", state=self._parts_state)
+        lk = self._lock or modules.load()
+        clone6 = lk.path("6")
         self.port = self._requested_port or _free_port()
         self.catalog_dir.mkdir(parents=True, exist_ok=True)
 
@@ -298,12 +298,12 @@ class Child:
 def doctor(
     target: Path | str,
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> runner.Step:
     """Run `python3 -m part6 doctor <target>` in the Part 6 clone."""
-    lk = lock or pins.load()
-    clone = lk.path("6", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("6")
     work_p = Path(work)
     return runner.run(
         6,
@@ -322,12 +322,12 @@ def import_entry(
     category: str,
     parts: dict[str, int],
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> tuple[runner.Step, dict[str, Any] | None]:
     """Import an entry folder into `catalog_dir` using Part 6's `import` CLI with `--part` flags."""
-    lk = lock or pins.load()
-    clone = lk.path("6", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("6")
     work_p = Path(work)
     part_map = parts or {"keyframes": 1, "skeleton": 3, "animation": 4}
 

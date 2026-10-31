@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from part7 import chain, labels as entry_store, pins
+from part7 import chain, labels as entry_store, modules
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
 from part7.people import PersonSel, pose_for, reused_clip
@@ -53,7 +53,7 @@ def group_job(
     entry_labels: dict[str, Any] | None = None,
     labels_state: Path | None = None,
     save_entry: bool = True,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     backend: str = "gpu",
     phrasing: str = "live",
@@ -61,7 +61,7 @@ def group_job(
     """Return the job function of `POST api/group` on the people job whose work folder is `people_work`."""
 
     def run(ctx: JobContext) -> dict[str, Any]:
-        lk = lock or pins.load()
+        lk = lock or modules.load()
         sel = PersonSel(id=trainer_id, people_work=people_work)
         video = reused_clip(ctx, sel)
         ctx.set_stage("track")  # the people job already tracked everyone; its tracks are reused
@@ -92,7 +92,7 @@ def group_job(
 
 
 def _pose_once(
-    ctx: JobContext, sel: PersonSel, ids: list[str], video: Path, backend: str, lk: pins.Lock,
+    ctx: JobContext, sel: PersonSel, ids: list[str], video: Path, backend: str, lk: modules.Modules,
     state: Path | str | None,
 ) -> Path:
     """Part 2 for everyone chosen at once, then its doctor; JobFailed with a plain reason."""
@@ -114,7 +114,7 @@ def _pose_once(
 
 def _followers(
     ctx: JobContext, animation: str, skeleton: str, video: Path, people_work: Path, pose3d: Path,
-    follower_ids: list[str], labels: dict[str, str], lk: pins.Lock, backend: str, state: Path | str | None,
+    follower_ids: list[str], labels: dict[str, str], lk: modules.Modules, backend: str, state: Path | str | None,
     phrasing: str,
 ) -> list[dict[str, Any]]:
     """Run the follower chain for each id against the trainer's animation; a failure is a row, not the job."""

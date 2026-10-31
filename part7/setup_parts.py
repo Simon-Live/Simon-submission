@@ -1,13 +1,14 @@
-"""Documented setup and contract/doctor checks for Parts 1 to 6 at their pins (TICKET-011)."""
+"""Documented setup and contract/doctor checks for Parts 1 to 6 in their modules (TICKET-011, ADR-0007)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import sys
 from typing import Any
 
-from part7 import config, pins, runner
+from part7 import config, modules, runner
 from part7.parts import p4_animate
 
 SETUP_TIMEOUT_S = 600.0
@@ -22,9 +23,7 @@ _GPU_PROBE = (
 
 def _default_setup_commands(part: str, clone: Path) -> list[list[str]]:
     if part == "1":
-        if (clone / ".venv" / ".installed").is_file() and (clone / ".venv" / "bin" / "python").is_file():
-            return []
-        return [["make", ".venv/.installed"]]
+        return [["make", ".venv/.installed"]]  # make skips the install when requirements.txt is unchanged
     if part == "2":
         return [["uv", "sync"]]
     if part == "3":
@@ -119,35 +118,56 @@ def _setup_checks(part: str, clone: Path) -> list[tuple[list[str], dict[str, str
     return []
 
 
+def _stamp(part: str, sha12: str, state: Path | str | None, clone: Path | None = None) -> Path:
+    """The marker that setup ran for `part` at `sha12` in the checkout `clone`.
+
+    Venvs live inside each module checkout, so a second checkout (a worktree, the staging checkout) at the
+    same sha still needs its own setup: the marker names the checkout by a hash of its resolved path.
+    """
+    where = "" if clone is None else "-" + hashlib.sha256(str(Path(clone).resolve()).encode()).hexdigest()[:10]
+    return config.state_root(state) / "setup" / f"part-{part}-{sha12}{where}.ok"
+
+
+def _module_state(lk: modules.Modules, part: str) -> tuple[Path, str, str | None]:
+    """`(module dir, sha12 or "unknown", error)`; the error names the part when the module is unusable."""
+    clone = lk.path(part)
+    try:
+        sha12 = lk.sha12(part)
+    except modules.ModuleError:
+        return clone, "unknown", f"part {part}: module missing at {clone} (run make parts)"
+    if not clone.is_dir():
+        return clone, sha12, f"part {part}: module missing at {clone} (run make parts)"
+    return clone, sha12, None
+
+
 def setup_all(
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     commands: dict[str, list[list[str]]] | None = None,
+    only: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """Run each part's documented setup commands in its pinned clone, then its checks.
+    """Run each part's documented setup commands in its module, then its checks; a part whose setup ran for its current sha is skipped.
 
     `commands` replaces the setup commands of the parts it names and turns the default checks off
-    (tests use it with stub commands). Each part's result carries `duration_s`, the sum of its steps.
+    (tests use it with stub commands). `only` limits the run to the parts it names. Each part's result carries `duration_s`, the sum of its steps.
     """
-    lk = lock or pins.load()
+    lk = lock or modules.load()
     log_dir = config.state_root(state) / "logs" / "setup"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     results: dict[str, Any] = {}
     all_ok = True
 
-    for part in pins.PART_IDS:
-        clone = lk.path(part, state=state)
-        sha12 = lk.sha12(part)
-        if not clone.is_dir():
+    for part in (only or modules.PART_IDS):
+        clone, sha12, missing = _module_state(lk, part)
+        if missing:
             all_ok = False
-            results[part] = {
-                "ok": False,
-                "commit": sha12,
-                "steps": [],
-                "duration_s": 0.0,
-                "error": f"part {part}: clone missing at {clone}",
-            }
+            results[part] = {"ok": False, "commit": sha12, "steps": [], "duration_s": 0.0, "error": missing}
+            continue
+        stamp = _stamp(part, sha12, state, clone)
+        if stamp.is_file():
+            results[part] = {"ok": True, "commit": sha12, "steps": [], "duration_s": 0.0, "error": None,
+                             "skipped": True, "notes": [f"setup already ran for {sha12}"]}
             continue
 
         part_cmds = (
@@ -201,6 +221,9 @@ def setup_all(
 
         if not part_ok:
             all_ok = False
+        else:
+            stamp.parent.mkdir(parents=True, exist_ok=True)
+            stamp.write_text(sha12 + "\n", encoding="utf-8")
         results[part] = {
             "ok": part_ok,
             "commit": sha12,
@@ -214,21 +237,20 @@ def setup_all(
 
 
 def doctor_parts(
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     commands: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
-    """Verify each part's contract or help command at its pinned commit."""
-    lk = lock or pins.load()
+    """Verify each part's contract or help command in its module."""
+    lk = lock or modules.load()
     log_dir = config.state_root(state) / "logs" / "doctor-parts"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     results: dict[str, Any] = {}
     all_ok = True
 
-    for part in pins.PART_IDS:
-        clone = lk.path(part, state=state)
-        sha12 = lk.sha12(part)
+    for part in modules.PART_IDS:
+        clone, sha12, _missing = _module_state(lk, part)
         default_cmd, env_extra, label = _default_doctor_command(part, clone)
         if commands is not None and part in commands:
             cmd = commands[part]
@@ -301,7 +323,7 @@ def doctor_parts(
 
 
 def cli_setup_parts(
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> int:
     """CLI entry point for `part7 setup-parts`."""
@@ -318,7 +340,7 @@ def cli_setup_parts(
 
 
 def cli_doctor_parts(
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> int:
     """CLI entry point for `part7 doctor-parts`."""

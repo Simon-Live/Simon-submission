@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 WEB = Path(__file__).resolve().parents[2] / "web"
 
@@ -63,3 +67,57 @@ def test_capture_hands_edit_info_to_trim_editor():
 
 def test_mirrored_by_css_only():
     assert not re.search(r"scaleX", src("capture") + src("countdown"))
+
+
+# TICKET-063: live preview on open, whole body on every follower surface, client logs.
+
+
+def css(name: str) -> str:
+    return (WEB / name).read_text(encoding="utf-8")
+
+
+def test_camera_is_asked_for_on_mount_with_the_fallback_kept():
+    c = src("capture")
+    assert "cameraAllowed" not in c and "permissions.query" not in c
+    assert re.search(r"\n  openPreview\(\);\n", c), "openPreview() runs when the capture mounts"
+    for key in ["blocked", "dark", "asking"]:
+        assert f"{key}:" in c
+    assert '"data-testid": "cam-open"' in c and '"Try again"' in c
+
+
+def test_no_person_picture_uses_cover():
+    ref = css("reference.css")
+    styles = css("styles.css")
+    assert "object-fit: cover" not in ref
+    cam_rules = [line for line in styles.splitlines() if line.startswith((".cam", ".trim-video"))]
+    assert not [line for line in cam_rules if "object-fit: cover" in line], cam_rules
+    assert ".cam video {" in styles and "object-fit: contain" in styles
+    assert ".ref-media {" in ref and ".ref-first {" in ref
+
+
+def test_reference_sits_beside_the_camera_never_over_it():
+    ref = css("reference.css")
+    assert ".ref-row { display: grid;" in ref
+    assert "position: absolute; right:" not in ref and "inset: 8px" not in ref
+
+
+def test_capture_and_take_flow_log_the_contract_events():
+    c, t, a = src("capture"), src("take-flow"), src("api")
+    assert 'fetch("api/client-log"' in a and "keepalive: true" in a
+    for ev in ["camera_opened", "camera_refused", "camera_dark", "camera_unsupported", "recorder_started",
+               "take_recorded", "take_dimensions"]:
+        assert f'"{ev}"' in c, ev
+    for ev in ["trim_chosen", "upload_done", "upload_failed"]:
+        assert f'"{ev}"' in t, ev
+    assert c.count("console.info(") >= 3 and c.count("console.warn(") >= 3
+    opened = next(line for line in c.splitlines() if 'clientLog("info", "camera_opened"' in line)
+    assert "label" not in opened and "width: set.width" in opened  # the device label never reaches the server
+
+
+def test_clientlog_unit():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    r = subprocess.run([node, "--test", str(WEB.parent / "tests/part7/clientlog.unit.test.mjs")],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]

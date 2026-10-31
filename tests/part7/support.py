@@ -8,19 +8,34 @@ from pathlib import Path
 import subprocess
 import threading
 from typing import Any
+import tempfile
 
-from part7 import pins, server
+from part7 import config, modules, server
 
 VIDEO_BYTES = bytes(range(256)) * 400  # 102400 bytes for Range tests
 
 
-def make_lock() -> pins.Lock:
-    parts = {
-        str(n): {"repo": f"https://example.com/p{n}.git", "sha": str(n) * 40, "pinned_at": "2026-10-29T14:52:00Z",
-                 "status": "STATUS: DONE", "repin_due": False}
-        for n in range(1, 7)
-    }
-    return pins.Lock({"schema": "part7.parts-lock/1", "pinned_at": "2026-10-29T14:52:00Z", "parts": parts})
+_DEFAULT_ROOT = Path(tempfile.mkdtemp(prefix="part7-test-modules-"))
+
+
+def _seed_default_root() -> None:
+    """The default stub root ships Part 5's real replay schema, as the part5 module does."""
+    src = config.part_dir("5") / "contracts" / "replay.schema.json"
+    dst = _DEFAULT_ROOT / "part-5" / "contracts" / "replay.schema.json"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_bytes(src.read_bytes())
+
+
+_seed_default_root()
+
+
+def stub_modules(root: Path | None = None) -> modules.Modules:
+    """Modules under `root/part-N` with fixed shas (`1` * 40 ... `6` * 40); no git involved."""
+    return modules.Modules(root=root or _DEFAULT_ROOT, shas={str(n): str(n) * 40 for n in range(1, 7)})
+
+
+def make_lock() -> modules.Modules:
+    return stub_modules()
 
 
 class _Part6Stub(BaseHTTPRequestHandler):
@@ -109,6 +124,42 @@ def ffmpeg_video(path: Path, seconds: float, codec: str = "libx264") -> Path:
     return path
 
 
+def recorder_webm(path: Path, seconds: float = 3.0) -> Path:
+    """A WebM like Chrome's MediaRecorder writes (TICKET-064): 1 ms time base, about 30 frames a second at
+    irregular times, no duration and no DefaultDuration, so ffprobe reports `r_frame_rate` 1000/1 and no average.
+    """
+    tmp = path.with_suffix(".tmp.webm")
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"testsrc=size=320x240:rate=30:duration={seconds}",
+         "-vf", "settb=1/1000,setpts='(N*0.0338+random(1)*0.014)/TB'", "-fps_mode", "passthrough",
+         "-enc_time_base", "1/1000", "-c:v", "libvpx", "-live", "1", "-f", "webm", str(tmp)],
+        check=True, timeout=120,
+    )
+    data = bytearray(tmp.read_bytes())
+    at = data.find(b"\x23\xe3\x83")  # DefaultDuration; overwritten by an EBML Void element of the same length
+    if at >= 0:
+        total = 4 + (data[at + 3] & 0x7F)
+        data[at:at + total] = b"\xec" + bytes([0x80 | (total - 2)]) + bytes(total - 2)
+    path.write_bytes(bytes(data))
+    tmp.unlink()
+    return path
+
+
+def part1_reads(path: Path) -> bool:
+    """Part 1's `media_info` probe (keyframe_finder/from_video.py at pin e84e92b1d0b1), regexes verbatim.
+
+    Part 1 is a black box; this pins the contract Part 7 must meet: the ffmpeg banner of a clip handed to Part 1
+    shows WxH, a plain number before `fps` (or `tbr`) and a Duration.
+    """
+    import re
+
+    text = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+    size = re.search(r"(\d{2,5})x(\d{2,5})", text)
+    fps = re.search(r"(\d+(?:\.\d+)?)\s+fps", text) or re.search(r"(\d+(?:\.\d+)?)\s+tbr", text)
+    duration = re.search(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)", text)
+    return bool(size and fps and duration)
+
+
 class Api:
     """A running app on a free port with small request helpers."""
 
@@ -139,10 +190,10 @@ class Api:
         return status, json.loads(data)
 
 
-def lock_with_schema(tmp_path: Path, schema: dict[str, Any]) -> tuple[pins.Lock, Path]:
-    """A lock whose Part 5 clone (under a temp state folder) ships `contracts/replay.schema.json`."""
-    lk, state = make_lock(), tmp_path / "pstate"
-    clone = lk.path("5", state=state)
+def lock_with_schema(tmp_path: Path, schema: dict[str, Any]) -> tuple[modules.Modules, Path]:
+    """Modules whose Part 5 checkout (under a temp folder) ships `contracts/replay.schema.json`."""
+    lk = stub_modules(tmp_path / "mods")
+    clone = lk.path("5")
     (clone / "contracts").mkdir(parents=True)
     (clone / "contracts" / "replay.schema.json").write_text(json.dumps(schema), encoding="utf-8")
-    return lk, state
+    return lk, tmp_path / "pstate"

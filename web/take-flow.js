@@ -3,7 +3,7 @@
 //   capture -> trim editor -> upload -> POST api/people -> person picker -> details -> submit.
 // Trainer: "Just me" or "Group" switch, required name and category, tags and notes.
 // Follower: optional tags and notes for the take. The picker is skipped when one person is in the clip.
-import { uploadVideo, createPeopleJob, createTrainerJob, createGroupJob, createFollowJob } from "./api.js";
+import { uploadVideo, createPeopleJob, createTrainerJob, createGroupJob, createFollowJob, clientLog } from "./api.js";
 import { mountCapture, editTake } from "./capture.js";
 import { mountLabels } from "./labels.js";
 import { mountModeSwitch } from "./group.js";
@@ -108,8 +108,10 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, onDone = (id
     if (!alive) return;
     editBox.replaceChildren();
     editBox.hidden = true;
-    if (!range) { backToPreview(); return; }
+    if (!range) { clientLog("info", "trim_back", { role, source: info.source }); backToPreview(); return; }
     trim = range;
+    console.info("[take] trim:", range.start_ms, "to", range.end_ms, "ms");
+    clientLog("info", "trim_chosen", { role, source: info.source, start_ms: range.start_ms, end_ms: range.end_ms, bytes: take.size });
     await choosePerson(take);
   }
 
@@ -120,15 +122,21 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, onDone = (id
     pickBox.replaceChildren(up.el);
     up.startClock();
     try {
-      upload = (await uploadVideo(take, {
-        onProgress: (sent, total) => { const f = total ? sent / total : 0; up.setValue(f); up.setText(`${UPLOADING}, ${Math.round(f * 100)}%`); },
-      })).upload_id;
+      const sent = await uploadVideo(take, {
+        onProgress: (n, total) => { const f = total ? n / total : 0; up.setValue(f); up.setText(`${UPLOADING}, ${Math.round(f * 100)}%`); },
+      });
+      upload = sent.upload_id;
+      // The server's own read of the file: its width x height should match the recorded take (capture data-take-size).
+      console.info("[take] uploaded:", upload, `${sent.width}x${sent.height}`, sent.duration_ms, "ms");
+      clientLog("info", "upload_done", { role, upload_id: upload, bytes: take.size, width: sent.width, height: sent.height, duration_ms: sent.duration_ms });
       up.setValue(null);
       up.setText(CHECKING);
       const created = await createPeopleJob(upload, trim);
       peopleJob = typeof created.job === "object" ? created.job.id : created.job;
     } catch (err) {
       up.stop();
+      console.warn("[take] upload or people job failed:", err && err.status, err && err.message);
+      clientLog("error", upload ? "people_job_failed" : "upload_failed", { role, status: err && err.status, message: err && err.message, bytes: take.size });
       if (!alive) return;
       pickBox.replaceChildren(h("p", { class: "error", role: "alert", "data-testid": "people-error", text: err.message }), again.cloneNode(true));
       pickBox.lastChild.addEventListener("click", () => backToPreview());

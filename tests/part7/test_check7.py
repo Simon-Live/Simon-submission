@@ -10,14 +10,12 @@ from typing import Any
 
 import pytest
 
-from part7 import check7, config, pins
+from part7 import check7, config, modules
+from support import stub_modules
 
 
-def _lock() -> pins.Lock:
-    raw = {"schema": "part7.parts-lock/1", "pinned_at": "x", "parts": {
-        str(n): {"repo": "r", "sha": f"{n}" * 40, "pinned_at": "x", "status": "s", "repin_due": False}
-        for n in range(1, 7)}}
-    return pins.Lock(raw)
+def _lock() -> modules.Modules:
+    return stub_modules(Path("unused-modules"))
 
 
 def _fault(side: str = "left", mag: float = 20.0, at_s: float = 2.0, timed: bool = True) -> dict[str, Any]:
@@ -139,10 +137,10 @@ def test_missing_fault_fails_follower_match() -> None:
     assert m["gates"]["followers_matched"] == "1/2" and m["pass"] is False
 
 
-def test_pins_differ_between_paths_fails() -> None:
+def test_module_shas_differ_between_paths_fails() -> None:
     m = _run(_good(), _good(), commit_ok=False)
     assert m["gates"]["pins_consistent"] is False and m["pass"] is False
-    m = _run(_good(), _good(), app_pins={**_lock().pins_short(), "3": "000000000000"})
+    m = _run(_good(), _good(), app_pins={**_lock().shas_short(), "3": "000000000000"})
     assert m["gates"]["pins_consistent"] is False and m["pass"] is False
 
 
@@ -212,7 +210,7 @@ def test_direct_path_uses_only_cli_adapters() -> None:
 
 
 def test_missing_prerequisite_exits_2_with_json(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(pins, "load", _lock)
+    monkeypatch.setattr(modules, "load", _lock)
     monkeypatch.setattr(check7, "gpu_visible", lambda: False)
     assert check7.cli_check() == 2
     out, err = capsys.readouterr()
@@ -228,10 +226,11 @@ def test_clone_missing_names_the_part(tmp_path: Path, monkeypatch: pytest.Monkey
 
 def test_video_missing_names_the_clip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(check7, "gpu_visible", lambda: True)
+    lk = stub_modules(tmp_path / "modules")
     for n in range(1, 7):
-        (config.parts_dir(tmp_path) / f"{n}@{str(n) * 12}").mkdir(parents=True)
+        lk.path(n).mkdir(parents=True)
     monkeypatch.setattr(check7.videos, "verify_all", lambda state=None: ["videos: pexels-1 clip.mp4 is missing (run make videos)"])
-    assert check7.prerequisites(_lock(), state=tmp_path) == "check-7: run make videos (pexels-1 missing or changed)"
+    assert check7.prerequisites(lk, state=tmp_path) == "check-7: run make videos (pexels-1 missing or changed)"
 
 
 def test_clone_supports_finds_flag(tmp_path: Path) -> None:
@@ -246,3 +245,28 @@ def test_passes_requires_every_gate() -> None:
     assert not check7.passes({**base, "followers_matched": "1/2"})
     assert not check7.passes({**base, "faults_compared": 0})
     assert not check7.passes({**base, "entry_ok": False})
+
+
+class _ServeStarted(Exception):
+    """Raised by the fake `Popen`: the test only needs the serve call's env."""
+
+
+def test_the_check_serves_with_the_clip_size_cap_off(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # TICKET-067 (check-7.md step 2): the direct path reads the test clip as is, so the app may not resize it
+    seen: dict[str, Any] = {}
+
+    def popen(argv: list[str], **kw: Any) -> None:
+        seen.update(argv=argv, env=kw["env"])
+        raise _ServeStarted
+
+    monkeypatch.setenv("SIMON7_CLIP_MAX_SIDE", "960")
+    monkeypatch.setattr(check7.modules, "load", _lock)
+    monkeypatch.setattr(check7, "prerequisites", lambda lock: None)
+    monkeypatch.setattr(check7.videos, "load_manifest", lambda: {"clips": CLIPS})
+    monkeypatch.setattr(check7.movement, "check_movement", lambda: MOV)
+    monkeypatch.setattr(check7.config, "check_dir", lambda: tmp_path)
+    monkeypatch.setattr(check7.subprocess, "Popen", popen)
+    with pytest.raises(_ServeStarted):
+        check7.cli_check()
+    assert "serve" in seen["argv"]
+    assert seen["env"]["SIMON7_CLIP_MAX_SIDE"] == "0" and seen["env"]["SIMON7_PHRASING"] == check7.PHRASING

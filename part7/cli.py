@@ -16,26 +16,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # part7 pin [--update [<part>...]] [--materialize]
-    p_pin = sub.add_parser("pin", help="Write parts.lock.json and optionally materialize clones.")
-    p_pin.add_argument(
-        "--update",
-        nargs="*",
-        default=None,
-        metavar="PART",
-        help="Re-read upstream main for the named parts (or all when none named).",
-    )
-    p_pin.add_argument(
-        "--materialize",
+    # part7 parts-status [--check-remote]
+    p_status = sub.add_parser("parts-status", help="Print the checked-out sha of each part module as JSON.")
+    p_status.add_argument(
+        "--check-remote",
         action="store_true",
-        help="Clone missing pinned commits under the state directory.",
+        help="Also read each remote main; exit 3 when any part is behind, 4 when one is unreadable.",
     )
 
     # part7 setup-parts
-    sub.add_parser("setup-parts", help="Run each part's documented setup at its pin.")
+    sub.add_parser("setup-parts", help="Run each part's documented setup in its module (skipped when done for its sha).")
 
     # part7 doctor-parts
-    sub.add_parser("doctor-parts", help="Check each part's contract or help command at its pin.")
+    sub.add_parser("doctor-parts", help="Check each part's contract or help command in its module.")
 
     # part7 videos fetch|verify|list
     p_videos = sub.add_parser("videos", help="Manage openly licensed test videos.")
@@ -85,10 +78,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "pin":
-        from part7 import pins
+    if args.command == "parts-status":
+        from part7 import modules
 
-        return pins.cli_pin(update=args.update, materialize=args.materialize)
+        return modules.cli_parts_status(check_remote=args.check_remote)
 
     if args.command == "setup-parts":
         from part7 import setup_parts

@@ -13,6 +13,7 @@ const MAX_DIST = 8;
 const BONE_R = 0.02;
 const FACE_BONE_R = 0.008;
 const JOINT_R = 0.03;
+const DIM_OPACITY = 0.3;
 export const VIEWS = {
   front: { azimuth: 0, elevation: 8 },
   side: { azimuth: 90, elevation: 8 },
@@ -65,6 +66,8 @@ export function createStage(host, { joints, bones, tracks }) {
   const figures = tracks.map((t) => {
     const group = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: t.color, roughness: 0.55, metalness: 0.05, transparent: true, opacity: 1 });
+    // TICKET-065: a joint the camera did not see in this frame is drawn dimmed, never dropped
+    const dimMat = new THREE.MeshStandardMaterial({ color: t.color, roughness: 0.55, metalness: 0.05, transparent: true, opacity: DIM_OPACITY, depthWrite: false });
     const boneMeshes = bones.map(([a, b]) => {
       const m = new THREE.Mesh(boneGeo, mat);
       m.userData.r = a <= 4 && b <= 4 ? FACE_BONE_R : BONE_R;
@@ -85,7 +88,7 @@ export function createStage(host, { joints, bones, tracks }) {
       return h;
     });
     scene.add(group);
-    return { group, mat, boneMeshes, jointMeshes, halos, pose: null, offset: new THREE.Vector3(), pelvis: new THREE.Vector3() };
+    return { group, mat, dimMat, boneMeshes, jointMeshes, halos, pose: null, dim: new Set(), stats: null, offset: new THREE.Vector3(), pelvis: new THREE.Vector3() };
   });
 
   const state = { azimuth: 24, elevation: 14, distance: 3.4, mode: tracks.length > 1 ? "side" : "single", highlight: new Set() };
@@ -114,7 +117,9 @@ export function createStage(host, { joints, bones, tracks }) {
   function poseFigure(fig, trackIdx) {
     const pose = fig.pose;
     fig.group.visible = !!pose;
-    if (!pose) return;
+    if (!pose) { fig.stats = null; return; }
+    const dim = fig.dim;
+    const stats = { joints: 0, dimmed: 0, bones: 0 };
     let cx = 0, cy = 0, cz = 0;
     const hl = pose[hipL], hr = pose[hipR];
     if (hl && hr) { cx = (hl[0] + hr[0]) / 2; cy = (hl[1] + hr[1]) / 2; cz = (hl[2] + hr[2]) / 2; }
@@ -127,9 +132,11 @@ export function createStage(host, { joints, bones, tracks }) {
       const halo = fig.halos[i];
       if (!p) { jm.visible = false; halo.visible = false; return; }
       jm.visible = true;
+      stats.joints++;
+      if (dim.has(i)) stats.dimmed++;
       jm.position.set(p[0] + fig.offset.x, p[1] + fig.offset.y, p[2] + fig.offset.z);
       const lit = !!hot && hot.has(i);
-      jm.material = lit ? hotMat : fig.mat;
+      jm.material = lit ? hotMat : dim.has(i) ? fig.dimMat : fig.mat;
       jm.scale.setScalar(lit ? jm.userData.r * 1.9 : jm.userData.r);
       halo.visible = lit;
       if (lit) { halo.position.copy(jm.position); halo.scale.setScalar(jm.userData.r * 4.2); }
@@ -139,6 +146,8 @@ export function createStage(host, { joints, bones, tracks }) {
       const pa = pose[a], pb = pose[b];
       if (!pa || !pb) { m.visible = false; return; }
       m.visible = true;
+      stats.bones++;
+      m.material = dim.has(a) || dim.has(b) ? fig.dimMat : fig.mat;
       tmpA.set(pa[0] + fig.offset.x, pa[1] + fig.offset.y, pa[2] + fig.offset.z);
       tmpB.set(pb[0] + fig.offset.x, pb[1] + fig.offset.y, pb[2] + fig.offset.z);
       tmpDir.subVectors(tmpB, tmpA);
@@ -147,6 +156,7 @@ export function createStage(host, { joints, bones, tracks }) {
       m.scale.set(m.userData.r, len, m.userData.r);
       m.quaternion.setFromUnitVectors(UP, tmpDir.multiplyScalar(1 / len));
     });
+    fig.stats = stats;
   }
 
   function applyMaterials() {
@@ -156,6 +166,8 @@ export function createStage(host, { joints, bones, tracks }) {
       fig.mat.opacity = ghost ? 0.32 : 1;
       fig.mat.depthWrite = !ghost;
       fig.mat.needsUpdate = true;
+      fig.dimMat.opacity = fig.mat.opacity * DIM_OPACITY;
+      fig.dimMat.needsUpdate = true;
     });
   }
 
@@ -251,10 +263,17 @@ export function createStage(host, { joints, bones, tracks }) {
 
   return {
     canvas,
-    setPoses(poses) {
-      poses.forEach((p, i) => { if (figures[i]) figures[i].pose = p; });
+    /** poses[i] is figure i's joints (null hides the figure); dims[i] lists its joint indices to dim. */
+    setPoses(poses, dims = []) {
+      poses.forEach((p, i) => {
+        if (!figures[i]) return;
+        figures[i].pose = p;
+        figures[i].dim = new Set(dims[i] || []);
+      });
       invalidate();
     },
+    /** Per figure, what the last render drew: {joints, dimmed, bones}, or null for a hidden figure. */
+    drawStats: () => figures.map((f) => (f.stats ? { ...f.stats } : null)),
     setMode(mode) {
       state.mode = mode;
       applyMaterials();

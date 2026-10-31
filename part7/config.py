@@ -32,6 +32,10 @@ PART1_RUN_SPEND_CAP_USD = 5.0
 
 DEFAULT_GPU_WORKERS = 2
 DEFAULT_PART1_TIMEOUT_S = 90.0
+# TICKET-067: Part 2 `track` sends every frame to a remote tracker, so its time grows with the pixel count
+# (412.6 s for 176 frames at 2048x1080, 21.3 s at 608x1080). Every job's clip is scaled to this long side.
+DEFAULT_CLIP_MAX_SIDE = 1280
+MIN_CLIP_MAX_SIDE = 16
 
 
 def _env_number(name: str, default: float, minimum: float) -> float:
@@ -52,6 +56,18 @@ def part1_timeout_s() -> float:
     return _env_number("SIMON7_PART1_TIMEOUT_S", DEFAULT_PART1_TIMEOUT_S, 1)
 
 
+def clip_max_side() -> int:
+    """Long side cap in px of every job's clip (`SIMON7_CLIP_MAX_SIDE`, default 1280; 0 turns the cap off).
+
+    A value that is not a whole number, or one from 1 to `MIN_CLIP_MAX_SIDE - 1`, falls back to the default.
+    """
+    try:
+        value = int(os.environ.get("SIMON7_CLIP_MAX_SIDE", "").strip())
+    except ValueError:
+        return DEFAULT_CLIP_MAX_SIDE
+    return value if value == 0 or value >= MIN_CLIP_MAX_SIDE else DEFAULT_CLIP_MAX_SIDE
+
+
 TIMEOUTS = {
     "1": 900,
     "2": 1200,
@@ -61,20 +77,6 @@ TIMEOUTS = {
     "6": 60,
     "doctor": 60,
 }
-
-PART_REPOS: dict[str, str] = {
-    "1": "https://github.com/moalborati/simon-part-1-keyframes.git",
-    "2": "https://github.com/moalborati/simon-part-2-images-to-3d.git",
-    "3": "https://github.com/moalborati/simon-part-3-skeleton-consistency.git",
-    "4": "https://github.com/moalborati/simon-part-4-animate-keyframes.git",
-    "5": "https://github.com/moalborati/simon-part-5-fault-analysis.git",
-    "6": "https://github.com/moalborati/simon-part-6-recording-catalog.git",
-}
-
-# Optional local checkouts of Parts 2, 3, 5 and 6 (`~/simon-part-<n>`): `part7 pin --update` reads the last
-# STATUS line of each one that exists into parts.lock.json; a missing checkout records "upstream main".
-PART_WORKSPACES: dict[str, Path] = {p: Path.home() / f"simon-part-{p}" for p in ("2", "3", "5", "6")}
-
 
 def state_root(state: str | Path | None = None) -> Path:
     """Return the root state directory (`~/.local/state/simon-part-7/` by default)."""
@@ -86,9 +88,17 @@ def state_root(state: str | Path | None = None) -> Path:
     return (Path.home() / ".local" / "state" / "simon-part-7").resolve()
 
 
-def parts_dir(state: str | Path | None = None) -> Path:
-    """Return the directory holding materialized part clones (`<state>/parts`)."""
-    return state_root(state) / "parts"
+def modules_dir() -> Path:
+    """Return the directory holding the part submodules (`<repo>/modules`, or `SIMON7_MODULES_DIR`)."""
+    env_val = os.environ.get("SIMON7_MODULES_DIR")
+    if env_val:
+        return Path(env_val).expanduser().resolve()
+    return REPO_ROOT / "modules"
+
+
+def part_dir(part: int | str) -> Path:
+    """Return the checkout of one part: `<modules dir>/part-<n>`."""
+    return modules_dir() / f"part-{part}"
 
 
 def videos_dir(state: str | Path | None = None) -> Path:
@@ -109,14 +119,6 @@ def staging_dir(state: str | Path | None = None) -> Path:
 def check_dir(state: str | Path | None = None) -> Path:
     """Return the check-7 and chain state directory (`<state>/check`)."""
     return state_root(state) / "check"
-
-
-def lock_path() -> Path:
-    """Return the path to `parts.lock.json`."""
-    env_val = os.environ.get("SIMON7_LOCK_PATH")
-    if env_val:
-        return Path(env_val).expanduser().resolve()
-    return REPO_ROOT / "parts.lock.json"
 
 
 def manifest_path() -> Path:

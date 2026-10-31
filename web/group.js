@@ -1,5 +1,6 @@
 // Group mode helpers (people.md, "Part 7 web"): limits, label cleaning and the trainer-screen mode switch.
 import { h } from "./ui.js";
+import { ensurePeopleStyles } from "./people.js";
 
 export const GROUP_MAX_FOLLOWERS = 8;
 export const GROUP_MAX_MS = 30000;
@@ -34,6 +35,7 @@ export function cleanLabels(raw, ids) {
  * Returns {el, get mode()}; onChange("single"|"group") fires on a change.
  */
 export function mountModeSwitch(root, { mode = "single", onChange = () => {} } = {}) {
+  ensurePeopleStyles(); // the switch shares the picker's segmented style (people.css)
   let current = mode;
   const solo = h("button", { type: "button", class: "pp-seg-btn", "data-testid": "mode-solo", text: "Just me" });
   const group = h("button", { type: "button", class: "pp-seg-btn", "data-testid": "mode-group", text: "Group (trainer and class)" });

@@ -3,6 +3,7 @@
 // videoBitsPerSecond from api/config (2.5 Mbit/s), chunks every 1 s. recorder.md: a countdown before
 // recording, an optional fixed duration, a raw limit of 90 s; the trim editor runs after a take.
 import { h, mmss } from "./ui.js";
+import { clientLog } from "./api.js";
 import { openTrimEditor } from "./trim.js";
 import {
   COUNTDOWNS, DURATIONS, RAW_LIMIT_S, countdownLabel, durationLabel, loadPrefs, savePrefs,
@@ -20,15 +21,8 @@ export const CAMERA_TEXT = {
 const NO_PICTURE_MS = 3000; // a stream with no frame after this long is reported (another app holds the camera)
 export const MIME_ORDER = ["video/webm;codecs=vp9", "video/webm", "video/mp4"];
 
-/** True when the browser already allows the camera here (no prompt needed); false when unknown. */
-export async function cameraAllowed() {
-  try {
-    const status = await navigator.permissions.query({ name: "camera" });
-    return status.state === "granted";
-  } catch {
-    return false; // Safari and Firefox may not answer for "camera": Open camera asks instead
-  }
-}
+/** "640x480" from a width and height; "" when either is unknown. */
+export const sizeText = (w, h2) => (w > 0 && h2 > 0 ? `${w}x${h2}` : "");
 
 export function pickMimeType(MR = globalThis.MediaRecorder) {
   if (!MR || typeof MR.isTypeSupported !== "function") return "";
@@ -82,6 +76,7 @@ export function mountCapture(root, limits, { reference = null } = {}) {
   let recordedMs = 0;
   let destroyed = false;
   let opening = null; // the pending camera request, so a second ask waits on the first
+  let trackSize = ""; // "WxH" of the live camera track, for the logs and data-track-size
   injectStyles();
 
   const live = h("video", { class: "mirror", muted: true, playsinline: true, "data-testid": "preview", "aria-label": "Camera preview" });
@@ -109,9 +104,9 @@ export function mountCapture(root, limits, { reference = null } = {}) {
   if (reference) reference.dock(camRow, "live");
   root.append(camRow || stage, framing, opts, h("div", { class: "row between" }, timer, h("div", { class: "row" }, start, stop, upload, input)), info, error);
 
-  // Open the camera at once only when the browser already allows it; otherwise wait for Open camera, so the
-  // permission prompt follows a tap (a prompt raised on page load can be blocked or missed, leaving a black box).
-  cameraAllowed().then((ok) => { if (ok && !destroyed && !take) openPreview(); });
+  // Operator 2026-10-30: the live preview shows as soon as the screen opens, before Record, on Record and Follow.
+  // The camera is asked for on mount; a refused, blocked or dark camera leaves Open camera (Try again) and Upload.
+  openPreview();
 
   function setError(msg) {
     error.textContent = msg || "";
@@ -162,6 +157,7 @@ export function mountCapture(root, limits, { reference = null } = {}) {
   async function askCamera() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !globalThis.MediaRecorder) {
       console.warn("[capture] no camera API in this browser");
+      clientLog("warn", "camera_unsupported", { mediaDevices: Boolean(navigator.mediaDevices), recorder: Boolean(globalThis.MediaRecorder) });
       camStatus("blocked");
       return false;
     }
@@ -170,6 +166,7 @@ export function mountCapture(root, limits, { reference = null } = {}) {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
     } catch (err) {
       console.warn("[capture] camera refused:", err && err.name, err && err.message);
+      clientLog("warn", "camera_refused", { name: err && err.name, message: err && err.message });
       camStatus("blocked");
       return false;
     }
@@ -177,13 +174,21 @@ export function mountCapture(root, limits, { reference = null } = {}) {
     const track = stream.getVideoTracks()[0];
     const set = track ? track.getSettings() : {};
     console.info("[capture] camera on:", track && track.label, `${set.width}x${set.height} at ${set.frameRate} fps`);
+    trackSize = sizeText(set.width, set.height);
+    stage.dataset.trackSize = trackSize;
+    // no device label in the server log: a label can carry the owner's name; the console line stays in the browser
+    clientLog("info", "camera_opened", { width: set.width, height: set.height, fps: set.frameRate, facing: set.facingMode || "" });
     live.srcObject = stream;
-    live.play().catch((err) => console.warn("[capture] preview did not play:", err && err.name));
+    live.play().catch((err) => {
+      console.warn("[capture] preview did not play:", err && err.name);
+      clientLog("warn", "preview_not_playing", { name: err && err.name });
+    });
     if (stage.dataset.state === "idle") stage.dataset.state = "preview";
     camStatus("idle");
     setTimeout(() => {
       if (stream && !take && !destroyed && live.videoWidth === 0) {
         console.warn("[capture] the camera stream has no picture after", NO_PICTURE_MS, "ms");
+        clientLog("warn", "camera_dark", { after_ms: NO_PICTURE_MS, track: trackSize });
         releaseCamera();
         stage.dataset.state = "idle";
         camStatus("dark");
@@ -255,11 +260,15 @@ export function mountCapture(root, limits, { reference = null } = {}) {
     const mimeType = pickMimeType();
     try {
       recorder = new MediaRecorder(stream, recorderOptions(limits, mimeType));
-    } catch {
+    } catch (err) {
+      console.warn("[capture] recorder did not start:", err && err.name);
+      clientLog("error", "recorder_failed", { name: err && err.name, message: err && err.message, mime: mimeType });
       cancelled();
       setError(CAMERA_OFF);
       return;
     }
+    console.info("[capture] recorder:", recorder.mimeType || mimeType, `${recorder.videoBitsPerSecond || limits.recorder_bps} bps`);
+    clientLog("info", "recorder_started", { mime: recorder.mimeType || mimeType, asked_mime: mimeType, bps: recorder.videoBitsPerSecond || limits.recorder_bps, track: trackSize });
     const limitS = prefs.duration || RAW_LIMIT_S;
     recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     recorder.onstop = () => {
@@ -275,7 +284,12 @@ export function mountCapture(root, limits, { reference = null } = {}) {
       source = "recording";
       countdownUsed = withCountdown;
       manual = !prefs.duration;
-      setTake(new Blob(chunks, { type }), "Recorded");
+      const blob = new Blob(chunks, { type });
+      const size = sizeText(...trackDims());
+      console.info("[capture] take recorded:", blob.size, "bytes,", recordedMs, "ms,", type, "camera", size);
+      clientLog("info", "take_recorded", { bytes: blob.size, duration_ms: recordedMs, mime: type, chunks: chunks.length, track: size });
+      setTake(blob, "Recorded");
+      measureTake(blob, size);
     };
     recorder.start(1000);
     startedAt = Date.now();
@@ -293,6 +307,36 @@ export function mountCapture(root, limits, { reference = null } = {}) {
     };
     paint();
     tick = setInterval(paint, 250);
+  }
+
+  // The track's frame size as the recorder saw it (getSettings may change after a device rotates).
+  function trackDims() {
+    const track = stream && stream.getVideoTracks()[0];
+    const set = track ? track.getSettings() : {};
+    return [set.width || live.videoWidth, set.height || live.videoHeight];
+  }
+
+  // The recorded file's own frame size, read from its metadata, against the camera track: the take keeps the
+  // whole frame (MediaRecorder records the stream, never the cropped preview). Shown as data-take-size.
+  function measureTake(blob, size) {
+    const url = URL.createObjectURL(blob);
+    const probe = document.createElement("video");
+    probe.muted = true;
+    probe.preload = "metadata";
+    const done = (detail, level = "info") => {
+      probe.removeAttribute("src");
+      probe.load();
+      URL.revokeObjectURL(url);
+      stage.dataset.takeSize = detail.take || "";
+      console.info("[capture] take frame:", detail.take || "unknown", "camera", size);
+      clientLog(level, "take_dimensions", detail);
+    };
+    probe.addEventListener("loadedmetadata", () => {
+      const takeSize = sizeText(probe.videoWidth, probe.videoHeight);
+      done({ take: takeSize, track: size, full_frame: takeSize === size });
+    }, { once: true });
+    probe.addEventListener("error", () => done({ take: "", track: size, error: "metadata" }, "warn"), { once: true });
+    probe.src = url;
   }
 
   function stopRecording() {

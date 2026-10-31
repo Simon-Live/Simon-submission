@@ -35,6 +35,23 @@ p { text-wrap: pretty; margin: 0 0 12px; }
 .brand { font-weight: 700; font-size: 18px; }
 .bar-nav a { color: var(--muted); font-size: 15px; padding-left: 12px; }
 
+.bar { flex-wrap: wrap; }
+.build { order: 3; flex: 1 0 100%; padding-bottom: 6px; color: var(--ink); font: 13px/1.4 var(--mono); }
+.build summary { cursor: pointer; min-height: 24px; display: flex; align-items: center; white-space: nowrap; }
+.build-full { display: none; }
+.build-parts {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 4px 0 8px; padding: 8px 12px;
+  background: var(--soft); border: 1px solid var(--line); border-radius: 6px; color: var(--muted);
+}
+.build-parts dt, .build-parts dd { margin: 0; }
+@media (min-width: 640px) {
+  .bar-nav { order: 3; }
+  .build-full { display: inline; }
+  .build-short { display: none; }
+  .build { order: 2; flex: 1 1 auto; padding: 0 16px; position: relative; }
+  .build-parts { position: absolute; left: 16px; z-index: 11; background: var(--surface); }
+}
+
 main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe-area-inset-bottom)); outline: none; }
 .screen { display: block; }
 .head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
@@ -89,7 +106,9 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
   position: relative; aspect-ratio: 3 / 4; max-height: 60dvh; width: 100%; background: var(--ink); border-radius: 8px;
   overflow: hidden; display: grid; place-items: center;
 }
-.cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+/* Every person picture shows the whole frame the recorder keeps (contain, never cover), on Record and Follow
+   alike: `cover` cut the edges off, so the body looked out of frame while the file still had it. */
+.cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .cam video[hidden] { display: none; }
 .cam video.mirror { transform: scaleX(-1); }
 .cam-empty { position: relative; z-index: 1; display: grid; justify-items: center; gap: 12px; max-width: 320px; padding: 16px; text-align: center; }
@@ -97,13 +116,9 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
 .cam-empty .btn.primary { background: #fff; color: #111; border-color: #fff; }
 .cam[data-state="preview"] .cam-empty, .cam[data-state="counting"] .cam-empty,
 .cam[data-state="recording"] .cam-empty, .cam[data-state="take"] .cam-empty { display: none; }
-/* The live preview shows the whole frame the recorder keeps, on Record and Follow alike: `cover` cut the
-   edges off, so the body looked out of frame on the Follow screen while the file still had it. */
-.cam video[data-testid="preview"] { object-fit: contain; }
 .cam[data-state="recording"]::after {
   content: ""; position: absolute; top: 12px; left: 12px; width: 10px; height: 10px; border-radius: 50%; background: #e5484d;
 }
-.cam[data-state="take"] video[data-testid="take-preview"] { object-fit: contain; }
 .timer { font-family: var(--mono); font-size: 15px; }
 .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
 .capture { position: relative; }

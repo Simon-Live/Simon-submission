@@ -30,7 +30,7 @@ ENTRIES = [
 TRAINER_STAGES = ["upload", "keyframes", "pose", "skeleton", "animation", "catalog"]
 FOLLOW_STAGES = ["upload", "pose", "skeleton", "analyse"]
 
-STATE = {"uploads": [], "jobs": {}, "polls": {}, "range_requests": 0}
+STATE = {"uploads": [], "jobs": {}, "polls": {}, "range_requests": 0, "people_jobs": 0}
 _video = {}
 
 
@@ -43,11 +43,36 @@ def video_bytes() -> bytes:
     return _video["b"]
 
 
+# A small standing figure in the shape of a real animation.json: named joints, 3D points per frame
+# (the left wrist swings), bones. The Watch viewer needs `joints` to draw anything (TICKET-068).
+_FIGURE = {
+    "nose": (0, 1.7, 0), "left_shoulder": (0.2, 1.5, 0), "right_shoulder": (-0.2, 1.5, 0),
+    "left_elbow": (0.3, 1.25, 0), "right_elbow": (-0.3, 1.25, 0), "left_wrist": (0.35, 1.0, 0),
+    "right_wrist": (-0.35, 1.0, 0), "left_hip": (0.12, 1.0, 0), "right_hip": (-0.12, 1.0, 0),
+    "left_knee": (0.12, 0.55, 0), "right_knee": (-0.12, 0.55, 0), "left_ankle": (0.12, 0.1, 0),
+    "right_ankle": (-0.12, 0.1, 0),
+}
+
+
 def animation() -> dict:
-    return {"fps": 30, "frames": [{"t": i / 30, "joints": {}} for i in range(30)]}
+    frames = []
+    for i in range(30):
+        pts = {n: list(p) for n, p in _FIGURE.items()}
+        pts["left_wrist"] = [0.35 + 0.002 * i, 1.0 + 0.01 * i, 0]
+        frames.append({"t": i / 30, "joints": pts})
+    return {"fps": 30, "joints": list(_FIGURE), "bones": [], "frames": frames}
+
+
+def people_job_view(job_id: str) -> tuple[int, dict]:
+    """The people check every take runs after the trim: one person found, so the picker is skipped."""
+    person = {"id": "0", "coverage": 0.9, "frames": 40, "box_mid": [10, 10, 50, 120]}
+    return 200, {"id": job_id, "kind": "people", "status": "done", "stage": "people", "entry_id": None, "note": "",
+                 "queue_position": None, "result": {"people": [person], "auto_id": "0", "frame": "people/frame.jpg"}}
 
 
 def job_view(job_id: str) -> tuple[int, dict]:
+    if job_id.startswith("pj"):
+        return people_job_view(job_id)
     job = STATE["jobs"].get(job_id)
     if not job:
         return 404, {"error": "unknown job"}
@@ -147,6 +172,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, {"error": "not a video"})
             STATE["uploads"].append({"size": len(body), "type": self.headers.get("Content-Type")})
             return self.send(201, {"upload_id": f"u{len(STATE['uploads'])}", "duration_ms": 3000, "width": 320, "height": 240})
+        if path == "api/people":
+            STATE["people_jobs"] += 1
+            return self.send(202, {"job": f"pj{STATE['people_jobs']}"})
+        if path == "api/client-log":  # the browser's own events (app.md "Client log"), as the real app answers
+            return self.send(204)
         data = json.loads(body or b"{}")
         if path in ("api/trainer", "api/follow"):
             kind = "trainer" if path.endswith("trainer") else "follow"

@@ -3,12 +3,91 @@
 // `mountCompare` builds the controls and drives `viewer3d.js`, loaded lazily so a browser
 // without WebGL still gets the rest of the screen.
 import { el } from "./score.js";
+import { clientLog } from "./api.js";
 
 export const MSG_NO_WEBGL = "3D view is not available in this browser.";
 export const MSG_BAD_REPLAY = "The replay file could not be read.";
 export const MSG_NO_ANIMATION = "This movement has no 3D animation yet.";
 export const TRAINER_COLOR = 0x8aa4ff;
 export const YOU_COLOR = 0x3ddc97;
+
+// ---- body ----------------------------------------------------------------------------------
+
+/** The body every 3D view draws for the COCO-17 joints (TICKET-065), the same bones as Part 5's
+ *  replay.json. Part 4's animation.json joins the torso through virtual joints (`hip_mid` to
+ *  `shoulder_mid`) that are not in its joint list; drawing only a file's own bones left the Watch
+ *  figure without a torso while the compare drew the whole body. */
+export const BODY_BONES = [
+  ["nose", "left_eye"], ["nose", "right_eye"], ["left_eye", "left_ear"], ["right_eye", "right_ear"],
+  ["nose", "left_shoulder"], ["nose", "right_shoulder"], ["left_shoulder", "right_shoulder"],
+  ["left_hip", "right_hip"], ["left_shoulder", "left_hip"], ["right_shoulder", "right_hip"],
+  ["left_shoulder", "left_elbow"], ["left_elbow", "left_wrist"], ["right_shoulder", "right_elbow"],
+  ["right_elbow", "right_wrist"], ["left_hip", "left_knee"], ["left_knee", "left_ankle"],
+  ["right_hip", "right_knee"], ["right_knee", "right_ankle"],
+];
+
+const boneEnds = (b, idx) => {
+  if (Array.isArray(b)) return b.map((v) => (typeof v === "string" ? idx.get(v) : v));
+  return [idx.get(b && (b.parent ?? b.from)), idx.get(b && (b.child ?? b.to))];
+};
+const boneName = (b) => (Array.isArray(b) ? b.join("-") : (b && (b.name || `${b.parent ?? b.from}-${b.child ?? b.to}`)) || "?");
+
+/** Bones as index pairs: BODY_BONES over the joints present, then the file's own bones that name two
+ *  real joints. A bone whose end is not a joint (a virtual joint) is returned in `dropped`. */
+export function bodyBones(joints, source = []) {
+  const idx = new Map(joints.map((n, i) => [n, i]));
+  const bones = [];
+  const seen = new Set();
+  const dropped = [];
+  const add = ([a, b]) => {
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    if (a === b || seen.has(key)) return;
+    seen.add(key);
+    bones.push([a, b]);
+  };
+  for (const [a, b] of BODY_BONES) if (idx.has(a) && idx.has(b)) add([idx.get(a), idx.get(b)]);
+  for (const b of source || []) {
+    const ends = boneEnds(b, idx);
+    if (ends.every((i) => Number.isInteger(i) && i >= 0 && i < joints.length)) add(ends);
+    else dropped.push(boneName(b));
+  }
+  return { bones, dropped };
+}
+
+/** A joint with no position in a frame is not dropped: it takes its nearest seen position in the same
+ *  track (the previous frame first, else the next) and is listed in `unseen[frame]` so every view dims
+ *  it. A joint never seen in the track has nothing to place and stays null (`never`). */
+export function fillUnseen(frames, jointCount) {
+  const out = frames.map((f) => f.slice());
+  const unseen = frames.map(() => []);
+  const never = [];
+  for (let j = 0; j < jointCount; j++) {
+    if (frames.every((f) => !f[j])) { never.push(j); continue; }
+    let prev = null;
+    const next = new Array(frames.length);
+    let nx = null;
+    for (let i = frames.length - 1; i >= 0; i--) { if (frames[i][j]) nx = frames[i][j]; next[i] = nx; }
+    for (let i = 0; i < frames.length; i++) {
+      if (frames[i][j]) { prev = frames[i][j]; continue; }
+      out[i][j] = prev || next[i];
+      unseen[i].push(j);
+    }
+  }
+  return { frames: out, unseen, never };
+}
+
+/** What a view does to the body for this model, or null when it draws every joint in every frame. */
+export function bodyReport(model) {
+  const tracks = model.kind === "single" ? [["trainer", model.unseen, model.never]] : [["trainer", model.expectedUnseen, model.expectedNever], ["you", model.followerUnseen, model.followerNever]];
+  const parts = [];
+  for (const [who, unseen, never] of tracks) {
+    const frames = (unseen || []).filter((u) => u.length).length;
+    const dimmed = [...new Set((unseen || []).flat())].map((i) => model.joints[i]);
+    if (dimmed.length) parts.push(`${who}: dims ${dimmed.join(",")} in ${frames} frame${frames === 1 ? "" : "s"}`);
+    if (never && never.length) parts.push(`${who}: hides ${never.map((i) => model.joints[i]).join(",")} (never seen)`);
+  }
+  return parts.length ? parts.join("; ") : null;
+}
 
 // ---- model ---------------------------------------------------------------------------------
 
@@ -27,7 +106,14 @@ export function normalizeReplay(replay) {
   if (!Array.isArray(expToFol) || expToFol.length !== expected.length || !expToFol.every(Number.isFinite)) throw bad("exp_to_fol");
   const ft = replay.follower_t;
   const duration = Array.isArray(ft) && ft.length === follower.length ? ft[ft.length - 1] : (follower.length - 1) / fps;
-  return { kind: "compare", fps, joints, bones, expected, follower, expToFol, duration };
+  const exp = fillUnseen(expected, joints.length);
+  const fol = fillUnseen(follower, joints.length);
+  const body = bodyBones(joints, bones);
+  return {
+    kind: "compare", fps, joints, bones: body.bones, droppedBones: body.dropped, duration, expToFol,
+    expected: exp.frames, expectedUnseen: exp.unseen, expectedNever: exp.never,
+    follower: fol.frames, followerUnseen: fol.unseen, followerNever: fol.never,
+  };
 }
 
 /** Turn a Part 4 `simon.animation.v1` clip into the same model with one figure. */
@@ -36,16 +122,32 @@ export function normalizeAnimation(anim) {
     throw Object.assign(new Error(MSG_NO_ANIMATION), { detail: "animation" });
   }
   const joints = anim.joints.map((j) => (typeof j === "string" ? j : j.name));
-  const idx = new Map(joints.map((n, i) => [n, i]));
-  const bones = (anim.bones || [])
-    .map((b) => (Array.isArray(b) ? b : [idx.get(b.parent), idx.get(b.child)]))
-    .filter((b) => b.every((i) => Number.isInteger(i)));
-  const frames = anim.frames.map((f) => joints.map((n) => {
+  const body = bodyBones(joints, anim.bones || []);
+  const raw = anim.frames.map((f) => joints.map((n) => {
     const p = f.joints && f.joints[n];
     return Array.isArray(p) && p.length === 3 && p.every(Number.isFinite) ? p : null;
   }));
-  const duration = anim.frames[anim.frames.length - 1].t ?? (frames.length - 1) / anim.fps;
-  return { kind: "single", fps: anim.fps, joints, bones, frames, duration };
+  const filled = fillUnseen(raw, joints.length);
+  const duration = anim.frames[anim.frames.length - 1].t ?? (raw.length - 1) / anim.fps;
+  return { kind: "single", fps: anim.fps, joints, bones: body.bones, droppedBones: body.dropped, frames: filled.frames, unseen: filled.unseen, never: filled.never, duration };
+}
+
+/** One figure from a replay's expected track (the trainer), keeping its unseen marks. */
+export function singleFromReplay(m) {
+  return { kind: "single", fps: m.fps, joints: m.joints, bones: m.bones, droppedBones: m.droppedBones, frames: m.expected, unseen: m.expectedUnseen, never: m.expectedNever, duration: (m.expected.length - 1) / m.fps };
+}
+
+/** Per-figure joint indices to dim for the frames `pickFrames` chose (multi-compare.js `dimsAt` takes a time). */
+export function dimsForPicked(model, picked) {
+  return model.kind === "single" ? [model.unseen[picked.follower]] : [model.expectedUnseen[picked.expected], model.followerUnseen[picked.follower]];
+}
+
+/** One console warning and one client log event (`body_dimmed`) for a view that dims or hides joints. The
+ *  callers run it once per mounted view, so a view logs once. */
+export function logBody(view, report) {
+  if (!report) return;
+  console.warn(`[simon 3D] ${view}: ${report}`);
+  clientLog("warn", "body_dimmed", { view, report });
 }
 
 /** compare-view.md AC-C1: the follower frame is round(t*fps); the expected frame is the largest e
@@ -173,9 +275,11 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
   const jointIdx = new Map(model.joints.map((n, i) => [n, i]));
 
   const draw = () => {
-    const { follower, expected } = pickFrames(clock.t, model);
-    stage.setPoses(single ? [model.frames[follower]] : [model.expected[expected], model.follower[follower]]);
+    const picked = pickFrames(clock.t, model);
+    const { follower, expected } = picked;
+    stage.setPoses(single ? [model.frames[follower]] : [model.expected[expected], model.follower[follower]], dimsForPicked(model, picked));
   };
+  logBody(testid, bodyReport(model));
   const onClock = (t, playing) => {
     clockEl.textContent = `${t.toFixed(1)} s`;
     clockEl.setAttribute("data-t", String(t));
@@ -219,6 +323,7 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
   stage.onRender(() => {
     wrap.setAttribute("data-pelvis-trainer", pt(stage.pelvisScreen(0)));
     if (!single) wrap.setAttribute("data-pelvis-you", pt(stage.pelvisScreen(1)));
+    writeDrawStats(wrap, stage.drawStats());
   });
   const cam = stage.getCamera();
   wrap.setAttribute("data-camera-azimuth", round1(cam.azimuth));
@@ -245,6 +350,14 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
   return api;
 }
 
+/** Per figure, comma separated: joints drawn, joints dimmed, bones drawn ("-" for a figure not shown). */
+export function writeDrawStats(wrap, stats) {
+  const col = (k) => stats.map((s) => (s ? String(s[k]) : "-")).join(",");
+  wrap.setAttribute("data-joints-drawn", col("joints"));
+  wrap.setAttribute("data-joints-dimmed", col("dimmed"));
+  wrap.setAttribute("data-bones-drawn", col("bones"));
+}
+
 function noop(wrap) {
   return {
     el: wrap, stage: null,
@@ -260,10 +373,8 @@ export async function mountViewer(root, { replay, animation } = {}) {
   let model;
   try {
     if (animation) model = normalizeAnimation(animation);
-    else if (replay) {
-      const m = normalizeReplay(replay);
-      model = { kind: "single", fps: m.fps, joints: m.joints, bones: m.bones, frames: m.expected, duration: (m.expected.length - 1) / m.fps };
-    } else throw Object.assign(new Error(MSG_NO_ANIMATION), { detail: "missing" });
+    else if (replay) model = singleFromReplay(normalizeReplay(replay));
+    else throw Object.assign(new Error(MSG_NO_ANIMATION), { detail: "missing" });
   } catch (err) {
     const msg = err.message === MSG_BAD_REPLAY ? MSG_BAD_REPLAY : MSG_NO_ANIMATION;
     const holder = el("section", { class: "sr-cmp", "data-testid": "viewer" }, note(msg, "viewer-note"));

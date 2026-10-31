@@ -8,7 +8,8 @@ import stat
 import sys
 import pytest
 
-from part7 import config, pins
+from part7 import config, modules, setup_parts
+from support import stub_modules
 from part7.parts import (
     p1_keyframes,
     p2_pose,
@@ -19,37 +20,20 @@ from part7.parts import (
 )
 
 
-def _stub_lock(state: Path) -> pins.Lock:
-    raw = {
-        "schema": "part7.parts-lock/1",
-        "pinned_at": "2026-10-29T14:52:00Z",
-        "parts": {
-            str(n): {
-                "repo": f"https://example.com/part-{n}.git",
-                "sha": f"{n}" * 40,
-                "pinned_at": "2026-10-29T14:52:00Z",
-                "status": "STATUS: DONE",
-                "repin_due": False,
-                **({"entry_point": "backend"} if n == 2 else {}),
-            }
-            for n in range(1, 7)
-        },
-    }
-    lk = pins.Lock(raw)
+def _stub_lock(state: Path) -> modules.Modules:
+    lk = stub_modules(state / "modules")
     for n in range(1, 7):
-        lk.path(n, state=state).mkdir(parents=True, exist_ok=True)
+        lk.path(n).mkdir(parents=True, exist_ok=True)
     return lk
 
 
-def test_p1_spend_cap_sums_across_clones(state_dir: Path) -> None:
-    """AC-H10: `.meta-spend.json` summing to >= $5 across two `1@*` clones triggers spend cap."""
-    pdir = config.parts_dir(state_dir)
-    c1 = pdir / "1@aaaaaaaaaaaa"
-    c2 = pdir / "1@bbbbbbbbbbbb"
-    c1.mkdir(parents=True)
-    c2.mkdir(parents=True)
-    (c1 / ".meta-spend.json").write_text(json.dumps({"usd": 2.75}), encoding="utf-8")
-    (c2 / ".meta-spend.json").write_text(json.dumps({"total_usd": 2.30}), encoding="utf-8")
+def test_p1_spend_cap_reads_the_part_1_module_ledger(state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-H10: a `.meta-spend.json` of >= $5 in the Part 1 module triggers the spend cap."""
+    monkeypatch.setenv("SIMON7_MODULES_DIR", str(state_dir / "modules"))
+    module1 = state_dir / "modules" / "part-1"
+    module1.mkdir(parents=True)
+    assert p1_keyframes.total_spend_usd(state_dir) == 0.0
+    (module1 / ".meta-spend.json").write_text(json.dumps({"total_usd": 5.05}), encoding="utf-8")
 
     assert p1_keyframes.total_spend_usd(state_dir) == pytest.approx(5.05)
 
@@ -64,7 +48,7 @@ def test_p1_spend_cap_sums_across_clones(state_dir: Path) -> None:
 def test_p1_missing_key_and_secret_never_leaks(tmp_path: Path, state_dir: Path) -> None:
     """AC-008, AC-H5: Fake key fed through Part 1 adapter is absent from every file under job work dir."""
     lk = _stub_lock(state_dir)
-    clone1 = lk.path("1", state=state_dir)
+    clone1 = lk.path("1")
     video = tmp_path / "trainer.mp4"
     video.write_bytes(b"trainer-clip-bytes")
 
@@ -131,7 +115,7 @@ def test_p1_missing_key_and_secret_never_leaks(tmp_path: Path, state_dir: Path) 
 def test_p3_retries_with_every_5_on_180_degree_refusal(tmp_path: Path, state_dir: Path) -> None:
     """AC-H8: Part 3 180-degree refusal retries once with `every:5`."""
     lk = _stub_lock(state_dir)
-    clone3 = lk.path("3", state=state_dir)
+    clone3 = lk.path("3")
     p3_pkg = clone3 / "part3"
     p3_pkg.mkdir(parents=True, exist_ok=True)
     (p3_pkg / "__init__.py").write_text("", encoding="utf-8")
@@ -170,7 +154,7 @@ def test_p3_retries_with_every_5_on_180_degree_refusal(tmp_path: Path, state_dir
 
 def test_p4_and_p5_adapters(tmp_path: Path, state_dir: Path) -> None:
     lk = _stub_lock(state_dir)
-    clone4 = lk.path("4", state=state_dir)
+    clone4 = lk.path("4")
     mod_dir = clone4 / "src" / "simon_anim"
     mod_dir.mkdir(parents=True, exist_ok=True)
     (mod_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -194,7 +178,7 @@ def test_p4_and_p5_adapters(tmp_path: Path, state_dir: Path) -> None:
     assert anim_path.is_file()
 
     # Part 5 exit 3 (different_movement) is treated as written and extracts status.code
-    clone5 = lk.path("5", state=state_dir)
+    clone5 = lk.path("5")
     p5_dir = clone5 / "part5"
     p5_dir.mkdir(parents=True, exist_ok=True)
     (p5_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -237,9 +221,9 @@ import os
 
 def test_p6_catalog_child_against_real_part6_clone(tmp_path: Path) -> None:
     """Test `p6_catalog.Child` start, health, list_entries, get_entry, ensure_running, and stop."""
-    real_lock = pins.load()
+    real_lock = modules.load()
     real_state = Path.home() / ".local" / "state" / "simon-part-7"
-    if not real_lock.path("6", state=real_state).is_dir():
+    if not real_lock.path("6").is_dir():
         pytest.skip("Real Part 6 clone not materialized")
 
     cat_dir = tmp_path / "catalog"
@@ -273,9 +257,14 @@ def test_p6_catalog_child_against_real_part6_clone(tmp_path: Path) -> None:
 
 def test_real_parts_2_to_6_handoffs_end_to_end(tmp_path: Path) -> None:
     """Run real Parts 2 (doctor), 3, 4, 5, and 6 adapters against Part 2's single pose3d fixture."""
-    real_lock = pins.load()
+    real_lock = modules.load()
     real_state = Path.home() / ".local" / "state" / "simon-part-7"
-    pose3d = real_lock.path("2", state=real_state) / "fixtures" / "output" / "single" / "pose3d.json"
+    # TICKET-080: a fresh checkout has no part environments; run Part 7's own setup (idempotent per sha and checkout).
+    setup = setup_parts.setup_all(lock=real_lock, state=real_state, only=("2", "3", "4", "5", "6"))
+    if not setup["ok"]:
+        errors = {p: i["error"] for p, i in setup["parts"].items() if i.get("error")}
+        pytest.fail(f"part setup failed: {errors}")
+    pose3d = real_lock.path("2") / "fixtures" / "output" / "single" / "pose3d.json"
     if not pose3d.is_file():
         pytest.skip("Real Part 2 pose3d fixture not present")
 

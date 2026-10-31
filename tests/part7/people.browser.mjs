@@ -48,6 +48,7 @@ async function install(page) {
     const url = new URL(route.request().url());
     const p = url.pathname.replace(/^.*\/api\//, "api/");
     let m;
+    if (p === "api/client-log") return route.fulfill({ status: 204, body: "" });
     if ((m = /^api\/jobs\/([^/]+)\/people\/(frame|\d+)\.jpg$/.exec(p))) {
       return route.fulfill({ contentType: "image/svg+xml", body: m[2] === "frame" ? frameSvg : svg(`Person ${m[2]}`, Number(m[2]) || 0) });
     }

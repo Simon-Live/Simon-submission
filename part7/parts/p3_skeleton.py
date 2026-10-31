@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Iterator
 
-from part7 import config, pins, runner
+from part7 import config, modules, runner
 from part7.parts import probe
 
 BODY = "simon-standard"  # the same body profile on both sides (journey.md "Commands")
@@ -104,13 +104,13 @@ def part4(
     pose3d: Path | str,
     keyframes_or_every: Path | str,
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     person: str | int | None = None,
 ) -> tuple[list[runner.Step], Path, Path, str | None]:
     """Run Part 3 `--view part4` and retry once with `every:5` on a 180-degree refusal (AC-H8)."""
-    lk = lock or pins.load()
-    clone = lk.path("3", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("3")
     work_p = Path(work)
     work_p.mkdir(parents=True, exist_ok=True)
 
@@ -188,13 +188,13 @@ def part4(
 def part5(
     pose3d: Path | str,
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     person: str | int | None = None,
 ) -> tuple[runner.Step, Path]:
     """Run Part 3 `--view part5 --fps 30` to produce a follower skeleton clip (`--person` picks one of several)."""
-    lk = lock or pins.load()
-    clone = lk.path("3", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("3")
     work_p = Path(work)
     work_p.mkdir(parents=True, exist_ok=True)
     follower_path = work_p / "follower.json"
@@ -232,12 +232,12 @@ def doctor(
     path: Path | str,
     consumer: str,
     work: Path | str,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
 ) -> runner.Step:
     """Run Part 3's `doctor <path> --for <consumer>` command."""
-    lk = lock or pins.load()
-    clone = lk.path("3", state=state)
+    lk = lock or modules.load()
+    clone = lk.path("3")
     work_p = Path(work)
     target = Path(path).resolve()
     py_exe = _python_for(clone)

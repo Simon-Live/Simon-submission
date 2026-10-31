@@ -15,7 +15,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from part7 import applog, crop, media, pins, runner
+from part7 import applog, config, crop, media, modules, runner, stagelog
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
 
@@ -45,31 +45,49 @@ class PersonSel:
 
 
 # ----- the clip ---------------------------------------------------------------------------------
-def prepare_clip(ctx: JobContext, raw: Path, trim: dict[str, int] | None) -> Path:
-    """Normalize `raw` to H.264 MP4 and cut it to `trim`; the result is `<work>/clip.mp4`."""
+def prepare_clip(ctx: JobContext, raw: Path, trim: dict[str, int] | None, name: str = "clip.mp4") -> Path:
+    """Normalize `raw` to H.264 MP4 and cut it to `trim`; the result is `<work>/<name>`.
+
+    The one clip path of every job (people.md "One clip path"): the people job writes `clip.mp4`, which trainer,
+    follow and group jobs copy in (`reused_clip`); a trainer or follow job without a people job writes
+    `video.mp4` here itself.
+    """
     ctx.set_stage("upload")
-    clip = ctx.work / "clip.mp4"
+    clip = ctx.work / name
+    cap = config.clip_max_side()  # TICKET-067: Part 2 `track` time grows with the pixel count
     try:
         src = media.probe(raw)
         cut = f"trim {trim['start_ms']}-{trim['end_ms']} ms" if trim else "no trim"
-        applog.log(
-            f"clip in: {raw.suffix} {src['width']}x{src['height']} {src['fps']} fps {src['duration_ms']} ms {src['codec']}, {cut}",
-            ctx.id, ctx.dir,
-        )
+        size = scale_decision(src, cap, cut=bool(trim))
+        applog.log(f"clip in: {stagelog.video_facts(raw)} {src['codec']}, {cut}, {size}", ctx.id, ctx.dir)
         if trim:
             whole = media.normalize(raw, ctx.work / "normalized.mp4")
-            media.trim(whole, clip, trim["start_ms"], trim["end_ms"])
+            media.trim(whole, clip, trim["start_ms"], trim["end_ms"], max_side=cap)
             whole.unlink(missing_ok=True)
         else:
-            media.normalize(raw, clip)
-        out = media.probe(clip)
-        duration_ms = out["duration_ms"]
-        applog.log(f"clip out: {out['width']}x{out['height']} {out['fps']} fps {duration_ms} ms", ctx.id, ctx.dir)
+            media.normalize(raw, clip, max_side=cap)
+        duration_ms = media.probe(clip)["duration_ms"]
+        applog.log(f"clip out: {stagelog.video_facts(clip)}, from {src['width']}x{src['height']}", ctx.id, ctx.dir)
     except (ValueError, RuntimeError, OSError) as exc:
         applog.log(f"clip could not be prepared: {applog.cause(exc)}", ctx.id, ctx.dir, logging.WARNING)
         raise JobFailed("upload", REASON_UNREADABLE) from None
     ctx._queue.update(ctx.id, trim=trim, duration_ms=duration_ms)
     return clip
+
+
+def scale_decision(meta: dict[str, Any], cap: int, *, cut: bool) -> str:
+    """The clip-in log text of the size rule (`media.clip_size`), from the displayed size of the probed source.
+
+    `scale to <w>x<h> (<rule>)` when the clip changes size, else `size kept (<rule>)`; a rotated or non-square
+    pixel source is judged by the size a player shows, so the line names the size `clip out` reports.
+    """
+    if cap <= 0:
+        rule = f"long side cap off, trim keeps {media.MAX_CLIP_HEIGHT} px tall at most" if cut else "long side cap off"
+    else:
+        rule = f"long side cap {cap} px, {media.MAX_CLIP_HEIGHT} px tall at most"
+    shown = media.display_size(meta) if cap > 0 else media.upright_size(meta)  # the legacy rule keeps the pixel shape
+    out = media.clip_size(meta, cap, cut=cut) or shown
+    return f"size kept ({rule})" if out == shown else f"scale to {out[0]}x{out[1]} ({rule})"
 
 
 def reused_clip(ctx: JobContext, sel: PersonSel) -> Path:
@@ -80,7 +98,10 @@ def reused_clip(ctx: JobContext, sel: PersonSel) -> Path:
     try:
         shutil.copyfile(src, dst)
     except OSError:
+        applog.log(f"people job clip {src} is gone", ctx.id, ctx.dir, logging.WARNING)
         raise JobFailed("upload", "the chosen clip is no longer available, choose the person again") from None
+    applog.log(f"clip reused from people job {applog.job_id_of(src)}: {stagelog.video_facts(dst)}, person {sel.id}"
+               + (f", ids {','.join(sel.ids)}" if sel.ids else ""), ctx.id, ctx.dir)
     return dst
 
 
@@ -171,14 +192,21 @@ def middle_frame(clip: Path, t: float, people: list[dict[str, Any]], dst: Path) 
 
 # ----- Part 2 -----------------------------------------------------------------------------------
 def _find_people(
-    ctx: JobContext, clip: Path, backend: str, lock: pins.Lock | None, state: Path | str | None
+    ctx: JobContext, clip: Path, backend: str, lock: modules.Modules | None, state: Path | str | None,
+    steps: list[runner.Step],
 ) -> Path:
-    """Run Part 2 until `tracks.json` exists; return its path in the job's work folder."""
+    """Run Part 2 until `tracks.json` exists; return its path in the job's work folder.
+
+    The Part 2 steps are added to `steps`, so the stage line names their exits (`2:<exit>`, TICKET-067): a
+    failed named tracker attempt and the fallback that followed it are both listed.
+    """
     ctx.set_stage("track")
-    lk = lock or pins.load()
+    lk = lock or modules.load()
     try:
         if p2_pose.capabilities(lk, state)["track"]:
             step, found = p2_pose.track(clip, ctx.work, backend=backend, lock=lk, state=state)
+            if step.get("first_try"):
+                steps.append(step["first_try"])  # the failed tracker attempt; its exit shows in the stage line
         else:
             ctx.add_note(NOTE_NO_TRACK)
             step, pose = p2_pose.run(clip, ctx.work, backend=backend, lock=lk, state=state, multi=True)
@@ -189,6 +217,7 @@ def _find_people(
         raise JobFailed("track", "the GPU is busy, try again later") from None
     except RuntimeError:
         raise JobFailed("track", "the people finder is not available") from None
+    steps.append(step)
     if step["exit"] != 0 or not found.is_file():
         raise JobFailed("track", "the people finder timed out" if step.get("timed_out") else "the people finder failed")
     tracks = ctx.work / "tracks.json"
@@ -206,7 +235,7 @@ def _note_tracker(ctx: JobContext, tracks: Path) -> None:
 
 
 def pose_for(
-    sel: PersonSel, ids: list[str], video: Path, work: Path, backend: str, lk: pins.Lock, state: Path | str | None
+    sel: PersonSel, ids: list[str], video: Path, work: Path, backend: str, lk: modules.Modules, state: Path | str | None
 ) -> tuple[runner.Step, Path, str | None]:
     """3D for `ids` of the people job: Part 2 `--tracks --ids` when the pin has it, else everyone.
 
@@ -235,7 +264,7 @@ def people_job(
     raw: Path,
     *,
     trim: dict[str, int] | None = None,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     state: Path | str | None = None,
     backend: str = "gpu",
 ) -> JobFn:
@@ -244,7 +273,9 @@ def people_job(
     def run(ctx: JobContext) -> dict[str, Any]:
         clip = prepare_clip(ctx, raw, trim)
         meta = media.probe(clip)
-        tracks = _find_people(ctx, clip, backend, lock, state)
+        steps: list[runner.Step] = []
+        with stagelog.stage(ctx.work, "track", steps, video=stagelog.video_facts(clip), backend=backend):
+            tracks = _find_people(ctx, clip, backend, lock, state, steps)
         _note_tracker(ctx, tracks)
         ctx.set_stage("people")
         try:
@@ -266,6 +297,8 @@ def people_job(
         public = [{k: v for k, v in p.items() if k not in ("best_frame", "best_box")} for p in people]
         result = {"people": public, "frame": "people/frame.jpg", "auto_id": auto_id(people)}
         (ctx.work / "people.json").write_text(json.dumps(result), encoding="utf-8")
+        found = ", ".join(f"{p['id']} (coverage {p['coverage']}, box {p['box_mid']})" for p in people)
+        applog.log(f"people found in {len(frames)} tracked frames: {found}; auto_id {result['auto_id']}", ctx.id, ctx.dir)
         return {"result": result}
 
     return run

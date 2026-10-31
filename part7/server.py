@@ -5,7 +5,7 @@ stdlib `ThreadingHTTPServer` on 127.0.0.1. Paths are relative to the base path; 
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import logging
@@ -22,7 +22,10 @@ from typing import Any
 from urllib.parse import urlsplit
 import uuid
 
-from part7 import applog, config, jobs, labels, media, people, people_routes, pins, processor, proxy, quota, replay
+from part7 import (
+    applog, buildinfo, client_log, config, jobs, labels, media, modules, people, people_routes, processor, proxy, quota,
+    replay,
+)
 from part7.parts import p5_analyse
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -61,10 +64,12 @@ class App:
     child: Any
     queue: jobs.JobQueue
     quota: quota.Quota
-    lock: pins.Lock
+    lock: modules.Modules
     web_dir: Path = config.WEB_DIR
     phrasing: str = "live"
     backend: str = "gpu"
+    build: dict[str, Any] = field(default_factory=buildinfo.unknown)
+    client_rate: client_log.RateLimit = field(default_factory=client_log.RateLimit)
 
     @property
     def uploads(self) -> Path:
@@ -113,6 +118,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(obj).encode("utf-8"), "application/json; charset=utf-8")
 
     def _error(self, status: int, message: str, **extra: Any) -> None:
+        if status >= 500:
+            applog.log(f"{self.command} {urlsplit(self.path).path} answered {status}: {message}", level=logging.WARNING)
         self._json(status, {"ok": False, "error": message, "message": message, **extra})
 
     def _rest(self) -> str | None:
@@ -151,7 +158,25 @@ class _Handler(BaseHTTPRequestHandler):
 
     do_PUT = do_DELETE = do_PATCH = do_OPTIONS = do_POST
 
+    def send_response_only(self, code: int, message: str | None = None) -> None:
+        self._answered = True  # a status line is out: a second response would corrupt the stream
+        super().send_response_only(code, message)
+
     def _dispatch(self) -> None:
+        self._answered = False
+        try:
+            self._route()
+        except Exception as exc:  # a handler bug: logged with the request, the visitor gets a plain 500
+            applog.log(f"{self.command} {urlsplit(self.path).path} crashed: {applog.cause(exc)}", level=logging.ERROR)
+            if self._answered:  # headers (and maybe part of a body) already went out: end the connection instead
+                self.close_connection = True
+                return
+            try:
+                self._error(500, "Something went wrong on the server. Try again.")
+            except OSError:
+                pass
+
+    def _route(self) -> None:
         rest = self._rest()
         if rest is None:
             self._error(404, "Not found.")
@@ -176,6 +201,8 @@ class _Handler(BaseHTTPRequestHandler):
         if method in ("GET", "HEAD"):
             if route == "health":
                 return self._health()
+            if route == "version":
+                return self._json(200, self.app.build)
             if route == "config":
                 return self._config()
             if route == "fixture-result":
@@ -190,6 +217,8 @@ class _Handler(BaseHTTPRequestHandler):
             if len(parts) == 3 and parts[0] == "results":
                 return self._result(parts[1], parts[2])
         elif method == "POST":
+            if route == "client-log":
+                return client_log.handle(self, self.app.client_rate)
             handler = {"uploads": self._upload, "trainer": self._trainer, "follow": self._follow}.get(route)
             if handler is not None:
                 return handler()
@@ -202,9 +231,10 @@ class _Handler(BaseHTTPRequestHandler):
         doc = {
             "ok": part6 is not None,
             "part6": {"ok": part6 is not None, "entries": len(app.child.list_entries()) if part6 else 0},
-            "pins": app.lock.pins_short(),
+            "pins": app.lock.shas_short(),
             "queue": app.queue.counts(),
             "gpu_jobs_today": app.quota.gpu_jobs_today(),
+            "build": app.build,
         }
         self._json(200 if part6 is not None else 503, doc)
 
@@ -519,7 +549,7 @@ def build_app(
     base_path: str,
     *,
     child: Any,
-    lock: pins.Lock | None = None,
+    lock: modules.Modules | None = None,
     web_dir: Path | None = None,
     phrasing: str | None = None,
     start_queue: bool = True,
@@ -529,8 +559,9 @@ def build_app(
     root.mkdir(parents=True, exist_ok=True)
     app = App(
         state=root, base=config.normalize_base_path(base_path), child=child,
-        queue=jobs.JobQueue(root, start=start_queue), quota=quota.Quota(root), lock=lock or pins.load(),
+        queue=jobs.JobQueue(root, start=start_queue), quota=quota.Quota(root), lock=lock or modules.load(),
         web_dir=web_dir or config.WEB_DIR, phrasing=phrasing or phrasing_from_env(),
+        build=buildinfo.collect(config.REPO_ROOT),
     )
     app.uploads.mkdir(parents=True, exist_ok=True)
     _clean_uploads(app.uploads)
@@ -561,6 +592,8 @@ def cli_serve(
         print("serve: the app listens on 127.0.0.1 only", file=sys.stderr)
         return 2
     base = config.normalize_base_path(base_path)
+    log_path = applog.setup(state)  # first: the queue logs jobs a restart interrupted while it loads
+    applog.log(f"serve start: pid {os.getpid()} on {host}:{port}{base}, state {Path(state)}, log {log_path}")
     if follow_url is None and not os.environ.get("STAGING_BASE_PATH"):
         follow_url = f"http://{host}:{port}{base}#/follow/{{id}}"
     child = p6_catalog.Child(
@@ -568,11 +601,11 @@ def cli_serve(
     )
     child.start()
     if child.health() is None:
-        print("serve: Part 6 did not start; see part6.log in the state folder", file=sys.stderr)
+        applog.log("serve: Part 6 did not start; see part6.log in the state folder", level=logging.ERROR)
         child.stop()
         return 1
     app = build_app(state, base, child=child)
-    applog.setup(state)
+    applog.log(f"serve ready: build {app.build.get('short')}, pins {app.lock.shas_short()}")
     p2_pose.start_workers(app.queue.workers, state, app.lock)  # warm Part 2 workers when the pin has them
     server = make_server(app, host, port)
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
