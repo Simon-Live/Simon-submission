@@ -11,6 +11,8 @@ from part7 import config, gpu_lock, keys, p2_worker, modules, runner
 from part7.parts import p1_keyframes, probe
 
 API_TRACKER = "api-sam31"
+LOCAL_TRACKER = "local-open"  # the free retry after a failed api-sam31 run
+RETRY_LOG = "part2_track_retry.log"
 FPS = 10  # journey.md "Commands": Part 2 samples the take at 10 fps
 
 
@@ -141,7 +143,11 @@ def track(
         )
         if named["exit"] == 0 and (out_dir / "tracks.json").is_file():
             return (named, out_dir / "tracks.json")
-        step = _execute(sub, backend, work_p, "part2_track.log", lk, clone, acquire_lock, gpu_lock_kwargs)
+        # moalborati/simon#61: after a failed api-sam31 run (a refused key) retry with the free local tracker by name; Part 2's
+        # default order would try api-sam31 again. Its own log keeps the first error readable. Other trackers keep the default order.
+        retry = ["--tracker", LOCAL_TRACKER] if tracker == API_TRACKER else []
+        log_name = RETRY_LOG if retry else "part2_track.log"
+        step = _execute([*sub, *retry], backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
         step["first_try"] = named  # the job keeps both attempts, each with its own log
         return (step, out_dir / "tracks.json")
     step = _execute(sub, backend, work_p, "part2_track.log", lk, clone, acquire_lock, gpu_lock_kwargs)

@@ -130,11 +130,11 @@ def test_the_default_order_fallback_keeps_gpu_admission_and_names_the_job(
 ) -> None:
     fake = _Track(monkeypatch, api_exit=1)
     step, _ = p2_pose.track(tmp_path / "clip.mp4", job_dir, lock=_Lock(tmp_path), tracker=p2_pose.API_TRACKER)
-    assert fake.runs == [(p2_pose.API_TRACKER, False), (None, True)]  # local SAM may run in Part 2's own order
+    assert fake.runs == [(p2_pose.API_TRACKER, False), ("local-open", True)]  # moalborati/simon#61: by name, not Part 2's order
     assert len(fake.admissions) == 1 and fake.admissions[0]["job_dir"] == job_dir
     # both attempts are kept, each with its own log (TICKET-067 review)
     assert step["exit"] == 0 and step["first_try"]["exit"] == 1
-    assert fake.logs == [job_dir / "steps" / "part2_track.api.log", job_dir / "steps" / "part2_track.log"]
+    assert fake.logs == [job_dir / "steps" / "part2_track.api.log", job_dir / "steps" / "part2_track_retry.log"]
 
 
 def test_a_successful_api_tracker_run_has_no_first_try_and_its_own_log(
@@ -156,7 +156,7 @@ def test_without_admission_a_caller_that_asked_for_none_gets_none(
 ) -> None:
     fake = _Track(monkeypatch, api_exit=1)
     p2_pose.track(tmp_path / "clip.mp4", job_dir, lock=_Lock(tmp_path), tracker=p2_pose.API_TRACKER, acquire_lock=False)
-    assert fake.runs == [(p2_pose.API_TRACKER, False), (None, False)] and fake.admissions == []
+    assert fake.runs == [(p2_pose.API_TRACKER, False), ("local-open", False)] and fake.admissions == []
 
 
 # TICKET-069: nvidia-smi is found at the WSL2 path, and an unknown reading admits at once with a warning.

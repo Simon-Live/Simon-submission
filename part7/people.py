@@ -191,6 +191,21 @@ def middle_frame(clip: Path, t: float, people: list[dict[str, Any]], dst: Path) 
 
 
 # ----- Part 2 -----------------------------------------------------------------------------------
+def _why(step: runner.Step) -> str:
+    """Part 2's last meaningful line of a failed step, from its log (else its output)."""
+    return stagelog.last_meaningful(step.get("log")) or stagelog.tail(step.stdout, 1) or f"exit {step.get('exit')}"
+
+
+def _finder_failure(ctx: JobContext, step: runner.Step) -> str:
+    """The track failure reason; after a failed first tracker it names both reasons and logs both log paths."""
+    first = step.get("first_try")
+    if not first:
+        return "the people finder failed"
+    applog.log(f"track: first attempt {stagelog.step_failure(first)}; retry {stagelog.step_failure(step)}",
+               applog.job_id_of(ctx.work), ctx.work, logging.WARNING)
+    return f"the people finder failed: first attempt: {_why(first)}; retry: {_why(step)}"
+
+
 def _find_people(
     ctx: JobContext, clip: Path, backend: str, lock: modules.Modules | None, state: Path | str | None,
     steps: list[runner.Step],
@@ -219,7 +234,7 @@ def _find_people(
         raise JobFailed("track", "the people finder is not available") from None
     steps.append(step)
     if step["exit"] != 0 or not found.is_file():
-        raise JobFailed("track", "the people finder timed out" if step.get("timed_out") else "the people finder failed")
+        raise JobFailed("track", "the people finder timed out" if step.get("timed_out") else _finder_failure(ctx, step))
     tracks = ctx.work / "tracks.json"
     shutil.copyfile(found, tracks)
     return tracks

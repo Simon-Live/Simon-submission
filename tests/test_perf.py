@@ -271,13 +271,13 @@ def test_track_uses_api_tracker_while_budget_allows_then_default(
     assert "--tracker" not in ran[-1]
 
 
-def test_track_retries_default_order_when_api_tracker_fails(
+def test_track_retries_with_local_open_when_api_tracker_fails(
     tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     lk, ran = _p2_env(state_dir, monkeypatch, {"--tracker", "api-sam31"})
     _budget(monkeypatch, True, 0.0)
     p2_pose.track(_video(tmp_path), tmp_path / "w2", lock=lk, state=state_dir, acquire_lock=False)  # no tracks.json
-    assert ["--tracker" in c for c in ran[-2:]] == [True, False]
+    assert ["--tracker" in c for c in ran[-2:]] == [True, True] and ran[-1][ran[-1].index("--tracker") + 1] == "local-open"
 
 
 def test_part5_gets_phrasing_concurrency(tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
