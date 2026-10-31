@@ -1,6 +1,6 @@
 # Spec: Part 2 integration contract, `contract` and `doctor`, writer rules
 
-> Copy of `docs/specs/integration-contract.md` from the maintainers' working repo at `1bfac92`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/integration-contract.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -203,19 +203,24 @@ the same file without `extra_joints`. Test: `tests/test_extra_joints.py`.
 ### AC-C16: the foot check, measured and ungated (TICKET-043)
 `python -m part2.foot_check <pose3d.json ...>` prints one JSON report: per file `person_frames`, `with_all_six`,
 `coverage` (person-frames whose `extra_joints` holds all six points with finite x, y, z, over all person-frames),
-`points`, `low_conf` (fraction of present points with conf below 0.5), `points_within_bound`, `within_bound` and
-`max_ankle_m` (each foot point's distance to its own ankle against 0.35 m), and per person the mean and the
+`points`, `low_conf` (fraction of present points with conf below 0.5), `points_with_ankle` and `points_without_ankle`
+(a point whose own ankle is missing, null or not finite cannot be measured and is counted in neither of the next two),
+`points_within_bound`, `within_bound` (over `points_with_ankle`, 0.0 when there are none) and `max_ankle_m` (each foot
+point's distance to its own ankle against 0.35 m; null when no point could be measured), and per person the mean and the
 coefficient of variation (std over mean, null below two frames) of ankle to heel, ankle to big toe and big toe to
 small toe on each side (people are keyed by their id written as JSON, so id 0 and id "0" are two people); a
 `summary` over the readable files. The bound: an adult foot measures under about 0.30 m from
 the back of the heel to the tip of the big toe and the ankle sits between the two, so no point of a plausible foot is
-farther than that from its own ankle; the rest is margin for model error. It exits 0 whatever the numbers, also for
-no file at all (an empty JSON report, not a usage error), and 2 only when a named file cannot be read, is not JSON or
-has no frames list (that file's entry names the error; the others are still reported). It is reported, never gated:
-`make check-2` does not read it. `make check-feet` runs it with `--scored <dir>`, which names every file of the gpu
-backend's scored sets (`single`, `class`, `class-local-open` and one `coco-single/<image_id>` per image of
-`fixtures/input/coco/images/images.json`; `SCORED=<dir>` for another dir), so a file that is missing is reported as
-unreadable and not dropped. Test: `tests/test_foot_check.py` (known numbers on synthetic files).
+farther than that from its own ankle; the rest is margin for model error. It exits 0 whatever the numbers and 2 only
+when a named or expected file cannot be read, is not JSON or has no frames list (that file's entry names the error; the
+others are still reported). It is reported, never gated: `make check-2` does not read it. With no file, or with
+`--scored <dir>`, it names every file of the gpu backend's scored sets under the scored dir: one `pose3d.json` per mode
+`part2/outputs.py` `MODES` lists for the gpu backend (so a gpu mode added there is checked with no edit here) and, for
+`coco-single`, one per image of `fixtures/input/coco/images/images.json` (`coco_set.MANIFEST`), so a file that is
+missing is reported as unreadable and not dropped. The scored dir is chosen as for `make check-2` (`part2.check.scored_dir`):
+the flag, then `PART2_SCORED_DIR`, then `fixtures/output/scored`. Files named without `--scored` are checked alone.
+`make check-feet` passes `--scored` only for `SCORED=<dir>`, so both targets read the same directory. Test:
+`tests/test_foot_check.py` (known numbers on synthetic files).
 
 ### Rule-Based ACs
 - AC-C-NFR-01: no field is removed or renamed in any shape. Verification: test (the 7e11a7f fixtures

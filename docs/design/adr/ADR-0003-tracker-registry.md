@@ -1,6 +1,6 @@
 # ADR-0003: Tracker registry with SAM 3.1 first and an open local fallback
 
-> Copy of `docs/adr/ADR-0003-tracker-registry.md` from the maintainers' working repo at `1bfac92`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/adr/ADR-0003-tracker-registry.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted (stakeholder-proxy, 2026-10-28; tracker order revised by the operator on 2026-10-28 once both SAM 3.1 keys were verified)
 Date: 2026-10-28

@@ -87,13 +87,12 @@ check-2:
 # Foot points (TICKET-043, docs/specs/integration-contract.md AC-C16): coverage, segment-length consistency and
 # plausibility of pose3d.json's optional extra_joints in the scored outputs of the gpu backend, the one that writes
 # them. Prints a JSON report; reported, never gated: exit 0 whatever the numbers, 2 only when a file cannot be read.
-# --scored names every expected file (single, class, class-local-open and one coco-single/<image_id> per image of the
-# committed manifest), so a missing file is reported as unreadable, not dropped as a wildcard would drop it.
-# make check-2 does not read it. make check-feet SCORED=out checks out/<mode>/ instead.
-FEET_DIR = $(if $(SCORED),$(SCORED),fixtures/output/scored)
-
+# With no file the module names every expected file of the scored dir (one per gpu mode of part2.outputs.MODES, and one
+# coco-single/<image_id> per image of the committed manifest), so a missing file is reported as unreadable, not dropped
+# as a wildcard would drop it. The dir is chosen as for make check-2 (part2.check.scored_dir): SCORED=out passes
+# --scored out, else PART2_SCORED_DIR, else fixtures/output/scored. make check-2 does not read this.
 check-feet:
-	@uv run --quiet python -m part2.foot_check --scored $(FEET_DIR)
+	@uv run --quiet python -m part2.foot_check $(if $(SCORED),--scored $(SCORED))
 
 # Run inference for the fixtures on the GPU pod and bring the outputs back to out/.
 gpu-outputs: gpu-sync

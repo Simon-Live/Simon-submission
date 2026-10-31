@@ -478,9 +478,10 @@ def test_contract_says_how_extra_joints_behave_in_a_mirrored_file():
 def test_the_foot_point_wording_has_no_em_dash_en_dash_or_spaced_hyphen(path):
     if path.startswith("docs/specs/") and not (ROOT / path).exists():
         pytest.skip("the maintainers' working spec is not published; its published copy is under docs/design/")
-    for line in (ROOT / path).read_text().splitlines():
-        if "extra_joints" in line or "mirrored" in line:
-            assert "—" not in line and "–" not in line and " - " not in line, line
+    lines = [line for line in (ROOT / path).read_text().splitlines() if "extra_joints" in line or "mirrored" in line]
+    assert lines, f"{path} has no line about extra_joints or mirrored, so nothing was checked"
+    for line in lines:
+        assert "—" not in line and "–" not in line and " - " not in line, line
 
 
 # --- AC-C09 and AC-C-NFR-01: additive only ------------------------------------------------------

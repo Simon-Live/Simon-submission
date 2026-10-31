@@ -1,6 +1,6 @@
 # ADR-0007: Taking over an in-flight part; how we talk and publish upstream
 
-> Copy of `docs/adr/ADR-0007-takeover-and-upstream-etiquette.md` from the maintainers' working repo at `1bfac92`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/adr/ADR-0007-takeover-and-upstream-etiquette.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted (stakeholder-proxy, 2026-10-28)
 Date: 2026-10-28
