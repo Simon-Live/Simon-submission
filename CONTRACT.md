@@ -31,13 +31,13 @@ Each schema is JSON Schema draft 2020-12 with an `$id` and a top-level `version`
 
 | Name | Version | File | Describes |
 |---|---|---|---|
-| `analysis` | `1.4.0` | `contracts/analysis.schema.json` | Part 5 analysis.json (simon.analysis.v1) |
+| `analysis` | `1.5.0` | `contracts/analysis.schema.json` | Part 5 analysis.json (simon.analysis.v1) |
 | `input-animation` | `1.0.0` | `contracts/input-animation.schema.json` | Part 5 input clip (simon.animation.v1) |
 | `input-skeleton` | `1.0.0` | `contracts/input-skeleton.schema.json` | Part 5 expected skeleton (simon.skeleton.v1) |
 | `labels` | `1.0.0` | `contracts/labels.schema.json` | Part 5 labels.json (evaluation labels) |
 | `metrics` | `1.0.0` | `contracts/metrics.schema.json` | Part 5 make check-5 document (simon.part5.check.v1) |
 
-The copies of Part 3's and Part 4's schemas stay under `contracts/part3/` and `contracts/part4/`, exactly as they were published. The analysis schema is `1.4.0`: it adds optional fields to `simon.analysis.v1`, so a `1.0` document still validates and `format` does not change. `1.3.0` adds `faults[].reps`, `diagnostics.guard.reps`, `diagnostics.expected_reference` and `score.per_rep`, written only for a take compared one repetition at a time (ADR-0010); `1.4.0` (ADR-0012) adds the top-level `warnings` and `match`, `score.capped_by` and a fault `confidence` of `"low"`, written only for a take that earned a warning; a document without warnings keeps its earlier `schema_version` (`1.2.0`, or `1.3.0` for a take compared by repetition). The replay (`simon.replay.v1`) of such a take adds an optional `reps` list.
+The copies of Part 3's and Part 4's schemas stay under `contracts/part3/` and `contracts/part4/`, exactly as they were published. The analysis schema is `1.5.0`: it adds optional fields to `simon.analysis.v1`, so a `1.0` document still validates and `format` does not change. `1.3.0` adds `faults[].reps`, `diagnostics.guard.reps`, `diagnostics.expected_reference` and `score.per_rep`, written only for a take compared one repetition at a time (ADR-0010); `1.4.0` (ADR-0012) adds the top-level `warnings` and `match`, `score.capped_by` and a fault `confidence` of `"low"`, written only for a take that earned a warning; a document without warnings keeps its earlier `schema_version` (`1.2.0`, or `1.3.0` for a take compared by repetition). The replay (`simon.replay.v1`) of such a take adds an optional `reps` list. `1.5.0` (ADR-0014) adds coaching cues to every new document, which is therefore always `1.5.0`: `faults[].cue` and `cue_kind`, the same with `direction` on each `score.timeline[].misses[]`, `score.timeline[].tempo` and `score.tempo`, and the top-level `insights`. The earlier groups stay optional and are told apart by their fields.
 
 ## Compatibility
 
@@ -60,7 +60,7 @@ Which producer file works with Part 5, as checked against the producer commit in
 
 ## What Part 5 writes
 
-`part5 analyse --expected <file> --follower <file> --out <analysis.json>` writes `analysis.json` (`simon.analysis.v1`, schema `1.2.0`, `1.3.0` for a take compared one repetition at a time, or `1.4.0` when the take has a warning). A take is always analysed (ADR-0012): the exit code says what happened to the file:
+`part5 analyse --expected <file> --follower <file> --out <analysis.json>` writes `analysis.json` (`simon.analysis.v1`, schema `1.5.0`; documents written before ADR-0014 are `1.2.0`, `1.3.0` for a take compared one repetition at a time, or `1.4.0` when the take has a warning). A take is always analysed (ADR-0012): the exit code says what happened to the file:
 
 | Exit | Meaning | `analysis.json` written |
 |---|---|---|
@@ -78,6 +78,8 @@ Which producer file works with Part 5, as checked against the producer commit in
 3. **Highlight `faults[].joints`.** It lists canonical joint names. A `1.0` file has no `joints`; then map the fault's `joint`: a sided joint is itself; side `both` is `left_X` and `right_X`; `spine` is both shoulders and both hips; `shoulders` is both shoulders; `neck` is the nose and both shoulders.
 4. **Ignore fields you do not know.** New fields are added without changing `format`; `schema_version` says which additions to expect. `diagnostics` is for people debugging a take and is not shown to the follower.
 5. **Show `coaching` when it is there, `text` when it is not.** `text` is a lowercase fragment ("left foot too far out"); capitalise it for display. For the template phrasing `coaching` equals `text`.
+
+6. **Show `insights` as what to work on.** From `1.5.0` each item is `{cue, why, kind, at_s, window, points}`: `cue` is an imperative of at most 6 words ("Bend your knees more"), `why` what was seen and where, `kind` `position`, `range` or `tempo`, `at_s` the follower time to seek to, `points` what it cost the score (null for tempo and for a take without a timeline). Show each fault's and each miss's `cue` beside its text, and a window's `tempo.cue` when it is not null. A document without `insights` was written before `1.5.0`: show it as before.
 
 `python -m part5 doctor analysis.json --for part7` checks all of this on a file and warns when `status.code` is not `ok`.
 

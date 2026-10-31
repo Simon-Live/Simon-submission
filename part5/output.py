@@ -15,13 +15,18 @@ from .guard import (DIFFERENT_MOVEMENT, LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_
                     OK)
 from .io import JOINTS
 from .measures import MEASURES
+from .cues import KINDS as CUE_KINDS
+from .cues import MAX_WORDS as CUE_MAX_WORDS
+from .cues import cue_for
+from .insights import MAX_INSIGHTS, insights_of
 from .lateral import lateral_for
 from .words import describe, describe_timed
 
 FORMAT = "simon.analysis.v1"
-SCHEMA_VERSION = "1.2.0"
-SCHEMA_VERSION_REPS = "1.3.0"   # a document with the rep fields (ADR-0010); one without stays 1.2.0
-SCHEMA_VERSION_WARNINGS = "1.4.0"   # a document with `warnings` and `match` (ADR-0012); one without keeps its version
+# 1.2.0 time fields (ADR-0009), 1.3.0 rep fields (ADR-0010), 1.4.0 warnings and match (ADR-0012). From 1.5.0
+# (ADR-0014) every new document carries cues and `insights`, so every new document is 1.5.0; a reader tells
+# the earlier groups apart by their fields, which stay optional.
+SCHEMA_VERSION = "1.5.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
 REFUSED_CODES = (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME)
@@ -98,6 +103,7 @@ def fault_to_dict(fault, times=None):
         "confidence": float(fault.confidence),
         "text": describe(fault),
     }
+    d["cue"], d["cue_kind"] = cue_for(fault.measure, fault.direction, fault.side)   # ADR-0014
     if times is not None:
         t0, t1 = (round(float(x), 3) for x in times["follower_t_s"])
         d["follower_t_s"] = [t0, t1]
@@ -144,10 +150,8 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
     if warned and (match or {}).get("quality") == "low":
         for f in faults:
             f["confidence"] = LOW_CONFIDENCE
-    by_reps = any("reps" in f for f in faults) or "reps" in (diagnostics or {}).get("guard", {}) \
-        or "visibility" in (diagnostics or {})
     doc = {"format": FORMAT,
-           "schema_version": SCHEMA_VERSION_WARNINGS if warned else SCHEMA_VERSION_REPS if by_reps else SCHEMA_VERSION,
+           "schema_version": SCHEMA_VERSION,
            "expected": _input_ref(expected, "expected"),
            "follower": _input_ref(follower, "follower")}
     if status is not None:
@@ -160,6 +164,7 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
         doc["diagnostics"] = diagnostics
     if score is not NO_SCORE:
         doc["score"] = score
+    doc["insights"] = insights_of(doc)
     return validate_analysis(doc, source="<built analysis>")
 
 
@@ -221,6 +226,8 @@ def validate_analysis(doc, source="<analysis>"):
         _validate_phrasing(doc["phrasing"], len(faults), fail)
     if "score" in doc and doc["score"] is not None and not isinstance(doc["score"], dict):
         fail("score must be an object or null")
+    if "insights" in doc:
+        _validate_insights(doc["insights"], fail)
     if isinstance(doc.get("score"), dict) and doc.get("status", {}).get("code") in REFUSED_CODES:
         fail("score must be null for a refused take")
     try:  # nothing anywhere (incl. diagnostics/extras) may make this invalid JSON downstream
@@ -329,6 +336,36 @@ def _validate_fault(f, where, fail):
     _validate_times(f, where, fail)
     if "coaching" in f and (not isinstance(f["coaching"], str) or not f["coaching"]):
         fail(f"{where}.coaching must be a non-empty string")
+    _validate_cue(f, where, fail, kinds=("position", "range"))
+
+
+def _validate_cue(item, where, fail, kinds=CUE_KINDS, kind_key="cue_kind"):
+    """The 1.5.0 `cue` and its kind (ADR-0014): both or neither."""
+    if "cue" not in item and kind_key not in item:
+        return
+    cue = item.get("cue")
+    if not isinstance(cue, str) or not cue or len(cue.split()) > CUE_MAX_WORDS:
+        fail(f"{where}.cue must be a non-empty string of at most {CUE_MAX_WORDS} words, got {cue!r}")
+    if item.get(kind_key) not in kinds:
+        fail(f"{where}.{kind_key} must be one of {kinds}, got {item.get(kind_key)!r}")
+
+
+def _validate_insights(insights, fail):
+    """The 1.5.0 top-level `insights` (ADR-0014): at most MAX_INSIGHTS `{cue, why, kind, at_s, window, points}`."""
+    if not isinstance(insights, list) or len(insights) > MAX_INSIGHTS:
+        fail(f"insights must be a list of at most {MAX_INSIGHTS} items, got {insights!r}")
+    for i, x in enumerate(insights):
+        where = f"insights[{i}]"
+        if not isinstance(x, dict) or "cue" not in x:
+            fail(f"{where} must be an object with a cue")
+        _validate_cue(x, where, fail, kind_key="kind")
+        if not isinstance(x.get("why"), str) or not x["why"]:
+            fail(f"{where}.why must be a non-empty string")
+        for key in ("at_s", "points"):
+            if x.get(key) is not None and not _is_number(x[key]):
+                fail(f"{where}.{key} must be a number or null, got {x[key]!r}")
+        if x.get("window") is not None and not (_is_int(x["window"]) and x["window"] >= 0):
+            fail(f"{where}.window must be a window index (an integer from 0) or null, got {x['window']!r}")
 
 
 def _validate_phrasing(record, n_faults, fail):

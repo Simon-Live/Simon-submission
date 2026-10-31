@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.2.0",
+  "schema_version": "1.5.0",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
     "set": "exercise",
@@ -43,6 +43,7 @@
       }
     }
   },
+  "insights": [],
   "phrasing": {
     "requested": "template",
     "backend": "template",

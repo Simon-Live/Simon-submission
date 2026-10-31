@@ -161,6 +161,37 @@ Every addition is optional for a v1.0 reader; `CONTRACT.md` names Part 7's dutie
 
 `text`, `measure`, `side`, `direction` and every scored field never depend on the phrasing backend.
 
+## Coaching cues, tempo and insights (ADR-0014; schema 1.5.0)
+Every new `analysis.json` is `1.5.0` and says what to do, not only what was wrong (`part5/cues.py`,
+`part5/insights.py`):
+- `faults[].cue`: an imperative of at most 6 words from `measure`, `direction` and `side`, moving the follower
+  toward the example ("Bend your knees more"); `cue_kind` `range` or `position`. Each
+  `score.timeline[].misses[]` repeats `cue`, `cue_kind` and `direction`.
+- `score.timeline[].tempo` and `score.tempo`: `{ratio, cue}`, follower seconds per example second (a rep against
+  the example rep; the take is the whole span or the median rep); "Slow down to match the trainer" below 0.85,
+  "Speed up to match the trainer" above 1.15, else null; `ratio` null when the example side spans under 1 s.
+- `insights`: at most 5 `{cue, why, kind, at_s, window, points, measure, side, joint}`, one per distinct miss cue,
+  ranked by their share of the score; a tempo item is kept last when `score.tempo.cue` is set. Without a
+  timeline, one per distinct fault cue in fault order, `points` null.
+- Template text only; no phrasing backend rewrites a cue. No cue for foot rotation or an ankle twist: the 17
+  joints end at the ankle (follow-up: heel and toe keypoints).
+
+ACs (tests/test_cues.py):
+- AC-CUE-01: every measure, direction and side the contract allows has a cue of 1 to 6 words, capitalised, no
+  dash; opposite directions differ; a sided cue names its side.
+- AC-CUE-02: an unknown measure, direction or a side that does not go with the measure is a ValueError.
+- AC-CUE-03: no cue names the ankle, heel, toes or a twist.
+- AC-CUE-04: tempo cue thresholds at 0.85 and 1.15 (inclusive bounds give no cue); a stretch under 1 s of the
+  example has ratio null.
+- AC-CUE-05: on the dummy takes the take's tempo ratio is 1/speed of the generator within 0.05; on the real fast
+  lateral-raise follower every rep and the take say "Slow down".
+- AC-CUE-06: every timeline miss carries its text and the cue of its measure, direction and side.
+- AC-CUE-07: insights are ranked by points, sum to no more than the points lost, point at the first miss
+  (window and at_s), at most 5, and the tempo item is kept last.
+- AC-CUE-08: one miss in 60 s and ten in 600 s give scores within 3 points and the same insight points within 0.5.
+- AC-CUE-09: `validate_analysis` and the schema reject a cue over 6 words, a wrong kind, a broken insight; a
+  document without cues still validates; `part5 doctor --for part7` notes a document written before 1.5.0.
+
 ## Coaching phrasing registry (ADR-0005)
 `part5.phrasing.phrase(faults, backend="template", **opts) -> (lines, record)`.
 - `template` (default; the only backend in tests and `check-5`): returns each fault's `text`.
@@ -424,6 +455,9 @@ ASM-001 to ASM-012 in `docs/assumptions/` (ASM-008: Part 4 main's expected clips
 | `scripts/oneshot-launch.sh`, `scripts/oneshot-watch.sh`, `tests/test-oneshot-watch.sh` (`docs/design/specs/oneshot-watch.md`) | setup | no (firm) |
 | `part5/phrasing/smoke.py` (`make smoke-muse-spark`) | TICKET-020 | yes |
 | `staging/up.sh`, `down.sh`, `health.sh`, `env.sh`, `verify.sh`, `verify.mjs`, `walkthrough.mjs`, `DEMO.md` | TICKET-008, TICKET-024 | no (firm) |
+| `part5/cues.py`, `part5/insights.py`, `part5/output.py`, `part5/score.py`, `part5/score_report.py`, `part5/pipeline.py`, `part5/doctor.py`, `contracts/analysis.schema.json` (cues, tempo, insights, 1.5.0) | TICKET-039 | yes |
+| `docs/design/adr/ADR-0014-coaching-cues-tempo-and-insights.md` | TICKET-039 | yes |
+| `tests/test_cues.py`, version expectations in `tests/test_cli.py`, `test_output.py`, `test_visibility.py`, `test_reps.py`, `test_guard.py`, `test_pipeline_run.py`, `test_contract_cli.py` | TICKET-039 | yes |
 | Tests: `tests/test_*.py` per module above | with each ticket | yes |
 
 ## Delivery Verification Plan

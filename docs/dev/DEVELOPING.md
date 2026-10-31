@@ -99,7 +99,8 @@ part of `make test` or `make check-5`.
 
 `analysis.json` is `simon.analysis.v1`. `schema_version` tells you which additions to expect: `1.2.0` for
 an ordinary take, `1.3.0` when the take was compared one repetition at a time, `1.4.0` when it carries a
-warning.
+warning. From `1.5.0` (ADR-0014) every new document is `1.5.0` and carries cues, tempo and `insights`; the
+earlier groups are told apart by their fields.
 
 ### Always analyse: `warnings`, `match`, the F cap
 

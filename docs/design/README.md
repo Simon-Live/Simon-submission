@@ -39,5 +39,6 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`ADR-0011-compare-only-what-the-camera-sees.md`](adr/ADR-0011-compare-only-what-the-camera-sees.md): Compare only what the camera sees (status `not_enough_visible`, `diagnostics.visibility`).
 - [`ADR-0012-always-analyse.md`](adr/ADR-0012-always-analyse.md): Always analyse (warnings and an F cap replace every refusal).
 - [`ADR-0013-score-timeline-length-agnostic.md`](adr/ADR-0013-score-timeline-length-agnostic.md): Score by windows (reps or 5 s) and show them as a timeline; the score is a share of the take.
+- [`ADR-0014-coaching-cues-tempo-and-insights.md`](adr/ADR-0014-coaching-cues-tempo-and-insights.md): Coaching cues on faults and misses, tempo per window and per take, and ranked insights (schema 1.5.0).
 
 Related: `docs/schemas.md` (field reference), `docs/thresholds.md` (thresholds, guard limits and the held-out record).

@@ -18,7 +18,9 @@ from pathlib import Path
 import numpy as np
 
 from . import score
+from .cues import tempo_block
 from .detect import load_rules
+from .insights import insights_of
 from .measures import compute as measures_of
 from .output import fault_to_dict
 from .pipeline import _fault_times, run
@@ -53,7 +55,8 @@ def score_block(result, rules=None):
     else:
         aligned = aligned_of(result)
         frame_times = result.follower.t[np.asarray(result.to_original)[np.asarray(aligned["exp_to_fol"])]]
-        block = score.compute_timeline(result.analysis, aligned, frame_times, rules)
+        block = score.compute_timeline(result.analysis, aligned, frame_times, rules,
+                                       expected_times=result.expected.t[:len(aligned["exp_to_fol"])])
     return score.cap_by_warnings(block, result.analysis, rules)
 
 
@@ -62,7 +65,7 @@ def _rep_timeline(result, rules):
     the take reports), a rep that did not match the example is shown but not scored. `per_rep` stays (1.3.0)."""
     rules = rules or load_rules()
     p = score.params_of(rules)
-    fol, windows = result.follower, []
+    fol, windows, ratios = result.follower, [], []
     for r in result.reps:
         span = (float(fol.t[r.span[0]]), float(fol.t[r.span[1]]))
         if not r.ok:
@@ -76,8 +79,13 @@ def _rep_timeline(result, rules):
         aligned = aligned_of(r)
         scored = score.window_score({"status": {"code": "ok"}, "faults": faults}, aligned,
                                     np.arange(len(aligned["exp_to_fol"])), rules, p)
+        if scored:   # ADR-0014: the rep's tempo is its length over the example rep's
+            ratio = score.span_ratio(span, (float(r.expected.t[0]), float(r.expected.t[-1])))
+            scored["tempo"] = tempo_block(ratio)
+            ratios.append(ratio)
         windows.append({"t_s": span, **scored} if scored else {"t_s": span, "compared": False})
-    block = score.timeline_block(windows, "reps", rules)
+    timed = [x for x in ratios if x is not None]
+    block = score.timeline_block(windows, "reps", rules, float(np.median(timed)) if timed else None)
     block["per_rep"] = [{"value": w["value"], "grade": w["grade"]} for w in block["timeline"] if w["compared"]]
     return block
 
@@ -88,6 +96,7 @@ def analyse(expected, follower, rules=None):
     analysis = result.analysis
     if "score" not in analysis:
         analysis["score"] = score_block(result, rules)
+        analysis["insights"] = insights_of(analysis)   # ranked by the timeline's points (ADR-0014)
     return analysis
 
 

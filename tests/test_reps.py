@@ -165,7 +165,7 @@ def slow():
 def test_real_lateral_raise_followers_are_accepted_rep_by_rep(which, n_reps, request):
     a = request.getfixturevalue(which).analysis
     jsonschema.Draft202012Validator(SCHEMA).validate(a)
-    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.3.0"
+    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.5.0"
     guard = a["diagnostics"]["guard"]
     assert len(guard["reps"]) == n_reps and all(r["ok"] for r in guard["reps"])
     for r in guard["reps"]:   # the frozen limits, the numbers of the diagnosis
@@ -247,7 +247,7 @@ def test_the_fast_and_the_slow_follower_agree_with_the_trainer_on_the_verdict(fa
 # --- different movements are analysed with a low_match warning and grade F (ADR-0012) ---
 def low_match(a):
     return a["status"]["code"] == "ok" and [w["code"] for w in a["warnings"]] == ["low_match"] \
-        and a["match"]["quality"] == "low" and a["schema_version"] == "1.4.0"
+        and a["match"]["quality"] == "low" and a["schema_version"] == "1.5.0"
 
 
 @pytest.mark.parametrize("name", ["part2-dance", "part2-class", "part2-single", "part2-stretch"])
@@ -273,10 +273,10 @@ def test_the_stock_squat_front_view_is_now_compared_rep_by_rep():
 
 
 # --- seed 5 passes through unchanged ---
-def test_no_seed5_take_is_compared_rep_by_rep_and_its_document_stays_1_2_0():
+def test_no_seed5_take_is_compared_rep_by_rep_and_its_document_has_no_rep_fields():
     for take in SEED5["takes"]:
         r = run(str(ROOT / take["expected"]), {"path": str(ROOT / take["follower"]), "take_id": take["take_id"]})
         assert r.reps is None, take["take_id"]
-        assert r.analysis["schema_version"] == "1.2.0", take["take_id"]
+        assert r.analysis["schema_version"] == "1.5.0", take["take_id"]
         assert "reps" not in r.analysis["diagnostics"]["guard"] and "expected_reference" not in r.analysis["diagnostics"]
         assert all("reps" not in f for f in r.analysis["faults"])

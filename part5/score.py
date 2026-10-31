@@ -26,6 +26,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 import numpy as np
 
+from .cues import tempo_block
 from .detect import load_rules
 from .measures import MEASURES
 
@@ -185,6 +186,8 @@ def aggregate(blocks, rules=None):
 # misses with the points each one cost, so the timeline adds up to the score. A take of one window
 # (under 7.5 s, or one rep) scores exactly as `compute` does.
 WINDOW_S = 5.0
+MIN_TEMPO_S = 1.0     # ADR-0014: a stretch of the example shorter than this is not timed
+NO_TEMPO = object()   # timeline_block(tempo=NO_TEMPO): no `score.tempo` key at all
 
 
 def windows_of(frame_times, window_s=WINDOW_S):
@@ -204,10 +207,13 @@ def _frames_in(fault, frames):
 
 
 def miss_entry(fault, points):
-    """One miss on the timeline: what to say, where, and what it cost."""
-    return {"text": fault.get("coaching") or fault.get("text_timed") or fault["text"],
-            "measure": fault["measure"], "side": fault.get("side"), "joint": fault.get("joint"),
-            "t_s": fault.get("follower_t_s"), "at_s": fault.get("at_s"), "points": float(round_half_up(points, 1))}
+    """One miss on the timeline: what to say, what to do (1.5.0 cue, ADR-0014), where, and what it cost."""
+    out = {"text": fault.get("coaching") or fault.get("text_timed") or fault["text"],
+           "measure": fault["measure"], "side": fault.get("side"), "joint": fault.get("joint"),
+           "t_s": fault.get("follower_t_s"), "at_s": fault.get("at_s"), "points": float(round_half_up(points, 1))}
+    if fault.get("cue"):
+        out.update(cue=fault["cue"], cue_kind=fault["cue_kind"], direction=fault["direction"])
+    return out
 
 
 def window_score(analysis, aligned, frames, rules, p):
@@ -238,19 +244,33 @@ def window_score(analysis, aligned, frames, rules, p):
             "misses": sorted(misses, key=lambda m: (m["at_s"] is None, m["at_s"] or 0))}
 
 
-def timeline_block(windows, basis, rules=None):
+def timeline_block(windows, basis, rules=None, tempo=NO_TEMPO):
     """The take's `score` block from its windows, each `{t_s, ...window_score}` or `{t_s, compared: False}`.
-    The value is the mean of the compared windows; `timeline` lists every window."""
+    The value is the mean of the compared windows; `timeline` lists every window. `tempo`, when given, is the
+    take's follower/example time ratio (or None, unmeasured) and becomes `score.tempo` (ADR-0014)."""
     p = params_of(rules or load_rules())
     scored = [w for w in windows if w.get("compared", True)]
+    extra = {} if tempo is NO_TEMPO else {"tempo": tempo_block(tempo)}
     if not scored:
-        return dict(zero_block(rules), basis=basis, timeline=[_public(w) for w in windows])
+        return dict(zero_block(rules), basis=basis, timeline=[_public(w) for w in windows], **extra)
     value = int(round_half_up(sum(w["raw"] for w in scored) / len(scored)))
     f = sum(w["components"]["faults"] for w in scored) / len(scored)
     s = sum(w["components"]["similarity"] for w in scored) / len(scored)
     return {"version": VERSION, "value": value, "grade": grade(value, p["bands"]),
             "components": {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))},
-            "params_sha256": params_sha256(p), "basis": basis, "timeline": [_public(w) for w in windows]}
+            "params_sha256": params_sha256(p), "basis": basis, "timeline": [_public(w) for w in windows], **extra}
+
+
+def span_ratio(follower_t, expected_t):
+    """Tempo of a stretch of movement (ADR-0014): follower seconds per example second, or None when the
+    example side spans under MIN_TEMPO_S (too short to time)."""
+    fol, exp = np.asarray(follower_t, dtype=float), np.asarray(expected_t, dtype=float)
+    if fol.size < 2 or exp.size < 2:
+        return None
+    d_exp = float(np.max(exp) - np.min(exp))
+    if d_exp < MIN_TEMPO_S:
+        return None
+    return float(np.max(fol) - np.min(fol)) / d_exp
 
 
 def _public(window):
@@ -260,15 +280,21 @@ def _public(window):
     return out
 
 
-def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW_S):
+def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW_S, expected_times=None):
     """The `score` block of a take compared as a whole: windows of about `window_s` on the follower's clock.
-    `frame_times[i]` is the follower file time expected frame i was matched to."""
+    `frame_times[i]` is the follower file time expected frame i was matched to. With `expected_times` (the
+    example's own time per frame) each compared window and the take get their tempo (ADR-0014)."""
     rules = rules or load_rules()
     p = params_of(rules)
     index, spans = windows_of(frame_times, window_s)
+    fol_t = np.asarray(frame_times, dtype=float)
+    exp_t = None if expected_times is None else np.asarray(expected_times, dtype=float)
     windows = []
     for k, span in enumerate(spans):
         frames = np.flatnonzero(index == k)
         scored = window_score(analysis, aligned, frames, rules, p) if frames.size else None
+        if scored and exp_t is not None:
+            scored["tempo"] = tempo_block(span_ratio(fol_t[frames], exp_t[frames]))
         windows.append({"t_s": span, **scored} if scored else {"t_s": span, "compared": False})
-    return timeline_block(windows, "windows", rules)
+    tempo = NO_TEMPO if exp_t is None else span_ratio(fol_t, exp_t)
+    return timeline_block(windows, "windows", rules, tempo)

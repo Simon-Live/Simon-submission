@@ -275,6 +275,13 @@ def _for_part7(r, doc):
     if "schema_version" not in doc:
         r.notes.append("no schema_version, so this is a 1.0 file: faults[].joints is absent and the viewer "
                        "needs its own joint mapping")
+    _cue_notes(r, doc)
+
+
+def _cue_notes(r, doc):
+    """1.5.0 (ADR-0014): a document without `insights` has no cues to show (validate_analysis checks them)."""
+    if "insights" not in doc:
+        r.notes.append("no insights and no cues (written before 1.5.0): show faults[].text as it is")
 
 
 # ---------------------------------------------------------------- entry points

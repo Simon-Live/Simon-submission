@@ -211,3 +211,19 @@ detection use the usable measures (with fewer than 3, any visible one); on a low
 `score.capped_by` lists the codes. `part5 analyse` exits 0 for every written analysis, 1 for an unreadable or
 invalid input file, and no longer uses 3. Earlier text in this file that says a take is refused, or that exit 3
 is a refusal, describes documents before 1.4.0.
+
+## Coaching cues and insights (1.5.0, ADR-0014)
+
+Every new document is `1.5.0`. Each fault carries `cue`, an imperative of at most 6 words from its `measure`,
+`direction` and `side` ("Bend your knees more", "Raise your left arm higher"), and `cue_kind`: `range` when the
+fix is how far a joint bends or a limb lifts, `position` when it is where a body part is placed. Each
+`score.timeline[].misses[]` repeats its fault's `cue`, `cue_kind` and `direction`. Each compared window has
+`tempo: {ratio, cue}`: follower seconds per example second over the window (a rep against the example rep);
+below 0.85 the cue is "Slow down to match the trainer", above 1.15 "Speed up to match the trainer", else
+null; `ratio` is null when the example side spans under 1 s. `score.tempo` is the same for the whole take (the
+median of the reps). The top-level `insights` lists at most 5 `{cue, why, kind, at_s, window, points, measure,
+side, joint}`: one per distinct cue among the misses, ranked by `points` (their summed points over the compared
+windows divided by the number of those windows, so their share of the score), `at_s` and `window` at the first
+miss; a tempo item (`points` null) is kept last when `score.tempo.cue` is set. Without a timeline, one item
+per distinct fault cue in the order of `faults`, `points` null. Cues are template text; no phrasing backend
+rewrites them. Foot rotation and ankle twist have no cue: the 17 joints end at the ankle.

@@ -12,6 +12,7 @@ from .align import ALIGN_MEASURES, Alignment, align, diagonal_alignment
 from .detect import detect, load_rules
 from .guard import GuardResult, check_movement
 from .guard import diagnostics as guard_diagnostics
+from .insights import insights_of
 from .io import Clip, load_clip, parse_clip
 from .joints_map import fault_joints
 from .lateral import lateral_m
@@ -191,7 +192,9 @@ def _finish(ctx, result, faults, times, diagnostics, stats, low, rules):
     result.analysis = analysis
     if ctx.score is not None:
         block = ctx.score(result) if callable(ctx.score) else ctx.score
-        result.analysis = validate_analysis(dict(analysis, score=block), source="<built analysis>")
+        scored = dict(analysis, score=block)
+        scored["insights"] = insights_of(scored)   # ranked by the timeline's points (ADR-0014)
+        result.analysis = validate_analysis(scored, source="<built analysis>")
     return result
 
 
