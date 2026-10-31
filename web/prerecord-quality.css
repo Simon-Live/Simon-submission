@@ -1,0 +1,4 @@
+.prerecord-tips { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--soft, #f4f4f4); }
+.prerecord-tips[hidden] { display: none; }
+.prerecord-tips p { margin: 0; font-size: 14px; line-height: 1.45; }
+.prerecord-tips p + p { margin-top: 8px; }

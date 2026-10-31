@@ -4,6 +4,7 @@
 import { getJob } from "./api.js";
 import { h, clear, ensureCss } from "./ui.js";
 import { createProgress, estimateText, TYPICAL_S } from "./progress.js";
+import { personQualityHints } from "./quality-result.js";
 import {
   GROUP_MAX_FOLLOWERS, GROUP_MAX_MS, MSG_TOO_LONG, MSG_TOO_MANY, MSG_NEED_TWO, LABEL_MAX, groupProblem, cleanLabels,
 } from "./group.js";
@@ -84,10 +85,10 @@ export function openPeoplePicker(root, { peopleJob, mode = "single", trimMs, pol
       lede.textContent = group
         ? "Tap the trainer first. Then choose the people to analyse against them."
         : "Tap the person this recording is about.";
-      renderChoice(people);
+      renderChoice(people, result.people_quality);
     }
 
-    function renderChoice(people) {
+    function renderChoice(people, peopleQuality) {
       const byId = new Map(people.map((p) => [p.id, p]));
       const st = { single: null, trainer: null, followers: new Set(), labels: {} };
       const frame = h("img", { class: "pp-frame", "data-testid": "people-frame", src: frameUrl(peopleJob), alt: "The middle frame of the clip, each person in a numbered box" });
@@ -103,6 +104,8 @@ export function openPeoplePicker(root, { peopleJob, mode = "single", trimMs, pol
           img,
           h("span", { class: "pp-num", text: String(p.id) }),
           h("span", { class: "pp-cov", text: `${pct(p.coverage)} of the clip` }));
+        const hints = personQualityHints(peopleQuality, p.id);
+        if (hints.length) pick.append(h("span", { class: "pp-quality-hint", "data-testid": `person-quality-${p.id}`, text: hints.join(" · ") }));
         const kids = [pick];
         let label = null;
         let badge = null;

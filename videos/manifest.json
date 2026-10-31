@@ -1,5 +1,5 @@
 {
-  "schema": "part7.videos/1",
+  "schema": "part7.videos/1.1",
   "movement": {
     "id": "knee-raise",
     "name": "Standing knee raise",
@@ -158,6 +158,45 @@
       "width": 1920,
       "height": 1080,
       "fps": 29.97
+    },
+    {
+      "id": "pexels-8026937-dark",
+      "role": "degraded",
+      "angle": "three-quarter",
+      "url": "https://www.pexels.com/video/a-man-exercising-at-home-8026937/",
+      "download": "https://videos.pexels.com/video-files/8026937/8026937-uhd_1440_2732_25fps.mp4",
+      "licence": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "author": "not stated on the page",
+      "title": "A Man Exercising at Home · Free Stock Video",
+      "title_source": "pexels.com clip page URL slug (the clip page itself answers a Cloudflare challenge)",
+      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium; title read from the page URL slug, author not read",
+      "range_s": [
+        0.0,
+        12.0
+      ],
+      "note": "Deliberately darkened copy of the frozen good follower. Part 5 must independently establish a major impact; the recipe does not decide impact.",
+      "original_sha256": "7630463a4ef1103b02062359939da1a800f10579533f8e79bc5fb584f9e2e29c",
+      "downloaded_at": "2026-10-31T17:09:08Z",
+      "original": {
+        "width": 570,
+        "height": 1080,
+        "fps": 25.0,
+        "duration_s": 12.0,
+        "file": "pexels-8026937-clip.mp4",
+        "size_bytes": "recorded on generation"
+      },
+      "clip_sha256": null,
+      "duration_s": 12.0,
+      "width": 570,
+      "height": 1080,
+      "fps": 25.0,
+      "derived_from": "pexels-8026937",
+      "source_clip_sha256": "7630463a4ef1103b02062359939da1a800f10579533f8e79bc5fb584f9e2e29c",
+      "recipe": {
+        "code": "dark",
+        "filter": "eq=brightness=-0.35:gamma=0.6"
+      }
     }
   ],
   "frozen": {

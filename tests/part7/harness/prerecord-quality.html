@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pre-record quality harness</title>
+<link rel="stylesheet" href="../../../web/styles.css">
+<main id="capture" class="capture"></main>
+<script type="module">
+  import { mountCapture } from "../../../web/capture.js";
+  const camera = document.createElement("canvas");
+  camera.width = 320; camera.height = 180;
+  const context = camera.getContext("2d");
+  window.__scene = "dark";
+  function draw() {
+    context.fillStyle = window.__scene === "dark" ? "rgb(25,25,25)" : "rgb(130,130,130)";
+    context.fillRect(0, 0, camera.width, camera.height);
+    if (window.__scene === "good") {
+      for (let x = 48; x < 272; x += 8) {
+        context.fillStyle = x % 16 ? "rgb(85,85,85)" : "rgb(135,135,135)";
+        context.fillRect(x, 26, 8, 128);
+      }
+    }
+  }
+  draw();
+  const drawTimer = setInterval(draw, 50);
+  navigator.mediaDevices.getUserMedia = async () => camera.captureStream(20);
+  window.__samples = 0;
+  const getImageData = CanvasRenderingContext2D.prototype.getImageData;
+  CanvasRenderingContext2D.prototype.getImageData = function (...args) {
+    if (this.canvas.width === 160 && this.canvas.height === 90) window.__samples++;
+    return getImageData.apply(this, args);
+  };
+  localStorage.setItem("simon.capture.prefs", JSON.stringify({ countdown: 0, duration: 0 }));
+  window.capture = mountCapture(document.getElementById("capture"), { recorder_bps: 2500000, max_bytes: 95000000 });
+  window.__destroy = () => { window.capture.destroy(); clearInterval(drawTimer); };
+  window.__ready = true;
+</script>
+</html>

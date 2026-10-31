@@ -144,3 +144,40 @@ def test_warning_codes_and_effective_grade_read_old_refusals_as_warnings() -> No
     assert compare.effective_grade(analysis([])) == "B"
     assert compare.warning_codes(analysis([])) == []
     assert compare.match(old, new)["warnings_equal"] is False
+
+
+def test_quality_helpers_ignore_absent_fields_and_never_promote_signal_level() -> None:
+    old = analysis([])
+    minor = copy.deepcopy(old)
+    minor["quality"] = {"issues": [{"code": "dark", "impact": "minor", "level": "severe"}]}
+    assert compare.quality_codes(old, "major") == []
+    assert compare.quality_codes(minor, "major") == []
+    assert compare.quality_codes(minor, "minor") == ["dark"]
+    assert compare.quality_cap_equal(old, minor)
+
+
+def test_quality_caps_require_major_codes_score_and_grade() -> None:
+    major = {"quality": {"issues": [{"code": "dark", "impact": "major"}]},
+             "score": {"value": 59, "grade": "F", "capped_by": ["quality_dark"]}}
+    assert compare.quality_cap_valid(major)
+    assert compare.match(major, copy.deepcopy(major))["quality_major_codes_equal"]
+    for value in (60, float("nan"), True, None):
+        broken = copy.deepcopy(major)
+        broken["score"]["value"] = value
+        assert not compare.quality_cap_valid(broken)
+    for field, value in (("grade", "D"), ("capped_by", []), ("capped_by", ["quality_blurry"])):
+        broken = copy.deepcopy(major)
+        broken["score"][field] = value
+        assert not compare.quality_cap_equal(major, broken)
+    major["score"]["value"] = 45
+    assert compare.quality_cap_valid(major)
+
+
+def test_quality_cap_on_minor_fails_and_codes_are_sets() -> None:
+    a = {"quality": {"issues": [{"code": "dark", "impact": "minor"},
+                                {"code": "dark", "impact": "minor"}, None, {"unknown": 1}]},
+         "score": {"value": 59, "grade": "F", "capped_by": ["quality_dark"]}}
+    assert compare.quality_codes(a, "minor") == ["dark"]
+    assert not compare.quality_cap_valid(a)
+    a["quality"]["issues"] = "future unknown field"
+    assert compare.quality_codes(a, "major") == []

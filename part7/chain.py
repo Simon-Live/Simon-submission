@@ -12,7 +12,8 @@ import sys
 import threading
 from typing import Any, Callable
 
-from part7 import applog, config, crop, modules, people, runner, stagelog
+from part7 import applog, config, crop, modules, people, quality, runner, stagelog
+from part7.quality_constants import OWN_ANALYSIS_SCHEMA_VERSION
 from part7.parts import (
     p1_keyframes,
     p2_pose,
@@ -358,17 +359,21 @@ def _is_analysis_case(result: dict[str, Any]) -> bool:
     return result.get("stage") in _OWN_WARNING and not any(m in reason for m in _INFRA_REASONS)
 
 
-def write_own_analysis(path: Path, stage: str, reason: str) -> Path:
+def write_own_analysis(path: Path, stage: str, reason: str, *,
+                       quality_paths: list[Path] | None = None, person_id: str | None = None) -> Path:
     """Write Part 7's own analysis for a take Part 5 could not see: ok, one warning, score 0, grade F."""
     code, text = _OWN_WARNING[stage]
     doc = {
-        "format": "simon.analysis.v1", "schema_version": "1.4.0", "source": "part7",
+        "format": "simon.analysis.v1", "schema_version": OWN_ANALYSIS_SCHEMA_VERSION, "source": "part7",
         "status": {"code": "ok", "text": text},
         "warnings": [{"code": code, "text": text, "reason": reason}],
         "match": {"quality": "low", "residual": None, "timing_corr": None, "limits": {}},
         "faults": [],
         "score": {"version": "simon.score.v1", "value": 0, "grade": "F", "components": None, "capped_by": [code]},
     }
+    signal = quality.fallback_quality(quality_paths or [], person_id)
+    if signal is not None:
+        doc["quality"] = signal
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
     return path
@@ -395,7 +400,16 @@ def follower(
         return res
     stage = str(res["stage"])
     reason = str(res.get("error") or "").split(": ", 1)[-1]
-    analysis = write_own_analysis(Path(work) / "analysis.json", stage, reason)
+    work_path = Path(work)
+    quality_paths = []
+    if person is not None and person.pose3d is not None:
+        quality_paths.append(person.pose3d)
+    quality_paths += [work_path / "part2" / "pose3d.json", work_path / "part2" / "tracks.json",
+                      work_path / "part2_track" / "tracks.json", work_path / "tracks.json"]
+    if person is not None and person.people_work is not None:
+        quality_paths += [person.people_work / "pose3d_all.json", person.people_work / "tracks.json"]
+    analysis = write_own_analysis(work_path / "analysis.json", stage, reason,
+                                  quality_paths=quality_paths, person_id=person.id if person else None)
     note = "; ".join(x for x in (res.get("note"), f"analysed by Part 7 alone: {reason}") if x)
     return {
         "ok": True, "status": "ok", "stage": "done", "clip": res.get("clip"), "steps": res.get("steps", []),

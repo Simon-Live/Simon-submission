@@ -24,6 +24,7 @@ uploaded, `entry_id`). There is no import from social links. Ticket files are un
 | R7 | Adaptive difficulty: a hard routine in sections, taught in order | TICKET-077 | [practice-and-modes](../specs/practice-and-modes.md) | [practice](2026-10-31-practice.md) | built, in final acceptance |
 | R8 | Brand-sponsored challenges with a leaderboard | TICKET-078 | [challenges](../specs/challenges.md) | [challenge](2026-10-31-challenge.md) | built, in final acceptance |
 | R9 | Modes: dance, rehab, fitness | TICKET-079 | [practice-and-modes](../specs/practice-and-modes.md) | [practice](2026-10-31-practice.md) (there is no separate modes doc) | built, in final acceptance |
+| V1 | Video quality feedback: tips before recording, major/minor on the result, a cap line | none | [recorder](../design/specs/recorder.md), [app](../design/specs/app.md), [check-7](../design/specs/check-7.md) | [video-quality](2026-10-31-video-quality.md) | built, awaiting Parts 2, 3, 5 |
 
 Each section quotes the operator's request, then the goal the ticket records. The tests named are the ones each lane doc
 lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow job (see

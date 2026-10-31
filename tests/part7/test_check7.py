@@ -42,6 +42,7 @@ CLIPS = [
     {"id": "f1", "role": "follower", "url": "u", "licence": "l", "clip_sha256": "b"},
     {"id": "f2", "role": "follower", "url": "u", "licence": "l", "clip_sha256": "c"},
     {"id": "m", "role": "mismatch", "url": "u", "licence": "l", "clip_sha256": "d"},
+    {"id": "q", "role": "degraded", "url": "u", "licence": "l", "clip_sha256": "e"},
 ]
 MOV = {"id": "lateral-raise", "name": "Lateral raise", "rule_ok": True, "excluded_list_sha": "e", "grep_hits": []}
 ENTRY = {"id": "e1", "files_source": "import", "video_uri_present": True, "keyframes_part": 1,
@@ -95,13 +96,20 @@ def _run(app_res: dict[str, dict[str, Any]], direct_res: dict[str, dict[str, Any
 
 def _good() -> dict[str, dict[str, Any]]:
     return {"f1.mp4": _analysis([_fault()]), "f2.mp4": _analysis([_fault(side="right")]),
-            "m.mp4": _analysis([], score=None, status="different_movement")}
+            "m.mp4": _analysis([], score=None, status="different_movement"), "q.mp4": _major()}
+
+
+def _major(code: str = "dark", score: int = 59) -> dict[str, Any]:
+    return {"status": {"code": "ok"}, "faults": [],
+            "quality": {"format": "simon.quality.v1", "issues": [{"code": code, "impact": "major", "rule": "M1"}]},
+            "warnings": [{"code": f"quality_{code}"}],
+            "score": {"value": score, "grade": "F", "capped_by": [f"quality_{code}"]}}
 
 
 def test_all_gates_pass_and_metrics_shape() -> None:
     m = _run(_good(), _good())
     assert m["pass"] is True
-    assert m["gates"]["followers_matched"] == "2/2" and m["gates"]["faults_compared"] == 2
+    assert m["gates"]["followers_matched"] == "3/3" and m["gates"]["faults_compared"] == 2
     assert m["gates"]["score_equal"] and m["gates"]["at_s_equal"] and m["gates"]["app_result_complete"]
     assert "refusal_both" not in m["gates"] and m["gates"]["mismatch_equal"] is True
     assert m["reported"]["mismatch_warnings"] == [["different_movement"]]
@@ -111,6 +119,7 @@ def test_all_gates_pass_and_metrics_shape() -> None:
 
 def test_vacuous_pass_fails_faults_compared_gate() -> None:
     res = {"f1.mp4": _analysis([]), "f2.mp4": _analysis([]), "m.mp4": _analysis([], score=None, status="different_movement")}
+    res["q.mp4"] = _major()
     m = _run(res, json.loads(json.dumps(res)))
     assert m["gates"]["faults_compared"] == 0 and m["pass"] is False
 
@@ -140,7 +149,49 @@ def test_missing_fault_fails_follower_match() -> None:
     d = _good()
     d["f2.mp4"] = _analysis([])
     m = _run(_good(), d)
-    assert m["gates"]["followers_matched"] == "1/2" and m["pass"] is False
+    assert m["gates"]["followers_matched"] == "2/3" and m["pass"] is False
+
+
+def test_quality_minor_noise_is_reported_without_a_gate() -> None:
+    a, d = _good(), _good()
+    a["f1.mp4"]["quality"] = {"issues": [{"code": "dark", "impact": "minor"}]}
+    d["f1.mp4"]["quality"] = {"issues": [{"code": "blurry", "impact": "minor"}]}
+    m = _run(a, d)
+    assert m["pass"] is True
+    assert m["takes"][0]["quality_minor_codes_app"] == ["dark"]
+    assert m["takes"][0]["quality_minor_codes_direct"] == ["blurry"]
+    assert m["quality_thresholds"] == {"score_cap": 59}
+
+
+def test_quality_major_code_difference_fails_even_with_same_score() -> None:
+    d = _good()
+    d["q.mp4"] = _major("blurry")
+    m = _run(_good(), d)
+    assert not m["pass"] and not m["gates"]["quality_major_codes_equal"]
+
+
+def test_quality_major_on_good_follower_fails_false_alarm_gate() -> None:
+    a = _good()
+    a["f1.mp4"] = _major()
+    m = _run(a, json.loads(json.dumps(a)))
+    assert not m["pass"] and not m["gates"]["quality_good_no_major"]
+
+
+def test_quality_degraded_requires_real_major_and_valid_cap() -> None:
+    for result in (_analysis([], score=45), _major(score=60)):
+        a = _good()
+        a["q.mp4"] = result
+        m = _run(a, json.loads(json.dumps(a)))
+        assert not m["pass"] and not m["gates"]["quality_degraded_major_capped"]
+    a = _good()
+    a["q.mp4"] = _major(score=45)
+    assert _run(a, json.loads(json.dumps(a)))["pass"]
+
+
+def test_quality_degraded_cannot_be_removed_to_get_a_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(globals(), "CLIPS", [c for c in CLIPS if c["role"] != "degraded"])
+    m = _run(_good(), _good())
+    assert not m["pass"] and not m["gates"]["quality_degraded_major_capped"]
 
 
 def test_module_shas_differ_between_paths_fails() -> None:

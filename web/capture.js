@@ -5,6 +5,8 @@
 import { h, mmss } from "./ui.js";
 import { clientLog } from "./api.js";
 import { openTrimEditor } from "./trim.js";
+import { PRERECORD_THRESHOLDS as QUALITY_THRESHOLDS } from "./quality-constants.js";
+import { measurePreview, previewCodes, updateTipState, visibleTips } from "./quality-check.js";
 import {
   COUNTDOWNS, DURATIONS, RAW_LIMIT_S, countdownLabel, durationLabel, loadPrefs, savePrefs, hasSavedPrefs,
   runCountdown, recBadge, injectStyles,
@@ -78,7 +80,20 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   let destroyed = false;
   let opening = null; // the pending camera request, so a second ask waits on the first
   let trackSize = ""; // "WxH" of the live camera track, for the logs and data-track-size
+  let qualityTick = null;
+  let qualityPrevious = null;
+  let qualityState = {};
+  let qualityTotals = {};
+  let qualitySamples = 0;
+  let qualitySignature = "";
+  const qualityCanvas = document.createElement("canvas");
+  qualityCanvas.width = QUALITY_THRESHOLDS.width;
+  qualityCanvas.height = QUALITY_THRESHOLDS.height;
+  const qualityContext = qualityCanvas.getContext("2d", { willReadFrequently: true });
   injectStyles();
+  if (!document.getElementById("prerecord-quality-style")) document.head.append(h("link", {
+    id: "prerecord-quality-style", rel: "stylesheet", href: new URL("./prerecord-quality.css", import.meta.url).href,
+  }));
 
   const live = h("video", { class: "mirror", muted: true, playsinline: true, "data-testid": "preview", "aria-label": "Camera preview" });
   live.muted = true;
@@ -92,6 +107,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     selectField("countdown-select", "Countdown", COUNTDOWNS, prefs.countdown, countdownLabel, (v) => { prefs.countdown = v; savePrefs(prefs); }),
     selectField("duration-select", "Duration", DURATIONS, prefs.duration, durationLabel, (v) => { prefs.duration = v; savePrefs(prefs); }));
   const framing = h("p", { class: "rc-hint", "data-testid": "framing-hint", text: FRAMING_HINT });
+  const qualityTips = h("div", { class: "prerecord-tips", "data-testid": "prerecord-tips", "aria-live": "polite", "aria-atomic": "true", hidden: true });
   const timer = h("span", { class: "timer", "data-testid": "timer", "aria-live": "off", text: `0:00 / ${mmss(RAW_LIMIT_S)}` });
   const error = h("p", { class: "error", role: "alert", "data-testid": "capture-error", hidden: true });
   const info = h("p", { class: "hint", "data-testid": "take-info", hidden: true });
@@ -103,7 +119,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   const camRow = reference ? h("div", { class: "ref-row" }, stage) : null;
   if (reference) reference.dock(camRow, "live");
-  root.append(camRow || stage, framing, opts, h("div", { class: "row between" }, timer, h("div", { class: "row" }, start, stop, upload, input)), info, error);
+  root.append(camRow || stage, framing, qualityTips, opts, h("div", { class: "row between" }, timer, h("div", { class: "row" }, start, stop, upload, input)), info, error);
 
   // Operator 2026-10-30: the live preview shows as soon as the screen opens, before Record, on Record and Follow.
   // The camera is asked for on mount; a refused, blocked or dark camera leaves Open camera (Try again) and Upload.
@@ -135,9 +151,62 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   }
 
   function releaseCamera() {
+    stopQualitySampling(true);
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = null;
     live.srcObject = null;
+  }
+
+  function sampleQuality() {
+    if (!qualityContext || destroyed || !stream || take || live.readyState < 2 || recorder?.state === "recording") return;
+    try {
+      qualityContext.drawImage(live, 0, 0, qualityCanvas.width, qualityCanvas.height);
+      const frame = qualityContext.getImageData(0, 0, qualityCanvas.width, qualityCanvas.height);
+      const readings = measurePreview(frame, qualityPrevious);
+      qualityPrevious = frame;
+      if (!readings) return;
+      qualitySamples++;
+      for (const [key, value] of Object.entries(readings)) qualityTotals[key] = (qualityTotals[key] || 0) + value;
+      qualityState = updateTipState(qualityState, previewCodes(readings), performance.now());
+      const tips = visibleTips(qualityState);
+      const signature = tips.map((tip) => tip.code).join(",");
+      // Updating only when the visible tips change keeps the polite region from repeating itself.
+      if (signature !== qualitySignature) {
+        qualityTips.replaceChildren(...tips.map((tip) => h("p", { "data-testid": `prerecord-tip-${tip.code}`, text: tip.text })));
+        qualitySignature = signature;
+      }
+      qualityTips.hidden = tips.length === 0;
+    } catch { /* A preview that cannot be sampled must still be recordable. */ }
+  }
+
+  function startQualitySampling() {
+    if (qualityTick || destroyed || !stream) return;
+    qualityPrevious = null; // never compare frames across a recording or camera restart
+    sampleQuality();
+    qualityTick = setInterval(sampleQuality, QUALITY_THRESHOLDS.sample_ms);
+  }
+
+  function stopQualitySampling(reset = false) {
+    clearInterval(qualityTick);
+    qualityTick = null;
+    qualityPrevious = null;
+    qualityTips.hidden = true;
+    if (reset) {
+      qualityState = {};
+      qualityTotals = {};
+      qualitySamples = 0;
+      qualitySignature = "";
+      qualityTips.replaceChildren();
+    }
+  }
+
+  function logQuality() {
+    const detail = { sample_count: qualitySamples };
+    for (const [key, sum] of Object.entries(qualityTotals)) detail[key] = Math.round(sum / qualitySamples * 10000) / 10000;
+    for (const [key, value] of Object.entries(QUALITY_THRESHOLDS)) detail[`threshold_${key}`] = value;
+    clientLog("info", "prerecord_quality", detail); // numbers only; images stay in this browser
+    qualityTotals = {};
+    qualitySamples = 0;
   }
 
   // The camera shows as soon as the screen opens, so the person can frame themselves before pressing Record.
@@ -186,6 +255,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     });
     if (stage.dataset.state === "idle") stage.dataset.state = "preview";
     camStatus("idle");
+    startQualitySampling();
     setTimeout(() => {
       if (stream && !take && !destroyed && live.videoWidth === 0) {
         console.warn("[capture] the camera stream has no picture after", NO_PICTURE_MS, "ms");
@@ -254,6 +324,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     stage.dataset.state = stream ? "preview" : "idle";
     start.hidden = false;
     upload.hidden = false;
+    startQualitySampling();
   }
 
   function beginRecorder(withCountdown) {
@@ -293,6 +364,8 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
       measureTake(blob, size);
     };
     recorder.start(1000);
+    stopQualitySampling();
+    logQuality();
     startedAt = Date.now();
     if (reference) reference.startRecording(); // in step with the recording clock
     timer.textContent = `0:00 / ${mmss(limitS)}`;

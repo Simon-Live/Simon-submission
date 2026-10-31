@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quality result harness</title>
+<style>html,body{margin:0;background:#0c1118}</style>
+<div id="app"></div>
+<script type="module">
+import { mountResult } from "../../../web/result.js";
+const q = new URLSearchParams(location.search);
+const name = ["none", "minor", "major"].includes(q.get("case")) ? q.get("case") : "none";
+const get = (file) => fetch(`../../../fixtures/input/${file}`).then((r) => r.json());
+const [analysis, replay] = await Promise.all([get(`quality/analysis-${name}.json`), get("replay.json")]);
+window.__events = [];
+document.addEventListener("simon:seek", (event) => window.__events.push(event.detail));
+window.__r = await mountResult(document.getElementById("app"), {
+  analysis, replay, videoUrl: "../fixtures/coach.webm", job: "quality", pid: q.get("pid"),
+  record: { kind: "follow", entry_id: "example" },
+});
+window.__ready = true;
+</script>

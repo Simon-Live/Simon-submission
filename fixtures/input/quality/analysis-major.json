@@ -1,0 +1,242 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.6.0",
+  "expected": {
+    "path": "fixtures/input/expected/exercise/animation.json",
+    "set": "exercise",
+    "movement": "squat"
+  },
+  "follower": {
+    "path": "fixtures/input/followers/exercise/exercise_side_good_08_elbow_bent-left+foot_out-right/skeleton.json",
+    "take_id": "exercise_side_good_08_elbow_bent-left+foot_out-right"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [
+    {
+      "measure": "elbow_flexion",
+      "measure_kind": "angle",
+      "joint": "left_elbow",
+      "body_part": "arms",
+      "side": "left",
+      "direction": "more",
+      "magnitude_deg": 31.0,
+      "peak_deg": 34.7,
+      "threshold_deg": 20.0,
+      "unit": "degrees",
+      "expected_frames": [
+        12,
+        82
+      ],
+      "follower_frames": [
+        16,
+        86
+      ],
+      "runs": [
+        [
+          12,
+          82
+        ]
+      ],
+      "phase": [
+        0.133,
+        0.911
+      ],
+      "coverage": 1.0,
+      "confidence": 1.0,
+      "text": "left elbow bent more than the example",
+      "joints": [
+        "left_elbow"
+      ],
+      "coaching": "left elbow bent more than the example at 0.5 s",
+      "follower_t_s": [
+        0.533,
+        2.867
+      ],
+      "at_s": 0.5,
+      "follower_runs": [
+        [
+          16,
+          86
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "left elbow bent more than the example at 0.5 s"
+    },
+    {
+      "measure": "foot_out",
+      "measure_kind": "direction",
+      "joint": "right_ankle",
+      "body_part": "legs",
+      "side": "right",
+      "direction": "more",
+      "magnitude_deg": 16.1,
+      "peak_deg": 18.1,
+      "threshold_deg": 6.0,
+      "unit": "degrees",
+      "expected_frames": [
+        14,
+        69
+      ],
+      "follower_frames": [
+        19,
+        74
+      ],
+      "runs": [
+        [
+          14,
+          69
+        ]
+      ],
+      "phase": [
+        0.156,
+        0.767
+      ],
+      "coverage": 1.0,
+      "confidence": 1.0,
+      "text": "right foot too far out",
+      "joints": [
+        "right_ankle"
+      ],
+      "coaching": "right foot too far right at 0.6 s",
+      "follower_t_s": [
+        0.633,
+        2.467
+      ],
+      "at_s": 0.6,
+      "follower_runs": [
+        [
+          19,
+          74
+        ]
+      ],
+      "lateral": "right",
+      "lateral_m": 0.2,
+      "text_timed": "right foot too far right at 0.6 s"
+    }
+  ],
+  "diagnostics": {
+    "alignment_residual": 0.2762,
+    "alignment_measures": [
+      "left_elbow_flexion",
+      "left_knee_flexion",
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_elbow_flexion",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward"
+    ],
+    "follower_span": [
+      9,
+      91
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.2762,
+      "timing_corr": 0.9934,
+      "span_share": 0.8646,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    }
+  },
+  "phrasing": {
+    "requested": "template",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "selected_by": "default",
+    "faults": [
+      {
+        "backend": "template",
+        "model": null,
+        "fallback_reason": null
+      },
+      {
+        "backend": "template",
+        "model": null,
+        "fallback_reason": null
+      }
+    ]
+  },
+  "score": {
+    "version": "simon.score.v1",
+    "value": 59,
+    "grade": "F",
+    "components": {
+      "faults": 38.07,
+      "similarity": 0.67
+    },
+    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "capped_by": [
+      "quality_dark",
+      "moving_part_out_of_frame"
+    ]
+  },
+  "quality": {
+    "format": "simon.quality.v1",
+    "source": "part2+part3",
+    "issues": [
+      {
+        "code": "dark",
+        "impact": "major",
+        "rule": "M1",
+        "level": "severe",
+        "text": "The recording was too dark to see your movement clearly.",
+        "tip": "Add light in front of you.",
+        "at_s": 1.2,
+        "spans_s": [
+          [
+            0,
+            2.5
+          ]
+        ],
+        "affects": [
+          "video"
+        ],
+        "evidence": {
+          "dark_fraction": 0.8
+        }
+      },
+      {
+        "code": "body_cut_off",
+        "impact": "major",
+        "rule": "M2",
+        "level": "severe",
+        "text": "Your feet were out of frame.",
+        "tip": "Move back until your whole body is in view.",
+        "at_s": 0.7,
+        "spans_s": [
+          [
+            0,
+            2.5
+          ]
+        ],
+        "affects": [
+          "left_ankle",
+          "right_ankle"
+        ],
+        "evidence": {}
+      }
+    ],
+    "expected_issues": []
+  },
+  "warnings": [
+    {
+      "code": "quality_dark",
+      "text": "The recording was too dark to see your movement clearly.",
+      "tip": "Add light in front of you."
+    },
+    {
+      "code": "moving_part_out_of_frame",
+      "cause": "body_cut_off",
+      "text": "Your feet were out of frame.",
+      "tip": "Move back until your whole body is in view."
+    }
+  ]
+}

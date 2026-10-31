@@ -5,6 +5,7 @@ import { renderTimeline, timelineOf, jointsFor } from "./timeline.js";
 import { mountCompare, mountViewer, normalizeReplay, ensureStyles, MSG_BAD_REPLAY } from "./compare.js";
 import { worstMoment, momentsToReview, flaggedWindows } from "./coaching.js";
 import { mountCoachStage, renderMomentList, momentChip } from "./coach-view.js";
+import { qualityIssues, qualityTips, qualityWarning } from "./quality-result.js";
 
 // How long the result waits for the follower video to say it loads before showing the rest without it.
 export const SETTLE_TIMEOUT_MS = 4000;
@@ -28,15 +29,45 @@ const OLD_REFUSALS = ["different_movement", "not_enough_visible", "moving_part_o
 export function resultWarnings(analysis) {
   const out = [];
   const seen = new Set();
-  const add = (code, text) => {
+  const add = (code, text, extra = {}) => {
     if (!code || seen.has(code)) return;
     seen.add(code);
-    out.push({ code, text: text || WARNING_TEXT[code] || "This take could not be fully analysed." });
+    out.push(qualityWarning({ code, text: text || WARNING_TEXT[code] || "This take could not be fully analysed.", ...extra }, analysis));
   };
-  for (const w of (analysis && Array.isArray(analysis.warnings) ? analysis.warnings : [])) add(w && w.code, w && w.text);
+  for (const w of (analysis && Array.isArray(analysis.warnings) ? analysis.warnings : [])) {
+    add(w && w.code, w && w.text, { ...(w && w.tip ? { tip: w.tip } : {}), ...(w && w.cause ? { cause: w.cause } : {}) });
+  }
   const st = analysis && analysis.status;
   if (st && OLD_REFUSALS.includes(st.code)) add(st.code, st.text);
+  // Quality issues remain useful even if an upstream writer omitted the matching warning entry.
+  for (const issue of qualityIssues(analysis, "major")) {
+    if (out.some((w) => w.cause === issue.code || w.code === issue.code || w.code === `quality_${issue.code}`)) continue;
+    add(issue.code.startsWith("quality_") ? issue.code : `quality_${issue.code}`, issue.text, issue.tip ? { tip: issue.tip } : {});
+  }
   return out;
+}
+
+/** Recording advice stays separate from movement coaching and score deductions. */
+function renderQualityTips(root, analysis) {
+  const tips = qualityTips(analysis);
+  if (!tips.length) return;
+  const section = el("section", { class: "sr-quality-tips", "data-testid": "quality-tips", "aria-labelledby": "sr-quality-tips-h" },
+    el("h2", { id: "sr-quality-tips-h", text: "Tips for your next take" }));
+  const list = el("ul", { class: "sr-quality-list" });
+  for (const issue of tips) {
+    const row = el("li", { class: "sr-quality-tip", "data-testid": `quality-tip-${issue.code}` });
+    if (issue.text) row.append(el("p", { class: "sr-quality-text", text: issue.text }));
+    if (issue.tip && issue.tip !== issue.text) row.append(el("p", { class: "sr-quality-advice", text: issue.tip }));
+    if (issue.at_s != null) {
+      const seek = el("button", { type: "button", class: "sr-btn sr-quality-time", "data-testid": `quality-time-${issue.code}`,
+        "data-at-s": issue.at_s, text: `At ${issue.at_s.toFixed(1)} s`, "aria-label": `See the video quality issue at ${issue.at_s.toFixed(1)} seconds` });
+      seek.addEventListener("click", () => document.dispatchEvent(new CustomEvent(SEEK_EVENT, { detail: { at_s: issue.at_s } })));
+      row.append(seek);
+    }
+    list.append(row);
+  }
+  section.append(list);
+  root.append(section);
 }
 
 /** The analysis with a score always present: a missing score (old-pin refusal) is 0, grade F. */
@@ -262,7 +293,10 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   if (warnings.length) {
     const box = el("section", { class: "sr-warning", role: "status", "data-testid": "warning", "data-codes": warnings.map((w) => w.code).join(",") });
     box.append(el("h2", { text: "Take with a warning" }));
-    for (const w of warnings) box.append(el("p", { class: "sr-warning-text", "data-testid": `warning-${w.code}`, text: w.text }));
+    for (const w of warnings) {
+      box.append(el("p", { class: "sr-warning-text", "data-testid": `warning-${w.code}`, "data-cause": w.cause || false, text: w.text }));
+      if (w.tip) box.append(el("p", { class: "sr-warning-tip", "data-testid": `warning-tip-${w.code}`, text: w.tip }));
+    }
     root.append(box);
   }
   const shown = withScore(analysis);
@@ -317,6 +351,7 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   }
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
   renderFaults(body, analysis, getView);
+  renderQualityTips(body, analysis);
   fillSlot(breakdownSlot, () => import("./breakdown.js").then((m) => m.mountBreakdown), ctx, cleanups);
   if (warnings.length) {
     body.append(el("a", { class: "sr-btn", href: recordAgainHref(record), "data-testid": "record-again", text: "Record again" }));

@@ -22,6 +22,7 @@ from urllib import request as urlrequest
 
 from part7 import compare, config, gpu_lock, movement, modules, runner, setup_parts, staging_live, videos
 from part7.parts import p2_pose, p3_skeleton, p4_animate, p6_catalog
+from part7.quality_constants import QUALITY_SCORE_CAP
 
 EXIT_OK = 0
 EXIT_FAIL = 1
@@ -270,6 +271,16 @@ def take_metrics(clip: dict[str, Any], app: dict[str, Any], direct: dict[str, An
         "text_timed_present": compare.text_timed_present(a),
         "app_result_complete": compare.app_result_complete(a),
         "status_equal": m["status_equal"],
+        "quality_major_codes_app": compare.quality_codes(a, "major"),
+        "quality_major_codes_direct": compare.quality_codes(d, "major"),
+        "quality_minor_codes_app": compare.quality_codes(a, "minor"),
+        "quality_minor_codes_direct": compare.quality_codes(d, "minor"),
+        "quality_capped_by_app": compare.quality_capped_by(a),
+        "quality_capped_by_direct": compare.quality_capped_by(d),
+        "quality_cap_valid_app": compare.quality_cap_valid(a),
+        "quality_cap_valid_direct": compare.quality_cap_valid(d),
+        "quality_major_codes_equal": m["quality_major_codes_equal"],
+        "quality_cap_equal": m["quality_cap_equal"],
     }
 
 
@@ -297,6 +308,8 @@ def build_gates(takes: list[dict[str, Any]], entry: dict[str, Any], mov: dict[st
         t["warnings_equal"] and t["faults_equal"] and t["app_grade"] == "F" and t["direct_grade"] == "F" for t in mism
     )
     ok_takes = [t for t in takes if t["app"]["status"] == "ok"]
+    good = [t for t in takes if t["role"] == "follower"]
+    degraded = [t for t in takes if t["role"] == "degraded"]
     gates: dict[str, Any] = {
         "entry_ok": entry_ok(entry),
         "followers_matched": f"{len(matched)}/{len(same)}",
@@ -310,6 +323,13 @@ def build_gates(takes: list[dict[str, Any]], entry: dict[str, Any], mov: dict[st
         "score_equal": bool(takes) and all(t["score_equal"] for t in takes),
         "at_s_equal": bool(takes) and all(t["at_s_equal"] for t in takes),
         "app_result_complete": bool(takes) and all(t["app_result_complete"] for t in takes) and bool(ok_takes),
+        "quality_major_codes_equal": bool(takes) and all(t["quality_major_codes_equal"] for t in takes),
+        "quality_cap_equal": bool(takes) and all(t["quality_cap_equal"] for t in takes),
+        "quality_good_no_major": bool(good) and all(
+            not t["quality_major_codes_app"] and not t["quality_major_codes_direct"] for t in good),
+        "quality_degraded_major_capped": bool(degraded) and all(
+            t["quality_major_codes_app"] and t["quality_major_codes_direct"]
+            and t["quality_cap_valid_app"] and t["quality_cap_valid_direct"] for t in degraded),
     }
     return gates, {"mismatch_warnings": [t["app_warnings"] for t in mism]}
 
@@ -384,9 +404,12 @@ def run_check(
         "movement": {k: movement_info.get(k) for k in ("id", "name", "rule_ok", "excluded_list_sha", "grep_hits", "doc_mentions")},
         "pins": short,
         "clips": [{"id": c["id"], "role": c["role"], "source_url": c.get("url"), "licence": c.get("licence"),
-                   "sha256": c.get("clip_sha256")} for c in clips],
+                   "sha256": c.get("clip_sha256"),
+                   **({"derived_from": c["derived_from"], "recipe": c.get("recipe")} if c.get("derived_from") else {})}
+                  for c in clips],
         "entry": entry, "takes": takes, "gates": gates, "reported": reported,
         "tolerance": dict(compare.TOLERANCE), "steps": steps,
+        "quality_thresholds": {"score_cap": QUALITY_SCORE_CAP},
         "durations_s": {"app": round(t_app, 1), "direct": round(total - t_app, 1), "total": round(total, 1)},
     }
 
