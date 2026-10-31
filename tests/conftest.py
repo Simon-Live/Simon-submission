@@ -14,6 +14,10 @@ shell would spend real Baseten calls with the operator's key. So every test star
 
 A test of a live path sets its own environment through `monkeypatch` after this runs. Module and session scoped
 fixtures are set up before any function scoped one, so the same environment is applied once for the session too.
+
+`seed5` is shared by tests/test_profiles.py and tests/test_profiles_tempo.py (docs/specs/profiles.md): the seed 5 takes
+analysed under each profile. It is session scoped so the analyses run once for both files. tests/test_generator.py has a
+`seed5` of its own, which wins in that file.
 """
 import ipaddress
 import json
@@ -26,6 +30,7 @@ import pytest
 LIVE_ENVS = ("SIMON5_LIVE", "META_LIVE")
 KEY_ENV, USAGE_ENV = "PART5_BASETEN_KEY_FILE", "PART5_BASETEN_USAGE_FILE"
 PROXY_ENVS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+PROFILE_NAMES = ("fitness", "dance", "rehab")
 BLIND_BASE = Path(__file__).resolve().parent.parent / "fixtures/input/expected/exercise/animation.json"
 
 
@@ -101,3 +106,13 @@ def blind_follower():
             frame["joints"] = {j: None for j in frame["joints"]}
         return {"path": "blind.upload", "doc": doc}
     return build
+
+
+@pytest.fixture(scope="session")
+def seed5():
+    """({take_id: analysis} per profile, labels): every seed 5 take analysed with the score under each profile.
+
+    The analyses are only read by the tests that ask for it."""
+    from part5 import profiles_report   # here and not at the top, so a test that never asks for it does not import it
+    labels = profiles_report.tuning_labels()
+    return {name: profiles_report.run_profile(labels, name)[0] for name in PROFILE_NAMES}, labels

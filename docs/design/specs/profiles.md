@@ -431,8 +431,8 @@ has no tempo item (amendment below); a ratio below 0.85 still reads "Slow down t
 tempo item; `fitness` and `dance` still read "Speed up to match the trainer" in `tempo.cue`, `score.tempo.cue` and the
 tempo item. Tests: `test_rehab_replaces_only_the_speed_up_cue` and
 `test_tempo_of_reads_the_effective_rules_and_hands_back_a_copy` (the data, written before the wiring), then with it
-`test_cue_overrides` and `test_rehab_says_slower_is_fine_end_to_end` (a seed 5 take whose ratio exceeds 1.15, found by
-the test; it asserts the cue in `tempo.cue` and `score.tempo.cue` and no tempo item).
+`test_cue_overrides` and `test_rehab_says_slower_is_fine_end_to_end` (the second is in `tests/test_profiles_tempo.py`;
+a seed 5 take whose ratio exceeds 1.15, found by the test; it asserts the cue in `tempo.cue` and `score.tempo.cue` and no tempo item).
 
 Amendment, 2026-10-31 (delivery review B3). The first version had the tempo item of `insights` read "Slower is fine" too,
 and left to a later Writer pass whether a patient far slower than the example reads that as approval rather than as a
@@ -443,7 +443,7 @@ reassurances, `cues.REASSURANCE_CUES` (today only "Slower is fine"), is no insig
 and the fault items may take all 5 places; a ratio below 0.85, and every `fitness` and `dance` take, keep their tempo
 item. The rule is the named set and not "any cue but the default speed-up nudge" (delivery review R3): a profile that
 replaced `speed_up` with an action, such as "Pick up the pace", keeps its item, and a new reassurance has to be added to
-the set to be left out. Tests (`tests/test_profiles.py`): `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue`
+the set to be left out. Tests (`tests/test_profiles_tempo.py`): `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue`
 (seed 5), `test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` (rehab, fitness and dance, slow and fast,
 hand-made scores), `test_a_left_out_tempo_item_gives_its_place_back_to_the_other_insights`,
 `test_the_reassurance_cues_are_named_and_rehabs_replacement_is_one_of_them` and
@@ -653,7 +653,8 @@ baseline taken before it would be stale the day it lands.
 | `part5/profiles.json` (new) | the three profiles, hand-set | TICKET-042 | yes |
 | `part5/profiles.py` (new) | `load`, `names`, `default`, `require`, `kind_of`, `effective_rules`, `tempo_of`, `tempo_points`, `file_sha256` | TICKET-042 | yes |
 | `part5/profiles_report.py` (new) | the seed 5 report (`make report-profiles`) and `--write-baseline` | TICKET-042 | yes |
-| `tests/test_profiles.py` (new) | AC-PROF-01 to 08, NFR-01 | TICKET-042 | yes |
+| `tests/test_profiles.py` (new) | AC-PROF-01 to 08, NFR-01 (the rehab tempo tests of AC-PROF-07 are in the next file) | TICKET-042 | yes |
+| `tests/test_profiles_tempo.py` (new) | AC-PROF-07 and its amendment: the rehab tempo and reassurance tests, split off `tests/test_profiles.py` to keep it under the 800 line limit; the `seed5` fixture they share with it is in `tests/conftest.py` | TICKET-042 | yes |
 | `tests/test_profiles_wiring.py` (new) | AC-PROF-09 to 11, 13, 14 | TICKET-042 | yes |
 | `tests/test_profile_run_choice.py` (new) | AC-PROF-16: the run a profile fault reports | TICKET-042 | yes |
 | `fixtures/profiles-fitness-baseline.json` (new) | sha256 per seed 5 take of the fitness analysis, written once before any wiring edit | TICKET-042 | yes |
@@ -770,12 +771,13 @@ operator's request: "weights tempo in the score").
 | Final review: rep mode never reports a take-level fault `fitness` does not | AC-PROF-05 | `test_the_reviewers_split_is_dropped_because_fitness_does_not_report_it`, `test_compare_under_a_profile_drops_the_split_fitness_does_not_report` | done |
 | Ticket: the staging page offers the mode, and the request carries it | AC-PROF-15 | QA recipe `qa/recipes/compare/analyse-rehab-mode.md`, `staging/verify.mjs`, `tests/test_web_logic.py` | done |
 | Fix-batch review R1 (`progress/review-20261031-fix-batch.md`): a profile fault reports the run that overlaps the fitness fault's | AC-PROF-16 | `tests/test_profile_run_choice.py` | done |
-| Delivery review B3 (Writer ruling): "Slower is fine" is a reassurance, not an item of "what to work on first" | AC-PROF-07 | `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue`, `test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` | done |
-| Delivery review R3: the reassurance is a named set (`cues.REASSURANCE_CUES`), so an action cue in its place keeps its item | AC-PROF-07 | `test_the_reassurance_cues_are_named_and_rehabs_replacement_is_one_of_them`, `test_a_reassurance_cue_adds_no_tempo_item_and_an_action_cue_keeps_it` | done |
+| Delivery review B3 (Writer ruling): "Slower is fine" is a reassurance, not an item of "what to work on first" | AC-PROF-07 | `tests/test_profiles_tempo.py`: `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue`, `test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` | done |
+| Delivery review R3: the reassurance is a named set (`cues.REASSURANCE_CUES`), so an action cue in its place keeps its item | AC-PROF-07 | `tests/test_profiles_tempo.py`: `test_the_reassurance_cues_are_named_and_rehabs_replacement_is_one_of_them`, `test_a_reassurance_cue_adds_no_tempo_item_and_an_action_cue_keeps_it` | done |
 | Delivery review R1: a model line that praises falls back under a profile and the mode is kept | AC-PROF-05, phrasing AC-P09 | `test_a_praising_model_line_falls_back_under_a_profile_and_the_profile_is_kept` | done |
 
 ## Test Scenarios (maps 1:1 to acceptance criteria)
-- AC-PROF-01 to AC-PROF-08 and AC-PROF-NFR-01 to `tests/test_profiles.py`, the test names listed in each AC.
+- AC-PROF-01 to AC-PROF-08 and AC-PROF-NFR-01 to `tests/test_profiles.py`, the test names listed in each AC; the rehab tempo
+  and reassurance tests of AC-PROF-07 are in `tests/test_profiles_tempo.py`.
 - AC-PROF-09 to AC-PROF-11, AC-PROF-13 and AC-PROF-14 to `tests/test_profiles_wiring.py` and the amended tests named in Files;
   the profile with a praising model line (AC-PROF-05, phrasing AC-P09) is in the same file; AC-PROF-16 to
   `tests/test_profile_run_choice.py`.

@@ -182,4 +182,4 @@ reassurances, `cues.REASSURANCE_CUES` (today "Slower is fine"), adds no tempo it
 `fitness` and `dance` take, keep theirs. The rule is that named set and not "any cue but the default speed-up nudge"
 (delivery review R3), so a future profile that replaces `speed_up` with an action keeps its item. `profiles.json`, the cue
 words and the score do not change. Spec: `docs/design/specs/profiles.md` (AC-PROF-07, amendment); tests:
-`tests/test_profiles.py`. This narrows ADR-0014's "a tempo item is added last and always kept" for that one case.
+`tests/test_profiles_tempo.py`. This narrows ADR-0014's "a tempo item is added last and always kept" for that one case.
