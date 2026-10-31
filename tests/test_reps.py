@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from part5 import pipeline, profiles, profiles_report, reps, repwise
-from part5.detect import Fault, load_rules
+from part5.detect import Detection, Fault, load_rules
 from part5.pipeline import run
 from part5.replay import build_replay
 from part5.score_report import score_block
@@ -153,7 +153,7 @@ def slow():
 def test_real_lateral_raise_followers_are_accepted_rep_by_rep(which, n_reps, request):
     a = request.getfixturevalue(which).analysis
     jsonschema.Draft202012Validator(SCHEMA).validate(a)
-    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.7.0"
+    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.8.0"
     guard = a["diagnostics"]["guard"]
     assert len(guard["reps"]) == n_reps and all(r["ok"] for r in guard["reps"])
     for r in guard["reps"]:   # the frozen limits, the numbers of the diagnosis
@@ -241,15 +241,15 @@ def compare_under(res, rules):
 
 
 def script_detect(monkeypatch, profile_sides, fitness_sides):
-    """`repwise.detect` answering, rep by rep, with these sides: one list for the profile's rules, one for fitness's."""
+    """`repwise.detect_full` answering, rep by rep, with these sides: one list for the profile's rules, one for fitness's."""
     calls = {"profile": 0, "fitness": 0}
 
-    def scripted(ref_m, fol_m, alignment, rules):
+    def scripted(ref_m, fol_m, alignment, rules, candidates=False):
         kind = "profile" if "profile" in rules else "fitness"
         i, calls[kind] = calls[kind], calls[kind] + 1
-        return [side_fault(side) for side in (profile_sides if kind == "profile" else fitness_sides)[i]]
+        return Detection([side_fault(side) for side in (profile_sides if kind == "profile" else fitness_sides)[i]], [])
 
-    monkeypatch.setattr(repwise, "detect", scripted)
+    monkeypatch.setattr(repwise, "detect_full", scripted)
     return calls
 
 
@@ -324,7 +324,7 @@ def test_the_fast_and_the_slow_follower_agree_with_the_trainer_on_the_verdict(fa
 # --- different movements are analysed with a low_match warning and grade F (ADR-0012) ---
 def low_match(a):
     return a["status"]["code"] == "ok" and [w["code"] for w in a["warnings"]] == ["low_match"] \
-        and a["match"]["quality"] == "low" and a["schema_version"] == "1.7.0"
+        and a["match"]["quality"] == "low" and a["schema_version"] == "1.8.0"
 
 
 @pytest.mark.parametrize("name", ["part2-dance", "part2-class", "part2-single", "part2-stretch"])
@@ -354,6 +354,6 @@ def test_no_seed5_take_is_compared_rep_by_rep_and_its_document_has_no_rep_fields
     for take in SEED5["takes"]:
         r = run(str(ROOT / take["expected"]), {"path": str(ROOT / take["follower"]), "take_id": take["take_id"]})
         assert r.reps is None, take["take_id"]
-        assert r.analysis["schema_version"] == "1.7.0", take["take_id"]
+        assert r.analysis["schema_version"] == "1.8.0", take["take_id"]
         assert "reps" not in r.analysis["diagnostics"]["guard"] and "expected_reference" not in r.analysis["diagnostics"]
         assert all("reps" not in f for f in r.analysis["faults"])

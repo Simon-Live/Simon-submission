@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from .align import ALIGN_MEASURES, Alignment, AlignmentError, align, diagonal_alignment
-from .detect import detect, load_rules
+from .detect import detect_full, load_rules, on_file, summary
 from .feet import load_side, pair_of
 from .guard import GuardResult, check_movement
 from .guard import diagnostics as guard_diagnostics
@@ -173,10 +173,12 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         alignment = next(r.alignment for r in rep_run.reps if r.ok)
     else:
         exp_f, fol_f = _foot_series(feet, fol.t, fps)
+        found = detect_full({**exp_m, **exp_f}, {**fol_m, **fol_f}, alignment, rules)
         faults = [replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
-                  for f in detect({**exp_m, **exp_f}, {**fol_m, **fol_f}, alignment, rules)]
+                  for f in found.faults]
         span = tuple(int(to_original[j]) for j in alignment.follower_span)
         diagnostics = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(guard, rules))
+        diagnostics["near_misses"] = summary(on_file(found.near_misses, to_original))   # additive to 1.7.0 (TICKET-043)
         times = [_fault_times(f, exp, fol, fol_positions, alignment, to_original) for f in faults]
     if not guard.ok:
         notes[LOW_MATCH] = REFUSAL_TEXT
@@ -381,6 +383,7 @@ def _rep_diagnostics(rep_run, exp, fol, fps, rules):
     out = _diagnostics(alignment, span, len(fol.t), guard_diagnostics(rep_run.guard, rules))
     out["guard"]["reps"] = rep_entries(rep_run.reps, fol)
     out["expected_reference"] = reference_entry(rep_run, exp, fps)
+    out["near_misses"] = summary(rep_run.near_misses)   # take level, like the faults (TICKET-043)
     return out
 
 

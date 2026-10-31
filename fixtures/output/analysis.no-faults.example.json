@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.7.0",
+  "schema_version": "1.8.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
@@ -42,6 +42,36 @@
         "max_residual": 0.5677,
         "min_timing_corr": 0.8336
       }
+    },
+    "near_misses": {
+      "total": 1,
+      "omitted": 0,
+      "items": [
+        {
+          "measure": "knee_flexion",
+          "side": "left",
+          "joint": "left_knee",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 12.9,
+          "peak_deg": 13.3,
+          "threshold_deg": 9.0,
+          "expected_frames": [
+            0,
+            5
+          ],
+          "follower_frames": [
+            6,
+            10
+          ],
+          "frames_over": 6,
+          "counted_frames": 6,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 29
+        }
+      ]
     }
   },
   "insights": [],

@@ -64,8 +64,10 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.7.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
-     "`profile`) are all optional; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
+     "the 1.2.0 to 1.8.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
+     "`profile`, `diagnostics.near_misses`) are all optional; 1.8.0 adds only `diagnostics.near_misses` (the candidate "
+     "faults detection considered and dropped: near misses additive, optional, for debugging, never shown to the "
+     "follower); a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
      "reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its "
      "`profile`", "Part 5 (this repo)"),
     ("Part 5 `analyse --replay <replay.json>`", "`replay.json`", "`simon.replay.v1`", "output for Part 7", "works",

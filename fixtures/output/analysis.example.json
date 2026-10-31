@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.7.0",
+  "schema_version": "1.8.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
@@ -148,6 +148,84 @@
         "max_residual": 0.5677,
         "min_timing_corr": 0.8336
       }
+    },
+    "near_misses": {
+      "total": 3,
+      "omitted": 0,
+      "items": [
+        {
+          "measure": "forearm_out",
+          "side": "left",
+          "joint": "left_elbow",
+          "body_part": "arms",
+          "direction": "more",
+          "magnitude_deg": 18.1,
+          "peak_deg": 18.4,
+          "threshold_deg": 17.0,
+          "expected_frames": [
+            63,
+            68
+          ],
+          "follower_frames": [
+            54,
+            58
+          ],
+          "frames_over": 11,
+          "counted_frames": 11,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 24
+        },
+        {
+          "measure": "forearm_out",
+          "side": "right",
+          "joint": "right_elbow",
+          "body_part": "arms",
+          "direction": "more",
+          "magnitude_deg": 17.2,
+          "peak_deg": 17.2,
+          "threshold_deg": 17.0,
+          "expected_frames": [
+            15,
+            17
+          ],
+          "follower_frames": [
+            16,
+            18
+          ],
+          "frames_over": 3,
+          "counted_frames": 0,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 35
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "left",
+          "joint": "left_knee",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 10.8,
+          "peak_deg": 15.2,
+          "threshold_deg": 9.0,
+          "expected_frames": [
+            18,
+            31
+          ],
+          "follower_frames": [
+            20,
+            29
+          ],
+          "frames_over": 14,
+          "counted_frames": 14,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 21
+        }
+      ]
     }
   },
   "insights": [

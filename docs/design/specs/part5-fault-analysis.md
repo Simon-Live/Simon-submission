@@ -11,7 +11,7 @@ and gate), ADR-0004 (knee caving and movement guard), ADR-0005 (phrasing registr
 joint mapping), ADR-0007 to ADR-0014 (score, live phrasing, time and replay, repetitions, visibility, always
 analyse, score timeline, cues). Where an AC below and a later ADR disagree, the later ADR wins; ADR-0012 replaced
 every refusal with a warning. Companion specs: `integration-contract.md`, `check-5.md`, `calibration.md`,
-`real-takes.md`, `staging.md`, `viewer.md`, `neighbour-check.md`, `simon-publish.md`.
+`real-takes.md`, `staging.md`, `viewer.md`, `neighbour-check.md`, `simon-publish.md`, `near-misses.md`.
 
 ## Overview
 Part 5 compares a follower's 3D take with the expected clip at the same phase of the movement and
@@ -165,6 +165,15 @@ guard accepts is analysed as before, so seed 5, the held-out seeds and the golde
   0.5) of the shorter run's frames, and only faults that are kept can explain others away.
 - New rules keys: `min_run_frames`, `min_overlap`. Starting values are the defaults above; tuning on
   seed 5 may change them, and the final values go in `docs/thresholds.md`.
+
+## Near misses (TICKET-043; schema 1.8.0, `near-misses.md`)
+A candidate that detection considered and dropped (it had a frame past its threshold, then failed persistence, or a kept
+fault explained it) is recorded in the additive `diagnostics.near_misses`: measure, side, direction, size, the frames
+over and where, what persistence needed, and the reason. `detect.detect_full` returns the faults (the same list
+`detect` returns) and the candidates; `part5/detect.py` holds the record and the bound (at most 10 items, sorted by
+size, with the count of the rest) and `part5/repwise.py` the aggregation over reps. Nothing reads it: detection, the faults list, the
+score, the insights and `make check-5` are unchanged. A take compared rep by rep (ADR-0010) reports its near misses at
+the take level, like its faults. ACs AC-NM-01 to AC-NM-14 are in `near-misses.md`.
 
 ## Output additions (`simon.analysis.v1`, additive; schema version 1.1.0)
 Every addition is optional for a v1.0 reader; `CONTRACT.md` names Part 7's duties.
@@ -557,6 +566,8 @@ ASM-001 to ASM-012 in `docs/assumptions/` (ASM-008: Part 4 main's expected clips
 | `tests/test_cues.py`, version expectations in `tests/test_cli.py`, `test_output.py`, `test_visibility.py`, `test_reps.py`, `test_guard.py`, `test_pipeline_run.py`, `test_contract_cli.py` | TICKET-039 | yes |
 | `part5/align.py` (`AlignmentError`), `part5/pipeline.py`, `part5/repwise.py`, `part5/visibility.py`, `part5/score_report.py`, `part5/score.py`, `part5/api.py`, `part5/replay.py`, `part5/check.py`, `part5/phrasing/review.py` (consolidated review fixes) | review-fixes | yes |
 | `tests/conftest.py` (no live call from any test), `tests/test_no_live_calls.py`, `tests/test_live_fallback.py`, `tests/test_api_live.py`, `tests/test_schema_compat.py`, `tests/test_review_fixes.py`, `tests/fixtures/*` (the 1.1.0 schema and goldens as at `28d20ef`) | review-fixes | yes |
+| `part5/detect.py` (`detect_full`, `Candidate`), `part5/repwise.py`, `part5/pipeline.py`, `part5/output.py`, `part5/doctor.py`, `part5/contract.py`, `part5/profiles_report.py`, `contracts/analysis.schema.json` (near misses, 1.8.0; `near-misses.md` has the full list) | TICKET-043 | yes |
+| `docs/design/specs/near-misses.md`, `tests/test_near_misses.py`, `tests/test_near_misses_reps.py` | TICKET-043 | yes |
 | Tests: `tests/test_*.py` per module above | with each ticket | yes |
 
 ## Delivery Verification Plan

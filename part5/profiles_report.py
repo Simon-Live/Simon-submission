@@ -12,9 +12,10 @@ needs an ADR-0016 amendment (the report must not become a tuning loop).
 
 `--write-baseline` writes fixtures/profiles-fitness-baseline.json: the sha256 of the `fitness` analysis of every
 seed 5 take, taken once before any profile wiring edit, so a test can show that wiring a profile in moved nothing
-for `fitness` (AC-PROF-02). The hash covers the analysis without `profile` and `schema_version`, the only two
-things the feature adds to a `fitness` document, and with paths made relative to the repository so it is the same
-in every checkout.
+for `fitness` (AC-PROF-02). The hash covers the analysis without `profile`, `schema_version` and (TICKET-043)
+`diagnostics.near_misses`, the only things the features add to a `fitness` document, and with paths made relative to
+the repository so it is the same in every checkout; it is also the proof that the near misses changed no fault, score
+or other field (docs/specs/near-misses.md AC-NM-01).
 
 The seed 5 set only: any other set, a held-out one above all, is refused (exit 2) before anything is analysed.
 `make check-5` never calls this module.
@@ -68,9 +69,11 @@ def analyse_take(take, root=ROOT, profile=None):
 
 # --- the fitness baseline ---
 def analysis_digest(analysis, root=ROOT):
-    """sha256 of the analysis without `profile` and `schema_version`, as canonical JSON with the checkout's path
-    taken off every file path, so the value does not depend on where the repository lives."""
+    """sha256 of the analysis without `profile`, `schema_version` and `diagnostics.near_misses`, as canonical JSON
+    with the checkout's path taken off every file path, so the value does not depend on where the repository lives."""
     doc = {k: v for k, v in analysis.items() if k not in ADDED_BY_PROFILES}
+    if "diagnostics" in doc:
+        doc["diagnostics"] = {k: v for k, v in doc["diagnostics"].items() if k != "near_misses"}
     text = json.dumps(doc, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(text.replace(f"{Path(root)}/", "").encode()).hexdigest()
 

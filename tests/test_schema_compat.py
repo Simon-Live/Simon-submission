@@ -68,14 +68,14 @@ def test_the_vendored_schema_is_the_1_1_0_one():
 
 def test_ac_c01_a_fresh_unwarned_document_with_a_score_validates_against_both_schemas(unwarned):
     doc, _ = unwarned
-    assert "warnings" not in doc and doc["schema_version"] == "1.7.0" and doc["score"] and doc["faults"]
+    assert "warnings" not in doc and doc["schema_version"] == "1.8.0" and doc["score"] and doc["faults"]
     assert violations(OLD_SCHEMA, doc) == [] and violations(SCHEMA, doc) == []
 
 
 @pytest.mark.parametrize("name", GOLDENS)
 def test_ac_c01_the_golden_outputs_validate_against_the_1_1_0_schema(name):
     doc = json.loads((ROOT / "fixtures/output" / name).read_text())
-    assert doc["schema_version"] == "1.7.0"
+    assert doc["schema_version"] == "1.8.0"
     assert violations(OLD_SCHEMA, doc) == [] and violations(SCHEMA, doc) == []
 
 
@@ -117,4 +117,6 @@ def test_ac_t04_text_and_every_scored_field_equal_the_1_1_0_golden(name):
         assert now["text"].encode() == was["text"].encode()
         # ADR-0008 changed `coaching` (it is the timed line now); every other 1.1.0 field is as it was
         assert {k: v for k, v in now.items() if k in was and k != "coaching"} == {k: v for k, v in was.items() if k != "coaching"}
-    assert (new["status"], new["diagnostics"]) == (old["status"], old["diagnostics"])
+    # 1.8.0 (TICKET-043) added `diagnostics.near_misses`; every other diagnostics field is as it was
+    assert (new["status"], {k: v for k, v in new["diagnostics"].items() if k != "near_misses"}) == (
+        old["status"], old["diagnostics"])

@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/analysis.schema.json",
   "title": "Part 5 analysis.json (simon.analysis.v1)",
-  "version": "1.7.0",
-  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score; 1.3.0: faults[].reps, diagnostics.guard.reps, diagnostics.expected_reference and score.per_rep, for a take compared one repetition at a time). A document without them keeps schema_version 1.2.0. A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed. 1.4.0 (ADR-0012): a take is always analysed. status.code is ok for every analysis; what used to be a refusal is an entry in the top-level warnings ([{code, text}]: low_match, moving_part_out_of_frame, not_enough_visible, no_usable_measures), with match ({quality ok|low, residual, timing_corr, limits}); on a low match each fault has confidence \"low\"; score is never null, is capped at 59 (grade F) when any warning is present, and then names the codes in score.capped_by. A document without warnings keeps its earlier schema_version. 1.5.0 (ADR-0014): every new document is 1.5.0 and carries cues: faults[].cue and cue_kind (position or range), the same on each score.timeline[].misses[] with its direction, score.timeline[].tempo and score.tempo ({ratio, cue}: follower seconds per example second, a cue below 0.85 or above 1.15), and the top-level insights (at most 5, ranked by the points they cost the score). 1.6.0 (ADR-0015): every new document is 1.6.0 and may carry the foot measures: faults with measure foot_rotation or ankle_inversion (body_part feet, joint an ankle, cue and words like any fault) and diagnostics.feet, written only when a feet file (Part 2 pose3d.json with extra_joints) was given for either clip. A document without them is exactly what 1.5.0 was apart from schema_version. 1.7.0 (ADR-0016): every new document is 1.7.0 and carries profile, the analysis profile that produced it (a non-empty string; the names are data in part5/profiles.json, today dance, rehab and fitness, fitness being the default and the unchanged analysis). A score is read within its profile. Under the dance profile only, score.components and each window's components carry tempo (points the take's pace cost) and the tempo insight's points equal it. A document before 1.7.0 has no profile and is read as fitness. The earlier field groups stay optional and are told apart by their fields.",
+  "version": "1.8.0",
+  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score; 1.3.0: faults[].reps, diagnostics.guard.reps, diagnostics.expected_reference and score.per_rep, for a take compared one repetition at a time). A document without them keeps schema_version 1.2.0. A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed. 1.4.0 (ADR-0012): a take is always analysed. status.code is ok for every analysis; what used to be a refusal is an entry in the top-level warnings ([{code, text}]: low_match, moving_part_out_of_frame, not_enough_visible, no_usable_measures), with match ({quality ok|low, residual, timing_corr, limits}); on a low match each fault has confidence \"low\"; score is never null, is capped at 59 (grade F) when any warning is present, and then names the codes in score.capped_by. A document without warnings keeps its earlier schema_version. 1.5.0 (ADR-0014): every new document is 1.5.0 and carries cues: faults[].cue and cue_kind (position or range), the same on each score.timeline[].misses[] with its direction, score.timeline[].tempo and score.tempo ({ratio, cue}: follower seconds per example second, a cue below 0.85 or above 1.15), and the top-level insights (at most 5, ranked by the points they cost the score). 1.6.0 (ADR-0015): every new document is 1.6.0 and may carry the foot measures: faults with measure foot_rotation or ankle_inversion (body_part feet, joint an ankle, cue and words like any fault) and diagnostics.feet, written only when a feet file (Part 2 pose3d.json with extra_joints) was given for either clip. A document without them is exactly what 1.5.0 was apart from schema_version. 1.7.0 (ADR-0016): every new document is 1.7.0 and carries profile, the analysis profile that produced it (a non-empty string; the names are data in part5/profiles.json, today dance, rehab and fitness, fitness being the default and the unchanged analysis). A score is read within its profile. Under the dance profile only, score.components and each window's components carry tempo (points the take's pace cost) and the tempo insight's points equal it. A document before 1.7.0 has no profile and is read as fitness. The earlier field groups stay optional and are told apart by their fields. 1.8.0 (TICKET-043): every new document is 1.8.0 and may carry diagnostics.near_misses, the candidate faults detection considered and dropped: {total, omitted, items}, the items the largest first and at most 10, each a measure, side and direction with a frame past its threshold that failed persistence (reason persistence, with shortfall_frames) or was explained by a kept fault (reason explained_by); a take compared rep by rep adds the reasons reps and fitness. It is present whenever the take was compared (also with total 0) and absent when it could not be aligned. It changes no fault or score, is for people debugging a take and is not shown to the follower.",
   "type": "object",
   "required": [
     "format",
@@ -309,6 +309,31 @@
                 "null"
               ],
               "minLength": 1
+            }
+          }
+        },
+        "near_misses": {
+          "type": "object",
+          "description": "1.8.0 (TICKET-043): the candidate faults detection considered and dropped. total is how many there are, items the largest by abs(magnitude_deg) (at most 10) and omitted the rest. A take compared rep by rep lists them at the take level, like its faults.",
+          "required": [
+            "total",
+            "omitted",
+            "items"
+          ],
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "omitted": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/near_miss"
+              }
             }
           }
         }
@@ -1650,6 +1675,196 @@
                 "exclusiveMaximum": 0
               }
             }
+          }
+        }
+      ]
+    },
+    "near_miss": {
+      "type": "object",
+      "description": "A measure on one side in one direction with at least one frame past its threshold that was not reported, sized like a fault. Sides are never merged: side is left, right or center.",
+      "required": [
+        "measure",
+        "side",
+        "joint",
+        "body_part",
+        "direction",
+        "magnitude_deg",
+        "peak_deg",
+        "threshold_deg",
+        "expected_frames",
+        "follower_frames",
+        "frames_over",
+        "counted_frames",
+        "needed_frames",
+        "min_run_frames",
+        "reason"
+      ],
+      "properties": {
+        "measure": {
+          "$ref": "#/$defs/fault/properties/measure"
+        },
+        "side": {
+          "enum": [
+            "left",
+            "right",
+            "center"
+          ]
+        },
+        "joint": {
+          "$ref": "#/$defs/fault/properties/joint"
+        },
+        "body_part": {
+          "$ref": "#/$defs/fault/properties/body_part"
+        },
+        "direction": {
+          "$ref": "#/$defs/fault/properties/direction"
+        },
+        "magnitude_deg": {
+          "type": "number",
+          "description": "Signed median of the smoothed difference over the counted runs, else over every frame past the threshold."
+        },
+        "peak_deg": {
+          "type": "number"
+        },
+        "threshold_deg": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "expected_frames": {
+          "$ref": "#/$defs/fault/properties/expected_frames",
+          "description": "The longest run past the threshold, expected-clip frames (on the expected file's frames in rep mode)."
+        },
+        "follower_frames": {
+          "$ref": "#/$defs/fault/properties/follower_frames",
+          "description": "The matched frames of the follower file for that run."
+        },
+        "frames_over": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Frames past the threshold, any run length."
+        },
+        "counted_frames": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Those in runs of at least min_run_frames: what persistence counts."
+        },
+        "needed_frames": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "What persistence needed: max(min_frames_floor, round(min_fraction x clip frames))."
+        },
+        "min_run_frames": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "enum": [
+            "persistence",
+            "explained_by",
+            "reps",
+            "fitness"
+          ],
+          "description": "persistence: too few counted frames. explained_by: a kept fault explains it. reps (rep mode): reported in some reps but fewer than half. fitness (rep mode, profile): half the reps reported it and the profile's take-level check dropped it."
+        },
+        "shortfall_frames": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "reason persistence: needed_frames minus counted_frames."
+        },
+        "explained_by": {
+          "type": "object",
+          "description": "reason explained_by: the kept fault that explains it, as that fault is reported.",
+          "required": [
+            "measure",
+            "side",
+            "direction"
+          ],
+          "properties": {
+            "measure": {
+              "$ref": "#/$defs/fault/properties/measure"
+            },
+            "side": {
+              "$ref": "#/$defs/fault/properties/side"
+            },
+            "direction": {
+              "$ref": "#/$defs/fault/properties/direction"
+            }
+          }
+        },
+        "reps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Rep mode: the follower repetitions (0-based) in which it crossed the threshold."
+        },
+        "found_in_reps": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rep mode, reason reps or fitness: the most reps that reported one exact side of it."
+        },
+        "needed_reps": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rep mode, reason reps or fitness: half the accepted reps, rounded up."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "persistence"
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "shortfall_frames"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "explained_by"
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "explained_by"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "reps",
+                  "fitness"
+                ]
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "found_in_reps",
+              "needed_reps"
+            ]
           }
         }
       ]

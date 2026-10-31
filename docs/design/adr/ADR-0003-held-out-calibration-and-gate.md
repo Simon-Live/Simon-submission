@@ -86,3 +86,9 @@ Concerns:
 - `part5/check.py`, `make heldout-data SEED=<n>` (`scripts/make_dummy_followers.py --seed <n> --out
   fixtures/input/heldout --dropout-variant`),
   `docs/thresholds.md`
+
+## Amendments
+- 2026-10-31, ADR-0017 (stakeholder-proxy ruling of 2026-10-31T22:25Z on moalborati/simon#59): a second held-out series,
+  seeds 67, 71 and 73, follows seed 37. It amends "Held-out seeds are fixed now, in order 29, 31, 37" (Decision) and
+  "they are fixed now, before any tuning, and never changed" (Dissent): the order is 29, 31, 37, 67, 71, 73 and the last
+  seed is 73. Every other rule here stands, the gate thresholds included, and seed 37's red attempt stays recorded.

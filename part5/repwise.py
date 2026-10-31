@@ -14,19 +14,22 @@ compares one repetition at a time instead:
 - under a profile (ADR-0016) the reps are also detected with the profile's `fitness` rules (`profiles.fitness_rules`),
   that half rule is applied to those too, and only the take-level faults `fitness` also reports, covered in the sense
   of `profiles.covered_by`, are kept. Each rep's faults are covered by construction, but a fault seen on one side in
-  some reps and on both in others can pass the half rule under a profile and not under `fitness`.
+  some reps and on both in others can pass the half rule under a profile and not under `fitness`;
+- near misses (TICKET-043, docs/specs/near-misses.md) live at the take level like the faults: each rep also keeps its
+  candidates, and `across_reps` turns them into one near miss per measure, side and direction the take does not report.
 
 `compare` returns `None` when neither clip has more than one rep (nothing new to try). A pair the
 whole-clip guard accepts never gets here, so a single-rep take is analysed exactly as before. The reps together
 are bounded like the whole pair (`max_cells`, `TooManyPairs`).
 """
+import math
 from dataclasses import dataclass, field, replace
 from statistics import median
 
 import numpy as np
 
 from .align import Alignment, AlignmentError, align
-from .detect import detect
+from .detect import FITNESS, REPS, detect_full, on_file, reports
 from .guard import DIFFERENT_MOVEMENT, OK, OK_TEXT, REFUSAL_TEXT, GuardResult, check_movement
 from .visibility import measures_of
 from .output import fault_to_dict
@@ -71,6 +74,7 @@ class RepResult:
     faults: list = field(default_factory=list)
     analysis: dict = field(default_factory=dict)
     fitness_faults: list = field(default_factory=list)
+    candidates: list = field(default_factory=list)   # the rep's `detect.Candidate`s, reported ones included (TICKET-043)
 
 
 @dataclass
@@ -83,6 +87,7 @@ class RepRun:
     expected_span: tuple            # the reference, in expected frames
     expected_segmentation: Segmentation
     follower_segmentation: Segmentation
+    near_misses: list = field(default_factory=list)   # take-level `detect.Candidate`s on the expected file's frames
 
 
 def _resample_rep(positions, a, b, n):
@@ -109,10 +114,11 @@ def _reference(exp, exp_m, span):
     return clip, {k: np.asarray(v)[a:b + 1] for k, v in exp_m.items()}
 
 
-def _detected(ref_m, fol_m, alignment, rules, orig):
-    """`detect` on one rep, the follower frames mapped to the file's own."""
-    return [replace(f, follower_frames=tuple(int(orig[j]) for j in f.follower_frames))
-            for f in detect(ref_m, fol_m, alignment, rules)]
+def _detected(ref_m, fol_m, alignment, rules, orig, candidates=False):
+    """`detect_full` on one rep, the follower frames mapped to the file's own: `(faults, candidates)`."""
+    found = detect_full(ref_m, fol_m, alignment, rules, candidates)
+    faults = [replace(f, follower_frames=tuple(int(orig[j]) for j in f.follower_frames)) for f in found.faults]
+    return faults, on_file(found.candidates, orig)
 
 
 def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None, fitness=None):
@@ -125,12 +131,13 @@ def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None, fitness=None):
     fol_m = measures_of(pos, vis)
     guard = check_movement(alignment, ref_m, fol_m, rules)
     ok = bool(guard.ok and guard.stats["span_share"] >= MIN_REP_SPAN_SHARE)
-    faults, fitness_faults = [], []
+    faults, fitness_faults, candidates = [], [], []
     if ok:
-        faults = _detected(ref_m, fol_m, alignment, rules, orig)
+        faults, candidates = _detected(ref_m, fol_m, alignment, rules, orig, candidates=True)
         if fitness is not None:
-            fitness_faults = _detected(ref_m, fol_m, alignment, fitness, orig)
-    return RepResult(index, span, ok, guard, alignment, ref, pos, orig, faults, fitness_faults=fitness_faults)
+            fitness_faults = _detected(ref_m, fol_m, alignment, fitness, orig)[0]
+    return RepResult(index, span, ok, guard, alignment, ref, pos, orig, faults, fitness_faults=fitness_faults,
+                     candidates=candidates)
 
 
 def _aggregate(occurrences):
@@ -168,6 +175,33 @@ def only_what_fitness_reports(kept, reps):
     one gap left, a fault that is split over sides differently in different reps."""
     reported = [_fault_key(f) for f, _, _ in aggregate_faults(reps, "fitness_faults")]
     return [k for k in kept if covered_by(_fault_key(k[0]), reported)]
+
+
+def across_reps(per_rep, reported, share=MIN_FAULT_SHARE):
+    """The near misses of a take compared rep by rep (TICKET-043): one per measure, side and direction that crossed its
+    threshold in an accepted rep and that the take does not report.
+
+    `per_rep` is `[(rep index, [(measure, side, direction) of the rep's faults], [the rep's Candidate])]` for the
+    accepted reps and `reported` the keys of the faults the take reports. Each near miss is the record of the rep where
+    the candidate came closest to being reported (the most counted frames, the earliest rep on a tie), with `reps`
+    the reps it crossed the threshold in. Its reason is that rep's when no rep reported it; `reps` when some did but
+    fewer than half of the accepted reps (`found_in_reps` against `needed_reps`); `fitness` when half or more did and a
+    profile's take-level check dropped it all the same. Expected frames stay the rep's own: the caller moves them."""
+    need = math.ceil(share * len(per_rep))
+    groups = {}
+    for index, _, candidates in per_rep:
+        for c in candidates:
+            groups.setdefault(c.key, []).append((index, c))
+    out = []
+    for (measure, side, direction), occurrences in groups.items():
+        if reports(reported, (measure, side, direction)):
+            continue
+        found = max(sum((measure, s, direction) in keys for _, keys, _ in per_rep) for s in {side, "both"})
+        _, best = max(occurrences, key=lambda ic: (ic[1].counted_frames, -ic[0]))
+        outcome = best.outcome if not found else REPS if found < need else FITNESS
+        out.append(replace(best, outcome=outcome, reps=tuple(i for i, _ in occurrences),
+                           found_in_reps=found, needed_reps=need))
+    return out
 
 
 def _times(kept, fol, fault_times):
@@ -269,5 +303,8 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
         r.analysis = {"status": {"code": OK if r.ok else DIFFERENT_MOVEMENT},
                       "faults": [fault_to_dict(f) for f in mine]}
     start = es.spans[0][0]
+    per_rep = [(r.index, [_fault_key(f) for f in r.faults], r.candidates) for r in reps if r.ok]
+    near = [replace(c, expected_frames=tuple(f + start for f in c.expected_frames))   # onto the expected file, like a fault
+            for c in across_reps(per_rep, list(kept_keys))] if guard.ok else []
     return RepRun(guard, reps, [_on_expected_file(f, start, exp.n_frames) for f, _, _ in kept],
-                  _times(kept, fol, fault_times), es.spans[0], es, fs)
+                  _times(kept, fol, fault_times), es.spans[0], es, fs, near)

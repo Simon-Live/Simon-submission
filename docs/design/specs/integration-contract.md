@@ -37,7 +37,7 @@ that a mismatch is found in seconds with the fix named.
 ## Schemas (`contracts/`, published)
 | Name | File | `version` | Describes |
 |---|---|---|---|
-| `analysis` | `contracts/analysis.schema.json` | `1.7.0` (`1.1.0` when this spec was written) | Part 5's output, `simon.analysis.v1` with the additive fields of the master spec, `journey-followup.md`, `foot-keypoints.md` (`diagnostics.feet`) and `profiles.md` (`profile`) |
+| `analysis` | `contracts/analysis.schema.json` | `1.8.0` (`1.1.0` when this spec was written) | Part 5's output, `simon.analysis.v1` with the additive fields of the master spec, `journey-followup.md`, `foot-keypoints.md` (`diagnostics.feet`), `profiles.md` (`profile`) and `near-misses.md` (`diagnostics.near_misses`) |
 | `input-animation` | `contracts/input-animation.schema.json` | `1.0.0` | expected or follower clip in `simon.animation.v1` (frames, optional `null` joints and `conf`) |
 | `input-skeleton` | `contracts/input-skeleton.schema.json` | `1.0.0` | expected clip in `simon.skeleton.v1` (keyframes) |
 | `labels` | `contracts/labels.schema.json` | `1.0.0` | `labels.json` of the synthetic sets and the real takes (`label_source` optional) |
@@ -61,7 +61,7 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 | Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 dc3d9f2 |
 | Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
 | Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
-| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.7.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, `profile`) are all optional; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its `profile` | Part 5 (this repo) |
+| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.8.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, `profile`, `diagnostics.near_misses`) are all optional; 1.8.0 adds only `diagnostics.near_misses` (the candidate faults detection considered and dropped: near misses additive, optional, for debugging, never shown to the follower); a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its `profile` | Part 5 (this repo) |
 | Part 5 `analyse --replay <replay.json>` | `replay.json` | `simon.replay.v1` | output for Part 7 | works | optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>` | Part 5 (this repo) |
 | Part 5 `analyse --live` | live mode (`--live`, `serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`) | `simon.analysis.v1` with `phrasing.selected_by` `live` | option for Part 7 | works with an option | needs the Baseten key file on the host that runs Part 5; without it each fault keeps its timed template line (`fallback_reason: "no key"`); the template stays the default for tests and `make check-5` | Part 5 (this repo) |
 | Part 5 `analyse --profile` | analysis profile (`--profile {dance,rehab,fitness}`, API field `profile`) | `simon.analysis.v1` 1.7.0 with `profile` | option for Part 7 | works with an option | pass the operator's mode as `--profile` or as the `profile` field of `POST api/analyse`; probe `part5 analyse --help` for `--profile` before relying on it; omitted means `fitness`, the analysis as it was; every document names its `profile`, and a score is read within one profile (a dance 84 and a fitness 84 differ) | Part 5 (this repo) |
@@ -81,7 +81,7 @@ make check-5-contract        # uv run python -m part5.contract --check
   verbatim (for any JSON Schema validator); `--json` prints `{schemas: [...], table: [...]}`. Exit 0;
   an unknown schema name exits 2 naming the valid names.
 - `doctor` reads one file, names its kind and version (`simon.animation.v1`, `simon.skeleton.v1`,
-  `simon.skeleton/1 (Part 3 native)`, `simon:follow v1 hand-off (Part 6)` (event detail or framed message), `part2.pose3d (Part 2)`, `simon.analysis.v1 1.7.0`,
+  `simon.skeleton/1 (Part 3 native)`, `simon:follow v1 hand-off (Part 6)` (event detail or framed message), `part2.pose3d (Part 2)`, `simon.analysis.v1 1.8.0`,
   `simon.replay.v1 1.0.0`, `labels`), validates it against the matching schema and, for `--for part5` (default), loads it through
   `part5.io`. Output: one verdict line, then one line per problem: field path, what is wrong, the option
   that fixes it. `--for part7` checks an `analysis.json` for Part 7, warns when `status.code` is not `ok` or the take
@@ -201,6 +201,9 @@ version tells a careful reader what to expect.
   in the schema) and the metrics schema `1.3.0` (`profiles_sha256`); the table has a row "Part 5 `analyse --profile`" and
   the analysis row names `profile`; `part5 doctor --for part7` notes the profile ("scores compare within one profile",
   or "read it as fitness" for a document before `1.7.0`); `CONTRACT.md` carries the same rows and a Part 7 duty.
+- 2026-10-31 (TICKET-043, `docs/design/specs/near-misses.md`): the analysis schema is `1.8.0` (`diagnostics.near_misses`, written
+  whenever the take was compared, optional in the schema); the analysis row says so ("near misses additive, optional");
+  `part5 doctor --for part7` notes how many near misses a document lists; `CONTRACT.md` carries the same row and sentence.
 - 2026-10-31 (final QA): the two tables above are the ones `part5 contract` prints: seven schemas (`input-feet` added),
   the rows "Part 2 foot points" and "Part 5 `analyse --profile`", the current `--replay` and `--live` rows and the
   "Checked against" column.

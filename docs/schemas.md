@@ -88,7 +88,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.7.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.8.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -97,7 +97,7 @@ so the format can grow without breaking older readers. Live examples, generated 
 takes by `make output-examples` through the same pipeline and score hook `part5 analyse` uses (with the
 `template` phrasing, whatever the environment): `fixtures/output/analysis.example.json` (two faults),
 `fixtures/output/analysis.no-faults.example.json` (a correct take) and `fixtures/output/replay.example.json`
-(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.7.0):
+(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.8.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
 Part 7 must read first.
 
@@ -113,11 +113,12 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.5.0` | `faults[].cue`, `cue_kind`; `score.basis`, `timeline`, `tempo`; `insights` (ADR-0013, ADR-0014) | every new document |
 | `1.6.0` | faults with `measure` `foot_rotation` or `ankle_inversion` (`body_part` `feet`); `diagnostics.feet` (ADR-0015) | every new document is `1.6.0`; the foot fields appear only when a feet file was given for either clip |
 | `1.7.0` | `profile`; `score.components.tempo` and the same on each window, dance only (ADR-0016) | every new document is `1.7.0`, and `profile` is always present; the tempo points appear only under the dance profile |
+| `1.8.0` | `diagnostics.near_misses` (TICKET-043, `docs/specs/near-misses.md`) | every new document is `1.8.0`; the field is present whenever the take was compared, also when it lists nothing, and absent on a take that could not be aligned |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.7.0",
+  "schema_version": "1.8.0",
   "profile": "fitness",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
@@ -136,7 +137,13 @@ Every addition is optional and told apart by its fields; `schema_version` says w
   "diagnostics": {"alignment_residual": 0.3925, "alignment_measures": ["left_elbow_flexion", "..."],
                   "follower_span": [3, 75], "warnings": [],
                   "guard": {"residual": 0.3925, "timing_corr": 0.9892, "span_share": 0.9605,
-                            "limits": {"max_residual": 0.5677, "min_timing_corr": 0.8336}}},
+                            "limits": {"max_residual": 0.5677, "min_timing_corr": 0.8336}},
+                  "near_misses": {"total": 1, "omitted": 0, "items": [
+                    {"measure": "knee_flexion", "side": "left", "joint": "left_knee", "body_part": "legs",
+                     "direction": "more", "magnitude_deg": 10.8, "peak_deg": 15.2, "threshold_deg": 9.0,
+                     "expected_frames": [18, 31], "follower_frames": [20, 29], "frames_over": 14,
+                     "counted_frames": 14, "needed_frames": 35, "min_run_frames": 4,
+                     "reason": "persistence", "shortfall_frames": 21}]}},
   "insights": [{"cue": "Straighten your right arm more", "why": "Right elbow bent more than the example at 0.7 s",
                 "kind": "range", "at_s": 0.7, "window": 0, "points": 17.2, "measure": "elbow_flexion",
                 "side": "right", "joint": "right_elbow"}],
@@ -213,6 +220,28 @@ Top level:
   in time, `usable` the foot measures seen in at least 80% of them, named `left_foot_rotation` and so on); `compared` is
   what the pair was compared on; `hidden_reason` is null when anything was compared and otherwise plain words (no file,
   a file with no foot points, too few frames seen, rep mode, a take that could not be aligned).
+  `diagnostics.near_misses` (1.8.0, TICKET-043, `docs/specs/near-misses.md`) answers "why no fault?": the candidate
+  faults detection considered and dropped, `{total, omitted, items}`. A candidate is a measure on one side in one
+  direction with at least one frame past its threshold; it is a near miss when it is not a reported fault. `items`
+  holds the `total` largest by `abs(magnitude_deg)` up to 10 (then measure, side, direction), `omitted` the rest. It
+  is present whenever the take was compared, with `total` 0 and `items` `[]` when nothing came past a threshold, and
+  absent only on a take that could not be aligned (no detection ran). Each item has `measure`, `side` (`left`,
+  `right` or `center`, never `both`: sides are merged for faults only), `joint`, `body_part`, `direction`;
+  `magnitude_deg` and `peak_deg`, sized like a fault (the signed median and the largest value over the runs that
+  count, or over every frame past the threshold when no run is long enough), `threshold_deg`; `expected_frames` and
+  `follower_frames`, the longest run past the threshold (the follower file's own frames, like a fault's);
+  `frames_over` (frames past the threshold), `counted_frames` (those in runs of at least `min_run_frames`),
+  `needed_frames` (`max(min_frames_floor, round(min_fraction x clip frames))`, or `min_frames`) and `min_run_frames`;
+  and `reason`: `persistence` (counted fewer than needed; `shortfall_frames` is the difference) or `explained_by`
+  (it persists but a kept fault explains it; `explained_by` is `{measure, side, direction}` of that fault as it is
+  reported, `both` when the sides were merged). Under a profile the numbers are the profile's own config (its
+  threshold and persistence), and an explanation is judged at the `fitness` baseline. A take compared one repetition at
+  a time lists them at the take level like its faults: one item per measure, side and direction the take does not
+  report, with `reps` (the reps it crossed the threshold in) and the numbers of the rep that came closest, its
+  `expected_frames` on the expected file; its reason is also `reps` (reported in `found_in_reps` reps, fewer than the
+  `needed_reps`, half the accepted reps rounded up) or `fitness` (half the reps reported it and a profile's take-level
+  check dropped it). The field changes no fault, score or insight, is for people debugging a take and is not shown to
+  the follower.
 
 Follower and expected clips may have different frame rates: the follower is resampled onto
 the expected clip's clock (its `fps`, or the median step of `t`) before alignment, and every

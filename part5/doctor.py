@@ -337,6 +337,21 @@ def _for_part7(r, doc):
     _score_notes(r, doc)
     _feet_notes(r, doc)
     _profile_notes(r, doc)
+    _near_miss_notes(r, doc)
+
+
+def _near_miss_notes(r, doc):
+    """1.8.0 (TICKET-043): `diagnostics.near_misses` lists the candidate faults detection considered and dropped. It is
+    for people debugging a take, so the note says what is there and that it is not for the follower."""
+    info = (doc.get("diagnostics") or {}).get("near_misses")
+    if not isinstance(info, dict):
+        return
+    if info["total"]:
+        r.notes.append(f"{info['total']} near miss{'' if info['total'] == 1 else 'es'} in diagnostics.near_misses "
+                       f"({len(info['items'])} listed, the largest first): differences that came past a threshold "
+                       "and were not reported; for debugging, not for the follower")
+    else:
+        r.notes.append("no near misses (diagnostics.near_misses is empty): no difference came past a threshold")
 
 
 def _profile_notes(r, doc):

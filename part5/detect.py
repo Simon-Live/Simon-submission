@@ -26,9 +26,14 @@ that fitness reports for the take too.
 The foot measures (ADR-0015, `measures.FOOT_MEASURES`) are visited only when both measure dicts carry them, which
 the pipeline arranges for a pair with usable feet on both sides, and only when `rules["measures"]` has an entry
 for them: they have no default threshold. Everything above applies to them unchanged.
+
+Near misses (TICKET-043, docs/specs/near-misses.md): `detect_full` also returns a `Candidate` for every measure, side and
+direction that had a frame past its threshold, tagged with what became of it (a reported fault, dropped for persistence,
+or explained by a kept fault). `detect` is `detect_full` without them, so the faults are the same list either way, and
+nothing in a candidate feeds back into detection.
 """
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +44,10 @@ from .measures import ALL_SPECS, FOOT_MEASURES, MEASURES
 RULES_PATH = Path(__file__).with_name("rules.json")
 DEFAULT_MIN_RUN_FRAMES = 4
 DEFAULT_MIN_OVERLAP = 0.5
+MAX_NEAR_MISSES = 10   # items listed in diagnostics.near_misses; `summary` counts the rest
+# What became of a candidate. A take compared rep by rep adds REPS and FITNESS (`repwise.across_reps`).
+REPORTED, PERSISTENCE, EXPLAINED_BY, REPS, FITNESS = "reported", "persistence", "explained_by", "reps", "fitness"
+REASONS = (PERSISTENCE, EXPLAINED_BY, REPS, FITNESS)   # the outcomes of a near miss: every one but REPORTED
 
 
 def load_rules(path=RULES_PATH):
@@ -74,6 +83,94 @@ class Fault:
             d[k] = list(d[k])
         d["runs"] = [list(r) for r in self.runs]
         return d
+
+
+@dataclass
+class Candidate:
+    """A measure on one side in one direction with at least one frame past its threshold, and what became of it.
+
+    Sized like a fault (`magnitude_deg`, `peak_deg`: over the counted runs, else over every frame past the threshold).
+    The side is never "both": sides are merged for reported faults only. A near miss is a candidate that is not
+    reported; `to_dict` is its `diagnostics.near_misses.items` entry."""
+    measure: str
+    side: str               # left / right / center
+    joint: str
+    body_part: str
+    direction: str          # "more" or "less" than the example
+    magnitude_deg: float    # signed median of the smoothed difference
+    peak_deg: float         # largest signed value of the same frames
+    threshold_deg: float
+    expected_frames: tuple  # inclusive, the longest run past the threshold (the earliest on a tie)
+    follower_frames: tuple  # matched follower frames for that run
+    frames_over: int        # frames past the threshold, any run length
+    counted_frames: int     # those in runs of at least min_run_frames
+    needed_frames: int      # what persistence needed
+    min_run_frames: int
+    outcome: str = REPORTED
+    explained_by: tuple | None = None   # (measure, side, direction) of the kept fault that explains it
+    reps: tuple = ()                    # rep mode: the reps in which it crossed the threshold
+    found_in_reps: int = 0              # rep mode: the most reps that reported one exact side of it
+    needed_reps: int = 0                # rep mode: half the accepted reps, rounded up
+
+    @property
+    def key(self):
+        return self.measure, self.side, self.direction
+
+    @property
+    def persists(self):
+        """Do the counted frames meet persistence? The test `_counted_runs` makes."""
+        return self.counted_frames > 0 and self.counted_frames >= self.needed_frames
+
+    def to_dict(self):
+        d = {"measure": self.measure, "side": self.side, "joint": self.joint, "body_part": self.body_part,
+             "direction": self.direction, "magnitude_deg": float(self.magnitude_deg),
+             "peak_deg": float(self.peak_deg), "threshold_deg": float(self.threshold_deg),
+             "expected_frames": [int(f) for f in self.expected_frames],
+             "follower_frames": [int(f) for f in self.follower_frames],
+             "frames_over": int(self.frames_over), "counted_frames": int(self.counted_frames),
+             "needed_frames": int(self.needed_frames), "min_run_frames": int(self.min_run_frames),
+             "reason": self.outcome}
+        if self.outcome == PERSISTENCE:
+            d["shortfall_frames"] = max(0, int(self.needed_frames - self.counted_frames))
+        elif self.outcome == EXPLAINED_BY:
+            d["explained_by"] = dict(zip(("measure", "side", "direction"), self.explained_by))
+        elif self.outcome in (REPS, FITNESS):
+            d["found_in_reps"], d["needed_reps"] = int(self.found_in_reps), int(self.needed_reps)
+        if self.reps:
+            d["reps"] = [int(i) for i in self.reps]
+        return d
+
+
+@dataclass
+class Detection:
+    """What `detect_full` found: the take's faults and, unless switched off, every candidate with its outcome."""
+    faults: list
+    candidates: list
+
+    @property
+    def near_misses(self):
+        return [c for c in self.candidates if c.outcome != REPORTED]
+
+
+def reports(fault_keys, key):
+    """Does a fault in `fault_keys` ((measure, side, direction) tuples) report the candidate `key`: the same measure
+    and direction on its side, or on both sides."""
+    measure, side, direction = key
+    return any(m == measure and d == direction and s in (side, "both") for m, s, d in fault_keys)
+
+
+def on_file(candidates, to_original):
+    """`candidates` with their follower frames mapped to the follower file's own (`to_original[j]` is the file's frame
+    for resampled frame `j`), as the pipeline does for a fault."""
+    return [replace(c, follower_frames=tuple(int(to_original[j]) for j in c.follower_frames)) for c in candidates]
+
+
+def summary(near_misses, limit=MAX_NEAR_MISSES):
+    """`diagnostics.near_misses`: the `limit` largest by `abs(magnitude_deg)` (then measure, side, direction, so the
+    order is fixed), how many there are and how many are left out."""
+    ordered = sorted(near_misses, key=lambda c: (-abs(c.magnitude_deg), c.measure, c.side, c.direction))
+    return {"total": len(ordered), "omitted": max(0, len(ordered) - limit),
+            "items": [c.to_dict() for c in ordered[:limit]]}
 
 
 def generic(name):
@@ -137,13 +234,20 @@ def differences(exp_m, fol_m, alignment: Alignment, tolerance_frames=0):
 
 
 def detect(exp_m, fol_m, alignment: Alignment, rules=None):
+    """The faults of a take. `detect_full` without the candidates, which is also the call `calibrate` sweeps make."""
+    return detect_full(exp_m, fol_m, alignment, rules, candidates=False).faults
+
+
+def detect_full(exp_m, fol_m, alignment: Alignment, rules=None, candidates=True):
+    """`Detection(faults, candidates)`: the faults `detect` returns and, unless `candidates` is False, a `Candidate` for
+    every measure, side and direction with a frame past its threshold, each tagged with what became of it."""
     rules = rules or load_rules()
     diffs = differences(exp_m, fol_m, alignment, rules.get("tolerance_frames", 0))
     n = len(alignment.exp_to_fol)
     # ADR-0016: rules from `profiles.effective_rules` carry a `profile` holding the unrelaxed config of each measure.
     # Plain rules (fitness) have none, `relaxed` stays empty and everything below is what detection did before profiles.
     profile = rules.get("profile")
-    raw, relaxed = [], {}
+    raw, relaxed, seen = [], {}, []
     for name, d in diffs.items():
         g, side = generic(name)
         if name in FOOT_MEASURES and g not in rules["measures"]:
@@ -153,6 +257,9 @@ def detect(exp_m, fol_m, alignment: Alignment, rules=None):
         sm = _median_filter(d, rules.get("smooth_frames", 1))
         for sign, direction in ((1, "more"), (-1, "less")):
             fault = _fault(name, g, side, direction, sign, d, sm, base, alignment, n)
+            cand = _candidate(name, g, side, direction, sign, sm, cfg, alignment, n) if candidates else None
+            if cand is not None:   # TICKET-043: the same measure at the config in force (a profile's own), beside its fault
+                seen.append((cand, fault))
             if fault is None:
                 continue
             raw.append(fault)
@@ -161,22 +268,70 @@ def detect(exp_m, fol_m, alignment: Alignment, rules=None):
                 relaxed[id(fault)] = _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n,
                                             fitness_run=fault.expected_frames)
     overlap = rules["default"].get("min_overlap", DEFAULT_MIN_OVERLAP)
-    kept = _drop_explained(raw, rules.get("explained_by", {}), overlap, rules.get("explained_by_opposite", {}))
+    kept, why = _drop_explained(raw, rules.get("explained_by", {}), overlap, rules.get("explained_by_opposite", {}))
     if profile is not None:   # explanation was judged at the baseline; what survives is re-tested at the profile's config
         kept = [r for r in (relaxed[id(f)] for f in kept) if r is not None]
-    return _merge_sides(kept, overlap)
+    faults = _merge_sides(kept, overlap)
+    return Detection(faults, _tagged(seen, why, faults))
+
+
+def _persistence(flags, cfg, n):
+    """`(runs, counted runs, frames needed, min_run_frames)` for the frames past a threshold.
+
+    Deliberate faults are held through a good part of the movement, possibly in several
+    stretches; noise comes in short runs. A run counts from `min_run_frames`, and the counted runs
+    must sum to `min_frames` (the fraction of the clip, floored)."""
+    min_run = cfg.get("min_run_frames", DEFAULT_MIN_RUN_FRAMES)
+    needed = cfg.get("min_frames") or max(cfg["min_frames_floor"], int(round(cfg["min_fraction"] * n)))
+    runs = _runs(flags)
+    return runs, [(s, e) for s, e in runs if e - s + 1 >= min_run], needed, min_run
 
 
 def _counted_runs(flags, cfg, n):
-    """The runs that count toward persistence, or [] when together they are too short.
+    """The runs that count toward persistence, or [] when together they are too short."""
+    _, counted, needed, _ = _persistence(flags, cfg, n)
+    return counted if sum(e - s + 1 for s, e in counted) >= needed else []
 
-    Deliberate faults are held through a good part of the movement, possibly in several
-    stretches; noise comes in short runs. A run counts from `min_run_frames`, and the runs
-    must sum to `min_frames` (the fraction of the clip, floored)."""
-    min_run = cfg.get("min_run_frames", DEFAULT_MIN_RUN_FRAMES)
-    min_frames = cfg.get("min_frames") or max(cfg["min_frames_floor"], int(round(cfg["min_fraction"] * n)))
-    runs = [(s, e) for s, e in _runs(flags) if e - s + 1 >= min_run]
-    return runs if sum(e - s + 1 for s, e in runs) >= min_frames else []
+
+def _candidate(name, g, side, direction, sign, sm, cfg, alignment, n):
+    """The candidate for one measure, side and direction at `cfg`, or None when no frame is past the threshold. Sized
+    like a fault: over the counted runs, or over every frame past the threshold when no run is long enough."""
+    thr = cfg["threshold_deg"]
+    with np.errstate(invalid="ignore"):
+        flags = sign * sm > thr
+    over = int(flags.sum())
+    if not over:
+        return None
+    runs, counted, needed, min_run = _persistence(flags, cfg, n)
+    s, e = max(runs, key=lambda r: r[1] - r[0])
+    vals = np.concatenate([sm[a:b + 1] for a, b in (counted or runs)])
+    spec = ALL_SPECS[name]
+    return Candidate(
+        measure=g, side=side, joint=spec.joint, body_part=spec.body_part, direction=direction,
+        magnitude_deg=round(float(np.nanmedian(vals)), 1), peak_deg=round(float(vals[np.nanargmax(np.abs(vals))]), 1),
+        threshold_deg=thr, expected_frames=(s, e),
+        follower_frames=(int(alignment.exp_to_fol[s]), int(alignment.exp_to_fol[e])),
+        frames_over=over, counted_frames=sum(b - a + 1 for a, b in counted), needed_frames=needed,
+        min_run_frames=min_run)
+
+
+def _reported_side(cause, faults):
+    """The side `cause` is reported on: its own, or `both` when `_merge_sides` joined it with the other side's."""
+    return next((f.side for f in faults if f.measure == cause.measure and f.direction == cause.direction
+                 and f.side in (cause.side, "both")), cause.side)
+
+
+def _tagged(seen, why, faults):
+    """The candidates of `seen` ((candidate, its baseline fault or None) pairs) with their outcome. Persistence is the
+    first test detection makes, then explanation (`why`, from `_drop_explained`); a candidate that fails neither is
+    one of the final `faults`, merged or not."""
+    for cand, fault in seen:
+        if not cand.persists:
+            cand.outcome = PERSISTENCE
+        elif fault is not None and id(fault) in why:
+            cause = why[id(fault)]
+            cand.outcome, cand.explained_by = EXPLAINED_BY, (cause.measure, _reported_side(cause, faults), cause.direction)
+    return [cand for cand, _ in seen]
 
 
 def _reported_run(runs, fitness_run):
@@ -240,7 +395,8 @@ def _explains(cause, fault, explained_by, min_overlap, opposite):
 
 
 def _drop_explained(faults, explained_by, min_overlap=DEFAULT_MIN_OVERLAP, opposite=None):
-    """Drop the faults that a kept fault explains. A dropped fault explains nothing, so a chain
+    """`(kept faults, why)`: the faults without those that a kept fault explains, and `why`, `{id(dropped fault): the
+    kept fault that explains it}` (the largest magnitude when several do). A dropped fault explains nothing, so a chain
     is judged from its root down."""
     opposite = opposite or {}
     causes = [[j for j, c in enumerate(faults) if _explains(c, f, explained_by, min_overlap, opposite)]
@@ -253,7 +409,13 @@ def _drop_explained(faults, explained_by, min_overlap=DEFAULT_MIN_OVERLAP, oppos
             state[i] = not any(kept(j) for j in causes[i])
         return state[i]
 
-    return [f for i, f in enumerate(faults) if kept(i)]
+    def cause_of(i):
+        # a cycle in the rules can leave a dropped fault with no kept cause: name the largest listed one then
+        named = [faults[j] for j in causes[i] if kept(j)] or [faults[j] for j in causes[i]]
+        return max(named, key=lambda c: abs(c.magnitude_deg))
+
+    return ([f for i, f in enumerate(faults) if kept(i)],
+            {id(f): cause_of(i) for i, f in enumerate(faults) if not kept(i)})
 
 
 def _union_runs(a, b):

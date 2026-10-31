@@ -19,6 +19,7 @@ from .cues import KINDS as CUE_KINDS
 from .cues import MAX_WORDS as CUE_MAX_WORDS
 from .cues import cue_for
 from . import profiles
+from .detect import EXPLAINED_BY, MAX_NEAR_MISSES, PERSISTENCE, REASONS
 from .insights import MAX_INSIGHTS, insights_of
 from .lateral import lateral_for
 from .words import describe, describe_timed
@@ -29,7 +30,9 @@ FORMAT = "simon.analysis.v1"
 # the earlier groups apart by their fields, which stay optional. 1.6.0 (ADR-0015) adds the foot measures
 # `foot_rotation` and `ankle_inversion` (body part "feet") and `diagnostics.feet`; every new document is 1.6.0.
 # 1.7.0 (ADR-0016) adds `profile`, the analysis profile that produced the document (always present in a new one).
-SCHEMA_VERSION = "1.7.0"
+# 1.8.0 (TICKET-043) adds `diagnostics.near_misses`, the candidates detection considered and dropped (present in every
+# new document whose take was compared); every new document is 1.8.0.
+SCHEMA_VERSION = "1.8.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 PROFILE_SINCE = (1, 7, 0)   # from this schema version on, `profile` is required
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
@@ -221,6 +224,8 @@ def validate_analysis(doc, source="<analysis>"):
         fail("diagnostics must be an object")
     if "feet" in doc.get("diagnostics", {}):
         _validate_feet(doc["diagnostics"]["feet"], fail)
+    if "near_misses" in doc.get("diagnostics", {}):
+        _validate_near_misses(doc["diagnostics"]["near_misses"], fail)
     version = doc.get("schema_version")
     if "schema_version" in doc and not (isinstance(version, str) and SCHEMA_VERSION_RE.match(version)):
         fail(f"schema_version must look like '1.2.0', got {version!r}")
@@ -278,6 +283,73 @@ def _validate_feet(feet, fail):
     reason = feet.get("hidden_reason")
     if reason is not None and not (isinstance(reason, str) and reason):
         fail(f"{where}.hidden_reason must be a non-empty string or null, got {reason!r}")
+
+
+def _validate_near_misses(block, fail):
+    """The 1.8.0 `diagnostics.near_misses` (TICKET-043): how many there are, how many are left out and the largest ones."""
+    where = "diagnostics.near_misses"
+    items = block.get("items") if isinstance(block, dict) else None
+    if not (isinstance(items, list) and len(items) <= MAX_NEAR_MISSES and _is_int(block.get("total"))
+            and _is_int(block.get("omitted")) and block["omitted"] == block["total"] - len(items) >= 0):
+        fail(f"{where} must be {{total, omitted, items}} with at most {MAX_NEAR_MISSES} items and "
+             "omitted equal to total minus the items listed")
+    for i, item in enumerate(items):
+        _validate_near_miss(item, f"{where}.items[{i}]", fail)
+
+
+def _validate_near_miss(item, where, fail):
+    if not isinstance(item, dict):
+        fail(f"{where} must be an object")
+    measure, side = item.get("measure"), item.get("side")
+    if measure not in GENERIC_MEASURES:
+        fail(f"{where}.measure must be one of {GENERIC_MEASURES}, got {measure!r}")
+    if side not in ("left", "right", "center"):   # sides are merged for faults only
+        fail(f"{where}.side must be left, right or center, got {side!r}")
+    spec = _spec(measure, side)
+    if spec is None:
+        fail(f"{where}: side {side!r} does not go with measure {measure!r}")
+    if item.get("joint") != _joint_for(measure, side) or item.get("body_part") != spec.body_part:
+        fail(f"{where}.joint and body_part must be {_joint_for(measure, side)!r} and {spec.body_part!r} for "
+             f"{measure}/{side}, got {item.get('joint')!r} and {item.get('body_part')!r}")
+    if item.get("direction") not in DIRECTIONS:
+        fail(f"{where}.direction must be one of {DIRECTIONS}, got {item.get('direction')!r}")
+    for key in ("magnitude_deg", "peak_deg"):
+        if not _is_number(item.get(key)) or (item[key] > 0) != (item["direction"] == "more"):
+            fail(f"{where}.{key} must be a nonzero number signed like the direction (more positive, less negative), "
+                 f"got {item.get(key)!r}")
+    if not _is_number(item.get("threshold_deg")) or item["threshold_deg"] <= 0:
+        fail(f"{where}.threshold_deg must be a positive number, got {item.get('threshold_deg')!r}")
+    for key in ("expected_frames", "follower_frames"):
+        v = item.get(key)
+        if not (isinstance(v, list) and len(v) == 2 and all(_is_int(x) for x in v) and 0 <= v[0] <= v[1]):
+            fail(f"{where}.{key} must be [start, end] integer frames with 0 <= start <= end, got {v!r}")
+    for key in ("frames_over", "counted_frames", "needed_frames", "min_run_frames"):
+        if not _is_int(item.get(key)) or item[key] < 0:
+            fail(f"{where}.{key} must be an integer of at least 0, got {item.get(key)!r}")
+    if item["frames_over"] < 1 or item["counted_frames"] > item["frames_over"]:
+        fail(f"{where}: frames_over must be at least 1 and at least counted_frames")
+    _validate_near_miss_reason(item, where, fail)
+    if "reps" in item and not (isinstance(item["reps"], list) and item["reps"]
+                               and all(_is_int(x) and x >= 0 for x in item["reps"])):
+        fail(f"{where}.reps must be a non-empty list of rep indices (integers from 0), got {item['reps']!r}")
+
+
+def _validate_near_miss_reason(item, where, fail):
+    """The reason and the field that goes with it: a shortfall, the fault that explains it, or the rep counts."""
+    reason = item.get("reason")
+    if reason not in REASONS:
+        fail(f"{where}.reason must be one of {REASONS}, got {reason!r}")
+    if reason == PERSISTENCE and not (_is_int(item.get("shortfall_frames")) and item["shortfall_frames"] >= 0):
+        fail(f"{where}.shortfall_frames must be an integer of at least 0 for reason persistence, "
+             f"got {item.get('shortfall_frames')!r}")
+    if reason == EXPLAINED_BY:
+        by = item.get("explained_by")
+        if not (isinstance(by, dict) and by.get("measure") in GENERIC_MEASURES and by.get("side") in SIDES
+                and by.get("direction") in DIRECTIONS):
+            fail(f"{where}.explained_by must be {{measure, side, direction}} of the fault that explains it, got {by!r}")
+    if reason not in (PERSISTENCE, EXPLAINED_BY) and not all(
+            _is_int(item.get(k)) and item[k] >= 0 for k in ("found_in_reps", "needed_reps")):
+        fail(f"{where}.found_in_reps and needed_reps must be integers of at least 0 for reason {reason}")
 
 
 def _validate_warnings(warnings, match, fail):
