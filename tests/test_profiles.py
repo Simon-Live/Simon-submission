@@ -17,6 +17,7 @@ import pytest
 from part5 import cues, pipeline, profiles, profiles_report, score
 from part5.align import Alignment, align
 from part5.detect import detect, load_rules
+from part5.insights import MAX_INSIGHTS, insights_of
 from part5.io import JOINTS, load_clip
 from part5.measures import MEASURES, compute
 from part5.output import write_analysis
@@ -627,14 +628,57 @@ def test_rehab_says_slower_is_fine_end_to_end(seed5):
         fit, rehab, dance = (runs[n][take_id] for n in ("fitness", "rehab", "dance"))
         assert fit["score"]["tempo"]["cue"] == dance["score"]["tempo"]["cue"] == cues.SPEED_UP
         assert rehab["score"]["tempo"] == {"ratio": fit["score"]["tempo"]["ratio"], "cue": "Slower is fine"}
-        assert tempo_items(fit)[0]["cue"] == cues.SPEED_UP
-        assert [i["cue"] for i in tempo_items(rehab)] == ["Slower is fine"] and tempo_items(rehab)[0]["kind"] == "tempo"
+        assert tempo_items(fit)[0]["cue"] == cues.SPEED_UP and tempo_items(dance)[0]["cue"] == cues.SPEED_UP
+        # Writer ruling of 2026-10-31: "Slower is fine" is a reassurance, so it is no item of "what to work on first".
+        assert tempo_items(rehab) == [] and "Slower is fine" not in [i["cue"] for i in rehab["insights"]]
         for wf, wr in zip(fit["score"]["timeline"], rehab["score"]["timeline"]):
             if wf.get("tempo") and wf["tempo"]["cue"] == cues.SPEED_UP:
                 assert wr["tempo"] == {"ratio": wf["tempo"]["ratio"], "cue": "Slower is fine"}
     fast = [t for t, a in runs["fitness"].items() if (take_ratio(a) or 1) < cues.TEMPO_FAST]
     for take_id in fast:   # a follower faster than the example is still told to slow down, in every profile
         assert runs["rehab"][take_id]["score"]["tempo"]["cue"] == cues.SLOW_DOWN
+
+
+def test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue(seed5):
+    """Writer ruling of 2026-10-31: "What to work on first lists actions. 'Slower is fine' is a reassurance, so under
+    rehab a slow tempo keeps its cue in `tempo.cue` and `score.tempo.cue` but adds no item to `insights`." """
+    runs, _ = seed5
+    slow = [t for t, a in runs["rehab"].items() if take_ratio(a) is not None and take_ratio(a) > cues.TEMPO_SLOW]
+    assert slow
+    for take_id in slow:
+        a = runs["rehab"][take_id]
+        assert a["score"]["tempo"]["cue"] == "Slower is fine"
+        assert "Slower is fine" not in [i["cue"] for i in a["insights"]] and tempo_items(a) == []
+        assert all(i["kind"] != "tempo" for i in a["insights"])
+
+
+def synthetic_tempo_doc(profile, ratio, misses=0):
+    """A scored take as `insights_of` reads it: one compared window at `ratio`, the cue the profile gives it."""
+    words = profiles.tempo_of(profiles.effective_rules(load_rules(), profile))["cues"]
+    tempo = cues.tempo_block(ratio, words)
+    miss = [{"text": "x", "measure": "knee_flexion", "side": "both", "joint": "knee", "t_s": [i, i + 1], "at_s": float(i),
+             "points": 10.0 - i, "cue": f"Cue number {i}", "cue_kind": "range", "direction": "less"} for i in range(misses)]
+    window = {"t_s": [0, 5], "compared": True, "misses": miss, "tempo": tempo}
+    return {"faults": [], "score": {"basis": "windows", "timeline": [window], "tempo": tempo}}
+
+
+@pytest.mark.parametrize("profile, ratio, cue", [
+    ("rehab", 1.3, None), ("rehab", 3.0, None), ("rehab", 0.7, cues.SLOW_DOWN), ("rehab", 1.0, None),
+    ("fitness", 1.3, cues.SPEED_UP), ("dance", 1.3, cues.SPEED_UP), ("fitness", 0.7, cues.SLOW_DOWN),
+    ("dance", 0.7, cues.SLOW_DOWN)])
+def test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights(profile, ratio, cue):
+    doc = synthetic_tempo_doc(profile, ratio)
+    assert [i["cue"] for i in insights_of(doc)] == ([cue] if cue else [])
+    if profile == "rehab" and ratio > cues.TEMPO_SLOW:
+        assert doc["score"]["tempo"] == {"ratio": ratio, "cue": "Slower is fine"}   # the cue itself is kept
+
+
+def test_a_left_out_tempo_item_gives_its_place_back_to_the_other_insights():
+    rehab = insights_of(synthetic_tempo_doc("rehab", 1.3, misses=7))
+    fitness = insights_of(synthetic_tempo_doc("fitness", 1.3, misses=7))
+    assert len(rehab) == len(fitness) == MAX_INSIGHTS
+    assert fitness[-1]["kind"] == "tempo" and all(i["kind"] != "tempo" for i in rehab)
+    assert [i["cue"] for i in rehab[:-1]] == [i["cue"] for i in fitness[:-1]] and rehab[-1]["cue"] == "Cue number 4"
 
 
 # --- AC-PROF-08: dance weights tempo, the score params stay frozen ---

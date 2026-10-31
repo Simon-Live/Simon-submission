@@ -11,7 +11,8 @@ Endpoints, relative to the base path (docs/specs/staging.md):
                        and the analysis profiles (`profiles`, in file order, and `profile_default`, ADR-0016;
                        both left out when part5/profiles.json will not load)
     POST api/analyse   {expected, follower, phrasing, profile} -> {analysis, replay}; `profile` is optional and
-                       omitted or null means fitness; a name that is not in part5/profiles.json is a 400
+                       omitted or null means fitness; a name that is not in part5/profiles.json is a 400. Two
+                       samples whose labels name foot side files are compared with them (`diagnostics.feet`, ADR-0015)
     GET  api/contract  what `part5 contract --json` prints (schemas and compatibility table)
     GET  api/real-takes the real-take report (part5.real), built on first use and kept for the process
 
@@ -28,7 +29,7 @@ import logging
 import re
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 
 from . import __version__, contract, profiles
@@ -36,7 +37,7 @@ from .io import InputError
 from .phrasing import BACKENDS, TEMPLATE, select_backend
 from .phrasing.muse_spark import NAME as MUSE_SPARK
 from .pipeline import MAX_FRAMES, AnalysisError, run
-from .score_report import score_block
+from .score_report import feet_diagnostics, feet_kwargs, score_block
 from .replay import build_replay
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,6 +79,9 @@ class Sample:
     rel: str       # repo-relative path: what analysis.json records for this clip
     ids: dict      # extra ids that pass through to analysis.json (set, movement, take_id)
     listing: dict  # what api/samples shows
+    # The foot side file this clip's label names, repo-relative under the key a label gives it (`expected_feet` for an
+    # expected clip, `follower_feet` for a take); {} for a clip whose label names none (ADR-0015, AC-FOOT-18).
+    feet: dict = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -118,13 +122,25 @@ def _fault_listing(faults):
     return [{"type": f["type"], "side": f["side"], "text": f["text"]} for f in faults]
 
 
+def _feet_file(root, take, key):
+    """`{key: repo-relative path}` for the foot side file a label names under `key` ("expected_feet" or
+    "follower_feet"), {} when it names none. Like every sample file it must be a fixture file under fixtures/input.
+    The names are turned into `pipeline.run` options at request time by `score_report.feet_kwargs`, the one way every
+    caller does it (AC-FOOT-18)."""
+    rel = take.get(key)
+    if rel:
+        _inside_fixtures(root, rel)
+    return {key: rel} if rel else {}
+
+
 def _expected_sample(root, take):
     set_name, movement = take["set"], take["movement"]
     return Sample(
         id=set_name, path=_inside_fixtures(root, take["expected"]), rel=take["expected"],
         ids={"set": set_name, "movement": movement},
         listing={"id": set_name, "set": set_name, "movement": movement,
-                 "label": f"{movement.replace('_', ' ').capitalize()} ({set_name})"})
+                 "label": f"{movement.replace('_', ' ').capitalize()} ({set_name})"},
+        feet=_feet_file(root, take, "expected_feet"))
 
 
 def _kit_expected_sample(root):
@@ -142,7 +158,8 @@ def _follower_sample(root, take):
         ids={"take_id": take["take_id"]},
         listing={"id": take["take_id"], "set": take["set"], "movement": take["movement"],
                  "angle": take["angle"], "light": take["lighting"], "source": "generated",
-                 "label": _take_label(take), "faults": _fault_listing(take["faults"])})
+                 "label": _take_label(take), "faults": _fault_listing(take["faults"])},
+        feet=_feet_file(root, take, "follower_feet"))
 
 
 def _kit_follower_samples(root):
@@ -313,8 +330,25 @@ def _field_of(message, fields_by_path):
 
 # ----------------------------------------------------------------------------- analysis
 
-def _analysis(expected, follower, phrasing, selected_by=None, profile=None):
-    result = run(expected, follower, phrasing=phrasing, score=score_block, selected_by=selected_by, profile=profile)
+def _feet_of(request):
+    """The foot side file names (`expected_feet`, `follower_feet`, repo-relative) for a request whose two sides are
+    both samples that carry one, else {}.
+
+    Each file belongs to its own clip (a trainer's set, a take), so any such pair is compared with its feet, the way
+    the pair's bodies are. An upload has no foot file, nor does the Part 3 kit or a real clip, so a request with one of
+    those on either side is analysed as before and its document has no `diagnostics.feet`."""
+    found = [getattr(table(), side).get(request[side].get("sample")) for side in SIDES]
+    return {**found[0].feet, **found[1].feet} if all(s is not None and s.feet for s in found) else {}
+
+
+def _analysis(expected, follower, phrasing, selected_by=None, profile=None, feet=None):
+    """The pipeline's answer and its replay. `feet` is `_feet_of(request)`; the files become `run` options through
+    `feet_kwargs` and the document names them from the repository root, never by this server's absolute path."""
+    names = feet or {}
+    result = run(expected, follower, phrasing=phrasing, score=score_block, selected_by=selected_by, profile=profile,
+                 **feet_kwargs(names, ROOT))
+    if "feet" in result.analysis.get("diagnostics", {}):
+        result.analysis["diagnostics"]["feet"] = feet_diagnostics(result.analysis["diagnostics"]["feet"], names)
     return {"analysis": result.analysis, "replay": build_replay(result)}
 
 
@@ -445,7 +479,8 @@ def _analyse(body, client):
     limited = _MUSE_LIMIT.slot(client) if phrasing == MUSE_SPARK and phrasing in offered else contextlib.nullcontext()
     try:
         with limited:
-            return _respond(200, _in_worker(_analysis, expected, follower, phrasing, selected_by, profile))
+            return _respond(200, _in_worker(_analysis, expected, follower, phrasing, selected_by, profile,
+                                            _feet_of(request)))
     except (InputError, AnalysisError) as e:
         message = _plain(e)
         fields = {expected["path"]: expected_field, follower["path"]: follower_field}

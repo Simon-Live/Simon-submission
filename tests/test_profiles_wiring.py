@@ -17,7 +17,9 @@ import pytest
 
 from part5 import api, check, cli, contract, pipeline, profiles, profiles_report, score_report
 from part5.output import OutputError, SCHEMA_VERSION, build_analysis, load_analysis, validate_analysis
+from part5.phrasing import muse_spark
 from part5.score_report import score_block
+from test_phrasing_muse_spark import Client, live, reply  # noqa: F401  (the scripted client and the open-gate fixture)
 
 ROOT = Path(__file__).resolve().parent.parent
 LABELS = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
@@ -244,6 +246,31 @@ def test_every_profile_flows_through_cli_and_api(tmp_path, capsys):
         assert doc["faults"] == body["analysis"]["faults"] and doc["score"] == body["analysis"]["score"], name
         jsonschema.Draft202012Validator(SCHEMA).validate(doc)
     assert listed and echoed, "the flag is listed only together with a pipeline that echoes the profile, and the other way round"
+
+
+@pytest.mark.parametrize("name", ["rehab", "dance"])
+def test_a_praising_model_line_falls_back_under_a_profile_and_the_profile_is_kept(live, monkeypatch, name):
+    """AC-PROF-05 with the no-praise rule (phrasing AC-P09): a profile never changes `coaching` or `phrasing`, so a
+    Muse Spark line that praises (an injected scripted client, no live call) falls back to the fault's `text_timed` with
+    the reason "muse-spark: adds praise", the document still names the mode, and it reports nothing `fitness` does not."""
+    monkeypatch.setenv("PART5_PHRASING_CONCURRENCY", "1")   # the scripted client answers in call order
+    muse_spark._calls.clear()
+    plain = pipeline.run(str(EXPECTED), str(FOLLOWER), profile=name, score=score_block).analysis
+    fitness = pipeline.run(str(EXPECTED), str(FOLLOWER), score=score_block).analysis
+    assert plain["faults"], "the take has no fault under this profile, so there is nothing to phrase"
+    client = Client(*[reply(f"Your {f['text_timed']}, nice effort.") for f in plain["faults"]])
+    praised = pipeline.run(str(EXPECTED), str(FOLLOWER), profile=name, phrasing="muse-spark", phrasing_client=client,
+                           score=score_block).analysis
+    assert len(client.requests) == len(plain["faults"])          # every fault was offered to the (fake) model
+    assert praised["profile"] == name
+    assert [f["coaching"] for f in praised["faults"]] == [f["text_timed"] for f in praised["faults"]]
+    assert [f["fallback_reason"] for f in praised["phrasing"]["faults"]] == ["muse-spark: adds praise"] * len(plain["faults"])
+    assert {f["backend"] for f in praised["phrasing"]["faults"]} == {"template"}
+    assert "nice effort" not in json.dumps(praised)              # the model's words reach nothing in the document
+    def scored(a):
+        return [{k: v for k, v in f.items() if k != "coaching"} for f in a["faults"]]
+    assert scored(praised) == scored(plain) and praised["score"] == plain["score"]   # wording never moves a number
+    assert profiles_report.uncovered(praised["faults"], fitness["faults"]) == []     # none missing from fitness's
 
 
 def test_the_document_reports_the_thresholds_of_the_profile_that_made_it():

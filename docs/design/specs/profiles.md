@@ -134,8 +134,10 @@ One JSON object, read by `part5.profiles.load()`, validated on every read. Not p
 - `rehab`: position measures at 1.5 times their threshold; range measures at 1; persistence unchanged; the "speed up"
   cue becomes "Slower is fine". The ticket asks for wider position tolerances, range-of-motion faults kept, and a pace
   that is not pushed. 1.5 is a round number (a patient is allowed half as much again). The cue stays "Slower is fine"
-  as this spec requires, and whether a patient far slower than the example reads it as approval rather than as a pace
-  to hold is the final reviewer's wording question, left for a later Writer pass.
+  as this spec requires. The final reviewer asked whether a patient far slower than the example reads it as approval
+  rather than as a pace to hold; the Writer ruling of 2026-10-31 (AC-PROF-07, amendment): "What to work on first lists
+  actions. 'Slower is fine' is a reassurance, so under rehab a slow tempo keeps its cue in `tempo.cue` and
+  `score.tempo.cue` but adds no item to `insights`."
 - `dance`: position measures at 1.25 times their threshold, a position deviation must last 15% longer (`min_fraction`
   times 1.15) and at least 2 frames more per run; range measures unchanged; tempo costs 40 points per 1.0 of ratio
   outside the cue band, at most 20 per window. The dancer's posture is style, the lift and the bend are choreography,
@@ -240,9 +242,11 @@ Tempo is the follower's time over the example's for the same stretch (`cues.temp
 follower is faster and the cue is "Slow down to match the trainer" (`slow_down`); above 1.15 it is slower and the cue is
 "Speed up to match the trainer" (`speed_up`).
 - **Cue substitution.** `cues.tempo_cue(ratio, overrides=None)` and `tempo_block(ratio, overrides=None)` take the
-  profile's `tempo.cues`. `rehab` replaces `speed_up` with "Slower is fine", in every window's `tempo.cue`, in
-  `score.tempo.cue` and in the tempo item of `insights` (which reads `score.tempo`). The `ratio` is untouched. The
-  wording is confirmed by the Writer skill before this spec is marked Implemented.
+  profile's `tempo.cues`. `rehab` replaces `speed_up` with "Slower is fine", in every window's `tempo.cue` and in
+  `score.tempo.cue`. The `ratio` is untouched. The tempo item of `insights` (which reads `score.tempo`) is added for a
+  `fitness` or `dance` slow take ("Speed up to match the trainer") and for any fast take ("Slow down to match the
+  trainer"), but not for a slow `rehab` take: the Writer ruling of 2026-10-31 (AC-PROF-07, amendment) keeps the
+  reassurance out of "What to work on first".
 - **Dance weight, at run time.** The frozen score params (`rules.json` `score`, `params_sha256`, ADR-0007) are not
   touched and not read differently. When the profile's `tempo.weight` is above 0, each compared window is charged
   `T = min(cap, weight * max(0, 0.85 - ratio, ratio - 1.15))` points (0 when the ratio is unmeasured; `ratio` is the
@@ -422,12 +426,24 @@ Then the faults of range-kind measures equal `fitness`'s (same measure, side, di
 ### AC-PROF-07: rehab says "Slower is fine"
 Given a window or take whose tempo ratio is above 1.15
 When the profile is `rehab`
-Then `tempo.cue`, `score.tempo.cue` and the tempo item of `insights` read "Slower is fine" (3 words, kind `tempo`) and the
-ratio is unchanged; a ratio below 0.85 still reads "Slow down to match the trainer"; `fitness` and `dance` still read
-"Speed up to match the trainer". Tests: `test_rehab_replaces_only_the_speed_up_cue` and
+Then `tempo.cue` and `score.tempo.cue` read "Slower is fine" (3 words, kind `tempo`), the ratio is unchanged and `insights`
+has no tempo item (amendment below); a ratio below 0.85 still reads "Slow down to match the trainer", and still adds that
+tempo item; `fitness` and `dance` still read "Speed up to match the trainer" in `tempo.cue`, `score.tempo.cue` and the
+tempo item. Tests: `test_rehab_replaces_only_the_speed_up_cue` and
 `test_tempo_of_reads_the_effective_rules_and_hands_back_a_copy` (the data, written before the wiring), then with it
 `test_cue_overrides` and `test_rehab_says_slower_is_fine_end_to_end` (a seed 5 take whose ratio exceeds 1.15, found by
-the test).
+the test; it asserts the cue in `tempo.cue` and `score.tempo.cue` and no tempo item).
+
+Amendment, 2026-10-31 (delivery review B3). The first version had the tempo item of `insights` read "Slower is fine" too,
+and left to a later Writer pass whether a patient far slower than the example reads that as approval rather than as a
+pace to hold. Writer ruling, recorded by the orchestrator with the writer skill, verbatim: "What to work on first lists
+actions. 'Slower is fine' is a reassurance, so under rehab a slow tempo keeps its cue in `tempo.cue` and
+`score.tempo.cue` but adds no item to `insights`." Built in `insights._reassures`: a take whose ratio is above 1.15 and
+whose cue is not the speed-up nudge is no insight, so a profile that replaces `speed_up` (rehab) adds no tempo item and the
+fault items may take all 5 places; a ratio below 0.85, and every `fitness` and `dance` take, keep their tempo item. Tests
+(`tests/test_profiles.py`): `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue` (seed 5),
+`test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` (rehab, fitness and dance, slow and fast, hand-made
+scores), `test_a_left_out_tempo_item_gives_its_place_back_to_the_other_insights`.
 
 ### AC-PROF-08: dance weights tempo, the score params stay frozen
 Given the `dance` profile and windows with known tempo ratios
@@ -615,7 +631,8 @@ time becoming a cost, or a rep-mode take whose side split `fitness` handles diff
 - `explained_by` makes naive multipliers non-monotone (Why This Is Wrong, 2): found by working the knee valgus case by hand.
 - `api/samples` must list the profiles for a page select; `contract.TABLE_ROWS` and `CONTRACT.md` are kept equal by
   `tests/test_contract_cli.py`, so both change together (found by grepping the table).
-- A tempo cue override must also reach the insights, which copy the cue from `score.tempo` (found in `insights.py`).
+- A tempo cue override reaches the insights, which copy the cue from `score.tempo` (found in `insights.py`); the one
+  override that is a reassurance, rehab's "Slower is fine", is then left out of the list (AC-PROF-07, amendment).
 
 ## Files (every new or changed source file; the write gate reads this table)
 Phase 1 wrote the first three rows. Phase 2a (unwired, new files only) wrote `part5/profiles.json`, `part5/profiles.py`
@@ -639,7 +656,7 @@ baseline taken before it would be stale the day it lands.
 | `part5/cues.py` | `tempo_cue` and `tempo_block` take `overrides` | TICKET-042 | yes |
 | `part5/score.py` | the tempo term (`profiles.tempo_points`) in `window_score`, `timeline_block`, `compute_timeline` | TICKET-042 | yes |
 | `part5/score_report.py` | `score_block` reads `result.rules`; `_rep_timeline` passes the tempo overrides and charge | TICKET-042 | yes |
-| `part5/insights.py` | the tempo item's `points` | TICKET-042 | yes |
+| `part5/insights.py` | the tempo item's `points`; a slow take whose speed-up cue a profile replaced (rehab) adds no tempo item (AC-PROF-07, Writer ruling) | TICKET-042 | yes |
 | `part5/pipeline.py` | `run(..., profile=None)`, `PipelineResult.rules` and `.profile`, `build_analysis(profile=...)` | TICKET-042 | yes |
 | `part5/output.py` | `SCHEMA_VERSION` 1.7.0, `profile` written and validated | TICKET-042 | yes |
 | `part5/cli.py` | `--profile`, added in the last wiring commit | TICKET-042 | yes |
@@ -661,11 +678,14 @@ baseline taken before it would be stale the day it lands.
 - Phase 1 (this commit): `python3 scripts/make_design_copies.py --check` exits 0; `uv run pytest -q
   tests/test_design_copies.py` passes; `firm/check-em-dash.sh` on the tree exits 0. No code is touched.
 - Phase 2a (new files only, nothing wired): `uv run pytest -q tests/test_profiles.py tests/test_design_copies.py`; the
-  em-dash gate; `make check-5` exits 0 with the same numbers as before (no existing module changed).
+  em-dash gate; `make check-5` exits 0 with the same numbers as before (no existing module changed; exit 0 held then,
+  before attempt 3 was recorded red, and the merge gate below carries the amended exit code).
 - Phase 2b, after seed 37 is scored and TICKET-040 is merged, in order: write `fixtures/profiles-fitness-baseline.json`
   first, from the tree before any wiring edit; then the hooks and wiring, with `--profile` last; then
   `uv run pytest -q tests/test_profiles.py tests/test_profiles_wiring.py`.
-- Merge gate: `make test` 0; `make check-5` 0 with `gate.metrics.slices` and `attempts` equal to the committed record,
+- Merge gate: `make test` 0; `make check-5` exits as the recorded red held-out does (amended AC-PROF-13: the check
+  exits 1 on seed 37, which `make` reports as exit 2; exit 0 cannot hold) with stdout byte-identical to the tree before
+  the feature, so `gate.metrics.slices` and `attempts` equal the committed record,
   `rules_sha256` and `detection_sha256` unchanged, `git diff <base> -- part5/rules.json` empty; `make check-5-contract` 0;
   `make output-examples` then `git diff --stat fixtures/output` shows only `profile` and the version;
   `make report-profiles` run once, numbers recorded in `docs/thresholds.md` "Profiles" (not gated);
@@ -743,10 +763,16 @@ operator's request: "weights tempo in the score").
 | Ticket: `--help` shows `--profile` only when wired | AC-PROF-11 | `test_help_lists_profile`, `test_every_profile_flows_through_cli_and_api` | done |
 | Ticket: foot measures covered (TICKET-040) | AC-PROF-03 | `test_every_measure_has_a_kind` | done |
 | Final review: rep mode never reports a take-level fault `fitness` does not | AC-PROF-05 | `test_the_reviewers_split_is_dropped_because_fitness_does_not_report_it`, `test_compare_under_a_profile_drops_the_split_fitness_does_not_report` | done |
+| Ticket: the staging page offers the mode, and the request carries it | AC-PROF-15 | QA recipe `qa/recipes/compare/analyse-rehab-mode.md`, `staging/verify.mjs`, `tests/test_web_logic.py` | done |
+| Delivery review R1: a profile fault reports the run that overlaps the fitness fault's | AC-PROF-16 | `tests/test_profile_run_choice.py` | done |
+| Delivery review B3 (Writer ruling): "Slower is fine" is a reassurance, not an item of "what to work on first" | AC-PROF-07 | `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue`, `test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` | done |
+| Delivery review R1: a model line that praises falls back under a profile and the mode is kept | AC-PROF-05, phrasing AC-P09 | `test_a_praising_model_line_falls_back_under_a_profile_and_the_profile_is_kept` | done |
 
 ## Test Scenarios (maps 1:1 to acceptance criteria)
 - AC-PROF-01 to AC-PROF-08 and AC-PROF-NFR-01 to `tests/test_profiles.py`, the test names listed in each AC.
-- AC-PROF-09 to AC-PROF-11, AC-PROF-13 and AC-PROF-14 to `tests/test_profiles_wiring.py` and the amended tests named in Files.
+- AC-PROF-09 to AC-PROF-11, AC-PROF-13 and AC-PROF-14 to `tests/test_profiles_wiring.py` and the amended tests named in Files;
+  the profile with a praising model line (AC-PROF-05, phrasing AC-P09) is in the same file; AC-PROF-16 to
+  `tests/test_profile_run_choice.py`.
 - AC-PROF-12 to `tests/test_doctor.py`, `tests/test_contract_cli.py` and `make check-5-contract`.
 - AC-PROF-13 also to `make check-5`; AC-PROF-14 also to `make report-profiles`; AC-PROF-15 to the QA recipe and
   `staging/verify.mjs`.

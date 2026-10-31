@@ -107,6 +107,17 @@ def feet_kwargs(take, base=ROOT):
     return {key: str(resolve(take[key], base)) for key in FEET_KEYS if take.get(key)}
 
 
+def feet_diagnostics(block, names):
+    """`diagnostics.feet` with each side's `source` as the path from the repository root (`names`, the form `expected`
+    and `follower` have), not the absolute path `pipeline.run` was given, so a report or a response does not depend on
+    where the repository is checked out. A side with no file keeps its null source; `block` is not edited in place."""
+    out = dict(block)
+    for key, side in zip(FEET_KEYS, ("expected", "follower")):
+        if names.get(key) and out[side].get("source"):
+            out[side] = {**out[side], "source": names[key]}
+    return out
+
+
 def analyse(expected, follower, rules=None, **feet):
     """`pipeline.analyse` plus the score under `analysis["score"]` (never None), unless the pipeline already set it.
     `feet` is `feet_kwargs(take)`: the side files `pipeline.run` takes."""

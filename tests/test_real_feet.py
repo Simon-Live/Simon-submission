@@ -152,7 +152,7 @@ def test_ac_r08_a_side_with_no_file_keeps_its_null_source_and_nothing_else_chang
     block = {"expected": {"source": "/abs/e.json", "person": 0, "frames_matched": 3, "usable": ["foot_rotation"]},
              "follower": {"source": None, "person": 0, "frames_matched": 0, "usable": []},
              "compared": [], "hidden_reason": "no follower feet file was given"}
-    out = real._feet_diagnostics(block, {"expected_feet": "fixtures/e/feet.json"})
+    out = score_report.feet_diagnostics(block, {"expected_feet": "fixtures/e/feet.json"})
     assert out["expected"] == {**block["expected"], "source": "fixtures/e/feet.json"}
     assert out["follower"] == block["follower"] and out["compared"] == [] and out["hidden_reason"]
     assert block["expected"]["source"] == "/abs/e.json"     # the pipeline's own document is not edited in place

@@ -448,6 +448,9 @@ Wiring (`tests/test_feet.py` for AC-FOOT-09 to 11, `tests/test_feet_faults.py` f
   build their own analyses (`part5/check.py` `analyse_set`) pass `feet_kwargs(take, root)` the same way, and so does the
   real-take report (`part5/real.py` `_entry`, for the stock pairs, after naming the `feet.json` beside each clip when
   its label names none). There is no other way to pick a take's feet files and no probe of `pipeline.run`'s signature.
+  The analysis API is the last caller (delivery review B1, `staging.md` AC-S10): a labelled sample carries the file its
+  label names, the request hands the names to `pipeline.run` through `feet_kwargs`, and its `diagnostics.feet` sources
+  are rewritten to the repository-relative names (`score_report.feet_diagnostics`, shared with the real-take report).
 - AC-FOOT-19 (calibration, data lane): steps 1 to 4 above on seed 5 only, the go/no-go result recorded in
   `docs/thresholds.md` before the freeze commit; the freeze commit predates the generation of seed 37
   (`tests/test_heldout_protocol.py` already asserts the order).
@@ -647,7 +650,8 @@ UI-created data.
 Not applicable: no new milestone; the existing floors in `progress/ratchets.json` must not drop.
 
 ## Dissent Review
-Reviewed by: TICKET-040 feet-core lane (implementer, self-review). Independent review: pending, at the consolidated review.
+Reviewed by: TICKET-040 feet-core lane (implementer, self-review). Independent reviews, both done 2026-10-31: the
+pre-freeze review (its findings fixed before the freeze, ADR-0015 Amendment 2) and the final consolidated review.
 ### Concern 1: the feature could be inert on real use
 Challenge: with Part 4's expected clips carrying no feet, no foot fault ever appears on a real take unless the trainer's
 own Part 2 file is supplied.
@@ -687,12 +691,15 @@ time is an error, and the measures never mix the two skeletons. Resolution: ACCE
 | TICKET-040: hidden when the foot points are absent | AC-FOOT-11 | `tests/test_feet.py` | passing |
 | TICKET-040: detection and cues | AC-FOOT-12 to 14 | `tests/test_feet_faults.py`, `tests/test_cues.py` | passing |
 | TICKET-040: schema minor bump, ADR | AC-FOOT-15 | `tests/test_feet_faults.py`, `tests/test_contract_cli.py` | passing |
-| TICKET-040: thresholds on seed 5 only, held-out unchanged or better | AC-FOOT-19 to 21 | `make check-5`, `tests/test_heldout_protocol.py` | pending (data lane) |
+| TICKET-040: thresholds on seed 5 only, go/no-go recorded before the freeze | AC-FOOT-19 | `docs/thresholds.md` (Attempt 3), `progress/calibrate-feet-seed5-attempt-{a,b,c}.log`, `tests/test_heldout_protocol.py` | done |
+| TICKET-040: the six old fault types and the correct takes raise no foot fault at good light | AC-FOOT-20 | `progress/calibrate-feet-seed5-attempt-b.log` and `-c.log` | done (low light reported, not gated) |
+| TICKET-040: held-out seed 37 passes the gate | AC-FOOT-21 | `make check-5`, `docs/thresholds.md` (Attempt 3), `fixtures/heldout-attempts.json` | FAILED on attempt 3 (2026-10-31): recorded red, seed 37 retired, no retune; the check exits 1 (`make` reports 2) |
 
 ## Test Scenarios (maps 1:1 to acceptance criteria)
 AC-FOOT-01 to AC-FOOT-08 to the named functions in `tests/test_foot_geometry.py`; AC-FOOT-09 to AC-FOOT-11 to
 `tests/test_feet.py`; AC-FOOT-12 to AC-FOOT-18 to `tests/test_feet_faults.py` and the amended tests named in Files;
-AC-FOOT-19 to AC-FOOT-21 to the data lane and `make check-5`.
+AC-FOOT-19 to AC-FOOT-21 to the data lane and `make check-5` (AC-FOOT-19 and AC-FOOT-20 hold as recorded in
+`docs/thresholds.md` and the calibration logs; AC-FOOT-21 failed on the one held-out attempt and is recorded red).
 
 ## Deviations from PRD
 | PRD item | Deviation | Reason |

@@ -234,4 +234,14 @@ dl.fields { margin: 0.5rem 0 0; }
 .phone-score { margin: 0 0 0.35rem; font-size: 1.15rem; font-weight: 700; }
 .phone-warning { margin: 0 0 0.5rem; padding: 0.5rem 0.7rem; font-size: 0.9rem; border: 2px solid var(--mark); border-radius: 0.375rem; }
 
+/* Phone width (AC-V10): every control is at least 44 px tall to tap (tabs, buttons, selects, the scrubber, the checkbox
+   rows and the text links). Wider screens keep the sizes above. */
+@media (max-width: 40rem) {
+  button, select, input[type="file"] { min-height: 44px; }
+  label.check { min-height: 44px; }
+  input[type="checkbox"] { width: 1.25rem; height: 1.25rem; }
+  .scrub input { min-height: 44px; }
+  .download { display: inline-flex; align-items: center; min-height: 44px; }
+}
+
 [hidden] { display: none !important; }

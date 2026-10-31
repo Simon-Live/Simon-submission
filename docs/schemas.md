@@ -378,7 +378,8 @@ null; `ratio` is null when the example side spans under 1 s. `score.tempo` is th
 median of the reps). The top-level `insights` lists at most 5 `{cue, why, kind, at_s, window, points, measure,
 side, joint}`: one per distinct cue among the misses, ranked by `points` (their summed points over the compared
 windows divided by the number of those windows, so their share of the score), `at_s` and `window` at the first
-miss; a tempo item (`points` null) is kept last when `score.tempo.cue` is set. Without a timeline, one item
+miss; a tempo item (`points` null) is kept last when `score.tempo.cue` is set (not for a slow take under the rehab
+profile, whose "Slower is fine" stays in `tempo.cue` and `score.tempo.cue` but is no item, ADR-0016 Amendment 2). Without a timeline, one item
 per distinct fault cue in the order of `faults`, `points` null. Cues are template text; no phrasing backend
 rewrites them. Foot rotation and ankle twist have no cue: the 17 joints end at the ankle.
 

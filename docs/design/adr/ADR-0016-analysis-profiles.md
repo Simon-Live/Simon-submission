@@ -172,3 +172,13 @@ then the earliest, when none shares a frame). The `fitness` path is unchanged, s
 the seed 37 `make check-5` stdout do not move; the profile's magnitude, threshold, `runs`, coverage and confidence are what
 they were, so loosen-only still holds. Spec: `docs/design/specs/profiles.md` ("Which run a profile fault reports", AC-PROF-16);
 tests: `tests/test_profile_run_choice.py`.
+
+## Amendment 2 (2026-10-31): "Slower is fine" is no item of "what to work on first" (delivery review B3)
+The final reviewer's wording question (does a patient far slower than the example read "Slower is fine" as approval?) was
+left to a Writer pass. Writer ruling, recorded by the orchestrator with the writer skill, verbatim: "What to work on first
+lists actions. 'Slower is fine' is a reassurance, so under rehab a slow tempo keeps its cue in `tempo.cue` and
+`score.tempo.cue` but adds no item to `insights`." Done in `part5/insights.py`: a take whose ratio is above 1.15 and whose
+cue is not "Speed up to match the trainer" adds no tempo item; a ratio below 0.85 under rehab, and every `fitness` and
+`dance` take, keep theirs. `profiles.json`, the cue words and the score do not change. Spec: `docs/design/specs/profiles.md`
+(AC-PROF-07, amendment); tests: `tests/test_profiles.py`. This narrows ADR-0014's "a tempo item is added last and always
+kept" for that one case.

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from part5 import api, pipeline
+from part5 import api, pipeline, score_report
 
 ROOT = Path(__file__).resolve().parent.parent
 LABELS = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
@@ -204,6 +204,69 @@ def test_analyse_returns_the_replay_matched_to_the_expected_frames():
 def test_a_correct_take_gets_an_empty_fault_list():
     _, _, body = analyse(*samples(follower=CORRECT))
     assert body["analysis"]["faults"] == []
+
+
+# A labelled take is analysed with the foot side files its label names (ADR-0015, AC-FOOT-18), as every other caller does.
+FOOT_TURNED = next(t for t in LABELS["takes"] if t["take_id"] == "exercise_front_good_09_foot_turned_out-right")
+
+
+def feet_of(body):
+    return body["analysis"]["diagnostics"].get("feet")
+
+
+def test_a_sample_take_is_analysed_with_the_foot_files_its_label_names():
+    status, _, body = analyse(*samples(follower=FOOT_TURNED["take_id"]))
+    assert status == 200
+    faults = body["analysis"]["faults"]
+    assert [(f["measure"], f["side"]) for f in faults] == [("foot_rotation", "right")]
+    assert feet_of(body) is not None and feet_of(body)["follower"]["usable"]
+    assert body["analysis"]["score"]["value"] < 100
+
+
+def test_the_sample_answer_is_the_pipeline_run_with_the_labels_feet_files():
+    names = score_report.feet_kwargs(FOOT_TURNED, ROOT)
+    assert set(names) == {"expected_feet", "follower_feet"}
+    direct = pipeline.run(str(ROOT / FOOT_TURNED["expected"]), str(ROOT / FOOT_TURNED["follower"]),
+                          score=score_report.score_block, **names).analysis
+    body = analyse(*samples(follower=FOOT_TURNED["take_id"]))[2]["analysis"]
+    assert body["faults"] == direct["faults"] and body["score"] == direct["score"]
+    assert body["diagnostics"]["feet"]["compared"] == direct["diagnostics"]["feet"]["compared"]
+
+
+def test_the_feet_sources_in_the_answer_are_repo_relative_never_this_servers_path():
+    feet = feet_of(analyse(*samples(follower=FOOT_TURNED["take_id"]))[2])
+    assert {s: feet[s]["source"] for s in ("expected", "follower")} == {
+        "expected": FOOT_TURNED["expected_feet"], "follower": FOOT_TURNED["follower_feet"]}
+    assert str(ROOT) not in json.dumps(feet) and "/home/" not in json.dumps(feet)
+
+
+def test_every_generated_sample_carries_its_label_feet_and_every_other_sample_none():
+    t = api.table()
+    generated = {tk["take_id"]: tk for tk in LABELS["takes"]}
+    assert all(t.follower[i].feet == {"follower_feet": tk["follower_feet"]} for i, tk in generated.items())
+    assert {s: t.expected[s].feet for s in ("exercise", "dance")} == {
+        s: {"expected_feet": next(tk["expected_feet"] for tk in generated.values() if tk["set"] == s)}
+        for s in ("exercise", "dance")}
+    others = [s for i, s in t.follower.items() if i not in generated] + [t.expected["part3-squat"]]
+    assert others and all(s.feet == {} for s in others)
+
+
+def test_a_take_with_no_foot_files_is_analysed_as_before():
+    """The Part 3 kit and an upload name none, so there is no feet block and the answer is the plain pipeline's."""
+    kit = analyse({"sample": "part3-squat"}, {"sample": "squat_side_knee_caving-left"})[2]
+    assert feet_of(kit) is None
+    direct = pipeline.analyse(str(ROOT / api.KIT_EXPECTED), str(api.table().follower["squat_side_knee_caving-left"].path))
+    assert kit["analysis"]["faults"] == direct["faults"]
+    for pair in (({"sample": "exercise"}, {"upload": json.loads((ROOT / FOOT_TURNED["follower"]).read_text())}),
+                 ({"upload": json.loads(EXPECTED_PATH.read_text())}, {"sample": FOOT_TURNED["take_id"]})):
+        status, _, body = analyse(*pair)
+        assert status == 200 and feet_of(body) is None and body["analysis"]["faults"] == []
+
+
+def test_a_label_naming_a_foot_file_outside_the_fixtures_is_refused_when_the_table_is_built():
+    with pytest.raises(FileNotFoundError, match="not a fixture file"):
+        api._feet_file(ROOT, {"follower_feet": "part5/rules.json"}, "follower_feet")
+    assert api._feet_file(ROOT, {"take_id": "t"}, "follower_feet") == {}
 
 
 def test_a_dance_take_against_the_dance_clip_is_analysed():

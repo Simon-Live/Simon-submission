@@ -121,7 +121,10 @@ the example, p of r repetitions matched it rep by rep" (what was measured, not a
 AC-R07); no line reads `undefined` or `NaN` (checked in `staging/verify.mjs`).
 ### AC-V10: result preview at phone width
 Given 390 px width, the preview screen fits without horizontal scroll and its heading names it as Part 5's
-preview of its published result contract.
+preview of its published result contract. At that width (`@media (max-width: 40rem)` in `web/style.css`) every tab,
+button, select, file picker and the scrubber is at least 44 px tall to tap, and each checkbox row and the download link
+the same; wider screens keep their sizes (delivery review R8: the tabs were 42 px, the Speed select 34 px, Play 40 px,
+the scrubber 16 px). Checked by `staging/verify.mjs` (the phone drive) and `tests/staging/test_web_files.py`.
 ### AC-V11: `make demo`
 Given `make demo`, the page loads on `http://127.0.0.1:8735/` with the fixtures and the replay works,
 while `scripts/dev.sh` may hold 8725.

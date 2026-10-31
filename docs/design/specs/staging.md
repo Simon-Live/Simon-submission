@@ -13,6 +13,7 @@ Staging QA fixes of 2026-10-31 (lane fix-ux): `viewer.md` AC-V19 (the hint follo
 is marked and cannot be downloaded); the recipes name the files their drives save.
 Mode select of 2026-10-31 (lane profiles-web, TICKET-042, ADR-0016): the API takes an optional `profile`, `api/samples`
 lists the modes, and verify and a recipe drive the page's "Mode" select (`viewer.md` AC-V21, `profiles.md` AC-PROF-15).
+Delivery fixes of 2026-10-31 (lane delivery-fixes): the API analyses a labelled sample with its foot files (AC-S10).
 Milestones: S0 (target 2026-10-29), M3 (target 2026-11-01). Use cases: uc-analyse-take, uc-correct-take,
 uc-wrong-movement, uc-real-takes.
 
@@ -68,6 +69,13 @@ As a follower, I pick or upload the expected movement and my take and see each f
   `profile` and names a mode other than `fitness` in the result (`viewer.md` AC-V21). A server that lists no modes gets no
   select and no `profile`, so the page and the API can be merged in either order. Verify and the recipes keep the
   Template wording in every mode.
+- Foot side files (ADR-0015, AC-S10): a sample whose label names `expected_feet` or `follower_feet` (all 156 seed 5 takes
+  and their two trainer sets) carries that file in the table, read from the label like every sample file and checked to
+  be under `fixtures/input`. A request whose two sides are both such samples is analysed with the files
+  (`score_report.feet_kwargs` turns the names into `pipeline.run` options, AC-FOOT-18), so a take whose fault is in the
+  feet shows it and `analysis.diagnostics.feet` is present, naming each file from the repository root and never this
+  server's path. An upload on either side, the Part 3 kit and the real clips carry no foot file: a request with one of
+  them is analysed exactly as before, with no `diagnostics.feet`.
 - No value from a request becomes a filesystem path: sample ids resolve through an in-memory table built
   at start; uploads are parsed in memory and never written.
 - Code: `part5/api.py` (pure functions), `part5/replay.py`, `part5/server.py`
@@ -112,8 +120,11 @@ on stubbed listings that give none, an empty list, three modes, a default of reh
 an untouched page sends and shows `fitness`; Analyse with Rehab on a feet-wide take sends `profile: "rehab"`, the result
 names the mode and the saved file says `rehab`; the fitness analysis equals the one a request naming no mode gets, apart
 from `profile`; a page for a server with no modes sends no `profile`. Where the server does not list modes yet, those
-checks run on a stubbed listing and a stubbed answer that echoes the mode asked for, and say so in their names. The exit
-code is the verdict.
+checks run on a stubbed listing and a stubbed answer that echoes the mode asked for, and say so in their names. The
+delivery fixes add (AC-S10) a foot-fault take (Take 09, the right foot turned out) analysed with Template wording: the
+page shows a foot rotation fault line and not "No faults found", and the answer carries `diagnostics.feet` with
+repo-relative sources; and (AC-V10) at 390 px every visible tab, button, select, file picker and the scrubber is at
+least 44 px tall. The exit code is the verdict.
 
 ## QA recipes and video
 - Recipes with the `qa-recipe` skill (ADR-0020), one per use case driven on staging: each edge driven by
@@ -149,6 +160,18 @@ Given the M3 drive, every step in "Verify suite" passes and verify exits 0.
 Given the recipes, each validates with two witnesses; the walkthrough exists within its limits.
 ### AC-S09: no path from requests
 Given a sample id `../../etc/passwd`, 404 and no file read outside the table.
+### AC-S10: a labelled take is analysed with the foot files its label names
+Given `POST api/analyse` with `{sample: exercise}` and `{sample: exercise_front_good_09_foot_turned_out-right}` (Take 09)
+Then the answer has one fault, `foot_rotation` on the right side, a score below 100 and `analysis.diagnostics.feet` whose
+two `source` values are the repository-relative paths of the label's `expected_feet` and `follower_feet`; the document
+equals `pipeline.run` given `score_report.feet_kwargs` of that label. Given an upload on either side, or a Part 3 kit
+take, the answer is the one the pipeline gives without foot files and has no `diagnostics.feet`. Before this
+criterion the API ignored the label's foot files and showed "No faults found" and 100 A for Take 09 (delivery review
+B1). Tests (`tests/test_api.py`): `test_a_sample_take_is_analysed_with_the_foot_files_its_label_names`,
+`test_the_sample_answer_is_the_pipeline_run_with_the_labels_feet_files`,
+`test_the_feet_sources_in_the_answer_are_repo_relative_never_this_servers_path`,
+`test_every_generated_sample_carries_its_label_feet_and_every_other_sample_none`,
+`test_a_take_with_no_foot_files_is_analysed_as_before`; `staging/verify.mjs` (`driveFootFault`).
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |
@@ -199,6 +222,10 @@ Kept: it lets the browser render without parsing uploads twice and keeps the ali
 - 2026-10-31 (TICKET-042, `docs/design/specs/profiles.md`): `POST api/analyse` takes an optional `profile` (`dance`, `rehab` or
   `fitness`; omitted or `null` means `fitness`; any other value is a 400 with field `profile`, before any file is read),
   and `GET api/samples` gains `profiles` and `profile_default`. The `analysis` carries `profile`.
+
+- 2026-10-31 (delivery review B1, lane delivery-fixes): `part5/api.py` passes a sample's foot side files to the pipeline
+  (AC-S10, `docs/design/specs/foot-keypoints.md` AC-FOOT-18), and `staging/verify.mjs` drives Take 09. The page's controls are
+  at least 44 px tall at phone width (R8, `viewer.md` AC-V10).
 
 ## Deviations from PRD
 None.

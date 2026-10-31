@@ -49,7 +49,8 @@ advice belongs in Part 5's output.
   windows, so this is the cue's share of the score); `at_s` and `window` are its first miss, where a viewer
   seeks to; `why` says what was seen and how often ("Left arm too close to the body (3 of 8 reps)"). When
   `score.tempo.cue` is set, a tempo item (`points` null, `why` "Your reps took 37% of the trainer's time")
-  is added last and always kept, so the fault items take at most 4 places. Without a timeline (a producer
+  is added last and always kept, so the fault items take at most 4 places (except a slow take under rehab, whose
+  "Slower is fine" is a reassurance and no item; ADR-0016, Amendment 2). Without a timeline (a producer
   that does not score): one item per distinct fault cue in the order of `faults`, `points` null.
 - **Deterministic.** Cues and `why` are template text. No phrasing backend rewrites them: a live backend
   phrases `coaching` only (ADR-0005), so the cue keeps its meaning whatever the backend.
