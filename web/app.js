@@ -359,7 +359,7 @@ function summaryLine(group, counts) {
   // The rep-by-rep group (ADR-0010) counts takes and repetitions, not labels.
   if (counts.reps_passed !== undefined) {
     return `${name}: ${counts.accepted} of ${counts.takes} matched the example, `
-      + `${counts.reps_passed} of ${counts.reps} repetitions passed the movement check.`;
+      + `${counts.reps_passed} of ${counts.reps} repetitions matched it rep by rep.`;
   }
   if (!counts.takes) return `${name}: none in the report yet.`;
   const scores = counts.precision == null ? "" : ` (precision ${counts.precision}, recall ${counts.recall})`;

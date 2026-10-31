@@ -112,8 +112,8 @@ Given the select set to a backend, the request carries it and the panel shows `p
 ### AC-V09: real takes list
 Given `api/real-takes`, each take lists source, labels and faults found, marked "reported, not gated".
 Every summary group has its own sentence: the multi-rep group (ADR-0010) reads "Multi-rep clips: a of n matched
-the example, p of r repetitions passed the movement check"; no line reads `undefined` or `NaN` (checked in
-`staging/verify.mjs`).
+the example, p of r repetitions matched it rep by rep" (what was measured, not a pass or fail word; real-takes.md
+AC-R07); no line reads `undefined` or `NaN` (checked in `staging/verify.mjs`).
 ### AC-V10: result preview at phone width
 Given 390 px width, the preview screen fits without horizontal scroll and its heading names it as Part 5's
 preview of its published result contract.

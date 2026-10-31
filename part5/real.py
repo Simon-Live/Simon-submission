@@ -398,8 +398,8 @@ def _reps_note(t):
     if not reps:
         return f"{NOTE_REPS}{t['take_id']}: {_state(t)}, compared as a whole clip"
     score = t["score"]["value"] if t["score"] else "none"
-    return (f"{NOTE_REPS}{t['take_id']}: {_state(t)}, {sum(r['ok'] for r in reps)} of {len(reps)} reps passed "
-            f"against the expected clip's {t['expected_reference']['kind'].replace('_', ' ')}, score {score}, "
+    return (f"{NOTE_REPS}{t['take_id']}: {_state(t)}, {sum(r['ok'] for r in reps)} of {len(reps)} reps matched "
+            f"the expected clip's {t['expected_reference']['kind'].replace('_', ' ')}, score {score}, "
             f"{len(t['faults'])} fault(s) as found, unlabelled")
 
 
@@ -461,8 +461,8 @@ def summary_lines(report):
     lines.append(f"report-real: stock {st['takes']} takes: tp {st['tp']} fp {st['fp']} fn {st['fn']}")
     lines += [f"report-real: {t['take_id']}: {_state(t)}, {t['verdict']}" for t in report["takes"] if "verdict" in t]
     r = s["reps"]
-    lines.append(f"report-real: reps {r['takes']} real multi-rep takes: {r['accepted']} accepted, "
-                 f"{r['reps_passed']} of {r['reps']} reps passed")
+    lines.append(f"report-real: reps {r['takes']} real multi-rep takes: {r['accepted']} of {r['takes']} matched the "
+                 f"example, {r['reps_passed']} of {r['reps']} reps matched it rep by rep")
     lines += [f"report-real: note: {n}" for n in report["notes"]]
     return lines
 

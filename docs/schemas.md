@@ -267,11 +267,11 @@ Produced by `part5.evaluate.score` / `evaluate_corpus` (#13) and printed by `mak
   Low-light slices are reported, not gated. A labelled take with no analysis is an error
   (the missing `take_id`s are listed), never scored as "no predictions".
 
-`make check-5` (#14, `part5/check.py`) prints `simon.part5.check.v1` (`contracts/metrics.schema.json`, `1.1.0`): a
+`make check-5` (#14, `part5/check.py`) prints `simon.part5.check.v1` (`contracts/metrics.schema.json`, `1.2.0`): a
 `gate` block (`set`, `seed`, `slices` (the gated slice names `good/front`, `good/45`, `good/side`), `thresholds`,
 `failures` (one plain line per failed criterion), `passed`, `sweep` and the metrics above under `metrics`), the same
 metrics for seed 5 under `tuning`, the recorded `attempts`, a `report` of what is reported and never gated (low
-light, dropout, the real kit and stock takes, `refusals`, `score`) and the `rules_sha256` and `detection_sha256` of
+light, dropout, the real kit and stock takes, `refusals`, `score`; every block carries `gated: false`, and `refusals` is the map of slice to count with that one extra key) and the `rules_sha256` and `detection_sha256` of
 the frozen rules. It exits 0 only when `passed` is true; a take that can't be analysed, or a gated slice with no
 takes, no labelled faults or no correct takes (nothing to measure a criterion on), also fails the check. Since
 ADR-0007 the gate also needs every correct good-light take to score A and the monotonicity `sweep` never to rise;

@@ -343,6 +343,11 @@ Given 20 lines generated live on the real stock takes (`fixtures/input/eval/real
 when the stock takes yield fewer than 20 faults), then `docs/phrasing-review.md` records each line, its fault record,
 the validator verdict, a readability mark and a fact-fidelity mark, the ledger token totals, and the summary; any
 line that passed the validator but misstates a fact opens a ticket.
+#### AC-P08: the timed prompt asks for normal punctuation (TICKET-041)
+Given the system message of the timed prompt (`part5/phrasing/prompt.py`), then it asks for normal punctuation: a comma
+before a closing phrase such as "nice effort" or "keep going", and a full stop at the end (the 2026-10-31 live line
+read "nice effort keep going"). The validator is not touched, so the prompt cannot widen what a line may claim.
+Verification: `tests/test_phrasing_timed.py` (the prompt text only; no live call, the key is never read).
 ### J-6 contract
 #### AC-C01: old readers
 Given a 1.2.0 `analysis.json`, then it validates against the 1.1.0 schema at `28d20ef` and loads through the 1.1.0

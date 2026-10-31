@@ -7,6 +7,7 @@ the synthetic world defined here.
 """
 import hashlib
 import json
+import re
 import shutil
 import socket
 import time
@@ -300,6 +301,39 @@ def test_ac_k04_refusals_that_pull_recall_under_the_bar_fail_through_recall_only
     doc = json.loads(out)
     assert code == 1 and doc["gate"]["failures"] == ["good/side: recall 0.5 is below 0.75"]
     assert doc["report"]["refusals"]["good/side"] == 2
+
+
+def test_ac_k07_every_recorded_hash_line_in_thresholds_md_holds_a_real_hash():
+    """The attempt template in the file must not start a line with a hash label: a grep prints real values only."""
+    text = (ROOT / "docs/thresholds.md").read_text()
+    lines = [ln for ln in text.splitlines() if ln.startswith(("rules_sha256:", "detection_sha256:"))]
+    assert len(lines) >= 3
+    assert all(re.fullmatch(r"(rules|detection)_sha256: `[0-9a-f]{64}`", ln) for ln in lines), lines
+    assert check.recorded_detection_hash(text) == check.detection_hash()
+
+
+def test_ac_k12_every_report_block_carries_gated_false_and_refusals_keeps_its_slice_counts(tmp_path, monkeypatch, capsys):
+    """The six report blocks all say gated false; `refusals` stays slice -> count with that one extra key."""
+    held = green("h", {("side", "good", "clean"): {"refuse": 2}})
+    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
+    doc = json.loads(out)
+    report = doc["report"]
+    assert set(report) == {"low_light", "dropout", "kit", "stock", "refusals", "score"}
+    assert [name for name, block in report.items() if block["gated"] is not False] == []
+    counts = {k: v for k, v in report["refusals"].items() if k != "gated"}
+    assert counts == {k: v["refused"] for k, v in doc["gate"]["metrics"]["slices"].items()}
+    assert counts["good/side"] == 2 and all(isinstance(v, int) and not isinstance(v, bool) for v in counts.values())
+    assert errors_of(doc) == [] and code == 1  # recall fails the gate; the flag changes no gate figure
+
+
+def test_ac_k12_a_1_1_0_document_without_the_refusals_flag_still_validates_and_a_true_flag_does_not():
+    base = {"low_light": {"gated": False}, "dropout": {"gated": False}, "kit": {"gated": False},
+            "stock": {"gated": False}, "refusals": {"good/front": 0}}
+    validator = jsonschema.Draft202012Validator(SCHEMA["properties"]["report"])
+    assert SCHEMA["version"] == "1.2.0" and list(validator.iter_errors(base)) == []
+    assert list(validator.iter_errors({**base, "refusals": {"gated": False, "good/front": 0}})) == []
+    assert list(validator.iter_errors({**base, "refusals": {"gated": True, "good/front": 0}}))
+    assert list(validator.iter_errors({**base, "refusals": {"gated": False, "good/front": -1}}))
 
 
 def test_ac_k04_a_refused_correct_take_is_a_fault_on_a_correct_take_and_fails_the_gate(tmp_path, monkeypatch, capsys):

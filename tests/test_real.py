@@ -766,3 +766,16 @@ def test_the_lateral_raise_followers_are_reported_rep_by_rep(report):
     assert [len(t["reps"]) for t in takes] == [8, 2]
     assert report["summary"]["reps"] == {"takes": 2, "accepted": 2, "reps": 10, "reps_passed": 10}
     assert sum(n.startswith("reps: ") for n in report["notes"]) == 2
+
+
+def test_ac_r07_the_multi_rep_words_say_what_was_measured_not_a_verdict(report):
+    """Notes, stderr line: "matched" (never "passed" or "accepted"); the JSON keys and values stay as they were."""
+    notes = [n for n in report["notes"] if n.startswith("reps: ")]
+    assert all(f"{len(t['reps'])} of {len(t['reps'])} reps matched the expected clip's first rep" in n
+               for t, n in zip([t for t in report["takes"] if t["source"] == "lateral-raise"], notes))
+    line = next(ln for ln in real.summary_lines(report) if ln.startswith("report-real: reps "))
+    assert line == ("report-real: reps 2 real multi-rep takes: 2 of 2 matched the example, "
+                    "10 of 10 reps matched it rep by rep")
+    reps_words = notes + [line]
+    assert [w for w in reps_words if re.search(r"\bpass(ed)?\b|\baccepted\b", w)] == []
+    assert {"accepted", "reps_passed"} <= set(report["summary"]["reps"])

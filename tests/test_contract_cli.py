@@ -40,7 +40,7 @@ def summary():
 # ---------------------------------------------------------------- AC-C01
 @pytest.mark.parametrize("name,version", [("analysis", "1.5.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
-                                          ("metrics", "1.1.0"), ("replay", "1.0.0")])
+                                          ("metrics", "1.2.0"), ("replay", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
     schema = json.loads((ROOT / "contracts" / f"{name}.schema.json").read_text())
     assert schema["$id"] == f"{BASE}{name}.schema.json"
@@ -553,6 +553,8 @@ def test_metrics_schema_accepts_the_check_document():
     lambda d: d["gate"].update(passed="yes"),
     lambda d: d["gate"]["metrics"]["slices"]["good/front"].update(precision=1.5),
     lambda d: d["report"]["low_light"].update(gated=True),
+    lambda d: d["report"]["refusals"].update(gated=True),
+    lambda d: d["report"]["refusals"].update(gated="no"),
     lambda d: d["tuning"].update(gated=True),
     lambda d: d.update(rules_sha256="abc"),
     lambda d: d.update(format="simon.part5.metrics.v1"),
@@ -561,6 +563,14 @@ def test_metrics_schema_rejects_a_malformed_check_document(change):
     d = metrics_doc()
     change(d)
     assert errors("metrics", d)
+
+
+def test_metrics_1_2_0_accepts_the_refusals_flag_beside_the_slice_counts():
+    """AC-K12: report.refusals is slice -> count plus `gated: false`; a 1.1.0 document without it still validates."""
+    d = metrics_doc()
+    assert "gated" not in d["report"]["refusals"] and errors("metrics", d) == []
+    d["report"]["refusals"] = {"gated": False, "good/front": 0, "good/side": 2}
+    assert errors("metrics", d) == []
 
 
 # ---------------------------------------------------------------- the replay and live rows (journey-followup.md J-6)

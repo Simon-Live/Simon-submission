@@ -41,7 +41,7 @@ that a mismatch is found in seconds with the fix named.
 | `input-animation` | `contracts/input-animation.schema.json` | `1.0.0` | expected or follower clip in `simon.animation.v1` (frames, optional `null` joints and `conf`) |
 | `input-skeleton` | `contracts/input-skeleton.schema.json` | `1.0.0` | expected clip in `simon.skeleton.v1` (keyframes) |
 | `labels` | `contracts/labels.schema.json` | `1.0.0` | `labels.json` of the synthetic sets and the real takes (`label_source` optional) |
-| `metrics` | `contracts/metrics.schema.json` | `1.1.0` | the `make check-5` document (`simon.part5.check.v1`, `check-5.md`), with the score report (`gate.sweep`, `report.score`) |
+| `metrics` | `contracts/metrics.schema.json` | `1.2.0` | the `make check-5` document (`simon.part5.check.v1`, `check-5.md`), with the score report (`gate.sweep`, `report.score`); 1.2.0 adds `report.refusals.gated: false` |
 | `replay` | `contracts/replay.schema.json` | `1.0.0` | the `replay.json` of `part5 analyse --replay` (`simon.replay.v1`, `journey-followup.md` J-3) |
 
 Each schema is JSON Schema draft 2020-12 with `$id` `https://github.com/moalborati/simon-part-5-fault-analysis/contracts/<name>.schema.json`

@@ -79,15 +79,16 @@ Recall by fault type, set and lighting:
 
 One section per attempt, in seed order (29, then 31, then 37). Nothing below this line is generated or
 rewritten by `calibrate`, and a red attempt is never removed. Each section's heading names the seed and
-carries these lines, which `make check-5` reads for the current attempt (`part5/check.py`):
+carries these lines, which `make check-5` reads for the current attempt (`part5/check.py`). The template below is
+a list, not a copy-and-paste block, so that no line of it starts with a line label and a search for a recorded hash
+prints real values only. In a real section each label starts its own line and the value follows it in backticks (the
+hashes and the commit) or as plain words:
 
-```
-### Attempt <n>: seed <seed>
-Freeze commit: `<sha of the commit that froze rules.json and the code>`
-rules_sha256: `<sha256 of part5/rules.json at the freeze commit>`
-Date: <date the seed was generated>
-Approach family: <the family, different from every earlier attempt's>
-```
+- the heading, `### Attempt <n>: seed <seed>`
+- the label `Freeze commit:`, then the sha of the commit that froze rules.json and the code
+- the label `rules_sha256:`, then the sha256 of part5/rules.json at the freeze commit
+- the label `Date:`, then the date the seed was generated
+- the label `Approach family:`, then the family, different from every earlier attempt's
 
 then a one-paragraph rationale, and after scoring the held-out table as measured, pass or fail.
 

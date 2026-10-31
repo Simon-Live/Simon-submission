@@ -160,3 +160,12 @@ followers (40297504, 8 fast reps; 8836968, 2 slow reps), listed in its `manifest
 `SOURCE.md`. `make report-real` analyses both against the trainer, rep by rep, and reports each take, its
 per-rep guard numbers (`reps`), the expected reference, its faults as found (unlabelled) and its score under
 `summary.reps` and `reps:` notes. Reported, never gated; `make check-5` carries them under `report.stock`.
+
+### AC-R07: the multi-rep words say what was measured, not a verdict
+The words a reader sees for the multi-rep group (the `reps:` notes, the `report-real` stderr line and the Real takes
+tab sentence, `viewer.md` AC-V09) use "matched", never "passed" or "accepted". The note reads `reps: <take_id>:
+<state>, 8 of 8 reps matched the expected clip's first rep, score <n>, <k> fault(s) as found, unlabelled`; the stderr
+line reads `report-real: reps 2 real multi-rep takes: 2 of 2 matched the example, 10 of 10 reps matched it rep by rep`;
+the tab sentence reads `Multi-rep clips: 2 of 2 matched the example, 10 of 10 repetitions matched it rep by rep.`
+The JSON keys `summary.reps.accepted` and `summary.reps.reps_passed` keep their names and values, and the movement
+guard behind them is unchanged. Verified by `tests/test_real.py` and `staging/verify.mjs`.

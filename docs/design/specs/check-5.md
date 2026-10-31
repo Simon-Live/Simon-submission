@@ -49,7 +49,8 @@ set, with good light gated at every angle and the rest reported.
     "dropout": {"gated": false, "slices": {}},
     "kit": {"gated": false, "source": "Part 3 conformance kit", "takes": []},
     "stock": {"gated": false, "source": "fixtures/input/eval/real", "takes": []},
-    "refusals": {"<slice>": 0}
+    "refusals": {"gated": false, "<slice>": 0},
+    "score": {"gated": false, "version": "simon.score.v1"}
   },
   "rules_sha256": "<sha256 of part5/rules.json>"
 }
@@ -102,7 +103,9 @@ Given a run, `tuning.seed` is 5, `gate.seed` equals the `seed` in `fixtures/inpu
 `detection_sha256` in `docs/thresholds.md`, the detection rules frozen for the attempts (ADR-0007, AC-S06).
 `rules_sha256` is the whole file's hash and is reported; it differs from the attempts' `60f2e60b...` since the
 `score` block was added after the freeze. When the detection hash does not match, or the seed has no record
-there, the check exits 2 instead of scoring.
+there, the check exits 2 instead of scoring. Every line of `docs/thresholds.md` that starts with `rules_sha256:` or
+`detection_sha256:` holds a real 64-hex hash (the attempt template in that file is a list, not a copy-and-paste block,
+so a search for the recorded hashes prints no placeholder). Verification: `tests/test_check.py`.
 ### AC-K10: the score params are frozen
 Given `part5/rules.json` whose `score` block hashes (`score.params_sha256`) to something other than the
 `params_sha256` of the newest attempt in `fixtures/score-heldout.json`, then the check exits 2 before it scores
@@ -121,6 +124,14 @@ Given a held-out set where the good-light one-fault takes miss their grade targe
 line ends `target missed (reported, not gated)`, the other good-light lines end `target met` or `target not judged
 (no takes)`, the last line is still `check-5: PASS`, the exit is 0 and stdout is unchanged (`targets` reads `fail`).
 Verification: `tests/test_check_score.py`.
+
+### AC-K12: every report block carries `gated: false`, `refusals` included (metrics schema 1.2.0)
+Given a run, each of the six `report` blocks (`low_light`, `dropout`, `kit`, `stock`, `refusals`, `score`) carries
+`gated: false`. `refusals` stays a map of slice to count (`"good/front": 0`) and gains the one key `"gated": false`
+beside the slice keys, so a reader of `refusals["<slice>"]` is unaffected; a reader that sums the values of the map
+skips the `gated` key. `contracts/metrics.schema.json` `1.2.0` names it (optional, so a `1.1.0` document still
+validates). Detection, scoring, the gate and every number are unchanged. Verification: `tests/test_check.py`,
+`tests/test_contract_cli.py`.
 
 ### Rule-Based ACs
 - AC-K-NFR-01: under 10 minutes on this host, offline. Verification: timed run, sockets blocked in test.

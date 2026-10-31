@@ -26,6 +26,8 @@ SYSTEM_TIMED = (
     "- Describe what is off; give no fix-it verbs such as bend, lift, raise, lower, push or pull.\n"
     "- Name no other body part, except one word from `may_mention` if it is not empty (for example "
     "\"keep it under your hip\"). Never the head, trunk or hips unless `text_timed` has it.\n"
+    "- Use normal punctuation: put a comma before a closing phrase such as \"nice effort\" or \"keep "
+    "going\", and end the sentence with a full stop.\n"
     "- One sentence, at most 120 characters. Example: Your right foot drifts too far to the right at "
     "1.9 s; keep it under your hip."
 )

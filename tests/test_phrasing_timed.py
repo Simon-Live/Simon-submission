@@ -301,6 +301,14 @@ def test_the_prompt_lists_only_the_measures_landmarks():
     assert prompt.timed_record(timed("knee_flexion", "right", "less", None))["may_mention"] == []
 
 
+def test_ac_p08_the_timed_prompt_asks_for_normal_punctuation_with_a_comma_before_a_closing_phrase():
+    """No live call and no key: the system message is built from the module alone."""
+    system = prompt.timed_messages(RIGHT_FOOT)[0]["content"]
+    assert prompt.SYSTEM_TIMED in system
+    assert "Use normal punctuation: put a comma before a closing phrase" in system
+    assert "end the sentence with a full stop" in system
+
+
 def test_review_keeps_no_copy_of_the_time_and_direction_rules():
     from part5.phrasing import review
     for name in ("lateral_of", "at_s_of", "timed_words", "OUT_MEASURES", "WORD", "FLIP"):

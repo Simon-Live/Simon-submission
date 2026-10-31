@@ -359,7 +359,7 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
         "report": {"low_light": {"gated": False, "slices": slices_starting(held_metrics, "low/")},
                    "dropout": {"gated": False, "slices": slices_starting(held_metrics, "dropout/")},
                    **real_report,
-                   "refusals": {k: v["refused"] for k, v in held_metrics["slices"].items()},
+                   "refusals": {"gated": False, **{k: v["refused"] for k, v in held_metrics["slices"].items()}},
                    "score": score_block(held, held_analyses, tune, tune_analyses, real_report)},
         "rules_sha256": sha,
         "detection_sha256": detection,

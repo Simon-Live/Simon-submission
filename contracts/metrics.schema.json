@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/metrics.schema.json",
   "title": "Part 5 make check-5 document (simon.part5.check.v1)",
-  "version": "1.1.0",
-  "description": "The JSON make check-5 prints. gate carries the held-out result and decides the exit code; tuning and report are reported and never gated. Extra fields are allowed. 1.1.0 (ADR-0007) adds the score report that check-5 writes: gate.sweep (the monotonicity sweep the gate reads), report.score (the grade distribution per slice of every set; reported, never gated beyond gate) and detection_sha256 (the frozen detection rules). A 1.0.0 document validates.",
+  "version": "1.2.0",
+  "description": "The JSON make check-5 prints. gate carries the held-out result and decides the exit code; tuning and report are reported and never gated. Extra fields are allowed. 1.1.0 (ADR-0007) adds the score report that check-5 writes: gate.sweep (the monotonicity sweep the gate reads), report.score (the grade distribution per slice of every set; reported, never gated beyond gate) and detection_sha256 (the frozen detection rules). A 1.0.0 document validates. 1.2.0 adds report.refusals.gated (always false), so the six report blocks all carry gated false; refusals stays a map of slice to count with that one boolean key beside the slice keys, and a 1.1.0 document without the key still validates.",
   "type": "object",
   "required": [
     "format",
@@ -243,6 +243,12 @@
         },
         "refusals": {
           "type": "object",
+          "properties": {
+            "gated": {
+              "const": false,
+              "description": "1.2.0: reported, never gated, like every other report block. The other keys are slices ('<lighting>/<angle>'), each a count."
+            }
+          },
           "additionalProperties": {
             "type": "integer",
             "minimum": 0
