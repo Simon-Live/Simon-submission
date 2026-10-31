@@ -11,7 +11,7 @@ export function mountRecord(root) {
   const box = h("div", {});
   root.append(h("section", { class: "screen" },
     h("h1", { text: "Record a movement" }),
-    h("p", { class: "lede", text: "Pick a countdown and a length, press Record and step into place. Or upload a video." }),
+    h("p", { class: "lede", text: "Open the camera and check that your whole body is in frame, pick a countdown and a length, then press Record. Or upload a video." }),
     box));
   getConfig().then((cfg) => {
     if (alive) stop = mountTakeFlow(box, { role: "trainer", limits: cfg.limits });

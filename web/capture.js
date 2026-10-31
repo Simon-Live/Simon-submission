@@ -11,7 +11,24 @@ import {
 
 export const CAMERA_OFF = "Camera access is off. Allow it in the browser, or upload a video.";
 export const FRAMING_HINT = "Step back until your whole body fits, or at least everything that moves.";
+export const CAMERA_TEXT = {
+  idle: "Open the camera to check that your whole body is in frame before you record.",
+  asking: "Allow camera access in your browser's prompt.",
+  blocked: "Camera access is off. Allow it in the browser's site settings, then tap Open camera. Or upload a video.",
+  dark: "The camera is on but shows no picture. Close other apps using it, then tap Open camera.",
+};
+const NO_PICTURE_MS = 3000; // a stream with no frame after this long is reported (another app holds the camera)
 export const MIME_ORDER = ["video/webm;codecs=vp9", "video/webm", "video/mp4"];
+
+/** True when the browser already allows the camera here (no prompt needed); false when unknown. */
+export async function cameraAllowed() {
+  try {
+    const status = await navigator.permissions.query({ name: "camera" });
+    return status.state === "granted";
+  } catch {
+    return false; // Safari and Firefox may not answer for "camera": Open camera asks instead
+  }
+}
 
 export function pickMimeType(MR = globalThis.MediaRecorder) {
   if (!MR || typeof MR.isTypeSupported !== "function") return "";
@@ -71,8 +88,10 @@ export function mountCapture(root, limits, { reference = null } = {}) {
   live.muted = true;
   const playback = h("video", { controls: true, playsinline: true, hidden: true, "data-testid": "take-preview", "aria-label": "Your take" });
   const badge = recBadge();
+  const camText = h("p", { class: "cam-text", "data-testid": "camera-status", text: CAMERA_TEXT.idle });
+  const camOpen = h("button", { type: "button", class: "btn primary", "data-testid": "cam-open", text: "Open camera", onclick: () => openPreview() });
   const stage = h("div", { class: "cam", "data-state": "idle" }, live, playback, badge.el,
-    h("p", { class: "cam-empty", text: "Your camera shows here." }));
+    h("div", { class: "cam-empty" }, camText, camOpen));
   const opts = h("div", { class: "rc-opts" },
     selectField("countdown-select", "Countdown", COUNTDOWNS, prefs.countdown, countdownLabel, (v) => { prefs.countdown = v; savePrefs(prefs); }),
     selectField("duration-select", "Duration", DURATIONS, prefs.duration, durationLabel, (v) => { prefs.duration = v; savePrefs(prefs); }));
@@ -90,7 +109,9 @@ export function mountCapture(root, limits, { reference = null } = {}) {
   if (reference) reference.dock(camRow, "live");
   root.append(camRow || stage, framing, opts, h("div", { class: "row between" }, timer, h("div", { class: "row" }, start, stop, upload, input)), info, error);
 
-  openPreview();
+  // Open the camera at once only when the browser already allows it; otherwise wait for Open camera, so the
+  // permission prompt follows a tap (a prompt raised on page load can be blocked or missed, leaving a black box).
+  cameraAllowed().then((ok) => { if (ok && !destroyed && !take) openPreview(); });
 
   function setError(msg) {
     error.textContent = msg || "";
@@ -131,17 +152,43 @@ export function mountCapture(root, limits, { reference = null } = {}) {
     return opening;
   }
 
+  function camStatus(key) {
+    camText.textContent = CAMERA_TEXT[key];
+    camOpen.hidden = key === "asking";
+    camOpen.textContent = key === "idle" ? "Open camera" : "Try again";
+    stage.dataset.camera = key;
+  }
+
   async function askCamera() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !globalThis.MediaRecorder) return false;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !globalThis.MediaRecorder) {
+      console.warn("[capture] no camera API in this browser");
+      camStatus("blocked");
+      return false;
+    }
+    camStatus("asking");
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-    } catch {
+    } catch (err) {
+      console.warn("[capture] camera refused:", err && err.name, err && err.message);
+      camStatus("blocked");
       return false;
     }
     if (destroyed || take) { releaseCamera(); return false; }
+    const track = stream.getVideoTracks()[0];
+    const set = track ? track.getSettings() : {};
+    console.info("[capture] camera on:", track && track.label, `${set.width}x${set.height} at ${set.frameRate} fps`);
     live.srcObject = stream;
-    live.play().catch(() => {});
+    live.play().catch((err) => console.warn("[capture] preview did not play:", err && err.name));
     if (stage.dataset.state === "idle") stage.dataset.state = "preview";
+    camStatus("idle");
+    setTimeout(() => {
+      if (stream && !take && !destroyed && live.videoWidth === 0) {
+        console.warn("[capture] the camera stream has no picture after", NO_PICTURE_MS, "ms");
+        releaseCamera();
+        stage.dataset.state = "idle";
+        camStatus("dark");
+      }
+    }, NO_PICTURE_MS);
     return true;
   }
 

@@ -92,7 +92,9 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
 .cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
 .cam video[hidden] { display: none; }
 .cam video.mirror { transform: scaleX(-1); }
-.cam-empty { color: #bbb; font-size: 14px; margin: 0; }
+.cam-empty { position: relative; z-index: 1; display: grid; justify-items: center; gap: 12px; max-width: 320px; padding: 16px; text-align: center; }
+.cam-text { color: #ddd; font-size: 15px; margin: 0; }
+.cam-empty .btn.primary { background: #fff; color: #111; border-color: #fff; }
 .cam[data-state="preview"] .cam-empty, .cam[data-state="counting"] .cam-empty,
 .cam[data-state="recording"] .cam-empty, .cam[data-state="take"] .cam-empty { display: none; }
 /* The live preview shows the whole frame the recorder keeps, on Record and Follow alike: `cover` cut the
