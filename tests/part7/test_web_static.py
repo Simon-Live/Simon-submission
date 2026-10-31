@@ -14,7 +14,7 @@ OWNED = ["app", "api", "catalog", "watch", "record", "follow", "take-flow", "job
 
 # app.md "Web" table, testids this lane owns (result screen ids belong to the RESULT lane).
 TESTIDS = {
-    "catalog": ["search", "record"],
+    "views/library": ["search", "record"],  # the catalog screen draws through views/library.js (UI redesign)
     "watch": ["trainer-video", "viewer", "watch-frame", "follow"],
     "take-flow": ["name", "category", "save", "analyse", "record-again", "form-error"],
     "capture": ["cam-start", "cam-stop", "upload"],
@@ -44,7 +44,7 @@ def test_testids_present(name, ids):
 
 
 def test_entry_row_testid_pattern():
-    assert "`entry-${entry.id}`" in src("catalog")
+    assert "`entry-${c.id}`" in src("views/library")  # card data from model/library.js
 
 
 def test_router_has_every_route():
