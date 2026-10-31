@@ -4,9 +4,12 @@ body3d.json:
   {model, camera_frame: "opencv" (x right, y down, z forward, metres),
    K: 3x3 intrinsics (fixed for the clip), image_size: [w, h],
    frames: [{frame, t_ms, people: [{id, bbox: [x, y, w, h],
-             kp3d_cam: {<joint>: [x, y, z]}, kp2d: {<joint>: [u, v]}, reproj_self_px}]}]}
+             kp3d_cam: {<joint>: [x, y, z]}, kp2d: {<joint>: [u, v]}, reproj_self_px,
+             extra_kp3d_cam?: {<foot point>: [x, y, z]}, extra_kp2d?: {<foot point>: [u, v]}}]}]}
 
-kp3d_cam projects through K onto kp2d (reproj_self_px is the median gap, a sanity check).
+kp3d_cam projects through K onto kp2d (reproj_self_px is the median gap over the 17 joints, a sanity check).
+extra_kp3d_cam and extra_kp2d hold the six foot points of part2.joints.EXTRA (MHR70 15 to 20, TICKET-043); only
+this model writes them, and part2.canonical turns them into pose3d.json's optional `extra_joints`.
 #9 turns this into pose3d.json + camera.json.
 """
 import json
@@ -17,7 +20,8 @@ from pathlib import Path
 import numpy as np
 
 from part2 import frames as frames_mod
-from part2.joints import CANONICAL, MHR70_INDEX
+from part2.joints import CANONICAL, EXTRA, MHR70_EXTRA_INDEX, MHR70_INDEX, follow_ankles
+from part2.lifters import project  # the one guarded pinhole projection (z near 0), also the refine rungs'
 
 SAM3D_REPO = os.environ.get("SAM3D_REPO", "/workspace/sam-3d-body")
 CKPT_DIR = os.environ.get("SAM3D_CKPT", "/workspace/checkpoints/sam-3d-body-dinov3")
@@ -144,8 +148,10 @@ def clip_intrinsics(est, image_paths) -> np.ndarray:
 
 
 def _person(pid, o, K) -> dict:
-    kp3d = np.asarray(o["pred_keypoints_3d"])[MHR70_INDEX] + np.asarray(o["pred_cam_t"])
-    kp2d = np.asarray(o["pred_keypoints_2d"])[MHR70_INDEX, :2]
+    """One SAM 3D Body output (70 MHR keypoints) as a body3d person: the 17 joints plus the six foot points."""
+    kp3d_all = np.asarray(o["pred_keypoints_3d"]) + np.asarray(o["pred_cam_t"])
+    kp2d_all = np.asarray(o["pred_keypoints_2d"])[:, :2]
+    kp3d, kp2d = kp3d_all[MHR70_INDEX], kp2d_all[MHR70_INDEX]
     uv = project(kp3d, K)
     x0, y0, x1, y1 = (float(v) for v in np.asarray(o["bbox"]).reshape(-1)[:4])
     return {
@@ -154,14 +160,22 @@ def _person(pid, o, K) -> dict:
         "kp3d_cam": {j: np.round(p, 4).tolist() for j, p in zip(CANONICAL, kp3d)},
         "kp2d": {j: np.round(p, 2).tolist() for j, p in zip(CANONICAL, kp2d)},
         "reproj_self_px": round(float(np.median(np.linalg.norm(uv - kp2d, axis=1))), 3),
+        "extra_kp3d_cam": {j: np.round(p, 4).tolist() for j, p in zip(EXTRA, kp3d_all[MHR70_EXTRA_INDEX])},
+        "extra_kp2d": {j: np.round(p, 2).tolist() for j, p in zip(EXTRA, kp2d_all[MHR70_EXTRA_INDEX])},
     }
 
 
-def project(points_cam, K) -> np.ndarray:
-    """Pinhole projection of Nx3 OpenCV-camera points to Nx2 pixels."""
-    p = np.asarray(points_cam, dtype=float)
-    K = np.asarray(K, dtype=float)
-    return (p[:, :2] / p[:, 2:3]) * np.array([K[0, 0], K[1, 1]]) + np.array([K[0, 2], K[1, 2]])
+def moved_feet(person: dict, kp3d_cam: dict, K) -> dict:
+    """{extra_kp3d_cam, extra_kp2d} for a body3d person whose joints a refine step replaced with kp3d_cam: each foot
+    point moves rigidly with its own ankle (joints.follow_ankles) and extra_kp2d becomes its projection through K,
+    as kp2d does for the joints. {} for a person without foot points (the cpu backend). TICKET-043."""
+    if not person.get("extra_kp3d_cam"):
+        return {}
+    moved = follow_ankles(person["extra_kp3d_cam"], person["kp3d_cam"], kp3d_cam)
+    X = np.round(np.array(list(moved.values()), dtype=float), 4)
+    uv = project(X, K)
+    return {"extra_kp3d_cam": {j: x.tolist() for j, x in zip(moved, X)},
+            "extra_kp2d": {j: np.round(q, 2).tolist() for j, q in zip(moved, uv)}}
 
 
 if __name__ == "__main__":

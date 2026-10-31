@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-2-images-to-3d/contracts/pose3d.schema.json",
   "title": "Part 2 pose3d.json",
-  "description": "One 3D skeleton per person per frame in the canonical frame (origin at the hip midpoint, x subject's left, y up, z anterior, metres). Exactly the 17 canonical joints. t_ms counts from the first decoded frame. Extra keys are ignored. Frame numbers must also strictly increase and person ids be unique within a frame, which a schema cannot say; python -m part2 doctor checks both. NaN and infinity are not allowed anywhere.",
+  "description": "One 3D skeleton per person per frame in the canonical frame (origin at the hip midpoint, x subject's left, y up, z anterior, metres). Exactly the 17 canonical joints in joints; a person may also carry the optional extra_joints object (foot points). t_ms counts from the first decoded frame. Extra keys are ignored. Frame numbers must also strictly increase and person ids be unique within a frame, which a schema cannot say; python -m part2 doctor checks both. NaN and infinity are not allowed anywhere.",
   "x-simon-version": "part2.pose3d/2026-10-28",
   "x-direction": "output",
   "x-producer": "Part 2",
@@ -148,6 +148,31 @@
         }
       }
     },
+    "extra_joints": {
+      "type": "object",
+      "description": "Optional. Foot points beside the 17 joints (TICKET-043), written only by a backend that produces real points (gpu). Each entry has the shape of a joint: metres in the same canonical frame as joints, conf in 0 to 1 by the same rule, never null. Any of the six names may be left out; no other name is allowed.",
+      "additionalProperties": false,
+      "properties": {
+        "left_big_toe": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_small_toe": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_heel": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_big_toe": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_small_toe": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_heel": {
+          "$ref": "#/$defs/joint"
+        }
+      }
+    },
     "person": {
       "type": "object",
       "required": [
@@ -160,6 +185,9 @@
         },
         "joints": {
           "$ref": "#/$defs/joints"
+        },
+        "extra_joints": {
+          "$ref": "#/$defs/extra_joints"
         }
       }
     },
@@ -242,6 +270,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "extra_joints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(left|right)_(big_toe|small_toe|heel)$"
+          },
+          "description": "The extra_joints names this file holds, in writing order; absent when it holds none (the cpu backend writes none)."
         }
       }
     },

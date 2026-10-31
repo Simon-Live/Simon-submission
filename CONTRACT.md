@@ -80,6 +80,11 @@ editing. Without the option the key is absent, and absent means not mirrored. Pa
 reveals a mirrored video, so the flag must come from whoever knows how the clip was recorded. A
 non-boolean value is rejected by Part 3 and by `contract.validate`.
 
+With `mirrored: true`, the optional `extra_joints` (see "Extra joints (optional)") carry the same labels as
+`joints`. Part 3 mirrors `joints` and does not touch `extra_joints`, so a reader that mirrors the joints and also
+uses the feet must mirror the feet the same way: swap the `left_` and `right_` names (`left_heel` becomes
+`right_heel`, and so on) and negate x.
+
 ### NaN and infinity
 
 No file holds NaN, infinity or a number too large for a double. `schema.validate_pose3d`,
@@ -103,6 +108,7 @@ and a file without it is valid.
 | `part2_commit` | The git commit of Part 2 that wrote the file, with `+dirty` when tracked files differed; `unknown` without git. |
 | `created_utc` | `YYYY-MM-DDTHH:MM:SSZ`. |
 | `licence_notes` | A list of notes that apply to the models used. |
+| `extra_joints` | The names of the foot points the file holds (see "Extra joints (optional)"), in writing order. Absent when the file holds none, as in every cpu backend output. |
 
 `part2 run` writes the backend `gpu` (SAM 3D Body through `part2/body3d.py`) and, in multi mode, the
 tracker `api-sam31` (SAM 3.1 through the Meta Model API and `part2/track.py`). Other keys may appear and
@@ -125,6 +131,7 @@ are ignored.
 | `frames[].people[].joints` | Required object with exactly the 17 canonical joints, written in this order: `nose`, `left_eye`, `right_eye`, `left_ear`, `right_ear`, `left_shoulder`, `right_shoulder`, `left_elbow`, `right_elbow`, `left_wrist`, `right_wrist`, `left_hip`, `right_hip`, `left_knee`, `right_knee`, `left_ankle`, `right_ankle`. Left and right are the subject's. |
 | `joints.<name>.x, y, z` | Required finite numbers in metres, rounded to 0.1 mm. |
 | `joints.<name>.conf` | Required number in [0, 1]. Not calibrated: 1.0 when the joint lies inside the image, 0.3 when the model placed it outside the frame. |
+| `frames[].people[].extra_joints` | Optional object: the foot points (see "Extra joints (optional)"). |
 | `mirrored` | Optional boolean at the top level (see `mirrored`). |
 | `t0_pts_ms` | Optional number at the top level (see Time). |
 | `provenance` | Optional object at the top level (see `provenance`). |
@@ -136,6 +143,31 @@ front of the body. Up is the camera's up, so a level camera is assumed and a til
 every pose. Part 3 takes up from the body instead, so a tilt does not reach its output.
 
 Part 3 names this shape `part2.pose3d/2026-10-28` in `x-simon-version`.
+
+### Extra joints (optional)
+
+A person may carry `extra_joints` beside `joints`: the heel, big toe and small toe of each foot, asked for by Part 5.
+
+```
+{"id": 0, "joints": {...the 17...}, "extra_joints": {
+  "left_big_toe": {"x": x, "y": y, "z": z, "conf": c}, ...left_small_toe, left_heel, right_big_toe, right_small_toe, right_heel}}
+```
+
+| Rule | Promise |
+|---|---|
+| Names | `left_big_toe`, `left_small_toe`, `left_heel`, `right_big_toe`, `right_small_toe`, `right_heel`, written in this order. Any may be left out; no other name is allowed. Left and right are the subject's. |
+| Each point | The shape of a joint: `x, y, z` finite numbers in metres in the same canonical frame as `joints` (rounded to 0.1 mm), `conf` in [0, 1] by the same rule (1.0 inside the image, 0.3 placed outside it). Never null. |
+| Who writes it | The gpu backend (SAM 3D Body gives these points), for every person it writes. The cpu backend writes none: RTMPose-x gives 17 points. `provenance.extra_joints` names the points a file holds. |
+| Mirrored file | With `"mirrored": true`, `extra_joints` carry the same labels as `joints`. Part 3 does not touch `extra_joints`, so a reader that mirrors the joints must also swap the `left_` and `right_` names of the feet and negate x. |
+| Refinement | The refine rungs keep the points with the refined skeleton: when a rung moves the ankles, each foot point moves with its own ankle by the same displacement; the `focal` rung takes the points of the camera it chooses. |
+| `joints` | Unchanged: exactly the 17, so a reader that knows only `joints` reads the same file as before. |
+| Version | A new optional field, so `part2.pose3d/2026-10-28` stays (version policy above). |
+
+`python -m part2 doctor` adds one line when the file has them:
+`extra joints: <names> on <k> of <n> person-frames (optional extra_joints beside the 17 joints)`, where `<k>` counts
+the person-frames that carry any of the points. No verdict changes. `make check-feet` measures them on
+the scored outputs (coverage, segment-length consistency per person, distance to the ankle); it is reported and
+never gated.
 
 ### Several people
 
@@ -188,6 +220,8 @@ The same rows are in `contracts/compatibility.json` and are printed by `python -
 | pose3d.json, several people | part2.pose3d/2026-10-28 | Part 3 | works with option | Part 3 `--person <id>` or `--all-people`, or the `pose3d_person_<id>.json` file | Part 3 CONTRACT row |
 | pose3d.json with `mirrored` | part2.pose3d/2026-10-28 | Part 3 | works | Part 3 `--flip auto` reads it | Part 3 ADR-0005 |
 | pose3d.json with `provenance`, `t0_pts_ms` | part2.pose3d/2026-10-28 | Part 3 | works |  | extra keys ignored (Part 3 CONTRACT) |
+| pose3d.json with `extra_joints` | part2.pose3d/2026-10-28 | Part 3 | works |  | Part 3's schema sets additionalProperties false on `joints` only; tests/test_extra_joints.py |
+| pose3d.json with `extra_joints` | part2.pose3d/2026-10-28 | Part 5 (feet read directly) | works with option | read `extra_joints` in Part 2's canonical frame (x subject's left, y up, z anterior, metres); with `mirrored: true`, swap the `left_` and `right_` names and negate x, as for `joints`, because Part 3 does not touch `extra_joints` | tests/test_extra_joints.py; CONTRACT.md "Extra joints (optional)" |
 | pose3d.json | part2.pose3d/2026-10-28 | Part 4 | via Part 3 | Part 3 `--view part4` | Part 4 reads Part 3's skeleton |
 | pose3d.json | part2.pose3d/2026-10-28 | Part 5 | via Part 3 | Part 3 `--view part5` | Part 5 `analyse` reads skeleton.json |
 | pose3d.json | part2.pose3d/2026-10-28 | Part 6 | works with its generic reader only | none; Part 6 has no Part 2 kind | Part 6 CONTRACT "What every reader accepts" |
@@ -300,7 +334,8 @@ Part 2's side in `part2/schema.py` and `part2/contract.py`.
 | `mirrored` | optional; true or false only | optional boolean; any other value rejected | Same. |
 | `fps` | optional; a finite number above 0 | optional number above 0 | Same. Part 2 never writes it. |
 | person `id` within a frame | `contract.validate` rejects a duplicate; `schema.validate_pose3d` does not | duplicate id rejected | A duplicate passes `schema.validate_pose3d` and fails `contract.validate` and Part 3. Writers run `contract.validate` before writing, so Part 2's files hold none. |
-| joint names | exactly the 17 | the schema says exactly the 17; `doctor` drops extra names through an adapter | Same promise; Part 2 never writes extras. |
+| joint names | exactly the 17 | the schema says exactly the 17; `doctor` drops extra names through an adapter | Same promise; Part 2 never writes extra names inside `joints`. |
+| `extra_joints` | optional; the six foot point names only, each a joint | not in the schema; the person object allows extra keys | Part 3 accepts a file that has them. |
 | `frame` | whole number, `3.0` rejected | the schema type `integer` admits `3.0`; `doctor` rejects it | Same in practice. |
 | frame order | strictly increasing | strictly increasing (outside the schema) | Same. |
 | `t_ms` | finite number | number in the schema, finite in `doctor`; `--fps` also needs increasing times | Part 2 writes increasing times from `frames.json`. |

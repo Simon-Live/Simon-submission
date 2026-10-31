@@ -15,22 +15,22 @@
   "part2/backends/__init__.py": "a5742c4fec5cb5611de1292164b0ee0181d91ddfdf2df1206f7e38fe9174f804",
   "part2/backends/cpu_rtm.py": "1c412e8803cc744c482c70dd793a6d14327e21e6c3cf888c5c84d8de27689e5b",
   "part2/backends/gpu_sam3db.py": "a6f236a7402fbc980f9f9709c7a105dbb0c79e6788a4a5cd2451ee09d2b8eada",
-  "part2/body3d.py": "a1392f633dad90ea80b6434ff0b478848305a9b438bbe1b46b421fda09ff0fab",
-  "part2/canonical.py": "c093d8ac4abe3e2650290eb3e4b89b3b718c5ae5b5853bcbb71c0fd29105a7f1",
+  "part2/body3d.py": "f35846282a2c19edeb5fb8f66d9087fcf1e5017d56f2234aee354123ff0e9892",
+  "part2/canonical.py": "9995c1213f775d325fa70c2d5ed91d433758ff67079b2f9d5eda9dca16f53348",
   "part2/frames.py": "e0fe8480cc6bb7fa4bfeb5bb3087deaa8584503424e51e3959c4ed2b49b8bb4d",
   "part2/gpu_guard.py": "e408e4c2aee53d574cf0d9cfd0b85ee34791a73548c16a208943aa395724e6cc",
   "part2/hashing.py": "78d43a3527c832b4e17c637ed874b40ea5833b81f571a9c718978bfd0c01001f",
-  "part2/joints.py": "22bb9bb9e6671c558dc6ba6300eff2377a1eb853491ac44dbe5c2803534ad93f",
+  "part2/joints.py": "860a777a1bf9a1b292b40649068667379cf195db906b1da3316b9aef0421b17a",
   "part2/lifters/__init__.py": "ef0540ca10c204da8b5f424e52387145f288dfa3dc3ba81f3e87e54cf89d23d0",
   "part2/meta_api.py": "6add1c2f2deee0611b061ada1d46fc871c1c2651425f1b8820dc9e91649470f5",
   "part2/output_steps.py": "68cf903a51495fc59a25197a7237cad8c0612ad065c1ce02898f63db57762318",
-  "part2/refine/__init__.py": "f867819a0809803192d7199c6fd5e2bd1cdb53536cfd2d7cb8fb01089f819387",
+  "part2/refine/__init__.py": "08a85509100f3618476bef04195e886a50a35e5fb40176581bf4a4b3c9a49d29",
   "part2/refine/focal.py": "bb622e45cccfb58bcfa38c91626e8558241f05de0d27aeba508da9788ee97537",
-  "part2/refine/kp2d_fit.py": "42388b596cf7b2df2064b3ec32c06b29b6c1f0604e7822c53ba77922111a651d",
+  "part2/refine/kp2d_fit.py": "f828511700c470c7c9e467a9052a12dc537f3d21f69d8a3b5f5020b0c63c8029",
   "part2/track.py": "645a432b72ce55c23c50077ff915d2f921c457ab3ff47d63aecda54c9a45d45b",
   "part2/trackers/__init__.py": "0701af37bfcc639c5af8d9979ba13e9d1abdaf570e2c755591224f2dca62be02"
  },
- "code_sha256": "2b5e7daca9c136fc1d43f0697559c2bb5f82a7566342fc930e472ddde47a5a8f",
+ "code_sha256": "70adea8867ddb8479d04c901165e31299a133a451e3745ab9129fe8b49ac7fbc",
  "frames_dir": "fixtures/input/single/frames",
  "frames_sha256": "80a75a298f8a947c35060e20ad3020c1f04133cf4ba3d628fccb644a4a676df2",
  "models": [
@@ -61,15 +61,15 @@
   }
  ],
  "files_sha256": {
-  "camera.json": "7cafb5ecd4f9b4531f8198ed15b18079453b83f34d8c2f77f7720e932abea985",
-  "pose3d.json": "7297d2097545e834fef597436319961d7f2eec0771c10cc677acc082accbb2bf"
+  "camera.json": "0925baaf22dd187b90d716ac028c117f224d9ad97e5ed08c3ca274a33cc43fee",
+  "pose3d.json": "82c9a7102a64c0019d26c7a2fc48b8528b21f58b63a8dedd6b38001f488e46f4"
  },
- "created_utc": "2026-10-31T09:03:12Z",
+ "created_utc": "2026-10-31T11:32:00Z",
  "host_gpu": "NVIDIA GeForce RTX 5090",
  "run": {
   "frames": 111,
   "people": 1,
-  "seconds": 844.9,
+  "seconds": 843.5,
   "params": {
    "smooth": false,
    "mirrored": false

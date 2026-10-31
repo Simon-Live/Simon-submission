@@ -32,6 +32,22 @@
     "evidence": "extra keys ignored (Part 3 CONTRACT)"
   },
   {
+    "producer_file": "pose3d.json with `extra_joints`",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 3",
+    "result": "works",
+    "option": "",
+    "evidence": "Part 3's schema sets additionalProperties false on `joints` only; tests/test_extra_joints.py"
+  },
+  {
+    "producer_file": "pose3d.json with `extra_joints`",
+    "version": "part2.pose3d/2026-10-28",
+    "consumer": "Part 5 (feet read directly)",
+    "result": "works with option",
+    "option": "read `extra_joints` in Part 2's canonical frame (x subject's left, y up, z anterior, metres); with `mirrored: true`, swap the `left_` and `right_` names and negate x, as for `joints`, because Part 3 does not touch `extra_joints`",
+    "evidence": "tests/test_extra_joints.py; CONTRACT.md \"Extra joints (optional)\""
+  },
+  {
     "producer_file": "pose3d.json",
     "version": "part2.pose3d/2026-10-28",
     "consumer": "Part 4",

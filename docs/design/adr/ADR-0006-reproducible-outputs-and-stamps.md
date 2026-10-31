@@ -1,6 +1,6 @@
 # ADR-0006: Reproducible scored outputs, committed with a stamp that names how they were made
 
-> Copy of `docs/adr/ADR-0006-reproducible-outputs-and-stamps.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/adr/ADR-0006-reproducible-outputs-and-stamps.md` from the maintainers' working repo at `1bfac92`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted (stakeholder-proxy, 2026-10-28)
 Date: 2026-10-28

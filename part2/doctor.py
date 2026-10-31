@@ -11,14 +11,15 @@ from each consumer's published CONTRACT.md, not imported:
           person id 0 else the first, JSON read strictly so NaN and Infinity are refused).
 
 Exit 0 when the named consumer (Part 3 without --for) accepts, with or without an option; 1 when
-it would reject; 2 when the file is not JSON or of no known kind.
+it would reject; 2 when the file is not JSON or of no known kind. A pose3d file whose people carry the
+optional `extra_joints` (foot points, TICKET-043) gets one more line naming them; no verdict changes.
 """
 import json
 import sys
 from pathlib import Path
 
 from part2 import contract
-from part2.joints import CANONICAL
+from part2.joints import CANONICAL, EXTRA
 from part2.schema import ContractError, check_finite, is_number
 
 CONSUMERS = {"part3": "Part 3", "part5": "Part 5", "part6": "Part 6"}
@@ -62,7 +63,7 @@ def detect(doc, path) -> tuple[str, str]:
     if "K" in doc and "camera_frame" in doc:
         return "camera", "by shape"
     frames = [f for f in doc["frames"] if isinstance(f, dict)]
-    people = list(_people(doc))
+    people = list(people_in(doc))
     if any("joints" in p for p in people) or any("people" in f and "t_ms" in f for f in frames):
         return "pose3d", "by shape"
     if any("bbox" in p or "mask_rle" in p for p in people):
@@ -85,12 +86,12 @@ def diagnose(path, consumer=None) -> dict:
     decider = next(f for f in findings if f["consumer"] == (consumer or "part3"))
     return {"file": str(path), "kind": kind, "version": contract.version(kind), "detected_by": how,
             "people": len(_ids(doc)), "frames": len(doc["frames"]), "findings": findings,
-            "schema_error": _schema_error(doc, kind), "warnings": _warnings(doc),
-            "exit": 1 if decider["verdict"] == REJECTS else 0}
+            "schema_error": _schema_error(doc, kind), "extra_joints": _extra_joints(doc, kind),
+            "warnings": _warnings(doc), "exit": 1 if decider["verdict"] == REJECTS else 0}
 
 
 def render(result: dict) -> list[str]:
-    """The lines doctor prints: a header, one line per finding, then schema and time-join notes."""
+    """The lines doctor prints: a header, one line per finding, then schema, extra-joint and time-join notes."""
     n, m = result["people"], result["frames"]
     counts = f"{m} frame{'s' * (m != 1)}"
     if result["kind"] != "frames":
@@ -99,6 +100,10 @@ def render(result: dict) -> list[str]:
     lines += [_line(f) for f in result["findings"]]
     if result["schema_error"]:
         lines.append(f"schema: breaks {result['version']} at {result['schema_error']}")
+    extra = result.get("extra_joints")
+    if extra:
+        lines.append(f"extra joints: {', '.join(extra['names'])} on {extra['person_frames']} of {extra['of']} "
+                     "person-frames (optional extra_joints beside the 17 joints)")
     return lines + result["warnings"]
 
 
@@ -189,14 +194,16 @@ def _line(f: dict) -> str:
     return f"{name}: {f['verdict']}: {f['reason']}" + (f"; fix: {f['fix']}" if f["fix"] else "")
 
 
-def _people(doc):
+def people_in(doc):
+    """Every person dict of every frame of a Part 2 document, in file order; a frame or person that is not an object,
+    or a frame without a people list, is skipped. Public: part2.foot_check reads files the same way."""
     for f in doc.get("frames", []):
         if isinstance(f, dict) and isinstance(f.get("people"), list):
             yield from (p for p in f["people"] if isinstance(p, dict))
 
 
 def _ids(doc) -> set:
-    return {json.dumps(p.get("id")) for p in _people(doc)}
+    return {json.dumps(p.get("id")) for p in people_in(doc)}
 
 
 def _lacks_t_ms(doc) -> bool:
@@ -210,6 +217,20 @@ def _schema_error(doc, kind) -> str | None:
     except ContractError as e:
         return str(e)
     return None
+
+
+def _extra_joints(doc, kind) -> dict | None:
+    """{names, person_frames, of}: the foot points a pose3d file carries in the optional `extra_joints` (TICKET-043),
+    names in part2.joints.EXTRA order (any other name after them, sorted); None when no person carries any."""
+    if kind != "pose3d":
+        return None
+    people = list(people_in(doc))
+    carrying = [p for p in people if isinstance(p.get("extra_joints"), dict) and p["extra_joints"]]
+    if not carrying:
+        return None
+    seen = {str(n) for p in carrying for n in p["extra_joints"]}
+    return {"names": [n for n in EXTRA if n in seen] + sorted(seen - set(EXTRA)),
+            "person_frames": len(carrying), "of": len(people)}
 
 
 def _warnings(doc) -> list[str]:

@@ -5,7 +5,7 @@ import json
 import math
 from pathlib import Path
 
-from part2.joints import CANONICAL
+from part2.joints import CANONICAL, EXTRA
 
 # Optional top-level keys of pose3d.json (CONTRACT.md): the mirror flag, the first frame's PTS and
 # the provenance block. Readers ignore them.
@@ -21,7 +21,8 @@ class ContractError(ValueError):
 
 
 def validate_pose3d(doc) -> None:
-    """{frames: [{frame, t_ms, people: [{id, joints: {<joint>: {x, y, z, conf}}}]}], mirrored?, fps?, t0_pts_ms?, provenance?}"""
+    """{frames: [{frame, t_ms, people: [{id, joints: {<joint>: {x, y, z, conf}}, extra_joints?: {<foot point>:
+    {x, y, z, conf}}}]}], mirrored?, fps?, t0_pts_ms?, provenance?}"""
     frames = _list(doc, "frames", "pose3d")
     _optional(doc, "pose3d", ("mirrored", "fps", "t0_pts_ms", "provenance"))
     for i, f in enumerate(frames):
@@ -34,12 +35,22 @@ def validate_pose3d(doc) -> None:
             joints = _dict(p, "joints", pat)
             if set(joints) != set(CANONICAL):
                 raise ContractError(f"{pat}.joints", f"expected the 17 canonical joints, got {sorted(joints)}")
-            for name, j in joints.items():
-                for key in ("x", "y", "z", "conf"):
-                    _num(j, key, f"{pat}.joints.{name}")
-                if not 0 <= j["conf"] <= 1:
-                    raise ContractError(f"{pat}.joints.{name}.conf", f"{j['conf']} not in [0, 1]")
+            _points(joints, f"{pat}.joints")
+            if "extra_joints" in p:  # TICKET-043: optional, any of the six foot points, never another name
+                extra = _dict(p, "extra_joints", pat)
+                if not set(extra) <= set(EXTRA):
+                    raise ContractError(f"{pat}.extra_joints", f"unknown name(s) {sorted(set(extra) - set(EXTRA))}")
+                _points(extra, f"{pat}.extra_joints")
     _increasing([f["frame"] for f in frames], "pose3d.frames[].frame")
+
+
+def _points(points: dict, at: str) -> None:
+    """Each {x, y, z, conf}: finite numbers, conf in [0, 1]."""
+    for name, j in points.items():
+        for key in ("x", "y", "z", "conf"):
+            _num(j, key, f"{at}.{name}")
+        if not 0 <= j["conf"] <= 1:
+            raise ContractError(f"{at}.{name}.conf", f"{j['conf']} not in [0, 1]")
 
 
 def validate_tracks(doc) -> None:

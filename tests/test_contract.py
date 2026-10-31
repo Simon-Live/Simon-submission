@@ -444,6 +444,42 @@ def test_the_table_has_the_rows_the_spec_names():
     assert {r["consumer"] for r in contract.compatibility()} >= {"Part 3", "Part 4", "Part 5", "Part 6", "Part 7"}
 
 
+def _one_line(text):
+    return " ".join(text.split())
+
+
+def test_contract_says_how_extra_joints_behave_in_a_mirrored_file():
+    """TICKET-043 (J2 review R1): a mirrored file's `extra_joints` carry the labels of `joints`, Part 3 leaves them
+    alone, so a reader that mirrors the joints swaps the feet's left_/right_ names and negates x. Said in the
+    `mirrored` section and in the Extra joints rules, and a compatibility row for Part 5 reading the feet directly."""
+    text = (ROOT / "CONTRACT.md").read_text()
+    mirrored = _one_line(text.split("### `mirrored`", 1)[1].split("\n### ", 1)[0])
+    rules = [_one_line(line) for line in text.split("### Extra joints (optional)", 1)[1].split("\n### ", 1)[0].splitlines()
+             if line.startswith("| Mirrored file |")]
+    assert len(rules) == 1
+    for said in (mirrored, rules[0]):
+        for part in ("same labels as `joints`", "Part 3", "does not touch `extra_joints`",
+                     "swap the `left_` and `right_` names", "negate x"):
+            assert part in said, part
+    assert "`left_heel` becomes `right_heel`" in mirrored
+    direct = [r for r in contract.compatibility() if r["consumer"].startswith("Part 5 (feet")]
+    assert len(direct) == 1 and direct[0]["producer_file"] == "pose3d.json with `extra_joints`"
+    assert direct[0]["result"] == "works with option" and direct[0]["version"] == "part2.pose3d/2026-10-28"
+    for part in ("canonical frame", "`mirrored: true`", "swap the `left_` and `right_` names", "negate x",
+                 "Part 3 does not touch `extra_joints`"):
+        assert part in direct[0]["option"], part
+    assert "via Part 3" in {r["result"] for r in contract.compatibility() if r["consumer"] == "Part 5"}  # the old row stays
+    _, md_rows = _md_table("Compatibility table")
+    assert any(row[2] == direct[0]["consumer"] and row[4] == direct[0]["option"] for row in md_rows)
+
+
+@pytest.mark.parametrize("path", ["CONTRACT.md", "contracts/compatibility.json", "docs/specs/integration-contract.md"])
+def test_the_foot_point_wording_has_no_em_dash_en_dash_or_spaced_hyphen(path):
+    for line in (ROOT / path).read_text().splitlines():
+        if "extra_joints" in line or "mirrored" in line:
+            assert "—" not in line and "–" not in line and " - " not in line, line
+
+
 # --- AC-C09 and AC-C-NFR-01: additive only ------------------------------------------------------
 
 def test_additive_fields_keep_part3s_rows_for_part2_at_7e11a7f():

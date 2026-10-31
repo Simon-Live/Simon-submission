@@ -16,6 +16,7 @@ import numpy as np
 
 from part2.joints import CANONICAL
 from part2.lifters import project
+from part2.refine import with_joints
 
 NAME = "temporal"
 USES_2D = False
@@ -45,13 +46,6 @@ def apply(doc: dict, ctx=None, params: dict | None = None) -> dict:
         people = [with_joints(p, new[(i, k)], K) if (i, k) in new else p for k, p in enumerate(f["people"])]
         frames.append({**f, "people": people})
     return {**doc, "frames": frames}
-
-
-def with_joints(person: dict, X: np.ndarray, K) -> dict:
-    X = np.round(X, 4)
-    uv = project(X, K)
-    return {**person, "kp3d_cam": {j: x.tolist() for j, x in zip(CANONICAL, X)},
-            "kp2d": {j: x.tolist() for j, x in zip(CANONICAL, np.round(uv, 2))}, "reproj_self_px": 0.0}
 
 
 def person_series(doc: dict) -> dict:

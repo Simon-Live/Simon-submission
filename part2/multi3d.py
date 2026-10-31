@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from part2 import contract
-from part2.canonical import convert, write_docs
+from part2.canonical import convert, with_extra_provenance, write_docs
 from part2.schema import optional_top, write_json
 
 
@@ -21,12 +21,13 @@ def tracks_to_boxes(tracks: dict) -> dict:
 
 
 def split_people(pose3d: dict) -> dict:
-    """{id: pose3d doc with only that person's stream}; the optional top-level keys are copied."""
+    """{id: pose3d doc with only that person's stream}; the optional top-level keys are copied, with
+    provenance.extra_joints recomputed for that person's own frames (TICKET-043)."""
     ids = sorted({p["id"] for f in pose3d["frames"] for p in f["people"]}, key=str)
-    return {pid: {"frames": [
+    return {pid: with_extra_provenance({"frames": [
         {"frame": f["frame"], "t_ms": f["t_ms"],
          "people": [p for p in f["people"] if p["id"] == pid]}
-        for f in pose3d["frames"]], **optional_top(pose3d)} for pid in ids}
+        for f in pose3d["frames"]], **optional_top(pose3d)}) for pid in ids}
 
 
 def write_pose_streams(body3d_doc: dict, out_dir, smooth: bool = False, extras: dict | None = None) -> dict:

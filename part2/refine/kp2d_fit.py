@@ -14,6 +14,7 @@ with w_j = BETA * min(score_j, 1)^GAMMA / (1 + (|pi(X_j) - u_j| / (C H))^2): RTM
 score is high, and a joint that stays far from it (a swapped or hidden limb) stops pulling (Cauchy weights,
 refreshed every iteration). H is the person's height in px from SAM's own projection: the largest nose to
 ankle-midpoint distance over the clip. Gauss-Newton with Levenberg damping; the output's kp2d is its projection.
+The six foot points (TICKET-043) are not fitted: each moves rigidly with its own ankle's displacement.
 
 PARAMS were fixed from label-free objectives only and committed before the rung's one gold scoring: on the seated
 clip's 91 unlabelled frames (seated) and the dance clip (dance), unrefined -> chosen, agreement with RTMPose-x
@@ -27,6 +28,7 @@ import numpy as np
 
 from part2.joints import BONES, CANONICAL
 from part2.lifters import project
+from part2.refine import with_joints
 
 NAME = "kp2d-fit"
 USES_2D = True
@@ -62,14 +64,6 @@ def apply(doc: dict, ctx, params: dict | None = None) -> dict:
 
 def joints(person: dict) -> np.ndarray:
     return np.array([person["kp3d_cam"][j] for j in CANONICAL], dtype=float)
-
-
-def with_joints(person: dict, X: np.ndarray, K) -> dict:
-    """The person with new camera-space joints; kp2d is their projection (reproj_self_px 0)."""
-    X = np.round(X, 4)
-    uv = project(X, K)
-    return {**person, "kp3d_cam": {j: x.tolist() for j, x in zip(CANONICAL, X)},
-            "kp2d": {j: np.round(x, 2).tolist() for j, x in zip(CANONICAL, uv)}, "reproj_self_px": 0.0}
 
 
 def person_tracks(doc: dict) -> dict:

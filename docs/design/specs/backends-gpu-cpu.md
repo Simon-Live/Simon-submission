@@ -1,6 +1,6 @@
 # Spec: Part 2 inference backends (GPU on the local RTX 5090, CPU with a lifter registry)
 
-> Copy of `docs/specs/backends-gpu-cpu.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/backends-gpu-cpu.md` from the maintainers' working repo at `1bfac92`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -76,7 +76,9 @@ cam3d = l.lift(kp2d, conf, K, image_size, fps)        # kp2d (n, 17, 2) px; conf
 `body3d.json` (unchanged shape, `part2/body3d.py` docstring): `{model, camera_frame: "opencv", K, image_size,
 frames: [{frame, t_ms, people: [{id, bbox, kp3d_cam, kp2d, reproj_self_px}]}]}`. Both backends add an optional
 top-level `provenance` object (below); `model` names the backend's model string (`sam-3d-body-dinov3` or
-`rtmpose-x+<lifter>`).
+`rtmpose-x+<lifter>`). TICKET-043: the gpu backend's people also carry `extra_kp3d_cam` and `extra_kp2d`, the six
+foot points of MHR70 rows 15 to 20, which become pose3d.json's optional `extra_joints`
+(`docs/design/specs/integration-contract.md` "Extra joints"); the cpu backend's people carry none (RTMPose-x gives 17 points).
 
 ### GPU backend (`part2/backends/gpu_sam3db.py`)
 - Wraps `part2.body3d.estimate`; `body3d.load_estimator` gains a device argument (`cuda` default, never hard-coded
@@ -182,7 +184,7 @@ plus `+dirty` when a tracked file differs, `unknown` without git (check-2.md AC-
 | `part2/lifters/fixed_bones.py` | lifter B |
 | `part2/lifters/motionbert.py` | lifter C, joint mapping tables |
 | `part2/eval_3d.py` | the 3D bar |
-| `part2/body3d.py` (modified) | device argument; no other behaviour change |
+| `part2/body3d.py` (modified) | device argument; no other behaviour change. TICKET-043: the six foot points per person and `moved_feet` (spec `integration-contract.md`) |
 | `part2/cli.py` (modified) | `--backend`, `--lifter`; the NO_GPU_ENV message names `make setup-gpu` and `--backend cpu` |
 | `part2/check.py` (modified) | adds the `cpu_backend_3d` block (layout in `docs/design/specs/check-2.md`) |
 | `envs/gpu-cu128/requirements.txt`, `envs/gpu-cu128/constraints.txt`, `envs/gpu-cu128/setup.sh` | GPU profile (published under `envs/**`) |

@@ -1,6 +1,6 @@
 # Spec: `make check-2` on committed reproducible outputs, the CPU 3D bar and the one-person ladder
 
-> Copy of `docs/specs/check-2.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/check-2.md` from the maintainers' working repo at `1bfac92`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -131,6 +131,10 @@ DEGRADED ending: still red after rung 4, publish the best rung's outputs and num
 names it DEGRADED with mean, p95, max and frames over, per set. No new filming (operator ruling on #337): the
 second set is human-annotated open data at any angle (TICKET-037). Rung `temporal` does not apply to the COCO
 images (each is its own one-frame clip) and passes them through unchanged.
+Foot points (TICKET-043): the rungs keep pose3d.json's optional `extra_joints` with the refined skeleton. `kp2d-fit`
+and `temporal` do not fit them: each moves rigidly with its own ankle's displacement. `focal` takes the feet of the
+run it chooses. Every score here reads the 17 joints only, so the foot points change no number of `make check-2`;
+their own measure is `make check-feet` (`docs/design/specs/integration-contract.md` AC-C16), reported and never gated.
 
 ### Ladder parameters (label-free, committed before each rung's gold scoring)
 Each rung's values come from the objectives below and are committed before its one `make check-2`.

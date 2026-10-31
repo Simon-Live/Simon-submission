@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
+from part2.body3d import moved_feet
 from part2.joints import CANONICAL
 from part2.lifters import bone_cv, project
 
@@ -127,6 +128,17 @@ def apply(names, body3d_doc: dict, frames_dir, model2d=None, keypoints=None, bac
     for name in resolve(names):
         doc = module(name).apply(doc, ctx)
     return doc
+
+
+def with_joints(person: dict, X: np.ndarray, K) -> dict:
+    """The body3d person with new camera-space joints X (17, 3), as every rung writes it: joints rounded to 0.1 mm,
+    kp2d their projection through K (rounded to 0.01 px) and reproj_self_px 0. Foot points, when the person has
+    them, move rigidly with their own ankle's displacement (body3d.moved_feet, TICKET-043)."""
+    X = np.round(X, 4)
+    uv = np.round(project(X, K), 2)
+    kp3d_cam = {j: x.tolist() for j, x in zip(CANONICAL, X)}
+    return {**person, "kp3d_cam": kp3d_cam, "kp2d": {j: x.tolist() for j, x in zip(CANONICAL, uv)},
+            "reproj_self_px": 0.0, **moved_feet(person, kp3d_cam, K)}
 
 
 # ---- label-free objectives (docs/specs/check-2.md "Gold set is the test set", rule 1) -------------------------

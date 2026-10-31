@@ -1,4 +1,4 @@
-.PHONY: outputs stock-outputs setup-gpu smoke-gpu setup-cpu check-2-cpu contract-sync contract-check check-2-contract hpc-sync hpc-setup hpc-run hpc-status hpc-outputs setup test run-single run-multi check-2 gpu-outputs gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
+.PHONY: outputs stock-outputs setup-gpu smoke-gpu setup-cpu check-2-cpu contract-sync contract-check check-2-contract hpc-sync hpc-setup hpc-run hpc-status hpc-outputs setup test run-single run-multi check-2 check-feet gpu-outputs gpu-up gpu-sync gpu-setup gpu-smoke gpu-shell gpu-down
 
 POD := user-part2-gpu
 INPUT ?=
@@ -83,6 +83,17 @@ run-multi:
 # make check-2 SCORED=out scores out/<mode>/ instead. Refresh the scored outputs with make outputs.
 check-2:
 	@$(SCORED_ENV)uv run --quiet part2 check
+
+# Foot points (TICKET-043, docs/specs/integration-contract.md AC-C16): coverage, segment-length consistency and
+# plausibility of pose3d.json's optional extra_joints in the scored outputs of the gpu backend, the one that writes
+# them. Prints a JSON report; reported, never gated: exit 0 whatever the numbers, 2 only when a file cannot be read.
+# --scored names every expected file (single, class, class-local-open and one coco-single/<image_id> per image of the
+# committed manifest), so a missing file is reported as unreadable, not dropped as a wildcard would drop it.
+# make check-2 does not read it. make check-feet SCORED=out checks out/<mode>/ instead.
+FEET_DIR = $(if $(SCORED),$(SCORED),fixtures/output/scored)
+
+check-feet:
+	@uv run --quiet python -m part2.foot_check --scored $(FEET_DIR)
 
 # Run inference for the fixtures on the GPU pod and bring the outputs back to out/.
 gpu-outputs: gpu-sync
