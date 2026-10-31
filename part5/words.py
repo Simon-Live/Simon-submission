@@ -80,14 +80,16 @@ def describe(fault, qualify=True):
 
 # Timed vocabulary (ADR-0009): measure → body noun for "{side} <noun> too far <lateral>".
 LATERAL_NOUNS = {"foot_out": "foot", "thigh_out": "knee", "upper_arm_out": "arm", "forearm_out": "hand"}
-# measure → (one side, both sides) for "too low"; only the direction "less".
-LOW_PHRASES = {"thigh_forward": ("{side} thigh {q}too low", "thighs {q}too low"),
-               "upper_arm_forward": ("{side} arm {q}too low", "arms {q}too low")}
+# measure → (one side, both sides) for "too low"; only the direction "less". A thigh is not here: "thigh too
+# low" reads as squatting too deep on a squat, the opposite of the fault, so `thigh_forward` keeps its
+# "not raised enough" words in the timed line (R9). An arm held too low is just that.
+LOW_PHRASES = {"upper_arm_forward": ("{side} arm {q}too low", "arms {q}too low")}
 
 
 def describe_timed(fault, qualify=True):
-    """The timed words for a `detect.Fault`: "too far right" and "too low" where `describe` says
-    "out" or "not raised enough". Everything else is the plain line."""
+    """The timed words for a `detect.Fault`: "too far right" and, for an arm, "too low" where `describe`
+    says "out" or "not raised far enough". Everything else is the plain line, thigh_forward included
+    ("right thigh not raised enough"; size: "not quite", "not", "nowhere near", as in `describe`)."""
     size = band(fault.magnitude_deg, fault.threshold_deg) if qualify else "plain"
     q = QUALIFIERS[size][0]
     lateral = lateral_for(fault.measure, fault.direction, fault.side)

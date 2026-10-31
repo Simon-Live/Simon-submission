@@ -1,5 +1,6 @@
-"""The integration contract (docs/specs/integration-contract.md): the five published schemas, the
-compatibility table, `part5 contract` and `make check-5-contract` (AC-C01 to AC-C04, AC-C12, AC-C-NFR-01).
+"""The integration contract (docs/specs/integration-contract.md): the six published schemas, the
+compatibility table, `part5 contract` and `make check-5-contract` (AC-C01 to AC-C04, AC-C12, AC-C-NFR-01), and
+the J1 additions (docs/specs/journey-followup.md AC-C02, AC-C03: the replay schema and row, the goldens).
 AC-C10 (plain errors from `make contracts-check`) is covered by tests/test_sync_contracts.py."""
 import copy
 import json
@@ -39,7 +40,7 @@ def summary():
 # ---------------------------------------------------------------- AC-C01
 @pytest.mark.parametrize("name,version", [("analysis", "1.5.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
-                                          ("metrics", "1.0.0")])
+                                          ("metrics", "1.1.0"), ("replay", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
     schema = json.loads((ROOT / "contracts" / f"{name}.schema.json").read_text())
     assert schema["$id"] == f"{BASE}{name}.schema.json"
@@ -48,7 +49,7 @@ def test_ac_c01_schema_is_published_with_id_and_version(name, version):
     jsonschema.Draft202012Validator.check_schema(schema)
 
 
-def test_ac_c01_check_lists_the_five_schemas_and_the_copies_as_valid(summary):
+def test_ac_c01_check_lists_the_six_schemas_and_the_copies_as_valid(summary):
     by_name = {s["name"]: s for s in summary["schemas"]}
     assert set(contract.SCHEMA_NAMES) <= set(by_name)
     assert {"part3/skeleton", "part3/animation-part5", "part4/animation"} <= set(by_name)
@@ -69,8 +70,13 @@ def test_ac_c02_every_committed_fixture_validates_and_loads(summary):
 
 
 def test_ac_c03_golden_outputs_rebuild_byte_for_byte(summary):
-    goldens = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "fixtures/output").glob("analysis*.json"))
-    assert goldens and summary["rebuilt_identical"] == goldens
+    goldens = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "fixtures/output").glob("*.json"))
+    assert len(goldens) == 3 and summary["rebuilt_identical"] == goldens
+    assert "fixtures/output/replay.example.json" in goldens
+
+
+def test_ac_c03_the_golden_replay_is_validated_and_its_lengths_checked(summary):
+    assert summary["validated"]["by_schema"]["replay"] == 1 and summary["validated"]["replays_checked"] == 1
 
 
 # ---------------------------------------------------------------- a corrupted copy makes the check exit 1
@@ -126,6 +132,20 @@ def shift_golden(root):
     p.write_text(json.dumps(doc, indent=2) + "\n")
 
 
+def shorten_replay_map(root):
+    p = root / "fixtures/output/replay.example.json"
+    doc = json.loads(p.read_text())
+    doc["exp_to_fol"] = doc["exp_to_fol"][:-1]
+    p.write_text(json.dumps(doc))
+
+
+def shift_replay_time(root):
+    p = root / "fixtures/output/replay.example.json"
+    doc = json.loads(p.read_text())
+    doc["follower_t"][5] += 0.001
+    p.write_text(json.dumps(doc, allow_nan=False) + "\n")
+
+
 def accept_native(root):
     p = root / "fixtures/input/contract/part3/native/skeleton.json"
     doc = json.loads(p.read_text())
@@ -137,6 +157,8 @@ def accept_native(root):
     (corrupt_follower, "part3/followers/squat_front_correct/skeleton.json"),
     (break_copied_schema, "part3/animation-part5.schema.json"),
     (shift_golden, "analysis.example.json"),
+    (shorten_replay_map, "replay.example.json: exp_to_fol: has 90 entries but expected has 91 frames"),
+    (shift_replay_time, "replay.example.json: rebuilt through the pipeline it differs"),
     (accept_native, "native/skeleton.json"),
 ])
 def test_a_corrupted_copy_makes_check_5_contract_exit_1(mini_root, tmp_path, corrupt, expect):
@@ -376,6 +398,7 @@ def test_a_refused_analysis_validates_and_a_refusal_with_faults_does_not():
     d = json.loads(CORRECT.read_text())
     d["schema_version"] = "1.1.0"
     d["status"] = {"code": "different_movement", "text": "This does not look like a squat."}
+    d["score"] = None   # a refused take of 1.3.0 or earlier had no score; from 1.4.0 none is refused
     assert errors("analysis", d) == []
     validate_analysis(d)
     refused_with_faults = dict(doc_1_1(), status={"code": "different_movement", "text": "No."})
@@ -538,3 +561,96 @@ def test_metrics_schema_rejects_a_malformed_check_document(change):
     d = metrics_doc()
     change(d)
     assert errors("metrics", d)
+
+
+# ---------------------------------------------------------------- the replay and live rows (journey-followup.md J-6)
+def test_ac_c02_contract_json_lists_the_replay_schema_and_the_new_rows(capsys):
+    assert cli.main(["contract", "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    replay = next(s for s in doc["schemas"] if s["name"] == "replay")
+    assert replay["version"] == "1.0.0" and replay["file"] == "contracts/replay.schema.json"
+    assert replay["schema"]["$id"] == replay["id"] and replay["title"] == "Part 5 replay.json (simon.replay.v1)"
+    rows = {r["file"]: r for r in doc["table"]}
+    assert rows["`replay.json`"]["format"] == "`simon.replay.v1`" and rows["`replay.json`"]["verdict"] == "works"
+    assert "analyse --replay" in rows["`replay.json`"]["producer"]
+    live = next(r for r in doc["table"] if r["producer"] == "Part 5 `analyse --live`")
+    assert live["verdict"] == "works with an option"
+    for word in ("`--live`", "`serve --live`", "`SIMON5_LIVE=1`", "`META_LIVE=1`"):
+        assert word in live["file"]
+    assert "Baseten key file" in live["fix"] and "template stays the default" in live["fix"]
+
+
+def test_ac_c02_contract_prints_the_replay_schema_line(capsys):
+    assert cli.main(["contract"]) == 0
+    out = capsys.readouterr().out
+    assert "contracts/replay.schema.json" in out and "simon.replay.v1" in out
+
+
+def test_ac_c02_contract_md_names_the_replay_file_live_mode_and_the_text_timed_rule():
+    text = (ROOT / "CONTRACT.md").read_text()
+    for needle in ("`replay.json`", "`simon.replay.v1`", "part5 analyse --expected <file> --follower <file> "
+                   "--out <analysis.json> [--replay <replay.json>] [--live]", "`--live`", "`SIMON5_LIVE=1`",
+                   "`META_LIVE=1`", "`contracts/replay.schema.json`", "### The replay file", "### Live mode"):
+        assert needle in text, needle
+    assert "`coaching` equal `text_timed`" in text and "`coaching` equals `text`" not in text
+    assert "which is what the tests, `make check-5`, `make check-5-contract` and `make output-examples` always use" in text
+
+
+def test_ac_c02_the_schema_list_in_contract_md_carries_every_schema_and_version():
+    text = (ROOT / "CONTRACT.md").read_text()
+    for s in contract.schema_entries():
+        assert f"| `{s['name']}` | `{s['version']}` | `contracts/{s['name']}.schema.json` |" in text
+
+
+# ---------------------------------------------------------------- metrics 1.1.0: the score report
+def metrics_with_score():
+    d = metrics_doc()
+    sl = {"n": 12, "min": 100, "median": 100.0, "max": 100, "grades": {"A": 12}}
+    empty = {"n": 0, "min": None, "median": None, "max": None, "grades": {}}
+    d["gate"]["sweep"] = {"foot_out right": [[0, 100], [4, 100], [8, 100], [12, 86]],
+                          "trunk_lean center": [[0, 100], [5, None]]}
+    d["detection_sha256"] = "1" * 64
+    d["report"]["score"] = {
+        "gated": False, "version": "simon.score.v1",
+        "heldout": {"seed": 31, "slices": {"good/0": sl, "low/2": empty},
+                    "targets": {"good/0": "pass", "good/1": "fail", "good/2": "no takes"}},
+        "tuning": {"seed": 5, "slices": {"good/0": sl}},
+        "kit": {"grades": {"B": 3, "F": 1}}, "stock": {"grades": {}}}
+    return d
+
+
+def test_metrics_1_1_0_accepts_the_score_report_check_5_writes():
+    assert errors("metrics", metrics_with_score()) == []
+
+
+def test_metrics_1_1_0_still_accepts_a_1_0_0_document():
+    assert errors("metrics", metrics_doc()) == []
+
+
+@pytest.mark.parametrize("change", [
+    lambda d: d["report"]["score"]["heldout"]["slices"]["good/0"]["grades"].update(E=1),
+    lambda d: d["report"]["score"]["heldout"]["slices"]["good/0"]["grades"].update(A=-1),
+    lambda d: d["report"]["score"]["heldout"]["slices"]["good/0"].pop("median"),
+    lambda d: d["report"]["score"]["heldout"]["targets"].update({"good/0": "maybe"}),
+    lambda d: d["report"]["score"].update(gated=True),
+    lambda d: d["report"]["score"].update(version="simon.score.v2"),
+    lambda d: d["report"]["score"].pop("kit"),
+    lambda d: d["gate"]["sweep"]["foot_out right"].append([16]),
+    lambda d: d["gate"]["sweep"]["foot_out right"].append([16, "high"]),
+    lambda d: d.update(detection_sha256="abc"),
+])
+def test_metrics_1_1_0_rejects_a_malformed_score_report(change):
+    d = metrics_with_score()
+    change(d)
+    assert errors("metrics", d)
+
+
+def test_contract_json_piped_into_a_reader_that_stops_early_is_quiet_and_exits_0():
+    """`part5 contract --json | head` closes the pipe after a few lines; that is not a crash."""
+    proc = subprocess.Popen([sys.executable, "-m", "part5", "contract", "--json"], stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, cwd=ROOT)
+    first = proc.stdout.readline()
+    proc.stdout.close()
+    err = proc.stderr.read()
+    assert first.strip() == b"{" and proc.wait() == 0
+    assert err == b""

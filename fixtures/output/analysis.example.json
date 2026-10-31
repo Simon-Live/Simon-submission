@@ -155,8 +155,8 @@
       "why": "Right elbow bent more than the example at 0.7 s",
       "kind": "range",
       "at_s": 0.7,
-      "window": null,
-      "points": null,
+      "window": 0,
+      "points": 17.2,
       "measure": "elbow_flexion",
       "side": "right",
       "joint": "right_elbow"
@@ -166,11 +166,22 @@
       "why": "Elbows wider than the example at 0.4 s",
       "kind": "range",
       "at_s": 0.4,
-      "window": null,
-      "points": null,
+      "window": 0,
+      "points": 16.6,
       "measure": "upper_arm_out",
       "side": "both",
       "joint": "shoulder"
+    },
+    {
+      "cue": "Slow down to match the trainer",
+      "why": "You took 80% of the trainer's time",
+      "kind": "tempo",
+      "at_s": 0.1,
+      "window": 0,
+      "points": null,
+      "measure": null,
+      "side": null,
+      "joint": null
     }
   ],
   "phrasing": {
@@ -189,6 +200,73 @@
         "model": null,
         "fallback_reason": null
       }
-    ]
+    ],
+    "selected_by": "default"
+  },
+  "score": {
+    "version": "simon.score.v1",
+    "value": 66,
+    "grade": "D",
+    "components": {
+      "faults": 33.86,
+      "similarity": 0.58
+    },
+    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.1,
+          2.5
+        ],
+        "value": 66,
+        "grade": "D",
+        "components": {
+          "faults": 33.86,
+          "similarity": 0.58
+        },
+        "misses": [
+          {
+            "text": "elbows wider than the example at 0.4 s",
+            "measure": "upper_arm_out",
+            "side": "both",
+            "joint": "shoulder",
+            "t_s": [
+              0.4,
+              2.1
+            ],
+            "at_s": 0.4,
+            "points": 16.6,
+            "cue": "Keep your elbows closer in",
+            "cue_kind": "range",
+            "direction": "more"
+          },
+          {
+            "text": "right elbow bent more than the example at 0.7 s",
+            "measure": "elbow_flexion",
+            "side": "right",
+            "joint": "right_elbow",
+            "t_s": [
+              0.667,
+              2.167
+            ],
+            "at_s": 0.7,
+            "points": 17.2,
+            "cue": "Straighten your right arm more",
+            "cue_kind": "range",
+            "direction": "more"
+          }
+        ],
+        "tempo": {
+          "ratio": 0.8,
+          "cue": "Slow down to match the trainer"
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.8,
+      "cue": "Slow down to match the trainer"
+    }
   }
 }

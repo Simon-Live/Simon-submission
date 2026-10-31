@@ -80,6 +80,10 @@ _IN = (r"far in|inward\w*|close\w*|together|narrow\w*|tuck\w*|knock\w*|squeez\w*
        r"against|in toward")
 _UP = r"rais\w*|lift\w*|high\w*|up|forward|ahead|elevat\w*|swing\w*"
 _DOWN = r"low\w*|hang\w*|drop\w*|behind|short|back"
+# A thigh "too low" reads as squatting too deep, the opposite of "not raised enough", so for thigh_forward
+# the low words carry no direction ("ambiguous" matches no fault) and the line must say "not raised enough" (R9).
+_THIGH_LOW = r"low\w*|hang\w*|drop\w*"
+_THIGH_SHORT = r"behind|short|back"
 _BENT = r"bent|bend\w*|flex\w*|curl\w*|fold\w*|deep\w*|sink\w*|tight\w*"
 _STRAIGHT = r"straight\w*|extend\w*|locked|stiff|open|shallow"
 _CAVE = r"cav\w*|collaps\w*|buckl\w*|knock\w*|inward\w*|far in|pinch\w*|squeez\w*|tuck\w*|fall\w* in|drift\w* in"
@@ -93,7 +97,8 @@ OUT_IN = [(_neg(_OUT), "less"), (_w(_IN), "less"), (_w(_OUT), "more")]
 RULES = {
     "upper_arm_out": OUT_IN, "forearm_out": OUT_IN, "thigh_out": OUT_IN, "foot_out": OUT_IN,
     "upper_arm_forward": [(_neg(_UP), "less"), (_w(_DOWN), "less"), (_w(_UP), "more")],
-    "thigh_forward": [(_neg(_UP), "less"), (_w(_DOWN), "less"), (_w(_UP), "more")],
+    "thigh_forward": [(_neg(_UP), "less"), (_w(_THIGH_LOW), "ambiguous"), (_w(_THIGH_SHORT), "less"),
+                      (_w(_UP), "more")],
     "elbow_flexion": [(_neg(_BENT), "less"), (_w(_STRAIGHT), "less"), (_w(_BENT), "more")],
     "knee_flexion": [(_neg(_BENT), "less"), (_w(_STRAIGHT), "less"), (_w(_BENT), "more")],
     "knee_valgus": [(_neg(_CAVE), "less"), (_w(_KNEE_OUT), "less"), (_w(_CAVE), "more")],

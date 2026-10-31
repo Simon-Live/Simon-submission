@@ -49,6 +49,42 @@
     "backend": "template",
     "model": null,
     "fallback_reason": null,
-    "faults": []
+    "faults": [],
+    "selected_by": "default"
+  },
+  "score": {
+    "version": "simon.score.v1",
+    "value": 100,
+    "grade": "A",
+    "components": {
+      "faults": 0.0,
+      "similarity": 0.0
+    },
+    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.2,
+          2.767
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.0
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": 0.86,
+          "cue": null
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.86,
+      "cue": null
+    }
   }
 }

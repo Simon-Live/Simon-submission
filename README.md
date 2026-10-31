@@ -51,7 +51,7 @@ make check-5           # done-check
 
 | Command | What it does | Exit |
 |---|---|---|
-| `make check-5` | Analyses every labelled take and prints the `simon.part5.check.v1` metrics JSON on stdout, a summary on stderr. Gates the held-out good-light slices; reports seed 5, low light, dropout and real takes. | 0 gate passed, 1 gate failed, 2 a take or set is missing, the held-out seed has no freeze record, `rules.json` differs from the frozen hash, or a scored seed scores differently from its recorded attempt |
+| `make check-5` | Analyses every labelled take and prints the `simon.part5.check.v1` metrics JSON on stdout, a summary on stderr. Gates the held-out good-light slices; reports seed 5, low light, dropout and real takes. | 0 gate passed, 1 gate failed, 2 a take or set is missing, the held-out seed has no freeze record, `rules.json` differs from the frozen hash, the `score` params in `rules.json` differ from the hash frozen in `fixtures/score-heldout.json`, or a scored seed scores differently from its recorded attempt |
 | `make test` | Unit tests. | 0 |
 | `make check-5-contract` | Validates every schema and committed fixture, and rebuilds the shipped `fixtures/output/analysis*.json` byte for byte. | 0 |
 | `make report-real` | Real takes, reported and never gated: Part 3's kit against Part 4's `part3-squat`, and Part 2's takes. Writes `out/report-real/report.json`. | 0 when every real take was analysed |

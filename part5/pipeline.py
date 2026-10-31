@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .align import ALIGN_MEASURES, Alignment, align, diagonal_alignment
+from .align import ALIGN_MEASURES, Alignment, AlignmentError, align, diagonal_alignment
 from .detect import detect, load_rules
 from .guard import GuardResult, check_movement
 from .guard import diagnostics as guard_diagnostics
@@ -19,7 +19,7 @@ from .lateral import lateral_m
 from .normalise import normalise
 from .output import build_analysis, validate_analysis
 from .phrasing import BACKENDS, phrase
-from .repwise import RepRun, compare, rep_entries, reference_entry
+from .repwise import RepRun, TooManyPairs, compare, rep_entries, reference_entry
 from .guard import (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NO_USABLE_TEXT, NOT_ENOUGH_VISIBLE, OK,
                     OK_TEXT, REFUSAL_TEXT)
 from .visibility import (NOT_ENOUGH_TEXT, clip_usable, hide_unseen, load_conf, measures_of, moving_check,
@@ -57,7 +57,8 @@ class PipelineResult:
     `follower` is the follower clip on its own frames; `follower_positions` is it resampled onto
     the expected clock (what was aligned), and `to_original[j]` is the follower file's frame for
     resampled frame `j`. `alignment` indexes the resampled frames. `guard` is the movement
-    guard's verdict (None when the take could not be aligned, ADR-0012).
+    guard's verdict (None when the take could not be aligned, ADR-0012). `vis` is the pair's `Visibility`
+    (ADR-0011), which the score needs to leave out the measures the camera did not see.
     """
     analysis: dict
     alignment: Alignment | None
@@ -68,12 +69,15 @@ class PipelineResult:
     guard: GuardResult | None = None
     reps: list | None = None   # RepResult per follower rep when the take was compared rep by rep (ADR-0010)
     rep_run: RepRun | None = None
+    vis: object = None
 
 
 def analyse(expected, follower, rules=None):
     """`expected`/`follower` are paths, or objects with `path` plus ids that pass through
-    to the output (e.g. `take_id`). Raises `io.InputError` for a bad file, `AnalysisError`
-    if the takes can't be aligned."""
+    to the output (e.g. `take_id`). Raises `io.InputError` for a bad file and `AnalysisError` for a bad ref, an
+    unknown phrasing backend or a pair over the work bounds (frames, frame rate, frame pairs). A readable pair
+    within the bounds is always analysed (ADR-0012): one that does not match the example, or shows too little of
+    the body, comes back with a warning and grade F, never a refusal."""
     return run(expected, follower, rules).analysis
 
 
@@ -114,7 +118,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     ctx = _Context(exp_ref, fol_ref, exp, fol, vis, moving_info, notes,
                    (phrasing, phrasing_client, live, selected_by), score)
     if usable is not None and not usable:   # nothing the camera sees can carry timing
-        return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT)
+        return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT, rules)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
     # `to_original` maps each resampled frame back to the follower file's own frame index.
     fps = _bounded_fps(exp, exp_ref, fol, fol_ref)
@@ -123,18 +127,21 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     align_names = list(ALIGN_MEASURES) if usable is None else usable
     for m in (exp_m, fol_m):
         if np.mean([np.isfinite(m[n]).mean() for n in align_names]) < MIN_AVAILABLE:
-            return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT)   # mostly missing joints: nothing to compare
+            return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT, rules)   # mostly missing joints: nothing to compare
     try:
         alignment = align(exp.positions, fol_positions, usable)
         guard = check_movement(alignment, exp_m, fol_m, rules)
-    except ValueError:   # e.g. a follower with more reps than the whole-clip band can follow
+    except AlignmentError:   # a follower with more reps than the whole-clip band can follow; any other error is a bug
         alignment, guard = None, None
     # Low match as a whole, and a clip holds several reps: compare one repetition at a time (ADR-0010).
-    rep_run = None if guard is not None and guard.ok else \
-        compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times, vis)
+    try:
+        rep_run = None if guard is not None and guard.ok else \
+            compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times, vis, max_cells=MAX_CELLS)
+    except TooManyPairs as e:   # reps x reference frames^2 is bounded like the whole pair
+        raise _too_many_pairs(fol_ref, e.follower_frames, e.expected_frames) from None
     accepted = rep_run is not None and rep_run.guard.ok
     if guard is None and not accepted:   # cannot be aligned at all: analysed unaligned, never refused
-        return _unaligned(ctx, LOW_MATCH, REFUSAL_TEXT)
+        return _unaligned(ctx, LOW_MATCH, REFUSAL_TEXT, rules)
     if accepted:
         guard, faults, times = rep_run.guard, rep_run.faults, rep_run.times
         diagnostics = _rep_diagnostics(rep_run, exp, fol, fps, rules)
@@ -150,7 +157,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     if not vis.full:   # additive to 1.3.0; a full-body take has no `visibility`, so its document is unchanged
         diagnostics["visibility"] = vis.diagnostics(moving_info)
     result = PipelineResult(None, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
-                            reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None)
+                            reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None, vis=vis)
     return _finish(ctx, result, faults, times, diagnostics, guard.stats, not guard.ok, rules)
 
 
@@ -198,17 +205,18 @@ def _finish(ctx, result, faults, times, diagnostics, stats, low, rules):
     return result
 
 
-def _unaligned(ctx, code, text):
+def _unaligned(ctx, code, text, rules):
     """A take nothing could be aligned or measured on (ADR-0012): analysed with a warning, no faults, score 0,
-    and a straight-line stand-in alignment so the replay still plays."""
+    and a straight-line stand-in alignment so the replay still plays. `rules` is the caller's, which `match`
+    reports the limits of."""
     ctx.notes[code] = text
     diagnostics = {"warnings": []}
     if not ctx.vis.full:
         diagnostics["visibility"] = ctx.vis.diagnostics(ctx.moving)
     n_fol = ctx.fol.n_frames
     result = PipelineResult(None, diagonal_alignment(ctx.exp.n_frames, n_fol), ctx.exp, ctx.fol, ctx.fol.positions,
-                            np.arange(n_fol), None)
-    return _finish(ctx, result, [], [], diagnostics, None, True, load_rules())
+                            np.arange(n_fol), None, vis=ctx.vis)
+    return _finish(ctx, result, [], [], diagnostics, None, True, rules)
 
 
 def _fault_times(fault, exp, fol, fol_positions, alignment, to_original):
@@ -266,11 +274,16 @@ def _bounded_fps(exp, exp_ref, fol, fol_ref):
     if frames > MAX_FRAMES:
         raise AnalysisError(f"{fol_ref['path']}: {frames:.0f} frames at the example's {fps:g} frames per "
                             f"second ({float(fol.t[-1]) - float(fol.t[0]):g} s), the limit is {MAX_FRAMES}")
-    cells = frames * exp.n_frames
-    if cells > MAX_CELLS:
-        raise AnalysisError(f"{fol_ref['path']}: {frames:.0f} follower frames against {exp.n_frames} expected "
-                            f"frames are too long to compare together (the limit is {MAX_CELLS:,} frame pairs)")
+    if frames * exp.n_frames > MAX_CELLS:
+        raise _too_many_pairs(fol_ref, frames, exp.n_frames)
     return fps
+
+
+def _too_many_pairs(fol_ref, follower_frames, expected_frames):
+    """The plain error both work bounds raise when the frame pairs to align pass MAX_CELLS: the whole pair
+    here, and the reps together in `repwise.compare`."""
+    return AnalysisError(f"{fol_ref['path']}: {follower_frames:.0f} follower frames against {expected_frames} "
+                         f"expected frames are too long to compare together (the limit is {MAX_CELLS:,} frame pairs)")
 
 
 def resample(positions, t, fps, tolerance=FPS_TOLERANCE):

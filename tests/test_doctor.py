@@ -54,6 +54,7 @@ def refused():
     doc["schema_version"] = "1.1.0"
     doc["status"] = {"code": "different_movement", "text": "This does not look like the expected movement."}
     doc["diagnostics"]["guard"] = {"residual": 3.1, "timing_corr": 0.1, "span_share": 0.5}
+    doc["score"] = None   # before ADR-0012 a refused take had no score
     return doc
 
 
@@ -144,7 +145,7 @@ def test_ac_c08_an_ok_analysis_has_no_warning(tmp_path, capsys):
     doc = json.loads(EXAMPLE.read_text())
     doc.update(schema_version="1.1.0", status={"code": "ok", "text": "Analysed."})
     code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
-    assert code == 0 and "warning" not in out and "note:" not in out
+    assert code == 0 and "warning" not in out and "status" not in out
 
 
 def test_ac_c08_an_analysis_missing_format_exits_1(tmp_path, capsys):
@@ -367,3 +368,177 @@ def test_report_to_dict_is_pure_json(capsys):
     r = doctor.inspect_file(PART3_NATIVE)
     doc = copy.deepcopy(r.to_dict())
     assert json.loads(json.dumps(doc, allow_nan=False)) == doc
+
+
+# ---------------------------------------------------------------- a replay.json (journey-followup.md, AC-R03)
+REPLAY = ROOT / "fixtures/output/replay.example.json"
+
+
+def small_replay(frames=4):
+    """The golden replay cut to `frames` expected frames and 3 follower frames (still a sound file)."""
+    doc = json.loads(REPLAY.read_text())
+    doc["expected"], doc["expected_t"] = doc["expected"][:frames], doc["expected_t"][:frames]
+    doc["follower"], doc["follower_t"] = doc["follower"][:3], doc["follower_t"][:3]
+    doc["exp_to_fol"] = [0, 1, 1, 2][:frames]
+    return doc
+
+
+@pytest.mark.parametrize("consumer", ["part5", "part7"])
+def test_ac_r03_a_valid_replay_is_accepted_and_named(capsys, consumer):
+    code, out, _ = run([REPLAY, "--for", consumer], capsys)
+    first = out.splitlines()[0]
+    assert code == 0 and "simon.replay.v1 1.0.0" in first and first.endswith(f"accepted for {consumer}")
+    assert "contracts/replay.schema.json 1.0.0" in out and "part5.contract.replay_problems" in out
+    assert "note: 91 expected frames and 76 follower frames" in out
+
+
+def test_ac_r03_the_default_consumer_is_told_part5_only_writes_the_file(capsys):
+    code, out, _ = run([REPLAY], capsys)
+    assert code == 0 and "Part 5 writes this file" in out
+    assert "Part 5 writes this file" not in run([REPLAY, "--for", "part7"], capsys)[1]
+
+
+def test_ac_r03_json_mode_names_the_kind_and_version(capsys):
+    code, out, _ = run([REPLAY, "--json"], capsys)
+    doc = json.loads(out)
+    assert code == 0 and doc["kind"] == "replay" and doc["version"] == "1.0.0" and doc["problems"] == []
+
+
+def test_ac_r03_a_small_replay_is_accepted(tmp_path, capsys):
+    assert run([write(tmp_path, "replay.json", small_replay())], capsys)[0] == 0
+
+
+@pytest.mark.parametrize("change,field,words", [
+    (lambda d: d.update(exp_to_fol=d["exp_to_fol"][:3]), "exp_to_fol", "has 3 entries but expected has 4 frames"),
+    (lambda d: d.update(expected_t=d["expected_t"][:2]), "expected_t", "has 2 entries but expected has 4 frames"),
+    (lambda d: d.update(follower_t=d["follower_t"] + [9.0]), "follower_t", "has 4 entries but follower has 3 frames"),
+    (lambda d: d["exp_to_fol"].__setitem__(2, 7), "exp_to_fol[2]", "is 7, outside the 3 follower frames (0 to 2)"),
+    (lambda d: d["expected_t"].__setitem__(2, d["expected_t"][1]), "expected_t[2]", "does not come after expected_t[1]"),
+    (lambda d: d["follower_t"].__setitem__(1, -1.0), "follower_t[1]", "does not come after follower_t[0]"),
+])
+def test_ac_r03_a_replay_that_disagrees_with_itself_exits_1_naming_the_field(tmp_path, capsys, change, field, words):
+    doc = small_replay()
+    change(doc)
+    code, out, _ = run([write(tmp_path, "replay.json", doc)], capsys)
+    assert code == 1 and "rejected for part5" in out
+    assert f"{field}: " in out and words in out and "; fix: " in out
+    assert run([write(tmp_path, "r7.json", doc), "--for", "part7"], capsys)[0] == 1
+
+
+def test_ac_r03_a_bone_past_the_joints_is_named_by_the_schema_and_without_it_by_the_check(monkeypatch, tmp_path, capsys):
+    doc = small_replay()
+    doc["bones"][0] = [0, 17]
+    code, out, _ = run([write(tmp_path, "replay.json", doc)], capsys)
+    assert code == 1 and "bones[0][1]: " in out
+    monkeypatch.setattr(contract, "have_jsonschema", lambda: False)
+    code, out, _ = run([write(tmp_path, "replay.json", doc)], capsys)
+    assert code == 1 and "bones[0][1]: is 17, outside the 17 joints (0 to 16)" in out
+
+
+def test_ac_r03_an_index_past_the_follower_is_counted_once_with_the_first_named(tmp_path, capsys):
+    doc = small_replay()
+    doc["exp_to_fol"] = [5, 6, 1, 9]
+    code, out, _ = run([write(tmp_path, "replay.json", doc)], capsys)
+    assert code == 1 and "exp_to_fol[0]: is 5" in out and "(2 more entries are out of range)" in out
+
+
+def test_ac_r03_a_schema_violation_in_a_replay_is_named_before_the_lengths(tmp_path, capsys):
+    doc = small_replay()
+    del doc["coordinate_frame"]
+    doc["format"] = "simon.replay.v1"
+    doc["expected"][0] = [[0.0, 0.0]]
+    code, out, _ = run([write(tmp_path, "replay.json", doc)], capsys)
+    assert code == 1 and "coordinate_frame: missing" in out and "expected[0]" in out
+    assert "part5.contract.replay_problems" not in out   # the lengths run only on a file the schema accepts
+
+
+def test_ac_r03_a_repetition_replay_checks_its_reps(tmp_path, capsys):
+    doc = small_replay()
+    doc["reps"] = [{"expected_frames": [0, 3], "follower_frames": [0, 2], "ok": True}]
+    code, out, _ = run([write(tmp_path, "ok.json", doc), "--for", "part7"], capsys)
+    assert code == 0 and "1 repetitions (reps)" in out
+    doc["reps"][0]["follower_frames"] = [0, 3]
+    code, out, _ = run([write(tmp_path, "bad.json", doc)], capsys)
+    assert code == 1 and "reps[0].follower_frames[1]: is 3, outside the 3 follower frames" in out
+
+
+def test_ac_r03_without_jsonschema_a_replay_is_checked_structurally(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(contract, "have_jsonschema", lambda: False)
+    assert run([REPLAY], capsys)[0] == 0
+    doc = small_replay()
+    del doc["exp_to_fol"]
+    doc["follower_t"] = "soon"
+    code, out, _ = run([write(tmp_path, "replay.json", doc)], capsys)
+    assert code == 1 and "exp_to_fol: missing" in out and "follower_t: must be an array" in out
+
+
+def test_ac_r03_a_replay_with_extra_fields_is_accepted(tmp_path, capsys):
+    doc = small_replay()
+    doc["note"] = {"anything": 1}
+    assert run([write(tmp_path, "replay.json", doc)], capsys)[0] == 0
+
+
+# ---------------------------------------------------------------- what Part 7 reads (AC-C02, ADR-0012, ADR-0014)
+def warned_analysis():
+    """A 1.5.0 analysis of a take that earned a low_match warning: faults at confidence "low", the score capped at F."""
+    doc = json.loads(EXAMPLE.read_text())
+    doc["warnings"] = [{"code": "low_match", "text": "This take doesn't closely match the trainer's movement, so the "
+                                                     "grade is capped at F. Check that you picked the right movement."}]
+    doc["match"] = {"quality": "low", "residual": 0.6122, "timing_corr": 0.4998,
+                    "limits": {"max_residual": 0.5677, "min_timing_corr": 0.8336}}
+    for f in doc["faults"]:
+        f["confidence"] = "low"
+    doc["score"].update(value=59, grade="F", capped_by=["low_match"])
+    return doc
+
+
+def test_part7_accepts_a_warned_1_5_0_analysis_and_notes_what_it_carries(tmp_path, capsys):
+    doc = warned_analysis()
+    assert doc["schema_version"] == "1.5.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
+    code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
+    assert code == 0 and "simon.analysis.v1 1.5.0; accepted for part7" in out
+    assert "warning: low_match: This take doesn't closely match" in out and "warning: warning" not in out
+    assert 'note: 2 of 2 faults have confidence "low" (a low match)' in out
+    assert "note: score 59 out of 100, grade F, capped at F by low_match" in out
+    assert "note: 2 of 2 faults carry at_s and text_timed" in out
+    assert "note: score.timeline has 1 window (basis windows): show it as a timeline" in out
+
+
+def test_part7_accepts_a_warned_analysis_without_jsonschema_too(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(contract, "have_jsonschema", lambda: False)
+    code, out, _ = run([write(tmp_path, "analysis.json", warned_analysis()), "--for", "part7"], capsys)
+    assert code == 0 and "part5.output.validate_analysis" in out and "warning: low_match:" in out
+
+
+def test_part7_accepts_its_own_minimal_1_4_0_fallback_analysis(tmp_path, capsys):
+    """What Part 7 writes when it has to: 1.4.0, status ok, no faults, no confidence field, no score."""
+    doc = {"format": "simon.analysis.v1", "schema_version": "1.4.0",
+           "expected": {"path": "expected.json"}, "follower": {"path": "follower.json"},
+           "status": {"code": "ok", "text": "Compared with the expected movement."}, "faults": []}
+    code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
+    assert code == 0 and "simon.analysis.v1 1.4.0; accepted for part7" in out and "warning" not in out
+    assert "note: no insights and no cues (written before 1.5.0)" in out
+    assert "note: no score (written before 1.2.0, or not scored): show the faults only" in out
+    assert json.loads(run([write(tmp_path, "a.json", doc), "--for", "part7", "--json"], capsys)[1])["problems"] == []
+
+
+def test_part7_gets_the_time_and_score_notes_for_the_shipped_goldens(capsys):
+    code, out, _ = run([EXAMPLE, "--for", "part7"], capsys)
+    assert code == 0 and "note: score 66 out of 100, grade D" in out and "capped" not in out
+    assert "note: 2 of 2 faults carry at_s and text_timed" in out
+    code, out, _ = run([NO_FAULTS, "--for", "part7"], capsys)
+    assert code == 0 and "note: score 100 out of 100, grade A" in out
+
+
+def test_part7_is_told_when_a_fault_has_no_time(tmp_path, capsys):
+    doc = json.loads(EXAMPLE.read_text())
+    for f in doc["faults"]:
+        for key in ("at_s", "follower_t_s", "follower_runs", "text_timed"):
+            f.pop(key)
+    code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
+    assert code == 0 and "faults carry no at_s (written before 1.2.0): show text without a time" in out
+
+
+def test_every_committed_golden_replay_is_accepted_for_part7(capsys):
+    for path in sorted((ROOT / "fixtures/output").glob("replay*.json")):
+        assert run([path, "--for", "part7"], capsys)[0] == 0, path

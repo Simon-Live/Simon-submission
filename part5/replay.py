@@ -81,11 +81,17 @@ def _follower_frames(rep):
 def _rep_replay(result):
     """The replay of a take compared rep by rep (ADR-0010): the expected reference repeated once per
     follower rep, and the whole follower take played against it. `reps` lists, per follower rep, the
-    expected frames it is shown against, the follower file's frames and whether the guard passed it."""
+    expected frames it is shown against (frames of this tiled list, not of the expected file), the follower
+    file's frames and whether the guard passed it. `expected_t` starts at the reference's own time in the
+    expected file."""
     ref, reps = result.reps[0].expected, result.reps
     n, k = ref.n_frames, len(reps)
     fps = float(clip_fps(ref))
     exp_to_fol = [f for r in reps for f in _follower_frames(r)]
+    # The first copy of the reference carries the example file's own times; each further copy follows one rep
+    # (and one frame step) later, so the list still strictly increases.
+    period = float(ref.t[-1] - ref.t[0]) + 1.0 / fps
+    expected_t = [round(float(t) + i * period, 6) for i in range(k) for t in ref.t]
     return {
         "format": FORMAT,
         "schema_version": SCHEMA_VERSION,
@@ -95,7 +101,7 @@ def _rep_replay(result):
         "exp_to_fol": exp_to_fol,
         "joints": list(JOINTS),
         "bones": [list(b) for b in BONES],
-        "expected_t": [round(i / fps, 6) for i in range(n * k)],
+        "expected_t": expected_t,
         "follower_t": [round(float(x), 6) for x in result.follower.t],
         "coordinate_frame": dict(COORDINATE_FRAME),
         "reps": [{"expected_frames": [i * n, (i + 1) * n - 1], "follower_frames": list(r.span), "ok": bool(r.ok)}

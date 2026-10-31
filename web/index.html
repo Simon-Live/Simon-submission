@@ -14,7 +14,7 @@
   <main>
     <header>
       <h1>Compare your take with the example</h1>
-      <p class="lead">Pick an example movement and a recorded take, or upload your own files, then press Analyse. The result lists each way the take differs from the example, in plain words, and replays both in 3D.</p>
+      <p class="lead">Pick an example movement and a recorded take, or upload your own files, then press Analyse. The result gives a score and a grade, lists each way the take differs from the example in plain words with the time it happens, and replays both in 3D.</p>
     </header>
 
     <div class="tabs" role="tablist" aria-label="Sections" data-testid="tabs">
@@ -57,19 +57,22 @@
         <div class="field phrasing">
           <label for="phrasing">Wording of the faults</label>
           <select id="phrasing" data-testid="phrasing" aria-describedby="phrasing-hint phrasing-error" disabled></select>
-          <p class="hint" id="phrasing-hint">The template wording is always available. A model wording is offered only when this server can run it.</p>
+          <p class="hint" id="phrasing-hint" data-testid="phrasing-hint">The template wording is always available. A model wording is offered only when this server can run it.</p>
           <p class="error" id="phrasing-error" role="alert" data-testid="phrasing-error" hidden></p>
         </div>
         <button type="submit" id="analyse" data-testid="analyse" disabled>Analyse</button>
         <p id="form-error" class="error" role="alert" data-testid="form-error" hidden></p>
       </form>
 
-      <section id="result" aria-labelledby="result-heading">
+      <section id="result" aria-labelledby="result-heading" data-stale="false">
         <h2 id="result-heading">Result</h2>
+        <p id="result-stale" class="stale" role="status" data-testid="result-stale" hidden></p>
         <p id="result-status" role="status" data-testid="result-status">Results appear here after you press Analyse.</p>
-        <div id="refusal-panel" class="refusal" data-testid="refusal-panel" role="group" aria-labelledby="refusal-heading" hidden>
-          <h3 id="refusal-heading">Not the same movement</h3>
-          <p id="refusal-text" data-testid="refusal-text"></p>
+        <p id="score" class="score" data-testid="score" hidden></p>
+        <p id="score-note" class="hint" data-testid="score-note" hidden></p>
+        <div id="warning-panel" class="warning" data-testid="warning-panel" role="group" aria-labelledby="warning-heading" hidden>
+          <h3 id="warning-heading">Before you trust this result</h3>
+          <ul id="warning-list" data-testid="warning-list"></ul>
         </div>
         <p id="phrasing-status" class="hint" data-testid="phrasing-status" hidden></p>
 
@@ -110,6 +113,10 @@
           </section>
 
           <div class="fault-column">
+            <section id="insights-panel" class="insights" aria-labelledby="insights-heading" hidden>
+              <h3 id="insights-heading">What to work on first</h3>
+              <ol id="insights" class="insight-list" data-testid="insights"></ol>
+            </section>
             <ul id="fault-list" class="faults" data-testid="fault-list" aria-label="Faults found" hidden></ul>
             <p><a id="download" class="download" data-testid="download" download="analysis.json" hidden>Download analysis.json</a></p>
           </div>

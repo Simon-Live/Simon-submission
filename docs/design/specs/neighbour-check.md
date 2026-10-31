@@ -6,6 +6,8 @@ Request Type: new-feature
 Risk Level: routine
 Master spec: `part5-fault-analysis.md`. Companion: `integration-contract.md`. Ticket: TICKET-012.
 Use case: uc-integration-contract. Milestone: M1.
+Revised 2026-10-31 for ADR-0012 (always analyse): a take that is not the example's movement is no longer refused
+with exit 3, it is analysed with a `low_match` warning and graded F, so the mismatch rows expect `warned`.
 
 ## Overview
 A firm-only script that clones the current upstream `main` of Parts 2, 3 and 4 into a temporary
@@ -32,8 +34,9 @@ As the team at stitching time, I see whether today's Parts 2, 3 and 4 files go t
 2. For each committed Part 2 `pose3d.json` (single, class, dance): Part 3 `python3 -m part3 run --in ...
    --out <tmp> --view part5` in its clone.
 3. `python -m part5 doctor <out> --for part5` on each.
-4. `python -m part5 analyse` on every pair in the table below; each step passes when the exit code
-   equals the expected one.
+4. `python -m part5 analyse` on every pair in the table below; each step passes when its outcome is the
+   expected one: an exit code (`0`), or `warned` (exit 0, and the analysis that was written has a `low_match`
+   warning and `score.grade` `F`, judged from the file).
 5. Part 2's `fixtures/output/stock/<clip>/pose3d.json`, when Part 2 has published it, through Part 3
    `--view part5` and then the stock pairs below; before that, those rows are recorded as `skipped` with
    the reason, never as a pass.
@@ -41,24 +44,27 @@ As the team at stitching time, I see whether today's Parts 2, 3 and 4 files go t
 7. Hand-off shape in Part 6's `CONTRACT.md` matches `integration-contract.md`; mismatch is a red step.
 
 ### Expected outcome per pair (`analyse --expected <E> --follower <F>`)
-| Follower F | Expected E | Expected exit | Why |
+| Follower F | Expected E | Expected outcome | Why |
 |---|---|---|---|
-| Part 2 `single` (a seated stretch) via Part 3 `--view part5` | Part 4 `part3-squat` | 3 (`different_movement`); 0 while the committed file is the provisional squat (sha256 `433ae2ed`) | not a squat; a refusal is the pass (the provisional squat is a matched pair) |
-| Part 2 `single` via Part 3 `--view part5` | Part 4 `exercise` | 3; 0 while it is the provisional squat | not the exercise movement |
-| Part 2 `class` (cat-cow yoga) via Part 3 `--view part5` | Part 4 `part3-squat` | 3 | not a squat (AC-004) |
-| Part 2 `dance` via Part 3 `--view part5` | Part 4 `part3-squat` | 3 | not a squat |
-| Part 2 `scored/single` (the seated stretch) via Part 3 `--view part5` | Part 4 `part3-squat` | 3 | not a squat |
-| Part 2 `scored/single` via Part 3 `--view part5` | Part 4 `exercise` | 3 | not the exercise movement |
-| Part 3 kit takes (`fixtures/input/contract/part3/followers/`, from #34) | Part 4 `part3-squat` | 0 | matched real pair |
-| Stock 5034577 (front) via Parts 2 and 3 | stock 5034562 (side) | 0 | matched real pair (`real-takes.md`) |
-| Stock 8837221 (three-quarter) via Parts 2 and 3 | stock 5034562 (side) | 0 | matched real pair |
+| Part 2 `single` (a seated stretch) via Part 3 `--view part5` | Part 4 `part3-squat` | `warned`; exit 0 while the committed file is the provisional squat (sha256 `433ae2ed`) | not a squat; a `low_match` warning and grade F is the pass (the provisional squat is a matched pair) |
+| Part 2 `single` via Part 3 `--view part5` | Part 4 `exercise` | `warned`; exit 0 while it is the provisional squat | not the exercise movement |
+| Part 2 `class` (cat-cow yoga) via Part 3 `--view part5` | Part 4 `part3-squat` | `warned` | not a squat (AC-004) |
+| Part 2 `dance` via Part 3 `--view part5` | Part 4 `part3-squat` | `warned` | not a squat |
+| Part 2 `scored/single` (the seated stretch) via Part 3 `--view part5` | Part 4 `part3-squat` | `warned` | not a squat |
+| Part 2 `scored/single` via Part 3 `--view part5` | Part 4 `exercise` | `warned` | not the exercise movement |
+| Part 3 kit takes (`fixtures/input/contract/part3/followers/`, from #34) | Part 4 `part3-squat` | exit 0 | matched real pair |
+| Stock 5034577 (front) via Parts 2 and 3 | stock 5034562 (side) | exit 0 | matched real pair (`real-takes.md`) |
+| Stock 8837221 (three-quarter) via Parts 2 and 3 | stock 5034562 (side) | exit 0 | matched real pair |
 
-Exit 1 or 2 on any row is red. A 0 on a mismatch row or a 3 on a matched row is red and reported with
-the guard statistics.
+Exit 1 or 2 on any row is red. A `warned` row is red when `analyse` exits anything but 0, or when the analysis
+it wrote has no `low_match` warning or a grade other than F (a different movement graded as a match). Exit 3 is
+no longer produced (ADR-0012) and is red on every row. A red row is reported with the exit code, the warning
+codes, the grade and the guard statistics of the analysis that was written.
 
 ## API / Interface Contract
 `scripts/neighbour-check.sh [--keep]`. Writes `progress/neighbour-check-<YYYYMMDD>.json`:
-`{date, commits: {part2, part3, part4, part6}, steps: [...], passed, failed, blocker}`. Exit 0 when every
+`{date, commits: {part2, part3, part4, part6}, steps: [...], passed, failed, skipped, blocker}`, each step
+`{step, id, command, expected, exit, result, note}` with `expected` an exit code or `"warned"`. Exit 0 when every
 step met its expectation, 1 when any step is red, 3 on a named blocker (network, clone). Temp dir under
 `mktemp -d`, removed by a trap with `find -delete` on that exact prefix (never `rm -rf` on a variable);
 `--keep` leaves it and prints the path.
@@ -68,10 +74,11 @@ step met its expectation, 1 when any step is red, 3 on a named blocker (network,
 Given a run, the JSON lists every step with its command and exit code and each repo's commit.
 ### AC-N02: red reported
 Given a step that fails, overall exit is 1 and the JSON names it; nothing is retried silently.
-### AC-N03: refusal expected
+### AC-N03: warned expected
 Given Part 2's `single` (the seated stretch), `class` or `dance` against the squat, the step passes only
-when `analyse` exits 3; given a matched pair (the provisional squat `single` included, classified by its
-sha256), only when it exits 0.
+when `analyse` exits 0 and the analysis it wrote has a `low_match` warning and `score.grade` `F` (judged
+from the file: an exit 0 with no warning, or a grade above F, is red, and so is an exit 3); given a matched pair
+(the provisional squat `single` included, classified by its sha256), only when it exits 0.
 ### AC-N04: blocker named
 Given no network, exit 3 with `blocker` naming the failed clone.
 ### AC-N05: never published
@@ -110,7 +117,7 @@ ASM-001 (neighbour file shapes). The repo names were listed with `gh repo list t
 ### Concern 1: the chain depends on Part 3's Python setup
 Kept: a setup failure is reported as red with the message, which is what stitching day needs to know.
 ### Concern 2: expectations hard-coded per step
-Kept: the expectations are the use cases (refusal for a different movement), not tuned numbers.
+Kept: the expectations are the use cases (a warning and grade F for a different movement), not tuned numbers.
 
 ## Deviations from PRD
 None.

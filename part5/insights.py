@@ -10,16 +10,25 @@ insight is added last and always kept (`score.tempo`). A take without a timeline
 distinct fault cue in the order of `faults` (largest first) with `points` null.
 
 Every word is template text (part5.cues, part5.words), so the same take always gets the same insights.
+
+An insight that points at a reported fault says it in that fault's own timed words (its `text_timed`, "Right foot
+too far right at 1.9 s"), so the insight and the fault row never describe the same fault in two vocabularies
+(ADR-0014, amendment of 2026-10-31). A miss no reported fault matches (a rep's own miss the take does not report)
+and a tempo item keep the plain-words templates below.
 """
+import re
+
 from .words import phrase
 
 MAX_INSIGHTS = 5
+_TIME_TAIL = re.compile(r" at \d+(?:\.\d+)? s$")
 
 
 def insights_of(analysis):
     score = analysis.get("score") or {}
+    faults = analysis.get("faults", [])
     timeline = score.get("timeline")
-    items = _from_timeline(timeline, score.get("basis")) if timeline else _from_faults(analysis.get("faults", []))
+    items = _from_timeline(timeline, score.get("basis"), faults) if timeline else _from_faults(faults)
     tempo = _tempo_insight(score)
     room = MAX_INSIGHTS - (1 if tempo else 0)
     return items[:room] + ([tempo] if tempo else [])
@@ -27,6 +36,24 @@ def insights_of(analysis):
 
 def _sentence(text):
     return text[:1].upper() + text[1:]
+
+
+def _timed_words(fault):
+    """The fault's timed words, `text_timed` without its time ("right foot too far right"), or None without them."""
+    timed = (fault or {}).get("text_timed")
+    return _TIME_TAIL.sub("", timed) if timed else None
+
+
+def _observation(words):
+    """The words as one sentence: a phrase that ends in advice ("more upright than the example, lean forward
+    more") keeps its first clause, since the cue already says what to do."""
+    return _sentence(words.split(", ")[0])
+
+
+def _fault_of(faults, miss):
+    """The reported fault a miss repeats (same measure, side and direction), or None."""
+    key = (miss.get("measure"), miss.get("side"), miss.get("direction"))
+    return next((f for f in faults if (f.get("measure"), f.get("side"), f.get("direction")) == key), None)
 
 
 def _item(source, why, at_s, window, points):
@@ -42,12 +69,12 @@ def _from_faults(faults):
             continue
         seen.add(f["cue"])
         at = f.get("at_s")
-        observed = _sentence(f["text"].split(", ")[0])
+        observed = _observation(_timed_words(f) or f["text"])
         out.append(_item(f, observed + (f" at {at:.1f} s" if at is not None else ""), at, None, None))
     return out
 
 
-def _from_timeline(timeline, basis):
+def _from_timeline(timeline, basis, faults=()):
     compared = [k for k, w in enumerate(timeline) if w.get("compared", True)]
     groups = {}   # cue -> {"first": (window, miss), "points": float, "windows": set}
     for k in compared:
@@ -60,22 +87,26 @@ def _from_timeline(timeline, basis):
     out = []
     for g in groups.values():
         k, m = g["first"]
-        out.append(_item(m, _why(m, len(g["windows"]), len(compared), basis), m.get("at_s"), k,
+        out.append(_item(m, _why(m, len(g["windows"]), len(compared), basis, _fault_of(faults, m)), m.get("at_s"), k,
                          round(g["points"] / len(compared), 1)))
     return sorted(out, key=lambda x: (-x["points"], x["at_s"] is None, x["at_s"] or 0.0, x["cue"]))
 
 
-def _why(miss, n_windows, n_compared, basis):
-    """What was seen and where: "Left knee not bent enough (3 of 8 reps)", "... (2 times, first at 4.1 s)"."""
-    # the observation only: a phrase that ends in advice ("more upright than the example, lean forward more")
-    # keeps its first clause, since the cue already says what to do
-    seen = _sentence(phrase(miss["measure"], miss["direction"], miss["side"]).split(", ")[0])
+def _why(miss, n_windows, n_compared, basis, fault=None):
+    """What was seen and where. A miss that repeats a reported `fault` says the fault's timed words and the
+    time, then how often: "Right foot too far right at 1.9 s (3 of 8 reps)", "... at 1.9 s (2 times)". Any
+    other miss says it in plain words: "Left knee not bent enough (3 of 8 reps)", "... (2 times, first at 4.1 s)"."""
+    words = _timed_words(fault)
+    seen = _observation(words or phrase(miss["measure"], miss["direction"], miss["side"]))
     at = miss.get("at_s")
+    when = f" at {at:.1f} s" if at is not None else ""
+    lead = seen + when if words else seen   # the insight's own time, which is the fault's when they agree
     if basis == "reps" and n_compared > 1:
-        return f"{seen} ({n_windows} of {n_compared} reps)"
+        return f"{lead} ({n_windows} of {n_compared} reps)"
     if n_windows > 1:
-        return f"{seen} ({n_windows} times" + (f", first at {at:.1f} s)" if at is not None else ")")
-    return seen + (f" at {at:.1f} s" if at is not None else "")
+        first = f", first at {at:.1f} s" if at is not None and not words else ""
+        return f"{lead} ({n_windows} times{first})"
+    return seen + when
 
 
 def _tempo_insight(score):

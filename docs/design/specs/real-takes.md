@@ -41,7 +41,7 @@ As the team, I see Part 5's report on real takes, reported and never gated.
 - Stock roles: expected Pexels 5034562 (side); followers 5034577 (front) and 8837221 (three-quarter).
 - Matched real pairs (scored): Part 3's kit against Part 4's `part3-squat`; stock 5034577 (front) and
   8837221 (three-quarter) against stock 5034562 (side) as the expected clip.
-- Mismatch takes (each is analysed against the squat with a `low_match` warning and grade F, exit 0; ADR-0012 replaces the refusal and exit 3): Part
+- Mismatch takes (each is analysed against the squat with a `low_match` warning and grade F, exit 0; ADR-0012 replaces the old refusal and exit 3): Part
   2's committed `single` (a seated stretch, not a squat), `class` (cat-cow yoga) and `dance`, each
   through Part 3 `--view part5`.
 - Fallback set (no stock message by 2026-11-01T12:00Z): only the kit pairs are scored, the three
@@ -104,6 +104,14 @@ Given every real take missed, `make check-5` still exits on the gate alone.
 Given Part 2's `single` (seated stretch), `class` (cat-cow yoga) and `dance` takes against the squat,
 then each is `ok` with a `low_match` warning and grade F (CLI exit 0), and the report lists them as expected
 warnings (`expected_refusals` and `refused_as_expected` keep their names and now count those warnings; ADR-0012).
+The words a reader sees say "warned", never "refusal": the verdict of a mismatch take starts "analysed with a warning
+and grade F, as expected" (or "NOT warned" when the guard accepted it). Part 2's `single` while it is the
+provisional squat is a matched reference, and its row's verdict carries the reason itself, in one sentence: "a
+matched reference, not a clip expected to be warned: it is the same movement as the example (provisional barbell back
+squat)" (the parenthesis is the start of the manifest's `content`, up to its first comma). The manifest's longer `reason`
+stays in the entry (`reason`) and in the `part2:` note. The JSON keys `expected_refusal`, `refused_as_expected` and
+`refused` keep their names.
+Verified by `tests/test_real.py` (the verdict wording and the keys).
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |

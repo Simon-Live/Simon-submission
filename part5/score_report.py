@@ -21,9 +21,9 @@ from . import score
 from .cues import tempo_block
 from .detect import load_rules
 from .insights import insights_of
-from .measures import compute as measures_of
 from .output import fault_to_dict
 from .pipeline import _fault_times, run
+from .visibility import measures_of
 
 ROOT = Path(__file__).resolve().parent.parent
 EXERCISE_EXPECTED = ROOT / "fixtures" / "input" / "expected" / "exercise" / "animation.json"
@@ -36,10 +36,13 @@ TARGETS = {"good/0": "A", "good/1": "BC", "good/2": "DF"}   # slice -> the grade
 
 
 # --- one take ---
-def aligned_of(result):
-    """The `aligned` input of `score.compute` from a `PipelineResult` (the shape part5/score.py documents)."""
-    return {"expected": measures_of(result.expected.positions),
-            "follower": measures_of(result.follower_positions),
+def aligned_of(result, vis=None):
+    """The `aligned` input of `score.compute` from a `PipelineResult` or a `RepResult` (the shape part5/score.py
+    documents). `vis` (the pair's `Visibility`, ADR-0011; a `PipelineResult` carries its own) leaves the measures
+    the camera did not see as NaN, so they never reach the similarity term; a full-body pair is unchanged."""
+    vis = vis or getattr(result, "vis", None)
+    return {"expected": measures_of(result.expected.positions, vis),
+            "follower": measures_of(result.follower_positions, vis),
             "exp_to_fol": result.alignment.exp_to_fol}
 
 
@@ -76,7 +79,7 @@ def _rep_timeline(result, rules):
             # the take's coaching line carries the first rep's time, so each rep says its own (text_timed)
             faults.append(fault_to_dict(f, _fault_times(f, r.expected, fol, r.follower_positions, r.alignment,
                                                         r.to_original)))
-        aligned = aligned_of(r)
+        aligned = aligned_of(r, result.vis)
         scored = score.window_score({"status": {"code": "ok"}, "faults": faults}, aligned,
                                     np.arange(len(aligned["exp_to_fol"])), rules, p)
         if scored:   # ADR-0014: the rep's tempo is its length over the example rep's

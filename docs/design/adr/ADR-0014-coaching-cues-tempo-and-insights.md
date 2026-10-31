@@ -1,5 +1,5 @@
 # ADR-0014: Coaching cues, tempo and insights as an additive contract (schema 1.5.0)
-> Design copy of an architecture decision record. Where this text and the code disagree, the code and `CONTRACT.md` win. Index: `docs/design/README.md`.
+> Design copy of an architecture decision record. Host paths and workspace tooling are neutralised; where this text and the code disagree, the code and `CONTRACT.md` win. Index: `docs/design/README.md`.
 Status: Accepted
 Date: 2026-10-31
 
@@ -65,7 +65,7 @@ not which way the foot points. Making foot cues possible needs per-foot keypoint
 the heel, the big toe and the small toe of each foot (the COCO-WholeBody foot points), carried by Part 3
 through `simon.animation.v1` as optional joints, then a `foot_rotation` measure (the heel-to-big-toe vector
 against the hip line, in the ground plane) and an `ankle_inversion` measure (the heel, ankle and toe midpoint
-angle). This is follow-up work, not part of 1.5.0.
+angle). This is follow-up work.
 
 ## Consequences
 - **Positive**: a result screen can show "what to work on" with no analysis of its own; each cue is checked
@@ -78,3 +78,29 @@ angle). This is follow-up work, not part of 1.5.0.
 
 ## Assumptions
 - None new. The tempo bounds (0.85, 1.15) come from the dispatch of 2026-10-31 and are not calibrated.
+
+## Amendment (2026-10-31): an insight uses its fault's timed words
+Context: the delivery review put a fault row and its insight side by side. The row said "Right foot too far right
+at 1.9 s" (`text_timed`, ADR-0009) and the insight said "Right foot too far out at 1.9 s" (the plain `text`
+vocabulary): two words for one fault on one screen. The same review found that the timed words for a thigh that
+is not lifted ("thigh too low") read as squatting too deep, the opposite of the fault.
+
+Decision (operator, 2026-10-31):
+- An insight's `why` that points at a reported fault reuses that fault's timed words: its `text_timed` in sentence
+  case, with the time ("Right foot too far right at 1.9 s"). "Points at a fault" means a `faults[]` entry with
+  the same `measure`, `side` and `direction` as the insight's miss (or, without a timeline, the fault itself).
+  Where the cue missed more than once the count follows: "(3 of 8 reps)" for a take compared rep by rep,
+  "(2 times)" otherwise; the time stays the first miss's, which is the insight's `at_s`. A phrase that ends in
+  advice ("more upright than the example, lean forward more") still keeps its observation clause only, since the
+  cue says what to do.
+- A miss no reported fault matches (a rep's own miss that the take does not report) and a tempo item keep the
+  plain-words templates of the Decision above. Nothing else about insights changes: order, points, `at_s`,
+  `window`, the cap of 5 and the tempo item last.
+- `thigh_forward` with direction `less` says "not raised enough" in the timed words too (`part5/words.py`:
+  "right thigh not raised enough", sizes "not quite", "nowhere near"), not "too low". The cue ("Lower your hips
+  more") and `text` are unchanged. `upper_arm_forward` with direction `less` keeps "too low". The live timed
+  validator holds a Muse Spark line to the same meaning: for this fault the words "low", "lower", "hang" and
+  "drop" carry no direction, so "thigh too low" fails the word test and the line falls back to `text_timed`.
+
+Consequences: `why` is still template text and deterministic. The schema is unchanged (`why` stays a non-empty
+string), the goldens are rebuilt, and `make check-5` is unchanged (it reads faults, not their words).

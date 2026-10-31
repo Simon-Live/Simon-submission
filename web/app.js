@@ -1,16 +1,19 @@
 // The page: pick or upload an example movement and a take, Analyse, read the faults, replay them in
 // 3D, switch the wording, read the real-take report and see the result preview.
 import { analyse, getRealTakes, getSamples } from "./api.js";
-import { jointLabel, sizeSentence } from "./joints.js";
+import {
+  LOW_CONFIDENCE_NOTE, STALE_SENTENCE, WORDINGS, cappedNote, defaultWording, faultLine, faultsOf, insightItems, isLowConfidence,
+  isStale, jointLabel, noticesOf, resultSentence, scoreSentence, sizeSentence, wordingHint,
+} from "./joints.js";
 import { make, renderPreview } from "./preview.js";
 import { mountViewer } from "./viewer.js";
 
 const ANGLES = { front: "Front view", 45: "45 degree view", side: "Side view" };
 const LIGHTS = { good: "good light", low: "low light" };
-const WORDINGS = { template: "Template", "local-llm": "Local language model", "muse-spark": "Muse Spark" };
-const SOURCES = { "part3-kit": "Part 3 kit take", stock: "Stock clip", "part2-fallback": "Part 2 clip" };
+const SOURCES = { "part3-kit": "Part 3 kit take", stock: "Stock clip", "part2-fallback": "Part 2 clip",
+  "lateral-raise": "Multi-rep clip (lateral raise)" };
 const LABEL_SOURCES = { kit: "labels from the kit", visual: "labelled by eye", none: "no labels" };
-const GROUP_NAMES = { kit: "Part 3 kit takes", stock: "Stock clips", part2: "Part 2 clips" };
+const GROUP_NAMES = { kit: "Part 3 kit takes", stock: "Stock clips", part2: "Part 2 clips", reps: "Multi-rep clips" };
 const COUNTS = { tp: "found as labelled", fp: "found but not labelled", fn: "labelled but missed" };
 const TABS = ["compare", "real-takes", "preview"];
 const WAITING = "Comparing the take with the example.";
@@ -19,9 +22,10 @@ const SIDES = ["expected", "follower"];
 const $ = (id) => document.getElementById(id);
 const sentence = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const el = {
-  form: $("picker"), analyse: $("analyse"), error: $("form-error"), status: $("result-status"),
-  faults: $("fault-list"), download: $("download"), phrasing: $("phrasing"), phrasingError: $("phrasing-error"),
-  phrasingStatus: $("phrasing-status"), refusal: $("refusal-panel"), refusalText: $("refusal-text"),
+  form: $("picker"), analyse: $("analyse"), error: $("form-error"), status: $("result-status"), result: $("result"),
+  stale: $("result-stale"), faults: $("fault-list"), download: $("download"), phrasing: $("phrasing"), phrasingError: $("phrasing-error"),
+  phrasingHint: $("phrasing-hint"), phrasingStatus: $("phrasing-status"), score: $("score"), scoreNote: $("score-note"),
+  warnings: $("warning-panel"), warningList: $("warning-list"), insightsPanel: $("insights-panel"), insights: $("insights"),
   other: $("show-other-movements"), previewScreen: $("preview-screen"), previewFields: $("preview-fields"),
   picker: { expected: $("expected-picker"), follower: $("follower-picker") },
   file: { expected: $("upload-expected"), follower: $("upload-follower") },
@@ -31,8 +35,9 @@ const el = {
 };
 const viewer = mountViewer($("viewer"));
 let reading = Promise.resolve(); // a file the visitor just chose may still be being read
+// `shown` is the key of the choice the result on screen was made for (AC-V20); `wording` is the server's default wording.
 const state = { samples: { expected: [], followers: [], phrasing: ["template"] }, upload: { expected: null, follower: null },
-  analysis: null, rows: [], real: "idle", downloadUrl: null };
+  faults: [], rows: [], real: "idle", downloadUrl: null, shown: null, busy: false, wording: "template" };
 
 // ------------------------------------------------------------------------------ tabs
 
@@ -110,6 +115,7 @@ function clearUpload(side) {
   el.fileError[side].hidden = true;
   showUploadNote(side);
   if (side === "expected") fillFollowers();
+  refreshStale();
 }
 
 async function onFile(side) {
@@ -119,13 +125,43 @@ async function onFile(side) {
   state.upload[side] = { name: file.name, text: await file.text() };
   showUploadNote(side);
   if (side === "expected") fillFollowers();
+  refreshStale();
 }
 
 // A visitor's file is sent as text; the server answers any problem with it in plain words.
 const sideSpec = (side) => (state.upload[side] ? { upload: state.upload[side].text } : { sample: el.picker[side].value });
 
+// The choice on the page, as the request that Analyse would send: the example, the take and the wording.
+const currentChoice = () => [sideSpec("expected"), sideSpec("follower"), el.phrasing.value];
+const choiceKey = (choice) => JSON.stringify(choice);
+
+// AC-V20: a result made for another choice is marked and its download is taken away, so a saved analysis.json always
+// belongs to the pair the visitor pressed Analyse for. The line stays hidden while a request runs (the status says so).
+function refreshStale() {
+  const stale = isStale(state.shown, choiceKey(currentChoice()));
+  const line = stale && !state.busy;
+  el.result.dataset.stale = String(stale);
+  el.stale.textContent = line ? STALE_SENTENCE : "";
+  el.stale.hidden = !line;
+  el.download.hidden = state.shown === null || stale;
+}
+
+// AC-V19, ADR-0008: the hint says which wording the select is on now; on the server's default it says why that one.
+function showWordingHint() {
+  el.phrasingHint.textContent = wordingHint(el.phrasing.value, state.samples.phrasing, state.wording);
+}
+
+// AC-V19, ADR-0008: the select starts on the server's own default wording.
 function fillWordings() {
   el.phrasing.replaceChildren(...state.samples.phrasing.map((name) => new Option(WORDINGS[name] ?? name, name)));
+  state.wording = defaultWording(state.samples);
+  el.phrasing.value = state.wording;
+  showWordingHint();
+}
+
+function onWordingChange() {
+  showWordingHint();
+  refreshStale();
 }
 
 // ------------------------------------------------------------------------------ errors
@@ -144,15 +180,6 @@ function showError(error) {
 
 // ------------------------------------------------------------------------------ the result
 
-const isRefused = (analysis) => Boolean(analysis.status && analysis.status.code !== "ok");
-
-function resultSentence(analysis) {
-  if (isRefused(analysis)) return "No faults are listed.";
-  const n = analysis.faults.length;
-  if (n === 0) return "No faults found. This take follows the example.";
-  return `${n} ${n === 1 ? "fault" : "faults"} found.`;
-}
-
 function faultDetail(fault) {
   const joint = sentence(jointLabel(fault.joint));
   const where = fault.body_part ? `${joint} (${fault.body_part})` : joint;
@@ -168,9 +195,10 @@ function faultRow(fault, index) {
   button.type = "button";
   button.dataset.testid = "fault-row";
   button.setAttribute("aria-pressed", "false");
-  button.append(make("span", "fault-text", sentence(fault.coaching || fault.text)),
-    make("span", "fault-detail", faultDetail(fault)),
-    make("span", "fault-mark", "Shown in the replay"));
+  // The row's first line is the timed line (AC-V15), so its accessible name starts with it.
+  button.append(make("span", "fault-text", sentence(faultLine(fault))), make("span", "fault-detail", faultDetail(fault)));
+  if (isLowConfidence(fault)) button.append(make("span", "fault-confidence", LOW_CONFIDENCE_NOTE));
+  button.append(make("span", "fault-mark", "Shown in the replay"));
   button.addEventListener("click", () => selectFault(index));
   item.append(button);
   return item;
@@ -178,8 +206,42 @@ function faultRow(fault, index) {
 
 function selectFault(index) {
   state.rows.forEach((button, at) => button.setAttribute("aria-pressed", String(at === index)));
-  viewer.selectFault(state.analysis.faults[index]);
+  viewer.selectFault(state.faults[index]);
   $("viewer").scrollIntoView({ block: "nearest" });
+}
+
+// AC-V14: the score and, when the grade is held at F, why. Hidden when the file has no score.
+function showScore(score) {
+  const line = scoreSentence(score);
+  el.score.hidden = line === null;
+  el.score.textContent = line ?? "";
+  el.score.dataset.value = line === null ? "" : String(score.value);
+  el.score.dataset.grade = line === null ? "" : score.grade;
+  const note = line === null ? null : cappedNote(score);
+  el.scoreNote.hidden = note === null;
+  el.scoreNote.textContent = note ?? "";
+}
+
+// AC-V06: the analysis's warnings (or an older document's status text) above the faults.
+function showNotices(analysis) {
+  const notices = noticesOf(analysis);
+  el.warnings.hidden = notices.length === 0;
+  el.warningList.replaceChildren(...notices.map((text) => make("li", "", text)));
+}
+
+// AC-V16: the things to work on first, in the order the file ranks them.
+function insightRow({ cue, why }) {
+  const item = make("li", "insight");
+  item.dataset.testid = "insight";
+  item.append(make("strong", "insight-cue", why ? `${cue}.` : cue));
+  if (why) item.append(" ", make("span", "insight-why", why));
+  return item;
+}
+
+function showInsights(analysis) {
+  const items = insightItems(analysis);
+  el.insightsPanel.hidden = items.length === 0;
+  el.insights.replaceChildren(...items.map(insightRow));
 }
 
 // AC-V08: which wording was used, and why it fell back when it did.
@@ -203,16 +265,16 @@ function setDownload(analysis) {
   const json = new Blob([`${JSON.stringify(analysis, null, 2)}\n`], { type: "application/json" });
   state.downloadUrl = URL.createObjectURL(json);
   el.download.href = state.downloadUrl;
-  el.download.hidden = false;
+  refreshStale(); // offers the link only while the choice still matches this result (AC-V20)
 }
 
 async function showResult({ analysis, replay }) {
-  const refused = isRefused(analysis);
-  state.analysis = analysis;
+  const faults = faultsOf(analysis);
+  state.faults = faults;
   el.status.textContent = resultSentence(analysis);
-  el.refusal.hidden = !refused;
-  el.refusalText.textContent = refused ? analysis.status.text : "";
-  const faults = refused ? [] : analysis.faults;
+  showScore(analysis.score);
+  showNotices(analysis);
+  showInsights(analysis);
   state.rows = [];
   el.faults.replaceChildren(...faults.map((fault, index) => {
     const row = faultRow(fault, index);
@@ -228,9 +290,11 @@ async function showResult({ analysis, replay }) {
 }
 
 function setBusy(busy) {
+  state.busy = busy;
   el.analyse.disabled = busy;
   el.analyse.textContent = busy ? "Analysing" : "Analyse";
   el.analyse.setAttribute("aria-busy", String(busy));
+  refreshStale();
 }
 
 async function onSubmit(event) {
@@ -238,10 +302,13 @@ async function onSubmit(event) {
   hideErrors();
   await reading;
   const previous = el.status.textContent;
+  const asked = currentChoice();
   el.status.textContent = WAITING;
   setBusy(true);
   try {
-    await showResult(await analyse(sideSpec("expected"), sideSpec("follower"), el.phrasing.value));
+    const answer = await analyse(...asked);
+    state.shown = choiceKey(asked); // the result below is for this choice, whatever the page was changed to meanwhile
+    await showResult(answer);
   } catch (error) {
     el.status.textContent = previous;
     showError(error);
@@ -267,9 +334,9 @@ function realRow(take) {
   const row = make("li", "real-take");
   row.dataset.testid = "real-take-row";
   row.append(make("h3", "", take.take_id));
-  const refused = take.low_match === true;
+  const warned = take.low_match === true;
   row.append(make("p", "hint", [SOURCES[take.source] ?? take.source, LABEL_SOURCES[take.label_source] ?? take.label_source,
-    take.expected && `compared with ${take.expected.split("/").at(-2) ?? take.expected}`, refused && "analysed with a warning and grade F: a different movement"].filter(Boolean).join(", ")));
+    take.expected && `compared with ${take.expected.split("/").at(-2) ?? take.expected}`, warned && "analysed with a warning and grade F: a different movement"].filter(Boolean).join(", ")));
   if (take.verdict) row.append(make("p", "", take.verdict));
   // Labels and faults found always; the match columns only when they hold something.
   const lines = [["Labels", take.labels, true], ["Faults found", take.faults, true], ["Matched", take.matched],
@@ -286,8 +353,13 @@ function realRow(take) {
 function summaryLine(group, counts) {
   const name = GROUP_NAMES[group] ?? sentence(group);
   if (counts.expected_refusals !== undefined) {
-    return `${name}: ${counts.refused_as_expected ?? 0} of ${counts.expected_refusals} different-movement clips refused as expected, `
+    return `${name}: ${counts.refused_as_expected ?? 0} of ${counts.expected_refusals} different-movement clips warned and graded F as expected, `
       + `${counts.matched_references} matched reference.`;
+  }
+  // The rep-by-rep group (ADR-0010) counts takes and repetitions, not labels.
+  if (counts.reps_passed !== undefined) {
+    return `${name}: ${counts.accepted} of ${counts.takes} matched the example, `
+      + `${counts.reps_passed} of ${counts.reps} repetitions passed the movement check.`;
   }
   if (!counts.takes) return `${name}: none in the report yet.`;
   const scores = counts.precision == null ? "" : ` (precision ${counts.precision}, recall ${counts.recall})`;
@@ -341,7 +413,8 @@ async function start() {
   fillWordings();
   el.picker.expected.addEventListener("change", () => clearUpload("expected"));
   el.picker.follower.addEventListener("change", () => clearUpload("follower"));
-  el.other.addEventListener("change", fillFollowers);
+  el.other.addEventListener("change", () => { fillFollowers(); refreshStale(); });
+  el.phrasing.addEventListener("change", onWordingChange);
   el.form.addEventListener("submit", onSubmit);
   for (const side of SIDES) {
     el.file[side].addEventListener("change", () => { reading = onFile(side); });

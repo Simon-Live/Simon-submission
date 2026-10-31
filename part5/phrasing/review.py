@@ -6,12 +6,12 @@ validator. Prints one JSON object per line sample plus the fallback rate. It mak
 it is opt-in: it needs the key file (running it is the live opt-in) and is never part
 of `make test` or `make check-5`. The key is never printed.
 
-The time and direction here are derived from the spec rules (`docs/specs/journey-followup.md`, J-1
-and J-2) on top of `part5.pipeline.run`, so the review does not depend on the output module.
+The time, the direction and the timed words are the analysis's own `at_s`, `lateral` and `text_timed`
+(`docs/specs/journey-followup.md`, J-1 and J-2), read from `part5.pipeline.run`; the review keeps no copy of
+those rules, so it cannot drift from what a user's analysis says.
 """
 import argparse
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -26,44 +26,11 @@ KIT_EXPECTED = "fixtures/input/expected/part3-squat/animation.json"
 KIT_DIR = "fixtures/input/contract/part3/followers"
 SYNTHETIC_EXPECTED = "fixtures/input/expected/exercise/animation.json"
 SYNTHETIC_DIR = "fixtures/input/followers/exercise"
-OUT_MEASURES = ("foot_out", "thigh_out", "upper_arm_out", "forearm_out")
-WORD = {"foot_out": "foot", "thigh_out": "knee", "upper_arm_out": "arm", "forearm_out": "hand"}
-FLIP = {"left": "right", "right": "left"}
-
-
-def lateral_of(fault):
-    """The subject's own left or right for a fault, J-2 table; None when the measure has no sideways word."""
-    measure, side, direction = fault["measure"], fault["side"], fault["direction"]
-    if side in ("left", "right"):
-        if measure in OUT_MEASURES:
-            return side if direction == "more" else FLIP[side]
-        if measure == "knee_valgus":
-            return FLIP[side] if direction == "more" else side
-    if measure == "trunk_lean_side":
-        return "left" if direction == "more" else "right"
-    return None
-
-
-def at_s_of(fault, follower_t):
-    """The follower file's own time at the fault's first frame, rounded half up to 0.1 s."""
-    return math.floor(float(follower_t[fault["follower_frames"][0]]) * 10 + 0.5) / 10
-
-
-def timed_words(fault, lateral, at_s):
-    """The J-2 vocabulary: the timed template line (the review's stand-in for `text_timed`)."""
-    measure, side = fault["measure"], fault["side"]
-    if measure in WORD and lateral and side in ("left", "right"):
-        words = f"{side} {WORD[measure]} too far {lateral}"
-    elif measure in ("thigh_forward", "upper_arm_forward") and fault["direction"] == "less":
-        words = {"thigh_forward": "thigh", "upper_arm_forward": "arm"}[measure]
-        words = f"{side} {words} too low" if side in ("left", "right") else f"{words}s too low"
-    else:
-        words = fault["text"]
-    return f"{words} at {at_s:.1f} s"
 
 
 def timed_faults():
-    """Every fault of every fixture take, as (take id, timed fault dict)."""
+    """Every fault of every fixture take, as (take id, the analysis's fault dict with its `at_s`, `lateral`
+    and `text_timed`)."""
     pairs = [(f, STOCK_EXPECTED, f"fixtures/input/eval/real/{f}/skeleton.json") for f in STOCK_FOLLOWERS]
     kit = sorted((ROOT / KIT_DIR).glob("*/skeleton.json"))
     pairs += [(p.parent.name, KIT_EXPECTED, str(p.relative_to(ROOT))) for p in kit]
@@ -74,11 +41,7 @@ def timed_faults():
     out = []
     for take, expected, follower in pairs:
         result = run(str(ROOT / expected), str(ROOT / follower))
-        for fault in result.analysis["faults"]:
-            lateral = lateral_of(fault)
-            at_s = at_s_of(fault, result.follower.t)
-            out.append((take, {**fault, "at_s": at_s, "lateral": lateral,
-                               "text_timed": timed_words(fault, lateral, at_s)}))
+        out += [(take, fault) for fault in result.analysis["faults"]]
     return out
 
 

@@ -86,14 +86,17 @@ def _conf_of_doc(doc, source):
     for fr in frames:
         if not isinstance(fr, dict):
             raise InputError(f"{source}: expected-visibility frame is not an object")
-        if isinstance(fr.get("people"), list):
-            people = fr["people"]
-            joints = people[0].get("joints", {}) if people and isinstance(people[0], dict) else {}
-            conf = {k: v.get("conf", 1.0) for k, v in joints.items() if isinstance(v, dict)}
-        else:
-            conf = fr.get("conf", {})
+        try:
+            if isinstance(fr.get("people"), list):
+                people = fr["people"]
+                joints = people[0].get("joints", {}) if people and isinstance(people[0], dict) else {}
+                conf = {k: v.get("conf", 1.0) for k, v in joints.items() if isinstance(v, dict)}
+            else:
+                conf = fr.get("conf", {})
+            rows.append([float(conf.get(j, 1.0)) for j in JOINTS])
+        except (AttributeError, TypeError, ValueError):   # a conf that is text, null or a list, or a `conf` that is no object
+            raise InputError(f"{source}: expected-visibility conf must be a number for each joint") from None
         seen = seen or bool(conf)
-        rows.append([float(conf.get(j, 1.0)) for j in JOINTS])
     return np.array(rows) if seen else None
 
 
@@ -104,11 +107,6 @@ def load_conf(path):
     except (OSError, json.JSONDecodeError) as e:
         raise InputError(f"{path}: cannot read JSON ({e})") from e
     return _conf_of_doc(doc, str(path))
-
-
-def load_visibility(path):
-    """The usable measure set of `load_conf(path)`, or None when the file carries no `conf`."""
-    return usable_from_conf(load_conf(path))
 
 
 @dataclass

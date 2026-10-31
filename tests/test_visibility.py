@@ -10,7 +10,7 @@ from part5.io import JOINTS
 from part5.measures import MEASURES, VIEW_MEASURES
 from part5.pipeline import run
 from part5.score_report import score_block
-from part5.visibility import (MIN_USABLE_MEASURES, MOVING_RANGE_DEG, UNSEEN_CONF, load_visibility, moving_text,
+from part5.visibility import (MIN_USABLE_MEASURES, MOVING_RANGE_DEG, UNSEEN_CONF, load_conf, moving_text,
                               resolve, seen_mask, usable_from_conf)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -93,14 +93,14 @@ def test_the_trainers_skeleton_gives_the_expected_clips_visibility(tmp_path):
         for i in range(4)]}
     path = tmp_path / "pose3d.json"
     path.write_text(json.dumps(doc))
-    usable = load_visibility(path)
+    usable = usable_from_conf(load_conf(path))
     assert "left_knee_flexion" not in usable and "left_elbow_flexion" in usable
 
 
 def test_a_skeleton_without_conf_gives_no_visibility(tmp_path):
     path = tmp_path / "s.json"
     path.write_text(json.dumps({"frames": [{"joints": {}}]}))
-    assert load_visibility(path) is None
+    assert load_conf(path) is None and usable_from_conf(load_conf(path)) is None
 
 
 # --- the pipeline -----------------------------------------------------------------------------
@@ -173,7 +173,7 @@ def test_cli_exits_0_for_not_enough_visible_and_takes_expected_visibility(tmp_pa
 
 @needs_salute
 def test_the_salute_trainer_shows_head_shoulders_and_the_raised_wrist():
-    usable = load_visibility(SALUTE / "trainer-skeleton.json")
+    usable = usable_from_conf(load_conf(SALUTE / "trainer-skeleton.json"))
     assert "left_knee_flexion" not in usable and "shoulder_tilt" in usable
 
 

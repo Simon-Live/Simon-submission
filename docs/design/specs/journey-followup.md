@@ -12,7 +12,9 @@ evidence of 2026-10-30 (session scratchpad `journey-b/`: `score/score.py`, `para
 Parent spec: `docs/design/specs/part5-fault-analysis.md`. Companion specs: `check-5.md`, `integration-contract.md`,
 `calibration.md`, `staging.md`, `viewer.md`.
 ADRs: ADR-0007 (score), ADR-0008 (AI phrasing default in live mode), ADR-0009 (time, direction and replay as an
-additive contract).
+additive contract). Revised 2026-10-31 for ADR-0012 (always analyse: no refusal, no exit 3, `score` never null, a
+warning caps the grade at F), ADR-0013 (the score as a timeline of windows) and ADR-0014 (cues, tempo, insights),
+which supersede the refusal wording below where they differ; the schema is now 1.5.0.
 Tickets: TICKET-032 (J-1), TICKET-033 (J-2), TICKET-034 (J-3), TICKET-035 (J-4), TICKET-036 (J-5),
 TICKET-037 (J-5 review), TICKET-038 (J-6). Milestone: J1.
 
@@ -22,8 +24,8 @@ to rotate. Part 5 already finds each fault and its frames; it does not say when 
 or how good the take was, and its replay payload lives only inside the staging API. This spec adds, all optional for
 a reader of schema 1.1.0:
 - J-1 time per fault: `follower_t_s`, `at_s`, `follower_runs`, `text_timed`;
-- J-2 direction: `lateral` (`left`, `right` or `null`) and timed words that say "too far right", "too far left" and
-  "too low"; `lateral_m` on `foot_out`;
+- J-2 direction: `lateral` (`left`, `right` or `null`) and timed words that say "too far right", "too far left",
+  "arm too low" and "thigh not raised enough"; `lateral_m` on `foot_out`;
 - J-3 replay as a file: `part5 analyse --replay <replay.json>` writes `simon.replay.v1`;
 - J-4 score: `score` (`simon.score.v1`), a value out of 100 and a grade from A to F;
 - J-5 AI phrasing: in live mode, Muse Spark writes one friendly coaching line per fault that includes the time; a
@@ -34,7 +36,8 @@ deterministic run.
 
 ## Why This Is Wrong (Dissent-First)
 1. A single number invites the viewer to chase the number. Answer: the faults stay first in the output; the score is
-   one more field, its two components are shown, and a refused take gets `score: null`, never a 0.
+   one more field, its two components are shown, and a take with a warning gets a score capped at F (ADR-0012),
+   never `null`.
 2. The score is calibrated on synthetic takes (seed 5), the same generator as its held-out seeds. Answer: stated in
    ADR-0007 and in the `check-5` output; the gate is narrow (correct good-light takes at A, monotonic in fault size)
    and every other target is reported, never tuned on.
@@ -84,7 +87,8 @@ gets it from `index / fps` (the loader's existing rule), so `follower_t_s` alway
 | every other measure | either | `null` | `null` | `null` |
 
 Timed words vocabulary (`part5.words.describe_timed`; `text` is unchanged). `{q}` is the existing size qualifier
-("slightly ", "", "much "); both-side and centre lines are the existing ones.
+("slightly ", "", "much "); `{nq}` is the one for "not ... enough" phrases ("not quite", "not", "nowhere near"), where
+"slightly" or "much" in front of "not" would read wrong; both-side and centre lines are the existing ones.
 
 | Measure | `direction` | One side, timed words | `lateral` |
 |---|---|---|---|
@@ -94,7 +98,7 @@ Timed words vocabulary (`part5.words.describe_timed`; `text` is unchanged). `{q}
 | `upper_arm_out` | `more`, `less` | `{side} arm {q}too far {lateral}` | per table above |
 | `forearm_out` | `more`, `less` | `{side} hand {q}too far {lateral}` | per table above |
 | `knee_valgus` | `more`, `less` | unchanged (`{side} knee caving in`, `{side} knee pushed out`) | per table above |
-| `thigh_forward` | `less` | `{side} thigh {q}too low` (both: `thighs {q}too low`) | `null` |
+| `thigh_forward` | `less` | `{side} thigh {nq} raised enough` (both: `thighs {nq} raised enough`), the same words as `text` ("right thigh not raised enough"); never "too low", which reads as squatting too deep (2026-10-31) | `null` |
 | `upper_arm_forward` | `less` | `{side} arm {q}too low` (both: `arms {q}too low`) | `null` |
 | every other case | | the existing `text` words | `null` |
 
@@ -122,7 +126,8 @@ out. Absent on every other fault.
 | `coordinate_frame` | object | new: Part 5's frame (`origin hip_midpoint`, `x subject_left`, `y world_up`, `z anterior`, metres) |
 
 The staging API's `replay` in `POST api/analyse` gains the same four new keys; the web viewer ignores them. The replay
-is written after `analysis.json`, also for a refused take (the alignment exists); exit 1 writes neither file.
+is written after `analysis.json`, also for a take with warnings (a take that could not be aligned plays on a
+straight-line stand-in alignment, ADR-0012); exit 1 writes neither file.
 `part5 doctor <replay.json> [--for part7]` names `simon.replay.v1`, validates the schema and checks: the lengths of
 `expected`, `expected_t` and `exp_to_fol` agree, `follower` and `follower_t` agree, every `exp_to_fol` index and
 every bone index is in range, and both `t` lists strictly increase.
@@ -132,7 +137,9 @@ every bone index is in range, and both `t` lists strictly increase.
 "score": {"version": "simon.score.v1", "value": 82, "grade": "B",
           "components": {"faults": 14.62, "similarity": 3.10}, "params_sha256": "<64 hex>"}
 ```
-`score` is `null` when `status.code` is not `ok`. For an `ok` take (ADR-0007):
+`score` is never `null` from schema 1.4.0 (ADR-0012): a take nothing could be measured on scores 0, grade F, and a
+take with `warnings` is capped at 59 (grade F) with `capped_by` naming the codes; before 1.4.0 a refused take had
+`score: null`. The value is (ADR-0007, ADR-0013 for the windows):
 - per fault, `r = |magnitude_deg| / threshold_deg`, `penalty = min(cap, base + slope * (r - 1))`,
   `dur = (sum over runs of end - start + 1) / N` with N the expected clip's frame count,
   `F = sum of penalty * (0.5 + 0.5 * dur) * coverage`;
@@ -156,7 +163,7 @@ mode the default backend is `muse-spark`; elsewhere it stays `template`. An expl
 `template` whatever the environment.
 
 Muse Spark through Baseten as today (`part5/phrasing/muse_spark.py`): model `meta-models/muse-spark-open-1026`, key
-file the Baseten key file (`PART5_BASETEN_KEY_FILE`), `max_tokens` 2048 (at least 512), timeout 10 s per call, stdlib
+file, `max_tokens` 2048 (at least 512), timeout 10 s per call, stdlib
 `urllib`, usage ledger `~/.simon/baseten_usage.jsonl`. Live calls need the key file and live mode (the live switch
 replaces "`META_LIVE=1` only"). The request carries: measure, body part, joint, side, direction, `lateral`,
 magnitude, threshold, `at_s` formatted to 0.1 s, and `text_timed`; the instruction asks for one friendly coaching
@@ -183,15 +190,21 @@ plus the 10 s timeout fits in it); faults past either limit fall back with reaso
 `rate limited` or `time budget spent`.
 
 ### J-6 Contract
-- `contracts/analysis.schema.json` version `1.2.0` (all new fields optional; a 1.1.0 and a 1.0 document still
-  validate); `contracts/replay.schema.json` `1.0.0`; `contracts/metrics.schema.json` `1.1.0` (the score report).
+- `contracts/analysis.schema.json` version `1.2.0` at J1, `1.5.0` now (all new fields optional; a 1.1.0 and a 1.0
+  document still validate); `contracts/replay.schema.json` `1.0.0`; `contracts/metrics.schema.json` `1.1.0` (the
+  score report `check-5` writes: `gate.sweep`, `report.score` and `detection_sha256`, additive).
 - `CONTRACT.md` generated compatibility rows (from `part5/contract.py`) for Part 7: `analysis.json` 1.2.0 fields
-  (works; read `score` only when `status.code` is `ok`), `replay.json` `simon.replay.v1` (works), `part5 analyse
-  --live` (works with an option; needs the key file on the host). The schema table lists `replay`.
+  (works; since ADR-0012 `status.code` is always `ok` and `score` is never null, so Part 7 reads `warnings` and
+  `score`), `replay.json` `simon.replay.v1` (works), `part5 analyse --live` (works with an option; needs the key file
+  on the host). The schema table lists `replay`.
 - `part5 contract` prints the new schema and rows; `part5 doctor` handles `simon.replay.v1` and, for an analysis,
-  notes `score` and the timed fields when present (`--for part7`).
+  notes `score` and the timed fields when present (`--for part7`); it accepts a warned 1.5.0 analysis (warnings
+  `low_match`, faults at confidence `"low"`, the score capped at F, cues, insights, tempo) and a minimal 1.4.0
+  document (status `ok`, `faults: []`, no `confidence`), which is what Part 7 writes as its own fallback.
 - `make check-5-contract` goldens regenerated with `make output-examples` (template phrasing, deterministic), plus a
-  golden replay `fixtures/output/replay.example.json`.
+  golden replay `fixtures/output/replay.example.json`. The goldens are built through the path `part5 analyse` uses,
+  the score hook included (`part5.contract.golden_run`), so they carry the score, its timeline, the tempo and the
+  insights real output carries; `check-5-contract` rebuilds all three byte for byte.
 
 ### CLI after J1
 ```
@@ -202,7 +215,8 @@ part5 contract [--schema <name>] [--json]
 part5 doctor <file> [--for part5|part7] [--json]
 part5 report-real [--out out/report-real/report.json]
 ```
-Exit codes unchanged: 0 ok analysis written, 1 input or write error, 2 usage, 3 refused analysis written.
+Exit codes: 0 analysis written (with or without warnings), 1 input or write error, 2 usage. Exit 3 (a refused
+analysis written) is no longer produced since ADR-0012.
 
 ### `make check-5` additions (score)
 - Report, per slice of every set it already reads (seed 5 tuning, the held-out set, kit, stock): `score: {n, min,
@@ -214,12 +228,14 @@ Exit codes unchanged: 0 ok analysis written, 1 input or write error, 2 usage, 3 
   rises as the size grows. The sweep writes its takes under `out/check-5/sweep/` only.
 - Low light is reported, never graded against a target.
 
-### Held-out score report (`make score-heldout SEED=47|53`)
+### Held-out score report (`make score-heldout SEED=<n>`; 47 and 53 were the two)
 `python3 scripts/make_dummy_followers.py --seed <n> --out out/score-heldout/seed-<n> --dropout-variant` then
 `python -m part5.score_report --set out/score-heldout/seed-<n>`; prints the per-slice distribution and the target
-verdicts. Only seeds 47 and 53, each generated once after the score freeze commit; never committed under
+verdicts, and the `labels.json` sha256. Run by `scripts/make_score_heldout.py`, which refuses (exit 2, a plain
+message, before it generates or scores anything) a seed already in `fixtures/score-heldout.json`: a recorded seed is
+retired, and 47 and 53 are. Each seed is generated once after the score freeze commit; never committed under
 `fixtures/` (the generator is deterministic; `labels.json` sha256 is recorded). Results go in `docs/thresholds.md`
-"Score" and append-only `fixtures/score-heldout.json`.
+"Score" and append-only `fixtures/score-heldout.json`, written by hand as measured.
 
 ## Research evidence (2026-10-30; none of it is a held-out result)
 Prototype `journey-b/score/score.py` with `params.json` above, rerun on 2026-10-30. Grades per slice, `light/labelled
@@ -258,13 +274,15 @@ matches the table; every other measure gives `null`.
 #### AC-L02: timed words
 Given every measure, direction and side, then `describe_timed` gives the vocabulary table's words, and every
 timed line passes `line_problem(fault, line, timed=True)` with its own `at_s` (the template can never fail its own
-validator).
+validator). A `thigh_forward` timed line says "not raised enough" (never "too low"), and the validator refuses a
+line that calls such a thigh "too low", "lower" or "hanging": those words carry no direction for that measure, so
+the line falls back to `text_timed`.
 #### AC-L03: foot offset
 Given a right `foot_out` fault with the ankle moved 0.08 m further out over its runs, then `lateral_m` is 0.08 within
 0.01; given a `knee_flexion` fault, then `lateral_m` is absent.
 ### J-3 replay
 #### AC-R01: replay written
-Given `--replay <path>`, when the take is ok or refused, then the file validates against
+Given `--replay <path>`, when the take is ok or has warnings, then the file validates against
 `contracts/replay.schema.json`, its unchanged keys equal the staging API's `replay` for the same inputs, and
 `expected_t`, `follower_t` equal the clips' `t`.
 #### AC-R02: nothing on failure
@@ -281,8 +299,9 @@ explained in `docs/thresholds.md` "Score" before the freeze commit.
 #### AC-S02: formula
 Given hand-built faults and measures, then `value`, `grade`, `components` and `params_sha256` equal the formula above,
 including `round_half_up` at .5, the clamp at 0 and 100, and each band edge (90 A, 89 B, 60 D, 59 F).
-#### AC-S03: refused take
-Given a refused take, then `score` is `null` and the analysis validates.
+#### AC-S03: take with a warning
+Given a take with a warning (ADR-0012; before it, a refused take had `score: null`), then `score` is never `null`,
+its `value` is at most 59, its `grade` is `F`, `capped_by` names the warning codes and the analysis validates.
 #### AC-S04: check-5 gate
 Given the held-out set, then `make check-5` reports the grade distribution per slice and exits 1 when any correct
 good-light take is below A or the sweep rises at any step (tested with injected scores); low light never gates.
@@ -327,13 +346,19 @@ line that passed the validator but misstates a fact opens a ticket.
 ### J-6 contract
 #### AC-C01: old readers
 Given a 1.2.0 `analysis.json`, then it validates against the 1.1.0 schema at `28d20ef` and loads through the 1.1.0
-`part5.output.validate_analysis` (extra fields allowed).
+`part5.output.validate_analysis` (extra fields allowed). This holds for every later version of a take that carries no
+warning (the goldens included). A take analysed with a `low_match` warning (1.4.0, ADR-0012) is the one deliberate
+exception: its faults carry `confidence: "low"`, which the 1.1.0 schema rejects, so it fails on `faults[*].confidence`
+and nowhere else. Verification: `tests/test_schema_compat.py`, which vendors that schema and the two goldens under
+`tests/fixtures/`.
 #### AC-C02: contract and doctor
 Given the changes, then `part5 contract --json` lists `replay` and the new rows, `CONTRACT.md`'s generated block
-equals the generator, and `doctor --for part7` on the new goldens exits 0.
+equals the generator, and `doctor --for part7` on the new goldens exits 0, as it does on a warned 1.5.0 analysis and
+on a minimal 1.4.0 document with `faults: []` and no `confidence` (`tests/test_doctor.py`).
 #### AC-C03: goldens
 Given `make output-examples`, then `fixtures/output/analysis.example.json`, `analysis.no-faults.example.json` and
-`replay.example.json` are rebuilt deterministically and `make check-5-contract` exits 0.
+`replay.example.json` are rebuilt deterministically (the analysis goldens carry `score`, `timeline`, `tempo` and
+`insights`, the way `part5 analyse` writes them) and `make check-5-contract` exits 0 (`tests/test_output_examples.py`).
 #### AC-C04: published
 Given the publish, then a fresh clone of upstream passes `make test`, `make check-5` and `make check-5-contract`.
 
@@ -350,7 +375,7 @@ Given the publish, then a fresh clone of upstream passes `make test`, `make chec
 | Live mode without the key file | template with time, per fault | `fallback_reason: "no key"` | AC-P01 |
 | Model line fails the validator | that fault falls back | `"muse-spark: <reason>"` | AC-P03, AC-P04 |
 | Timeout, HTTP error, empty content | that fault falls back | unchanged reasons: `"muse-spark: timeout after 10 s"`, `"muse-spark: HTTP <code>"`, `"muse-spark: empty content"` | AC-P04 |
-| Rate limit or budget | that fault falls back | `"muse-spark: rate limited"`, `"muse-spark: time budget spent"` | AC-P05 |
+| Rate limit or budget | that fault falls back | `"rate limited"`, `"time budget spent"` (plain, as the code writes them: they are not a call's failure) | AC-P05 |
 | Detection rules changed after the freeze | `check-5` exit 2 | unchanged freeze message | AC-S06 |
 | Unknown `--phrasing` | exit 2 (argparse) | argparse | AC-P01 |
 
@@ -399,26 +424,30 @@ the team films its own takes.
 | `part5/calibrate.py` | `--score` | TICKET-035 | yes |
 | `part5/check.py` | score report, score gate, sweep, freeze check (ADR-0007) | TICKET-035 | yes |
 | `part5/rules.json` | `score` block | TICKET-035 | yes |
-| `part5/phrasing/__init__.py`, `template.py`, `muse_spark.py`, `local_llm.py`, `smoke.py` | live default, timed prompt and validator, limits, per-fault model | TICKET-036 | yes |
+| `part5/phrasing/__init__.py`, `template.py`, `prompt.py`, `muse_spark.py`, `local_llm.py`, `smoke.py` | live default, timed prompt (`prompt.py`) and validator, limits, per-fault model | TICKET-036 | yes |
 | `part5/cli.py` | `--replay`, `--live`, `serve --live` | TICKET-034, TICKET-036 | yes |
 | `part5/api.py`, `part5/server.py` | replay keys, live default, process-wide limit | TICKET-034, TICKET-036 | yes |
-| `part5/contract.py`, `part5/doctor.py` | rows, replay schema, doctor support | TICKET-034, TICKET-038 | yes |
+| `part5/contract.py`, `part5/doctor.py` | rows, replay schema, doctor support, `replay_problems`, `golden_run` | TICKET-034, TICKET-038 | yes |
 | `contracts/analysis.schema.json`, `contracts/replay.schema.json`, `contracts/metrics.schema.json` | 1.2.0, 1.0.0, 1.1.0 | TICKET-032 to TICKET-035 | yes |
-| `scripts/make_output_examples.py` | replay golden, forced template | TICKET-038 | yes |
+| `scripts/make_output_examples.py` | replay golden, forced template, the CLI's path with the score hook | TICKET-038 | yes |
+| `scripts/make_score_heldout.py` | `make score-heldout`: scores one unrecorded seed, refuses a recorded one | TICKET-035 | yes |
+| `scripts/make_design_copies.py` | regenerates `docs/design/` from `docs/specs/` and `docs/adr/`, with a leak guard | TICKET-038 | yes |
 | `fixtures/output/analysis.example.json`, `analysis.no-faults.example.json`, `replay.example.json` | regenerated goldens | TICKET-038 | yes |
 | `fixtures/score-heldout.json` | append-only held-out score record | TICKET-035 | yes |
-| `Makefile` | `score-heldout` target | TICKET-035 | yes |
+| `Makefile` | `score-heldout` and `design-copies` targets | TICKET-035, TICKET-038 | yes |
 | `docs/schemas.md`, `docs/thresholds.md`, `CONTRACT.md`, `README.md` | fields, score section, rows, live mode | TICKET-032 to TICKET-038 | yes |
+| `docs/design/README.md`, `docs/design/specs/*.md`, `docs/design/adr/*.md` | generated neutralised copies | TICKET-038 | yes |
 | `docs/phrasing-review.md` | AC-P07 record | TICKET-037 | yes |
-| Tests: `tests/test_time_fields.py`, `test_lateral.py`, `test_replay_contract.py`, `test_score.py`, `test_check_score.py`, `test_phrasing_timed.py`, plus updates to `test_output.py`, `test_cli.py`, `test_api.py`, `test_contract_cli.py`, `test_doctor.py`, `test_phrasing*.py`, `test_words.py` | per AC | with each ticket | yes |
+| Tests: `tests/test_time_fields.py`, `test_lateral.py`, `test_replay_contract.py`, `test_score.py`, `test_check_score.py`, `test_phrasing_timed.py`, `test_output_examples.py`, `test_score_heldout.py`, `test_design_copies.py`, plus updates to `test_output.py`, `test_cli.py`, `test_api.py`, `test_contract_cli.py`, `test_doctor.py`, `test_phrasing*.py`, `test_words.py` | per AC | with each ticket | yes |
 
 ## Delivery Verification Plan
 - `make test` 0; `make check-5` 0 (score gate included); `make check-5-contract` 0; `make report-real` 0.
 - `make score-heldout SEED=47` and `SEED=53` once each after the freeze; results recorded as measured.
 - `make smoke-muse-spark` once, opt-in, ledger line recorded; TICKET-037 review recorded.
 - `staging.sh up simon-part-5` and `verify simon-part-5` 0; QA recipe: analyse a stock take on the page
-  in live mode and see a timed line and the score (two witnesses: the API JSON and the rendered page; negative: a
-  refused take shows no score).
+  in live mode and see a timed line and the score (two witnesses: the API JSON and the rendered page; negative: no
+  fault row without a time, since ADR-0012 the score is never null and a different movement is analysed with a
+  `low_match` warning and grade F).
 - One consolidated review, `/delivery-review` PASS, then publish and a fresh-clone check (TICKET-038).
 
 ### Device/Platform Strategy

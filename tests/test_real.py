@@ -428,8 +428,28 @@ def test_ac_r06_single_is_a_matched_reference_while_it_is_the_provisional_squat(
     assert manifest["population"] == "matched_reference" and "433ae2ed" in manifest["content"]
     assert t["status"] == "ok" and t["expected_refusal"] is False and t["refused_as_expected"] is None
     assert t["labels"] == [] and t["matched"] == [] and t["missed"] == []  # no labels, so no tp or fn
-    assert "provisional barbell squat" in t["reason"] and "not an expected refusal" in t["verdict"]
+    assert "provisional barbell squat" in t["reason"]
+    assert t["verdict"] == ("a matched reference, not a clip expected to be warned: it is the same movement as the "
+                            "example (provisional barbell back squat)")
+    assert "refus" not in t["verdict"] and "see reason" not in t["verdict"]   # the reason is in the row, not elsewhere
     assert any(n.startswith("part2: part2-single: ") and "provisional barbell squat" in n for n in report["notes"])
+
+
+def test_ac_r06_no_sentence_a_reader_sees_says_refusal_but_the_json_keys_keep_their_names(report):
+    """ADR-0012: nothing is refused. The verdicts, the notes and the stderr summary say "warned"; the keys stay."""
+    seen = [t["verdict"] for t in report["takes"] if "verdict" in t] + report["notes"] + real.summary_lines(report)
+    assert len(seen) > 8 and [s for s in seen if "refus" in s.lower()] == []
+    take = by_id(report, "part2-class")
+    assert {"expected_refusal", "refused_as_expected", "low_match"} <= set(take)
+    assert {"expected_refusals", "refused_as_expected", "matched_references"} <= set(report["summary"]["part2"])
+    assert "refused" in report["summary"]["kit"]
+
+
+def test_ac_r06_a_matched_reference_without_a_content_line_still_gives_its_reason_in_one_sentence():
+    plain = "a matched reference, not a clip expected to be warned: it is the same movement as the example"
+    assert real._matched_verdict({}) == plain
+    assert real._matched_verdict({"content": "a squat, sha256 ab"}) == f"{plain} (a squat)"
+    assert real._matched_verdict({"content": "a squat, sha256 ab"}) == real._matched_verdict({"content": "a squat"})
 
 
 def test_ac_r06_a_mismatch_take_the_guard_accepts_is_reported_as_not_warned(tmp_path):

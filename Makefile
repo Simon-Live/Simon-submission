@@ -1,4 +1,4 @@
-.PHONY: check-5 test demo dummy-data output-examples test-contract contracts-check contracts-sync
+.PHONY: check-5 test demo dummy-data output-examples test-contract contracts-check contracts-sync score-heldout design-copies
 
 # Done-check for Part 5 (see README.md): analyse every labelled take, print the metrics JSON,
 # exit 0 only if good light passes at every angle (P >= 0.85, R >= 0.75, 0 faults on correct takes).
@@ -63,3 +63,18 @@ heldout-data:
 	  *) echo "heldout-data: SEED=$(SEED) is not a held-out seed (29, 31, 37); seed 5 is the tuning set" >&2; exit 2 ;; \
 	esac
 	python3 scripts/make_dummy_followers.py --seed $(SEED) --out fixtures/input/heldout --dropout-variant
+
+# Held-out score report for one seed (docs/specs/journey-followup.md AC-S05, ADR-0007): generates the set under
+# out/score-heldout/seed-<SEED>/ and prints the per-slice score distribution and target verdicts. SEED is required.
+# A seed already recorded in fixtures/score-heldout.json is retired and refused (exit 2); record a new run by hand.
+score-heldout:
+	@case "$(SEED)" in \
+	  "") echo "score-heldout: SEED is required: make score-heldout SEED=<seed>" >&2; exit 2 ;; \
+	  *[!0-9]*) echo "score-heldout: SEED must be a whole number, got $(SEED)" >&2; exit 2 ;; \
+	esac
+	@uv run python scripts/make_score_heldout.py $(SEED)
+
+# Rewrite docs/design/specs/ and docs/design/adr/ from docs/specs/ and docs/adr/ (neutralised copies).
+# `python3 scripts/make_design_copies.py --check` exits 1 when a copy differs or a leak guard trips.
+design-copies:
+	@python3 scripts/make_design_copies.py

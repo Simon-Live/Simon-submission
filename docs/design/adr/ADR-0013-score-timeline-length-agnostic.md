@@ -1,5 +1,5 @@
 # ADR-0013: Score a take window by window, and show the windows as a timeline
-> Design copy of an architecture decision record. Where this text and the code disagree, the code and `CONTRACT.md` win. Index: `docs/design/README.md`.
+> Design copy of an architecture decision record. Host paths and workspace tooling are neutralised; where this text and the code disagree, the code and `CONTRACT.md` win. Index: `docs/design/README.md`.
 Status: Accepted
 Date: 2026-10-30
 
@@ -35,3 +35,24 @@ that shows the score over time, each miss with its feedback, so the overall numb
   and 90+ to 77 (C): reps 1 to 3 at 97, reps 4 to 8 between 54 and 83 with one to three misses each. A miss
   found in one rep only may be detector noise, which the majority rule used to hide; it now shows with its
   points, so it can be checked.
+- `score.aggregate` (the mean of per-rep blocks, ADR-0010) is gone: the timeline replaced it, and nothing called it.
+- The similarity term of every window reads only the measures the camera saw (ADR-0011). A measure that visibility
+  excluded is missing in the score's input, also in the frames where its joints happen to be visible.
+
+## Acceptance Criteria
+- AC-TL-01: a take compared as a whole is cut into `max(1, round(span / 5 s))` windows, `score.basis` `windows`,
+  and the windows tile the follower span without a gap (`tests/test_score_timeline.py`).
+- AC-TL-02: `score.value` is the mean of the compared windows; a window that was not compared is listed with
+  `compared: false` and not scored; with none compared the value is 0 and the timeline is still listed
+  (`tests/test_score_timeline.py`).
+- AC-TL-03: each window's value is 100 minus its misses' points and its similarity component; the value of a
+  take of one window equals `score.compute`; one miss in a minute scores like ten in ten minutes
+  (`tests/test_score_timeline.py`).
+- AC-TL-04: the warning cap applies after the mean and keeps `basis`, `timeline` and the components
+  (`tests/test_score_timeline.py`).
+- AC-TL-05: a take compared rep by rep has `basis` `reps`, one window per follower rep, scored on that rep's own
+  misses, and `per_rep` beside it (`tests/test_reps.py`).
+- AC-TL-06: `basis` is `windows` or `reps` and `timeline` is typed in `contracts/analysis.schema.json`; any other
+  basis or a window without a two-number `t_s` fails it (`tests/test_score_timeline.py`).
+- AC-TL-07: a partially visible take scores the same as with its excluded measures removed, and a full-body take
+  exactly as before (`tests/test_review_fixes.py`).

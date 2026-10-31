@@ -113,8 +113,8 @@ TIMED_ROWS = [
     ("upper_arm_out", "less", "left", "left arm too far right"),
     ("forearm_out", "more", "right", "right hand too far right"),
     ("knee_valgus", "more", "left", "left knee caving in"),
-    ("thigh_forward", "less", "right", "right thigh too low"),
-    ("thigh_forward", "less", "both", "thighs too low"),
+    ("thigh_forward", "less", "right", "right thigh not raised enough"),
+    ("thigh_forward", "less", "both", "thighs not raised enough"),
     ("upper_arm_forward", "less", "left", "left arm too low"),
     ("foot_out", "more", "both", "feet too far apart"),
     ("knee_flexion", "less", "left", "left knee not bent enough"),
@@ -133,6 +133,26 @@ def test_ac_l02_timed_words(measure, direction, side, want):
 def test_ac_l02_qualifier_goes_before_too():
     f = fault(magnitude_deg=7.0, threshold_deg=6.0)
     assert describe_timed(f) == "right foot slightly too far right"
+
+
+@pytest.mark.parametrize("side,magnitude,want", [
+    ("right", -7.0, "right thigh not quite raised enough"),
+    ("right", -12.0, "right thigh not raised enough"),
+    ("left", -40.0, "left thigh nowhere near raised enough"),
+    ("both", -40.0, "thighs nowhere near raised enough"),
+])
+def test_ac_l02_a_thigh_not_lifted_is_never_too_low(side, magnitude, want):
+    # "thigh too low" reads as squatting too deep, the opposite of the fault (R9); the size qualifier is the
+    # "not ... enough" one, so it never reads "much not raised enough"
+    f = fault(measure="thigh_forward", direction="less", side=side, magnitude_deg=magnitude,
+              peak_deg=magnitude, threshold_deg=6.0)
+    assert describe_timed(f) == want and "low" not in describe_timed(f)
+
+
+def test_ac_l02_an_arm_held_too_low_still_says_too_low():
+    f = fault(measure="upper_arm_forward", direction="less", side="left", magnitude_deg=-40.0, peak_deg=-40.0,
+              threshold_deg=6.0)
+    assert describe_timed(f) == "left arm much too low"
 
 
 def test_ac_l03_foot_offset():
@@ -223,14 +243,19 @@ def test_ac_r01_cli_writes_a_replay_that_validates(tmp_path):
     jsonschema.Draft202012Validator(full).validate(json.loads(out.read_text()))
 
 
-def test_ac_r01_a_refused_take_still_writes_the_replay(tmp_path):
+def test_ac_r01_a_low_match_take_still_writes_the_analysis_and_the_replay(tmp_path):
+    """ADR-0012: a different movement is analysed with a `low_match` warning (exit 0), never refused (no exit 3),
+    and the replay is written all the same, on the straight-line stand-in or the best alignment found."""
     other = next(t for t in LABELS["takes"] if t["set"] != LABEL["set"])
     out, rep = tmp_path / "a.json", tmp_path / "r.json"
     code = cli.main(["analyse", "--expected", str(EXPECTED), "--follower", str(ROOT / other["follower"]),
                      "--out", str(out), "--replay", str(rep)])
-    if code == 3:
-        assert out.exists() and rep.exists()
-        assert json.loads(out.read_text())["faults"] == []
+    doc = json.loads(out.read_text())
+    assert code == 0 and rep.exists()
+    assert doc["status"]["code"] == "ok" and [w["code"] for w in doc["warnings"]] == ["low_match"]
+    assert doc["match"]["quality"] == "low" and all(f["confidence"] == "low" for f in doc["faults"])
+    replay = json.loads(rep.read_text())
+    assert replay["format"] == "simon.replay.v1" and len(replay["expected"]) == len(replay["exp_to_fol"])
 
 
 def test_ac_r02_nothing_is_written_on_an_input_error(tmp_path):

@@ -173,6 +173,75 @@ def test_why_states_the_observation_and_leaves_the_advice_to_the_cue():
     assert insights_of({"faults": [fault]})[0]["why"] == "More upright than the example at 5.7 s"
 
 
+# --- AC-CUE-07: an insight about a fault says the fault's timed words (ADR-0014, amendment of 2026-10-31) --
+def _fault(measure="foot_out", side="right", direction="more", cue="Step your right foot in", at=1.9,
+           timed="right foot too far right", **extra):
+    return {"measure": measure, "side": side, "direction": direction, "joint": "right_ankle",
+            "text": "right foot too far out", "text_timed": f"{timed} at {at:.1f} s", "at_s": at, "cue": cue,
+            "cue_kind": "position", **extra}
+
+
+def _foot_miss(at=1.9):
+    return _miss("Step your right foot in", at, 12.0, "foot_out", "right", "more")
+
+
+def test_an_insight_about_a_fault_says_the_fault_rows_timed_words_with_the_time():
+    fault = _fault()
+    doc = dict(_timeline_doc([{"t_s": [0, 5], "misses": [_foot_miss()]}]), faults=[fault])
+    assert insights_of(doc)[0]["why"] == "Right foot too far right at 1.9 s"
+    assert insights_of({"faults": [fault]})[0]["why"] == "Right foot too far right at 1.9 s"
+
+
+def test_the_timed_words_keep_their_size_word_and_the_count_follows_them():
+    fault = _fault(timed="right foot slightly too far right")
+    windows = [{"t_s": [0, 5], "misses": [_foot_miss()]}, {"t_s": [5, 10], "misses": [_foot_miss()]},
+               {"t_s": [10, 15], "misses": []}]
+    doc = dict(_timeline_doc(windows), faults=[fault])
+    assert insights_of(doc)[0]["why"] == "Right foot slightly too far right at 1.9 s (2 times)"
+    doc["score"]["basis"] = "reps"
+    assert insights_of(doc)[0]["why"] == "Right foot slightly too far right at 1.9 s (2 of 3 reps)"
+
+
+def test_a_thigh_that_is_not_lifted_is_never_called_too_low_by_its_insight():
+    fault = _fault("thigh_forward", "right", "less", "Lift your right knee higher", 2.0, "right thigh not raised enough")
+    miss = _miss("Lift your right knee higher", 2.0, 9.0, "thigh_forward", "right", "less")
+    doc = dict(_timeline_doc([{"t_s": [0, 5], "misses": [miss]}]), faults=[fault])
+    assert insights_of(doc)[0]["why"] == "Right thigh not raised enough at 2.0 s"
+
+
+def test_a_miss_no_reported_fault_matches_keeps_the_plain_words():
+    other = _fault(side="left", cue="Step your left foot in")   # same measure, other side: not the same fault
+    doc = dict(_timeline_doc([{"t_s": [0, 5], "misses": [_foot_miss()]}]), faults=[other])
+    assert insights_of(doc)[0]["why"] == "Right foot too far out at 1.9 s"
+    flipped = _fault(direction="less")                          # same measure and side, other direction
+    doc["faults"] = [flipped]
+    assert insights_of(doc)[0]["why"] == "Right foot too far out at 1.9 s"
+    no_timed = {k: v for k, v in _fault().items() if k != "text_timed"}
+    doc["faults"] = [no_timed]                                  # a producer that writes no timed words
+    assert insights_of(doc)[0]["why"] == "Right foot too far out at 1.9 s"
+
+
+def test_the_insight_says_its_own_time_when_the_fault_row_says_another():
+    fault = _fault(at=1.9)
+    doc = dict(_timeline_doc([{"t_s": [0, 5], "misses": [_foot_miss(at=3.4)]}]), faults=[fault])
+    got = insights_of(doc)[0]
+    assert got["at_s"] == 3.4 and got["why"] == "Right foot too far right at 3.4 s"
+
+
+def test_a_tempo_insight_keeps_its_plain_template_whatever_the_faults_say():
+    doc = dict(_timeline_doc([{"t_s": [0, 5], "misses": [], "tempo": {"ratio": 0.8, "cue": cues.SLOW_DOWN}}],
+                             basis="windows", tempo={"ratio": 0.8, "cue": cues.SLOW_DOWN}), faults=[_fault()])
+    assert insights_of(doc)[-1]["why"] == "You took 80% of the trainer's time"
+
+
+def test_the_feet_wide_take_has_the_same_words_in_its_fault_row_and_its_insight():
+    label = next(t for t in SEED5["takes"] if t["take_id"].startswith("exercise_front_good_03_foot_out-right"))
+    a = run(str(ROOT / label["expected"]), str(ROOT / label["follower"]), score=score_block).analysis
+    fault, insight = a["faults"][0], a["insights"][0]
+    assert fault["text_timed"] == "right foot too far right at 1.9 s"
+    assert insight["why"] == "Right foot too far right at 1.9 s" and insight["cue"] == fault["cue"]
+
+
 def test_at_most_five_insights_and_a_tempo_insight_keeps_its_place():
     many = [_miss(f"Cue number {i}", float(i), 10.0 - i) for i in range(8)]
     plain = insights_of(_timeline_doc([{"t_s": [0, 5], "misses": many}]))
@@ -192,7 +261,9 @@ def test_misses_written_before_cues_give_no_insights():
 
 def test_without_a_timeline_insights_follow_the_faults_with_no_points():
     a = json.loads(EXAMPLE.read_text())
-    assert a["schema_version"] == "1.5.0" and "score" not in a
+    assert a["schema_version"] == "1.5.0"
+    del a["score"]   # the golden is built with the score hook (like real output); this is a producer that does not score
+    a["insights"] = insights_of(a)
     assert [x["cue"] for x in a["insights"]] == [f["cue"] for f in a["faults"]]
     assert all(x["points"] is None and x["window"] is None for x in a["insights"])
     assert a["insights"][0]["why"] == "Right elbow bent more than the example at 0.7 s"

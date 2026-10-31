@@ -93,7 +93,9 @@ def test_a_timed_check_without_a_time_in_the_fault_is_refused():
     ("forearm_out", "right", "less", "left", "right hand too far left at 0.4 s"),
     ("knee_valgus", "left", "more", "right", "left knee caving in at 0.4 s"),
     ("knee_valgus", "left", "less", "left", "left knee pushed out at 0.4 s"),
-    ("thigh_forward", "right", "less", None, "right thigh too low at 0.4 s"),
+    ("thigh_forward", "right", "less", None, "right thigh not raised enough at 0.4 s"),
+    ("thigh_forward", "right", "less", None, "right thigh not quite raised enough at 0.4 s"),
+    ("thigh_forward", "both", "less", None, "thighs nowhere near raised enough at 0.4 s"),
     ("upper_arm_forward", "both", "less", None, "arms too low at 0.4 s"),
     ("trunk_lean_side", "center", "more", "left", "leaning to the left at 0.4 s"),
     ("trunk_lean_side", "center", "less", "right", "leaning to the right at 0.4 s"),
@@ -105,6 +107,41 @@ def test_the_timed_template_words_pass_their_own_test_and_fail_the_opposite(meas
     flipped = dict(fault, direction="less" if direction == "more" else "more",
                    lateral={"left": "right", "right": "left"}.get(lateral))
     assert problem(flipped, line) is not None, line
+
+
+THIGH = timed("thigh_forward", "right", "less", None, at_s=1.9)
+
+
+@pytest.mark.parametrize("line", [
+    "Your right thigh is not raised enough at 1.9 s",
+    "Your right thigh isn't lifted high enough at 1.9 s",
+    "Right thigh nowhere near raised enough at 1.9 s",
+    "Your right thigh stays short of the example at 1.9 s",
+])
+def test_a_thigh_that_is_not_lifted_is_phrased_as_not_raised_enough(line):
+    assert problem(THIGH, line) is None, line
+
+
+@pytest.mark.parametrize("line", [
+    "Your right thigh is too low at 1.9 s",
+    "Your right thigh hangs low at 1.9 s",
+    "Your right thigh drops at 1.9 s",
+    "Your right thigh is lower than the example at 1.9 s",
+])
+def test_calling_such_a_thigh_too_low_fails_because_it_reads_as_squatting_too_deep(line):
+    # R9: on a squat "too low" means the opposite of the fault, so it carries no direction for thigh_forward
+    assert problem(THIGH, line) == "wrong direction", line
+    assert problem(dict(THIGH, direction="more"), line) is not None
+
+
+def test_not_raised_enough_and_too_low_in_one_line_contradict():
+    assert problem(THIGH, "Your right thigh is not raised enough, too low at 1.9 s") \
+        == "contradicts itself on the direction"
+
+
+def test_an_arm_held_too_low_is_still_phrased_as_too_low():
+    arm = timed("upper_arm_forward", "left", "less", None, at_s=1.9)
+    assert problem(arm, "Your left arm is too low at 1.9 s") is None
 
 
 def test_the_untimed_test_is_unchanged_and_still_bans_numbers():
@@ -264,25 +301,32 @@ def test_the_prompt_lists_only_the_measures_landmarks():
     assert prompt.timed_record(timed("knee_flexion", "right", "less", None))["may_mention"] == []
 
 
-@pytest.mark.parametrize("measure,side,direction,lateral", [
-    ("foot_out", "left", "more", "left"), ("foot_out", "left", "less", "right"),
-    ("thigh_out", "right", "less", "left"), ("knee_valgus", "left", "more", "right"),
-    ("knee_valgus", "right", "less", "right"), ("trunk_lean_side", "center", "more", "left"),
-    ("trunk_lean_side", "center", "less", "right"), ("foot_out", "both", "more", None),
-    ("knee_flexion", "left", "less", None),
-])
-def test_review_lateral_follows_the_j2_table(measure, side, direction, lateral):
+def test_review_keeps_no_copy_of_the_time_and_direction_rules():
     from part5.phrasing import review
-    assert review.lateral_of({"measure": measure, "side": side, "direction": direction}) == lateral
+    for name in ("lateral_of", "at_s_of", "timed_words", "OUT_MEASURES", "WORD", "FLIP"):
+        assert not hasattr(review, name), name
 
 
-def test_review_time_rounds_half_up_to_a_tenth_and_words_say_it():
+def test_review_faults_are_the_analyses_own_so_the_model_is_given_what_a_user_is_told(monkeypatch, tmp_path):
+    """The J-1 and J-2 tables are tested where they live (`lateral_for`, `describe_timed`, `round_half_up_tenth`);
+    the review reads `at_s`, `lateral` and `text_timed` from the analysis."""
+    import shutil
+    from pathlib import Path
+
     from part5.phrasing import review
-    fault = {"follower_frames": [1, 4], "measure": "foot_out", "side": "right", "direction": "more", "text": "x"}
-    assert review.at_s_of(fault, [0.0, 0.25, 0.5, 0.75, 1.0]) == 0.3
-    assert review.timed_words(fault, "right", 0.3) == "right foot too far right at 0.3 s"
-    low = dict(fault, measure="thigh_forward", direction="less", side="both")
-    assert review.timed_words(low, None, 1.9) == "thighs too low at 1.9 s"
+    from part5.pipeline import run
+    repo = Path(__file__).resolve().parent.parent
+    take = "exercise_front_good_03_foot_out-right"
+    expected, follower = review.SYNTHETIC_EXPECTED, f"{review.SYNTHETIC_DIR}/{take}/skeleton.json"
+    for rel in (expected, follower):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(repo / rel, tmp_path / rel)
+    monkeypatch.setattr(review, "ROOT", tmp_path)
+    monkeypatch.setattr(review, "STOCK_FOLLOWERS", ())
+    got = review.timed_faults()
+    want = run(str(repo / expected), str(repo / follower)).analysis["faults"]
+    assert want and got == [(take, fault) for fault in want]
+    assert got[0][1]["lateral"] in ("left", "right") and got[0][1]["text_timed"].endswith(f"at {got[0][1]['at_s']:.1f} s")
 
 
 def test_review_pick_spreads_over_the_measures_first():

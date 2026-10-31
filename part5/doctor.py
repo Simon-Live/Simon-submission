@@ -1,5 +1,6 @@
 """`part5 doctor <file> [--for part5|part7]`: name a file's kind and version, validate it and say, in
-plain words, what the consumer would reject and which option fixes it.
+plain words, what the consumer would reject and which option fixes it. It reads a clip, an analysis.json
+and a replay.json (`simon.replay.v1`, checked against its schema and for lengths, indexes and times).
 
 Exit 0 accepted, 1 rejected, 2 unreadable (missing, not a file, not JSON). The schema runs through
 `jsonschema` when it is installed and the loaders (`part5.io`, `part5.output`) always run after it, so
@@ -8,6 +9,7 @@ fetches a URL, hand-off files included.
 """
 # ADR-0004: a refused analysis (status.code different_movement, schema before 1.4.0) is valid and has faults [] by design.
 # ADR-0012: from 1.4.0 status.code is always ok and a top-level `warnings` list says why the grade is F.
+# ADR-0009: a replay.json (simon.replay.v1) is accepted for both consumers once its lengths, indexes and times agree.
 # ASM-005: Part 7 reads status before faults; --for part7 warns when status.code is not ok.
 # ASM-001: only simon.animation.v1 and simon.skeleton.v1 are read as clips.
 import json
@@ -53,7 +55,7 @@ class Problem:
 
 @dataclass(frozen=True)
 class Kind:
-    id: str            # animation, skeleton, native, handoff, pose3d, analysis, labels, named, unknown
+    id: str            # animation, skeleton, native, handoff, pose3d, analysis, replay, labels, named, unknown
     label: str         # the kind line, e.g. "simon.animation.v1 (Part 4 animation.json)"
     version: str | None = None
 
@@ -131,6 +133,9 @@ def identify(doc):
         version = doc.get("schema_version", "1.0.0")
         return Kind("analysis", f"simon.analysis.v1 {version}" + ("" if "schema_version" in doc
                                                                      else " (no schema_version)"), version)
+    if fmt == "simon.replay.v1":
+        version = doc.get("schema_version", "1.0.0")
+        return Kind("replay", f"simon.replay.v1 {version} (Part 5 replay.json)", version)
     if fmt == "simon.animation.v1":
         origin = {"part4": "Part 4 animation.json", "part3": "Part 3 --view part5 skeleton.json"}.get(doc.get("producer"))
         return Kind("animation", "simon.animation.v1" + (f" ({origin})" if origin else ""), "simon.animation.v1")
@@ -187,6 +192,38 @@ def _clip_fix(message):
 
 def _no_validator_note(r):
     r.validators.append("part5 loaders only (the jsonschema package is not installed)")
+
+
+# ---------------------------------------------------------------- a replay.json, for either consumer
+REPLAY_LISTS = ("joints", "bones", "expected", "follower", "expected_t", "follower_t", "exp_to_fol")
+
+
+def _replay_structure(r, doc):
+    """Without jsonschema: every required key is there and the lists are lists."""
+    for key in contract.load_schema("replay")["required"]:
+        if key not in doc:
+            r.problems.append(Problem(key, "missing", f'add "{key}"'))
+        elif key in REPLAY_LISTS and not isinstance(doc[key], list):
+            r.problems.append(Problem(key, "must be an array", "write the array part5 analyse --replay writes"))
+
+
+def _for_replay(r, doc):
+    """The schema, then what a schema cannot say: lengths, indexes and times (contract.replay_problems)."""
+    if not _schema_step(r, "replay", doc):
+        _no_validator_note(r)
+        _replay_structure(r, doc)
+    if not r.problems:
+        r.problems += [Problem(*p) for p in contract.replay_problems(doc)]
+        r.validators.append("part5.contract.replay_problems")
+    if r.problems:
+        return
+    expected, follower = len(doc["expected"]), len(doc["follower"])
+    r.notes.append(f"{expected} expected frames and {follower} follower frames; times in seconds as written in each "
+                   "input file (expected_t, follower_t)")
+    if isinstance(doc.get("reps"), list):
+        r.notes.append(f"{len(doc['reps'])} repetitions (reps): the expected reference is repeated once per follower rep")
+    if r.consumer == "part5":
+        r.notes.append("Part 5 writes this file (part5 analyse --replay) and does not read it; Part 7 draws it")
 
 
 # ---------------------------------------------------------------- verdicts for Part 5
@@ -271,11 +308,44 @@ def _for_part7(r, doc):
         r.warnings.append(f"status.code is {status['code']!r} and faults is empty by design: show status.text "
                           'as a refusal, not as "no faults"')
     for w in doc.get("warnings", []):   # 1.4.0, ADR-0012: analysed all the same, the grade is capped at F
-        r.warnings.append(f"warning {w['code']}: {w['text']}")
+        r.warnings.append(f"{w['code']}: {w['text']}")   # printed as "warning: <code>: <text>"
     if "schema_version" not in doc:
         r.notes.append("no schema_version, so this is a 1.0 file: faults[].joints is absent and the viewer "
                        "needs its own joint mapping")
     _cue_notes(r, doc)
+    _time_notes(r, doc)
+    _score_notes(r, doc)
+
+
+def _time_notes(r, doc):
+    """1.2.0 and 1.4.0: which faults carry a time to show, and which say they are less certain."""
+    faults = doc.get("faults", [])
+    timed = [f for f in faults if "at_s" in f]
+    if timed:
+        r.notes.append(f"{len(timed)} of {len(faults)} faults carry at_s and text_timed: show text_timed (or coaching, "
+                       "which names the time) with the moment to seek to")
+    elif faults:
+        r.notes.append("faults carry no at_s (written before 1.2.0): show text without a time")
+    low = [f for f in faults if f.get("confidence") == "low"]
+    if low:
+        r.notes.append(f'{len(low)} of {len(faults)} faults have confidence "low" (a low match): show them as less certain')
+
+
+def _score_notes(r, doc):
+    """1.2.0, 1.3.0, 1.4.0: the score, how it was reached and what capped it."""
+    score = doc.get("score")
+    if not isinstance(score, dict):
+        r.notes.append("no score (written before 1.2.0, or not scored): show the faults only")
+        return
+    line = (f"score {score['value']} out of 100, grade {score['grade']}" if "value" in score and "grade" in score
+            else "score present")
+    if score.get("capped_by"):
+        line += f", capped at F by {', '.join(score['capped_by'])} (show the warnings beside it)"
+    r.notes.append(line)
+    windows = score.get("timeline")
+    if isinstance(windows, list):
+        r.notes.append(f"score.timeline has {len(windows)} window{'s' if len(windows) != 1 else ''} "
+                       f"(basis {score.get('basis', 'windows')}): show {'them' if len(windows) != 1 else 'it'} as a timeline")
 
 
 def _cue_notes(r, doc):
@@ -292,7 +362,7 @@ def inspect_file(path, consumer="part5"):
         r.unreadable, r.problems = True, [problem]
         return r
     r.kind = identify(doc)
-    judge = _for_part7 if consumer == "part7" else FOR_PART5[r.kind.id]
+    judge = _for_replay if r.kind.id == "replay" else _for_part7 if consumer == "part7" else FOR_PART5[r.kind.id]
     judge(r, doc)
     return r
 
@@ -312,7 +382,7 @@ def add_parser(sub):
     d = sub.add_parser("doctor", help="name a file's kind, validate it and say what a consumer would reject")
     d.add_argument("file", help="the file to check")
     d.add_argument("--for", dest="consumer", choices=CONSUMERS, default="part5",
-                   help="who reads it: part5 (a clip, default) or part7 (an analysis.json)")
+                   help="who reads it: part5 (a clip, default) or part7 (an analysis.json or a replay.json)")
     d.add_argument("--json", action="store_true", help="print one JSON object")
     d.set_defaults(run=run_doctor)
 

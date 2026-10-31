@@ -1,14 +1,18 @@
-"""Part 5's published contract: five JSON Schemas, the compatibility table, `part5 contract` and
+"""Part 5's published contract: six JSON Schemas, the compatibility table, `part5 contract` and
 `make check-5-contract` (`python -m part5.contract --check`). Who sends what is in CONTRACT.md.
 
 `contract_document()` is exactly what `part5 contract --json` prints; the staging API serves it at
 `api/contract`. `check()` proves the schemas, the committed fixtures and the golden outputs agree.
+`golden_run()` is the one path that builds a golden: what `part5 analyse` does, template phrasing forced.
 """
 # ADR-0006: faults[].joints and the 1.1.0 additions are published as schema analysis 1.1.0.
+# ADR-0009: the replay is a published file (simon.replay.v1); replay_problems() checks what a schema cannot.
+# ADR-0012: the goldens carry what a real run carries (score, timeline, tempo, insights).
 # ASM-005: Part 7 reads status before faults; the table and doctor --for part7 name that duty.
 import argparse
 import importlib.util
 import json
+import os
 import re
 import sys
 import tempfile
@@ -20,12 +24,12 @@ from .io import InputError, load_clip
 from .output import OutputError, load_analysis, write_analysis
 
 ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_NAMES = ("analysis", "input-animation", "input-skeleton", "labels", "metrics")
+SCHEMA_NAMES = ("analysis", "input-animation", "input-skeleton", "labels", "metrics", "replay")
 ID_BASE = "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/"
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 # Commits of the neighbours whose files the Part 2 and Part 6 rows were checked against: the heads
 # that scripts/neighbour-check.sh recorded. Parts 3 and 4 come from contracts/sources.lock.json.
-NEIGHBOUR_COMMITS = {"part2": "1f2adc5", "part6": "fc3249a"}
+NEIGHBOUR_COMMITS = {"part2": "2e06d58", "part6": "fc3249a"}  # progress/neighbour-check-20261031.json
 TABLE_COLUMNS = ("Producer", "File", "format", "Part 5 role", "Verdict", "Fix", "Checked against")
 TABLE_KEYS = ("producer", "file", "format", "part5_role", "verdict", "fix", "checked_against")
 HANDOFF_FILE = "`{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}`"
@@ -47,7 +51,15 @@ TABLE_ROWS = (
      HANDOFF_FILE + " with `type: \"simon:follow\"`", "none", "none", "works with an option", HANDOFF_FIX,
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
-     "Part 7 reads `warnings` and `score` (ADR-0012)", "Part 5 (this repo)"),
+     "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
+     "the 1.2.0 to 1.5.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`) are all optional", "Part 5 (this repo)"),
+    ("Part 5 `analyse --replay <replay.json>`", "`replay.json`", "`simon.replay.v1`", "output for Part 7", "works",
+     "optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>`",
+     "Part 5 (this repo)"),
+    ("Part 5 `analyse --live`", "live mode (`--live`, `serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`)",
+     "`simon.analysis.v1` with `phrasing.selected_by` `live`", "option for Part 7", "works with an option",
+     "needs the Baseten key file on the host that runs Part 5; without it each fault keeps its timed template line "
+     "(`fallback_reason: \"no key\"`); the template stays the default for tests and `make check-5`", "Part 5 (this repo)"),
     ("Part 5", "`part5 analyse` exit code",
      "0 analysis written (with or without warnings), 1 unreadable or invalid input file or write error, 2 usage; 3 is no longer used (ADR-0012)",
      "for Part 7", "works with a mapping",
@@ -126,6 +138,87 @@ def explain(err, key):
     return dotted(path), _clip(err.message), f"match {where} (python -m part5 contract --schema <name>)"
 
 
+# ---------------------------------------------------------------- the replay file (simon.replay.v1)
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _is_index(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _length_problems(doc):
+    """The frame lists and the lists that go with them must agree in length."""
+    out = []
+    pairs = (("expected_t", "expected", "one time in seconds per expected frame"),
+             ("exp_to_fol", "expected", "one follower frame index per expected frame"),
+             ("follower_t", "follower", "one time in seconds per follower frame"))
+    for name, frames, fix in pairs:
+        got, want = doc.get(name), doc.get(frames)
+        if isinstance(got, list) and isinstance(want, list) and len(got) != len(want):
+            out.append((name, f"has {len(got)} entries but {frames} has {len(want)} frames", f"write {fix}"))
+    return out
+
+
+def _range_problem(path, value, size, owner):
+    """One problem when the integer `value` is not a valid index into `size` items."""
+    if _is_index(value) and not 0 <= value < size:
+        return (path, f"is {value}, outside the {size} {owner} (0 to {size - 1})",
+                f"point it at a frame that exists in {owner}")
+    return None
+
+
+def _index_problems(doc):
+    """`exp_to_fol` into the follower frames, `bones` into the joints, `reps` into the frame lists."""
+    out = []
+    follower, expected, joints = doc.get("follower"), doc.get("expected"), doc.get("joints")
+    if isinstance(doc.get("exp_to_fol"), list) and isinstance(follower, list):
+        bad = [p for i, v in enumerate(doc["exp_to_fol"])
+               if (p := _range_problem(f"exp_to_fol[{i}]", v, len(follower), "follower frames"))]
+        if bad:   # the first is named, the rest counted
+            more = f" ({len(bad) - 1} more entries are out of range)" if len(bad) > 1 else ""
+            out.append((bad[0][0], bad[0][1] + more, bad[0][2]))
+    if isinstance(doc.get("bones"), list) and isinstance(joints, list):
+        for i, bone in enumerate(doc["bones"]):
+            bad = [p for k, v in enumerate(bone if isinstance(bone, list) else [])
+                   if (p := _range_problem(f"bones[{i}][{k}]", v, len(joints), "joints"))]
+            if bad:
+                out.append(bad[0])
+                break
+    for i, rep in enumerate(doc["reps"] if isinstance(doc.get("reps"), list) else []):
+        for key, frames, owner in (("expected_frames", expected, "expected frames"),
+                                   ("follower_frames", follower, "follower frames")):
+            span = rep.get(key) if isinstance(rep, dict) else None
+            if isinstance(span, list) and isinstance(frames, list):
+                bad = [p for k, v in enumerate(span) if (p := _range_problem(f"reps[{i}].{key}[{k}]", v, len(frames), owner))]
+                if bad:
+                    out.append(bad[0])
+    return out
+
+
+def _time_problems(doc):
+    """Both `t` lists must strictly increase (Part 5's clips do)."""
+    out = []
+    for name in ("expected_t", "follower_t"):
+        times = doc.get(name)
+        if not isinstance(times, list):
+            continue
+        for i in range(1, len(times)):
+            if _is_num(times[i]) and _is_num(times[i - 1]) and not times[i] > times[i - 1]:
+                out.append((f"{name}[{i}]", f"is {times[i]}, which does not come after {name}[{i - 1}] ({times[i - 1]})",
+                            f"make {name} strictly increasing"))
+                break
+    return out
+
+
+def replay_problems(doc):
+    """What a schema cannot say about a `simon.replay.v1` document (journey-followup.md, AC-R03): the lengths of
+    `expected`, `expected_t` and `exp_to_fol` agree, `follower` and `follower_t` agree, every `exp_to_fol` index
+    and bone index is in range and both `t` lists strictly increase. A list that is missing or has the wrong type
+    is the schema's to report. Returns [(field, what is wrong, fix)], empty when the file is sound."""
+    return _length_problems(doc) + _index_problems(doc) + _time_problems(doc)
+
+
 # ---------------------------------------------------------------- table and contract document
 def lock_commits(root=ROOT):
     lock = json.loads((Path(root) / "contracts" / "sources.lock.json").read_text())
@@ -167,6 +260,14 @@ def add_parser(sub):
 
 
 def run_contract(args):
+    try:
+        return _print_contract(args)
+    except BrokenPipeError:   # `part5 contract --json | head`: the reader left early; that is not an error
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
+
+
+def _print_contract(args):
     if args.schema is not None:
         if args.schema not in SCHEMA_NAMES:
             print(f"part5 contract: no schema named {args.schema}; one of {', '.join(SCHEMA_NAMES)}",
@@ -184,6 +285,28 @@ def run_contract(args):
     print("\nCompatibility (the last column is the producer commit each row was checked against)\n")
     print(table_markdown(doc["table"]))
     return 0
+
+
+# ---------------------------------------------------------------- the goldens (fixtures/output/)
+REPLAY_SOURCE = "analysis.example.json"   # the golden replay is the replay of this golden's take
+
+
+def golden_run(expected, follower):
+    """The `PipelineResult` behind every golden: what `part5 analyse` does for a clean environment, with the
+    score hook (so the goldens carry the score, timeline, tempo and insights real output carries) and the
+    `template` phrasing forced whatever SIMON5_LIVE or META_LIVE say, so a golden never calls a model."""
+    from .pipeline import run
+    from .score_report import score_block
+    return run(expected, follower, phrasing="template", score=score_block, live=False, selected_by="default")
+
+
+def _write_analysis(path, result):
+    return write_analysis(path, result.analysis)
+
+
+def _write_replay(path, result):
+    from .replay import write_replay
+    return write_replay(path, result)
 
 
 # ---------------------------------------------------------------- make check-5-contract
@@ -238,6 +361,8 @@ def classify(rel, doc):
         return ["analysis"], "analysis"
     if fmt == "simon.part5.check.v1":
         return ["metrics"], None
+    if fmt == "simon.replay.v1":
+        return ["replay"], "replay"
     if fmt == "simon.animation.v1":
         extra = ["part4/animation", "part3/animation-part5"] if from_part4 else \
             ["part3/animation-part5"] if from_part3 else []
@@ -266,6 +391,7 @@ class _Run:
     def __init__(self, root, unusable=()):
         self.root, self.failures, self.unusable = Path(root), [], set(unusable)
         self.by_schema, self.files, self.loaded, self.rejected, self.rebuilt = Counter(), 0, 0, 0, []
+        self.replays = 0
         self._validators = {}
 
     def fail(self, msg):
@@ -301,17 +427,20 @@ class _Run:
         else:
             self.loaded += 1
 
-    def rebuild(self, rel, path):
-        """A golden analysis rebuilt through the pipeline must match the file byte for byte."""
-        from .pipeline import analyse
+    def _golden_result(self, analysis_path):
+        """The pipeline result behind a golden analysis: its own `expected` and `follower` refs, run again."""
+        doc = json.loads(analysis_path.read_text())
+        refs = [dict(doc[k], doc=json.loads((self.root / doc[k]["path"]).read_text())) for k in ("expected", "follower")]
+        return golden_run(*refs)
+
+    def _rebuilt(self, rel, path, source, build):
+        """Note `rel` as rebuilt when `build(tmp_path, result)` for the take behind the analysis golden `source`
+        writes `path` byte for byte; otherwise record the failure."""
         try:
-            doc = json.loads(path.read_text())
-            refs = [dict(doc[k], doc=json.loads((self.root / doc[k]["path"]).read_text()))
-                    for k in ("expected", "follower")]
-            analysis = analyse(*refs)
+            result = self._golden_result(source)
             with tempfile.TemporaryDirectory() as tmp:
-                write_analysis(Path(tmp) / "a.json", analysis)
-                same = (Path(tmp) / "a.json").read_bytes() == path.read_bytes()
+                build(Path(tmp) / "golden.json", result)
+                same = (Path(tmp) / "golden.json").read_bytes() == path.read_bytes()
         except (OSError, ValueError, KeyError, TypeError) as e:
             self.fail(f"{rel}: cannot rebuild through the pipeline ({_clip(str(e))})")
             return
@@ -319,6 +448,20 @@ class _Run:
             self.rebuilt.append(rel)
         else:
             self.fail(f"{rel}: rebuilt through the pipeline it differs; run make output-examples and review the diff")
+
+    def rebuild(self, rel, path):
+        """A golden analysis rebuilt through the pipeline (the CLI's path, score included) must match byte for byte."""
+        self._rebuilt(rel, path, path, _write_analysis)
+
+    def rebuild_replay(self, rel, path):
+        """The golden replay is the replay of the take behind `REPLAY_SOURCE`, rebuilt byte for byte."""
+        self._rebuilt(rel, path, path.parent / REPLAY_SOURCE, _write_replay)
+
+    def check_replay(self, rel, doc):
+        """AC-R03: lengths, indexes and times, which the schema cannot say."""
+        for field, what, _ in replay_problems(doc):
+            self.fail(f"{rel}: {field}: {what}")
+        self.replays += 1
 
     def fixture(self, path):
         rel = path.relative_to(self.root).as_posix()
@@ -334,10 +477,15 @@ class _Run:
             return
         self.files += 1
         self.validate(rel, doc, keys)
-        if how:
+        if how == "replay":
+            self.check_replay(rel, doc)
+        elif how:
             self.load(rel, path, how)
-        if how == "analysis" and rel.startswith("fixtures/output/") and path.name.startswith("analysis"):
+        golden = rel.startswith("fixtures/output/")
+        if how == "analysis" and golden and path.name.startswith("analysis"):
             self.rebuild(rel, path)
+        if how == "replay" and golden:
+            self.rebuild_replay(rel, path)
 
 
 def check(root=ROOT):
@@ -348,7 +496,8 @@ def check(root=ROOT):
         run.fixture(path)
     return {"schemas": schemas,
             "validated": {"files": run.files, "by_schema": dict(sorted(run.by_schema.items())),
-                          "loaded_through_part5": run.loaded, "rejected_as_documented": run.rejected},
+                          "loaded_through_part5": run.loaded, "rejected_as_documented": run.rejected,
+                          "replays_checked": run.replays},
             "rebuilt_identical": run.rebuilt, "failures": run.failures}
 
 

@@ -2,6 +2,8 @@
 
 The analyse step is replaced by a table of analyses, so no held-out data is needed and nothing
 here generates or scores a held-out seed. One test runs the real pipeline offline on seed 5 takes.
+The score gate and the score freeze (AC-S04, AC-S06, AC-K10) are in tests/test_check_score.py, which builds on
+the synthetic world defined here.
 """
 import hashlib
 import json
@@ -94,21 +96,31 @@ def labelled(tid, angle, light, variant, faults):
             "correct": not faults, "faults": faults, "expected": "exp.json", "follower": f"{tid}.json"}
 
 
-def cell(prefix, angle, light, *, variant="clean", correct=2, faulty=4, miss=0, refuse=0, extra=0, wrong_correct=0):
-    """Takes and their analyses for one slice: `faulty` fault takes (the first `refuse` refused, the next
-    `miss` missed, the last also carries `extra` spurious faults) and `correct` takes (the first
+WARNING = [{"code": "low_match", "text": "x"}]
+
+
+def cell(prefix, angle, light, *, variant="clean", correct=2, faulty=4, miss=0, refuse=0, extra=0, wrong_correct=0,
+         warn=0, warned_correct=0):
+    """Takes and their analyses for one slice: `faulty` fault takes (the first `refuse` refused, the next `warn`
+    analysed with a warning that still lists the right fault, the next `miss` missed, the last also carries
+    `extra` spurious faults) and `correct` takes (the first `warned_correct` carry a warning, the next
     `wrong_correct` get a spurious fault)."""
     takes, analyses = [], {}
     for i in range(correct):
         tid = f"{prefix}_{angle}_{light}_{variant}_c{i}"
         takes.append(labelled(tid, angle, light, variant, []))
-        analyses[tid] = {"faults": [wrong()] if i < wrong_correct else [], "status": {"code": "ok"}}
+        analyses[tid] = {"faults": [wrong()] if warned_correct <= i < warned_correct + wrong_correct else [],
+                         "status": {"code": "ok"}}
+        if i < warned_correct:
+            analyses[tid]["warnings"] = WARNING
     for i in range(faulty):
         tid = f"{prefix}_{angle}_{light}_{variant}_f{i}"
         takes.append(labelled(tid, angle, light, variant, [fault_label()]))
         if i < refuse:
             analyses[tid] = {"faults": [], "status": {"code": "different_movement"}}
-        elif i < refuse + miss:
+        elif i < refuse + warn:   # ADR-0012: status ok, the warning says why it is graded F, the fault is still listed
+            analyses[tid] = {"faults": [hit()], "status": {"code": "ok"}, "warnings": WARNING}
+        elif i < refuse + warn + miss:
             analyses[tid] = {"faults": [], "status": {"code": "ok"}}
         else:
             spurious = [wrong() for _ in range(extra)] if i == faulty - 1 else []
@@ -258,6 +270,28 @@ def test_ac_k04_a_refused_take_counts_per_slice_and_its_labels_are_misses(tmp_pa
     assert doc["report"]["refusals"]["good/front"] == 1 and doc["report"]["refusals"]["good/45"] == 0
     assert doc["gate"]["metrics"]["by_lighting"]["good"]["refused"] == 1
     assert code == 0  # a refusal is reported and lowers recall; it is never a failure by itself
+
+
+def test_ac_k04_a_take_analysed_with_a_warning_counts_per_slice_and_its_labels_are_misses(tmp_path, monkeypatch, capsys):
+    """ADR-0012: status ok plus `warnings`; the fault it still lists is no prediction, and the row says refused."""
+    held = green("h", {("front", "good", "clean"): {"warn": 1}})
+    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
+    doc = json.loads(out)
+    front = doc["gate"]["metrics"]["slices"]["good/front"]
+    assert (front["refused"], front["fn"], front["tp"], front["fp"], front["recall"]) == (1, 1, 3, 0, 0.75)
+    assert doc["report"]["refusals"]["good/front"] == 1 and doc["report"]["refusals"]["good/45"] == 0
+    assert code == 0
+    rows = json.loads((tmp_path / "out" / "takes.json").read_text())
+    warned = [r for r in rows if r["set"] == "heldout" and r["refused"]]
+    assert [r["take_id"] for r in warned] == ["h_front_good_clean_f0"] and warned[0]["predicted"] != []
+
+
+def test_ac_k04_a_warned_correct_take_is_a_fault_on_a_correct_take_and_fails_the_gate(tmp_path, monkeypatch, capsys):
+    held = green("h", {("45", "good", "clean"): {"warned_correct": 1}})
+    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
+    doc = json.loads(out)
+    assert code == 1 and doc["gate"]["failures"] == ["good/45: 1 fault(s) on correct takes"]
+    assert doc["gate"]["metrics"]["slices"]["good/45"]["refused"] == 1
 
 
 def test_ac_k04_refusals_that_pull_recall_under_the_bar_fail_through_recall_only(tmp_path, monkeypatch, capsys):
@@ -633,86 +667,3 @@ def test_nfr_the_real_pipeline_runs_offline_with_sockets_blocked(tmp_path, monke
     doc = json.loads(out)
     assert code in (0, 1) and time.time() - started < 600
     assert errors_of(doc) == [] and doc["gate"]["metrics"]["slices"]["good/front"]["takes"] == 9
-
-
-# ----------------------------------------------------------------- the score (ADR-0007, AC-S04, AC-S06)
-def with_score(analyses, take_id, value, grade):
-    analyses[take_id] = {**analyses[take_id], "score": {**A_SCORE, "value": value, "grade": grade}}
-
-
-def test_ac_s04_a_correct_good_light_take_below_a_exits_1_and_names_it(tmp_path, monkeypatch, capsys):
-    held = green("h")
-    with_score(held[1], "h_front_good_clean_c0", 88, "B")
-    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
-    doc = json.loads(out)
-    assert code == 1 and doc["gate"]["passed"] is False
-    assert doc["gate"]["failures"] == ["h_front_good_clean_c0: scored 88 (B), a correct good-light take must be an A"]
-
-
-def test_ac_s04_an_ok_take_with_no_score_fails_the_gate(tmp_path, monkeypatch, capsys):
-    held = green("h")
-    held[1]["h_side_good_clean_c1"] = {**held[1]["h_side_good_clean_c1"], "score": None}
-    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
-    assert code == 1 and "h_side_good_clean_c1: no score" in json.loads(out)["gate"]["failures"][0]
-
-
-def test_ac_s04_a_rising_sweep_exits_1_and_names_the_step(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch)
-    monkeypatch.setattr(check, "run_sweep", lambda out_dir: {"arms_wider both": [(0, 100), (5, 80), (10, 84)]})
-    code, out, _ = w.run(capsys)
-    assert code == 1
-    assert json.loads(out)["gate"]["failures"] == [
-        "sweep arms_wider both: score rises from 80 at 5 degrees to 84 at 10 degrees"]
-
-
-def test_ac_s04_low_light_and_faulty_takes_never_gate(tmp_path, monkeypatch, capsys):
-    held = green("h")
-    for tid in list(held[1]):
-        if "_low_" in tid or tid.rsplit("_", 1)[1].startswith("f"):
-            with_score(held[1], tid, 20, "F")
-    code, out, _ = world(tmp_path, monkeypatch, held=held).run(capsys)
-    doc = json.loads(out)
-    assert code == 0 and errors_of(doc) == []
-    sc = doc["report"]["score"]
-    assert sc["gated"] is False and sc["heldout"]["slices"]["good/0"]["grades"] == {"A": 10}
-    assert sc["heldout"]["slices"]["low/0"]["grades"] == {"F": 10}
-    assert sc["heldout"]["targets"]["good/0"] == "pass" and sc["tuning"]["seed"] == 5
-
-
-def test_ac_s04_the_summary_prints_the_grade_distribution(tmp_path, monkeypatch, capsys):
-    _, _, err = world(tmp_path, monkeypatch).run(capsys)
-    assert "check-5: score good/0" in err and "A 10" in err and "{" not in err
-
-
-def freeze_by_detection(tmp_path):
-    section = f"\n## Score\n\n### Freeze check\ndetection_sha256: `{check.detection_hash()}`\n"
-    (tmp_path / "thresholds.md").write_text(freeze_section(29, sha="0" * 64) + section)
-
-
-def test_ac_s06_the_detection_hash_stands_in_for_the_whole_file_hash(tmp_path, monkeypatch, capsys):
-    freeze_by_detection(tmp_path)
-    code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
-    doc = json.loads(out)
-    assert code == 0, err
-    assert doc["detection_sha256"] == check.detection_hash() and doc["attempts"][-1]["rules_sha256"] == "0" * 64
-
-
-def test_ac_s06_a_changed_detection_key_exits_2(tmp_path, monkeypatch, capsys):
-    freeze_by_detection(tmp_path)
-    rules = json.loads(check.RULES_PATH.read_text())
-    rules["default"]["threshold_deg"] += 1
-    changed = tmp_path / "rules.json"
-    changed.write_text(json.dumps(rules))
-    monkeypatch.setattr(check, "RULES_PATH", changed)
-    code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
-    assert code == 2 and out == "" and "part5/rules.json differs from the hash frozen for seed 29" in err
-
-
-def test_ac_s06_editing_only_the_score_block_leaves_the_detection_freeze_passing(tmp_path, monkeypatch, capsys):
-    freeze_by_detection(tmp_path)
-    rules = json.loads(check.RULES_PATH.read_text())
-    rules["score"]["slope"] += 1
-    changed = tmp_path / "rules.json"
-    changed.write_text(json.dumps(rules))
-    monkeypatch.setattr(check, "RULES_PATH", changed)
-    assert world(tmp_path, monkeypatch, seed=29).run(capsys)[0] == 0

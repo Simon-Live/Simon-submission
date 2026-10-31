@@ -153,6 +153,31 @@ def test_ac_k04_a_refused_take_counts_in_refused_and_its_labels_are_misses():
     assert evaluate_corpus(labels, analyses)["overall"]["refused"] == 1
 
 
+WARNED = {"status": {"code": "ok", "text": "x"}, "warnings": [{"code": "low_match", "text": "y"}],
+          "faults": [dict(pred(), confidence="low")]}
+
+
+def test_ac_k04_is_refused_reads_the_warnings_of_an_analysis_with_status_ok():
+    """ADR-0012: a take is written with status ok and the warnings say why it is graded F."""
+    assert is_refused(WARNED) and is_refused(dict(WARNED, warnings=[{"code": "not_enough_visible", "text": "z"}]))
+    assert not is_refused(dict(WARNED, warnings=[])) and not is_refused({k: v for k, v in WARNED.items() if k != "warnings"})
+    assert is_refused({"warnings": [{"code": "low_match", "text": "y"}]})   # with no status at all
+
+
+def test_ac_k04_a_warned_take_counts_in_refused_and_its_labels_are_misses_whatever_faults_it_lists():
+    labels = {"takes": [take("a", labels=[label()]), take("b", labels=[label()]), take("c")]}
+    analyses = {"a": {"faults": [pred()]}, "b": WARNED, "c": {"status": {"code": "ok", "text": "y"}, "faults": []}}
+    s = evaluate_corpus(labels, analyses)["slices"]["good/front"]
+    assert (s["tp"], s["fp"], s["fn"], s["takes"], s["refused"]) == (1, 0, 1, 3, 1)   # b's listed fault is no prediction
+
+
+def test_ac_k04_a_warned_correct_take_is_one_fault_on_a_correct_take_not_one_per_listed_fault():
+    labels = {"takes": [take("a")]}
+    two_faults = dict(WARNED, faults=[dict(pred(), confidence="low"), dict(pred("knee_flexion", "left", "less"), confidence="low")])
+    s = evaluate_corpus(labels, {"a": two_faults})["slices"]["good/front"]
+    assert (s["fp"], s["faults_on_correct_takes"], s["refused"]) == (0, 1, 1)
+
+
 def test_a_refused_take_scores_no_predictions_even_if_faults_were_listed():
     s = score([{"predicted": [pred(), pred()], "labels": [label()], "lighting": "good", "angle": "front",
                 "correct": False, "refused": True}])["slices"]["good/front"]

@@ -12,7 +12,7 @@ import jsonschema
 import numpy as np
 import pytest
 
-from part5 import reps, repwise, score
+from part5 import reps, repwise
 from part5.detect import Fault
 from part5.pipeline import run
 from part5.replay import build_replay
@@ -134,20 +134,6 @@ def test_a_single_rep_keeps_every_fault_and_refused_reps_are_not_counted():
     kept = repwise.aggregate_faults(only)
     assert {f.measure for f, _, _ in kept} == {"knee_flexion", "elbow_flexion"}
     assert all(i == [0] for _, i, _ in kept)
-
-
-def block(value, f, s):
-    return {"version": score.VERSION, "value": value, "grade": score.grade(value), "params_sha256": "x",
-            "components": {"faults": f, "similarity": s}}
-
-
-def test_score_aggregate_averages_the_components_and_records_each_rep():
-    one = block(90, 8.0, 2.0)
-    assert score.aggregate([one]) is one
-    agg = score.aggregate([block(90, 8.0, 2.0), block(80, 15.0, 4.0), block(100, 0.0, 0.0)])
-    assert agg["components"] == {"faults": 7.67, "similarity": 2.0}
-    assert agg["value"] == 90 and agg["grade"] == "A"       # 100 - 7.67 - 2.0 = 90.33
-    assert agg["per_rep"] == [{"value": 90, "grade": "A"}, {"value": 80, "grade": "B"}, {"value": 100, "grade": "A"}]
 
 
 # --- the real lateral-raise pairs ---

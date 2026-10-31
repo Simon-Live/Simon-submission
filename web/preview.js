@@ -1,13 +1,21 @@
 // The result preview (AC-V10, ADR-0006): the published result file the way a follower would read it
 // on a phone. It is Part 5's preview of its own result contract, not a Part 7 build, and the
 // section's heading says so. It reads `status` before `faults` (ASM-005) and only fields the
-// contract defines (contracts/analysis.schema.json).
-import { faultJoints, jointLabel, sizeSentence } from "./joints.js";
+// contract defines (contracts/analysis.schema.json). It says what the Compare tab says (AC-V18):
+// the score, the warnings and the same line for each fault (joints.js).
+import {
+  LOW_CONFIDENCE_NOTE, NO_FAULTS_SENTENCE, cappedNote, faultJoints, faultLine, faultsOf, isLowConfidence, isOldRefusal,
+  jointLabel, noticesOf, scoreSentence, sizeSentence,
+} from "./joints.js";
 
 // What the screen reads, field by field, so the contract is visible next to its use.
 export const FIELDS_READ = [
   ["Status line", "status.text"],
-  ["The fault in plain words", "faults[].coaching"],
+  ["Score and grade", "score.value and score.grade"],
+  ["Why the grade is limited", "score.capped_by"],
+  ["Warnings", "warnings[].text"],
+  ["The fault in plain words, with its time", "faults[].coaching, else faults[].text_timed, else faults[].text"],
+  ["Low confidence", "faults[].confidence"],
   ["Body part", "faults[].body_part"],
   ["How far off", "faults[].magnitude_deg and faults[].direction"],
   ["Where it shows", "faults[].joints"],
@@ -16,8 +24,8 @@ export const FIELDS_READ = [
 ];
 
 const EMPTY = "No result yet. Press Analyse on the Compare tab, then open this tab again.";
-const NO_FAULTS = "No faults found. This take follows the example.";
-const REFUSED_NOTE = "No faults are listed for a different movement.";
+const NO_FAULTS_LISTED = "No faults are listed.";
+const OLD_REFUSAL_NOTE = "No faults are listed for a different movement.";
 
 export function make(tag, className, text) {
   const node = document.createElement(tag);
@@ -36,7 +44,8 @@ function frames(range) {
 function card(fault) {
   const item = make("li", "phone-card");
   item.dataset.testid = "preview-fault";
-  item.append(make("p", "phone-coach", sentence(fault.coaching || fault.text)));
+  item.append(make("p", "phone-coach", sentence(faultLine(fault))));
+  if (isLowConfidence(fault)) item.append(make("p", "phone-meta", LOW_CONFIDENCE_NOTE));
   item.append(make("p", "phone-meta", `${sentence(fault.body_part || "body")}: ${sizeSentence(fault)}`));
   const joints = faultJoints(fault).map(jointLabel).join(", ");
   item.append(make("p", "phone-meta", `Shows on: ${joints}`));
@@ -44,14 +53,35 @@ function card(fault) {
   return item;
 }
 
-function body(analysis) {
+// The score line, why it is limited and the warnings, as on the Compare tab (AC-V14, AC-V06).
+function verdict(analysis) {
   const nodes = [];
+  const score = scoreSentence(analysis.score);
+  if (score) {
+    const line = make("p", "phone-score", score);
+    line.dataset.testid = "preview-score";
+    nodes.push(line);
+  }
+  const note = cappedNote(analysis.score);
+  if (note) nodes.push(make("p", "phone-meta", note));
+  for (const text of isOldRefusal(analysis) ? [] : noticesOf(analysis)) {
+    const warning = make("p", "phone-warning", text);
+    warning.dataset.testid = "preview-warning";
+    nodes.push(warning);
+  }
+  return nodes;
+}
+
+function body(analysis) {
   const status = analysis.status || { code: "ok", text: "" };
-  nodes.push(make("p", "phone-status", status.text));
-  if (status.code !== "ok") return [...nodes, make("p", "phone-meta", REFUSED_NOTE)];
-  if (analysis.faults.length === 0) return [...nodes, make("p", "phone-meta", NO_FAULTS)];
+  const nodes = [make("p", "phone-status", status.text), ...verdict(analysis)];
+  if (isOldRefusal(analysis)) return [...nodes, make("p", "phone-meta", OLD_REFUSAL_NOTE)];
+  const faults = faultsOf(analysis);
+  if (faults.length === 0) {
+    return [...nodes, make("p", "phone-meta", noticesOf(analysis).length ? NO_FAULTS_LISTED : NO_FAULTS_SENTENCE)];
+  }
   const list = make("ol", "phone-cards");
-  list.append(...analysis.faults.map(card));
+  list.append(...faults.map(card));
   return [...nodes, make("h3", "phone-sub", "What to work on"), list];
 }
 

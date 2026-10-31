@@ -1,0 +1,138 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.1.0",
+  "expected": {
+    "path": "fixtures/input/expected/exercise/animation.json",
+    "set": "exercise",
+    "movement": "squat"
+  },
+  "follower": {
+    "path": "fixtures/input/followers/exercise/exercise_front_good_08_arms_wider-both+elbow_bent-right/skeleton.json",
+    "take_id": "exercise_front_good_08_arms_wider-both+elbow_bent-right"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [
+    {
+      "measure": "elbow_flexion",
+      "measure_kind": "angle",
+      "joint": "right_elbow",
+      "body_part": "arms",
+      "side": "right",
+      "direction": "more",
+      "magnitude_deg": 36.1,
+      "peak_deg": 43.0,
+      "threshold_deg": 20.0,
+      "unit": "degrees",
+      "expected_frames": [
+        18,
+        77
+      ],
+      "follower_frames": [
+        20,
+        65
+      ],
+      "runs": [
+        [
+          18,
+          77
+        ]
+      ],
+      "phase": [
+        0.2,
+        0.856
+      ],
+      "coverage": 1.0,
+      "confidence": 1.0,
+      "text": "right elbow bent more than the example",
+      "joints": [
+        "right_elbow"
+      ],
+      "coaching": "right elbow bent more than the example"
+    },
+    {
+      "measure": "upper_arm_out",
+      "measure_kind": "direction",
+      "joint": "shoulder",
+      "body_part": "arms",
+      "side": "both",
+      "direction": "more",
+      "magnitude_deg": 15.8,
+      "peak_deg": 17.0,
+      "threshold_deg": 10.0,
+      "unit": "degrees",
+      "expected_frames": [
+        10,
+        74
+      ],
+      "follower_frames": [
+        12,
+        63
+      ],
+      "runs": [
+        [
+          10,
+          74
+        ]
+      ],
+      "phase": [
+        0.111,
+        0.822
+      ],
+      "coverage": 1.0,
+      "confidence": 1.0,
+      "text": "elbows wider than the example",
+      "joints": [
+        "left_shoulder",
+        "right_shoulder"
+      ],
+      "coaching": "elbows wider than the example"
+    }
+  ],
+  "diagnostics": {
+    "alignment_residual": 0.3925,
+    "alignment_measures": [
+      "left_elbow_flexion",
+      "left_knee_flexion",
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_elbow_flexion",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward"
+    ],
+    "follower_span": [
+      3,
+      75
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.3925,
+      "timing_corr": 0.9892,
+      "span_share": 0.9605,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    }
+  },
+  "phrasing": {
+    "requested": "template",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "faults": [
+      {
+        "backend": "template",
+        "fallback_reason": null
+      },
+      {
+        "backend": "template",
+        "fallback_reason": null
+      }
+    ]
+  }
+}

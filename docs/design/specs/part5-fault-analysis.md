@@ -8,7 +8,9 @@ Registry: `engagements/simon-part-5.yaml` in the hub (milestones S0, M1 to M4; u
 uc-correct-take, uc-wrong-movement, uc-done-check, uc-real-takes, uc-integration-contract).
 ADRs: ADR-0001 (workspace and publish), ADR-0002 (takeover and PR landing), ADR-0003 (held-out calibration
 and gate), ADR-0004 (knee caving and movement guard), ADR-0005 (phrasing registry), ADR-0006 (viewer and
-joint mapping). Companion specs: `integration-contract.md`, `check-5.md`, `calibration.md`,
+joint mapping), ADR-0007 to ADR-0014 (score, live phrasing, time and replay, repetitions, visibility, always
+analyse, score timeline, cues). Where an AC below and a later ADR disagree, the later ADR wins; ADR-0012 replaced
+every refusal with a warning. Companion specs: `integration-contract.md`, `check-5.md`, `calibration.md`,
 `real-takes.md`, `staging.md`, `viewer.md`, `neighbour-check.md`, `simon-publish.md`.
 
 ## Overview
@@ -28,7 +30,9 @@ registry, the integration contract, a staging app with a 3D replay, and a report
 2. Synthetic faults are clean rotations of a limb chain; real faults are not. Answer: real takes (Part 3's
    kit, stock clips) are scored and reported on every run, never gated, and never hidden (`real-takes.md`).
 3. A pipeline that always finds "the closest phase" turns any movement into faults (cat-cow yoga against
-   the squat reports 9). Answer: the movement guard refuses before detection (ADR-0004).
+   the squat reports 9). Answer: the movement guard measures the match before detection and a low match is
+   flagged, not hidden: the take is still analysed (ADR-0012), with a `low_match` warning, every fault at
+   `confidence: "low"` and the score capped at F (ADR-0004).
 4. Part 3's kit labels `knee_caving` and Part 5 has no measure for it, so a common squat fault is
    invisible. Answer: the `knee_valgus` measure (ADR-0004).
 5. Refreshing the expected clips moves every take and every tuned threshold. Answer: refresh once, at the
@@ -54,8 +58,9 @@ status I can trust.
    `right_knee_valgus` (below).
 5. Availability check: under 50% measurable is an `AnalysisError` (unchanged, exit 1).
 6. Alignment (`part5.align.align`, unchanged): two-pass DTW, open begin and end.
-7. Movement guard (`part5.guard.check_movement`, new). A refused take stops here: `analysis.json` is
-   written with `status.code: "different_movement"` and `faults: []`.
+7. Movement guard (`part5.guard.check_movement`, new). It judges the match and stops nothing (ADR-0012): a take
+   that does not match is analysed all the same, with a `low_match` warning, `match.quality: "low"`, every fault's
+   `confidence` the literal `"low"` and a score capped at 59 (grade F). Section "Always analyse" below.
 8. Detection (`part5.detect.detect`) with the persistence and overlap rules below.
 9. Per-fault canonical joints (`part5.joints_map.fault_joints`, new; ADR-0006).
 10. Words (`part5.words.describe`, unchanged template) and coaching phrasing
@@ -93,25 +98,26 @@ code: str, text: str, stats: dict)`.
   `Alignment.residual`), `timing_corr` (median over the timing measures of the Pearson correlation
   between the expected series and the follower series sampled at `exp_to_fol`, NaN-masked), and
   `span_share` (matched follower frames over follower frames).
-- Refuse when `residual > guard.max_residual` or `timing_corr < guard.min_timing_corr`. The two limits
+- A low match is `residual > guard.max_residual` or `timing_corr < guard.min_timing_corr` (a refusal before
+  ADR-0012, now a warning). The two limits
   live in `part5/rules.json` under `"guard"` and are calibrated on the seed 5 tuning set
   (`calibration.md`): every tuning take against its own expected clip must pass, and every mismatch
-  pair must be refused (each exercise take against the dance clip and each dance take against the
+  pair must be a low match (each exercise take against the dance clip and each dance take against the
   exercise clip, plus Part 2's `class` (cat-cow yoga), `dance` and `single` (a seated stretch) takes
   through Part 3 `--view part5` against the squat; `single` counts only once Part 2 publishes its seated-stretch output; while the committed `single/pose3d.json` is the provisional squat clip (sha256 `433ae2ed`), it is a matched squat pair, reported and never in the mismatch population (stakeholder-proxy, 2026-10-29)). Each
   limit sits at the midpoint of the gap between the two populations; when the populations overlap, the
   limit keeps every matched tuning take passing and the overlap is reported in `docs/thresholds.md`.
-- `span_share` keeps its current role (a warning under 0.6), never a refusal.
-- Status text, plain words, no numbers: "This take does not look like the expected movement, so no
-  faults are listed. Check that you picked the right movement and that the whole movement is in the
-  take." Stats go in `diagnostics.guard`.
+- `span_share` keeps its current role (a diagnostics warning under 0.6), never a reason for a low match.
+- Warning text, plain words, no numbers (`guard.REFUSAL_TEXT`): "This take doesn't closely match the trainer's
+  movement, so the grade is capped at F. Check that you picked the right movement and that the whole movement is
+  in the take." Stats go in `diagnostics.guard` and `match`.
 
 ## Repetitions (ADR-0010; schema 1.3.0)
 Real clips hold several repetitions and the counts rarely match (a trainer's 3 slow reps, a follower's 8 fast
 ones), which the slope-limited whole-clip alignment cannot follow. `part5/reps.py` cuts a clip into reps and
-`part5/repwise.py` compares one rep at a time. It runs only when the whole-clip guard refuses (or the whole-clip
-alignment cannot run) and either clip has two or more cycles; a pair the whole-clip guard accepts is analysed
-as before, so seed 5, the held-out seeds and the goldens do not move.
+`part5/repwise.py` compares one rep at a time. It runs only when the whole-clip guard finds a low match (or the
+whole-clip alignment cannot run, an `AlignmentError`) and either clip has two or more cycles; a pair the whole-clip
+guard accepts is analysed as before, so seed 5, the held-out seeds and the goldens do not move.
 - **Segmentation**: the measure with the largest p95 minus p5 range (at least 15 degrees), smoothed over 0.25 s;
   turning points that stand out by 35% of the range; cuts at the dips or at the peaks, whichever gives more cycles
   (ties to the dips), at least 0.6 s apart. Fewer than two cycles: one segment, the whole clip. The follower
@@ -121,19 +127,32 @@ as before, so seed 5, the held-out seeds and the goldens do not move.
 - **Per rep**: each follower rep is resampled to the reference's frame count, then aligned, guarded (frozen
   limits) and detected on its own. A rep passes when the guard passes and the matched span covers at least 60% of
   it. A follower that is one segment is compared whole against the reference.
-- **Verdict**: accepted when a strict majority of follower reps pass and at least one; otherwise
-  `different_movement`, no faults, nothing new in the document. `diagnostics.guard.residual` and `timing_corr` are
-  medians over the reps, and `diagnostics.guard.reps` is `[{span_s, residual, timing_corr, ok}]`.
+- **Bound**: each rep is aligned against the whole reference, so the reps together align `reps x reference frames`
+  squared frame pairs (a lone follower segment: reference frames x its frames). Over `MAX_CELLS` (4,000,000, the
+  whole pair's bound) the analysis stops before any alignment with the same plain error as the whole pair:
+  `<follower>: N follower frames against M expected frames are too long to compare together (the limit is
+  4,000,000 frame pairs)`, exit 1. A rep whose alignment raises `AlignmentError` does not pass; any other error is a
+  bug and is not caught.
+- **Verdict**: accepted when a strict majority of follower reps pass and at least one; otherwise the take is a low
+  match (ADR-0012) and is analysed as a whole with the `low_match` warning. `diagnostics.guard.residual` and
+  `timing_corr` are medians over the reps, and `diagnostics.guard.reps` is `[{span_s, residual, timing_corr, ok}]`.
 - **Faults**: a fault (same measure, side, direction) counts when found in at least half of the accepted reps, or
   always for a single rep. It is reported once: `at_s`, `follower_t_s` and `follower_runs` from its first
   occurrence on the follower file's clock, the median `magnitude_deg`, the largest `peak_deg`, and `reps`, the rep
-  indices it was found in.
-- **Score**: `score.compute` per accepted rep (over the reported faults), then the mean of the components;
-  `score.per_rep` lists each rep's value and grade.
+  indices it was found in. Its `expected_frames`, `runs` and `phase` are on the expected file's own frames: the
+  first occurrence's place in the reference rep, shifted by the reference's first frame
+  (`diagnostics.expected_reference.frames[0]`), and `phase` the fraction of the whole expected file
+  (`frame / (frames - 1)`, as for a whole-clip fault). A timeline miss carries times only, so nothing there is
+  on a frame scale.
+- **Score**: ADR-0013: one window per follower rep, scored on that rep's own misses, the take the mean of the
+  reps that were compared; `score.basis` is `reps` and `score.per_rep` lists each rep's value and grade.
 - **Replay**: the expected rep tiled once per follower rep against the whole follower take; `exp_to_fol` maps each
-  tiled frame to the follower file's frames; the optional `reps` list holds each rep's expected frames, follower
-  frames and verdict.
-- **Document**: a take compared this way carries `schema_version` `1.3.0`; any other take keeps `1.2.0`.
+  tiled frame to the follower file's frames; the optional `reps` list holds each rep's expected frames (frames of
+  the tiled list), follower frames and verdict. `expected_t` starts at the reference's own time in the expected
+  file (its first copy is the file's times); each further copy is one rep and one frame step later, so the list
+  strictly increases.
+- **Document**: the rep fields (`faults[].reps`, `diagnostics.guard.reps`, `diagnostics.expected_reference`,
+  `score.per_rep`, 1.3.0) appear only on a take compared this way; a take compared as a whole has none of them.
 
 ## Detection changes (#30)
 - Persistence: a fault counts when the frames of all runs past threshold in one direction, each run at
@@ -152,7 +171,7 @@ Every addition is optional for a v1.0 reader; `CONTRACT.md` names Part 7's dutie
 | Field | Type | Meaning |
 |---|---|---|
 | `schema_version` | string | `"1.1.0"` |
-| `status` | object | `{code: "ok" \| "different_movement", text: string}`; `faults` is `[]` unless `ok` |
+| `status` | object | `{code: "ok" \| "different_movement", text: string}`; `faults` is `[]` unless `ok`. From 1.4.0 `code` is always `ok` (ADR-0012); `different_movement` and the other refusal codes only appear in documents written before it |
 | `phrasing` | object | `{requested, backend, model, fallback_reason, faults: [{backend, fallback_reason}]}`; `backend` is the requested backend when it phrased at least one fault, else `template`; `faults` holds one entry per fault, in fault order, naming the backend that phrased it and any fallback reason |
 | `faults[].joints` | list of canonical joint names | what to highlight (ADR-0006 mapping) |
 | `faults[].runs` | list of `[start, end]` | every counted run, expected frames |
@@ -160,6 +179,25 @@ Every addition is optional for a v1.0 reader; `CONTRACT.md` names Part 7's dutie
 | `diagnostics.guard` | object | `residual`, `timing_corr`, `span_share`, limits |
 
 `text`, `measure`, `side`, `direction` and every scored field never depend on the phrasing backend.
+
+## Always analyse (ADR-0012; schema 1.4.0)
+`part5 analyse` writes a full analysis and exits 0 for any pair of readable files within the work bounds. What was a
+refusal is a warning:
+- `warnings`: `[{code, text}]` with code `low_match`, `moving_part_out_of_frame`, `not_enough_visible` or
+  `no_usable_measures`, and `match`: `{quality: "ok" | "low", residual, timing_corr, limits}`. A document with no
+  warning has neither field.
+- `status.code` is `ok`. `score` is never null: it is computed, then capped at 59 (grade F) with `score.capped_by`
+  naming the codes. A take nothing could be aligned or measured on lists no fault, scores 0, and its replay plays
+  on a straight-line stand-in alignment.
+- On a low match each fault's `confidence` is the string `"low"`; the numeric confidence is not kept.
+- Only `AlignmentError` (a follower more than 2x faster than the example, or no path that ends where it must) makes
+  a take unalignable. Any other error from the alignment is a defect and surfaces to the caller.
+- **Old readers.** An unwarned document of the current version still validates against the 1.1.0 schema
+  (`tests/fixtures/analysis-1.1.0.schema.json`, as at `28d20ef`), and so do the goldens. A warned document does
+  not, deliberately: the `"low"` literal fails the 1.1.0 `confidence: number`, and only that (`faults[*].confidence`).
+  A reader older than 1.4.0 therefore cannot show a different movement as a normal result. The literal is the
+  contract Part 7 reads; it is not replaced by a number. A warned document with no fault validates against 1.1.0,
+  and every warned document validates against the current schema. Verification: `tests/test_schema_compat.py`.
 
 ## Coaching cues, tempo and insights (ADR-0014; schema 1.5.0)
 Every new `analysis.json` is `1.5.0` and says what to do, not only what was wrong (`part5/cues.py`,
@@ -172,7 +210,10 @@ Every new `analysis.json` is `1.5.0` and says what to do, not only what was wron
   "Speed up to match the trainer" above 1.15, else null; `ratio` null when the example side spans under 1 s.
 - `insights`: at most 5 `{cue, why, kind, at_s, window, points, measure, side, joint}`, one per distinct miss cue,
   ranked by their share of the score; a tempo item is kept last when `score.tempo.cue` is set. Without a
-  timeline, one per distinct fault cue in fault order, `points` null.
+  timeline, one per distinct fault cue in fault order, `points` null. A `why` that points at a reported fault
+  reuses that fault's timed words (`text_timed`, sentence case: "Right foot too far right at 1.9 s", then
+  " (3 of 8 reps)" or " (2 times)" when the cue missed more than once); a miss no reported fault matches and a
+  tempo item keep the plain-words templates (ADR-0014, amendment of 2026-10-31).
 - Template text only; no phrasing backend rewrites a cue. No cue for foot rotation or an ankle twist: the 17
   joints end at the ankle (follow-up: heel and toe keypoints).
 
@@ -187,7 +228,11 @@ ACs (tests/test_cues.py):
   lateral-raise follower every rep and the take say "Slow down".
 - AC-CUE-06: every timeline miss carries its text and the cue of its measure, direction and side.
 - AC-CUE-07: insights are ranked by points, sum to no more than the points lost, point at the first miss
-  (window and at_s), at most 5, and the tempo item is kept last.
+  (window and at_s), at most 5, and the tempo item is kept last. An insight that points at a reported fault
+  (same measure, side and direction) has a `why` that is that fault's `text_timed` in sentence case, time
+  included ("Right foot too far right at 1.9 s"; the advice clause a centre phrase may end on is left to the
+  cue; " (3 of 8 reps)" or " (2 times)" follows when the cue missed more than once), so the fault row and the
+  insight use the same words. A miss with no reported fault and a tempo item keep their plain-words `why`.
 - AC-CUE-08: one miss in 60 s and ten in 600 s give scores within 3 points and the same insight points within 0.5.
 - AC-CUE-09: `validate_analysis` and the schema reject a cue over 6 words, a wrong kind, a broken insight; a
   document without cues still validates; `part5 doctor --for part7` notes a document written before 1.5.0.
@@ -202,14 +247,21 @@ ACs (tests/test_cues.py):
   `POST https://inference.baseten.co/v1/chat/completions`, header `Authorization: Bearer <key>`, model
   exactly `meta-models/muse-spark-open-1026`, `max_tokens` 512 or more (a reasoning model: a short budget
   is spent on reasoning and returns empty content), timeout 10 s, stdlib `urllib` (no new dependency).
-  The key is the file the file named by `PART5_BASETEN_KEY_FILE` (mode 600; path overridable by
+  The key is the Baseten key file (mode 600; path overridable by
   `PART5_BASETEN_KEY_FILE` for tests), read into memory at the call, whitespace stripped, never printed,
-  logged, written or sent anywhere but that header. Live calls only when the key file exists and
-  `META_LIVE=1` (#20). The request carries the measured fault record only: measure, joint, side,
-  direction, magnitude, threshold, frames. Each call's `usage` block (prompt, completion and reasoning
-  token counts, model, UTC time, HTTP status; never the key or the text) is appended to
-  `~/.simon/baseten_usage.jsonl`. Without a key: `template`, `fallback_reason: "no key"`. Operator ask #335's
-  Muse Spark item is satisfied by this key.
+  logged, written or sent anywhere but that header. Live calls only when the key file exists and live mode is on
+  (`--live`, `SIMON5_LIVE=1` or `META_LIVE=1`, #20, ADR-0008). The request carries the measured fault record only:
+  measure, joint, side, direction, magnitude, threshold, frames, and for a fault with a time (ADR-0008) `at_s`,
+  `lateral`, `text_timed` and the landmarks it may mention; it asks for `reasoning_effort: low`. Each call's `usage`
+  block (prompt, completion and reasoning token counts, model, UTC time, HTTP status; never the key or the text)
+  is appended to `~/.simon/baseten_usage.jsonl`. Without a key: `template`, `fallback_reason: "no key"`, also for a
+  request that only got `muse-spark` as the live default (the API does not answer it with a 400; naming
+  `muse-spark` on a server that cannot run it is still a 400). Operator ask #335's Muse Spark item is satisfied by
+  this key.
+- Fallback reasons, in the record per fault: `no key`, `live calls are off (...)`, `ollama not found` and
+  `rate limited` (the process-wide limit of 30 calls a minute) and `time budget spent` (the 20 s a phrasing may
+  use) are plain, because no call was made or the limit is not the model's; a call that ran and failed reads
+  `<backend>: <what>` (`muse-spark: timeout after 10 s`, `muse-spark: HTTP 500`, `muse-spark: <word test reason>`).
 - Validation, per fault: the line must name the same body part and side and carry the direction's
   meaning (word test), and must add no number and no fault that the record does not hold. A line that
   fails, a timeout, an HTTP error or empty content falls back to `text` for that fault, and the
@@ -220,17 +272,17 @@ ACs (tests/test_cues.py):
 
 ## CLI (`python -m part5` and the `part5` script)
 ```
-part5 analyse --expected <file> --follower <file> --out <analysis.json> [--phrasing template|local-llm|muse-spark]
+part5 analyse --expected <file> --follower <file> --out <analysis.json> [--replay <replay.json>]
+              [--expected-visibility <file>] [--phrasing template|local-llm|muse-spark] [--live]
 part5 contract [--schema <name>] [--json]
 part5 doctor <file> [--for part5|part7] [--json]
-part5 serve [--host 127.0.0.1] [--port 8725] [--base-path /]
+part5 serve [--host 127.0.0.1] [--port 8725] [--base-path /] [--live]
 part5 report-real [--out out/report-real/report.json]
 ```
-`analyse` exits 0 when it wrote an `ok` analysis, 1 for an input, alignment or write error (unchanged
-messages), 3 when it wrote a refused analysis (`different_movement`). Exit 3 means a valid
-`analysis.json` was written; a caller that expects the family convention 0, 1, 2 (Part 7 at 90aa473,
-Part 3 `CONTRACT.md` row for Part 7) treats 0 and 3 as "written, read `status`" (`CONTRACT.md` names
-the mapping). `contract` and `doctor`:
+`analyse` exits 0 when it wrote an analysis, a take that does not match the example included (ADR-0012: it carries
+a warning and grade F, `warnings` and `status.code: "ok"`), and 1 for an input, work-bound or write error, with
+`part5 analyse: <file>: <what>` on stderr and nothing written. Exit 3 is no longer used: a caller written for it
+(Part 7 at 90aa473) reads `warnings` on an exit 0. `contract` and `doctor`:
 `integration-contract.md`. `serve`: `staging.md`. `report-real`: `real-takes.md`.
 
 ## Makefile targets (published)
@@ -242,7 +294,7 @@ the mapping). `contract` and `doctor`:
 | `dummy-data` | `python3 scripts/make_dummy_followers.py` (seed 5, tuning set) | 0 |
 | `heldout-data` | `python3 scripts/make_dummy_followers.py --seed $(SEED) --out fixtures/input/heldout --dropout-variant`; `SEED` is required (29, then 31, then 37; `calibration.md`) | 0; 2 without `SEED` |
 | `output-examples` | `uv run python scripts/make_output_examples.py` | 0 |
-| `report-real` | `uv run python -m part5 report-real` | 0 when every real take was analysed (refusals count as analysed) |
+| `report-real` | `uv run python -m part5 report-real` | 0 when every real take was analysed (ADR-0012: always analyse; a mismatch take counts when it carries a `low_match` warning and grade F) |
 | `demo` | `uv run python -m part5 serve --port 8735` | foreground server for the isolated demo (#16); its own port, so it never clashes with `scripts/dev.sh` on 8725 |
 | `smoke-muse-spark` | `META_LIVE=1 uv run python -m part5.phrasing.smoke` | opt-in live call to Muse Spark; 0 when a valid line came back; never run by `test`, `check-5` or the publish check |
 | `test-contract`, `contracts-check`, `contracts-sync` | from PR #34 | unchanged |
@@ -261,13 +313,13 @@ the mapping). `contract` and `doctor`:
 | Expected clips | Part 4 main `fixtures/output/{exercise,dance}/animation.json`, commit recorded in `fixtures/input/expected/SOURCE.md` and `contracts/sources.lock.json` | Refresh once (M2 start) |
 | Kit expected clip | Part 4 main `fixtures/output/part3-squat/animation.json` copied to `fixtures/input/expected/part3-squat/animation.json` | Best match for Part 3's kit |
 | Guard limits | `rules.json` `"guard": {"max_residual", "min_timing_corr"}`, calibrated on seed 5 and the mismatch pairs | ADR-0004 |
-| Refusal | `status.code: "different_movement"`, `faults: []`, CLI exit 3, staging shows the status text | uc-wrong-movement |
+| Low match | Analysed all the same (ADR-0012): `warnings: [{code: "low_match", ...}]`, `match.quality: "low"`, faults listed with `confidence: "low"`, score capped at 59 (grade F), CLI exit 0, staging shows the warning text. Before ADR-0012 this row read `status.code: "different_movement"`, `faults: []`, exit 3 | uc-wrong-movement |
 | Gate | Held-out `good/front`, `good/45`, `good/side`: P >= 0.85, R >= 0.75, 0 faults on correct takes, no empty slice | D3 on #18, ADR-0003 |
 | Reported, never gated | Seed 5 slices, low light, dropout, Part 3 kit, stock takes | D3, D2 |
 | Match rule | D4: measure + side + direction, `both` label accepts either side, trunk at body-part level | #18 |
-| Phrasing default | `template`; `check-5` and tests run `template` only | ADR-0005 |
+| Phrasing default | `template`; `check-5`, `check-5-contract`, `output-examples` and tests run `template` only, whatever `META_LIVE` or `SIMON5_LIVE` say. In live mode (`--live`, `SIMON5_LIVE=1`, `META_LIVE=1`) the default is `muse-spark` | ADR-0005, ADR-0008 |
 | Ports | Local dev 8725 (`scripts/dev.sh`), `make demo` 8735, staging 7123 under `/simon-part-5/` | Registry; demo and dev never clash |
-| Upload cap | 16 MiB per file, 6000 frames per clip (the follower counted once on the expected clip's clock; the expected clip at most 240 fps and with a usable frame rate; expected frames times follower frames at most 4,000,000, since the alignment's cost arrays grow with that product), checked in `part5/pipeline.py` before resampling | Same order as Part 3's 16 MiB |
+| Upload cap | 16 MiB per file, 6000 frames per clip (the follower counted once on the expected clip's clock; the expected clip at most 240 fps and with a usable frame rate; expected frames times follower frames at most 4,000,000, since the alignment's cost arrays grow with that product; in rep-by-rep mode the same limit holds for the reps' frame pairs together), checked in `part5/pipeline.py` before resampling and in `part5/repwise.py` before the first rep is aligned | Same order as Part 3's 16 MiB |
 | Numbers in output | Degrees rounded to 2 decimals, confidence and phase to 3 (unchanged where already set) | Byte-stable reruns |
 | Black box | No code of Parts 2, 3, 4, 6 or 7 is imported or copied; their files only | README rule |
 
@@ -284,11 +336,13 @@ is a swing of 21.3 degrees; a 20 degree swing reads 18.9.) Verification: `tests/
 ### AC-003: knee caving detected
 Given seed 5 `knee_caving` takes in good light, when analysed, then each reports `knee_valgus` with the
 labelled side and direction `more`.
-### AC-004: movement guard refuses
+### AC-004: movement guard flags a different movement
 Given the squat expected clip and Part 2's `class` (cat-cow yoga), `dance` or `single` (a seated stretch,
 once Part 2 publishes it; the provisional squat `single` is a matched pair) take (through Part 3
-`--view part5`), or any dance take against the exercise clip, when analysed, then `status.code` is `different_movement`,
-`faults` is `[]` and the CLI exits 3.
+`--view part5`), or any dance take against the exercise clip, when analysed (ADR-0012), then `status.code` is `ok`,
+`warnings` holds `low_match`, `match.quality` is `low`, every fault listed carries `confidence: "low"`, `score.grade`
+is `F` with `capped_by: ["low_match"]`, and the CLI exits 0. Before ADR-0012 this AC read `different_movement`,
+`faults: []`, exit 3. Verification: `tests/test_guard.py`, `tests/test_cli.py`, `tests/test_reps.py`.
 ### AC-005: movement guard accepts
 Given every seed 5 take against its own expected clip, when analysed, then none is refused. Held-out
 refusals are not an AC-005 failure: they are reported per slice under AC-K04 and lower recall.
@@ -310,8 +364,10 @@ Given `--phrasing muse-spark` with no key file, when analysed, then `phrasing.ba
 of a `template` run. Given an injected client that returns empty content, an HTTP error, a timeout, or a
 line with the wrong side or an added number for one fault, then that fault alone falls back to `text`
 and the per-fault record names the reason; the other faults keep the backend's line.
-### AC-011: refused analysis validates
-Given a refused take, `analysis.json` validates against `contracts/analysis.schema.json`.
+### AC-011: warned analysis validates
+Given a take analysed with a warning, `analysis.json` validates against `contracts/analysis.schema.json`, and against
+the 1.1.0 schema only when it lists no fault (the `"low"` confidence is the one deliberate exception, section "Always
+analyse"). Verification: `tests/test_schema_compat.py`.
 ### AC-012: determinism
 Given the same inputs, two runs write byte-identical `analysis.json` (template phrasing).
 
@@ -319,19 +375,40 @@ Given the same inputs, two runs write byte-identical `analysis.json` (template p
 Given a measure series with three cycles, one cycle, none, or small ripple, when `reps.segment` runs, then it
 returns three spans, one whole span, one whole span, and no extra cut. Verification: `tests/test_reps.py`.
 ### AC-REP-2: real multi-rep takes are compared
-Given the real lateral-raise trainer and its 8-rep and 2-rep followers, when analysed, then both are `ok`, every rep
-passes the frozen limits, the document is 1.3.0 and validates against `contracts/analysis.schema.json`, and the
-replay validates against `contracts/replay.schema.json`. Verification: `tests/test_reps.py`.
-### AC-REP-3: different movements stay refused
+Given the real lateral-raise trainer and its 8-rep and 2-rep followers, when analysed, then both have no warning, every
+rep passes the frozen limits, the document carries the rep fields (1.3.0) and validates against
+`contracts/analysis.schema.json`, and the replay validates against `contracts/replay.schema.json`.
+Verification: `tests/test_reps.py`.
+### AC-REP-3: different movements stay low matches
 Given Part 2's dance, class, single and stretch and the stock squat against the lateral raise (and the squat against
-the dance, class and stretch), when analysed, then each is `different_movement` with `faults: []`.
+the dance, class and stretch), when analysed, then each has status `ok`, a `low_match` warning and `match.quality`
+`low`, and a score of grade F capped by `low_match` (ADR-0012; before it, `different_movement` with `faults: []`).
 Verification: `tests/test_reps.py`.
 ### AC-REP-4: seed 5 unchanged
 Given every seed 5 take against its expected clip, when analysed, then none is compared rep by rep and its document
-stays 1.2.0 with no rep field; `make check-5` metrics are unchanged. Verification: `tests/test_reps.py`, `make check-5`.
+has no rep field; `make check-5` metrics are unchanged. Verification: `tests/test_reps.py`, `make check-5`.
 ### AC-REP-5: aggregation
 Given reps with faults, then a fault found in at least half of the accepted reps is reported once with the median
-magnitude and its `reps`; the score is the mean of the per-rep components. Verification: `tests/test_reps.py`.
+magnitude and its `reps`; the score is the mean of the rep windows (ADR-0013). Verification: `tests/test_reps.py`.
+### AC-REP-6: rep-mode faults sit on the expected file
+Given the real slow lateral raise as the example (its first rep starts at frame 38) and the fast one as the
+follower, when analysed, then each fault's `expected_frames` and `runs` are its first occurrence's local frames plus
+38, inside `diagnostics.expected_reference.frames`, `phase` is `frame / (frames - 1)` of the whole expected file, and
+the replay's `expected_t` starts at the reference's own time and strictly increases. Verification:
+`tests/test_review_fixes.py`.
+### AC-REP-7: rep mode is bounded
+Given reps whose frame pairs together are over 4,000,000 (the whole pair's bound), then the analysis stops before
+any alignment with `<follower>: N follower frames against M expected frames are too long to compare together (the
+limit is 4,000,000 frame pairs)` and the CLI exits 1; at exactly the limit it runs. Verification:
+`tests/test_review_fixes.py`.
+### AC-ERR-1: only the expected alignment failure is caught
+Given an alignment that raises `AlignmentError`, then the take is a `low_match` with score 0 (whole clip) or the rep
+does not pass (rep mode); given any other `ValueError` from the alignment, then it surfaces to the caller.
+Verification: `tests/test_review_fixes.py`.
+### AC-ERR-2: a bad `--expected-visibility` file is a plain input error
+Given a `conf` that is not a number for its joint, then `part5 analyse` prints
+`part5 analyse: <file>: expected-visibility conf must be a number for each joint`, exits 1 and writes nothing.
+Verification: `tests/test_review_fixes.py`.
 
 ### AC-VIS-1: a full-body pair is compared as before
 Given a pair whose clips have no `conf`, or whose joints are all seen (conf not the 0.3 mark, or the 0.3 mark on one
@@ -342,27 +419,39 @@ side of a left/right pair only, as in a side view), then every measure is usable
 Given a clip with both joints of a pair at conf 0.3 (outside the image), then a measure is usable in that clip when
 every joint it reads is seen in at least 80% of its frames; a clip with no conf takes the other clip's set, or the set
 of `--expected-visibility`; the pair is compared on the intersection. Alignment, the guard, detection, faults and the
-score use only those measures, in the frames where the joints are seen. `diagnostics.visibility`
-`{usable_measures, excluded, rule}` is added (schema 1.3.0). Verification: `tests/test_visibility.py`.
+score use only those measures, in the frames where the joints are seen: the score's similarity term reads a
+measure that visibility excluded as missing (NaN), also in the frames where its joints are seen, so a partially
+visible take scores the same as with those measures removed, and a full-body pair exactly as before.
+`diagnostics.visibility` `{usable_measures, excluded, rule}` is added (schema 1.3.0). Verification:
+`tests/test_visibility.py`, `tests/test_review_fixes.py`.
 ### AC-VIS-3: upper-body takes of a full-body movement
 Given a squat take with hips, knees and ankles at conf 0.3 against the squat, then it is accepted with the faults its
-arms show; the same cut against a different upper-body movement (the real lateral raise against the salute) is refused.
-Verification: `tests/test_visibility.py`.
+arms show; the same cut against a different upper-body movement (the real lateral raise against the salute) is a low
+match (ADR-0012). Verification: `tests/test_visibility.py`.
 ### AC-VIS-4: not enough visible
-Given fewer than 3 usable measures, then `status.code` is `not_enough_visible`, `faults` is `[]`, `score` is null, the
-text asks for more of the body in frame and `part5 analyse` exits 3. Verification: `tests/test_visibility.py`.
+Given fewer than 3 usable measures, then the take is analysed on whatever is visible (any visible measure when
+fewer than 3; with none, no faults and score 0), `status.code` is `ok`, `warnings` holds `not_enough_visible` whose
+text asks for more of the body in frame, `score` is not null and is grade F with `capped_by` naming the code, and
+`part5 analyse` exits 0 (ADR-0012; before it, `status.code: not_enough_visible`, `faults: []`, `score` null, exit 3).
+Verification: `tests/test_visibility.py`.
 ### AC-VIS-5: the part the example moves must be in frame
 Given a partial pair, when none of the measures that move in the expected clip (robust range above 20 degrees, among
-those the example shows) is usable in the take, then `status.code` is `moving_part_out_of_frame`, `faults` is `[]`,
-`score` is null, the text names the body part ("Your right arm is mostly out of frame, so it can't be compared. Step
-back so your whole arm stays in view, then record again.") and `diagnostics.visibility` has `moving_measures` and
-`moving_usable`. The operator's seated selfie salute (trainer `arm-salute-8b6512a8`, take edfadd7f3848, pose JSON under
-`tests/local/selfie-salute/`, not published, `--expected-visibility` the trainer's skeleton) gives this status naming
-the right arm. Verification: `tests/test_visibility.py`.
+those the example shows) is usable in the take, then `warnings` holds `moving_part_out_of_frame` with the text naming
+the body part ("Your right arm is mostly out of frame, so it can't be compared. Step back so your whole arm stays in
+view, then record again."), `diagnostics.visibility` has `moving_measures` and `moving_usable`, `score` is grade F
+with `capped_by` naming the code, and the exit is 0 (ADR-0012; before it, `status.code: moving_part_out_of_frame`,
+`faults: []`, `score` null). The operator's seated selfie salute (trainer `arm-salute-8b6512a8`, take edfadd7f3848,
+pose JSON under `tests/local/selfie-salute/`, not published, `--expected-visibility` the trainer's skeleton) gives this
+warning naming the right arm. Verification: `tests/test_visibility.py`.
 
 ### Rule-Based ACs
 - AC-NFR-001: `make check-5` runs offline in under 10 minutes on this host. Verification: test.
-- AC-NFR-002: no network call in any test or in `check-5`. Verification: test with sockets blocked.
+- AC-NFR-002: no network call in any test or in `check-5`. Verification: test with sockets blocked. `tests/conftest.py`
+  holds it for every test: live mode off (`META_LIVE`, `SIMON5_LIVE` unset), the key file pointed at nothing, the usage
+  ledger in a temp dir, and every connect or name lookup outside the loopback refused; so `make test` from a shell
+  that exports `META_LIVE=1` (`staging/env.sh` does when the key file exists) spends nothing. A test of a live path
+  sets its own environment after it. `tests/test_no_live_calls.py` checks the guard and that `check-5`,
+  `output-examples` and `check-5-contract` stay `template` with live mode on and a key present (AC-P02).
 - AC-NFR-003: the Baseten key never appears in output, logs, errors, the usage ledger or a staging
   response. Verification: test with a sentinel key.
 - AC-NFR-004: every muse-spark call appends one usage line to `~/.simon/baseten_usage.jsonl` (path
@@ -373,8 +462,11 @@ the right arm. Verification: `tests/test_visibility.py`.
 |---|---|---|---|
 | Malformed input | exit 1, nothing written | `part5 analyse: <file>: <field>: <what>` (unchanged) | AC-001 |
 | Under 50% measurable | exit 1 | unchanged | AC-001 |
-| Follower over 2x faster | exit 1 | unchanged | AC-001 |
-| Different movement | exit 3, refused analysis written | status text above | AC-004 |
+| Follower over 2x faster | analysed (rep by rep when either clip holds reps, else a `low_match` with score 0) | warning text | AC-ERR-1 |
+| Different movement | exit 0, analysis written with a `low_match` warning and grade F | warning text above | AC-004 |
+| Reps together over the frame-pair limit | exit 1, nothing written | `part5 analyse: <follower>: N follower frames against M expected frames are too long to compare together (the limit is 4,000,000 frame pairs)` | AC-REP-7 |
+| `--expected-visibility` conf not a number | exit 1, nothing written | `part5 analyse: <file>: expected-visibility conf must be a number for each joint` | AC-ERR-2 |
+| Live default without the key file | analysed with the template, `fallback_reason: "no key"` per fault (API: 200, not 400) | `no key` | AC-010 |
 | Phrasing backend fails | template used, `fallback_reason` | `"<backend>: <reason>"` | AC-010 |
 | Unknown `--phrasing` | exit 2 (argparse) | argparse | AC-010 |
 
@@ -396,7 +488,8 @@ the right arm. Verification: `tests/test_visibility.py`.
 
 ## Negative Requirements
 - MUST NOT retune any threshold or guard limit on held-out numbers. Why: ADR-0003.
-- MUST NOT list faults for a refused take. Why: uc-wrong-movement.
+- MUST NOT present a take that does not match the example as a normal result: it carries the `low_match` warning,
+  `confidence: "low"` on its faults and grade F (ADR-0012). Why: uc-wrong-movement.
 - MUST NOT let a phrasing backend change a scored field. Why: #20.
 - MUST NOT import or copy code from another part. Why: README rule.
 - MUST NOT publish a firm file. Why: ADR-0001.
@@ -458,6 +551,8 @@ ASM-001 to ASM-012 in `docs/assumptions/` (ASM-008: Part 4 main's expected clips
 | `part5/cues.py`, `part5/insights.py`, `part5/output.py`, `part5/score.py`, `part5/score_report.py`, `part5/pipeline.py`, `part5/doctor.py`, `contracts/analysis.schema.json` (cues, tempo, insights, 1.5.0) | TICKET-039 | yes |
 | `docs/design/adr/ADR-0014-coaching-cues-tempo-and-insights.md` | TICKET-039 | yes |
 | `tests/test_cues.py`, version expectations in `tests/test_cli.py`, `test_output.py`, `test_visibility.py`, `test_reps.py`, `test_guard.py`, `test_pipeline_run.py`, `test_contract_cli.py` | TICKET-039 | yes |
+| `part5/align.py` (`AlignmentError`), `part5/pipeline.py`, `part5/repwise.py`, `part5/visibility.py`, `part5/score_report.py`, `part5/score.py`, `part5/api.py`, `part5/replay.py`, `part5/check.py`, `part5/phrasing/review.py` (consolidated review fixes) | review-fixes | yes |
+| `tests/conftest.py` (no live call from any test), `tests/test_no_live_calls.py`, `tests/test_live_fallback.py`, `tests/test_api_live.py`, `tests/test_schema_compat.py`, `tests/test_review_fixes.py`, `tests/fixtures/*` (the 1.1.0 schema and goldens as at `28d20ef`) | review-fixes | yes |
 | Tests: `tests/test_*.py` per module above | with each ticket | yes |
 
 ## Delivery Verification Plan

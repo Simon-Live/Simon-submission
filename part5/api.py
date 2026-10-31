@@ -6,7 +6,8 @@ written. `part5.server` is the thin HTTP layer around this module.
 
 Endpoints, relative to the base path (docs/specs/staging.md):
     GET  api/health    {ok, version}
-    GET  api/samples   the expected clips and labelled takes on offer
+    GET  api/samples   the expected clips and labelled takes on offer, the wordings offered and this
+                       server's default wording (`phrasing_default`, one of the offered; the page preselects it)
     POST api/analyse   {expected, follower, phrasing} -> {analysis, replay}
     GET  api/contract  what `part5 contract --json` prints (schemas and compatibility table)
     GET  api/real-takes the real-take report (part5.real), built on first use and kept for the process
@@ -197,11 +198,23 @@ def offered_phrasing():
     return [name for name, module in BACKENDS.items() if name == TEMPLATE or module.unavailable() is None]
 
 
+def default_phrasing(offered=None):
+    """The wording a request that names none gets from this server, if the server can run it (ADR-0008).
+
+    It is what `select_backend` picks with no explicit choice: muse-spark in live mode, template otherwise. A
+    backend that is not on offer (live mode without the key file) is not a default the page can preselect, so
+    the answer is then the template."""
+    offered = offered_phrasing() if offered is None else offered
+    chosen, _ = select_backend(None, False)
+    return chosen if chosen in offered else TEMPLATE
+
+
 def _samples_listing():
     t = table()
+    offered = offered_phrasing()
     return {"expected": [s.listing for s in t.expected.values()],
             "followers": [s.listing for s in t.follower.values()],
-            "phrasing": offered_phrasing()}
+            "phrasing": offered, "phrasing_default": default_phrasing(offered)}
 
 
 # ----------------------------------------------------------------------------- responses
@@ -392,9 +405,14 @@ def _analyse(body, client):
     expected, expected_field = _resolve("expected", request.get("expected"), large)
     follower, follower_field = _resolve("follower", request.get("follower"), large)
     phrasing, selected_by = select_backend(request.get("phrasing"), False)
-    if phrasing not in offered_phrasing():
-        raise ApiError(400, "phrasing", f"phrasing: must be one of {offered_phrasing()}")
-    limited = _MUSE_LIMIT.slot(client) if phrasing == MUSE_SPARK else contextlib.nullcontext()
+    offered = offered_phrasing()
+    # ADR-0008: live mode picks muse-spark by default. Without the key file it is not on offer, yet a request that
+    # named no backend is not an error: it runs, and every fault falls back to the template with reason "no key".
+    # Only a backend the visitor named and the server cannot run is a 400.
+    if phrasing not in offered and selected_by != "live":
+        raise ApiError(400, "phrasing", f"phrasing: must be one of {offered}")
+    # The per-client limit guards the paid path; a request that makes no model call does not count against it.
+    limited = _MUSE_LIMIT.slot(client) if phrasing == MUSE_SPARK and phrasing in offered else contextlib.nullcontext()
     try:
         with limited:
             return _respond(200, _in_worker(_analysis, expected, follower, phrasing, selected_by))

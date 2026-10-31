@@ -35,7 +35,7 @@ Option 3. `--phrasing template|local-llm|muse-spark` on the CLI and a switch on 
   `POST https://inference.baseten.co/v1/chat/completions` with `Authorization: Bearer <key>`, model
   exactly `meta-models/muse-spark-open-1026` (the key works with no other model), `max_tokens` 512 or
   more, timeout 10 s, stdlib `urllib` (no `openai` dependency: one POST does not justify one). The key is
-  the Baseten key file (`PART5_BASETEN_KEY_FILE`) (firm convention: the file is named after the env var;
+  the Baseten key file (firm convention: the file is named after the env var;
   directory 700, file 600; path overridable by `PART5_BASETEN_KEY_FILE` for tests), read at the call,
   whitespace stripped, never printed, logged, written or copied into the repo, tickets or issues. Live
   calls only with the key file and `META_LIVE=1`. Without them, falls back to `template`.

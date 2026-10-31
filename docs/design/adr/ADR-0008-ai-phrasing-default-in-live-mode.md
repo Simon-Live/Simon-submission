@@ -40,6 +40,34 @@ the default backend is `muse-spark`, and an explicit `--phrasing` always wins. `
 - Limits: per-client 6 requests a minute on the server (unchanged), 30 model calls a minute per process, 20 s of
   phrasing per analysis; `max_tokens` 2048; usage ledger unchanged.
 
+## Amendments (live review `docs/phrasing-review.md`, then the consolidated review fixes)
+- **Request**: `reasoning_effort: low` is part of the Baseten request (`muse_spark.OPTIONS`). Muse Spark is a reasoning
+  model. At the default effort, round 1 of the review had 9 of 20 calls come back empty (reasoning used all 2048
+  tokens) and round 3, with 4096 tokens, had 4 of 20 run past the 10 s timeout. At `low` a call takes about 3 s and 990
+  completion tokens, and 0 of 20 fell back. `max_tokens` stays 2048.
+- **Prompt record**: the model also receives `may_mention`, the landmark list for the measure (`foot_out`: hip,
+  shoulder; empty for a measure without landmarks), so that the one landmark the validator allows is something the
+  model was told it may use. The system text allows "is", "are" and "looks" around the `text_timed` words. The validator
+  was not changed by the review.
+- **Live default without a key**: when the server is in live mode but has no key file, `muse-spark` is not on offer.
+  A request that named no backend is still analysed: the live default runs, every fault falls back to its template
+  line with `fallback_reason: "no key"`, and `selected_by` is `live` (HTTP 200, no model call, no use of the per-client
+  limit). A request that names `muse-spark` on such a server is still a 400. `analyse --live` behaves the same way.
+- **Reasons**: a reason that is not about one call is plain: `no key`, `live calls are off (...)`, `rate limited`,
+  `time budget spent`. A call that ran and failed reads `muse-spark: <what>`.
+- **Deterministic targets (AC-P02)**: besides `check-5`, `check-5-contract` and `output-examples` forcing `template`,
+  `tests/conftest.py` takes `META_LIVE` and `SIMON5_LIVE` out of every test, points the key file at nothing and the
+  ledger at a temp dir, and refuses connects and name lookups outside the loopback. `staging/env.sh` exports
+  `META_LIVE=1` when the key file exists, so without it `make test` from that shell would spend real calls.
+- **The staging page follows the live default (2026-10-31, delivery review residual R1)**: the page used to start
+  its "Wording of the faults" select on Template whatever the server's mode. `api/samples` now also returns
+  `phrasing_default`, the backend `select_backend` picks for a request that names none, or `template` when that
+  backend is not on offer. The page preselects it, so a visitor to the staging page (live mode, key file present)
+  reads Muse Spark wording unless they choose Template, and a server without the key still starts on Template.
+  The page keeps sending `phrasing`, so a result from the page records `selected_by: flag`, and `live` stays what
+  the API records for a request that names none. Verify, the walkthrough and every recipe that does not test
+  wording choose Template explicitly, so none of them makes a live call (viewer.md AC-V19).
+
 ## Consequences
 - **Positive**: users read friendly, timed lines; a wrong fact still cannot pass.
 - **Negative**: live analyses take longer (up to 20 s) and cost tokens; the landmark list is a judgement.
@@ -71,4 +99,6 @@ Concerns:
 
 ## Code Backlinks (updated as code is written)
 - `part5/phrasing/__init__.py`, `template.py` (`line_problem(..., timed=True)`), `muse_spark.py`, `part5/cli.py`,
-  `part5/api.py`
+  `part5/api.py`, `part5/phrasing/prompt.py` (`may_mention`), `tests/conftest.py`, `tests/test_no_live_calls.py`,
+  `tests/test_live_fallback.py`, `tests/test_api_live.py`, `tests/test_web_wording.py`, `web/app.js` and `web/joints.js`
+  (the preselected wording), `staging/verify.mjs`

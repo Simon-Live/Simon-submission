@@ -7,6 +7,10 @@ Risk Level: medium
 Master spec: `part5-fault-analysis.md`. Hub contract: the maintainers' staging contract (port 7123, prefix route).
 Companion: `viewer.md`. Tickets: TICKET-006 (API, server, `scripts/dev.sh`), TICKET-007 (S0 page),
 TICKET-008 (stack, S0 verify), TICKET-022, TICKET-024 (M3 verify, recipes, walkthrough).
+Follow-up of 2026-10-31 (lane stage-j1): verify, recipes and walkthrough follow ADR-0012 (no refusals), J1
+(timed line and score) and ADR-0014 (insights); see `viewer.md` AC-V06 and AC-V14 to AC-V18.
+Staging QA fixes of 2026-10-31 (lane fix-ux): `viewer.md` AC-V19 (the hint follows the pick) and AC-V20 (a stale result
+is marked and cannot be downloaded); the recipes name the files their drives save.
 Milestones: S0 (target 2026-10-29), M3 (target 2026-11-01). Use cases: uc-analyse-take, uc-correct-take,
 uc-wrong-movement, uc-real-takes.
 
@@ -14,7 +18,7 @@ uc-wrong-movement, uc-real-takes.
 A visitor opens `/simon-part-5/` on the firm gateway, picks (or uploads) an expected clip and a follower
 take, presses Analyse, and the server runs the real `part5` pipeline (no precomputed result) and returns
 `analysis.json` plus a replay payload. S0 ships pick, Analyse, the fault list and the download. M3 adds
-the 3D replay, upload, the refusal panel, the phrasing switch, the real-takes list and the result preview
+the 3D replay, upload, the warning panel, the phrasing switch, the real-takes list and the result preview
 (`viewer.md`). The server is Python stdlib (`python -m part5 serve`), one HTTP entry on
 `127.0.0.1:7123`, serving under `STAGING_BASE_PATH`.
 
@@ -23,8 +27,8 @@ the 3D replay, upload, the refusal panel, the phrasing switch, the real-takes li
    6000 frames per clip, one analysis at a time, 60 s timeout.
 2. A sample picker that lists 216 takes is unusable. Answer: grouped by set, angle and light, with the
    fault in the label.
-3. Staging that only proves the happy path hides the refusal. Answer: verify drives the refusal and a
-   bad upload.
+3. Staging that only proves the happy path hides the warned take. Answer: verify drives a take of another
+   movement (analysed with a warning and graded F, ADR-0012) and a bad upload.
 
 ## User Story
 As a follower, I pick or upload the expected movement and my take and see each fault in plain words.
@@ -33,7 +37,7 @@ As a follower, I pick or upload the expected movement and my take and see each f
 | Method and path | Request | Response |
 |---|---|---|
 | `GET api/health` | | `{ok: true, version}` |
-| `GET api/samples` | | `{expected: [{id, set, movement, label}], followers: [{id, set, angle, light, label, faults}]}` from committed fixtures |
+| `GET api/samples` | | `{expected: [{id, set, movement, label}], followers: [{id, set, angle, light, label, faults}], phrasing: [<offered backends>], phrasing_default: <one of them>}` from committed fixtures |
 | `POST api/analyse` | `{expected: {sample: id} \| {upload: <json>}, follower: {sample: id} \| {upload: <json>}, phrasing: "template" \| "local-llm" \| "muse-spark"}` | `{analysis: <simon.analysis.v1>, replay: {fps, expected: [[[x,y,z] x17] per frame], follower: [...], exp_to_fol: [follower frame per expected frame], joints, bones}}` |
 | `GET api/real-takes` | | the real-take report (`real-takes.md`) |
 | `GET api/contract` | | `python -m part5 contract --json` output |
@@ -41,11 +45,19 @@ As a follower, I pick or upload the expected movement and my take and see each f
 - Errors: HTTP 400 `{error: {field, message}}` in plain words naming the field (for example
   `follower.upload: frames[12].joints.left_knee: not a list of three numbers`); 413 over 16 MiB; 404 an
   unknown sample id; 500 never shows a stack trace.
-- A refused take returns 200 with `analysis.status.code: "different_movement"` and an empty fault list.
+- A take that does not match the example returns 200 with `analysis.status.code: "ok"`, `analysis.warnings`
+  (for example `low_match`), `analysis.match`, faults that may carry `confidence: "low"`, and a `score` capped
+  at 59 (grade F) with `score.capped_by` (ADR-0012). The API no longer answers `different_movement`.
+- Each fault has `text_timed`, `at_s` and `lateral` and, in live mode, a `coaching` line; the analysis has
+  `score` and, from schema 1.5.0, `cue`s and `insights` (J1, ADR-0014). The page reads them (`viewer.md`).
 - Phrasing: `api/samples` (or `api/health`) lists the backends this server offers; `muse-spark` is offered
-  only when the Baseten key file (`PART5_BASETEN_KEY_FILE`) exists on the server and `META_LIVE=1` is set
+  only when the Baseten key file exists on the server and `META_LIVE=1` is set
   there (`staging/env.sh` sets it only when the key file exists). The key is read server side at the call
-  and never reaches the browser or any response. Requests asking for `muse-spark` are rate limited per
+  and never reaches the browser or any response. `phrasing_default` is the backend a request that names none
+  would get (`part5.phrasing.select_backend`, ADR-0008): `muse-spark` in live mode with the key file,
+  `template` otherwise, and always one of the offered backends. The page's "Wording of the faults" select
+  starts on it (`viewer.md` AC-V19), so a visitor to the staging page reads model wording unless they choose
+  the template. Verify, the walkthrough and the recipes that do not test wording choose Template themselves. Requests asking for `muse-spark` are rate limited per
   client address (one at a time, at most 6 per minute); over the limit the server answers HTTP 429
   `{error: {field: "phrasing", message: "Too many Muse Spark requests. Wait a minute or pick template."}}`.
 - No value from a request becomes a filesystem path: sample ids resolve through an in-memory table built
@@ -54,8 +66,7 @@ As a follower, I pick or upload the expected movement and my take and see each f
   (`python -m part5 serve [--host 127.0.0.1] [--port 8725] [--base-path /]`).
 
 ## Staging stack (`staging/`, firm only, never published)
-- `env.sh` (shared defaults: `STAGING_PORT` 7123, `STAGING_BASE_PATH` `/simon-part-5/`, state root
-  the staging state directory), `up.sh` (idempotent; refuses outside the staging checkout;
+- `env.sh` (shared defaults: `STAGING_PORT` 7123, `STAGING_BASE_PATH` `/simon-part-5/`, state root in the maintainers' state directory), `up.sh` (idempotent; refuses outside the staging checkout;
   stamp over committed app files; pid and log under the state root; `setsid nohup python3 -m part5 serve`
   with the cleared environment; uses `uv run` only when `uv` is on the cleared PATH, otherwise
   `python3` with numpy importable, decided at TICKET-008 and recorded), `down.sh`, `health.sh` (only
@@ -73,18 +84,28 @@ As a follower, I pick or upload the expected movement and my take and see each f
 ## Verify suite
 `staging/verify.sh` runs `staging/verify.mjs` with Playwright 1.61.1 (pinned in a local-only
 `package.json`, never published) through `scripts/with-browser-slot.sh`, against the base URL argument
-(default `http://127.0.0.1:7100/simon-part-5/`), with HTTP basic auth from the gateway login (passed in the environment, never printed), never a blanket Authorization header. S0 drive: load, pick Squat and a labelled
+(default the staging gateway address), with HTTP basic auth from the gateway login (passed in the environment, never printed), never a blanket Authorization header. S0 drive: load, pick Squat and a labelled
 feet-wide take, Analyse, read the faults, download `analysis.json` and validate it; a correct take shows
 "no faults". M3 drive adds: replay plays, tapping a fault moves the frame and highlights the joint, an
-upload of a good and a bad file, the refusal (class yoga or dance against the squat), the phrasing
-switch (template), the real-takes list, the result preview at 390 px. The exit code is the verdict.
+upload of a good and a bad file, the warning (class yoga or dance against the squat: status ok, a `low_match`
+warning in the warning panel, grade F, a score of 59 or less, no error), the phrasing switch (template; a fresh
+page starts the select on the `phrasing_default` that `api/samples` names, which it offers, AC-V19; every analysis
+verify presses chooses Template first, so verify makes no live call), the real-takes list, the result preview at
+390 px. J1 and ADR-0014 add: a take with a fault shows its score and
+grade, each fault row starts with a timed line matching `/ at \d+\.\d s/` (template wording, so no live
+call), the insights list shows when the file has insights, and the preview shows the score. The staging QA fixes add:
+the hint under the wording select follows a pick and returns when the default is picked again (AC-V19), and a result
+made for another choice is marked with the stale line and loses its download link until Analyse is pressed again
+(AC-V20: a changed take, example, upload or wording; the saved file is the last pair's). The exit code is the verdict.
 
 ## QA recipes and video
 - Recipes with the `qa-recipe` skill (ADR-0020), one per use case driven on staging: each edge driven by
-  hand through the real UI, two independent witnesses, a negative assertion (for example the refusal
-  shows no fault list; a correct take shows no fault rows).
-- `demo/staging-walkthrough.mp4` recorded through `http://127.0.0.1:7100/simon-part-5/`, under 90 s and
-  under 15 MB, H.264: pick, Analyse, replay, tap a fault, upload, refusal, preview at phone width.
+  hand through the real UI, two independent witnesses, a negative assertion (for example a warned take is
+  never called a correct take; a correct take shows no fault rows).
+- `demo/staging-walkthrough.mp4` recorded through the staging gateway address, under 90 s and
+  under 15 MB, H.264: pick, Analyse (score, timed lines), replay, tap a fault, upload, a different movement
+  warned and graded F, preview at phone width. The recording chooses Template before each Analyse (AC-V19),
+  so it makes no live call.
 
 ## Acceptance Criteria
 ### AC-S01: S0 live
@@ -102,8 +123,9 @@ The 6000 frame cap counts the frames a clip has once the follower is put on the 
 (`part5.pipeline.MAX_FRAMES`, checked before it is resampled), so a 3 frame follower whose `t` spans
 1000 s is a 400 naming `follower.upload`; an expected clip faster than 240 fps (`MAX_FPS`) is a 400
 naming `expected.upload`.
-### AC-S06: refusal through the UI
-Given class yoga against the squat, the page shows the status text and no fault rows.
+### AC-S06: a different movement is warned and graded F through the UI
+Given class yoga against the squat, the page shows the analysis with a `low_match` warning in the warning
+panel, grade F, a score of 59 or less, faults marked low confidence, and no error (`viewer.md` AC-V06, AC-V17).
 ### AC-S07: M3 verify
 Given the M3 drive, every step in "Verify suite" passes and verify exits 0.
 ### AC-S08: recipes and video
@@ -146,7 +168,9 @@ ASM-011 (stdlib server load and the runtime in the cleared environment, `docs/as
 
 ## Delivery Verification Plan
 - `staging.sh up` 0, `staging.sh verify simon-part-5` 0 with sha at start and end, recipes validated,
-  walkthrough recorded; S0 and M3 close-outs in STATUS.md with exit codes.
+  walkthrough recorded; S0 and M3 close-outs in STATUS.md with exit codes. The J1 plan
+  (`journey-followup.md`) asks the staging page to show a timed line and the score: verify checks both on a
+  faulty take, and the recipe `compare/live-timed-line-and-score` drives it by hand.
 
 ## Dissent Review
 ### Concern 1: stdlib server instead of a framework

@@ -58,6 +58,9 @@ PROVENANCE_FIELDS = (
 )
 # Notes are plain sentences prefixed with the block they belong to, so `check_blocks` can split them.
 NOTE_KIT, NOTE_STOCK, NOTE_PART2, NOTE_REPS = "kit: ", "stock: ", "part2: ", "reps: "
+# ADR-0012: nothing is refused any more, so the words a reader sees say "warned"; the JSON keys (`expected_refusal`,
+# `refused_as_expected`, `refused`) keep their names.
+MATCHED_REFERENCE = "a matched reference, not a clip expected to be warned"
 
 
 class RealError(Exception):
@@ -211,8 +214,15 @@ def kit_takes(root, errors):
 
 
 # --- Part 2's committed outputs through Part 3 ---
+def _matched_verdict(spec):
+    """The verdict of a clip that is the same movement as the example: a sentence that carries its reason, so the row
+    needs no note. `content` in the manifest starts with what the clip is ("provisional barbell back squat, ...")."""
+    what = (spec.get("content") or "").split(",")[0].strip()
+    return f"{MATCHED_REFERENCE}: it is the same movement as the example" + (f" ({what})" if what else "")
+
+
 def part2_takes(root, errors):
-    """Part 2's class, dance and single: a mismatch take is an expected refusal (AC-R06)."""
+    """Part 2's class, dance and single: a mismatch take is expected to be warned and graded F (AC-R06)."""
     doc = _read_json(root, f"{MISMATCH_DIR}/manifest.json", "part2", errors)
     if doc is None:
         return []
@@ -235,7 +245,7 @@ def part2_takes(root, errors):
                                 "NOT warned: the guard accepted a take that is a different movement")
         else:
             entry["expected_refusal"], entry["refused_as_expected"] = False, None
-            entry["verdict"] = "matched reference, not an expected refusal (see reason)"
+            entry["verdict"] = _matched_verdict(spec)
             entry["reason"] = spec.get("reason")
         takes.append(entry)
     return takes
@@ -367,7 +377,7 @@ def _stock_notes(root, stock):
 
 
 def _part2_notes(part2):
-    notes = [f"{NOTE_PART2}{t['take_id']}: {t.get('reason') or 'a matched reference, not an expected refusal'}"
+    notes = [f"{NOTE_PART2}{t['take_id']}: {t.get('reason') or MATCHED_REFERENCE}"
              for t in part2 if t["population"] == "matched_reference"]
     mismatch = [t for t in part2 if t["expected_refusal"]]
     if mismatch:

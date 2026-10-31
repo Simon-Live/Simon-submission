@@ -18,7 +18,7 @@ SYSTEM_TIMED = (
     "Rewrite one measured fault as one short friendly coaching sentence. The user message is the fault "
     "as JSON; `text_timed` is a correct plain version. Reply with only the sentence.\n"
     "- Keep the body part, the side and the direction words of `text_timed` (for example \"too far "
-    "right\", \"too low\", \"not bent enough\", \"caving in\"). Add small words so it reads naturally "
+    "right\", \"too low\", \"not raised enough\", \"not bent enough\", \"caving in\"). Add small words so it reads naturally "
     "(\"Your\", \"is\", \"are\", \"looks\") and a warm opening or short kind ending such as \"Nice "
     "effort\" or \"almost there\".\n"
     "- Say the time once, as the `at_s` number then \" s\", like 1.9 s. No other digit or number.\n"

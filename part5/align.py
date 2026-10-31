@@ -18,6 +18,12 @@ ALIGN_MEASURES = [m for m in MEASURES if m != "head_forward" and not m.endswith(
 MIN_SPREAD_DEG = 5.0
 
 
+class AlignmentError(ValueError):
+    """The pair has no alignment the slope-constrained DTW can find (a follower more than 2x faster than the
+    example, or none that ends where the path must). An expected outcome, handled by the callers; any other
+    ValueError from this module is a bug and must surface."""
+
+
 @dataclass
 class Alignment:
     path: list[tuple[int, int]]   # (expected frame, follower frame), monotonic
@@ -114,10 +120,10 @@ def dtw(cost, open_begin=True, open_end=True):
     with np.errstate(invalid="ignore"):
         mean_last = D[n - 1] / np.maximum(L[n - 1], 1)
     if not np.isfinite(mean_last).any():
-        raise ValueError("follower clip is too short to align (more than 2x faster than the expected clip)")
+        raise AlignmentError("follower clip is too short to align (more than 2x faster than the expected clip)")
     j = int(np.nanargmin(np.where(np.isfinite(mean_last), mean_last, np.inf))) if open_end else m - 1
     if not np.isfinite(D[n - 1, j]):
-        raise ValueError("no alignment ends at the last follower frame")
+        raise AlignmentError("no alignment ends at the last follower frame")
     end_cost = float(mean_last[j])
     i, path = n - 1, [(n - 1, j)]
     while i > 0:
@@ -133,7 +139,7 @@ def dtw(cost, open_begin=True, open_end=True):
         path.append((i, j))
     path.reverse()
     if not open_begin and path[0] != (0, 0):
-        raise ValueError("no alignment starts at the first follower frame")
+        raise AlignmentError("no alignment starts at the first follower frame")
     return path, end_cost
 
 

@@ -32,3 +32,29 @@ Directive (2026-10-30): "In this situation, it should still show an analysis jus
   kept on a low match.
 - Part 7 reads `warnings` and shows the F; it no longer maps exit 3.
 - The 3D replay of a take that could not be aligned plays on a straight-line stand-in alignment.
+
+## Old readers
+A warned document deliberately fails validation against a schema older than 1.4.0. On a low match each fault's
+`confidence` is the literal `"low"`; the 1.1.0 schema types `confidence` as a number, so `faults[*].confidence` is the
+one place it fails, and nothing else in the document does. That is the intent: a reader older than 1.4.0 cannot show
+a different movement as a normal result, because it cannot read the take at all. Part 7 reads the literal, so it
+stays; a number is not put back in its place. A document with no warning, which is every take that matches the
+example and every golden, still validates against the 1.1.0 schema, and a warned document with no fault does too.
+Every warned document validates against the current schema.
+
+Only `AlignmentError` (`part5.align`) turns into `low_match` when a pair cannot be aligned. Any other `ValueError`
+from the alignment is a defect and surfaces; catching it as a low match would grade an internal bug F.
+
+## Acceptance Criteria
+- AC-W01: a readable pair is analysed: `status.code` `ok`, exit 0, whatever the match (`tests/test_cli.py`,
+  `tests/test_reps.py`, `tests/test_visibility.py`).
+- AC-W02: any warning caps `score.value` at 59 and `score.capped_by` names the codes; `score` is never null
+  (`tests/test_score.py`).
+- AC-W03: a take with no warning has no `warnings` or `match`, and validates against the 1.1.0 schema, fresh and as
+  a golden (`tests/test_schema_compat.py`).
+- AC-W04: a warned take with faults fails the 1.1.0 schema on `faults[*].confidence` only, and validates against the
+  current schema (`tests/test_schema_compat.py`).
+- AC-W05: `AlignmentError` is a low match with score 0; another `ValueError` from the alignment surfaces
+  (`tests/test_review_fixes.py`).
+- AC-W06: a take that could not be aligned reports the limits of the rules the caller passed, not the defaults
+  (`tests/test_review_fixes.py`).

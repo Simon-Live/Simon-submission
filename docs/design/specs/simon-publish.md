@@ -45,7 +45,7 @@ message; red tests (`make -s test` in the publish worktree) refuse, separately f
 Environment for tests: `SIMON_PUBLISH_URL`, `SIMON_PUBLISH_PART`, `SIMON_PUBLISH_CHECK_CMD`,
 `SIMON_PUBLISH_TEST_CMD` (default `make -s test`), `SIMON_PUBLISH_CHECK_TIMEOUT` (default 1800, also
 bounds the tests), `SIMON_PUBLISH_REFS` (default `Refs #17`, the Part 5 checklist), `SIMON_PUBLISH_TRAILER`,
-`SIMON_PUBLISH_KEY_FILE` (default: the maintainers' Baseten key file).
+`SIMON_PUBLISH_KEY_FILE` (default: the Baseten key file).
 
 ## Lists (in the script)
 - Allowlist: `.simon-publish` (fail closed; missing or empty publishes nothing).
@@ -60,8 +60,10 @@ bounds the tests), `SIMON_PUBLISH_REFS` (default `Refs #17`, the Part 5 checklis
   (the case forms listed in the script), `id_rsa*`, and the operator key file names `BASETEN_API_KEY`
   and `MUSE_SPARK_API_KEY`, refused at any depth.
 - Secret-shaped content: every staged text file is searched for `sk-` followed by 20 or more key
-  characters, `hf_` followed by 30 or more, and `AKIA` followed by 16 upper-case letters or digits; a
-  match refuses the publish and names the file, never the match.
+  characters, `hf_` followed by 30 or more, `AKIA` followed by 16 upper-case letters or digits, and a
+  GitHub token prefix (`ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_` followed by 30 or more letters or digits;
+  `github_pat_` followed by 30 or more letters, digits or underscores); a match refuses the publish and
+  names the file, never the match.
 - The operator's key: when the Baseten key file exists, every staged file (binary ones included) is
   searched for its exact content, whitespace stripped, with `grep -aqF -f` against a temporary pattern
   file that is deleted before the script moves on; a match refuses the publish and names the file, never
@@ -95,8 +97,8 @@ bounds the tests), `SIMON_PUBLISH_REFS` (default `Refs #17`, the Part 5 checklis
   passes and publishes.
 - AC-P16 `*token*`, `*credential*`, `id_rsa*`, `BASETEN_API_KEY` and `MUSE_SPARK_API_KEY` files refuse with
   exit 1, each named.
-- AC-P17 Files holding `sk-`, `hf_` or `AKIA` key-shaped strings refuse with exit 1, each named; ordinary
-  text with those letters passes.
+- AC-P17 Files holding `sk-`, `hf_`, `AKIA` or GitHub token (`ghp_`, `github_pat_`) key-shaped strings
+  refuse with exit 1, each named; ordinary text with those letters passes.
 - AC-P18 Files holding the exact content of the key file (`SIMON_PUBLISH_KEY_FILE`) refuse with exit 1,
   each named, whatever the shape of the key; the key is never printed, no pattern file is left behind, a
   near miss passes, and an absent, empty or blank key file refuses nothing.
@@ -107,7 +109,7 @@ bounds the tests), `SIMON_PUBLISH_REFS` (default `Refs #17`, the Part 5 checklis
 | No allowlist | exit 1 | `no .simon-publish allowlist; nothing may be published` | AC-P4 |
 | Denylisted path staged | exit 1 | `REFUSED <path>: firm path <prefix>` | AC-P4 |
 | Tests fail on the candidate | exit 1 | `REFUSED: tests fail on the publish candidate; nothing published` | AC-P14 |
-| Key-shaped content | exit 1 | `REFUSED <path>: secret-shaped content (sk-, hf_ or AKIA prefix)` | AC-P17 |
+| Key-shaped content | exit 1 | `REFUSED <path>: secret-shaped content (sk-, hf_, AKIA or GitHub token prefix)` | AC-P17 |
 | The operator's key in a file | exit 1 | `REFUSED <path>: holds the operator's Baseten key` | AC-P18 |
 | Fetch fails | exit 3 | `fetch from <url> failed` | |
 | Second push rejection | exit 3 | `push failed twice; nothing more is tried` | |

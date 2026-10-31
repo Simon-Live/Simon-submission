@@ -2,7 +2,8 @@
 
 How to set up, run, check, test and debug Simon Part 5 (fault analysis) from a fresh clone on any
 host. Field rules are in `docs/schemas.md`, who sends what in `CONTRACT.md`, the threshold protocol in
-`docs/thresholds.md`, and the design history in `docs/design/README.md`.
+`docs/thresholds.md`, and the design history in `docs/design/README.md` (copies of the working specs and ADRs,
+regenerated from their sources by `scripts/make_design_copies.py`, never edited by hand).
 
 ## Setup from a fresh clone
 
@@ -67,6 +68,7 @@ uv run part5 analyse \
 #   --live                        live mode: muse-spark becomes the default phrasing
 
 uv run python -m part5 doctor <file> [--for part5|part7] [--json]   # 0 accepted, 1 rejected, 2 unreadable
+#   a clip, an analysis.json (--for part7) or a replay.json (simon.replay.v1, either --for)
 uv run python -m part5 contract [--schema <name>] [--json]           # schemas and the compatibility table
 uv run python -m part5 report-real [--out <file>]                    # real takes, reported, never gated
 uv run python -m part5 serve [--host 127.0.0.1] [--port 8725] [--base-path /] [--live]
@@ -84,16 +86,21 @@ measures, detect, words, then score (`part5/score.py`) and phrasing (`part5/phra
 | Target | What it runs | What it gates | Exit |
 |---|---|---|---|
 | `make check-5` | `python -m part5.check`: analyses every labelled take, prints the `simon.part5.check.v1` JSON on stdout and a summary on stderr | the held-out set in `fixtures/input/heldout/`: good light at front, 45 and side, each with precision 0.85 or more, recall 0.75 or more and no faults on correct takes; every correct good-light held-out take scores A; the score never rises as a swept fault grows. Seed 5, low light, dropout, Part 3's kit and the stock takes are reported, not gated | 0 passed; 1 a gated criterion failed; 2 a take or set is missing, a take cannot be analysed, the held-out seed has no freeze record, or `part5/rules.json` differs from the hash frozen in `docs/thresholds.md` |
-| `make check-5-contract` | `python -m part5.contract --check` | every schema in `contracts/` is valid, every committed fixture validates and loads through `part5.io`, and `fixtures/output/analysis*.json` rebuild byte for byte | 0 only with no failures; prints `{schemas, validated, rebuilt_identical, failures}` |
+| `make check-5-contract` | `python -m part5.contract --check` | every schema in `contracts/` is valid, every committed fixture validates and loads through `part5.io` (a replay is checked for lengths, indexes and times), and `fixtures/output/analysis*.json` and `replay.example.json` rebuild byte for byte, the score included | 0 only with no failures; prints `{schemas, validated, rebuilt_identical, failures}` |
 | `make report-real` | `python -m part5 report-real` | nothing: Part 3's labelled kit against `part3-squat`, Part 2's mismatch takes, the real lateral-raise takes and any stock takes, written to `out/report-real/report.json` | 0 when every real take was analysed; 2 when a set cannot be read or the report cannot be written |
 | `make test` | `uv run pytest -q` | the unit tests | pytest's exit code |
 | `make test-contract` | `pytest tests/test_contract.py` | Part 3 and Part 4 files load through `part5.io` and match their schemas | pytest's exit code |
 | `make contracts-check` | `scripts/sync_contracts.py --check` | the copies under `contracts/part3/`, `contracts/part4/` and `fixtures/input/contract/` match Parts 3 and 4 | 0 equal; 1 drift; 2 an upstream cannot be read |
 
 Generators: `make dummy-data` rebuilds the seed 5 set, `make output-examples` rewrites the shipped
-`fixtures/output/analysis*.json`, `make heldout-data SEED=29|31|37` writes a held-out set (once per seed,
-under the protocol in `docs/thresholds.md`). `make smoke-muse-spark` makes one live call; it is never
-part of `make test` or `make check-5`.
+`fixtures/output/analysis*.json` and `replay.example.json` (through the path `part5 analyse` uses, with the score
+hook and the `template` phrasing forced), `make heldout-data SEED=29|31|37` writes a held-out set (once per seed,
+under the protocol in `docs/thresholds.md`). `make score-heldout SEED=<n>` generates a set under
+`out/score-heldout/seed-<n>/` and prints its score distribution; it refuses (exit 2) a seed already recorded in
+`fixtures/score-heldout.json`, since a recorded seed is retired. `make design-copies` rewrites `docs/design/specs/`
+and `docs/design/adr/` from `docs/specs/` and `docs/adr/` (`python3 scripts/make_design_copies.py --check` exits 1
+when a copy differs). `make smoke-muse-spark` makes one live call; it is never part of `make test` or
+`make check-5`.
 
 ## The output, field by field, for debugging
 
@@ -238,12 +245,8 @@ offers, so keep those flag names stable.
   are reported by `make report-real`, never gated.
 - The two stock takes in `fixtures/input/eval/real/` are labelled by eye (`label_source: visual`), so
   their precision and recall are indicative only.
-- `part5 doctor` does not recognise `simon.replay.v1` yet: it rejects a replay file as unknown, although
-  `docs/design/specs/journey-followup.md` (J-6) asks for it.
-- `make score-heldout`, described in the same spec, is not in the Makefile; run the generator and
-  `python -m part5.score_report --set <dir>` by hand.
-- The earlier sections of `docs/schemas.md` still describe refusals and exit 3; the last section
-  ("Always analysed") supersedes them.
+- The score is calibrated on synthetic takes (seed 5) and its held-out record (seeds 47 and 53) is synthetic too;
+  `docs/thresholds.md` "Score" says what passed and what did not, as measured.
 - Live phrasing makes paid calls through Baseten and needs the key file on the host that runs the
   analysis or the server.
 - Part 5 never fetches a URL. A Part 6 hand-off has to be downloaded first and its `files.animation`

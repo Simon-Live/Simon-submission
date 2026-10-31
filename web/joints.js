@@ -1,7 +1,7 @@
-// Joint names, the bones the viewer draws, and the replay rules the page and its tests share.
-// Pure functions only: no DOM and no three.js, so the same code runs in the browser drive and in
-// Node. ADR-0006: the producer writes `faults[].joints`; the fallback table here fills in only
-// for 1.0 files that lack it (AC-V03).
+// Joint names, the bones the viewer draws, the replay rules and the sentences about a result that
+// the page and its tests share. Pure functions only: no DOM and no three.js, so the same code runs
+// in the browser drive and in Node. ADR-0006: the producer writes `faults[].joints`; the fallback
+// table here fills in only for 1.0 files that lack it (AC-V03).
 
 export const JOINTS = [
   "nose", "left_eye", "right_eye", "left_ear", "right_ear", "left_shoulder", "right_shoulder",
@@ -101,3 +101,111 @@ export function highlightedAt(expToFol, fault, frame) {
 export function clampFrame(frame, count) {
   return Math.min(Math.max(0, Math.round(frame)), Math.max(0, count - 1));
 }
+
+// ------------------------------------------------------------------------------ the result's sentences
+// What the result says (viewer.md "What the result shows"). Every field is optional, so a document
+// from before schema 1.2.0 still reads. ADR-0012: a poor match is warned and graded F, never refused.
+// A document written before it, with status.code "different_movement", is still read: its status
+// text is the notice and it has no faults.
+
+const MAX_INSIGHTS = 5;
+
+// What each warning code means for the grade, in the words that follow "because".
+const CAP_REASONS = {
+  low_match: "the take does not closely match the example",
+  moving_part_out_of_frame: "the part of the body that moves is not in frame",
+  not_enough_visible: "too little of the body is in frame",
+  no_usable_measures: "nothing in the take could be compared with the example",
+};
+
+export const LOW_CONFIDENCE_NOTE = "Low confidence: this take is a poor match for the example.";
+export const NO_FAULTS_SENTENCE = "No faults found. This take follows the example.";
+
+// A document the movement guard refused before ADR-0012.
+export const isOldRefusal = (analysis) => Boolean(analysis.status && analysis.status.code !== "ok");
+
+const warningText = (warning) => (typeof warning === "string" ? warning : warning && warning.text);
+
+// The notices to show above the faults: each warning's text, or for an old refusal its status text.
+export function noticesOf(analysis) {
+  if (isOldRefusal(analysis)) return analysis.status.text ? [analysis.status.text] : [];
+  return (analysis.warnings || []).map(warningText).filter(Boolean);
+}
+
+// The faults to list: none for an old refusal.
+export const faultsOf = (analysis) => (isOldRefusal(analysis) ? [] : analysis.faults || []);
+
+// The line a follower reads for a fault: the coaching line, else the timed words, else the plain words.
+export const faultLine = (fault) => fault.coaching || fault.text_timed || fault.text;
+
+export const isLowConfidence = (fault) => fault.confidence === "low";
+
+// "Score: 84 out of 100, grade B", or null when the document has no score.
+export function scoreSentence(score) {
+  if (!score || typeof score.value !== "number" || !score.grade) return null;
+  return `Score: ${score.value} out of 100, grade ${score.grade}`;
+}
+
+const capReason = (code) => CAP_REASONS[code] || String(code).replaceAll("_", " ");
+
+function joined(parts) {
+  return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+}
+
+// Why the grade is held at F, or null when the score is not capped.
+export function cappedNote(score) {
+  const codes = score && Array.isArray(score.capped_by) ? score.capped_by : [];
+  if (codes.length === 0) return null;
+  return `The grade is limited to F because ${joined(codes.map(capReason))}.`;
+}
+
+export function resultSentence(analysis) {
+  if (isOldRefusal(analysis)) return "No faults are listed.";
+  const n = faultsOf(analysis).length;
+  if (n === 0) return noticesOf(analysis).length ? "No faults are listed. Read the warning first." : NO_FAULTS_SENTENCE;
+  return `${n} ${n === 1 ? "fault" : "faults"} found.`;
+}
+
+// The things to work on first: at most five `{cue, why}`, in the file's order (the file ranks them).
+export function insightItems(analysis) {
+  const items = Array.isArray(analysis.insights) ? analysis.insights : [];
+  return items.filter((item) => item && item.cue).slice(0, MAX_INSIGHTS).map((item) => ({ cue: item.cue, why: item.why || "" }));
+}
+
+// ------------------------------------------------------------------------------ the wording of the faults
+// AC-V19, ADR-0008: the select starts on the wording the server names as its own default (Muse Spark in
+// live mode with a key, Template otherwise), never on the first or last wording in the list.
+
+const TEMPLATE = "template";
+export const WORDINGS = { [TEMPLATE]: "Template", "local-llm": "Local language model", "muse-spark": "Muse Spark" };
+const wordingName = (key) => WORDINGS[key] ?? key;
+
+// The wording to preselect from the `api/samples` answer. A default the server does not also offer, or none
+// (an older server), is the template, which every server offers.
+export function defaultWording(samples) {
+  const offered = Array.isArray(samples.phrasing) ? samples.phrasing : [TEMPLATE];
+  return offered.includes(samples.phrasing_default) ? samples.phrasing_default : TEMPLATE;
+}
+
+// The hint under the select, for the wording the select is on now: on the server's default it says that wording
+// is preselected and why; on another it says what was chosen and what the server's default is.
+export function wordingHint(chosen, offered, serverDefault = chosen) {
+  if (chosen !== serverDefault) {
+    return `${wordingName(chosen)} wording chosen. This server's default is ${wordingName(serverDefault)}.`;
+  }
+  const others = offered.filter((key) => key !== chosen).map(wordingName);
+  if (chosen !== TEMPLATE) {
+    return `${wordingName(chosen)} is preselected because this server uses it unless you choose another wording. The template wording is always available.`;
+  }
+  if (others.length === 0) return "Template is preselected because it is the only wording this server can run.";
+  return `Template is preselected because this server uses it unless you choose another wording. ${joined(others)} can also be chosen.`;
+}
+
+// ------------------------------------------------------------------------------ a result the choice has left behind
+// AC-V20: the choice a result was made for is kept as one string (the request's example, take and wording). When the
+// choice on the page differs from it, the result on screen is for the previous choice.
+
+export const STALE_SENTENCE = "This result is for the previous choice. Press Analyse to compare the new one.";
+
+// `shown` is the key of the choice the result on screen was made for, or null when no result is shown.
+export const isStale = (shown, now) => shown !== null && shown !== now;

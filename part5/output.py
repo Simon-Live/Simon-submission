@@ -133,7 +133,9 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
     `expected`/`follower` identify the input clips: a path, or an object with at least
     `path` (extra ids like `take_id`/`set`/`movement` pass through). `faults` are
     `detect.Fault` objects (already sorted); an empty sequence means a correct take.
-    `status`, if given, is `{code, text}`: a refused take (`different_movement`) has no faults.
+    `status`, if given, is `{code, text}`; a new document is always `ok` (ADR-0012: every take is analysed, a
+    poor one carries `warnings` and an F cap, never a refusal). Only a document written before ADR-0012 can
+    still carry a refusal status (`different_movement`, which has no faults).
     `diagnostics`, if given, is carried as an optional object Part 7 may ignore.
     `times` is one `fault_to_dict` times entry per fault (1.2.0 time fields). `score` is the
     `score` block (a dict, or None in a document written before ADR-0012); left out entirely when not given.

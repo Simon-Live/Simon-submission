@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/metrics.schema.json",
   "title": "Part 5 make check-5 document (simon.part5.check.v1)",
-  "version": "1.0.0",
-  "description": "The JSON make check-5 prints. gate carries the held-out result and decides the exit code; tuning and report are reported and never gated. Extra fields are allowed.",
+  "version": "1.1.0",
+  "description": "The JSON make check-5 prints. gate carries the held-out result and decides the exit code; tuning and report are reported and never gated. Extra fields are allowed. 1.1.0 (ADR-0007) adds the score report that check-5 writes: gate.sweep (the monotonicity sweep the gate reads), report.score (the grade distribution per slice of every set; reported, never gated beyond gate) and detection_sha256 (the frozen detection rules). A 1.0.0 document validates.",
   "type": "object",
   "required": [
     "format",
@@ -81,6 +81,29 @@
         },
         "metrics": {
           "$ref": "#/$defs/metrics_v1"
+        },
+        "sweep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "1.1.0: the monotonicity sweep, keyed '<fault type> <side>': [size in degrees, score] in growing size. The gate fails when a score rises."
         }
       }
     },
@@ -224,12 +247,135 @@
             "type": "integer",
             "minimum": 0
           }
+        },
+        "score": {
+          "type": "object",
+          "required": [
+            "gated",
+            "version",
+            "heldout",
+            "tuning",
+            "kit",
+            "stock"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "version": {
+              "const": "simon.score.v1"
+            },
+            "heldout": {
+              "type": "object",
+              "required": [
+                "seed",
+                "slices",
+                "targets"
+              ],
+              "properties": {
+                "seed": {
+                  "type": "integer"
+                },
+                "slices": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/$defs/score_slice"
+                  },
+                  "description": "Keyed <lighting>/<labelled faults>, for example good/0."
+                },
+                "targets": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "no takes"
+                    ]
+                  },
+                  "description": "The verdict of each good-light slice against its target, as measured."
+                }
+              }
+            },
+            "tuning": {
+              "type": "object",
+              "required": [
+                "seed",
+                "slices"
+              ],
+              "properties": {
+                "seed": {
+                  "type": "integer"
+                },
+                "slices": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/$defs/score_slice"
+                  },
+                  "description": "Keyed <lighting>/<labelled faults>, for example good/0."
+                }
+              }
+            },
+            "kit": {
+              "type": "object",
+              "required": [
+                "grades"
+              ],
+              "properties": {
+                "grades": {
+                  "type": "object",
+                  "propertyNames": {
+                    "enum": [
+                      "A",
+                      "B",
+                      "C",
+                      "D",
+                      "F"
+                    ]
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "stock": {
+              "type": "object",
+              "required": [
+                "grades"
+              ],
+              "properties": {
+                "grades": {
+                  "type": "object",
+                  "propertyNames": {
+                    "enum": [
+                      "A",
+                      "B",
+                      "C",
+                      "D",
+                      "F"
+                    ]
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "description": "1.1.0 (ADR-0007): the grade distribution per slice of the held-out set and seed 5, and the grades of the real kit and stock takes. Reported, never gated."
         }
       }
     },
     "rules_sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "detection_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "1.1.0: sha256 of the detection rules (part5/rules.json without its score key)."
     }
   },
   "$defs": {
@@ -305,6 +451,65 @@
           "description": "Keyed <lighting>/<angle>, for example good/front."
         }
       }
+    },
+    "score_slice": {
+      "type": "object",
+      "required": [
+        "n",
+        "min",
+        "median",
+        "max",
+        "grades"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Scored takes in the slice."
+        },
+        "min": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "median": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "max": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "grades": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "F"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Takes per grade A to F; a grade nobody got is left out."
+        }
+      },
+      "description": "The score distribution of one <lighting>/<labelled faults> slice (null min, median and max when n is 0)."
     }
   }
 }

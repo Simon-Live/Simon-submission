@@ -9,17 +9,19 @@ compares one repetition at a time instead:
 - each follower rep is resampled to the reference's frame count, then aligned, guarded and
   detected on its own, with the frozen limits;
 - the take is accepted when a strict majority of the follower reps pass (and at least one);
-- a fault is reported once when it is detected in at least half of the accepted reps.
+- a fault is reported once when it is detected in at least half of the accepted reps, placed on the expected
+  file's own frames (the reference rep's first frame added to the rep-local ones, `_on_expected_file`).
 
 `compare` returns `None` when neither clip has more than one rep (nothing new to try). A pair the
-whole-clip guard accepts never gets here, so a single-rep take is analysed exactly as before.
+whole-clip guard accepts never gets here, so a single-rep take is analysed exactly as before. The reps together
+are bounded like the whole pair (`max_cells`, `TooManyPairs`).
 """
 from dataclasses import dataclass, field, replace
 from statistics import median
 
 import numpy as np
 
-from .align import Alignment, align
+from .align import Alignment, AlignmentError, align
 from .detect import detect
 from .guard import DIFFERENT_MOVEMENT, OK, OK_TEXT, REFUSAL_TEXT, GuardResult, check_movement
 from .visibility import measures_of
@@ -30,6 +32,17 @@ MIN_FAULT_SHARE = 0.5   # a fault counts when detected in at least this share of
 # A rep passes only when the matched stretch covers most of it. Against a short reference, the open ends
 # of the alignment would otherwise let any long take match one lucky stretch (a dance against a squat rep).
 MIN_REP_SPAN_SHARE = 0.6
+
+
+class TooManyPairs(ValueError):
+    """The reps together would align more expected x follower frame pairs than `max_cells` allows.
+
+    `follower_frames` is how many follower frames are aligned in total and `expected_frames` the reference's
+    length, so the pairs are their product. `part5.pipeline` turns it into the plain `AnalysisError`."""
+
+    def __init__(self, follower_frames, expected_frames):
+        super().__init__(f"{follower_frames} follower frames against {expected_frames} expected frames")
+        self.follower_frames, self.expected_frames = follower_frames, expected_frames
 
 
 @dataclass
@@ -93,7 +106,7 @@ def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None):
     """Align, guard and detect one follower rep against the reference."""
     try:
         alignment = align(ref.positions, pos, None if vis is None else vis.align_usable)
-    except ValueError:  # the rep cannot be aligned at all: it does not pass
+    except AlignmentError:  # the rep cannot be aligned at all: it does not pass; any other error is a bug
         return RepResult(index, span, False, None, None, ref, pos, orig)
     fol_m = measures_of(pos, vis)
     guard = check_movement(alignment, ref_m, fol_m, rules)
@@ -179,11 +192,27 @@ def reference_entry(run, exp, fps):
             "measure": es.measure}
 
 
-def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times, vis=None):
+def _on_expected_file(fault, start, n_file):
+    """`fault`, found against the reference rep that starts at expected frame `start`, placed on the expected
+    file's own frames: `expected_frames` and `runs` shifted by `start`, `phase` the fraction of the whole
+    expected file (frame / (n_file - 1), as `detect` computes it for a whole-clip comparison)."""
+    def shift(run):
+        return run[0] + start, run[1] + start
+
+    frames = shift(fault.expected_frames)
+    last = max(n_file - 1, 1)
+    return replace(fault, expected_frames=frames, runs=tuple(shift(r) for r in fault.runs),
+                   phase=tuple(round(f / last, 3) for f in frames))
+
+
+def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times, vis=None, max_cells=None):
     """The repetition-by-repetition comparison, or `None` when neither clip has more than one rep.
 
     `fol_positions` is the follower on the expected clip's clock and `to_original` maps its frames to the
-    follower file's. `fault_times` is `pipeline._fault_times` (passed in to keep the modules apart)."""
+    follower file's. `fault_times` is `pipeline._fault_times` (passed in to keep the modules apart).
+    `max_cells` bounds the frame pairs all the alignments together need (each rep is aligned against the
+    whole reference, so reps x reference frames squared); `TooManyPairs` before any is aligned. The faults
+    returned are placed on the expected file's frames (`_on_expected_file`); the per-rep ones stay local."""
     fol_m = measures_of(fol_positions, vis)
     es = segment(exp_m, fps)
     fs = segment(fol_m, fps, prefer=(es.measure, es.bound) if es.bound else None)
@@ -191,6 +220,9 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
         return None
     ref, ref_m = _reference(exp, exp_m, es.spans[0])
     n = ref.n_frames
+    follower_frames = len(fol_positions) if fs.reps == 1 else fs.reps * n   # a lone segment is aligned whole
+    if max_cells is not None and follower_frames * n > max_cells:
+        raise TooManyPairs(follower_frames, n)
     reps = []
     for k, (a, b) in enumerate(fs.spans):
         if fs.reps == 1:  # one follower segment: the whole take, as the whole-clip comparison saw it
@@ -206,4 +238,6 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
         mine = [f for f in r.faults if _fault_key(f) in kept_keys]
         r.analysis = {"status": {"code": OK if r.ok else DIFFERENT_MOVEMENT},
                       "faults": [fault_to_dict(f) for f in mine]}
-    return RepRun(guard, reps, [f for f, _, _ in kept], _times(kept, fol, fault_times), es.spans[0], es, fs)
+    start = es.spans[0][0]
+    return RepRun(guard, reps, [_on_expected_file(f, start, exp.n_frames) for f, _, _ in kept],
+                  _times(kept, fol, fault_times), es.spans[0], es, fs)

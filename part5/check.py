@@ -3,7 +3,8 @@
 Prints one `simon.part5.check.v1` document (docs/specs/check-5.md, contracts/metrics.schema.json)
 on stdout and a short summary on stderr. Exit 0 only when the gate passes, 1 when it fails,
 2 when a labelled take can't be analysed, a set is missing or unusable, or part5/rules.json is not
-the file frozen for the seed (no freeze record, or another hash, in docs/thresholds.md).
+the file frozen for the seed (no freeze record, or another hash, in docs/thresholds.md), or its `score`
+params are not the ones frozen in fixtures/score-heldout.json.
 
 The gate is the held-out set (`fixtures/input/heldout/`, whose labels.json names the seed: 29,
 then 31, then 37; ADR-0003): good light at each angle separately must reach precision >= 0.85 and
@@ -21,6 +22,7 @@ from pathlib import Path
 from . import real
 from .detect import RULES_PATH
 from .evaluate import evaluate_corpus, is_refused, slice_name
+from .score import params_sha256
 from .score_report import analyse, correct_good_failures, distribution, entries_of, run_sweep, sweep_failures, verdicts
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,6 +30,7 @@ FORMAT = "simon.part5.check.v1"
 HELDOUT = ROOT / "fixtures" / "input" / "heldout"
 TUNING = ROOT / "fixtures" / "input" / "followers"
 ATTEMPTS = ROOT / "fixtures" / "heldout-attempts.json"
+SCORE_RECORD = ROOT / "fixtures" / "score-heldout.json"
 THRESHOLDS_DOC = ROOT / "docs" / "thresholds.md"
 OUT_DIR = ROOT / "out" / "check-5"
 HELDOUT_SEEDS = (29, 31, 37)  # ADR-0003: fixed now, scored in this order, once each
@@ -36,6 +39,10 @@ GATED = ("good/front", "good/45", "good/side")
 MIN_PRECISION = 0.85
 MIN_RECALL = 0.75
 MAX_FAULTS_ON_CORRECT = 0
+# The stderr words for a score target's verdict (`verdicts()`: pass, fail, no takes). A missed target is reported, never
+# gated, so a line above `check-5: PASS` must not read like a failure.
+TARGET_WORDS = {"pass": "target met", "fail": "target missed (reported, not gated)",
+                "no takes": "target not judged (no takes)"}
 DETECTION_SHA_PATTERN = r"detection_sha256:?\s*`?([0-9a-f]{64})"
 DATA_SOURCE = ("synthetic: held-out takes (seed {seed}, from {path}/labels.json) from "
                "scripts/make_dummy_followers.py; thresholds tuned on seed 5 only")
@@ -232,6 +239,33 @@ def require_frozen(seed, sha, frozen, detection=None, recorded_detection=None):
                           "docs/thresholds.md; a seed is scored once, against the rules frozen for it"])
 
 
+def score_params_hash(path=RULES_PATH):
+    """sha256 of the `score` block of part5/rules.json, as `score.params_sha256` writes it into every score."""
+    return params_sha256(json.loads(Path(path).read_text()).get("score"))
+
+
+def recorded_score_hash(path):
+    """The `params_sha256` the newest attempt in the held-out score record (fixtures/score-heldout.json) froze,
+    or None when the record is missing or has none."""
+    try:
+        return json.loads(Path(path).read_text())["attempts"][-1]["params_sha256"]
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return None
+
+
+def require_score_frozen(current, recorded):
+    """The score params are frozen when the held-out score report is recorded (ADR-0007): the `score` block of
+    part5/rules.json must still hash to what fixtures/score-heldout.json recorded. The detection freeze above
+    deliberately leaves that block out, so without this check a score edit would pass unseen."""
+    if not recorded:
+        raise CheckError(["check-5: fixtures/score-heldout.json has no frozen score params (params_sha256); "
+                          "record the score freeze there before scoring"])
+    if current != recorded:
+        raise CheckError([f"check-5: the score params in part5/rules.json (sha256 {current[:12]}) differ from the "
+                          f"ones frozen in fixtures/score-heldout.json (sha256 {recorded[:12]}); the score params "
+                          "are frozen once the held-out score report is recorded (ADR-0007)"])
+
+
 # --- the score (ADR-0007): the gate adds correct good-light takes at A and a monotonic sweep ---
 def score_gate(g, labels_doc, analyses, sweeps):
     """`g` (the precision and recall gate) with the score criteria added to its failures; `passed` needs all."""
@@ -283,7 +317,8 @@ def real_blocks(root=None):
 
 
 # --- the document ---
-def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=None, rules_path=None, root=None):
+def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=None, rules_path=None, root=None,
+              score_record_path=None):
     """Analyse and score both sets. Returns (document, per-take rows); raises CheckError.
     Each default is the module constant, read when called."""
     heldout, tuning = Path(heldout or HELDOUT), Path(tuning or TUNING)
@@ -302,6 +337,7 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
     text = thresholds_path.read_text() if thresholds_path.is_file() else ""
     frozen = thresholds_record(held["seed"], text)
     require_frozen(held["seed"], sha, frozen, detection, recorded_detection_hash(text))
+    require_score_frozen(score_params_hash(rules_path), recorded_score_hash(score_record_path or SCORE_RECORD))
     (held_analyses, held_errors), (tune_analyses, tune_errors) = analyse_set(held, root), analyse_set(tune, root)
     if held_errors or tune_errors:
         raise CheckError(held_errors + tune_errors)
@@ -353,7 +389,7 @@ def summary(doc):
     sc = doc["report"]["score"]["heldout"]
     for key, d in sc["slices"].items():
         grades = ", ".join(f"{g} {c}" for g, c in d["grades"].items())
-        target = f"  target verdict {sc['targets'][key]}" if key in sc["targets"] else "  (reported)"
+        target = f"  {TARGET_WORDS.get(sc['targets'][key], sc['targets'][key])}" if key in sc["targets"] else "  (reported)"
         lines.append(f"check-5: score {key:7s} n {d['n']:3d}  min {d['min']}  median {d['median']}  max {d['max']}  "
                      f"{grades}{target}")
     failures = doc["gate"]["failures"]

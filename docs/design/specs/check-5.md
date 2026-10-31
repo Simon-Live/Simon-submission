@@ -68,8 +68,12 @@ current attempt is computed by this run, is the last entry and matches `gate`.
 - `python -m part5.check [--set <dir>] [--json-out <path>]`. Defaults: gate on `fixtures/input/heldout`
   with `gate.seed` read from its `labels.json` (never typed in code), tuning on `fixtures/input/followers`, reports from `fixtures/input/contract/part3/followers` and
   `fixtures/input/eval/real`. Also writes the same JSON to `out/check-5/metrics.json` (gitignored).
-- stdout: the JSON only (`indent=2`). stderr: one line per gated slice, then `check-5: PASS` or
-  `check-5: FAIL (<n> criteria)`.
+- stdout: the JSON only (`indent=2`). stderr: one line per gated slice, one `check-5: score <slice>` line per score
+  slice (reported, never gated), then `check-5: PASS` or `check-5: FAIL (<n> criteria)`. A score line for a good-light
+  slice ends in how the slice did against its grade target, in words that do not read like a gate result:
+  `target met`, `target missed (reported, not gated)` or `target not judged (no takes)`; a slice with no target ends
+  in `(reported)`. The words come from `TARGET_WORDS` in `part5/check.py`; the JSON (`report.score.heldout.targets`
+  keeps `pass`, `fail` and `no takes`), the gate and every number are unchanged.
 - Exit: 0 gate passed; 1 gate failed; 2 a labelled take could not be analysed (named), a set is missing, or
   `rules.json` is not the file frozen for the seed (AC-K07).
 - Phrasing is `template` only; no network.
@@ -94,13 +98,29 @@ Given a run, stdout parses as one JSON document that validates against `contract
 Given two runs on the same tree, stdout is byte-identical.
 ### AC-K07: names the tuning seed and rules
 Given a run, `tuning.seed` is 5, `gate.seed` equals the `seed` in `fixtures/input/heldout/labels.json`
-(one of 29, 31, 37), and `rules_sha256` equals the current attempt's hash in `docs/thresholds.md`.
-When it does not, or the seed has no record there, the check exits 2 instead of scoring.
+(one of 29, 31, 37), and `detection_sha256` (the hash of `part5/rules.json` without its `score` key) equals the
+`detection_sha256` in `docs/thresholds.md`, the detection rules frozen for the attempts (ADR-0007, AC-S06).
+`rules_sha256` is the whole file's hash and is reported; it differs from the attempts' `60f2e60b...` since the
+`score` block was added after the freeze. When the detection hash does not match, or the seed has no record
+there, the check exits 2 instead of scoring.
+### AC-K10: the score params are frozen
+Given `part5/rules.json` whose `score` block hashes (`score.params_sha256`) to something other than the
+`params_sha256` of the newest attempt in `fixtures/score-heldout.json`, then the check exits 2 before it scores
+anything, with `check-5: the score params in part5/rules.json (sha256 <12 hex>) differ from the ones frozen in
+fixtures/score-heldout.json (sha256 <12 hex>); the score params are frozen once the held-out score report is
+recorded (ADR-0007)`. The detection hash leaves `score` out (AC-K07), so without this a score edit passed unseen.
+A missing or empty record exits 2 the same way (`has no frozen score params`). With the committed files the check
+passes. Verification: `tests/test_check.py`.
 ### AC-K09: every attempt reported
 Given two scored attempts (one red, one green), then `attempts[]` lists both in seed order with their
 numbers and `passed`, and the exit code follows the current attempt only.
 ### AC-K08: unanalysable take
 Given a labelled take whose file is missing, then exit 2 naming the `take_id`.
+### AC-K11: a missed score target reads as reported on stderr
+Given a held-out set where the good-light one-fault takes miss their grade target, then the `check-5: score good/1`
+line ends `target missed (reported, not gated)`, the other good-light lines end `target met` or `target not judged
+(no takes)`, the last line is still `check-5: PASS`, the exit is 0 and stdout is unchanged (`targets` reads `fail`).
+Verification: `tests/test_check_score.py`.
 
 ### Rule-Based ACs
 - AC-K-NFR-01: under 10 minutes on this host, offline. Verification: timed run, sockets blocked in test.
@@ -114,6 +134,7 @@ Given a labelled take whose file is missing, then exit 2 naming the `take_id`.
 | Missing set directory | exit 2 | `check-5: <dir> has no labels.json` | AC-K08 |
 | No freeze record for the seed | exit 2 | `check-5: docs/thresholds.md has no freeze record (rules_sha256) for seed <n>; ...` | AC-K07 |
 | `rules.json` differs from the frozen hash | exit 2 | `check-5: part5/rules.json differs from the hash frozen for seed <n> in docs/thresholds.md; ...` | AC-K07 |
+| `score` params differ from the frozen hash | exit 2 | `check-5: the score params in part5/rules.json (sha256 <12 hex>) differ from the ones frozen in fixtures/score-heldout.json (sha256 <12 hex>); ...` | AC-K10 |
 | A scored seed scores differently from its recorded attempt | exit 2 | `check-5: seed <n> scores differently from its recorded attempt in fixtures/heldout-attempts.json (<slices>); scoring changed after the freeze, which needs a new attempt on the next seed (docs/design/specs/calibration.md)` | AC-K09 |
 
 ## Edge Cases
