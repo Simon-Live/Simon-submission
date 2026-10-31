@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ import pytest
 from test_canonical import _body3d
 from test_multi3d import _two_person_body3d
 
-from part2 import contract, schema
+from part2 import cli, contract, schema
 from part2.canonical import convert
 from part2.joints import CANONICAL
 from part2.multi3d import write_pose_streams
@@ -403,6 +404,35 @@ def test_contract_md_table_is_the_compatibility_file():
     assert header == ["Producer file", "Version", "Consumer", "Result", "Option", "Evidence"]
     assert rows == [[r["producer_file"], r["version"], r["consumer"], r["result"], r["option"], r["evidence"]]
                     for r in contract.compatibility()]
+
+
+def _md_section_intro(heading):
+    """The text of the `## heading` section of CONTRACT.md before its first `### ` subsection."""
+    text = (ROOT / "CONTRACT.md").read_text().split(f"## {heading}\n", 1)[1].split("\n## ", 1)[0]
+    return text.split("\n### ", 1)[0]
+
+
+def test_j07_contract_md_names_the_part7_call():
+    """AC-J07 (docs/specs/journey-followup.md): the section "How Part 7 runs a take" names the one command Part 7 runs,
+    `--mirrored` and the Part 3 follow-on with `--view part5`. The command is filled in and parsed by the real argument
+    parser, so a renamed or removed option fails here instead of leaving the documentation wrong."""
+    section = _md_section_intro("How Part 7 runs a take")
+    line = re.search(r"^(part2 run .*)$", section, re.M).group(1)
+    assert line == ("part2 run --mode single --input <take.webm|take.mp4|take.mov> --out <dir> --fps 10 "
+                    "--backend gpu [--mirrored]")
+    filled = re.sub(r"<[^>]*>", "x", line)  # the placeholders are values the caller fills in
+    for mirrored in (False, True):  # [--mirrored] is optional
+        argv = shlex.split(re.sub(r"\[(--[a-z-]+)\]", r"\1" if mirrored else "", filled))
+        assert argv[0] == "part2"
+        args = cli._build_parser().parse_args(argv[1:])  # an unknown or missing option is a SystemExit
+        assert (args.command, args.mode, args.fps, args.backend, args.mirrored) == ("run", "single", 10.0, "gpu", mirrored)
+        assert (args.input, args.out) == (Path("x"), Path("x"))
+    # the options table explains exactly the options of the command, and --mirrored is one of them
+    table_options = set(re.findall(r"^\| `(--[a-z-]+)", section, re.M))
+    assert table_options == set(re.findall(r"--[a-z-]+", line)) and "--mirrored" in table_options
+    # the follow-on: Part 3 on the pose3d.json the command wrote into <dir>, with --view part5
+    follow_on = next(s for s in re.split(r"(?<=\.)\s", " ".join(section.split())) if "--view part5" in s)
+    assert "Part 3" in follow_on and "`<dir>/pose3d.json`" in follow_on and "for Part 5" in follow_on
 
 
 def test_the_table_has_the_rows_the_spec_names():

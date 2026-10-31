@@ -5,14 +5,13 @@ streams, the stamp) is the real code, run in a temp root that holds a copy of pa
 import dataclasses
 import fcntl
 import json
-import sys
 import types
 
 import pytest
 from test_canonical import _body3d
 from test_stamp import make_root
 
-from part2 import backends, frames, outputs, stamp, trackers
+from part2 import backends, contract, frames, gpu_guard, outputs, provenance, stamp, trackers
 
 
 def _fake_estimate(frames_dir, out_path, boxes=None):
@@ -231,33 +230,13 @@ def test_unknown_names_exit_2(env, argv, needle, capsys):
     assert needle in capsys.readouterr().err
 
 
-def test_gpu_guard_waits_on_the_shared_lock_then_gives_up(env):
-    with outputs.gpu_guard():
-        with pytest.raises(trackers.GpuBusy, match="another GPU job is running"):
-            with outputs.gpu_guard(wait_s=0.1):
-                pass
-    with outputs.gpu_guard(wait_s=0.1):
-        pass
-
-
 def test_a_busy_gpu_fails_the_mode_with_the_lock_message(env, monkeypatch, capsys):
+    """Every mode takes the host lock through output_steps.gpu_locked (B2: one copy of that rule)."""
     _use(monkeypatch, FakeBackend())
-    monkeypatch.setattr(outputs, "gpu_guard", lambda wait_s=None: trackers.gpu_lock(wait_s=0.1, poll_s=0.02))
+    monkeypatch.setattr(gpu_guard, "gpu_lock", lambda wait_s=None: trackers.gpu_lock(wait_s=0.1, poll_s=0.02))
     with trackers.gpu_lock():
         assert outputs.main(["--modes", "single"], root=env.root) == 1
     assert "outputs: single: another GPU job is running" in capsys.readouterr().err
-
-
-def test_gpu_guard_is_part2_gpu_guard_gpu_lock(monkeypatch):
-    seen = []
-    fake = types.ModuleType("part2.gpu_guard")
-    fake.gpu_lock = lambda **kw: seen.append(kw) or outputs.contextlib.nullcontext()
-    monkeypatch.setitem(sys.modules, "part2.gpu_guard", fake)
-    with outputs.gpu_guard():
-        pass
-    with outputs.gpu_guard(wait_s=3):
-        pass
-    assert seen == [{}, {"wait_s": 3}]
 
 
 def test_the_stamp_hashes_are_taken_before_inference(env, monkeypatch, capsys):
@@ -272,3 +251,92 @@ def test_the_stamp_hashes_are_taken_before_inference(env, monkeypatch, capsys):
     backend.estimate = edit_then_estimate
     assert outputs.main(["--modes", "single"], root=env.root) == 0
     assert stamp.check(env.scored / "single", env.root)["changed_files"] == ["part2/body3d.py"]
+
+
+# ---- R14: the commit is measured once, before the run writes anything ----------------------------------------------------
+
+SHA = "a" * 40
+GPU_FILES = ("single/pose3d.json", "class/pose3d.json", "class-local-open/pose3d.json", "coco-single/785/pose3d.json",
+             "coco-single/22705/pose3d.json")
+
+
+def _tree(env, monkeypatch, dirty_before=False):
+    """A stand-in for provenance's git call: HEAD is SHA; the tree reads dirty from the start (dirty_before) or
+    once the run has written a scored file, as the tracked fixtures/output tree does on a real checkout."""
+    def fake(*args):
+        if args[0] == "rev-parse":
+            return SHA
+        return " M fixtures/output/scored/single/pose3d.json" if dirty_before or any(env.scored.rglob("*.json")) else ""
+
+    monkeypatch.setattr(provenance, "_git", fake)
+
+
+def _commits(env, files):
+    return {f: json.loads((env.scored / f).read_text())["provenance"]["part2_commit"] for f in files}
+
+
+def test_every_mode_records_the_commit_measured_before_the_run_wrote_anything(env, monkeypatch):
+    _use(monkeypatch, FakeBackend())
+    _tree(env, monkeypatch)
+    assert outputs.main([], root=env.root) == 0
+    assert provenance.part2_commit() == SHA + "+dirty"  # the control: the run's own files now make the tree read dirty
+    assert _commits(env, GPU_FILES) == {f: SHA for f in GPU_FILES}
+
+
+def test_a_tree_dirty_before_the_run_is_recorded_as_dirty_in_every_mode(env, monkeypatch):
+    _use(monkeypatch, FakeBackend())
+    _tree(env, monkeypatch, dirty_before=True)
+    assert outputs.main([], root=env.root) == 0
+    assert _commits(env, GPU_FILES) == {f: SHA + "+dirty" for f in GPU_FILES}
+
+
+TRACKS_FILES = ("class/tracks.json", "class-local-open/tracks.json")
+
+
+def test_tracks_json_records_the_same_clean_commit_as_pose3d_json(env, monkeypatch):
+    """N3: the tracker measures at write time, when the run's earlier modes already made the tree read dirty; the
+    run's one measure replaces that, so a clean run says the same clean commit in tracks.json and pose3d.json."""
+    _use(monkeypatch, FakeBackend())
+    _tree(env, monkeypatch)
+    assert outputs.main(["--modes", "single,class,class-local-open"], root=env.root) == 0
+    both = [f"{m}/{k}.json" for m in ("class", "class-local-open") for k in ("tracks", "pose3d")]
+    assert _commits(env, both) == {f: SHA for f in both}
+
+
+def test_tracks_json_records_the_same_dirty_commit_as_pose3d_json(env, monkeypatch):
+    """A tree dirty before the run reads +dirty in tracks.json too, and the tracks contract accepts that value."""
+    _use(monkeypatch, FakeBackend())
+    _tree(env, monkeypatch, dirty_before=True)
+    assert outputs.main(["--modes", "class,class-local-open"], root=env.root) == 0
+    both = [f"{m}/{k}.json" for m in ("class", "class-local-open") for k in ("tracks", "pose3d")]
+    assert _commits(env, both) == {f: SHA + "+dirty" for f in both}
+    for f in TRACKS_FILES:
+        contract.validate(json.loads((env.scored / f).read_text()), "tracks")
+
+
+def test_a_direct_class_run_mode_records_one_commit_in_tracks_and_pose3d(env, monkeypatch):
+    backend = _use(monkeypatch, FakeBackend())
+    _tree(env, monkeypatch)
+    outputs.run_mode(outputs.modes_for("gpu", ["class"])[0], backend, env.root, env.scored)
+    assert _commits(env, ("class/tracks.json", "class/pose3d.json")) == {"class/tracks.json": SHA,
+                                                                          "class/pose3d.json": SHA}
+
+
+def test_the_run_commit_replaces_the_backends_own_commit(env, monkeypatch):
+    """The cpu backend names its own part2_commit (HEAD, never +dirty); under `make outputs` the run's one measure wins."""
+    class CpuWithCommit(FakeBackend):
+        def provenance(self):
+            return {**super().provenance(), "part2_commit": "b" * 40}
+
+    _use(monkeypatch, CpuWithCommit(name="cpu"))
+    _tree(env, monkeypatch, dirty_before=True)
+    assert outputs.main(["--backend", "cpu"], root=env.root) == 0
+    assert _commits(env, ("cpu-single/pose3d.json",)) == {"cpu-single/pose3d.json": SHA + "+dirty"}
+
+
+def test_a_direct_run_mode_measures_the_commit_before_it_writes(env, monkeypatch):
+    backend = _use(monkeypatch, FakeBackend())
+    _tree(env, monkeypatch)
+    mode = outputs.modes_for("gpu", ["single"])[0]
+    outputs.run_mode(mode, backend, env.root, env.scored)
+    assert _commits(env, ("single/pose3d.json",)) == {"single/pose3d.json": SHA}

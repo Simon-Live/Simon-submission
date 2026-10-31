@@ -14,83 +14,19 @@ With the gpu backend, `part2 run` holds the host GPU lock (part2.gpu_guard) arou
 re-run; a SAM tracker takes the same lock itself while it tracks, so the two are never nested (AC-B-NFR-03).
 """
 import argparse
-import contextlib
 import json
 import os
 import sys
 from pathlib import Path
 
-from part2 import backends, canonical, contract, frames, provenance
+from part2 import backends, canonical, contract, frames, output_steps
 from part2.schema import ContractError, write_json
-
-# Keys of a backend's provenance() that block() takes as arguments rather than as extra keys.
-_BLOCK_ARGS = ("backend", "tracker", "lifter", "refine", "models", "licence_notes", "kind")
-_FALLBACK = ("fallback_from", "fallback_reason")
 
 
 def _progress(stage: str, done: int, total: int) -> None:
     """`progress <stage> <done> <total>` on stdout when PART2_PROGRESS=1 (the staging job worker reads it)."""
     if os.environ.get("PART2_PROGRESS") == "1":
         print(f"progress {stage} {done} {total}", flush=True)
-
-
-def _gpu_locked(backend):
-    """The host GPU lock for a gpu backend's inference; nothing for the cpu backend."""
-    if backend.name != "gpu":
-        return contextlib.nullcontext()
-    from part2 import gpu_guard
-
-    return gpu_guard.gpu_lock()
-
-
-def _pose_extras(meta: dict, mirrored: bool, backend, tracks_prov: dict | None = None, refine=()) -> dict:
-    """The optional top-level keys of the pose3d.json this run writes: the time origin, the mirror flag and
-    the provenance of what ran (the backend's models plus, in multi mode, the tracker that ran and any
-    fallback; one-person mode runs no tracker; with refine rungs, the rungs and their models)."""
-    bprov = backend.provenance()
-    tprov = tracks_prov or {}
-    models = [m for m in list(bprov.get("models", [])) + list(tprov.get("models", []))]
-    extra = {k: v for k, v in bprov.items() if k not in _BLOCK_ARGS}
-    extra.update({k: tprov[k] for k in _FALLBACK if tprov.get(k)})
-    prov = provenance.block(backend.name, tprov.get("tracker"), bprov.get("lifter"), bprov.get("refine", ()),
-                            models, kind="pose3d", licence_notes=bprov.get("licence_notes", ()), **extra)
-    if refine:
-        from part2 import refine as rungs
-
-        prov = {**prov, "refine": list(refine), "models": list(prov.get("models", [])) + rungs.models(refine),
-                "licence_notes": list(prov.get("licence_notes", [])) + rungs.licence_notes(refine)}
-    return {"t0_pts_ms": meta.get("t0_pts_ms"), "mirrored": True if mirrored else None, "provenance": prov}
-
-
-def _refine(rungs, doc: dict, frames_dir: Path, work_dir: Path, backend, model2d=None, lock=None) -> dict:
-    """doc after the refine rungs (part2.refine.apply, ADR-0004), written to work_dir/body3d.json with the unrefined
-    one kept as body3d-unrefined.json; doc itself when there are none. A rung that re-runs the 3D model does so
-    under `lock` (a context manager factory; default: the host GPU lock for the gpu backend)."""
-    if not rungs:
-        return doc
-    from part2 import refine
-
-    (work_dir / "body3d-unrefined.json").write_text(json.dumps(doc))
-    out = refine.apply(rungs, doc, frames_dir, model2d=model2d, backend=backend,
-                       lock=lock or (lambda: _gpu_locked(backend)), work_dir=work_dir)
-    (work_dir / "body3d.json").write_text(json.dumps(out))
-    return out
-
-
-def _tracks_extras(meta: dict, doc: dict, backend_name: str | None) -> dict:
-    """The tracker's own provenance block (it names the tracker, its models and any fallback), stamped with
-    the contract version and the backend this run uses (AC-C08), plus the time origin."""
-    prov = {**(doc.get("provenance") or {}), "contract_version": contract.version("tracks")}
-    if backend_name:  # `part2 track` runs no 3D backend, so it names none
-        prov["backend"] = backend_name
-    return {"t0_pts_ms": meta.get("t0_pts_ms"), "provenance": prov}
-
-
-def _stamp_tracks(path: Path, doc: dict, extras: dict) -> None:
-    """Add the optional keys to the tracks.json the tracker wrote, after checking it against the contract."""
-    doc.update({k: v for k, v in extras.items() if v is not None})
-    contract.validate(doc, "tracks")
-    write_json(path, doc)
 
 
 def _parse_ids(text: str | None) -> list[str] | None:
@@ -109,7 +45,7 @@ def _tracked_ids(doc: dict) -> dict[str, object]:
 
 
 def _check_ids(doc: dict, ids: list[str]) -> None:
-    """ValueError naming the first listed id that no person in the tracks document has."""
+    """ValueError naming the first listed id that no person in the tracks document has (AC-P06)."""
     known = _tracked_ids(doc)
     for i in ids:
         if i not in known:
@@ -118,7 +54,7 @@ def _check_ids(doc: dict, ids: list[str]) -> None:
 
 def _load_tracks(path: Path) -> dict:
     """The --tracks file as a tracks document that passes the contract. A file that cannot be read, is not JSON or
-    breaks the tracks contract is an input error naming the file (ValueError), not a broken output."""
+    breaks the tracks contract is an input error naming the file (ValueError), not a broken output (AC-P09)."""
     try:
         doc = json.loads(Path(path).read_text())
     except OSError as e:
@@ -145,7 +81,7 @@ def _given_tracks(path: Path | None, ids: list[str] | None) -> dict | None:
 
 def _check_same_frames(path: Path, doc: dict, recs: list[dict]) -> None:
     """ValueError unless the tracks cover exactly the frames of this input: a file made at another --fps or from
-    another clip would pair its boxes with the wrong frames."""
+    another clip would pair its boxes with the wrong frames (AC-P07)."""
     have, want = {f["frame"] for f in doc["frames"]}, {r["frame"] for r in recs}
     sizes = f"it covers {len(have)} frames, this input has {len(want)}"
     hint = "was it made with the same --input and --fps?"
@@ -167,8 +103,9 @@ def _track_stage(args, recs, meta, backend_name, reuse: dict | None = None) -> d
         print(f"{len(_tracked_ids(reuse))} tracked people reused from {args.tracks} (no tracking run)")
         return reuse
     _progress("track", 0, len(recs))
-    doc = track.track(args.out / "frames", tracks_path, tracker=args.tracker, purpose=args.tracker_order)
-    _stamp_tracks(tracks_path, doc, _tracks_extras(meta, doc, backend_name))
+    order = {} if args.tracker_order is None else {"purpose": args.tracker_order}  # absent: track.track's default
+    doc = track.track(args.out / "frames", tracks_path, tracker=args.tracker, **order)
+    output_steps.stamp_tracks(tracks_path, doc, output_steps.tracks_extras(meta, doc, backend_name))
     note = trackers.describe_fallback(doc["provenance"])
     print(f"{len(_tracked_ids(doc))} tracked people -> {tracks_path} "
           f"(tracker {doc['provenance'].get('tracker')}{'; ' + note if note else ''})")
@@ -195,17 +132,25 @@ class _Parser(argparse.ArgumentParser):
         super().__init__(allow_abbrev=False, **kwargs)
 
 
-def _tracking_parent(out_help: str, multi_only: bool) -> argparse.ArgumentParser:
-    """The five arguments `run` and `track` share (--input, --out, --fps, --tracker, --tracker-order), declared
-    once and passed as `parents=`. `run` applies the tracker options to --mode multi only, which its help says."""
-    scope = "multi: " if multi_only else ""
+def _input_parent(out_help: str) -> argparse.ArgumentParser:
+    """The three arguments `frames`, `run` and `track` share (--input, --out, --fps), declared once and passed as
+    `parents=`; only the help of --out differs by command."""
     p = _Parser(add_help=False)
     p.add_argument("--input", required=True, type=Path, help="video file or directory of images")
     p.add_argument("--out", required=True, type=Path, help=out_help)
     p.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
+    return p
+
+
+def _tracking_parent(out_help: str, multi_only: bool) -> argparse.ArgumentParser:
+    """The arguments `run` and `track` share: those of `_input_parent` plus --tracker and --tracker-order. `run`
+    applies the tracker options to --mode multi only, which its help says. --tracker-order has no argparse default
+    (None): `run --tracks` must tell a given option from an absent one (AC-P08); `track.track` supplies "bulk"."""
+    scope = "multi: " if multi_only else ""
+    p = _Parser(add_help=False, parents=[_input_parent(out_help)])
     p.add_argument("--tracker", help=f"{scope}api-sam31, local-sam31, local-open or bytetrack "
                    "(default: PART2_TRACKER, else the tracker order)")
-    p.add_argument("--tracker-order", choices=["scored", "bulk"], default="bulk",
+    p.add_argument("--tracker-order", choices=["scored", "bulk"],
                    help=f"{scope}the order walked when no tracker is named" + (" (make outputs: scored)" if multi_only else ""))
     return p
 
@@ -214,10 +159,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = _Parser(prog="part2", description="Simon Part 2: video frames to 3D poses.")
     sub = parser.add_subparsers(dest="command", required=True, parser_class=_Parser)
 
-    p_frames = sub.add_parser("frames", help="extract numbered frames + frames.json from a video or image dir")
-    p_frames.add_argument("--input", required=True, type=Path, help="video file or directory of images")
-    p_frames.add_argument("--out", required=True, type=Path, help="output frames directory")
-    p_frames.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
+    sub.add_parser("frames", help="extract numbered frames + frames.json from a video or image dir",
+                   parents=[_input_parent("output frames directory")])
 
     p_run = sub.add_parser("run", help="full pipeline: frames -> pose3d.json (+ tracks.json in multi mode)",
                            parents=[_tracking_parent("output directory", multi_only=True)])
@@ -371,6 +314,9 @@ def main(argv: list[str] | None = None) -> int:
             ids = _parse_ids(args.ids)
             if (args.tracks is not None or ids is not None) and args.mode != "multi":
                 raise ValueError("--tracks and --ids apply to --mode multi only")
+            given = [o for o, v in (("--tracker", args.tracker), ("--tracker-order", args.tracker_order)) if v is not None]
+            if args.tracks is not None and given:  # AC-P08: the tracks file already fixed the tracker
+                raise ValueError(f"{' and '.join(given)} cannot be combined with --tracks (the tracks file already fixed the tracker)")
             backend = backends.get(backends.resolve(args.backend))
             lifter = lifters.resolve(args.lifter)
             rungs = [] if args.refine.strip() in ("", "none") else refine.resolve(args.refine)
@@ -388,15 +334,15 @@ def main(argv: list[str] | None = None) -> int:
         meta = frames.load_meta(args.out / "frames")
         if args.mode == "single":
             _progress("pose", 0, len(recs))
-            with _gpu_locked(backend):
+            with output_steps.gpu_locked(backend):
                 doc = backend.estimate(args.out / "frames", args.out / "body3d.json")
             if rungs:
-                _refine(rungs, doc, args.out / "frames", args.out, backend, model2d=refine.load_2d(rungs))
+                output_steps.refine(rungs, doc, args.out / "frames", args.out, backend, model2d=refine.load_2d(rungs))
                 print(f"refined by {', '.join(rungs)} (unrefined kept as {args.out / 'body3d-unrefined.json'})")
             _progress("write", 0, 1)
             print(f"camera-space 3D ({backend.name}) -> {args.out / 'body3d.json'}")
             pose_path, cam_path = canonical.write(args.out / "body3d.json", args.out, smooth=args.smooth,
-                                                  extras=_pose_extras(meta, args.mirrored, backend, refine=rungs))
+                                                  extras=output_steps.pose_extras(meta, args.mirrored, backend, refine=rungs))
             print(f"{pose_path} + {cam_path}")
             _progress("write", 1, 1)
             return 0
@@ -410,11 +356,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             boxes = _pick_boxes(doc, ids)
             _progress("pose", 0, len(recs))
-            with _gpu_locked(backend):  # after tracking: a SAM tracker took and dropped the same lock itself
+            with output_steps.gpu_locked(backend):  # after tracking: a SAM tracker took and dropped the same lock itself
                 b3d = backend.estimate(args.out / "frames", args.out / "body3d.json", boxes=boxes)
             _progress("write", 0, 1)
             res = multi3d.write_pose_streams(b3d, args.out, smooth=args.smooth,
-                                             extras=_pose_extras(meta, args.mirrored, backend, doc.get("provenance")))
+                                             extras=output_steps.pose_extras(meta, args.mirrored, backend, doc.get("provenance")))
             print(f"pose3d for people {res['people']} -> {args.out / 'pose3d.json'} "
                   f"(+ pose3d_person_<id>.json each)")
             _progress("write", 1, 1)

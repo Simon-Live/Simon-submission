@@ -1,6 +1,6 @@
 # Spec: `make check-2` on committed reproducible outputs, the CPU 3D bar and the one-person ladder
 
-> Copy of `docs/specs/check-2.md` from the maintainers' working repo at `68ecdcc`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/check-2.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -67,7 +67,8 @@ DoD passes, on which outputs, made by which backend and tracker.
   `{schema, mode, backend, tracker, lifter, refine: [rung names], models: [{name, source, weights_sha256}],
   env_profile, env_lock_sha256, code_sha256, frames_sha256, created_utc, host_gpu}`.
   `code_sha256` covers only the files the mode, backend, tracker, lifter and rungs import (listed per
-  registry entry), plus `part2/frames.py`, `joints.py`, `canonical.py`. `env_lock_sha256` hashes the lock
+  registry entry), plus `part2/frames.py`, `joints.py`, `canonical.py`, and `part2/output_steps.py` (every mode
+  lists it in `modules`, AC-K15). `env_lock_sha256` hashes the lock
   of the recorded profile only (`envs/gpu-cu128/constraints.txt`, `envs/cpu/requirements.txt` or the
   team's `k8s/constraints-gpu.txt`), so a change to another profile never stales this mode.
 - Freshness: the check recomputes `code_sha256`, `frames_sha256` and `env_lock_sha256` from the stamp's
@@ -250,7 +251,8 @@ Values above are placeholders for the shape; real numbers come from the run. Top
 |---|---|
 | `part2/check.py` | modified: scored dir, stamp v2, `cpu_backend_3d` block, `outputs` names |
 | `part2/stamp.py` | stamp v2 write, read, freshness |
-| `part2/outputs.py` | `part2 outputs` driver |
+| `part2/outputs.py` | `part2 outputs` driver; takes the host GPU lock through `output_steps.gpu_locked` and measures `part2_commit` once per run (AC-K16) |
+| `part2/output_steps.py` | the steps `part2 run`, `part2 stock` and `make outputs` share to write a run's outputs: pose3d extras and provenance, the refine rungs, the tracks stamp, the GPU lock (`gpu_locked`, the one copy of the rule "gpu backend means the host lock, else nothing" that `part2 run`, `part2 stock` and `make outputs` all use). Moved out of `part2/cli.py` (review residual R19) so a stamp can hash it; every mode in `outputs.py` lists it in `modules` |
 | `part2/eval_3d.py` | the 3D bar |
 | `part2/coco_set.py` | COCO fetch, licence filter, selection rule, keypoint mapping to the canonical 17 (TICKET-037) |
 | `part2/eval_coco.py` | scores `coco-single` with the unchanged `eval_reproj` rules, each image its own clip (TICKET-037) |
@@ -260,7 +262,7 @@ Values above are placeholders for the shape; real numbers come from the run. Top
 | `part2/hashing.py` | shared sha256 of a file (stamps, weights digests, cache checks; TICKET-030) |
 | `Makefile` | `outputs`, `check-2` (SCORED), `check-2-cpu` |
 | `fixtures/output/scored/{single,class,cpu-single}/` | committed outputs and stamps |
-| `tests/test_check.py`, `tests/test_stamp.py`, `tests/test_outputs.py`, `tests/test_eval_3d.py`, `tests/test_refine.py` | tests |
+| `tests/test_check.py`, `tests/test_stamp.py`, `tests/test_outputs.py`, `tests/test_output_steps.py`, `tests/test_provenance.py`, `tests/test_eval_3d.py`, `tests/test_refine.py` | tests |
 | `tests/test_gold_isolation.py` | no import of the evals and no label path under `part2/refine/` or `part2/trackers/` |
 | `tests/test_coco_set.py`, `tests/test_eval_coco.py` | licence filter, selection rule, mapping and scorer on hand-made data |
 | `fixtures/output/scored/{coco-single,class-local-open}/` | committed outputs and stamps |
@@ -308,6 +310,26 @@ scoring (git history shows it); top-level `pass` needs it. Tests on hand-made an
 names `api-sam31`. Test.
 ### AC-K10: Missing outputs
 No scored dir and no `SCORED`: each mode fails with "missing output ...; run make outputs", exit 1.
+### AC-K15: The shared output steps are hashed
+`part2 run`, `part2 stock` and `make outputs` build the `pose3d.json` extras and provenance, run the refine rungs and
+stamp `tracks.json` through `part2/output_steps.py`. Every mode in `outputs.MODES` lists `part2.output_steps` in
+`modules`, so its `code_files` hash that file, and an edit to it makes `stamp.check` report the mode stale with the
+file named in `changed_files`. `part2/cli.py` itself is not hashed (a help-text edit stales nothing). Tests:
+`tests/test_stamp.py` (an edit stales every mode that lists it; every mode lists it).
+### AC-K16: One commit measure per run
+`make outputs` takes `provenance.part2_commit()` (HEAD, plus `+dirty` when a tracked file differs) once, before the
+first mode writes anything, and passes it to every mode: every `pose3d.json` and every `tracks.json` of the run
+records that one value (`output_steps.pose_extras` and `output_steps.tracks_extras` take it as `commit`; the
+`cpu-single` backend and the trackers would otherwise each name a commit of their own). Measured per file, a run's own earlier outputs
+(tracked files under `fixtures/output/`) would make later modes read `+dirty` on a clean tree (review residual R14).
+A tree dirty before the run still reads `+dirty` in every mode. `part2 stock` does the same across its takes, and
+`part2 run` and `part2 track` still measure when they write their file. There is one rule (review residual N3):
+the tracker adapters (`part2/trackers/__init__.py`) and the cpu backend (`part2/backends/cpu_rtm.py`) call
+`provenance.part2_commit()` and keep no commit helper of their own, so no writer spells the suffix `-dirty`,
+reads `part2/` alone or reads HEAD alone. Tests: `tests/test_outputs.py` (two modes whose first write
+dirties the tree record the same clean commit in `tracks.json` and `pose3d.json`; a tree dirty before the run
+records `+dirty` in both), `tests/test_stock.py`, `tests/test_output_steps.py` (`tracks_extras` takes the run's
+commit), `tests/test_cpu_rtm.py` and `tests/test_provenance.py` (the shared rule).
 
 ### Rule-Based ACs
 - AC-K-NFR-01: `make check-2` runs in under 60 s without a GPU. Verification: timed at TICKET-022.
@@ -375,6 +397,8 @@ lists keep it narrow. Resolution: ACCEPTED_RISK.
 |---|---|---|
 | README DoD via `make check-2` | AC-K01, K05, K06, K10 | TICKET-018, 022 |
 | Decision 4 reproducible outputs | AC-K02, K03, K04, K08 | TICKET-018 |
+| Review residual R19 (output helpers outside every stamp) | AC-K15 | R19 |
+| Review residual R14 (a run's own outputs read as a dirty tree) | AC-K16 | R14 |
 | Decision 2 CPU 3D bar | AC-K07 | TICKET-016 |
 | Decision 3 ladder | AC-K09, K11, K12 | TICKET-017, 019, 020, 021, 022 |
 | Operator ruling on #337 (COCO set) | AC-K13 | TICKET-037 |

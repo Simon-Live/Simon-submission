@@ -15,7 +15,6 @@ Nothing heavy is imported at module import: rtmlib, onnxruntime and cv2 load ins
 import importlib.util
 import json
 import os
-import subprocess
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -24,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from part2 import frames as frames_mod
-from part2 import lifters
+from part2 import lifters, provenance
 from part2.backends import REFUSAL, BackendUnavailable
 from part2.body3d import choose_subject, project
 from part2.hashing import sha256_file
@@ -112,7 +111,7 @@ class Backend:
         return {
             "backend": NAME, "tracker": None, "lifter": lift.name, "refine": [], "detector": detector,
             "focal_source": FOCAL_SOURCE, "models": [model_entry(DET), model_entry(POSE)] + lift.models(),
-            "env_profile": ENV_PROFILE, "part2_commit": _commit(),
+            "env_profile": ENV_PROFILE, "part2_commit": provenance.part2_commit(),
             "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "licence_notes": [LICENCE_NOTE] + lift.licence_notes(), **(extra or {}),
         }
@@ -237,15 +236,6 @@ def _sha256(path: Path) -> str | None:
     if key not in _SHA_CACHE:
         _SHA_CACHE[key] = sha256_file(path)
     return _SHA_CACHE[key]
-
-
-def _commit() -> str | None:
-    try:
-        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent, capture_output=True,
-                             text=True, timeout=5)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return out.stdout.strip() or None if out.returncode == 0 else None
 
 
 def write_json(path, doc) -> Path:

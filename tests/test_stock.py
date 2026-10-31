@@ -247,7 +247,7 @@ def test_a_backend_that_cannot_run_exits_1_before_any_download(monkeypatch, caps
 def test_no_clip_runs_every_take_in_order_and_one_failure_fails_the_run(monkeypatch, capsys):
     seen = []
 
-    def fake_convert(clip, backend, out_root=None, cache=None):
+    def fake_convert(clip, backend, out_root=None, cache=None, commit=None):
         seen.append(clip)
         if clip == "pexels-5034577":
             raise stock.StockError("stock: download of pexels-5034577 failed: HTTP 429")
@@ -379,3 +379,64 @@ def test_a_range_the_clip_does_not_hold_exits_1_and_writes_nothing(site, monkeyp
     rc, io = run_cli(site, monkeypatch, capsys, ["--clip", take])
     assert rc == 1 and f"stock: {take}: {message}\n" in io.err
     assert not site.out.exists()
+
+
+# ---- R14: the commit is measured once, before the run writes any take ----------------------------------------------------
+
+SHA = "a" * 40
+TWO_TAKES = ("pexels-5034562", "pexels-5034577")
+
+
+def only_two_takes(monkeypatch):
+    monkeypatch.setattr(stock, "TAKES", {t: stock.TAKES[t] for t in TWO_TAKES})
+
+
+def stand_in_git(site, monkeypatch, dirty_before=False):
+    """provenance's git call: HEAD is SHA; the tree reads dirty from the start (dirty_before) or once a take is
+    written under the output dir, as the tracked fixtures/output/stock tree does on a real checkout."""
+    def fake(*args):
+        if args[0] == "rev-parse":
+            return SHA
+        return " M fixtures/output/stock/x/pose3d.json" if dirty_before or files_under(site.out) else ""
+
+    monkeypatch.setattr(provenance, "_git", fake)
+
+
+def commits_recorded(site):
+    out = {}
+    for take in TWO_TAKES:
+        prov = json.loads((site.out / take / "pose3d.json").read_text())["provenance"]
+        md = (site.out / take / "SOURCE.md").read_text()
+        assert f"`part2_commit` `{prov['part2_commit']}`" in md  # SOURCE.md says what the file says
+        out[take] = prov["part2_commit"]
+    return out
+
+
+@needs_ffmpeg
+def test_every_take_records_the_commit_measured_before_the_first_take_was_written(site, monkeypatch, capsys):
+    only_two_takes(monkeypatch)
+    stand_in_git(site, monkeypatch)
+    code, _ = run_cli(site, monkeypatch, capsys, [])
+    assert code == 0
+    assert provenance.part2_commit() == SHA + "+dirty"  # the control: the first take's files now make the tree read dirty
+    assert commits_recorded(site) == {t: SHA for t in TWO_TAKES}
+
+
+@needs_ffmpeg
+def test_a_tree_dirty_before_the_run_is_recorded_as_dirty_in_every_take(site, monkeypatch, capsys):
+    only_two_takes(monkeypatch)
+    stand_in_git(site, monkeypatch, dirty_before=True)
+    code, _ = run_cli(site, monkeypatch, capsys, [])
+    assert code == 0
+    assert commits_recorded(site) == {t: SHA + "+dirty" for t in TWO_TAKES}
+
+
+def test_the_command_measures_the_commit_once_and_hands_it_to_every_take(monkeypatch, capsys):
+    only_two_takes(monkeypatch)
+    measured, seen = [], []
+    monkeypatch.setattr(provenance, "part2_commit", lambda: measured.append(1) or SHA)
+    monkeypatch.setattr(stock, "convert", lambda clip, backend, out_root=None, cache=None, commit=None:
+                        seen.append((clip, commit)) or {"clip": clip})
+    monkeypatch.setattr(outputs, "backend_for", lambda name, lifter: (FakeBackend("cpu"), None))
+    assert cli.main(["stock", "--backend", "cpu"]) == 0
+    assert measured == [1] and seen == [(t, SHA) for t in TWO_TAKES]

@@ -13,7 +13,6 @@ then write fixtures/output/stock/<take>/{pose3d.json, camera.json, SOURCE.md}. T
 scratch run stay in the cache; nothing is written to the output dir before every check passed. Exit 0 when every
 take converted, 1 when one failed, 2 for an unknown backend.
 """
-import contextlib
 import json
 import os
 import re
@@ -282,19 +281,13 @@ def cut_frames(frames_dir: Path, take: str, start: float, end: float) -> list[di
     return recs
 
 
-def _locked(backend):
-    from part2 import outputs
-
-    return outputs.gpu_guard() if backend.name == "gpu" else contextlib.nullcontext()
-
-
-def _pose_extras(frames_dir: Path, backend, take: str, span: tuple[float, float]) -> dict:
-    """cli._pose_extras (one-person mode: no tracker) plus the source clip in the provenance (AC-T04) and, for a
-    cut, its time range in seconds (AC-T07)."""
-    from part2 import cli, frames, provenance
+def _pose_extras(frames_dir: Path, backend, take: str, span: tuple[float, float], commit: str | None = None) -> dict:
+    """output_steps.pose_extras (one-person mode: no tracker) plus the source clip in the provenance (AC-T04) and, for a
+    cut, its time range in seconds (AC-T07). `commit` is the run's one part2_commit measure (see command())."""
+    from part2 import frames, output_steps, provenance
 
     t = TAKES[take]
-    extras = cli._pose_extras(frames.load_meta(frames_dir), False, backend)
+    extras = output_steps.pose_extras(frames.load_meta(frames_dir), False, backend, commit=commit)
     extras["provenance"].update({"source_clip": t.clip, "source_url": PAGE_URL.format(id=clip_id(t.clip))})
     if t.end is not None:
         extras["provenance"]["source_range_s"] = list(span)
@@ -302,23 +295,24 @@ def _pose_extras(frames_dir: Path, backend, take: str, span: tuple[float, float]
     return extras
 
 
-def run_pipeline(take: str, backend, video: Path, work: Path, span: tuple[float, float]) -> dict:
+def run_pipeline(take: str, backend, video: Path, work: Path, span: tuple[float, float],
+                 commit: str | None = None) -> dict:
     """Frames at FPS (a cut keeps those inside `span`), the one-person run and the contract checks in `work`;
-    {frames, people, provenance}."""
-    from part2 import canonical, contract, frames
+    {frames, people, provenance}. `commit` is the part2_commit to record (None: measured when the file is written)."""
+    from part2 import canonical, contract, frames, output_steps
     from part2.schema import ContractError
 
     shutil.rmtree(work, ignore_errors=True)
     recs = frames.ingest(video, work / "frames", FPS)
     if TAKES[take].end is not None:
         recs = cut_frames(work / "frames", take, *span)
-    with _locked(backend):
+    with output_steps.gpu_locked(backend):
         doc = backend.estimate(work / "frames", work / "body3d.json")
     if not any(f["people"] for f in doc["frames"]):
         raise StockError(f"stock: no person in {take}")
     try:
         canonical.write(work / "body3d.json", work, smooth=False,
-                        extras=_pose_extras(work / "frames", backend, take, span))
+                        extras=_pose_extras(work / "frames", backend, take, span, commit))
     except ContractError as e:
         raise StockError(f"stock: {take} breaks the contract at {e.path}: {e.msg}") from None
     for name, kind in zip(OUTPUT_FILES, ("pose3d", "camera")):
@@ -365,9 +359,15 @@ def source_md(take: str, page: dict, dl: dict, facts: dict, run: dict, span: tup
         f"- **Use:** follower take for Part 5 ({use}), decision D2 on Part 5 #18.", ""])
 
 
-def convert(take: str, backend, out_root: Path | None = None, cache: Path | None = None) -> dict:
-    """One take end to end; the output dir is written only after every check passed."""
+def convert(take: str, backend, out_root: Path | None = None, cache: Path | None = None,
+            commit: str | None = None) -> dict:
+    """One take end to end; the output dir is written only after every check passed. `commit` is the part2_commit
+    the run measured before it wrote any take (command() passes it); a direct caller gets it measured here, before
+    this take writes anything."""
+    from part2 import provenance
+
     t0 = time.perf_counter()
+    commit = commit or provenance.part2_commit()
     clip = TAKES[take].clip
     d = (cache or cache_dir()) / clip
     dl = download(clip, d)
@@ -375,7 +375,7 @@ def convert(take: str, backend, out_root: Path | None = None, cache: Path | None
     facts = probe(d / dl["name"])
     span = check_range(take, facts["duration_s"])
     work = d / ("run" if take == clip else f"run-{take}")
-    run = run_pipeline(take, backend, d / dl["name"], work, span)
+    run = run_pipeline(take, backend, d / dl["name"], work, span, commit)
     out = Path(out_root or OUT_ROOT) / take
     out.mkdir(parents=True, exist_ok=True)
     for name in OUTPUT_FILES:
@@ -388,7 +388,7 @@ def convert(take: str, backend, out_root: Path | None = None, cache: Path | None
 
 
 def command(clip: str | None = None, backend_name: str | None = None, out_root: Path | None = None) -> int:
-    from part2 import backends, lifters, outputs
+    from part2 import backends, lifters, outputs, provenance
 
     try:
         name = backends.resolve(backend_name)
@@ -401,10 +401,11 @@ def command(clip: str | None = None, backend_name: str | None = None, out_root: 
         print(refusal.replace("outputs: ", "stock: "), file=sys.stderr)
         return 1
     summary, failed = [], False
+    commit = provenance.part2_commit()  # once, before any take rewrites the tracked outputs (R14)
     for c in [clip] if clip else list(TAKES):
         print(f"stock: {c} ({backend.name}) ...", file=sys.stderr, flush=True)
         try:
-            summary.append(convert(c, backend, out_root))
+            summary.append(convert(c, backend, out_root, commit=commit))
         except StockError as e:
             failed = True
             summary.append({"clip": c, "error": str(e)})

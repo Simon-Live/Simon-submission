@@ -14,7 +14,7 @@ import pytest
 from test_canonical import _body3d
 
 from conftest import fake_key
-from part2 import backends, body3d, cli, contract, frames, gpu_guard, track, trackers
+from part2 import backends, body3d, cli, contract, frames, gpu_guard, output_steps, track, trackers
 from part2.schema import ContractError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -200,9 +200,9 @@ def test_stamping_tracks_checks_the_contract_before_writing(tmp_path):
     path = tmp_path / "tracks.json"
     doc = {"frames": [{"frame": 0, "people": []}]}
     with pytest.raises(ContractError, match="tracks.provenance"):
-        cli._stamp_tracks(path, doc, {"provenance": {"backend": 5}})
+        output_steps.stamp_tracks(path, doc, {"provenance": {"backend": 5}})
     assert not path.exists()
-    cli._stamp_tracks(path, doc, {"t0_pts_ms": None, "provenance": {"backend": "gpu"}})
+    output_steps.stamp_tracks(path, doc, {"t0_pts_ms": None, "provenance": {"backend": "gpu"}})
     assert _load(path) == {"frames": [{"frame": 0, "people": []}], "provenance": {"backend": "gpu"}}
 
 

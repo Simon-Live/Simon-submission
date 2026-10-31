@@ -253,3 +253,40 @@ def test_j06_a_rotate_tagged_mp4_comes_out_upright(tmp_path):
     with Image.open(tmp_path / "f" / recs[0]["file"]) as first:
         assert first.size == (240, 320)
     assert runapi.probe_video(tagged, runapi.Limits()) == ".mp4"
+
+
+# --- AC-J09 (docs/specs/journey-followup.md, R17): the timestamp read cannot hang --------------------------------
+
+def test_run_waits_without_a_timeout_and_kills_at_one():
+    import sys
+    import time
+
+    assert frames._run([sys.executable, "-c", "print('ok')"]) == "ok\n"
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match=r" timed out after 0\.2 s$"):
+        frames._run([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.2)
+    assert time.monotonic() - started < 3
+
+
+def test_the_probe_timeout_is_one_named_constant_that_clears_a_60_s_upload():
+    assert frames.PROBE_TIMEOUT_S >= 60  # 60 s of 1080p decodes in about 2 s; see the spec for the measurements
+
+
+def test_a_hung_ffprobe_is_killed_at_the_timeout_and_the_error_names_it(hanging_ffprobe, tmp_path):
+    import time
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match=r"^ffprobe timed out after 0\.3 s$"):
+        frames._probe_timestamps(tmp_path / "stuck.mp4")
+    assert time.monotonic() - started < 3 and hanging_ffprobe == [0.3]
+
+
+@pytest.mark.parametrize("command", ["frames", "track", "run"])
+def test_a_hung_ffprobe_is_a_plain_exit_1_line_and_writes_no_frames(hanging_ffprobe, tmp_path, capsys, command):
+    stuck, out = tmp_path / "stuck.mp4", tmp_path / "out"
+    stuck.write_bytes(b"not read: ffprobe is the thing that hangs")
+    extra = ["--mode", "single", "--backend", "cpu"] if command == "run" else []
+    code = cli.main([command, "--input", str(stuck), "--out", str(out if command == "frames" else out / "o"), *extra])
+    err = capsys.readouterr().err
+    assert code == 1 and "part2: ffprobe timed out after 0.3 s" in err and "Traceback" not in err
+    assert hanging_ffprobe == [0.3] and not list(out.rglob("*.jpg")) and not list(out.rglob("frames.json"))

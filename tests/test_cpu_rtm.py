@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from test_lifter_fixed_bones import skeleton
 
-from part2 import backends, canonical, contract
+from part2 import backends, canonical, contract, provenance
 from part2.backends import cpu_rtm
 from part2.lifters import project
 from part2.schema import validate_pose3d
@@ -89,6 +89,17 @@ def test_ac_b11_provenance_names_backend_lifter_models_and_licence(tmp_path):
     assert prov["timing"]["person_frames"] == 4 and "0" in prov["lifter_info"]
     mb = cpu_rtm.Backend("motionbert").provenance()
     assert mb["lifter"] == "motionbert" and len(mb["models"]) == 3 and len(mb["licence_notes"]) == 2
+
+
+def test_provenance_commit_follows_the_shared_rule(monkeypatch):
+    """N3: the cpu backend names the commit by provenance.part2_commit (HEAD, +dirty on a tracked change), not
+    by a HEAD-only helper of its own, so it agrees with the tracker and with every other pose3d.json."""
+    answers = {"rev-parse": "a" * 40, "status": " M part2/cli.py"}
+    monkeypatch.setattr(provenance, "_git", lambda *args: answers[args[0]])
+    assert cpu_rtm.Backend("fixed-bones").provenance()["part2_commit"] == "a" * 40 + "+dirty"
+    answers["status"] = ""
+    assert cpu_rtm.Backend("fixed-bones").provenance()["part2_commit"] == "a" * 40
+    assert not hasattr(cpu_rtm, "_commit")  # the HEAD-only helper is gone
 
 
 def test_write_outputs_puts_provenance_in_pose3d_and_camera(tmp_path):

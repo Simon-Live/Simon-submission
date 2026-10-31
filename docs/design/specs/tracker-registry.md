@@ -1,6 +1,6 @@
 # Spec: Part 2 tracker registry (SAM 3.1 first, open local fallback, named trackers fail closed)
 
-> Copy of `docs/specs/tracker-registry.md` from the maintainers' working repo at `68ecdcc`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/tracker-registry.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -67,10 +67,12 @@ t, skipped = trackers.resolve("scored")  # or "bulk": walks the order; skipped =
 confidence}]}]}`, ids stable integers from 0 in order of first appearance, built by `track.build_tracks` and checked
 by `schema.validate_tracks`. Optional top-level `provenance`: `{tracker, models: [{name, source, weights_sha256,
 licence}], mask_source: "sam"|"box", detector, reprompt_every_s, part2_commit, created_utc, fallback_from?,
-fallback_reason?: "no_key"|"budget"|"no_parity"|"no_env", spend_usd?}`.
+fallback_reason?: "no_key"|"budget"|"no_parity"|"no_env", spend_usd?}`. `part2_commit` is
+`provenance.part2_commit()`, the one rule every writer uses: HEAD, plus `+dirty` when a tracked file differs,
+`unknown` without git. Under `make outputs` the run's one measure replaces it (check-2.md AC-K16).
 
 ### Trackers
-| Name | What runs | Credential | Notes |
+| Name | What runs | Key | Notes |
 |---|---|---|---|
 | `local-open` (fallback, last in every order) | rtmlib YOLOX person detector on frame 0, SAM 2.1 hiera-large video predictor propagates masks; every 2 s the detector runs again and a box with IoU under 0.3 to every live track starts a new track | none | weights `facebook/sam2.1-hiera-large` (ungated, Apache-2.0; HEAD 200 on 2026-10-28); runs in the gpu-cu128 venv; CPU allowed but slow |
 | `bytetrack` | rtmlib YOLOX boxes on every frame, ByteTrack association (starting values: high 0.6, low 0.1, match 0.8, buffer 30 frames) | none | mask is the filled box; licence MIT (verified at TICKET-017 from its LICENSE file) |

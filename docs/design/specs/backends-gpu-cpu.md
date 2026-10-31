@@ -1,6 +1,6 @@
 # Spec: Part 2 inference backends (GPU on the local RTX 5090, CPU with a lifter registry)
 
-> Copy of `docs/specs/backends-gpu-cpu.md` from the maintainers' working repo at `68ecdcc`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/backends-gpu-cpu.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -169,6 +169,8 @@ it fails, 2 when an input file is missing.
 `{backend, tracker, lifter, refine: [], detector, focal_source, models: [{name, source, weights_sha256, licence}],
 env_profile, part2_commit, created_utc, licence_notes: [..]}`. `licence_notes` carries the ADR-0005 caveat line
 for RTMPose and MotionBERT when either ran. Written by `part2/provenance.py` (named in the master spec).
+`part2_commit` is `provenance.part2_commit()` for every writer, the cpu backend and the trackers included: HEAD,
+plus `+dirty` when a tracked file differs, `unknown` without git (check-2.md AC-K16, review residual N3).
 
 ## Files
 | File | Role |

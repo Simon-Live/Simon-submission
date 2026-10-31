@@ -11,7 +11,9 @@ tracker it uses. `--backend gpu` (default) runs the gpu modes (`single`, `class`
 `class-local-open` always by local-open); `--backend cpu` runs `cpu-single`. A new mode is one more Mode entry
 (TICKET-037 adds `coco-single` with its own runner). Each mode runs in a scratch dir under out/, then its output
 files replace scored/<mode>/ and stamp.json is written last, with the hashes taken before inference started.
-GPU inference runs under the host GPU lock (`gpu_guard`). Exit 0 when every mode ran, 1 when one failed or
+GPU inference runs under the host GPU lock (`output_steps.gpu_locked`). The commit and dirty state of the
+tree (`provenance.part2_commit`) are measured once, before the first mode writes anything, and every mode's
+pose3d.json and tracks.json provenance carries that value (review residuals R14, N3). Exit 0 when every mode ran, 1 when one failed or
 the backend cannot run here, 2 for an unknown name.
 
 `--refine kp2d-fit[,...]` (one-person ladder, ADR-0004) runs those part2.refine rungs on each one-person mode's
@@ -19,7 +21,6 @@ body3d.json before the canonical frame (single, coco-single, cpu-single; any oth
 stamp names the rungs and adds their code and models, pose3d.json's provenance.refine lists them.
 """
 import argparse
-import contextlib
 import json
 import shutil
 import sys
@@ -58,6 +59,7 @@ class Ctx:
     skipped: list = field(default_factory=list)
     refine: list = field(default_factory=list)
     model2d: object = None
+    commit: str | None = None   # part2_commit measured before the run wrote anything; None: measured per file
 
 
 def refined(ctx: Ctx, doc: dict, frames_dir: Path, work_dir: Path) -> dict:
@@ -65,38 +67,27 @@ def refined(ctx: Ctx, doc: dict, frames_dir: Path, work_dir: Path) -> dict:
     body3d-unrefined.json); doc itself when there are none."""
     if not ctx.refine:
         return doc
-    from part2 import cli, refine
+    from part2 import output_steps, refine
 
     if ctx.model2d is None:
         ctx.model2d = refine.load_2d(ctx.refine)
-    return cli._refine(ctx.refine, doc, frames_dir, work_dir, ctx.backend, model2d=ctx.model2d,
-                       lock=lambda: _locked(ctx))
+    return output_steps.refine(ctx.refine, doc, frames_dir, work_dir, ctx.backend, model2d=ctx.model2d,
+                               lock=lambda: output_steps.gpu_locked(ctx.backend))
 
 
 def extras_for(ctx: Ctx, meta: dict) -> dict:
-    """cli._pose_extras with the refine rungs and their models in provenance (the same keys `part2 run --refine`
-    writes)."""
-    from part2 import cli
+    """output_steps.pose_extras with the refine rungs and their models in provenance (the same keys
+    `part2 run --refine` writes) and the run's one commit measure."""
+    from part2 import output_steps
 
-    return cli._pose_extras(meta, PARAMS["mirrored"], ctx.backend, refine=ctx.refine)
-
-
-def gpu_guard(wait_s: float | None = None):
-    """The host's one-GPU-job lock (part2.gpu_guard.gpu_lock)."""
-    from part2.gpu_guard import gpu_lock
-
-    return gpu_lock() if wait_s is None else gpu_lock(wait_s=wait_s)
-
-
-def _locked(ctx: Ctx):
-    return gpu_guard() if ctx.backend.name == "gpu" else contextlib.nullcontext()
+    return output_steps.pose_extras(meta, PARAMS["mirrored"], ctx.backend, refine=ctx.refine, commit=ctx.commit)
 
 
 def run_single(ctx: Ctx) -> dict:
-    from part2 import canonical, frames
+    from part2 import canonical, frames, output_steps
 
     frames_dir = ctx.root / ctx.mode.frames
-    with _locked(ctx):
+    with output_steps.gpu_locked(ctx.backend):
         doc = ctx.backend.estimate(frames_dir, ctx.work / "body3d.json")
     doc = refined(ctx, doc, frames_dir, ctx.work)
     extras = extras_for(ctx, frames.load_meta(frames_dir))
@@ -106,16 +97,18 @@ def run_single(ctx: Ctx) -> dict:
 
 
 def run_multi(ctx: Ctx) -> dict:
-    from part2 import cli, frames, multi3d
+    from part2 import frames, multi3d, output_steps
 
     frames_dir = ctx.root / ctx.mode.frames
     meta = frames.load_meta(frames_dir)
     doc = ctx.tracker.track(frames_dir, ctx.work / "tracks.json", skipped=ctx.skipped)
-    cli._stamp_tracks(ctx.work / "tracks.json", doc, cli._tracks_extras(meta, doc, ctx.backend.name))
-    with _locked(ctx):
+    output_steps.stamp_tracks(ctx.work / "tracks.json", doc,
+                              output_steps.tracks_extras(meta, doc, ctx.backend.name, commit=ctx.commit))
+    with output_steps.gpu_locked(ctx.backend):
         b3d = ctx.backend.estimate(frames_dir, ctx.work / "body3d.json", boxes=multi3d.tracks_to_boxes(doc))
     res = multi3d.write_pose_streams(b3d, ctx.work, smooth=PARAMS["smooth"],
-                                     extras=cli._pose_extras(meta, PARAMS["mirrored"], ctx.backend, doc["provenance"]))
+                                     extras=output_steps.pose_extras(meta, PARAMS["mirrored"], ctx.backend,
+                                                                     doc["provenance"], commit=ctx.commit))
     return {"files": ["tracks.json", "pose3d.json", "camera.json"], "frames": len(doc["frames"]),
             "people": len(res["people"]), "tracker_provenance": doc["provenance"]}
 
@@ -123,7 +116,7 @@ def run_multi(ctx: Ctx) -> dict:
 def run_coco(ctx: Ctx) -> dict:
     """coco-single (TICKET-037): one photo run per selected COCO image into <image_id>/{pose3d,camera}.json, the
     layout part2.eval_coco scores. Images come from the cache (sha256 checked), never from the tree."""
-    from part2 import canonical, coco_set, frames
+    from part2 import canonical, coco_set, frames, output_steps
 
     recs = coco_set.load_manifest()["images"]
     files = []
@@ -131,7 +124,7 @@ def run_coco(ctx: Ctx) -> dict:
         src = coco_set.stage_photo(r, ctx.work / "in")
         run_dir = ctx.work / str(r["image_id"])
         run_dir.mkdir(parents=True, exist_ok=True)
-        with _locked(ctx):
+        with output_steps.gpu_locked(ctx.backend):
             doc = ctx.backend.estimate(src, run_dir / "body3d.json")
         refined(ctx, doc, src, run_dir)
         extras = extras_for(ctx, frames.load_meta(src))
@@ -143,14 +136,18 @@ def run_coco(ctx: Ctx) -> dict:
 # The ladder's choice (progress/ladder.md rows 24 and 25): rung 3, `focal` then `kp2d-fit`, the first rung green on
 # both one-person sets. `make outputs` applies it by default so it reproduces the committed outputs.
 CHOSEN_RUNGS = ("focal", "kp2d-fit")
-MULTI = ("part2.track", "part2.multi3d")
+# ADR-0006, AC-K15: the steps every mode shares with `part2 run` and `part2 stock` (part2.output_steps) are code a
+# scored output depends on, so every mode lists them and its stamp hashes them.
+STEPS = ("part2.output_steps",)
+MULTI = ("part2.track", "part2.multi3d", *STEPS)
 MODES = [
-    Mode("single", "gpu", "fixtures/input/single/frames", run_single, one_person=True, refine=CHOSEN_RUNGS),
+    Mode("single", "gpu", "fixtures/input/single/frames", run_single, modules=STEPS, one_person=True,
+         refine=CHOSEN_RUNGS),
     Mode("class", "gpu", "fixtures/input/class/frames", run_multi, tracker="scored", modules=MULTI),
     Mode("class-local-open", "gpu", "fixtures/input/class/frames", run_multi, tracker="local-open", modules=MULTI),
-    Mode("cpu-single", "cpu", "fixtures/input/single/frames", run_single, one_person=True),
-    Mode("coco-single", "gpu", "fixtures/input/coco/images", run_coco, modules=("part2.coco_set",), one_person=True,
-         refine=CHOSEN_RUNGS),
+    Mode("cpu-single", "cpu", "fixtures/input/single/frames", run_single, modules=STEPS, one_person=True),
+    Mode("coco-single", "gpu", "fixtures/input/coco/images", run_coco, modules=("part2.coco_set", *STEPS),
+         one_person=True, refine=CHOSEN_RUNGS),
 ]
 
 
@@ -186,10 +183,14 @@ def host_gpu(backend_name: str) -> str | None:
 
 
 def run_mode(mode: Mode, backend, root: Path, scored: Path, tracker_flag=None, lifter=None, refine=(),
-             shared: dict | None = None) -> dict:
+             shared: dict | None = None, commit: str | None = None) -> dict:
     """Run one mode into a scratch dir, then replace scored/<mode>/ with its outputs and the stamp. `shared`
-    keeps the 2D model the refine rungs load across modes."""
-    from part2 import frames, stamp
+    keeps the 2D model the refine rungs load across modes. `commit` is the run's one part2_commit measure
+    (main() takes it before the first mode writes anything); a direct caller without it gets it measured here,
+    before this mode writes."""
+    from part2 import frames, provenance, stamp
+
+    commit = commit or provenance.part2_commit()
 
     frames_dir = root / mode.frames
     n_frames = len(frames.load(frames_dir)) if mode.tracker else 0  # coco-single has images.json, no frames.json
@@ -201,7 +202,7 @@ def run_mode(mode: Mode, backend, root: Path, scored: Path, tracker_flag=None, l
     work.mkdir(parents=True)
     t0 = time.perf_counter()
     shared = {} if shared is None else shared
-    ctx = Ctx(mode, root, work, backend, tracker, list(skipped), list(refine), shared.get("model2d"))
+    ctx = Ctx(mode, root, work, backend, tracker, list(skipped), list(refine), shared.get("model2d"), commit)
     res = mode.run(ctx)
     shared["model2d"] = ctx.model2d
     seconds = round(time.perf_counter() - t0, 1)
@@ -238,7 +239,7 @@ def backend_for(name: str, lifter: str | None):
 
 
 def main(argv=None, root: Path = ROOT) -> int:
-    from part2 import backends, lifters, refine, trackers
+    from part2 import backends, lifters, provenance, refine, trackers
 
     ap = argparse.ArgumentParser(prog="python -m part2.outputs", description="Regenerate the scored outputs.")
     ap.add_argument("--backend", default="gpu", help="gpu (single, class, class-local-open) or cpu (cpu-single)")
@@ -268,11 +269,12 @@ def main(argv=None, root: Path = ROOT) -> int:
         print(refusal, file=sys.stderr)
         return 1
     scored, summary, failed, shared = scored_dir(root, a.scored), {}, False, {}
+    commit = provenance.part2_commit()  # once, before any mode rewrites the tracked outputs (R14)
     for mode in modes:
         print(f"outputs: {mode.name} ({a.backend}) ...", file=sys.stderr, flush=True)
         try:
             mode_rungs = rungs if explicit else ([] if a.refine.strip() == "none" else list(mode.refine))
-            summary[mode.name] = run_mode(mode, backend, root, scored, a.tracker, lifter, mode_rungs, shared)
+            summary[mode.name] = run_mode(mode, backend, root, scored, a.tracker, lifter, mode_rungs, shared, commit)
         except (RuntimeError, ValueError, FileNotFoundError, OSError) as e:
             failed = True
             summary[mode.name] = {"error": f"{type(e).__name__}: {e}"}

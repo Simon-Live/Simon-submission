@@ -1,6 +1,6 @@
 # Spec: stock follower takes for Part 5 (`make stock-outputs`)
 
-> Copy of `docs/specs/stock-takes.md` from the maintainers' working repo at `68ecdcc`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/stock-takes.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28 (the cut `pexels-5034562-0to7s` added 2026-10-29)
@@ -67,7 +67,9 @@ SOURCE.md content (same style as `fixtures/input/*/SOURCE.md`):
 - Time range used: start and end in seconds (`0 to <duration>` when the whole clip is used). For a cut, the
   line also gives the clip's duration and reads "This take is a cut of pexels-<id> made for Part 5: <why>."
 - Frames: sampled at 10 fps with `part2 frames`; count.
-- Produced by: `part2 stock`, `part2_commit` `<sha>` (local commit the outputs were made from), backend,
+- Produced by: `part2 stock`, `part2_commit` `<sha>` (local commit the outputs were made from; measured once before
+  the run writes its first take, so the same value in every take of a run and never `+dirty` because of the run's own
+  files, `docs/design/specs/check-2.md` AC-K16), backend,
   tracker, lifter (from `provenance`).
 - Use: follower take for Part 5 (angle: side, front or three-quarter), decision D2 on Part 5 #18.
 

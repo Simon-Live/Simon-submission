@@ -1,6 +1,13 @@
-"""`part2 track` and `part2 run --mode multi --tracks --ids` (TICKET-040, TICKET-041, docs/specs/journey-followup.md),
-and the command-line wiring the warm worker relies on (no option abbreviations, `serve-worker` errors;
-docs/specs/warm-worker.md).
+"""`part2 track` and `part2 run --mode multi --tracks --ids` (TICKET-040, TICKET-041, docs/specs/journey-followup.md,
+"People follow-up": AC-P01 to AC-P09), and the command-line wiring the warm worker relies on (no option
+abbreviations, `serve-worker` errors; docs/specs/warm-worker.md).
+
+AC map: P01 test_track_writes_frames_and_tracks_only; P02 test_track_unknown_tracker_exits_2, _missing_input_exits_1,
+_bad_option_exits_2; P03 test_track_runs_no_3d; P04 test_run_with_tracks_never_calls_a_tracker, ..._and_ids_computes_only_
+those_people; P05 test_run_ids_list_keeps_both_people, test_3d_is_asked_for_the_listed_boxes_only; P06 test_unknown_id_*;
+P07 test_tracks_for_a_longer_input_exit_1, test_tracks_with_frames_the_input_lacks_exit_1; P08 test_ids_without_multi_*,
+test_tracks_with_single_exits_2, test_tracks_with_a_tracker_option_exits_2, test_ids_alone_track_then_filter; P09
+test_a_bad_tracks_file_is_an_input_error_naming_the_file.
 
 The GPU parts are fakes (the `gpu` fixture of test_cli: a fake SAM 3.1 API client with people 0 and 1, and a
 `body3d.estimate` that writes one person per given box); the writers and contract checks are the real code."""
@@ -111,6 +118,18 @@ def test_unknown_id_exits_1_naming_it(gpu, tmp_path, capsys):
     assert not (out / "pose3d.json").exists()
 
 
+def test_unknown_id_without_tracks_is_found_after_tracking_and_writes_no_pose3d(gpu, tmp_path, monkeypatch, capsys):
+    """AC-P06 without --tracks: the ids can only be checked once the tracker has run; then exit 1 naming the id."""
+    calls, real = [], track.track
+    monkeypatch.setattr(track, "track", lambda *a, **k: calls.append(a) or real(*a, **k))
+    monkeypatch.setattr(body3d, "estimate", lambda *a, **k: pytest.fail("3D must not run for an unknown id"))
+    code, out = _run(tmp_path, "--ids", "0,99", mode="multi", name="r")
+    err = capsys.readouterr().err
+    assert code == 1 and "unknown person id 99" in err and "tracks.json has 0, 1" in err and "Traceback" not in err
+    assert len(calls) == 1 and (out / "tracks.json").is_file()  # tracking ran and wrote its file
+    assert not (out / "pose3d.json").exists() and not list(out.glob("pose3d_person_*.json"))
+
+
 def test_unknown_id_with_tracks_is_refused_before_any_frame_is_ingested(gpu, tmp_path, monkeypatch, capsys):
     tracks = _tracks_file(tmp_path)
     capsys.readouterr()
@@ -182,6 +201,32 @@ def test_tracks_with_single_exits_2(gpu, tmp_path, monkeypatch, capsys):
     assert code == 2 and "--mode multi only" in capsys.readouterr().err and not out.exists()
 
 
+@pytest.mark.parametrize("given", [["--tracker", "bytetrack"], ["--tracker-order", "scored"],
+                                   ["--tracker", "local-open", "--tracker-order", "bulk"]], ids=lambda g: " ".join(g))
+def test_tracks_with_a_tracker_option_exits_2(gpu, tmp_path, monkeypatch, capsys, given):
+    """AC-P08: the tracks file already fixed the tracker, so naming one is a bad combination, not silently ignored."""
+    tracks = _tracks_file(tmp_path)
+    capsys.readouterr()
+    monkeypatch.setattr(frames, "ingest", lambda *a, **k: pytest.fail("frames were ingested"))
+    code, out = _run(tmp_path, "--tracks", str(tracks), *given, mode="multi", name="r")
+    err = capsys.readouterr().err
+    assert code == 2 and err.startswith("part2: ") and err.count("\n") == 1 and "Traceback" not in err
+    named = " and ".join(o for o in ("--tracker", "--tracker-order") if o in given)  # exactly the options given
+    assert err.startswith(f"part2: {named} cannot be combined with --tracks") and not out.exists()
+
+
+def test_tracker_options_still_apply_without_tracks(gpu, tmp_path, monkeypatch):
+    """The AC-P08 refusal is for --tracks only: a named tracker and an order reach the tracker registry otherwise."""
+    from part2 import trackers
+
+    seen, real = [], trackers.select
+    monkeypatch.setattr(trackers, "select", lambda flag=None, purpose="bulk", **k: seen.append((flag, purpose)) or real(flag, purpose, **k))
+    assert _run(tmp_path, "--tracker", "api-sam31", "--tracker-order", "scored", mode="multi", name="named")[0] == 0
+    assert _track(tmp_path, name="default")[0] == 0
+    assert _track(tmp_path, "--tracker-order", "scored", name="scored")[0] == 0
+    assert seen == [("api-sam31", "scored"), (None, "bulk"), (None, "scored")]  # no order given: track.track's "bulk"
+
+
 def test_ids_alone_track_then_filter(gpu, tmp_path):
     code, out = _run(tmp_path, "--ids", "0", mode="multi", name="r")
     assert code == 0 and [p.name for p in out.glob("pose3d_person_*.json")] == ["pose3d_person_0.json"]
@@ -231,7 +276,19 @@ def test_run_and_track_declare_the_shared_arguments_alike():
     parser = cli._build_parser()
     for command in ("run", "track"):
         args = parser.parse_args([command, *(["--mode", "multi"] if command == "run" else []), "--input", "i", "--out", "o"])
-        assert (args.input.name, args.out.name, args.fps, args.tracker, args.tracker_order) == ("i", "o", None, None, "bulk")
+        # --tracker-order has no argparse default, so that `run --tracks` can tell a given one from an absent one
+        assert (args.input.name, args.out.name, args.fps, args.tracker, args.tracker_order) == ("i", "o", None, None, None)
+
+
+def test_frames_shares_input_out_and_fps_with_run_and_track_but_has_no_tracker_options():
+    parser = cli._build_parser()
+    args = parser.parse_args(["frames", "--input", "i", "--out", "o", "--fps", "5"])
+    assert (args.input.name, args.out.name, args.fps) == ("i", "o", 5.0)
+    assert not hasattr(args, "tracker") and not hasattr(args, "tracker_order")
+    for option in ("--tracker", "--tracker-order"):
+        with pytest.raises(SystemExit) as e:
+            parser.parse_args(["frames", "--input", "i", "--out", "o", option, "bulk"])
+        assert e.value.code == 2
 
 
 def _serve_args(tmp_path, *extra):

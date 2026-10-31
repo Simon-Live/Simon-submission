@@ -17,6 +17,10 @@ from part2.schema import is_number, write_json
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 MANIFEST = "frames.json"
+# The ffprobe pass that reads every frame's timestamp is killed after this many seconds (fail closed). It decodes the
+# video: 60 s of 1080p at 30 fps takes about 2 s, 60 s of 4K at 60 fps about 13 s, so 120 s clears the largest upload
+# the app admits many times over and still stops a stalled decoder. docs/specs/journey-followup.md (R17).
+PROBE_TIMEOUT_S = 120.0
 
 
 def ingest(src: Path, out_dir: Path, fps: float | None = None) -> list[dict]:
@@ -54,13 +58,17 @@ def _clear(out_dir: Path) -> None:
             old.unlink()
 
 
-def _run(cmd: list[str]) -> str:
+def _run(cmd: list[str], timeout: float | None = None) -> str:
+    """The command's stdout. With `timeout` (seconds) a command that has not finished by then is killed and
+    RuntimeError("<cmd> timed out after <timeout> s") is raised; without it the command may run as long as it likes."""
     try:
-        return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+        return subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=timeout).stdout
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"{cmd[0]} failed: {e.stderr.strip() or e}") from None
     except FileNotFoundError:
         raise RuntimeError(f"{cmd[0]} not found; install ffmpeg") from None
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{cmd[0]} timed out after {timeout:g} s") from None
 
 
 def _from_video(src: Path, out_dir: Path, fps: float | None) -> tuple[list[dict], float]:
@@ -101,8 +109,10 @@ def _nearest_per_step(pts: list[float], fps: float) -> list[int]:
 
 
 def _probe_timestamps(src: Path) -> list[float]:
+    """The decoded frame timestamps of `src` in seconds, in the order ffprobe reports them. RuntimeError when ffprobe
+    fails or does not finish within PROBE_TIMEOUT_S."""
     out = _run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "frame=best_effort_timestamp_time",
-                "-of", "csv=p=0", str(src)])
+                "-of", "csv=p=0", str(src)], timeout=PROBE_TIMEOUT_S)
     return [float(line.strip().rstrip(",")) for line in out.splitlines() if line.strip().rstrip(",") not in ("", "N/A")]
 
 

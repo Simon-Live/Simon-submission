@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from part2 import backends, lifters, stamp, trackers
+from part2 import backends, lifters, outputs, stamp, trackers
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCKS = ("envs/gpu-cu128/constraints.txt", "envs/cpu/requirements.txt", "k8s/constraints-gpu.txt")
@@ -176,6 +176,50 @@ def test_stamp_finish_refuses_nan_given_a_nan_run_fact(tmp_path):
         assert not (out / stamp.NAME).exists()
     stamp.finish(pre, out, ["pose3d.json"], run={"seconds": 1.5})
     assert json.loads((out / stamp.NAME).read_text())["run"] == {"seconds": 1.5}
+
+
+# ---- AC-K15: the shared output steps are hashed -------------------------------------------------------------
+
+def stamp_args(mode) -> dict:
+    """The tracker, lifter and profile part2.outputs.run_mode gives stamp.prepare for a Mode (the scored order: api-sam31)."""
+    cpu = mode.backend == "cpu"
+    return {"tracker": {"scored": "api-sam31"}.get(mode.tracker, mode.tracker),
+            "lifter": "fixed-bones" if cpu else None, "refine": mode.refine}
+
+
+def scored_by(root: Path, mode) -> Path:
+    """A scored dir stamped the way part2.outputs.run_mode does: the Mode's own modules, backend, tracker and rungs."""
+    pre = stamp.prepare(root, mode.name, mode.backend, root / mode.frames, mode.modules, **stamp_args(mode),
+                        profile="cpu" if mode.backend == "cpu" else "gpu-cu128")
+    out = root / "fixtures" / "output" / "scored" / mode.name
+    out.mkdir(parents=True)
+    (out / "pose3d.json").write_text(json.dumps({"mode": mode.name}))
+    stamp.finish(pre, out, ["pose3d.json"])
+    return out
+
+
+def test_every_scored_mode_lists_the_shared_output_steps_and_its_closure_has_them():
+    assert [m.name for m in outputs.MODES if "part2.output_steps" not in m.modules] == []
+    for m in outputs.MODES:
+        files = stamp.code_closure(ROOT, [*stamp.BASE_MODULES, *m.modules,
+                                          *stamp.entry_modules(m.backend, **stamp_args(m))])
+        assert "part2/output_steps.py" in files, m.name
+        assert "part2/cli.py" not in files, m.name  # a help-text edit stales nothing
+
+
+def test_an_edit_to_the_shared_output_steps_stales_every_mode_that_lists_them(tmp_path):
+    root = make_root(tmp_path, modes=())
+    dirs = {m.name: scored_by(root, m) for m in outputs.MODES}
+    assert set(dirs) == {"single", "class", "class-local-open", "cpu-single", "coco-single"}
+    assert all(stamp.check(d, root) is None for d in dirs.values())
+    assert all("part2/output_steps.py" in stamp.load(d)["code_files"] for d in dirs.values())
+    touch(root / "part2" / "cli.py")
+    assert all(stamp.check(d, root) is None for d in dirs.values())
+    touch(root / "part2" / "output_steps.py")
+    for name, d in dirs.items():
+        problem = stamp.check(d, root)
+        assert problem["stamp"] == "stale" and problem["changed_files"] == ["part2/output_steps.py"], name
+        assert problem["status"].startswith(f"fixtures/output/scored/{name} is stale: code changed since 20"), name
 
 
 # ---- AC-K08: same tree, same hashes ---------------------------------------------------------------------

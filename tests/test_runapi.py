@@ -531,7 +531,7 @@ def test_j02_vp8_and_vp9_with_opus_work_and_the_count_matches_the_ingest(tmp_pat
 
 @needs_ffmpeg
 def test_j03_the_60_s_limit_holds_without_a_duration(tmp_path):
-    # the span is pts[-1] - pts[0] (spec Dissent Review): 61 frames at 1 fps span 60 s, so 62 frames make the refused 61 s
+    # the span is max(pts) - min(pts) (spec Dissent Review): 61 frames at 1 fps span 60 s, so 62 frames make the refused 61 s
     long = video_without_duration(tmp_path / "long.webm", 62, fps=1, audio=False)  # 62 frames: a 61 s span
     assert has_no_duration(long)
     e = err(runapi.probe_video, long, runapi.Limits())
@@ -594,3 +594,39 @@ def test_j01_no_duration_and_no_decoded_frame_is_422(tmp_path, monkeypatch):
     e = err(runapi.probe_video, take, runapi.Limits())
     assert (e.status, e.code) == (422, "no_frames")
     assert e.message == "No frames could be read from this video."
+
+
+# ---- R17: the span of out-of-order timestamps, and a hung timestamp read (journey-followup.md AC-J08, AC-J09) -------
+
+@needs_ffmpeg
+@pytest.mark.parametrize("pts, limits, expect", [
+    ([0.0, 90.0, 0.1], runapi.Limits(), "too_long"),      # pts[-1] - pts[0] read 0.1 s and let a 90 s span through
+    ([5.0, 3.0, 1.0], runapi.Limits(video_s=3.5), "too_long"),  # pts[-1] - pts[0] was -4 s
+    ([5.0, 3.0, 1.0], runapi.Limits(), ".webm"),          # a 4 s span is within the 60 s limit
+], ids=["late-stamp-hides-a-long-span", "negative-span-is-4-s", "out-of-order-but-short"])
+def test_j08_the_span_is_the_largest_timestamp_minus_the_smallest(tmp_path, monkeypatch, pts, limits, expect):
+    from part2 import frames
+
+    take = video_without_duration(tmp_path / "take.webm", 1, audio=False)
+    assert has_no_duration(take)  # step 3 gives nothing, so the span comes from the timestamps
+    monkeypatch.setattr(frames, "_probe_timestamps", lambda path: list(pts))
+    if expect == ".webm":
+        assert runapi.probe_video(take, limits) == ".webm"
+    else:
+        e = err(runapi.probe_video, take, limits)
+        assert (e.status, e.code) == (422, expect) and e.message == "Videos can be at most 60 seconds long."
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("duration_less", [False, True], ids=["with-a-duration", "without-a-duration"])
+def test_j09_a_hung_timestamp_read_is_415_and_not_waited_for(tmp_path, hanging_ffprobe, duration_less):
+    import time
+
+    take = (video_without_duration(tmp_path / "take.webm", 1, audio=False) if duration_less
+            else video(tmp_path / "take.mp4", 1.0))
+    assert has_no_duration(take) is duration_less
+    started = time.monotonic()
+    e = err(runapi.probe_video, take, runapi.Limits())
+    assert (e.status, e.code) == (415, "unsupported")
+    assert e.message == "This file is not a video or photo the app can read."
+    assert time.monotonic() - started < 5 and hanging_ffprobe == [0.3]  # one timestamp read, killed at the timeout

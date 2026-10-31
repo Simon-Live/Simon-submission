@@ -1,7 +1,7 @@
 """The optional `provenance` block (CONTRACT.md) that pose3d.json and tracks.json may carry: what
 produced the file. Readers ignore it, so adding or removing it never changes whether a file is valid.
 
-    block(backend, tracker, lifter, refine, models) -> dict   a validated block for one run
+    block(backend, tracker, lifter, refine, models, commit=None) -> dict   a validated block for one run
     validate(prov)                                             raises ContractError(path, msg)
 
 `models` entries are {name, source, weights_sha256}; `weights_sha256` is None when the model is
@@ -22,11 +22,14 @@ TEAM_MODELS = {
 }
 
 
-def block(backend, tracker, lifter=None, refine=(), models=(), kind: str = "pose3d", licence_notes=(), **extra) -> dict:
+def block(backend, tracker, lifter=None, refine=(), models=(), kind: str = "pose3d", licence_notes=(),
+          commit: str | None = None, **extra) -> dict:
     """The provenance block for a file of `kind` (pose3d or tracks). `tracker` is None when no tracker
-    ran (one-person mode), `lifter` None outside the cpu backend."""
+    ran (one-person mode), `lifter` None outside the cpu backend. `commit` is a part2_commit() the caller took
+    before its run wrote anything; without it the commit is measured now (R14: a run that rewrites tracked
+    files must not measure the tree again after its first write)."""
     prov = {"contract_version": contract.version(kind), "backend": backend, "tracker": tracker, "lifter": lifter,
-            "refine": list(refine), "models": [dict(m) for m in models], "part2_commit": part2_commit(),
+            "refine": list(refine), "models": [dict(m) for m in models], "part2_commit": commit or part2_commit(),
             "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "licence_notes": list(licence_notes), **extra}
     validate(prov)

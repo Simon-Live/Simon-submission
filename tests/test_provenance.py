@@ -8,7 +8,7 @@ import pytest
 from test_canonical import _body3d
 from test_multi3d import _two_person_body3d
 
-from part2 import canonical, contract, provenance
+from part2 import canonical, contract, provenance, trackers
 from part2.multi3d import write_pose_streams
 from part2.schema import ContractError
 
@@ -106,6 +106,34 @@ def test_part2_commit_marks_uncommitted_changes(monkeypatch):
     assert provenance.part2_commit() == "a" * 40 + "+dirty"
     answers["status"] = ""
     assert provenance.part2_commit() == "a" * 40
+
+
+def test_tracker_provenance_measures_the_commit_by_the_shared_rule(monkeypatch):
+    """N3: one rule for part2_commit (provenance.part2_commit: HEAD, +dirty on any tracked change, unknown
+    without git), not a tracker-only helper that looks at part2/ alone and spells the suffix -dirty."""
+    answers = {"rev-parse": "a" * 40, "status": " M fixtures/output/scored/single/pose3d.json"}  # outside part2/
+    monkeypatch.setattr(provenance, "_git", lambda *args: answers[args[0]])
+    tracker = trackers.Tracker()
+    assert tracker.provenance()["part2_commit"] == "a" * 40 + "+dirty"
+    answers["status"] = ""
+    assert tracker.provenance()["part2_commit"] == "a" * 40
+    assert not hasattr(trackers, "part2_commit")  # the second helper is gone
+
+
+def test_tracker_provenance_says_unknown_without_git(monkeypatch):
+    def no_git(*a, **k):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(subprocess, "run", no_git)
+    assert trackers.Tracker().provenance()["part2_commit"] == "unknown"
+
+
+def test_block_records_the_commit_it_is_given_without_asking_git_again(monkeypatch):
+    def no_git(*args):
+        raise AssertionError("the commit was measured again")
+
+    monkeypatch.setattr(provenance, "_git", no_git)
+    assert _block(commit="c" * 40 + "+dirty")["part2_commit"] == "c" * 40 + "+dirty"
 
 
 # --- AC-C08: every writer adds it, and removing it keeps the file valid ---------------------------

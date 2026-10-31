@@ -229,7 +229,7 @@ part2 run --mode multi --input <take> --out <dir2> --fps 10 --backend gpu --trac
 | Command | Result |
 |---|---|
 | `part2 track` | `frames/` and `tracks.json` only, no 3D. The tracker order is the one of `run --mode multi` (`--tracker`, `--tracker-order`). Exit 0 written, 1 input error, 2 bad option (unknown tracker). |
-| `run --tracks <tracks.json>` | uses that file as it is: no tracker runs and the ids stay as they are. Pass the same `--input` and `--fps` that made it; a frame the file lacks is exit 1. |
+| `run --tracks <tracks.json>` | uses that file as it is: no tracker runs and the ids stay as they are. Pass the same `--input` and `--fps` that made it; a frame the file lacks is exit 1. `--tracker` or `--tracker-order` together with `--tracks` is exit 2: the file already fixed the tracker. |
 | `run --ids <id,...>` | 3D runs for the listed people only. `pose3d.json` holds those people, plus `pose3d_person_<id>.json` each. An id that `tracks.json` lacks is exit 1 and the message names it. |
 
 `--tracks` and `--ids` apply to `--mode multi` only (exit 2 with `--mode single`). `--ids` without `--tracks`
@@ -237,21 +237,30 @@ tracks first, then filters. The files keep their versions; nothing new is writte
 
 ### Warm worker (`serve-worker`, `run --worker`)
 
-Loading the models costs about 20 to 35 s per `part2 run`. A worker loads them once:
+Loading the 3D model costs about 20 to 35 s per `part2 run`. A worker loads it once and keeps it for every `run`
+it serves. It keeps only the 3D backend warm: `track` is served the same way (same arguments, same files, same
+output stream) but saves no model load, because a tracker loads its own model on every request (the local SAM 3.1
+tracker starts a child process each time).
 
 ```
 part2 serve-worker --socket <path> [--backend gpu]          # long-lived; prints "listening on <path>" when ready
 part2 run --worker <path> --mode single --input ... --out ...   # same arguments, same files as without --worker
-part2 track --worker <path> --input ... --out ...
+part2 track --worker <path> --input ... --out ...           # same files; no model load saved (see above)
 ```
 
-With no worker listening at `<path>` (missing socket, connection refused, permission denied) the command runs in
-its own process and says so on stderr, so Part 7 can pass `--worker` always. A worker that dies mid-request
-gives exit 1 and the job is not re-run in-process. A socket that another user owns gives exit 1 and nothing is
-sent: the client reads the owner with `SO_PEERCRED` before it writes the request.
+With no worker at `<path>` (missing socket, connection refused, permission denied, or a path too long for a Unix
+socket) the command runs in its own process and says so on stderr, so Part 7 can pass `--worker` always. A worker
+that dies mid-request gives exit 1 and the job is not re-run in-process. So do the two waits of the CLI client.
+Before the worker's first line it waits for its turn behind other jobs for up to 3600 s
+(`worker.CLIENT_QUEUE_WAIT_S`): `part2: waited 3600 s for a turn at the worker; connection dropped, not re-run
+in-process`. From the first line on it waits 120 s (`worker.CLIENT_IDLE_TIMEOUT_S`) for the next line, counted from
+the last one received, a keepalive included: `part2: the worker sent nothing for 120 s; connection dropped, not
+re-run in-process`. A socket that another user owns gives exit 1 and nothing is sent: the client reads the owner with
+`SO_PEERCRED` before it writes the request.
 
-`serve-worker` exits 1 with a one-line reason, before it loads any model, when `<path>` exists and is not a socket
-or when a worker already answers there. A socket left by a worker that was killed is replaced. On exit the worker
+`serve-worker` exits 1 with a one-line reason, before it loads any model, when `<path>` exists and is not a socket,
+when a worker already answers there, or when no socket can be made there (the path is over 107 bytes, or its directory
+is missing, not a directory or not writable). A socket left by a worker that was killed is replaced. On exit the worker
 removes the socket file only if it made that file.
 
 Protocol, for a client that does not call the CLI: a Unix stream socket, one request per connection, newline-delimited JSON.
@@ -259,11 +268,18 @@ Protocol, for a client that does not call the CLI: a Unix stream socket, one req
 | Direction | Message |
 |---|---|
 | client to worker | `{"argv": ["run", "--mode", "single", ...], "cwd": "<absolute dir>", "env": {"PART2_PROGRESS": "1"}}`, argv without `--worker`; relative paths in argv resolve against `cwd`; only `PART2_*` env is applied, and for the job it replaces the worker's own `PART2_*` variables |
-| worker to client | `{"stream": "stdout" or "stderr", "data": "<text>"}` as the job prints (the `progress <stage> <done> <total>` lines arrive here), zero or more |
-| worker to client, last | `{"exit": <n>}`, the exit code `part2 <argv>` would give (0 written, 1 input or contract error, 2 bad option); the worker also answers exit 2, with one stderr line and without running anything, for a command other than `run` or `track`, an argv that still carries `--worker` (or an abbreviation of it), and a request that is not a JSON object with `argv` a list of strings, `cwd` an existing absolute directory and `env` a map of strings to strings |
+| worker to client | `{"stream": "stdout" or "stderr", "data": "<text>"}` as the job prints (the `progress <stage> <done> <total>` lines arrive here), zero or more; `data` is always a string |
+| worker to client, first | `{"keepalive": true}` at once when the worker takes the request, before anything runs. Requests are served one at a time, so a request queued behind a job hears nothing until its turn; this first line says the turn has come. A client with its own timeout should wait for it as long as it is willing to queue (the CLI client: 3600 s), and use a short limit only after it |
+| worker to client, while a job runs | `{"keepalive": true}` every 30 s (`worker.KEEPALIVE_S`), whatever the job prints; it carries nothing to print and a client ignores it, but it counts as a sign of life for the idle limit. A 3D stage prints nothing for minutes, so a client that has its own timeout should restart it on any line, this one included |
+| worker to client, last | `{"exit": <n>}` with `<n>` an integer, the exit code `part2 <argv>` would give (0 written, 1 input or contract error, 2 bad option); the CLI client treats any other value as exit 1 with one message line. The worker also answers exit 2, with one stderr line and without running anything, for a command other than `run` or `track`, an argv that still carries `--worker` (or an abbreviation of it), and a request that is not a JSON object with `argv` a list of strings, `cwd` an existing absolute directory and `env` a map of strings to strings |
 
 Concurrency: one request at a time per worker. A second client connects and waits in the socket queue (8 deep)
-until the first finishes; Part 7 should queue its own jobs or run one worker per GPU slot (about 10 GiB each).
+until the first finishes. The worker accepts one connection at a time, so a queued client hears nothing until its
+turn; the CLI client waits up to 3600 s for the first line, however long the jobs ahead run within that bound, and
+only then applies its 120 s limit (above). A client that gives up in the queue leaves exit 1 behind; its request is
+then not run when its turn comes (the worker sees the closed connection). The CLI client treats a reply
+that is none of the three kinds above, or a stream message whose `data` is not a string, as a lost connection (exit 1,
+no re-run in-process). Part 7 should queue its own jobs or run one worker per GPU slot (about 10 GiB each).
 The host GPU lock still applies to every request. A request that raises does not stop the worker, and neither
 does a client that disconnects or sends a malformed request; the worker logs the traceback on its own stderr and
 serves the next one. Restart the worker after a `git pull` of Part 2 (code and models are loaded once).

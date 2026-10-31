@@ -1,6 +1,6 @@
 # Spec: Part 2, images to 3D (video or photo in, `pose3d.json` and `tracks.json` out)
 
-> Copy of `docs/specs/part2-images-to-3d.md` from the maintainers' working repo at `68ecdcc`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/part2-images-to-3d.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -243,7 +243,7 @@ Upstream receives only allowlisted paths through `scripts/simon-publish.sh` (`si
 | Gold set | test set only: rung and tracker parameters fixed from label-free objectives, committed, scored once, every scoring counted in `progress/ladder.md`; `part2/refine/**` and `part2/trackers/**` never import the evals or read labels (`tests/test_gold_isolation.py`) | ADR-0004, setup review B2. |
 | Reference reproduction | HPC 5.29% reproduced on the local `gpu` (cu128) backend; if that port fails, recorded as not reproduced on this host and the ladder runs on `cpu` | ADR-0002 (Baseten rejected), ADR-0004. |
 | Staging backends and trackers | local `gpu`, then `cpu`; trackers in the bulk order (`local-sam31` after parity, `api-sam31` within the staging cap, `local-open`), plus `bytetrack` | No hosted backend; visitor spend capped by the operator (2026-10-28). |
-| Operator keys | files named after their variable in the operator key directory (`MODEL_API_KEY`, `HF_TOKEN`), 700/600, read by `part2/keys.py` at use only; env variable of the same name is a test channel | Firm convention. |
+| Operator keys | files named after their variable in the operator key directory (`MODEL_API_KEY`, `HF_TOKEN`), 700/600, read by `part2/keys.py` at use only; env variable of the same name is a test channel | One convention. |
 | Stock takes | milestone M2, published right after commit, then the IECB message names the upstream commit | Part 5 needs them early (setup review B6). |
 
 ## Negative Requirements (What This Feature Must NOT Do)

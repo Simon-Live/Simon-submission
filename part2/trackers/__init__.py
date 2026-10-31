@@ -16,10 +16,10 @@ import importlib
 import importlib.util
 import json
 import os
-import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from part2 import provenance
 from part2.schema import write_json
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -219,17 +219,6 @@ def renumber(detections: dict, frame_records) -> dict:
     return out
 
 
-def part2_commit():
-    try:
-        sha = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True,
-                             text=True, check=True).stdout.strip()
-        dirty = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--", "part2"],
-                               capture_output=True, text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    return sha + ("-dirty" if dirty else "")
-
-
 class Tracker:
     """Base adapter. Subclasses set the class attributes and implement detect()."""
     name = ""
@@ -271,7 +260,7 @@ class Tracker:
     def provenance(self, skipped=()) -> dict:
         prov = {"tracker": self.name, "models": self.models(), "mask_source": self.mask_source,
                 "detector": self.detector, "reprompt_every_s": self.reprompt_every_s,
-                "params": self.params(), "part2_commit": part2_commit(),
+                "params": self.params(), "part2_commit": provenance.part2_commit(),
                 "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
         if skipped:
             prov["fallback_from"], prov["fallback_reason"] = skipped[0]

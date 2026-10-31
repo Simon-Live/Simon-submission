@@ -1,6 +1,6 @@
 # Spec: Part 2 web app (browse committed outputs, then upload a video, class clip or photo and run the real pipeline)
 
-> Copy of `docs/specs/run-app.md` from the maintainers' working repo at `68ecdcc`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/run-app.md` from the maintainers' working repo at `1c8cb7e`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -80,8 +80,8 @@ plain sentence; never a traceback, class name or server path.
 | photo | Pillow opens it as JPEG or PNG | 20 MB body, 8000 px longest side | one frame, `t_ms` 0 |
 | sample | ids from `api/outputs` with input frames (`single`, `class`) | none | copies nothing; frames read in place |
 A video whose container and stream carry no duration (a browser MediaRecorder WebM) is measured by its decoded frame
-timestamps, `last - first`, read once and shared with the frame count; the limits above are unchanged
-(`docs/design/specs/journey-followup.md`, TICKET-039).
+timestamps, `max(pts) - min(pts)` (never negative, whatever the order), read once and shared with the frame
+count; the limits above are unchanged (`docs/design/specs/journey-followup.md`, TICKET-039, R17).
 `Content-Length` is required and must be digits; bodies over the cap get 413 before reading. The upload is written
 to the job dir as `input.<ext>` with a server-chosen name.
 
@@ -174,7 +174,7 @@ the `errors` check on the app port.
 | `web/overlay.js` | 2D overlay and person picker |
 | `web/style.css`, `web/icon.svg` | style and icon |
 | `scripts/dev.sh` | local dev server on 8722 (firm-only, never published) |
-| `tests/test_server.py`, `tests/test_runapi.py`, `tests/test_jobs.py`, `tests/test_gpu_guard.py`, `tests/test_viewer_js.py` | tests |
+| `tests/test_server.py`, `tests/test_server_run.py`, `tests/test_runapi.py`, `tests/test_jobs.py`, `tests/test_gpu_guard.py`, `tests/test_viewer_js.py` | tests (`test_server_run.py` is the run API over HTTP, split from `test_server.py` to keep each under 800 lines; it reuses that file's fixtures) |
 
 ## Acceptance Criteria
 ### AC-A01: browse committed outputs (S0)
@@ -298,9 +298,9 @@ result and selectable. Resolution: ADDRESSED_IN_SPEC.
 | Requirement Source | Spec AC | Test | Status |
 |---|---|---|---|
 | S0 browse and contract page | AC-A01, AC-A02, AC-A03 | `tests/test_server.py`, `tests/test_viewer_js.py`, staging verify | pending |
-| M4 upload video, class, photo | AC-A04, AC-A05, AC-A06 | staging verify, QA recipes | pending |
-| M4 queue, memory, timeout, cancel | AC-A07, AC-A08, AC-A09 | `tests/test_jobs.py`, `tests/test_runapi.py`, `tests/test_gpu_guard.py` | pending |
-| Security | AC-A10, AC-A11, AC-A12 | `tests/test_server.py` | pending |
+| M4 upload video, class, photo | AC-A04, AC-A05, AC-A06 | `tests/test_server_run.py`, staging verify, QA recipes | pending |
+| M4 queue, memory, timeout, cancel | AC-A07, AC-A08, AC-A09 | `tests/test_server_run.py`, `tests/test_jobs.py`, `tests/test_runapi.py`, `tests/test_gpu_guard.py` | pending |
+| Security | AC-A10, AC-A11, AC-A12 | `tests/test_server.py`, `tests/test_server_run.py` | pending |
 
 ## Delivery Verification Plan
 `make test` exit 0; `scripts/dev.sh start` then a manual drive; staging `up` and `verify` exit 0

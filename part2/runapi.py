@@ -256,7 +256,7 @@ def _number(v) -> float:
 
 def _timestamps(path: Path) -> list[float]:
     """The decoded frame timestamps of a video in seconds (the list `part2 frames` works from). 415 when they
-    cannot be read, 422 when there are none."""
+    cannot be read, or when the read times out (frames.PROBE_TIMEOUT_S, a RuntimeError), 422 when there are none."""
     from part2 import frames
 
     try:
@@ -300,7 +300,7 @@ def probe_video(path: Path, limits: Limits, timeout_s: float = 60.0) -> str:
     pts = None  # read at most once: the duration of a file without one, and the frame count below
     if duration <= 0:  # a browser (MediaRecorder) WebM has neither duration: measure it by its frame timestamps
         pts = _timestamps(path)
-        duration = pts[-1] - pts[0]
+        duration = max(pts) - min(pts)  # not pts[-1] - pts[0]: timestamps out of order must not shrink or negate it
     if duration > limits.video_s:
         raise ApiError(422, "too_long")
     if ingest_frame_count(path, limits.fps, pts) > limits.max_frames:
