@@ -21,7 +21,7 @@ SCHEMA = json.loads((ROOT / "contracts/analysis.schema.json").read_text())
 EXAMPLE = ROOT / "fixtures/output/analysis.example.json"
 SEED5 = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
 LATERAL = ROOT / "fixtures/input/real/lateral-raise"
-DASHES = re.compile("[–—]| - ")
+DASHES = re.compile("[\u2013\u2014]| - ")
 
 
 def _combos():
