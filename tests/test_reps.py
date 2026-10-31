@@ -189,8 +189,18 @@ def test_the_slow_follower_reports_its_faults_once_with_reps_and_the_files_clock
         assert f["follower_t_s"][0] < 16.5 and f["at_s"] == pytest.approx(f["follower_t_s"][0], abs=0.06)
 
 
-def test_a_fault_free_rep_by_rep_take_has_a_score_and_no_faults(fast):
-    assert fast.analysis["faults"] == [] and fast.analysis["score"]["value"] >= 90
+def test_a_rep_by_rep_take_is_scored_on_each_reps_own_misses(fast):
+    """ADR-0013: no fault is in half the reps, so the take reports none, but each rep's own misses cost it
+    points and the score is the mean of the reps, which the timeline shows rep by rep."""
+    sc = fast.analysis["score"]
+    assert fast.analysis["faults"] == []
+    timeline = [w for w in sc["timeline"] if w["compared"]]
+    assert sc["basis"] == "reps" and len(timeline) == len(sc["per_rep"]) == 8
+    assert all(w["misses"] == [] and w["value"] >= 90 for w in timeline[:3])          # the first reps are clean
+    assert all(w["misses"] for w in timeline[4:])                                    # the later ones are not
+    for w in timeline:
+        assert w["value"] == round(100 - sum(m["points"] for m in w["misses"]) - w["components"]["similarity"])
+    assert abs(sc["value"] - sum(w["value"] for w in timeline) / len(timeline)) <= 1
 
 
 def test_the_replay_tiles_the_expected_rep_against_the_whole_follower_take(fast):

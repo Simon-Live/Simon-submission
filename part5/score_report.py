@@ -15,10 +15,13 @@ import sys
 from pathlib import Path
 
 
+import numpy as np
+
 from . import score
 from .detect import load_rules
 from .measures import compute as measures_of
-from .pipeline import run
+from .output import fault_to_dict
+from .pipeline import _fault_times, run
 
 ROOT = Path(__file__).resolve().parent.parent
 EXERCISE_EXPECTED = ROOT / "fixtures" / "input" / "expected" / "exercise" / "animation.json"
@@ -39,17 +42,44 @@ def aligned_of(result):
 
 
 def score_block(result, rules=None):
-    """The `score` hook for `pipeline.run` (ADR-0007): the block `score.compute` builds for this result.
-    A take compared rep by rep (ADR-0010) is scored per accepted rep and the blocks are averaged.
+    """The `score` hook for `pipeline.run` (ADR-0007, ADR-0013): the take scored window by window with the
+    `score.compute` formula, and the mean of the windows. A take compared rep by rep (ADR-0010) has one window
+    per rep, scored on that rep's own misses; a take compared as a whole has windows of about 5 s.
     Never None (ADR-0012): a take with no alignment scores 0, and any warning caps the value at 59."""
     if result.guard is None:   # not aligned: nothing to score
         block = score.zero_block(rules)
     elif result.reps:
-        blocks = [score.compute(r.analysis, aligned_of(r), rules) for r in result.reps if r.ok]
-        block = score.aggregate(blocks, rules)
+        block = _rep_timeline(result, rules)
     else:
-        block = score.compute(result.analysis, aligned_of(result), rules)
+        aligned = aligned_of(result)
+        frame_times = result.follower.t[np.asarray(result.to_original)[np.asarray(aligned["exp_to_fol"])]]
+        block = score.compute_timeline(result.analysis, aligned, frame_times, rules)
     return score.cap_by_warnings(block, result.analysis, rules)
+
+
+def _rep_timeline(result, rules):
+    """One window per follower rep: an accepted rep is scored on every miss found in it (not only the ones
+    the take reports), a rep that did not match the example is shown but not scored. `per_rep` stays (1.3.0)."""
+    rules = rules or load_rules()
+    p = score.params_of(rules)
+    fol, windows = result.follower, []
+    for r in result.reps:
+        span = (float(fol.t[r.span[0]]), float(fol.t[r.span[1]]))
+        if not r.ok:
+            windows.append({"t_s": span, "compared": False})
+            continue
+        faults = []
+        for f in r.faults:
+            # the take's coaching line carries the first rep's time, so each rep says its own (text_timed)
+            faults.append(fault_to_dict(f, _fault_times(f, r.expected, fol, r.follower_positions, r.alignment,
+                                                        r.to_original)))
+        aligned = aligned_of(r)
+        scored = score.window_score({"status": {"code": "ok"}, "faults": faults}, aligned,
+                                    np.arange(len(aligned["exp_to_fol"])), rules, p)
+        windows.append({"t_s": span, **scored} if scored else {"t_s": span, "compared": False})
+    block = score.timeline_block(windows, "reps", rules)
+    block["per_rep"] = [{"value": w["value"], "grade": w["grade"]} for w in block["timeline"] if w["compared"]]
+    return block
 
 
 def analyse(expected, follower, rules=None):

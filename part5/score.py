@@ -176,3 +176,99 @@ def aggregate(blocks, rules=None):
             "components": {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))},
             "params_sha256": blocks[0]["params_sha256"],
             "per_rep": [{"value": b["value"], "grade": b["grade"]} for b in blocks]}
+
+
+# --- the score timeline (ADR-0013) ---
+# A take is scored in windows (its repetitions, or slices of about WINDOW_S seconds) with the formula above,
+# and its value is the mean of the window values. So the score is a share of the take, not points per
+# mistake: one miss in one minute costs about what ten misses in ten minutes cost. Each window lists its
+# misses with the points each one cost, so the timeline adds up to the score. A take of one window
+# (under 7.5 s, or one rep) scores exactly as `compute` does.
+WINDOW_S = 5.0
+
+
+def windows_of(frame_times, window_s=WINDOW_S):
+    """`(window index per expected frame, [(t0, t1)] per window)`: the follower span the expected frames land
+    on, cut into max(1, round(span / window_s)) equal slices."""
+    t = np.asarray(frame_times, dtype=float)
+    t0, t1 = float(np.min(t)), float(np.max(t))
+    k = max(1, int(round((t1 - t0) / window_s)))
+    edges = t0 + (t1 - t0) * np.arange(k + 1) / k
+    index = np.clip(np.searchsorted(edges, t, side="right") - 1, 0, k - 1)
+    return index, [(float(edges[i]), float(edges[i + 1])) for i in range(k)]
+
+
+def _frames_in(fault, frames):
+    runs = fault.get("runs") or [fault["expected_frames"]]
+    return sum(int(np.count_nonzero((frames >= s) & (frames <= e))) for s, e in runs)
+
+
+def miss_entry(fault, points):
+    """One miss on the timeline: what to say, where, and what it cost."""
+    return {"text": fault.get("coaching") or fault.get("text_timed") or fault["text"],
+            "measure": fault["measure"], "side": fault.get("side"), "joint": fault.get("joint"),
+            "t_s": fault.get("follower_t_s"), "at_s": fault.get("at_s"), "points": float(round_half_up(points, 1))}
+
+
+def window_score(analysis, aligned, frames, rules, p):
+    """`{value, components, misses}` of the expected `frames` (an index array) of a take, or None when
+    nothing in them can be measured. The unrounded value is kept for the take's mean."""
+    if (analysis.get("status") or {}).get("code") not in ("ok", None):
+        return None
+    frames = np.asarray(frames)
+    sub = {"expected": {n: np.asarray(v)[frames] for n, v in aligned["expected"].items()},
+           "follower": aligned["follower"], "exp_to_fol": np.asarray(aligned["exp_to_fol"])[frames]}
+    z = mean_z(sub, rules)
+    if z is None:
+        return None
+    feats, misses = [], []
+    for fault in analysis.get("faults", []):
+        n_in = _frames_in(fault, frames)
+        if not n_in:
+            continue
+        x = {"r": abs(fault["magnitude_deg"]) / fault["threshold_deg"], "dur": min(1.0, n_in / len(frames)),
+             "cov": fault["coverage"]}
+        feats.append(x)
+        misses.append(miss_entry(fault, penalty(x["r"], p) * (MIN_COVER + 0.5 * x["dur"]) * x["cov"]))
+    f, s = components({"faults": feats, "mean_z": z}, p)
+    raw = max(0.0, min(100.0, 100 - f - s))
+    value = int(round_half_up(raw))
+    return {"raw": raw, "value": value, "grade": grade(value, p["bands"]),
+            "components": {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))},
+            "misses": sorted(misses, key=lambda m: (m["at_s"] is None, m["at_s"] or 0))}
+
+
+def timeline_block(windows, basis, rules=None):
+    """The take's `score` block from its windows, each `{t_s, ...window_score}` or `{t_s, compared: False}`.
+    The value is the mean of the compared windows; `timeline` lists every window."""
+    p = params_of(rules or load_rules())
+    scored = [w for w in windows if w.get("compared", True)]
+    if not scored:
+        return dict(zero_block(rules), basis=basis, timeline=[_public(w) for w in windows])
+    value = int(round_half_up(sum(w["raw"] for w in scored) / len(scored)))
+    f = sum(w["components"]["faults"] for w in scored) / len(scored)
+    s = sum(w["components"]["similarity"] for w in scored) / len(scored)
+    return {"version": VERSION, "value": value, "grade": grade(value, p["bands"]),
+            "components": {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))},
+            "params_sha256": params_sha256(p), "basis": basis, "timeline": [_public(w) for w in windows]}
+
+
+def _public(window):
+    out = {k: v for k, v in window.items() if k != "raw"}
+    out["t_s"] = [round(float(window["t_s"][0]), 3), round(float(window["t_s"][1]), 3)]
+    out.setdefault("compared", True)
+    return out
+
+
+def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW_S):
+    """The `score` block of a take compared as a whole: windows of about `window_s` on the follower's clock.
+    `frame_times[i]` is the follower file time expected frame i was matched to."""
+    rules = rules or load_rules()
+    p = params_of(rules)
+    index, spans = windows_of(frame_times, window_s)
+    windows = []
+    for k, span in enumerate(spans):
+        frames = np.flatnonzero(index == k)
+        scored = window_score(analysis, aligned, frames, rules, p) if frames.size else None
+        windows.append({"t_s": span, **scored} if scored else {"t_s": span, "compared": False})
+    return timeline_block(windows, "windows", rules)

@@ -38,5 +38,6 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`ADR-0010-repetition-by-repetition-comparison.md`](adr/ADR-0010-repetition-by-repetition-comparison.md): Compare repetition by repetition when the whole clips disagree on the count (analysis 1.3.0).
 - [`ADR-0011-compare-only-what-the-camera-sees.md`](adr/ADR-0011-compare-only-what-the-camera-sees.md): Compare only what the camera sees (status `not_enough_visible`, `diagnostics.visibility`).
 - [`ADR-0012-always-analyse.md`](adr/ADR-0012-always-analyse.md): Always analyse (warnings and an F cap replace every refusal).
+- [`ADR-0013-score-timeline-length-agnostic.md`](adr/ADR-0013-score-timeline-length-agnostic.md): Score by windows (reps or 5 s) and show them as a timeline; the score is a share of the take.
 
 Related: `docs/schemas.md` (field reference), `docs/thresholds.md` (thresholds, guard limits and the held-out record).

@@ -346,6 +346,91 @@
             "type": "string"
           },
           "description": "1.4.0: the warning codes that capped the value at 59."
+        },
+        "basis": {
+          "enum": [
+            "windows",
+            "reps"
+          ],
+          "description": "ADR-0013: what the timeline's windows are: about 5 s slices of a take compared as a whole, or its repetitions."
+        },
+        "timeline": {
+          "type": "array",
+          "description": "ADR-0013: the take window by window. value is the mean of the compared windows; each window's value is 100 minus its misses' points and its similarity component.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "t_s": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "compared": {
+                "type": "boolean"
+              },
+              "value": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "grade": {
+                "enum": [
+                  "A",
+                  "B",
+                  "C",
+                  "D",
+                  "F"
+                ]
+              },
+              "components": {
+                "type": "object"
+              },
+              "misses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    },
+                    "measure": {
+                      "type": "string"
+                    },
+                    "side": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "joint": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "t_s": {
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "at_s": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "points": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
