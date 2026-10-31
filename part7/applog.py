@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import logging
 from logging.handlers import RotatingFileHandler
+import os
 from pathlib import Path
+import re
+import threading
 import time
+from typing import Any
 
 from part7 import keys
 
@@ -57,6 +61,16 @@ def job_root(folder: Path | str) -> Path:
     return p
 
 
+def _append_job_log(text: str, job_dir: Path | str, level: int) -> None:
+    try:
+        steps = job_root(job_dir) / "steps"
+        steps.mkdir(parents=True, exist_ok=True)
+        with (steps / "part7.log").open("a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {logging.getLevelName(level)} {text}\n")
+    except OSError:
+        pass
+
+
 def log(msg: str, job: str | None = None, job_dir: Path | str | None = None, level: int = logging.INFO) -> None:
     """Log `msg` (redacted); with `job_dir` also append it to the job's own `steps/part7.log`.
 
@@ -66,13 +80,86 @@ def log(msg: str, job: str | None = None, job_dir: Path | str | None = None, lev
     text = keys.redact(f"job {job}: {msg}" if job else msg)
     LOGGER.log(level, text)
     if job_dir is not None:
-        try:
-            steps = job_root(job_dir) / "steps"
-            steps.mkdir(parents=True, exist_ok=True)
-            with (steps / "part7.log").open("a", encoding="utf-8") as fh:
-                fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {logging.getLevelName(level)} {text}\n")
-        except OSError:
-            pass
+        _append_job_log(text, job_dir, level)
+    if job:
+        _observe(job, msg)
+
+
+# ----- anomalies (TICKET-091, docs/specs/observability.md) ----------------------------------------------
+_BARE = re.compile(r"^[^\s\"=]+$")
+_GPU_WAIT = re.compile(r"^gpu wait ([0-9.]+) s\b")
+_FACTS: dict[str, dict[str, Any]] = {}
+_FACTS_LOCK = threading.Lock()
+_FACTS_MAX = 200  # jobs tracked at once; a job that never ends is forgotten oldest first
+
+
+def env_float(name: str, default: float) -> float:
+    """A positive float from the environment, else `default` (a bad value never breaks the app)."""
+    try:
+        value = float(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def slow_stage_limit(stage: str) -> float:
+    """Seconds after which a stage is slow: `SIMON7_SLOW_STAGE_<STAGE>_S`, else `SIMON7_SLOW_STAGE_S`, else 300."""
+    return env_float(f"SIMON7_SLOW_STAGE_{stage.upper()}_S", env_float("SIMON7_SLOW_STAGE_S", 300.0))
+
+
+def _value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        return f"{value:.1f}"
+    text = " ".join(str(value).split())
+    return text if _BARE.match(text) else '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def anomaly_text(kind: str, /, job: str | None = None, detail: str = "", **fields: Any) -> str:
+    """`ANOMALY <kind> [job=<id>] key=value ... [detail=<rest of line>]`; None fields are left out."""
+    parts = [f"ANOMALY {kind}"]
+    if job:
+        parts.append(f"job={job}")
+    parts += [f"{k}={_value(v)}" for k, v in fields.items() if v is not None]
+    text = " ".join(parts)
+    one_line = " ".join(str(detail).split())
+    return f"{text} detail={one_line}" if one_line else text
+
+
+def anomaly(kind: str, /, detail: str = "", job: str | None = None, job_dir: Path | str | None = None,
+            **fields: Any) -> None:
+    """Log one machine-readable WARNING line `ANOMALY <kind> ...` (also to the job's log with `job_dir`)."""
+    text = keys.redact(anomaly_text(kind, job, detail, **fields))
+    LOGGER.warning(text)
+    if job_dir is not None:
+        _append_job_log(text, job_dir, logging.WARNING)
+
+
+def fact(job: str, key: str, value: Any) -> None:
+    """Remember `key=value` about a running job for its summary line (numbers under `gpu_wait` add up)."""
+    with _FACTS_LOCK:
+        facts = _FACTS.setdefault(job, {})
+        facts[key] = facts.get(key, 0.0) + value if key.startswith("gpu_wait") else value
+        while len(_FACTS) > _FACTS_MAX:
+            del _FACTS[next(iter(_FACTS))]
+
+
+def pop_facts(job: str) -> dict[str, Any]:
+    """The facts of a finished job (and forget them)."""
+    with _FACTS_LOCK:
+        return _FACTS.pop(job, {})
+
+
+def _observe(job: str, msg: str) -> None:
+    """Capture what the summary needs from lines other modules already log (gpu_lock's `gpu wait <s> s`)."""
+    found = _GPU_WAIT.match(msg)
+    if found:
+        with _FACTS_LOCK:
+            stage = _FACTS.get(job, {}).get("_stage")
+        fact(job, "gpu_wait", float(found.group(1)))
+        if stage:
+            fact(job, f"gpu_wait.{stage}", float(found.group(1)))
 
 
 def cause(exc: BaseException) -> str:

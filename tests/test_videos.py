@@ -71,7 +71,7 @@ def test_committed_manifest_is_valid_and_frozen() -> None:
     assert roles.count("trainer") == 1
     assert roles.count("follower") >= 2
     assert roles.count("mismatch") == 1
-    assert data["movement"]["id"] == "lateral-raise"
+    assert data["movement"]["id"] == "knee-raise"
 
 
 def test_committed_followers_and_mismatch_equal_frozen_block() -> None:
@@ -398,7 +398,7 @@ def test_fetch_rejects_an_invalid_manifest(sandbox: dict[str, Any]) -> None:
 def test_list_prints_every_clip_and_the_movement(sandbox: dict[str, Any], capsys: pytest.CaptureFixture[str]) -> None:
     assert videos.cli_videos("list") == 0
     out = capsys.readouterr().out
-    assert "movement: lateral-raise" in out
+    assert "movement: knee-raise" in out
     for cid in ("pexels-1", "pexels-2", "pexels-3", "pexels-4"):
         assert cid in out
 

@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 import uuid
 
 from part7 import (
-    applog, buildinfo, challenge_routes, client_log, config, jobs, labels, media, modes, modules, people, people_routes,
+    applog, buildinfo, challenge_routes, client_log, config, heartbeat, jobs, labels, media, modes, modules, people, people_routes,
     processor, proxy, quota, replay, result_media, sections,
 )
 from part7.parts import p5_analyse
@@ -84,6 +84,12 @@ class App:
 
 def phrasing_from_env() -> str:
     return "template" if os.environ.get("SIMON7_PHRASING", "live") == "template" else "live"
+
+
+SLOW_REQUEST_S = 2.0
+SLOW_UPLOAD_S = 20.0  # a POST api/uploads carries the visitor's file: transfer time is part of it
+SLOW_MEDIA_S = 10.0  # media GETs stream; the limit applies to the time to the first byte (headers out)
+MEDIA_SUFFIXES = (".mp4", ".webm", ".mov")
 
 
 def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
@@ -167,10 +173,47 @@ class _Handler(BaseHTTPRequestHandler):
 
     def send_response_only(self, code: int, message: str | None = None) -> None:
         self._answered = True  # a status line is out: a second response would corrupt the stream
+        if self._first_byte is None:
+            self._first_byte = time.monotonic()
+        self._status = code
         super().send_response_only(code, message)
 
     def _dispatch(self) -> None:
         self._answered = False
+        self._status = 0
+        self._first_byte = None
+        t0 = time.monotonic()
+        try:
+            self._timed_route()
+        finally:
+            end = time.monotonic()
+            first = self._first_byte if self._first_byte is not None else end
+            self._report_request(end - t0, first - t0)
+
+    def _slow_limit(self, rest: str | None) -> tuple[float, bool]:
+        """(limit in seconds, whether it applies to the time to first byte) for this route (observability.md)."""
+        if self.command == "POST" and rest == "api/uploads":
+            return applog.env_float("SIMON7_SLOW_UPLOAD_S", SLOW_UPLOAD_S), False
+        if self.command in ("GET", "HEAD") and rest is not None and rest.lower().endswith(MEDIA_SUFFIXES):
+            return applog.env_float("SIMON7_SLOW_MEDIA_S", SLOW_MEDIA_S), True
+        return applog.env_float("SIMON7_SLOW_REQUEST_S", SLOW_REQUEST_S), False
+
+    def _report_request(self, seconds: float, first_byte_s: float | None = None) -> None:
+        """`ANOMALY slow_request` past the route's limit and `ANOMALY http_5xx`; `path` is below the base path, no query."""
+        full = urlsplit(self.path).path
+        rest = self._rest()
+        fields: dict[str, Any] = {"method": self.command, "path": rest if rest is not None else full,
+                                  "status": self._status, "seconds": seconds}
+        length = self.headers.get("Content-Length", "") if self.headers is not None else ""
+        if length.isdigit():
+            fields["bytes"] = int(length)
+        limit, on_first_byte = self._slow_limit(rest)
+        if (first_byte_s if on_first_byte and first_byte_s is not None else seconds) > limit:
+            applog.anomaly("slow_request", **fields)
+        if self._status >= 500:
+            applog.anomaly("http_5xx", **fields)
+
+    def _timed_route(self) -> None:
         try:
             self._route()
         except Exception as exc:  # a handler bug: logged with the request, the visitor gets a plain 500
@@ -642,6 +685,7 @@ def cli_serve(
     applog.log(f"serve ready: build {app.build.get('short')}, pins {app.lock.shas_short()}")
     p2_pose.start_workers(app.queue.workers, state, app.lock)  # warm Part 2 workers when the pin has them
     server = make_server(app, host, port)
+    beat = heartbeat.Heartbeat(app.queue, state).start()  # one line a minute; stops with the server
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
     print(f"serving http://{host}:{server.server_address[1]}{base} (state {Path(state)})", flush=True)
     try:
@@ -650,6 +694,7 @@ def cli_serve(
         pass
     finally:
         server.server_close()
+        beat.stop()
         app.queue.close()
         p2_worker.stop_pool()
         child.stop()

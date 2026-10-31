@@ -128,15 +128,14 @@ def test_follow_invalid_mode_or_section_is_400_and_queues_nothing(
 
 
 # ----- Part 5 argv --------------------------------------------------------------------------------------
-@pytest.mark.parametrize("help_flags,mode,expect_profile,expect_notes", [
-    ("--replay --profile", "rehab", ["--profile", "rehab"], 0),
-    ("--replay", "rehab", None, 1),
-    ("--replay", None, None, 0),
-    ("--replay --profile", None, None, 0),
+@pytest.mark.parametrize("help_flags,mode,expect_profile", [
+    ("--replay --profile", "rehab", ["--profile", "rehab"]),
+    ("--replay", None, None),
+    ("--replay --profile", None, None),
 ])
 def test_part5_profile_only_when_the_pin_offers_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, help_flags: str, mode: str | None,
-    expect_profile: list[str] | None, expect_notes: int,
+    expect_profile: list[str] | None,
 ) -> None:
     probe.clear_cache()
     argvs = _capture_runner(monkeypatch, [step(5, 0, help_flags)])
@@ -149,8 +148,7 @@ def test_part5_profile_only_when_the_pin_offers_it(
         assert argv[argv.index("--profile"):][:2] == expect_profile
     else:
         assert "--profile" not in argv
-    assert len(notes) == expect_notes
-    assert (modes.NOTE_NO_PROFILE in notes) is (mode is not None and expect_profile is None)
+    assert notes == []
     probe.clear_cache()
 
 

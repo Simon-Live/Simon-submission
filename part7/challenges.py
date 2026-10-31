@@ -36,6 +36,8 @@ MAX_ENTRIES = 200  # entries on one board
 MAX_BOARDS = 500  # friend and crew boards the web can hold; sponsored boards are the operator's and not counted
 STALE_DAYS = 90  # a friend or crew board with no activity for this long is deleted when a new one is made
 PRIVATE_FIELDS = ("job_id", "pid")  # on disk only
+PRIVATE_DOC_FIELDS = ("visitor",)  # on a challenge, on disk only: the hashed key of the visitor who made it
+BOARDS_PER_VISITOR_DAY = 10  # friend and crew boards one visitor may make per UTC day
 _CONTROL = re.compile("[\x00-\x1f\x7f-\x9f  \ud800-\udfff]")
 _CACHE: dict[str, dict[str, tuple[tuple[int, int, int], dict[str, Any] | None]]] = {}  # folder -> file -> (stat key, doc)
 
@@ -49,6 +51,7 @@ MSG_ENDED = "This challenge has ended."
 MSG_DUPLICATE = "This result is already on the board."
 MSG_FULL = "This board is full."
 MSG_OTHER_NAME = "This result is already on a board under another name."
+MSG_VISITOR_BOARDS = "You have made today's challenges. Try again tomorrow."
 MSG_BOARDS = "There are too many challenges right now. Try again later."
 
 
@@ -108,6 +111,14 @@ def clean_sponsor(raw: Any) -> dict[str, str]:
         raise ChallengeError("The sponsor link must start with https://.")
     out["url"] = url
     return out
+
+
+def new_id() -> str:
+    """A random board id that never starts with `-`, so the operator CLI (`challenge close ID`) cannot read it as a flag (TICKET-095)."""
+    while True:
+        value = secrets.token_urlsafe(8)
+        if not value.startswith("-"):
+            return value
 
 
 def _dir(state: Path) -> Path:
@@ -196,14 +207,14 @@ def public_entry(entry: dict[str, Any]) -> dict[str, Any]:
 def view(doc: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
     """The public form of a challenge: ranked entries (no job id, no pid) and the `ended` flag."""
     rows = ranked([public_entry(e) for e in doc["entries"]])
-    return {**{k: v for k, v in doc.items() if k != "entries"}, "ended": ended(doc, now), "entries": rows}
+    return {**{k: v for k, v in doc.items() if k not in ("entries", *PRIVATE_DOC_FIELDS)}, "ended": ended(doc, now), "entries": rows}
 
 
 def summary(doc: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
     """A list row: the challenge without its entries, plus the count and the leader."""
     board = ranked(doc["entries"])
     lead = {"name": board[0]["name"], "score": board[0]["score"]} if board else None
-    return {**{k: v for k, v in doc.items() if k != "entries"}, "ended": ended(doc, now), "entry_count": len(board), "leader": lead}
+    return {**{k: v for k, v in doc.items() if k not in ("entries", *PRIVATE_DOC_FIELDS)}, "ended": ended(doc, now), "entry_count": len(board), "leader": lead}
 
 
 def _activity(doc: dict[str, Any]) -> datetime | None:
@@ -251,10 +262,12 @@ def _admit(state: Path, challenge_id: str, existing: list[dict[str, Any]], new: 
 def create(
     state: Path, *, entry_id: Any, title: Any, creator_name: Any, kind: Any, sponsor: Any = None,
     ends_at: Any = None, allow_sponsored: bool = False, entries: list[dict[str, Any]] | None = None,
+    visitor: str | None = None,
 ) -> dict[str, Any]:
     """Validate and store a new challenge, with its first `entries` (already verified) in the same write.
 
     `sponsor` and the kind `sponsored` need `allow_sponsored` (the operator CLI). Nothing is stored when anything fails.
+    `visitor` is the hashed visitor key (quota.visitor_key): one key makes at most BOARDS_PER_VISITOR_DAY public boards a day (429).
     """
     if not isinstance(entry_id, str) or not ENTRY_ID_RE.match(entry_id):
         raise ChallengeError(MSG_ENTRY)
@@ -269,16 +282,22 @@ def create(
             raise ChallengeError(MSG_ENDS)
         end = stamp(moment)
     doc = {
-        "id": secrets.token_urlsafe(8), "entry_id": entry_id, "title": clean_text(title, TITLE_MAX, MSG_TITLE),
+        "id": new_id(), "entry_id": entry_id, "title": clean_text(title, TITLE_MAX, MSG_TITLE),
         "kind": kind, "created_at": stamp(_now()), "ends_at": end,
         "creator_name": clean_name(creator_name), "sponsor": clean_sponsor(sponsor) if sponsor is not None else None,
         "entries": [],
     }
+    if visitor and kind in PUBLIC_KINDS:
+        doc["visitor"] = visitor
     with _locked(state):
         if kind in PUBLIC_KINDS:
             _prune(state)
             if sum(1 for d in _docs(state) if d.get("kind") in PUBLIC_KINDS) >= MAX_BOARDS:
                 raise ChallengeError(MSG_BOARDS, 409)
+            today = doc["created_at"][:10]
+            made = sum(1 for d in _docs(state) if visitor and d.get("visitor") == visitor and str(d.get("created_at"))[:10] == today)
+            if visitor and made >= BOARDS_PER_VISITOR_DAY:
+                raise ChallengeError(MSG_VISITOR_BOARDS, 429)
         doc["entries"] = _admit(state, doc["id"], [], entries or [])
         _write(state, doc)
     return doc

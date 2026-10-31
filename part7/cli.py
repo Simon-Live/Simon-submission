@@ -73,6 +73,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     challenge_cli.add_parser(sub)
 
+    # part7 labels add-tag|remove-tag|show
+    from part7 import labels_cli
+
+    labels_cli.add_parser(sub)
+
+    # part7 diagnose [--staging|--state DIR] [--since 2h] [--json]
+    from part7 import diagnose
+
+    diagnose.add_parser(sub)
+
     # part7 check
     sub.add_parser("check", help="Run make check-7 end to end.")
 
@@ -129,6 +139,16 @@ def main(argv: list[str] | None = None) -> int:
         from part7 import challenge_cli
 
         return challenge_cli.main(args)
+
+    if args.command == "labels":
+        from part7 import labels_cli
+
+        return labels_cli.main(args)
+
+    if args.command == "diagnose":
+        from part7 import diagnose
+
+        return diagnose.main(args)
 
     if args.command == "check":
         from part7 import check7

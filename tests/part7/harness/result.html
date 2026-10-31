@@ -55,6 +55,7 @@ const hideWrist = (track) => track.forEach((f, i) => { if (i) f[wrist] = null; }
 if (c === "unseen") { hideWrist(replay.expected); hideWrist(replay.follower); }
 if (c === "animation-unseen") hideWrist(replay.expected);
 if (c === "viewer") window.__r = await mountViewer(root, { replay });
+else if (c === "animation-sim1") window.__r = await mountViewer(root, { animation: await fetch("../fixtures/input/animation-squat-sample.json").then((r) => r.json()) }); // TICKET-090
 else if (c === "animation" || c === "animation-unseen") window.__r = await mountViewer(root, { animation: animation() });
 else window.__r = await mountResult(root, { analysis, replay: c === "badreplay" ? { fps: 0 } : c === "noreplay" ? undefined : replay });
 window.__ready = true;

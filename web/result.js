@@ -300,18 +300,22 @@ export async function mountResult(root, { analysis, replay, record = null, job =
       slot.append(el("p", { class: "sr-note", role: "status", "data-testid": "compare-note", text: MSG_BAD_REPLAY }));
     }
     if (model) compare = await mountCompare(slot, model, { testid: "compare" });
+    // TICKET-087: put the clock where the open window starts now, while it is still paused and before the video loads.
+    // Doing it after the video settles moved a clock the visitor was already looking at (and a paused one at that).
+    if (timeline) timeline.seekShown();
   }
   const url = videoUrl === undefined ? videoUrlFor(job, pid) : videoUrl;
   if (url && (real || worst)) {
     const total = Math.max(compare ? compare.duration : 0, ...timelineEnd(shown));
     coach = mountCoachStage(stageHolder, { compare, videoUrl: url, worst, moments, total });
-    if ((await settledOrTimeout(coach)) !== "ready") {
+    // a settle timeout only lets the rest of the screen render; the stage stays so a late video still works
+    // and is destroyed only on a real load error
+    if ((await settledOrTimeout(coach)) === "unavailable") {
       coach.destroy();
       coach = null;
     }
   }
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
-  if (timeline) timeline.seekShown();
   renderFaults(body, analysis, getView);
   fillSlot(breakdownSlot, () => import("./breakdown.js").then((m) => m.mountBreakdown), ctx, cleanups);
   if (warnings.length) {

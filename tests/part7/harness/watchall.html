@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>watch all harness</title>
+<link rel="stylesheet" href="../../../web/styles.css">
+<main id="app"></main>
+<script type="module">
+// The fake API is installed by the test through page.route. This page mounts the group board for
+// the job in the hash (#/group/<job>), as the app router does, and re-mounts when the hash changes.
+import { mountGroupResult } from "../../../web/group-result.js";
+const root = document.getElementById("app");
+let cleanup = null;
+function route() {
+  if (cleanup) { cleanup(); cleanup = null; }
+  root.replaceChildren();
+  const m = /^#\/group\/([^/]+)$/.exec(location.hash);
+  if (m) cleanup = mountGroupResult(root, decodeURIComponent(m[1]));
+  else root.textContent = `elsewhere: ${location.hash}`;
+}
+window.addEventListener("hashchange", route);
+route();
+window.__ready = true;
+</script>

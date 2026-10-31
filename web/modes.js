@@ -26,9 +26,10 @@ export const PRESETS = {
 export const TEXT = {
   pick: "Mode",
   all: "All",
-  noProfile: "The score uses the same rules in every mode. The mode changes coaching and practice only.",
-  profile: (p) => `Scored with ${p} coaching rules.`,
-  notAccuracy: "Coaching rules are not a measure of accuracy.",
+  noProfile: "This score uses the standard rules.",
+  profile: (p) => `Scored with ${p} rules.`,
+  standard: "These are the standard rules.",
+  forgiving: "These coaching rules are more forgiving. They are not a more accurate measure.",
   section: (i, n) => `Section ${i} of ${n}`,
   sections: (a, b, n) => `Sections ${a} to ${b} of ${n}`,
   practiceAgain: "Back to practice",
@@ -127,8 +128,8 @@ export function sectionLabel(section) {
 export function scoringLine(analysis) {
   const profile = analysis && typeof analysis.profile === "string" ? analysis.profile : "";
   if (!profile) return { profile: "", text: TEXT.noProfile };
-  const extra = profile === "fitness" ? "" : ` ${TEXT.notAccuracy}`;
-  return { profile, text: `${TEXT.profile(profile)}${extra}` };
+  const extra = profile === "fitness" ? TEXT.standard : TEXT.forgiving;
+  return { profile, text: `${TEXT.profile(profile)} ${extra}` };
 }
 
 /**
@@ -154,7 +155,9 @@ export function mountModeNote(slot, ctx) {
       ...modeCoaching(mode),
       h("p", { class: "mode-scoring", "data-testid": "mode-scoring", "data-profile": line.profile, text: line.text }));
   } else {
-    box.append(h("p", { class: "mode-chip-row" }, h("span", { class: "section-chip", "data-testid": "section-line", text: section })));
+    // No mode chosen: Part 5 reports "fitness" (its default), but the person picked nothing, so say standard rules.
+    box.append(h("p", { class: "mode-chip-row" }, h("span", { class: "section-chip", "data-testid": "section-line", text: section })),
+      h("p", { class: "mode-scoring", "data-testid": "mode-scoring", "data-profile": "", text: TEXT.noProfile }));
   }
   if (section && record.entry_id) {
     box.append(h("a", { class: "btn secondary", href: `#/follow/${encodeURIComponent(record.entry_id)}`,

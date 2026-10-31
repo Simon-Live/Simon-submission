@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from part7 import modules, runner
 
@@ -23,6 +24,14 @@ def has_flag(
     key = (str(clone), tuple(argv), flag)
     if key not in _CACHE:
         _CACHE[key] = flag in help_text(part, argv, clone, lock)
+    return _CACHE[key]
+
+
+def cached(clone: Path, name: str, compute: Callable[[], bool]) -> bool:
+    """A yes/no answer about the clone, computed once and kept until `clear_cache`."""
+    key = (str(clone), (name,), "")
+    if key not in _CACHE:
+        _CACHE[key] = bool(compute())
     return _CACHE[key]
 
 

@@ -8,16 +8,16 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from part7 import challenges, config
+from part7 import challenges, state_flags
 
 
 def add_parser(sub: Any) -> None:
     """Register `challenge` and its actions on the top-level subparsers `sub`."""
     top = sub.add_parser("challenge", help="Create, list and close sponsored challenges (operator only).")
-    top.add_argument("--state", default=None, help="State directory (default: the dev server's).")
-    top.add_argument("--staging", action="store_true", help="Use the staging server's state directory.")
+    state_flags.add_flags(top)
+    parent = state_flags.action_parent()
     actions = top.add_subparsers(dest="challenge_action", required=True)
-    make = actions.add_parser("create", help="Create a sponsored challenge on a movement.")
+    make = actions.add_parser("create", parents=[parent], help="Create a sponsored challenge on a movement.")
     make.add_argument("--entry", required=True, help="Catalog movement id (entry id).")
     make.add_argument("--title", required=True, help="Challenge title, 60 characters at most.")
     make.add_argument("--sponsor-name", required=True, help="Brand name.")
@@ -26,8 +26,8 @@ def add_parser(sub: Any) -> None:
     make.add_argument("--prize", required=True, help="The prize, in words.")
     make.add_argument("--ends", default=None, help="End time: 2026-12-01 or 2026-12-01T18:00:00Z (UTC).")
     make.add_argument("--creator", default=None, help="Name shown as the challenger (default: the brand name).")
-    actions.add_parser("list", help="List every challenge.")
-    done = actions.add_parser("close", help="End a challenge now; its board stays readable.")
+    actions.add_parser("list", parents=[parent], help="List every challenge.")
+    done = actions.add_parser("close", parents=[parent], help="End a challenge now; its board stays readable.")
     done.add_argument("id", help="Challenge id.")
 
 
@@ -42,9 +42,7 @@ def _ends(value: str | None) -> str | None:
 
 
 def _state(args: argparse.Namespace) -> Path:
-    if args.state:
-        return Path(args.state)
-    return config.staging_dir() if args.staging else config.dev_dir()
+    return state_flags.state_dir(args)
 
 
 def _create(state: Path, args: argparse.Namespace) -> dict[str, Any]:

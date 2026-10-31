@@ -6,10 +6,11 @@ import {
   createChallenge, addEntry, getChallenge, challengeUrl, cleanName, getSavedName, saveName,
   ensureChallengeStyles, ChallengeError, NAME_MAX, MSG_FAILED, MSG_OFFLINE,
 } from "./challenge-core.js";
-import { renderCard, shareCard, copyText } from "./share-card.js";
+import { renderCard, shareCard, copyText, blobToDataUrl } from "./share-card.js";
 import { promoteChallenges } from "./modes.js";
 
 const TITLE_MAX = 60;
+export const MSG_TAKE_ENDED = "The challenge you took has ended, so this score is not on its board.";
 export const MSG_NEED_NAME = "Type your name first (24 characters at most).";
 
 /** The challenge title for a movement: "Beat my <movement>", cut to the server's 60 characters. */
@@ -37,8 +38,7 @@ async function shareStep(box, { challenge, added, movement }) {
   let card = null;
   try {
     card = await renderCard(model);
-    const src = URL.createObjectURL(card.blob);
-    window.addEventListener("hashchange", () => URL.revokeObjectURL(src), { once: true }); // the picture is done when the person leaves
+    const src = await blobToDataUrl(card.blob); // TICKET-096: a data: URL cannot be revoked while the <img> still uses it
     const img = h("img", { class: "ch-card-preview", alt: `Share card: ${added.name} scored ${added.score}`, "data-testid": "share-card-preview", src });
     box.append(img);
   } catch (err) {
@@ -88,7 +88,9 @@ async function challengeOf(ctx, entryId) {
 export async function mountChallengeActions(slot, ctx) {
   const entryId = entryIdOf(ctx);
   const score = ctx && ctx.analysis && ctx.analysis.score;
-  if (!slot || !entryId || !ctx.job || ctx.job === "fixture" || !score || typeof score.value !== "number") return;
+  const status = ctx && ctx.analysis && ctx.analysis.status;
+  // the server refuses a take that is not "ok" or has no numeric score, so the offer is not made for one
+  if (!slot || !entryId || !ctx.job || ctx.job === "fixture" || !status || status.code !== "ok" || !score || typeof score.value !== "number" || !Number.isFinite(score.value)) return;
   ensureChallengeStyles();
   const promote = promoteChallenges(ctx.jobRecord && ctx.jobRecord.mode);
   const box = h("section", { class: "ch-actions-box", "data-testid": "challenge-actions" });
@@ -140,6 +142,9 @@ export async function mountChallengeActions(slot, ctx) {
     box.append(...intro, field, row, offer, error);
   }
   slot.append(box);
+  if (ctx.jobRecord && ctx.jobRecord.challenge_ended) {
+    box.prepend(h("p", { class: "hint", role: "status", "data-testid": "challenge-ended-note", text: MSG_TAKE_ENDED }));
+  }
 
   const target = await challengeOf(ctx, entryId);
   if (!target) return;

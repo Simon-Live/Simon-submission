@@ -15,6 +15,7 @@
 .ch-movement:not(:has(video)) { grid-template-columns: minmax(0, 1fr); }
 .ch-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 12px; background: var(--soft); }
 .ch-movement-name { margin: 0 0 2px; font-weight: 650; }
+.ch-movement-name a { display: inline-flex; align-items: center; min-height: var(--tap); }
 .ch-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 8px; }
 .ch-board { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .ch-row {

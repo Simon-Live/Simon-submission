@@ -113,30 +113,35 @@ def test_follow_without_a_challenge_id_has_none(api: Api, tiny_mp4: Path, monkey
 
 def test_follow_refuses_a_bad_challenge_and_queues_nothing(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     other = challenges.create(api.app.state, entry_id="reverse-lunge", title="T", creator_name="S", kind="friend")["id"]
-    ended = _create(api)["id"]
-    challenges.close(api.app.state, ended)
-    for value, expect in (("nosuchid1", 400), (7, 400), (["x"], 400), (other, 400), (ended, 409)):
+    for value, expect in (("nosuchid1", 400), (7, 400), (["x"], 400), (other, 400)):
         status, doc = _follow(api, tiny_mp4, monkeypatch, challenge_id=value)
         assert status == expect and doc["error"], (value, status, doc)
         assert api.app.queue.counts() == {"running": 0, "waiting": 0}
 
 
+def test_a_challenge_that_ended_before_the_upload_does_not_refuse_the_take(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ended = _create(api)["id"]
+    challenges.close(api.app.state, ended)
+    status, doc = _follow(api, tiny_mp4, monkeypatch, challenge_id=ended)
+    assert status == 202 and "challenge_id" not in doc and doc["challenge_ended"] is True
+    record = api.json("GET", f"api/jobs/{doc['job']}")[1]
+    assert "challenge_id" not in record and record["challenge_ended"] is True
+
+
 # ----- R5: two writers never lose an update -----------------------------------------------------------------
 def _writer(args: tuple[str, str, int]) -> None:
     state, cid, n = args
-    if n == 99:
-        challenges.close(Path(state), cid)
-    else:
-        challenges.add_entries(Path(state), cid, [{"name": f"P{n}", "score": n, "grade": "C", "job_id": f"{n:012d}", "pid": None}])
+    challenges.add_entries(Path(state), cid, [{"name": f"P{n}", "score": n, "grade": "C", "job_id": f"{n:012d}", "pid": None}])
 
 
 def test_concurrent_processes_keep_every_update(tmp_path: Path) -> None:
     doc = challenges.create(tmp_path, entry_id="lateral-raise", title="T", creator_name="S", kind="friend")
     with multiprocessing.get_context("fork").Pool(6) as pool:
-        pool.map(_writer, [(str(tmp_path), doc["id"], n) for n in [*range(12), 99]], chunksize=1)
+        pool.map(_writer, [(str(tmp_path), doc["id"], n) for n in range(12)], chunksize=1)
+    challenges.close(tmp_path, doc["id"])  # after the writers, so the outcome never depends on scheduling
     stored = challenges.get(tmp_path, doc["id"])
-    assert sorted(e["score"] for e in stored["entries"]) == list(range(12))
-    assert challenges.ended(stored)  # the close was not overwritten, and no add was lost
+    assert sorted(e["score"] for e in stored["entries"]) == list(range(12))  # no concurrent add was lost
+    assert challenges.ended(stored)  # and the close did not drop an entry
     assert [p.name for p in (tmp_path / "challenges").iterdir() if p.suffix != ".json" and p.name != ".lock"] == []
 
 
@@ -189,3 +194,33 @@ def test_listing_reads_only_the_files_that_changed(tmp_path: Path, monkeypatch: 
 def test_a_bad_content_length_is_400(api: Api, path: str, length: str) -> None:
     status, _, _ = api.request("POST", path, b"", {"Content-Length": length})
     assert status == 400
+
+
+# ----- pre-mortem: a cap on the boards one visitor makes in a day ------------------------------------------------
+def test_one_visitor_makes_at_most_the_daily_number_of_boards(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(challenges, "BOARDS_PER_VISITOR_DAY", 3)
+    assert [_post(api)[0] for _ in range(3)] == [201, 201, 201]
+    status, err = _post(api)
+    assert status == 429 and err["error"] == challenges.MSG_VISITOR_BOARDS
+    assert _boards(api) == 3
+    other = api.json("POST", "api/challenges", dict(BODY), {"Cf-Connecting-Ip": "203.0.113.9"})
+    assert other[0] == 201  # a second visitor is counted on their own
+
+
+def test_the_visitor_cap_counts_per_key_and_per_day_and_stays_private(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(challenges, "BOARDS_PER_VISITOR_DAY", 2)
+    make = lambda who: challenges.create(tmp_path, entry_id="lateral-raise", title="T", creator_name="S", kind="friend", visitor=who)  # noqa: E731
+    first = make("aaaa")
+    make("aaaa")
+    with pytest.raises(challenges.ChallengeError) as caught:
+        make("aaaa")
+    assert caught.value.status == 429
+    assert make("bbbb")["id"]  # another visitor is not held back
+    _age(tmp_path, first["id"], 1)  # yesterday's board does not count
+    assert make("aaaa")["id"]
+    stored = challenges.get(tmp_path, first["id"])
+    assert stored["visitor"] == "aaaa"
+    assert "visitor" not in challenges.view(stored) and "visitor" not in challenges.summary(stored)
+    sponsor = {"name": "N", "tagline": "t", "url": "https://example.com", "prize": "p"}
+    for _ in range(3):  # the operator's sponsored boards are not capped
+        challenges.create(tmp_path, entry_id="lateral-raise", title="S", creator_name="N", kind="sponsored", sponsor=sponsor, allow_sponsored=True, visitor="aaaa")

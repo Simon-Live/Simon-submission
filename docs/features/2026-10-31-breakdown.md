@@ -19,6 +19,7 @@ Every coaching row with `data-cue-kind` gets a "Shape" or "Timing" chip.
 ## R4 Body-adjusted scoring (TICKET-074)
 Confirmed: Part 3 retargets everyone to one standard 1.70 m body and Part 5 compares joint angles and directions, so
 height and limb length do not change the score. Added: the "Scored on a standard body" note (`body-note`), a closed
-details that opens to the plain explanation. No scoring changed; per-person proportions stay rejected upstream.
+details that opens to the plain explanation. No scoring changed; per-person proportions are not modelled by design: one standard body for everyone keeps the score fair (operator
+2026-10-31). The note says so.
 - Files: `web/breakdown.js` (same panel module). Tests as above.
 - Limits: the note describes the pipeline and does not show the person's own measurements.

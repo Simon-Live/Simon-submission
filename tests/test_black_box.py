@@ -22,14 +22,24 @@ FORBIDDEN_MODULES = {
     "keyframe_finder",
     "simon_anim",
 }
-FORBIDDEN_ENV_VARS = ("SAM3D_REPO", "SAM3D_CKPT")
+# ADR-0008 (superseded in practice at Part 5 d655d50): the one file that runs inside Part 5's own interpreter and
+# imports Part 5 internals; kept only as the fallback for a pin without `analyse --profile`.
+BRIDGE_FILES = {"p5_mode_runner.py"}
+FORBIDDEN_ENV_VARS =("SAM3D_REPO", "SAM3D_CKPT")
 
 
 def _iter_part7_py_files() -> list[Path]:
     part7_dir = config.REPO_ROOT / "part7"
     if not part7_dir.exists():
         return []
-    return sorted(part7_dir.rglob("*.py"))
+    return sorted(p for p in part7_dir.rglob("*.py") if p.name not in BRIDGE_FILES)
+
+
+def test_the_bridge_is_never_imported_by_part7() -> None:
+    """Part 7's own process must not import the file that imports Part 5 internals; it only runs it as a script."""
+    pattern = re.compile(r"(?:import|from)\s+(?:part7\.|part7\s+import\s+|\.)?[\w, ]*p5_mode_runner")
+    for path in _iter_part7_py_files():
+        assert not pattern.search(path.read_text(encoding="utf-8")), path
 
 
 def test_no_other_part_imported_in_part7() -> None:

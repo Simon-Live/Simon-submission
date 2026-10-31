@@ -1,130 +1,130 @@
 {
   "schema": "part7.videos/1",
   "movement": {
-    "id": "lateral-raise",
-    "name": "Lateral raise",
+    "id": "knee-raise",
+    "name": "Standing knee raise",
     "rule": [
       {
         "candidate": "lateral-raise",
-        "verdict": "selected",
-        "reason": "Meets criteria 1 to 4: not in the exclusion list; main motion moves Part 5 measure upper_arm_out by >= 30 deg peak to peak; performed standing with whole body in frame (>= 2 repetitions in <= 20 s, >= 1 s each); openly licensed Pexels trainer and >= 2 follower clips by different people discovered; 0 grep hits across pinned Parts 1 to 6."
+        "verdict": "rejected",
+        "reason": "Fails criterion 1 since TICKET-086: Part 5 uses it as its real multi-rep development fixture (part5/real.py REPS_SOURCE, fixtures/input/real/lateral-raise), so a part is configured for it; 27 code and config grep hits across the pinned clones."
       },
       {
         "candidate": "front-raise",
-        "verdict": "not_evaluated",
-        "reason": "Earlier candidate lateral-raise in CANDIDATES order already met criteria 1 to 4."
+        "verdict": "rejected",
+        "reason": "Fails criterion 4: no standing whole-body set of one trainer and 2 followers. 4384614 is a single repetition of 8 s; 6892965 is occluded by a pillar with the legs cut; 20535458 is seated and filmed from behind."
       },
       {
         "candidate": "overhead-press",
-        "verdict": "not_evaluated",
-        "reason": "Earlier candidate lateral-raise in CANDIDATES order already met criteria 1 to 4."
+        "verdict": "rejected",
+        "reason": "Fails criterion 3: the clips found are seated bench presses (4367541, 4367578) or cropped above the hips (6286157), not standing with the whole body in frame."
       },
       {
         "candidate": "knee-raise",
-        "verdict": "not_evaluated",
-        "reason": "Earlier candidate lateral-raise in CANDIDATES order already met criteria 1 to 4."
+        "verdict": "selected",
+        "reason": "Meets criteria 1 to 4: not in the exclusion list; main motion is hip and knee flexion (thigh_forward, knee_flexion), its 30 deg peak to peak is confirmed by the real Part 5 analysis in check-7; standing, whole body in frame, repeated high knees; Pexels trainer 6326808 and followers 8026937 and 4224405 by different people (backup follower 5025964); 0 grep hits in code, config and docs across the six pinned clones."
       }
     ]
   },
   "clips": [
     {
-      "id": "pexels-5319084",
+      "id": "pexels-6326808",
       "role": "trainer",
       "angle": "front",
-      "url": "https://www.pexels.com/video/5319084/",
-      "download": "https://www.pexels.com/download/video/5319084/",
+      "url": "https://www.pexels.com/video/man-exercising-high-knees-6326808/",
+      "download": "https://videos.pexels.com/video-files/6326808/6326808-hd_1080_1920_25fps.mp4",
       "licence": "Pexels License",
       "licence_url": "https://www.pexels.com/license/",
       "author": "not stated on the page",
-      "title": "A Man Working Out Using Dumbbell · Free Stock Video",
-      "title_source": "huggingface.co/datasets/jovianzm/Pexels-400k (public index of Pexels clip titles)",
-      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium on 2026-10-30; author not read",
+      "title": "Man Exercising High Knees · Free Stock Video",
+      "title_source": "pexels.com clip page URL slug (the clip page itself answers a Cloudflare challenge)",
+      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium; title read from the page URL slug, author not read",
       "range_s": [
-        1.7,
+        0.0,
+        16.0
+      ],
+      "note": "One man, standing, front view, vertical frame, high knees (knee raise); the range stops before his feet leave the frame.",
+      "original_sha256": "510e46cb250c91d15ea291f27e57f02ea27025bd044ab0f441292d67ef56fbeb",
+      "downloaded_at": "2026-10-31T17:09:04Z",
+      "original": {
+        "file": "6326808-hd_1080_1920_25fps.mp4",
+        "size_bytes": 14968887,
+        "width": 1080,
+        "height": 1920,
+        "fps": 25.0,
+        "duration_s": 21.0
+      },
+      "clip_sha256": "782c8f88445ace365e4a06d380a62caa8ccbfd8089e18cd5ac2bafe6660edd3b",
+      "duration_s": 16.0,
+      "width": 608,
+      "height": 1080,
+      "fps": 25.0
+    },
+    {
+      "id": "pexels-8026937",
+      "role": "follower",
+      "angle": "three-quarter",
+      "url": "https://www.pexels.com/video/a-man-exercising-at-home-8026937/",
+      "download": "https://videos.pexels.com/video-files/8026937/8026937-uhd_1440_2732_25fps.mp4",
+      "licence": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "author": "not stated on the page",
+      "title": "A Man Exercising at Home · Free Stock Video",
+      "title_source": "pexels.com clip page URL slug (the clip page itself answers a Cloudflare challenge)",
+      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium; title read from the page URL slug, author not read",
+      "range_s": [
+        1.0,
+        13.0
+      ],
+      "note": "One man, standing, side to 45 degrees, high knees (knee raise) inside the range.",
+      "original_sha256": "cd63e8f1625207303a701043f0d9f611934ef90a4fb47a8a61f179fdb0f6742f",
+      "downloaded_at": "2026-10-31T17:09:08Z",
+      "original": {
+        "file": "8026937-uhd_1440_2732_25fps.mp4",
+        "size_bytes": 16142752,
+        "width": 1440,
+        "height": 2732,
+        "fps": 25.0,
+        "duration_s": 18.76
+      },
+      "clip_sha256": "7630463a4ef1103b02062359939da1a800f10579533f8e79bc5fb584f9e2e29c",
+      "duration_s": 12.0,
+      "width": 570,
+      "height": 1080,
+      "fps": 25.0
+    },
+    {
+      "id": "pexels-4224405",
+      "role": "follower",
+      "angle": "three-quarter",
+      "url": "https://www.pexels.com/video/video-of-man-exercising-4224405/",
+      "download": "https://videos.pexels.com/video-files/4224405/4224405-hd_1920_1080_24fps.mp4",
+      "licence": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "author": "not stated on the page",
+      "title": "Video of Man Exercising · Free Stock Video",
+      "title_source": "pexels.com clip page URL slug (the clip page itself answers a Cloudflare challenge)",
+      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium; title read from the page URL slug, author not read",
+      "range_s": [
+        0.0,
         12.0
       ],
-      "note": "One man, standing, whole body in frame, dumbbell lateral raise, 3 repetitions of about 3.3 s inside the range.",
-      "original_sha256": "6180ed5c4a2a161a5cfd2b990f597d0da32e4a0bba9637255a14416af6c17548",
-      "downloaded_at": "2026-10-30T15:08:36Z",
+      "note": "One man, standing, about 45 degrees, high knees (knee raise) inside the range.",
+      "original_sha256": "c6bc8404056a532b8bf44d6b14371e1cc647bc182b0ea75ba1b1b3043f0f79e5",
+      "downloaded_at": "2026-10-31T17:09:11Z",
       "original": {
-        "file": "5319084-uhd_3840_2160_25fps.mp4",
-        "size_bytes": 26390444,
-        "width": 3840,
-        "height": 2160,
-        "fps": 25.0,
-        "duration_s": 20.32
-      },
-      "clip_sha256": "502947d3d4f15a47b8f4e503ae6997117d5bb336b79bf55875ec701136859b6a",
-      "duration_s": 10.32,
-      "width": 1920,
-      "height": 1080,
-      "fps": 25.0
-    },
-    {
-      "id": "pexels-8836968",
-      "role": "follower",
-      "angle": "front",
-      "url": "https://www.pexels.com/video/8836968/",
-      "download": "https://www.pexels.com/download/video/8836968/",
-      "licence": "Pexels License",
-      "licence_url": "https://www.pexels.com/license/",
-      "author": "not stated on the page",
-      "title": "Woman Lifting Dumbbells · Free Stock Video",
-      "title_source": "huggingface.co/datasets/jovianzm/Pexels-400k (public index of Pexels clip titles)",
-      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium on 2026-10-30; author not read",
-      "range_s": [
-        13.0,
-        30.5
-      ],
-      "note": "One woman, standing, framed from head to hips, dumbbell lateral raise, 2 slow repetitions inside the range.",
-      "original_sha256": "1b5a1461455577ca44a795d7254713ad212681f0500271471634da817b45c677",
-      "downloaded_at": "2026-10-30T15:08:40Z",
-      "original": {
-        "file": "8836968-uhd_4096_2160_25fps.mp4",
-        "size_bytes": 48531358,
-        "width": 4096,
-        "height": 2160,
-        "fps": 25.0,
-        "duration_s": 37.0
-      },
-      "clip_sha256": "6d6a2810f1d983b072a2551e4d4e8a6ad292c7693790b1cfbbbc311cd9bfcf7f",
-      "duration_s": 17.52,
-      "width": 2048,
-      "height": 1080,
-      "fps": 25.0
-    },
-    {
-      "id": "pexels-40297504",
-      "role": "follower",
-      "angle": "front",
-      "url": "https://www.pexels.com/video/40297504/",
-      "download": "https://www.pexels.com/download/video/40297504/",
-      "licence": "Pexels License",
-      "licence_url": "https://www.pexels.com/license/",
-      "author": "not stated on the page",
-      "title": "not available (page answered HTTP 403 and the id is absent from the public title index)",
-      "title_source": "none: the title could not be read",
-      "page_access": "clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium on 2026-10-30; author not read",
-      "range_s": [
-        2.0,
-        12.5
-      ],
-      "note": "One man, standing, framed from head to hips, wide-angle low camera in dim blue light, dumbbells motion-blurred, about 4 dumbbell lateral raises of about 2.3 s inside the range.",
-      "original_sha256": "8edf14cd1e00d0dfa29c153d5de6b75950357481a8eaad3188e6139bd3b86bf9",
-      "downloaded_at": "2026-10-30T15:08:44Z",
-      "original": {
-        "file": "17212887_1920_1080_25fps.mp4",
-        "size_bytes": 6548925,
+        "file": "4224405-hd_1920_1080_24fps.mp4",
+        "size_bytes": 7576823,
         "width": 1920,
         "height": 1080,
-        "fps": 25.0,
-        "duration_s": 16.12
+        "fps": 23.976,
+        "duration_s": 12.137
       },
-      "clip_sha256": "38318d41d8ef3fb94a38b376c1e1e1653e4d3137f947545154d14f412e0c17df",
-      "duration_s": 10.52,
+      "clip_sha256": "d9bbb13f41bf0ed6152cd031fa06994c257f2b34b120f01f6a1675daac6a9532",
+      "duration_s": 12.012,
       "width": 1920,
       "height": 1080,
-      "fps": 25.0
+      "fps": 23.976
     },
     {
       "id": "pexels-5034562",
@@ -142,7 +142,7 @@
         0.0,
         6.8
       ],
-      "note": "One woman, standing, side view, bodyweight squats (a different movement from the lateral raise) inside the range.",
+      "note": "One woman, standing, side view, bodyweight squats (a different movement from the knee raise) inside the range.",
       "original_sha256": "cdad47486ae88606f0684dea2e237f9f9491f967706663dffcf627812f81435c",
       "downloaded_at": "2026-10-30T15:08:48Z",
       "original": {
@@ -161,11 +161,11 @@
     }
   ],
   "frozen": {
-    "at": "2026-10-30T15:09:16Z",
+    "at": "2026-10-31T17:09:23Z",
     "ticket": "TICKET-013",
     "clips": {
-      "pexels-8836968": "6d6a2810f1d983b072a2551e4d4e8a6ad292c7693790b1cfbbbc311cd9bfcf7f",
-      "pexels-40297504": "38318d41d8ef3fb94a38b376c1e1e1653e4d3137f947545154d14f412e0c17df",
+      "pexels-8026937": "7630463a4ef1103b02062359939da1a800f10579533f8e79bc5fb584f9e2e29c",
+      "pexels-4224405": "d9bbb13f41bf0ed6152cd031fa06994c257f2b34b120f01f6a1675daac6a9532",
       "pexels-5034562": "b151d36ebfe3a4611ffc8e0109668b6f314e5e5be2d51e66e32bbfa5b445602b"
     }
   }

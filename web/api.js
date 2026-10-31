@@ -133,19 +133,21 @@ export function getConfig() {
 export const getHealth = () => request("api/health");
 export const getVersion = () => request("api/version");
 export const listEntries = async () => (await request("catalog/api/entries")).entries || [];
-export const getEntry = (id) => request(`catalog/api/entries/${encodeURIComponent(id)}`);
+export const getEntry = (id) => request(`catalog/api/entries/${encodeURIComponent(id)}`, { expectStatus: [404] });
 export const entryFileUrl = (id, file) =>
   `catalog/api/entries/${encodeURIComponent(id)}/${encodeURIComponent(file)}`;
 export const getEntryFile = (id, file) => request(entryFileUrl(id, file));
 export const entryPageUrl = (id) => `catalog/#/entry/${encodeURIComponent(id)}`;
 
-export const getJob = (id) => request(`api/jobs/${encodeURIComponent(id)}`);
+// A 404 on these is a normal outcome the caller shows (job gone, result not found): `expectStatus` tells errors.js not to report it.
+const NOT_FOUND_OK = { expectStatus: [404] };
+export const getJob = (id) => request(`api/jobs/${encodeURIComponent(id)}`, NOT_FOUND_OK);
 export const getFixtureResult = () => request("api/fixture-result");
 /** api/results/<job>/<file>, or api/results/<job>/<pid>/<file> for one person of a group job. */
 export const resultUrl = (job, file, pid) =>
   `api/results/${encodeURIComponent(job)}/${pid == null ? "" : `${encodeURIComponent(pid)}/`}${file}`;
-export const getAnalysis = (job, pid) => request(resultUrl(job, "analysis.json", pid));
-export const getReplay = (job, pid) => request(resultUrl(job, "replay.json", pid));
+export const getAnalysis = (job, pid) => request(resultUrl(job, "analysis.json", pid), NOT_FOUND_OK);
+export const getReplay = (job, pid) => request(resultUrl(job, "replay.json", pid), NOT_FOUND_OK);
 
 /**
  * POST api/uploads with the raw blob; resolves {upload_id, duration_ms, width, height}.

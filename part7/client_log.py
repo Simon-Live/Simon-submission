@@ -20,6 +20,7 @@ from part7 import applog
 DETAIL_MAX = 4096  # bytes of `detail` as compact JSON
 BODY_MAX = DETAIL_MAX + 1024  # the envelope around it
 EVENT_MAX = 64
+ERROR_EVENT = "client_error"  # web/errors.js sends it; the server logs it as `ANOMALY client_error` (observability.md)
 PAGE_MAX = 200
 RATE_LIMIT = 60
 RATE_WINDOW_S = 60.0
@@ -84,6 +85,20 @@ def parse(raw: bytes) -> tuple[int, dict[str, Any] | str]:
     return (200, {"level": level, "event": event, "detail": text, "page": _CONTROL.sub(" ", page)[:PAGE_MAX]})
 
 
+def error_fields(event: dict[str, Any]) -> dict[str, Any]:
+    """The `ANOMALY client_error` fields of a `client_error` event: page, source and the cut detail fields."""
+    try:
+        detail = json.loads(event["detail"])
+    except ValueError:
+        detail = {}
+    detail = detail if isinstance(detail, dict) else {}
+    out: dict[str, Any] = {"page": event["page"] or "-"}
+    for key in ("source", "status", "path", "file", "line", "col", "count"):
+        if isinstance(detail.get(key), (str, int)) and not isinstance(detail.get(key), bool):
+            out[key] = detail[key]
+    return {**out, "detail": str(detail.get("message", ""))[:300]}
+
+
 def line(event: dict[str, Any]) -> str:
     """The log line of a parsed event (one line: control characters are already gone)."""
     return f"client {event['level']} {event['event']} page={event['page'] or '-'} {event['detail']}"
@@ -104,7 +119,10 @@ def handle(h: Any, limiter: RateLimit) -> None:
     key = h._visitor() or (h.client_address[0] if h.client_address else "unknown")
     if not limiter.allow(key):
         return h._error(429, MSG_RATE)
-    applog.log(line(parsed), level=LEVELS[parsed["level"]])
+    if parsed["event"] == ERROR_EVENT:
+        applog.anomaly("client_error", **error_fields(parsed))
+    else:
+        applog.log(line(parsed), level=LEVELS[parsed["level"]])
     h.send_response(204)
     h.send_header("Cache-Control", "no-store")
     h.end_headers()

@@ -228,3 +228,49 @@ def test_a_short_real_reading_still_times_out(tmp_path: Path) -> None:
         with gpu_lock.acquire(lock_path=tmp_path / "gpu.lock", poll_s=0.05, timeout_s=0.3,
                               memory_fn=lambda: 1000):
             pass
+
+
+# ----- TICKET-089: a long flock wait names the holder -----------------------------------------------------------
+
+
+def test_lock_holder_reads_proc_locks_and_cmdline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    lpath = tmp_path / "gpu.lock"
+    lpath.write_text("")
+    ino = lpath.stat().st_ino
+    locks = f"1: POSIX  ADVISORY  WRITE 99 00:01:{ino} 0 EOF\n2: FLOCK  ADVISORY  WRITE 4242 08:01:{ino} 0 EOF\n"
+    monkeypatch.setattr(gpu_lock, "_read_proc_locks", lambda: locks)
+    monkeypatch.setattr(gpu_lock, "_read_cmdline", lambda pid: f"python -m part7 check {pid}")
+    assert gpu_lock.lock_holder(lpath) == "pid 4242 python -m part7 check 4242"
+    monkeypatch.setattr(gpu_lock, "_read_proc_locks", lambda: "2: FLOCK  ADVISORY  WRITE 4242 08:01:1 0 EOF\n")
+    assert gpu_lock.lock_holder(lpath) is None
+
+
+def test_cmdline_is_cut_at_120_chars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Path, "read_bytes", lambda self: b"a\0" + b"b" * 300)
+    assert len(gpu_lock._read_cmdline(1)) == 120
+
+
+def test_a_flock_wait_names_the_holder_once(job_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    lpath = tmp_path / "gpu.lock"
+    fd = os.open(str(lpath), os.O_CREAT | os.O_RDWR, 0o666)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    ino = lpath.stat().st_ino
+    monkeypatch.setattr(gpu_lock, "HOLDER_LOG_S", 0.1)
+    monkeypatch.setattr(gpu_lock, "_read_proc_locks", lambda: f"1: FLOCK  ADVISORY  WRITE 4242 08:01:{ino} 0 EOF\n")
+    monkeypatch.setattr(gpu_lock, "_read_cmdline", lambda pid: "python -m part7 check")
+    threading.Timer(0.5, lambda: fcntl.flock(fd, fcntl.LOCK_UN)).start()
+    try:
+        with gpu_lock.acquire(lock_path=lpath, min_free_mib=0, poll_s=0.05, timeout_s=5.0, job_dir=job_dir):
+            pass
+    finally:
+        time.sleep(0.05)
+        os.close(fd)
+    named = [x for x in _log(job_dir).splitlines() if "lock held by" in x]
+    assert len(named) == 1 and named[0].endswith("gpu wait: lock held by pid 4242 python -m part7 check")
+
+
+def test_no_holder_line_when_the_wait_is_short(job_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gpu_lock, "_read_proc_locks", lambda: pytest.fail("not read"))
+    with gpu_lock.acquire(lock_path=tmp_path / "gpu.lock", min_free_mib=0, timeout_s=5.0, job_dir=job_dir):
+        pass
+    assert "lock held by" not in _log(job_dir)

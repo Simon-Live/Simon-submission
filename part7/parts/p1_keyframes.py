@@ -10,7 +10,7 @@ import shutil
 import sys
 from typing import Any
 
-from part7 import applog, config, keys, modules, runner
+from part7 import applog, config, keys, modules, part1_breaker, runner
 
 # Part 1 has no retry around Meta's streamed SAM answer; a stream cut short ends the run with exit 1 (3 staging
 # jobs on 2026-10-30, TICKET-064). These names in its output mean the network dropped, not that the clip is bad.
@@ -23,6 +23,12 @@ def transient_failure(step: runner.Step) -> bool:
     return step["exit"] not in (0, None) and not step.get("timed_out") and any(
         marker in step.stdout for marker in TRANSIENT_MARKERS
     )
+
+
+def _log_open(until: float, work: Path) -> None:
+    """`ANOMALY part1_circuit_open` is the text monitors match (TICKET-089)."""
+    applog.log(f"ANOMALY part1_circuit_open: part 1 circuit open until {part1_breaker.until_text(until)}",
+               applog.job_id_of(work), work, logging.WARNING)
 
 
 def _extract_spend(data: Any) -> float:
@@ -76,10 +82,17 @@ def run(
     if not keys.has_key("MODEL_API_KEY", keys_dir=keys_dir):
         return (None, None, "key frames from Part 3, Part 1 unavailable")
 
+    work_p = Path(work)
+    breaker = part1_breaker.enabled()
+    if breaker:
+        allowed, until = part1_breaker.allow(state)
+        if not allowed:
+            _log_open(until, work_p)
+            return (None, None, part1_breaker.pause_note(until))
+
     lk = lock or modules.load()
     clone = lk.path("1")
     video_p = Path(video)
-    work_p = Path(work)
     work_p.mkdir(parents=True, exist_ok=True)
 
     sha12 = hashlib.sha256(video_p.read_bytes()).hexdigest()[:12]
@@ -122,6 +135,12 @@ def run(
                 step["first_try"] = first_try  # the job record keeps both tries
     finally:
         inbox_copy.unlink(missing_ok=True)
+
+    if breaker and step is not None:
+        outcome = "ok" if step["exit"] == 0 else "transient" if step.get("timed_out") or transient_failure(step) else "other"
+        opened = part1_breaker.record(outcome, state)
+        if opened:
+            _log_open(opened, work_p)
 
     out_kf = clone / "out" / stem / "keyframes.json"
     if step is not None and step["exit"] == 0 and out_kf.is_file():

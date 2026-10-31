@@ -8,7 +8,7 @@
 <script type="module">
 // Served by fake_api.py at /__harness/challenge.html, the base is "/" so api/... and x.js are web/x.js.
 // ?screen=actions&job=job1&pid=&entry=lateral-raise&score=82   the result screen's challenge slot (contract item 1)
-//   &challenge=board1&mode=rehab                                the job record's challenge_id and mode
+//   &challenge=board1&mode=rehab&tookended=1&code=error         the job record's challenge_id, mode and challenge_ended; the analysis status code
 // ?screen=crew&job=grp1&entry=salsa-basic                       the group result's crew challenge
 // ?screen=list&entry=lateral-raise                              the watch screen's Challenges section
 import { mountChallengeActions, mountCrewChallenge } from "./challenge-actions.js";
@@ -25,8 +25,8 @@ if (screen === "crew") {
 } else {
   const pid = q.get("pid");
   await mountChallengeActions(root, {
-    job: q.get("job"), pid: pid || null, analysis: { score: { value: Number(q.get("score") || 61), grade: "D" } },
-    jobRecord: q.get("entry") ? { entry_id: q.get("entry"), ...(q.get("challenge") ? { challenge_id: q.get("challenge") } : {}), ...(q.get("mode") ? { mode: q.get("mode") } : {}) } : null,
+    job: q.get("job"), pid: pid || null, analysis: { status: { code: q.get("code") || "ok" }, score: { value: Number(q.get("score") || 61), grade: "D" } },
+    jobRecord: q.get("entry") ? { entry_id: q.get("entry"), ...(q.get("challenge") ? { challenge_id: q.get("challenge") } : {}), ...(q.get("mode") ? { mode: q.get("mode") } : {}), ...(q.get("tookended") ? { challenge_ended: true } : {}) } : null,
   });
 }
 window.__ready = true;

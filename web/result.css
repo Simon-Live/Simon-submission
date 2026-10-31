@@ -130,7 +130,7 @@
 .sr-timeline { background: var(--sr-surface); border: 1px solid var(--sr-line); border-radius: 18px; padding: 18px; }
 .sr-tl-note { margin: 0 0 12px; color: var(--sr-muted); font-size: 14px; }
 .sr-tl-chart { position: relative; height: 96px; border-bottom: 1px solid var(--sr-line); }
-.sr-tl-bar { position: absolute; bottom: 0; height: 100%; padding: 0 1px; border: 0; background: transparent; cursor: pointer;
+.sr-tl-bar { position: absolute; bottom: 0; height: 100%; min-width: 44px; padding: 0 1px; border: 0; background: transparent; cursor: pointer;
   display: flex; align-items: flex-end; justify-content: center; border-radius: 6px 6px 0 0; }
 .sr-tl-bar:focus-visible { outline: 2px solid var(--sr-text); outline-offset: 2px; }
 .sr-tl-fill { display: block; width: 100%; border-radius: 6px 6px 0 0; background: var(--c, var(--sr-muted)); opacity: 0.75; }
@@ -169,7 +169,7 @@
 .sr-insight-cue { font-size: 17px; font-weight: 700; text-wrap: balance; }
 .sr-insight-why { color: var(--sr-muted); font-size: 14px; text-wrap: pretty; }
 .sr-insight-chip { flex: none; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px;
-  color: var(--sr-f); background: color-mix(in srgb, var(--sr-f) 14%, transparent); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  color: #ff8d98; background: color-mix(in srgb, var(--sr-f) 14%, transparent); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .sr-insight-chip.sr-tempo { color: var(--sr-trainer); background: color-mix(in srgb, var(--sr-trainer) 16%, transparent); }
 .sr-cue { color: var(--sr-you); font-size: 15px; font-weight: 700; }
 .sr-tl-words { display: grid; gap: 2px; min-width: 0; }
@@ -195,7 +195,7 @@
 .sr-worst-note { color: var(--sr-muted); font-size: 13px; flex: 1 1 auto; }
 .sr-coach-clock { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 650; }
 .sr-marks { position: relative; height: 44px; margin: 0 12px 10px; border-radius: 8px; background: var(--sr-raised); }
-.sr-mark { position: absolute; top: 0; bottom: 0; min-width: 24px; padding: 0; border: 0; border-radius: 6px; cursor: pointer; background: var(--sr-f); opacity: 0.85; }
+.sr-mark { position: absolute; top: 0; bottom: 0; min-width: 44px; padding: 0; border: 0; border-radius: 6px; cursor: pointer; background: var(--sr-f); opacity: 0.85; }
 .sr-mark-miss { background: var(--sr-d); }
 .sr-mark:focus-visible { outline: 3px solid #fff; outline-offset: 1px; }
 .sr-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--sr-text); pointer-events: none; z-index: 1; }

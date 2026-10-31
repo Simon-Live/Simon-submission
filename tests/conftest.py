@@ -15,6 +15,12 @@ from part7 import server  # noqa: E402
 from support import Api, FakeChild, ffmpeg_video, make_lock  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _part1_breaker_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TICKET-089: the Part 1 circuit breaker writes state; tests that exercise it switch it on with a state dir."""
+    monkeypatch.setenv("SIMON7_PART1_BREAKER", "off")
+
+
 @pytest.fixture()
 def state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Provide an isolated temporary state root for tests."""

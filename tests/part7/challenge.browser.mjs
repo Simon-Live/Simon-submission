@@ -53,7 +53,7 @@ async function open(url, { init, clipboard = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true, acceptDownloads: true });
   if (clipboard) await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
   const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error" && !/status of (404|409)|ERR_FILE_NOT_FOUND/.test(m.text())) errors.push(`${url}: ${m.text()}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !/status of (404|409)/.test(m.text())) errors.push(`${url}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
   if (init) await page.addInitScript(init);
   await page.goto(`${BASE}${url}`);
@@ -101,10 +101,14 @@ try {
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), link);
   const picture = await tid(page, "share-card-preview").getAttribute("src");
   assert.equal(await page.evaluate((u) => fetch(u).then(() => true, () => false), picture), true, "the picture is readable while the person is here");
+  assert.match(picture, /^data:image\/png;base64,/, "the preview needs no object URL that could be revoked");
   await page.evaluate(() => { location.hash = "#/elsewhere"; });
   await page.waitForTimeout(200);
-  assert.equal(await page.evaluate((u) => fetch(u).then(() => true, () => false), picture), false, "negative: the object URL is revoked when the person leaves");
-  ok("create a friend challenge: server-read score, 1080x1350 PNG card, download + copied link without a share sheet, object URL revoked on leaving");
+  await page.goBack();
+  await page.waitForTimeout(200);
+  await tid(page, "challenge-share").tap().catch(() => {});
+  await page.waitForTimeout(300);
+  ok("create a friend challenge: server-read score, 1080x1350 PNG card, download + copied link without a share sheet, no revoked URL after leaving and coming back");
 
   // ---- a refused first result creates no challenge (B4) -------------------------------------------------
   const countBefore = (await api("api/challenges")).challenges.length;
@@ -189,6 +193,18 @@ try {
   await tid(page, "challenge-create").waitFor();
   assert.equal(await tid(page, "challenge-join").count(), 0, "negative: a result without a challenge_id offers no join");
   ok("an ended challenge, or none, offers no join");
+
+  page = await harness("screen=actions&job=job2&entry=lateral-raise&code=error");
+  await page.waitForTimeout(300);
+  assert.equal(await tid(page, "challenge-actions").count(), 0, "negative: a take that was not scored ok offers no challenge");
+  assert.equal(await tid(page, "challenge-create").count(), 0);
+  page = await harness("screen=actions&job=job2&entry=lateral-raise&tookended=1");
+  await tid(page, "challenge-create").waitFor();
+  assert.match(await tid(page, "challenge-ended-note").textContent(), /has ended/);
+  page = await harness("screen=actions&job=job2&entry=lateral-raise");
+  await tid(page, "challenge-create").waitFor();
+  assert.equal(await tid(page, "challenge-ended-note").count(), 0, "negative: no note when the challenge did not end");
+  ok("no Challenge a friend for an unscored take; a take whose challenge ended says so");
 
   // ---- duplicate result shows the server's plain message ------------------------------------------------
   page = await harness("screen=actions&job=job1&entry=lateral-raise&challenge=board1");

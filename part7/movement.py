@@ -24,6 +24,9 @@ EXCLUDED_MOVEMENTS: tuple[str, ...] = (
     "dumbbell deadlift",
     "seated reverse fly",
     "dance",
+    # TICKET-086: Part 5 uses it as its real multi-rep development fixture (part5/real.py REPS_SOURCE,
+    # fixtures/input/real/lateral-raise), so a part is configured for it and the check-7 grep fires.
+    "lateral raise",
 )
 
 PART5_MEASURES: tuple[str, ...] = (
@@ -199,16 +202,28 @@ def validate_movement(movement: Any) -> list[str]:
     return errors
 
 
-def grep_clones_for_movement(
+# TICKET-086: prose is not tuning. Only code, rules and configuration can overfit a part to the movement.
+DOC_SUFFIXES = (".md", ".mdx", ".rst", ".txt", ".adoc")
+DOC_DIRS = ("docs", "doc")
+
+
+def is_doc_path(path: str) -> bool:
+    """True for prose (design docs, ADRs, notes); false for code, rules, config and runtime fixtures."""
+    parts = path.split("/")
+    return path.lower().endswith(DOC_SUFFIXES) or any(p in DOC_DIRS for p in parts[:-1])
+
+
+def grep_clones_split(
     movement_id: str,
     movement_name: str,
     parts_root: Path | None = None,
-) -> list[str]:
-    """Grep every part module for the movement's id or display name."""
+) -> tuple[list[str], list[str]]:
+    """Grep every part module for the movement's id or name: (code and config hits, doc mentions)."""
     root = parts_root if parts_root is not None else config.modules_dir()
     if not root.exists():
-        return []
+        return [], []
     hits: list[str] = []
+    docs: list[str] = []
     terms = []
     for term in (movement_id, movement_name):
         if term and term not in terms:
@@ -225,8 +240,18 @@ def grep_clones_for_movement(
             )
             if res.returncode == 0 and res.stdout.strip():
                 for line in res.stdout.strip().splitlines():
-                    hits.append(f"{clone_dir.name}:{line}")
-    return hits
+                    target = docs if is_doc_path(line.split(":", 1)[0]) else hits
+                    target.append(f"{clone_dir.name}:{line}")
+    return hits, docs
+
+
+def grep_clones_for_movement(
+    movement_id: str,
+    movement_name: str,
+    parts_root: Path | None = None,
+) -> list[str]:
+    """The gated hits: the movement id or name in a part's code, rules or configuration."""
+    return grep_clones_split(movement_id, movement_name, parts_root=parts_root)[0]
 
 
 def check_movement(
@@ -240,7 +265,7 @@ def check_movement(
     errors = validate_movement(mov)
     mov_id = str(mov.get("id", ""))
     mov_name = str(mov.get("name", ""))
-    grep_hits = grep_clones_for_movement(mov_id, mov_name, parts_root=parts_root)
+    grep_hits, doc_mentions = grep_clones_split(mov_id, mov_name, parts_root=parts_root)
     return {
         "id": mov_id,
         "name": mov_name,
@@ -248,4 +273,5 @@ def check_movement(
         "errors": errors,
         "excluded_list_sha": excluded_list_sha(),
         "grep_hits": grep_hits,
+        "doc_mentions": doc_mentions,
     }

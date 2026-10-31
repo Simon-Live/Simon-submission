@@ -235,7 +235,7 @@ export function mountPractice(root, { entry, mode, storage }) {
       const state = isPassed(progress, step) ? "passed" : open ? "open" : "locked";
       const b = h("button", {
         type: "button", class: "step-btn", disabled: !open, "data-testid": `step-${step.key}`, "data-state": state,
-        "aria-pressed": String(i === selected), "aria-label": `${step.label}${open ? "" : `. ${TEXT.locked}`}`,
+        "aria-pressed": String(i === selected), "aria-description": open ? null : TEXT.locked, // the name is the visible words: label, then "Locked", "Best n" or "Passed"
         onclick: () => select(i),
       }, h("span", { class: "step-label", text: step.label }),
       h("span", { class: "step-note", text: best == null ? (open ? "" : "Locked") : (state === "passed" ? TEXT.passed(best) : TEXT.best(best)) }));

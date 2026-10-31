@@ -24,6 +24,7 @@ def test_excluded_movements_exact_tuple() -> None:
         "dumbbell deadlift",
         "seated reverse fly",
         "dance",
+        "lateral raise",
     )
     assert movement.EXCLUDED_MOVEMENTS == expected
     sha = movement.excluded_list_sha()
@@ -36,8 +37,9 @@ def test_excluded_movements_exact_tuple() -> None:
     assert movement.is_excluded("barbell squat")
     assert movement.is_excluded("reverse lunge")
     assert movement.is_excluded("dance routine")
-    assert not movement.is_excluded("lateral-raise")
-    assert not movement.is_excluded("Lateral raise")
+    # TICKET-086: Part 5's own development fixture, so it can never be the held-out movement
+    assert movement.is_excluded("lateral-raise")
+    assert movement.is_excluded("Lateral raise")
     assert not movement.is_excluded("front-raise")
     assert not movement.is_excluded("overhead-press")
     assert not movement.is_excluded("knee-raise")
@@ -51,8 +53,9 @@ def test_candidates_order_and_measures() -> None:
         "knee-raise",
     ]
     for cand in movement.CANDIDATES:
-        assert not movement.is_excluded(cand["id"])
-        assert not movement.is_excluded(cand["name"])
+        # lateral-raise stays in the ordered rule as a rejected candidate (TICKET-086)
+        assert movement.is_excluded(cand["id"]) == (cand["id"] == "lateral-raise")
+        assert movement.is_excluded(cand["name"]) == (cand["id"] == "lateral-raise")
         assert cand["measures"]
         for m in cand["measures"]:
             assert m in movement.PART5_MEASURES
@@ -66,9 +69,10 @@ def test_manifest_movement_rule_valid() -> None:
     mov = data.get("movement")
     errors = movement.validate_movement(mov)
     assert errors == [], f"Unexpected movement validation errors: {errors}"
-    assert mov["id"] == "lateral-raise"
-    assert mov["name"] == "Lateral raise"
+    assert mov["id"] == "knee-raise"
+    assert mov["name"] == "Standing knee raise"
     assert len(mov["rule"]) == len(movement.CANDIDATES)
+    assert [r["verdict"] for r in mov["rule"]] == ["rejected", "rejected", "rejected", "selected"]
 
 
 def test_validate_movement_rejects_invalid_cases() -> None:
@@ -134,7 +138,7 @@ def test_grep_clones_for_movement(tmp_path: Path) -> None:
     dirty_clone = parts_root / "5@cafebabe5678"
     dirty_clone.mkdir(parents=True)
     subprocess.run(["git", "init", "-q"], cwd=dirty_clone, check=True)
-    (dirty_clone / "rules.py").write_text("CONFIGURED = ['lateral-raise']\n", encoding="utf-8")
+    (dirty_clone / "rules.py").write_text("CONFIGURED = ['knee-raise']\n", encoding="utf-8")
     subprocess.run(["git", "add", "rules.py"], cwd=dirty_clone, check=True)
     subprocess.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"],

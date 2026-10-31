@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
-from part7 import challenges, client_log, group, jobs
+from part7 import challenges, client_log, group, jobs, quota
 
 BODY_MAX = 8192
 RATE_LIMIT = 20  # POSTs a minute from one visitor
@@ -41,6 +41,11 @@ def _allowed(h: Any) -> bool:
         return True
     h._error(429, MSG_RATE)
     return False
+
+
+def _visitor_key(h: Any) -> str:
+    """The hashed visitor key of quota.py (the address itself is never stored)."""
+    return quota.visitor_key(h._visitor() or (h.client_address[0] if h.client_address else "unknown")) or "unknown"
 
 
 def _body(h: Any) -> dict[str, Any] | None:
@@ -147,7 +152,7 @@ def _create(h: Any) -> None:
             first = [_score_entry(h, {"entry_id": entry_id}, job, pid, name) for job, pid, name in wanted]
         made = challenges.create(
             h.app.state, entry_id=entry_id, title=doc.get("title"), creator_name=doc.get("creator_name"),
-            kind=doc.get("kind"), entries=first,
+            kind=doc.get("kind"), entries=first, visitor=_visitor_key(h),
         )
     except challenges.ChallengeError as exc:
         return _fail(h, exc)
@@ -171,11 +176,13 @@ def _add(h: Any, challenge_id: str) -> None:
     h._json(201, {**challenges.view(stored), "added": [challenges.public_entry(e) for e in entries]})
 
 
-def follow_ref(h: Any, doc: dict[str, Any], entry_id: str) -> dict[str, str] | None:
+def follow_ref(h: Any, doc: dict[str, Any], entry_id: str) -> dict[str, Any] | None:
     """The optional `challenge_id` of a follow request as a job-record field, `{}` when absent.
 
-    The challenge must exist, be open and be for the same movement as the take; else this answers 400 or 409 and
-    returns None. The job record then carries the id, so the result can offer "Add my score" on any device.
+    The challenge must exist and be for the same movement as the take; else this answers 400 and returns None.
+    An open one puts its id on the job record, so the result can offer "Add my score" on any device. One that ended
+    between the start and the upload does not refuse the take: the record carries `challenge_ended` instead, and the
+    result screen says so.
     """
     raw = doc.get("challenge_id")
     if raw is None:
@@ -186,7 +193,7 @@ def follow_ref(h: Any, doc: dict[str, Any], entry_id: str) -> dict[str, str] | N
     elif found["entry_id"] != entry_id:
         h._error(400, MSG_OTHER_MOVEMENT)
     elif challenges.ended(found):
-        h._error(409, challenges.MSG_ENDED)
+        return {"challenge_ended": True}
     else:
         return {"challenge_id": found["id"]}
     return None

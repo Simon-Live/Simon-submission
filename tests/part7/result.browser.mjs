@@ -364,6 +364,15 @@ try {
     await anim.context().close();
     ok("AC-C9 the Watch animation (Part 4 bones) draws the compare's 17 joints and 18 bones");
 
+    // TICKET-090: a shipped sample entry (simon.animation/1, people[].joints) draws whole and logs nothing
+    const s1 = await open("animation-sim1");
+    const ss = await stats(s1, "viewer");
+    assert.deepEqual(ss["data-joints-drawn"], ["17"]);
+    assert.deepEqual(ss["data-joints-dimmed"], ["0"], "no joint of the sample is dimmed");
+    assert.deepEqual(ss["data-bones-drawn"], ["18"]);
+    await s1.context().close();
+    ok("TICKET-090 a simon.animation/1 sample draws 17 joints and 18 bones with none dimmed");
+
     const u = await open("unseen");
     const ua = await open("animation-unseen");
     await seekT(u, "compare", 1.0);

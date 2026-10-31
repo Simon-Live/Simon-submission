@@ -122,7 +122,7 @@ function momentsBlock(moments) {
 function bodyNote() {
   return el("details", { class: "sb-body", "data-testid": "body-note" },
     el("summary", { text: "Scored on a standard body" }),
-    el("p", { text: "Everyone is moved onto the same 1.70 m body before the compare, so your height and the length of your arms and legs do not change the score." }),
+    el("p", { text: "Everyone is moved onto the same 1.70 m body before the compare, so your height and the length of your arms and legs do not change the score. That is on purpose: one body for everyone keeps the score fair." }),
     el("p", { text: "The score looks at the angles of your joints and the direction your limbs point, set against the trainer's. Standing taller or shorter than the trainer costs you nothing." }));
 }
 
@@ -148,7 +148,9 @@ export function mountBreakdown(slot, ctx = {}) {
   const scope = slot.parentElement || document;
   tagRows(scope);
   // the score timeline rebuilds its miss rows when another window is opened: tag them again (tagRows is idempotent)
+  // watch only the timeline section, not the whole result root
   const watch = new MutationObserver(() => tagRows(scope));
-  watch.observe(scope, { childList: true, subtree: true });
+  const tl = scope.querySelector ? scope.querySelector("[data-testid='score-timeline']") : null;
+  if (tl) watch.observe(tl, { childList: true, subtree: true });
   return () => { watch.disconnect(); slot.replaceChildren(); };
 }

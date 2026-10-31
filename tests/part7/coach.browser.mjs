@@ -24,13 +24,14 @@ const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 // only the deliberately missing video (case novideo) and a module a case blocks on purpose may 404
 const EXPECTED_404 = /missing\.webm/;
 
-async function open(kase, { noWebgl = false, hangVideo = false, block = null } = {}) {
+async function open(kase, { noWebgl = false, hangVideo = false, lateVideoMs = 0, block = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true });
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_404.test(m.location().url + m.text()) && !(block && m.location().url.endsWith(block))) errors.push(`${kase}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
   if (block) await page.route(`**/web/${block}`, (r) => r.fulfill({ status: 404, body: "" })); // a lazy slot module that is missing
   if (hangVideo) await page.route("**/coach.webm", () => {}); // the request never answers: no metadata, no error
+  if (lateVideoMs) await page.route("**/coach.webm", async (r) => { await new Promise((ok) => setTimeout(ok, lateVideoMs)); await r.continue().catch(() => {}); });
   if (noWebgl) {
     await page.addInitScript(() => {
       const orig = HTMLCanvasElement.prototype.getContext;
@@ -236,12 +237,31 @@ try {
     const t0 = Date.now();
     const h = await open("golden", { hangVideo: true });
     assert.ok(Date.now() - t0 < 15000);
-    assert.equal(await tid(h, "coach-stage").count(), 0, "the stalled player is dropped");
+    assert.equal(await tid(h, "coach-stage").count(), 1, "N1: the stage stays up after the settle timeout");
     assert.ok(await tid(h, "fault-list").isVisible(), "faults render");
     assert.ok(await tid(h, "download-analysis").count() === 1, "downloads render");
     await h.waitForSelector('[data-testid="breakdown"]');
     await h.context().close();
-    ok("a video that never loads times out and the faults, downloads and breakdown still render");
+    ok("a video that never loads times out, the stage stays, and the faults, downloads and breakdown still render");
+  }
+
+  // ---- N1: a video that answers after the 4 s settle timeout still works ---------------------------------------
+  {
+    const l = await open("golden", { lateVideoMs: 5500 });
+    assert.ok(await tid(l, "fault-list").isVisible(), "faults rendered at the timeout");
+    assert.equal(await tid(l, "coach-stage").count(), 1, "stage present at the timeout");
+    await l.waitForFunction(() => document.querySelector('[data-testid="coach-stage"]').getAttribute("data-state") === "ready", null, { timeout: 8000 });
+    await l.context().close();
+    ok("a video that loads after the settle timeout becomes ready in the kept stage");
+  }
+
+  // ---- N1: a real load error removes the stage ---------------------------------------------------------------------
+  {
+    const e = await open("novideo");
+    assert.equal(await tid(e, "coach-stage").count(), 0, "the stage is removed on a load error");
+    assert.equal(await tid(e, "download-analysis").count(), 1, "downloads render");
+    await e.context().close();
+    ok("a video load error removes the stage and the downloads still render");
   }
 
   // ---- no timeline: the worst moment falls back to a fault; nothing to split ----------------------------
@@ -292,6 +312,60 @@ try {
     near(await videoT(w), at, 0.12, "video-only moment tap");
     await w.context().close();
     ok("without WebGL the video alone plays the lead-in to the moment");
+  }
+
+  // ---- TICKET-087: one transport, and a paused clock does not move ----------------------------------------------
+  {
+    // the result opens paused, even when the video is slow: the staging drive reads the clock the moment the 3D view
+    // shows and again 2 s later, while the video is still loading
+    const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true });
+    const e = await ctx.newPage();
+    e.on("pageerror", (x) => errors.push(`late-open: ${x.message}`));
+    await e.route("**/coach.webm", async (r) => { await new Promise((res) => setTimeout(res, 1500)); await r.continue().catch(() => {}); });
+    await e.goto(`http://127.0.0.1:${port}/tests/part7/harness/coach.html?case=ok`);
+    await tid(e, "compare").waitFor({ state: "visible" });
+    const c0 = await tid(e, "clock").innerText();
+    await e.waitForTimeout(2500);
+    assert.equal(await tid(e, "clock").innerText(), c0, "the clock the 3D view opened with did not move while the video loaded");
+    await e.waitForFunction(() => window.__ready === true);
+    assert.equal(await tid(e, "clock").innerText(), c0, "nor when the video became ready");
+    assert.equal(await tid(e, "play").getAttribute("data-playing"), "false", "opens paused");
+    assert.equal(await videoPaused(e), true, "the video opens paused");
+    const o0 = await videoT(e);
+    await e.waitForTimeout(1500);
+    assert.equal(await videoT(e), o0, "and stays put");
+    await ctx.close();
+    ok("the result opens paused and neither clock moves while the video loads or after");
+  }
+  {
+    const p = await open("ok");
+    const still = async (why) => {
+      const t = await clockT(p), v = await videoT(p);
+      await p.waitForTimeout(1500);
+      assert.equal(await clockT(p), t, `${why}: 3D clock`);
+      assert.equal(await videoT(p), v, `${why}: video clock`);
+      assert.equal(await videoPaused(p), true, `${why}: video paused`);
+      assert.equal(await tid(p, "play").getAttribute("data-playing"), "false", `${why}: 3D paused`);
+    };
+    await still("opened");
+    // pause with the 3D view's play button
+    await tid(p, "play").click();
+    await p.waitForFunction(() => document.querySelector('[data-testid="play"]').dataset.playing === "true");
+    await p.waitForTimeout(700);
+    assert.equal(await videoPaused(p), false, "play starts the video with the 3D view");
+    await tid(p, "play").click();
+    await still("paused with the 3D play button");
+    // pause with the video
+    await tid(p, "play").click();
+    await p.waitForTimeout(600);
+    await tid(p, "result-video").click();
+    await still("paused by tapping the video");
+    // a moment tap plays the lead-in, then stops
+    await tid(p, "moment-0").click();
+    await p.waitForTimeout(1800);
+    await still("after a moment tap");
+    await p.context().close();
+    ok("pausing from the 3D play button or from the video pauses both, and a moment tap stops on the moment");
   }
 
   assert.deepEqual(errors, []);

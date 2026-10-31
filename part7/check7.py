@@ -20,7 +20,7 @@ from typing import Any, Callable
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
-from part7 import compare, config, gpu_lock, movement, modules, runner, setup_parts, videos
+from part7 import compare, config, gpu_lock, movement, modules, runner, setup_parts, staging_live, videos
 from part7.parts import p2_pose, p3_skeleton, p4_animate, p6_catalog
 
 EXIT_OK = 0
@@ -31,6 +31,9 @@ JOB_TIMEOUT_S = 60 * 60
 HEALTH_TIMEOUT_S = 120
 BODY = "simon-standard"
 PHRASING = "template"
+
+
+Gate = Callable[[str], None]  # TICKET-089: called before a GPU stage; raises staging_live.Deferred to give way
 
 
 class MissingPrerequisite(Exception):
@@ -59,8 +62,10 @@ class AppError(Exception):
 class AppClient:
     """Visitor's view of the app: uploads, trainer and follow jobs, results, all by HTTP."""
 
-    def __init__(self, base: str, timeout_s: float = JOB_TIMEOUT_S, poll_s: float = 3.0) -> None:
+    def __init__(self, base: str, timeout_s: float = JOB_TIMEOUT_S, poll_s: float = 3.0,
+                 gate: Gate | None = None) -> None:
         self.base = base.rstrip("/") + "/"
+        self.gate = gate or (lambda label: None)
         self.timeout_s = timeout_s
         self.poll_s = poll_s
 
@@ -107,6 +112,7 @@ class AppClient:
         raise AppError(f"job {job_id} did not finish in {int(self.timeout_s)} s")
 
     def trainer(self, clip: Path | str, name: str) -> dict[str, Any]:
+        self.gate("app path, trainer")
         upload_id = self.upload(clip)
         job = self.post_json("api/trainer", {"upload_id": upload_id, "name": name, "category": "exercise"})
         done = self.wait_job(str(job["job"]))
@@ -117,6 +123,7 @@ class AppClient:
         return {"job": str(job["job"]), "entry_id": str(entry_id), "entry": entry}
 
     def follow(self, clip: Path | str, entry_id: str) -> dict[str, Any]:
+        self.gate("app path, follower")
         upload_id = self.upload(clip)
         job = self.post_json("api/follow", {"upload_id": upload_id, "entry_id": entry_id})
         job_id = str(job["job"])
@@ -158,7 +165,9 @@ def _step_record(path: str, clip: str, step: dict[str, Any]) -> dict[str, Any]:
 class DirectPath:
     """Parts 2 to 5 by their CLIs in the modules, with the argv the app path uses."""
 
-    def __init__(self, lock: modules.Modules, work: Path, state: Path | None = None) -> None:
+    def __init__(self, lock: modules.Modules, work: Path, state: Path | None = None,
+                 gate: Gate | None = None) -> None:
+        self.gate = gate or (lambda label: None)
         self.lock = lock
         self.work = Path(work)
         self.state = state
@@ -169,6 +178,7 @@ class DirectPath:
         return step
 
     def _pose(self, clip: Path, work: Path) -> Path:
+        self.gate(f"direct path, Part 2 on {clip.parent.name}")
         step, pose = p2_pose.run(clip, work, lock=self.lock, state=self.state)
         self._record(clip, step)
         if step["exit"] != 0 or not pose.is_file():
@@ -371,7 +381,7 @@ def run_check(
     total = time.monotonic() - t0
     return {
         "part": 7, "pass": passes(gates), "part7_commit": facts.get("part7_commit", ""),
-        "movement": {k: movement_info.get(k) for k in ("id", "name", "rule_ok", "excluded_list_sha", "grep_hits")},
+        "movement": {k: movement_info.get(k) for k in ("id", "name", "rule_ok", "excluded_list_sha", "grep_hits", "doc_mentions")},
         "pins": short,
         "clips": [{"id": c["id"], "role": c["role"], "source_url": c.get("url"), "licence": c.get("licence"),
                    "sha256": c.get("clip_sha256")} for c in clips],
@@ -474,8 +484,20 @@ def _app_input_sha(app_state: Path) -> Callable[[str, Path], str]:
     return sha
 
 
+def _deferred(exc: staging_live.Deferred) -> int:
+    """Exit 2 with `check-7: deferred: <reason>` and the metrics JSON saying so (TICKET-089)."""
+    print(f"check-7: deferred: {exc}", file=sys.stderr)
+    print(json.dumps({"part": 7, "pass": False, "deferred": True, "reason": str(exc)}))
+    return EXIT_MISSING
+
+
 def cli_check() -> int:
     """Entry point of `part7 check`: one JSON on stdout, logs on stderr, exit 0 only on pass."""
+    staging = staging_live.Gate(log=log)
+    try:
+        staging.at_start()
+    except staging_live.Deferred as exc:
+        return _deferred(exc)
     lock = modules.load()
     missing = prerequisites(lock)
     if missing:
@@ -496,19 +518,21 @@ def cli_check() -> int:
         cwd=str(config.REPO_ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True, text=True,
     )
-    client = AppClient(f"http://127.0.0.1:{port}/")
+    client = AppClient(f"http://127.0.0.1:{port}/", gate=staging.before_stage)
     try:
         try:
             _wait_healthy(client, proc)
         except AppError as exc:
             print(str(exc), file=sys.stderr)
             return EXIT_FAIL
-        direct = DirectPath(lock, run_dir / "direct")
+        direct = DirectPath(lock, run_dir / "direct", gate=staging.before_stage)
         metrics = run_check(
             client, direct, clips, lambda c: config.videos_dir() / c["id"] / "clip.mp4", movement_info, lock,
             _entry_facts(run_dir, lock), app_pins=client.health().get("pins"),
             app_input_sha=_app_input_sha(run_dir / "app"),
         )
+    except staging_live.Deferred as exc:
+        return _deferred(exc)
     except AppError as exc:
         log(f"check-7: {exc}")
         print(json.dumps({"part": 7, "pass": False, "error": str(exc)}))

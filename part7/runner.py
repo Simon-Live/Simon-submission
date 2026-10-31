@@ -112,9 +112,16 @@ def _log_call(part: int | str, cmd: list[str], log_path: Path, step: "Step | Non
         applog.log(f"part {part} start: {_short_argv(cmd)} (log {log_path})", job, job_dir)
     elif step["exit"] == 0:
         applog.log(f"part {part} exit 0 in {step['duration_s']:.1f} s ({log_path.name})", job, job_dir)
+        if job and str(part) == "1":
+            applog.fact(job, "part1", "ok")
     else:
         applog.log(f"part {part} failed in {step['duration_s']:.1f} s: {stagelog.step_failure(step)}", job, job_dir,
                    logging.WARNING)
+        timed = bool(step.get("timed_out"))
+        if job and str(part) == "1":
+            applog.fact(job, "part1", "timeout" if timed else "failed")
+        applog.anomaly("part_failed", stagelog.last_meaningful(log_path), job=job, job_dir=job_dir, part=part,
+                       exit="none" if step["exit"] is None else step["exit"], timed_out=timed, seconds=step["duration_s"])
 
 
 def run(

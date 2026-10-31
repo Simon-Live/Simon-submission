@@ -14,6 +14,12 @@ from part7 import check7, config, modules
 from support import stub_modules
 
 
+@pytest.fixture(autouse=True)
+def _ignore_real_staging(monkeypatch: pytest.MonkeyPatch) -> None:
+    # TICKET-089: the host's own staging may have live jobs; these tests are about the check, not the yield gate
+    monkeypatch.setenv("SIMON7_CHECK_IGNORE_STAGING", "1")
+
+
 def _lock() -> modules.Modules:
     return stub_modules(Path("unused-modules"))
 
@@ -187,8 +193,8 @@ def test_movement_grep_hit_fails_never_configured(tmp_path: Path) -> None:
     clone = tmp_path / "1@aaaaaaaaaaaa"
     clone.mkdir()
     subprocess.run(["git", "init", "-q", str(clone)], check=True)
-    (clone / "x.txt").write_text("handles lateral-raise here\n")
-    subprocess.run(["git", "-C", str(clone), "add", "x.txt"], check=True)
+    (clone / "x.py").write_text("handles lateral-raise here\n")
+    subprocess.run(["git", "-C", str(clone), "add", "x.py"], check=True)
     from part7 import movement
 
     hits = movement.grep_clones_for_movement("lateral-raise", "Lateral raise", parts_root=tmp_path)
@@ -303,3 +309,66 @@ def test_the_check_serves_with_the_clip_size_cap_off(tmp_path: Path, monkeypatch
         check7.cli_check()
     assert "serve" in seen["argv"]
     assert seen["env"]["SIMON7_CLIP_MAX_SIDE"] == "0" and seen["env"]["SIMON7_PHRASING"] == check7.PHRASING
+
+
+def _stub_clone(root: Path, files: dict[str, str]) -> None:
+    clone = root / "5@bbbbbbbbbbbb"
+    clone.mkdir()
+    subprocess.run(["git", "init", "-q", str(clone)], check=True)
+    for rel, text in files.items():
+        (clone / rel).parent.mkdir(parents=True, exist_ok=True)
+        (clone / rel).write_text(text)
+    subprocess.run(["git", "-C", str(clone), "add", "-A"], check=True)
+
+
+def test_movement_in_code_is_gated_and_not_a_doc_mention(tmp_path: Path) -> None:
+    # AC-K8
+    from part7 import movement
+
+    root = tmp_path / "mods"
+    root.mkdir()
+    _stub_clone(root, {"src/rule.py": "X = 'lateral-raise'\n", "cfg/t.json": '{"m": "Lateral raise"}\n'})
+    hits, docs = movement.grep_clones_split("lateral-raise", "Lateral raise", parts_root=root)
+    assert len(hits) == 2 and not docs
+    m = _run(_good(), _good(), mov={**MOV, "grep_hits": hits, "doc_mentions": docs})
+    assert m["gates"]["movement_never_configured"] is False
+
+
+def test_movement_only_in_docs_is_reported_not_gated(tmp_path: Path) -> None:
+    # AC-K12 (TICKET-086)
+    from part7 import movement
+
+    root = tmp_path / "mods"
+    root.mkdir()
+    _stub_clone(root, {"docs/design/adr/ADR-1.md": "e.g. a lateral raise\n", "docs/notes.json": "lateral raise\n",
+                       "README.md": "Lateral raise\n"})
+    hits, docs = movement.grep_clones_split("lateral-raise", "Lateral raise", parts_root=root)
+    assert hits == [] and len(docs) == 3
+    m = _run(_good(), _good(), mov={**MOV, "grep_hits": hits, "doc_mentions": docs})
+    assert m["gates"]["movement_never_configured"] is True and m["pass"] is True
+    assert m["movement"]["doc_mentions"] == docs
+
+
+def test_failed_gate_exits_one_not_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # AC-K13: a failed gate is exit 1; 2 is only for a missing prerequisite
+    class P:
+        pid = 0
+
+        def poll(self) -> int:
+            return 0
+
+    monkeypatch.setattr(check7.modules, "load", _lock)
+    monkeypatch.setattr(check7, "prerequisites", lambda lock: None)
+    monkeypatch.setattr(check7.videos, "load_manifest", lambda: {"clips": CLIPS})
+    monkeypatch.setattr(check7.movement, "check_movement", lambda: MOV)
+    monkeypatch.setattr(check7.config, "check_dir", lambda: tmp_path)
+    monkeypatch.setattr(check7.subprocess, "Popen", lambda *a, **k: P())
+    monkeypatch.setattr(check7, "_wait_healthy", lambda c, p: None)
+    monkeypatch.setattr(check7, "_stop", lambda p: None)
+    monkeypatch.setattr(check7, "_free_port", lambda: 1)
+    monkeypatch.setattr(check7, "DirectPath", lambda *a, **k: None)
+    monkeypatch.setattr(check7, "_entry_facts", lambda *a, **k: None)
+    monkeypatch.setattr(check7, "_app_input_sha", lambda *a, **k: None)
+    monkeypatch.setattr(check7.AppClient, "health", lambda self: {})
+    monkeypatch.setattr(check7, "run_check", lambda *a, **k: {"part": 7, "pass": False, "gates": {}})
+    assert check7.cli_check() == 1

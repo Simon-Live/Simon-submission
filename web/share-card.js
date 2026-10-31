@@ -129,6 +129,16 @@ export async function copyText(text, win = globalThis) {
 }
 
 /** Save the PNG through a download link. */
+/** The blob as a data: URL. A preview <img> uses it because a data: URL has no lifetime to revoke (TICKET-096). */
+export function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error || new Error("The picture could not be read."));
+    r.readAsDataURL(blob);
+  });
+}
+
 export function downloadBlob(blob, filename, win = globalThis) {
   const url = win.URL.createObjectURL(blob);
   const a = win.document.createElement("a");

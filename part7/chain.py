@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -122,6 +123,14 @@ def _has_people(path: Path) -> bool:
     return not (isinstance(doc, dict) and doc.get("people") == [])
 
 
+def _load_1m() -> str:
+    """The host 1-minute load average as `42.4`, or `unknown`."""
+    try:
+        return f"{os.getloadavg()[0]:.1f}"
+    except OSError:
+        return "unknown"
+
+
 def _keyframes(
     run: _Run, video: Path, work: Path, lk: modules.Modules, state: Any, keys_dir: Any
 ) -> tuple[Path | None, int]:
@@ -135,6 +144,8 @@ def _keyframes(
     )
     if step is not None and step.get("timed_out"):
         note = f"key frames from Part 3, Part 1 took longer than {timeout_s:g} s"
+        applog.log(f"Part 1 timed out after {timeout_s:g} s (load {_load_1m()})", applog.job_id_of(work), work,
+                   logging.WARNING)  # TICKET-089: a busy host is the usual cause
     if step is not None:
         run.steps.append(step)
     job = applog.job_id_of(work)

@@ -1,7 +1,8 @@
 """Practice modes (practice-and-modes.md): dance, rehab, fitness.
 
-A mode is chosen by the visitor and kept on the job record. Part 7 uses it for coaching and practice only.
-Part 5 scores with its own rules; `--profile <mode>` is passed only when Part 5's analyse help offers it.
+A mode is chosen by the visitor and kept on the job record. It sets coaching and practice, and (ADR-0008)
+how a take is scored: Part 5's `--profile <mode>` when its analyse help offers it, else Part 7's rules
+variant for dance and rehab (`mode_rules.py`). Fitness is Part 5's standard rules.
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from typing import Any
 
 MODES = ("dance", "rehab", "fitness")
 MSG_MODE = "Pick dance, rehab or fitness as the mode."
-NOTE_NO_PROFILE = "Part 5 has no scoring profile; mode changes coaching and practice only"
 
 
 class ModeError(ValueError):

@@ -116,19 +116,38 @@ export function normalizeReplay(replay) {
   };
 }
 
-/** Turn a Part 4 `simon.animation.v1` clip into the same model with one figure. */
-export function normalizeAnimation(anim) {
+/** A `simon.animation/1` joint ({x, y, z, conf}) as [x, y, z], or null when it was not seen: missing or
+ *  non-finite coordinates, or a confidence of 0 or less (TICKET-090). A missing conf counts as seen. */
+function joint3(p) {
+  if (!p || typeof p !== "object") return null;
+  const { x, y, z, conf } = p;
+  if (![x, y, z].every(Number.isFinite)) return null;
+  if (conf !== undefined && conf !== null && !(Number(conf) > 0)) return null;
+  return [x, y, z];
+}
+
+/** The joints of one frame by name: Part 4 `simon.animation.v1` keeps `joints` on the frame as [x, y, z];
+ *  `simon.animation/1` (the shipped sample entries) keeps `people[].joints` as {x, y, z, conf}. The
+ *  first person is used, or the one whose id is `personId`. */
+function frameJoints(f, personId) {
+  if (Array.isArray(f.people)) {
+    const who = personId === undefined ? f.people[0] : f.people.find((q) => q && q.id === personId);
+    return (n) => joint3(who && who.joints && who.joints[n]);
+  }
+  return (n) => { const p = f.joints && f.joints[n]; return Array.isArray(p) && p.length === 3 && p.every(Number.isFinite) ? p : null; };
+}
+
+/** Turn a Part 4 animation clip (`simon.animation.v1` or `simon.animation/1`) into the same model with one figure. */
+export function normalizeAnimation(anim, personId) {
   if (!anim || !Array.isArray(anim.joints) || !Array.isArray(anim.frames) || !anim.frames.length || !(anim.fps > 0)) {
     throw Object.assign(new Error(MSG_NO_ANIMATION), { detail: "animation" });
   }
   const joints = anim.joints.map((j) => (typeof j === "string" ? j : j.name));
   const body = bodyBones(joints, anim.bones || []);
-  const raw = anim.frames.map((f) => joints.map((n) => {
-    const p = f.joints && f.joints[n];
-    return Array.isArray(p) && p.length === 3 && p.every(Number.isFinite) ? p : null;
-  }));
+  const raw = anim.frames.map((f) => { const at = frameJoints(f, personId); return joints.map(at); });
   const filled = fillUnseen(raw, joints.length);
-  const duration = anim.frames[anim.frames.length - 1].t ?? (raw.length - 1) / anim.fps;
+  const last = anim.frames[anim.frames.length - 1];
+  const duration = last.t ?? (Number.isFinite(last.t_ms) ? last.t_ms / 1000 : (raw.length - 1) / anim.fps);
   return { kind: "single", fps: anim.fps, joints, bones: body.bones, droppedBones: body.dropped, frames: filled.frames, unseen: filled.unseen, never: filled.never, duration };
 }
 

@@ -19,6 +19,6 @@
 - clip_sha256: b151d36ebfe3a4611ffc8e0109668b6f314e5e5be2d51e66e32bbfa5b445602b
 - Role: mismatch
 - Angle: side
-- Note: One woman, standing, side view, bodyweight squats (a different movement from the lateral raise) inside the range.
+- Note: One woman, standing, side view, bodyweight squats (a different movement from the knee raise) inside the range.
 
 Used by Simon Part 7 as a test video; not modified except trimming and re-encoding.

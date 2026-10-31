@@ -1,4 +1,5 @@
 // Hash router. Relative URLs only; each screen returns a cleanup function.
+import { installErrorCapture } from "./errors.js";
 import { getAnalysis, getReplay, getFixtureResult, getJob, ApiError } from "./api.js";
 import { mountCatalog } from "./catalog.js";
 import { mountWatch } from "./watch.js";
@@ -10,6 +11,7 @@ import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading } from "./progress.js";
 import { mountBuildStamp } from "./build.js";
 
+installErrorCapture(); // uncaught errors and failed fetches reach the server log (observability.md)
 const root = document.getElementById("app");
 let cleanup = () => {};
 
@@ -26,11 +28,15 @@ async function loadResult(job, pid) {
 
 function mountResultRoute(el, job, pid) {
   let live = true;
+  let handle = null;
   showLoading(el, "Loading your result");
   Promise.all([loadResult(job, pid), import("./result.js")]).then(([data, mod]) => {
     if (!live) return;
     clear(el);
-    mod.mountResult(el, { analysis: data.analysis, replay: data.replay, job, record: data.record, pid });
+    // TICKET-087: keep the handle, so leaving the screen stops its video and 3D clock
+    mod.mountResult(el, { analysis: data.analysis, replay: data.replay, job, record: data.record, pid }).then((h) => {
+      handle = h;
+    });
   }).catch((err) => {
     if (!live) return;
     const missing = err instanceof ApiError && err.status === 404;
@@ -39,7 +45,7 @@ function mountResultRoute(el, job, pid) {
       missing ? "Results are kept for 7 days." : err.message,
       linkButton("#/", "Back to movements", "back-home")));
   });
-  return () => { live = false; };
+  return () => { live = false; if (handle) handle.destroy(); };
 }
 
 /** `#/challenge/<id>`: the leaderboard, loaded on first use. */

@@ -25,6 +25,8 @@ WSL_NVIDIA_SMI = "/usr/lib/wsl/lib/nvidia-smi"  # WSL2 keeps it here; a service 
 UNKNOWN_MESSAGE = "gpu free memory unknown (nvidia-smi not found or failed); admitting without the memory wait"
 _warned_unknown = False
 WAIT_LOG_S = 1.0  # TICKET-067: an admission wait longer than this is logged with its reason
+HOLDER_LOG_S = 60.0  # TICKET-089: a flock wait this long names the holder, once per call
+PROC_LOCKS = "/proc/locks"
 
 
 class _Waits:
@@ -52,6 +54,40 @@ class _Waits:
         job = applog.job_id_of(job_dir) if job_dir is not None else None
         end = ", timed out" if timed_out else ""
         applog.log(f"gpu wait {waited:.1f} s (reason: {self.reason()}{end})", job, job_dir)
+
+
+def _read_proc_locks() -> str:
+    try:
+        return Path(PROC_LOCKS).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _read_cmdline(pid: int) -> str:
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return ""
+    return raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()[:120]
+
+
+def lock_holder(lock_path: Path | str) -> str | None:
+    """`pid <n> <cmd>` of the process holding a flock on `lock_path`, or None. Reads only; never signals (TICKET-089).
+
+    `/proc/locks` lines read `1: FLOCK  ADVISORY  WRITE <pid> <major>:<minor>:<inode> 0 EOF`.
+    """
+    try:
+        inode = os.stat(lock_path).st_ino
+    except OSError:
+        return None
+    for line in _read_proc_locks().splitlines():
+        fields = line.split()
+        if len(fields) < 6 or fields[1] != "FLOCK" or not fields[4].isdigit():
+            continue
+        if fields[5].rsplit(":", 1)[-1] == str(inode) and int(fields[4]) != os.getpid():
+            pid = int(fields[4])
+            return f"pid {pid} {_read_cmdline(pid)}".rstrip()
+    return None
 
 
 def nvidia_smi_path() -> str | None:
@@ -124,14 +160,22 @@ def _take_thread_lock(deadline: float, step_sleep: float, waits: _Waits) -> None
             return
 
 
-def _take_flock(fd: int, deadline: float, step_sleep: float, waits: _Waits) -> bool:
+def _take_flock(fd: int, deadline: float, step_sleep: float, waits: _Waits,
+                lock_path: Path | None = None, job_dir: Path | str | None = None) -> bool:
     since = time.monotonic()
+    named = False
     try:
         while True:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 return True
             except BlockingIOError as exc:
+                if not named and lock_path is not None and time.monotonic() - since >= HOLDER_LOG_S:
+                    named = True
+                    holder = lock_holder(lock_path)
+                    if holder:
+                        job = applog.job_id_of(job_dir) if job_dir is not None else None
+                        applog.log(f"gpu wait: lock held by {holder}", job, job_dir)
                 if time.monotonic() >= deadline:
                     raise TimeoutError(BUSY_MESSAGE) from exc
                 time.sleep(min(step_sleep, max(0.001, deadline - time.monotonic())))
@@ -218,7 +262,7 @@ def acquire(
     counted = False
     try:
         try:
-            flocked = _take_flock(fd, deadline, step_sleep, waits)
+            flocked = _take_flock(fd, deadline, step_sleep, waits, lpath, job_dir)
             _wait_memory(min_free_mib, mem_check, poll_s, deadline, waits, job_dir)
             if concurrent:
                 since = time.monotonic()

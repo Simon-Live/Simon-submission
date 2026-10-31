@@ -9,7 +9,8 @@ verify passes. Fixes from the consolidated review are being made in this batch: 
 public boards, the mode sent only when the person chose one, and the challenge id kept on the job
 record. This page does not describe them until they are merged.
 
-A "Reel" is a Part 6 catalog entry (a trainer movement, `entry_id`). Ticket files are under
+A "Reel" is a short video: in Simon the short trainer clip friends copy, a Part 6 catalog entry (recorded or
+uploaded, `entry_id`). There is no import from social links. Ticket files are under
 `tasks/tickets/`, specs under `docs/specs/`.
 
 | # | Requirement | Ticket | Spec | Lane doc | Status |
@@ -63,8 +64,8 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
 - **Tests:** `tests/part7/test_challenges.py`, `tests/part7/challenge.unit.test.mjs`,
   `tests/part7/challenge.browser.mjs`, `staging/checks-challenge.mjs`.
 - **Try it:** open a finished result and press "Challenge a friend".
-- **Limits:** a friend needs the staging login to open the link. Boards are visible to anyone with the
-  staging login. There are no accounts, so names are not identities.
+- **Limits:** the link works for anyone who can open the app. Boards are visible to anyone with the link.
+  There are no accounts or logins, so names are not identities.
 
 ## R3 Worst moment and moments to review (TICKET-073)
 
@@ -94,8 +95,9 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
   `staging/checks-breakdown.mjs`.
 - **Try it:** open a finished result and open the body note under the score.
 - **Limits:** every person is retargeted to one standard 1.70 m body and angles are compared (Part 3
-  ADR-0004). Per-person proportions were rejected upstream, so the app does not model them. The note
-  describes the pipeline and does not show the person's own measurements.
+  ADR-0004). This is the intended design, not a limit: scoring everyone against one body keeps it fair
+  (operator 2026-10-31), so there is no per-person body adjustment. The note says so and does not show the
+  person's own measurements.
 
 ## R5 Tempo versus shape (TICKET-075)
 
@@ -134,7 +136,7 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
 - **Try it:** finish a group job, open its result and press "Start a crew challenge".
 - **Limits:** no accounts. The strongest section is the best compared window of Part 5's timeline; with
   no timeline there is no badge. A take older than 7 days cannot be added, but its board stays. Boards
-  are visible to anyone with the staging login.
+  are visible to anyone with the link.
 
 ## R7 Adaptive difficulty: learn in sections (TICKET-077)
 
@@ -164,7 +166,7 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
 - **Added:** `python -m part7 challenge create|list|close`; on the board a sponsor banner (name, tagline,
   prize, link), a "Sponsored" label, the countdown and the leaderboard; sponsored challenges are marked
   in the watch-screen list.
-- **Where:** server `part7/challenge_cli.py` and a subparser in `part7/cli.py`. The public API refuses a
+- **Where:** server `part7/challenge_cli.py` (`--staging` and `--state` work before or after the action, `part7/state_flags.py`) and a subparser in `part7/cli.py`. The public API refuses a
   sponsor, an end time and the kind `sponsored` (400).
 - **Test ids:** `sponsor-banner`, `sponsor-name`, `sponsor-prize`, `sponsor-link`, `sponsored-label`,
   plus the board ids under R6.
@@ -181,24 +183,27 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
 - **Ticket goal:** dance, rehab and fitness modes.
 - **Added:** a mode picker on the catalog (with an All filter) and on the follow screen; per-mode presets
   (learning speed, countdown, coaching framing, challenge promotion); `mode` on `POST api/follow` and
-  `POST api/group`; Part 5 `--profile <mode>` when its help offers it; a result note.
-- **Where:** server modules `part7/modes.py`, `part7/parts/p5_analyse.py`, `part7/chain.py`,
+  `POST api/group`; scoring by mode (native Part 5 `--profile <mode>` at d655d50, TICKET-094; the Part 7 rules
+  for dance and rehab, ADR-0008, are the fallback for an older pin only); a result note.
+- **Where:** server modules `part7/modes.py`, `part7/mode_rules.py`, `part7/p5_mode_runner.py`, `part7/parts/p5_analyse.py`, `part7/chain.py`,
   `part7/processor.py`, `part7/group.py`, `part7/people_routes.py`; web `modes.js`, `catalog.js`,
   `follow.js`, `take-flow.js`, `capture.js`, `countdown.js`, `api.js`. `GET api/jobs/<id>` returns the mode.
 - **Test ids:** `mode-filter`, `mode-filter-<all|dance|rehab|fitness>`, `follow-mode`,
   `follow-mode-<mode>`, `mode-coaching`, `mode-safety`, `mode-framing`, `mode-note`, `mode-chip`,
   `mode-scoring`, `section-line`, `back-to-practice`.
 - **Tests:** `tests/part7/test_practice.py` (argv with and without a fake `--profile` flag),
+  `tests/part7/test_mode_scoring.py` (rules variants, the runner, path selection, the real Part 5),
   `tests/part7/practice.unit.test.mjs`, `tests/part7/practice.browser.mjs`.
-- **Try it:** open the catalog, tap Rehab, open a movement's Follow screen and read the safety line.
-- **Limits:** modes do not change scoring until Part 5 ships `analyse --profile` (agreed with the Part 5
-  team, Part 5 TICKET-042, target end of 2026-11-02 UTC). Part 7 detects it automatically and then
-  passes the profile. Until then a mode changes coaching and practice only and the result note says
-  so. Dance and rehab are coaching modes, not a more accurate measurement.
+- **Try it:** tag a movement for rehab with `python -m part7 labels --staging add-tag <entry-id> rehab` (rehab entries need that tag; `remove-tag` and `show [<entry-id>]` also exist), then open the catalog, tap Rehab, open the movement's Follow screen and read the safety line.
+- **Limits:** at Part 5 d655d50 dance and rehab are scored by Part 5's own profiles; the text below applies to the fallback for an older pin: dance and rehab score with Part 7's own, more forgiving rules (ADR-0008, operator
+  2026-10-31), derived from the pinned Part 5's `rules.json` and run through Part 5's own command line.
+  They are coaching rules, not a more accurate measurement. Fitness is Part 5's standard rules. When Part 5
+  ships `analyse --profile` (Part 5 TICKET-042), Part 7 prefers it automatically.
 
 ## Limits across the batch
 
-- Part 7 shows Part 5's analysis and does not invent new analysis (ADR-0006). Lanes select, rank, group
-  and label Part 5's numbers; they never compute new joint distances or scores.
+- Part 7 shows Part 5's analysis and does not invent new analysis (ADR-0006), with one exception: the scoring
+  rules for dance and rehab (ADR-0008). Lanes select, rank, group and label Part 5's numbers; they never compute
+  new joint distances or scores.
 - Results are kept for 7 days, so a challenge link outlives its result video.
-- Share links and boards need the staging login on staging; there are no accounts.
+- Share links and boards work for anyone who can open the app; there are no accounts or logins.

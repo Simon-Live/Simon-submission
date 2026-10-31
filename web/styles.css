@@ -3,7 +3,7 @@
   --bg: #fbfbfa;
   --surface: #ffffff;
   --ink: #111111;
-  --muted: #787774;
+  --muted: #6b6a66;
   --line: #eaeaea;
   --soft: #f7f6f3;
   --blue-bg: #e1f3fe; --blue-ink: #1f6c9f;
@@ -58,6 +58,7 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
 .lede { color: var(--muted); }
 .hint, .meta, .crumb { color: var(--muted); font-size: 14px; }
 .crumb { margin-bottom: 8px; }
+.crumb a { display: inline-flex; align-items: center; min-height: var(--tap); }
 .tnum, .timer { font-variant-numeric: tabular-nums; }
 .meta { display: flex; gap: 12px; flex-wrap: wrap; }
 .notice { padding: 16px; }

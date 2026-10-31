@@ -1,7 +1,7 @@
 // The group board at `#/group/<job>` (people.md, TICKET-060): a row per person with crop, label, score,
 // grade and fault count, refusals in plain words, and Watch all. A tap opens `#/result/<job>/<pid>`.
 import { getJob, ApiError } from "./api.js";
-import { h, clear, stateBlock, linkButton } from "./ui.js";
+import { h, clear, stateBlock, linkButton, num } from "./ui.js";
 import { ensurePeopleStyles, cropUrl } from "./people.js";
 
 export const REFUSALS = {
@@ -16,8 +16,6 @@ export const REFUSALS = {
 };
 export const MSG_REFUSED = "This take could not be scored.";
 export const MSG_NO_WATCH = "No take has a 3D replay to watch yet.";
-
-const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /** Pure: the board's rows from a job result, in the server's order (score descending, refused last). */
 export function boardRows(result) {
@@ -90,7 +88,8 @@ export function mountGroupResult(root, jobId) {
       watchBtn.setAttribute("aria-expanded", "true");
       watchBtn.textContent = "Hide";
       panel.append(h("p", { class: "hint", text: "Loading the 3D view" }));
-      const loaded = await Promise.all(rows.map(async (r) => {
+      // a refused person is never overlaid, even if a replay exists for them
+      const loaded = await Promise.all(scored.map(async (r) => {
         const replay = await fetchReplay(jobId, r.id).catch(() => null);
         return replay ? { id: r.id, label: r.label, replay } : null;
       }));

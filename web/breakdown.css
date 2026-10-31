@@ -13,5 +13,5 @@
 .sb-tag { margin-left: 8px; vertical-align: middle; }
 .sb-tag-shape { background: #12303a; color: var(--sr-trainer, #8aa4ff); }
 .sb-body { margin-top: 10px; background: var(--sr-surface, #141b25); border: 1px solid var(--sr-line, #263143); border-radius: 14px; padding: 10px 14px; color: var(--sr-text, #e9eef6); }
-.sb-body summary { cursor: pointer; font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.sb-body summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
 .sb-body p { margin: 8px 0 0; color: var(--sr-muted, #95a3b8); font-size: 14px; }

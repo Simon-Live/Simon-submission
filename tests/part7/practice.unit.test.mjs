@@ -70,11 +70,12 @@ test("labels and the scoring line say only what Part 5 reported", () => {
   assert.equal(sectionLabel(null), null);
   const none = scoringLine({ score: { value: 80 } });
   assert.equal(none.profile, "");
-  assert.match(none.text, /changes coaching and practice only/);
-  const rehab = scoringLine({ profile: "rehab" });
-  assert.equal(rehab.text.startsWith("Scored with rehab coaching rules."), true);
-  assert.match(rehab.text, /not a measure of accuracy/);
-  assert.equal(scoringLine({ profile: "fitness" }).text, "Scored with fitness coaching rules.");
+  assert.equal(none.text, "This score uses the standard rules.");
+  const rehab = scoringLine({ profile: "rehab", profile_source: "part7-rules" });
+  assert.equal(rehab.text.startsWith("Scored with rehab rules."), true);
+  assert.match(rehab.text, /more forgiving.*not a more accurate measure/);
+  assert.match(scoringLine({ profile: "dance" }).text, /^Scored with dance rules\. These coaching rules are more forgiving/);
+  assert.equal(scoringLine({ profile: "fitness" }).text, "Scored with fitness rules. These are the standard rules.");
 });
 
 test("buildSubmit adds mode and section for a follow and mode for a group, nothing when absent", () => {

@@ -1,0 +1,493 @@
+{
+ "schema": "simon.animation/1",
+ "units": {
+  "length": "m",
+  "angle": "deg",
+  "time": "ms"
+ },
+ "frame": {
+  "origin": "hip_midpoint",
+  "x": "subject_left",
+  "y": "body_up",
+  "z": "anterior",
+  "up_source": "standing_frames"
+ },
+ "joints": [
+  "nose",
+  "left_eye",
+  "right_eye",
+  "left_ear",
+  "right_ear",
+  "left_shoulder",
+  "right_shoulder",
+  "left_elbow",
+  "right_elbow",
+  "left_wrist",
+  "right_wrist",
+  "left_hip",
+  "right_hip",
+  "left_knee",
+  "right_knee",
+  "left_ankle",
+  "right_ankle"
+ ],
+ "fps": 30.0,
+ "frames": [
+  {
+   "frame": 0,
+   "t_ms": 0.0,
+   "interpolated": false,
+   "people": [
+    {
+     "id": 0,
+     "joints": {
+      "nose": {
+       "x": 0.0,
+       "y": 0.75,
+       "z": 0.1,
+       "conf": 1.0
+      },
+      "left_eye": {
+       "x": 0.03,
+       "y": 0.79,
+       "z": 0.08,
+       "conf": 1.0
+      },
+      "right_eye": {
+       "x": -0.03,
+       "y": 0.79,
+       "z": 0.08,
+       "conf": 1.0
+      },
+      "left_ear": {
+       "x": 0.075,
+       "y": 0.77,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_ear": {
+       "x": -0.075,
+       "y": 0.77,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_shoulder": {
+       "x": 0.19,
+       "y": 0.5,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_shoulder": {
+       "x": -0.19,
+       "y": 0.5,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_elbow": {
+       "x": 0.19,
+       "y": 0.2114,
+       "z": 0.029,
+       "conf": 1.0
+      },
+      "right_elbow": {
+       "x": -0.19,
+       "y": 0.2114,
+       "z": 0.029,
+       "conf": 1.0
+      },
+      "left_wrist": {
+       "x": 0.19,
+       "y": -0.0473,
+       "z": 0.0549,
+       "conf": 1.0
+      },
+      "right_wrist": {
+       "x": -0.19,
+       "y": -0.0473,
+       "z": 0.0549,
+       "conf": 1.0
+      },
+      "left_hip": {
+       "x": 0.09,
+       "y": 0.0,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_hip": {
+       "x": -0.09,
+       "y": 0.0,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_knee": {
+       "x": 0.09,
+       "y": -0.43,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_knee": {
+       "x": -0.09,
+       "y": -0.43,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_ankle": {
+       "x": 0.09,
+       "y": -0.85,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_ankle": {
+       "x": -0.09,
+       "y": -0.85,
+       "z": 0.0,
+       "conf": 1.0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "frame": 10,
+   "t_ms": 333.333,
+   "interpolated": false,
+   "people": [
+    {
+     "id": 0,
+     "joints": {
+      "nose": {
+       "x": 0.0,
+       "y": 0.75,
+       "z": 0.1,
+       "conf": 1.0
+      },
+      "left_eye": {
+       "x": 0.03,
+       "y": 0.79,
+       "z": 0.08,
+       "conf": 1.0
+      },
+      "right_eye": {
+       "x": -0.03,
+       "y": 0.79,
+       "z": 0.08,
+       "conf": 1.0
+      },
+      "left_ear": {
+       "x": 0.075,
+       "y": 0.77,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_ear": {
+       "x": -0.075,
+       "y": 0.77,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_shoulder": {
+       "x": 0.19,
+       "y": 0.5,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_shoulder": {
+       "x": -0.19,
+       "y": 0.5,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_elbow": {
+       "x": 0.19,
+       "y": 0.2114,
+       "z": 0.029,
+       "conf": 1.0
+      },
+      "right_elbow": {
+       "x": -0.19,
+       "y": 0.2114,
+       "z": 0.029,
+       "conf": 1.0
+      },
+      "left_wrist": {
+       "x": 0.19,
+       "y": -0.0473,
+       "z": 0.0549,
+       "conf": 1.0
+      },
+      "right_wrist": {
+       "x": -0.19,
+       "y": -0.0473,
+       "z": 0.0549,
+       "conf": 1.0
+      },
+      "left_hip": {
+       "x": 0.09,
+       "y": 0.0,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_hip": {
+       "x": -0.09,
+       "y": 0.0,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_knee": {
+       "x": 0.09,
+       "y": -0.43,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_knee": {
+       "x": -0.09,
+       "y": -0.43,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_ankle": {
+       "x": 0.09,
+       "y": -0.85,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_ankle": {
+       "x": -0.09,
+       "y": -0.85,
+       "z": 0.0,
+       "conf": 1.0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "frame": 20,
+   "t_ms": 666.667,
+   "interpolated": false,
+   "people": [
+    {
+     "id": 0,
+     "joints": {
+      "nose": {
+       "x": 0.0,
+       "y": 0.7477,
+       "z": 0.1158,
+       "conf": 1.0
+      },
+      "left_eye": {
+       "x": 0.03,
+       "y": 0.7881,
+       "z": 0.0967,
+       "conf": 1.0
+      },
+      "right_eye": {
+       "x": -0.03,
+       "y": 0.7881,
+       "z": 0.0967,
+       "conf": 1.0
+      },
+      "left_ear": {
+       "x": 0.075,
+       "y": 0.7698,
+       "z": 0.0163,
+       "conf": 1.0
+      },
+      "right_ear": {
+       "x": -0.075,
+       "y": 0.7698,
+       "z": 0.0163,
+       "conf": 1.0
+      },
+      "left_shoulder": {
+       "x": 0.19,
+       "y": 0.4999,
+       "z": 0.0106,
+       "conf": 1.0
+      },
+      "right_shoulder": {
+       "x": -0.19,
+       "y": 0.4999,
+       "z": 0.0106,
+       "conf": 1.0
+      },
+      "left_elbow": {
+       "x": 0.19,
+       "y": 0.2128,
+       "z": 0.0517,
+       "conf": 1.0
+      },
+      "right_elbow": {
+       "x": -0.19,
+       "y": 0.2128,
+       "z": 0.0517,
+       "conf": 1.0
+      },
+      "left_wrist": {
+       "x": 0.19,
+       "y": -0.0446,
+       "z": 0.0885,
+       "conf": 1.0
+      },
+      "right_wrist": {
+       "x": -0.19,
+       "y": -0.0446,
+       "z": 0.0885,
+       "conf": 1.0
+      },
+      "left_hip": {
+       "x": 0.09,
+       "y": 0.0,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_hip": {
+       "x": -0.09,
+       "y": 0.0,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_knee": {
+       "x": 0.09,
+       "y": -0.4296,
+       "z": 0.0175,
+       "conf": 1.0
+      },
+      "right_knee": {
+       "x": -0.09,
+       "y": -0.4296,
+       "z": 0.0175,
+       "conf": 1.0
+      },
+      "left_ankle": {
+       "x": 0.09,
+       "y": -0.8496,
+       "z": 0.0099,
+       "conf": 1.0
+      },
+      "right_ankle": {
+       "x": -0.09,
+       "y": -0.8496,
+       "z": 0.0099,
+       "conf": 1.0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "frame": 30,
+   "t_ms": 1000.0,
+   "interpolated": false,
+   "people": [
+    {
+     "id": 0,
+     "joints": {
+      "nose": {
+       "x": 0.0,
+       "y": 0.7211,
+       "z": 0.2291,
+       "conf": 1.0
+      },
+      "left_eye": {
+       "x": 0.03,
+       "y": 0.764,
+       "z": 0.2163,
+       "conf": 1.0
+      },
+      "right_eye": {
+       "x": -0.03,
+       "y": 0.764,
+       "z": 0.2163,
+       "conf": 1.0
+      },
+      "left_ear": {
+       "x": 0.075,
+       "y": 0.7582,
+       "z": 0.1341,
+       "conf": 1.0
+      },
+      "right_ear": {
+       "x": -0.075,
+       "y": 0.7582,
+       "z": 0.1341,
+       "conf": 1.0
+      },
+      "left_shoulder": {
+       "x": 0.19,
+       "y": 0.4924,
+       "z": 0.0871,
+       "conf": 1.0
+      },
+      "right_shoulder": {
+       "x": -0.19,
+       "y": 0.4924,
+       "z": 0.0871,
+       "conf": 1.0
+      },
+      "left_elbow": {
+       "x": 0.19,
+       "y": 0.2312,
+       "z": 0.2132,
+       "conf": 1.0
+      },
+      "right_elbow": {
+       "x": -0.19,
+       "y": 0.2312,
+       "z": 0.2132,
+       "conf": 1.0
+      },
+      "left_wrist": {
+       "x": 0.19,
+       "y": -0.0029,
+       "z": 0.3263,
+       "conf": 1.0
+      },
+      "right_wrist": {
+       "x": -0.19,
+       "y": -0.0029,
+       "z": 0.3263,
+       "conf": 1.0
+      },
+      "left_hip": {
+       "x": 0.09,
+       "y": 0.0,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "right_hip": {
+       "x": -0.09,
+       "y": 0.0,
+       "z": 0.0,
+       "conf": 1.0
+      },
+      "left_knee": {
+       "x": 0.09,
+       "y": -0.4057,
+       "z": 0.1424,
+       "conf": 1.0
+      },
+      "right_knee": {
+       "x": -0.09,
+       "y": -0.4057,
+       "z": 0.1424,
+       "conf": 1.0
+      },
+      "left_ankle": {
+       "x": 0.09,
+       "y": -0.821,
+       "z": 0.0796,
+       "conf": 1.0
+      },
+      "right_ankle": {
+       "x": -0.09,
+       "y": -0.821,
+       "z": 0.0796,
+       "conf": 1.0
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

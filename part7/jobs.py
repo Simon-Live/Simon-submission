@@ -55,6 +55,31 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+SLOW_JOB_S = 900.0  # a job longer than this logs `ANOMALY slow_job` (env SIMON7_SLOW_JOB_S)
+SUMMARY_FIELDS = (("mode", "mode"), ("section", "section"), ("challenge_id", "challenge"))
+
+
+def summary_line(job_id: str, job: dict[str, Any], status: str, total: float, spent: dict[str, float],
+                 facts: dict[str, Any]) -> str:
+    """`job <id> summary: kind=.. status=ok|failed total=..s <stage>=..s[(gpu_wait=..s)] part1=.. mode=.. ...`."""
+    parts = [f"kind={job.get('kind')}", f"status={status}", f"total={total:.1f}s"]
+    for name, seconds in spent.items():
+        if name:
+            waited = facts.get(f"gpu_wait.{name}")
+            parts.append(f"{name}={seconds:.1f}s" + (f"(gpu_wait={waited:.1f}s)" if waited else ""))
+    if facts.get("part1"):
+        parts.append(f"part1={facts['part1']}")
+    for key, label in SUMMARY_FIELDS:
+        if job.get(key):
+            sec = job[key]
+            if isinstance(sec, dict) and "index" in sec:  # a section reads as `index/count`
+                value = f"{sec['index']}/{sec.get('count')}"
+            else:
+                value = sec if isinstance(sec, str) else json.dumps(sec, separators=(",", ":"))
+            parts.append(f"{label}={value}")
+    return f"job {job_id} summary: " + " ".join(parts)
+
+
 class JobContext:
     """What a running job function may do: set the stage and note, and name its log files."""
 
@@ -91,6 +116,10 @@ class JobQueue:
         self._jobs: dict[str, dict[str, Any]] = {}
         self._waiting: deque[tuple[str, JobFn]] = deque()
         self._running: set[str] = set()
+        self._clock = time.monotonic  # tests replace it
+        self._marks: dict[str, tuple[str, float]] = {}  # job -> (stage, when it began), for the summary line
+        self._durations: dict[str, dict[str, float]] = {}  # job -> seconds spent per stage
+        self._started: dict[str, float] = {}  # running job -> when it began
         self._closed = False
         self.cleanup()
         self._load()
@@ -175,8 +204,29 @@ class JobQueue:
             stage = fields.get("stage")
             if stage and stage not in job["stages"]:
                 job["stages"].append(stage)
+            if stage and job_id in self._started:
+                self._enter_stage(job_id, stage)
             self._write(job)
             self._cond.notify_all()
+
+    def _enter_stage(self, job_id: str, stage: str) -> None:
+        """Close the time of the stage the job was in and start `stage` (caller holds the lock)."""
+        now = self._clock()
+        mark = self._marks.get(job_id)
+        if mark is not None and mark[0] != stage:
+            spent = self._durations.setdefault(job_id, {})
+            spent[mark[0]] = spent.get(mark[0], 0.0) + now - mark[1]
+        if mark is None or mark[0] != stage:
+            self._marks[job_id] = (stage, now)
+        applog.fact(job_id, "_stage", stage)
+
+    def snapshot(self) -> dict[str, Any]:
+        """`queued`, `running` and `oldest_running_s` (None when nothing runs), for the heartbeat."""
+        with self._cond:
+            now = self._clock()
+            ages = [now - self._started[j] for j in self._running if j in self._started]
+            return {"queued": len(self._waiting), "running": len(self._running),
+                    "oldest_running_s": max(ages) if ages else None}
 
     def add_note(self, job_id: str, note: str) -> None:
         with self._cond:
@@ -233,6 +283,7 @@ class JobQueue:
                     return
                 job_id, fn = self._waiting.popleft()
                 self._running.add(job_id)
+                self._started[job_id] = self._clock()
                 self.cleanup()
                 self._jobs[job_id].update(status="running", started_at=_now())
                 self._write(self._jobs[job_id])
@@ -240,6 +291,9 @@ class JobQueue:
             self._run_one(job_id, fn)
             with self._cond:
                 self._running.discard(job_id)
+                self._started.pop(job_id, None)
+                self._marks.pop(job_id, None)
+                self._durations.pop(job_id, None)
                 self._cond.notify_all()
 
     def _start_line(self, job_id: str) -> str:
@@ -248,9 +302,27 @@ class JobQueue:
         keys_ = ("kind", "people_job", "person_id", "trainer_id", "follower_ids", "entry_id", "trim", "duration_ms")
         return "start: " + " ".join(f"{k}={json.dumps(job[k])}" for k in keys_ if job.get(k) is not None)
 
+    def _finish(self, job_id: str, ctx: JobContext, t0: float, status: str, stage: str | None = None,
+                reason: str = "") -> None:
+        """At a job's end: the `slow_job` and `job_failed` anomalies and the one `summary` line."""
+        total = self._clock() - t0
+        with self._cond:
+            if job_id in self._marks:
+                self._enter_stage(job_id, "")  # closes the stage the job ended in
+            spent = dict(self._durations.get(job_id, {}))
+            job = dict(self._jobs[job_id])
+        facts = applog.pop_facts(job_id)
+        if status == "failed":
+            applog.anomaly("job_failed", reason, job=job_id, job_dir=ctx.dir, stage=stage, kind=job.get("kind"),
+                           seconds=total)
+        limit = applog.env_float("SIMON7_SLOW_JOB_S", SLOW_JOB_S)
+        if total > limit:
+            applog.anomaly("slow_job", job=job_id, job_dir=ctx.dir, kind=job.get("kind"), seconds=total, limit=limit)
+        applog.log(summary_line(job_id, job, status, total, spent, facts), job_dir=ctx.dir)
+
     def _run_one(self, job_id: str, fn: JobFn) -> None:
         ctx = JobContext(self, job_id)
-        t0 = time.monotonic()
+        t0 = self._clock()
         applog.log(self._start_line(job_id), job_id, ctx.dir)
         try:
             outcome = fn(ctx)
@@ -262,11 +334,13 @@ class JobQueue:
             with self._cond:
                 note = self._jobs[job_id].get("note")
             # logged before the record says done, so whoever waits for `done` finds the line already written
-            applog.log(f"done in {time.monotonic() - t0:.1f} s" + (f"; note: {note}" if note else ""), job_id, ctx.dir)
+            applog.log(f"done in {self._clock() - t0:.1f} s" + (f"; note: {note}" if note else ""), job_id, ctx.dir)
+            self._finish(job_id, ctx, t0, "ok")
             self.update(job_id, **fields)
         except JobFailed as exc:
-            applog.log(f"failed at {exc.stage} after {time.monotonic() - t0:.1f} s: {applog.cause(exc)}", job_id,
+            applog.log(f"failed at {exc.stage} after {self._clock() - t0:.1f} s: {applog.cause(exc)}", job_id,
                        ctx.dir, logging.WARNING)
+            self._finish(job_id, ctx, t0, "failed", exc.stage, sanitize_reason(exc.reason))
             self._fail(job_id, exc.stage, sanitize_reason(exc.reason))
         except Exception as exc:  # the traceback stays in the job log only
             (ctx.dir / "steps").mkdir(exist_ok=True)
@@ -274,6 +348,7 @@ class JobQueue:
             with self._cond:
                 stage = self._jobs[job_id].get("stage") or "upload"
             applog.log(f"crashed at {stage}: {applog.cause(exc)} (traceback in steps/error.log)", job_id, ctx.dir, logging.ERROR)
+            self._finish(job_id, ctx, t0, "failed", stage, FALLBACK_REASON)
             self._fail(job_id, stage, FALLBACK_REASON)
 
     def _fail(self, job_id: str, stage: str, reason: str) -> None:

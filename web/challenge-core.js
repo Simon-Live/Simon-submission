@@ -79,7 +79,8 @@ const enc = encodeURIComponent;
 /** `{entry_id, title, creator_name, kind}` plus, optionally, a first entry (`job_id`, `pid`, `name`) or crew (`job_id`, `people`):
  * the server makes both in one step and makes nothing when the entry is refused. */
 export const createChallenge = (body) => post("api/challenges", body);
-export const getChallenge = (id) => call(`api/challenges/${enc(id)}`);
+// An unknown link is a normal outcome (the page shows not-found): `expectStatus` keeps errors.js from reporting the 404.
+export const getChallenge = (id) => call(`api/challenges/${enc(id)}`, { expectStatus: [404] });
 export const listChallenges = async (entryId) =>
   (await call(entryId ? `api/challenges?entry_id=${enc(entryId)}` : "api/challenges")).challenges || [];
 /** Adds one result: `{job_id, pid?, name}`. */

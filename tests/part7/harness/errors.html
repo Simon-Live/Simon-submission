@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>error capture harness</title>
+<main id="app"></main>
+<script type="module">
+// Installs the page's error capture, as app.js does; the test then throws, rejects and fetches.
+import { installErrorCapture } from "../../../web/errors.js";
+installErrorCapture();
+import { getChallenge } from "../../../web/challenge-core.js";
+window.getChallenge = getChallenge; // the challenge page's board lookup: an unknown link is a handled 404
+window.__ready = true;
+</script>

@@ -8,6 +8,12 @@ const DRIFT_S = 0.3;       // how far the video may stray from the clock while p
 const REST_S = 0.04;       // and while paused
 const SPAN_EPS = 0.02;
 
+/** aria-pressed on the marker and the row of the moment last opened (one state for both lists). */
+function pressMoment(from) {
+  const scope = from.closest(".simon-result") || document;
+  scope.querySelectorAll('[data-testid^="moment-"][data-at]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.at === from.dataset.at)));
+}
+
 /** The lead-in label of a coaching row: "At 3.2 s:". */
 export function momentChip(atS, testid) {
   return el("span", { class: "sr-moment", "data-testid": testid, "data-at-s": atS, text: `${momentLabel(atS)}:` });
@@ -76,8 +82,9 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
     const left = total ? (m.from / total) * 100 : 0;
     const width = total && m.to > m.from ? Math.max(1.2, ((m.to - m.from) / total) * 100) : 1.2;
     const b = el("button", { type: "button", class: `sr-mark sr-mark-${m.kind}`, "data-testid": `moment-marker-${i}`, "data-at": m.at,
-      "aria-label": m.label, style: `left:${Math.min(98.8, left)}%;width:${width}%` });
-    b.addEventListener("click", () => goTo(m.at));
+      "aria-label": m.label, style: `left:min(calc(100% - 44px),${left}%);width:${width}%` });
+    b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => { pressMoment(b); goTo(m.at); });
     strip.append(b);
     return b;
   });
@@ -203,9 +210,9 @@ export function renderMomentList(root, moments, goTo) {
   const list = el("ol", { class: "sr-moment-list" });
   moments.forEach((m, i) => {
     const what = m.kind === "window" ? `A weak part: ${m.value} out of 100` : `${m.label.split(": ").slice(1).join(": ")}`;
-    const row = el("button", { type: "button", class: "sr-moment-row", "data-testid": `moment-${i}`, "data-kind": m.kind, "data-at": m.at },
+    const row = el("button", { type: "button", class: "sr-moment-row", "data-testid": `moment-${i}`, "data-kind": m.kind, "data-at": m.at, "aria-pressed": "false" },
       el("span", { class: "sr-moment", text: `${momentLabel(m.at)}:` }), el("span", { class: "sr-moment-what", text: what }));
-    row.addEventListener("click", () => goTo(m.at));
+    row.addEventListener("click", () => { pressMoment(row); goTo(m.at); });
     list.append(el("li", {}, row));
   });
   section.append(list);

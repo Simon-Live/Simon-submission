@@ -134,3 +134,44 @@ test("Watch all dims each person's unseen joints and nothing for a hidden person
   assert.deepEqual(dimsAt(0, models, new Set(["a"]), ["a", "b"]), [[], [], []]);
   assert.equal(posesAt(0, models)[1][idx("left_knee")].length, 3, "the unseen knee is placed, not dropped");
 });
+
+// TICKET-090: the shipped sample entries use simon.animation/1 (people[].joints as {x, y, z, conf})
+const sample = () => JSON.parse(fs.readFileSync(new URL("./fixtures/input/animation-squat-sample.json", import.meta.url), "utf8"));
+
+test("TICKET-090 a simon.animation/1 sample: all 17 joints seen, no dimmed report, 18 bones", () => {
+  const m = normalizeAnimation(sample());
+  assert.equal(m.joints.length, 17);
+  assert.deepEqual(m.never, []);
+  assert.ok(m.unseen.every((u) => u.length === 0));
+  assert.equal(bodyReport(m), null);
+  assert.equal(m.bones.length, 18);
+  assert.ok(m.frames.every((f) => f.every((p) => Array.isArray(p) && p.length === 3)));
+  assert.equal(m.duration, 1);
+});
+
+test("TICKET-090 negative: conf 0 on one joint dims only that joint in that frame", () => {
+  const a = sample();
+  a.frames[2].people[0].joints.left_wrist.conf = 0;
+  const m = normalizeAnimation(a);
+  const w = m.joints.indexOf("left_wrist");
+  assert.deepEqual(m.unseen.map((u) => [...u]), [[], [], [w], []]);
+  assert.deepEqual(m.never, []);
+  assert.match(bodyReport(m), /^trainer: dims left_wrist in 1 frame$/);
+  const nx = sample();
+  delete nx.frames[1].people[0].joints.nose.x;
+  assert.deepEqual(normalizeAnimation(nx).unseen[1], [0]);
+});
+
+test("TICKET-090 the first person, or the person with the id asked for", () => {
+  const a = sample();
+  for (const f of a.frames) {
+    const second = JSON.parse(JSON.stringify(f.people[0]));
+    second.id = 7;
+    for (const j of Object.values(second.joints)) j.x += 5;
+    f.people.push(second);
+  }
+  const x0 = sample().frames[0].people[0].joints.nose.x;
+  assert.equal(normalizeAnimation(a).frames[0][0][0], x0);
+  assert.equal(normalizeAnimation(a, 7).frames[0][0][0], x0 + 5);
+  assert.equal(normalizeAnimation(a, 99).never.length, 17);
+});

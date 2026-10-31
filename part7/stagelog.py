@@ -11,6 +11,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 import logging
 from pathlib import Path
+import re
 import time
 from typing import Any, Iterator
 
@@ -50,6 +51,31 @@ def step_failure(step: dict[str, Any]) -> str:
     return f"part {step.get('part')} exit {step.get('exit')}{timed}{where}" + (f": {out}" if out else "")
 
 
+def last_meaningful(log_path: Path | str | None, size: int = 4096) -> str:
+    """The last log line that says something: not blank, not a progress bar or a rule of dashes."""
+    if not log_path:
+        return ""
+    try:
+        with Path(log_path).open("rb") as fh:
+            fh.seek(0, 2)
+            fh.seek(max(0, fh.tell() - size))
+            lines = fh.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        text = line.strip().split("\r")[-1].strip()
+        if len(text) > 3 and re.search(r"[A-Za-z]{3}", text) and "%|" not in text:
+            return text[:300]
+    return ""
+
+
+def _slow(name: str, job: str, work: Path | str, seconds: float, failed: bool) -> None:
+    limit = applog.slow_stage_limit(name)
+    if seconds > limit:
+        applog.anomaly("slow_stage", job=job, job_dir=work, stage=name, seconds=seconds, limit=limit,
+                       failed=failed or None)
+
+
 def _exits(steps: list[dict[str, Any]]) -> str:
     return " ".join(f"{s.get('part')}:{s.get('exit')}" for s in steps) or "no part calls"
 
@@ -64,6 +90,7 @@ def stage(work: Path | str, name: str, steps: list[Any] | None = None, **facts: 
     job = applog.job_id_of(work)
     start_n = len(steps) if steps is not None else 0
     applog.log(f"stage {name} start: {facts_text(facts)}", job, work)
+    applog.fact(job, "_stage", name)
     t0 = time.monotonic()
     end: dict[str, Any] = {}
     try:
@@ -74,9 +101,12 @@ def stage(work: Path | str, name: str, steps: list[Any] | None = None, **facts: 
         result = getattr(exc, "result", None)
         reason = result.get("error") if isinstance(result, dict) else applog.cause(exc)
         detail = f"; {step_failure(failed[-1])}" if failed else ""
-        applog.log(f"stage {name} failed in {time.monotonic() - t0:.1f} s: {reason}{detail}", job, work,
-                   logging.WARNING)
+        took = time.monotonic() - t0
+        applog.log(f"stage {name} failed in {took:.1f} s: {reason}{detail}", job, work, logging.WARNING)
+        _slow(name, job, work, took, True)
         raise
     new = list(steps[start_n:]) if steps is not None else []
     extra = f" {facts_text(end)}" if end else ""
-    applog.log(f"stage {name} end in {time.monotonic() - t0:.1f} s: exits {_exits(new)}{extra}", job, work)
+    took = time.monotonic() - t0
+    applog.log(f"stage {name} end in {took:.1f} s: exits {_exits(new)}{extra}", job, work)
+    _slow(name, job, work, took, False)

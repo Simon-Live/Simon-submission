@@ -32,5 +32,6 @@ dev:
 
 # Done-check for Part 7 (docs/specs/check-7.md): prints one metrics JSON on stdout and
 # exits 0 only when every gate passes (1 a gate failed, 2 a prerequisite is missing).
+# Note: make itself exits 2 when this recipe fails; run `uv run python -m part7 check` for the exact code.
 check-7:
 	@uv run python -m part7 check

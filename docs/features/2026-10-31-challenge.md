@@ -18,7 +18,7 @@ picture, Share, Copy link and See the board. When the person arrived through "Ta
   `share-card-preview`, `challenge-share`, `challenge-copy`, `challenge-open`, `share-status`.
 - Tests: `tests/part7/test_challenges.py`, `tests/part7/challenge.unit.test.mjs`, `tests/part7/challenge.browser.mjs`.
 - Staging: `staging/checks-challenge.mjs` (integrator wires it). Open a finished result and press "Challenge a friend".
-- Limits: friends need the staging login to open the link. The slot is filled by `web/challenge-actions.js` once the result
+- Limits: the link works for anyone who can open the app; the app has no accounts or login. The slot is filled by `web/challenge-actions.js` once the result
   screen mounts it (contract item 1); until then the module is dormant.
 
 ## R6 Crew challenge and leaderboard (TICKET-076)
