@@ -214,7 +214,7 @@ part2 run --mode single --input <take.webm|take.mp4|take.mov> --out <dir> --fps 
 | `--mirrored` | only for a front-camera recording saved as a mirror image; writes `mirrored: true`, which Part 3 `--flip auto` reads |
 
 Then Part 7 runs Part 3 on `<dir>/pose3d.json` with `--view part5` for Part 5. The command line reads a WebM
-that carries no duration (a MediaRecorder file). The run app's upload check does too once TICKET-039 lands
+that carries no duration (a MediaRecorder file). The run app's upload check does too
 (`docs/specs/journey-followup.md`).
 
 ### Several people in one take (`track`, then `run --tracks --ids`)
@@ -245,22 +245,34 @@ part2 run --worker <path> --mode single --input ... --out ...   # same arguments
 part2 track --worker <path> --input ... --out ...
 ```
 
-With no worker listening at `<path>` (missing socket, connection refused) the command runs in its own process and
-says so on stderr, so Part 7 can pass `--worker` always. A worker that dies mid-request gives exit 1 and the job
-is not re-run in-process.
+With no worker listening at `<path>` (missing socket, connection refused, permission denied) the command runs in
+its own process and says so on stderr, so Part 7 can pass `--worker` always. A worker that dies mid-request
+gives exit 1 and the job is not re-run in-process. A socket that another user owns gives exit 1 and nothing is
+sent: the client reads the owner with `SO_PEERCRED` before it writes the request.
+
+`serve-worker` exits 1 with a one-line reason, before it loads any model, when `<path>` exists and is not a socket
+or when a worker already answers there. A socket left by a worker that was killed is replaced. On exit the worker
+removes the socket file only if it made that file.
 
 Protocol, for a client that does not call the CLI: a Unix stream socket, one request per connection, newline-delimited JSON.
 
 | Direction | Message |
 |---|---|
-| client to worker | `{"argv": ["run", "--mode", "single", ...], "cwd": "<absolute dir>", "env": {"PART2_PROGRESS": "1"}}`, argv without `--worker`; relative paths in argv resolve against `cwd`; only `PART2_*` env is applied |
+| client to worker | `{"argv": ["run", "--mode", "single", ...], "cwd": "<absolute dir>", "env": {"PART2_PROGRESS": "1"}}`, argv without `--worker`; relative paths in argv resolve against `cwd`; only `PART2_*` env is applied, and for the job it replaces the worker's own `PART2_*` variables |
 | worker to client | `{"stream": "stdout" or "stderr", "data": "<text>"}` as the job prints (the `progress <stage> <done> <total>` lines arrive here), zero or more |
-| worker to client, last | `{"exit": <n>}`, the exit code `part2 <argv>` would give (0 written, 1 input or contract error, 2 bad option); the worker also answers exit 2 for a command other than `run` or `track` |
+| worker to client, last | `{"exit": <n>}`, the exit code `part2 <argv>` would give (0 written, 1 input or contract error, 2 bad option); the worker also answers exit 2, with one stderr line and without running anything, for a command other than `run` or `track`, an argv that still carries `--worker` (or an abbreviation of it), and a request that is not a JSON object with `argv` a list of strings, `cwd` an existing absolute directory and `env` a map of strings to strings |
 
 Concurrency: one request at a time per worker. A second client connects and waits in the socket queue (8 deep)
 until the first finishes; Part 7 should queue its own jobs or run one worker per GPU slot (about 10 GiB each).
-The host GPU lock still applies to every request. A request that raises does not stop the worker. Restart the
-worker after a `git pull` of Part 2 (code and models are loaded once). Spec: `docs/specs/warm-worker.md`.
+The host GPU lock still applies to every request. A request that raises does not stop the worker, and neither
+does a client that disconnects or sends a malformed request; the worker logs the traceback on its own stderr and
+serves the next one. Restart the worker after a `git pull` of Part 2 (code and models are loaded once).
+
+Two limits to plan for. A warm worker keeps its models in GPU memory between requests (about 10 GiB) and outside
+the host GPU lock, which `part2 run` holds only around each 3D estimate. The staging job worker's check of 12 GiB
+free memory therefore sees that memory as used. Only what Python code writes to `sys.stdout` and `sys.stderr`
+streams to the client; output that a C extension or subprocess writes straight to file descriptors 1 and 2 stays
+on the worker's terminal. Spec: `docs/specs/warm-worker.md`.
 
 ## Differences between Part 2's validators and Part 3's schema
 

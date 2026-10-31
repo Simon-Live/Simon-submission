@@ -108,24 +108,64 @@ def _tracked_ids(doc: dict) -> dict[str, object]:
     return {str(p["id"]): p["id"] for f in doc["frames"] for p in f["people"]}
 
 
-def _track_stage(args, recs, meta, backend_name) -> dict:
-    """Track the frames (or reuse --tracks), write out/tracks.json and return the document. Raises
-    trackers.UnknownTracker for a bad tracker name."""
+def _check_ids(doc: dict, ids: list[str]) -> None:
+    """ValueError naming the first listed id that no person in the tracks document has."""
+    known = _tracked_ids(doc)
+    for i in ids:
+        if i not in known:
+            raise ValueError(f"unknown person id {i} in --ids; tracks.json has {', '.join(sorted(known, key=str)) or 'nobody'}")
+
+
+def _load_tracks(path: Path) -> dict:
+    """The --tracks file as a tracks document that passes the contract. A file that cannot be read, is not JSON or
+    breaks the tracks contract is an input error naming the file (ValueError), not a broken output."""
+    try:
+        doc = json.loads(Path(path).read_text())
+    except OSError as e:
+        raise ValueError(f"--tracks {path} cannot be read ({e.strerror or e})") from None
+    except ValueError as e:
+        raise ValueError(f"--tracks {path} is not valid JSON ({e})") from None
+    try:
+        contract.validate(doc, "tracks")
+    except ContractError as e:
+        raise ValueError(f"--tracks {path} breaks the tracks contract at {e.path}: {e.msg}") from None
+    return doc
+
+
+def _given_tracks(path: Path | None, ids: list[str] | None) -> dict | None:
+    """The --tracks document (None without --tracks), loaded and checked against --ids before any frame is
+    ingested: a bad file or an unknown id costs no ingest."""
+    if path is None:
+        return None
+    doc = _load_tracks(path)
+    if ids is not None:
+        _check_ids(doc, ids)
+    return doc
+
+
+def _check_same_frames(path: Path, doc: dict, recs: list[dict]) -> None:
+    """ValueError unless the tracks cover exactly the frames of this input: a file made at another --fps or from
+    another clip would pair its boxes with the wrong frames."""
+    have, want = {f["frame"] for f in doc["frames"]}, {r["frame"] for r in recs}
+    sizes = f"it covers {len(have)} frames, this input has {len(want)}"
+    hint = "was it made with the same --input and --fps?"
+    if want - have:
+        raise ValueError(f"--tracks {path} has no entry for frame {min(want - have)} of this input ({sizes}; {hint})")
+    if have - want:
+        raise ValueError(f"--tracks {path} has an entry for frame {min(have - want)} that this input lacks ({sizes}; {hint})")
+
+
+def _track_stage(args, recs, meta, backend_name, reuse: dict | None = None) -> dict:
+    """Track the frames (or reuse the --tracks document `reuse`), write out/tracks.json and return the document.
+    Raises trackers.UnknownTracker for a bad tracker name."""
     from part2 import track, trackers
 
     tracks_path = args.out / "tracks.json"
-    given = getattr(args, "tracks", None)
-    if given is not None:  # reuse: no tracker runs, ids are kept as given (TICKET-041)
-        doc = json.loads(Path(given).read_text())
-        contract.validate(doc, "tracks")
-        have = {f["frame"] for f in doc["frames"]}
-        missing = [r["frame"] for r in recs if r["frame"] not in have]
-        if missing:
-            raise ValueError(f"--tracks {given} has no entry for frame {missing[0]} of this input "
-                             f"(was it made with the same --input and --fps?)")
-        write_json(tracks_path, doc)
-        print(f"{len(_tracked_ids(doc))} tracked people reused from {given} (no tracking run)")
-        return doc
+    if reuse is not None:  # reuse: no tracker runs, ids are kept as given (TICKET-041)
+        _check_same_frames(args.tracks, reuse, recs)
+        write_json(tracks_path, reuse)
+        print(f"{len(_tracked_ids(reuse))} tracked people reused from {args.tracks} (no tracking run)")
+        return reuse
     _progress("track", 0, len(recs))
     doc = track.track(args.out / "frames", tracks_path, tracker=args.tracker, purpose=args.tracker_order)
     _stamp_tracks(tracks_path, doc, _tracks_extras(meta, doc, backend_name))
@@ -141,56 +181,62 @@ def _pick_boxes(doc: dict, ids: list[str] | None) -> dict:
 
     if ids is None:
         return multi3d.tracks_to_boxes(doc)
-    known = _tracked_ids(doc)
-    for i in ids:
-        if i not in known:
-            raise ValueError(f"unknown person id {i} in --ids; tracks.json has {', '.join(sorted(known, key=str)) or 'nobody'}")
+    _check_ids(doc, ids)
     keep = set(ids)
     return multi3d.tracks_to_boxes({**doc, "frames": [
         {**f, "people": [p for p in f["people"] if str(p["id"]) in keep]} for f in doc["frames"]]})
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="part2", description="Simon Part 2: video frames to 3D poses.")
-    sub = parser.add_subparsers(dest="command", required=True)
+class _Parser(argparse.ArgumentParser):
+    """No option abbreviations: the warm worker forwards argv by exact option names (worker.strip_worker), so
+    `--work` must be an argparse error, not a second spelling of --worker that the worker would send to itself."""
+
+    def __init__(self, **kwargs):
+        super().__init__(allow_abbrev=False, **kwargs)
+
+
+def _tracking_parent(out_help: str, multi_only: bool) -> argparse.ArgumentParser:
+    """The five arguments `run` and `track` share (--input, --out, --fps, --tracker, --tracker-order), declared
+    once and passed as `parents=`. `run` applies the tracker options to --mode multi only, which its help says."""
+    scope = "multi: " if multi_only else ""
+    p = _Parser(add_help=False)
+    p.add_argument("--input", required=True, type=Path, help="video file or directory of images")
+    p.add_argument("--out", required=True, type=Path, help=out_help)
+    p.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
+    p.add_argument("--tracker", help=f"{scope}api-sam31, local-sam31, local-open or bytetrack "
+                   "(default: PART2_TRACKER, else the tracker order)")
+    p.add_argument("--tracker-order", choices=["scored", "bulk"], default="bulk",
+                   help=f"{scope}the order walked when no tracker is named" + (" (make outputs: scored)" if multi_only else ""))
+    return p
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = _Parser(prog="part2", description="Simon Part 2: video frames to 3D poses.")
+    sub = parser.add_subparsers(dest="command", required=True, parser_class=_Parser)
 
     p_frames = sub.add_parser("frames", help="extract numbered frames + frames.json from a video or image dir")
     p_frames.add_argument("--input", required=True, type=Path, help="video file or directory of images")
     p_frames.add_argument("--out", required=True, type=Path, help="output frames directory")
     p_frames.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
 
-    p_run = sub.add_parser("run", help="full pipeline: frames -> pose3d.json (+ tracks.json in multi mode)")
+    p_run = sub.add_parser("run", help="full pipeline: frames -> pose3d.json (+ tracks.json in multi mode)",
+                           parents=[_tracking_parent("output directory", multi_only=True)])
     p_run.add_argument("--mode", required=True, choices=["single", "multi"], help="one-person or class recording")
-    p_run.add_argument("--input", required=True, type=Path, help="video file or directory of images")
-    p_run.add_argument("--out", required=True, type=Path, help="output directory")
-    p_run.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
     p_run.add_argument("--smooth", action="store_true", help="One-Euro smoothing of 3D joints over time")
     p_run.add_argument("--mirrored", action="store_true",
                        help="the saved video is a mirror image of the scene (front camera): writes mirrored: true")
     p_run.add_argument("--backend", help="gpu or cpu (default: PART2_BACKEND, else gpu when CUDA is available, else cpu)")
     p_run.add_argument("--lifter", help="cpu backend: fixed-bones or motionbert (default: PART2_LIFTER, else fixed-bones)")
-    p_run.add_argument("--tracker", help="multi: api-sam31, local-sam31, local-open or bytetrack "
-                       "(default: PART2_TRACKER, else the tracker order)")
-    p_run.add_argument("--tracker-order", choices=["scored", "bulk"], default="bulk",
-                       help="multi: the order walked when no tracker is named (make outputs: scored)")
     p_run.add_argument("--refine", default="none",
                        help="single: comma-separated ladder rungs (part2.refine) run on the 3D before the canonical "
                        "frame; focal,kp2d-fit gives the scored outputs (make outputs); default none")
-
     p_run.add_argument("--worker", type=Path, help="socket of a running `part2 serve-worker`; used when it is up, "
                        "else this process runs the job itself")
     p_run.add_argument("--tracks", type=Path, help="multi: reuse this tracks.json (no tracking run, ids unchanged)")
     p_run.add_argument("--ids", help="multi: comma-separated person ids; 3D runs for these people only")
 
-    p_tr = sub.add_parser("track", help="frames + tracks.json only, no 3D (Part 7 people picker)")
-    p_tr.add_argument("--input", required=True, type=Path, help="video file or directory of images")
-    p_tr.add_argument("--out", required=True, type=Path, help="output directory (frames/ and tracks.json)")
-    p_tr.add_argument("--fps", type=float, help="resample video to this rate / timestamp an image dir")
-    p_tr.add_argument("--tracker", help="api-sam31, local-sam31, local-open or bytetrack "
-                      "(default: PART2_TRACKER, else the tracker order)")
-    p_tr.add_argument("--tracker-order", choices=["scored", "bulk"], default="bulk",
-                      help="the order walked when no tracker is named")
-
+    p_tr = sub.add_parser("track", help="frames + tracks.json only, no 3D (Part 7 people picker)",
+                          parents=[_tracking_parent("output directory (frames/ and tracks.json)", multi_only=False)])
     p_tr.add_argument("--worker", type=Path, help="socket of a running `part2 serve-worker` (in-process when down)")
 
     p_sw = sub.add_parser("serve-worker", help="keep the models loaded and serve run and track requests on a socket")
@@ -239,12 +285,24 @@ def main(argv: list[str] | None = None) -> int:
                       help="one take: a whole clip or a cut <clip>-<start>to<end>s (default: every take)")
     p_st.add_argument("--backend", choices=list(backends.CHOICES), help="default: PART2_BACKEND, else gpu when CUDA is available")
 
-    args = parser.parse_args(argv)
-    if args.command == "serve-worker":
-        from part2 import worker
+    return parser
 
+
+def _serve_worker(args) -> int:
+    """`part2 serve-worker`: an unknown backend is exit 2 like `run --backend`; a failed preload or socket falls
+    to main's handler (a `part2: ...` line, exit 1)."""
+    from part2 import worker
+
+    try:
         worker.serve(str(args.socket), args.backend)
-        return 0
+    except backends.UnknownBackend as e:
+        print(f"part2: {e}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
     if getattr(args, "worker", None) is not None:
         from part2 import worker
 
@@ -253,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
             return code
         print(f"part2: no worker at {args.worker}; running in this process", file=sys.stderr)
     if args.command == "stock":
+        from part2 import stock
+
         return stock.command(args.clip, args.backend)
     if args.command == "demo":
         from part2 import demo
@@ -287,6 +347,8 @@ def main(argv: list[str] | None = None) -> int:
 
         return doctor.command(args.file, args.consumer, args.json)
     try:
+        if args.command == "serve-worker":
+            return _serve_worker(args)
         if args.command == "frames":
             recs = frames.ingest(args.input, args.out, args.fps)
             print(f"{len(recs)} frames -> {args.out}")
@@ -319,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if backend.name == "cpu":
             backend.lifter = lifter
+        reuse = _given_tracks(args.tracks, ids)  # before the ingest: a bad file or an unknown id costs nothing
         recs = frames.ingest(args.input, args.out / "frames", args.fps)
         _progress("frames", len(recs), len(recs))
         print(f"{len(recs)} frames -> {args.out / 'frames'}")
@@ -341,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
             from part2 import multi3d, trackers
 
             try:
-                doc = _track_stage(args, recs, meta, backend.name)
+                doc = _track_stage(args, recs, meta, backend.name, reuse)
             except trackers.UnknownTracker as e:
                 print(f"part2: {e}", file=sys.stderr)
                 return 2
@@ -359,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     except ContractError as e:
         print(f"part2: output breaks the contract at {e.path}: {e.msg}", file=sys.stderr)
         return 1
-    except (FileNotFoundError, ValueError, RuntimeError) as e:
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"part2: {e}", file=sys.stderr)
         return 1
     raise AssertionError(f"unhandled mode {args.mode}")

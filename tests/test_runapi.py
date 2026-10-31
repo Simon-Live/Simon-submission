@@ -565,3 +565,32 @@ def test_j05_a_file_with_a_duration_reads_its_timestamps_exactly_once(tmp_path, 
 def test_one_decoded_frame_and_no_duration_is_accepted(tmp_path):
     take = video_without_duration(tmp_path / "one.webm", 1, audio=False, frames=1)
     assert runapi.probe_video(take, runapi.Limits()) == ".webm"
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("failure", [RuntimeError("ffprobe failed"), ValueError("could not convert string to float")])
+def test_j01_no_duration_and_unreadable_timestamps_is_415(tmp_path, monkeypatch, failure):
+    from part2 import frames
+
+    take = video_without_duration(tmp_path / "take.webm", 1, audio=False)
+    assert has_no_duration(take)  # step 3 gives nothing, so step 4 reads the timestamps
+
+    def unreadable(path):
+        raise failure
+
+    monkeypatch.setattr(frames, "_probe_timestamps", unreadable)
+    e = err(runapi.probe_video, take, runapi.Limits())
+    assert (e.status, e.code) == (415, "unsupported")
+    assert e.message == "This file is not a video or photo the app can read."
+
+
+@needs_ffmpeg
+def test_j01_no_duration_and_no_decoded_frame_is_422(tmp_path, monkeypatch):
+    from part2 import frames
+
+    take = video_without_duration(tmp_path / "take.webm", 1, audio=False)
+    assert has_no_duration(take)
+    monkeypatch.setattr(frames, "_probe_timestamps", lambda path: [])  # packets were read, but no frame decodes
+    e = err(runapi.probe_video, take, runapi.Limits())
+    assert (e.status, e.code) == (422, "no_frames")
+    assert e.message == "No frames could be read from this video."
