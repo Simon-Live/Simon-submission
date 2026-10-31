@@ -116,6 +116,7 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
 - **Limits:** shape points are summed miss points and can exceed the score loss. Moments need a Part 5
   1.5.0 timeline. The 5-point "close" cut-off is a display grouping. Timing is coached but does not lower
   the score.
+- **Rehab (TICKET-097):** under rehab, when Part 5's tempo cue reads "Slower is fine", the panel says so and shows no Timing verdict, no Dragging moments and no Timing tag; a fast rehab take still shows Rushing.
 
 ## R6 Crew challenge and leaderboard (TICKET-076)
 
@@ -194,6 +195,7 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
 - **Tests:** `tests/part7/test_practice.py` (argv with and without a fake `--profile` flag),
   `tests/part7/test_mode_scoring.py` (rules variants, the runner, path selection, the real Part 5),
   `tests/part7/practice.unit.test.mjs`, `tests/part7/practice.browser.mjs`.
+- **Rehab tempo (TICKET-097):** at Part 5 aea23ae a slow rehab take adds no tempo item to What to work on first and its tempo cue reads "Slower is fine".
 - **Try it:** tag a movement for rehab with `python -m part7 labels --staging add-tag <entry-id> rehab` (rehab entries need that tag; `remove-tag` and `show [<entry-id>]` also exist), then open the catalog, tap Rehab, open the movement's Follow screen and read the safety line.
 - **Limits:** at Part 5 d655d50 dance and rehab are scored by Part 5's own profiles; the text below applies to the fallback for an older pin: dance and rehab score with Part 7's own, more forgiving rules (ADR-0008, operator
   2026-10-31), derived from the pinned Part 5's `rules.json` and run through Part 5's own command line.

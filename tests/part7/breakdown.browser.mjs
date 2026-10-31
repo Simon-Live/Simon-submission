@@ -102,6 +102,24 @@ try {
   assert.equal(await drag.locator("[data-cue-kind=tempo] [data-testid=kind-tag]").textContent(), "Timing");
   ok("dragging fixture with a close shape: timing verdict and Dragging line");
 
+  // rehab: Part 5 says slower is fine, so the panel reassures and lists no timing problem
+  const rs = await open("breakdown-rehab-slow");
+  assert.equal(await text(rs, "tempo-line"), "Slower than the trainer, and that is fine in rehab");
+  assert.equal(await rs.getByTestId("tempo-line").getAttribute("data-tempo"), "slow-ok");
+  assert.doesNotMatch(await text(rs, "breakdown-verdict"), /timing is off|dragging/i);
+  assert.equal(await rs.getByTestId("breakdown").getAttribute("data-verdict"), "both-good");
+  assert.equal(await rs.getByTestId("tempo-moment").count(), 0);
+  assert.equal(await rs.locator("[data-cue-kind=tempo]").count(), 0);
+  assert.doesNotMatch(await rs.getByTestId("breakdown").textContent(), /Dragging/);
+  ok("rehab slow fixture: reassurance line, no Timing verdict, no Dragging, no moments, no Timing tag");
+
+  // rehab fast still rushes
+  const rf = await open("breakdown-rehab-fast");
+  assert.match(await text(rf, "tempo-line"), /^Rushing: /);
+  assert.equal(await rf.getByTestId("tempo-line").getAttribute("data-tempo"), "rushing");
+  assert.equal(await rf.locator("[data-cue-kind=tempo] [data-testid=kind-tag]").textContent(), "Timing");
+  ok("rehab fast fixture: still Rushing with a Timing tag");
+
   // old Part 5: no timeline, no tempo
   const old = await open("breakdown-old");
   assert.match(await text(old, "breakdown-verdict"), /^Most of your lost points are shape: how far you move$/);

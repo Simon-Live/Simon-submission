@@ -12,7 +12,7 @@ class FakeEl {
   querySelector() { return this.kids.find((k) => k.attrs && k.attrs["data-testid"] === "kind-tag") || null; }
 }
 globalThis.document = { createElement: (t) => new FakeEl(t) };
-const { splitShape, tempoStatus, tempoWording, tempoMoments, verdictOf, tagRows, BEAT_LOW, BEAT_HIGH, SHAPE_CLOSE } =
+const { splitShape, tempoStatus, tempoWording, tempoMoments, verdictOf, tagRows, slowIsFine, BEAT_LOW, BEAT_HIGH, SHAPE_CLOSE } =
   await import("../../web/breakdown.js");
 
 const load = (f) => JSON.parse(fs.readFileSync(new URL(`./fixtures/input/${f}`, import.meta.url)));
@@ -88,4 +88,31 @@ test("tagging rows is by kind, skips unknown kinds and never repeats", () => {
   assert.equal(tagRows(root), 3);
   const tags = rows.map((r) => r.kids.filter((k) => k.attrs["data-testid"] === "kind-tag").map((k) => k.textContent));
   assert.deepEqual(tags, [["Shape"], ["Shape"], ["Timing"], []]);
+});
+
+const pts0 = () => ({ position: 1, range: 2, total: 3, basis: "points" });
+
+test("rehab: Part 5's 'Slower is fine' cue means reassurance, not a timing problem", () => {
+  const slow = load("breakdown-rehab-slow.json");
+  assert.equal(slow.score.tempo.cue, "Slower is fine");
+  assert.equal(slowIsFine(slow), true);
+  assert.deepEqual(tempoMoments(slow), []);
+  assert.equal(verdictOf(splitShape(slow), slow.score.tempo.ratio, true).kind, "both-good");
+  assert.ok(!/timing is off/.test(verdictOf(pts0(), 1.4, true).text));
+  assert.equal(verdictOf(pts0(), 1.4, false).text, "Your shape is close; the timing is off: dragging");
+  // no cue at all: the rehab profile and a ratio above the beat still reads as fine
+  assert.equal(slowIsFine({ profile: "rehab", score: { tempo: { ratio: 1.4 } } }), true);
+  // fitness, dance and a fast rehab take keep the old behaviour
+  assert.equal(slowIsFine(load("breakdown-dragging.json")), false);
+  assert.equal(slowIsFine({ profile: "dance", score: { tempo: { ratio: 1.4 } } }), false);
+  const fast = load("breakdown-rehab-fast.json");
+  assert.equal(slowIsFine(fast), false);
+  assert.equal(tempoMoments(fast).length, 8);
+  assert.ok(tempoMoments(load("breakdown-dragging.json")).length > 0);
+});
+
+test("rehab slow: a tempo row gets no Timing tag", () => {
+  const rows = ["position", "tempo"].map((k) => { const r = new FakeEl("button"); r.setAttribute("data-cue-kind", k); return r; });
+  assert.equal(tagRows({ querySelectorAll: () => rows }, { slowFine: true }), 1);
+  assert.deepEqual(rows.map((r) => r.kids.length), [1, 0]);
 });

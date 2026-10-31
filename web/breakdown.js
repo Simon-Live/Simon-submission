@@ -46,6 +46,21 @@ export function tempoStatus(ratio) {
   return "on";
 }
 
+/**
+ * True when Part 5 says a slow take is fine: its tempo cue reads "Slower is fine" (rehab profile, ADR-0016), or, for an
+ * analysis whose cue is missing, the rehab profile with a ratio above the beat. `tempo` is score.tempo or a window's tempo.
+ */
+export function slowIsFine(analysis, tempo) {
+  const t = tempo || (analysis && analysis.score && analysis.score.tempo) || null;
+  if (!t) return false;
+  const hasCue = typeof t.cue === "string" && t.cue !== "";
+  if (hasCue && /^slower is fine/i.test(t.cue)) return true;
+  const r = num(t.ratio);
+  return !hasCue && !!analysis && analysis.profile === "rehab" && r != null && r > BEAT_HIGH;
+}
+
+export const SLOW_FINE_LINE = "Slower than the trainer, and that is fine in rehab";
+
 /** The overall tempo line, e.g. "Rushing: your moves took 37% of the trainer's time". Null with no ratio. */
 export function tempoWording(ratio) {
   const s = tempoStatus(ratio);
@@ -61,6 +76,7 @@ export function tempoMoments(analysis) {
   tl.forEach((w, index) => {
     const status = tempoStatus(w && w.tempo && w.tempo.ratio);
     if (!status || status === "on" || !Array.isArray(w.t_s)) return;
+    if (status === "dragging" && slowIsFine(analysis, w.tempo)) return; // rehab: a slow window is not a problem
     const [a, b] = w.t_s;
     out.push({ index, status, at_s: a, label: `${a.toFixed(1)} to ${b.toFixed(1)} s` });
   });
@@ -68,8 +84,8 @@ export function tempoMoments(analysis) {
 }
 
 /** One line verdict: {kind: "shape"|"timing"|"both-good"|"unknown", text}. */
-export function verdictOf(shape, ratio) {
-  const t = tempoStatus(ratio);
+export function verdictOf(shape, ratio, reassured = false) {
+  const t = reassured ? "on" : tempoStatus(ratio);
   const quiet = shape.total <= (shape.basis === "count" ? 0 : SHAPE_CLOSE);
   if (shape.basis === "none" && !t) return { kind: "unknown", text: "This analysis has no shape or timing detail to split." };
   if (t && t !== "on" && quiet) return { kind: "timing", text: `Your shape is close; the timing is off: ${t}` };
@@ -78,14 +94,16 @@ export function verdictOf(shape, ratio) {
       : (shape.position > shape.range ? KIND_LABEL.position : KIND_LABEL.range).toLowerCase();
     return { kind: "shape", text: `Most of your lost points are shape: ${top}` };
   }
+  if (reassured) return { kind: "both-good", text: "Your shape matches well, and a slower pace is fine in rehab" };
   return { kind: "both-good", text: "Shape and timing both match well" };
 }
 
 /** Add a "Shape" or "Timing" chip to every [data-cue-kind] element under root, once. Returns how many tagged rows exist. */
-export function tagRows(root) {
+export function tagRows(root, opts = {}) {
   let n = 0;
   for (const row of root.querySelectorAll("[data-cue-kind]")) {
     const kind = row.getAttribute("data-cue-kind");
+    if (kind === "tempo" && opts.slowFine) continue; // Part 5 says slow is fine: no Timing tag
     const label = kind === "tempo" ? "Timing" : SHAPE_KINDS.includes(kind) ? "Shape" : null;
     if (!label) continue;
     n++;
@@ -133,7 +151,8 @@ export function mountBreakdown(slot, ctx = {}) {
   const analysis = ctx.analysis || {};
   const shape = splitShape(analysis);
   const ratio = analysis.score && analysis.score.tempo ? num(analysis.score.tempo.ratio) : null;
-  const verdict = verdictOf(shape, ratio);
+  const slowFine = slowIsFine(analysis) && tempoStatus(ratio) === "dragging";
+  const verdict = verdictOf(shape, ratio, slowFine);
   const moments = tempoMoments(analysis);
   const panel = el("section", { class: "sb-panel", "data-testid": "breakdown", "data-verdict": verdict.kind, "aria-labelledby": "sb-h" },
     el("h2", { id: "sb-h", text: "Shape or timing?" }),
@@ -141,15 +160,16 @@ export function mountBreakdown(slot, ctx = {}) {
     shapeBlock(shape));
   const timing = el("div", { class: "sb-timing", "data-testid": "breakdown-timing" },
     el("p", { class: "sb-row" }, el("span", { text: "Timing" }),
-      el("strong", { "data-testid": "tempo-line", "data-tempo": tempoStatus(ratio) || "none", text: tempoWording(ratio) || "No timing detail in this analysis." })));
+      el("strong", { "data-testid": "tempo-line", "data-tempo": slowFine ? "slow-ok" : tempoStatus(ratio) || "none",
+        text: slowFine ? SLOW_FINE_LINE : tempoWording(ratio) || "No timing detail in this analysis." })));
   if (moments.length) timing.append(el("p", { class: "sb-muted", text: "Moments off the beat. Tap one to jump there." }), momentsBlock(moments));
   panel.append(timing, el("p", { class: "sb-note", "data-testid": "timing-note", text: "Timing is coached but does not lower your score. Only shape does." }));
   slot.replaceChildren(panel, bodyNote());
   const scope = slot.parentElement || document;
-  tagRows(scope);
+  tagRows(scope, { slowFine });
   // the score timeline rebuilds its miss rows when another window is opened: tag them again (tagRows is idempotent)
   // watch only the timeline section, not the whole result root
-  const watch = new MutationObserver(() => tagRows(scope));
+  const watch = new MutationObserver(() => tagRows(scope, { slowFine }));
   const tl = scope.querySelector ? scope.querySelector("[data-testid='score-timeline']") : null;
   if (tl) watch.observe(tl, { childList: true, subtree: true });
   return () => { watch.disconnect(); slot.replaceChildren(); };
