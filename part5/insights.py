@@ -41,7 +41,9 @@ def _from_faults(faults):
         if not f.get("cue") or f["cue"] in seen:
             continue
         seen.add(f["cue"])
-        out.append(_item(f, _sentence(f.get("text_timed") or f["text"]), f.get("at_s"), None, None))
+        at = f.get("at_s")
+        observed = _sentence(f["text"].split(", ")[0])
+        out.append(_item(f, observed + (f" at {at:.1f} s" if at is not None else ""), at, None, None))
     return out
 
 
@@ -65,7 +67,9 @@ def _from_timeline(timeline, basis):
 
 def _why(miss, n_windows, n_compared, basis):
     """What was seen and where: "Left knee not bent enough (3 of 8 reps)", "... (2 times, first at 4.1 s)"."""
-    seen = _sentence(phrase(miss["measure"], miss["direction"], miss["side"]))
+    # the observation only: a phrase that ends in advice ("more upright than the example, lean forward more")
+    # keeps its first clause, since the cue already says what to do
+    seen = _sentence(phrase(miss["measure"], miss["direction"], miss["side"]).split(", ")[0])
     at = miss.get("at_s")
     if basis == "reps" and n_compared > 1:
         return f"{seen} ({n_windows} of {n_compared} reps)"

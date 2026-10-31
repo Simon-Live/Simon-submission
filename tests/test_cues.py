@@ -165,6 +165,14 @@ def test_window_insights_sum_points_over_compared_windows_and_point_at_the_first
     assert got[1]["why"] == "Leaning forward more than the example at 11.0 s" and got[1]["window"] == 2
 
 
+def test_why_states_the_observation_and_leaves_the_advice_to_the_cue():
+    w = [{"t_s": [0, 5], "misses": [_miss("Lean forward more", 5.7, 9.0, "trunk_lean_forward", "center", "less")]}]
+    assert insights_of(_timeline_doc(w))[0]["why"] == "More upright than the example at 5.7 s"
+    fault = {"cue": "Lean forward more", "cue_kind": "position", "at_s": 5.7, "measure": "trunk_lean_forward",
+             "side": "center", "joint": "spine", "text": "more upright than the example, lean forward more"}
+    assert insights_of({"faults": [fault]})[0]["why"] == "More upright than the example at 5.7 s"
+
+
 def test_at_most_five_insights_and_a_tempo_insight_keeps_its_place():
     many = [_miss(f"Cue number {i}", float(i), 10.0 - i) for i in range(8)]
     plain = insights_of(_timeline_doc([{"t_s": [0, 5], "misses": many}]))
