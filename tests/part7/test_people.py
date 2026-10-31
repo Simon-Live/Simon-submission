@@ -244,6 +244,16 @@ def test_people_trim_is_cut_and_recorded(api: Api, class_mp4: Path, monkeypatch:
     assert job["trim"] == {"start_ms": 1000, "end_ms": 3000} and 1900 <= job["duration_ms"] <= 2200
 
 
+def test_people_trim_end_just_past_the_probed_length_is_the_end(
+    api: Api, class_mp4: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The browser reads a recording a little longer than ffprobe; an end handle left at the end must not 400."""
+    Fakes(monkeypatch, {0: 20})
+    duration_ms = media.probe(class_mp4)["duration_ms"]
+    job = _people_job(api, class_mp4, {"start_ms": 1000, "end_ms": duration_ms + 400})
+    assert job["trim"] == {"start_ms": 1000, "end_ms": duration_ms}
+
+
 @pytest.mark.parametrize("trim", [{"start_ms": 0, "end_ms": 500}, {"start_ms": 0, "end_ms": 99000},
                                   {"start_ms": 3000, "end_ms": 1000}, {"start_ms": "a"}])
 def test_people_bad_trim_is_400(api: Api, class_mp4: Path, trim: dict[str, Any]) -> None:

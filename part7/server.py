@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import logging
 import mimetypes
 import os
 from pathlib import Path
@@ -21,7 +22,7 @@ from typing import Any
 from urllib.parse import urlsplit
 import uuid
 
-from part7 import config, jobs, labels, media, people, people_routes, pins, processor, proxy, quota, replay
+from part7 import applog, config, jobs, labels, media, people, people_routes, pins, processor, proxy, quota, replay
 from part7.parts import p5_analyse
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -31,6 +32,7 @@ CATEGORIES = ("exercise", "dance")
 NAME_MAX = 80
 DRAIN_LIMIT = 300_000_000  # an oversized upload is read and dropped up to here so the browser sees the 413
 DURATION_SLACK_S = 0.5  # MediaRecorder stops a little after its 60 s timer
+TRIM_END_SLACK_MS = 1500  # a trim end this far past the probed length is cut at the end (the recorder clock runs long)
 JSON_BODY_MAX = 65536
 CHUNK = 1 << 20
 
@@ -380,13 +382,21 @@ class _Handler(BaseHTTPRequestHandler):
             self._error(400, MSG_TRIM_SHAPE)
             return None
         start, end = trim["start_ms"], trim["end_ms"]
+        if duration_ms < end <= duration_ms + TRIM_END_SLACK_MS:
+            # The browser and ffprobe disagree on a MediaRecorder file's length; an end handle left at the end
+            # of the clip is the end of the clip.
+            applog.log(f"trim end {end} ms is past the probed {duration_ms} ms, cut at the end of the clip")
+            end = duration_ms
         if not 0 <= start < end <= duration_ms:
+            applog.log(f"trim rejected: {start}-{end} ms on a {duration_ms} ms clip ({raw.suffix})", level=logging.WARNING)
             self._error(400, MSG_TRIM_ORDER)
             return None
         if end - start < config.MIN_CLIP_SECONDS * 1000:
+            applog.log(f"trim rejected as too short: {start}-{end} ms", level=logging.WARNING)
             self._error(400, MSG_TRIM_SHORT)
             return None
         if end - start > config.MAX_CLIP_SECONDS * 1000:
+            applog.log(f"trim rejected as too long: {start}-{end} ms", level=logging.WARNING)
             self._error(400, MSG_TRIM_LONG)
             return None
         return {"start_ms": start, "end_ms": end}, {"trim": {"start_ms": start, "end_ms": end}, "duration_ms": end - start}
@@ -562,6 +572,7 @@ def cli_serve(
         child.stop()
         return 1
     app = build_app(state, base, child=child)
+    applog.setup(state)
     p2_pose.start_workers(app.queue.workers, state, app.lock)  # warm Part 2 workers when the pin has them
     server = make_server(app, host, port)
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())

@@ -93,7 +93,11 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
 .cam video[hidden] { display: none; }
 .cam video.mirror { transform: scaleX(-1); }
 .cam-empty { color: #bbb; font-size: 14px; margin: 0; }
+.cam[data-state="preview"] .cam-empty, .cam[data-state="counting"] .cam-empty,
 .cam[data-state="recording"] .cam-empty, .cam[data-state="take"] .cam-empty { display: none; }
+/* The live preview shows the whole frame the recorder keeps, on Record and Follow alike: `cover` cut the
+   edges off, so the body looked out of frame on the Follow screen while the file still had it. */
+.cam video[data-testid="preview"] { object-fit: contain; }
 .cam[data-state="recording"]::after {
   content: ""; position: absolute; top: 12px; left: 12px; width: 10px; height: 10px; border-radius: 50%; background: #e5484d;
 }

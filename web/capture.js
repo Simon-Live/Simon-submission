@@ -63,6 +63,8 @@ export function mountCapture(root, limits, { reference = null } = {}) {
   let countdownUsed = false;
   let manual = false;
   let recordedMs = 0;
+  let destroyed = false;
+  let opening = null; // the pending camera request, so a second ask waits on the first
   injectStyles();
 
   const live = h("video", { class: "mirror", muted: true, playsinline: true, "data-testid": "preview", "aria-label": "Camera preview" });
@@ -88,6 +90,8 @@ export function mountCapture(root, limits, { reference = null } = {}) {
   if (reference) reference.dock(camRow, "live");
   root.append(camRow || stage, framing, opts, h("div", { class: "row between" }, timer, h("div", { class: "row" }, start, stop, upload, input)), info, error);
 
+  openPreview();
+
   function setError(msg) {
     error.textContent = msg || "";
     error.hidden = !msg;
@@ -108,6 +112,8 @@ export function mountCapture(root, limits, { reference = null } = {}) {
     info.hidden = !blob;
     info.textContent = blob ? `${label}, ${(blob.size / 1e6).toFixed(1)} MB.` : "";
     start.textContent = blob ? "Record again" : "Record";
+    if (blob) releaseCamera();
+    else if (!destroyed) openPreview();
     if (blob) listener(take, { source, countdownUsed, manual, durationHint: source === "recording" ? recordedMs : 0 });
   }
 
@@ -115,6 +121,28 @@ export function mountCapture(root, limits, { reference = null } = {}) {
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = null;
     live.srcObject = null;
+  }
+
+  // The camera shows as soon as the screen opens, so the person can frame themselves before pressing Record.
+  // Resolves true when a live stream is showing. A refused permission leaves the upload button as the way in.
+  function openPreview() {
+    if (stream && stream.active) return Promise.resolve(true);
+    if (!opening) opening = askCamera().finally(() => { opening = null; });
+    return opening;
+  }
+
+  async function askCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !globalThis.MediaRecorder) return false;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+    } catch {
+      return false;
+    }
+    if (destroyed || take) { releaseCamera(); return false; }
+    live.srcObject = stream;
+    live.play().catch(() => {});
+    if (stage.dataset.state === "idle") stage.dataset.state = "preview";
+    return true;
   }
 
   function pick(file) {
@@ -139,19 +167,11 @@ export function mountCapture(root, limits, { reference = null } = {}) {
 
   async function startRecording() {
     setError("");
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !globalThis.MediaRecorder) {
-      setError(CAMERA_OFF);
-      return;
-    }
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-    } catch {
-      setError(CAMERA_OFF);
-      return;
-    }
     setTake(null);
-    live.srcObject = stream;
-    live.play().catch(() => {});
+    if (!(await openPreview())) {
+      setError(CAMERA_OFF);
+      return;
+    }
     lockOptions(true);
     start.hidden = true;
     upload.hidden = true;
@@ -177,9 +197,8 @@ export function mountCapture(root, limits, { reference = null } = {}) {
 
   function cancelled() {
     if (reference) reference.stopRecording();
-    releaseCamera();
     lockOptions(false);
-    stage.dataset.state = "idle";
+    stage.dataset.state = stream ? "preview" : "idle";
     start.hidden = false;
     upload.hidden = false;
   }
@@ -242,6 +261,7 @@ export function mountCapture(root, limits, { reference = null } = {}) {
       setTake(null);
     },
     destroy() {
+      destroyed = true;
       clearInterval(tick);
       if (counting) counting.cancel();
       if (recorder) recorder.onstop = null;

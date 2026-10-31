@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timezone
 import json
+import logging
 from pathlib import Path
 import re
 import shutil
@@ -14,7 +15,7 @@ import traceback
 import uuid
 from typing import Any, Callable
 
-from part7 import config, keys
+from part7 import applog, config, keys
 
 QUEUE_FULL_MESSAGE = "The app is busy. Try again in a few minutes."
 FALLBACK_REASON = "the step failed unexpectedly"
@@ -249,12 +250,14 @@ class JobQueue:
                     fields[key] = outcome[key]
             self.update(job_id, **fields)
         except JobFailed as exc:
+            applog.log(f"failed at {exc.stage}: {applog.cause(exc)}", job_id, ctx.dir, logging.WARNING)
             self._fail(job_id, exc.stage, sanitize_reason(exc.reason))
-        except Exception:  # the traceback stays in the job log only
+        except Exception as exc:  # the traceback stays in the job log only
             (ctx.dir / "steps").mkdir(exist_ok=True)
             (ctx.dir / "steps" / "error.log").write_text(keys.redact(traceback.format_exc()), encoding="utf-8")
             with self._cond:
                 stage = self._jobs[job_id].get("stage") or "upload"
+            applog.log(f"crashed at {stage}: {applog.cause(exc)} (traceback in steps/error.log)", job_id, ctx.dir, logging.ERROR)
             self._fail(job_id, stage, FALLBACK_REASON)
 
     def _fail(self, job_id: str, stage: str, reason: str) -> None:

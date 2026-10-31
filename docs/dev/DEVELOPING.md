@@ -169,14 +169,17 @@ Under the server state directory (`~/.local/state/simon-part-7/dev` for `make de
 <state>/
   catalog/                 Part 6's catalog (entries, videos)
   part6.log                Part 6 child output
+  part7.log                Part 7's own decisions and failures for every job (also on stderr)
   uploads/<upload id>/     raw uploads, removed after 7 days
   quota/<YYYY-MM-DD>.json  job counters
   jobs/<job id>/
     job.json               the job record (below)
     steps/error.log        traceback of an unexpected error, redacted
+    steps/part7.log        this job's lines of part7.log: clip in/out (size, fps, length, trim), why it failed
     work/                  video.mp4 (normalized), trimmed.mp4, expected.json
       trainer/ or follower/
-        steps/*.log        one log per part call, written while it runs
+        steps/*.log        one log per part call, written while it runs; part7.log there says whether Part 1
+                           got a cropped copy (and the sizes) and why its key frames fell back to Part 3
         part2/, part2_track/, skeleton or follower JSON, analysis.json, replay.json
 ```
 
@@ -188,6 +191,10 @@ Job folders are removed 7 days after their last change. `job.json` holds `id`, `
 Step logs are named after the call: `part1.log`, `part2.log`, `part2_track.log`,
 `part3_part4.log`, `part3_part5.log`, `part4_animate.log`, `part5_analyse.log`, `part6_import.log`,
 and a `*_doctor_*` or `*_validate_*` log for each hand-off check. Each log holds the part's own output, redacted.
+
+Start with `steps/part7.log`: it holds what Part 7 itself decided between the parts (the trim it applied,
+the crop given to Part 1, every fallback) and the cause of a failure, which the visitor's reason leaves out.
+A trim the server rejected (HTTP 400) has no job; it is logged in `<state>/part7.log` with the numbers.
 
 ### Debugging a job
 

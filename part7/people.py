@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import logging
 from pathlib import Path
 import shutil
 import subprocess
 from typing import Any
 
-from part7 import crop, media, pins, runner
+from part7 import applog, crop, media, pins, runner
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
 
@@ -49,14 +50,23 @@ def prepare_clip(ctx: JobContext, raw: Path, trim: dict[str, int] | None) -> Pat
     ctx.set_stage("upload")
     clip = ctx.work / "clip.mp4"
     try:
+        src = media.probe(raw)
+        cut = f"trim {trim['start_ms']}-{trim['end_ms']} ms" if trim else "no trim"
+        applog.log(
+            f"clip in: {raw.suffix} {src['width']}x{src['height']} {src['fps']} fps {src['duration_ms']} ms {src['codec']}, {cut}",
+            ctx.id, ctx.dir,
+        )
         if trim:
             whole = media.normalize(raw, ctx.work / "normalized.mp4")
             media.trim(whole, clip, trim["start_ms"], trim["end_ms"])
             whole.unlink(missing_ok=True)
         else:
             media.normalize(raw, clip)
-        duration_ms = media.probe(clip)["duration_ms"]
-    except (ValueError, RuntimeError, OSError):
+        out = media.probe(clip)
+        duration_ms = out["duration_ms"]
+        applog.log(f"clip out: {out['width']}x{out['height']} {out['fps']} fps {duration_ms} ms", ctx.id, ctx.dir)
+    except (ValueError, RuntimeError, OSError) as exc:
+        applog.log(f"clip could not be prepared: {applog.cause(exc)}", ctx.id, ctx.dir, logging.WARNING)
         raise JobFailed("upload", REASON_UNREADABLE) from None
     ctx._queue.update(ctx.id, trim=trim, duration_ms=duration_ms)
     return clip

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import logging
 from pathlib import Path
 import shutil
 import sys
 import threading
 from typing import Any, Callable
 
-from part7 import config, crop, people, pins, runner
+from part7 import applog, config, crop, media, people, pins, runner
 from part7.parts import (
     p1_keyframes,
     p2_pose,
@@ -120,18 +121,24 @@ def _keyframes(
         note = f"key frames from Part 3, Part 1 took longer than {timeout_s:g} s"
     if step is not None:
         run.steps.append(step)
+    job = applog.job_id_of(work)
     if note:
         run.notes.append(note)
     if kf_path is None or not Path(kf_path).is_file():
+        applog.log(f"Part 1 gave no keyframes ({note or 'no note'}, exit {step and step.get('exit')}); "
+                   "Part 3 picks the key frames. See steps/part1.log", job, work, logging.WARNING)
         return (None, 3)
     doc = p1_keyframes.doctor(kf_path, work, lock=lk, state=state)
     run.steps.append(doc)
     if doc["exit"] != 0:
+        applog.log("Part 1 keyframes rejected by the Part 6 doctor; Part 3 picks the key frames", job, work, logging.WARNING)
         run.notes.append("key frames from Part 3, Part 1 keyframes rejected by Part 6 doctor")
         return (None, 3)
     if not _has_people(Path(kf_path)):
+        applog.log("Part 1 found no person; Part 3 picks the key frames", job, work, logging.WARNING)
         run.notes.append("key frames from Part 3, Part 1 found no person")
         return (None, 3)
+    applog.log("key frames from Part 1", job, work)
     return (Path(kf_path), 1)
 
 
@@ -150,7 +157,9 @@ class _Part1:
     def _work(self, video: Path, work: Path, lk: pins.Lock, state: Any, keys_dir: Any) -> None:
         try:
             self._out = _keyframes(self._side, video, work, lk, state, keys_dir)
-        except Exception:  # Part 1 never fails the job; Part 3 chooses the key frames
+        except Exception as exc:  # Part 1 never fails the job; Part 3 chooses the key frames
+            applog.log(f"Part 1 crashed, Part 3 picks the key frames: {applog.cause(exc)}",
+                       applog.job_id_of(work), work, logging.ERROR)
             self._side.notes.append("key frames from Part 3, Part 1 failed unexpectedly")
             self._out = (None, 3)
 
@@ -217,11 +226,20 @@ def _part1_video(run: _Run, video: Path, work: Path, person: people.PersonSel | 
     """The video Part 1 sees: a copy cropped to `person` (people.md), else `video` itself."""
     if person is None or person.people_work is None:
         return video
+    job = applog.job_id_of(work)
     try:
         cropped = crop.cropped_for_person(video, person.people_work / "tracks.json", person.id, work / "person.mp4")
-    except (ValueError, RuntimeError, OSError):
+    except (ValueError, RuntimeError, OSError) as exc:
+        applog.log(f"crop to person {person.id} failed, Part 1 gets the whole picture: {applog.cause(exc)}",
+                   job, work, logging.WARNING)
         run.notes.append(f"Part 1 saw the whole picture, the crop to person {person.id} failed")
         return video
+    try:
+        src, out = media.probe(video), media.probe(cropped)
+        applog.log(f"Part 1 input cropped to person {person.id}: {src['width']}x{src['height']} -> "
+                   f"{out['width']}x{out['height']}", job, work)
+    except ValueError:
+        pass
     run.notes.append(f"Part 1 ran on a copy cropped to person {person.id}")
     return cropped
 
