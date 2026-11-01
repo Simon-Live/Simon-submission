@@ -71,12 +71,8 @@
      out) over soft pink smoke, under the halftone fields drawn by base.css; img/ is beside this file */
   --powder-a: url("img/powder-a.jpg");
   --powder-b: url("img/powder-b.jpg");
-  --powder-c: url("img/powder-c.jpg");   /* lime */
-  --powder-d: url("img/powder-d.jpg");   /* lime */
   --backdrop: var(--powder-a) right -16vw top -18vh / min(72vw, 1100px) auto no-repeat,
               var(--powder-b) left -18vw top 32vh / min(70vw, 1080px) auto no-repeat,
-              var(--powder-c) left -16vw top -16vh / min(46vw, 720px) auto no-repeat,
-              var(--powder-d) right -14vw bottom -16vh / min(46vw, 720px) auto no-repeat,
               radial-gradient(ellipse 38% 50% at 100% 8%, var(--color-pink-smoke) 0%, transparent 75%),
               radial-gradient(ellipse 38% 60% at 0% 60%, var(--color-pink-smoke) 0%, transparent 75%),
               var(--color-bg);
