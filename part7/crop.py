@@ -94,7 +94,7 @@ def crop_video(src: Path | str, dst: Path | str, box: tuple[int, int, int, int])
         rate = []  # ffmpeg below names the problem
     res = subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-vf", f"crop={w}:{h}:{x}:{y}",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", *rate, "-an", str(dst_p)],
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", *rate, *media.AUDIO_ARGS, str(dst_p)],
         capture_output=True, text=True, timeout=300, check=False,
     )
     if res.returncode != 0 or not dst_p.is_file():

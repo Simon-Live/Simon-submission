@@ -1,6 +1,6 @@
 // Hash router. Relative URLs only; each screen returns a cleanup function.
 import { installErrorCapture } from "./errors.js";
-import { getAnalysis, getReplay, getTrainerVisibility, getFixtureResult, getJob, routeName, ApiError } from "./api.js";
+import { getAnalysis, getReplay, getTrainerVisibility, getFixtureResult, getJob, getEntry, entryFileUrl, routeName, ApiError } from "./api.js";
 import { mountCatalog } from "./catalog.js";
 import { mountWatch } from "./watch.js";
 import { mountRecord } from "./record.js";
@@ -27,8 +27,17 @@ let cleanup = () => {};
 async function loadResult(job, pid) {
   if (job === "fixture") return getFixtureResult();
   const [analysis, record] = await Promise.all([getAnalysis(job, pid), getJob(job).catch(() => null)]);
-  const [replay, trainerVisibility] = await Promise.all([getReplay(job, pid).catch(() => null), getTrainerVisibility(job)]);
-  return { analysis, replay, record, trainerVisibility };
+  const [replay, trainerVisibility, trainerVideoUrl] = await Promise.all([
+    getReplay(job, pid).catch(() => null), getTrainerVisibility(job), trainerVideoOf(record, pid)]);
+  return { analysis, replay, record, trainerVisibility, trainerVideoUrl };
+}
+
+/** The trainer's original video for a follow take's result (side by side); null for a group take or an entry without one. */
+async function trainerVideoOf(record, pid) {
+  const id = !pid && record && record.kind === "follow" ? record.entry_id : null;
+  if (!id) return null;
+  const entry = await getEntry(id).catch(() => null);
+  return entry && entry.video_uri ? entryFileUrl(entry.id || id, entry.video_uri) : null;
 }
 
 function mountResultRoute(el, job, pid) {
@@ -39,7 +48,7 @@ function mountResultRoute(el, job, pid) {
     if (!live) return;
     clear(el);
     // TICKET-087: keep the handle, so leaving the screen stops its video and 3D clock
-    mod.mountResult(el, { analysis: data.analysis, replay: data.replay, trainerVisibility: data.trainerVisibility, job, record: data.record, pid }).then((h) => {
+    mod.mountResult(el, { analysis: data.analysis, replay: data.replay, trainerVisibility: data.trainerVisibility, trainerVideoUrl: data.trainerVideoUrl, job, record: data.record, pid }).then((h) => {
       handle = h;
       // TICKET-159: "Delete this take" ends every real result (not the committed example)
       if (live && job !== "fixture") import("./delete-take.js").then((m) => live && m.mountDeleteTake(el, { job, group: Boolean(pid) })).catch(() => {});

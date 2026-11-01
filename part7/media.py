@@ -25,6 +25,9 @@ COMMON_FPS = (24.0, 25.0, 30.0, 50.0, 60.0)
 SNAP = 0.03  # a counted rate within 3% of a common one is that one
 MAX_CLIP_HEIGHT = 1080  # TICKET-067: also the height of the legacy trim rule below
 LEGACY_TRIM_FILTER = "scale=-2:'min(1080,ih)'"  # trim before TICKET-067 (the `videos.py` test clips, cap 0)
+# The clip keeps the source's first audio track, if it has one (AAC), so the result screen plays it with its sound;
+# the parts read the video stream only. `history_store` copies stay silent on purpose.
+AUDIO_ARGS = ["-map", "0:v:0", "-map", "0:a:0?", "-c:a", "aac", "-b:a", "128k"]
 
 
 def _parse_fps(rate_str: str | None) -> float:
@@ -372,7 +375,7 @@ def normalize(src: Path | str, dst: Path | str, max_side: int = 0) -> Path:
             "-pix_fmt",
             "yuv420p",
             *rate_args(meta),
-            "-an",
+            *AUDIO_ARGS,
             str(dst_p),
         ],
         capture_output=True,
@@ -410,7 +413,7 @@ def trim(src: Path | str, dst: Path | str, start_ms: int, end_ms: int, max_side:
             "-t", f"{(end_ms - start_ms) / 1000:.3f}",
             "-vf", vf,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", *rate,
-            "-an", "-movflags", "+faststart", str(dst_p),
+            *AUDIO_ARGS, "-movflags", "+faststart", str(dst_p),
         ],
         capture_output=True, text=True, timeout=300, check=False,
     )

@@ -282,7 +282,7 @@ const timelineEnd = (analysis) => timelineOf(analysis).map((w) => w.t_s[1]);
  * `job` and `pid` name the result (the follower video is served for them; `videoUrl` overrides, for the harness).
  * @returns {{seek, highlight, compare, coach, destroy}}
  */
-export async function mountResult(root, { analysis, replay, trainerVisibility = null, record = null, job = null, pid = null, videoUrl } = {}) {
+export async function mountResult(root, { analysis, replay, trainerVisibility = null, record = null, job = null, pid = null, videoUrl, trainerVideoUrl = null } = {}) {
   ensureStyles();
   root.replaceChildren();
   root.classList.add("simon-result");
@@ -392,8 +392,9 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   // the zone: the stage (video, then the 3D compare) and the coaching rows below it
   const zone = el("div", { class: "sr-zone" });
   const stageHolder = el("div", { class: "sr-stage-holder" });
+  const sideHolder = el("div", { class: "sr-side-holder" });   // the original videos side by side, with sound
   const body = el("div", { class: "sr-zone-body" });
-  stage.append(stageHolder);
+  stage.append(sideHolder, stageHolder);
   zone.append(stage, body);
   root.append(zone);
 
@@ -431,6 +432,9 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
       coach = null;
     }
   }
+  // the trainer's original video next to the follower's, sound on (a follow take with a trainer video; not a group take)
+  let side = null;
+  if (url && trainerVideoUrl) side = (await import("./side-by-side.js")).mountSideBySide(sideHolder, { trainer: trainerVideoUrl, you: url });
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
   renderFaults(body, display, getView);
   fillSlot(makeSlot(body, "near-misses-slot"), () => import("./near-misses.js").then((m) => m.mountNearMisses), ctx, cleanups); // TICKET-100
@@ -495,6 +499,7 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
       mesh && mesh.destroy();
       summary && summary.destroy();
       coach && coach.destroy();
+      side && side.destroy();
       compare && compare.destroy();
       urls.forEach((u) => URL.revokeObjectURL(u));
       root.replaceChildren();

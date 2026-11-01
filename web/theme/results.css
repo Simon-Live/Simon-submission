@@ -198,3 +198,23 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 .simon-result .sr-mark-count { position: absolute; top: var(--space-1); right: var(--space-1); min-width: 18px; height: 18px;
   padding: 0 var(--space-1); border-radius: var(--radius-pill); background: var(--color-bg); color: var(--color-text);
   font: var(--weight-bold) var(--text-xs)/18px var(--font-sans); text-align: center; pointer-events: none; }
+
+/* Side by side (views/side-by-side.js): the trainer's and the follower's original videos with one play button */
+.sbs { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: var(--space-4); margin: 0 0 var(--space-4); color: var(--color-text); }
+.sbs h2 { margin: 0 0 var(--space-1); font-size: 18px; }
+.sbs-hint, .sbs-note { margin: 0 0 var(--space-3); color: var(--color-text-muted); font-size: 14px; }
+.sbs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.sbs-player { margin: 0; display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.sbs-video { width: 100%; aspect-ratio: 9 / 16; max-height: 60vh; object-fit: contain; background: var(--color-bg); border-radius: var(--radius-md); }
+.sbs-label { font-size: 13px; color: var(--color-text-muted); text-align: center; }
+.sbs-player:last-child .sbs-label { color: var(--color-accent); }
+.sbs-controls { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; }
+.sbs-play { flex: none; min-height: 44px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-pill); background: var(--color-accent); color: var(--color-on-accent); font-weight: 600; cursor: pointer; }
+.sbs-seek { flex: 1; min-width: 0; accent-color: var(--color-accent); }
+.sbs-time { flex: none; font-variant-numeric: tabular-nums; color: var(--color-text-muted); font-size: 13px; }
+.sbs-sound { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.sbs-sound legend { float: left; margin-right: var(--space-2); color: var(--color-text-muted); font-size: 13px; }
+.sbs-sound-option { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 44px; font-size: 14px; }
+.sbs-sound-option:has(input:disabled) { color: var(--color-text-muted); }
+.sbs-note { width: 100%; margin: 0; }
+@media (max-width: 420px) { .sbs { padding: var(--space-3); } .sbs-grid { gap: var(--space-2); } }
