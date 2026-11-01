@@ -14,8 +14,9 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
   --sr-a: var(--color-good); --sr-b: var(--color-good); --sr-c: var(--color-warn); --sr-d: var(--color-bad); --sr-f: var(--color-bad);
   font-family: var(--font-sans);
 }
-/* the summary carries the score now; the old score panel stays in the page for its test ids */
-.simon-result[data-summary="true"] .sr-score { display: none; }
+/* the summary ring carries the number; the old panel keeps only the grade and its bands (tap the grade for the rules) */
+.simon-result[data-summary="true"] .sr-score-head { display: none; }
+.simon-result[data-summary="true"] .sr-score-top { justify-content: flex-start; }
 
 .rs { display: grid; gap: var(--space-4); }
 .rs h3 { margin: 0; font-size: var(--text-md); font-weight: var(--weight-bold); }

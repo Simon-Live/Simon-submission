@@ -324,6 +324,8 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   const modeSlot = makeSlot(root, "mode-slot");
   fillSlot(modeSlot, () => import("./modes.js").then((m) => m.mountModeNote), ctx, cleanups);
   renderScore(root, shown);
+  // the summary ring is now the score on screen; the old panel's number stays in the page under another id
+  root.querySelectorAll('.sr-score [data-testid="score"]').forEach((n) => n.setAttribute("data-testid", "score-detail"));
   const breakdownSlot = makeSlot(root, "breakdown-slot");   // filled once the coaching rows exist (below)
   const challengeSlot = makeSlot(root, "challenge-slot");
   fillSlot(challengeSlot, () => import("./challenge-actions.js").then((m) => m.mountChallengeActions), ctx, cleanups);

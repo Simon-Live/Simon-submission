@@ -19,7 +19,7 @@ function ring(r) {
     s("svg", { viewBox: "0 0 120 120", "aria-hidden": "true" },
       s("circle", { class: "rs-ring-track", cx: 60, cy: 60, r: R }),
       s("circle", { class: "rs-ring-fill", cx: 60, cy: 60, r: R, "stroke-dasharray": `${C * frac} ${C}`, transform: "rotate(-90 60 60)" })),
-    h("span", { class: "rs-ring-value", text: String(r.value) }),
+    h("span", { class: "rs-ring-value", "data-testid": "score", text: String(r.value) }),
     h("span", { class: "rs-ring-caption", text: r.caption }));
 }
 
