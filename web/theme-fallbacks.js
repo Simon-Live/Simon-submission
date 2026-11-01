@@ -5,12 +5,12 @@
 
 /** `--3d-*` tokens as 0xRRGGBB numbers (viewer3d.js, compare.js). */
 export const FALLBACK_3D = {
-  "--3d-trainer": 0x8aa4ff,
-  "--3d-you": 0x3ddc97,
+  "--3d-trainer": 0xf4f4ef,
+  "--3d-you": 0xc6f35a,
   "--3d-grid": 0x3a4658,
   "--3d-grid-center": 0x232c3a,
-  "--3d-hot": 0xffc83d,
-  hotGlow: 0xffa400, // the hot joint's emissive tone
+  "--3d-hot": 0xff2d95,
+  hotGlow: 0xff2d95, // the hot joint's emissive tone
   skyLight: 0xdfe8ff, // the viewer's hemisphere light, sky side
   groundLight: 0x1a2230, // and ground side
   keyLight: 0xffffff,

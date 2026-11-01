@@ -8,7 +8,7 @@
 .sb-moments { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
 .sb-moment { width: 100%; min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--sr-line, #263143); background: var(--sr-raised, #1b2431); color: inherit; font: inherit; cursor: pointer; }
 .sb-chip, .sb-tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-.sb-chip-rushing, .sb-tag-timing { background: #3a2a10; color: var(--sr-hot, #ffc83d); }
+.sb-chip-rushing, .sb-tag-timing { background: var(--color-bad-soft); color: var(--color-bad); }
 .sb-chip-dragging { background: #2a2140; color: #c3a8ff; }
 .sb-tag { margin-left: 8px; vertical-align: middle; }
 .sb-tag-shape { background: #12303a; color: var(--sr-trainer, #8aa4ff); }

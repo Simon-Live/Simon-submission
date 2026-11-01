@@ -1,11 +1,15 @@
 // The share card: a 1080 x 1350 PNG drawn on a canvas, and how it leaves the phone (docs/specs/challenges.md).
 // `layoutCard` is pure (it takes a text measuring function) so the layout is unit tested without a browser.
+import { tokenValue } from "./theme-colors.js";
 
 export const CARD_W = 1080;
 export const CARD_H = 1350;
 export const PAD = 80;
 const FONT = '"SF Pro Display", "Helvetica Neue", system-ui, sans-serif';
-const GRADE_COLORS = { A: "#3ddc97", B: "#3ddc97", C: "#ffc83d", D: "#ff9a5c", F: "#ff7a90" };
+// grade colours from the theme: lime for A and B, pink below (theme/tokens.css); the literals are harness fallbacks
+const GRADE_TOKENS = { A: "--color-accent", B: "--color-accent", C: "--color-bad", D: "--color-bad", F: "--color-bad" };
+const GRADE_FALLBACK = { A: "#c6f35a", B: "#c6f35a", C: "#ff2d95", D: "#ff2d95", F: "#ff2d95" };
+const gradeColorOf = (g) => (GRADE_TOKENS[g] && tokenValue(GRADE_TOKENS[g])) || GRADE_FALLBACK[g];
 
 /** Wrap `text` to `maxWidth` using `measure(text)`; a word wider than the line is broken by characters; at most `maxLines`. */
 export function wrapText(measure, text, maxWidth, maxLines = 99) {
@@ -62,7 +66,7 @@ export function layoutCard(model, measure) {
   const scoreFont = `800 300px ${FONT}`;
   ops.push({ type: "text", text: scoreText, x: PAD, y, font: scoreFont, fill: "#ffffff", align: "left" });
   const scoreW = measure(scoreFont, scoreText);
-  const gradeColor = GRADE_COLORS[String(model.grade || "").charAt(0)] || "#9aa7b8";
+  const gradeColor = gradeColorOf(String(model.grade || "").charAt(0)) || "#9aa7b8";
   const pillX = Math.min(PAD + scoreW + 50, CARD_W - PAD - 150);
   ops.push({ type: "rect", x: pillX, y: y - 190, w: 150, h: 150, fill: gradeColor, radius: 36 });
   ops.push({ type: "text", text: String(model.grade || "-"), x: pillX + 75, y: y - 80, font: `800 96px ${FONT}`, fill: "#0f141b", align: "center" });

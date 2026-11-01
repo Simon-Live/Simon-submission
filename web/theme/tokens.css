@@ -36,12 +36,13 @@
   --color-on-accent: var(--palette-black);
   --color-accent-soft: rgb(198 243 90 / 14%);
   --color-good: var(--palette-lime);
-  --color-bad: var(--palette-coral);
-  --color-bad-soft: rgb(255 107 74 / 14%);
-  --color-bad-line: rgb(255 107 74 / 35%);
-  --color-warn: var(--palette-amber);
-  --color-warn-soft: rgb(255 200 61 / 12%);
-  --color-warn-line: rgb(255 200 61 / 35%);
+  /* attention is pink, not orange (brand design 2026-11-01: lime is the pop, pink the only other colour) */
+  --color-bad: var(--palette-pink);
+  --color-bad-soft: rgb(255 45 149 / 14%);
+  --color-bad-line: rgb(255 45 149 / 40%);
+  --color-warn: var(--palette-pink);
+  --color-warn-soft: rgb(255 45 149 / 10%);
+  --color-warn-line: rgb(255 45 149 / 32%);
 
   /* depth (brand design 2026-11-01): lime is the only pop colour; pink lives in the back layer as smoke and halftone
      dots, and every grey card carries a faint halftone dot field that fades into its grey, so no surface is flat */
@@ -107,12 +108,12 @@
   /* 3D and canvas drawing (read at runtime by theme-colors.js; three.js needs plain #rrggbb) */
   --3d-trainer: var(--palette-white);
   --3d-you: var(--palette-lime);
-  --3d-hot: var(--palette-coral);
+  --3d-hot: var(--palette-pink);
   --3d-grid: var(--palette-grey-800);
   --3d-grid-center: var(--palette-grey-850);
   --live-bone: rgb(244 244 239 / 85%);   /* live check: the bones drawn over your camera */
   --live-ok: var(--palette-lime);         /* live check: a joint within range */
-  --live-off: var(--palette-coral);       /* live check: a joint more than the threshold off */
+  --live-off: var(--palette-pink);        /* live check: a joint more than the threshold off */
   --color-scrim: rgb(10 10 10 / 72%);     /* dark veil over video (countdown, trim mask, legends) */
   --color-scrim-light: rgb(10 10 10 / 45%);   /* the smallest tap target (WCAG 2.5.5; checked by a11y.browser.mjs) */
   --header-blur: 10px;
@@ -121,13 +122,13 @@
   /* the 3D bodies (web/mesh-view.js reads these) and the 2D skeleton over your video (views/skeleton-overlay.js) */
   --mesh-trainer: var(--palette-white);
   --mesh-you: var(--palette-lime);
-  --mesh-fault: var(--palette-coral);
+  --mesh-fault: var(--palette-pink);
   --mesh-light: var(--palette-pure-white);
   --mesh-ground: var(--palette-grey-800);
   --mesh-bg: transparent;
   --skeleton-line: rgb(198 243 90 / 80%);
   --skeleton-joint: var(--palette-pure-white);
-  --skeleton-hot: var(--palette-coral);
+  --skeleton-hot: var(--palette-pink);
 
   /* motion */
   --splash-fade: 0.45s;
