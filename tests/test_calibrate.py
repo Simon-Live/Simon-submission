@@ -448,6 +448,8 @@ def test_r11_the_generated_text_takes_the_floor_from_the_data_and_hard_codes_no_
     assert "The foot measures keep `min_frames_floor` 32 (1.07 s)." in swept           # held, from the rules
     assert "| min_frames_floor_body | 8 | " in swept and "| plain rule |" in swept and "plain plateau middle" not in swept
     assert "foot floor min_frames_floor 32" in swept       # in the held-not-swept line beside the foot thresholds
+    # attempt 5: the steadiness limits are held beside them, read from the rules (ADR-0015 Amendment 4)
+    assert "foot_rotation max_jitter_deg 4, ankle_inversion max_jitter_deg 4." in swept
     run(capsys, "--set", str(subset(tmp_path, SMALL_KEEP)), "--write-thresholds", "--only", "foot_out", "--radius", "1", "--workers", "1")
     head = doc.read_text().split("Expected clips")[0]
     assert "is a duration, written as frames at 30 fps" in head and "for the body measures here" not in head   # not swept: no value quoted
@@ -598,20 +600,34 @@ def test_go_no_go_says_when_an_angle_has_nothing_to_judge():
     assert go is False and reasons == ["good/45: needs labelled faults and correct takes"]
 
 
-def test_the_foot_sweep_keeps_the_middle_of_the_plateau_and_both_measures_are_a_go(tmp_path, feet_world):
+def test_the_foot_sweep_is_a_re_sweep_it_keeps_a_current_value_strictly_inside_its_plateau_and_both_are_a_go(
+        tmp_path, feet_world):
+    """Since attempt 5 `--feet` follows the 00:05Z rule of every re-sweep (calibration.md): the values in force are kept
+    when they tie at the best objective strictly inside their plateau, and the plain rule is printed beside them."""
     labels, sizes, rules = feet_world
     lines, chosen, verdicts = calibrate.calibrate_feet(labels, rules, run_fn=stand_in(sizes), base=tmp_path)
     # foot_rotation: noise of 8 fires below 9, the weakest fault (18) is lost above 18: plateau 9..18, which reaches
-    # the grid edge (12 +- 6), so the grid extends once (to 1..24); the middle is 13.5, rounded up to the grid step: 14.
+    # the grid edge (12 +- 6), so the grid extends once (to 1..24); 12 is strictly inside it, so it stays; the plain
+    # rule's choice is the middle, 13.5 rounded up to the grid step: 14.
     # ankle_inversion: the co-fire of 10 fires below 11, the weakest fault (17) is lost above 17: plateau 11..17, which
-    # is inside its grid (15 +- 6), middle 14.
-    assert chosen == {"foot_rotation": 14.0, "ankle_inversion": 14.0}
+    # is inside its grid (15 +- 6); 15 is strictly inside it, so it stays; the plain rule's middle is 14.
+    assert chosen == {"foot_rotation": 12.0, "ankle_inversion": 15.0}
     assert verdicts == {"foot_rotation": (True, []), "ankle_inversion": (True, [])}
     text = "\n".join(lines)
     assert "== foot_rotation threshold_deg (current 12) ==" in text and "== ankle_inversion threshold_deg (current 15) ==" in text
-    assert "chosen 14, plateau 9..18, grid 1..24" in text and "chosen 14, plateau 11..17, grid 9..21" in text
+    assert "chosen 12, plateau 9..18, grid 1..24, plain rule 14" in text
+    assert "chosen 15, plateau 11..17, grid 9..21, plain rule 14" in text
+    assert text.count("current value ties at the best objective inside its plateau, kept") == 2
     assert "foot_rotation: GO" in text and "ankle_inversion: GO" in text
     assert rules["measures"]["foot_rotation"]["threshold_deg"] == 12.0   # the rules passed in are never changed
+
+
+def test_the_foot_sweep_moves_a_current_value_that_is_off_its_plateau_to_the_middle(tmp_path, feet_world):
+    labels, sizes, rules = feet_world
+    rules = {"measures": {"foot_rotation": {"threshold_deg": 6.0}, "ankle_inversion": {"threshold_deg": 20.0}}}
+    lines, chosen, _ = calibrate.calibrate_feet(labels, rules, run_fn=stand_in(sizes), base=tmp_path)
+    assert chosen == {"foot_rotation": 14.0, "ankle_inversion": 14.0}      # the middles of 9..18 and 11..17
+    assert "current value ties at the best objective inside its plateau, kept" not in "\n".join(lines)
 
 
 def test_a_measure_that_misses_a_direction_is_a_no_go_and_nothing_is_written_for_it(tmp_path, feet_world):

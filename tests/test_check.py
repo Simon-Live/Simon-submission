@@ -523,10 +523,15 @@ def test_b3_thresholds_record_reads_the_detection_hash_of_the_seeds_own_freeze()
 
 
 def test_the_committed_thresholds_record_exactly_the_scored_attempts():
+    """Every scored seed has its record, and the only record without a score is the next unused seed's: a freeze
+    record is written before its seed is generated and scored (calibration.md, AC-T02)."""
     text = (ROOT / "docs/thresholds.md").read_text()
     assert "<!-- attempts:begin -->" in text
     scored = {a["seed"] for a in json.loads(check.ATTEMPTS.read_text())["attempts"]}
-    assert {s for s in check.HELDOUT_SEEDS if check.thresholds_record(s, text)} == scored
+    recorded = {s for s in check.HELDOUT_SEEDS if check.thresholds_record(s, text)}
+    pending = recorded - scored
+    nxt = next((s for s in check.HELDOUT_SEEDS if s not in scored), None)
+    assert scored <= recorded and pending <= {nxt}
 
 
 # ----------------------------------------------------------------- AC-K-NFR-01

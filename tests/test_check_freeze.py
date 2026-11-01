@@ -105,12 +105,15 @@ def test_b3_require_frozen_cases():
 
 def test_b3_the_committed_record_refuses_every_scored_seed_under_other_rules():
     """Each scored attempt carries its own detection hash. A seed scored under other rules than the current ones
-    (29, 31 and 37 under attempt 3's) stops at the freeze check before analysing a take; the seed scored under the
-    current rules (67, attempt 4) passes it, so the done-check can reproduce its recorded numbers."""
+    stops at the freeze check before analysing a take; only the newest scored attempts (an attempt and its confirmation) can have been scored under the
+    rules in force, and it passes the check, so the done-check can reproduce its recorded numbers. Between a candidate's
+    rules change and the scoring of its seed (attempt 5 before seed 71) no scored seed holds the rules in force, so
+    none passes."""
     text = (ROOT / "docs/thresholds.md").read_text()
     current = check.detection_hash()
     passed_under_current = []
-    for a in json.loads(check.ATTEMPTS.read_text())["attempts"]:
+    scored = json.loads(check.ATTEMPTS.read_text())["attempts"]
+    for a in scored:
         record = check.thresholds_record(a["seed"], text)
         assert re.fullmatch("[0-9a-f]{64}", record.get("detection_sha256", "")), a["seed"]
         if record["detection_sha256"] == current:
@@ -121,7 +124,11 @@ def test_b3_the_committed_record_refuses_every_scored_seed_under_other_rules():
         with pytest.raises(check.CheckError, match=f"differs from the hash frozen for seed {a['seed']}"):
             check.require_frozen(a["seed"], check.rules_hash(), record, current,
                                  check.recorded_detection_hash(text), scored=True)
-    assert passed_under_current == [67]
+    # The seeds scored under the rules in force are the newest scored ones and share one freeze: an attempt and its
+    # confirmation (attempt 5 on 71 and attempt 6 on 73, both frozen at 4c55af0), or none before a candidate is scored.
+    tail = [a["seed"] for a in scored[len(scored) - len(passed_under_current):]] if passed_under_current else []
+    assert passed_under_current == tail
+    assert len({a["freeze_commit"] for a in scored if a["seed"] in passed_under_current}) <= 1
 
 
 def test_ac_k07_exits_2_when_the_current_seed_has_no_freeze_record(tmp_path, monkeypatch, capsys):

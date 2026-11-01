@@ -512,8 +512,11 @@ def test_the_geometry_guards_and_the_floor_are_the_documented_ones():
     assert (MIN_GROUND_SHARE, MIN_CROSS_SHARE, MIN_TOE_SPREAD) == (0.25, 0.25, 0.1)
     assert FOOT_MIN_CONF == 0.5 and math.isclose(MIN_SEEN_SHARE, 0.8)
     rules = load_rules()["measures"]
-    # the seed 5 calibration, attempt B (progress/calibrate-feet-seed5-attempt-b.log), written by `calibrate --feet --write`
-    assert rules["foot_rotation"] == {"threshold_deg": 14.0} and rules["ankle_inversion"] == {"threshold_deg": 14.0}
+    # the seed 5 calibration, attempt B (progress/calibrate-feet-seed5-attempt-b.log), written by `calibrate --feet --write`,
+    # kept by the re-sweep of attempt 5 (progress/calibrate-feet-seed5-attempt5.log); `max_jitter_deg` is attempt 5's
+    # steadiness limit (ADR-0015 Amendment 4, tests/test_feet_steady.py)
+    assert rules["foot_rotation"] == {"threshold_deg": 14.0, "max_jitter_deg": 4.0}
+    assert rules["ankle_inversion"] == {"threshold_deg": 14.0, "max_jitter_deg": 4.0}
 
 
 # ---------------------------------------------------------------------------------------------------------------

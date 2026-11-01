@@ -28,7 +28,7 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`oneshot-watch.md`](specs/oneshot-watch.md): maintainers' tooling, not in this repo: relaunching an unattended run.
 - [`simon-publish.md`](specs/simon-publish.md): maintainers' tooling, not in this repo: how files reach this repository.
 - [`second-opinion.md`](specs/second-opinion.md): Muse Spark's second opinion on both clips (`second_opinion`), lines that repeat no phrase, and the follower's language (`--lang`).
-- [`foot-keypoints.md`](specs/foot-keypoints.md): heel and toe points read from Part 2's pose3d.json as an optional side input, the `foot_rotation` and `ankle_inversion` measures, when they are hidden, their cues and how they are calibrated.
+- [`foot-keypoints.md`](specs/foot-keypoints.md): heel and toe points read from Part 2's pose3d.json as an optional side input, the `foot_rotation` and `ankle_inversion` measures, when they are hidden (a foot that jitters, the far foot of a side view, is not measured: attempt 5), their cues and how they are calibrated.
 - [`profiles.md`](specs/profiles.md): analysis profiles `dance`, `rehab` and `fitness`: the profiles file, the loosen-only rule, tempo, schema 1.7.0 and the seed 5 report (values set by hand).
 - [`near-misses.md`](specs/near-misses.md): `diagnostics.near_misses`, the candidate faults detection considered and dropped and why (schema 1.8.0); additive, nothing reads it.
 - [`rep-persistence.md`](specs/rep-persistence.md): attempt 4: persistence judged in each rep of the example, rep by rep for an example of two or more reps (each follower rep against the example rep that matches it, foot measures included), a side lean that does not wrap, and the seed 5 record per part.
@@ -49,7 +49,7 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`ADR-0012-always-analyse.md`](adr/ADR-0012-always-analyse.md): Always analyse (warnings and an F cap replace every refusal).
 - [`ADR-0013-score-timeline-length-agnostic.md`](adr/ADR-0013-score-timeline-length-agnostic.md): Score by windows (reps or 5 s) and show them as a timeline; the score is a share of the take.
 - [`ADR-0014-coaching-cues-tempo-and-insights.md`](adr/ADR-0014-coaching-cues-tempo-and-insights.md): Coaching cues on faults and misses, tempo per window and per take, and ranked insights (schema 1.5.0).
-- [`ADR-0015-foot-keypoints-and-foot-measures.md`](adr/ADR-0015-foot-keypoints-and-foot-measures.md): accepted: foot points enter as an optional side input from Part 2's pose3d.json; foot rotation is measured against the pelvis and the ankle roll against world up.
+- [`ADR-0015-foot-keypoints-and-foot-measures.md`](adr/ADR-0015-foot-keypoints-and-foot-measures.md): accepted: foot points enter as an optional side input from Part 2's pose3d.json; foot rotation is measured against the pelvis and the ankle roll against world up; Amendment 4 (attempt 5): a foot measure that jitters, the far foot of a side view, is not read.
 - [`ADR-0016-analysis-profiles.md`](adr/ADR-0016-analysis-profiles.md): analysis profiles live in their own file as loosen-only multipliers judged against fitness; tempo is scored in dance only.
 - [`ADR-0017-second-held-out-series.md`](adr/ADR-0017-second-held-out-series.md): a second held-out series, seeds 67, 71 and 73, each scored once after a frozen commit; seed 37's red attempt stays on record.
 

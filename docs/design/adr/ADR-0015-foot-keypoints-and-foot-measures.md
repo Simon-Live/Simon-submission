@@ -205,3 +205,77 @@ series to `repwise.compare`, which cuts the expected one with the reference and 
 the joints. The definitions, the visibility rule (80% of the frames, `conf` 0.5), the thresholds (14 and 14 degrees) and the
 words are not touched: those are this ADR's, and a change to them is a distinct family (TICKET-040). `REP_MODE_REASON` is
 gone; `docs/design/specs/rep-persistence.md` has the record.
+
+## Amendment 4 (2026-11-01, attempt 5, ADR-0017, TICKET-040): a foot measure that jitters is not read
+Attempts 3 and 4 were both red on the same cause. `ankle_inversion` reported the far foot of a correct take filmed from
+the side as rolling out (21.5 degrees on `dance_side_good_01_correct` at seed 37, 22.4 on `exercise_side_good_00_correct`
+at seed 67), and a correct good-light take must report no fault and score A. The stakeholder-proxy ruled on 2026-11-01T03:15Z
+(confidence high), verbatim: "attempt 5 is TICKET-040's foot-measure family per ADR-0017's red-on-67 row. Its core is a
+change to foot-measure definition or visibility (for example a view-aware far-foot rule), never a threshold or foot-floor
+nudge alone. It is tuned on seed 5 only with ADR-0015's go/no-go, the retimed bar and a seed 5 count of far-foot labels
+found, reviewed before the freeze, frozen by 2026-11-02T06:00Z and scored once on seed 71."
+
+**Why the far foot reads a roll that is not there.** The roll is the height difference of the big and small toe over their
+lateral spread, 6 to 9 cm, so a centimetre of vertical error is 8 degrees and the foot the camera sees least (the far one
+in a side view; in the synthetic takes the camera noise of the far side is multiplied by `1 + yaw / 90`, ASM-013) reads
+tens of degrees. On the seed 5 correct good-light takes the series of the far foot at the side has a standard deviation of
+14 to 28 degrees, against 4 to 11 for the near foot. Persistence cannot remove it: the noise is smooth over a few frames,
+and a stretch of 32 frames past 14 degrees happened by chance on two of the eight correct side takes of seeds 37 and 67.
+
+**What the files carry, which decides the options.** The clip is in the subject's own frame (hip line along x, forward along
+z), and so is Part 2's canonical frame (the hip line of all three real files lies exactly along x in every frame, the side-view
+example included), so the camera's direction is nowhere in either; Part 2's `provenance` names the source of the focal length
+and no direction; the foot points of all three real Part 2 files have `conf` 1.0, and Part 2 writes a joint's `conf` as 1.0, or 0.3 for a joint outside the image (ADR-0011), so `conf`
+says nothing about which foot is occluded. The synthetic base takes carry no `conf`, and the dropout copies that do are reported slices the failing takes
+are not in. A rule that reads the camera axis or the foot's `conf` therefore cannot reach the failing takes; the one thing
+the data carry about a foot the camera does not see is that its points move about. The options and their seed 5 numbers are in
+`docs/design/specs/foot-keypoints.md` ("Attempt 5").
+
+**Decision.** A foot measure whose rules entry has a `max_jitter_deg` is not used in a clip when its jitter is above it. The
+jitter is the median absolute change of the measure between consecutive frames of the side file, in degrees a frame, over
+the stretch of the file the clip takes (`feet.jitter`, `feet.jitter_limits`). A median step reads the noise and not a fault:
+a fault grows over many frames, so its steps are a minority, while smooth noise still changes almost independently from
+one frame to the next. The rule is the definition of "unseen" for a foot whose camera is not known: the foot says for itself
+that it is not seen, and no view has to be guessed. It acts per measure and per foot, before the pair is formed, so the
+near foot of the same take and the other measure of the same foot are untouched. A hidden measure is out of `usable` and
+`compared` (the 1.6.0 fields, unchanged in shape), and `hidden_reason` names it when nothing else is left. `max_jitter_deg` is
+4 degrees a frame on `foot_rotation` and `ankle_inversion` in `part5/rules.json` (which moves `rules_sha256` and
+`detection_sha256`); it is not swept, and not a tolerance a profile relaxes.
+
+**How 4 was chosen, and why it is not a threshold nudge.** The value is not read off the held-out seeds or the failure. It is
+the lowest value on a 0.5 grid that costs seed 5 nothing at good light: every slice's precision, recall and faults on correct
+takes, every foot label found (22 of 24, far foot included) and every correct take an A are as before at 4 and above, and 3.5
+already loses a label. It sits above the jitter of every foot the camera sees at good light (largest 3.7 degrees a frame for
+`ankle_inversion`, 3.0 for `foot_rotation`) and below the median of the far foot at the side (5.5 and 3.9). The thresholds
+(14 and 14) are the 00:05Z rule's: they tie at the best objective strictly inside their plateau (11 to 15) and are kept. The
+change that matters is the rule, which takes the feet that were the failure out of the comparison; the number only says
+how unsteady is too unsteady.
+
+**Costs, stated.** (1) Low light: every foot jitters above 4 there (2.3 times the good-light noise), so both foot measures are
+hidden on nearly every low-light take, and the reported low-light recall falls (seed 5 low/front 0.96 to 0.71, low/45 0.92
+to 0.67, low/side 0.67 to 0.54) while precision moves by 0.05 at most (0.66 to 0.71, 0.42 to 0.41, 0.18 to 0.17). This is the
+rule working, not a side effect: those readings were noise, and a coach that is silent about a foot it cannot see is the
+better product. Low light is reported and never gated (ADR-0003). (2) A far foot with a real
+fault the camera cannot show is not found: on seed 5 at good light there is one far-foot `ankle_inversion` label and it was
+already missed; a `both` label is still found from the near foot. (3) A near foot above the limit by chance is hidden too;
+none of the 104 near feet on seed 5 at good light is. (4) The real Part 2 files jitter by 0.3 to 0.9 degrees a frame, so
+the rule does nothing on them today (`make report-real` is unchanged); it is a synthetic-noise rule until a real far foot
+shows otherwise (ASM-013). (5) The limit is per frame of the side file, so it assumes frames 1/30 to 1/10 s apart.
+
+**Not chosen.** A camera or `conf` rule (no signal, above); the far foot as the one that jitters more than the other (the
+ratio of the two feet's jitter overlaps between views: right over left 0.72 to 1.43 at the front, 1.28 to 2.86 at the side
+on seed 5, and it cannot see two bad feet); the change of the foot's shape between frames (the distances between heel and
+toes), which is blind to the vertical error that makes the roll and depends on the view; the roll against the shin (this
+ADR's Amendment 1: NO-GO on seed 5, and the far-foot error is in the toes, which the shin does not carry); a threshold or floor
+change alone (the ruling). Reversal: remove the two `max_jitter_deg` keys and the pipeline reads the feet as Amendment 3 had
+them (`feet.jitter_limits` returns nothing).
+
+**Dissent.** The rule is tuned to a synthetic noise model, and the held-out series is the same model (ASM-002), so a green seed
+71 says the rule fits that model, not that Part 2's far foot behaves so. A median step also hides a real foot that moves fast
+(a dance step at a low frame rate) if its roll changes more than 4 degrees between frames for half the clip; no seed 5 take does
+(the largest jitter of a near foot is 3.7). If a real far foot shows a bias with no jitter, this rule will not see it, and a
+view-aware rule from a camera Part 3 could pass on would be the next candidate.
+
+Code (`# ADR-0015` backlinks): `part5/feet.py` (`jitter`, `jitter_limits`, `_unsteady`, `FootSide.unsteady`), `part5/pipeline.py`
+(`run` hands the limits to both `load_side` calls), `part5/rules.json` (`max_jitter_deg`), `part5/calibrate.py` (`--feet` as a
+re-sweep, `held_table`), `tests/test_feet_steady.py`. The record is `docs/design/specs/foot-keypoints.md` "Attempt 5".

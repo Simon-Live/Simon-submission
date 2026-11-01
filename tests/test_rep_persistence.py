@@ -560,14 +560,29 @@ def test_b1_continue_reported_hands_the_example_frame_rate_to_the_detection(monk
     assert seen == [15.0]
 
 
-def test_b2_the_split_dance_take_reports_one_fault_on_both_ankles_and_charges_each_window_once():
-    """dance_45_good_12_ankle_rolled_out-both: the far ankle shows `left` in rep 0 and `both` in rep 1. It was two faults
-    ("ankles rolling in" and "left ankle rolling in slightly"), and window 0 was charged for `left` and `both`."""
+def test_b2_the_split_dance_take_reports_one_fault_and_charges_each_window_once():
+    """dance_45_good_12_ankle_rolled_out-both: the far ankle showed `left` in rep 0 and `both` in rep 1. It was two faults
+    ("ankles rolling in" and "left ankle rolling in slightly"), and window 0 was charged for `left` and `both`. Since
+    attempt 5 the far (right) ankle of this take jitters above 4 degrees a frame and is withdrawn (ADR-0015 Amendment 4),
+    so the take reports the near ankle alone: one fault, `left` in both reps, and no window is charged twice."""
     res = analyse_take("dance_45_good_12_ankle_rolled_out-both")
     inversion = [f for f in res.analysis["faults"] if f["measure"] == "ankle_inversion"]
-    assert [(f["side"], f["reps"]) for f in inversion] == [("both", [0, 1])]
+    assert [(f["side"], f["reps"]) for f in inversion] == [("left", [0, 1])]
+    assert "right_ankle_inversion" not in res.analysis["diagnostics"]["feet"]["compared"]
     for w in score_block(res)["timeline"]:
         assert len([m for m in w["misses"] if m["measure"] == "ankle_inversion"]) <= 1      # not once per side
+
+
+def test_b2_a_take_with_both_feet_read_still_reports_one_fault_and_charges_each_window_once():
+    """The same invariant where the steadiness gate leaves both feet in: dance_45_good_10_foot_turned_in-both turns both
+    toes in; the rotation shows `left` in the first window and `both` in the second, and is one fault charged once per
+    window. (The scripted tests above pin the merge itself, side by side, for any measure.)"""
+    res = analyse_take("dance_45_good_10_foot_turned_in-both")
+    rotation = [f for f in res.analysis["faults"] if f["measure"] == "foot_rotation"]
+    assert [(f["side"], f["reps"]) for f in rotation] == [("both", [1])]
+    assert {"left_foot_rotation", "right_foot_rotation"} <= set(res.analysis["diagnostics"]["feet"]["compared"])
+    for w in score_block(res)["timeline"]:
+        assert len([m for m in w["misses"] if m["measure"] == "foot_rotation"]) <= 1
 
 
 def test_ac_rp_19_the_short_first_rep_the_floor_blinds_is_scored_for_the_fault_the_take_reports():

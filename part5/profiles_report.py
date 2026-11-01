@@ -100,7 +100,10 @@ def baseline_document(labels_doc, root=ROOT):
                          "fault on both sides once and moves 4 dance takes, and once more at its recheck, which splits "
                          "the persistence floor by measure class (the body floor 8, the foot floor 32), re-sweeps "
                          "two thresholds under it and keeps a rep's two-sided fault in its window when the take "
-                         "reports either side. Do not regenerate it otherwise: a test "
+                         "reports either side, and once more at attempt 5 (TICKET-040, ADR-0015 Amendment 4), "
+                         "whose steadiness gate leaves out a foot measure that jitters and so moves the "
+                         "`diagnostics.feet` and the faults of the takes with such a foot. Do not regenerate it "
+                         "otherwise: a test "
                          "compares the fitness analysis of every seed 5 take with these hashes."),
             "seed": labels_doc["seed"],
             "hashed": "sha256 of the analysis with the checkout path removed, as sorted compact JSON, "

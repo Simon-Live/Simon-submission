@@ -75,7 +75,9 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 - A clip frame at time `t` (the clip's own `t`, seconds) takes the side frame whose `(t_ms - t0_pts_ms) / 1000` is nearest,
   within half the file's median frame step over all its frames (at least 0.008 s); otherwise the frame's foot values are NaN. `t0_pts_ms` defaults
   to 0. `*-feet-person` is matched to `people[].id` (default 0).
-- A foot measure is usable in a clip when it is a number in at least 80% of its frames, and is compared only when usable on
+- A foot measure is usable in a clip when it is a number in at least 80% of its frames and steady (attempt 5, ADR-0015
+  Amendment 4: its frame-to-frame jitter, the median change between consecutive frames of the file, is at most the
+  `max_jitter_deg` of its entry in `rules.json`, 4 degrees a frame), and is compared only when usable on
   both sides. A file with no `extra_joints`, or a pair where only one clip has feet, is not an error: the foot measures are
   hidden for the pair and `diagnostics.feet.hidden_reason` says why. A take compared repetition by repetition compares them rep by rep (ADR-0017; before attempt 4 they were hidden there).
 - `InputError` (exit 1, `part5 analyse: <file>: ...`): the file is unreadable or not this shape, the person id is in no frame,
@@ -224,9 +226,10 @@ Top level:
   `diagnostics.feet` (1.6.0, ADR-0015) is present only when a feet file was given for either clip:
   `{expected, follower, compared, hidden_reason}`. `expected` and `follower` are `{source, person, frames_matched, usable}`
   (`source` null when no file was given for that clip, `frames_matched` how many of the clip's frames took a frame of the file
-  in time, `usable` the foot measures seen in at least 80% of them, named `left_foot_rotation` and so on); `compared` is
+  in time, `usable` the foot measures seen in at least 80% of them and steady, named `left_foot_rotation` and so on: a
+  foot that jitters, the far foot of a side view, is left out); `compared` is
   what the pair was compared on; `hidden_reason` is null when anything was compared and otherwise plain words (no file,
-  a file with no foot points, too few frames seen, a take that could not be aligned).
+  a file with no foot points, too few frames seen, nothing steady enough to read, a take that could not be aligned).
   `diagnostics.near_misses` (1.8.0, TICKET-043, `docs/specs/near-misses.md`) answers "why no fault?": the candidate
   faults detection considered and dropped, `{total, omitted, items}`. A candidate is a measure on one side in one
   direction with at least one frame past its threshold; it is a near miss when it is not a reported fault. `items`

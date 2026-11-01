@@ -29,7 +29,11 @@ kept as they are (a red attempt is never dropped).
 --feet [--write] [--workers N] [--radius N] (TICKET-040, docs/specs/foot-keypoints.md "Calibration plan"): the
 same sweep for `foot_rotation` and `ankle_inversion` threshold_deg, one measure at a time, on the good-light
 takes of seed 5 run through `pipeline.run` with each take's foot side files (`expected_feet`, `follower_feet` in
-labels.json). The objective counts only the measure being swept. Then the go/no-go per measure at the chosen
+labels.json). The objective counts only the measure being swept. Since attempt 5 it is a re-sweep of the values
+in force: the current value is kept when it ties at the best objective strictly inside its plateau (as above), and
+the plain rule's choice is printed beside it. A foot measure's `max_jitter_deg` (the steadiness gate of
+ADR-0015 Amendment 4) is in the rules the sweep runs under and is not swept: it is a visibility rule, chosen by the
+evidence table of docs/specs/foot-keypoints.md "Attempt 5". Then the go/no-go per measure at the chosen
 value, on the good-light slices at every angle: precision >= 0.85, recall >= 0.75, 0 faults on correct takes
 and both directions found. Faults a measure raises on takes labelled with something else are listed (they count
 in precision). `--write` writes the chosen values of the measures that are a GO into part5/rules.json and
@@ -326,10 +330,14 @@ def held_table(rules):
             if m in rules.get("measures", {})]
     if "min_frames_floor" in rules.get("default", {}):   # the foot floor (recheck N2): the ruling holds it, no sweep moves it
         held.append(f"foot floor min_frames_floor {rules['default']['min_frames_floor']:g}")
+    # Attempt 5 (ADR-0015 Amendment 4): the steadiness limit of a foot measure is a visibility rule, not swept.
+    held += [f"{m} max_jitter_deg {rules['measures'][m]['max_jitter_deg']:g}" for m in FOOT_MEASURES
+             if "max_jitter_deg" in rules.get("measures", {}).get(m, {})]
     if not held:
         return []
     return ["", "Held, not swept here (`--feet` owns the thresholds, TICKET-040; attempt 4 keeps them, ADR-0017; the N2 ruling "
-            "holds the foot floor): " + ", ".join(held) + "."]
+            "holds the foot floor; the `max_jitter_deg` steadiness limits are attempt 5's visibility rule, ADR-0015 Amendment 4, "
+            "chosen by the evidence in `docs/specs/foot-keypoints.md`): " + ", ".join(held) + "."]
 
 
 def render_thresholds(results, metrics, pops, limits, overlap, hits, rules=None):
@@ -545,7 +553,9 @@ def calibrate_feet(labels, rules, workers=1, radius=None, run_fn=_faults_of, bas
     runs, results, current = FootRuns(workers, run_fn), [], rules
     for m in FOOT_MEASURES:
         param = Param(f"{m} threshold_deg", ("measures", m, "threshold_deg"), 1.0, 1.0, math.inf, RADIUS_DEG)
-        result = sweep_param(good, current, param, feet_evaluator(runs, m), radius)
+        # A re-sweep of values already in force (attempt 5): the 00:05Z rule keeps a current value that ties at the best
+        # objective strictly inside its plateau (calibration.md "Re-sweeps"); the plain rule is printed beside it.
+        result = sweep_param(good, current, param, feet_evaluator(runs, m), radius, keep_fitting=True)
         current = with_value(current, param.path, result["chosen"]["value"])
         results.append(result)
     faults = runs.faults(prepared, current)

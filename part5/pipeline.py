@@ -10,7 +10,7 @@ import numpy as np
 
 from .align import ALIGN_MEASURES, Alignment, AlignmentError, align, diagonal_alignment
 from .detect import detect_full, load_rules, on_file, summary
-from .feet import load_side, pair_of, resampled_series
+from .feet import jitter_limits, load_side, pair_of, resampled_series
 from .guard import GuardResult, check_movement
 from .guard import diagnostics as guard_diagnostics
 from .insights import insights_of
@@ -110,7 +110,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     `expected_feet` and `follower_feet` (ADR-0015, docs/specs/foot-keypoints.md) are paths to Part 2 `pose3d.json`
     files that carry the heel and toe points (`extra_joints`) of each clip's person (`*_feet_person`, matched to
     `people[].id`). Given for either clip, the document carries `diagnostics.feet`; the foot measures are compared
-    when both clips have them and hidden, with the reason, when not. Without either, nothing changes.
+    when both clips have them and hidden, with the reason, when not. A foot measure whose rules entry has a
+    `max_jitter_deg` is not compared in a clip where it jitters above it (the far foot of a side view, ADR-0015
+    Amendment 4). Without either file, nothing changes.
 
     `profile` (ADR-0016) names the analysis profile, one of `profiles.names()`; None means `fitness`, the identity,
     which leaves `rules` untouched.
@@ -127,9 +129,11 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     fol = normalise(_load(fol_ref))
     exp_ref.pop("doc", None)
     fol_ref.pop("doc", None)
-    # ADR-0015: the optional feet side files, each read on its own clip's clock; None when neither was given.
-    feet = pair_of(load_side("expected", expected_feet, expected_feet_person, exp.t),
-                   load_side("follower", follower_feet, follower_feet_person, fol.t))
+    # ADR-0015: the optional feet side files, each read on its own clip's clock; None when neither was given. A foot
+    # measure that jitters above its rules entry's `max_jitter_deg` is not read (Amendment 4: the far foot of a side view).
+    limits = jitter_limits(rules)
+    feet = pair_of(load_side("expected", expected_feet, expected_feet_person, exp.t, limits),
+                   load_side("follower", follower_feet, follower_feet_person, fol.t, limits))
     extra_conf = None if expected_visibility is None else load_conf(expected_visibility)
     vis = resolve(clip_usable(exp), clip_usable(fol), usable_from_conf(extra_conf))
     notes = {}   # warning code -> text (ADR-0012): the take is analysed all the same, best effort

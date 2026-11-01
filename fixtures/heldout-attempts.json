@@ -405,6 +405,208 @@
       "scored_at": "21b1d2922acb09c60ccb135699241053ef0446d6",
       "command": "make check-5",
       "exit": 1
+    },
+    {
+      "seed": 71,
+      "freeze_commit": "4c55af0ca1999137df440b2822f10564dff23e6e",
+      "rules_sha256": "1d6a3f86737bad27c1a002dd1c83fb2bb77cc01497709b0554ab8d5cdcb5d49e",
+      "approach": "a foot-measure visibility rule: a foot measure is not used in a clip when its frame-to-frame jitter is above max_jitter_deg (4 degrees a frame on foot_rotation and ankle_inversion), per measure and per foot (TICKET-040's family, ADR-0015 Amendment 4, ADR-0017)",
+      "passed": true,
+      "slices": {
+        "dropout/45": {
+          "tp": 39,
+          "fp": 14,
+          "fn": 9,
+          "takes": 52,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 1,
+          "refused": 0,
+          "precision": 0.7358,
+          "recall": 0.8125
+        },
+        "dropout/side": {
+          "tp": 33,
+          "fp": 59,
+          "fn": 15,
+          "takes": 52,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 10,
+          "refused": 0,
+          "precision": 0.3587,
+          "recall": 0.6875
+        },
+        "good/45": {
+          "tp": 23,
+          "fp": 0,
+          "fn": 1,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 0.9583
+        },
+        "good/front": {
+          "tp": 24,
+          "fp": 1,
+          "fn": 0,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 0.96,
+          "recall": 1.0
+        },
+        "good/side": {
+          "tp": 21,
+          "fp": 0,
+          "fn": 3,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 0.875
+        },
+        "low/45": {
+          "tp": 16,
+          "fp": 16,
+          "fn": 8,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 2,
+          "refused": 0,
+          "precision": 0.5,
+          "recall": 0.6667
+        },
+        "low/front": {
+          "tp": 16,
+          "fp": 8,
+          "fn": 8,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 2,
+          "refused": 0,
+          "precision": 0.6667,
+          "recall": 0.6667
+        },
+        "low/side": {
+          "tp": 12,
+          "fp": 62,
+          "fn": 12,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 11,
+          "refused": 0,
+          "precision": 0.1622,
+          "recall": 0.5
+        }
+      },
+      "scored": "2026-11-01",
+      "scored_at": "1f360abddd73747b8d7aa1df8d7cff8cfaa8950f",
+      "command": "make check-5",
+      "exit": 0
+    },
+    {
+      "seed": 73,
+      "freeze_commit": "4c55af0ca1999137df440b2822f10564dff23e6e",
+      "rules_sha256": "1d6a3f86737bad27c1a002dd1c83fb2bb77cc01497709b0554ab8d5cdcb5d49e",
+      "approach": "confirmation of attempt 5 (the same foot-measure visibility rule and the same freeze, unchanged)",
+      "passed": true,
+      "slices": {
+        "dropout/45": {
+          "tp": 39,
+          "fp": 18,
+          "fn": 9,
+          "takes": 52,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 2,
+          "refused": 0,
+          "precision": 0.6842,
+          "recall": 0.8125
+        },
+        "dropout/side": {
+          "tp": 33,
+          "fp": 55,
+          "fn": 15,
+          "takes": 52,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 12,
+          "refused": 0,
+          "precision": 0.375,
+          "recall": 0.6875
+        },
+        "good/45": {
+          "tp": 23,
+          "fp": 1,
+          "fn": 1,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 0.9583,
+          "recall": 0.9583
+        },
+        "good/front": {
+          "tp": 23,
+          "fp": 0,
+          "fn": 1,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 0.9583
+        },
+        "good/side": {
+          "tp": 20,
+          "fp": 0,
+          "fn": 4,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 0.8333
+        },
+        "low/45": {
+          "tp": 16,
+          "fp": 23,
+          "fn": 8,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 3,
+          "refused": 0,
+          "precision": 0.4103,
+          "recall": 0.6667
+        },
+        "low/front": {
+          "tp": 17,
+          "fp": 5,
+          "fn": 7,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 0.7727,
+          "recall": 0.7083
+        },
+        "low/side": {
+          "tp": 14,
+          "fp": 67,
+          "fn": 10,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 15,
+          "refused": 0,
+          "precision": 0.1728,
+          "recall": 0.5833
+        }
+      },
+      "scored": "2026-11-01",
+      "scored_at": "47fce0ca21b05d7b4c4ce9e183a981c56e727580",
+      "command": "make check-5",
+      "exit": 0
     }
   ]
 }

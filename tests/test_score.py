@@ -235,7 +235,7 @@ def test_the_score_calibration_still_runs_on_a_take_compared_rep_by_rep():
 
 
 # --- the freeze hash for the detection rules (AC-S06) ---
-DETECTION_SHA = "0a559e183adad714e4ce0a6f2f03a5aba9a51bc1ed26daae4cf25e6cdd15d345"  # attempt 4 (the floor split by measure class and the persistence constants in the rules, N2 and residual 5); c53a751e before the recheck, e340940f at fb1d6e8 for attempt 3, b76e6ca3 at fbb0bea
+DETECTION_SHA = "c92ae9a8524c559741cdaebcd14bb5305e91479d19123e15c3a5e14efb1337fb"  # attempt 5 (max_jitter_deg 4 on the two foot measures, ADR-0015 Amendment 4); 0a559e18 at attempt 4 (the floor split by measure class and the persistence constants in the rules, N2 and residual 5), c53a751e before its recheck, e340940f at fb1d6e8 for attempt 3, b76e6ca3 at fbb0bea
 
 
 def test_ac_s06_the_detection_hash_ignores_the_score_block_and_equals_the_recorded_one():

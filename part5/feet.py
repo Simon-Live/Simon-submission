@@ -17,6 +17,11 @@ file directly, one per clip (`--expected-feet`, `--follower-feet`), and never to
 - A measure is usable in a clip when it is a number in at least `MIN_SEEN_SHARE` of the clip's frames, and the pair
   is compared on the measures usable in both (ADR-0011's rule for the body). A file with no `extra_joints`, or a
   pair where only one clip has feet, is not an error: the foot measures are hidden and `diagnostics.feet` says why.
+- A foot that is not steady is not measured (ADR-0015 Amendment 4, attempt 5): a measure whose rules entry has a
+  `max_jitter_deg` is hidden for a clip when its frame-to-frame jitter (`jitter`) is above it. The far foot of a side
+  view is the case: the toe pair is a few centimetres across, the model sees it least, and its points jitter until the
+  roll reads tens of degrees from noise alone. The clip carries no camera, so the foot says for itself that it is
+  unseen.
 """
 # ADR-0015: foot points enter as a side input; this module is the only reader of Part 2's `extra_joints`.
 # ASM-013: synthetic side files in the same shape are a proxy for Part 2's estimated feet.
@@ -37,6 +42,8 @@ MIN_MATCH_S = 0.008     # the least time window a clip frame may take a side fra
 # A 60 fps clip frame midway between two 30 fps side frames is exactly half a step from both; `t_ms` written to three
 # decimals puts it a few hundred nanoseconds over, so the window gets this much slack and the tie still matches.
 TIME_SLACK_S = 1e-6
+# Fewer consecutive pairs of numbers than this and a measure's jitter is not judged (the measure stays as it was).
+JITTER_MIN_PAIRS = 5
 NAN3 = np.full(3, np.nan)
 MAX_IDS_SHOWN = 8       # `_ids_present` names this many ids, then counts the rest
 MAX_ID_CHARS = 40       # and cuts a longer id to this many characters
@@ -194,6 +201,46 @@ def _swap_sides(series):
             for name in series}
 
 
+# ADR-0015 Amendment 4 (attempt 5): a foot measure that jitters above its rules entry's `max_jitter_deg` is not read.
+def jitter(values):
+    """The frame-to-frame jitter of a measure series, degrees per frame: the median of the absolute change between
+    consecutive frames, over the pairs where both are numbers. NaN when fewer than `JITTER_MIN_PAIRS` pairs are
+    numbers (too little to judge).
+
+    Noise that is smooth over a few frames still changes almost independently from one frame to the next, while a
+    fault grows over many frames, so the median step reads the noise and not the fault. A rise or a fall of the
+    measure for part of the clip (a squat, a fault's ramp) moves a minority of the steps and the median ignores it."""
+    steps = np.abs(np.diff(np.asarray(values, float)))
+    steps = steps[np.isfinite(steps)]
+    return float(np.median(steps)) if len(steps) >= JITTER_MIN_PAIRS else math.nan
+
+
+def jitter_limits(rules):
+    """`{foot measure name: limit}` for every foot measure whose rules entry (the side-less name, `ankle_inversion`) has
+    a `max_jitter_deg`; a measure with no entry or no key is never hidden for jitter. `rules` may be None."""
+    entries = (rules or {}).get("measures", {})
+    limits = {}
+    for name in FOOT_MEASURES:
+        entry = entries.get(name.split("_", 1)[1], {})   # `left_ankle_inversion` reads the entry of `ankle_inversion`
+        if "max_jitter_deg" in entry:
+            limits[name] = entry["max_jitter_deg"]
+    return limits
+
+
+def _unsteady(raw, index, limits):
+    """`{measure: jitter}` of the measures in `limits` that jitter above their limit, judged on the side file's own
+    frames from the first to the last one the clip takes (so a clip sampled slower than the file is judged on the
+    file's consecutive frames, and a file longer than the clip on the clip's stretch of it)."""
+    taken = np.flatnonzero(index >= 0)
+    first, last = int(index[taken].min()), int(index[taken].max())
+    out = {}
+    for name, limit in limits.items():
+        j = jitter(raw[name][first:last + 1]) if name in raw else math.nan
+        if j > limit:   # NaN (too little to judge) compares false: the measure stays
+            out[name] = j
+    return out
+
+
 @dataclass
 class FootSide:
     """One clip's feet: where they came from, how many clip frames matched and the measure series on the clip's
@@ -205,6 +252,8 @@ class FootSide:
     has_points: bool = False  # some frame of the person carries an `extra_joints` with a foot point
     series: dict = field(default_factory=dict)
     usable: list = field(default_factory=list)
+    unsteady: dict = field(default_factory=dict)   # {measure: jitter} hidden for jitter above its limit
+    limits: dict = field(default_factory=dict)     # the limits that were applied, by measure
 
     def entry(self):
         """The `diagnostics.feet.<label>` object."""
@@ -218,16 +267,22 @@ class FootSide:
         if not self.has_points:
             return f"the {self.label} feet file has no extra_joints (no foot points)"
         if not self.usable:
+            if self.unsteady:
+                worst = max(self.unsteady, key=self.unsteady.get)
+                return (f"no foot measure is steady enough to read in the {self.label} frames ({worst} jitters "
+                        f"{self.unsteady[worst]:.1f} degrees a frame, the limit is {self.limits[worst]:g})")
             return f"no foot measure is seen in {MIN_SEEN_SHARE:.0%} of the {self.label} frames"
         return None
 
 
-def load_side(label, path, person, clip_t):
+def load_side(label, path, person, clip_t, limits=None):
     """The `FootSide` of the clip whose frame times are `clip_t` (seconds), from the pose3d.json at `path`
-    (None for no file). Raises `InputError` for a file that is unreadable or not a Part 2 pose3d.json, a person id
-    in no frame, or a file no clip frame matches in time."""
+    (None for no file). `limits` is `{foot measure: max jitter}` (`jitter_limits` of the rules): a measure that jitters
+    above its limit is not usable (None or `{}` hides nothing). Raises `InputError` for a file that is unreadable or
+    not a Part 2 pose3d.json, a person id in no frame, or a file no clip frame matches in time."""
     if path is None:
         return FootSide(label, None, person)
+    limits = dict(limits or {})
     t_side, points, has_points, mirrored, step = _parse(path, person)
     index = _nearest(t_side, clip_t, step)
     matched = int((index >= 0).sum())
@@ -240,8 +295,9 @@ def load_side(label, path, person, clip_t):
     if mirrored:   # Part 3 un-mirrors the body; a mirrored file's left foot is the subject's right
         raw = _swap_sides(raw)
     series = {name: np.where(index >= 0, raw[name][index], np.nan) for name in FOOT_MEASURES}
-    usable = [name for name, v in series.items() if np.isfinite(v).mean() >= MIN_SEEN_SHARE]
-    return FootSide(label, str(path), person, matched, has_points, series, usable)
+    unsteady = _unsteady(raw, index, limits)
+    usable = [name for name, v in series.items() if np.isfinite(v).mean() >= MIN_SEEN_SHARE and name not in unsteady]
+    return FootSide(label, str(path), person, matched, has_points, series, usable, unsteady, limits)
 
 
 def resampled_series(series, resampler):

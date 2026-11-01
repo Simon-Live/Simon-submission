@@ -53,10 +53,12 @@
       "threshold_deg": 18.0
     },
     "foot_rotation": {
-      "threshold_deg": 14.0
+      "threshold_deg": 14.0,
+      "max_jitter_deg": 4.0
     },
     "ankle_inversion": {
-      "threshold_deg": 14.0
+      "threshold_deg": 14.0,
+      "max_jitter_deg": 4.0
     }
   },
   "guard": {

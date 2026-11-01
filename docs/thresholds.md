@@ -42,7 +42,7 @@ Expected clips: Part 4 commit dc3d9f2e70a0d3e95efb60bea1e5ab7fc307d284 (`fixture
 | min_run_frames | 4 | 1 to 7 | 1 to 7 | 4 | 4 | min recall 0.96; front 0.96/0.96/0  45 1.00/1.00/0  side 0.88/0.96/0 (flat on seed 5, current value kept) |
 | min_overlap | 0.3 | 0.1 to 0.6 | 0.1 to 0.6 | 0.3 | 0.3 | min recall 0.96; front 0.96/0.96/0  45 1.00/1.00/0  side 0.88/0.96/0 (flat on seed 5, current value kept) |
 
-Held, not swept here (`--feet` owns the thresholds, TICKET-040; attempt 4 keeps them, ADR-0017; the N2 ruling holds the foot floor): foot_rotation threshold_deg 14, ankle_inversion threshold_deg 14, foot floor min_frames_floor 32.
+Held, not swept here (`--feet` owns the thresholds, TICKET-040; attempt 4 keeps them, ADR-0017; the N2 ruling holds the foot floor; the `max_jitter_deg` steadiness limits are attempt 5's visibility rule, ADR-0015 Amendment 4, chosen by the evidence in `docs/specs/foot-keypoints.md`): foot_rotation threshold_deg 14, ankle_inversion threshold_deg 14, foot floor min_frames_floor 32, foot_rotation max_jitter_deg 4, ankle_inversion max_jitter_deg 4.
 
 ## Guard limits
 
@@ -61,20 +61,20 @@ Held, not swept here (`--feet` owns the thresholds, TICKET-040; attempt 4 keeps 
 | good/45 | 24 | 0 | 0 | 1.00 | 1.00 | 0 |
 | good/front | 23 | 1 | 1 | 0.96 | 0.96 | 0 |
 | good/side | 23 | 3 | 1 | 0.88 | 0.96 | 0 |
-| low/45 | 22 | 30 | 2 | 0.42 | 0.92 | 3 |
-| low/front | 23 | 12 | 1 | 0.66 | 0.96 | 1 |
-| low/side | 16 | 71 | 8 | 0.18 | 0.67 | 14 |
+| low/45 | 16 | 23 | 8 | 0.41 | 0.67 | 3 |
+| low/front | 17 | 7 | 7 | 0.71 | 0.71 | 0 |
+| low/side | 13 | 62 | 11 | 0.17 | 0.54 | 13 |
 
 Recall by fault type, set and lighting:
 
 - ankle_rolled_in dance good: 2/3
-- ankle_rolled_in dance low: 1/3
+- ankle_rolled_in dance low: 0/3
 - ankle_rolled_in exercise good: 3/3
-- ankle_rolled_in exercise low: 2/3
+- ankle_rolled_in exercise low: 0/3
 - ankle_rolled_out dance good: 3/3
-- ankle_rolled_out dance low: 1/3
+- ankle_rolled_out dance low: 0/3
 - ankle_rolled_out exercise good: 2/3
-- ankle_rolled_out exercise low: 2/3
+- ankle_rolled_out exercise low: 0/3
 - arms_wider dance good: 5/5
 - arms_wider dance low: 4/4
 - arms_wider exercise good: 5/5
@@ -88,13 +88,13 @@ Recall by fault type, set and lighting:
 - foot_out exercise good: 4/4
 - foot_out exercise low: 4/4
 - foot_turned_in dance good: 3/3
-- foot_turned_in dance low: 3/3
+- foot_turned_in dance low: 1/3
 - foot_turned_in exercise good: 3/3
-- foot_turned_in exercise low: 2/3
+- foot_turned_in exercise low: 0/3
 - foot_turned_out dance good: 3/3
-- foot_turned_out dance low: 3/3
+- foot_turned_out dance low: 0/3
 - foot_turned_out exercise good: 3/3
-- foot_turned_out exercise low: 2/3
+- foot_turned_out exercise low: 0/3
 - knee_caving dance good: 3/3
 - knee_caving dance low: 3/3
 - knee_caving exercise good: 3/3
@@ -291,6 +291,84 @@ A 18, B 2 (target missed); good/1 A 14, B 70, C 16 (target missed); good/2 D 10 
 Seed 67 is retired: never rescored, regenerated or used to tune, and the rules are not reverted. Not tuned on seed 67
 before or after. The next unused seed of the second series is 71 (ADR-0017).
 
+### Attempt 5: seed 71
+Freeze commit: `4c55af0ca1999137df440b2822f10564dff23e6e`
+rules_sha256: `1d6a3f86737bad27c1a002dd1c83fb2bb77cc01497709b0554ab8d5cdcb5d49e`
+detection_sha256: `c92ae9a8524c559741cdaebcd14bb5305e91479d19123e15c3a5e14efb1337fb`
+Date: 2026-11-01
+Approach family: a foot-measure visibility rule (TICKET-040's family, ADR-0015 Amendment 4, ADR-0017's red-on-67 row): a foot measure is not used in a clip when its jitter, the median absolute frame-to-frame change over the stretch of the side file the clip takes, is above `max_jitter_deg` (4 degrees a frame on `foot_rotation` and `ankle_inversion`), per measure and per foot, before the pair is formed
+
+Rationale. Attempts 3 and 4 were red for one cause: `ankle_inversion` fired on the far foot of a correct side-view
+take (seed 37: 21.5 degrees on dance_side_good_01_correct; seed 67: 22.4 degrees on exercise_side_good_00_correct),
+whose heel and toe points are occluded and noisy. Neither the clip nor Part 2's pose3d.json carries a camera direction
+or a useful confidence for those points (the confidence is 1.0 on the real Part 2 files), so the foot's own signal is
+the only evidence that it is not seen: noise moves most frame-to-frame steps, a fault moves a minority, so the median
+step reads the noise and not the fault (AC-FOOT-22). Ruling of 2026-11-01T03:15Z (STATUS.md Decisions): a change to
+foot-measure definition or visibility, never a threshold or floor nudge alone, tuned on seed 5 only.
+
+What changed in `part5/rules.json` against attempt 4: `max_jitter_deg` 4 on `foot_rotation` and `ankle_inversion`
+(the lowest value on the 0.5 grid that costs seed 5 nothing at good light; 3.5 loses a label); the thresholds stay 14
+and 14 under the re-sweep selection rule (plateau 11 to 15; the plain plateau-middle rule would choose 13). The other
+values and the body and foot floors are attempt 4's. Seed 5 at good light is unchanged from attempt 4 (front 0.96, 0.96,
+0; 45 1.00, 1.00, 0; side 0.88, 0.96, 0), every correct good-light take scores an A, ADR-0015's go/no-go is GO for both
+measures at every angle, foot labels found 22 of 24 (near foot 10 of 10, both feet 10 of 11, far foot 2 of 3, as before),
+none of the 104 near feet hidden, the far foot's ankle roll hidden in 24 of 26 side takes and 11 of 26 at 45; the retimed
+24-of-24 bar holds. Reported costs, never used to choose: low light foot findings fall from 16 of 24 to 1 of 24 (low
+recall front 0.71, 45 0.67, side 0.54); a foot measure on a quick real movement can read as jitter (ADR-0015 Amendment 4,
+dissent). Real takes are unchanged (their foot jitter is 0.34 to 0.89). Pre-freeze review APPROVED
+(`progress/review-20261101-prefreeze-attempt5.md`). Seed 71 is generated once with feet after this record and scored once.
+Green: confirm on seed 73 with the same freeze. Red: the run ends DEGRADED with every attempt's numbers.
+
+Held-out result as measured (`make check-5` at `1f360ab`, 2026-11-01T04:25Z, exit 0): **passed**. Good light, every gated
+angle (precision, recall, faults on correct takes): front 0.96, 1.00, 0; 45 1.00, 0.96, 0; side 1.00, 0.88, 0; every
+correct good-light take scores an A (good/0 A 20). Score report (reported, not gated): good/1 A 16, B 63, C 21 (target
+missed); good/2 C 2, D 5, F 3 (target missed).
+
+| slice | gated | tp | fp | fn | takes | correct takes | faults on correct takes | precision | recall | refused |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| dropout/45 | no | 39 | 14 | 9 | 52 | 8 | 1 | 0.74 | 0.81 | 0 |
+| dropout/side | no | 33 | 59 | 15 | 52 | 8 | 10 | 0.36 | 0.69 | 0 |
+| good/45 | yes | 23 | 0 | 1 | 26 | 4 | 0 | 1.00 | 0.96 | 0 |
+| good/front | yes | 24 | 1 | 0 | 26 | 4 | 0 | 0.96 | 1.00 | 0 |
+| good/side | yes | 21 | 0 | 3 | 26 | 4 | 0 | 1.00 | 0.88 | 0 |
+| low/45 | no | 16 | 16 | 8 | 26 | 4 | 2 | 0.50 | 0.67 | 0 |
+| low/front | no | 16 | 8 | 8 | 26 | 4 | 2 | 0.67 | 0.67 | 0 |
+| low/side | no | 12 | 62 | 12 | 26 | 4 | 11 | 0.16 | 0.50 | 0 |
+
+Seed 71 is retired. ADR-0017: a green attempt is confirmed on the next unused seed, 73, with the same freeze (attempt 6
+below); no part5/ or rules.json change lands until seed 73 is generated.
+
+### Attempt 6: seed 73
+Freeze commit: `4c55af0ca1999137df440b2822f10564dff23e6e`
+rules_sha256: `1d6a3f86737bad27c1a002dd1c83fb2bb77cc01497709b0554ab8d5cdcb5d49e`
+detection_sha256: `c92ae9a8524c559741cdaebcd14bb5305e91479d19123e15c3a5e14efb1337fb`
+Date: 2026-11-01
+Approach family: confirmation of attempt 5 (the same foot-measure visibility rule and the same freeze, unchanged)
+
+Rationale. Attempt 5 passed on seed 71. ADR-0017 (as ADR-0003 for seeds 29 and 31) confirms a green attempt on the next
+unused seed of the series, 73, the last one, with the same freeze; nothing in part5/ or rules.json changed since
+`4c55af0`. A red confirmation counts as a red attempt and ends the run DEGRADED with every attempt's numbers. Seed 73 is
+generated once with feet after this record and scored once.
+
+Held-out result as measured (`make check-5` at `47fce0c`, 2026-11-01T04:27Z, exit 0): **passed**, confirming attempt 5.
+Good light, every gated angle (precision, recall, faults on correct takes): front 1.00, 0.96, 0; 45 0.96, 0.96, 0;
+side 1.00, 0.83, 0; every correct good-light take scores an A (good/0 A 20). Score report (reported, not gated): good/1
+A 19, B 59, C 22 (target missed); good/2 C 1, D 6, F 3 (target missed).
+
+| slice | gated | tp | fp | fn | takes | correct takes | faults on correct takes | precision | recall | refused |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| dropout/45 | no | 39 | 18 | 9 | 52 | 8 | 2 | 0.68 | 0.81 | 0 |
+| dropout/side | no | 33 | 55 | 15 | 52 | 8 | 12 | 0.38 | 0.69 | 0 |
+| good/45 | yes | 23 | 1 | 1 | 26 | 4 | 0 | 0.96 | 0.96 | 0 |
+| good/front | yes | 23 | 0 | 1 | 26 | 4 | 0 | 1.00 | 0.96 | 0 |
+| good/side | yes | 20 | 0 | 4 | 26 | 4 | 0 | 1.00 | 0.83 | 0 |
+| low/45 | no | 16 | 23 | 8 | 26 | 4 | 3 | 0.41 | 0.67 | 0 |
+| low/front | no | 17 | 5 | 7 | 26 | 4 | 0 | 0.77 | 0.71 | 0 |
+| low/side | no | 14 | 67 | 10 | 26 | 4 | 15 | 0.17 | 0.58 | 0 |
+
+Seed 73 is retired; it is the last seed of the second series, so the held-out seeds are used up again, with attempt 5
+green on 71 and confirmed on 73. `make check-5` now exits 0 on seed 73.
+
 ## Score
 
 `simon.score.v1` (ADR-0007, `docs/specs/journey-followup.md` J-4). Params live under `score` in `part5/rules.json`,
@@ -313,28 +391,33 @@ AC-S01: the calibration reproduces the research prototype exactly (`z0 0.289`, `
 ### Freeze check for the detection rules
 `make check-5` compares the detection rules, not the whole file: `part5/rules.json` without its `score` key,
 serialised with `json.dumps(rules, sort_keys=True, separators=(",", ":"))`, hashed with sha256. The value
-below was computed the same way from the file of attempt 4 after the recheck of its pre-freeze review (TICKET-044,
-ADR-0017: the floor split by measure class, `default.min_frames_floor_body` 8, and the persistence constants
-`default.reference_fps` and `default.floor_share` now keys of the rules, with `knee_flexion` 10 and `upper_arm_out` 11
-from the re-sweep below); the file of the pre-freeze review fixes (`default.min_frames_floor` 32, it was 8) hashed to
-`c53a751e...`, the file frozen at `fb1d6e8` for attempt 3 (the foot thresholds added) to `e340940f...`, and the one frozen
-at `fbb0bea` for attempts 1 and 2 to `b76e6ca3...`:
+below was computed the same way from the file of attempt 5 (TICKET-040, ADR-0015 Amendment 4: `max_jitter_deg` 4 added to
+the entries of `foot_rotation` and `ankle_inversion`, the thresholds unchanged); the file of attempt 4 (recheck of its
+pre-freeze review, TICKET-044, ADR-0017: the floor split by measure class, `default.min_frames_floor_body` 8, and the
+persistence constants `default.reference_fps` and `default.floor_share` now keys of the rules, with `knee_flexion` 10 and
+`upper_arm_out` 11 from the re-sweep below) hashed to `0a559e18...`; the file of the pre-freeze review fixes
+(`default.min_frames_floor` 32, it was 8) to `c53a751e...`, the file frozen at `fb1d6e8` for attempt 3 (the foot thresholds
+added) to `e340940f...`, and the one frozen at `fbb0bea` for attempts 1 and 2 to `b76e6ca3...`:
 
 ```
 python3 -c 'import json,hashlib; d={k:v for k,v in json.load(open("part5/rules.json")).items() if k!="score"}; print(hashlib.sha256(json.dumps(d,sort_keys=True,separators=(",",":")).encode()).hexdigest())'
 ```
 
-detection_sha256: `0a559e183adad714e4ce0a6f2f03a5aba9a51bc1ed26daae4cf25e6cdd15d345`
+detection_sha256: `c92ae9a8524c559741cdaebcd14bb5305e91479d19123e15c3a5e14efb1337fb`
 
-Re-recorded for attempt 4: the score params are unchanged (`params_sha256` as recorded in `fixtures/score-heldout.json`;
-ADR-0017 leaves them alone). Re-frozen at attempt 3 (2026-10-31): the held-out score report on seeds 47 and 53 below was
-measured under the earlier detection rules (`b76e6ca3...`), and the cost of a foot fault in the score was never measured
-on a held-out score seed; attempt 4 moves the dance takes' scores too (a rep-by-rep take is scored window by window), which
-no held-out score seed has seen.
+Re-recorded for attempt 5 (candidate, before its freeze commit; the attempt 5 section is the orchestrator's): the score
+params are unchanged (`params_sha256` as recorded in `fixtures/score-heldout.json`). The one change to `part5/rules.json` is
+`max_jitter_deg` 4 on `foot_rotation` and `ankle_inversion` (ADR-0015 Amendment 4), so `rules_sha256` is now
+`1d6a3f86737bad27c1a002dd1c83fb2bb77cc01497709b0554ab8d5cdcb5d49e` and the detection hash above moved with it (attempt 4's
+was `0a559e18...`, recorded in its own section). It was re-recorded for attempt 4 too, with the score params unchanged
+(ADR-0017 leaves them alone), and re-frozen at attempt 3 (2026-10-31): the held-out score report on seeds 47 and 53 below
+was measured under the earlier detection rules (`b76e6ca3...`), and the cost of a foot fault in the score was never
+measured on a held-out score seed; attempt 4 moves the dance takes' scores too (a rep-by-rep take is scored window by
+window), which no held-out score seed has seen.
 
-The recheck of the pre-freeze review changed `part5/rules.json` (three new keys in `default`, two thresholds), so
-`rules_sha256` is now `077affcf0a3104356558cedf79a57eaf499fd2cb36637a92078adf23ddbd3534` (it was `7df9a020...` after
-the pre-freeze fixes) and the detection hash above moved with it. This hash is the current freeze only. Each attempt
+The recheck of the pre-freeze review of attempt 4 changed `part5/rules.json` (three new keys in `default`, two thresholds), so
+`rules_sha256` was `077affcf0a3104356558cedf79a57eaf499fd2cb36637a92078adf23ddbd3534` (it was `7df9a020...` after
+the pre-freeze fixes) and the detection hash moved with it. This hash is the current freeze only. Each attempt
 section above carries the `detection_sha256` of its own freeze, and `make check-5` judges a seed that is already scored by
 its own line alone (pre-freeze review B3), so a retired seed is never analysed again under later rules; for a scored
 seed of the second series (67, 71, 73) that line is required (recheck residual 4). Known limit (stakeholder-proxy ruling):
