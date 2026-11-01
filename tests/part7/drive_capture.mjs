@@ -198,6 +198,14 @@ async function run(role, viewport) {
   await page.waitForFunction(() => !document.querySelector('[data-testid="rec-timer"]').hidden, null, { timeout: 6000 });
   await page.waitForTimeout(1200);
   await shot("4-recording");
+  const clash = await page.evaluate(() => {
+    const t = document.querySelector('[data-testid="rec-timer"]').getBoundingClientRect();
+    const b = document.querySelector(".cap-pill-top")?.getBoundingClientRect();
+        if (!b) return "no camera badge";
+    const apart = t.top >= b.bottom - 0.5 || t.bottom <= b.top + 0.5 || t.left >= b.right - 0.5 || t.right <= b.left + 0.5;
+    return apart && t.width > 0 ? "" : `timer ${JSON.stringify(t)} badge ${JSON.stringify(b)}`;
+  });
+  check(`${tag}: the recording timer does not overlap the camera badge`, clash === "", clash);
   await noCover(page, `${tag} recording`);
 
   await tid("trim-continue").waitFor({ timeout: 20000 });

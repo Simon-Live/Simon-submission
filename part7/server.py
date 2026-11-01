@@ -25,7 +25,8 @@ import uuid
 from part7 import (
     animation_format, applog, auth, auth_routes, buildinfo, challenge_routes, client_log, config, delete_routes, export_routes, heartbeat,
     health_probe, history_routes, history_store, idempotency, identity, jobs, labels, media, mesh_files, models_used, modes, modules, narration_routes,
-    people, people_routes, private_mode, processor, proxy, quota, replay, result_media, resume, sections, speech_routes, teacher_routes,
+    people, people_routes, private_mode, processor, proxy, quota, refused_uploads, replay, result_media, resume, sections, speech_routes,
+    teacher_routes,
 )
 from part7.parts import p5_analyse
 
@@ -495,6 +496,7 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._reject_upload(411, "The upload has no length.")
         if ctype not in VIDEO_TYPES:
+            self._log_refusal("content_type", {"type": ctype, "announced": length, "received": 0}, "not a video type")
             return self._reject_upload(400, MSG_NOT_VIDEO, length)
         if length > config.MAX_UPLOAD_BYTES:
             return self._reject_upload(413, MSG_TOO_LARGE, length)
@@ -502,14 +504,16 @@ class _Handler(BaseHTTPRequestHandler):
         folder = self.app.uploads / upload_id
         folder.mkdir(parents=True)
         path = folder / f"upload.{VIDEO_TYPES[ctype]}"
+        seen = {"upload": upload_id, "type": ctype, "announced": length, "received": 0}
         try:
             received = self._save(path, length)
+            seen["received"] = received
             if received != length:
-                return self._fail_upload(folder, 400, MSG_NOT_VIDEO)
+                return self._refuse_kept(folder, "short_read", seen, "the body ended before Content-Length")
             try:
                 meta = media.probe(path)
-            except ValueError:
-                return self._fail_upload(folder, 400, MSG_NOT_VIDEO)
+            except ValueError as exc:
+                return self._refuse_kept(folder, "probe_failed", seen, str(exc))
             if meta["duration_s"] > config.MAX_UPLOAD_SECONDS + DURATION_SLACK_S:
                 return self._fail_upload(folder, 413, MSG_TOO_LONG_RAW)
         except OSError:
@@ -529,6 +533,20 @@ class _Handler(BaseHTTPRequestHandler):
                 out.write(chunk)
                 received += len(chunk)
         return received
+
+    def _log_refusal(self, reason: str, seen: dict[str, Any], error: str) -> None:
+        """One WARNING and one `ANOMALY upload_refused` line for a 400 MSG_NOT_VIDEO (TICKET-196)."""
+        applog.log(
+            f"upload refused ({reason}): content type {seen['type']!r}, announced {seen['announced']} bytes, "
+            f"received {seen['received']} bytes, probe error: {error}", level=logging.WARNING,
+        )
+        applog.anomaly("upload_refused", detail=error, reason=reason, type=seen["type"] or None,
+                       announced=seen["announced"], received=seen["received"], upload=seen.get("upload"))
+
+    def _refuse_kept(self, folder: Path, reason: str, seen: dict[str, Any], error: str) -> None:
+        self._log_refusal(reason, seen, error)
+        refused_uploads.keep(folder, self.app.state)
+        self._error(400, MSG_NOT_VIDEO)
 
     def _fail_upload(self, folder: Path, status: int, message: str) -> None:
         shutil.rmtree(folder, ignore_errors=True)
@@ -779,6 +797,7 @@ def build_app(
     )
     app.uploads.mkdir(parents=True, exist_ok=True)
     _clean_uploads(app.uploads)
+    refused_uploads.sweep(app.state)
     app.queue.on_cleanup = lambda: _sweep(app)  # with each job sweep, so a long-running server also frees them
     auth_routes.TAKE_REMOVER = delete_routes.remove_for_account  # account delete removes the account's takes (identity.md)
     app.idempotency.prune(config.RETENTION_DAYS)
@@ -789,6 +808,10 @@ def build_app(
 def _sweep(app: App) -> None:
     """The periodic sweep: old uploads, and history copies past their retention (history.md)."""
     _clean_uploads(app.uploads)
+    try:
+        refused_uploads.sweep(app.state)
+    except OSError as exc:  # kept evidence must not stop the job sweep
+        applog.log(f"refused uploads: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
     try:
         history_store.sweep(app.state)
     except Exception as exc:  # a history fault must not stop the job sweep

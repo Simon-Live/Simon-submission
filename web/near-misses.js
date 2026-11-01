@@ -30,7 +30,8 @@ export const WORDS = {
 export const TEXT = {
   heading: "Close calls",
   note: "Things that came close to counting as a fault. They did not cost you any points.",
-  persistence: (frames, needed) => `for part of the move, not long enough to count (${frames} of ${needed} frames)`,
+  persistence: (frames, needed) => `for part of the move, not long enough to count (held for ${frames} of the ${needed} frames needed)`,
+  persistenceBare: "for part of the move, not long enough to count", // an item with no counted_frames: the count is left out
   reps: (found, needed) => `in some reps, but only ${found} of the ${needed} reps it needed`,
 };
 
@@ -46,14 +47,14 @@ export function sentenceOf(x) {
   const pair = WORDS[x.measure];
   if (!pair) return null;
   const head = pair[x.direction === "less" ? 1 : 0].replace("{side}", x.side === "right" ? "right" : "left");
-  if (x.reason === "persistence") return `${head} ${TEXT.persistence(x.frames_over, x.needed_frames)}.`;
+  if (x.reason === "persistence") return `${head} ${num(x.counted_frames) == null ? TEXT.persistenceBare : TEXT.persistence(x.counted_frames, x.needed_frames)}.`;
   if (x.reason === "reps" && num(x.found_in_reps) != null && num(x.needed_reps) != null) return `${head} ${TEXT.reps(x.found_in_reps, x.needed_reps)}.`;
   return null;
 }
 
-/** How close an item came, 0 to 1: frames over against frames needed, or reps found against reps needed. */
+/** How close an item came, 0 to 1: counted frames (Part 5's `counted_frames`: frames in runs long enough) against frames needed, or reps found against reps needed. */
 function closeness(x) {
-  const [a, b] = x.reason === "reps" ? [x.found_in_reps, x.needed_reps] : [x.frames_over, x.needed_frames];
+  const [a, b] = x.reason === "reps" ? [x.found_in_reps, x.needed_reps] : [x.counted_frames, x.needed_frames];
   return num(a) != null && num(b) > 0 ? Math.min(1, a / b) : 0;
 }
 

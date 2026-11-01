@@ -306,14 +306,21 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     capture.onChange(onTake);
   }
 
+  // The name error clears the moment the field is valid and stays while it is not; aria-invalid follows.
+  name.addEventListener("input", () => {
+    if (nameError.hidden) return;
+    const bad = !name.value.trim();
+    show(nameError, bad ? NAME_ERROR : ""); name.setAttribute("aria-invalid", String(bad));
+  });
+
   submit.addEventListener("click", async () => {
     if (busy || !rec) return;
-    show(nameError, ""); show(formError, "");
+    show(nameError, ""); show(formError, ""); name.setAttribute("aria-invalid", "false");
     if (trainer) {
       const problem = validateTrainer(name.value, takeBlob());
       if (problem) {
         show(problem.field === "name" ? nameError : formError, problem.message);
-        if (problem.field === "name") name.focus();
+        if (problem.field === "name") { name.setAttribute("aria-invalid", "true"); name.focus(); }
         return;
       }
     } else if (!takeBlob()) { show(formError, TAKE_ERROR); return; }

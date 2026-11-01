@@ -1,0 +1,1 @@
+{"measure": "knee_flexion", "side": "left", "joint": "left_knee", "body_part": "legs", "direction": "less", "magnitude_deg": -52.2, "peak_deg": -90.6, "threshold_deg": 10.0, "expected_frames": [14, 34], "follower_frames": [12, 36], "frames_over": 54, "counted_frames": 21, "needed_frames": 30, "min_run_frames": 4, "reason": "persistence", "shortfall_frames": 9}

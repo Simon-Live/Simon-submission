@@ -26,6 +26,8 @@ MIN_COVERAGE = 0.1  # tracks seen in less of the clip are tracker noise and are 
 # centre, width and height each vary (10th to 90th percentile) by less than this share of its own height.
 # Measured on a 10 s take: the person 0.50; two objects SAM 3.1 tracked on the wall 0.03 and 0.04.
 MIN_MOTION = 0.10
+MIN_PRESENT_ENV = "SIMON7_PEOPLE_MIN_PRESENT_S"  # TICKET-198: a participant is in the take at least this long
+MIN_PRESENT_S = 2.0
 MAX_PEOPLE = 12
 GROUP_MAX_SECONDS = 30  # people.md "Limits"
 GROUP_MAX_FOLLOWERS = 8
@@ -36,6 +38,7 @@ NO_ONE = "No one was found in this clip. Record again with the person in frame."
 REASON_UNREADABLE = "the video could not be read"
 NOTE_NO_TRACK = "Part 2 at this pin has no track command, a full multi-person run found the people"
 NOTE_NO_IDS = "Part 2 at this pin cannot limit 3D to chosen people, 3D ran for everyone and Part 3 --person chose"
+TRACK_FPS_FILE = "track_fps.json"
 OPEN_TRACKERS = ("open", "bytetrack")
 
 
@@ -126,12 +129,12 @@ def _scaled(box: list[float], kx: float, ky: float) -> list[int]:
     return [round(box[0] * kx), round(box[1] * ky), round(box[2] * kx), round(box[3] * ky)]
 
 
-def summarize(frames: list[dict[str, Any]], width: int, height: int) -> list[dict[str, Any]]:
-    """The offered people, by coverage descending: `{id, coverage, frames, box_mid, best_frame}`.
+def min_present_s() -> float:
+    return applog.env_float(MIN_PRESENT_ENV, MIN_PRESENT_S)
 
-    `box_mid` is the box nearest the middle of the clip, `best_frame` the frame of the largest, surest box;
-    both in video pixels.
-    """
+
+def _candidates(frames: list[dict[str, Any]], width: int, height: int, fps: float | None) -> list[dict[str, Any]]:
+    """Every track seen in at least `MIN_COVERAGE` of the clip, with its motion and (given `fps`) seconds present."""
     ids = sorted({str(p.get("id")) for f in frames for p in f["people"] if isinstance(p, dict)})
     sw, sh = crop.track_size(frames) or (width, height)
     kx, ky = width / sw, height / sh
@@ -148,11 +151,51 @@ def summarize(frames: list[dict[str, Any]], width: int, height: int) -> list[dic
         people.append(
             {"id": pid, "coverage": round(coverage, 3), "frames": len({n for n, _, _ in boxes}),
              "box_mid": _scaled(mid[1], kx, ky), "best_frame": best[0], "best_box": _scaled(best[1], kx, ky),
-             "motion": motion}
+             "motion": motion, "present_s": round(len({n for n, _, _ in boxes}) / fps, 2) if fps else None}
         )
+    return people
+
+
+@dataclass
+class Selection:
+    """Who is offered, from the candidates: the one predicate of `summarize` and the 10 fps repeat (TICKET-202)."""
+
+    offered: list[dict[str, Any]]
+    participants: list[dict[str, Any]]  # moving and in the take for `min_present_s()`
+    dropped: list[dict[str, Any]]  # moving, too brief to be a participant, and not offered because someone qualifies
+
+    @property
+    def dropped_s(self) -> float:
+        return round(float(sum(p["present_s"] for p in self.dropped)), 2)
+
+    @property
+    def split_suspect(self) -> bool:
+        """Brief moving tracks that together cover more than `min_present_s()`: one member the tracker cut in pieces."""
+        return bool(self.dropped) and self.dropped_s > min_present_s()
+
+
+def select(people: list[dict[str, Any]], fps: float | None) -> Selection:
+    """Apply the movement filter, and with `fps` the presence filter. A take with no participant keeps the movers
+    (and everyone when nothing moves), as before TICKET-198."""
     moving = [p for p in people if p["motion"] >= MIN_MOTION]
-    if moving:  # only people who move are offered; a clip where nothing moves keeps everyone rather than no one
-        people = moving
+    if not fps:  # only people who move are offered; a clip where nothing moves keeps everyone rather than no one
+        return Selection(moving or people, [], [])
+    need = min_present_s()
+    participants = [p for p in moving if p["present_s"] >= need]
+    if participants:
+        return Selection(participants, participants, [p for p in moving if p["present_s"] < need])
+    return Selection(moving or people, [], [])
+
+
+def summarize(frames: list[dict[str, Any]], width: int, height: int, fps: float | None = None) -> list[dict[str, Any]]:
+    """The offered people, by coverage descending: `{id, coverage, frames, box_mid, best_frame}`.
+
+    `box_mid` is the box nearest the middle of the clip, `best_frame` the frame of the largest, surest box;
+    both in video pixels. With `fps` (the rate the frames were tracked at) only participants are offered: a track in
+    the take for at least `min_present_s()` seconds that also passes the movement filter; a take with no participant
+    keeps the movement filter alone (and everyone when nothing moves), as before TICKET-198.
+    """
+    people = list(select(_candidates(frames, width, height, fps), fps).offered)
     people.sort(key=lambda p: -p["coverage"])
     return people[:MAX_PEOPLE]
 
@@ -232,7 +275,7 @@ def _finder_failure(ctx: JobContext, step: runner.Step) -> str:
 
 def _find_people(
     ctx: JobContext, clip: Path, backend: str, lock: modules.Modules | None, state: Path | str | None,
-    steps: list[runner.Step],
+    steps: list[runner.Step], fps: int | None = None, work: Path | None = None,
 ) -> Path:
     """Run Part 2 until `tracks.json` exists; return its path in the job's work folder.
 
@@ -241,9 +284,11 @@ def _find_people(
     """
     ctx.set_stage("track")
     lk = lock or modules.load()
+    where = work or ctx.work  # the TICKET-198 repeat at 10 fps writes in its own folder
     try:
         if p2_pose.capabilities(lk, state)["track"]:
-            step, found = p2_pose.track(clip, ctx.work, backend=backend, lock=lk, state=state)
+            kw = {"fps": fps} if fps else {}
+            step, found = p2_pose.track(clip, where, backend=backend, lock=lk, state=state, **kw)
             if step.get("first_try"):
                 steps.append(step["first_try"])  # the failed tracker attempt; its exit shows in the stage line
         else:
@@ -261,7 +306,88 @@ def _find_people(
         raise JobFailed("track", "the people finder timed out" if step.get("timed_out") else _finder_failure(ctx, step))
     tracks = ctx.work / "tracks.json"
     shutil.copyfile(found, tracks)
+    if (found.parent / "frames.json").is_file():  # top level sorts first in `frame_times`: the kept attempt's times
+        shutil.copyfile(found.parent / "frames.json", ctx.work / "frames.json")
     return tracks
+
+
+def _selection(tracks: Path, meta: dict[str, Any], fps: int) -> Selection | None:
+    """The shared selection of a tracks file; None for an unreadable or empty one."""
+    try:
+        frames = crop.load_tracks(tracks)
+    except ValueError:
+        return None
+    return select(_candidates(frames, meta["width"], meta["height"], fps), fps) if frames else None
+
+
+def _has_participant(tracks: Path, meta: dict[str, Any], fps: int) -> bool:
+    """True when `select` finds a participant (present `min_present_s()` and moving); an unreadable file counts as no."""
+    found = _selection(tracks, meta, fps)
+    return bool(found and found.participants)
+
+
+def _repeat_reason(tracks: Path, meta: dict[str, Any], fps: int) -> str | None:
+    """Why the low-rate result is not trusted: no participant, or a member that looks cut into brief pieces."""
+    found = _selection(tracks, meta, fps)
+    if not found or not found.participants:
+        return f"no participant at {fps} fps (present {min_present_s()} s and moving)"
+    if found.split_suspect:
+        return (f"{len(found.dropped)} brief moving tracks at {fps} fps cover {found.dropped_s} s together "
+                f"(over {min_present_s()} s): one member may be split")
+    return None
+
+
+def _track_people(
+    ctx: JobContext, clip: Path, meta: dict[str, Any], mode: str | None, backend: str,
+    lock: modules.Modules | None, state: Path | str | None, steps: list[runner.Step],
+) -> Path:
+    """Find the people at the rate the take's mode asks for (TICKET-198); a take (single or group) with no participant
+    at its low rate is tracked once more at `FALLBACK_TRACK_FPS`. The rate kept is written to `track_fps.json`."""
+    fps, kind = p2_pose.track_fps_for(mode)
+    applog.log(f"people tracking at {fps} fps ({kind})", ctx.id, ctx.dir)
+    tracks = _find_people(ctx, clip, backend, lock, state, steps, fps)
+    # a pin without `track` ran a full multi run at the 3D rate: the rate does not apply and there is nothing to repeat
+    has_track = p2_pose.capabilities(lock or modules.load(), state)["track"]
+    if not has_track:
+        fps = p2_pose.FPS
+    reason = _repeat_reason(tracks, meta, fps) if has_track and fps < p2_pose.FALLBACK_TRACK_FPS else None
+    if reason:
+        applog.log(f"{reason}: tracking again at {p2_pose.FALLBACK_TRACK_FPS} fps ({kind})", ctx.id, ctx.dir)
+        tracks, fps = _repeat_fast(ctx, clip, backend, lock, state, steps, tracks, fps)
+    (ctx.work / TRACK_FPS_FILE).write_text(json.dumps({"fps": fps, "mode": kind}), encoding="utf-8")
+    return tracks
+
+
+def _repeat_fast(
+    ctx: JobContext, clip: Path, backend: str, lock: modules.Modules | None, state: Path | str | None,
+    steps: list[runner.Step], tracks: Path, fps: int,
+) -> tuple[Path, int]:
+    """The one repeat at `FALLBACK_TRACK_FPS`. It starts from no `frames.json` so frame times never mix rates; when it
+    fails or times out the usable low-rate result and its frame times stay and the failure is logged (TICKET-202)."""
+    kept = ctx.work / "frames.json"
+    aside = ctx.work / "frames.lowrate.json"
+    if kept.is_file():
+        kept.replace(aside)
+    try:
+        fast = _find_people(ctx, clip, backend, lock, state, steps, p2_pose.FALLBACK_TRACK_FPS, ctx.work / "retry_fps")
+    except JobFailed as exc:
+        if aside.is_file():
+            aside.replace(kept)
+        applog.anomaly("people_retry_failed", job=ctx.id, job_dir=ctx.dir, fps=p2_pose.FALLBACK_TRACK_FPS, error=str(exc))
+        return tracks, fps
+    aside.unlink(missing_ok=True)
+    return fast, p2_pose.FALLBACK_TRACK_FPS
+
+
+def tracked_fps(people_work: Path) -> int:
+    """The rate the people job tracked at (`track_fps.json`); `p2_pose.TRACK_FPS` for a job from before TICKET-198."""
+    try:
+        value = int(json.loads((people_work / TRACK_FPS_FILE).read_text(encoding="utf-8"))["fps"])
+        if value > 0:
+            return value
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return p2_pose.TRACK_FPS
 
 
 def _note_tracker(ctx: JobContext, tracks: Path) -> None:
@@ -281,11 +407,12 @@ def pose_for(
     Returns `(step, pose3d.json, note)`; a note names the fallback (people.md "Part 2 follow-up").
     """
     tracks = (sel.people_work or work) / "tracks.json"
-    if tracks.is_file() and p2_pose.TRACK_FPS != p2_pose.FPS:  # people tracked at a lower rate (#62)
+    rate = tracked_fps(sel.people_work or work)
+    if tracks.is_file() and rate != p2_pose.FPS:  # people tracked at another rate than the 3D run (#62, TICKET-198)
         tracks = track_resample.write_at_rate(
-            tracks, work / f"tracks_{p2_pose.FPS}fps.json", p2_pose.TRACK_FPS, p2_pose.FPS,
+            tracks, work / f"tracks_{p2_pose.FPS}fps.json", rate, p2_pose.FPS,
             media.probe(video)["duration_s"], frame_times(sel.people_work or work) or None)
-        applog.log(f"people tracks at {p2_pose.TRACK_FPS} fps resampled to {p2_pose.FPS} fps for the 3D run", applog.job_id_of(work), work)
+        applog.log(f"people tracks at {rate} fps resampled to {p2_pose.FPS} fps for the 3D run", applog.job_id_of(work), work)
     if tracks.is_file() and p2_pose.capabilities(lk, state)["ids"]:
         step, pose = p2_pose.run(video, work, backend=backend, lock=lk, state=state, tracks=tracks, ids=ids)
         return (step, pose, None)
@@ -311,34 +438,37 @@ def people_job(
     lock: modules.Modules | None = None,
     state: Path | str | None = None,
     backend: str = "gpu",
+    mode: str | None = None,
 ) -> JobFn:
-    """Return the job function of `POST api/people`."""
+    """Return the job function of `POST api/people`. `mode` is "single" or "group" (None: group, TICKET-198)."""
 
     def run(ctx: JobContext) -> dict[str, Any]:
         clip = prepare_clip(ctx, raw, trim)
         meta = media.probe(clip)
         steps: list[runner.Step] = []
         with stagelog.stage(ctx.work, "track", steps, video=stagelog.video_facts(clip), backend=backend):
-            tracks = _find_people(ctx, clip, backend, lock, state, steps)
+            tracks = _track_people(ctx, clip, meta, mode, backend, lock, state, steps)
         _note_tracker(ctx, tracks)
         ctx.set_stage("people")
         try:
             frames = crop.load_tracks(tracks)
         except ValueError:
             raise JobFailed("track", "the people finder wrote no result") from None
-        people = summarize(frames, meta["width"], meta["height"]) if frames else []
+        people = summarize(frames, meta["width"], meta["height"], tracked_fps(ctx.work)) if frames else []
         if not people:
             raise JobFailed("track", NO_ONE)
         out = ctx.dir / "people"
         out.mkdir(parents=True, exist_ok=True)
         times = frame_times(ctx.work)
         for person in people:
-            t = times.get(person["best_frame"], person["best_frame"] / p2_pose.FPS)
+            t = times.get(person["best_frame"], person["best_frame"] / tracked_fps(ctx.work))
             person_crop(clip, t, person["best_box"], out / f"{person['id']}.jpg", meta["width"], meta["height"])
         middle = meta["duration_s"] / 2
         if not middle_frame(clip, middle, people, out / "frame.jpg"):
             raise JobFailed("track", "the picture of the clip could not be made")
-        public = [{k: v for k, v in p.items() if k not in ("best_frame", "best_box")} for p in people]
+        chosen = select(_candidates(frames, meta["width"], meta["height"], tracked_fps(ctx.work)), tracked_fps(ctx.work))
+        applog.log(f"dropped moving tracks: {len(chosen.dropped)}, {chosen.dropped_s} s in total", ctx.id, ctx.dir)
+        public = [{k: v for k, v in p.items() if k not in ("best_frame", "best_box", "present_s")} for p in people]
         result = {"people": public, "frame": "people/frame.jpg", "auto_id": auto_id(people)}
         signals = quality.people_quality(tracks)
         if signals:
@@ -349,7 +479,8 @@ def people_job(
         tracked = {str(q.get("id")) for f in frames for q in f["people"] if isinstance(q, dict)}
         still = sorted(tracked - {p["id"] for p in people})
         if still:
-            applog.log(f"not offered (did not move, or seen too briefly): tracks {', '.join(still)}", ctx.id, ctx.dir)
+            applog.log(f"passer-by, not offered (did not move, or in the take under {min_present_s()} s): "
+                       f"tracks {', '.join(still)}", ctx.id, ctx.dir)
         return {"result": result}
 
     return run

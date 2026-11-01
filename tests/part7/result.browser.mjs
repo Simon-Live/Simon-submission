@@ -365,7 +365,7 @@ try {
     await p.getByTestId("near-misses").waitFor();
     assert.equal(await p.locator('[data-testid^="near-miss-"][data-reason]').count(), 3, "three close calls, no more");
     const first = await tid(p, "near-miss-0-text").textContent();
-    assert.match(first, /^Your head was further forward than the trainer's for part of the move, not long enough to count \(50 of 60 frames\)\.$/);
+    assert.match(first, /^Your head was further forward than the trainer's for part of the move, not long enough to count \(held for 50 of the 60 frames needed\)\.$/);
     assert.match(await tid(p, "near-misses").textContent(), /did not cost you any points/);
     // after "What to fix", and the explained_by item (shoulder tilt) is not shown
     const order = await p.evaluate(() => {

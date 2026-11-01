@@ -14,7 +14,10 @@ const SPAN_EPS = 0.02;
 function pressMoment(from) {
   const scope = from.closest(".simon-result") || document;
   const at = from.dataset.at;
-  scope.querySelectorAll('[data-testid^="moment-"][data-at]').forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.ats || b.dataset.at).split(" ").includes(at))));
+  scope.querySelectorAll('[data-testid^="moment-"][data-at]').forEach((b) => {
+    const on = (b.dataset.ats || b.dataset.at).split(" ").includes(at);
+    b.setAttribute("aria-pressed", String(on));
+  });
 }
 
 /** The lead-in label of a coaching row: "At 3.2 s:". */

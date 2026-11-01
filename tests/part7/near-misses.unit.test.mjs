@@ -39,11 +39,11 @@ test("explained_by and fitness items are left out; reps items follow the persist
 
 test("the wording names the trainer, the part and the frames, and says it did not count", () => {
   const trunk = closeCalls(nm, replay).find((c) => c.item.measure === "trunk_lean_forward");
-  assert.equal(trunk.text, "Your back leaned forward less than the trainer's for part of the move, not long enough to count (68 of 114 frames).");
+  assert.equal(trunk.text, "Your back leaned forward less than the trainer's for part of the move, not long enough to count (held for 68 of the 114 frames needed).");
   const knee = closeCalls(nm, replay).find((c) => c.item.measure === "knee_flexion");
   assert.match(knee.text, /^Your left knee bent more than the trainer's/);
-  assert.equal(sentenceOf({ measure: "foot_out", side: "right", direction: "less", reason: "persistence", frames_over: 5, needed_frames: 9 }),
-    "Your right foot stayed further in than the trainer's for part of the move, not long enough to count (5 of 9 frames).");
+  assert.equal(sentenceOf({ measure: "foot_out", side: "right", direction: "less", reason: "persistence", counted_frames: 5, frames_over: 12, needed_frames: 9 }),
+    "Your right foot stayed further in than the trainer's for part of the move, not long enough to count (held for 5 of the 9 frames needed).");
   assert.equal(sentenceOf({ measure: "unknown_measure", side: "left", direction: "more", reason: "persistence" }), null);
   for (const pair of Object.values(WORDS)) for (const s of pair) assert.ok(!DASH.test(s), s);
 });
@@ -58,4 +58,21 @@ test("the moment is the first follower frame in seconds: the replay clock, else 
   assert.equal(secondsOfFrame(null, replay), null);
   assert.equal(secondsOfFrame(5, { fps: 0 }), null);
   assert.equal(closeCalls(nm, null)[0].at_s, null);
+});
+
+test("a real staging record reads counted_frames against needed_frames, never frames_over (TICKET-200)", () => {
+  // Part 5 near_misses item from a staging analysis.json: 54 frames past the threshold, but only 21 in runs long enough, 30 needed.
+  const real = load("near-miss-staging-persistence.json");
+  assert.equal(sentenceOf(real), "Your left knee bent less than the trainer's for part of the move, not long enough to count (held for 21 of the 30 frames needed).");
+  assert.ok(!/54/.test(sentenceOf(real)));
+  // closeness ranks by counted frames: 21 of 30 beats 10 of 100 even though 90 frames were over
+  const other = { ...real, measure: "elbow_flexion", frames_over: 90, counted_frames: 10, needed_frames: 100 };
+  const calls = closeCalls({ diagnostics: { near_misses: { items: [other, real] } } }, null);
+  assert.equal(calls[0].item.measure, "knee_flexion");
+});
+
+test("a persistence item with no counted_frames reads without the count (TICKET-202)", () => {
+  const text = sentenceOf({ measure: "foot_out", side: "right", direction: "less", reason: "persistence", frames_over: 12, needed_frames: 9 });
+  assert.match(text, /not long enough to count\.$/);
+  assert.doesNotMatch(text, /undefined|NaN|held for/);
 });

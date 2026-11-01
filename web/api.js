@@ -204,8 +204,10 @@ export const createTrainerJob = (upload_id, name, category, trim, labels, person
 // practice-and-modes.md: `more` is {mode?, section?}
 export const createFollowJob = (upload_id, entry_id, trim, labels, person, more, key) =>
   postJSON("api/follow", { upload_id, entry_id, ...extras(trim, labels, person), ...(more || {}) }, key);
-/** POST api/people: finds everyone in the trimmed clip; the picker polls the job. */
-export const createPeopleJob = (upload_id, trim) => postJSON("api/people", { upload_id, ...(trim ? { trim } : {}) });
+/** POST api/people: finds everyone in the trimmed clip; the picker polls the job. `mode` is "single" (Just me) or
+ * "group"; it sets the server's people-tracking rate (TICKET-198), and a request without it is treated as group. */
+export const createPeopleJob = (upload_id, trim, mode) =>
+  postJSON("api/people", { upload_id, ...(trim ? { trim } : {}), ...(mode ? { mode } : {}) });
 /** POST api/group: {upload_id, trim, people_job, trainer_id, follower_ids, name, category, labels, save_entry}. */
 export const createGroupJob = (body, key) => postJSON("api/group", body, key);
 

@@ -78,7 +78,8 @@ def _post_people(h: Any) -> None:
     clip = h._clip(doc, raw)  # one trim parser: the recorder's rules (recorder.md "Trim rules")
     if clip is None:
         return
-    fn = people.people_job(raw, trim=clip[0], lock=h.app.lock, backend=h.app.backend)
+    mode = doc.get("mode") if doc.get("mode") in ("single", "group") else None  # TICKET-198: absent or unknown is group
+    fn = people.people_job(raw, trim=clip[0], lock=h.app.lock, backend=h.app.backend, mode=mode)
     # upload_id: so deleting a group take can drop the raw upload (delete_routes.py)
     h._enqueue("people", fn, quota_kind="follow", upload_id=str(doc.get("upload_id")))  # finding people uses the GPU: it counts as one GPU job
 

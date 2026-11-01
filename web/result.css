@@ -217,6 +217,7 @@
 .sr-moment-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .sr-moment-row { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border: 1px solid var(--sr-line);
   border-radius: 12px; background: var(--sr-raised); color: var(--sr-text); font: inherit; text-align: left; cursor: pointer; }
+.sr-moment-row[aria-pressed="true"] { border-color: var(--sr-hot); background: color-mix(in srgb, var(--sr-hot) 10%, var(--sr-raised)); box-shadow: inset 4px 0 0 var(--sr-hot); }
 .sr-moment-row:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .sr-tl-bar { overflow: visible; }
 .sr-tl-flag { position: absolute; top: -6px; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--sr-hot); box-shadow: 0 0 0 2px var(--sr-bg); }

@@ -204,6 +204,7 @@ export function createLock({ locks = null, channel = null, now = () => Date.now(
 /**
  * @param deps.store      null (no IndexedDB) or {all(), get(id), put(rec), delete(id)}, all async
  * @param deps.api        {upload(blob,{key,onProgress}), createPeopleJob(upload_id, trim), getJob(id), submitJob(req,key), health()}
+ * @param deps.api.createPeopleJobMode optional (upload_id, trim, mode): the people call with the take's Just me / Group mode (TICKET-198)
  * @param deps.buildRequest (record) => {kind, args}
  * @param deps.lock       createLock(...)
  * @param deps.storage    navigator.storage ({persist, estimate}) or null
@@ -337,7 +338,12 @@ export function createPending(deps) {
     changed();
   }
 
+  // TICKET-198: the take's "Just me" / "Group" choice (the record's role) sets the server's people-tracking rate
+  const withPeopleMode = (a, mode) => (a.createPeopleJobMode ? { ...a, createPeopleJob: (u, t) => a.createPeopleJobMode(u, t, mode) } : a);
+  const peopleMode = (rec) => (rec.role === "group" ? "group" : "single");
+
   async function doPeople(rec) {
+    const api = withPeopleMode(deps.api, peopleMode(rec)); // the call below reads this one
     const made = await guard(rec, "people", () => api.createPeopleJob(rec.upload_id, rec.trim));
     await patch(rec, { people_job: typeof made.job === "object" ? made.job.id : made.job });
   }

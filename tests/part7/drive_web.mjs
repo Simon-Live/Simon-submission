@@ -115,6 +115,13 @@ try {
   assert.equal(Object.keys((await state()).jobs).length, 0);
   assert.match(page.url(), /#\/record/);
   await shot(page, "06-record-name-error");
+  assert.equal(await tid(page, "name").getAttribute("aria-invalid"), "true");
+  await tid(page, "name").pressSequentially("D");
+  assert.equal(await tid(page, "name-error").isHidden(), true, "typing a name clears the error");
+  assert.equal((await tid(page, "name-error").textContent()).trim(), "", "negative: no error text remains");
+  assert.equal(await tid(page, "name").getAttribute("aria-invalid"), "false");
+  await tid(page, "name").fill("");
+  await tid(page, "name").pressSequentially("D");
   await tid(page, "name").fill("Dumbbell lateral raise");
   await shot(page, "08-record-take");
   await tid(page, "save").click();

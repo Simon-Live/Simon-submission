@@ -88,6 +88,7 @@ assert.deepEqual([t.name, t.category, t.upload_id, t.people_job, t.person_id], [
 assert.ok(t.trim && t.trim.end_ms > t.trim.start_ms);
 assert.deepEqual(t.labels, { tags: ["shoulders"], notes: "Slow" });
 assert.deepEqual(posts.find((p) => p.url === "people").body.trim, t.trim);
+assert.equal(posts.find((p) => p.url === "people").body.mode, "single", "Just me asks for the low tracking rate (TICKET-198)");
 log("trainer: people job after the trim, picker skipped, trainer POST has trim, person and labels");
 
 // 2. Follower, two people: picker, optional labels.
@@ -108,6 +109,7 @@ await page.waitForURL(/#\/job\/fj1/);
 const f = posts.find((p) => p.url === "follow").body;
 assert.deepEqual([f.entry_id, f.people_job, f.person_id], ["e1", "pj1", "1"]);
 assert.deepEqual(f.labels, { tags: ["left-side"], notes: "" });
+assert.equal(posts.find((p) => p.url === "people").body.mode, "single", "a follower take is one person (TICKET-198)");
 log("follower: picker, take labels in the follow POST");
 
 // 3. Follower without labels sends none.
@@ -140,6 +142,7 @@ const g = posts.find((p) => p.url === "group").body;
 assert.deepEqual([g.name, g.category, g.people_job, g.trainer_id, g.follower_ids, g.save_entry], ["Monday class", "dance", "pj1", "0", ["1", "2"], true]);
 assert.equal(g.labels["1"], "Front row left");
 assert.ok(g.trim);
+assert.equal(posts.find((p) => p.url === "people").body.mode, "group", "Group asks for the group tracking rate (TICKET-198)");
 log("group: mode switch, picker, group POST, a done group job opens #/group/<job>");
 
 assert.deepEqual(errors, [], errors.join("\n"));

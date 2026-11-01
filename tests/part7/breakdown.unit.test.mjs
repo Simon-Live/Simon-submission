@@ -68,7 +68,9 @@ test("verdict rules: shape, timing off, both good, ties, empty", () => {
   assert.equal(verdictOf(pts(1, 2), 1.4).text, "Your shape is close; the timing is off: dragging");
   assert.equal(verdictOf(pts(SHAPE_CLOSE, 0), 1).kind, "both-good");
   assert.equal(verdictOf(pts(0, 0), 1).text, "Shape and timing both match well");
-  assert.equal(verdictOf(pts(0, 0), null).kind, "both-good");
+  assert.equal(verdictOf(pts(0, 0), null).kind, "shape-good"); // no tempo measured: timing is never called good
+  assert.equal(verdictOf(pts(0, 0), null).text, "Your shape matches well; the timing was not measured");
+  assert.ok(!/timing both match/.test(verdictOf(pts(0, 0), null).text));
   assert.equal(verdictOf({ position: 0, range: 0, total: 0, basis: "none" }, null).kind, "unknown");
   assert.equal(verdictOf({ position: 1, range: 2, total: 3, basis: "count" }, 1).kind, "shape");
   for (const v of [verdictOf(pts(1, 2), 0.5), verdictOf(pts(9, 2), 1)]) assert.ok(!DASH.test(v.text));

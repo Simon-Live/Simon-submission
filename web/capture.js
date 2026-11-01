@@ -6,6 +6,7 @@ import { h, mmss } from "./ui.js";
 import { clientLog } from "./api.js";
 import { openTrimEditor } from "./trim.js";
 import { releaseMediaUrl } from "./media-url.js";
+import { createChunks } from "./take-chunks.js";
 import { PRERECORD_THRESHOLDS as QUALITY_THRESHOLDS } from "./quality-constants.js";
 import { measurePreview, previewCodes, updateTipState, visibleTips } from "./quality-check.js";
 import {
@@ -99,7 +100,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   const wantAudio = () => (typeof audioOpt === "function" ? Boolean(audioOpt()) : Boolean(audioOpt));
   let stream = null;
   let recorder = null;
-  let chunks = [];
+  const chunks = createChunks();
   let take = null;
   let tick = null;
   let startedAt = 0;
@@ -388,7 +389,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   }
 
   function beginRecorder(withCountdown) {
-    chunks = [];
+    chunks.reset();
     const sound = wantAudio() && stream.getAudioTracks().length > 0;
     const mimeType = pickMimeType(globalThis.MediaRecorder, sound);
     // a stream opened with sound before the person switched to Group is recorded without its audio tracks
@@ -405,7 +406,8 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     console.info("[capture] recorder:", recorder.mimeType || mimeType, `${recorder.videoBitsPerSecond || limits.recorder_bps} bps`);
     clientLog("info", "recorder_started", { mime: recorder.mimeType || mimeType, asked_mime: mimeType, bps: recorder.videoBitsPerSecond || limits.recorder_bps, track: trackSize });
     const limitS = prefs.duration || RAW_LIMIT_S;
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const mine = recorder;
+    recorder.ondataavailable = (e) => chunks.add(e);
     recorder.onstop = () => {
       clearInterval(tick);
       if (liveCheck) liveCheck.recording(null);
@@ -413,19 +415,23 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
       const type = recorder.mimeType || mimeType || "video/webm";
       badge.set("");
       cancelled();
-      if (!chunks.length) {
-        setError("Nothing was recorded. Try again.");
-        return;
-      }
-      source = "recording";
-      countdownUsed = withCountdown;
-      manual = !prefs.duration;
-      const blob = new Blob(chunks, { type });
-      const size = sizeText(...trackDims());
-      console.info("[capture] take recorded:", blob.size, "bytes,", recordedMs, "ms,", type, "camera", size);
-      clientLog("info", "take_recorded", { bytes: blob.size, duration_ms: recordedMs, mime: type, chunks: chunks.length, track: size });
-      setTake(blob, "Recorded");
-      measureTake(blob, size);
+      // TICKET-196: the Blob is built one task after `stop`, so a final dataavailable delivered behind it is in it
+      chunks.whenSettled((parts) => {
+        if (destroyed || recorder !== mine) return; // a new recording began in the gap: this take is not its
+        if (!parts.length) {
+          setError("Nothing was recorded. Try again.");
+          return;
+        }
+        source = "recording";
+        countdownUsed = withCountdown;
+        manual = !prefs.duration;
+        const blob = chunks.blob(type, parts);
+        const size = sizeText(...trackDims());
+        console.info("[capture] take recorded:", blob.size, "bytes,", recordedMs, "ms,", type, "camera", size);
+        clientLog("info", "take_recorded", { bytes: blob.size, duration_ms: recordedMs, mime: type, chunks: parts.length, track: size });
+        setTake(blob, "Recorded");
+        measureTake(blob, size);
+      });
     };
     recorder.start(1000);
     stopQualitySampling();

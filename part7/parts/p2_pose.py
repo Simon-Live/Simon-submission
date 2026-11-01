@@ -35,6 +35,26 @@ def _env_fps(name: str, default: int) -> int:
 
 FPS = _env_fps(FPS_ENV, 10)  # journey.md "Commands": 10 fps unless the route sets it
 TRACK_FPS = _env_fps(TRACK_FPS_ENV, FPS)
+TRACK_FPS_SINGLE_ENV = "SIMON7_P2_TRACK_FPS_SINGLE"  # TICKET-198: people tracking rate of a "Just me" take
+TRACK_FPS_GROUP_ENV = "SIMON7_P2_TRACK_FPS_GROUP"  # ... and of a group take (also a request without a mode)
+TRACK_FPS_SINGLE, TRACK_FPS_GROUP = 3, 3  # group went to 3 as well (moalborati/simon#62, 2026-11-01)
+FALLBACK_TRACK_FPS = 10  # a take that finds no participant at its low rate is tracked once more at this rate
+
+
+def track_fps_for(mode: str | None) -> tuple[int, str]:
+    """`(fps, mode)` of the people step: `SIMON7_P2_TRACK_FPS`, when set, overrides both; else the single or group rate.
+
+    Any `mode` but "single" is group, the safe default for an old client. Read at call time, so an operator edit
+    of the env takes effect with the next job; a bad value is logged and the default used.
+    """
+    kind = "single" if mode == "single" else "group"
+    if os.environ.get(TRACK_FPS_ENV, "").strip():
+        return (_env_fps(TRACK_FPS_ENV, FPS), kind)
+    if kind == "single":
+        return (_env_fps(TRACK_FPS_SINGLE_ENV, TRACK_FPS_SINGLE), kind)
+    return (_env_fps(TRACK_FPS_GROUP_ENV, TRACK_FPS_GROUP), kind)
+
+
 TRACKER_ENV = "SIMON7_P2_TRACKER"  # a Part 2 tracker name (local-sam31, local-open, bytetrack, api-sam31) in place of "auto"
 # Kept from the client team's 91cbe07 (serverless route). Part 7 main has no `remote()` yet, so nothing reads these
 # three until that route is ported; they are here so that merge loses nothing of theirs.
@@ -402,6 +422,7 @@ def track(
     state: Path | str | None = None,
     gpu_lock_kwargs: dict[str, Any] | None = None,
     tracker: str | None = "auto",
+    fps: int | None = None,
 ) -> tuple[runner.Step, Path]:
     """Run `part2 track` (frames and `tracks.json`, no 3D) when the pin has it (see `capabilities`).
 
@@ -410,13 +431,15 @@ def track(
     A named attempt writes its own log (`_tracker_log`); when the fallback runs, its step carries the failed
     attempt under `first_try`.
     The api-sam31 run skips Part 7's GPU admission; the default-order run (it may load local SAM) keeps it.
+    `fps` is the tracking rate (TICKET-198; default `TRACK_FPS`); every route below gets the same one: the warm
+    worker, the per-call run, api-sam31 and the local-open GPU-busy routing.
     """
     lk = lock or modules.load()
     clone = lk.path("2")
     work_p = Path(work)
     out_dir = work_p / "part2_track"
     out_dir.mkdir(parents=True, exist_ok=True)
-    sub = ["track", "--input", str(Path(video).resolve()), "--out", str(out_dir.resolve()), "--fps", str(TRACK_FPS)]
+    sub = ["track", "--input", str(Path(video).resolve()), "--out", str(out_dir.resolve()), "--fps", str(fps or TRACK_FPS)]
     if tracker == "auto" and os.environ.get(TRACKER_ENV, "").strip():
         tracker = os.environ[TRACKER_ENV].strip()  # e.g. local-open: the free tracker on the same GPU, no Meta API
     auto_local = False

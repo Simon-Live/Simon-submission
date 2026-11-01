@@ -83,6 +83,7 @@ def test_a_take_is_analysed_when_the_api_credential_is_refused(api: Api, wide_mp
     Fakes(monkeypatch, {0: 20})
     fake = _Part2(monkeypatch)
     _with_lock(monkeypatch, real_track)
+    monkeypatch.setenv(p2_pose.TRACK_FPS_ENV, "10")  # the fake's still box is no participant: no TICKET-198 repeat at 10 fps
     job = _people_job(api, wide_mp4)
     assert job["status"] == "done", job
     assert fake.trackers() == [p2_pose.API_TRACKER, "local-open"]

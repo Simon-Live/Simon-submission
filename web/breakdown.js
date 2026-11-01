@@ -60,6 +60,8 @@ export function slowIsFine(analysis, tempo) {
 }
 
 export const SLOW_FINE_LINE = "Slower than the trainer, and that is fine in rehab";
+/** Part 5 sends a tempo block with a null ratio when the take matched too loosely to time it (TICKET-063). */
+export const NOT_MEASURED_LINE = "Not measured: the take did not match the trainer closely enough to time it";
 
 /** The overall tempo line, e.g. "Rushing: your moves took 37% of the trainer's time". Null with no ratio. */
 export function tempoWording(ratio) {
@@ -83,7 +85,7 @@ export function tempoMoments(analysis) {
   return out;
 }
 
-/** One line verdict: {kind: "shape"|"timing"|"both-good"|"unknown", text}. */
+/** One line verdict: {kind: "shape"|"timing"|"both-good"|"shape-good"|"unknown", text}. */
 export function verdictOf(shape, ratio, reassured = false) {
   const t = reassured ? "on" : tempoStatus(ratio);
   const quiet = shape.total <= (shape.basis === "count" ? 0 : SHAPE_CLOSE);
@@ -95,6 +97,8 @@ export function verdictOf(shape, ratio, reassured = false) {
     return { kind: "shape", text: `Most of your lost points are shape: ${top}` };
   }
   if (reassured) return { kind: "both-good", text: "Your shape matches well, and a slower pace is fine in rehab" };
+  // Part 5 reports no tempo when the match is weak (TICKET-063): never call the timing good when it was not measured
+  if (!t) return { kind: "shape-good", text: "Your shape matches well; the timing was not measured" };
   return { kind: "both-good", text: "Shape and timing both match well" };
 }
 
@@ -161,7 +165,7 @@ export function mountBreakdown(slot, ctx = {}) {
   const timing = el("div", { class: "sb-timing", "data-testid": "breakdown-timing" },
     el("p", { class: "sb-row" }, el("span", { text: "Timing" }),
       el("strong", { "data-testid": "tempo-line", "data-tempo": slowFine ? "slow-ok" : tempoStatus(ratio) || "none",
-        text: slowFine ? SLOW_FINE_LINE : tempoWording(ratio) || "No timing detail in this analysis." })));
+        text: slowFine ? SLOW_FINE_LINE : tempoWording(ratio) || (analysis.score && analysis.score.tempo ? NOT_MEASURED_LINE : "No timing detail in this analysis.") })));
   if (moments.length) timing.append(el("p", { class: "sb-muted", text: "Moments off the beat. Tap one to jump there." }), momentsBlock(moments));
   panel.append(timing, el("p", { class: "sb-note", "data-testid": "timing-note", text: "Timing is coached but does not lower your score. Only shape does." }));
   slot.replaceChildren(panel, bodyNote());

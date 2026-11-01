@@ -120,6 +120,9 @@ for (const [size, width, height] of SIZES) {
   assert.equal(await tid(page, "moment-0").getAttribute("aria-pressed"), "true");
   assert.equal(await tid(page, "moment-marker-0").getAttribute("aria-pressed"), "true", `${size}: the marker and the row share one state`);
   assert.equal(await tid(page, "moment-1").getAttribute("aria-pressed"), "false");
+  assert.equal(await tid(page, "moment-0").getAttribute("aria-current"), null, `${size}: negative: the state is aria-pressed only, no aria-current`);
+  assert.equal(await tid(page, "moment-1").getAttribute("aria-current"), null, `${size}: negative: other rows carry none either`);
+  assert.notEqual(await tid(page, "moment-0").evaluate((e) => getComputedStyle(e).boxShadow), await tid(page, "moment-1").evaluate((e) => getComputedStyle(e).boxShadow), `${size}: the tapped row looks active`);
   await tid(page, "replay-worst").click();
   assert.equal(await tid(page, "replay-worst").getAttribute("aria-pressed"), "true");
   const boxes = await page.evaluate(() => {
