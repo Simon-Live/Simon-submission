@@ -51,5 +51,8 @@ test("the favicon repeats the accent and background tokens exactly (a file canno
   const val = (name) => tokens.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`))[1].toLowerCase();
   const fav = fs.readFileSync(path.join(web, "favicon.svg"), "utf8").toLowerCase();
   const used = new Set(fav.match(/#[0-9a-f]{6}/g));
-  assert.deepEqual([...used].sort(), [val("palette-black"), val("palette-lime")].sort());
+  // the background and the accent, and the dog's white fill (logo 2026-11-01): every colour is a palette token
+  for (const need of [val("palette-black"), val("palette-lime")]) assert.ok(used.has(need), `favicon lacks ${need}`);
+  const allowed = new Set([val("palette-black"), val("palette-lime"), val("palette-white")]);
+  assert.deepEqual([...used].filter((c) => !allowed.has(c)), []);
 });

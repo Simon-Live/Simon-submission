@@ -52,9 +52,12 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 .splash[data-done="true"] { opacity: 0; pointer-events: none; }
 .splash-inner { display: grid; justify-items: center; gap: var(--space-3); }
 /* the mark: the golden over the simon sign (views/logo.js); lines take the accent, knockouts the surface behind */
-.logo-sign, .logo-head { display: block; color: var(--color-accent); --logo-cut: var(--color-bg); }
+.logo-sign, .logo-head { display: block; color: var(--color-accent); --logo-fill: var(--color-text); --logo-ink: var(--color-on-accent); }
+.logo-sign .logo-line, .logo-head .logo-line { fill: currentColor; }
+.logo-sign .logo-fill, .logo-head .logo-fill { fill: var(--logo-fill); }
+.logo-sign .logo-ink { fill: var(--logo-ink); }
 .splash-mark .logo-sign { width: min(64vw, 280px); height: auto; }
 .brand { display: inline-flex; align-items: center; gap: var(--space-2); text-decoration: none; }
-.brand .logo-head { height: 30px; width: auto; }
+.brand .logo-head { height: 40px; width: auto; }
 .splash-tag { color: var(--color-text); font-size: var(--text-md); }
 @media (prefers-reduced-motion: reduce) { .splash { transition: none; } }
