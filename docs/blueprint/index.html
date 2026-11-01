@@ -198,12 +198,12 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 <main>
 <header class="cover">
   <div class="kicker">Design document · business plan · roadmap</div>
-  <h1>One take makes<br>a <em>coach</em>.</h1>
+  <h1>Learn any move<br>from <em>one take</em>.</h1>
   <p class="lede">Simon lets a trainer record a movement once. Anyone can then follow it in front of a phone camera, and Simon compares the two bodies in 3D and says what differed, when, and by how much.</p>
   <div class="meta">
     <span class="chip">Meta Global AI Developer Hackathon · <b>Startup track</b></span>
     <span class="chip">Due <b>Wed 4 Nov 2026, 9 PM ET</b></span>
-    <span class="chip">State as of <b>31 Oct 2026</b></span>
+    <span class="chip">State as of <b>1 Nov 2026, 04:30 UTC</b></span>
     <span class="chip">Hub <b>moalborati/simon</b></span>
   </div>
 </header>
@@ -212,15 +212,15 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 <section id="summary">
   <div class="eyebrow">01 · Summary</div>
   <h2>Where Simon stands</h2>
-  <p>The whole journey works end to end: record a trainer, follow the movement, and get a 3D comparison, timed coaching and a score. Seven parts in seven repos are stitched by Part 7 into one web app. Only one step needs a GPU, and it runs either on a staging host or serverless on Modal.</p>
+  <p>The whole journey works end to end: record a trainer, follow the movement, and get a 3D comparison, timed feedback and a score. Seven parts in seven repos are stitched by Part 7 into one web app. Only Part 2 needs a GPU; on the serverless route it runs on Modal with SAM 3.1 and SAM 3D Body both kept loaded, and a 10 s take is scored in about 40 s.</p>
   <div class="tiles">
     <div class="tile"><span class="n">7</span><span class="l">parts, each a separate repo with its own done-check</span></div>
-    <div class="tile"><span class="n">~3 min</span><span class="l">for a 10 s take, upload to result, on the serverless route</span></div>
-    <div class="tile"><span class="n">$0.14</span><span class="l">per take with Meta APIs; about $0.07 on our own GPUs</span></div>
+    <div class="tile"><span class="n">~40 s</span><span class="l">for a 10 s take on the serverless route, warm (was ~2 min; ~3 min on 31 Oct)</span></div>
+    <div class="tile"><span class="n">~$0.03</span><span class="l">GPU per take with SAM 3.1 on our own GPU (was $0.14 with the Meta API)</span></div>
     <div class="tile"><span class="n warn">14 / 16</span><span class="l">check-7 gates green on the serverless route (31 Oct)</span></div>
   </div>
   <div class="callout">
-    <p><b>The one thing that matters before the demo:</b> scoring is too lenient on multi-rep takes. A take with a visibly shallower hinge scored 100 with 0 faults (#59). Mo has shipped near-miss diagnostics; the detection fix is in progress.</p>
+    <p><b>Before the demo:</b> the #59 scoring fix is published (Part 5 <code>3530514</code>): the shallow-hinge take now reports the fault and scores 93 instead of 100. Two things remain: whether one fault in one of two reps should stay an A (Part 5 TICKET-047), and Mo's release 12 (failure causes, warm worker, sample-format converter) reaching Part 7 <code>main</code>.</p>
   </div>
 </section>
 
@@ -312,9 +312,11 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>Results summary</td><td>Score ring, stats, worst moment as two stick figures, bars per rep, drift track, coach note</td><td>Part 7 UI</td><td><span class="status s-done">Done (redesign)</span></td></tr>
       <tr><td>Score timeline</td><td>A score per rep or 5 s window; the take's score is their mean</td><td>Part 5 (ADR-0013)</td><td><span class="status s-done">Done</span></td></tr>
       <tr><td>3D replay</td><td>Trainer and follower skeletons on one clock; tap a miss to jump there</td><td>Part 7</td><td><span class="status s-done">Done</span></td></tr>
-      <tr><td>Group take</td><td>Pick who to score from a take with several people</td><td>Part 2 tracks + Part 7</td><td><span class="status s-part">Untested on a class</span></td></tr>
-      <tr><td>Challenges</td><td>Share a score, friend and crew boards, sponsored boards, end dates</td><td>Part 7</td><td><span class="status s-part">Done, restyle pending</span></td></tr>
-      <tr><td>Capture screen redesign</td><td>Full-bleed camera, live overlay, record button per the mockups</td><td>Part 7 UI</td><td><span class="status s-plan">Next</span></td></tr>
+      <tr><td>Group take</td><td>Pick who to score from a take with several people (SAM 3.1 on our GPU)</td><td>Part 2 tracks + Part 7</td><td><span class="status s-part">Untested on a class</span></td></tr>
+      <tr><td>Challenges</td><td>Share a score, friend and crew boards, sponsored boards, end dates</td><td>Part 7</td><td><span class="status s-done">Done (brand theme)</span></td></tr>
+      <tr><td>Capture screen redesign</td><td>Reference routine on top, your camera below, Recording pill, ring record button, steady-phone tip</td><td>Part 7 UI</td><td><span class="status s-done">Done (redesign)</span></td></tr>
+      <tr><td>Logo and loading</td><td>The golden retriever over the simon sign; paw prints walk across while loading</td><td>Part 7 UI</td><td><span class="status s-done">Done (logo B, to refine)</span></td></tr>
+      <tr><td>People who move</td><td>The picker offers only tracks that move, so things on a wall never stop the automatic pick</td><td>Part 7 (<code>e6d65a7</code>)</td><td><span class="status s-done">Done</span></td></tr>
     </tbody>
   </table></div>
 </section>
@@ -334,27 +336,27 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td><span class="id">FR-04</span></td><td>Skeletons have fixed bone lengths, a standard facing and no left/right flips.</td><td><code>make check-3</code></td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-05</span></td><td>The trainer's movement becomes a smooth 30 fps reference animation.</td><td><code>make check-4</code></td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-06</span></td><td>Each recorded movement is saved, named, searchable and playable in 3D.</td><td><code>make check-6</code></td><td><span class="status s-done">Met</span></td></tr>
-      <tr><td><span class="id">FR-07</span></td><td>A follower's take is compared with the reference and every real difference is reported with joint, size, time and plain words.</td><td><code>make check-5</code>; #59 evidence</td><td><span class="status s-open">Open: misses on multi-rep takes</span></td></tr>
+      <tr><td><span class="id">FR-07</span></td><td>A follower's take is compared with the reference and every real difference is reported with joint, size, time and plain words.</td><td><code>make check-5</code>; #59 evidence</td><td><span class="status s-part">Met on <code>3530514</code>; grade curve and held-out seed 71 pending</span></td></tr>
       <tr><td><span class="id">FR-08</span></td><td>The take gets a score out of 100 and a grade that do not depend on its length.</td><td>Part 5 ADR-0013 tests</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-09</span></td><td>A different movement is still analysed, but flagged as a low match and capped at F.</td><td>check-7 mismatch gate</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-10</span></td><td>Poor video (dark, cut off, shaky) is named with a tip, and a major issue caps the score at 59.</td><td>check-7 quality gates</td><td><span class="status s-part">Part 7 met; Parts 2/3/5 pending</span></td></tr>
       <tr><td><span class="id">FR-11</span></td><td>The follower sees live joint feedback while recording, clearly labelled as approximate.</td><td>Part 7 live-check tests</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-12</span></td><td>In a take with several people, the user picks who is scored.</td><td>Part 7 people tests</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-13</span></td><td>A follower can challenge others and compare scores on a board.</td><td>Part 7 challenge tests</td><td><span class="status s-done">Met</span></td></tr>
-      <tr><td><span class="id">FR-14</span></td><td>A failed job says which step failed and why, in words a user can act on.</td><td>TICKET-103 (Mo)</td><td><span class="status s-part">In progress</span></td></tr>
+      <tr><td><span class="id">FR-14</span></td><td>A failed job says which step failed and why, in words a user can act on.</td><td>TICKET-103 (Mo)</td><td><span class="status s-part">Done on staging; on <code>main</code> with release 12</span></td></tr>
     </tbody>
   </table></div>
   <h3>Non-functional</h3>
   <div class="table-wrap"><table>
     <thead><tr><th>ID</th><th>Quality</th><th>Target</th><th>Today</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td><span class="id">NFR-01</span></td><td>Latency</td><td>A 10 s take's result in under 3 min; under 60 s later</td><td>~3 min serverless; 94 s median follow job on the GPU host</td><td><span class="status s-part">Close</span></td></tr>
-      <tr><td><span class="id">NFR-02</span></td><td>Cost</td><td>≤ $0.15 per take now, ≤ $0.08 after the hackathon</td><td>$0.14 with Meta APIs; $0.07 own GPUs</td><td><span class="status s-done">Met</span></td></tr>
+      <tr><td><span class="id">NFR-01</span></td><td>Latency</td><td>A 10 s take's result in under 3 min; under 60 s later</td><td>~40 s serverless warm (people 11.5 s + follow 27.8 s); a cold start adds ~35 s</td><td><span class="status s-done">Met (warm)</span></td></tr>
+      <tr><td><span class="id">NFR-02</span></td><td>Cost</td><td>≤ $0.15 per take now, ≤ $0.08 after the hackathon</td><td>~$0.03 GPU per warm take (SAM 3.1 local); $0.14 with the Meta API</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">NFR-03</span></td><td>Generality</td><td>No code assumes a named movement; parts branch only on shared file formats</td><td>Enforced by review and the shared-file contracts</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">NFR-04</span></td><td>Reproducibility</td><td>The app path gives the same result as running each part directly</td><td>check-7: equal on the GPU host; ±1 point on Modal</td><td><span class="status s-part">Close</span></td></tr>
       <tr><td><span class="id">NFR-05</span></td><td>Accessibility</td><td>No serious or critical axe violations; 44 px targets; no sideways scroll at 412 px</td><td>22 page/size combinations pass</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">NFR-06</span></td><td>Secrets</td><td>Keys only in <code>.env</code>, the operator key folder and the Modal secret; never in a repo, image or log</td><td>Image excludes <code>.env</code>; key rotated after exposure</td><td><span class="status s-done">Met</span></td></tr>
-      <tr><td><span class="id">NFR-07</span></td><td>Resilience</td><td>A refused Meta key falls back to the free local tracker</td><td>Shipped in Part 7 release 7 (TICKET-098)</td><td><span class="status s-done">Met</span></td></tr>
+      <tr><td><span class="id">NFR-07</span></td><td>Resilience</td><td>A refused Meta key falls back to the free local tracker</td><td>Part 7 release 7 (TICKET-098); Part 2 <code>28c32c3</code> also skips a refused key</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">NFR-08</span></td><td>Maintainability</td><td>UI logic in <code>web/model/</code>, DOM in <code>web/views/</code>, colors only in <code>tokens.css</code></td><td>Enforced by <code>theme_rules.unit.test.mjs</code></td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">NFR-09</span></td><td>Abuse limits</td><td>Daily job caps on a shared link</td><td><code>SIMON7_LIMITS=on</code></td><td><span class="status s-done">Met</span></td></tr>
     </tbody>
@@ -588,9 +590,9 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <path class="wire" d="M80 90 H232" marker-end="url(#a5)"/><text class="ts" x="156" y="82" text-anchor="middle">POST /api/jobs (video, entry, trim)</text>
       <path class="wire-dash" d="M234 116 H82" marker-end="url(#a5)"/><text class="ts" x="156" y="108" text-anchor="middle">202 · job id</text>
       <path class="wire" d="M246 156 H402" marker-end="url(#a5)"/><text class="ts" x="324" y="148" text-anchor="middle">run (warm worker)</text>
-      <path class="wire" d="M416 186 H578" marker-end="url(#a5)"/><text class="ts" x="497" y="178" text-anchor="middle">track people (SAM 3.1)</text>
-      <path class="wire-dash" d="M578 212 H418" marker-end="url(#a5)"/><text class="ts" x="497" y="204" text-anchor="middle">tracks</text>
-      <text class="tc" x="424" y="240">alt: key refused → local tracker</text>
+      <text class="ts" x="424" y="186">SAM 3.1 (warm, same GPU)</text>
+      <text class="ts" x="424" y="204">people at 3 fps, still tracks dropped</text>
+      <text class="tc" x="424" y="240">alt: SAM 3.1 fails → local-open</text>
       <text class="ts" x="424" y="264">SAM 3D Body per frame</text>
       <path class="wire-dash" d="M404 296 H248" marker-end="url(#a5)"/><text class="ts" x="324" y="288" text-anchor="middle">tracks.json · pose3d.json</text>
       <path class="wire" d="M246 322 H732" marker-end="url(#a5)"/><text class="ts" x="490" y="314" text-anchor="middle">clean skeleton</text>
@@ -602,7 +604,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <path class="wire-lime" d="M234 500 H82" marker-end="url(#a5l)"/><text class="tl" x="156" y="492" text-anchor="middle">done → result screen</text>
     </svg>
     </div>
-    <figcaption><b>Most of the wait is Part 2.</b> On Modal a warm worker turns a 67 s cold call into 27 s for a 3.3 s clip; the local tracker turns tracking from 66 s into 13 s.</figcaption>
+    <figcaption><b>Most of the wait is Part 2, and both of its models now stay loaded.</b> On Modal, SAM 3.1 finds people in 11.5 s at 3 fps and SAM 3D Body builds the body in 26 s at 5 fps (boxes interpolated from the 3 fps tracks), for a 10 s take. The Meta API path took 66 s for a 3.3 s clip.</figcaption>
   </figure>
 
   <h3>State machine: a job</h3>
@@ -769,8 +771,8 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     </div>
     <figcaption><b>A difference becomes a fault only when it is big enough and lasts.</b> Faults explained by another kept fault are dropped. Per window, the score is 100 minus each fault's points (size, duration, coverage) minus a small similarity term.</figcaption>
   </figure>
-  <div class="callout">
-    <p><b>Known gap (#59).</b> Persistence was measured over the whole clip (38%). On a 10 s multi-rep take, a 1.6 s, 20° shallower hinge was dropped, and the take scored 100 with 0 faults. The fix (ADR-0017) measures persistence per rep and compares rep by rep whenever the trainer has two or more reps. Mo has shipped <code>diagnostics.near_misses</code>; detection is next.</p>
+  <div class="callout ok">
+    <p><b>Fixed (#59).</b> Persistence was measured over the whole clip (38%). On a 10 s multi-rep take, a 1.6 s, 20° shallower hinge was dropped, and the take scored 100 with 0 faults. The fix (ADR-0017) measures persistence per rep and compares rep by rep whenever the trainer has two or more reps. Published on Part 5 <code>3530514</code> (1 Nov): the take now reports <code>trunk_lean_forward</code> 16.8° less than the trainer in the first of two reps, and scores 93 (A). Whether that stays an A is Part 5 TICKET-047; the held-out seed 67 failed on one far-foot fault, with a fix due on seed 71 by 2 Nov.</p>
   </div>
   <p><b>Live check.</b> During the take, MediaPipe on the phone draws the joints, says whether the whole body is in view, and compares 8 joint angles with the trainer's animation, flagging joints more than 25° off. It is labelled approximate; the 3D score after the take is the one that counts.</p>
 </section>
@@ -784,7 +786,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <thead><tr><th>Model</th><th>Used for</th><th>Part</th><th>Runs on</th><th>Cost</th><th>Licence</th></tr></thead>
     <tbody>
       <tr><td><b>SAM 3D Body</b></td><td>3D body per frame from one image</td><td>2</td><td>GPU (RTX 5090 or Modal L40S)</td><td>GPU time</td><td>SAM License</td></tr>
-      <tr><td><b>SAM 3.1</b></td><td>People tracking with stable ids; Part 1's people boxes</td><td>1, 2</td><td>Meta Model API</td><td>$0.20 / 1,000 frames</td><td>API key</td></tr>
+      <tr><td><b>SAM 3.1</b></td><td>People tracking with stable ids (text prompt "person"); Part 1's people boxes</td><td>1, 2</td><td>Our GPU (gated <code>facebook/sam3.1</code>, kept warm on Modal); Meta API for Part 1</td><td>GPU time; API $0.20 / 1,000 frames</td><td>SAM License, gated weights (HF token)</td></tr>
       <tr><td><b>Muse Spark 1.3</b></td><td>Phase names; coaching phrasing</td><td>1, 5</td><td>Meta API; Baseten for Part 5</td><td>~$1.25 / $4.25 per M tokens</td><td>API key; template wording without</td></tr>
       <tr><td>ViTDet (ViT-H)</td><td>Person boxes for SAM 3D Body</td><td>2</td><td>GPU</td><td>GPU time</td><td>Apache-2.0</td></tr>
       <tr><td>MoGe-2</td><td>Camera focal length, once per clip</td><td>2</td><td>GPU</td><td>GPU time</td><td>MIT</td></tr>
@@ -816,11 +818,11 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <rect class="frame" x="520" y="40" width="200" height="240" rx="14"/><text class="ts" x="536" y="62">any machine, no GPU</text>
       <rect class="box-simon" x="540" y="76" width="160" height="50" rx="10"/><text class="t" x="620" y="98" text-anchor="middle">Part 7 + Parts</text><text class="t" x="620" y="116" text-anchor="middle">1, 3–6</text>
       <rect class="box-simon" x="540" y="146" width="160" height="50" rx="10"/><text class="t" x="620" y="168" text-anchor="middle">p2_client.py</text><text class="tm" x="620" y="186" text-anchor="middle">REMOTE=modal</text>
-      <rect class="box-gpu" x="780" y="120" width="180" height="100" rx="12"/><text class="t" x="870" y="148" text-anchor="middle">Modal · L40S</text><text class="ts" x="870" y="168" text-anchor="middle">Part2 class, warm worker</text><text class="ts" x="870" y="186" text-anchor="middle">kept 5 min after a call</text><text class="ts" x="870" y="204" text-anchor="middle">weights baked in</text>
+      <rect class="box-gpu" x="780" y="120" width="180" height="100" rx="12"/><text class="t" x="870" y="148" text-anchor="middle">Modal · L40S</text><text class="ts" x="870" y="168" text-anchor="middle">warm 3D + warm SAM 3.1</text><text class="ts" x="870" y="186" text-anchor="middle">kept 5 min after a call</text><text class="ts" x="870" y="204" text-anchor="middle">weights baked in</text>
       <path class="wire" d="M620 126 V146" marker-end="url(#a10)"/>
       <path class="wire" d="M700 171 H780" marker-end="url(#a10)"/><text class="ts" x="740" y="163" text-anchor="middle">clip in</text>
       <path class="wire" d="M780 196 H700" marker-end="url(#a10)" /><text class="ts" x="740" y="214" text-anchor="middle">json out</text>
-      <text class="ts" x="540" y="230">+ nothing billed when idle</text><text class="ts" x="540" y="250">− 67 s cold / 27 s warm</text>
+      <text class="ts" x="540" y="230">+ nothing billed when idle</text><text class="ts" x="540" y="250">− ~35 s extra on a cold start</text>
     </svg>
     </div>
     <figcaption><b>The only edge that moves is Part 2.</b> Route B is switched on with <code>SIMON7_PART2_REMOTE=modal</code> and leaves route A untouched; <code>SIMON7_P2_TRACKER=local-open</code> uses the free tracker on either route.</figcaption>
@@ -828,7 +830,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="table-wrap"><table>
     <thead><tr><th></th><th>A · GPU host</th><th>B · Serverless</th></tr></thead>
     <tbody>
-      <tr><td>Measured</td><td>Follow job median 94 s; people job 29 s</td><td>3.3 s clip: 67 s cold, 27 s warm; 10 s take ~3 min</td></tr>
+      <tr><td>Measured</td><td>Follow job median 94 s; people job 29 s</td><td>10 s take, warm: people 11.5 s (SAM 3.1, 3 fps) + follow 27.8 s (3D 5 fps) ≈ 40 s</td></tr>
       <tr><td>Billing</td><td>The host</td><td>Per second of GPU (~$1.95 / L40S hour)</td></tr>
       <tr><td>Keys</td><td><code>.env</code> + operator key folder</td><td>Modal secret <code>simon-meta</code>; image excludes <code>.env</code></td></tr>
       <tr><td>Deploy</td><td>Mo's publish script; refuses to publish over commits it did not make</td><td><code>modal deploy deploy/serverless/part2_app.py</code></td></tr>
@@ -895,7 +897,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <h3>Unit economics</h3>
   <figure>
     <div class="scroll">
-    <svg viewBox="0 0 900 300" role="img" aria-label="Cost per take: $0.14 with Meta APIs (GPU 6.5 cents, SAM 3.1 7.2 cents, Spark under 1 cent) versus $0.07 on own GPUs.">
+    <svg viewBox="0 0 900 300" role="img" aria-label="Cost per take: $0.14 with the Meta API (GPU 6.5 cents, SAM 3.1 7.2 cents) versus about 3 cents with SAM 3.1 on our own GPU, warm.">
       <line class="grid-line" x1="200" y1="40" x2="200" y2="230"/>
       <line class="grid-line" x1="400" y1="40" x2="400" y2="230" stroke-dasharray="3 5"/><line class="grid-line" x1="600" y1="40" x2="600" y2="230" stroke-dasharray="3 5"/><line class="grid-line" x1="800" y1="40" x2="800" y2="230" stroke-dasharray="3 5"/>
       <text class="tm" x="200" y="252" text-anchor="middle">$0</text><text class="tm" x="400" y="252" text-anchor="middle">$0.05</text><text class="tm" x="600" y="252" text-anchor="middle">$0.10</text><text class="tm" x="800" y="252" text-anchor="middle">$0.15</text>
@@ -906,25 +908,25 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <text class="t" x="330" y="97" text-anchor="middle" style="fill:var(--bg)">GPU 6.5¢</text>
       <text class="t" x="604" y="97" text-anchor="middle" style="fill:var(--bg)">SAM 3.1 7.2¢</text>
       <text class="tl" x="780" y="97">$0.14</text>
-      <text class="t" x="186" y="176" text-anchor="end">Own GPUs</text>
-      <rect x="200" y="154" width="280" height="36" fill="var(--lime)" rx="3"/>
-      <text class="t" x="340" y="177" text-anchor="middle" style="fill:var(--bg)">GPU incl. local tracker</text>
-      <text class="tl" x="492" y="177">$0.07</text>
-      <text class="ts" x="200" y="284">20 s take; Spark phrasing under 1¢. Hybrid capacity brings a heavy user to ~$3.50 a month.</text>
+      <text class="t" x="186" y="176" text-anchor="end">SAM 3.1 local</text>
+      <rect x="200" y="154" width="120" height="36" fill="var(--lime)" rx="3"/>
+      <text class="t" x="260" y="177" text-anchor="middle" style="fill:var(--bg)">GPU 3¢</text>
+      <text class="tl" x="332" y="177">~$0.03</text>
+      <text class="ts" x="200" y="284">Top: a 20 s take, 31 Oct. Bottom: a 10 s take measured warm on Modal L40S, ~40 s at $1.95/h. Idle keep-warm extra.</text>
     </svg>
     </div>
-    <figcaption><b>Half of today's cost is the SAM 3.1 API.</b> Moving tracking to the local tracker and reusing Part 2's tracks in Part 1 halves the cost per take.</figcaption>
+    <figcaption><b>Running SAM 3.1 on our own GPU removed the API half of the cost</b>, and 3 fps tracking with 5 fps 3D cut the GPU time. A warm container idles up to 5 minutes after the last take (about 3.3¢ a minute), which a steady stream of takes spreads out.</figcaption>
   </figure>
   <div class="table-wrap"><table>
-    <thead><tr><th>Plan</th><th class="num">Price / month</th><th class="num">Takes / month</th><th class="num">Compute (own GPUs)</th><th class="num">Gross margin</th></tr></thead>
+    <thead><tr><th>Plan</th><th class="num">Price / month</th><th class="num">Takes / month</th><th class="num">Compute (~$0.03 a take)</th><th class="num">Gross margin</th></tr></thead>
     <tbody>
-      <tr><td>Free follower</td><td class="num">$0</td><td class="num">5</td><td class="num">$0.35</td><td class="num">acquisition cost</td></tr>
-      <tr><td>Pro</td><td class="num">$12</td><td class="num">65</td><td class="num">$4.55</td><td class="num">62%</td></tr>
-      <tr><td>Trainer (30 followers × 20 takes)</td><td class="num">$49</td><td class="num">600</td><td class="num">$42 → $32 hybrid</td><td class="num">14% → 35%</td></tr>
-      <tr><td>Studio (150 × 8 takes)</td><td class="num">$199</td><td class="num">1,200</td><td class="num">$84 → $65 hybrid</td><td class="num">58% → 67%</td></tr>
+      <tr><td>Free follower</td><td class="num">$0</td><td class="num">5</td><td class="num">$0.15</td><td class="num">acquisition cost</td></tr>
+      <tr><td>Pro</td><td class="num">$12</td><td class="num">65</td><td class="num">$1.95</td><td class="num">84%</td></tr>
+      <tr><td>Trainer (30 followers × 20 takes)</td><td class="num">$49</td><td class="num">600</td><td class="num">$18</td><td class="num">63%</td></tr>
+      <tr><td>Studio (150 × 8 takes)</td><td class="num">$199</td><td class="num">1,200</td><td class="num">$36</td><td class="num">82%</td></tr>
     </tbody>
   </table></div>
-  <p class="muted">At 10,000 active users a month: ~$92,000 compute with the Meta APIs, $35,000 to $48,000 on rented GPUs. Serverless is cheaper until a rented GPU would be busy more than ~38% of the time; from about 1,000 active users, an always-on base plus serverless peaks is cheapest. Hybrid here means ~$0.054 a take ($3.50 for 65 takes). The Trainer plan stays thin even then, so its follower allowance or price is the first thing the pilot should test.</p>
+  <p class="muted">At 10,000 active users a month (65 takes each): ~$92,000 compute with the Meta APIs; about $20,000 with SAM 3.1 on our own GPUs at the measured warm rate, plus idle keep-warm time. Earlier estimate for comparison: $35,000 to $48,000 on rented GPUs. Serverless is cheaper until a rented GPU would be busy more than ~38% of the time; from about 1,000 active users, an always-on base plus serverless peaks is cheapest. Cold starts (about 35 s more GPU time) and keep-warm idle time are not in the per-take figure; the pilot should measure them.</p>
 
   <h3>Go to market</h3>
   <ol class="clean" style="padding-left:20px">
@@ -948,7 +950,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <h3>Metrics we will track</h3>
   <div class="tiles">
     <div class="tile"><span class="n">≥ 80%</span><span class="l">of misses a trainer agrees with (accuracy, pilot)</span></div>
-    <div class="tile"><span class="n">&lt; 60 s</span><span class="l">take to result, after the warm worker and local tracker</span></div>
+    <div class="tile"><span class="n">&lt; 60 s</span><span class="l">take to result, cold starts included (warm today: ~40 s)</span></div>
     <div class="tile"><span class="n">3 / week</span><span class="l">takes per active follower</span></div>
     <div class="tile"><span class="n">≤ $0.08</span><span class="l">compute per take</span></div>
   </div>
@@ -999,11 +1001,11 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 
   <div class="two">
     <div class="scenario"><div class="head"><h4>Now: to 4 Nov</h4><span class="sid">NOW</span></div>
-      <ol><li>Part 5 rep-by-rep detection (#59); re-run the RDL take, expect the shallow hinge as a fault.</li><li>Specific failure causes (TICKET-103).</li><li>Staging deploys <code>main</code>, or the demo runs on the serverless route.</li><li>UI: capture layout and challenge screens; logo.</li><li>Live check on a real phone (Safari and Chrome).</li><li>Demo video and submission by noon ET.</li></ol></div>
+      <ol><li><s>Part 5 rep-by-rep detection (#59)</s>: published, the hinge is now a fault; grade ruling (TICKET-047) pending.</li><li><s>UI redesign, logo, capture and results screens</s>: on Part 7 <code>main</code>.</li><li><s>SAM 3.1 warm on our GPU, 3 fps people, 5 fps 3D</s> (#62): on the serverless route.</li><li>Release 12 on <code>main</code> (failure causes, warm worker, converter), then merge the serverless route.</li><li>Live check on a real phone (Safari and Chrome).</li><li>Demo video and submission by noon ET.</li></ol></div>
     <div class="scenario"><div class="head"><h4>Next: Nov 2026 – Feb 2027</h4><span class="sid">NEXT</span></div>
-      <ol><li>Pilot with five customers; measure miss accuracy against trainers.</li><li>Local tracker by default; reuse Part 2's tracks in Part 1 (halves cost).</li><li>Warm worker on the host; deterministic GPU runs.</li><li>Video quality in Parts 2, 3, 5 (the cap end to end).</li><li>Progress over sessions; rehab wording and range tracking.</li><li>Installable web app for phones.</li></ol></div>
+      <ol><li>Pilot with five customers; measure miss accuracy against trainers.</li><li>Learning loop, step 1: each follower's history per routine (the trend, the rep that keeps drifting).</li><li>Reuse Part 2's tracks in Part 1; warm tracking in Part 2's own worker; deterministic GPU runs.</li><li>Video quality in Parts 2, 3, 5 (the cap end to end).</li><li>Progress over sessions; rehab wording and range tracking.</li><li>Installable web app for phones.</li></ol></div>
     <div class="scenario"><div class="head"><h4>Later: Mar – Jun 2027</h4><span class="sid">LATER</span></div>
-      <ol><li>Hybrid GPU capacity sized from real usage.</li><li>Trainer voice cues (Muse Glimmer) and narrated routines (Muse Wonder).</li><li>Per-trainer thresholds: the trainer marks what matters.</li><li>Group scoring tested on real classes.</li><li>On-device 3D research to cut GPU cost further.</li></ol></div>
+      <ol><li>Learning loop, steps 2 and 3: trainers flag wrong or missed misses, and those labels retune Part 5 offline through its held-out gate; per-routine tolerance learned from good takes.</li><li>Hybrid GPU capacity sized from real usage.</li><li>Trainer voice cues (Muse Glimmer) and narrated routines (Muse Wonder).</li><li>Per-trainer thresholds: the trainer marks what matters.</li><li>Group scoring tested on real classes.</li><li>On-device 3D research to cut GPU cost further.</li></ol></div>
     <div class="scenario"><div class="head"><h4>Research bets</h4><span class="sid">BETS</span></div>
       <ol><li>Generated training data (Muse Image) for rare angles.</li><li>Temporal 3D models for steadier joints than per-frame.</li><li>Live 3D on the GPU (~$2 per user per hour) for premium tiers.</li></ol></div>
   </div>
@@ -1016,14 +1018,15 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="table-wrap"><table>
     <thead><tr><th>Risk or issue</th><th>Impact</th><th>Mitigation</th><th>Owner</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td>Lenient scoring on multi-rep takes (#59)</td><td>High: a wrong 100 undermines trust in the demo</td><td>Per-rep persistence, rep-by-rep compare, near-miss diagnostics</td><td>Mo</td><td><span class="status s-open">In progress</span></td></tr>
+      <tr><td>Lenient scoring on multi-rep takes (#59)</td><td>High: a wrong 100 undermines trust in the demo</td><td>Per-rep persistence, rep-by-rep compare (Part 5 <code>3530514</code>); grade curve TICKET-047</td><td>Mo</td><td><span class="status s-part">Fixed; grade pending</span></td></tr>
       <tr><td>Staging builds from a local copy, not <code>main</code></td><td>Medium: teammates' commits can be overwritten</td><td>Publish script refuses unknown commits; pull before publish</td><td>Mo</td><td><span class="status s-part">Guarded</span></td></tr>
-      <tr><td>Cold model load per Part 2 call on the host</td><td>Medium: latency</td><td>One warm worker; serverless route already warm</td><td>Mo</td><td><span class="status s-part">Measuring</span></td></tr>
+      <tr><td>Cold model load per Part 2 call on the host</td><td>Medium: latency</td><td>Host: one warm worker (97 s → 52 s on a 4 s clip). Serverless: 3D and SAM 3.1 both warm</td><td>Mo, the team</td><td><span class="status s-done">Done</span></td></tr>
       <tr><td>Non-deterministic Part 2 on Modal</td><td>Low: ±1 point between runs</td><td>Deterministic GPU settings</td><td>the team</td><td><span class="status s-plan">Planned</span></td></tr>
       <tr><td>Quality cap missing in Parts 2, 3, 5</td><td>Medium: dark takes not capped</td><td>Shruti's lane continues into those parts</td><td>Shruti, Mo</td><td><span class="status s-plan">Planned</span></td></tr>
       <tr><td>Part 1: no retry when the SAM 3.1 stream is cut</td><td>Low</td><td>Retry with backoff; local tracker fallback</td><td>Shruti</td><td><span class="status s-plan">Planned</span></td></tr>
-      <tr><td>Meta API cost at scale</td><td>High after launch</td><td>Local tracker, track reuse, hybrid GPUs</td><td>Team</td><td><span class="status s-plan">Roadmap</span></td></tr>
+      <tr><td>Meta API cost and reliability (Part 1: 13 of 13 SAM 3.1 streams cut on 31 Oct)</td><td>High</td><td>SAM 3.1 on our own GPU (#62); Part 1 falls back to Part 3's key frames</td><td>Team</td><td><span class="status s-part">Part 2 done; Part 1 pending</span></td></tr>
       <tr><td>Health data in rehab</td><td>High for clinics</td><td>Data processing terms, regional storage, no video kept after analysis by default</td><td>Team</td><td><span class="status s-plan">Before clinic tier</span></td></tr>
+      <tr><td>"Coach" and medical wording in a hackathon with a banned list naming "sports analyzers or coaches"</td><td>Medium until confirmed</td><td>Visible copy avoids "coach" and medical claims; Rehab tab kept per the team</td><td>Team</td><td><span class="status s-part">Guarded</span></td></tr>
     </tbody>
   </table></div>
 </section>
@@ -1046,7 +1049,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 </section>
 
 <footer>
-  Simon design blueprint · state as of 31 October 2026 · source: <code>moalborati/simon/docs/blueprint/index.html</code>. Business figures are planning estimates; technical figures come from measured runs.
+  Simon design blueprint · state as of 1 November 2026, 04:30 UTC · source: <code>moalborati/simon/docs/blueprint/index.html</code>. Business figures are planning estimates; technical figures come from measured runs.
 </footer>
 </main>
 </div>
