@@ -345,14 +345,14 @@ REFUSAL = "part2: tracker api-sam31: the credential was refused"
 MOVED_ON = f"{REFUSAL}; tracking with local-open instead\n"
 
 
-def refuse_the_api_credential(monkeypatch, local_ok=(True, "")):
+def refuse_the_api_credential(monkeypatch, local_ok=(True, ""), wording="HTTP 401: unauthorized"):
     """The Meta API answers HTTP 401 (through the real trackers.call_with_key, so it becomes CredentialRefused) and
     local-open is a fake that finds people 7 and 8. Returns the calls made: {"api": n, "local-open": n}."""
     calls = {"api": 0, "local-open": 0}
 
     def refuse(frames_dir, recs, **_):
         calls["api"] += 1
-        raise RuntimeError("Meta API POST /files: HTTP 401: unauthorized")
+        raise RuntimeError(f"Meta API POST /files: {wording}")
 
     class FakeLocalOpen(trackers.Tracker):
         name = "local-open"
@@ -393,6 +393,39 @@ def test_a_refused_credential_moves_the_bulk_order_on_to_local_open(gpu, tmp_pat
         pose = _load(out / "pose3d.json")
         contract.validate(pose, "pose3d")
         assert _fallback_of(pose["provenance"]) == ("local-open", "api-sam31", "credential_refused")
+
+
+# The wordings a real refusal takes: call_with_key maps only "HTTP 401/403" to CredentialRefused, so the others reach
+# the CLI as a TrackerError "tracker api-sam31: <message>" (part2/trackers/__init__.py is stamped, so the CLI reads it).
+OTHER_REFUSALS = ["403 Client Error: Forbidden for url: https://x/files", "HTTP Error 403: Forbidden",
+                  "HTTP Error 401: Unauthorized"]
+
+
+@pytest.mark.parametrize("wording", OTHER_REFUSALS + ["HTTP 403: forbidden"])
+def test_a_403_or_urllib_refusal_moves_the_bulk_order_on(gpu, tmp_path, monkeypatch, capsys, wording):
+    calls = refuse_the_api_credential(monkeypatch, wording=wording)
+    code, out = _track(tmp_path)
+    assert code == 0 and capsys.readouterr().err == MOVED_ON
+    assert calls == {"api": 1, "local-open": 1}
+    assert _fallback_of(_load(out / "tracks.json")["provenance"]) == ("local-open", "api-sam31", "credential_refused")
+
+
+@pytest.mark.parametrize("wording", OTHER_REFUSALS)
+@pytest.mark.parametrize("how", ["--tracker", "PART2_TRACKER", "--tracker-order"])
+def test_a_403_or_urllib_refusal_still_fails_closed_when_pinned(gpu, tmp_path, monkeypatch, capsys, how, wording):
+    calls = refuse_the_api_credential(monkeypatch, wording=wording)
+    extra = {"--tracker": ["--tracker", "api-sam31"], "--tracker-order": ["--tracker-order", "scored"]}.get(how, [])
+    if how == "PART2_TRACKER":
+        monkeypatch.setenv("PART2_TRACKER", "api-sam31")
+    code, out = _track(tmp_path, *extra)
+    assert code == 1 and "tracker api-sam31:" in capsys.readouterr().err
+    assert calls == {"api": 1, "local-open": 0} and not (out / "tracks.json").exists()
+
+
+def test_an_unrelated_failure_with_a_status_in_the_text_is_not_a_refusal(gpu, tmp_path, monkeypatch, capsys):
+    calls = refuse_the_api_credential(monkeypatch, wording="HTTP Error 500: server error (job 4031)")
+    code, _ = _track(tmp_path)
+    assert code == 1 and calls == {"api": 1, "local-open": 0}
 
 
 def test_an_explicit_bulk_order_moves_on_like_the_default(gpu, tmp_path, monkeypatch, capsys):

@@ -22,6 +22,7 @@ re-run; a SAM tracker takes the same lock itself while it tracks, so the two are
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -123,6 +124,23 @@ def _next_bulk_tracker(after: str, n_frames: int):
     return None
 
 
+# The statuses a refusal takes in the wordings of requests ("403 Client Error"), urllib ("HTTP Error 403") and the
+# Meta client ("HTTP 403"). trackers.call_with_key maps only the last to CredentialRefused, and that module is
+# stamped into the scored sets, so the CLI reads the rest from the TrackerError it receives.
+_REFUSAL_WORDING = re.compile(r"\b(?:HTTP(?: Error)? (?:401|403)\b|(?:401|403) Client Error)")
+
+
+def _api_refusal(err):
+    """The CredentialRefused for `err` when api-sam31 failed with a 401 or 403 in any of those wordings, else None."""
+    from part2 import trackers
+
+    if isinstance(err, trackers.CredentialRefused):
+        return err
+    if str(err).startswith(f"tracker {API_TRACKER}:") and _REFUSAL_WORDING.search(str(err)):
+        return trackers.CredentialRefused(API_TRACKER)
+    return None
+
+
 def _run_tracker(args, recs) -> dict:
     """track.track, except that the bulk order moves on from a refused Meta credential (HTTP 401 or 403).
     A refusal is not a skip reason of the registry (it fails the run), so the caller does the move: one stderr line,
@@ -135,8 +153,9 @@ def _run_tracker(args, recs) -> dict:
     order = {} if args.tracker_order is None else {"purpose": args.tracker_order}  # absent: track.track's default
     try:
         return track.track(frames_dir, tracks_path, tracker=args.tracker, **order)
-    except trackers.CredentialRefused as refusal:
-        if not (_bulk_order_unnamed(args) and refusal.tracker == API_TRACKER):
+    except trackers.TrackerError as err:
+        refusal = _api_refusal(err)
+        if refusal is None or not (_bulk_order_unnamed(args) and refusal.tracker == API_TRACKER):
             raise
         tracker = _next_bulk_tracker(API_TRACKER, len(recs))
         if tracker is None:
