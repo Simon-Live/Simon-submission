@@ -203,7 +203,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="meta">
     <span class="chip">Meta Global AI Developer Hackathon · <b>Indie track</b></span>
     <span class="chip">Due <b>Wed 4 Nov 2026, 9 PM ET</b></span>
-    <span class="chip">State as of <b>1 Nov 2026, 05:15 UTC</b></span>
+    <span class="chip">State as of <b>1 Nov 2026, 05:20 UTC</b></span>
     <span class="chip">Hub <b>moalborati/simon</b></span>
   </div>
 </header>
@@ -220,7 +220,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <div class="tile"><span class="n warn">14 / 16</span><span class="l">check-7 gates green on the serverless route (31 Oct)</span></div>
   </div>
   <div class="callout">
-    <p><b>Before the demo:</b> the #59 scoring fix is published (Part 5 <code>3530514</code>): the shallow-hinge take now reports the fault and scores 93 instead of 100. Two things remain: <code>simon.score.v2</code>, which caps a take that reports a fault at 89 (B), and Mo's release 13 (failure causes, warm worker, sample-format converter; live on staging) reaching GitHub <code>main</code>.</p>
+    <p><b>Before the demo:</b> the #59 scoring fix is published (Part 5 <code>3530514</code>): the shallow-hinge take now reports the fault and scores 93 instead of 100. Two things remain: <code>simon.score.v2</code>, which caps a take that reports a fault at 89 (B), and Mo's releases 9 to 14 reaching GitHub <code>main</code>: live on staging (failure causes, warm worker, sample-format converter, restart drain TICKET-115, trainer delete TICKET-111, unseen trainer joints dimmed TICKET-116), while the last Part 7 release on GitHub <code>main</code> is release 7 (<code>cbb589b</code>), plus the redesign.</p>
   </div>
 </section>
 
@@ -343,7 +343,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td><span class="id">FR-11</span></td><td>The follower sees live joint feedback while recording, clearly labelled as approximate.</td><td>Part 7 live-check tests</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-12</span></td><td>In a take with several people, the user picks who is scored.</td><td>Part 7 people tests</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-13</span></td><td>A follower can challenge others and compare scores on a board.</td><td>Part 7 challenge tests</td><td><span class="status s-done">Met</span></td></tr>
-      <tr><td><span class="id">FR-14</span></td><td>A failed job says which step failed and why, in words a user can act on.</td><td>TICKET-103 (Mo)</td><td><span class="status s-part">Live on staging (release 13); not yet on GitHub <code>main</code></span></td></tr>
+      <tr><td><span class="id">FR-14</span></td><td>A failed job says which step failed and why, in words a user can act on.</td><td>TICKET-103 (Mo)</td><td><span class="status s-part">Live on staging (releases 13 and 14); not yet on GitHub <code>main</code></span></td></tr>
     </tbody>
   </table></div>
   <h3>Non-functional</h3>
@@ -403,7 +403,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 <section id="architecture">
   <div class="eyebrow">06 · Architecture</div>
   <h2>Architecture</h2>
-  <p>Part 7 is one Python server. It serves the web app, keeps a job queue, and runs Parts 1 to 6 as separate processes from git submodules that follow each part's <code>main</code> (<code>make parts</code> moves each to its latest <code>main</code>). The parts meet only through JSON files in the job's folder. Only Part 2 needs a GPU.</p>
+  <p>Part 7 is one Python server. It serves the web app, keeps a job queue, and runs Parts 1 to 6 as separate processes from git submodules: each Part 7 commit records the exact commit of every part, and <code>make parts</code> moves them forward to each part's latest <code>main</code>. The parts meet only through JSON files in the job's folder. Only Part 2 needs a GPU.</p>
 
   <h3>System context</h3>
   <figure>
@@ -417,7 +417,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <text class="ts" x="450" y="164" text-anchor="middle">web app + Part 7 server</text>
       <text class="ts" x="450" y="184" text-anchor="middle">Parts 1–6 as child processes</text>
       <text class="ts" x="450" y="204" text-anchor="middle">job folders, catalog, boards</text>
-      <text class="tm" x="450" y="244" text-anchor="middle">127.0.0.1:8727 · tunnel</text>
+      <text class="tm" x="450" y="244" text-anchor="middle">staging :7124/simon-part-7/ · dev :8727</text>
       <rect class="box-ext" x="720" y="20" width="220" height="80" rx="12"/>
       <text class="t" x="830" y="52" text-anchor="middle">Meta Model API</text><text class="ts" x="830" y="74" text-anchor="middle">SAM 3.1 · Muse Spark</text>
       <rect class="box-ext" x="720" y="140" width="220" height="80" rx="12"/>
@@ -723,7 +723,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 <section id="contracts">
   <div class="eyebrow">08 · Data contracts</div>
   <h2>Shared files</h2>
-  <p>Seven JSON files are the only interface between parts. Each producer validates its output against its schema before writing it; each consumer rejects a file it cannot use.</p>
+  <p>These JSON files are the only interface between parts. Each producer validates its output against its schema before writing it; each consumer rejects a file it cannot use.</p>
   <div class="table-wrap"><table>
     <thead><tr><th>File</th><th>Written by</th><th>Read by</th><th>Holds</th></tr></thead>
     <tbody>
@@ -732,8 +732,9 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td><code>pose3d.json</code></td><td>Part 2</td><td>3</td><td>Per frame, per person: 17 canonical joints in 3D with confidence</td></tr>
       <tr><td><code>skeleton.json</code></td><td>Part 3</td><td>4, 5</td><td>Fixed bone lengths, standard facing, no flips (a Part 4 view and a Part 5 view)</td></tr>
       <tr><td><code>animation.json</code></td><td>Part 4</td><td>5, 6, 7</td><td>The trainer's smooth 30 fps reference (<code>simon.animation.v1</code>); since Part 4 <code>7036622</code> also optional <code>frames[].conf</code> and <code>unseen_joints</code></td></tr>
-      <tr><td><code>analysis.json</code></td><td>Part 5</td><td>7</td><td>Status, warnings, faults, diagnostics, insights, and the score with its timeline (<code>simon.score.v1</code>)</td></tr>
+      <tr><td><code>analysis.json</code></td><td>Part 5</td><td>7</td><td>Status, warnings, faults, diagnostics, insights, and the score with its timeline (<code>simon.score.v1</code>); schema 1.9.0 at Part 5 <code>e077f44</code> adds <code>second_opinion</code>, <code>phrasing.lang</code> (<code>--lang</code>) and <code>score.uncapped</code></td></tr>
       <tr><td><code>replay.json</code></td><td>Part 5</td><td>7</td><td>Both skeletons on one clock for the 3D compare</td></tr>
+      <tr><td><code>mesh3d.json</code> + <code>mesh3d.bin</code></td><td>Part 2 (<code>part2 run --mesh</code>)</td><td>7</td><td>The 3D body mesh drawn in the compare (Part 7 <code>docs/specs/mesh-view.md</code>)</td></tr>
     </tbody>
   </table></div>
   <p class="muted">Shared conventions: 17 joints (nose, eyes, ears, shoulders, elbows, wrists, hips, knees, ankles) named by the subject's own left and right; origin at the hip midpoint; x to the subject's left, y up, z forward; metres and degrees.</p>
@@ -830,7 +831,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="table-wrap"><table>
     <thead><tr><th></th><th>A · GPU host</th><th>B · Serverless</th></tr></thead>
     <tbody>
-      <tr><td>Measured</td><td>Follow job median 94 s, people job 29 s, from 30 Oct before the warm worker (16 follow jobs 72 to 603 s; 15 people jobs 15 to 149 s; queue wait excluded)</td><td>See "Measured runs" below</td></tr>
+      <tr><td>Measured</td><td>Staging, 31 Oct 06:48 to 1 Nov 04:58 UTC: 97 follow jobs, median 143.6 s (67 to 1,164 s); 1 Nov alone 30 jobs, median 118.9 s; 137 people jobs at 10 fps with <code>api-sam31</code>, median 32.3 s. Mostly verify drives, up to two jobs at once. (30 Oct, before the warm worker: 94 s and 29 s.)</td><td>See "Measured runs" below</td></tr>
       <tr><td>Billing</td><td>The host</td><td>Per second of GPU (~$1.95 / L40S hour)</td></tr>
       <tr><td>Keys</td><td><code>.env</code> + operator key folder</td><td>Modal secret <code>simon-meta</code>; image excludes <code>.env</code></td></tr>
       <tr><td>Deploy</td><td>Staging merges its local <code>main</code> with GitHub <code>main</code> and redeploys within about 10 minutes when Part 7 or any part's <code>main</code> moves (<code>make parts</code>, restart; a failed <code>make parts</code> keeps the old app). The publish guard refuses to overwrite teammates' commits</td><td><code>modal deploy deploy/serverless/part2_app.py</code></td></tr>
@@ -945,10 +946,10 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>Studio (150 × 8 takes)</td><td class="num">$199</td><td class="num">1,200</td><td class="num">$24</td><td class="num">88%</td></tr>
     </tbody>
   </table></div>
-  <p class="muted">At 10,000 active users a month (65 takes each): ~$92,000 compute with the Meta APIs; about $13,000 with SAM 3.1 on our own GPUs at the measured busy rate ($0.020 a take), plus cold starts and warm windows. Earlier estimate for comparison: $35,000 to $48,000 on rented GPUs. Serverless is cheaper until a rented GPU would be busy more than ~38% of the time; from about 1,000 active users, an always-on base plus serverless peaks is cheapest. Cold starts (about 35 s more GPU time) and keep-warm idle time are not in the per-take figure; the pilot should measure them.</p>
+  <p class="muted">At 10,000 active users a month (65 takes each): ~$92,000 compute with the Meta APIs; about $13,000 with SAM 3.1 on our own GPUs at the measured busy rate ($0.020 a take), plus cold starts and warm windows. Earlier estimate for comparison: $35,000 to $48,000 on rented GPUs. Serverless is cheaper until a rented GPU would be busy more than about 33% of the time ($0.74 ÷ $1.95 is 38%, less the 15% serverless overhead); from about 1,000 active users, an always-on base plus serverless peaks is cheapest. Cold starts (about 35 s more GPU time) and keep-warm idle time are not in the per-take figure; the pilot should measure them.</p>
 
   <h3>Scaling up: serverless, always-on or hybrid GPUs</h3>
-  <p>Built from the measured 37 s of L40S time per 10 s take. One GPU finishes about 97 takes an hour, one at a time. The question is how to buy that GPU time as users grow.</p>
+  <p>Built from the 37 s of L40S time per 10 s take measured on Modal (people at 3 fps, 3D at 5 fps). Mo's host runs 3D at 10 fps with the body mesh: its follow 3D stage median on 1 Nov was 112.4 s over 31 jobs, so these figures are for the serverless setup. One GPU finishes about 97 takes an hour, one at a time. The question is how to buy that GPU time as users grow.</p>
   <figure>
     <div class="scroll">
     <svg viewBox="0 0 960 304" role="img" aria-label="GPU cost per active user per month: serverless $1.50 at every size; always-on sized for the peak $5.40 at 100 users falling to $2.58; hybrid $1.50 at 100 users falling to $0.86 from 10,000 users.">
@@ -979,8 +980,8 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <li>65 takes per active user a month (the plan's figure) and 15% of a day's takes in the busiest hour.</li>
     <li>Measured 37 s of GPU per 10 s take, warm; serverless adds 15% for cold starts and warm windows at scale.</li>
     <li>Modal L40S at $1.95 an hour on demand. A rented always-on L40S at $0.74 an hour, a planning price. An always-on GPU runs at most 70% busy at peak.</li>
-    <li>An always-on GPU pays off over serverless once it is busy more than about 33% of the time. The hybrid keeps that many on (average load ÷ 70%) and sends the rest to serverless.</li>
-    <li>Not modelled: GPU quotas and burst limits at large scale, owned hardware (an RTX 5090 bought outright costs much less per hour once it is kept busy), and longer takes (GPU time grows with clip length).</li>
+    <li>An always-on GPU pays off over serverless once it is busy more than about 33% of the time ($0.74 ÷ $1.95 = 38%, adjusted for the 15% serverless overhead). The hybrid keeps that many on (average load ÷ 70%) and sends the rest to serverless.</li>
+    <li>Not modelled: GPU quotas and burst limits at large scale, owned hardware (an RTX 5090 bought outright; no host measurement at 3 fps / 5 fps backs a per-take figure yet), and longer takes (GPU time grows with clip length).</li>
   </ul>
 
   <h3>Go to market</h3>
@@ -1056,7 +1057,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 
   <div class="two">
     <div class="scenario"><div class="head"><h4>Now: to 4 Nov</h4><span class="sid">NOW</span></div>
-      <ol><li><s>Part 5 rep-by-rep detection (#59)</s>: published, the hinge is now a fault; <code>simon.score.v2</code> grade cap in progress.</li><li><s>UI redesign, logo, capture and results screens</s>: on Part 7 <code>main</code>.</li><li><s>SAM 3.1 warm on our GPU, 3 fps people, 5 fps 3D</s> (#62): on the serverless route.</li><li>Release 13 on GitHub <code>main</code> (live on staging since 04:41 UTC), then the serverless route; <code>simon.score.v2</code>.</li><li>Live check on a real phone (Safari and Chrome).</li><li>Demo video and submission by noon ET.</li></ol></div>
+      <ol><li><s>Part 5 rep-by-rep detection (#59)</s>: published, the hinge is now a fault; <code>simon.score.v2</code> grade cap in progress.</li><li><s>UI redesign, logo, capture and results screens</s>: on Part 7 <code>main</code>.</li><li><s>SAM 3.1 warm on our GPU, 3 fps people, 5 fps 3D</s> (#62): on the serverless route.</li><li>Releases 9 to 14 on GitHub <code>main</code> (live on staging; release 14 <code>4b33cb8</code>), then the serverless route; <code>simon.score.v2</code>; Part 5's second opinion and <code>--lang</code> are published.</li><li>Live check on a real phone (Safari and Chrome).</li><li>Demo video and submission by noon ET.</li></ol></div>
     <div class="scenario"><div class="head"><h4>Next: Nov 2026 – Feb 2027</h4><span class="sid">NEXT</span></div>
       <ol><li>Pilot with five customers; measure miss accuracy against trainers.</li><li>Learning loop, step 1: each follower's history per routine (the trend, the rep that keeps drifting).</li><li>Reuse Part 2's tracks in Part 1; warm tracking in Part 2's own worker; deterministic GPU runs.</li><li>Video quality in Parts 2, 3, 5 (the cap end to end).</li><li>Progress over sessions; rehab wording and range tracking.</li><li>Installable web app for phones.</li></ol></div>
     <div class="scenario"><div class="head"><h4>Later: Mar – Jun 2027</h4><span class="sid">LATER</span></div>
@@ -1075,7 +1076,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <tbody>
       <tr><td>Lenient scoring on multi-rep takes (#59)</td><td>High: a wrong 100 undermines trust in the demo</td><td>Per-rep persistence, rep-by-rep compare (Part 5 <code>3530514</code>); grade curve TICKET-047</td><td>Mo</td><td><span class="status s-part">Fixed; grade pending</span></td></tr>
       <tr><td>Releases live on staging but not on GitHub <code>main</code></td><td>Medium: what staging runs differs from <code>main</code></td><td>Staging takes GitHub <code>main</code> automatically since 31 Oct, and the publish guard protects teammates' commits; Part 7 releases 9 to 13 still need publishing</td><td>Mo</td><td><span class="status s-part">Open</span></td></tr>
-      <tr><td>Cold model load per Part 2 call on the host</td><td>Medium: latency</td><td>Host: the 3D step is warm (one <code>part2 run</code> call, 3 runs each: 97.1 s cold → 51.7 s warm); tracking still loads per call (warm SAM 3.1 in progress, TICKET-117). Serverless: both warm</td><td>Mo, the team</td><td><span class="status s-part">3D done; tracking in progress</span></td></tr>
+      <tr><td>Cold model load and an unstable warm worker on the host</td><td>Medium: latency</td><td>The 3D step is warm (one <code>part2 run</code> call: 97.1 s cold → 51.7 s warm). On staging the worker dropped 3 requests between 04:17 and 04:37 UTC on 1 Nov and failed to restart at 05:01, so 3D fell back to in-process (<code>p2_worker_unhealthy</code>). Tracking still loads per call; warm SAM 3.1 is TICKET-117. Serverless: both warm</td><td>Mo, the team</td><td><span class="status s-open">Open on the host</span></td></tr>
       <tr><td>Non-deterministic Part 2 on Modal</td><td>Low: ±1 point between runs</td><td>Deterministic GPU settings</td><td>the team</td><td><span class="status s-plan">Planned</span></td></tr>
       <tr><td>Quality cap missing in Parts 2, 3, 5</td><td>Medium: dark takes not capped</td><td>Not planned before 4 Nov; check-7's <code>quality_degraded_major_capped</code> gate is declared expected-red for the submission</td><td>Shruti, Mo</td><td><span class="status s-open">Expected red</span></td></tr>
       <tr><td>Part 1: SAM 3.1 stream cut mid-response</td><td>Low</td><td>Part 7 retries Part 1 once when time allows, pauses it for 20 minutes after 3 cuts in 30 minutes, and falls back to Part 3's key frames</td><td>Shruti, Mo</td><td><span class="status s-part">Mitigated in Part 7</span></td></tr>
@@ -1105,7 +1106,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 </section>
 
 <footer>
-  Simon design blueprint · state as of 1 November 2026, 05:15 UTC · source: <code>moalborati/simon/docs/blueprint/index.html</code>. Business figures are planning estimates; technical figures come from measured runs.
+  Simon design blueprint · state as of 1 November 2026, 05:20 UTC · source: <code>moalborati/simon/docs/blueprint/index.html</code>. Business figures are planning estimates; technical figures come from measured runs.
 </footer>
 </main>
 </div>
