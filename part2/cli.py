@@ -244,6 +244,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sw = sub.add_parser("serve-worker", help="keep the models loaded and serve run and track requests on a socket")
     p_sw.add_argument("--socket", required=True, type=Path, help="Unix socket path to listen on")
     p_sw.add_argument("--backend", help="gpu, cpu or cpu-sam3db (default as for run)")
+    p_sw.add_argument("--mode", choices=["3d", "track"], default="3d",
+                      help="3d (default): keep the 3D backend warm, serve run and track; track: keep SAM 3.1 warm in "
+                           "this separate process and serve track --tracker local-sam31 only (docs/specs/warm-track.md)")
 
     p_ev = sub.add_parser("eval-reproj", help="one-person metric: reprojection error vs hand-clicked joints (#12)")
     p_ev.add_argument("--pose3d", required=True, type=Path)
@@ -339,12 +342,18 @@ def _write_mesh(mesh: dict, out: Path) -> bool:
 
 
 def _serve_worker(args) -> int:
-    """`part2 serve-worker`: an unknown backend is exit 2 like `run --backend`; a failed preload or socket falls
-    to main's handler (a `part2: ...` line, exit 1)."""
+    """`part2 serve-worker`: an unknown backend is exit 2 like `run --backend`, and so is --backend with --mode track
+    (that worker loads no 3D model); a failed preload or socket falls to main's handler (a `part2: ...` line, exit 1)."""
     from part2 import worker
 
+    if args.mode == "track" and args.backend is not None:
+        print("part2: --backend applies to --mode 3d; the track worker loads no 3D model", file=sys.stderr)
+        return 2
     try:
-        worker.serve(str(args.socket), args.backend)
+        if args.mode == "track":
+            worker.serve(str(args.socket), mode="track")
+        else:
+            worker.serve(str(args.socket), args.backend)
     except backends.UnknownBackend as e:
         print(f"part2: {e}", file=sys.stderr)
         return 2

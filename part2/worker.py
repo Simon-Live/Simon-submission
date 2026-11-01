@@ -1,6 +1,7 @@
 """Warm worker: models loaded once, `run` and `track` served over a Unix socket (CONTRACT.md, "Warm worker").
 
     part2 serve-worker --socket PATH [--backend gpu|cpu|cpu-sam3db]   # serves until Ctrl-C
+    part2 serve-worker --mode track --socket PATH                     # warm SAM 3.1 for track (part2/warm_track.py)
     part2 run --worker PATH ...                                       # client: uses the worker when it is up, else in-process
 
 Protocol: newline-delimited JSON over an AF_UNIX stream socket, one request per connection.
@@ -226,7 +227,7 @@ class _Stream:
         pass
 
 
-def handle(f, main, conn=None) -> None:
+def handle(f, main, conn=None, served=SERVED) -> None:
     """Serve one request read from file object f (also the reply channel); conn is the connected socket behind f,
     when the caller has it. A request that is not well formed gets exit 2 and a one-line reason; the job's own
     failures are exit 1; neither stops the worker. A client that has left (conn fully closed) before the job starts
@@ -241,7 +242,7 @@ def handle(f, main, conn=None) -> None:
               file=sys.stderr)
         return
     req, why = _parse_request(line)
-    why = why or _unserved(req["argv"])
+    why = why or _unserved(req["argv"], served)
     code = _refuse(chan, why) if why else _run_job(chan, main, req)
     chan.send({"exit": code if isinstance(code, int) else 1})
 
@@ -283,10 +284,10 @@ def _parse_request(line: str) -> tuple[dict | None, str | None]:
     return req, None
 
 
-def _unserved(argv: list[str]) -> str | None:
+def _unserved(argv: list[str], served=SERVED) -> str | None:
     """Why the worker will not run argv, or None."""
-    if not argv or argv[0] not in SERVED:
-        return f"the worker serves {' and '.join(SERVED)}, not {argv[:1]}"
+    if not argv or argv[0] not in served:
+        return f"the worker serves {' and '.join(served)}, not {argv[:1]}"
     if any(_is_worker_option(a) for a in argv):
         return "argv must not carry --worker (the client strips it; the worker would forward to itself)"
     return None
@@ -453,36 +454,76 @@ def remove_own(p: Path, identity) -> None:
         p.unlink(missing_ok=True)
 
 
-def _serve_conn(conn, main) -> None:
+def _serve_conn(conn, main, served=SERVED) -> None:
     """One connection, start to finish. Nothing a client does may end the worker: a client that left mid-job, a
     malformed request or a bug is logged with its traceback on the worker's stderr and the loop goes on."""
     try:
         with conn, conn.makefile("rw", encoding="utf-8") as f:
-            handle(f, main, conn)
+            handle(f, main, conn, served)
     except Exception:
         traceback.print_exc()
 
 
-def serve(path: str, backend: str | None = None, preload: bool = True, ready=None) -> None:
-    """Load the backend once, listen on `path` and serve requests one at a time until interrupted. WorkerError
-    (before any model loads) when `path` is not a socket, a worker is already listening there, or no socket can be
-    made there (see check_socket_path)."""
-    from part2 import backends, cli
+MODES = ("3d", "track")
 
+
+def serve(path: str, backend: str | None = None, preload: bool = True, ready=None, mode: str = "3d",
+          tracker_opts: dict | None = None) -> None:
+    """Load the models once, listen on `path` and serve requests one at a time until interrupted. WorkerError
+    (before any model loads) when `path` is not a socket, a worker is already listening there, or no socket can be
+    made there (see check_socket_path).
+
+    mode "3d": the backend is kept warm and `run` and `track` are served. mode "track": SAM 3.1 is kept warm on its
+    own thread (part2/warm_track.py, tracker_opts go to its WarmSam31), no 3D backend loads, and only `track
+    --tracker local-sam31` is served; when a model call breaks the model, the worker stops after that reply."""
+    from part2 import cli
+
+    if mode not in MODES:
+        raise ValueError(f"worker mode must be one of {', '.join(MODES)}, not {mode!r}")
     p = Path(path)
-    name = backends.resolve(backend)
-    check_socket_path(p)
-    keep_warm(name, preload)
-    srv, identity = _listen(p)
-    print(f"part2 worker ({name}) listening on {p}", flush=True)
+    if mode == "track":
+        label, main, served, stop, close = _warm_track(p, preload, tracker_opts)
+    else:
+        label, served, stop, close = _warm_3d(p, backend, preload), SERVED, (lambda: None), (lambda: None)
+        main = None  # cli.main, looked up per request
+    try:
+        srv, identity = _listen(p)
+    except BaseException:
+        close()
+        raise
+    print(f"part2 worker ({label}) listening on {p}", flush=True)
     if ready:
         ready()
     try:
         while True:
             conn, _ = srv.accept()
-            _serve_conn(conn, cli.main)
+            _serve_conn(conn, main or cli.main, served)
+            if why := stop():
+                print(f"part2 worker: stopping, the warm model failed ({why}); clients now run in their own process",
+                      file=sys.stderr, flush=True)
+                break
     except KeyboardInterrupt:
         pass
     finally:
         srv.close()
         remove_own(p, identity)
+        close()
+
+
+def _warm_3d(p: Path, backend, preload) -> str:
+    """The 3D worker: the backend's name, after the socket checks and the model load."""
+    from part2 import backends
+
+    name = backends.resolve(backend)
+    check_socket_path(p)
+    keep_warm(name, preload)
+    return name
+
+
+def _warm_track(p: Path, preload, tracker_opts):
+    """The track worker: (label, main, served, stop, close), after the socket checks and the SAM 3.1 build."""
+    from part2 import warm_track
+
+    check_socket_path(p)
+    warm = warm_track.keep_warm(preload, **(tracker_opts or {}))
+    return f"track: {warm_track.NAME}", warm.main, warm_track.SERVED, warm.stop_requested, warm.close

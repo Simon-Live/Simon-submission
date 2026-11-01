@@ -15,6 +15,7 @@ debug: `docs/dev/DEVELOPING.md`.
 | `check-2.md` | `make check-2` on committed outputs, stamps, the CPU 3D block and the CPU dir it scores (`CPU_MODE`), and the one-person refinement ladder |
 | `integration-contract.md` | the schemas, `part2 contract`, `part2 doctor` and the writer rules |
 | `warm-worker.md` | `part2 serve-worker` and `--worker` |
+| `warm-track.md` | `part2 serve-worker --mode track`: SAM 3.1 kept warm for `track --tracker local-sam31` |
 | `journey-followup.md` | browser recordings without a duration and the call Part 7 makes |
 | `run-app.md` | the web app: browse, contract and run pages, upload limits and jobs |
 | `stock-takes.md` | `make stock-outputs`: the Pexels follower takes for Part 5 |

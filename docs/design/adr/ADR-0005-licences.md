@@ -1,6 +1,6 @@
 # ADR-0005: Model and data licences; research-only training data behind the registry with a caveat
 
-> Copy of `docs/adr/ADR-0005-licences.md` from the maintainers' working repo at `f43deee`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/adr/ADR-0005-licences.md` from the maintainers' working repo at `843de10`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted (stakeholder-proxy, 2026-10-28; operator ask #336 decided 2026-10-28: accept with the caveat;
 licence table re-read 2026-10-29, TICKET-029)

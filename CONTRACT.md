@@ -377,6 +377,46 @@ free memory therefore sees that memory as used. Only what Python code writes to 
 streams to the client; output that a C extension or subprocess writes straight to file descriptors 1 and 2 stays
 on the worker's terminal. Spec: `docs/specs/warm-worker.md`.
 
+### Warm track worker (`serve-worker --mode track`)
+
+The 3D worker saves no load for `track`. A track worker does: it builds SAM 3.1 once and serves `part2 track
+--tracker local-sam31`. It is a separate process from the 3D worker and loads no 3D model, because SAM 3.1 enters a
+bf16 autocast that broke SAM 3D Body when both shared a process. Inside the worker the model is built on one thread
+and every call runs on that thread.
+
+```
+part2 serve-worker --mode track --socket <path>                       # long-lived; "listening on <path>" when ready
+part2 track --worker <path> --tracker local-sam31 --input <take> --out <dir> --fps 10   # same files as without --worker
+```
+
+Measured on the RTX 5090 with a 10 s clip at `--fps 10` (101 frames): cold `part2 track --tracker local-sam31` 38.7 s; the worker is ready 23.5 s after it starts; then each warm call takes 13.1 to 15.0 s (median 13.4 s over three calls), and every file it writes matches the cold run's (the 2026-11-01 run of `tests/test_warm_track_gpu.py`).
+
+| | |
+|---|---|
+| Request shape | the 3D worker's (above): `{"argv": ["track", "--input", "<take>", "--out", "<dir>", "--fps", "10", "--tracker", "local-sam31"], "cwd": "<absolute dir>", "env": {"PART2_PROGRESS": "1"}}`. `local-sam31` is named by `--tracker`, or by `PART2_TRACKER` in `env` when `--tracker` is absent |
+| Socket protocol | the 3D worker's, unchanged: Unix stream socket, one request per connection, newline-delimited JSON; replies are the first `{"keepalive": true}`, then `{"stream": ...}` lines and a keepalive every 30 s, then `{"exit": <n>}` |
+| Served | `track` with `local-sam31` named. `run` is exit 2 (`part2: the worker serves track, not ['run']`); `track` with another tracker or none named is exit 2 (`part2: this worker serves \`track --tracker local-sam31\` only ...`); nothing is read or written for either |
+| Files | those of the cold `part2 track --tracker local-sam31` for the same input, byte for byte except `provenance.created_utc`, the second the file was written |
+| Exit codes | as "Exit codes" above: 0 written, 1 failed, 2 bad option or not served, 4 no person found |
+| GPU lock | each call holds the host GPU lock while the model runs, as the cold tracker does |
+| Start | `serve-worker --mode track` needs `HF_TOKEN` and the gpu-cu128 venv; it exits 1 with one line, before any model loads, without them, when the GPU lock stays busy for 600 s, or on the socket refusals of the 3D worker. `--backend` with `--mode track` is exit 2 |
+
+Memory. A call peaked near 27 GB reserved on the 32 GB card (measured: 26.1 GiB, 28.0 GB); the worker releases its
+cache after each call and about 5.5 GB (5.1 GiB) stays resident between calls, outside the host GPU lock and beside the 3D worker's about 10 GiB. The worker
+logs `part2 track worker: peak reserved X GiB, reserved after Y GiB` on its own stderr after each call.
+
+Failure. Every failure reaches the client as an exit code, so Part 7 runs the cold `part2 track` (without
+`--worker`) whenever `--worker` gives exit 1:
+- out of GPU memory in a call: exit 1 with `part2: CUDA out of memory...`; the worker keeps serving;
+- any other failure of the model: exit 1 with one line, then the worker stops and removes its socket, so later
+  `--worker` calls find no worker and run in their own process (the cold path) by themselves;
+- a worker that crashes or is killed mid-call: the client exits 1 with `part2: the worker closed the connection before
+  finishing; not re-run in-process`;
+- no worker at the path: the client runs the job in its own process and says so on stderr, as with the 3D worker.
+
+Exit 4 (no person found) and exit 2 are answers, not failures: running the cold CLI again gives the same code. Restart
+the worker after a `git pull` of Part 2 or a new checkpoint. Spec: `docs/specs/warm-track.md`.
+
 ## Differences between Part 2's validators and Part 3's schema
 
 Part 3's side was read at Part 3 `6d339d5` (the commit in `contracts/consumers/part3-pose3d.schema.source.json`),

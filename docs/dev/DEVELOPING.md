@@ -213,6 +213,12 @@ socket, relative paths resolve against the client's directory, and a request tha
 A worker that dies mid-request gives the client exit 1, never a silent re-run. Restart the worker after a
 `git pull`: code and models load once. Protocol: `CONTRACT.md`, "Warm worker".
 
+`part2 serve-worker --mode track --socket PATH` is the warm path for `part2 track --tracker local-sam31`: a
+separate process that builds SAM 3.1 once on its own thread, loads no 3D model and serves only that command (exit 2
+for anything else). A warm call took 13.1 to 15.0 s against 38.7 s cold on a 10 s clip (2026-11-01). The live
+cold-versus-warm check is `tests/test_warm_track_gpu.py --input CLIP --work DIR`, run with the gpu-cu128 python.
+Protocol, memory and failures: `CONTRACT.md`, "Warm track worker".
+
 ### Make targets
 
 | Target | What it does |

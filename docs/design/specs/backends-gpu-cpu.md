@@ -1,6 +1,6 @@
 # Spec: Part 2 inference backends (GPU on the local RTX 5090, CPU with a lifter registry)
 
-> Copy of `docs/specs/backends-gpu-cpu.md` from the maintainers' working repo at `f43deee`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/backends-gpu-cpu.md` from the maintainers' working repo at `843de10`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -319,6 +319,15 @@ lift: `uv run python -m part2.backends.cpu_rtm fixtures/input/single/frames <scr
 then `eval_3d --cpu <scratch>/bones-prior/pose3d.json`. One revision is allowed after a label-free
 diagnostic (for example the trunk lean or twist distributions of the output, not its distance to the reference),
 recorded in this table first.
+
+Revision (TICKET-050, 2026-11-01, not adopted). The one revision was spent: anatomical bone lengths from the 15 GPU
+people of the tuning clips (the clip's proportions within 4%), root depth at the 15th percentile of the bones' depth
+limits over a 2.5 s median window, and face joints placed in the trunk frame. It lowered the tuning-clip mean from
+0.2015 to 0.1491 m. Its one bar measurement (`make check-2-cpu SCORED=out/j3r`, make exit 2) gave mean joint distance
+0.167 m, p95 0.5452 m, bone CV mean 0.0314: a fail, and worse than the committed `bones-prior` (0.1451 m). The gain on
+the tuning clips did not transfer to the bar fixture, which no parameter had seen. Nothing committed changed; B2 is
+closed. The revised code, its tests and the full candidate table stay unmerged on branch
+`worktree-agent-a3809b1f564fe37f3` (commits `5cfb466` and `1348088`).
 
 B2 acceptance criteria (tests in `tests/test_lifter_bones_prior.py` unless stated):
 - AC-BP01: registration. `lifters.names()` is `["bones-prior", "fixed-bones", "motionbert"]` and `DEFAULT` is

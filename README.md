@@ -122,6 +122,24 @@ Keys are read from files at the moment of the call, never printed, logged or sto
 
 Spend caps for `api-sam31`: `META_BUDGET_USD` caps the ledger `~/.simon/meta_spend.jsonl` (unset or 0 refuses every paid call). The staging app keeps its own ledger (`~/.simon/meta_spend_staging.jsonl`), capped at $10 in total and $0.50 per job; past either cap the job runs the next tracker in the bulk order and its result says so.
 
+## Warm track worker
+
+`part2 serve-worker --mode track` keeps SAM 3.1 loaded for `part2 track --tracker local-sam31`, the "who's in your
+clip" step of Part 7. It is a process of its own, separate from the 3D worker, and loads no 3D model; inside it the
+model is built once on one thread and every call runs there (SAM 3.1's bf16 autocast is per thread).
+
+```
+~/.local/state/simon-part-2/venvs/gpu-cu128/bin/part2 serve-worker --mode track --socket /tmp/part2-track.sock
+~/.local/state/simon-part-2/venvs/gpu-cu128/bin/part2 track --worker /tmp/part2-track.sock --tracker local-sam31 --input clip.mp4 --out out/clip --fps 10
+```
+
+The files are those of the same command without `--worker`, byte for byte apart from `provenance.created_utc`.
+On a 10 s clip at `--fps 10` on the RTX 5090 a warm call took 13.1 to 15.0 s against 38.7 s cold (2026-11-01).
+The worker itself is ready in about 24 s. Between calls it keeps about 5.5 GB of GPU memory; a call peaks near 27 GB reserved. A failed
+call is exit 1, and the caller then runs the command without `--worker`. Request shape, protocol and failures:
+CONTRACT.md "Warm track worker"; spec `docs/specs/warm-track.md`. Live check:
+`tests/test_warm_track_gpu.py --input CLIP --work DIR` (cold, then warm calls on one worker, files compared).
+
 ## Reproducible outputs and current numbers
 
 `make check-2` scores outputs committed under `fixtures/output/scored/`, so a clean clone needs no GPU, no key and no network. `make outputs` remakes them on a host with the GPU profile.
