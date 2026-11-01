@@ -157,6 +157,23 @@ def generate(family_id, duration_ms, params):
             "skeleton": _skeleton(frames, skeleton_count), "animation": animation}
 
 
+def animation_v1(animation):
+    """Part 6's `simon.animation/1` as the `simon.animation.v1` file Part 5 and Part 4's player
+    read: joints as [x, y, z] metres, `t` in seconds, `conf` per joint (TICKET-031)."""
+    frames = animation["frames"]
+    return {
+        "format": "simon.animation.v1", "fps": animation["fps"],
+        "duration_s": round(len(frames) / animation["fps"], 3), "frame_count": len(frames),
+        "coordinate_frame": {"origin": "hip_midpoint", "x": "subject_left", "y": "world_up",
+                             "z": "anterior", "position_unit": "metres", "angle_unit": "degrees"},
+        "joints": list(animation["joints"]),
+        "frames": [{"index": f["frame"], "t": f["t_ms"] / 1000, "interpolated": f["interpolated"],
+                    "joints": {n: [j["x"], j["y"], j["z"]]
+                               for n, j in f["people"][0]["joints"].items()},
+                    "conf": {n: j["conf"] for n, j in f["people"][0]["joints"].items()}}
+                   for f in frames]}
+
+
 def process(recording, report=None):
     """Mock processor: `recording` is {id, name, category, duration_ms, video_path}.
 

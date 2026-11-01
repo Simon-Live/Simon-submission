@@ -80,6 +80,8 @@ def write_synthetic(out, movement):
     period = family.base_period_s if entry_id == "squat" else seconds / reps
     params = motion.MotionParams(period, reps, start)
     made = processor.generate(entry_id, duration_ms, params)
+    # Part 5 and Part 4's player read simon.animation.v1 only (TICKET-031).
+    made["animation"] = processor.animation_v1(made["animation"])
     shared = {kind: importer.read_shared(kind, data=catalog.compact_json(made[kind]).encode(),
                                          part=6) for kind in made}
     shutil.rmtree(Path(out) / entry_id, ignore_errors=True)

@@ -241,7 +241,7 @@ def test_api_responses_are_never_cached(app):
 
 def test_the_served_animation_is_valid_json_with_17_joints(app):
     status, body = app.client.get_json("/api/entries/squat/animation.json")
-    assert status == 200 and len(body["frames"][0]["people"][0]["joints"]) == 17
+    assert status == 200 and len(body["frames"][0]["joints"]) == 17
 
 
 def test_files_of_an_invalid_entry_are_not_served(app, seeded):

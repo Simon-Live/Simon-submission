@@ -467,7 +467,8 @@ def test_every_shipped_entry_file_passes_the_schema_of_the_format_it_reads_as():
             seen.add(format_id)
             assert errors(data, schema_for_format(format_id)) == [], (manifest_path.parent.name, kind)
             assert third_party_valid(data, schema_for_format(format_id)) in (True, None)
-    assert {"simon.animation/1", "simon.animation.v1", "simon.skeleton.v1"} <= seen
+    # TICKET-031: the six samples are simon.animation.v1 now; simon.animation/1 stays with mock entries
+    assert {"simon.animation.v1", "simon.skeleton.v1"} <= seen
 
 
 def golden_cases():

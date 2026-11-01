@@ -354,7 +354,9 @@ def test_every_shipped_manifest_has_provenance_that_matches_its_files():
 
 @pytest.fixture
 def entry(tmp_path):
+    """The squat entry with Part 6's own simon.animation/1 file (what the mock processor writes)."""
     shutil.copytree(CATALOG / "squat", tmp_path / "squat")
+    shutil.copy(ROOT / "fixtures" / "input" / "animation.json", tmp_path / "squat" / "animation.json")
     return tmp_path / "squat"
 
 

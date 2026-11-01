@@ -500,6 +500,7 @@ def serve(root, host="127.0.0.1", port=8726, max_recordings=catalog.DEFAULT_MAX_
     """Seed a missing or empty catalog with the shipped fixture entries (AC-C13a), then serve
     until SIGTERM or Ctrl-C."""
     catalog.seed(root)
+    catalog.upgrade_fixtures(root)
     server = make_server(root, host, port, max_recordings=max_recordings, processor=processor,
                          follow_url=follow_url)
 

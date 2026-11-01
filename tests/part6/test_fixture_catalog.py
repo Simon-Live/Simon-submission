@@ -87,7 +87,7 @@ def expected_provenance(entry):
                    "bytes": (CATALOG / entry / f"{kind}.json").stat().st_size}
             for kind, fmt, how in (("keyframes", "simon.keyframes/part1", "shape"),
                                    ("skeleton", "simon.skeleton/1", "version"),
-                                   ("animation", "simon.animation/1", "version"))}
+                                   ("animation", "simon.animation.v1", "version"))}
 
 
 @pytest.mark.parametrize("entry", EXPECTED)
@@ -102,10 +102,11 @@ def test_manifest_matches_the_locked_table(entry):
 
 
 @pytest.mark.parametrize("entry", EXPECTED)
-def test_phase_1_shared_files_are_byte_identical_to_phase_1(entry):
+def test_phase_1_keyframes_and_skeleton_are_byte_identical_to_phase_1(entry):
+    # animation.json is simon.animation.v1 since TICKET-031, so its Phase 1 hash is not pinned
     got = tuple(hashlib.sha256((CATALOG / entry / f"{kind}.json").read_bytes()).hexdigest()
-                for kind in ("animation", "keyframes", "skeleton"))
-    assert got == PHASE1_SHA256[entry]
+                for kind in ("keyframes", "skeleton"))
+    assert got == PHASE1_SHA256[entry][1:]
 
 
 @pytest.mark.parametrize("entry", ALL_IDS)
@@ -153,12 +154,12 @@ def test_rates_and_frame_counts(entry):
     animation, skeleton = load(entry, "animation.json"), load(entry, "skeleton.json")
     assert animation["fps"] == 30.0 and len(animation["frames"]) == duration_ms * 30 // 1000
     assert len(skeleton["frames"]) == -(-len(animation["frames"]) // 2)
-    assert skeleton["schema"] == "simon.skeleton/1" and animation["schema"] == "simon.animation/1"
+    assert skeleton["schema"] == "simon.skeleton/1" and animation["format"] == "simon.animation.v1"
 
 
 @pytest.mark.parametrize("entry", EXPECTED)
 def test_bone_length_variation_under_one_percent(entry):
-    lengths = [processor._bone_lengths(f["people"][0]["joints"])
+    lengths = [processor._bone_lengths({n: dict(zip("xyz", pos)) for n, pos in f["joints"].items()})
                for f in load(entry, "animation.json")["frames"]]
     for bone in lengths[0]:
         values = [frame[bone] for frame in lengths]
@@ -168,14 +169,15 @@ def test_bone_length_variation_under_one_percent(entry):
 @pytest.mark.parametrize("entry", EXPECTED)
 def test_each_movement_actually_moves(entry):
     frames = load(entry, "animation.json")["frames"]
-    assert len({json.dumps(f["people"][0]["joints"]) for f in frames}) > 10
+    assert len({json.dumps(f["joints"]) for f in frames}) > 10
 
 
 def test_squat_equals_the_input_fixture():
     inputs = ROOT / "fixtures" / "input"
-    for name in ("animation.json", "skeleton.json"):
-        expected = json.loads((inputs / name).read_text())["frames"]
-        assert load("squat", name)["frames"] == expected
+    skeleton = json.loads((inputs / "skeleton.json").read_text())["frames"]
+    assert load("squat", "skeleton.json")["frames"] == skeleton
+    animation = json.loads((inputs / "animation.json").read_text())
+    assert load("squat", "animation.json") == processor.animation_v1(animation)
 
 
 @pytest.mark.parametrize("entry", EXPECTED)

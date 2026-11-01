@@ -29,10 +29,10 @@
     },
     "animation": {
       "part": 6,
-      "format": "simon.animation/1",
+      "format": "simon.animation.v1",
       "detected_by": "version",
-      "sha256": "8dea0492f798a51876cedd82ced994a2dcbf6fb656a3d0800a54cd1691395810",
-      "bytes": 253740
+      "sha256": "39b5a78b2b66fc3a9bd7538bdca3b3c8042bf8e50a8fca6ff25ec3cf6a11e3c9",
+      "bytes": 224779
     }
   }
 }

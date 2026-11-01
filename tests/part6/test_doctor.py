@@ -36,9 +36,11 @@ def write_manifest(folder, manifest):
 
 @pytest.fixture
 def entry(tmp_path):
-    """A copy of the Phase 1 squat fixture entry, without provenance."""
+    """A copy of the squat fixture entry with Part 6's own simon.animation/1 file (the shape the
+    mock processor still writes; the shipped samples are v1 since TICKET-031), without provenance."""
     folder = tmp_path / "squat"
     shutil.copytree(CATALOG / "squat", folder)
+    shutil.copy(ROOT / "fixtures" / "input" / "animation.json", folder / "animation.json")
     manifest = read_manifest(folder)
     manifest.pop("provenance", None)
     write_manifest(folder, manifest)

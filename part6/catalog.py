@@ -8,6 +8,7 @@ listing (dot folders are never listed). The shipped fixtures are only ever read.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -173,6 +174,41 @@ def seed(root, source=None):
     if folders:
         log(f"seeded {len(folders)} entries into {root}: {', '.join(p.name for p in folders)}")
     return len(folders)
+
+
+def _is_stale_sample(folder, shipped):
+    """True for an unmodified fixture entry whose animation.json is still Part 6's old
+    `simon.animation/1` while the shipped entry of that name is not."""
+    try:
+        have, want = read_json(folder / "manifest.json"), read_json(shipped / "manifest.json")
+        old, new = have["provenance"]["animation"], want["provenance"]["animation"]
+        raw = (folder / "animation.json").read_bytes()
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+    return (have.get("files_source") == "fixture" and old.get("format") == "simon.animation/1"
+            and new.get("format") != "simon.animation/1"
+            and old.get("sha256") == hashlib.sha256(raw).hexdigest())
+
+
+def upgrade_fixtures(root, source=None):
+    """Replace fixture entries left by an older release with the shipped ones; returns their ids.
+
+    Only a folder that is a real directory, says `files_source: "fixture"`, still holds the old
+    `simon.animation/1` file Part 5 cannot read and has not been edited since (its bytes match the
+    recorded sha256) is replaced. A visitor, mock, import or processor entry, a changed fixture
+    and a link are never touched (TICKET-031; seed alone leaves a non-empty catalog as it is)."""
+    guard_root(root)
+    source = Path(source) if source else FIXTURE_CATALOG
+    done = []
+    for shipped in entry_folders(source):
+        folder = Path(root) / shipped.name
+        if (is_valid_id(shipped.name) and folder.is_dir() and not folder.is_symlink()
+                and _is_stale_sample(folder, shipped)):
+            _copy_entry(shipped, root)
+            done.append(shipped.name)
+    if done:
+        log(f"upgraded {len(done)} fixture entries in {root}: {', '.join(done)}")
+    return done
 
 
 RESET_SOURCES = ("mock", "import", "processor")    # everything but the fixtures (AC-C12)
