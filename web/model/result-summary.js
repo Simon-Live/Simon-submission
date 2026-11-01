@@ -1,5 +1,5 @@
 // The results summary's view model (brand design 2026-10-31: score ring, stats, worst moment with Reference vs You,
-// form per rep, where you drifted, a note from your coach). Logic only: no DOM. views/result-summary.js draws it.
+// form per rep, where you drifted, what to work on next). Logic only: no DOM. views/result-summary.js draws it.
 // Part 7 computes no score: every number here is Part 5's (score, timeline windows, misses, tempo ratio, insights);
 // this file only picks, groups and words them.
 import { worstMoment, momentsToReview, flaggedWindows } from "../coaching.js";
@@ -8,7 +8,7 @@ export const TEXT = {
   eyebrow: "Session complete",
   ringExercise: "average form",
   ringDance: "out of 100",
-  note: "A note from your coach",
+  note: "What to work on next",
   retry: { exercise: "Retry set", dance: "Try again", rehab: "Try again" },
   replay: "Replay session",
   formPerRep: "Form per rep",
@@ -154,6 +154,9 @@ export function summaryOf(analysis, { kind = "exercise", model = null, entryName
     barsTitle: reps ? TEXT.formPerRep : TEXT.formPerPart,
     drift: kind === "dance" ? driftOf(analysis) : null,
     note: insight ? insight.cue : firstMiss ? firstMiss.text : null,
+    noteTitle: TEXT.note,
+    driftTitle: TEXT.drifted,
+    driftLegend: TEXT.needsFocus,
     actions: { retryHref, retryLabel: TEXT.retry[k], replayLabel: TEXT.replay },
   };
 }

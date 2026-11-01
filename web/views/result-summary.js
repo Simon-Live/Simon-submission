@@ -80,12 +80,12 @@ export function renderResultSummary(root, m, on = {}, before = null) {
       ...m.drift.marks.map((x) => h("button", { type: "button", class: "rs-drift-mark", title: x.text || "", "aria-label": x.text || "Moment",
         style: `left:${(x.start * 100).toFixed(2)}%;width:${(x.width * 100).toFixed(2)}%`, onclick: () => on.seek && on.seek(x.at) })));
     el.append(h("div", { class: "rs-drift" },
-      h("div", { class: "rs-drift-head" }, h("h3", { text: "Where you drifted" }), h("span", { class: "rs-legend", text: "Needs focus" })), track));
+      h("div", { class: "rs-drift-head" }, h("h3", { text: m.driftTitle }), h("span", { class: "rs-legend", text: m.driftLegend })), track));
   }
 
   if (m.note) {
     el.append(h("div", { class: "rs-card rs-note", "data-testid": "summary-note" },
-      h("p", { class: "rs-note-title", text: "A note from your coach" }), h("p", { class: "rs-note-text", text: m.note })));
+      h("p", { class: "rs-note-title", text: m.noteTitle }), h("p", { class: "rs-note-text", text: m.note })));
   }
 
   el.append(h("div", { class: "rs-actions" },
