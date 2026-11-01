@@ -47,7 +47,7 @@
   /* depth (brand design 2026-11-01): lime is the only pop colour; pink lives in the back layer as smoke and halftone
      dots, and every grey card carries a faint halftone dot field that fades into its grey, so no surface is flat */
   --color-pink: var(--palette-pink);
-  --color-pink-smoke: rgb(255 45 149 / 34%);
+  --color-pink-smoke: rgb(255 45 149 / 26%);
   --color-pink-smoke-soft: rgb(255 45 149 / 11%);
   --color-pink-dot: rgb(255 45 149 / 60%);
   --color-lime-dot: rgb(198 243 90 / 45%);
@@ -71,12 +71,12 @@
      out) over soft pink smoke, under the halftone fields drawn by base.css; img/ is beside this file */
   --powder-a: url("img/powder-a.jpg");
   --powder-b: url("img/powder-b.jpg");
-  --powder-c: url("img/powder-c.jpg");
-  --backdrop: var(--powder-a) right -14vw top 2vh / min(82vw, 1250px) auto no-repeat,
-              var(--powder-b) left -16vw top 30vh / min(78vw, 1200px) auto no-repeat,
-              var(--powder-c) right -12vw bottom -12vh / min(64vw, 980px) auto no-repeat,
-              var(--powder-c) left -18vw top -14vh / min(56vw, 860px) auto no-repeat,
-              var(--powder-a) left -20vw bottom -18vh / min(58vw, 900px) auto no-repeat,
+  --powder-c: url("img/powder-c.jpg");   /* lime */
+  --powder-d: url("img/powder-d.jpg");   /* lime */
+  --backdrop: var(--powder-a) right -16vw top 6vh / min(72vw, 1100px) auto no-repeat,
+              var(--powder-b) left -18vw top 32vh / min(70vw, 1080px) auto no-repeat,
+              var(--powder-c) left -16vw top -16vh / min(46vw, 720px) auto no-repeat,
+              var(--powder-d) right -14vw bottom -16vh / min(46vw, 720px) auto no-repeat,
               radial-gradient(ellipse 38% 60% at 100% 40%, var(--color-pink-smoke) 0%, transparent 75%),
               radial-gradient(ellipse 38% 60% at 0% 60%, var(--color-pink-smoke) 0%, transparent 75%),
               var(--color-bg);
