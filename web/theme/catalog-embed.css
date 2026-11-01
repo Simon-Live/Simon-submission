@@ -16,13 +16,13 @@
 body { background: var(--color-bg); color: var(--color-text); }
 /* inside the app, the app's own navigation is the way back */
 .btn.back { display: none; }
-.btn:hover, a.card:active { background: var(--color-raised); }
+.btn:hover, a.card:active { background: var(--card-fill-raised); }
 .btn-primary, .btn-primary:active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
 .badge { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
-.pill { background: var(--color-raised); border-color: var(--color-line); color: var(--color-text); }
+.pill { background: var(--card-fill-raised); border-color: var(--color-line); color: var(--color-text); }
 .search::placeholder { color: var(--color-text-muted); }
 a.card::after { border-color: var(--color-text-muted); }
-.skeleton-line, .card-placeholder .thumb, .skeleton-stage { background: var(--color-raised); }
+.skeleton-line, .card-placeholder .thumb, .skeleton-stage { background: var(--card-fill-raised); }
 .stage { border-radius: var(--radius-lg); }
 .legend { color: var(--color-text); }
 .reference-video { background: var(--color-media-bg); }

@@ -41,7 +41,7 @@ p { text-wrap: pretty; margin: 0 0 12px; }
 .build-full { display: none; }
 .build-parts {
   display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 4px 0 8px; padding: 8px 12px;
-  background: var(--soft); border: 1px solid var(--line); border-radius: 6px; color: var(--muted);
+  background: var(--card-fill-raised); border: 1px solid var(--line); border-radius: 6px; color: var(--muted);
 }
 .build-parts dt, .build-parts dd { margin: 0; }
 @media (min-width: 640px) {
@@ -49,7 +49,7 @@ p { text-wrap: pretty; margin: 0 0 12px; }
   .build-full { display: inline; }
   .build-short { display: none; }
   .build { order: 2; flex: 1 1 auto; padding: 0 16px; position: relative; }
-  .build-parts { position: absolute; left: 16px; z-index: 11; background: var(--surface); }
+  .build-parts { position: absolute; left: 16px; z-index: 11; background: var(--card-fill); }
 }
 
 main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe-area-inset-bottom)); outline: none; }
@@ -68,12 +68,12 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); padding: 0 18px;
-  border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 6px; border: 1px solid var(--line); background: var(--card-fill); color: var(--ink);
   font: inherit; font-weight: 600; text-decoration: none; cursor: pointer;
 }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
 .btn.primary:hover { background: #333; }
-.btn.secondary:hover { background: var(--soft); }
+.btn.secondary:hover { background: var(--card-fill-raised); }
 .btn.danger { background: var(--red-bg); border-color: var(--red-bg); color: var(--red-ink); }
 .btn.block { width: 100%; margin-top: 8px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
@@ -82,7 +82,7 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
 
 .input {
   width: 100%; min-height: var(--tap); padding: 0 12px; border: 1px solid var(--line); border-radius: 6px;
-  background: var(--surface); color: var(--ink); font: inherit;
+  background: var(--card-fill); color: var(--ink); font: inherit;
 }
 .field { margin: 16px 0 0; }
 .field label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
@@ -91,16 +91,16 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
 .entries { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }
 .entries li { border-bottom: 1px solid var(--line); }
 .entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 10px 2px; text-decoration: none; }
-.entry:hover { background: var(--soft); }
+.entry:hover { background: var(--card-fill-raised); }
 .entry-main { display: flex; flex-direction: column; min-width: 0; }
 .entry-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .entry-cat { color: var(--muted); font-size: 14px; text-transform: capitalize; }
 .badges { display: flex; gap: 6px; flex-shrink: 0; }
 .badge { border-radius: 9999px; padding: 2px 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
-.badge.source { background: var(--soft); color: var(--muted); }
+.badge.source { background: var(--card-fill-raised); color: var(--muted); }
 .badge.video { background: var(--blue-bg); color: var(--blue-ink); }
 
-.state { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 24px 20px; margin-top: 16px; }
+.state { border: 1px solid var(--line); border-radius: 8px; background: var(--card-fill); padding: 24px 20px; margin-top: 16px; }
 .state h2 { margin-top: 0; }
 
 .cam {
@@ -125,10 +125,10 @@ main { max-width: 720px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe
 .capture { position: relative; }
 
 .trainer { display: block; width: 100%; max-height: 60dvh; background: #000; border-radius: 8px; }
-.figure { min-height: 120px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.figure { min-height: 120px; border: 1px solid var(--line); border-radius: 8px; background: var(--card-fill); overflow: hidden; }
 .figure > p { padding: 16px; margin: 0; }
 .figure canvas { display: block; width: 100%; max-width: 960px; }
-.frame { width: 100%; height: 520px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.frame { width: 100%; height: 520px; border: 1px solid var(--line); border-radius: 8px; background: var(--card-fill); }
 
 .stages { list-style: none; margin: 20px 0; padding: 0; border-top: 1px solid var(--line); }
 ol.stages > li { display: flex; align-items: center; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--line); color: var(--muted); }
@@ -152,7 +152,7 @@ li.failed .dot { background: var(--red-ink); border-color: var(--red-ink); }
 .entry-main .chips { margin-top: 4px; }
 .chip {
   display: inline-flex; align-items: center; gap: 2px; min-height: 24px; padding: 0 10px; border-radius: 9999px;
-  background: var(--soft); color: var(--muted); font-size: 13px; font-weight: 600;
+  background: var(--card-fill-raised); color: var(--muted); font-size: 13px; font-weight: 600;
 }
 .chips.editable .chip { min-height: 32px; padding-right: 2px; background: var(--blue-bg); color: var(--blue-ink); }
 .chip-x {
@@ -161,7 +161,7 @@ li.failed .dot { background: var(--red-ink); border-color: var(--red-ink); }
 }
 .chip-box {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: var(--tap); padding: 6px 8px;
-  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--card-fill);
 }
 .chip-box:focus-within { outline: 2px solid var(--blue-ink); outline-offset: 2px; }
 .chip-input { flex: 1 1 120px; min-width: 0; min-height: 32px; border: 0; outline: 0; background: none; font: inherit; }
@@ -174,7 +174,7 @@ li.failed .dot { background: var(--red-ink); border-color: var(--red-ink); }
 .trim-video { display: block; width: 100%; max-height: 42dvh; object-fit: contain; background: #000; }
 .trim-clock { margin: 8px 0 4px; }
 .trim-track {
-  position: relative; height: 64px; margin: 8px 26px 4px; border-radius: 4px; background: var(--soft);
+  position: relative; height: 64px; margin: 8px 26px 4px; border-radius: 4px; background: var(--card-fill-raised);
   touch-action: none; user-select: none; -webkit-user-select: none;
 }
 .trim-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 4px; display: block; }

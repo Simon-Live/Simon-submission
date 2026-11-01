@@ -20,7 +20,7 @@
 
 /* the title sits under the reference, never over it: a 3D reference keeps its own controls at the bottom */
 .cap-ref-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
-  padding: var(--space-3) var(--space-4); background: var(--color-surface); }
+  padding: var(--space-3) var(--space-4); background: var(--card-fill); }
 .cap-ref-meta > div { min-width: 0; } /* a long unbroken title wraps instead of widening the page */
 .cap-ref-title { overflow-wrap: anywhere; margin: 0; font: var(--weight-bold) var(--text-lg)/1.2 var(--font-sans); color: var(--color-on-media); }
 .cap-ref-sub { margin: 2px 0 0; font-size: var(--text-sm); color: var(--color-text-muted); }
@@ -46,7 +46,7 @@ body .cap-controls [data-testid="cam-start"]:disabled { opacity: 0.4; }
 body .cap-controls [data-testid="cam-stop"]::after { content: ""; width: 26px; height: 26px; border-radius: 6px; background: var(--color-bad); }
 /* Upload a video: a round tool beside the ring */
 body .cap-controls label.btn.secondary { display: grid; place-items: center; width: 56px; height: 56px; min-height: 0; padding: 0;
-  border-radius: var(--radius-pill); background: var(--color-raised); border-color: var(--color-line); font-size: 0; }
+  border-radius: var(--radius-pill); background: var(--card-fill-raised); border-color: var(--color-line); font-size: 0; }
 body .cap-controls label.btn.secondary::before { content: "↑"; font-size: var(--text-lg); color: var(--color-text); }
 
 .cap-tip { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-4) 0 0; color: var(--color-text-muted); font-size: var(--text-sm); }

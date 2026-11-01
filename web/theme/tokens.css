@@ -19,6 +19,7 @@
   --palette-lime: #c6f35a;
   --palette-coral: #ff6b4a;
   --palette-amber: #ffc83d;
+  --palette-pink: #ff2d95;
 
   /* semantic: surfaces and text */
   --color-bg: var(--palette-black);
@@ -41,6 +42,30 @@
   --color-warn: var(--palette-amber);
   --color-warn-soft: rgb(255 200 61 / 12%);
   --color-warn-line: rgb(255 200 61 / 35%);
+
+  /* depth (brand design 2026-11-01): lime is the only pop colour; pink lives in the back layer as smoke and halftone
+     dots, and every grey card carries a faint halftone dot field that fades into its grey, so no surface is flat */
+  --color-pink: var(--palette-pink);
+  --color-pink-smoke: rgb(255 45 149 / 42%);
+  --color-pink-smoke-soft: rgb(255 45 149 / 20%);
+  --color-pink-dot: rgb(255 45 149 / 60%);
+  --color-lime-dot: rgb(198 243 90 / 45%);
+  --color-card-dot: rgb(255 255 255 / 6%);
+  --mask-on: var(--palette-pure-black);
+  --halftone-card-size: 6px;
+  --halftone-back-size: 11px;
+  --halftone-lime-size: 9px;
+  --halftone-card: radial-gradient(circle, var(--color-card-dot) 0 1.1px, transparent 1.5px) 0 0 / var(--halftone-card-size) var(--halftone-card-size);
+  --card-fade: linear-gradient(140deg, transparent 0%, transparent 15%, var(--color-surface) 75%);
+  --card-fade-raised: linear-gradient(140deg, transparent 0%, transparent 15%, var(--color-raised) 75%);
+  /* the backgrounds to use for a grey card: the halftone, faded toward the bottom right, over the grey */
+  --card-fill: var(--card-fade), var(--halftone-card), var(--color-surface);
+  --card-fill-raised: var(--card-fade-raised), var(--halftone-card), var(--color-raised);
+  /* the page's back layer: pink smoke under the halftone fields drawn by base.css */
+  --backdrop: radial-gradient(ellipse 62% 50% at 90% 6%, var(--color-pink-smoke) 0%, transparent 72%),
+              radial-gradient(ellipse 55% 45% at 4% 98%, var(--color-pink-smoke) 0%, transparent 72%),
+              radial-gradient(ellipse 35% 30% at 50% 55%, var(--color-pink-smoke-soft) 0%, transparent 75%),
+              var(--color-bg);
 
   /* semantic: overlays on top of video or the page */
   --color-header-glass: rgb(10 10 10 / 92%);

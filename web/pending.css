@@ -9,13 +9,13 @@
 .pending-banner .btn-link { background: none; border: 0; color: inherit; text-decoration: underline; min-height: var(--tap); padding: 0 8px; font: inherit; cursor: pointer; }
 
 .pending-list { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 12px; }
-.pending-row { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 14px 16px; }
+.pending-row { border: 1px solid var(--line); border-radius: 8px; background: var(--card-fill); padding: 14px 16px; }
 .pending-title { font-weight: 600; margin: 0 0 4px; overflow-wrap: anywhere; }
 .pending-status { margin: 8px 0; }
 .pending-row .row { margin-top: 8px; }
 
 .pending-notice { margin: 8px 0; }
-.saved-panel { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 16px 20px; margin: 12px 0; }
+.saved-panel { border: 1px solid var(--line); border-radius: 8px; background: var(--card-fill); padding: 16px 20px; margin: 12px 0; }
 .saved-panel h2 { margin-top: 0; }
 .saved-panel .field-row { display: flex; gap: 8px; align-items: flex-start; }
 .saved-panel .field-row input { margin-top: 4px; width: 20px; height: 20px; flex: none; }

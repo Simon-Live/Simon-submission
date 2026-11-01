@@ -16,7 +16,7 @@
 .au-working { margin: 0; padding: var(--space-6) 0; text-align: center; color: var(--color-text-muted); font-size: var(--text-md); }
 
 .au-card { display: grid; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg);
-  background: var(--color-surface); border: 1px solid var(--color-line); }
+  background: var(--card-fill); border: 1px solid var(--color-line); }
 .au-card h2 { margin: 0; font-size: var(--text-md); }
 .au-who { margin: 0; font: var(--weight-semibold) var(--text-md)/1.4 var(--font-sans); overflow-wrap: anywhere; }
 .au-tick { display: flex; align-items: flex-start; gap: var(--space-3); min-height: var(--target-min); font: var(--weight-semibold) var(--text-md)/1.4 var(--font-sans); }
@@ -31,12 +31,12 @@
 
 .au-takes { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .au-take { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3);
-  padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-raised); }
+  padding: var(--space-3); border-radius: var(--radius-md); background: var(--card-fill-raised); }
 .au-take-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-3); }
 .au-score { font: var(--weight-black) var(--text-lg)/1 var(--font-sans); color: var(--color-good); }
 .au-score[data-tone="warn"] { color: var(--color-warn); }
 .au-score[data-tone="bad"] { color: var(--color-bad); }
-.au-grade { padding: 2px var(--space-2); border-radius: var(--radius-pill); background: var(--color-surface); color: var(--color-text-muted);
+.au-grade { padding: 2px var(--space-2); border-radius: var(--radius-pill); background: var(--card-fill); color: var(--color-text-muted);
   font: var(--weight-bold) var(--text-xs)/1.5 var(--font-sans); }
 .au-kind { font-size: var(--text-sm); }
 .au-when { color: var(--color-text-muted); font-size: var(--text-xs); }

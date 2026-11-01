@@ -3,7 +3,7 @@
 .export-clip { display: grid; gap: var(--space-3); }
 .export-clip .btn { width: 100%; min-height: var(--button-height); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .ex-busy { display: flex; align-items: center; justify-content: center; gap: var(--space-3); min-height: var(--button-height); margin: 0;
-  border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-line); color: var(--color-text-muted); font-size: var(--text-sm); }
+  border-radius: var(--radius-md); background: var(--card-fill); border: 1px solid var(--color-line); color: var(--color-text-muted); font-size: var(--text-sm); }
 .ex-spin { width: 16px; height: 16px; border-radius: var(--radius-pill); border: 2px solid var(--color-line); border-top-color: var(--color-accent);
   animation: ex-turn 0.9s linear infinite; }
 @keyframes ex-turn { to { transform: rotate(360deg); } }

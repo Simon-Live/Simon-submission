@@ -38,17 +38,17 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
 .rs-stats[data-layout="stack"] .rs-stat { flex-direction: column; align-items: flex-start; gap: var(--space-1); }
 .rs-stats[data-layout="stack"] .rs-stat-value { font-size: var(--text-xl, 30px); }
 .rs-stat { display: flex; align-items: baseline; justify-content: space-between; padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-line); }
+  border-radius: var(--radius-md); background: var(--card-fill); border: 1px solid var(--color-line); }
 .rs-stat-label { color: var(--color-accent); font-size: var(--text-sm); }
 .rs-stat-value { font: var(--weight-black) var(--text-lg)/1 var(--font-sans); }
 
-.rs-card { padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); }
+.rs-card { padding: var(--space-4); border-radius: var(--radius-lg); background: var(--card-fill); border: 1px solid var(--color-line); }
 .rs-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
 .rs-play { width: var(--target-min); height: var(--target-min); border-radius: var(--radius-pill); border: 1.5px solid var(--color-accent); background: transparent;
   color: var(--color-accent); font-size: var(--text-xs); cursor: pointer; }
 /* both bodies in one panel, a hairline between them */
 .rs-figs { display: grid; grid-template-columns: 1fr 1px 1fr; align-items: stretch; padding: var(--space-3) var(--space-2);
-  border-radius: var(--radius-md); background: var(--color-raised); }
+  border-radius: var(--radius-md); background: var(--card-fill-raised); }
 .rs-figs::before { content: ""; grid-column: 2; grid-row: 1; background: var(--color-line); margin: var(--space-4) 0; }
 .rs-figs figure { margin: 0; display: grid; justify-items: center; gap: var(--space-1); }
 .rs-figs figure:first-child { grid-column: 1; grid-row: 1; }
@@ -104,12 +104,12 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
 .rs-drift-mark[aria-expanded="true"]::after { box-shadow: 0 0 0 3px var(--color-accent-soft); }
 .rs-drift-detail { display: grid; gap: var(--space-3); margin-top: var(--space-3); }
 .rs-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-pill);
-  background: var(--color-raised); color: var(--color-accent); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+  background: var(--card-fill-raised); color: var(--color-accent); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
 .rs-pill::before { content: ""; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--color-accent); }
 .rs-rows { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); margin: 0; }
 .rs-rows dt { font-weight: var(--weight-semibold); }
 .rs-rows dd { margin: 0; color: var(--color-text-muted); }
-.rs-note-inner { background: var(--color-raised); }
+.rs-note-inner { background: var(--card-fill-raised); }
 /* an open drift card carries the note, so the summary does not repeat it below */
 .rs:has(.rs-drift-detail) > .rs-note { display: none; }
 
@@ -138,10 +138,10 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
 /* R6 slots another session fills; empty ones take no room */
 .rs-export:empty, .sr-voice-slot:empty, .sr-second-opinion:empty, .hm-slot:empty { display: none; }
 /* the fault card is the li: the row button fills it and the voice slot sits inside it, after the chips */
-body .simon-result .sr-fault-item { display: grid; border: 1px solid var(--sr-line); border-radius: 16px; background: var(--sr-surface);
+body .simon-result .sr-fault-item { display: grid; border: 1px solid var(--sr-line); border-radius: 16px; background: var(--card-fill);
   overflow: hidden; transition: background 0.12s ease, border-color 0.12s ease; }
 body .simon-result .sr-fault-item > .sr-fault { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-body .simon-result .sr-fault-item:has(> .sr-fault:hover) { background: var(--sr-raised); }
+body .simon-result .sr-fault-item:has(> .sr-fault:hover) { background: var(--card-fill-raised); }
 body .simon-result .sr-fault-item:has(> .sr-fault[aria-pressed="true"]) { border-color: var(--sr-hot);
   background: color-mix(in srgb, var(--sr-hot) 10%, var(--sr-surface)); box-shadow: inset 4px 0 0 var(--sr-hot); }
 body .simon-result .sr-fault-item > .sr-voice-slot { padding: 0 16px 14px; }
@@ -171,7 +171,7 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 .hm-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
 .hm-model { font-weight: var(--weight-bold); font-size: var(--text-md); }
 .hm-pill { padding: 3px var(--space-2); border-radius: var(--radius-pill); font: var(--weight-semibold) var(--text-xs)/1.2 var(--font-sans);
-  color: var(--color-text-muted); background: var(--color-raised); border: 1px solid var(--color-line); }
+  color: var(--color-text-muted); background: var(--card-fill-raised); border: 1px solid var(--color-line); }
 .hm-step[data-tone="ran"] .hm-pill { color: var(--color-accent); background: var(--color-accent-soft); border-color: transparent; }
 .hm-step[data-tone="fallback"] .hm-pill { color: var(--color-warn); background: var(--color-warn-soft); border-color: var(--color-warn-line); }
 .hm-time { margin-left: auto; color: var(--color-text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
@@ -200,7 +200,7 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
   font: var(--weight-bold) var(--text-xs)/18px var(--font-sans); text-align: center; pointer-events: none; }
 
 /* Side by side (views/side-by-side.js): the trainer's and the follower's original videos with one play button */
-.sbs { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: var(--space-4); margin: 0 0 var(--space-4); color: var(--color-text); }
+.sbs { background: var(--card-fill); border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: var(--space-4); margin: 0 0 var(--space-4); color: var(--color-text); }
 .sbs h2 { margin: 0 0 var(--space-1); font-size: 18px; }
 .sbs-hint, .sbs-note { margin: 0 0 var(--space-3); color: var(--color-text-muted); font-size: 14px; }
 .sbs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }

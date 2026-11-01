@@ -40,7 +40,7 @@ body .rc-rec { background: var(--color-scrim); color: var(--color-on-media); }
 /* reference video panel (reference.css) */
 body .ref, body .ref-stage, body .ref-media { background: var(--color-media-bg); }
 body .ref { border-radius: var(--radius-lg); }
-body .ref-bar { background: var(--color-surface); }
+body .ref-bar { background: var(--card-fill); }
 
 /* people picker and group board (people.css) */
 body .pp, body .pp-board-screen { --pp-accent: var(--color-accent); --pp-ok: var(--color-good); --pp-warn: var(--color-warn); }
@@ -61,7 +61,7 @@ body .pg-loading.compact { background: var(--color-scrim); }
 
 /* result screen leftovers (result.css, breakdown.css) */
 body .sr-stage { background: radial-gradient(120% 90% at 50% 0%, var(--color-raised) 0%, var(--color-bg) 70%); }
-body .sr-btn:hover, body .sr-insight:hover { background: var(--color-raised); }
+body .sr-btn:hover, body .sr-insight:hover { background: var(--card-fill-raised); }
 body .sr-play, body .sr-mode[aria-pressed="true"] { color: var(--color-on-accent); }
 body .sr-play:hover { background: var(--color-accent); filter: brightness(1.08); }
 body .sr-chip { color: var(--color-on-accent); }
