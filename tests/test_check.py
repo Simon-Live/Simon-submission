@@ -2,8 +2,9 @@
 
 The analyse step is replaced by a table of analyses, so no held-out data is needed and nothing
 here generates or scores a held-out seed. One test runs the real pipeline offline on seed 5 takes.
-The score gate and the score freeze (AC-S04, AC-S06, AC-K10) are in tests/test_check_score.py, which builds on
-the synthetic world defined here.
+The score gate and the score freeze (AC-S04, AC-S06, AC-K10) are in tests/test_check_score.py, and the freeze of the
+detection rules, the order of the seeds and the attempts record (AC-K07 to AC-K09, B3, R7) in tests/test_check_freeze.py;
+both build on the synthetic world defined here.
 """
 import hashlib
 import json
@@ -372,155 +373,6 @@ def test_ac_k07_names_the_tuning_seed_the_gate_seed_and_the_rules(tmp_path, monk
     assert "warning" not in err
 
 
-def test_ac_k07_exits_2_when_rules_changed_after_the_freeze(tmp_path, monkeypatch, capsys):
-    (tmp_path / "thresholds.md").write_text(freeze_section(29, sha="0" * 64))
-    code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
-    assert code == 2 and out == ""
-    assert "part5/rules.json differs from the hash frozen for seed 29 in docs/thresholds.md" in err
-    assert not (tmp_path / "out/metrics.json").exists()
-
-
-def test_ac_k07_exits_2_when_the_current_seed_has_no_freeze_record(tmp_path, monkeypatch, capsys):
-    # A record for another seed does not freeze this one; neither does a section without a hash.
-    for text in (freeze_section(31), "## Attempt 1: seed 29\nFreeze commit: `abc1234`\n", ""):
-        (tmp_path / "thresholds.md").write_text(text)
-        code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
-        assert code == 2 and out == ""
-        assert "docs/thresholds.md has no freeze record (rules_sha256) for seed 29" in err
-
-
-def test_ac_k07_exits_2_when_thresholds_md_is_missing(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch, seed=29)
-    (tmp_path / "thresholds.md").unlink()
-    code, out, err = w.run(capsys)
-    assert code == 2 and out == "" and "no freeze record" in err
-
-
-def test_ac_k07_an_attempts_entry_does_not_stand_in_for_the_freeze_record(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch, seed=29)
-    (tmp_path / "thresholds.md").write_text("")
-    w.attempts([{**recorded(29, True), "rules_sha256": RULES_SHA}])
-    assert w.run(capsys)[0] == 2
-
-
-def test_ac_k07_gate_seed_is_read_from_the_labels_for_each_held_out_seed(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch, seed=31)
-    code, out, _ = w.run(capsys)
-    assert code == 0 and json.loads(out)["gate"]["seed"] == 31
-
-
-@pytest.mark.parametrize("seed", [5, 28, 30, 99])
-def test_a_seed_that_is_not_29_31_or_37_exits_2_naming_it(tmp_path, monkeypatch, capsys, seed):
-    code, out, err = world(tmp_path, monkeypatch, seed=seed).run(capsys)
-    assert code == 2 and out == "" and f"names seed {seed}" in err and "29, 31, 37" in err
-
-
-def test_the_tuning_set_must_be_seed_5(tmp_path, monkeypatch, capsys):
-    w = World(tmp_path, monkeypatch)
-    w.add("heldout", 29, *green("h"))
-    w.add("followers", 29, *green("t", dropout=False))
-    code, out, err = w.run(capsys)
-    assert code == 2 and "tuning set is seed 5" in err
-
-
-def test_a_held_out_set_that_is_not_generated_yet_exits_2_naming_the_command(tmp_path, monkeypatch, capsys):
-    w = World(tmp_path, monkeypatch)
-    w.add("followers", 5, *green("t", dropout=False))
-    code, out, err = w.run(capsys)
-    assert code == 2 and out == "" and "has no labels.json" in err and "make heldout-data SEED=29" in err
-
-
-def test_the_hint_names_the_next_unused_seed(tmp_path, monkeypatch, capsys):
-    w = World(tmp_path, monkeypatch)
-    w.add("followers", 5, *green("t", dropout=False))
-    w.attempts([{"seed": 29, "freeze_commit": "abc1234", "rules_sha256": "a" * 64, "approach": "rules",
-                 "passed": False, "slices": {}}])
-    code, _, err = w.run(capsys)
-    assert code == 2 and "make heldout-data SEED=31" in err
-
-
-def test_ac_k08_a_take_whose_file_is_missing_exits_2_naming_the_take(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch)
-    (tmp_path / "h_45_good_clean_f1.json").unlink()
-    code, out, err = w.run(capsys)
-    assert code == 2 and out == ""
-    assert "check-5: h_45_good_clean_f1: h_45_good_clean_f1.json not found" in err
-
-
-def test_ac_k08_every_unanalysable_take_is_named(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch)
-    (tmp_path / "h_45_good_clean_f1.json").unlink()
-    (tmp_path / "t_side_low_clean_c0.json").unlink()
-    code, _, err = w.run(capsys)
-    assert code == 2 and "h_45_good_clean_f1" in err and "t_side_low_clean_c0" in err
-
-
-def test_ac_k08_an_analysis_error_exits_2_naming_the_take(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch)
-
-    def boom(expected, follower):
-        raise ValueError("only 20% of the body could be measured")
-
-    monkeypatch.setattr(check, "analyse", boom)
-    code, out, err = w.run(capsys)
-    assert code == 2 and out == "" and "only 20% of the body could be measured" in err
-
-
-def recorded(seed, passed, commit="abc1234"):
-    return {"seed": seed, "freeze_commit": commit, "rules_sha256": "a" * 64, "approach": f"family {seed}",
-            "passed": passed, "slices": {"good/front": {"tp": 1, "fp": 0, "fn": 0, "takes": 1, "correct_takes": 0,
-                                                       "faults_on_correct_takes": 0, "precision": 1.0, "recall": 1.0}}}
-
-
-def test_ac_k09_a_red_then_a_green_attempt_are_both_listed_and_the_exit_follows_the_current(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch, seed=31)
-    w.attempts([recorded(29, False)])
-    code, out, _ = w.run(capsys)
-    doc = json.loads(out)
-    assert code == 0 and [a["seed"] for a in doc["attempts"]] == [29, 31]
-    assert [a["passed"] for a in doc["attempts"]] == [False, True]
-    assert doc["attempts"][0] == recorded(29, False)  # earlier attempts are published as recorded
-    assert doc["attempts"][-1]["slices"] == doc["gate"]["metrics"]["slices"]
-    assert doc["attempts"][-1]["passed"] == doc["gate"]["passed"]
-    assert errors_of(doc) == []
-
-
-def test_ac_k09_a_green_then_a_red_attempt_exits_1(tmp_path, monkeypatch, capsys):
-    held = green("h", {("front", "good", "clean"): {"miss": 3}})
-    w = world(tmp_path, monkeypatch, seed=31, held=held)
-    w.attempts([recorded(29, True)])
-    code, out, _ = w.run(capsys)
-    doc = json.loads(out)
-    assert code == 1 and [a["passed"] for a in doc["attempts"]] == [True, False]
-    assert doc["attempts"][-1]["passed"] is False and doc["gate"]["passed"] is False
-
-
-def test_ac_k09_rerunning_the_current_set_lists_it_once_and_keeps_its_freeze_commit(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch, seed=29)
-    _, first, _ = w.run(capsys)
-    slices = json.loads(first)["gate"]["metrics"]["slices"]
-    w.attempts([{**recorded(29, True, commit="feedbee"), "slices": slices}])
-    code, out, _ = w.run(capsys)
-    doc = json.loads(out)
-    assert code == 0 and len(doc["attempts"]) == 1
-    assert doc["attempts"][0]["freeze_commit"] == "feedbee" and doc["attempts"][0]["passed"] is True
-
-
-def test_a_scored_seed_that_scores_differently_from_its_record_exits_2(tmp_path, monkeypatch, capsys):
-    """ADR-0003: a retired seed is only verified; changed scores mean scoring changed after the freeze."""
-    w = world(tmp_path, monkeypatch, seed=29)
-    w.attempts([recorded(29, True, commit="feedbee")])  # its slices differ from this world's scores
-    code, out, err = w.run(capsys)
-    assert code == 2 and out == "" and "scores differently from its recorded attempt" in err and "good/45" in err
-
-
-def test_a_retired_seed_is_refused(tmp_path, monkeypatch, capsys):
-    w = world(tmp_path, monkeypatch, seed=29)
-    w.attempts([recorded(29, False), recorded(31, False)])
-    code, out, err = w.run(capsys)
-    assert code == 2 and out == "" and "seed 29 is retired" in err and "37" in err
-
-
 # ----------------------------------------------------------------- the rest of the document
 def test_the_dropout_copies_report_as_dropout_slices_and_stay_out_of_the_gate(tmp_path, monkeypatch, capsys):
     """AC-008 (check side): dropout/<angle> slices are reported; good-light slices hold clean takes only."""
@@ -642,7 +494,7 @@ def test_the_committed_attempts_file_has_the_published_format():
     doc = json.loads((ROOT / "fixtures/heldout-attempts.json").read_text())
     assert doc["format"] == "simon.part5.heldout_attempts.v1" and isinstance(doc["attempts"], list)
     seeds = [a["seed"] for a in doc["attempts"]]
-    assert seeds == [29, 31, 37][:len(seeds)]
+    assert seeds == list(check.HELDOUT_SEEDS)[:len(seeds)]
     for a in doc["attempts"]:
         assert {"seed", "freeze_commit", "rules_sha256", "approach", "passed", "slices"} <= set(a)
 
@@ -661,6 +513,13 @@ def test_thresholds_record_reads_one_seeds_section():
                                                  "approach": "persistence rule"}
     assert check.thresholds_record(31, text) == {"freeze_commit": "def5678"}
     assert check.thresholds_record(37, text) == {}
+
+
+def test_b3_thresholds_record_reads_the_detection_hash_of_the_seeds_own_freeze():
+    text = ("## Attempt 1: seed 29\nFreeze commit: `abc1234`\nrules_sha256: `" + "b" * 64 + "`\ndetection_sha256: `" + "c" * 64
+            + "`\n\n## Score\n\ndetection_sha256: `" + "d" * 64 + "`\n")
+    assert check.thresholds_record(29, text) == {"freeze_commit": "abc1234", "rules_sha256": "b" * 64,
+                                                 "detection_sha256": "c" * 64}      # not the one under Score
 
 
 def test_the_committed_thresholds_record_exactly_the_scored_attempts():

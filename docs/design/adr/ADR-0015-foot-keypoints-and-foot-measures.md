@@ -91,7 +91,7 @@ measure what its name says.
   `extra_joints`, or a pair where only one clip has feet, is not an error: the foot measures are hidden and
   `diagnostics.feet.hidden_reason` says why. A file that cannot be read, is not this shape, lacks the person or
   matches no clip frame in time is an `InputError` (exit 1). A take compared repetition by repetition hides the foot
-  measures ("rep mode").
+  measures ("rep mode"; withdrawn by Amendment 3).
 - Schema: `schema_version` 1.6.0 on every new document (the 1.5.0 precedent), body part `feet`, joint an ankle.
   The alternative, 1.6.0 only when a foot measure was compared, keeps every other golden byte for byte and costs a
   conditional in `output.py` and a version that depends on the data; rejected because a writer should have one
@@ -196,3 +196,12 @@ old way round", and `docs/design/specs/staging.md` AC-S10), so a take's name and
 - `part5/cli.py`, `part5/doctor.py`, `part5/contract.py`, `part5/evaluate.py`, `part5/rules.json`
 - `tests/test_foot_geometry.py`, `tests/test_feet.py`, `tests/test_feet_faults.py`
 <!-- In code: # ADR-0015: reason -->
+
+## Amendment 3 (2026-10-31, ADR-0017, TICKET-044): the foot measures are compared rep by rep
+Rep mode no longer hides the foot measures. When an example of two or more reps made every take of it a rep-by-rep
+comparison (attempt 4), hiding them would have taken the dance's foot labels out of the gated slices (8 per angle on seed
+37) and half of them on seed 5 (11 of 24 found at good light, against 22 with them), so `pipeline.run` hands the foot
+series to `repwise.compare`, which cuts the expected one with the reference and resamples the follower's with each rep like
+the joints. The definitions, the visibility rule (80% of the frames, `conf` 0.5), the thresholds (14 and 14 degrees) and the
+words are not touched: those are this ADR's, and a change to them is a distinct family (TICKET-040). `REP_MODE_REASON` is
+gone; `docs/design/specs/rep-persistence.md` has the record.

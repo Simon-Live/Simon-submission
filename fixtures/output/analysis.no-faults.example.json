@@ -55,21 +55,21 @@
           "direction": "more",
           "magnitude_deg": 12.9,
           "peak_deg": 13.3,
-          "threshold_deg": 9.0,
+          "threshold_deg": 10.0,
           "expected_frames": [
             0,
-            5
+            4
           ],
           "follower_frames": [
             6,
-            10
+            9
           ],
-          "frames_over": 6,
-          "counted_frames": 6,
+          "frames_over": 5,
+          "counted_frames": 5,
           "needed_frames": 35,
           "min_run_frames": 4,
           "reason": "persistence",
-          "shortfall_frames": 29
+          "shortfall_frames": 30
         }
       ]
     }

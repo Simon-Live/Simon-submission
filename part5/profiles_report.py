@@ -85,9 +85,15 @@ def fitness_digests(labels_doc, root=ROOT, profile=None):
 
 def baseline_document(labels_doc, root=ROOT):
     return {"format": BASELINE_FORMAT,
-            "_comment": ("Written once by `python -m part5.profiles_report --write-baseline` before any profile wiring "
-                         "edit (docs/specs/profiles.md, AC-PROF-02). Do not regenerate it: a test compares the "
-                         "fitness analysis of every seed 5 take with these hashes."),
+            "_comment": ("Written by `python -m part5.profiles_report --write-baseline` before any profile wiring "
+                         "edit (docs/specs/profiles.md, AC-PROF-02) and taken again at attempt 4 (TICKET-044, "
+                         "ADR-0017), which moves the dance takes (rep by rep) and the similarity of some exercise "
+                         "takes (the trunk's new side lean), and once more at its pre-freeze review, which reports a "
+                         "fault on both sides once and moves 4 dance takes, and once more at its recheck, which splits "
+                         "the persistence floor by measure class (the body floor 8, the foot floor 32), re-sweeps "
+                         "two thresholds under it and keeps a rep's two-sided fault in its window when the take "
+                         "reports either side. Do not regenerate it otherwise: a test "
+                         "compares the fitness analysis of every seed 5 take with these hashes."),
             "seed": labels_doc["seed"],
             "hashed": "sha256 of the analysis with the checkout path removed, as sorted compact JSON, "
                       "without `profile` and `schema_version`",

@@ -47,6 +47,18 @@ class Segmentation:
     def reps(self):
         return len(self.spans)
 
+    def partition(self, n_frames):
+        """Disjoint inclusive `(start, end)` spans that tile frames 0..n_frames-1, one per rep (ADR-0017).
+
+        A rep runs from its first frame to the frame before the next rep's first, the first rep from frame 0 and the
+        last to the end of the clip: the lead-in before the first cut and the tail after the last belong to the
+        nearest rep, so every frame is in exactly one rep. A clip of one segment is one span, the whole clip. The
+        spans of `spans` share their boundary frame; these do not."""
+        if self.reps < 2:
+            return ((0, n_frames - 1),)
+        starts = [0] + [a for a, _ in self.spans[1:]]
+        return tuple((a, b) for a, b in zip(starts, [s - 1 for s in starts[1:]] + [n_frames - 1]))
+
 
 def _filled(x):
     x = np.asarray(x, float)

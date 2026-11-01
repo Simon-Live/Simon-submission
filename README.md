@@ -58,7 +58,7 @@ make check-5           # done-check
 | `make report-profiles` | Per-profile precision, recall and grades on the seed 5 tuning set (`dance`, `rehab`, `fitness`), reported as measured and never gated; a held-out set is refused (exit 2). Writes `out/report-profiles/report.json`. | 0 |
 | `make demo` | The replay page on http://127.0.0.1:8735/ (foreground). | |
 | `make dummy-data` | Regenerates the seed 5 set in `fixtures/input/followers/`. | 0 |
-| `make heldout-data SEED=<n>` | Writes a held-out set to `fixtures/input/heldout/`. Only seeds 29, 31 and 37, each once, under the protocol in `docs/thresholds.md`. | 0; 2 without a held-out seed |
+| `make heldout-data SEED=<n>` | Writes a held-out set to `fixtures/input/heldout/`. Only seeds 29, 31, 37, 67, 71 and 73 (the second series, ADR-0017), each once and in that order, under the protocol in `docs/thresholds.md`. | 0; 2 without a held-out seed |
 | `make output-examples` | Rewrites the two shipped `fixtures/output/analysis*.json`. | 0 |
 | `make smoke-muse-spark` | One live Muse Spark call through Baseten (needs the key file). Never part of `make test` or `make check-5`. | 0 when a valid line came back |
 | `make test-contract` | Part 3 and Part 4 files through `part5.io` (`CONTRACT.md`). | 0 |

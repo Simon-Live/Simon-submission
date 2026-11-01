@@ -10,6 +10,9 @@ A seed already recorded in fixtures/score-heldout.json is retired: a held-out se
 after the score freeze commit, so the script refuses it (exit 2) before it generates or scores anything. The record
 itself (docs/thresholds.md "Score" and fixtures/score-heldout.json) is written by hand, as measured.
 
+It refuses every seed of both held-out detection series too (29, 31, 37, then 67, 71, 73; ADR-0017), also one that is
+not yet generated: generating and scoring such a seed here would look at it before its attempt's freeze commit.
+
 Exit 0 scored, 1 the generator or the scorer failed, 2 usage or a retired seed. `--dry-run` prints the commands.
 """
 import argparse
@@ -51,9 +54,20 @@ def parse_seed(text):
     return int(text)
 
 
+def detection_seeds():
+    """The held-out seeds of `make check-5`, both series (ADR-0003, ADR-0017), from the one list that owns them."""
+    sys.path.insert(0, str(ROOT))   # run directly (python3 scripts/make_score_heldout.py) the package is not installed
+    from part5.check import HELDOUT_SEEDS
+    return HELDOUT_SEEDS
+
+
 def check_seed(text, record=RECORD):
-    """The seed as an int, or `Refused` with the plain reason (usage, or already recorded)."""
+    """The seed as an int, or `Refused` with the plain reason (usage, a detection held-out seed, or already recorded)."""
     seed = parse_seed(text)
+    if seed in detection_seeds():   # ADR-0017: generating one here and scoring it would be a look before its freeze
+        raise Refused(f"seed {seed} is a held-out detection seed (ADR-0003, ADR-0017); it is generated once by "
+                      "`make heldout-data` after its attempt's freeze commit and scored once by `make check-5`, "
+                      "never here. Use a score seed that is not in either held-out series")
     if seed in recorded_seeds(record):
         raise Refused(f"seed {seed} is already recorded in {_rel(record)}; recorded seeds are retired (ADR-0007), "
                       "a held-out seed is generated and scored once. Use a seed that has not been scored")

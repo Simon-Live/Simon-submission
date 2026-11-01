@@ -77,49 +77,49 @@
       "direction": "more",
       "magnitude_deg": 15.8,
       "peak_deg": 17.0,
-      "threshold_deg": 10.0,
+      "threshold_deg": 11.0,
       "unit": "degrees",
       "expected_frames": [
         10,
-        74
+        72
       ],
       "follower_frames": [
         12,
-        63
+        62
       ],
       "runs": [
         [
           10,
-          74
+          72
         ]
       ],
       "phase": [
         0.111,
-        0.822
+        0.8
       ],
       "coverage": 1.0,
-      "confidence": 1.0,
-      "text": "elbows wider than the example",
+      "confidence": 0.917,
+      "text": "elbows slightly wider than the example",
       "cue": "Keep your elbows closer in",
       "cue_kind": "range",
       "follower_t_s": [
         0.4,
-        2.1
+        2.067
       ],
       "at_s": 0.4,
       "follower_runs": [
         [
           12,
-          63
+          62
         ]
       ],
       "lateral": null,
-      "text_timed": "elbows wider than the example at 0.4 s",
+      "text_timed": "elbows slightly wider than the example at 0.4 s",
       "joints": [
         "left_shoulder",
         "right_shoulder"
       ],
-      "coaching": "elbows wider than the example at 0.4 s"
+      "coaching": "elbows slightly wider than the example at 0.4 s"
     }
   ],
   "diagnostics": {
@@ -207,23 +207,23 @@
           "joint": "left_knee",
           "body_part": "legs",
           "direction": "more",
-          "magnitude_deg": 10.8,
+          "magnitude_deg": 14.7,
           "peak_deg": 15.2,
-          "threshold_deg": 9.0,
+          "threshold_deg": 10.0,
           "expected_frames": [
             18,
-            31
+            24
           ],
           "follower_frames": [
             20,
-            29
+            24
           ],
-          "frames_over": 14,
-          "counted_frames": 14,
+          "frames_over": 9,
+          "counted_frames": 7,
           "needed_frames": 35,
           "min_run_frames": 4,
           "reason": "persistence",
-          "shortfall_frames": 21
+          "shortfall_frames": 28
         }
       ]
     }
@@ -242,11 +242,11 @@
     },
     {
       "cue": "Keep your elbows closer in",
-      "why": "Elbows wider than the example at 0.4 s",
+      "why": "Elbows slightly wider than the example at 0.4 s",
       "kind": "range",
       "at_s": 0.4,
       "window": 0,
-      "points": 16.6,
+      "points": 15.7,
       "measure": "upper_arm_out",
       "side": "both",
       "joint": "shoulder"
@@ -284,11 +284,11 @@
   },
   "score": {
     "version": "simon.score.v1",
-    "value": 66,
+    "value": 67,
     "grade": "D",
     "components": {
-      "faults": 33.86,
-      "similarity": 0.58
+      "faults": 32.93,
+      "similarity": 0.46
     },
     "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
     "basis": "windows",
@@ -298,24 +298,24 @@
           0.1,
           2.5
         ],
-        "value": 66,
+        "value": 67,
         "grade": "D",
         "components": {
-          "faults": 33.86,
-          "similarity": 0.58
+          "faults": 32.93,
+          "similarity": 0.46
         },
         "misses": [
           {
-            "text": "elbows wider than the example at 0.4 s",
+            "text": "elbows slightly wider than the example at 0.4 s",
             "measure": "upper_arm_out",
             "side": "both",
             "joint": "shoulder",
             "t_s": [
               0.4,
-              2.1
+              2.067
             ],
             "at_s": 0.4,
-            "points": 16.6,
+            "points": 15.7,
             "cue": "Keep your elbows closer in",
             "cue_kind": "range",
             "direction": "more"

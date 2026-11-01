@@ -43,10 +43,12 @@ def identity(n, shift=0):
 
 
 def rules_with(smooth=1, **default):
-    """The shipped rules with no smoothing (so a run is as long as it is written) and `default` on top."""
+    """The shipped rules with no smoothing (so a run is as long as it is written), both floors at the 8 frames the floor
+    was before attempt 4 (these cases are worked out for it; the measures here are body measures, so
+    `min_frames_floor_body` decides) and `default` on top."""
     r = copy.deepcopy(load_rules())
     r["smooth_frames"] = smooth
-    r["default"].update(default)
+    r["default"].update({"min_frames_floor": 8, "min_frames_floor_body": 8}, **default)
     return r
 
 
@@ -76,7 +78,8 @@ def test_a_run_too_short_in_total_is_a_persistence_near_miss_with_its_numbers():
         PERSISTENCE, 30, 30, 38, 4)
     item = miss.to_dict()
     assert item["reason"] == "persistence" and item["shortfall_frames"] == 8 and "explained_by" not in item
-    assert item["threshold_deg"] == 10.0 and item["magnitude_deg"] == item["peak_deg"] == 25.0
+    assert item["threshold_deg"] == load_rules()["measures"]["upper_arm_out"]["threshold_deg"] == 11.0
+    assert item["magnitude_deg"] == item["peak_deg"] == 25.0
 
 
 def test_runs_shorter_than_min_run_frames_add_to_frames_over_and_not_to_counted_frames():
@@ -97,7 +100,7 @@ def test_with_no_run_long_enough_nothing_counts_and_the_size_is_over_every_frame
 @pytest.mark.parametrize("changes, needed", [
     ({}, 38),                                               # round(0.38 x 100)
     ({"min_fraction": 0.2}, 20),
-    ({"min_fraction": 0.05, "min_frames_floor": 30}, 30),   # the floor wins
+    ({"min_fraction": 0.05, "min_frames_floor_body": 30}, 30),   # the floor wins (the body floor: this is a body measure)
     ({"min_frames": 55}, 55),                               # an explicit count wins over both
 ])
 def test_the_frames_needed_come_from_min_fraction_the_floor_or_min_frames(changes, needed):

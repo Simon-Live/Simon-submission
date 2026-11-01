@@ -30,6 +30,7 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`foot-keypoints.md`](specs/foot-keypoints.md): heel and toe points read from Part 2's pose3d.json as an optional side input, the `foot_rotation` and `ankle_inversion` measures, when they are hidden, their cues and how they are calibrated.
 - [`profiles.md`](specs/profiles.md): analysis profiles `dance`, `rehab` and `fitness`: the profiles file, the loosen-only rule, tempo, schema 1.7.0 and the seed 5 report (values set by hand).
 - [`near-misses.md`](specs/near-misses.md): `diagnostics.near_misses`, the candidate faults detection considered and dropped and why (schema 1.8.0); additive, nothing reads it.
+- [`rep-persistence.md`](specs/rep-persistence.md): attempt 4: persistence judged in each rep of the example, rep by rep for an example of two or more reps (each follower rep against the example rep that matches it, foot measures included), a side lean that does not wrap, and the seed 5 record per part.
 
 ## Architecture decision records
 

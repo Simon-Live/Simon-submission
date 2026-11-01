@@ -11,7 +11,7 @@ and gate), ADR-0004 (knee caving and movement guard), ADR-0005 (phrasing registr
 joint mapping), ADR-0007 to ADR-0014 (score, live phrasing, time and replay, repetitions, visibility, always
 analyse, score timeline, cues). Where an AC below and a later ADR disagree, the later ADR wins; ADR-0012 replaced
 every refusal with a warning. Companion specs: `integration-contract.md`, `check-5.md`, `calibration.md`,
-`real-takes.md`, `staging.md`, `viewer.md`, `neighbour-check.md`, `simon-publish.md`, `near-misses.md`.
+`real-takes.md`, `staging.md`, `viewer.md`, `neighbour-check.md`, `simon-publish.md`, `near-misses.md`, `rep-persistence.md`.
 
 ## Overview
 Part 5 compares a follower's 3D take with the expected clip at the same phase of the movement and
@@ -115,20 +115,26 @@ code: str, text: str, stats: dict)`.
 ## Repetitions (ADR-0010; schema 1.3.0)
 Real clips hold several repetitions and the counts rarely match (a trainer's 3 slow reps, a follower's 8 fast
 ones), which the slope-limited whole-clip alignment cannot follow. `part5/reps.py` cuts a clip into reps and
-`part5/repwise.py` compares one rep at a time. It runs only when the whole-clip guard finds a low match (or the
-whole-clip alignment cannot run, an `AlignmentError`) and either clip has two or more cycles; a pair the whole-clip
-guard accepts is analysed as before, so seed 5, the held-out seeds and the goldens do not move.
+`part5/repwise.py` compares one rep at a time. It runs when the whole-clip guard finds a low match (or the
+whole-clip alignment cannot run, an `AlignmentError`) and either clip has two or more cycles, and, since attempt 4
+(ADR-0017, `rep-persistence.md`), whenever the *expected* clip has two or more reps, whether or not the whole-clip guard
+accepts the pair; a pair of one-rep clips the whole-clip guard accepts is analysed as before. Attempt 4 amends the bullets
+below where they say otherwise: the reference is the matched rep of each follower rep, the foot measures are compared,
+and the rep verdict that does not accept a take leaves the whole-clip comparison.
 - **Segmentation**: the measure with the largest p95 minus p5 range (at least 15 degrees), smoothed over 0.25 s;
   turning points that stand out by 35% of the range; cuts at the dips or at the peaks, whichever gives more cycles
   (ties to the dips), at least 0.6 s apart. Fewer than two cycles: one segment, the whole clip. The follower
   prefers the expected clip's measure and cut type when it moves that measure at least half as much as its own best.
 - **Reference**: the expected clip's first complete rep, or the whole clip when it has one
-  (`diagnostics.expected_reference.kind`: `first_rep` or `whole`).
+  (`diagnostics.expected_reference.kind`: `first_rep` or `whole`). Since attempt 4 that is the reference of the first
+  follower rep; follower rep `k` is compared with the example's rep `k` when the follower has no more reps than the
+  example, and every rep with the first when it has more (`repwise.matched_rep`, `rep-persistence.md`).
 - **Per rep**: each follower rep is resampled to the reference's frame count, then aligned, guarded (frozen
   limits) and detected on its own. A rep passes when the guard passes and the matched span covers at least 60% of
   it. A follower that is one segment is compared whole against the reference.
-- **Bound**: each rep is aligned against the whole reference, so the reps together align `reps x reference frames`
-  squared frame pairs (a lone follower segment: reference frames x its frames). Over `MAX_CELLS` (4,000,000, the
+- **Bound**: each rep is aligned against its whole reference, so the reps together align the sum of their reference
+  frames squared (`reps x reference frames` squared when the references are equal; a lone follower segment: reference
+  frames x its frames). Over `MAX_CELLS` (4,000,000, the
   whole pair's bound) the analysis stops before any alignment with the same plain error as the whole pair:
   `<follower>: N follower frames against M expected frames are too long to compare together (the limit is
   4,000,000 frame pairs)`, exit 1. A rep whose alignment raises `AlignmentError` does not pass; any other error is a
@@ -141,7 +147,8 @@ guard accepts is analysed as before, so seed 5, the held-out seeds and the golde
   occurrence on the follower file's clock, the median `magnitude_deg`, the largest `peak_deg`, and `reps`, the rep
   indices it was found in. Its `expected_frames`, `runs` and `phase` are on the expected file's own frames: the
   first occurrence's place in the reference rep, shifted by the reference's first frame
-  (`diagnostics.expected_reference.frames[0]`), and `phase` the fraction of the whole expected file
+  (`diagnostics.expected_reference.frames[0]`, or since attempt 4 the start of the reference of the rep that found it),
+  and `phase` the fraction of the whole expected file
   (`frame / (frames - 1)`, as for a whole-clip fault). A timeline miss carries times only, so nothing there is
   on a frame scale.
 - **Score**: ADR-0013: one window per follower rep, scored on that rep's own misses, the take the mean of the
@@ -157,7 +164,9 @@ guard accepts is analysed as before, so seed 5, the held-out seeds and the golde
 ## Detection changes (#30)
 - Persistence: a fault counts when the frames of all runs past threshold in one direction, each run at
   least `min_run_frames` long (default 4 at the expected clock), sum to at least `min_fraction` of the
-  expected clip (floor `min_frames_floor`). `expected_frames` and `follower_frames` stay the longest
+  expected clip (floor `min_frames_floor`). Since attempt 4 (ADR-0017) this is judged in each rep of the example: a run
+  belongs to the rep that holds most of it and each rep needs `min_fraction` of itself, floored by the measure's floor
+  (a duration in frames at 30 fps, `min_frames_floor_body` 8 for a body measure and `min_frames_floor` 32 for a foot measure, converted to the example's frame rate and at most three quarters of the rep); an example of one rep is one rep, the clip (`rep-persistence.md` Part 1). `expected_frames` and `follower_frames` stay the longest
   run (unchanged meaning; under a profile other than fitness, the run that overlaps the fitness fault's run most,
   `profiles.md`); the new additive field `runs` lists every counted run as
   `[[start, end], ...]` in expected frames; `magnitude_deg` is the median over all counted runs.
@@ -305,7 +314,7 @@ a warning and grade F, `warnings` and `status.code: "ok"`), and 1 for an input, 
 | `check-5-contract` | `uv run python -m part5.contract --check` | 0 when every schema, fixture and golden output validates |
 | `test` | `uv run pytest -q` | pytest |
 | `dummy-data` | `python3 scripts/make_dummy_followers.py` (seed 5, tuning set) | 0 |
-| `heldout-data` | `python3 scripts/make_dummy_followers.py --seed $(SEED) --out fixtures/input/heldout --dropout-variant`; `SEED` is required (29, then 31, then 37; `calibration.md`) | 0; 2 without `SEED` |
+| `heldout-data` | `python3 scripts/make_dummy_followers.py --seed $(SEED) --out fixtures/input/heldout --dropout-variant`; `SEED` is required (29, 31, 37, then 67, 71, 73; `calibration.md`, ADR-0017) | 0; 2 without `SEED` |
 | `output-examples` | `uv run python scripts/make_output_examples.py` | 0 |
 | `report-real` | `uv run python -m part5 report-real` | 0 when every real take was analysed (ADR-0012: always analyse; a mismatch take counts when it carries a `low_match` warning and grade F) |
 | `demo` | `uv run python -m part5 serve --port 8735` | foreground server for the isolated demo (#16); its own port, so it never clashes with `scripts/dev.sh` on 8725 |
@@ -318,7 +327,7 @@ a warning and grade F, `warnings` and `status.code: "ok"`), and 1 for an input, 
 | Merge order | #37, then #36, then #34, on local main, the team's commits kept | ADR-0002; all three touch `Makefile` or `docs/schemas.md` |
 | #34 fix | `contracts-check` turns a missing upstream file into a plain message and exit 2, never a traceback | Muse's review on #34 |
 | Tuning set | Seed 5, `fixtures/input/followers/`, regenerated once from the refreshed expected clips | ADR-0003 |
-| Held-out set | Seeds 29, 31, 37 in that order, `fixtures/input/heldout/` (own `labels.json` naming the seed); each generated once after a freeze commit, scored once, then retired | ADR-0003; never 5 |
+| Held-out set | Seeds 29, 31, 37, then 67, 71, 73 (ADR-0017) in that order, `fixtures/input/heldout/` (own `labels.json` naming the seed); each generated once after a freeze commit, scored once, then retired | ADR-0003; never 5 |
 | Retuning | Never on held-out numbers; a retry needs a distinct approach family and the next seed; every attempt published; red after seed 37 ends DEGRADED with every attempt's numbers | ADR-0003, `calibration.md` |
 | Take grid | 2 sets x 3 angles x 2 lights x 9 takes: 2 correct, 6 single-fault (one per type, `knee_caving` added), 1 double; from seed 5's TICKET-040 regeneration and seed 37 on, 4 foot-fault takes more per cell (13 per cell, numbered 09 to 12) | 54 per set, 108 per seed (clean, no feet); `--dropout-variant` adds 72 dropout copies, 180 per held-out seed (seeds 29 and 31 stay 180). With feet: 13 per cell, 156 per seed (108 + 48 foot) and 260 with dropout copies (156 + 104) from seed 37 on; the seed 5 tuning set has 156 and no dropout copies (corrected 2026-10-29: the first text said 108 per set) |
 | Dropout variant | `--dropout-variant` adds one dropout copy of every side and 45 degree take with per-joint `conf` and far-side bursts (#25); slices `dropout/<angle>`, reported, never gated | #25 |
@@ -397,16 +406,19 @@ Given Part 2's dance, class, single and stretch and the stock squat against the 
 the dance, class and stretch), when analysed, then each has status `ok`, a `low_match` warning and `match.quality`
 `low`, and a score of grade F capped by `low_match` (ADR-0012; before it, `different_movement` with `faults: []`).
 Verification: `tests/test_reps.py`.
-### AC-REP-4: seed 5 unchanged
-Given every seed 5 take against its expected clip, when analysed, then none is compared rep by rep and its document
-has no rep field; `make check-5` metrics are unchanged. Verification: `tests/test_reps.py`, `make check-5`.
+### AC-REP-4: single-rep examples unchanged
+Given every seed 5 exercise take (the squat example holds one rep) against its expected clip, when analysed, then none is
+compared rep by rep and its document has no rep field. Amended by attempt 4 (ADR-0017): it read "every seed 5 take"; the
+dance example holds two reps, so its takes are compared rep by rep (`rep-persistence.md`). Verification:
+`tests/test_reps.py`, `tests/test_rep_persistence.py`.
 ### AC-REP-5: aggregation
 Given reps with faults, then a fault found in at least half of the accepted reps is reported once with the median
 magnitude and its `reps`; the score is the mean of the rep windows (ADR-0013). Verification: `tests/test_reps.py`.
 ### AC-REP-6: rep-mode faults sit on the expected file
 Given the real slow lateral raise as the example (its first rep starts at frame 38) and the fast one as the
 follower, when analysed, then each fault's `expected_frames` and `runs` are its first occurrence's local frames plus
-38, inside `diagnostics.expected_reference.frames`, `phase` is `frame / (frames - 1)` of the whole expected file, and
+38, inside `diagnostics.expected_reference.frames` (the reference of the rep that found it, from attempt 4: the first rep's
+for a fault found there), `phase` is `frame / (frames - 1)` of the whole expected file, and
 the replay's `expected_t` starts at the reference's own time and strictly increases. Verification:
 `tests/test_review_fixes.py`.
 ### AC-REP-7: rep mode is bounded
@@ -568,6 +580,8 @@ ASM-001 to ASM-012 in `docs/assumptions/` (ASM-008: Part 4 main's expected clips
 | `tests/conftest.py` (no live call from any test), `tests/test_no_live_calls.py`, `tests/test_live_fallback.py`, `tests/test_api_live.py`, `tests/test_schema_compat.py`, `tests/test_review_fixes.py`, `tests/fixtures/*` (the 1.1.0 schema and goldens as at `28d20ef`) | review-fixes | yes |
 | `part5/detect.py` (`detect_full`, `Candidate`), `part5/repwise.py`, `part5/pipeline.py`, `part5/output.py`, `part5/doctor.py`, `part5/contract.py`, `part5/profiles_report.py`, `contracts/analysis.schema.json` (near misses, 1.8.0; `near-misses.md` has the full list) | TICKET-043 | yes |
 | `docs/design/specs/near-misses.md`, `tests/test_near_misses.py`, `tests/test_near_misses_reps.py` | TICKET-043 | yes |
+| `part5/measures.py` (`_sideways`), `part5/detect.py`, `part5/reps.py`, `part5/repwise.py`, `part5/pipeline.py`, `part5/replay.py`, `part5/calibrate.py`, `part5/check.py`, `part5/rules.json` (`min_frames_floor`) (attempt 4; `rep-persistence.md` has the full list) | TICKET-044 | yes |
+| `docs/design/specs/rep-persistence.md`, `tests/test_rep_persistence.py`, `scripts/attempt4_ablation.py` | TICKET-044 | yes |
 | Tests: `tests/test_*.py` per module above | with each ticket | yes |
 
 ## Delivery Verification Plan

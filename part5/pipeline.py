@@ -10,7 +10,7 @@ import numpy as np
 
 from .align import ALIGN_MEASURES, Alignment, AlignmentError, align, diagonal_alignment
 from .detect import detect_full, load_rules, on_file, summary
-from .feet import load_side, pair_of
+from .feet import load_side, pair_of, resampled_series
 from .guard import GuardResult, check_movement
 from .guard import diagnostics as guard_diagnostics
 from .insights import insights_of
@@ -22,6 +22,7 @@ from .output import build_analysis, validate_analysis
 from . import profiles
 from .phrasing import BACKENDS, phrase
 from .repwise import RepRun, TooManyPairs, compare, rep_entries, reference_entry
+from .reps import segment
 from .guard import (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NO_USABLE_TEXT, NOT_ENOUGH_VISIBLE, OK,
                     OK_TEXT, REFUSAL_TEXT)
 from .visibility import (NOT_ENOUGH_TEXT, clip_usable, hide_unseen, load_conf, measures_of, moving_check,
@@ -42,8 +43,7 @@ MAX_FPS = 240
 # The alignment builds expected x follower cost arrays per timing measure, so the pair is bounded
 # too: 4,000,000 cells (about 2000 x 2000 frames) keeps one analysis near 1 GB at its peak.
 MAX_CELLS = 4_000_000
-# Why `diagnostics.feet` lists no compared measure when the foot measures were not used (ADR-0015).
-REP_MODE_REASON = "rep mode: the foot measures are not compared repetition by repetition"
+# Why `diagnostics.feet` lists no compared measure when the take could not be aligned (ADR-0015).
 UNALIGNED_REASON = "the take could not be aligned, so nothing was compared"
 
 
@@ -158,10 +158,16 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         guard = check_movement(alignment, exp_m, fol_m, rules)
     except AlignmentError:   # a follower with more reps than the whole-clip band can follow; any other error is a bug
         alignment, guard = None, None
-    # Low match as a whole, and a clip holds several reps: compare one repetition at a time (ADR-0010).
+    # An example of two or more reps is compared one repetition at a time (ADR-0017, ADR-0010); so is a take the whole-clip
+    # guard refuses when either clip holds several reps. A rep-by-rep verdict that does not accept the take leaves the
+    # whole-clip comparison as it was, and its verdict. The floor is a duration (persistence.floor_frames), so every
+    # detection below is told the example's frame rate.
+    exp_f, fol_f = _foot_series(feet, fol.t, fps)
+    exp_reps = segment(exp_m, fps)
     try:
-        rep_run = None if guard is not None and guard.ok else \
-            compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times, vis, max_cells=MAX_CELLS)
+        rep_run = None if guard is not None and guard.ok and exp_reps.reps < 2 else \
+            compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times, vis, max_cells=MAX_CELLS,
+                    expected_segmentation=exp_reps, foot_exp=exp_f, foot_fol=fol_f)
     except TooManyPairs as e:   # reps x reference frames^2 is bounded like the whole pair
         raise _too_many_pairs(fol_ref, e.follower_frames, e.expected_frames) from None
     accepted = rep_run is not None and rep_run.guard.ok
@@ -172,8 +178,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         diagnostics = _rep_diagnostics(rep_run, exp, fol, fps, rules)
         alignment = next(r.alignment for r in rep_run.reps if r.ok)
     else:
-        exp_f, fol_f = _foot_series(feet, fol.t, fps)
-        found = detect_full({**exp_m, **exp_f}, {**fol_m, **fol_f}, alignment, rules)
+        # persistence is judged in each of the example's reps (ADR-0017); an example of one rep is one rep
+        spans = exp_reps.partition(exp.n_frames) if exp_reps.reps > 1 else None
+        found = detect_full({**exp_m, **exp_f}, {**fol_m, **fol_f}, alignment, rules, rep_spans=spans, fps=fps)
         faults = [replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
                   for f in found.faults]
         span = tuple(int(to_original[j]) for j in alignment.follower_span)
@@ -185,7 +192,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     if not vis.full:   # additive to 1.3.0; a full-body take has no `visibility`, so its document is unchanged
         diagnostics["visibility"] = vis.diagnostics(moving_info)
     if feet is not None:   # additive to 1.6.0: only when a feet file was given for either clip
-        diagnostics["feet"] = (feet.hidden(REP_MODE_REASON) if accepted else feet).diagnostics()
+        diagnostics["feet"] = feet.diagnostics()   # ADR-0017: compared rep by rep too, it is no longer hidden in rep mode
     result = PipelineResult(None, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
                             reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None, vis=vis,
                             rules=rules, profile=profile)
@@ -215,10 +222,8 @@ def _foot_series(feet, fol_t, fps):
     if feet is None or not feet.compared:
         return {}, {}
     names = feet.compared
-    stacked = np.stack([feet.follower.series[n] for n in names], axis=1)[:, :, None]
-    resampled, _ = resample(stacked, fol_t, fps)
     return ({n: feet.expected.series[n] for n in names},
-            {n: resampled[:, k, 0] for k, n in enumerate(names)})
+            resampled_series({n: feet.follower.series[n] for n in names}, lambda stack: resample(stack, fol_t, fps)))
 
 
 def _match(stats, low, rules):

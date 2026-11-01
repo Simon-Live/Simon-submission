@@ -68,7 +68,9 @@ def score_block(result, rules=None):
 
 def _rep_timeline(result, rules):
     """One window per follower rep: an accepted rep is scored on every miss found in it (not only the ones
-    the take reports), a rep that did not match the example is shown but not scored. `per_rep` stays (1.3.0)."""
+    the take reports), and on the faults the take reports that it shows at `min_fraction` of itself without the floor
+    (`RepResult.continued`, ADR-0017); a rep that did not match the example is shown but not scored. `per_rep` stays
+    (1.3.0)."""
     rules = rules or load_rules()
     p = score.params_of(rules)
     tempo = profiles.tempo_of(rules)   # ADR-0016: the profile's tempo words and, for dance, its charge
@@ -80,7 +82,7 @@ def _rep_timeline(result, rules):
             continue
         ratio = score.span_ratio(span, (float(r.expected.t[0]), float(r.expected.t[-1])))   # ADR-0014: rep over example rep
         faults = []
-        for f in r.faults:
+        for f in [*r.faults, *r.continued]:
             # the take's coaching line carries the first rep's time, so each rep says its own (text_timed)
             faults.append(fault_to_dict(f, _fault_times(f, r.expected, fol, r.follower_positions, r.alignment,
                                                         r.to_original)))
@@ -129,8 +131,22 @@ def analyse(expected, follower, rules=None, **feet):
     return analysis
 
 
+def rep_mean_z(result, rules):
+    """The mean z of a take compared rep by rep: the mean over its accepted reps' frames, each rep against its own
+    reference (None when no rep could be measured)."""
+    parts = [(score.mean_z(aligned_of(r, result.vis), rules), len(r.expected.t)) for r in result.reps if r.ok]
+    parts = [(z, n) for z, n in parts if z is not None]
+    return sum(z * n for z, n in parts) / sum(n for _, n in parts) if parts else None
+
+
 def take_row(label, result, rules):
-    """Calibration features of one take. `mean_z` is taken for every aligned take, refused ones included."""
+    """Calibration features of one take. `mean_z` is taken for every aligned take, refused ones included. A take compared
+    rep by rep (ADR-0017: any take of a multi-rep example) has its faults measured against the whole example and its
+    `mean_z` over its reps; the shipped score parameters were calibrated on the whole-clip rows and stay frozen."""
+    if result.reps:
+        return {"take_id": label["take_id"], "lighting": label["lighting"], "n_labelled": len(label["faults"]),
+                "faults": [score.fault_features(f, result.expected.n_frames) for f in result.analysis["faults"]],
+                "mean_z": rep_mean_z(result, rules)}
     aligned = aligned_of(result)
     n = len(aligned["exp_to_fol"])
     return {"take_id": label["take_id"], "lighting": label["lighting"], "n_labelled": len(label["faults"]),

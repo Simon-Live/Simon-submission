@@ -145,8 +145,9 @@ One JSON object, read by `part5.profiles.load()`, validated on every read. Not p
 - Effective thresholds are computed, never typed. On `rules.json` as it stands before TICKET-040: position thresholds
   `forearm_out` 17, `thigh_out` 13, `foot_out` 6, `knee_valgus` 9, `trunk_lean_forward` 9, `trunk_lean_side` 9,
   `shoulder_tilt` 9, `head_forward` 18 become 25.5, 19.5, 9, 13.5, 13.5, 13.5, 13.5, 27 under `rehab` and 21.25, 16.25,
-  7.5, 11.25, 11.25, 11.25, 11.25, 22.5 under `dance`; the range thresholds `elbow_flexion` 20, `knee_flexion` 9,
-  `upper_arm_out` 10, `upper_arm_forward` 15, `thigh_forward` 15 do not move. The foot measures take the position
+  7.5, 11.25, 11.25, 11.25, 11.25, 22.5 under `dance`; the range thresholds `elbow_flexion` 20, `knee_flexion` 10 (it was
+  9 until the attempt 4 re-sweep under the split floor), `upper_arm_out` 11 (it was 10), `upper_arm_forward` 15,
+  `thigh_forward` 15 do not move. The foot measures take the position
   multiplier from the cue table without an entry of their own.
 - Expectation, not a target: on seed 5 `rehab` and `dance` lose recall on the position fault types (`foot_out`,
   `knee_caving`, and some of `trunk_lean`) and none on the range types (`arms_wider`, `elbow_bent`, `knees_shallow`).

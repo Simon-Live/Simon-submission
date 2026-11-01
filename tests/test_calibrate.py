@@ -1,12 +1,13 @@
 """`python -m part5.calibrate` (docs/specs/calibration.md): the seed 5 sweep, the guard calibration and
 docs/thresholds.md. Small subsets of the committed seed 5 takes keep these fast; no held-out seed is read."""
 import json
+import re
 import shutil
 from pathlib import Path
 
 import pytest
 
-from part5 import calibrate
+from part5 import calibrate, sweep
 from part5.detect import load_rules
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -56,16 +57,16 @@ def cells(**by_angle):
 
 
 def test_grid_is_one_degree_steps_around_the_current_value():
-    p = calibrate.Param("foot_out threshold_deg", ("measures", "foot_out", "threshold_deg"), 1.0, 1.0, float("inf"), 6)
-    assert calibrate.grid(p, 6.0, 6) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
-    assert calibrate.grid(p, 9.0, 2) == [7.0, 8.0, 9.0, 10.0, 11.0]
+    p = sweep.Param("foot_out threshold_deg", ("measures", "foot_out", "threshold_deg"), 1.0, 1.0, float("inf"), 6)
+    assert sweep.grid(p, 6.0, 6) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+    assert sweep.grid(p, 9.0, 2) == [7.0, 8.0, 9.0, 10.0, 11.0]
 
 
 def test_objective_is_precision_and_correct_takes_first_then_the_lowest_recall_across_angles():
-    ok_low = calibrate.objective(cells(front=(0.9, 0.7, 0), **{"45": (0.9, 0.9, 0)}, side=(0.9, 0.95, 0)))
-    ok_high = calibrate.objective(cells(front=(0.9, 0.8, 0), **{"45": (0.9, 0.8, 0)}, side=(0.9, 0.8, 0)))
-    low_precision = calibrate.objective(cells(front=(0.84, 1.0, 0), **{"45": (1.0, 1.0, 0)}, side=(1.0, 1.0, 0)))
-    wrong_on_correct = calibrate.objective(cells(front=(1.0, 1.0, 1), **{"45": (1.0, 1.0, 0)}, side=(1.0, 1.0, 0)))
+    ok_low = sweep.objective(cells(front=(0.9, 0.7, 0), **{"45": (0.9, 0.9, 0)}, side=(0.9, 0.95, 0)))
+    ok_high = sweep.objective(cells(front=(0.9, 0.8, 0), **{"45": (0.9, 0.8, 0)}, side=(0.9, 0.8, 0)))
+    low_precision = sweep.objective(cells(front=(0.84, 1.0, 0), **{"45": (1.0, 1.0, 0)}, side=(1.0, 1.0, 0)))
+    wrong_on_correct = sweep.objective(cells(front=(1.0, 1.0, 1), **{"45": (1.0, 1.0, 0)}, side=(1.0, 1.0, 0)))
     assert ok_low == (True, 0, 0.7) and ok_high == (True, 0, 0.8)
     assert ok_high > ok_low > low_precision and ok_low > wrong_on_correct
     assert low_precision[0] is False and wrong_on_correct[0] is False
@@ -79,68 +80,70 @@ def plateau_rows(best_values, worse_values=()):
 
 def test_the_middle_of_the_plateau_is_kept_not_its_edge():
     rows = plateau_rows([9, 10, 11, 12], worse_values=[8, 13, 14])
-    assert calibrate.best(rows)["value"] == 11.0  # middle 10.5, rounded up to the grid step
-    assert calibrate.best(plateau_rows([4, 5, 6], [3, 7]))["value"] == 5.0
+    assert sweep.best(rows)["value"] == 11.0  # middle 10.5, rounded up to the grid step
+    assert sweep.best(plateau_rows([4, 5, 6], [3, 7]))["value"] == 5.0
 
 
 def test_a_split_plateau_uses_its_longest_run_and_equal_runs_go_to_the_larger_values():
     longest = plateau_rows([3, 4, 8, 9, 10, 11], worse_values=[5, 6, 7])
-    assert [r["value"] for r in calibrate.plateau(longest)] == [8.0, 9.0, 10.0, 11.0]
+    assert [r["value"] for r in sweep.plateau(longest)] == [8.0, 9.0, 10.0, 11.0]
     equal = plateau_rows([3, 4, 8, 9], worse_values=[5, 6, 7])
-    assert calibrate.best(equal)["value"] == 9.0
+    assert sweep.best(equal)["value"] == 9.0
 
 
 def test_a_flat_sweep_keeps_the_current_value():
     rows = [{"value": v, "objective": (True, 0, 0.8)} for v in (5.0, 6.0, 7.0)]
-    chosen, note, span = calibrate.choose(rows, 6.0)
+    chosen, note, span = sweep.choose(rows, 6.0)
     assert chosen["value"] == 6.0 and "flat" in note and span == (5.0, 7.0)
 
 
-def test_a_best_value_on_the_grid_edge_extends_the_grid_once_and_says_so(monkeypatch):
-    monkeypatch.setattr(calibrate, "evaluate", lambda prepared, rules: cells(
-        front=(1.0, min(1.0, rules["measures"]["foot_out"]["threshold_deg"] / 20), 0)))
+def test_a_best_value_on_the_grid_edge_extends_the_grid_once_and_says_so():
     rules = {"measures": {"foot_out": {"threshold_deg": 6.0}}}
-    p = calibrate.params(rules)[0]
-    res = calibrate.sweep_param(None, rules, p, radius=3)
+    p = sweep.params(rules)[0]
+    res = sweep.sweep_param(None, rules, p, lambda prepared, rules: cells(
+        front=(1.0, min(1.0, rules["measures"]["foot_out"]["threshold_deg"] / 20), 0)), radius=3)
     values = [r["value"] for r in res["rows"]]
     assert values == [float(v) for v in range(1, 13)]  # 3..9 first, then 1..12 after one extension
     assert res["chosen"]["value"] == 12.0 and "still reaches the grid edge" in res["note"]
     assert res["plateau"] == (12.0, 12.0) and res["grid"] == (1.0, 12.0)
 
 
-def test_a_best_value_inside_the_grid_is_not_extended(monkeypatch):
-    monkeypatch.setattr(calibrate, "evaluate", lambda prepared, rules: cells(
-        front=(1.0, 1.0 - abs(rules["measures"]["foot_out"]["threshold_deg"] - 7.0) / 10, 0)))
+def test_a_best_value_inside_the_grid_is_not_extended():
     rules = {"measures": {"foot_out": {"threshold_deg": 6.0}}}
-    res = calibrate.sweep_param(None, rules, calibrate.params(rules)[0], radius=3)
+    res = sweep.sweep_param(None, rules, sweep.params(rules)[0], lambda prepared, rules: cells(
+        front=(1.0, 1.0 - abs(rules["measures"]["foot_out"]["threshold_deg"] - 7.0) / 10, 0)), radius=3)
     assert [r["value"] for r in res["rows"]] == [3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
     assert res["chosen"]["value"] == 7.0 and res["note"] == ""
 
 
 # ----------------------------------------------------------------- reading the rules generically
-def test_params_cover_every_measure_and_the_persistence_keys_that_exist():
+def test_params_cover_every_body_measure_and_the_persistence_keys_that_exist_and_not_the_foot_thresholds():
     rules = load_rules()
-    names = [p.name for p in calibrate.params(rules)]
-    assert names[:len(rules["measures"])] == [f"{g} threshold_deg" for g in rules["measures"]]
-    assert "min_fraction" in names
+    names = [p.name for p in sweep.params(rules)]
+    body = [g for g in rules["measures"] if g not in calibrate.FOOT_MEASURES]
+    assert names[:len(body)] == [f"{g} threshold_deg" for g in body]
+    assert names[len(body):] == ["min_frames_floor_body", "min_fraction", "min_run_frames", "min_overlap"]   # the foot floor is held
+    assert not [n for n in names if n == "min_frames_floor"]
+    assert not [n for n in names if n.split()[0] in calibrate.FOOT_MEASURES]   # `--feet` owns them (TICKET-040)
+    assert calibrate.FOOT_MEASURES == ("foot_rotation", "ankle_inversion")
     top = {"default": {"threshold_deg": 10.0, "min_fraction": 0.2}, "measures": {"a": {"threshold_deg": 5.0}},
            "min_run_frames": 4, "min_overlap": 0.5}
-    found = {p.name: p.path for p in calibrate.params(top)}
+    found = {p.name: p.path for p in sweep.params(top)}
     assert found == {"a threshold_deg": ("measures", "a", "threshold_deg"), "min_fraction": ("default", "min_fraction"),
                      "min_run_frames": ("min_run_frames",), "min_overlap": ("min_overlap",)}
-    assert [p.name for p in calibrate.params(top, only={"a", "min_overlap"})] == ["a threshold_deg", "min_overlap"]
-    assert calibrate.locate({"default": {}, "measures": {}}, "min_overlap") is None
+    assert [p.name for p in sweep.params(top, only={"a", "min_overlap"})] == ["a threshold_deg", "min_overlap"]
+    assert sweep.locate({"default": {}, "measures": {}}, "min_overlap") is None
 
 
 def test_with_value_leaves_the_original_rules_alone():
     rules = load_rules()
-    changed = calibrate.with_value(rules, ("measures", "foot_out", "threshold_deg"), 99.0)
+    changed = sweep.with_value(rules, ("measures", "foot_out", "threshold_deg"), 99.0)
     assert changed["measures"]["foot_out"]["threshold_deg"] == 99.0
     assert rules["measures"]["foot_out"]["threshold_deg"] != 99.0
 
 
 # ----------------------------------------------------------------- the sweep on real takes
-SWEEP_ARGS = ("--only", "foot_out,min_fraction", "--radius", "1")
+SWEEP_ARGS = ("--only", "foot_out,min_fraction", "--radius", "1", "--workers", "1")
 
 
 def test_the_sweep_prints_a_table_the_chosen_values_and_recall_by_type(tmp_path, capsys):
@@ -164,6 +167,173 @@ def test_the_sweep_does_not_touch_rules_json(tmp_path, capsys):
     before = (ROOT / "part5/rules.json").read_bytes()
     run(capsys, "--set", str(subset(tmp_path)), *SWEEP_ARGS)
     assert (ROOT / "part5/rules.json").read_bytes() == before
+
+
+# ----------------------------------------------------------------- attempt 4: the sweep runs the pipeline (ADR-0017)
+def test_ac_cal_01_the_sweep_runs_every_take_through_the_pipeline_the_foot_takes_and_their_labels_included(tmp_path, capsys):
+    d = subset(tmp_path, keep=("_00_correct", "_09_foot_turned_out"), prefixes=("dance_front_good_",))
+    code, out, err = run(capsys, "--set", str(d), "--only", "min_frames_floor_body", "--workers", "1")
+    assert code == 0 and err == "" and out.startswith("calibrate: seed 5, 2 takes;")
+    assert "foot_turned_out dance     good  1/1" in out        # the foot label is in the recall table, found rep by rep
+    assert "== min_frames_floor_body (current 8) ==" in out
+
+
+def test_ac_cal_01_the_sweep_scores_what_the_pipeline_reports(tmp_path):
+    """`evaluate` is the pipeline's faults scored against the labels: the dance take with a planted foot fault, run the
+    way `make check-5` runs it, is a true positive; the correct one a clean take."""
+    d = calibrate.load_set(subset(tmp_path, keep=("_00_correct", "_09_foot_turned_out"), prefixes=("dance_front_good_",)))
+    takes = calibrate.prepare_feet(d, required=False)
+    m = calibrate.evaluate(takes, load_rules())
+    s = m["slices"]["good/front"]
+    assert (s["tp"], s["fp"], s["fn"], s["takes"], s["correct_takes"], s["faults_on_correct_takes"]) == (1, 0, 0, 2, 1, 0)
+
+
+def test_the_runner_caches_a_rules_variant_and_tells_two_variants_apart_by_all_the_rules(tmp_path):
+    d = calibrate.load_set(subset(tmp_path, keep=("_00_correct",), prefixes=("dance_front_good_",)))
+    takes, calls = calibrate.prepare_feet(d, required=False), []
+
+    def counting(task):
+        calls.append(task[3]["default"]["min_frames_floor"])
+        return []
+    runs = calibrate.PipelineRuns(1, counting)
+    base = load_rules()
+    runs.faults(takes, base), runs.faults(takes, base)
+    other = sweep.with_value(base, ("default", "min_frames_floor"), 20)
+    runs.faults(takes, other)
+    assert calls == [32, 20]
+
+
+def test_a_take_that_names_no_foot_file_is_analysed_without_feet_but_a_named_missing_file_is_an_error(tmp_path):
+    labels = {"seed": 5, "takes": [{**LABELS["takes"][0], "expected_feet": None, "follower_feet": None}]}
+    [t] = calibrate.prepare_feet(labels, required=False)
+    assert t.feet == {}
+    with pytest.raises(calibrate.CalibrateError, match="has no expected_feet file"):
+        calibrate.prepare_feet({"seed": 5, "takes": [{**LABELS["takes"][0], "expected_feet": "nowhere.json"}]},
+                               required=False)
+
+
+def test_a_key_that_still_has_the_best_objective_keeps_its_value_in_a_re_sweep_and_not_in_a_first_calibration():
+    rows = plateau_rows([28, 32, 36], worse_values=[24, 40])
+    kept, note, span = sweep.choose(rows, 32.0, keep_fitting=True)
+    assert kept["value"] == 32.0 and "inside its plateau" in note and span == (28.0, 36.0)
+    assert sweep.choose(rows, 32.0)[0]["value"] == 32.0            # the middle is where a first calibration puts it too
+    off_middle = plateau_rows([24, 28, 32, 36, 40], worse_values=[20, 44])
+    assert sweep.choose(off_middle, 28.0, keep_fitting=True)[0]["value"] == 28.0    # inside, not at the middle: kept
+    assert sweep.choose(off_middle, 28.0)[0]["value"] == 32.0                       # a first calibration recentres it
+    moved = sweep.choose(rows, 24.0, keep_fitting=True)            # 24 is worse: it moves to the middle
+    assert moved[0]["value"] == 32.0 and moved[1] == ""
+
+
+def test_a_current_value_at_either_end_of_its_plateau_goes_to_the_middle_in_a_re_sweep():
+    """Stakeholder-proxy ruling 2026-11-01: a tied current value is kept only strictly inside the longest run."""
+    rows = plateau_rows([28, 32, 36], worse_values=[24, 40])
+    for end in (28.0, 36.0):
+        chosen, note, span = sweep.choose(rows, end, keep_fitting=True)
+        assert chosen["value"] == 32.0 and note == "" and span == (28.0, 36.0), end
+    two = plateau_rows([30, 31], worse_values=[29, 32])           # a run of two has no inside: the plateau middle
+    assert sweep.choose(two, 30.0, keep_fitting=True)[0]["value"] == 31.0
+    one = plateau_rows([30], worse_values=[29, 31])
+    assert sweep.choose(one, 30.0, keep_fitting=True)[0]["value"] == 30.0   # the middle of a single value is itself
+
+
+def test_a_current_value_on_a_shorter_tied_run_goes_to_the_middle_of_the_longest_one():
+    rows = plateau_rows([3, 4, 8, 9, 10, 11, 12], worse_values=[5, 6, 7])    # two tied runs: 3..4 and 8..12
+    chosen, note, span = sweep.choose(rows, 4.0, keep_fitting=True)          # 4 ties at the best but is on the short run
+    assert chosen["value"] == 10.0 and note == "" and span == (8.0, 12.0)
+    assert sweep.choose(rows, 9.0, keep_fitting=True)[0]["value"] == 9.0     # strictly inside the long run: kept
+    assert sweep.choose(rows, 8.0, keep_fitting=True)[0]["value"] == 10.0    # at its start: moved
+
+
+FLOOR = sweep.Param("min_frames_floor_body", ("default", "min_frames_floor_body"), 4, 4, 120, 6)
+
+
+def floor_sweep(current, good, **kw):
+    """`sweep_param` of the body floor from `current`, with `good(value)` saying whether a value has the best recall."""
+    return sweep.sweep_param(None, {"default": {"min_frames_floor_body": current}}, kw.pop("param", FLOOR),
+                             lambda prepared, rules: cells(front=(1.0, 1.0 if good(rules["default"]["min_frames_floor_body"]) else 0.5, 0)),
+                             keep_fitting=True, **kw)
+
+
+def test_the_sweep_reports_what_the_plain_rule_would_choose():
+    res = floor_sweep(28, lambda v: 24 <= v <= 32)
+    assert res["chosen"]["value"] == 28.0 and res["plain"] == 28.0         # 28 is the middle of 24..32: kept and equal
+    at_end = floor_sweep(24, lambda v: 24 <= v <= 32)
+    assert at_end["chosen"]["value"] == 28.0 and at_end["plain"] == 28.0
+    text = "\n".join(sweep.sweep_lines([at_end]) + sweep.change_lines([at_end]))
+    assert "plain rule 28" in text and "plain rule 28" in text.splitlines()[-1]
+
+
+def test_r2_a_plateau_at_the_grid_edge_extends_the_grid_once_before_a_value_is_kept():
+    """Recheck residual 2: the extension used to be skipped whenever the current value was kept, so the plateau ends were the
+    ends of a grid that stopped too early. Now 32 is evaluated on the grid 8..56 (28 and up tie), the plateau reaches 56,
+    the grid is extended once to 4..80, and the plateau is 28..80: 32 is strictly inside it and is kept, on the longer grid."""
+    res = floor_sweep(32, lambda v: v >= 28)
+    assert res["chosen"]["value"] == 32.0 and "kept" in res["note"] and "grid extended once" not in res["note"]
+    assert res["grid"] == (4.0, 80.0) and res["plateau"] == (28.0, 80.0)
+    assert "plateau still reaches the grid edge after one extension" in res["note"]      # 80 is not a bound of the key
+    assert res["plain"] == 56.0        # (28 + 80) / 2 = 54, rounded up to the grid step: the plain rule would move it
+
+
+def test_r2_the_extension_shows_where_a_plateau_that_reached_the_edge_really_ends():
+    """The first grid 4..52 ties from 28 up to its edge; the extension to 4..76 shows the plateau ends at 60. The plateau
+    ends are the extended grid's, not the first grid's edge, and the middle is taken of them (28 is at the start of the run
+    and moves to 44)."""
+    res = floor_sweep(28, lambda v: 28 <= v <= 60)
+    assert res["grid"] == (4.0, 76.0) and res["plateau"] == (28.0, 60.0) and res["chosen"]["value"] == 44.0
+    assert res["note"] == "grid extended once"                       # and the plateau no longer reaches the edge
+
+
+def test_r1_the_plain_rule_is_the_flat_rule_and_then_the_middle_after_the_same_extension():
+    """Recheck residual 1: the plain column was the middle of the tied run even for a flat key (min_overlap 0.4 where the
+    plain rule keeps the flat key at 0.3), and was computed on the grid before the extension (min_fraction 0.33 where the
+    extended plateau runs 0.08 to 0.43 and its middle is 0.28)."""
+    overlap = sweep.Param("min_overlap", ("default", "min_overlap"), 0.1, 0.1, 1.0, 3)
+    flat = sweep.sweep_param(None, {"default": {"min_overlap": 0.3}}, overlap, lambda p, r: cells(front=(1.0, 1.0, 0)),
+                             keep_fitting=True)
+    assert flat["grid"] == (0.1, 0.6) and flat["chosen"]["value"] == 0.3 and flat["plain"] == 0.3
+    assert sweep.best(flat["rows"])["value"] == 0.4        # the old column: the middle of 0.1..0.6, which the rule never uses
+    fraction = sweep.Param("min_fraction", ("default", "min_fraction"), 0.05, 0.05, 0.9, 3)
+    res = sweep.sweep_param(None, {"default": {"min_fraction": 0.38}}, fraction, lambda p, r: cells(
+        front=(1.0, 1.0 if r["default"]["min_fraction"] <= 0.43 else 0.5, 0)), keep_fitting=True)
+    assert res["grid"][0] == 0.08 and res["plateau"] == (0.08, 0.43)     # 0.23 to 0.53 first, 0.08 to 0.68 after one extension
+    assert res["chosen"]["value"] == 0.38 and res["plain"] == 0.28      # (0.08 + 0.43) / 2 = 0.255, up to the grid step
+
+
+def test_r3_a_flat_key_whose_current_value_is_a_grid_bound_is_kept_whichever_rule_would_move_it():
+    """Recheck residual 3: a flat key keeps its current value first (2026-10-29), also at a bound of the grid, where the
+    re-sweep rule alone ("strictly inside the longest run") would move it to the middle. The flat rule wins; the re-sweep
+    rule applies to a key that is not flat."""
+    lowest = sweep.Param("min_run_frames", ("default", "min_run_frames"), 1, 1, 30, 3)
+    for current, expected in ((1, 1.0), (4, 4.0), (30, 30.0)):
+        res = sweep.sweep_param(None, {"default": {"min_run_frames": current}}, lowest, lambda p, r: cells(front=(1.0, 1.0, 0)),
+                                keep_fitting=True)
+        assert res["chosen"]["value"] == expected and "flat" in res["note"], current
+        assert res["grid"][0] == max(1.0, current - 3) and res["grid"][1] == min(30.0, current + 3)   # not extended: flat
+    rows = plateau_rows([5, 6, 7])
+    assert sweep.choose(rows, 5.0, keep_fitting=True)[0]["value"] == 5.0            # flat: kept at the start of the grid
+    assert sweep.choose(rows, 7.0, keep_fitting=True)[0]["value"] == 7.0            # and at its end
+    not_flat = plateau_rows([5, 6, 7], worse_values=[4, 8])
+    assert sweep.choose(not_flat, 5.0, keep_fitting=True)[0]["value"] == 6.0        # the same run, not flat: moved to the middle
+    assert sweep.choose(not_flat, 6.0, keep_fitting=True)[0]["value"] == 6.0
+
+
+def test_a_flat_grid_is_not_extended_and_a_bound_of_the_key_is_not_an_edge():
+    flat = floor_sweep(32, lambda v: True)
+    assert flat["grid"] == (8.0, 56.0) and flat["note"] == "flat on seed 5, current value kept"
+    capped = sweep.Param("min_frames_floor_body", ("default", "min_frames_floor_body"), 4, 4, 20, 6)
+    res = floor_sweep(8, lambda v: True, param=capped)
+    assert res["grid"] == (4.0, 20.0) and res["chosen"]["value"] == 8.0             # the key's own bounds clip the grid
+
+
+def test_n2_a_key_with_a_retimed_top_is_clipped_to_it_and_the_plateau_at_the_top_is_not_an_edge():
+    rules = {"default": {"min_frames_floor_body": 8, "min_fraction": 0.38}, "measures": {"upper_arm_out": {"threshold_deg": 10.0}}}
+    named = {p.name: p for p in sweep.params(rules)}
+    assert named["min_frames_floor_body"].high == 20 and named["upper_arm_out threshold_deg"].high == 11
+    assert named["min_fraction"].high == 0.38
+    assert {p.name: p.high for p in sweep.params(rules, capped=False)}["upper_arm_out threshold_deg"] == float("inf")
+    res = sweep.sweep_param(None, rules, named["upper_arm_out threshold_deg"], lambda p, r: cells(
+        front=(1.0, 1.0 if r["measures"]["upper_arm_out"]["threshold_deg"] >= 10 else 0.5, 0)), keep_fitting=True)
+    assert res["grid"][1] == 11.0 and res["plateau"] == (10.0, 11.0) and res["chosen"]["value"] == 11.0   # not extended past 11
 
 
 # ----------------------------------------------------------------- the guard
@@ -262,6 +432,25 @@ def test_write_thresholds_flag_writes_the_chosen_values_the_guard_and_the_statem
     assert "| foot_out threshold_deg | 6 |" in text and "## Guard limits" in text and "| max_residual |" in text
     assert "Part 4 commit dc3d9f2e70a0d3e95efb60bea1e5ab7fc307d284" in text
     assert "part2-single" in text and calibrate.ATTEMPTS_MARKER in text
+
+
+def test_r11_the_generated_text_takes_the_floor_from_the_data_and_hard_codes_no_history(tmp_path, capsys, monkeypatch):
+    """Pre-freeze review R11: the generated head said "it was 8 until attempt 4" whatever the rules and the sweep were. It
+    now describes the floor and quotes its value from the sweep when the floor was swept."""
+    doc = tmp_path / "thresholds.md"
+    monkeypatch.setattr(calibrate, "THRESHOLDS_DOC", doc)
+    run(capsys, "--set", str(subset(tmp_path, SMALL_KEEP)), "--write-thresholds", "--only", "min_frames_floor_body", "--workers", "1")
+    swept = doc.read_text()
+    assert "until attempt 4" not in swept and "it was 8" not in swept and "moved it to" not in swept
+    assert "A persistence floor is a duration, written as frames at 30 fps" in swept
+    value = re.search(r"It is (\d+) for the body measures here, (\d\.\d\d) s\.", swept)
+    assert value and float(value.group(2)) == round(int(value.group(1)) / 30, 2)       # the sweep's value, as a time
+    assert "The foot measures keep `min_frames_floor` 32 (1.07 s)." in swept           # held, from the rules
+    assert "| min_frames_floor_body | 8 | " in swept and "| plain rule |" in swept and "plain plateau middle" not in swept
+    assert "foot floor min_frames_floor 32" in swept       # in the held-not-swept line beside the foot thresholds
+    run(capsys, "--set", str(subset(tmp_path, SMALL_KEEP)), "--write-thresholds", "--only", "foot_out", "--radius", "1", "--workers", "1")
+    head = doc.read_text().split("Expected clips")[0]
+    assert "is a duration, written as frames at 30 fps" in head and "for the body measures here" not in head   # not swept: no value quoted
 
 
 def test_the_committed_skeleton_has_the_sections_and_the_attempts_marker():
@@ -365,7 +554,7 @@ def test_a_foot_take_is_one_labelled_with_a_foot_measure():
     assert calibrate.is_foot_take({"faults": [FOOT_LABELS["roll_out"]]})
     assert not calibrate.is_foot_take({"faults": [ARMS]}) and not calibrate.is_foot_take({"faults": []})
     foot = [t for t in LABELS["takes"] if calibrate.is_foot_take(t)]
-    assert len(foot) == 48 and len(LABELS["takes"]) - len(foot) == 108   # the default sweep keeps its 108 takes
+    assert len(foot) == 48 and len(LABELS["takes"]) - len(foot) == 108   # the guard's matched population keeps its 108
 
 
 def test_foot_slices_count_only_the_measures_faults_and_list_the_co_fires():

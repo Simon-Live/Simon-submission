@@ -14,7 +14,7 @@ import pytest
 
 from part5 import cli, pipeline, repwise, score
 from part5.align import AlignmentError
-from part5.detect import Fault, load_rules
+from part5.detect import Fault, load_rules, overlaps_side
 from part5.io import JOINTS, InputError
 from part5.measures import MEASURES
 from part5.measures import compute as plain_measures
@@ -284,8 +284,9 @@ def test_r5_expected_frames_runs_and_phase_are_on_the_expected_files_frames(offs
 def test_r5_a_fault_is_the_first_reps_local_one_shifted_by_the_references_start(offset_pair):
     a, shift = offset_pair.analysis, offset_pair.analysis["diagnostics"]["expected_reference"]["frames"][0]
     for f in a["faults"]:
+        # a fault on both sides may have been found on one side in its first rep (aggregate_faults counts that toward it)
         local = next(x for x in offset_pair.reps[f["reps"][0]].faults
-                     if (x.measure, x.side, x.direction) == (f["measure"], f["side"], f["direction"]))
+                     if overlaps_side([(x.measure, x.side, x.direction)], (f["measure"], f["side"], f["direction"])))
         assert f["expected_frames"] == [local.expected_frames[0] + shift, local.expected_frames[1] + shift]
         assert f["runs"] == [[s + shift, e + shift] for s, e in local.runs]
 

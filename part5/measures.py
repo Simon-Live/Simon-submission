@@ -67,8 +67,23 @@ def _forward_from_down(seg):
 
 
 def _lateral(seg):
-    """Lean of a segment from vertical in the frontal plane, positive = toward the subject's left."""
+    """Lean of a segment from vertical in the frontal plane, positive = toward the subject's left.
+
+    The angle of its frontal projection, so it wraps once the segment passes horizontal in the sagittal plane (a
+    trunk hinged 90 degrees forward has no height left to lean from). Used for the neck of the head-and-shoulder view
+    measures only; the trunk uses `_sideways`."""
     return np.degrees(np.arctan2(seg[:, 0], seg[:, 1]))
+
+
+def _sideways(seg):
+    """Lean of a segment out of the sagittal plane, positive = toward the subject's left (ADR-0017).
+
+    `asin` of the segment's sideways component over its length, written as an `arctan2` against the rest of the
+    vector so a zero length is not a division. It stays in -90..90 degrees, is continuous, and does not depend on how
+    far the segment has hinged forward: a trunk bent 0 to 180 degrees forward with no side lean reads 0, where the
+    angle of the frontal projection (`_lateral`) wraps to 180 degrees past 90 (moalborati/simon#59: 155 degrees on a real
+    Romanian deadlift)."""
+    return np.degrees(np.arctan2(seg[:, 0], np.hypot(seg[:, 1], seg[:, 2])))
 
 
 def _knee_valgus(hip, knee, ankle, side):
@@ -259,7 +274,7 @@ def compute(positions):
         # trunk aren't "raised" or "lowered", the trunk lean is the fault.
         sh, el = p[:, J[f"{side}_shoulder"]], p[:, J[f"{side}_elbow"]]
         out[f"{side}_upper_arm_forward"] = _forward_from_down(el - sh) + out["trunk_lean_forward"]
-    out["trunk_lean_side"] = _lateral(spine)
+    out["trunk_lean_side"] = _sideways(spine)   # ADR-0017: bounded through a deep forward hinge
     sl = p[:, J["left_shoulder"]] - p[:, J["right_shoulder"]]
     out["shoulder_tilt"] = np.degrees(np.arctan2(sl[:, 1], np.hypot(sl[:, 0], sl[:, 2])))
     head = p[:, J["nose"]] - _mid(p, "left_shoulder", "right_shoulder")

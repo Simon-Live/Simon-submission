@@ -17,7 +17,7 @@ from part5.detect import load_rules
 from part5.feet import FOOT_MIN_CONF, FOOT_POINTS, MIN_MATCH_S, MIN_SEEN_SHARE, load_side
 from part5.io import JOINTS, InputError, load_clip
 from part5.measures import ALL_SPECS, FOOT_MEASURES, MEASURES, compute_feet
-from part5.pipeline import REP_MODE_REASON, UNALIGNED_REASON, run
+from part5.pipeline import UNALIGNED_REASON, run
 from part5.score_report import score_block
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -540,15 +540,18 @@ def test_ac_foot_11_a_file_that_matches_no_frame_in_time_is_an_error_even_with_t
         analyse_with(tmp_path, expected=side_doc(EXPECTED), follower=late)
 
 
-def test_ac_foot_11_a_take_compared_rep_by_rep_hides_the_foot_measures_with_the_reason(tmp_path):
+def test_ac_foot_11_a_take_compared_rep_by_rep_compares_the_foot_measures_too(tmp_path):
+    """ADR-0017 (it was hidden in rep mode before attempt 4): the foot series are cut and resampled rep by rep like the
+    joints, so a pair with usable feet on both sides lists its foot measures as compared in rep mode as it does whole."""
     exp, fol = side_doc(TRAINER, window=(0.0, 0.0)), side_doc(FAST, window=(0.0, 0.0))
     with_feet = analyse_with(tmp_path, expected=exp, follower=fol, exp_clip=TRAINER, fol_clip=FAST)
     without = run(str(TRAINER), str(FAST))
     assert with_feet.reps is not None    # the lateral-raise pair is accepted rep by rep (ADR-0010)
     info = with_feet.analysis["diagnostics"]["feet"]
-    assert info["compared"] == [] and info["hidden_reason"] == REP_MODE_REASON
-    assert info["expected"]["usable"] == FOUR      # the files were fine; the mode is what hid them
-    assert with_feet.analysis["faults"] == without.analysis["faults"]
+    assert info["compared"] == FOUR and info["hidden_reason"] is None
+    assert info["expected"]["usable"] == info["follower"]["usable"] == FOUR
+    assert [f for f in with_feet.analysis["faults"] if f["measure"] not in ("foot_rotation", "ankle_inversion")] \
+        == without.analysis["faults"]
 
 
 def test_ac_foot_11_a_take_that_cannot_be_aligned_still_says_the_feet_were_not_compared(tmp_path):

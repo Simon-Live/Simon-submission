@@ -143,8 +143,10 @@ Pearson correlation of the expected and matched follower series over the measure
 
 ### Repetitions
 
-When the whole-clip guard would refuse and either clip holds more than one repetition, the take is
-compared one repetition at a time (`part5/reps.py`, `part5/repwise.py`). Then:
+When the whole-clip guard would refuse and either clip holds more than one repetition, or (since attempt 4, ADR-0017) the
+expected clip holds two or more whatever the guard says, the take is compared one repetition at a time (`part5/reps.py`,
+`part5/repwise.py`; each follower rep against the example rep that matches it, the foot measures included, persistence
+judged in the rep: `docs/specs/rep-persistence.md`). Then:
 
 - `diagnostics.expected_reference`: `kind` (`first_rep` or `whole`), `frames`, `span_s`, `expected_reps`,
   `follower_reps` and the `measure` the cuts were taken on;

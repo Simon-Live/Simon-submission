@@ -138,6 +138,131 @@ def test_a_single_rep_keeps_every_fault_and_refused_reps_are_not_counted():
     assert all(i == [0] for _, i, _ in kept)
 
 
+def sided(side, mag=-12.0, measure="knee_flexion"):
+    """`fault()` on one side (the joint named as detection names it)."""
+    return replace(fault(measure, mag), side=side, joint="knee" if side == "both" else f"{side}_knee")
+
+
+def keys_of(kept):
+    return [(f.measure, f.side, f.joint, i) for f, i, _ in kept]
+
+
+def test_b2_a_fault_found_on_one_side_in_one_rep_and_on_both_in_another_is_one_fault_on_both():
+    """Pre-freeze review B2: left in rep 0 and both in rep 1 were each in 1 of 2 reps, each met the half rule, and the
+    take reported the fault twice. A one-sided occurrence counts toward `both`, and a `both` fault covers the one-sided
+    ones, so it is reported once, from the reps that found either side of it."""
+    kept = repwise.aggregate_faults([rep(0, [sided("left", -10.0)]), rep(1, [sided("both", -14.0)])])
+    assert keys_of(kept) == [("knee_flexion", "both", "knee", [0, 1])]
+    assert kept[0][0].magnitude_deg == -12.0 and kept[0][0].expected_frames == (2, 9)   # the median size of the two reps
+    assert [f.side for _, f in kept[0][2]] == ["left", "both"]                          # the occurrences stay as found
+
+
+def test_b2_the_first_occurrence_names_the_both_fault_whichever_side_it_was_found_on():
+    kept = repwise.aggregate_faults([rep(0, [sided("right")]), rep(1, [sided("both")])])
+    assert keys_of(kept) == [("knee_flexion", "both", "knee", [0, 1])]    # the right joint's side is stripped, as `both` does
+
+
+def test_b2_a_rep_counts_once_toward_both_even_when_its_two_sides_did_not_merge():
+    reps4 = [rep(0, [sided("left"), sided("right", -20.0)]), rep(1, [sided("both")]), rep(2, []), rep(3, [])]
+    [(fault_, indices, occ)] = repwise.aggregate_faults(reps4)
+    assert fault_.side == "both" and indices == [0, 1] and len(occ) == 2
+    assert occ[0][1].magnitude_deg == -20.0                               # the larger of the rep's two sides stands for it
+    one_rep = [rep(0, [sided("left"), sided("right")]), rep(1, [sided("both")]), rep(2, []), rep(3, []), rep(4, [])]
+    assert repwise.aggregate_faults(one_rep) == []                         # 2 of 5 is under half
+
+
+def test_b2_one_sided_faults_alone_are_reported_as_they_always_were():
+    left_right = repwise.aggregate_faults([rep(0, [sided("left")]), rep(1, [sided("right")])])
+    assert sorted(keys_of(left_right)) == [("knee_flexion", "left", "left_knee", [0]),
+                                           ("knee_flexion", "right", "right_knee", [1])]   # no `both` key to count toward
+    left_twice = repwise.aggregate_faults([rep(0, [sided("left")]), rep(1, [sided("left")]), rep(2, [])])
+    assert keys_of(left_twice) == [("knee_flexion", "left", "left_knee", [0, 1])]
+
+
+def test_b2_a_both_fault_covers_only_its_own_measure_and_direction():
+    other = replace(sided("left", measure="elbow_flexion"), direction="more")
+    kept = repwise.aggregate_faults([rep(0, [sided("left"), other]), rep(1, [sided("both")])])
+    assert sorted((f.measure, f.side) for f, _, _ in kept) == [("elbow_flexion", "left"), ("knee_flexion", "both")]
+    opposite = replace(sided("left"), direction="more")
+    kept = repwise.aggregate_faults([rep(0, [opposite]), rep(1, [sided("both")])])
+    assert sorted((f.direction, f.side) for f, _, _ in kept) == [("less", "both"), ("more", "left")]
+
+
+def scripted_sides(monkeypatch, per_rep):
+    """`repwise.detect_full` answering rep after rep with the sides in `per_rep` (a list of side lists); the continuing
+    detection (`continue_reported`) is switched off so these cases count the strict faults only."""
+    calls = {"i": 0}
+    monkeypatch.setattr(repwise, "continue_reported", lambda *a, **k: None)
+
+    def scripted(ref_m, fol_m, alignment, rules, candidates=False, fps=None):
+        i, calls["i"] = calls["i"], calls["i"] + 1
+        return Detection([side_fault(s) for s in per_rep[i]], [])
+    monkeypatch.setattr(repwise, "detect_full", scripted)
+
+
+def sides_by_rep(run_):
+    return [[(f["measure"], f["side"]) for f in r.analysis["faults"]] for r in run_.reps]
+
+
+def test_b2_a_rep_that_found_one_side_of_a_reported_both_fault_has_it_in_its_window(fast, monkeypatch):
+    """`compare`: rep 0 found `left`, rep 1 `both`, rep 2 `right`; each side is in half of the 8 reps (4 each, N1), so
+    the take reports `both`, and rep 0's window keeps its own `left` (it used to be dropped from the window by the exact
+    key, then added again by the continuing detection)."""
+    scripted_sides(monkeypatch, [["left"], ["both"], ["right"], ["both"], ["both"], [], [], []])
+    run_ = compare_under(fast, load_rules())
+    assert [(f.measure, f.side) for f in run_.faults] == [("thigh_out", "both")] and run_.times[0]["reps"] == [0, 1, 2, 3, 4]
+    assert sides_by_rep(run_)[:5] == [[("thigh_out", "left")], [("thigh_out", "both")], [("thigh_out", "right")]] + \
+           [[("thigh_out", "both")]] * 2
+
+
+def test_n1_a_side_found_in_under_half_the_reps_is_not_reported_as_both():
+    """Recheck N1: right in reps 0, 1 and 2 and `both` in rep 3 of 4. Right is in all 4 reps, left in only 1 (as part of
+    `both`), so the take reports the right side, not both; the `both` rep is among the reps it was found in."""
+    reps4 = [rep(i, [sided("right", -10.0 - i)]) for i in range(3)] + [rep(3, [sided("both", -30.0)])]
+    [(fault_, indices, occ)] = repwise.aggregate_faults(reps4)
+    assert (fault_.side, fault_.joint) == ("right", "right_knee") and indices == [0, 1, 2, 3]
+    assert fault_.magnitude_deg == -11.0 and [r.index for r, _ in occ] == [0, 1, 2]    # sized from the right side's own reps
+
+
+def test_n1_the_lateral_raise_split_of_the_real_fast_follower_is_the_right_side_alone():
+    """The shape of pexels-40297504 against 5319084 (8 reps): right in reps 4, 5, 6 and both in rep 7."""
+    reps8 = [rep(i, []) for i in range(4)] + [rep(i, [sided("right")]) for i in (4, 5, 6)] + [rep(7, [sided("both")])]
+    kept = repwise.aggregate_faults(reps8)
+    assert keys_of(kept) == [("knee_flexion", "right", "right_knee", [4, 5, 6, 7])]
+
+
+def test_n1_each_side_is_counted_over_the_reps_that_found_it_alone_or_as_both():
+    # left in rep 1 and both in rep 0 of 3: left is in 2 reps (half of 3 is 1.5), right in 1 only
+    reps3 = [rep(0, [sided("both")]), rep(1, [sided("left")]), rep(2, [])]
+    assert keys_of(repwise.aggregate_faults(reps3)) == [("knee_flexion", "left", "left_knee", [0, 1])]
+    # one side passing on its own and the other through `both` and a one-sided rep: both sides pass, so `both`, from the
+    # reps that found either side (rep 1 left, reps 2 and 3 right, rep 0 both): left in {0, 1}, right in {0, 2, 3}
+    reps4 = [rep(0, [sided("both")]), rep(1, [sided("left")]), rep(2, [sided("right")]), rep(3, [sided("right")])]
+    assert keys_of(repwise.aggregate_faults(reps4)) == [("knee_flexion", "both", "knee", [0, 1, 2, 3])]
+    # a `both` fault alone in 1 of 8 reps passes neither side
+    assert repwise.aggregate_faults([rep(0, [sided("both")])] + [rep(i, []) for i in range(1, 8)]) == []
+
+
+def test_n1_without_a_both_occurrence_each_key_is_judged_on_its_own_as_before():
+    reps4 = [rep(0, [sided("left")]), rep(1, [sided("left")]), rep(2, [sided("right")]), rep(3, [sided("right")])]
+    assert sorted(keys_of(repwise.aggregate_faults(reps4))) == [("knee_flexion", "left", "left_knee", [0, 1]),
+                                                                ("knee_flexion", "right", "right_knee", [2, 3])]
+    assert repwise.aggregate_faults([rep(0, [sided("left")]), rep(1, []), rep(2, []), rep(3, [])]) == []
+
+
+def test_n1_a_both_fault_stays_in_the_window_of_a_rep_when_the_take_reports_either_side(fast, monkeypatch):
+    """`compare`: right in reps 0 to 3, `both` in rep 4 of 8. The take reports the right side only (left is in 1 rep),
+    and rep 4's `both` fault is in its window, as is its own right fault in the others."""
+    scripted_sides(monkeypatch, [["right"]] * 4 + [["both"]] + [[]] * 3)
+    run_ = compare_under(fast, load_rules())
+    assert [(f.measure, f.side) for f in run_.faults] == [("thigh_out", "right")] and run_.times[0]["reps"] == [0, 1, 2, 3, 4]
+    assert sides_by_rep(run_) == [[("thigh_out", "right")]] * 4 + [[("thigh_out", "both")]] + [[]] * 3
+    scripted_sides(monkeypatch, [["left"]] * 4 + [["right"]] + [[]] * 3)    # the other side is not the take's fault
+    run_ = compare_under(fast, load_rules())
+    assert sorted((f.measure, f.side) for f in run_.faults) == [("thigh_out", "left")]
+    assert sides_by_rep(run_)[4] == []
+
+
 # --- the real lateral-raise pairs ---
 @pytest.fixture(scope="module")
 def fast():
@@ -178,10 +303,17 @@ def test_the_slow_follower_reports_its_faults_once_with_reps_and_the_files_clock
 
 
 def test_a_rep_by_rep_take_is_scored_on_each_reps_own_misses(fast):
-    """ADR-0013: no fault is in half the reps, so the take reports none, but each rep's own misses cost it
-    points and the score is the mean of the reps, which the timeline shows rep by rep."""
+    """ADR-0013: the take reports only the two faults found in half the reps (reps 4 to 7), each on the right side: the
+    right elbow and hand are in all four of them (alone in reps 4 to 6, as part of `both` in rep 7), the left in one at
+    most, which is under half (recheck N1; it was reported as both sides while each side was counted over the other's
+    reps). Each rep's own misses cost it points, the left upper arm of rep 5 that the take does not report too, and the
+    score is the mean of the reps, which the timeline shows rep by rep."""
     sc = fast.analysis["score"]
-    assert fast.analysis["faults"] == []
+    assert [(f["measure"], f["side"], f["reps"], f["text"]) for f in fast.analysis["faults"]] == \
+           [("elbow_flexion", "right", [4, 5, 6, 7], "right elbow bent slightly more than the example"),
+            ("forearm_out", "right", [4, 5, 6, 7], "right hand too close in")]
+    assert sc["value"] == 80 and sc["grade"] == "B"        # 77 (C) before the re-sweep moved `upper_arm_out` to 11: rep 3's
+    #                                                        left upper arm, a fault at 10 degrees, is under the new threshold
     timeline = [w for w in sc["timeline"] if w["compared"]]
     assert sc["basis"] == "reps" and len(timeline) == len(sc["per_rep"]) == 8
     assert all(w["misses"] == [] and w["value"] >= 90 for w in timeline[:3])          # the first reps are clean
@@ -212,15 +344,16 @@ def profile_rep(index, faults, fitness_faults):
 
 
 def test_the_reviewers_split_is_dropped_because_fitness_does_not_report_it():
-    """4 reps. fitness: left in rep 0, both in rep 1, so neither is in half the reps and the take reports nothing.
-    rehab splits rep 1 into left: left is then in 2 of 4 and passes the half rule on its own, which fitness never did."""
-    reps4 = [profile_rep(0, [side_fault("left")], [side_fault("left")]),
+    """6 reps. fitness: left in rep 0, both in rep 1; the left counts toward the `both` fault (B2), so that is 2 of 6
+    and under half: the take reports nothing. rehab splits rep 1 into left: left is then in 3 of 6 (reps 0, 1, 2) and
+    passes the half rule on its own, which fitness never did."""
+    reps6 = [profile_rep(0, [side_fault("left")], [side_fault("left")]),
              profile_rep(1, [side_fault("left")], [side_fault("both")]),
-             profile_rep(2, [], []), profile_rep(3, [], [])]
-    assert repwise.aggregate_faults(reps4, "fitness_faults") == []
-    kept = repwise.aggregate_faults(reps4)
+             profile_rep(2, [side_fault("left")], [])] + [profile_rep(i, [], []) for i in (3, 4, 5)]
+    assert repwise.aggregate_faults(reps6, "fitness_faults") == []
+    kept = repwise.aggregate_faults(reps6)
     assert [(f.measure, f.side) for f, _, _ in kept] == [("thigh_out", "left")]   # the gap: the profile alone keeps it
-    assert repwise.only_what_fitness_reports(kept, reps4) == []
+    assert repwise.only_what_fitness_reports(kept, reps6) == []
 
 
 def test_a_fault_fitness_reports_on_both_sides_may_stay_on_one_side_under_a_profile():
@@ -241,10 +374,14 @@ def compare_under(res, rules):
 
 
 def script_detect(monkeypatch, profile_sides, fitness_sides):
-    """`repwise.detect_full` answering, rep by rep, with these sides: one list for the profile's rules, one for fitness's."""
+    """`repwise.detect_full` answering, rep by rep, with these sides: one list for the profile's rules, one for fitness's.
+    The second detection of a reported fault in the reps that miss it (`continue_reported`, ADR-0017) is switched off: it
+    answers from the same scripts and these cases count the detections the aggregation makes (it is in
+    test_rep_persistence.py)."""
     calls = {"profile": 0, "fitness": 0}
+    monkeypatch.setattr(repwise, "continue_reported", lambda *a, **k: None)
 
-    def scripted(ref_m, fol_m, alignment, rules, candidates=False):
+    def scripted(ref_m, fol_m, alignment, rules, candidates=False, fps=None):
         kind = "profile" if "profile" in rules else "fitness"
         i, calls[kind] = calls[kind], calls[kind] + 1
         return Detection([side_fault(side) for side in (profile_sides if kind == "profile" else fitness_sides)[i]], [])
@@ -254,10 +391,10 @@ def script_detect(monkeypatch, profile_sides, fitness_sides):
 
 
 def test_compare_under_a_profile_drops_the_split_fitness_does_not_report(fast, monkeypatch):
-    """The same split through `compare` on the real 8-rep take: fitness left, left, both, both (2 of 8 each, nothing
+    """The same split through `compare` on the real 8-rep take: fitness left, then both (2 of 8 together, nothing
     reported), rehab left in the first four (4 of 8, enough on its own)."""
     rules = profiles.effective_rules(load_rules(), "rehab")
-    calls = script_detect(monkeypatch, [["left"]] * 4 + [[]] * 4, [["left"]] * 2 + [["both"]] * 2 + [[]] * 4)
+    calls = script_detect(monkeypatch, [["left"]] * 4 + [[]] * 4, [["left"], ["both"]] + [[]] * 6)
     run_ = compare_under(fast, rules)
     assert calls == {"profile": 8, "fitness": 8} and run_.guard.ok and len(run_.reps) == 8
     assert run_.faults == [] and run_.times == []
@@ -349,11 +486,29 @@ def test_the_stock_squat_front_view_is_now_compared_rep_by_rep():
     assert r.analysis["status"]["code"] == "ok" and r.reps and r.analysis["score"] is not None
 
 
-# --- seed 5 passes through unchanged ---
-def test_no_seed5_take_is_compared_rep_by_rep_and_its_document_has_no_rep_fields():
+# --- seed 5: a one-rep example is compared whole, a two-rep example rep by rep (ADR-0017) ---
+# The dance takes the rep-by-rep verdict does not accept (a rep fails the guard or the span share) keep the whole-clip
+# comparison and its verdict: one at good light and seven at low light, none of them warned.
+NOT_REP_BY_REP = {"dance_front_good_04_knees_shallow-both", "dance_front_low_01_correct", "dance_front_low_03_foot_out-right",
+                  "dance_front_low_06_trunk_lean-center", "dance_45_low_01_correct", "dance_45_low_07_knee_caving-right",
+                  "dance_45_low_10_foot_turned_in-both", "dance_45_low_11_ankle_rolled_in-left"}
+
+
+def test_ac_rep_4_the_squat_takes_are_compared_whole_and_the_dance_takes_rep_by_rep():
+    """AC-REP-4, amended by attempt 4: the squat example holds one rep, so no exercise take is compared rep by rep and
+    its document has no rep field; the dance example holds two, so its takes are, each follower rep against the example
+    rep that matches it, unless the rep verdict refuses the take, which leaves the whole-clip comparison."""
+    whole = set()
     for take in SEED5["takes"]:
         r = run(str(ROOT / take["expected"]), {"path": str(ROOT / take["follower"]), "take_id": take["take_id"]})
-        assert r.reps is None, take["take_id"]
-        assert r.analysis["schema_version"] == "1.8.0", take["take_id"]
-        assert "reps" not in r.analysis["diagnostics"]["guard"] and "expected_reference" not in r.analysis["diagnostics"]
-        assert all("reps" not in f for f in r.analysis["faults"])
+        d = r.analysis["diagnostics"]
+        assert r.analysis["schema_version"] == "1.8.0" and "warnings" not in r.analysis, take["take_id"]
+        if take["set"] == "exercise" or r.reps is None:
+            assert r.reps is None and "reps" not in d["guard"] and "expected_reference" not in d, take["take_id"]
+            assert all("reps" not in f for f in r.analysis["faults"])
+            whole.add(take["take_id"])
+        else:
+            assert d["expected_reference"]["expected_reps"] == 2 and len(d["guard"]["reps"]) == len(r.reps), take["take_id"]
+            assert [x.expected.n_frames for x in r.reps[:2]] == [43, 61][:len(r.reps)], take["take_id"]
+    assert {t for t in whole if t.startswith("dance")} == NOT_REP_BY_REP
+    assert {t for t in whole if t.startswith("exercise")} == {t["take_id"] for t in SEED5["takes"] if t["set"] == "exercise"}

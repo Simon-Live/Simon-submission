@@ -79,24 +79,29 @@ def _follower_frames(rep):
 
 
 def _rep_replay(result):
-    """The replay of a take compared rep by rep (ADR-0010): the expected reference repeated once per
-    follower rep, and the whole follower take played against it. `reps` lists, per follower rep, the
+    """The replay of a take compared rep by rep (ADR-0010): each follower rep's expected reference (ADR-0017: the
+    expected rep it was compared with, so the references differ in length when the example's reps do) one after the
+    other, and the whole follower take played against them. `reps` lists, per follower rep, the
     expected frames it is shown against (frames of this tiled list, not of the expected file), the follower
-    file's frames and whether the guard passed it. `expected_t` starts at the reference's own time in the
+    file's frames and whether the guard passed it. `expected_t` starts at the first reference's own time in the
     expected file."""
-    ref, reps = result.reps[0].expected, result.reps
-    n, k = ref.n_frames, len(reps)
-    fps = float(clip_fps(ref))
+    reps = result.reps
+    refs = [r.expected for r in reps]
+    sizes = [ref.n_frames for ref in refs]
+    ends = np.cumsum(sizes)
+    fps = float(clip_fps(refs[0]))
     exp_to_fol = [f for r in reps for f in _follower_frames(r)]
     # The first copy of the reference carries the example file's own times; each further copy follows one rep
     # (and one frame step) later, so the list still strictly increases.
-    period = float(ref.t[-1] - ref.t[0]) + 1.0 / fps
-    expected_t = [round(float(t) + i * period, 6) for i in range(k) for t in ref.t]
+    expected_t, start = [], float(refs[0].t[0])
+    for ref in refs:
+        expected_t += [round(start + float(t - ref.t[0]), 6) for t in ref.t]
+        start += float(ref.t[-1] - ref.t[0]) + 1.0 / fps
     return {
         "format": FORMAT,
         "schema_version": SCHEMA_VERSION,
         "fps": fps,
-        "expected": frames_json(np.tile(ref.positions, (k, 1, 1))),
+        "expected": frames_json(np.concatenate([ref.positions for ref in refs])),
         "follower": frames_json(result.follower.positions),
         "exp_to_fol": exp_to_fol,
         "joints": list(JOINTS),
@@ -104,8 +109,8 @@ def _rep_replay(result):
         "expected_t": expected_t,
         "follower_t": [round(float(x), 6) for x in result.follower.t],
         "coordinate_frame": dict(COORDINATE_FRAME),
-        "reps": [{"expected_frames": [i * n, (i + 1) * n - 1], "follower_frames": list(r.span), "ok": bool(r.ok)}
-                 for i, r in enumerate(reps)],
+        "reps": [{"expected_frames": [int(e - n), int(e - 1)], "follower_frames": list(r.span), "ok": bool(r.ok)}
+                 for r, n, e in zip(reps, sizes, ends)],
     }
 
 

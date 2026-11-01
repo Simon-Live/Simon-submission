@@ -6,9 +6,9 @@ on stdout and a short summary on stderr. Exit 0 only when the gate passes, 1 whe
 the file frozen for the seed (no freeze record, or another hash, in docs/thresholds.md), or its `score`
 params are not the ones frozen in fixtures/score-heldout.json.
 
-The gate is the held-out set (`fixtures/input/heldout/`, whose labels.json names the seed: 29,
-then 31, then 37; ADR-0003): good light at each angle separately must reach precision >= 0.85 and
-recall >= 0.75 with no faults on correct takes, and no gated slice may be empty. Everything else
+The gate is the held-out set (`fixtures/input/heldout/`, whose labels.json names the seed: 29, then 31,
+then 37, then the second series 67, 71, 73; ADR-0003, ADR-0017): good light at each angle separately must reach
+precision >= 0.85 and recall >= 0.75 with no faults on correct takes, and no gated slice may be empty. Everything else
 is reported and never gated: the seed 5 tuning slices, low light, the dropout variant, Part 3's
 kit, the stock takes and the movement guard's refusals. Offline and deterministic.
 
@@ -37,7 +37,12 @@ ATTEMPTS = ROOT / "fixtures" / "heldout-attempts.json"
 SCORE_RECORD = ROOT / "fixtures" / "score-heldout.json"
 THRESHOLDS_DOC = ROOT / "docs" / "thresholds.md"
 OUT_DIR = ROOT / "out" / "check-5"
-HELDOUT_SEEDS = (29, 31, 37)  # ADR-0003: fixed now, scored in this order, once each
+# ADR-0003: fixed before any tuning, scored in this order, once each. ADR-0017 appended the second series (67, 71, 73)
+# before any detection change of attempt 4; 59 and 61 stay reserved for the score's retries (ADR-0007), not seeds here.
+HELDOUT_SEEDS = (29, 31, 37, 67, 71, 73)
+# The second series (ADR-0017): a scored seed of it must carry its own `detection_sha256` line in its attempt record
+# (recheck residual 4), so `require_frozen` never judges it by the one global line under "Score".
+SECOND_SERIES = HELDOUT_SEEDS[3:]
 TUNING_SEED = 5
 GATED = ("good/front", "good/45", "good/side")
 MIN_PRECISION = 0.85
@@ -174,7 +179,8 @@ def thresholds_record(seed, text):
     """The freeze commit, rules hash and approach family docs/thresholds.md records for a seed, or {}.
 
     The section is the heading that mentions `seed <n>`, up to the next heading; its lines read
-    `Freeze commit: <sha>`, `rules_sha256: <hash>` and `Approach family: <words>`.
+    `Freeze commit: <sha>`, `rules_sha256: <hash>`, `detection_sha256: <hash>` (the detection rules of that freeze,
+    so a scored seed is checked against its own attempt, pre-freeze review B3) and `Approach family: <words>`.
     """
     head = re.search(rf"^#+[^\n]*\bseed {seed}\b[^\n]*\n(.*?)(?=^#|\Z)", text, re.M | re.S | re.I)
     if not head:
@@ -182,6 +188,7 @@ def thresholds_record(seed, text):
     body, found = head.group(1), {}
     for key, pattern in (("freeze_commit", r"freeze commit:?\s*`?([0-9a-f]{7,40})"),
                          ("rules_sha256", r"rules_sha256:?\s*`?([0-9a-f]{64})"),
+                         ("detection_sha256", DETECTION_SHA_PATTERN),
                          ("approach", r"approach family:?\s*([^\n]+)")):
         m = re.search(pattern, body, re.I)
         if m:
@@ -203,6 +210,8 @@ def attempts_list(seed, current, earlier):
 
 
 def check_seed(seed, attempts, directory):
+    """The seed in `directory`'s labels must be a held-out seed that is not retired and does not skip one: the seed
+    after the last one scored (the next unused), or a scored seed that is the latest (a rerun only verifies it)."""
     if seed not in HELDOUT_SEEDS:
         raise CheckError([f"check-5: {rel(directory)}/labels.json names seed {seed}; "
                           f"the held-out seeds are {', '.join(map(str, HELDOUT_SEEDS))}"])
@@ -211,6 +220,10 @@ def check_seed(seed, attempts, directory):
     if later:
         raise CheckError([f"check-5: seed {seed} is retired: seed {later[0]} was already scored; "
                           f"generate the next unused seed ({next_unused_seed(attempts)})"])
+    wanted = next_unused_seed(attempts)
+    if seed not in {a["seed"] for a in attempts} and seed != wanted:
+        raise CheckError([f"check-5: seed {seed} skips seed {wanted}, which is not scored yet; the held-out seeds are "
+                          f"scored in order (ADR-0003): generate the next unused seed ({wanted})"])
 
 
 def rules_hash(path=RULES_PATH):
@@ -231,18 +244,36 @@ def recorded_detection_hash(text):
     return m.group(1) if m else None
 
 
-def require_frozen(seed, sha, frozen, detection=None, recorded_detection=None):
+def require_frozen(seed, sha, frozen, detection=None, recorded_detection=None, scored=False):
     """A seed is scored only against the rules frozen for it (ADR-0003): docs/thresholds.md must
-    record a rules_sha256 for the seed and it must equal the hash of part5/rules.json now, or (ADR-0007)
-    the detection rules, without the `score` key, must equal the `detection_sha256` recorded under "Score"."""
+    record a rules_sha256 for the seed and it must equal the hash of part5/rules.json now, or (ADR-0007) the detection
+    rules, without the `score` key, must equal the detection hash frozen for the seed. That is the seed's own
+    `detection_sha256` line when its section has one, else (a seed not scored yet) the one recorded under "Score". A
+    seed that is already `scored` (it has an attempt) is judged by its own record alone: the "Score" hash is for the
+    current freeze, and letting it stand for a retired seed would let `make check-5` analyse that seed again under
+    rules it was never frozen for (pre-freeze review B3). A scored seed of the second series (`SECOND_SERIES`, seeds 67,
+    71, 73) must have its own `detection_sha256` line whichever way the rules compare (recheck residual 4): without it
+    the record cannot say what the seed was frozen with, and the check refuses, before any take is analysed.
+
+    What this does not cover (a known limit, stakeholder-proxy ruling on recheck residual 4): the line holds the hash of
+    the detection rules, not of the code. A deliberate revert of rules.json to a retired attempt's bytes, under later
+    code, passes this check; the guard against it is `require_unchanged_scores`, which after the analysis refuses a
+    scored seed whose numbers differ from its recorded attempt. There is no requirement on a `git diff` of `part5/`."""
     if not frozen.get("rules_sha256"):
         raise CheckError([f"check-5: docs/thresholds.md has no freeze record (rules_sha256) for seed {seed}; "
                           "freeze part5/rules.json and record its hash there before scoring the seed"])
-    if detection is not None and detection == recorded_detection:
+    if scored and seed in SECOND_SERIES and not frozen.get("detection_sha256"):
+        raise CheckError([f"check-5: docs/thresholds.md has no detection_sha256 line in the attempt record of seed {seed}, "
+                          "which is scored; a scored seed of the second series is checked against its own freeze "
+                          "(recheck residual 4), so the record must carry the hash of the detection rules it was scored with"])
+    if frozen["rules_sha256"] == sha:
         return
-    if frozen["rules_sha256"] != sha:
-        raise CheckError([f"check-5: part5/rules.json differs from the hash frozen for seed {seed} in "
-                          "docs/thresholds.md; a seed is scored once, against the rules frozen for it"])
+    own = frozen.get("detection_sha256") or (None if scored else recorded_detection)
+    if detection is not None and detection == own:
+        return
+    retired = f" (seed {seed} is scored and retired: generate the next unused seed)" if scored else ""
+    raise CheckError([f"check-5: part5/rules.json differs from the hash frozen for seed {seed} in "
+                      f"docs/thresholds.md; a seed is scored once, against the rules frozen for it{retired}"])
 
 
 def profiles_hash(path=profiles.PROFILES_PATH):
@@ -353,7 +384,9 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
     profiles_sha = profiles_hash(profiles_path or profiles.PROFILES_PATH)
     text = thresholds_path.read_text() if thresholds_path.is_file() else ""
     frozen = thresholds_record(held["seed"], text)
-    require_frozen(held["seed"], sha, frozen, detection, recorded_detection_hash(text))
+    # before any take is analysed: a scored seed under changed detection rules is refused here, not after the rescore
+    require_frozen(held["seed"], sha, frozen, detection, recorded_detection_hash(text),
+                   scored=any(a["seed"] == held["seed"] for a in attempts))
     require_score_frozen(score_params_hash(rules_path), recorded_score_hash(score_record_path or SCORE_RECORD))
     (held_analyses, held_errors), (tune_analyses, tune_errors) = analyse_set(held, root), analyse_set(tune, root)
     if held_errors or tune_errors:

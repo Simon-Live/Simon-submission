@@ -181,3 +181,58 @@ def test_knee_valgus_is_flat_on_the_expected_clips_so_alignment_does_not_time_by
     for name in ("exercise", "dance"):
         res = compute(load_clip(ROOT / f"fixtures/input/expected/{name}/animation.json").positions)
         assert not [n for n in timing_measures(res)[0] if n.endswith("knee_valgus")]
+
+
+# --- trunk_lean_side does not wrap through a deep forward hinge (ADR-0017, moalborati/simon#59 item 4) ---
+def hinged_trunk(hinge_deg, side_deg=0.0, length=0.5):
+    """The standing pose with the trunk bent `side_deg` toward the subject's left and then hinged `hinge_deg` forward
+    about the hips: the shoulder midpoint is `length` from the hip midpoint along the rotated spine. 90 is horizontal,
+    180 upside down."""
+    h, s = np.radians(hinge_deg), np.radians(side_deg)
+    mid = np.array([length * np.sin(s), length * np.cos(s) * np.cos(h), length * np.cos(s) * np.sin(h)])
+    return pose(left_shoulder=list(mid + [0.2, 0, 0]), right_shoulder=list(mid - [0.2, 0, 0]))
+
+
+HINGES = range(0, 181, 5)
+
+
+@pytest.mark.parametrize("hinge", HINGES)
+def test_ac_sl_01_trunk_lean_side_reads_zero_for_a_forward_hinge_with_no_side_lean(hinge):
+    assert m(hinged_trunk(hinge))["trunk_lean_side"] == pytest.approx(0, abs=1e-6)
+
+
+@pytest.mark.parametrize("hinge", HINGES)
+@pytest.mark.parametrize("side", [-20.0, -4.0, 4.0, 20.0])
+def test_ac_sl_02_trunk_lean_side_keeps_its_size_and_sign_for_a_real_side_lean_at_any_hinge(hinge, side):
+    """Positive is toward the subject's left; a lean of `side` degrees reads `side` whether the trunk is upright, level
+    or past level, where the angle of the frontal projection reads about 180 degrees minus the lean."""
+    got = m(hinged_trunk(hinge, side))["trunk_lean_side"]
+    assert got == pytest.approx(side, abs=1e-6) and np.sign(got) == np.sign(side)
+
+
+def test_ac_sl_03_trunk_lean_side_is_bounded_and_continuous_through_a_hinge_of_0_to_120_degrees():
+    hinges = np.arange(0, 120.5, 0.5)
+    for side in (0.0, 8.0, -8.0):
+        series = np.array([m(hinged_trunk(h, side))["trunk_lean_side"] for h in hinges])
+        assert np.all(np.abs(series) <= 90.0)
+        assert np.max(np.abs(np.diff(series))) < 1e-6      # no jump anywhere on the way down
+
+
+def test_ac_sl_03_trunk_lean_side_is_the_angle_out_of_the_sagittal_plane_not_of_its_frontal_projection():
+    """A trunk leaning 30 degrees to the left reads 30 upright and 30 hinged 60 degrees forward (the projection onto
+    the frontal plane would read 45 there), and a trunk hinged past level still reads the lean, not 180 minus it."""
+    assert m(hinged_trunk(0, 30))["trunk_lean_side"] == pytest.approx(30)
+    assert m(hinged_trunk(60, 30))["trunk_lean_side"] == pytest.approx(30)
+    assert m(hinged_trunk(120, 30))["trunk_lean_side"] == pytest.approx(30)
+
+
+def test_ac_sl_05_a_zero_length_trunk_is_not_a_division():
+    p = hinged_trunk(0, 10, length=1e-12)
+    assert np.isfinite(m(p)["trunk_lean_side"])
+
+
+def test_ac_sl_04_the_frontal_projection_the_neck_still_uses_wraps_where_the_trunks_measure_does_not():
+    """Only the trunk changed: `neck_lean_side` (head-and-shoulder takes, which cannot hinge) is as it was."""
+    from part5.measures import _lateral, _sideways
+    hinged = np.array([[0.05, -0.5, 0.8]])    # 5 degrees of sideways lean at the top of a trunk hinged past level
+    assert _lateral(hinged)[0] > 150 and abs(_sideways(hinged)[0]) < 5

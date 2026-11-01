@@ -11,7 +11,7 @@ Use case: uc-done-check. Milestone: M2.
 `make check-5` (`uv run python -m part5.check`) analyses every labelled take, scores it with
 `part5.evaluate` under the D4 match rule, and prints one metrics JSON on stdout with a short summary on
 stderr. It exits 0 only when the gate passes: on the current held-out set (`fixtures/input/heldout/`,
-whose `labels.json` names the seed: 29, then 31, then 37 under the protocol in `calibration.md`), each
+whose `labels.json` names the seed: 29, 31, 37, then 67, 71, 73 under the protocol in `calibration.md`, ADR-0017), each
 of `good/front`, `good/45` and `good/side` reaches precision 0.85 or more, recall 0.75 or more, 0 faults on correct
 takes, and no gated slice is empty (no takes, no labelled faults or no correct takes, as #36 4ca9a66
 already enforces). Everything else is reported and never gated: the seed 5 tuning slices, low light,
@@ -99,11 +99,15 @@ Given a run, stdout parses as one JSON document that validates against `contract
 Given two runs on the same tree, stdout is byte-identical.
 ### AC-K07: names the tuning seed and rules
 Given a run, `tuning.seed` is 5, `gate.seed` equals the `seed` in `fixtures/input/heldout/labels.json`
-(one of 29, 31, 37), and `detection_sha256` (the hash of `part5/rules.json` without its `score` key) equals the
+(one of 29, 31, 37, 67, 71, 73), and `detection_sha256` (the hash of `part5/rules.json` without its `score` key) equals the
 `detection_sha256` in `docs/thresholds.md`, the detection rules frozen for the attempts (ADR-0007, AC-S06).
 `rules_sha256` is the whole file's hash and is reported; it differs from the attempts' `60f2e60b...` since the
 `score` block was added after the freeze. When the detection hash does not match, or the seed has no record
-there, the check exits 2 instead of scoring. Every line of `docs/thresholds.md` that starts with `rules_sha256:` or
+there, the check exits 2 instead of scoring. A seed is judged against its own freeze (pre-freeze review B3): each attempt
+section of `docs/thresholds.md` carries its own `detection_sha256` line, and a seed that already has an attempt in
+`fixtures/heldout-attempts.json` is refused with exit 2 before any take is analysed when the current detection rules differ
+from its own (the `detection_sha256` under "Score" is the current freeze and stands only for a seed not scored yet). A seed
+that skips the next unused one (71 while 67 is unscored) is refused too. Every line of `docs/thresholds.md` that starts with `rules_sha256:` or
 `detection_sha256:` holds a real 64-hex hash (the attempt template in that file is a list, not a copy-and-paste block,
 so a search for the recorded hashes prints no placeholder). Verification: `tests/test_check.py`.
 ### AC-K10: the score params are frozen
@@ -153,7 +157,8 @@ validates). Detection, scoring, the gate and every number are unchanged. Verific
 - `docs/thresholds.md` has no `rules_sha256` for the set's seed, or it differs from the hash of
   `part5/rules.json` now: exit 2 naming the seed, nothing printed on stdout. A seed is scored once,
   against the rules frozen for it (ADR-0003); the freeze record is written before the seed is generated.
-- `labels.json` seed not in 29, 31, 37: exit 2 naming the seed.
+- `labels.json` seed not in 29, 31, 37, 67, 71, 73: exit 2 naming the seed. A seed after an unscored one (R7), or a scored
+  seed whose own detection hash differs from the rules now (B3): exit 2 naming the next unused seed, nothing analysed.
 - A real-take fixture absent (stock not delivered): `stock.takes` is `[]` with `note` saying so.
 
 ## Non-Functional Requirements Checklist

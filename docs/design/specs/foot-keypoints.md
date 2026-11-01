@@ -146,8 +146,8 @@ sole's side of the foot plane (toes swapped, or a foot rolled 90 degrees or more
   them). `compared` lists the measures the pair was compared on. `hidden_reason` is null when any was compared, and
   otherwise plain words: `no expected feet file was given`, `the follower feet file has no extra_joints (no foot
   points)`, `no foot measure is seen in 80% of the follower frames`, `no foot measure is usable in both clips`,
-  `rep mode: the foot measures are not compared repetition by repetition`, or `the take could not be aligned, so
-  nothing was compared`; two reasons (one per clip) are joined with `; `. A pair where no feet file was given is
+  or `the take could not be aligned, so nothing was compared` (the reason `rep mode: the foot measures are not compared
+  repetition by repetition` went with attempt 4: a take compared rep by rep compares them, ADR-0017); two reasons (one per clip) are joined with `; `. A pair where no feet file was given is
   analysed and written exactly as before apart from `schema_version`.
 
 ## Cues and words
@@ -408,9 +408,10 @@ Wiring (`tests/test_feet.py` for AC-FOOT-09 to 11, `tests/test_feet_faults.py` f
 - AC-FOOT-11 (hidden and unchanged): a pair given no feet file is analysed byte for byte as before apart from
   `schema_version` (a golden rebuilds equal modulo the version) and has no `diagnostics.feet`; one file only, a file
   with no `extra_joints`, or a measure under 80% hides the measure with the reason in `diagnostics.feet` and no error;
-  the pair is compared on the intersection; a hidden stretch gives no fault; a take compared rep by rep hides all four
-  with the reason `rep mode` and reports the same faults as without; a take that cannot be aligned says so; a foot
-  measure with no `rules.json` entry raises nothing.
+  the pair is compared on the intersection; a hidden stretch gives no fault; a take compared rep by rep lists the
+  measures it compared like a whole comparison does (amended by attempt 4, ADR-0017: it hid all four with the reason
+  `rep mode` before; `tests/test_feet.py`, `tests/test_rep_persistence.py`); a take that cannot be aligned says so; a
+  foot measure with no `rules.json` entry raises nothing.
 - AC-FOOT-12 (rotation fault): follower and example both with feet, the follower's left foot turned out 20 degrees
   over the middle of the clip: one fault, `foot_rotation`, side `left`, direction `more`, joint `left_ankle`, body
   part `feet`, the cue "Turn your left foot in"; turned in: `less` and "Turn your left foot out"; both feet: merged to
@@ -504,7 +505,8 @@ Wiring (`tests/test_feet.py` for AC-FOOT-09 to 11, `tests/test_feet_faults.py` f
 - A heel lifted (calf raise, step): the heading holds and so does the roll; `ankle_inversion` is NaN when the foot is
   pitched so steeply that under a quarter of world up lies across its long axis (AC-FOOT-05).
 - Both feet turned out: merged to side `both` by the existing rule (AC-FOOT-12).
-- A reps-mode comparison: the foot measures are hidden with the reason `rep mode` (kept small on purpose).
+- A reps-mode comparison: the foot series are cut with the reference and resampled with each rep like the joints, and
+  compared rep by rep (attempt 4, ADR-0017, `rep-persistence.md`; they were hidden with the reason `rep mode` before).
 - A mirrored side file: left and right swapped (AC-FOOT-09).
 - The clip is faster or slower than the side file: each clip frame takes the nearest side frame within the window.
 

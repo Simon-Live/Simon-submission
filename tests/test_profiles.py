@@ -193,7 +193,7 @@ def test_fitness_has_the_identity_tempo_block():
 # --- AC-PROF-03: effective rules ---
 POSITION_THRESHOLDS = {"forearm_out": 17, "thigh_out": 13, "foot_out": 6, "knee_valgus": 9, "trunk_lean_forward": 9,
                        "trunk_lean_side": 9, "shoulder_tilt": 9, "head_forward": 18}
-RANGE_THRESHOLDS = {"elbow_flexion": 20, "knee_flexion": 9, "upper_arm_out": 10, "upper_arm_forward": 15,
+RANGE_THRESHOLDS = {"elbow_flexion": 20, "knee_flexion": 10, "upper_arm_out": 11, "upper_arm_forward": 15,
                     "thigh_forward": 15}
 
 
@@ -253,7 +253,7 @@ def test_measure_override_beats_kind(tmp_path):
     assert out["measures"]["thigh_out"]["min_run_frames"] == 4                    # the kind's other keys stay
     assert out["measures"]["foot_out"]["threshold_deg"] == pytest.approx(9.0)     # other position measures: the kind
     assert out["measures"]["knee_flexion"]["min_run_frames"] == 7                 # a range measure can be overridden
-    assert out["measures"]["knee_flexion"]["threshold_deg"] == 9.0
+    assert out["measures"]["knee_flexion"]["threshold_deg"] == 10.0
 
 
 def test_effective_rules_does_not_mutate_or_touch_score():

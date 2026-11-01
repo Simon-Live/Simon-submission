@@ -62,9 +62,12 @@ dropped, so that I can tell a clean take from a take that missed the persistence
   `center`, never `both` (merging is for reported faults).
 - **Frames over**: the frames of the (median-filtered) difference past the threshold in the candidate's direction.
 - **Counted frames**: the frames over that sit in runs of at least `min_run_frames`. Persistence counts these.
-- **Needed frames**: `min_frames` when the config gives it, else `max(min_frames_floor, round(min_fraction x n))`, with
-  `n` the expected clip's frame count (the reference rep's, in rep mode). Persistence holds when the counted frames are
-  at least the needed frames and there is at least one counted run (`detect._counted_runs`, unchanged).
+- **Needed frames**: `min_frames` when the config gives it, else `max(floor, round(min_fraction x n))`, with `n` the
+  length of the expected rep the frames fall in (the clip's, for an example of one rep; the reference rep's, in rep
+  mode) and `floor` the duration the measure's floor names (`min_frames_floor_body`, or `min_frames_floor` for a foot measure; frames at 30 fps) in frames at the example's rate, at most
+  three quarters of `n` (`persistence.floor_frames`). Persistence holds when the counted frames are at least the needed
+  frames and there is at least one counted run (`persistence.judge`); a candidate that fails is the longest run of the rep
+  its counted and needed frames describe (pre-freeze review B4).
 - **Near miss**: a candidate that is not a reported fault, with the reason.
 
 ## What is recorded
@@ -122,11 +125,11 @@ Faults of a take compared rep by rep are reported once at the take level (found 
 on its own and yields candidates (reported ones included). Per measure, side and direction that the take does not
 report (no reported fault of the same measure and direction on that side or on `both`):
 - the item is the record of the rep where the candidate came closest to being reported (most counted frames, the
-  earliest rep on a tie), its `expected_frames` shifted onto the expected file like a fault's (`diagnostics.expected_reference.frames[0]`
+  earliest rep on a tie), its `expected_frames` shifted onto the expected file like a fault's (`diagnostics.expected_reference.frames[0]`, since attempt 4 the start of that rep's reference
   added), its `follower_frames` on the follower file;
 - `reps` lists every accepted rep in which it crossed the threshold;
 - `reason`: `persistence` or `explained_by` as in that rep when no rep reported it; `reps` when some rep reported it
-  but fewer than half of the accepted reps did, with `found_in_reps` (the most reps that reported one exact side of it)
+  but fewer than half of the accepted reps did, with `found_in_reps` (the reps that found its side of it, alone or as part of `both`, the same count the half rule makes)
   and `needed_reps` (half the accepted reps, rounded up); `fitness` when the half rule passed but a profile's take-level
   check dropped it (a profile never reports a take-level fault that `fitness` does not, `profiles.md`).
 Reps that did not pass the guard take no part. A take compared as a whole has no `reps`, `found_in_reps` or `needed_reps`.

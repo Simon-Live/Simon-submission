@@ -69,3 +69,13 @@ Option 2.
 ## Assumptions
 - A rep is one cycle of the clip's most-moving measure; a clip whose main movement is not periodic is one
   segment and is compared whole.
+
+## Amendment (2026-10-31, ADR-0017, TICKET-044): rep by rep whenever the example has two or more reps
+Option 3 ("always cut into repetitions") was rejected here because the synthetic dance has two cycles, so every dance result
+would change. The 2026-10-31 ruling on moalborati/simon#59 chose it for an example of two or more reps (a real take with several
+reps was judged as one long take and scored 100 with no fault), and attempt 4 measured the cost on seed 5 and fixed what it
+exposed: each follower rep is compared with the example rep that matches it (the follower's rep `k` with the example's rep
+`k` when the follower has no more reps than the example, else the first, as decided here), the foot measures are compared
+rep by rep, and persistence is judged in the rep (`min_frames_floor` 32). A rep verdict that does not accept the take leaves
+the whole-clip comparison. The rest of this ADR (segmentation, per-rep guard, majority verdict, the half rule for faults)
+is as decided. `docs/design/specs/rep-persistence.md` has the rule and the seed 5 record.

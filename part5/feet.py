@@ -244,6 +244,18 @@ def load_side(label, path, person, clip_t):
     return FootSide(label, str(path), person, matched, has_points, series, usable)
 
 
+def resampled_series(series, resampler):
+    """The per-frame `series` (name to values) resampled as the clip's joints are: stacked into one (frames, k, 1)
+    array, passed to `resampler` (which returns the new array and the nearest source frame, a value missing in a
+    neighbour staying missing), and unstacked by name. `{}` for no series (a pair without feet). The pipeline resamples
+    the follower's onto the expected clock and `repwise` cuts a rep from it with this one helper."""
+    if not series:
+        return {}
+    names = list(series)
+    out, _ = resampler(np.stack([np.asarray(series[n], float) for n in names], axis=1)[:, :, None])
+    return {n: out[:, k, 0] for k, n in enumerate(names)}
+
+
 @dataclass
 class FootPair:
     """The two clips' feet and what the pair is compared on."""
@@ -258,7 +270,7 @@ class FootPair:
                 "compared": list(self.compared), "hidden_reason": self.hidden_reason}
 
     def hidden(self, why):
-        """This pair with no foot measure compared, for `why` (e.g. rep mode, or a take that could not be aligned)."""
+        """This pair with no foot measure compared, for `why` (e.g. a take that could not be aligned)."""
         return replace(self, compared=[], hidden_reason=why)
 
 

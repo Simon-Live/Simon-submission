@@ -555,7 +555,10 @@ def test_edge_a_15_fps_kit_take_is_resampled_onto_the_30_fps_expected_clip(repor
     expected = json.loads((ROOT / real.KIT_EXPECTED).read_text())
     assert (follower["fps"], expected["fps"]) == (15.0, 30.0)
     t = by_id(report, "squat_front_correct")
-    assert t["status"] == "ok" and t["guard"]["span_share"] > 0.9
+    # compared rep by rep since attempt 4 (the kit example holds two squats, ADR-0017): the matched share of the follower
+    # is the median over its reps, measured 0.7895 (reps 0.762 and 0.817; 0.9531 for the whole clip). The bound is above
+    # 0.75, not the 0.6 warning threshold that `warnings == []` already repeats (pre-freeze review R2)
+    assert t["status"] == "ok" and t["guard"]["span_share"] > 0.75 and t["warnings"] == []
 
 
 def test_edge_a_take_that_only_partly_matches_carries_the_span_warning(report):

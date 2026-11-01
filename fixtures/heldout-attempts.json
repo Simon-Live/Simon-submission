@@ -1,6 +1,6 @@
 {
   "format": "simon.part5.heldout_attempts.v1",
-  "about": "Every held-out attempt of docs/specs/calibration.md, in seed order (29, 31, 37), pass or fail. One entry is appended when an attempt is scored and an entry is never edited or removed. Each entry: seed, freeze_commit (the commit that froze rules.json and the code), rules_sha256, approach (the approach family), passed, slices (the per-slice numbers as measured). docs/thresholds.md carries the same records.",
+  "about": "Every held-out attempt of docs/specs/calibration.md, in seed order (29, 31, 37, then 67, 71, 73), pass or fail. One entry is appended when an attempt is scored and an entry is never edited or removed. Each entry: seed, freeze_commit (the commit that froze rules.json and the code), rules_sha256, approach (the approach family), passed, slices (the per-slice numbers as measured). docs/thresholds.md carries the same records.",
   "attempts": [
     {
       "seed": 29,
@@ -302,6 +302,107 @@
       },
       "scored": "2026-10-31",
       "scored_at": "45f875260840587b2f3aeef6be10f1e00c6e69b5",
+      "command": "make check-5",
+      "exit": 1
+    },
+    {
+      "seed": 67,
+      "freeze_commit": "fb06c27dd90aec99f78312078d639347297c62dc",
+      "rules_sha256": "077affcf0a3104356558cedf79a57eaf499fd2cb36637a92078adf23ddbd3534",
+      "approach": "a different persistence and alignment rule: persistence per expected rep with a floor taken as a duration (body 8, foot 32 frames at 30 fps, at most 0.75 of a rep), rep by rep whenever the expected clip has 2 or more reps, and a side lean that does not wrap (ADR-0017, TICKET-044, moalborati/simon#59)",
+      "passed": false,
+      "slices": {
+        "dropout/45": {
+          "tp": 42,
+          "fp": 22,
+          "fn": 6,
+          "takes": 52,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 3,
+          "refused": 0,
+          "precision": 0.6562,
+          "recall": 0.875
+        },
+        "dropout/side": {
+          "tp": 43,
+          "fp": 74,
+          "fn": 5,
+          "takes": 52,
+          "correct_takes": 8,
+          "faults_on_correct_takes": 15,
+          "refused": 0,
+          "precision": 0.3675,
+          "recall": 0.8958
+        },
+        "good/45": {
+          "tp": 21,
+          "fp": 2,
+          "fn": 3,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 0.913,
+          "recall": 0.875
+        },
+        "good/front": {
+          "tp": 24,
+          "fp": 0,
+          "fn": 0,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 0,
+          "refused": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "good/side": {
+          "tp": 23,
+          "fp": 1,
+          "fn": 1,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 1,
+          "refused": 0,
+          "precision": 0.9583,
+          "recall": 0.9583
+        },
+        "low/45": {
+          "tp": 21,
+          "fp": 24,
+          "fn": 3,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 5,
+          "refused": 0,
+          "precision": 0.4667,
+          "recall": 0.875
+        },
+        "low/front": {
+          "tp": 24,
+          "fp": 12,
+          "fn": 0,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 1,
+          "refused": 0,
+          "precision": 0.6667,
+          "recall": 1.0
+        },
+        "low/side": {
+          "tp": 20,
+          "fp": 79,
+          "fn": 4,
+          "takes": 26,
+          "correct_takes": 4,
+          "faults_on_correct_takes": 14,
+          "refused": 0,
+          "precision": 0.202,
+          "recall": 0.8333
+        }
+      },
+      "scored": "2026-11-01",
+      "scored_at": "21b1d2922acb09c60ccb135699241053ef0446d6",
       "command": "make check-5",
       "exit": 1
     }

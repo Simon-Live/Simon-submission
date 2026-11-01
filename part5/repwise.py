@@ -3,14 +3,19 @@
 The whole-clip comparison cannot tell a trainer's three slow reps from a follower's eight fast ones:
 DTW is limited to a ½x to 2x slope, so the guard refuses a correct take on `timing_corr`. When the
 whole-clip guard refuses and either clip holds more than one repetition (`part5.reps`), this module
-compares one repetition at a time instead:
+compares one repetition at a time instead, and since attempt 4 (ADR-0017) it does so whenever the *expected* clip
+holds two or more, whatever the whole-clip guard says (`pipeline.run`):
 
-- the expected reference is the expected clip's first complete rep (the whole clip when it has one);
-- each follower rep is resampled to the reference's frame count, then aligned, guarded and
-  detected on its own, with the frozen limits;
+- each follower rep has a reference, an expected rep (`matched_rep`): the one with its own index when the follower has no
+  more reps than the example, else the example's first complete rep (the whole clip when it has one);
+- each follower rep is resampled to its reference's frame count, then aligned, guarded and
+  detected on its own, with the frozen limits, the foot measures included (`_foot_rep`); persistence is judged in the
+  reference, which is one rep of the example;
 - the take is accepted when a strict majority of the follower reps pass (and at least one);
 - a fault is reported once when it is detected in at least half of the accepted reps, placed on the expected
-  file's own frames (the reference rep's first frame added to the rep-local ones, `_on_expected_file`);
+  file's own frames (the reference rep's first frame added to the rep-local ones, `_on_expected_file`); a fault that
+  some rep found on both sides is reported once, and the half rule is applied to each side over the reps that found it,
+  alone or as part of `both`: on `both` when both sides pass, else on the side that does (`aggregate_faults`);
 - under a profile (ADR-0016) the reps are also detected with the profile's `fitness` rules (`profiles.fitness_rules`),
   that half rule is applied to those too, and only the take-level faults `fitness` also reports, covered in the sense
   of `profiles.covered_by`, are kept. Each rep's faults are covered by construction, but a fault seen on one side in
@@ -18,10 +23,11 @@ compares one repetition at a time instead:
 - near misses (TICKET-043, docs/specs/near-misses.md) live at the take level like the faults: each rep also keeps its
   candidates, and `across_reps` turns them into one near miss per measure, side and direction the take does not report.
 
-`compare` returns `None` when neither clip has more than one rep (nothing new to try). A pair the
+`compare` returns `None` when neither clip has more than one rep (nothing new to try). A pair of one-rep clips the
 whole-clip guard accepts never gets here, so a single-rep take is analysed exactly as before. The reps together
-are bounded like the whole pair (`max_cells`, `TooManyPairs`).
+are bounded like the whole pair (`max_cells`, `TooManyPairs`, `_pairs`).
 """
+import copy
 import math
 from dataclasses import dataclass, field, replace
 from statistics import median
@@ -29,10 +35,12 @@ from statistics import median
 import numpy as np
 
 from .align import Alignment, AlignmentError, align
-from .detect import FITNESS, REPS, detect_full, on_file, reports
+from .detect import FITNESS, REPS, as_both, detect_full, on_file, overlaps_side, reports
+from .feet import resampled_series
 from .guard import DIFFERENT_MOVEMENT, OK, OK_TEXT, REFUSAL_TEXT, GuardResult, check_movement
 from .visibility import measures_of
 from .output import fault_to_dict
+from .persistence import FLOOR_KEYS
 from .profiles import covered_by, fitness_rules
 from .reps import Segmentation, segment
 
@@ -75,6 +83,9 @@ class RepResult:
     analysis: dict = field(default_factory=dict)
     fitness_faults: list = field(default_factory=list)
     candidates: list = field(default_factory=list)   # the rep's `detect.Candidate`s, reported ones included (TICKET-043)
+    ref_start: int = 0              # the expected file's frame the reference starts at (ADR-0017: it differs by rep)
+    measures: tuple | None = None   # (reference measures, rep measures) of a rep that passed: `continued` detects again
+    continued: list = field(default_factory=list)    # faults the take reports that this rep shows at `min_fraction` alone
 
 
 @dataclass
@@ -114,30 +125,82 @@ def _reference(exp, exp_m, span):
     return clip, {k: np.asarray(v)[a:b + 1] for k, v in exp_m.items()}
 
 
-def _detected(ref_m, fol_m, alignment, rules, orig, candidates=False):
-    """`detect_full` on one rep, the follower frames mapped to the file's own: `(faults, candidates)`."""
-    found = detect_full(ref_m, fol_m, alignment, rules, candidates)
+def _detected(ref_m, fol_m, alignment, rules, orig, candidates=False, fps=None):
+    """`detect_full` on one rep, the follower frames mapped to the file's own: `(faults, candidates)`. `fps` is the
+    example's frame rate, which turns the persistence floor into frames."""
+    found = detect_full(ref_m, fol_m, alignment, rules, candidates, fps=fps)
     faults = [replace(f, follower_frames=tuple(int(orig[j]) for j in f.follower_frames)) for f in found.faults]
     return faults, on_file(found.candidates, orig)
 
 
-def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None, fitness=None):
+def matched_rep(k, expected_reps, follower_reps):
+    """The expected rep that follower rep `k` is compared with (ADR-0017). A follower with no more reps than the example
+    plays the example's sequence, so rep `k` is judged against the example's rep `k`: an example that starts mid-cycle
+    has a short first rep, the follower's first rep starts mid-cycle too, and each is compared with the rep it repeats.
+    A follower with more reps than the example repeats it, and which rep repeats which is unknown, so every rep is
+    compared with the example's first, as ADR-0010 chose."""
+    return k if follower_reps <= expected_reps else 0
+
+
+def _foot_rep(foot, a, b, n):
+    """The follower's foot series (ADR-0015, on the expected clock like its joints) for the frames a..b, resampled to
+    the reference's `n` frames the way `_resample_rep` does the joints. `{}` for a pair without feet."""
+    return resampled_series(foot, lambda stack: _resample_rep(stack, a, b, n))
+
+
+def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None, fitness=None, foot=None, ref_start=0, fps=None):
     """Align, guard and detect one follower rep against the reference. `fitness`, the fitness rules of a profile's
-    effective `rules`, makes the rep also detect with those."""
+    effective `rules`, makes the rep also detect with those. `foot` is the rep's follower foot series (ADR-0015); the
+    reference's are already in `ref_m`, and a foot measure is compared when both carry it. `ref_start` is the expected
+    file's frame the reference starts at; `fps` is the example's frame rate (the persistence floor is a duration)."""
     try:
         alignment = align(ref.positions, pos, None if vis is None else vis.align_usable)
     except AlignmentError:  # the rep cannot be aligned at all: it does not pass; any other error is a bug
-        return RepResult(index, span, False, None, None, ref, pos, orig)
-    fol_m = measures_of(pos, vis)
+        return RepResult(index, span, False, None, None, ref, pos, orig, ref_start=ref_start)
+    fol_m = {**measures_of(pos, vis), **(foot or {})}
     guard = check_movement(alignment, ref_m, fol_m, rules)
     ok = bool(guard.ok and guard.stats["span_share"] >= MIN_REP_SPAN_SHARE)
     faults, fitness_faults, candidates = [], [], []
     if ok:
-        faults, candidates = _detected(ref_m, fol_m, alignment, rules, orig, candidates=True)
+        faults, candidates = _detected(ref_m, fol_m, alignment, rules, orig, candidates=True, fps=fps)
         if fitness is not None:
-            fitness_faults = _detected(ref_m, fol_m, alignment, fitness, orig)[0]
+            fitness_faults = _detected(ref_m, fol_m, alignment, fitness, orig, fps=fps)[0]
     return RepResult(index, span, ok, guard, alignment, ref, pos, orig, faults, fitness_faults=fitness_faults,
-                     candidates=candidates)
+                     candidates=candidates, ref_start=ref_start, measures=(ref_m, fol_m) if ok else None)
+
+
+def without_floor(rules):
+    """`rules` with both floors (`persistence.FLOOR_KEYS`, the foot and the body one) taken out (0) wherever a config
+    carries one: the persistence of a fault that is already reported, which is a share of the rep alone (a profile copies
+    the floors into every measure's config and its baseline, so all three are lowered). `rules` itself is not changed."""
+    out = copy.deepcopy(rules)
+    configs = [out["default"], *out.get("measures", {}).values(), *(out.get("profile") or {}).get("baseline", {}).values()]
+    for cfg in configs:
+        for key in FLOOR_KEYS:
+            if key in cfg:
+                cfg[key] = 0
+    return out
+
+
+def continue_reported(reps, kept_keys, rules, fps=None):
+    """Count the faults the take reports in every rep that shows them (ADR-0017). A fault starts to count where it
+    persists in a rep with the floor, which keeps noise out of the list; once the take reports it, a rep that shows it
+    for `min_fraction` of itself, floor or not, shows it in its own window, so a short rep that the floor blinds is not
+    scored clean for a fault the follower made in it too (ADR-0013 scores a rep on its own misses). Each such fault is
+    put in `RepResult.continued`; the aggregation, `faults[].reps` and the near misses read the strict `faults` only.
+    A rep is charged for a fault once: one whose measure and direction the rep already has on an overlapping side (the
+    same side, or `both` against either) is not continued, so a fault reported on both sides is not counted again in the
+    rep that holds it on one side. The same overlap decides what is continued: a rep's `both` fault is continued when
+    the take reports either side of it (recheck N1). `fps` is the example's frame rate."""
+    if not kept_keys:
+        return
+    reported, easy = list(kept_keys), without_floor(rules)
+    for r in reps:
+        if r.ok:
+            found = _detected(*r.measures, r.alignment, easy, r.to_original, fps=fps)[0]
+            have = [_fault_key(f) for f in r.faults]
+            r.continued = [f for f in found if overlaps_side(reported, _fault_key(f))
+                           and not overlaps_side(have, _fault_key(f))]
 
 
 def _aggregate(occurrences):
@@ -152,18 +215,67 @@ def _aggregate(occurrences):
                    confidence=round(float(median(f.confidence for f in occurrences)), 3))
 
 
+def _once_per_rep(by_side):
+    """`by_side` ({side: [(rep, fault)]}) as one occurrence per rep that found the fault on either side: the rep's `both`
+    fault, else its one-sided fault with the largest magnitude (the left one on a tie). A rep whose left and right
+    faults did not merge in its own detection still found the fault on both sides, and counts once."""
+    picked = {r.index: (r, f) for r, f in by_side.get("both", [])}
+    for one in ("left", "right"):
+        for r, f in by_side.get(one, []):
+            best = picked.get(r.index)
+            if best is None or (best[1].side != "both" and abs(f.magnitude_deg) > abs(best[1].magnitude_deg)):
+                picked[r.index] = (r, f)
+    return [picked[i] for i in sorted(picked)]
+
+
+def _found_on(by_side, side):
+    """The sorted indices of the reps that found `side` (left or right) of a fault: on its own, or as part of its `both`."""
+    return sorted({r.index for r, _ in by_side.get(side, []) + by_side["both"]})
+
+
+def _report_on(by_side, accepted):
+    """Where a fault that some rep found on `both` sides is reported, the half rule applied to each side on its own
+    (recheck N1): each side is counted over the reps that found it, alone or as part of `both`. It is `both` when both
+    sides reach `MIN_FAULT_SHARE` of the `accepted` reps, the side that does when only one does, and None when neither."""
+    passing = [s for s in ("left", "right") if len(_found_on(by_side, s)) >= MIN_FAULT_SHARE * accepted]
+    return "both" if len(passing) == 2 else passing[0] if passing else None
+
+
 def aggregate_faults(reps, which="faults"):
     """`[(fault, rep_indices, occurrences)]` over the accepted reps: a fault (same measure, side and direction) is
     kept when detected in at least `MIN_FAULT_SHARE` of them, or always when there is a single rep. `rep_indices`
     are the reps the fault was found in. Sorted by size, like `detect`. `which` names the per-rep list read:
-    `faults`, or `fitness_faults` for the take-level result `fitness` itself would give."""
+    `faults`, or `fitness_faults` for the take-level result `fitness` itself would give.
+
+    A fault on both sides is one fault (pre-freeze review B2). When some rep found a measure and direction on `both`
+    sides, the take reports it once, and where is `_report_on`'s: the half rule is applied to each side over the
+    reps that found it, alone or as part of `both` (recheck N1), so a side found in under half the reps never rides in
+    on the other's `both`. Reported on `both`, it is placed and sized from one occurrence per rep (`_once_per_rep`), the
+    first one's side rewritten to `both`; reported on one side, from that side's own occurrences, with `rep_indices` also
+    holding the reps that found it as part of `both` (the size of a `both` fault is the two sides' mean, not this one's).
+    Without a `both` occurrence each key is judged on its own, as it always was."""
     accepted = [r for r in reps if r.ok]
-    groups = {}
+    groups, family = {}, {}
     for r in accepted:
         for f in getattr(r, which):
             groups.setdefault(_fault_key(f), []).append((r, f))
-    kept = [(_aggregate([f for _, f in occ]), [r.index for r, _ in occ], occ)
-            for occ in groups.values() if len(occ) >= MIN_FAULT_SHARE * len(accepted)]
+    for (measure, side, direction), occ in groups.items():
+        family.setdefault((measure, direction), {})[side] = occ
+    kept = []
+    for (measure, side, direction), occ in groups.items():
+        by_side = family[(measure, direction)]
+        if "both" not in by_side:
+            found = [r.index for r, _ in occ] if len(occ) >= MIN_FAULT_SHARE * len(accepted) else None
+        elif _report_on(by_side, len(accepted)) != side:
+            found = None
+        elif side == "both":
+            occ = _once_per_rep(by_side)
+            found = [r.index for r, _ in occ]
+        else:
+            found = _found_on(by_side, side)
+        if found is not None:
+            fault = _aggregate([f for _, f in occ])
+            kept.append((as_both(fault) if side == "both" else fault, found, occ))
     kept.sort(key=lambda k: -abs(k[0].magnitude_deg))
     return kept
 
@@ -186,7 +298,8 @@ def across_reps(per_rep, reported, share=MIN_FAULT_SHARE):
     the candidate came closest to being reported (the most counted frames, the earliest rep on a tie), with `reps`
     the reps it crossed the threshold in. Its reason is that rep's when no rep reported it; `reps` when some did but
     fewer than half of the accepted reps (`found_in_reps` against `needed_reps`); `fitness` when half or more did and a
-    profile's take-level check dropped it all the same. Expected frames stay the rep's own: the caller moves them."""
+    profile's take-level check dropped it all the same. Expected frames are those the candidates carry: `compare` has
+    already moved them onto the expected file's frames (each by the start of its own rep's reference)."""
     need = math.ceil(share * len(per_rep))
     groups = {}
     for index, _, candidates in per_rep:
@@ -196,7 +309,7 @@ def across_reps(per_rep, reported, share=MIN_FAULT_SHARE):
     for (measure, side, direction), occurrences in groups.items():
         if reports(reported, (measure, side, direction)):
             continue
-        found = max(sum((measure, s, direction) in keys for _, keys, _ in per_rep) for s in {side, "both"})
+        found = sum(any((measure, s, direction) in keys for s in (side, "both")) for _, keys, _ in per_rep)   # N1: the reps that found this side, alone or as `both`
         _, best = max(occurrences, key=lambda ic: (ic[1].counted_frames, -ic[0]))
         outcome = best.outcome if not found else REPS if found < need else FITNESS
         out.append(replace(best, outcome=outcome, reps=tuple(i for i, _ in occurrences),
@@ -264,47 +377,73 @@ def _on_expected_file(fault, start, n_file):
                    phase=tuple(round(f / last, 3) for f in frames))
 
 
-def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times, vis=None, max_cells=None):
+def _pairs(expected_spans, follower_reps, follower_frames):
+    """`(frame pairs, widest reference)` the alignments of a rep-by-rep take need together. Each follower rep is
+    resampled to its reference's frame count and aligned against it, so a rep costs reference frames squared; a lone
+    follower segment is aligned whole, follower frames times its reference's."""
+    lengths = [b - a + 1 for a, b in (expected_spans[matched_rep(k, len(expected_spans), follower_reps)]
+                                      for k in range(follower_reps))]
+    if follower_reps == 1:
+        return follower_frames * lengths[0], lengths[0]
+    return sum(n * n for n in lengths), max(lengths)
+
+
+def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times, vis=None, max_cells=None,
+            expected_segmentation=None, foot_exp=None, foot_fol=None):
     """The repetition-by-repetition comparison, or `None` when neither clip has more than one rep.
 
     `fol_positions` is the follower on the expected clip's clock and `to_original` maps its frames to the
     follower file's. `fault_times` is `pipeline._fault_times` (passed in to keep the modules apart).
-    `max_cells` bounds the frame pairs all the alignments together need (each rep is aligned against the
-    whole reference, so reps x reference frames squared); `TooManyPairs` before any is aligned. The faults
-    returned are placed on the expected file's frames (`_on_expected_file`); the per-rep ones stay local."""
+    Each follower rep is compared with the expected rep that matches it (`matched_rep`, ADR-0017), resampled to that
+    rep's frame count. `expected_segmentation` is the expected clip's `reps.segment` when the caller has it already;
+    `foot_exp` and `foot_fol` are the foot series of the pair (`pipeline._foot_series`: the expected on its own frames,
+    the follower on the expected clock), empty for a pair without usable feet, and are cut and resampled like the
+    joints so a foot measure is compared rep by rep too.
+    `max_cells` bounds the frame pairs all the alignments together need (`_pairs`); `TooManyPairs` before any is
+    aligned. The faults returned are placed on the expected file's frames (`_on_expected_file`); the per-rep ones stay
+    local."""
     fol_m = measures_of(fol_positions, vis)
-    es = segment(exp_m, fps)
+    es = expected_segmentation or segment(exp_m, fps)
     fs = segment(fol_m, fps, prefer=(es.measure, es.bound) if es.bound else None)
     if es.reps == 1 and fs.reps == 1:
         return None
-    ref, ref_m = _reference(exp, exp_m, es.spans[0])
-    n = ref.n_frames
-    follower_frames = len(fol_positions) if fs.reps == 1 else fs.reps * n   # a lone segment is aligned whole
-    if max_cells is not None and follower_frames * n > max_cells:
-        raise TooManyPairs(follower_frames, n)
+    pairs, widest = _pairs(es.spans, fs.reps, len(fol_positions))
+    if max_cells is not None and pairs > max_cells:
+        raise TooManyPairs(math.ceil(pairs / widest), widest)
+    foot_exp, foot_fol = foot_exp or {}, foot_fol or {}
     fitness = fitness_rules(rules)
     under_profile = fitness is not rules   # ADR-0016: only a profile's rules differ from their fitness rules
-    reps = []
+    references, reps = {}, []
     for k, (a, b) in enumerate(fs.spans):
+        j = matched_rep(k, es.reps, fs.reps)
+        if j not in references:
+            references[j] = _reference(exp, {**exp_m, **foot_exp}, es.spans[j])
+        ref, ref_m = references[j]
         if fs.reps == 1:  # one follower segment: the whole take, as the whole-clip comparison saw it
-            pos, orig = fol_positions, np.asarray(to_original)
+            pos, orig, foot = fol_positions, np.asarray(to_original), foot_fol
         else:
-            pos, idx = _resample_rep(fol_positions, a, b, n)
+            pos, idx = _resample_rep(fol_positions, a, b, ref.n_frames)
             orig = np.asarray(to_original)[idx]
+            foot = _foot_rep(foot_fol, a, b, ref.n_frames)
         reps.append(_one_rep(k, pos, orig, (int(orig[0]), int(orig[-1])), ref, ref_m, rules, vis,
-                             fitness if under_profile else None))
+                             fitness if under_profile else None, foot, es.spans[j][0], fps))
     guard = _verdict(reps)
     kept = aggregate_faults(reps) if guard.ok else []
     if under_profile:   # a profile never reports a take-level fault that fitness does not (the fitness path is untouched)
         kept = only_what_fitness_reports(kept, reps)
     kept_keys = {_fault_key(f) for f, _, _ in kept}
+    continue_reported(reps, kept_keys, rules, fps)
     for r in reps:
-        mine = [f for f in r.faults if _fault_key(f) in kept_keys]
+        # a rep's fault is the take's when the take reports it on an overlapping side (aggregate_faults): the rep's
+        # one-sided fault under a `both` report, and the rep's `both` fault under a report of either of its sides
+        mine = [f for f in r.faults if overlaps_side(list(kept_keys), _fault_key(f))]
         r.analysis = {"status": {"code": OK if r.ok else DIFFERENT_MOVEMENT},
                       "faults": [fault_to_dict(f) for f in mine]}
-    start = es.spans[0][0]
-    per_rep = [(r.index, [_fault_key(f) for f in r.faults], r.candidates) for r in reps if r.ok]
-    near = [replace(c, expected_frames=tuple(f + start for f in c.expected_frames))   # onto the expected file, like a fault
-            for c in across_reps(per_rep, list(kept_keys))] if guard.ok else []
-    return RepRun(guard, reps, [_on_expected_file(f, start, exp.n_frames) for f, _, _ in kept],
+    # onto the expected file, like a fault: each candidate sits in its own rep's reference
+    per_rep = [(r.index, [_fault_key(f) for f in r.faults],
+                [replace(c, expected_frames=tuple(f + r.ref_start for f in c.expected_frames)) for c in r.candidates])
+               for r in reps if r.ok]
+    near = across_reps(per_rep, list(kept_keys)) if guard.ok else []
+    # a fault sits where its first occurrence was found, in the reference of the rep that found it
+    return RepRun(guard, reps, [_on_expected_file(f, occ[0][0].ref_start, exp.n_frames) for f, _, occ in kept],
                   _times(kept, fol, fault_times), es.spans[0], es, fs, near)

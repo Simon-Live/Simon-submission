@@ -174,17 +174,36 @@ def test_calibrated_worst_single_fault_lands_at_70_or_more():
     assert 100 - score.components(smallest, p)[0] < 90  # the smallest counted fault is never an A
 
 
-def test_ac_s01_seed_5_reproduces_the_research_prototype_and_the_shipped_block():
+@pytest.fixture
+def attempt3_detection(monkeypatch):
+    """Seed 5 analysed by the detection the score parameters were calibrated on and frozen with (attempts 1 to 3): the
+    trunk's side lean as the frontal projection, no rep mode for a pair the whole-clip guard accepts, persistence over
+    the whole clip, the floor of 8 frames for every measure and the thresholds of that freeze (`knee_flexion` 9,
+    `upper_arm_out` 10; the recheck of attempt 4 re-swept them under the split floor to 10 and 11). Attempt 4 (ADR-0017)
+    changes that detection and does not touch the parameters, so their reproduction is shown on the path they came from."""
+    from part5 import measures, pipeline
+    monkeypatch.setattr(measures, "_sideways", measures._lateral)
+    monkeypatch.setattr(pipeline, "compare", lambda *a, **k: None)     # no seed 5 take is refused by the whole-clip guard
+    real = pipeline.detect_full
+    monkeypatch.setattr(pipeline, "detect_full", lambda *a, **k: real(*a, **{**k, "rep_spans": None}))
+    rules = load_rules()
+    rules["default"]["min_frames_floor"] = rules["default"]["min_frames_floor_body"] = 8
+    rules["measures"]["knee_flexion"]["threshold_deg"] = 9.0
+    rules["measures"]["upper_arm_out"]["threshold_deg"] = 10.0
+    return rules
+
+
+def test_ac_s01_seed_5_reproduces_the_research_prototype_and_the_shipped_block(attempt3_detection):
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
-    block = score_report.calibrate_set(labels)
+    block = score_report.calibrate_set(labels, attempt3_detection)
     assert {k: block[k] for k in ("z0", "z1", "s_max", "base", "slope", "cap")} == {
         "z0": 0.289, "z1": 0.732, "s_max": 4.0, "base": 16, "slope": 5.9, "cap": 31.1}
     assert block == load_rules()["score"]
 
 
-def test_calibrate_score_writes_only_the_score_key(tmp_path):
+def test_calibrate_score_writes_only_the_score_key(tmp_path, attempt3_detection):
     rules_path = tmp_path / "rules.json"
-    original = {k: v for k, v in load_rules().items() if k != "score"}
+    original = {k: v for k, v in attempt3_detection.items() if k != "score"}     # the rules the parameters came from
     rules_path.write_text(json.dumps(original, indent=2) + "\n")
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     assert calibrate.write_score_block(labels, rules_path) == 0
@@ -192,8 +211,20 @@ def test_calibrate_score_writes_only_the_score_key(tmp_path):
     assert {k: v for k, v in written.items() if k != "score"} == original and written["score"] == load_rules()["score"]
 
 
+def test_the_score_calibration_still_runs_on_a_take_compared_rep_by_rep():
+    """Attempt 4 makes every dance take a rep-by-rep one; the calibration rows must exist for it (a reference of 43 frames
+    against an example of 121 was a shape error) and the shipped parameters stay as they are, frozen."""
+    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
+    labels["takes"] = [t for t in labels["takes"] if t["take_id"] in ("dance_front_good_00_correct",
+                                                                     "dance_front_good_02_arms_wider-left")]
+    rows = score_report.rows_of_set(labels)
+    assert [r["take_id"] for r in rows] == [t["take_id"] for t in labels["takes"]]
+    assert all(r["mean_z"] is not None and 0 <= r["mean_z"] < 1 for r in rows)
+    assert rows[0]["faults"] == [] and len(rows[1]["faults"]) == 1
+
+
 # --- the freeze hash for the detection rules (AC-S06) ---
-DETECTION_SHA = "e340940f4fdc97a2761b7795b8d2c3a7177b75154acd449148b6e905431291ae"  # frozen at fb1d6e8 for attempt 3 (was b76e6ca3, fbb0bea)
+DETECTION_SHA = "0a559e183adad714e4ce0a6f2f03a5aba9a51bc1ed26daae4cf25e6cdd15d345"  # attempt 4 (the floor split by measure class and the persistence constants in the rules, N2 and residual 5); c53a751e before the recheck, e340940f at fb1d6e8 for attempt 3, b76e6ca3 at fbb0bea
 
 
 def test_ac_s06_the_detection_hash_ignores_the_score_block_and_equals_the_recorded_one():

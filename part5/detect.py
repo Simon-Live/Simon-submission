@@ -3,8 +3,12 @@
 For each measure, diff[i] = follower(matched frame) − expected(frame i), median-filtered to drop
 single-frame spikes. A fault is every run of at least `min_run_frames` frames where the diff stays
 past the measure's threshold in one direction, if those runs together cover at least
-`min_fraction` of the expected clip (floor `min_frames_floor`). The longest run is the fault's
-frames (a profile's fault: see below); `runs` lists them all (#30). Then:
+`min_fraction` of the expected clip (floor `min_frames_floor_body`, or `min_frames_floor` for a foot measure; recheck N2). The longest run is the fault's
+frames (a profile's fault: see below); `runs` lists them all (#30). Persistence (`persistence.judge`) is judged against
+the expected rep the frames fall in (ADR-0017): an example with two or more reps passes its reps as `rep_spans`, a run
+belongs to the rep that holds most of it, and each rep needs `min_fraction` of itself; the floor is a duration, so
+`fps` (the example's frame rate) turns it into frames. An example of one rep is one rep, the whole clip, as it always
+was, and a take compared rep by rep (ADR-0010) detects each rep against its own reference. Then:
 - faults that follow from a kept fault (rules["explained_by"], same direction, or
   rules["explained_by_opposite"], the other direction: a knee caving in pulls the thigh in) are dropped;
 - the same measure and direction on both sides, with overlapping frames, merges into side "both"; its frames are the
@@ -40,9 +44,9 @@ import numpy as np
 
 from .align import Alignment
 from .measures import ALL_SPECS, FOOT_MEASURES, MEASURES
+from .persistence import judge
 
 RULES_PATH = Path(__file__).with_name("rules.json")
-DEFAULT_MIN_RUN_FRAMES = 4
 DEFAULT_MIN_OVERLAP = 0.5
 MAX_NEAR_MISSES = 10   # items listed in diagnostics.near_misses; `summary` counts the rest
 # What became of a candidate. A take compared rep by rep adds REPS and FITNESS (`repwise.across_reps`).
@@ -109,7 +113,7 @@ class Candidate:
     outcome: str = REPORTED
     explained_by: tuple | None = None   # (measure, side, direction) of the kept fault that explains it
     reps: tuple = ()                    # rep mode: the reps in which it crossed the threshold
-    found_in_reps: int = 0              # rep mode: the most reps that reported one exact side of it
+    found_in_reps: int = 0              # rep mode: the reps that reported its side of it, alone or as part of `both`
     needed_reps: int = 0                # rep mode: half the accepted reps, rounded up
 
     @property
@@ -118,7 +122,7 @@ class Candidate:
 
     @property
     def persists(self):
-        """Do the counted frames meet persistence? The test `_counted_runs` makes."""
+        """Do the counted frames meet persistence? The test `persistence.judge` makes."""
         return self.counted_frames > 0 and self.counted_frames >= self.needed_frames
 
     def to_dict(self):
@@ -159,6 +163,21 @@ def reports(fault_keys, key):
     return any(m == measure and d == direction and s in (side, "both") for m, s, d in fault_keys)
 
 
+def overlaps_side(fault_keys, key):
+    """Does a fault in `fault_keys` have the measure and direction of `key` on a side that overlaps its side: the same
+    side, or `both` against either (a fault on both sides covers each of them, and each of them is part of it)."""
+    measure, side, direction = key
+    return any(m == measure and d == direction and (s == side or "both" in (s, side)) for m, s, d in fault_keys)
+
+
+def as_both(fault):
+    """`fault`, found on one side, as the fault on both sides it is part of: the side `both` and the joint named as
+    `_both` names it (the side stripped). A fault that is already `both` is returned as it is."""
+    if fault.side != "both":
+        fault = replace(fault, side="both", joint=fault.joint.removeprefix(f"{fault.side}_"))
+    return fault
+
+
 def on_file(candidates, to_original):
     """`candidates` with their follower frames mapped to the follower file's own (`to_original[j]` is the file's frame
     for resampled frame `j`), as the pipeline does for a fault."""
@@ -193,18 +212,6 @@ def _median_filter(x, k):
     return out
 
 
-def _runs(flags):
-    """Maximal runs of True in `flags` as inclusive (start, end) frame pairs."""
-    out, start = [], None
-    for i, f in enumerate(list(flags) + [False]):
-        if f and start is None:
-            start = i
-        elif not f and start is not None:
-            out.append((start, i - 1))
-            start = None
-    return out
-
-
 def differences(exp_m, fol_m, alignment: Alignment, tolerance_frames=0):
     """Follower − expected per expected frame, along the alignment.
 
@@ -233,14 +240,20 @@ def differences(exp_m, fol_m, alignment: Alignment, tolerance_frames=0):
     return out
 
 
-def detect(exp_m, fol_m, alignment: Alignment, rules=None):
-    """The faults of a take. `detect_full` without the candidates, which is also the call `calibrate` sweeps make."""
-    return detect_full(exp_m, fol_m, alignment, rules, candidates=False).faults
+def detect(exp_m, fol_m, alignment: Alignment, rules=None, rep_spans=None, fps=None):
+    """The faults of a take. `detect_full` without the candidates."""
+    return detect_full(exp_m, fol_m, alignment, rules, candidates=False, rep_spans=rep_spans, fps=fps).faults
 
 
-def detect_full(exp_m, fol_m, alignment: Alignment, rules=None, candidates=True):
+def detect_full(exp_m, fol_m, alignment: Alignment, rules=None, candidates=True, rep_spans=None, fps=None):
     """`Detection(faults, candidates)`: the faults `detect` returns and, unless `candidates` is False, a `Candidate` for
-    every measure, side and direction with a frame past its threshold, each tagged with what became of it."""
+    every measure, side and direction with a frame past its threshold, each tagged with what became of it.
+
+    `rep_spans` (ADR-0017) is the expected clip's reps as disjoint inclusive frame spans tiling the clip
+    (`reps.Segmentation.partition`); persistence is then judged in each rep (`persistence.judge`). None, or one span, is
+    a clip judged as one rep, which is what a single-rep example and every rep of a rep-by-rep take are. `fps` is the
+    expected clip's frame rate: the floor is a duration (`persistence.floor_frames`), and None reads it as frames at
+    the reference rate of 30."""
     rules = rules or load_rules()
     diffs = differences(exp_m, fol_m, alignment, rules.get("tolerance_frames", 0))
     n = len(alignment.exp_to_fol)
@@ -256,8 +269,8 @@ def detect_full(exp_m, fol_m, alignment: Alignment, rules=None, candidates=True)
         base = cfg if profile is None else profile["baseline"].get(g, cfg)
         sm = _median_filter(d, rules.get("smooth_frames", 1))
         for sign, direction in ((1, "more"), (-1, "less")):
-            fault = _fault(name, g, side, direction, sign, d, sm, base, alignment, n)
-            cand = _candidate(name, g, side, direction, sign, sm, cfg, alignment, n) if candidates else None
+            fault = _fault(name, g, side, direction, sign, d, sm, base, alignment, n, rep_spans, fps=fps)
+            cand = _candidate(name, g, side, direction, sign, sm, cfg, alignment, n, rep_spans, fps) if candidates else None
             if cand is not None:   # TICKET-043: the same measure at the config in force (a profile's own), beside its fault
                 seen.append((cand, fault))
             if fault is None:
@@ -265,8 +278,8 @@ def detect_full(exp_m, fol_m, alignment: Alignment, rules=None, candidates=True)
             raw.append(fault)
             if profile is not None:   # the same fault at the profile's own tolerances; None when it no longer holds
                 # It reports the run that overlaps the fitness fault's reported run most, so a mode keeps the headline moment.
-                relaxed[id(fault)] = _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n,
-                                            fitness_run=fault.expected_frames)
+                relaxed[id(fault)] = _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n, rep_spans,
+                                            fitness_run=fault.expected_frames, fps=fps)
     overlap = rules["default"].get("min_overlap", DEFAULT_MIN_OVERLAP)
     kept, why = _drop_explained(raw, rules.get("explained_by", {}), overlap, rules.get("explained_by_opposite", {}))
     if profile is not None:   # explanation was judged at the baseline; what survives is re-tested at the profile's config
@@ -275,44 +288,27 @@ def detect_full(exp_m, fol_m, alignment: Alignment, rules=None, candidates=True)
     return Detection(faults, _tagged(seen, why, faults))
 
 
-def _persistence(flags, cfg, n):
-    """`(runs, counted runs, frames needed, min_run_frames)` for the frames past a threshold.
-
-    Deliberate faults are held through a good part of the movement, possibly in several
-    stretches; noise comes in short runs. A run counts from `min_run_frames`, and the counted runs
-    must sum to `min_frames` (the fraction of the clip, floored)."""
-    min_run = cfg.get("min_run_frames", DEFAULT_MIN_RUN_FRAMES)
-    needed = cfg.get("min_frames") or max(cfg["min_frames_floor"], int(round(cfg["min_fraction"] * n)))
-    runs = _runs(flags)
-    return runs, [(s, e) for s, e in runs if e - s + 1 >= min_run], needed, min_run
-
-
-def _counted_runs(flags, cfg, n):
-    """The runs that count toward persistence, or [] when together they are too short."""
-    _, counted, needed, _ = _persistence(flags, cfg, n)
-    return counted if sum(e - s + 1 for s, e in counted) >= needed else []
-
-
-def _candidate(name, g, side, direction, sign, sm, cfg, alignment, n):
+def _candidate(name, g, side, direction, sign, sm, cfg, alignment, n, spans=None, fps=None):
     """The candidate for one measure, side and direction at `cfg`, or None when no frame is past the threshold. Sized
-    like a fault: over the counted runs, or over every frame past the threshold when no run is long enough."""
+    like a fault: over the runs that persist, else the counted runs, else every frame past the threshold. It points at
+    the longest run that persists, else at the longest run of the rep its counted and needed frames describe."""
     thr = cfg["threshold_deg"]
     with np.errstate(invalid="ignore"):
         flags = sign * sm > thr
     over = int(flags.sum())
     if not over:
         return None
-    runs, counted, needed, min_run = _persistence(flags, cfg, n)
-    s, e = max(runs, key=lambda r: r[1] - r[0])
-    vals = np.concatenate([sm[a:b + 1] for a, b in (counted or runs)])
+    p = judge(flags, cfg, n, spans, fps, name in FOOT_MEASURES)
+    s, e = p.longest()
+    vals = np.concatenate([sm[a:b + 1] for a, b in (p.kept or p.counted or p.runs)])
     spec = ALL_SPECS[name]
     return Candidate(
         measure=g, side=side, joint=spec.joint, body_part=spec.body_part, direction=direction,
         magnitude_deg=round(float(np.nanmedian(vals)), 1), peak_deg=round(float(vals[np.nanargmax(np.abs(vals))]), 1),
         threshold_deg=thr, expected_frames=(s, e),
         follower_frames=(int(alignment.exp_to_fol[s]), int(alignment.exp_to_fol[e])),
-        frames_over=over, counted_frames=sum(b - a + 1 for a, b in counted), needed_frames=needed,
-        min_run_frames=min_run)
+        frames_over=over, counted_frames=p.counted_frames, needed_frames=p.needed_frames,
+        min_run_frames=p.min_run)
 
 
 def _reported_side(cause, faults):
@@ -350,11 +346,11 @@ def _reported_run(runs, fitness_run):
     return best if shared(best) else longest
 
 
-def _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n, fitness_run=None):
+def _fault(name, g, side, direction, sign, d, sm, cfg, alignment, n, spans=None, fitness_run=None, fps=None):
     thr = cfg["threshold_deg"]
     with np.errstate(invalid="ignore"):
         flags = sign * sm > thr
-    runs = _counted_runs(flags, cfg, n)
+    runs = judge(flags, cfg, n, spans, fps, name in FOOT_MEASURES).kept
     if not runs:
         return None
     s, e = _reported_run(runs, fitness_run)

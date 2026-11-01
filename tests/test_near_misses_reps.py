@@ -10,6 +10,7 @@ import pytest
 from part5 import contract, profiles, repwise
 from part5.detect import (EXPLAINED_BY, FITNESS, PERSISTENCE, REPORTED, REPS, Candidate, Detection, load_rules,
                           reports)
+from part5.io import load_clip
 from part5.pipeline import run
 from part5.visibility import measures_of
 
@@ -73,12 +74,17 @@ def test_half_the_reps_reporting_it_on_one_side_while_a_profile_dropped_it_is_a_
     assert miss.to_dict()["reason"] == "fitness"
 
 
-def test_a_fault_split_between_one_side_and_both_sides_counts_the_best_exact_side_not_the_sum():
-    """Left in one rep and both in another: the half rule counts each exact key, so neither reaches 2 of 4."""
-    reps = per_rep(([("thigh_out", "left", "more")], [cand(counted=45, outcome=REPORTED)]),
-                   ([("thigh_out", "both", "more")], [cand(counted=45, outcome=REPORTED)]), ([], []), ([], []))
-    [miss] = repwise.across_reps(reps, [])
-    assert miss.outcome == REPS and (miss.found_in_reps, miss.needed_reps) == (1, 2)
+def test_a_fault_split_between_one_side_and_both_sides_counts_the_reps_that_found_the_side_alone_or_as_both():
+    """Recheck N1: the left side found in one rep alone and in another as part of `both` was found in 2 reps (it used to
+    be the best exact key, 1), the same count the half rule makes: 2 of 6, under the 3 needed. The same reps found the
+    right side only as part of `both`, 1 of 6."""
+    sides = [([("thigh_out", "left", "more")], [cand(counted=45, outcome=REPORTED)]),
+             ([("thigh_out", "both", "more")], [cand(counted=45, outcome=REPORTED)])] + [([], [])] * 4
+    [miss] = repwise.across_reps(per_rep(*sides), [])
+    assert miss.outcome == REPS and (miss.found_in_reps, miss.needed_reps) == (2, 3)
+    right = per_rep(([("thigh_out", "both", "more")], [cand("thigh_out", "right", counted=45, outcome=REPORTED)]), *[([], [])] * 5)
+    [miss] = repwise.across_reps(right, [])
+    assert miss.outcome == REPS and (miss.found_in_reps, miss.needed_reps) == (1, 3)
 
 
 def test_an_explained_candidate_keeps_what_explains_it():
@@ -124,7 +130,7 @@ def compare_with(res, rules=None):
 def test_compare_lists_near_misses_at_the_take_level_on_the_expected_files_frames(slow_example, monkeypatch):
     calls = []
 
-    def scripted(ref_m, fol_m, alignment, rules, candidates=False):
+    def scripted(ref_m, fol_m, alignment, rules, candidates=False, fps=None):
         calls.append(candidates)
         k = len(calls) - 1
         return Detection([], [cand(counted=10 + k, expected_frames=(5, 20 + k), follower_frames=(3, 9))])
@@ -148,7 +154,7 @@ def test_a_rep_that_reports_it_in_half_the_reps_is_a_fault_and_no_near_miss(slow
                   follower_frames=(10, 40), phase=(0.1, 0.2), coverage=1.0, confidence=0.9)
     calls = []
 
-    def scripted(ref_m, fol_m, alignment, rules, candidates=False):
+    def scripted(ref_m, fol_m, alignment, rules, candidates=False, fps=None):
         calls.append(1)
         reported = len(calls) <= 4                       # 4 of 8 reps: exactly half
         return Detection([fault] if reported else [], [cand(counted=45 if reported else 10,
@@ -162,7 +168,7 @@ def test_a_rep_that_reports_it_in_half_the_reps_is_a_fault_and_no_near_miss(slow
 def test_a_profiles_second_detection_per_rep_collects_no_candidates(slow_example, monkeypatch):
     calls = []
 
-    def scripted(ref_m, fol_m, alignment, rules, candidates=False):
+    def scripted(ref_m, fol_m, alignment, rules, candidates=False, fps=None):
         calls.append(("profile" in rules, candidates))
         return Detection([], [])
 
@@ -186,7 +192,8 @@ def test_the_real_rep_takes_list_valid_take_level_near_misses_that_agree_with_th
         where = (name, profile)
         block, diag = a["diagnostics"]["near_misses"], a["diagnostics"]
         accepted = [i for i, r in enumerate(diag["guard"]["reps"]) if r["ok"]]
-        first, last = diag["expected_reference"]["frames"]
+        first, _ = diag["expected_reference"]["frames"]
+        last = load_clip(PAIRS[name][0]).n_frames - 1    # a later rep can sit in another example rep (ADR-0017)
         fault_keys = [(f["measure"], f["side"], f["direction"]) for f in a["faults"]]
         assert a["schema_version"] == "1.8.0" and block["total"] == block["omitted"] + len(block["items"]), where
         assert not list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(a)), where

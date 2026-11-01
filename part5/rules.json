@@ -5,7 +5,10 @@
   "default": {
     "threshold_deg": 10.0,
     "min_fraction": 0.38,
-    "min_frames_floor": 8,
+    "min_frames_floor": 32,
+    "min_frames_floor_body": 8,
+    "reference_fps": 30.0,
+    "floor_share": 0.75,
     "min_run_frames": 4,
     "min_overlap": 0.3
   },
@@ -14,10 +17,10 @@
       "threshold_deg": 20.0
     },
     "knee_flexion": {
-      "threshold_deg": 9.0
+      "threshold_deg": 10.0
     },
     "upper_arm_out": {
-      "threshold_deg": 10.0
+      "threshold_deg": 11.0
     },
     "forearm_out": {
       "threshold_deg": 17.0

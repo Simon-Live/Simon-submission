@@ -249,4 +249,16 @@ To change, by the implementing lane, in or before attempt 4's freeze commit:
 - `tests/test_heldout_protocol.py:22`, `tests/test_check.py:413` and `:645`, `tests/test_generator.py:585`, `:593` and
   `:602`
 - Records: `docs/thresholds.md:80` and `:189`, `fixtures/heldout-attempts.json:3` (`about`)
+
+Done by the TICKET-044 lane (seed tooling and the code of attempt 4; `docs/design/specs/rep-persistence.md` has the full list):
+- `part5/check.py` `HELDOUT_SEEDS = (29, 31, 37, 67, 71, 73)`, read by `next_unused_seed`, `attempts_list`, `check_seed`
+  and the hint; `Makefile` `heldout-data` accepts the six (feet after 31); `scripts/make_score_heldout.py` `check_seed`
+  refuses all six before it reads the record; `tests/test_check.py`, `tests/test_heldout_protocol.py`,
+  `tests/test_generator.py`, `tests/test_score_heldout.py`.
+- Attempt 4: `part5/measures.py` `_sideways`, `part5/persistence.py` `judge` (split out of `part5/detect.py`),
+  `part5/reps.py` `Segmentation.partition`, `part5/repwise.py` `matched_rep` and `continue_reported`,
+  `part5/pipeline.py` `run`, `part5/replay.py`, `part5/calibrate.py` and `part5/sweep.py` (split out of it),
+  `part5/rules.json` `default.min_frames_floor`. The pre-freeze review (`progress/review-20261101-prefreeze-attempt4.md`)
+  added: the floor is a duration (32 frames at 30 fps, capped at three quarters of a rep), a fault on both sides is one
+  fault in rep mode, a seed is checked against its own freeze, and a failed candidate points at the rep its numbers describe.
 <!-- In code: # ADR-0017: reason -->

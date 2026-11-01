@@ -179,6 +179,7 @@ def test_ac006_three_short_runs_that_add_up_are_one_fault_with_three_runs():
     fol = with_fault(p, "arms_wider", "left", 25, windows=[(0.15, 0.20), (0.40, 0.45), (0.65, 0.70)])
     rules = copy.deepcopy(load_rules())
     rules["default"]["min_fraction"] = 0.12
+    rules["default"]["min_frames_floor"] = 8    # the shipped floor (32, attempt 4) is above the 12% of this clip
     faults = run(p, fol, rules)
     assert keys(faults) == [("upper_arm_out", "left", "more")]
     f = faults[0]

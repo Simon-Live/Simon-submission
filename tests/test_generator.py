@@ -582,7 +582,7 @@ def test_heldout_data_refuses_without_a_seed():
     assert heldout_state() == before
 
 
-@pytest.mark.parametrize("seed", ["5", "7", "30"])
+@pytest.mark.parametrize("seed", ["5", "7", "30", "59", "61", "74"])
 def test_heldout_data_refuses_a_seed_that_is_not_a_held_out_seed(seed):
     before = heldout_state()
     r = make("heldout-data", f"SEED={seed}")
@@ -590,7 +590,7 @@ def test_heldout_data_refuses_a_seed_that_is_not_a_held_out_seed(seed):
     assert heldout_state() == before
 
 
-@pytest.mark.parametrize("seed", ["29", "31", "37"])
+@pytest.mark.parametrize("seed", ["29", "31", "37", "67", "71", "73"])
 def test_heldout_data_dry_run_names_the_generator_command(seed):
     before = heldout_state()
     r = make("-n", "heldout-data", f"SEED={seed}")  # -n prints the recipe and runs nothing
@@ -599,9 +599,10 @@ def test_heldout_data_dry_run_names_the_generator_command(seed):
     assert heldout_state() == before
 
 
-@pytest.mark.parametrize("seed, feet", [("29", False), ("31", False), ("37", True)])
+@pytest.mark.parametrize("seed, feet", [("29", False), ("31", False), ("37", True), ("67", True), ("71", True), ("73", True)])
 def test_heldout_data_passes_feet_only_for_the_seeds_scored_with_them(seed, feet):
-    """Seeds 29 and 31 were scored without feet and regenerate without (AC-FOOT-11); seed 37 is the first with."""
+    """Seeds 29 and 31 were scored without feet and regenerate without (AC-FOOT-11); seed 37 is the first with, and so is
+    every seed of the second series (ADR-0017)."""
     r = make("-n", "heldout-data", f"SEED={seed}")
     assert r.returncode == 0 and (" --feet" in r.stdout) is feet
 

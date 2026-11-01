@@ -13,6 +13,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
+from part5.detect import load_rules
 from part5.pipeline import analyse, run
 from part5.score_report import score_block
 
@@ -111,7 +112,13 @@ def test_ac_c01_a_warning_that_lists_no_fault_validates_against_the_1_1_0_schema
 def test_ac_t04_text_and_every_scored_field_equal_the_1_1_0_golden(name):
     old = json.loads((FIXTURES / OLD_GOLDENS[name]).read_text())
     assert old["schema_version"] == "1.1.0"
-    new = analyse(old["expected"], old["follower"])
+    # What this pins is that a schema bump leaves the text and the scored fields alone, not the calibration of the
+    # thresholds: a re-sweep (attempt 4's recheck moved `upper_arm_out` to 11) changes `threshold_deg` and, with it, the
+    # size word ("slightly") of a fault near its threshold. So the pair is analysed with the thresholds the golden recorded.
+    rules = load_rules()
+    for fault in old["faults"]:
+        rules["measures"][fault["measure"]]["threshold_deg"] = fault["threshold_deg"]
+    new = analyse(old["expected"], old["follower"], rules)
     assert len(new["faults"]) == len(old["faults"])
     for was, now in zip(old["faults"], new["faults"]):
         assert now["text"].encode() == was["text"].encode()

@@ -539,7 +539,7 @@ def test_part7_accepts_its_own_minimal_1_4_0_fallback_analysis(tmp_path, capsys)
 
 def test_part7_gets_the_time_and_score_notes_for_the_shipped_goldens(capsys):
     code, out, _ = run([EXAMPLE, "--for", "part7"], capsys)
-    assert code == 0 and "note: score 66 out of 100, grade D" in out and "capped" not in out
+    assert code == 0 and "note: score 67 out of 100, grade D" in out and "capped" not in out
     assert "note: 2 of 2 faults carry at_s and text_timed" in out
     code, out, _ = run([NO_FAULTS, "--for", "part7"], capsys)
     assert code == 0 and "note: score 100 out of 100, grade A" in out

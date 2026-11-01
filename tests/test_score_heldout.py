@@ -7,6 +7,7 @@ import importlib.util
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,81 @@ def test_ac_s05_make_refuses_a_recorded_seed_with_exit_2_and_makes_no_directory(
     result = subprocess.run(["make", "score-heldout", f"SEED={seed}"], capture_output=True, text=True, cwd=ROOT)
     assert result.returncode == 2
     assert f"seed {seed} is already recorded" in result.stderr and "retired" in result.stderr
+    assert target.exists() == before   # the refusal generated nothing
+
+
+HELD_OUT = ["29", "31", "37", "67", "71", "73"]   # both series of detection seeds (ADR-0003, ADR-0017)
+
+
+@pytest.mark.parametrize("seed", HELD_OUT)
+def test_adr_0017_every_held_out_detection_seed_is_refused_before_any_work(seed, capsys, tmp_path):
+    """A seed of either series is refused whether or not it was generated and scored: scoring it here would look at it
+    before its attempt's freeze commit. Nothing is generated and the record is not even read."""
+    calls = []
+    code = script.main([seed], record=tmp_path / "missing.json", out_root=tmp_path, run=fake_runner(calls))
+    err = capsys.readouterr().err
+    assert code == 2 and calls == []
+    assert f"seed {seed} is a held-out detection seed" in err and "ADR-0017" in err and "never here" in err
+
+
+def test_the_refused_seeds_are_the_checks_own_list():
+    from part5.check import HELDOUT_SEEDS
+    assert script.detection_seeds() == HELDOUT_SEEDS == (29, 31, 37, 67, 71, 73)
+
+
+def test_r8_run_directly_the_script_finds_the_package_without_an_install(monkeypatch):
+    """Pre-freeze review R8: `python3 scripts/make_score_heldout.py 67` only worked through `uv run` (the editable install).
+    The lazy import now puts the repo root on the path itself, so the refusal does not depend on the install."""
+    import sys
+    monkeypatch.setattr(sys, "path", [p for p in sys.path if Path(p or ".").resolve() != ROOT])
+    assert script.detection_seeds() == (29, 31, 37, 67, 71, 73)
+    assert str(ROOT) in sys.path
+
+
+REPO_NOT_INSTALLED = """
+import os, runpy, sys
+root = os.path.realpath({root!r})
+# the repo is on the path in this environment through the editable install's .pth file: take every such entry out, as
+# on a machine where `part5` is not installed, so only the script's own sys.path insert can make `part5` importable
+sys.path[:] = [p for p in sys.path if p and os.path.realpath(p) != root]
+sys.argv = ["make_score_heldout.py", {seed!r}]
+runpy.run_path({script!r}, run_name="__main__")
+"""
+
+
+def run_without_the_install(seed, cwd):
+    """The script run as `python -I scripts/make_score_heldout.py <seed>` would on a checkout where `part5` is not
+    installed: isolated mode (no PYTHON* variables, no user site, no script directory on the path) and the repo taken off
+    the path. The dependencies stay importable."""
+    code = REPO_NOT_INSTALLED.format(root=str(ROOT), seed=seed, script=str(ROOT / "scripts/make_score_heldout.py"))
+    return subprocess.run([sys.executable, "-I", "-c", code], cwd=cwd, capture_output=True, text=True)
+
+
+def test_r8_the_script_run_without_the_install_refuses_a_held_out_seed_with_exit_2_and_generates_nothing(tmp_path):
+    """Recheck residual 6: this run fails without the `sys.path` insert of `detection_seeds` (the import of `part5.check`
+    raises, exit 1, and the refusal never prints); with it, the refusal is the plain one and nothing is generated."""
+    done = run_without_the_install("67", tmp_path)
+    assert done.returncode == 2, done.stderr
+    assert "seed 67 is a held-out detection seed" in done.stderr
+    assert not (ROOT / "out" / "score-heldout" / "seed-67").exists()
+
+
+def test_r8_the_stripped_environment_cannot_import_part5_on_its_own(tmp_path):
+    """The check above means something only if `part5` is not importable without the script's insert."""
+    code = REPO_NOT_INSTALLED.format(root=str(ROOT), seed="67", script=str(ROOT / "scripts/make_score_heldout.py"))
+    probe = code.split("sys.argv")[0] + "import importlib.util\nsys.exit(0 if importlib.util.find_spec('part5') is None else 3)\n"
+    done = subprocess.run([sys.executable, "-I", "-c", probe], cwd=tmp_path, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+
+
+@needs_make
+@pytest.mark.parametrize("seed", ["67", "71", "73"])
+def test_adr_0017_make_refuses_a_seed_of_the_second_series_and_makes_no_directory(seed):
+    target = ROOT / "out" / "score-heldout" / f"seed-{seed}"
+    before = target.exists()
+    result = subprocess.run(["make", "score-heldout", f"SEED={seed}"], capture_output=True, text=True, cwd=ROOT)
+    assert result.returncode == 2
+    assert f"seed {seed} is a held-out detection seed" in result.stderr
     assert target.exists() == before   # the refusal generated nothing
 
 

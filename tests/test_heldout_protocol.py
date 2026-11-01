@@ -19,7 +19,7 @@ import make_dummy_followers as gen  # noqa: E402  (the generator, stdlib only)
 
 ATTEMPTS = json.loads((ROOT / "fixtures/heldout-attempts.json").read_text())["attempts"]
 HELDOUT = ROOT / "fixtures/input/heldout"
-SEED_ORDER = [29, 31, 37]
+SEED_ORDER = [29, 31, 37, 67, 71, 73]   # ADR-0017: the second series follows the first
 LABELS_PATH = "fixtures/input/heldout/labels.json"
 
 
@@ -41,7 +41,7 @@ def history_or_skip(*shas):
         pytest.skip("the workspace history is not in this checkout (upstream main carries mirror commits)")
 
 
-def test_ac_t03_seeds_follow_29_31_37_none_skipped_and_the_set_on_disk_is_the_last_attempt():
+def test_ac_t03_seeds_follow_29_31_37_67_71_73_none_skipped_and_the_set_on_disk_is_the_last_attempt():
     seeds = [a["seed"] for a in ATTEMPTS]
     assert seeds and seeds == SEED_ORDER[:len(seeds)]
     assert json.loads((HELDOUT / "labels.json").read_text())["seed"] == seeds[-1]
@@ -102,6 +102,10 @@ def test_ac_t02_each_attempt_froze_rules_and_code_before_its_seed_was_generated(
     assert git("diff", "--name-only", freeze, generated, "--", "part5").stdout.strip() == ""
     rules = git("show", f"{freeze}:part5/rules.json").stdout.encode()
     assert hashlib.sha256(rules).hexdigest() == attempt["rules_sha256"]
+    detection = {k: v for k, v in json.loads(rules).items() if k != "score"}     # pre-freeze review B3: its own hash
+    recorded = thresholds_record(attempt["seed"], (ROOT / "docs/thresholds.md").read_text())
+    assert recorded["detection_sha256"] == hashlib.sha256(
+        json.dumps(detection, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     labels = json.loads(git("show", f"{generated}:{LABELS_PATH}").stdout)
     assert labels["seed"] == attempt["seed"]
 

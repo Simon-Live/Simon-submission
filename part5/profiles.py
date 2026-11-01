@@ -20,7 +20,8 @@ import re
 from pathlib import Path
 
 from . import cues
-from .detect import DEFAULT_MIN_RUN_FRAMES, generic
+from .detect import generic
+from .persistence import DEFAULT_MIN_RUN_FRAMES
 from .measures import FOOT_MEASURES
 
 PROFILES_PATH = Path(__file__).with_name("profiles.json")

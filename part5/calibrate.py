@@ -3,15 +3,21 @@
     python -m part5.calibrate --set fixtures/input/followers [--guard] [--write-thresholds]
                               [--radius N] [--only NAME,NAME] [--feet [--write] [--workers N]]
 
-Threshold sweep: for each key of part5/rules.json, one at a time and in file order, re-run fault
-detection over every cached take at each candidate value, and keep the best by the objective of
-the spec: on the good-light slices, first precision >= 0.85 and 0 faults on correct takes at every
-angle, then the highest minimum recall across the angles. The values tied at the best objective form
-a plateau; the middle of its longest contiguous run is kept, rounded up to the grid step (equal runs:
-the one with the larger values), so the frozen value has margin on both sides (stakeholder-proxy
-decision, 2026-10-29, `docs/specs/calibration.md` Sweeps). Alignment and measures are computed once
-per take. Low light is printed, never used to choose. The table is the
-same on every run (AC-T05).
+Threshold sweep (`part5/sweep.py` holds the sweep and its selection rule): for each key of part5/rules.json, one at a
+time and in file order, run every take of the set through the pipeline (`pipeline.run`, the take's foot side files
+included) at each candidate value, and keep the best by the objective of the spec: on the good-light slices, first
+precision >= 0.85 and 0 faults on correct takes at every angle, then the highest minimum recall across the angles. The
+values tied at the best objective form a plateau; the middle of its longest contiguous run is kept, rounded up to the
+grid step (equal runs: the one with the larger values), so the frozen value has margin on both sides
+(stakeholder-proxy decision, 2026-10-29, `docs/specs/calibration.md` Sweeps). Since attempt 4 (ADR-0017) the sweep
+runs the real pipeline, so a multi-rep example is compared rep by rep and the foot labels are in the slices, as in the
+gate. A re-sweep (`keep_fitting`) keeps a current value that ties at the best objective only when it lies strictly
+inside the longest run of the plateau, not at either end of it (stakeholder-proxy, 2026-11-01), and prints what the plain
+rule (the flat rule, else the plateau middle) would choose beside it. The foot thresholds are not swept (`--feet` owns
+them, TICKET-040), nor is the foot floor `min_frames_floor` (held at 32 by the N2 ruling); the persistence keys are
+`min_frames_floor_body` (the body measures' floor, a duration, frames at 30 fps, swept inside the range the retimed
+takes allow), `min_fraction`, `min_run_frames` and `min_overlap`. Low light is printed, never used to choose. The table
+is the same on every run (AC-T05).
 
 --guard: `residual`, `timing_corr` and `span_share` (from `part5.guard.movement_stats`) for every
 seed 5 take against its own clip (matched) and for the mismatch pairs, the limits at the midpoint
@@ -27,13 +33,11 @@ labels.json). The objective counts only the measure being swept. Then the go/no-
 value, on the good-light slices at every angle: precision >= 0.85, recall >= 0.75, 0 faults on correct takes
 and both directions found. Faults a measure raises on takes labelled with something else are listed (they count
 in precision). `--write` writes the chosen values of the measures that are a GO into part5/rules.json and
-touches nothing for a NO-GO. Without the foot code of TICKET-040 in the checkout it exits 2 and says so. The
-default sweep leaves the foot-labelled takes out: it cannot see them.
+touches nothing for a NO-GO.
 
 This tool reads the tuning set only: a set whose labels.json seed is not 5 exits 2 (AC-T01).
 """
 import argparse
-import copy
 import json
 import math
 import os
@@ -41,11 +45,12 @@ import statistics
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from .align import align
 from .check import MIN_PRECISION, MIN_RECALL, MAX_FAULTS_ON_CORRECT, rel
-from .detect import RULES_PATH, detect, load_rules
+from .detect import RULES_PATH, load_rules
 from .evaluate import _finalise, canonical_label, match_faults, matches, score, slice_name
 from .guard import movement_stats
 from .io import load_clip
@@ -53,6 +58,8 @@ from .measures import compute
 from .normalise import normalise
 from .pipeline import clip_fps, resample, run
 from . import score_report
+from .sweep import (FOOT_MEASURES, RADIUS_DEG, Param, angle_cells, cells_text, change_lines, get_path, run_sweep,
+                    sweep_lines, sweep_param, with_value)
 
 ROOT = Path(__file__).resolve().parent.parent
 TUNING_SEED = 5
@@ -60,13 +67,6 @@ TUNING = ROOT / "fixtures" / "input" / "followers"
 MISMATCH_DIR = ROOT / "fixtures" / "input" / "mismatch"
 THRESHOLDS_DOC = ROOT / "docs" / "thresholds.md"
 SOURCES = ROOT / "contracts" / "sources.json"
-ANGLES = ("front", "45", "side")
-RADIUS_DEG = 6          # threshold grid: this many 1 degree steps each side of the current value
-PERSISTENCE = (         # key, step, low, high, steps each side
-    ("min_fraction", 0.05, 0.05, 0.9, 3),
-    ("min_run_frames", 1, 1, 30, 3),
-    ("min_overlap", 0.1, 0.1, 1.0, 3),
-)
 ATTEMPTS_MARKER = "<!-- attempts:begin -->"
 GUARD_STATS = ("residual", "timing_corr", "span_share")
 
@@ -127,196 +127,16 @@ def load_set(directory):
 
 
 def is_foot_take(take):
-    """A take labelled with a foot fault (TICKET-040): the body-measure sweep cannot see it, so --feet owns it."""
+    """A take labelled with a foot fault (TICKET-040). The guard's matched population leaves these out, as it did when
+    it was recorded: the guard reads the 17 joints and a foot fault changes none of them."""
     return any(canonical_label(lab)[0] in FOOT_MEASURES for lab in take["faults"])
 
 
 def prepare_set(labels, clips):
+    """The takes the guard calibration measures: whole-clip alignments (the guard judges the pair before any rep), the
+    foot-labelled takes left out. The sweep itself runs the pipeline on every take (`evaluate`)."""
     return [Prepared(t, *clips.pair(ROOT / t["expected"], ROOT / t["follower"]))
             for t in labels["takes"] if not is_foot_take(t)]
-
-
-# --- scoring one rules variant ---
-def records(prepared, rules):
-    return [{"predicted": [f.to_dict() for f in detect(p.exp_m, p.fol_m, p.alignment, rules)],
-             "labels": p.take["faults"], "lighting": p.take["lighting"], "angle": p.take["angle"],
-             "correct": p.take["correct"]} for p in prepared]
-
-
-def evaluate(prepared, rules):
-    return score(records(prepared, rules))
-
-
-def angle_cells(metrics, light):
-    """Per angle: (precision, recall, faults on correct takes), or None when the slice is absent."""
-    out = {}
-    for a in ANGLES:
-        s = metrics["slices"].get(f"{light}/{a}")
-        out[a] = (s["precision"], s["recall"], s["faults_on_correct_takes"]) if s else None
-    return out
-
-
-def objective(metrics):
-    """(feasible, -shortfall, min recall): higher is better. Feasible means precision >= 0.85 and
-    0 faults on correct takes at every good-light angle; otherwise the shortfall ranks the rest."""
-    cells = [c for c in angle_cells(metrics, "good").values() if c]
-    shortfall = sum(max(0.0, MIN_PRECISION - p) + max(0, f - MAX_FAULTS_ON_CORRECT) for p, _, f in cells)
-    return (shortfall == 0, -round(shortfall, 6), min((r for _, r, _ in cells), default=0.0))
-
-
-# --- the sweep ---
-@dataclass(frozen=True)
-class Param:
-    name: str
-    path: tuple
-    step: float
-    low: float
-    high: float
-    steps: int
-
-
-def get_path(rules, path):
-    node = rules
-    for key in path:
-        node = node[key]
-    return node
-
-
-def with_value(rules, path, value):
-    out = copy.deepcopy(rules)
-    node = out
-    for key in path[:-1]:
-        node = node[key]
-    node[path[-1]] = value
-    return out
-
-
-def locate(rules, key):
-    """Where a persistence key lives in rules: under "default" or at the top level; None if absent."""
-    for scope in (("default",), ()):
-        node = rules
-        for k in scope:
-            node = node.get(k, {})
-        if key in node:
-            return scope + (key,)
-    return None
-
-
-def params(rules, only=None):
-    found = [Param(f"{g} threshold_deg", ("measures", g, "threshold_deg"), 1.0, 1.0, math.inf, RADIUS_DEG)
-             for g in rules["measures"] if "threshold_deg" in rules["measures"][g]]
-    for key, step, low, high, steps in PERSISTENCE:
-        path = locate(rules, key)
-        if path:
-            found.append(Param(key, path, step, low, high, steps))
-    if only:
-        found = [p for p in found if p.name in only or p.name.split()[0] in only]
-    return found
-
-
-def grid(param, current, steps):
-    values = {round(current + k * param.step, 4) for k in range(-steps, steps + 1)}
-    return sorted(v for v in values if param.low <= v <= param.high)
-
-
-def row(value, metrics):
-    return {"value": value, "good": angle_cells(metrics, "good"), "low": angle_cells(metrics, "low"),
-            "objective": objective(metrics)}
-
-
-def plateau(rows):
-    """The longest contiguous run of grid values tied at the best objective (`rows` sorted by
-    value); equal runs go to the one with the larger values."""
-    top = max(r["objective"] for r in rows)
-    runs, run = [], []
-    for r in sorted(rows, key=lambda r: r["value"]):
-        if r["objective"] == top:
-            run.append(r)
-        elif run:
-            runs.append(run)
-            run = []
-    if run:
-        runs.append(run)
-    return max(runs, key=lambda run: (len(run), run[-1]["value"]))
-
-
-def best(rows):
-    """The middle of the plateau, rounded up to the grid step."""
-    run = plateau(rows)
-    middle = (run[0]["value"] + run[-1]["value"]) / 2
-    return next(r for r in run if r["value"] >= middle - 1e-9)
-
-
-def choose(rows, current):
-    """(best row, note, plateau ends). When every candidate ties, the data says nothing about this
-    key: keep the current value."""
-    run = plateau(rows)
-    span = (run[0]["value"], run[-1]["value"])
-    if len({r["objective"] for r in rows}) == 1:
-        return next(r for r in rows if r["value"] == current), "flat on seed 5, current value kept", span
-    return best(rows), "", span
-
-
-def sweep_param(prepared, rules, param, radius=None, evaluate_fn=None):
-    """Evaluate every grid value of one key; extend the grid once if the plateau reaches its edge.
-    `evaluate_fn(prepared, rules)` returns the metrics of one rules variant (default `evaluate`; --feet passes its own)."""
-    current = get_path(rules, param.path)
-    steps = radius if radius is not None and param.name.endswith("threshold_deg") else param.steps
-    rows, note = {}, ""
-    for attempt in (1, 2):
-        for v in grid(param, current, steps * attempt):
-            if v not in rows:
-                rows[v] = row(v, (evaluate_fn or evaluate)(prepared, with_value(rules, param.path, v)))
-        chosen, note, span = choose(list(rows.values()), current)
-        edge = ((span[0] == min(rows) and span[0] != param.low)
-                or (span[1] == max(rows) and span[1] != param.high))
-        if not edge or note:
-            break
-        note = "grid extended once" if attempt == 1 else "plateau still reaches the grid edge after one extension"
-    ordered = [rows[v] for v in sorted(rows)]
-    return {"param": param, "current": current, "rows": ordered, "chosen": chosen, "note": note,
-            "plateau": span, "grid": (min(rows), max(rows))}
-
-
-def run_sweep(prepared, rules, only=None, radius=None):
-    """Sweep each key in turn on the rules chosen so far. Returns (results, final rules)."""
-    results = []
-    for param in params(rules, only):
-        result = sweep_param(prepared, rules, param, radius)
-        rules = with_value(rules, param.path, result["chosen"]["value"])
-        results.append(result)
-    return results, rules
-
-
-# --- printing the table ---
-def cells_text(cells):
-    return "  ".join(f"{a} " + (f"{c[0]:.2f}/{c[1]:.2f}/{c[2]}" if c else "none") for a, c in cells.items())
-
-
-def row_text(r, chosen):
-    ok = "ok" if r["objective"][0] else f"short {-r['objective'][1]:.2f}"
-    mark = "<" if r is chosen else " "
-    return (f"  {r['value']:>7g}  good {cells_text(r['good'])}  minR {r['objective'][2]:.2f} {ok:<10}"
-            f" low {cells_text(r['low'])} {mark}")
-
-
-def sweep_lines(results):
-    lines = ["columns: value, then per angle precision/recall/faults on correct takes (good light chooses, low light is shown)"]
-    for res in results:
-        lines.append(f"== {res['param'].name} (current {res['current']:g}) ==")
-        lines += [row_text(r, res["chosen"]) for r in res["rows"]]
-        lines.append(f"  chosen {res['chosen']['value']:g}, plateau {res['plateau'][0]:g}..{res['plateau'][1]:g}, "
-                     f"grid {res['grid'][0]:g}..{res['grid'][1]:g}" + (f" ({res['note']})" if res["note"] else ""))
-    return lines
-
-
-def change_lines(results):
-    lines = ["== chosen values =="]
-    for res in results:
-        mark = "" if res["chosen"]["value"] == res["current"] else "  changed"
-        lines.append(f"  {res['param'].name}: {res['current']:g} -> {res['chosen']['value']:g}"
-                     f"  minR {res['chosen']['objective'][2]:.2f}{mark}")
-    return lines
 
 
 def slice_lines(metrics):
@@ -327,10 +147,10 @@ def slice_lines(metrics):
     return lines
 
 
-def recall_by_type(prepared, rules):
+def recall_by_type(prepared, rules, runs=None):
     """Good-light and low-light recall per fault type and set, so a weak type isn't averaged away."""
     hits = {}
-    for p, rec in zip(prepared, records(prepared, rules)):
+    for p, rec in zip(prepared, pipeline_records(prepared, (runs or PipelineRuns()).faults(prepared, rules))):
         for lab in p.take["faults"]:
             key = (lab["type"], p.take["set"], p.take["lighting"])
             hit = any(matches(pred, lab) for pred in rec["predicted"])
@@ -457,15 +277,30 @@ def expected_commit():
 
 
 def chosen_table(results):
-    lines = ["| key | before | plateau | grid | chosen | the sweep row that chose it (good light, minimum recall) |",
-             "| --- | ---: | --- | --- | ---: | --- |"]
+    lines = ["| key | before | plateau | grid | plain rule | chosen | the sweep row that chose it (good light, minimum recall) |",
+             "| --- | ---: | --- | --- | ---: | ---: | --- |"]
     for res in results:
         c = res["chosen"]
         note = f" ({res['note']})" if res["note"] else ""
         lines.append(f"| {res['param'].name} | {res['current']:g} | {res['plateau'][0]:g} to {res['plateau'][1]:g} | "
-                     f"{res['grid'][0]:g} to {res['grid'][1]:g} | {c['value']:g} | "
+                     f"{res['grid'][0]:g} to {res['grid'][1]:g} | {res['plain']:g} | {c['value']:g} | "
                      f"min recall {c['objective'][2]:.2f}; {cells_text(c['good'])}{note} |")
     return lines
+
+
+def floor_lines(results, rules=None):
+    """What the two floors are, with the body floor's value from the sweep when it was swept (not a hard-coded history)
+    and the foot floor's from the rules, which hold it."""
+    swept = next((r for r in results if r["param"].name == "min_frames_floor_body"), None)
+    body = f" It is {swept['chosen']['value']:g} for the body measures here, {swept['chosen']['value'] / 30:.2f} s." if swept else ""
+    foot = (rules or {}).get("default", {}).get("min_frames_floor")
+    held = f" The foot measures keep `min_frames_floor` {foot:g} ({foot / 30:.2f} s)." if foot is not None else ""
+    return ["A persistence floor is a duration, written as frames at 30 fps: the time a deviation must hold in a rep",
+            "whatever the rep's length, turned into frames at the example's own rate and never more than three quarters",
+            f"of the rep (`part5/persistence.py`). It splits by measure class: `min_frames_floor_body` for the body measures,"
+            f" `min_frames_floor` for the foot measures.{body}{held}",
+            "The table below is the whole sweep run from the rules in force, so its `before` column is the value each key",
+            "started from.", ""]
 
 
 def guard_section(pops, limits, overlap):
@@ -484,12 +319,34 @@ def guard_section(pops, limits, overlap):
     return lines
 
 
-def render_thresholds(results, metrics, pops, limits, overlap, hits):
+def held_table(rules):
+    """The foot thresholds, held at the values `--feet` chose for attempt 3 (TICKET-040): the default sweep does not move
+    them (ADR-0017), so the table says what they are beside the swept keys."""
+    held = [f"{m} threshold_deg {rules['measures'][m]['threshold_deg']:g}" for m in FOOT_MEASURES
+            if m in rules.get("measures", {})]
+    if "min_frames_floor" in rules.get("default", {}):   # the foot floor (recheck N2): the ruling holds it, no sweep moves it
+        held.append(f"foot floor min_frames_floor {rules['default']['min_frames_floor']:g}")
+    if not held:
+        return []
+    return ["", "Held, not swept here (`--feet` owns the thresholds, TICKET-040; attempt 4 keeps them, ADR-0017; the N2 ruling "
+            "holds the foot floor): " + ", ".join(held) + "."]
+
+
+def render_thresholds(results, metrics, pops, limits, overlap, hits, rules=None):
     head = ["# Thresholds and guard limits", "",
             "Written by `python -m part5.calibrate --set fixtures/input/followers --write-thresholds` from the",
             "seed 5 tuning set only. Held-out numbers were not used to tune any value here (ADR-0003).", "",
+            "Since attempt 4 (ADR-0017) every take of the set goes through the pipeline at each candidate value, foot side",
+            "files included, so an example of two or more reps is compared rep by rep and persistence is judged in each",
+            "rep, as in `make check-5`; the slices below hold every take of the set, the foot-fault takes too. A key whose",
+            "current value ties at the best objective and lies strictly inside the longest run of its plateau (not at either",
+            "end) keeps it, and any other key goes to the middle of its plateau (a re-sweep changes only what the new rules",
+            "made wrong); a key that is flat keeps its current value first of all. A plateau that reaches the grid edge extends",
+            "the grid once before any of this is decided. The `plain rule` column is what the first calibration's rule alone",
+            "would choose for every key on the same rows: the flat rule, else the middle of the longest plateau run.", ""
+            ] + floor_lines(results, rules) + [
             f"Expected clips: Part 4 commit {expected_commit()} (`fixtures/input/expected/SOURCE.md`).", "",
-            "## Chosen values (seed 5)", ""] + chosen_table(results)
+            "## Chosen values (seed 5)", ""] + chosen_table(results) + held_table(rules or {})
     head += ["", "## Guard limits", ""] + guard_section(pops, limits, overlap)
     head += ["", "## Seed 5 per-slice table at the chosen values", "",
              "| slice | tp | fp | fn | precision | recall | faults on correct takes |",
@@ -513,7 +370,7 @@ def write_thresholds(path, text):
 # The foot measures run through `pipeline.run` with the take's own foot side files (Part 2's pose3d shape), once per
 # rules variant: the sweep is the one above (plateau middle of the best objective), the objective counts only the
 # measure being swept, and a measure ships only if it passes the go/no-go on the good-light slices.
-FOOT_MEASURES = ("foot_rotation", "ankle_inversion")
+# The same runner serves the default sweep since attempt 4 (`PipelineRuns`, `evaluate`): every take through the pipeline.
 DIRECTIONS = ("more", "less")
 FAULT_KEYS = ("measure", "side", "direction", "magnitude_deg")
 
@@ -534,17 +391,20 @@ def feet_ready(rules):
                                  "(the TICKET-040 foot code adds it); nothing to calibrate")
 
 
-def prepare_feet(labels, base=ROOT):
-    """The takes of a labelled set with their clip and foot side file paths; every one must name and have them."""
-    out = []
+def prepare_feet(labels, base=ROOT, required=True):
+    """The takes of a labelled set with their clip and foot side file paths. `required` (`--feet`): every take must
+    name and have the two foot files. Otherwise (the default sweep) a take that names none is analysed without feet,
+    as `pipeline.run` does, and one that names a file that is not there is an error."""
+    out, wanted = [], ("expected", "follower", "expected_feet", "follower_feet")
     for t in labels["takes"]:
-        paths = {k: Path(base) / t[k] if t.get(k) else None for k in ("expected", "follower", "expected_feet", "follower_feet")}
-        absent = [k for k, p in paths.items() if p is None or not p.is_file()]
+        paths = {k: Path(base) / t[k] if t.get(k) else None for k in wanted}
+        absent = [k for k, p in paths.items()
+                  if (p is None and (required or k in ("expected", "follower"))) or (p is not None and not p.is_file())]
         if absent:
-            raise CalibrateError(f"calibrate --feet: {t['take_id']} has no {absent[0]} file; "
+            raise CalibrateError(f"calibrate: {t['take_id']} has no {absent[0]} file; "
                                  "regenerate the tuning set with make dummy-data")
         out.append(FootTake(t, str(paths["expected"]), str(paths["follower"]),
-                            {k: str(paths[k]) for k in ("expected_feet", "follower_feet")}))
+                            {k: str(p) for k, p in paths.items() if k.endswith("_feet") and p is not None}))
     return out
 
 
@@ -561,9 +421,13 @@ class FootRuns:
     def __init__(self, workers=1, run_fn=_faults_of):
         self.workers, self.run_fn, self.cache = workers, run_fn, {}
 
+    @staticmethod
+    def variant(rules):
+        """What tells two rules variants apart for the cache: the foot thresholds, the only keys `--feet` varies."""
+        return json.dumps({m: rules["measures"][m] for m in FOOT_MEASURES}, sort_keys=True)
+
     def faults(self, takes, rules):
-        key = (tuple(p.take["take_id"] for p in takes), json.dumps({m: rules["measures"][m] for m in FOOT_MEASURES},
-                                                                   sort_keys=True))
+        key = (tuple(p.take["take_id"] for p in takes), self.variant(rules))
         if key not in self.cache:
             tasks = [(p.expected, p.follower, p.feet, rules) for p in takes]
             try:
@@ -573,8 +437,34 @@ class FootRuns:
                 else:
                     self.cache[key] = [self.run_fn(t) for t in tasks]
             except ValueError as e:  # InputError, AnalysisError, OutputError
-                raise CalibrateError(f"calibrate --feet: {e}") from e
+                raise CalibrateError(f"{self.who}: {e}") from e
         return self.cache[key]
+
+    who = "calibrate --feet"
+
+
+class PipelineRuns(FootRuns):
+    """The default sweep's runner (ADR-0017): every take through the pipeline under a rules variant, cached by all the
+    rules, since any key of them may differ between two variants."""
+    who = "calibrate"
+
+    @staticmethod
+    def variant(rules):
+        return json.dumps(rules, sort_keys=True)
+
+
+def pipeline_records(prepared, found):
+    """The `evaluate.score` records of `prepared` takes (`FootTake`) and the faults `found` on each, in order."""
+    return [{"predicted": faults, "labels": p.take["faults"], "lighting": p.take["lighting"], "angle": p.take["angle"],
+             "correct": p.take["correct"], "variant": p.take.get("variant")} for p, faults in zip(prepared, found)]
+
+
+def evaluate(prepared, rules, runs=None):
+    """The metrics of the `prepared` takes under `rules`: each through the pipeline, its faults scored against its
+    labels. `runs` is a `PipelineRuns` (one is made per call without it, so a caller that evaluates many variants passes
+    its own, which caches and runs in parallel)."""
+    runs = runs or PipelineRuns()
+    return score(pipeline_records(prepared, runs.faults(prepared, rules)))
 
 
 def foot_slices(takes, faults, measure):
@@ -655,7 +545,7 @@ def calibrate_feet(labels, rules, workers=1, radius=None, run_fn=_faults_of, bas
     runs, results, current = FootRuns(workers, run_fn), [], rules
     for m in FOOT_MEASURES:
         param = Param(f"{m} threshold_deg", ("measures", m, "threshold_deg"), 1.0, 1.0, math.inf, RADIUS_DEG)
-        result = sweep_param(good, current, param, radius, feet_evaluator(runs, m))
+        result = sweep_param(good, current, param, feet_evaluator(runs, m), radius)
         current = with_value(current, param.path, result["chosen"]["value"])
         results.append(result)
     faults = runs.faults(prepared, current)
@@ -686,25 +576,29 @@ def write_foot_thresholds(rules_path, chosen, verdicts):
 
 
 # --- the command ---
-def calibrate(labels, rules, guard=False, only=None, radius=None, mismatch_dir=None):
-    """Run the sweep (and the guard). Returns (stdout lines, thresholds.md text)."""
-    clips = Clips()
-    prepared = prepare_set(labels, clips)
-    stats_fn = movement_stats if guard else None
-    results, final = run_sweep(prepared, rules, only, radius)
-    metrics = evaluate(prepared, final)
-    hits = recall_by_type(prepared, final)
-    lines = [f"calibrate: seed {labels['seed']}, {len(prepared)} takes; objective on good light: precision >= "
+def calibrate(labels, rules, guard=False, only=None, radius=None, mismatch_dir=None, workers=1):
+    """Run the sweep (and the guard). Returns (stdout lines, thresholds.md text). Every take of the set goes through the
+    pipeline at each candidate value (`workers` processes), so the rep-by-rep path and the foot labels are what the
+    gate sees (ADR-0017)."""
+    takes = prepare_feet(labels, required=False)
+    runs = PipelineRuns(workers)
+    results, final = run_sweep(takes, rules, partial(evaluate, runs=runs), only, radius, keep_fitting=True)
+    metrics = evaluate(takes, final, runs)
+    hits = recall_by_type(takes, final, runs)
+    lines = [f"calibrate: seed {labels['seed']}, {len(takes)} takes; objective on good light: precision >= "
              f"{MIN_PRECISION} and {MAX_FAULTS_ON_CORRECT} faults on correct takes at every angle, then the highest "
-             f"minimum recall; the middle of the plateau tied at the best objective is kept"]
+             f"minimum recall; a flat key keeps its value, a current value that ties at the best objective strictly "
+             f"inside its plateau is kept, any other goes to the plateau middle (the plain rule's choice is printed for "
+             f"every key; a plateau at the grid edge extends the grid once first)"]
     lines += sweep_lines(results) + change_lines(results) + slice_lines(metrics) + type_lines(hits)
     pops = limits = overlap = None
     if guard:
-        pops = guard_populations(prepared, clips, stats_fn, mismatch_dir)
+        clips = Clips()
+        pops = guard_populations(prepare_set(labels, clips), clips, movement_stats, mismatch_dir)
         limits = guard_limits(pops)
         overlap = guard_overlap(pops, limits)
         lines += guard_lines(pops, limits, overlap)
-    return lines, render_thresholds(results, metrics, pops, limits, overlap, hits)
+    return lines, render_thresholds(results, metrics, pops, limits, overlap, hits, rules)
 
 
 def write_score_block(labels, rules_path=RULES_PATH):
@@ -741,7 +635,7 @@ def main(argv=None):
     ap.add_argument("--write", action="store_true",
                     help="with --feet: write the chosen value of every measure that is a GO into part5/rules.json")
     ap.add_argument("--workers", type=int, default=min(os.cpu_count() or 1, 8),
-                    help="with --feet: processes running takes through the pipeline (default %(default)s)")
+                    help="processes running takes through the pipeline, for the sweep and --feet (default %(default)s)")
     args = ap.parse_args(argv)
     if args.write and not args.feet:
         print("calibrate: --write belongs to --feet (the other modes write with --write-thresholds or --score)",
@@ -754,7 +648,7 @@ def main(argv=None):
         if args.score:
             return write_score_block(labels)
         only = {x for x in args.only.split(",") if x}
-        lines, doc = calibrate(labels, load_rules(RULES_PATH), args.guard, only, args.radius)
+        lines, doc = calibrate(labels, load_rules(RULES_PATH), args.guard, only, args.radius, workers=args.workers)
     except CalibrateError as e:
         print(e, file=sys.stderr)
         return 2

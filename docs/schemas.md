@@ -77,7 +77,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
   to 0. `*-feet-person` is matched to `people[].id` (default 0).
 - A foot measure is usable in a clip when it is a number in at least 80% of its frames, and is compared only when usable on
   both sides. A file with no `extra_joints`, or a pair where only one clip has feet, is not an error: the foot measures are
-  hidden for the pair and `diagnostics.feet.hidden_reason` says why. In rep mode they are hidden ("rep mode").
+  hidden for the pair and `diagnostics.feet.hidden_reason` says why. A take compared repetition by repetition compares them rep by rep (ADR-0017; before attempt 4 they were hidden there).
 - `InputError` (exit 1, `part5 analyse: <file>: ...`): the file is unreadable or not this shape, the person id is in no frame,
   or no clip frame matches a frame of the file in time.
 - `labels.json` takes may carry `expected_feet` and `follower_feet` (paths from the repository root, like `expected` and
@@ -207,11 +207,17 @@ Top level:
   more of the body in frame); when none of the measures that move in the expected clip is usable in the take it
   earns `moving_part_out_of_frame`, whose text names the body part, and `diagnostics.visibility.moving_measures` and
   `moving_usable` list the measures.
+  A take is compared one repetition at a time when the whole-clip guard refuses it and either clip holds several reps
+  (ADR-0010) and, since attempt 4 (ADR-0017), whenever the expected clip holds two or more, so every take of a multi-rep
+  example carries these fields; the dance example holds two.
   `diagnostics.guard.reps` (1.3.0, only for a take compared one repetition at a time, ADR-0010) lists each follower
   repetition: `span_s` (start and end on the follower file's clock), `residual`, `timing_corr` (null when the rep could
   not be aligned) and `ok`; `residual` and `timing_corr` above are then medians over the reps.
   `diagnostics.expected_reference` (1.3.0) says which part of the expected clip the reps were compared with:
   `kind` `first_rep` or `whole`, its `frames` and `span_s`, `expected_reps`, `follower_reps` and the cut `measure`.
+  Since attempt 4 `frames` and `span_s` are the reference of the first follower rep (the example's first rep): rep `k`
+  is compared with the example's rep `k` when the follower has no more reps than the example, so a fault first found in a
+  later rep lies in that example rep, and `faults[].expected_frames` are always frames of the expected file.
   A fault of such a take has `reps` (1.3.0): the 0-based follower repetitions it was found in, and its time fields are
   those of the first; `score.per_rep` lists each accepted repetition's `value` and `grade`.
   `diagnostics.feet` (1.6.0, ADR-0015) is present only when a feet file was given for either clip:
@@ -219,7 +225,7 @@ Top level:
   (`source` null when no file was given for that clip, `frames_matched` how many of the clip's frames took a frame of the file
   in time, `usable` the foot measures seen in at least 80% of them, named `left_foot_rotation` and so on); `compared` is
   what the pair was compared on; `hidden_reason` is null when anything was compared and otherwise plain words (no file,
-  a file with no foot points, too few frames seen, rep mode, a take that could not be aligned).
+  a file with no foot points, too few frames seen, a take that could not be aligned).
   `diagnostics.near_misses` (1.8.0, TICKET-043, `docs/specs/near-misses.md`) answers "why no fault?": the candidate
   faults detection considered and dropped, `{total, omitted, items}`. A candidate is a measure on one side in one
   direction with at least one frame past its threshold; it is a near miss when it is not a reported fault. `items`
