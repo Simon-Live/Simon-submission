@@ -175,3 +175,14 @@ test("TICKET-090 the first person, or the person with the id asked for", () => {
   assert.equal(normalizeAnimation(a, 7).frames[0][0][0], x0 + 5);
   assert.equal(normalizeAnimation(a, 99).never.length, 17);
 });
+
+test("a joint the follower never has is hidden on the trainer too (invented legs of a seated trainer, simon#58)", () => {
+  const r = structuredClone(replay);
+  for (const f of r.follower) { f[idx("left_knee")] = null; f[idx("left_ankle")] = null; }
+  const m = normalizeReplay(r);
+  for (const j of ["left_knee", "left_ankle"]) {
+    assert.ok(m.followerNever.includes(idx(j)) && m.expectedNever.includes(idx(j)), j);
+    assert.ok(m.expected.every((f) => f[idx(j)] === null), `${j} is not drawn on the trainer`);
+  }
+  assert.ok(m.expected.every((f) => f[idx("right_knee")] !== null), "joints the follower has stay on the trainer");
+});

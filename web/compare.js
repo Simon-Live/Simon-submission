@@ -107,8 +107,12 @@ export function normalizeReplay(replay) {
   if (!Array.isArray(expToFol) || expToFol.length !== expected.length || !expToFol.every(Number.isFinite)) throw bad("exp_to_fol");
   const ft = replay.follower_t;
   const duration = Array.isArray(ft) && ft.length === follower.length ? ft[ft.length - 1] : (follower.length - 1) / fps;
-  const exp = fillUnseen(expected, joints.length);
   const fol = fillUnseen(follower, joints.length);
+  // A joint the follower's camera never saw is not compared (Part 5 uses only measures seen in both clips); the
+  // trainer's animation still carries invented points for it (Part 4 drops Part 3's unseen marks, simon#58), so
+  // it is hidden on the trainer as well.
+  const hidden = new Set(fol.never);
+  const exp = fillUnseen(hidden.size ? expected.map((f) => f.map((p, j) => (hidden.has(j) ? null : p))) : expected, joints.length);
   const body = bodyBones(joints, bones);
   return {
     kind: "compare", fps, joints, bones: body.bones, droppedBones: body.dropped, duration, expToFol,
