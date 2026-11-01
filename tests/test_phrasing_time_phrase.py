@@ -320,12 +320,54 @@ def test_the_first_sentence_shape_drops_its_english_example_when_the_reply_is_no
         assert "At 1.9 s" not in system and "At " not in prompt.SHAPE_TIME_FIRST_OTHER
 
 
-def test_only_the_first_shape_changes_with_the_language():
+def test_only_the_shapes_that_quote_an_english_opener_change_with_the_language():
     assert prompt.shape_for(0, "es") == prompt.SHAPE_TIME_FIRST_OTHER
     assert prompt.shape_for(6, "es") == prompt.SHAPE_TIME_FIRST_OTHER   # the first shape comes round again at 6
-    for index in (1, 2, 3, 4, 5, 7):
-        assert prompt.shape_for(index, "es") == prompt.shape_for(index) != prompt.SHAPE_TIME_FIRST_OTHER
+    assert prompt.shape_for(2, "es") == prompt.SHAPE_AROUND_OTHER
+    assert prompt.shape_for(5, "es") == prompt.SHAPE_AROUND_OTHER       # and the third at 5
+    assert prompt.shape_for(3, "es") == prompt.SHAPE_COMPARED_OTHER     # the fourth is used once only
+    for index in (1, 4, 7):                                            # the second shape quotes nothing
+        assert prompt.shape_for(index, "es") == prompt.shape_for(index) == prompt.SHAPES[1]
     assert [prompt.shape_for(i) for i in range(8)][0] == prompt.SHAPES[0]
+    assert [prompt.shape_for(i) for i in range(4)] == list(prompt.SHAPES)   # English is unchanged
+    assert len({prompt.shape_for(i, "es") for i in range(4)}) == 4          # and the four stay different in Spanish
+
+
+def test_the_third_sentence_shape_drops_the_english_around_when_the_reply_is_not_english():
+    english = prompt.system_timed(2)
+    assert prompt.SHAPES[2] in english and '"Around"' in english           # an English prompt is unchanged
+    assert prompt.system_timed(2, "en") == english and prompt.system_timed(5) == english
+    for code in lang.LANGUAGES:
+        if code == lang.EN:
+            continue
+        system = prompt.system_timed(2, code)
+        assert prompt.SHAPE_AROUND_OTHER in system and prompt.SHAPES[2] not in system
+        assert "Around" not in system and "around" not in prompt.SHAPE_AROUND_OTHER.lower()
+        assert prompt.system_timed(5, code) == system
+
+
+def test_the_fourth_sentence_shape_drops_the_english_phrase_when_the_reply_is_not_english():
+    english = prompt.system_timed(3)
+    assert prompt.SHAPES[3] in english and '"Compared with the recording,"' in english   # English is unchanged
+    assert prompt.system_timed(3, "en") == english
+    for code in lang.LANGUAGES:
+        if code == lang.EN:
+            continue
+        system = prompt.system_timed(3, code)
+        assert prompt.SHAPE_COMPARED_OTHER in system and prompt.SHAPES[3] not in system
+        assert "Compared" not in system and "Compared with the recording" not in prompt.SHAPE_COMPARED_OTHER
+        assert '"' not in prompt.SHAPE_COMPARED_OTHER        # no quoted example for the model to copy
+
+
+def test_no_shape_for_another_language_quotes_an_english_opener():
+    quoted = ["\"%s" % word.capitalize() for word in lang.ENGLISH_TIME_WORDS] + ['"Compared']   # "At, "Around, "Compared ...
+    for code in lang.LANGUAGES:
+        if code == lang.EN:
+            continue
+        for index in range(8):
+            shape = prompt.shape_for(index, code)
+            assert not any(opener in shape for opener in quoted) and "1.9 s" not in shape
+    assert any('"Around' in s for s in prompt.SHAPES) and any('"Compared' in s for s in prompt.SHAPES)   # so the test bites
 
 
 def test_a_request_in_spanish_carries_no_english_example_in_its_first_shape(live):  # noqa: F811

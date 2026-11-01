@@ -162,7 +162,7 @@ The `score` block gains `fault_cap` (integer, optional).
 ## Error Cases
 | Condition | Behavior | Message Format | AC Reference |
 |-----------|----------|----------------|-------------|
-| `score` block with an unknown version | `ValueError` | `part5/rules.json has no simon.score.v2 'score' block` | AC-V2-07 |
+| `score` block with an unknown version | `ValueError` | `part5/rules.json has no simon.score.v1 or simon.score.v2 'score' block` | AC-V2-07 |
 | v2 block, no v2 freeze record | `make check-5` exits 2 | `check-5: fixtures/score-heldout.json has no frozen score params ...` | AC-V2-09 |
 | `make score-heldout SEED=59` before the freeze | exit 2 | `score-heldout: seed 59 needs the simon.score.v2 freeze ...` | AC-V2-10 |
 | `make score-heldout SEED=61` | exit 2 | `score-heldout: seed 61 is reserved ...` | AC-V2-10 |

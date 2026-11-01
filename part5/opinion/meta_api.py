@@ -102,7 +102,9 @@ def price(input_tokens, output_tokens, cached_tokens=0):
 def spent():
     """USD recorded in the ledger so far; 0 when there is no ledger yet. A ledger that is there and cannot be read
     (no read permission, not text) raises OpinionError("usage ledger not readable"): the total is unknown, and an
-    unknown total is not a total of 0 (it fails closed)."""
+    unknown total is not a total of 0 (it fails closed). So does a line whose `usd` is not a finite amount from 0 up
+    (NaN would turn the total into NaN, which no comparison against the cap can catch; a negative amount would pay
+    the total down): the total cannot be trusted."""
     try:
         lines = usage_path().read_text().splitlines()
     except (FileNotFoundError, NotADirectoryError):   # nothing recorded yet; a path that cannot hold a ledger is the
@@ -112,9 +114,14 @@ def spent():
     total = 0.0
     for line in lines:
         try:
-            total += float(json.loads(line).get("usd") or 0)
+            amount = float(json.loads(line).get("usd") or 0)
+        except OverflowError:   # an integer too large for a float is not an amount either
+            raise OpinionError("usage ledger not readable") from None
         except (ValueError, AttributeError, TypeError):
             continue
+        if not math.isfinite(amount) or amount < 0:
+            raise OpinionError("usage ledger not readable")
+        total += amount
     return total
 
 
@@ -199,7 +206,10 @@ def read_usage(payload):
 
 
 def output_text(payload):
-    """The answer text of a Responses body: every `output_text` of every message, else `output_text`."""
+    """The answer text of a Responses body: every `output_text` of every message, else `output_text`. A body that is
+    not a JSON object (an array, a string) is an OpinionError("unreadable answer")."""
+    if not isinstance(payload, dict):
+        raise OpinionError("unreadable answer")
     chunks = []
     for item in payload.get("output") or []:
         if isinstance(item, dict) and item.get("type", "message") == "message":
@@ -305,6 +315,8 @@ class HttpClient:
 
     def count(self, body):
         answer = self._json("/responses/input_tokens", {k: body[k] for k in ("model", "input")}, "count")
+        if not isinstance(answer, dict):   # an array or a string body: not a count, and `.get` would raise
+            raise OpinionError("unreadable answer")
         usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else answer
         tokens = answer.get("input_tokens", usage.get("input_tokens"))
         if not isinstance(tokens, int) or isinstance(tokens, bool):

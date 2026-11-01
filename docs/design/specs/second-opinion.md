@@ -127,6 +127,10 @@ template.
   before anything is uploaded (TICKET-050): `PART5_META_SPEND_CAP_USD` or `PART5_META_CALL_MAX_USD` set to something that
   is not a finite amount of USD from 0 up (a limit that cannot be read must not run as another one; unset or blank is
   the default), and a ledger that exists and cannot be read (an unknown total is not a total of 0; no ledger yet is 0).
+  A ledger line whose `usd` is not a finite amount from 0 up (NaN, an infinity, a negative amount, a number too large
+  for a float) makes the ledger unreadable in the same way (TICKET-054 R1): NaN would make the total NaN, which no
+  comparison against the cap can catch. A Responses or count body that is not a JSON object (an array, a string) is a
+  `fallback` with `unreadable answer` (TICKET-054 R10); a Responses body that arrived is still recorded at the estimate.
 - AC-VA-01: the timed prompt offers no closing phrase and asks for one of four sentence shapes by fault position.
 - AC-VA-02: after phrasing, a model line that repeats a non-fact phrase of an earlier line falls back to its template
   line with the reason `<backend>: repeats a phrase of another line`.
@@ -155,7 +159,10 @@ template.
   the fault takes the AC-LA-03 fallback. The set leaves out every word a listed language writes in that place (in, a,
   en, um, om, bei, vers and the like), and `tests/test_phrasing_time_phrase.py` pins a correct time phrase in each
   listed language as passing. For a language other than English the first sentence shape of the prompt has no English
-  example (`prompt.SHAPE_TIME_FIRST_OTHER`), since the model copied its "At 1.9 s" into the translated line (TICKET-052).
+  example (`prompt.SHAPE_TIME_FIRST_OTHER`), since the model copied its "At 1.9 s" into the translated line (TICKET-052),
+  and the third has no quoted English "Around" (`prompt.SHAPE_AROUND_OTHER`, TICKET-054 R9; "Around" is itself one of
+  `ENGLISH_TIME_WORDS`, so a copied one is refused), and the fourth no quoted English "Compared with the recording,"
+  (`prompt.SHAPE_COMPARED_OTHER`, TICKET-054). The second shape quotes nothing, and every English prompt is unchanged.
 - AC-LA-03: a fault that falls back gets its English template line and `phrasing.faults[i].lang` `"en"`; the template
   backend writes English and says so in the fault's reason when another language was asked.
 - AC-LA-04: `phrasing.lang` and every `phrasing.faults[i].text` and `.lang` are in every new document; `text` equals the
@@ -173,11 +180,11 @@ template.
 | Key file unreadable or empty | `fallback`, `key file unreadable` or `key file is empty` |
 | ffmpeg absent | the original file is uploaded when at most 50 MB, else `fallback`, `clip too large to send` |
 | HTTP error, timeout | `fallback`, `HTTP <code> on <step>` or `timeout on <step>` (step: `upload`, `count`, `responses`) |
-| Model answer not JSON | `fallback`, `unreadable answer` |
+| Model answer not JSON, or a Responses or count body that is not a JSON object (an array, a string) | `fallback`, `unreadable answer` |
 | Over the ceiling or the cap | `fallback`, `estimated $x over the per-call limit of $y` or `spend cap reached` (the cap is checked before the upload too) |
 | A limit variable set to something that is not an amount of USD from 0 up | `fallback` before any upload, `<variable> is not an amount of USD from 0 up` (the variable's name, never its value) |
 | Ledger not writable, or held by another process for more than the longest call | `fallback`, `usage ledger not writable` or `usage ledger busy` |
-| Ledger there but not readable (no permission, not text, a directory) | `fallback` before any upload, `usage ledger not readable` |
+| Ledger there but not readable (no permission, not text, a directory), or a line whose `usd` is NaN, infinite, negative or too large for a float | `fallback` before any upload, `usage ledger not readable` |
 | Unknown language | English, `phrasing.lang_requested` holds the tag |
 
 ## Edge Cases
@@ -242,6 +249,7 @@ template.
 | `part5/output.py` | `SCHEMA_VERSION` 1.9.0, phrasing lang and `second_opinion` validated | TICKET-045 | yes |
 | `part5/doctor.py`, `part5/contract.py` | notes, table rows | TICKET-045 | yes |
 | `part5/phrasing/lang.py`, `part5/phrasing/prompt.py`, `tests/test_phrasing_time_phrase.py` (new) | the English time phrase check in `check_translated` (`ENGLISH_TIME_WORDS`), shape 0 without its English example for another language (`SHAPE_TIME_FIRST_OTHER`), a time phrase pinned in each listed language, the recorded live lines | TICKET-052 | yes |
+| `part5/opinion/meta_api.py`, `part5/phrasing/prompt.py`, `tests/test_second_opinion.py`, `tests/test_second_opinion_keys.py`, `tests/test_phrasing_time_phrase.py` | a ledger line whose `usd` is NaN, infinite, negative or too large for a float is an unreadable ledger (`spent`); a Responses or count body that is not an object is an `unreadable answer` (`output_text`, `HttpClient.count`); shapes 2 and 3 without the English "Around" and "Compared with the recording," for another language (`SHAPE_AROUND_OTHER`, `SHAPE_COMPARED_OTHER`, `OTHER_LANGUAGE_SHAPES`) | TICKET-054 | yes |
 | `part5/phrasing/local_llm.py`, `part5/phrasing/__init__.py`, `tests/test_phrasing_local_settings.py`, `docs/dev/DEVELOPING.md` | `PART5_LOCAL_LLM_TIMEOUT_S` and `PART5_LOCAL_LLM_THINK` for a slow local model (Part 7 TICKET-147; documented in `part5-fault-analysis.md`) | TICKET-045 | yes |
 | `part5/profiles_report.py` | the fitness baseline digest also leaves out the 1.9.0 fields | TICKET-045 | yes |
 | `tests/conftest.py`, `tests/test_phrasing*.py`, `tests/test_live_fallback.py`, `tests/test_near_misses.py` | the Meta key and ledger in the hermetic guard; record entries with `text` and `lang`; the prompt's new rules | TICKET-045 | yes |

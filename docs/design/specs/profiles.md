@@ -151,7 +151,7 @@ One JSON object, read by `part5.profiles.load()`, validated on every read. Not p
   multiplier from the cue table without an entry of their own.
 - Expectation, not a target: on seed 5 `rehab` and `dance` lose recall on the position fault types (`foot_out`,
   `knee_caving`, and some of `trunk_lean`) and none on the range types (`arms_wider`, `elbow_bent`, `knees_shallow`).
-  The numbers are recorded as measured (docs/thresholds.md "Profiles").
+  The numbers are recorded as measured (docs/thresholds-profiles.md, moved out of docs/thresholds.md by TICKET-054).
 
 ## Applying a profile
 `part5.profiles.effective_rules(rules, name=None)` returns the **effective rules**.
@@ -341,7 +341,7 @@ same match rule as `check-5`), the grade distribution, the number of profile fau
 target, no pass or fail, no gate. It
 exits 2 when the set is missing or unreadable or when `labels.json` names a seed other than 5 ("the profile report runs
 on the tuning set only, never on a held-out seed"). It is not called by `make check-5` or by `make test` beyond the
-small cases of AC-PROF-14. The numbers are recorded once, as measured, in `docs/thresholds.md` under "Profiles", with
+small cases of AC-PROF-14. The numbers are recorded once, as measured, in `docs/thresholds-profiles.md` (the former "Profiles" section of `docs/thresholds.md`), with
 the sentence that the values are set by hand.
 
 ## Acceptance Criteria
@@ -695,7 +695,7 @@ baseline taken before it would be stale the day it lands.
   the feature, so `gate.metrics.slices` and `attempts` equal the committed record,
   `rules_sha256` and `detection_sha256` unchanged, `git diff <base> -- part5/rules.json` empty; `make check-5-contract` 0;
   `make output-examples` then `git diff --stat fixtures/output` shows only `profile` and the version;
-  `make report-profiles` run once, numbers recorded in `docs/thresholds.md` "Profiles" (not gated);
+  `make report-profiles` run once, numbers recorded in `docs/thresholds-profiles.md` (not gated);
   `python3 scripts/make_design_copies.py --check` 0; the em-dash gate 0.
 - Delivery: staging `up` and `verify` 0 from merged code; QA recipe `analyse-rehab-mode`; `/delivery-review` PASS; Part 7
   told the commit on the bus. If any of these is missing at the final gate the ticket stays open and the run ends
@@ -733,7 +733,7 @@ Date: 2026-10-31
 ### Concern 1: hand-set numbers will be read as calibrated
 Challenge: a table of multipliers and a report with precision and recall looks like a calibration.
 Impact if right: Part 7 or an operator trusts a dancer's grade as if validated. Mitigation: the file, this spec, ADR-0016
-and `docs/thresholds.md` all say "set by hand"; the report prints no verdict; scores compare within a profile.
+and `docs/thresholds-profiles.md` all say "set by hand"; the report prints no verdict; scores compare within a profile.
 Resolution: ADDRESSED_IN_SPEC.
 
 ### Concern 2: the second detection pass is clever code on the gate's path

@@ -143,7 +143,7 @@ def test_the_shipped_rules_have_a_score_block_and_compute_reads_it():
     rules = load_rules()
     assert score.params_of(rules)["version"] == SHIPPED   # simon.score.v2 (ADR-0018) with the frozen v1 params as rules["score"]["v1"]
     assert score.compute(analysis(), aligned())["params_sha256"] == score.params_sha256(rules["score"])
-    with pytest.raises(ValueError, match="no simon.score.v2"):
+    with pytest.raises(ValueError, match="no simon.score.v1 or simon.score.v2 'score' block"):   # TICKET-054 R8
         score.params_of({"default": {}})
 
 

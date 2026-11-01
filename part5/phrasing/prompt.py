@@ -9,8 +9,9 @@ comes back in nearly every line, and the validator rejects `template.PRAISE_PHRA
 same reason it offers no closing phrase: the lines of a result are written in parallel, and an offered
 ending came back in every one. Each fault gets one of `SHAPES` by its position so that lines start
 differently (docs/specs/second-opinion.md AC-VA-01); `variety.repeats` is the guarantee. For a language other
-than English the reply is a JSON pair (`lang.reply_instruction`) and the first shape drops its English example
-(`SHAPE_TIME_FIRST_OTHER`). `docs/phrasing-review.md` records how the text was tuned.
+than English the reply is a JSON pair (`lang.reply_instruction`) and the shapes that quote an English opener drop it
+(`SHAPE_TIME_FIRST_OTHER`, `SHAPE_AROUND_OTHER`, `SHAPE_COMPARED_OTHER`). `docs/phrasing-review.md` records how the text
+was tuned.
 """
 import json
 
@@ -48,16 +49,25 @@ SHAPES = (
     "Start the sentence with \"Around\" and the time.",
     "Start the sentence with \"Compared with the recording,\" then the body part.",
 )
-# The first shape for a reply in another language, without its English example: the model copied the example's "At"
-# into the translated line (TICKET-052). `lang.check_translated` rejects such a line; this keeps the prompt from asking.
+# The shapes that quote an English opener, for a reply in another language, without it: the model copied the first
+# example's "At" into the translated line (TICKET-052), "Around" is just as English (TICKET-054 R9), and the fourth
+# quotes the English phrase "Compared with the recording," (TICKET-054). `lang.check_translated` rejects a copied time
+# word; this keeps the prompt from asking for any of them. The second shape quotes nothing and is the same everywhere.
 SHAPE_TIME_FIRST_OTHER = "Start the sentence with the time, then the body part."
+SHAPE_AROUND_OTHER = ("Start the sentence with the time, introduced by a short word in the reply language that "
+                      "makes it approximate.")
+SHAPE_COMPARED_OTHER = ("Start the sentence with a short phrase in the reply language that compares the take with the "
+                        "recording, then the body part.")
+OTHER_LANGUAGE_SHAPES = {SHAPES[0]: SHAPE_TIME_FIRST_OTHER, SHAPES[2]: SHAPE_AROUND_OTHER,
+                         SHAPES[3]: SHAPE_COMPARED_OTHER}
 
 
 def shape_for(index, language=EN):
     """The sentence shape for the fault at `index` of a result: 0, 1, 2, 3, then 0, 1, 2 again. For a language other
-    than English the first one is `SHAPE_TIME_FIRST_OTHER`."""
+    than English the first is `SHAPE_TIME_FIRST_OTHER`, the third `SHAPE_AROUND_OTHER` and the fourth
+    `SHAPE_COMPARED_OTHER`; the second and every English shape are `SHAPES`."""
     shape = SHAPES[index] if index < len(SHAPES) else SHAPES[index % (len(SHAPES) - 1)]
-    return SHAPE_TIME_FIRST_OTHER if language != EN and shape == SHAPES[0] else shape
+    return shape if language == EN else OTHER_LANGUAGE_SHAPES.get(shape, shape)
 
 
 def timed_record(fault):

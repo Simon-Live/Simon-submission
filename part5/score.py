@@ -1,5 +1,7 @@
-"""The take's score out of 100 with a grade A to F (`simon.score.v2`; v1 is ADR-0007, docs/specs/journey-followup.md J-4,
-v2 is ADR-0018, docs/specs/score-v2.md).
+"""The take's score out of 100 with a grade A to F. Part 5 ships `simon.score.v1` (ADR-0007, docs/specs/journey-followup.md
+J-4): `simon.score.v2` (ADR-0018, docs/specs/score-v2.md) failed held-out score seed 59 (docs/thresholds.md), so the
+`score` block of part5/rules.json is its frozen v1 block (`make score-fallback`). This module still reads both versions
+and scores by the one the rules' block names.
 
     compute(analysis, aligned, rules=None) -> {version, value, grade, components: {faults, similarity},
                                                params_sha256}   or None when the take was refused
@@ -20,12 +22,13 @@ Formula (params under `score` in part5/rules.json): per fault `r = |magnitude_de
 penalty * (0.5 + 0.5 * dur) * coverage`; `z = |follower - expected| / threshold` per measure and frame
 (clipped to [0, 2]), `S = s_max * clip((mean_z - z0) / (z1 - z0), 0, 1)`; `value = clamp(round_half_up(100 - F - S))`.
 
-Version 2 (ADR-0018) changes two things, both switched on by the params it finds: each miss is also multiplied by the
-weight `w = min(1, max(range_floor, u / range_full))`, `u` the trainer's range (max minus min, in detection thresholds)
-of the missed measure on the window's expected frames (1 only where that series is not in `aligned["expected"]`: no feet
-file, or a foot measure that was not compared; the trainer's foot series sit there beside the body measures, and the
-similarity term reads the body measures only), and a take whose `analysis["faults"]` is not empty is capped at `fault_cap` (89), with `fault_cap` in the
-block and `uncapped` holding the value before every cap. The v1 params stay in the block as `v1` (`rules_v1`).
+Version 2 (ADR-0018; kept in the code, not shipped) changes two things when the rules' block is a v2 one: each miss is
+also multiplied by the weight `w = min(1, max(range_floor, u / range_full))`, `u` the trainer's range (max minus min, in
+detection thresholds) of the missed measure on the window's expected frames (1 only where that series is not in
+`aligned["expected"]`: no feet file, or a foot measure that was not compared; the trainer's foot series sit there beside
+the body measures, and the similarity term reads the body measures only), and a take whose `analysis["faults"]` is not
+empty is capped at `fault_cap` (89), with `fault_cap` in the block and `uncapped` holding the value before every cap.
+A v2 block holds the v1 params as `v1` (`rules_v1`).
 
 Under the dance profile (ADR-0016) each window is also charged a tempo term T, `profiles.tempo_points` of the window's
 tempo ratio, taken off the value (`100 - F - S - T`) and shown as `components.tempo`. It is a run-time term of the
@@ -73,7 +76,7 @@ def params_of(rules):
     """The `score` block of the rules (v1 or v2), or a ValueError naming what is missing."""
     block = (rules or {}).get("score")
     if not isinstance(block, dict) or block.get("version") not in VERSIONS:
-        raise ValueError(f"part5/rules.json has no {VERSION} 'score' block")
+        raise ValueError(f"part5/rules.json has no {VERSION_V1} or {VERSION} 'score' block")
     return block
 
 

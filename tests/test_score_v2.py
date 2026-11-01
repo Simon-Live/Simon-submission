@@ -262,9 +262,9 @@ def test_ac_v2_07_rules_v1_refuses_a_score_section_that_has_none():
         score.rules_v1({"score": {"version": "simon.score.v2"}})
 
 
-def test_params_of_accepts_both_versions_and_names_v2_when_neither(rules, rules_v1):
+def test_params_of_accepts_both_versions_and_names_both_when_neither(rules, rules_v1):
     assert score.params_of(rules)["version"] == "simon.score.v2" and score.params_of(rules_v1)["version"] == "simon.score.v1"
-    with pytest.raises(ValueError, match="no simon.score.v2 'score' block"):
+    with pytest.raises(ValueError, match="has no simon.score.v1 or simon.score.v2 'score' block"):   # TICKET-054 R8
         score.params_of({"score": {"version": "simon.score.v0"}})
 
 

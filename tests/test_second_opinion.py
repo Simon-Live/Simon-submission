@@ -365,6 +365,35 @@ def test_output_text_reads_only_message_text():
     assert meta_api.output_text({"output_text": "plain"}) == "plain"
 
 
+# ---- TICKET-054 R10: a body that is not a JSON object is an unreadable answer, not an AttributeError ---------------
+@pytest.mark.parametrize("body", [["an", "array"], [{"output": []}], "a string", 7, None], ids=repr)
+def test_ticket_054_r10_a_response_body_that_is_not_an_object_is_an_unreadable_answer(body):
+    with pytest.raises(OpinionError) as raised:
+        meta_api.output_text(body)
+    assert raised.value.reason == "unreadable answer"
+
+
+@pytest.mark.parametrize("raw", [b'["an", "array"]', b'"a string"'], ids=["array", "string"])
+def test_ticket_054_r10_a_count_body_that_is_not_an_object_is_an_unreadable_answer(raw):
+    client = meta_api.HttpClient("k")
+    client._opener = FakeOpener(FakeResponse(200, raw))
+    with pytest.raises(OpinionError) as raised:
+        client.count(prompt.request("a", "b", [], 1.0))
+    assert raised.value.reason == "unreadable answer"
+
+
+@pytest.mark.parametrize("payload", [["an", "array"], "a string"], ids=["array", "string"])
+def test_ticket_054_r10_an_array_or_string_answer_falls_back_and_is_recorded_at_the_estimate(take, meta, payload):
+    fake = Fake(payload)
+    doc = attach(take, meta, fake)
+    block = doc["second_opinion"]
+    assert (block["status"], block["reason"]) == ("fallback", "unreadable answer")
+    assert block["verdicts"] == [] and doc["faults"] == take.analysis["faults"]
+    [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
+    assert line["estimated"] is True and line["usd"] > 0   # the call was answered, so it may have been billed
+    assert sorted(fake.deleted) == ["file-1", "file-2"]
+
+
 # ---- AC-SC-01: the document ----------------------------------------------------------------------------------------
 def with_block(take, **change):
     block = {"status": "ok", "reason": None, "backend": "meta-model-api", "model": "muse-spark-1.3", "lang": "en",

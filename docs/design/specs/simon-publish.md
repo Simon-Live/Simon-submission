@@ -4,8 +4,8 @@ Status: Implemented
 Date: 2026-10-28
 Request Type: new-feature
 Risk Level: medium
-ADR: `docs/design/adr/ADR-0001-workspace-and-publish-layout.md`. Tickets: TICKET-005, TICKET-030.
-Tests: `tests/publish/test-simon-publish.sh`.
+ADR: `docs/design/adr/ADR-0001-workspace-and-publish-layout.md`. Tickets: TICKET-005, TICKET-030, TICKET-054.
+Tests: `tests/publish/test-simon-publish.sh`; `tests/test_publish_allowlist.py` (AC-P25, workspace only).
 
 ## Overview
 Copies the allowlisted part files from the committed tip of local `main` onto `upstream/main` of
@@ -27,7 +27,8 @@ Ancestry is not enough: the publish commit copies our whole tree, so a fast-forw
 teammate's lines when our `main` changed them after merging (Part 7 undid a client change this way). The
 teammate-lines guard (AC-P23) blames every line the candidate removes or changes, and every file it deletes,
 at upstream `main`, and refuses when someone outside the firm's authors last wrote one; the only way past is
-a `--teammate-override` that names a the team issue or PR comment.
+a `--teammate-override` that names a the team issue or PR comment, together with a `--teammate-expect` that gives the
+number of teammate lines that comment covers, so an override cannot pass lines the announcement never named.
 
 ## Why This Is Wrong (Dissent-First)
 1. An exception list inside a denylist is where a firm file slips through. Answer: exceptions apply only
@@ -44,19 +45,34 @@ a `--teammate-override` that names a the team issue or PR comment.
    guard (AC-P19, AC-P20): refuse, merge with `--pull`, publish.
 5. After the merge, our `main` can still change or delete a teammate's lines, and the copy then undoes them
    on a clean fast-forward. Answer: the teammate-lines guard (AC-P23), with a recorded override as the one
-   way past, so a deliberate change leaves a trace in the commit message and on a the team thread.
+   way past, so a deliberate change leaves a trace in the commit message and on a the team thread. The override
+   carries the number of lines it covers (`--teammate-expect`), so a run that computes more refuses.
+6. A local git setting can make the guard blind: `blame.ignoreRevsFile` reassigns a teammate's line to the author
+   before them, `color.diff=always` hides every hunk header from the parser, and a failing `git blame` used to fall
+   back to the file's last author, who may be the firm. Answer: blame ignores the ignore-revs settings, the diffs are
+   never colored, and a blame that fails on a text file refuses (AC-P23).
+7. The test-only variables replace the firm-author list, the tests, the done-check and the key file for the content
+   scan, and a missing key file makes that scan look for nothing. Answer: a real publish to the default
+   upstream refuses them and refuses a missing key file, and a dry run says which are in force (AC-P24).
+8. A file the tests need but the allowlist leaves out is found only when a publish candidate fails to collect (it
+   happened twice, `tests/retimed.py` and `tests/shipped_score.py`). Answer: a workspace-side test checks every
+   `tests/**/*.py` against the allowlist and collects the allowlisted tree (AC-P25).
 
 ## User Story
 As the team, I publish part changes upstream without ever pushing a firm file.
 
 ## Interface
 ```
-scripts/simon-publish.sh [--dry-run] [--pull] [--record] [-m|--message "<subject>"] [--teammate-override <URL>]
+scripts/simon-publish.sh [--dry-run] [--pull] [--record] [-m|--message "<subject>"] [--teammate-override <URL> --teammate-expect <N>]
 ```
 `--teammate-override <URL>` goes with a publish or `--dry-run` only (`--pull` or `--record` with it is a usage
 error, exit 2); a missing value is exit 2; the URL must match
 `https://github.com/moalborati/<repo>/(issues|pull)/<n>#issuecomment-<id>` (shape only, no network call) or the
 run is refused with exit 1 before any git work, whether or not teammate lines are involved (AC-P23).
+`--teammate-expect <N>` is required with it and goes with nothing else: the override without it, the number without
+the override, a number that is not 0 to 999999999 (leading zeros read as decimal) and either flag with `--pull` or
+`--record` are usage errors, exit 2. `N` is the number of teammate lines the agreement or announcement at the URL
+covers (AC-P23).
 | Mode | Effect | Exit |
 |---|---|---|
 | (none) | fetch, refuse unless local `main` contains upstream `main`, mirror, check lists and content, run `make -s check-5`, run `make -s test`, commit, push | 0 published or nothing to publish; 1 when upstream has commits `main` lacks or the tests fail |
@@ -65,8 +81,11 @@ run is refused with exit 1 before any git work, whether or not teammate lines ar
 | `--record` | fetch upstream main and, only when that drops no upstream content (AC-P22), record it in local `main` with a keep-our-side merge (`git merge --no-ff -s ours`; clean tree, on main); a no-op when upstream is already an ancestor of `main` | 0; 1 when it would drop content, on a dirty tree or off main |
 
 Exit codes: 1 refused (denylist, secret name or content, not allowlisted, tests failing, upstream `main` has
-commits local `main` does not contain, teammate lines without a valid `--teammate-override`, `--record` would
-drop upstream content, dirty or wrong branch for `--pull` or `--record`), 2 usage, 3 git or push failure
+commits local `main` does not contain, teammate lines without a valid `--teammate-override` or with another
+number than `--teammate-expect`, a `git blame` that fails on a text file, `--record` would drop upstream content,
+dirty or wrong branch for `--pull` or `--record`), 2 usage (`--teammate-override` without `--teammate-expect`
+included, and a real publish to the default upstream under a test-only variable or without the operator key file,
+AC-P24), 3 git or push failure
 (a `--pull` merge conflict included). The script prepends `$HOME/.local/bin` to `PATH`
 (uv lives there; the Makefile runs `uv run`). A red done-check still publishes with its exit code in the
 message; red tests (`make -s test` in the publish worktree) refuse, separately from the done-check.
@@ -75,7 +94,11 @@ Environment for tests: `SIMON_PUBLISH_URL`, `SIMON_PUBLISH_PART`, `SIMON_PUBLISH
 bounds the tests), `SIMON_PUBLISH_REFS` (default `Refs #17`, the Part 5 checklist), `SIMON_PUBLISH_TRAILER`,
 `SIMON_PUBLISH_KEY_FILE` (default: the Baseten key file),
 `SIMON_PUBLISH_FIRM_AUTHORS` (the firm's author names, one per line; default the `FIRM_AUTHORS` line in the
-script), `SIMON_PUBLISH_TEAMMATE_SHOW` (ranges listed before "and N more", default 20).
+script), `SIMON_PUBLISH_TEAMMATE_SHOW` (ranges listed before "and N more", default 20). `SIMON_PUBLISH_FIRM_AUTHORS`,
+`SIMON_PUBLISH_TEST_CMD`, `SIMON_PUBLISH_CHECK_CMD` and a `SIMON_PUBLISH_KEY_FILE` other than the default are the
+test-only ones that weaken a check: a real publish to the default upstream refuses them with exit 2 and a dry run
+prints which are in force (AC-P24). A key file that is absent scans for nothing (AC-P18), except in a real publish to
+the default upstream, which refuses it with exit 2 (AC-P24).
 
 ## Lists (in the script)
 - Allowlist: `.simon-publish` (fail closed; missing or empty publishes nothing).
@@ -184,17 +207,57 @@ script), `SIMON_PUBLISH_TEAMMATE_SHOW` (ranges listed before "and N more", defau
   and indentation can carry meaning); a moved teammate line refuses at its old position (no move
   detection; the new position is an insertion); a changed binary file is one row `file (binary file
   changed) by <last author of the file>`; a mode-only change touches no line. Author names are compared
-  exactly (`Tes` does not cover `Tess`). With a well-formed `--teammate-override <URL>` the run proceeds
-  (the dry run says so), prints the same list, and the commit message gains a block after the metrics line:
-  `Teammate lines removed or changed, accepted under --teammate-override <URL> (agreed or announced there;
+  exactly (`Tes` does not cover `Tess`). After the total the run prints `teammate lines for --teammate-expect:
+  <count>`: the teammate lines, a row that names no lines (a changed binary file, a deleted empty file) counting
+  as 1. With a well-formed `--teammate-override <URL>` and a `--teammate-expect <N>` equal to that count the run
+  proceeds (the dry run says so), prints the same list, and the commit message gains a block after the metrics
+  line: `Teammate lines removed or changed, accepted under --teammate-override <URL> (agreed or announced there;
   an objection there reverts them)`, one `- file:range by Author` line each (the first 100, then `... and N
-  more range(s)`), and `Total: ...`. The URL is where the change was agreed with the teammate or, failing
+  more range(s)`), `Total: ...` and `Expected (--teammate-expect): N`. Another number refuses with exit 1 and
+  `REFUSED: --teammate-expect says <N> teammate line(s) and this publish removes or changes <count>; ...; nothing
+  published`, both numbers printed, before the done-check and the tests; a publish whose candidate has no teammate
+  line ignores both flags ("not needed"). The URL is where the change was agreed with the teammate or, failing
   that, announced to them with an invitation to object. A notice is not agreement, so the hint and the
   message both say "agreed or announced", and the message adds that an objection there reverts the lines
   (the revert is a new commit that restores them). An override with no teammate line involved is noted as
   not needed and recorded nowhere. A malformed override (wrong host or organisation, `http`, no
   `#issuecomment-<id>`, a non-numeric id, trailing text, empty) is refused with exit 1 before any git work.
-  The guard runs on the retry after a rejected push too.
+  The guard runs on the retry after a rejected push too. Three settings cannot blind it (TICKET-054): blame runs
+  with `-c blame.ignoreRevsFile=` and `--ignore-revs-file=` (git 2.43 keeps a configured file under the `-c` reset
+  alone; the empty command-line value is the one that clears the list), so a local ignore-revs file does not hand a
+  teammate's line to the author before them; every diff it reads is `--no-color`, so `color.diff=always` or
+  `color.ui=always` does not hide the hunk headers; and a `git blame` that exits non-zero on a text file refuses the
+  publish and the dry run with exit 1 (`REFUSED <file>: git blame failed on the upstream copy (exit <n>), so whose
+  lines it holds is unknown; nothing published`) instead of guessing the file's last author, even with an
+  override. A changed binary file never calls blame and keeps its one row; a blame that answers nothing with exit
+  0 is an empty file (no lines), which keeps its one row.
+- AC-P24 Test-only settings and the operator key file. `SIMON_PUBLISH_FIRM_AUTHORS`, `SIMON_PUBLISH_TEST_CMD`,
+  `SIMON_PUBLISH_CHECK_CMD` and a `SIMON_PUBLISH_KEY_FILE` other than the default replace the firm-author list, the
+  candidate's tests, the done-check and the key file for the content scan. A real publish (not `--dry-run`,
+  not `--pull` or `--record`) whose upstream URL is the default one, in any spelling of the same GitHub repository
+  (the default URL, no `.git`, ssh, any letter case, or `SIMON_PUBLISH_URL` unset), refuses when any of the four is
+  set and not empty: exit 2, `REFUSED: <names> set; these settings are for tests and a real publish to the default
+  upstream (<URL>) refuses them (exit 2); unset them, or use --dry-run; nothing published`, before anything is
+  fetched, built, checked or tested. A `--dry-run` with any of them set prints `test-only settings in force:
+  <names> (a real publish to the default upstream refuses them)` and carries on. A set but empty variable is the
+  default, and a `SIMON_PUBLISH_KEY_FILE` that names the default key file (the same path, or a link to it) is not an
+  override. Separately, a real publish to the default upstream refuses when the key file in use is not a file: exit 2,
+  `REFUSED: the operator key file (<path>) is not a file, so nothing would scan the staged files for the key; a real
+  publish to the default upstream needs it (exit 2); nothing published`, before the fetch; a `--dry-run` prints
+  `WARNING: the operator key file (<path>) is not a file, ... a real publish to the default upstream would refuse (exit
+  2)` and carries on. Chosen as a refusal, not a warning, because no documented flow publishes to the default upstream
+  without the file: the operator's key file lives on the publishing host (firm convention, `staging/env.sh`), the
+  documented "an absent key file scans for nothing" (AC-P18) is the tests' and is kept for any other upstream, and the
+  scan is the last defence against the key reaching upstream. An empty or blank file still scans for nothing (AC-P18);
+  only a file that is not there is refused. The tests run against local bare repositories, so they are unaffected; the
+  test script reaches the default URL through `url.<local>.insteadOf`, points `HOME` at a temporary directory whose
+  default key file path holds a stand-in, and allows only the `file` protocol (`GIT_ALLOW_PROTOCOL`).
+- AC-P25 The allowlist guard (workspace only; the test skips where `.simon-publish` is absent, i.e. upstream).
+  `tests/test_publish_allowlist.py` checks, with the script's glob semantics (`**` and `*` both cross slashes), that
+  (a) every `tests/**/*.py` outside `tests/publish/`, `tests/staging/`, `tests/neighbour/` and `tests/lib/` matches
+  an allowlist line, so a file the published tests import cannot be left out, and (b) the tree the allowlist builds
+  from `git ls-files` (copied to a temporary directory) collects: `pytest --collect-only -q` exits 0. The
+  denylist-refused directories are firm tool tests and stay out on purpose.
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |
@@ -203,7 +266,14 @@ script), `SIMON_PUBLISH_TEAMMATE_SHOW` (ranges listed before "and N more", defau
 | Upstream main has commits local main lacks (also on the retry after a rejected push) | exit 1 | `REFUSED: upstream main has commits local main does not contain; run scripts/simon-publish.sh --pull and resolve, nothing published` | AC-P19, AC-P20 |
 | Candidate removes or changes teammate lines or deletes a teammate file, no override | exit 1, nothing pushed | the list (`file:first-last by Author`), `total: <N> range(s), <L> line(s) in <K> file(s), by <authors>`, then `REFUSED: settle it with the teammate, or pass --teammate-override <URL of the the team issue or PR comment where it was agreed or announced>; nothing published` | AC-P23 |
 | Malformed `--teammate-override` URL | exit 1 | `REFUSED: --teammate-override must be a the team GitHub issue or PR comment URL (https://github.com/moalborati/<repo>/(issues or pull)/<n>#issuecomment-<id>); nothing published` | AC-P23 |
-| `--teammate-override` without a value, or with `--pull` or `--record` | exit 2 | `--teammate-override needs a URL` / `--teammate-override applies to a publish or --dry-run only` | AC-P23 |
+| `--teammate-override` without a value, or with `--pull` or `--record` | exit 2 | `--teammate-override needs a URL` / `--teammate-override and --teammate-expect apply to a publish or --dry-run only` | AC-P23 |
+| `--teammate-override` without `--teammate-expect` | exit 2 | `--teammate-override needs --teammate-expect <the number of teammate lines the agreement or announcement covers>` | AC-P23 |
+| `--teammate-expect` without `--teammate-override`, without a value, or not a whole number from 0 to 999999999 | exit 2 | `--teammate-expect goes with --teammate-override` / `--teammate-expect needs a number of teammate lines` / `--teammate-expect needs a whole number of teammate lines (0 to 999999999)` | AC-P23 |
+| `--teammate-expect` differs from the computed count | exit 1, nothing pushed | `REFUSED: --teammate-expect says <N> teammate line(s) and this publish removes or changes <count>; the agreement or announcement must cover exactly these, so settle the difference and pass the number that matches; nothing published` | AC-P23 |
+| `git blame` fails on a text file of the candidate | exit 1, nothing pushed | `REFUSED <path>: git blame failed on the upstream copy (exit <n>), so whose lines it holds is unknown; nothing published` | AC-P23 |
+| A real publish to the default upstream with `SIMON_PUBLISH_FIRM_AUTHORS`, `_TEST_CMD`, `_CHECK_CMD` or a non-default `_KEY_FILE` set | exit 2, nothing fetched | `REFUSED: <names> set; these settings are for tests and a real publish to the default upstream (<URL>) refuses them (exit 2); unset them, or use --dry-run; nothing published` | AC-P24 |
+| A real publish to the default upstream when the operator key file is not a file | exit 2, nothing fetched | `REFUSED: the operator key file (<path>) is not a file, so nothing would scan the staged files for the key; a real publish to the default upstream needs it (exit 2); nothing published` (a dry run prints `WARNING: ...` and carries on) | AC-P24 |
+| `tests/**/*.py` outside the firm test directories matches no allowlist line, or the allowlisted tree does not collect | the workspace test fails | the path(s) or the pytest output | AC-P25 |
 | `git merge-base` fails | exit 3 | `cannot compare upstream main with local main (git merge-base exit <n>)` | |
 | `--pull` merge conflict | exit 3, merge left in progress | `merge stopped on a conflict; resolve it on main` | AC-P21 |
 | `--pull` on a dirty tree or off main | exit 1 | `--pull needs a clean tree` / `--pull runs on main only` | AC-P21 |
@@ -267,6 +337,17 @@ against a copy whose content check is disabled it fails 11 checks (every teammat
 changed-since-publish refusal).
 Teammate lines (AC-P23), 2026-11-01: `bash tests/publish/test-simon-publish.sh` exit 0 (231 passed, 0 failed);
 against a copy with the teammate check disabled it fails 35 checks.
+Residuals of the consolidated review (AC-P23 additions, AC-P24, AC-P25; TICKET-054), 2026-11-01:
+`bash tests/publish/test-simon-publish.sh` exit 0 (295 passed, 0 failed); against the script before the change it
+fails 64 checks (the new flag, the blame and color cases, every AC-P24 refusal); against a copy that resets
+`blame.ignoreRevsFile` with `-c` alone it fails the ignore-revs check (git 2.43.0 keeps the configured file, so the
+command-line `--ignore-revs-file=` is the reset that works); against a copy without `--no-color` it fails the three
+color checks. The suite sets `GIT_ALLOW_PROTOCOL=file`, so no test reaches a network. `uv run pytest -q
+tests/test_publish_allowlist.py` exit 0 (4 passed, about 3 s); with `tests/shipped_score.py` taken out of the allowlist
+both the allowlist check and the collection check fail.
+Key file rules (AC-P24, second TICKET-054 commit), 2026-11-01: `bash tests/publish/test-simon-publish.sh` exit 0
+(310 passed, 0 failed); against the script of the first commit it fails 17 checks (every `SIMON_PUBLISH_KEY_FILE`
+and missing-key-file case).
 
 ## Dissent Review
 ### Concern 1: an allowlist can drift from what the part needs

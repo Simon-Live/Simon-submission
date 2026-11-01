@@ -193,7 +193,8 @@ Given a take scored by `simon.score.v2` that reports at least one fault, then `s
 `score.value` is at most 89 and `score.capped_by` is absent unless a warning capped the score: the fault cap is never
 named there (Part 7 reads `capped_by` as the low-match warning cap). `score.uncapped` (`{value, grade}`) is the value and
 grade before every cap, the fault cap and the warning cap, written when either lowered the value; with both it is the
-value before the first. A take with no fault has no `fault_cap`. `fixtures/output/analysis.fault-capped.example.json`
+value before the first. A take with no fault has no `fault_cap`. Part 5 ships `simon.score.v1`; `simon.score.v2` failed
+held-out score seed 59 (docs/thresholds.md), so no document has a `fault_cap` now. `fixtures/output/analysis.fault-capped.example.json`
 is, while Part 5 ships v2, the sample for Part 7 (value 89 B, `fault_cap` 89, `uncapped` 94 A, no `capped_by`); the schema (1.10.0), `part5
 doctor`, `CONTRACT.md`, `docs/schemas.md` and the contract row carry it, and `tests/test_score_v2.py` and
 `tests/test_contract_part7_history.py` pin it.

@@ -19,7 +19,8 @@ shipped_score.py), so `make test` is green on the result. What the script cannot
 result (docs/thresholds.md, fixtures/score-heldout.json, ADR-0018's Status): that is written by hand, as measured.
 
 `--check` only says whether the tree ships v2 and could be rolled back (exit 0), ships v1 already (exit 3) or has no `v1`
-block to go back to (exit 2). `--no-regenerate` stops after step 1 and 2. Exit 0 done, 1 a step failed, 2 not a v2 tree.
+block to go back to (exit 2). `--no-regenerate` stops after step 1 and 2. Exit 0 done, 1 a step failed, 2 not a v2 tree
+(no `v1` block to go back to, or rules that cannot be read), 3 the tree already ships v1 (nothing to go back to).
 """
 import argparse
 import hashlib

@@ -265,6 +265,34 @@ def test_recheck_6_a_line_that_is_not_json_is_skipped_and_the_rest_counts(meta):
     assert meta_api.spent() == pytest.approx(1.75)
 
 
+# ---- TICKET-054 R1: an amount that is not finite or is below 0 is not a ledger ---------------------------------------
+LEDGER_LINES = {
+    "nan": '{"usd": NaN}', "infinity": '{"usd": Infinity}', "minus infinity": '{"usd": -Infinity}',
+    "negative": '{"usd": -0.5}', "negative text": '{"usd": "-0.5"}', "nan text": '{"usd": "nan"}',
+    "too large for a float": '{"usd": 1' + "0" * 400 + "}"}
+
+
+@pytest.mark.parametrize("line", LEDGER_LINES.values(), ids=LEDGER_LINES.keys())
+def test_ticket_054_r1_a_non_finite_or_negative_usd_makes_the_ledger_unreadable(take, meta, line):
+    meta.ledger.parent.mkdir(parents=True)
+    meta.ledger.write_text(json.dumps({"usd": 4.99}) + "\n" + line + "\n")
+    for check in (meta_api.spent, meta_api.check_cap, lambda: meta_api.check_budget(0.40)):   # 4.99 + NaN passed 5.00
+        with pytest.raises(OpinionError) as raised:
+            check()
+        assert raised.value.reason == "usage ledger not readable"
+    fake = Fake(answer())
+    block = attach(take, meta, fake)["second_opinion"]
+    assert (block["status"], block["reason"]) == ("fallback", "usage ledger not readable")
+    assert fake.uploaded == [] and fake.bodies == [] and len(meta.ledger.read_text().splitlines()) == 2
+
+
+def test_ticket_054_r1_ordinary_lines_still_add_up(meta):
+    meta.ledger.parent.mkdir(parents=True)
+    lines = [{"usd": 0.25}, {"usd": 0}, {"usd": None}, {"model": "no amount"}, {"usd": "0.5"}, [1], "text"]
+    meta.ledger.write_text("\n".join(json.dumps(x) for x in lines) + "\n{broken\n")
+    assert meta_api.spent() == pytest.approx(0.75)
+
+
 def test_review_r2_a_zero_cap_or_ceiling_refuses_every_call(meta, monkeypatch):
     monkeypatch.setenv(CAP_ENV, "0")
     with pytest.raises(OpinionError, match="spend cap reached"):

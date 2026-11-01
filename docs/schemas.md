@@ -104,7 +104,8 @@ takes by `make output-examples` through the same pipeline and score hook `part5 
 mentions) and `fixtures/output/replay.example.json`
 (the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.10.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
-Part 7 must read first.
+Part 7 must read first. Part 5 ships `simon.score.v1`; `simon.score.v2` failed held-out score seed 59
+(docs/thresholds.md), so the fault-capped example is not written now.
 
 Every addition is optional and told apart by its fields; `schema_version` says which to expect:
 
@@ -120,7 +121,7 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.7.0` | `profile`; `score.components.tempo` and the same on each window, dance only (ADR-0016) | every new document is `1.7.0`, and `profile` is always present; the tempo points appear only under the dance profile |
 | `1.8.0` | `diagnostics.near_misses` (TICKET-043, `docs/specs/near-misses.md`) | every new document is `1.8.0`; the field is present whenever the take was compared, also when it lists nothing, and absent on a take that could not be aligned |
 | `1.9.0` | `phrasing.lang`, `phrasing.lang_requested`, `phrasing.faults[].text` and `.lang`; top-level `second_opinion` (TICKET-045, TICKET-046, `docs/specs/second-opinion.md`); `score.uncapped` (Part 7 TICKET-155); the top-level `source` and the `no_person` warning code (TICKET-048) | every new document is `1.9.0` and carries the language fields; `second_opinion` is written only when both clips were given as videos (`--expected-video`, `--follower-video`), with `status` `ok`, `fallback` or `skipped`, and is never read by the score; `score.uncapped` only when a warning's cap lowered the value; `source` and `no_person` only in Part 7's own analysis of a take with no person (below), never by Part 5 |
-| `1.10.0` | `score.fault_cap`; `score.version` `simon.score.v2`; the wider meaning of `score.uncapped` (TICKET-047, ADR-0018, `docs/specs/score-v2.md`) | every new document is `1.10.0`; its score is `simon.score.v2`, or `simon.score.v1` if seed 59 fails its targets and ADR-0018's fallback ships v1 (read `score.version`); under v2 `fault_cap` (89) is written when the take reports a fault, and `uncapped` when the fault cap or the warning cap lowered the value; `capped_by` is unchanged |
+| `1.10.0` | `score.fault_cap`; `score.version` `simon.score.v2`; the wider meaning of `score.uncapped` (TICKET-047, ADR-0018, `docs/specs/score-v2.md`) | every new document is `1.10.0`; its score is `simon.score.v1` (`simon.score.v2` failed held-out score seed 59 and ADR-0018's fallback shipped v1; read `score.version`); under v2 `fault_cap` (89) is written when the take reports a fault, and `uncapped` when the fault cap or the warning cap lowered the value; `capped_by` is unchanged |
 
 ```json
 {
