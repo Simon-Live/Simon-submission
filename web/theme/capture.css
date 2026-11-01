@@ -2,7 +2,11 @@
    a Recording pill and timer; a ring record button between round tools; a steady-phone tip. Tokens only. */
 .capture[data-chrome] .ref-row { display: flex; flex-direction: column; gap: var(--space-3); }
 .capture[data-chrome] .ref { order: -1; width: 100%; border-radius: var(--radius-lg); }
-.capture[data-chrome] .ref-stage { aspect-ratio: 4 / 3; }
+/* a video gets the design's frame; a 3D reference keeps its own height, controls included */
+.capture[data-chrome] .ref-stage:has(> video.ref-media) { aspect-ratio: 4 / 3; }
+.capture[data-chrome] .ref-stage:not(:has(> video.ref-media)) { aspect-ratio: 4 / 5; }
+/* the 3D viewer's legend moves right, so the REFERENCE ROUTINE pill has the top-left corner */
+.capture[data-chrome] .ref-figure .sr-legend { left: auto; right: var(--space-3); }
 .capture[data-chrome] .cam { aspect-ratio: 4 / 3; }
 .capture[data-chrome] .ref-bar { background: transparent; padding: var(--space-2) 0 0; }
 
@@ -11,9 +15,9 @@
   font: var(--weight-bold) var(--text-xs)/1.4 var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; pointer-events: none; }
 .cap-pill-top { top: var(--space-3); left: var(--space-3); }
 
-.cap-ref-meta { position: absolute; inset: auto 0 0 0; z-index: 2; display: flex; align-items: flex-end; justify-content: space-between;
-  gap: var(--space-3); padding: var(--space-6) var(--space-4) var(--space-4);
-  background: linear-gradient(to top, var(--color-scrim), transparent); }
+/* the title sits under the reference, never over it: a 3D reference keeps its own controls at the bottom */
+.cap-ref-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); background: var(--color-surface); }
 .cap-ref-title { margin: 0; font: var(--weight-bold) var(--text-lg)/1.2 var(--font-sans); color: var(--color-on-media); }
 .cap-ref-sub { margin: 2px 0 0; font-size: var(--text-sm); color: var(--color-text-muted); }
 .cap-watch { display: inline-flex; align-items: center; min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-md);
@@ -43,3 +47,7 @@ body .cap-controls label.btn.secondary::before { content: "↑"; font-size: var(
 
 .cap-tip { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-4) 0 0; color: var(--color-text-muted); font-size: var(--text-sm); }
 .cap-tip::before { content: ""; flex: none; width: 12px; height: 20px; border: 2px solid var(--color-text-muted); border-radius: 3px; }
+
+/* Mirrored flips the picture only: the video, or the 3D canvas, never the viewer's text, legend or buttons */
+body .ref[data-mirror="true"] .ref-media:not(video) { transform: none; }
+body .ref[data-mirror="true"] .ref-media:not(video) canvas { transform: scaleX(-1); }

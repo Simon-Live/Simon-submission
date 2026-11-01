@@ -5,6 +5,7 @@ import { getEntry, getEntryFile, entryFileUrl, entryPageUrl, ApiError } from "./
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading, hideLoading } from "./progress.js";
 import { getEntryLabels, tagChips } from "./labels.js";
+import { themeFrame } from "./theme-embed.js";
 
 export const NO_3D = "This movement has no 3D animation yet.";
 export const NO_WEBGL = "3D view is not available in this browser.";
@@ -61,6 +62,8 @@ export function mountWatch(root, id) {
     const figure = h("div", { class: "figure" });
     const labelBox = h("div", { class: "labels" });
     const challengeBox = h("div", { class: "challenges", "data-testid": "watch-challenges" });
+    const frame = h("iframe", { class: "frame", src: entryPageUrl(eid), title: `${entry.name} in the catalog`, loading: "lazy", "data-testid": "watch-frame" });
+    themeFrame(frame); // brand theme inside Part 6's page (theme-embed.js)
     clear(screen).append(
       h("div", { class: "head" },
         h("div", {}, h("h1", { text: entry.name || eid }), h("p", { class: "hint", text: entry.category || "" })),
@@ -71,7 +74,7 @@ export function mountWatch(root, id) {
       h("h2", { text: "3D figure" }),
       figure,
       h("h2", { text: "Details" }),
-      h("iframe", { class: "frame", src: entryPageUrl(eid), title: `${entry.name} in the catalog`, loading: "lazy", "data-testid": "watch-frame" }));
+      frame);
     mountLabelsView(labelBox, eid);
     import("./challenge.js").then((m) => m.mountChallengeList(challengeBox, eid)).catch(() => {});
     mountFigure(figure, { ...entry, id: eid });

@@ -1,0 +1,35 @@
+/* Part 6's catalog page as embedded in Part 7 (the Watch screen's Details frame), on the brand. Part 7 adds this
+   and tokens.css to the frame's document after it loads (theme-embed.js); Part 6's own files are untouched.
+   tokens.css already maps --surface, --ink, --muted and --line; the rest of Part 6's variables are mapped here. */
+:root {
+  --page: var(--color-bg);
+  --accent: var(--color-accent);
+  --accent-strong: var(--color-accent);
+  --tint: var(--color-accent-soft);
+  --tint-line: var(--color-accent);
+  --error: var(--color-bad);
+  --font: var(--font-sans);
+  --shadow: none;
+  --shadow-md: none;
+  color-scheme: dark;
+}
+body { background: var(--color-bg); color: var(--color-text); }
+/* inside the app, the app's own navigation is the way back */
+.btn.back { display: none; }
+.btn:hover, a.card:active { background: var(--color-raised); }
+.btn-primary, .btn-primary:active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+.badge { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
+.pill { background: var(--color-raised); border-color: var(--color-line); color: var(--color-text); }
+.search::placeholder { color: var(--color-text-muted); }
+a.card::after { border-color: var(--color-text-muted); }
+.skeleton-line, .card-placeholder .thumb, .skeleton-stage { background: var(--color-raised); }
+.stage { border-radius: var(--radius-lg); }
+.legend { color: var(--color-text); }
+.reference-video { background: var(--color-media-bg); }
+.scrub::-webkit-slider-runnable-track { background: linear-gradient(to right, var(--color-accent) calc(14px + (100% - 28px) * var(--f)), var(--color-line) 0); }
+.scrub::-moz-range-track { background: var(--color-line); }
+.scrub::-webkit-slider-thumb, .scrub::-moz-range-thumb { background: var(--color-text); box-shadow: none; }
+.camera-tag { background: var(--color-scrim); color: var(--color-on-media); }
+.rec-dot { background: var(--color-bad); }
+.form-error, .format-error, .import-row.is-error, .import-repeated, .failure { border-color: var(--color-bad); background: var(--color-bad-soft); }
+.file-row[data-state="missing"]::before { border-color: var(--color-text-muted); }

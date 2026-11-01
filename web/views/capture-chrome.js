@@ -11,7 +11,7 @@ export function decorateCapture(root, m) {
   if (stage) {
     stage.append(h("span", { class: "cap-pill cap-pill-top", "aria-hidden": "true", text: m.referenceLabel }));
     if (m.title) {
-      stage.append(h("div", { class: "cap-ref-meta" },
+      stage.after(h("div", { class: "cap-ref-meta" },
         h("div", {}, h("p", { class: "cap-ref-title", text: m.title }), m.subtitle ? h("p", { class: "cap-ref-sub", text: m.subtitle }) : null),
         m.watchHref ? h("a", { class: "cap-watch", href: m.watchHref, "data-testid": "capture-watch", text: `▷ ${m.watchLabel}` }) : null));
     }
