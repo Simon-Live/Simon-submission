@@ -2,7 +2,7 @@
    Every stylesheet and every script that draws reads these names; change the brand here and nowhere else.
    Layers: palette (raw values) -> semantic tokens (what a value is for) -> legacy aliases (names the existing
    Part 7 stylesheets already use, pointed at the semantic tokens). */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+/* the Inter webfont loads from theme/fonts.css, off the render path (index.html) */
 
 :root {
   color-scheme: dark;

@@ -1,0 +1,3 @@
+/* Inter, loaded without blocking first paint: index.html links this file with media="print" and switches it to
+   "all" on load. Until then the --font-sans fallback stack shows; display=swap keeps text visible. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
