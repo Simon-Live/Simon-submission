@@ -29,6 +29,7 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`simon-publish.md`](specs/simon-publish.md): maintainers' tooling, not in this repo: how files reach this repository.
 - [`second-opinion.md`](specs/second-opinion.md): Muse Spark's second opinion on both clips (`second_opinion`), lines that repeat no phrase, and the follower's language (`--lang`).
 - [`score-v2.md`](specs/score-v2.md): `simon.score.v2`: misses weighted by the trainer's range, a ceiling of 89 for a take that reports a fault (`score.fault_cap`), schema 1.10.0.
+- [`score-v3.md`](specs/score-v3.md): `simon.score.v3`: v2's weight and its ceiling of 89 for one reported fault, and a ceiling of 79 for two or more (`score.fault_cap` is the ceiling in force), schema 1.11.0.
 - [`foot-keypoints.md`](specs/foot-keypoints.md): heel and toe points read from Part 2's pose3d.json as an optional side input, the `foot_rotation` and `ankle_inversion` measures, when they are hidden (a foot that jitters, the far foot of a side view, is not measured: attempt 5), their cues and how they are calibrated.
 - [`foot-keypoints-attempt-5.md`](specs/foot-keypoints-attempt-5.md): the record of attempt 5 split out of the foot spec: the ruling, the failure on seeds 37 and 67, the candidates, the jitter rule, its seed 5 evidence and its costs and known limits.
 - [`profiles.md`](specs/profiles.md): analysis profiles `dance`, `rehab` and `fitness`: the profiles file, the loosen-only rule, tempo, schema 1.7.0 and the seed 5 report (values set by hand).
@@ -55,5 +56,6 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`ADR-0016-analysis-profiles.md`](adr/ADR-0016-analysis-profiles.md): analysis profiles live in their own file as loosen-only multipliers judged against fitness; tempo is scored in dance only.
 - [`ADR-0017-second-held-out-series.md`](adr/ADR-0017-second-held-out-series.md): a second held-out series, seeds 67, 71 and 73, each scored once after a frozen commit; seed 37's red attempt stays on record.
 - [`ADR-0018-score-v2.md`](adr/ADR-0018-score-v2.md): score v2 (amends ADR-0007): a miss weighted by the trainer's range, a ceiling of 89 for a take that reports a fault, targets fixed before seed 59.
+- [`ADR-0019-score-v3.md`](adr/ADR-0019-score-v3.md): score v3 (amends ADR-0007 and ADR-0018): v2's weight and 89 ceiling, a ceiling of 79 for two or more reported faults, ADR-0018's five targets on seed 61.
 
 Related: `docs/schemas.md` (field reference), `docs/thresholds.md` (thresholds, guard limits and the held-out record).

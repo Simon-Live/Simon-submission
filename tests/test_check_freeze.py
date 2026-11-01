@@ -317,6 +317,59 @@ def test_ac_k09_rerunning_the_current_set_lists_it_once_and_keeps_its_freeze_com
     assert doc["attempts"][0]["freeze_commit"] == "feedbee" and doc["attempts"][0]["passed"] is True
 
 
+ATTEMPT_CORE = ["seed", "freeze_commit", "rules_sha256", "approach", "passed", "slices"]
+SCORED_FIELDS = {"scored": "2026-11-01", "scored_at": "47fce0ca21b05d7b4c4ce9e183a981c56e727580",
+                 "command": "make check-5", "exit": 0}
+
+
+def test_r4a_a_recorded_seed_carries_every_field_of_its_record(tmp_path, monkeypatch, capsys):
+    """TICKET-058 R4a: the rerun of the newest scored seed lists the entry with every recorded field, as the earlier
+    attempts are listed, a field this code does not know about included; the six core fields keep their order."""
+    w = world(tmp_path, monkeypatch, seed=29)
+    slices = json.loads(w.run(capsys)[1])["gate"]["metrics"]["slices"]
+    record = {**recorded(29, True, commit="feedbee"), "slices": slices, **SCORED_FIELDS, "note": "kept verbatim"}
+    w.attempts([record])
+    code, out, _ = w.run(capsys)
+    entry = json.loads(out)["attempts"][0]
+    assert code == 0 and entry == record
+    assert list(entry) == ATTEMPT_CORE + ["scored", "scored_at", "command", "exit", "note"]
+
+
+def test_r4a_a_seed_with_no_record_keeps_the_six_core_fields(tmp_path, monkeypatch, capsys):
+    w = world(tmp_path, monkeypatch, seed=31)
+    w.attempts([recorded(29, False)])
+    code, out, _ = w.run(capsys)
+    doc = json.loads(out)
+    assert code == 0 and list(doc["attempts"][-1]) == ATTEMPT_CORE   # the current, unrecorded attempt
+    assert list(doc["attempts"][0]) == ATTEMPT_CORE                  # a record that has only the core fields
+
+
+def test_r4a_with_no_attempts_file_at_all_the_entry_has_the_six_core_fields(tmp_path, monkeypatch, capsys):
+    w = world(tmp_path, monkeypatch, seed=29)
+    code, out, _ = w.run(capsys)
+    assert code == 0 and list(json.loads(out)["attempts"][0]) == ATTEMPT_CORE
+
+
+def test_r4a_current_attempt_keeps_this_runs_gate_and_numbers_over_the_record():
+    live = {"slices": {"good/front": {"tp": 2}}}
+    record = {**recorded(73, False), **SCORED_FIELDS}
+    entry = check.current_attempt(73, True, live, "b" * 64, dict(record), record)
+    assert entry["passed"] is True and entry["slices"] == live["slices"]          # this run's, as before
+    assert {k: entry[k] for k in SCORED_FIELDS} == SCORED_FIELDS
+    assert entry["freeze_commit"] == record["freeze_commit"] and entry["rules_sha256"] == record["rules_sha256"]
+    assert list(check.current_attempt(73, True, live, "b" * 64, {}, None)) == ATTEMPT_CORE
+    assert list(check.current_attempt(73, True, live, "b" * 64, {}, {})) == ATTEMPT_CORE
+
+
+def test_r4a_the_committed_record_of_every_scored_seed_comes_out_whole():
+    """The committed fixtures/heldout-attempts.json: the entry built for any of its seeds has every key and value of it."""
+    for rec in check.load_attempts(check.ATTEMPTS):
+        entry = check.current_attempt(rec["seed"], rec["passed"], {"slices": rec["slices"]}, rec["rules_sha256"],
+                                      dict(rec), rec)
+        assert entry == rec and list(entry) == list(rec)
+        assert {"scored", "scored_at", "command", "exit"} <= set(entry)
+
+
 def test_a_scored_seed_that_scores_differently_from_its_record_exits_2(tmp_path, monkeypatch, capsys):
     """ADR-0003: a retired seed is only verified; changed scores mean scoring changed after the freeze."""
     w = world(tmp_path, monkeypatch, seed=29)

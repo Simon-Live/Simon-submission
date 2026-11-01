@@ -37,7 +37,7 @@ that a mismatch is found in seconds with the fix named.
 ## Schemas (`contracts/`, published)
 | Name | File | `version` | Describes |
 |---|---|---|---|
-| `analysis` | `contracts/analysis.schema.json` | `1.10.0` (`1.1.0` when this spec was written) | Part 5's output, `simon.analysis.v1` with the additive fields of the master spec, `journey-followup.md`, `foot-keypoints.md` (`diagnostics.feet`), `profiles.md` (`profile`), `near-misses.md` (`diagnostics.near_misses`) and `second-opinion.md` (`phrasing.lang`, `second_opinion`) |
+| `analysis` | `contracts/analysis.schema.json` | `1.11.0` (`1.1.0` when this spec was written) | Part 5's output, `simon.analysis.v1` with the additive fields of the master spec, `journey-followup.md`, `foot-keypoints.md` (`diagnostics.feet`), `profiles.md` (`profile`), `near-misses.md` (`diagnostics.near_misses`) and `second-opinion.md` (`phrasing.lang`, `second_opinion`) |
 | `input-animation` | `contracts/input-animation.schema.json` | `1.0.0` | expected or follower clip in `simon.animation.v1` (frames, optional `null` joints and `conf`) |
 | `input-skeleton` | `contracts/input-skeleton.schema.json` | `1.0.0` | expected clip in `simon.skeleton.v1` (keyframes) |
 | `labels` | `contracts/labels.schema.json` | `1.0.0` | `labels.json` of the synthetic sets and the real takes (`label_source` optional) |
@@ -61,7 +61,7 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 | Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 7036622 |
 | Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 ced3f3d |
 | Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 ced3f3d |
-| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.10.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, `profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`, `score.fault_cap`) are all optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and `phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level `second_opinion` (Muse Spark's view of the take, label it as the model's opinion; the score never reads it), `score.uncapped` (the value and grade before a cap lowered them, present only when one did) and the optional top-level `source` (the producing part; absent means part5) with the warning code `no_person` (written only by Part 7's own analysis, never by Part 5); 1.10.0 (ADR-0018) allows the score to be `simon.score.v2` (read `score.version`; a v1 score can still be written inside 1.10.0) and adds, under v2 only, `score.fault_cap` (the integer 89, present when the take reports a fault: such a take scores at most 89, a B; it is not a warning, `score.capped_by` still names the low-match cap at 59 F only) and widens `score.uncapped` to the value and grade before every cap, the fault cap and the warning cap; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its `profile` | Part 5 (this repo) |
+| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.11.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, `profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`, `score.fault_cap`) are all optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and `phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level `second_opinion` (Muse Spark's view of the take, label it as the model's opinion; the score never reads it), `score.uncapped` (the value and grade before a cap lowered them, present only when one did) and the optional top-level `source` (the producing part; absent means part5) with the warning code `no_person` (written only by Part 7's own analysis, never by Part 5); 1.10.0 (ADR-0018) allows the score to be `simon.score.v2` (read `score.version`; a v1 score can still be written inside 1.10.0) and adds `score.fault_cap`, present under v2 and v3 when the take reports a fault (under v2 the integer 89, so such a take scores at most 89, a B; under v3 89 for one fault and 79 for two or more, see 1.11.0 below; it is not a warning, `score.capped_by` still names the low-match cap at 59 F only) and widens `score.uncapped` to the value and grade before every cap, the fault cap and the warning cap; 1.11.0 (ADR-0019) allows the score to be `simon.score.v3`, under which `score.fault_cap` is the ceiling in force, 89 for a take that reports one fault and 79 for a take that reports two or more (read it, never assume 89), and `capped_by` is still the low-match cap only; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its `profile` | Part 5 (this repo) |
 | Part 7 own analysis for a take with no person | `analysis.json` with `source: "part7"` | `simon.analysis.v1` (`schema_version` 1.4.0, as Part 7 writes it today) with `source` and the warning `no_person` (schema 1.9.0) | none | works | Part 7 writes it when Part 2 finds nobody in the take: `source` `part7`, the warning `no_person`, `faults: []`, `expected` and `follower` with their real `path`, a score of 0 (F) and no `match`, because nothing was compared; `part5 doctor <file> --for part7` accepts it and notes that nothing was looked at; Part 5 never writes `no_person` or `source` | Part 5 TICKET-048 (the document Part 7 described, moalborati/simon#61) |
 | Part 5 `analyse --replay <replay.json>` | `replay.json` | `simon.replay.v1` | output for Part 7 | works | optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>` | Part 5 (this repo) |
 | Part 5 `analyse --live` | live mode (`--live`, `serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`) | `simon.analysis.v1` with `phrasing.selected_by` `live` | option for Part 7 | works with an option | needs the Baseten key file on the host that runs Part 5; without it each fault keeps its timed template line (`fallback_reason: "no key"`); the template stays the default for tests and `make check-5` | Part 5 (this repo) |
@@ -72,11 +72,13 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 | Part 5 | `labels.json` | none | evaluation | works |  | Part 5 (this repo) |
 
 The last column is the producer commit each row was checked against: the `main` heads of Parts 2, 3, 4 and 6 that the
-neighbour check recorded in its run 2 of 2026-11-01 (`progress/neighbour-check-20261101.json`, `NEIGHBOUR_COMMITS` in
+neighbour check recorded in its run 2 of 2026-11-01 (`progress/neighbour-check-20261101-run2.json`, `NEIGHBOUR_COMMITS` in
 `part5/contract.py`; never typed from memory). One row is the exception: Part 2's foot points name `e8ac336`
 (`PART2_FEET_COMMIT`), the Part 2 commit that introduced `extra_joints`, because that format is what the feet reader was
-built and tested against; the run 2 doctor steps re-read Part 2's files at its head. `contracts/sources.lock.json` still
-records where the copied schemas and fixtures of Parts 3 and 4 came from.
+built and tested against; the run 2 doctor steps re-read Part 2's files at its head. Run 3 of that day
+(`progress/neighbour-check-20261101.json`, TICKET-058, which only made the step ids unique) found Part 2 at `a8f91ac`
+with the same 61 steps passing; the cells stay at the run 2 heads until the rows are checked against a newer one.
+`contracts/sources.lock.json` still records where the copied schemas and fixtures of Parts 3 and 4 came from.
 
 ## API / Interface Contract
 ```
@@ -159,7 +161,7 @@ carry it); a `match` is required for every other warning code and checked when p
 had before the cap. `tests/test_part7_no_person.py`.
 ### AC-C15: the fields Part 7's takes-over-time report reads (TICKET-049, Part 7 TICKET-183)
 Part 7 reads these fields across many takes, without importing Part 5. For every analysis schema version from `1.5.0`
-(`1.5.0`, `1.6.0`, `1.7.0`, `1.8.0`, `1.9.0`, `1.10.0`; a new version added to `contracts/analysis.schema.json` fails the test until
+(`1.5.0`, `1.6.0`, `1.7.0`, `1.8.0`, `1.9.0`, `1.10.0`, `1.11.0`; a new version added to `contracts/analysis.schema.json` fails the test until
 it is listed), `tests/test_contract_part7_history.py` pins each field's name, JSON type and meaning in the schema and in a
 document derived from the committed goldens (`fixtures/output/analysis*.example.json`) by removing what the later
 versions added, and pins which fields the schema leaves optional and what their absence means:
@@ -197,11 +199,22 @@ Given a take scored by `simon.score.v2` that reports at least one fault, then `s
 `score.value` is at most 89 and `score.capped_by` is absent unless a warning capped the score: the fault cap is never
 named there (Part 7 reads `capped_by` as the low-match warning cap). `score.uncapped` (`{value, grade}`) is the value and
 grade before every cap, the fault cap and the warning cap, written when either lowered the value; with both it is the
-value before the first. A take with no fault has no `fault_cap`. Part 5 ships `simon.score.v1`; `simon.score.v2` failed
-held-out score seed 59 (docs/thresholds.md), so no document has a `fault_cap` now. `fixtures/output/analysis.fault-capped.example.json`
-is, while Part 5 ships v2, the sample for Part 7 (value 89 B, `fault_cap` 89, `uncapped` 94 A, no `capped_by`); the schema (1.10.0), `part5
+value before the first. A take with no fault has no `fault_cap`. `simon.score.v2` failed held-out score seed 59
+(docs/thresholds.md) and ADR-0018's fallback shipped `simon.score.v1`; `simon.score.v3` then held all five targets on score seed 61 (docs/thresholds-score-v3.md) and ships, so the
+rules in this tree carry it (AC-C18), which keeps this AC for a take that reports one fault. `fixtures/output/analysis.fault-capped.example.json`
+is, while the rules ship v2 or v3, the sample for Part 7 (value 89 B, `fault_cap` 89, `uncapped` 94 A, no `capped_by`); the schema (1.10.0), `part5
 doctor`, `CONTRACT.md`, `docs/schemas.md` and the contract row carry it, and `tests/test_score_v2.py` and
 `tests/test_contract_part7_history.py` pin it.
+### AC-C18: the score of analysis 1.11.0 (TICKET-060, ADR-0019, `docs/design/specs/score-v3.md`)
+Given a take scored by `simon.score.v3`, then `score.fault_cap` is the ceiling in force: the integer 89 when the take reports
+one fault and 79 when its `faults` list holds two or more entries, written whether or not the ceiling lowered `score.value`,
+and absent for a take with no fault. `score.capped_by` and `score.uncapped` mean what AC-C17 says. The schema (1.11.0) accepts
+`simon.score.v3`, the metrics schema (1.5.0) accepts it in `report.score.version`, and a 1.10.0 document still validates.
+`fixtures/output/analysis.double-capped.example.json` is, while the rules ship v3, the sample for Part 7 of a take that reports
+two faults and hits the 79 ceiling (value 79 C, `fault_cap` 79, `uncapped` 82 B, no `capped_by`); `part5 doctor`, `CONTRACT.md`,
+`docs/schemas.md` and the contract row carry it, and `tests/test_score_v3.py` and `tests/test_contract_part7_history.py` pin it.
+### AC-C19: the history fields (TICKET-070, Part 7's four questions)
+Given `contracts/history-fields.json` (`format` `simon.part5.history-fields.v1`, its own `version`, the `analysis_schema_version` it describes, `fields`, `absent_means`, `score_versions`, `measures` and `detection_changes_without_a_version`), then every `fields[].path` exists in `contracts/analysis.schema.json` (a renamed path fails), every `since` agrees with the schema and the committed goldens and examples, and the file fails the test when the schema moves to a version it does not describe. `CONTRACT.md` ("History across takes") answers Part 7's four questions in plain words (units and which way is worse, side, what changed from score v1 to v3, what an absent measure and a null tempo mean). `part5 contract` and `part5 contract --json` (the key `history_fields`) name the file. `tests/test_contract_history_fields.py` and `tests/test_contract_cli.py` pin it; the file adds no schema and changes no analysis output.
 ### AC-C10: #34 plain errors
 Given `PART3_DIR` pointing at a checkout that lacks a copied file, when `make contracts-check` runs, then
 it exits 2 with a plain message naming the missing upstream path, never a traceback (TICKET-004).
@@ -279,6 +292,7 @@ version tells a careful reader what to expect.
   `score.uncapped`. One row added: "Part 7 own analysis for a take with no person"; the analysis row names the three;
   the table above is the one `part5 contract` prints (the `--lang` and video rows, missing from this copy, are in it).
 - 2026-11-01 (TICKET-047, ADR-0018, `docs/design/specs/score-v2.md`; AC-C17): the analysis schema is `1.10.0` (`score.fault_cap`, `score.version` `simon.score.v2`, `score.uncapped` before every cap) and the metrics schema `1.4.0` (`report.score.version` may be `simon.score.v2`); the analysis row names them; the sample is `fixtures/output/analysis.fault-capped.example.json`.
+- 2026-11-01 (TICKET-060, ADR-0019, `docs/design/specs/score-v3.md`; AC-C18): the analysis schema is `1.11.0` (`score.version` `simon.score.v3`, `score.fault_cap` the ceiling in force, 89 or 79) and the metrics schema `1.5.0` (`report.score.version` may be `simon.score.v3`); the analysis row names them; the second sample is `fixtures/output/analysis.double-capped.example.json`.
 - 2026-11-01 (TICKET-049, Part 7 TICKET-183; AC-C15, AC-C16): no schema change. The fields of Part 7's takes-over-time
   report are pinned for every analysis version from `1.5.0` (`tests/test_contract_part7_history.py`) and named in
   `CONTRACT.md` (Part 7's duty 10); `contracts/student-words.json` is generated from the validator's own word lists

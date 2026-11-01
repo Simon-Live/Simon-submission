@@ -108,7 +108,7 @@ def test_ac_la_04_the_cli_writes_the_language_and_each_line_once(tmp_path, capsy
     assert cli.main(["analyse", "--expected", str(EXPECTED_PATH), "--follower", str(FOOT_PATH), "--out", str(out),
                      "--lang", "pt-BR"]) == 0
     doc = json.loads(out.read_text())
-    assert doc["schema_version"] == "1.10.0"
+    assert doc["schema_version"] == "1.11.0"
     assert doc["phrasing"]["lang"] == "pt" and doc["phrasing"]["lang_requested"] == "pt-BR"
     assert [e["text"] for e in doc["phrasing"]["faults"]] == [f["coaching"] for f in doc["faults"]]
     assert "second_opinion" not in doc   # no clip given: the document has no block

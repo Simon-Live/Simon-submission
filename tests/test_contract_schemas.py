@@ -44,6 +44,8 @@ def doc_with(fault):
     d["faults"] = [fault]
     if "phrasing" in d:  # one phrasing entry per fault
         d["phrasing"]["faults"] = d["phrasing"]["faults"][:1]
+    if "fault_cap" in (d.get("score") or {}):  # the ceiling in force for one fault (1.11.0, ADR-0019; the golden reports two)
+        d["score"]["fault_cap"] = 89
     return d
 
 
@@ -328,9 +330,9 @@ def test_metrics_1_1_0_still_accepts_a_1_0_0_document():
     assert errors("metrics", metrics_doc()) == []
 
 
-@pytest.mark.parametrize("version", ["simon.score.v1", "simon.score.v2"])
-def test_metrics_1_4_0_accepts_the_score_version_the_rules_ship(version):
-    """ADR-0018: a v1 report (a 1.3.0 document) and a v2 report both validate."""
+@pytest.mark.parametrize("version", ["simon.score.v1", "simon.score.v2", "simon.score.v3"])
+def test_metrics_1_5_0_accepts_the_score_version_the_rules_ship(version):
+    """ADR-0018, ADR-0019: a v1 report (a 1.3.0 document), a v2 report (1.4.0) and a v3 report (1.5.0) all validate."""
     d = metrics_with_score()
     d["report"]["score"]["version"] = version
     assert errors("metrics", d) == []
@@ -342,7 +344,7 @@ def test_metrics_1_4_0_accepts_the_score_version_the_rules_ship(version):
     lambda d: d["report"]["score"]["heldout"]["slices"]["good/0"].pop("median"),
     lambda d: d["report"]["score"]["heldout"]["targets"].update({"good/0": "maybe"}),
     lambda d: d["report"]["score"].update(gated=True),
-    lambda d: d["report"]["score"].update(version="simon.score.v3"),
+    lambda d: d["report"]["score"].update(version="simon.score.v4"),
     lambda d: d["report"]["score"].pop("kit"),
     lambda d: d["gate"]["sweep"]["foot_out right"].append([16]),
     lambda d: d["gate"]["sweep"]["foot_out right"].append([16, "high"]),

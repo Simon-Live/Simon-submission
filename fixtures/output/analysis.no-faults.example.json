@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.10.0",
+  "schema_version": "1.11.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
@@ -85,14 +85,14 @@
     "selected_by": "default"
   },
   "score": {
-    "version": "simon.score.v1",
+    "version": "simon.score.v3",
     "value": 100,
     "grade": "A",
     "components": {
       "faults": 0.0,
       "similarity": 0.0
     },
-    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
     "basis": "windows",
     "timeline": [
       {

@@ -231,7 +231,8 @@ Every new `analysis.json` is `1.5.0` and says what to do, not only what was wron
   `score.timeline[].misses[]` repeats `cue`, `cue_kind` and `direction`.
 - `score.timeline[].tempo` and `score.tempo`: `{ratio, cue}`, follower seconds per example second (a rep against
   the example rep; the take is the whole span or the median rep); "Slow down to match the trainer" below 0.85,
-  "Speed up to match the trainer" above 1.15, else null; `ratio` null when the example side spans under 1 s.
+  "Speed up to match the trainer" above 1.15, else null; `ratio` null when the example side spans under 1 s, and for
+  every tempo of a document whose `match.quality` is low (ADR-0014, Amendment 4).
 - `insights`: at most 5 `{cue, why, kind, at_s, window, points, measure, side, joint}`, one per distinct miss cue,
   ranked by their share of the score; a tempo item is kept last when `score.tempo.cue` is set. Without a
   timeline, one per distinct fault cue in fault order, `points` null. A `why` that points at a reported fault
@@ -273,6 +274,13 @@ ACs (tests/test_cues.py):
 - AC-CUE-08: one miss in 60 s and ten in 600 s give scores within 3 points and the same insight points within 0.5.
 - AC-CUE-09: `validate_analysis` and the schema reject a cue over 6 words, a wrong kind, a broken insight; a
   document without cues still validates; `part5 doctor --for part7` notes a document written before 1.5.0.
+
+ACs (tests/test_score_timeline.py, tests/test_reps.py, tests/test_profiles_tempo.py):
+- AC-CUE-10 (ADR-0014, Amendment 4, TICKET-063): when `match.quality` is low, `score.tempo` and each window's and each
+  rep's `tempo` are `{ratio: null, cue: null}` under every profile, whichever comparison basis is used; `insights` holds
+  no tempo item and the dance profile charges no tempo (`components.tempo` 0.0). A match of quality ok keeps its tempo.
+  A committed seed 5 take played at half speed is never given a ratio under 1 or a "Slow down" cue, and a low match
+  whose take spans less time than the example (a ratio under 0.85 at quality ok) is given no "Slow down" cue either.
 
 ## Coaching phrasing registry (ADR-0005)
 `part5.phrasing.phrase(faults, backend="template", **opts) -> (lines, record)`.

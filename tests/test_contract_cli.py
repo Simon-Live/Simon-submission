@@ -37,9 +37,9 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.10.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.11.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
-                                          ("metrics", "1.4.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
+                                          ("metrics", "1.5.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
     schema = json.loads((ROOT / "contracts" / f"{name}.schema.json").read_text())
     assert schema["$id"] == f"{BASE}{name}.schema.json"
@@ -70,7 +70,7 @@ def test_ac_c02_every_committed_fixture_validates_and_loads(summary):
 
 def test_ac_c03_golden_outputs_rebuild_byte_for_byte(summary):
     goldens = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "fixtures/output").glob("*.json"))
-    assert len(goldens) == by_version(3, 4) and summary["rebuilt_identical"] == goldens   # the v2 sample is the fourth
+    assert len(goldens) == by_version(3, 4, 5) and summary["rebuilt_identical"] == goldens   # the ceiling sample is the fourth, the double-capped one (v3) the fifth
     assert "fixtures/output/replay.example.json" in goldens
 
 
@@ -88,6 +88,7 @@ def mini_root(tmp_path_factory):
     shutil.copytree(ROOT / "fixtures/output", root / "fixtures/output")
     shutil.copytree(ROOT / "fixtures/input/expected/exercise", root / "fixtures/input/expected/exercise")
     shutil.copytree(ROOT / "fixtures/input/expected/dance", root / "fixtures/input/expected/dance")   # the fault-capped golden's take
+    shutil.copytree(ROOT / "fixtures/input/real/lateral-raise", root / "fixtures/input/real/lateral-raise")   # the double-capped golden's
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     for take in labels["takes"]:
         if take["take_id"].startswith(("exercise_front_good_08", "exercise_front_good_00", "dance_side_good_11")):
@@ -218,7 +219,7 @@ def test_ac_c04_schema_flag_prints_the_file_byte_for_byte(name):
 def test_ac_c04_json_flag_parses_and_is_the_contract_document(capsys):
     assert cli.main(["contract", "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
-    assert set(doc) == {"schemas", "word_lists", "table"} and doc == contract.contract_document()
+    assert set(doc) == {"schemas", "word_lists", "history_fields", "table"} and doc == contract.contract_document()
     assert [s["name"] for s in doc["schemas"]] == list(contract.SCHEMA_NAMES)
     assert doc["schemas"][0]["schema"]["$id"] == doc["schemas"][0]["id"]
     assert len(doc["table"]) == len(contract.TABLE_ROWS)
@@ -253,6 +254,41 @@ def test_ticket_049_the_listing_names_what_contract_md_names():
     text = (ROOT / "CONTRACT.md").read_text()
     assert "`contracts/student-words.json` (`simon.student-words.v1`, version `1.0.0`; not a schema)" in text
     assert contract.word_list_entries()[0]["format"] == "simon.student-words.v1"
+
+
+# TICKET-070: `contracts/history-fields.json` is published beside the schemas and the word lists, and is not a schema either
+# (CONTRACT.md, "History across takes"), so `part5 contract` lists it apart, in both outputs; the allowlist itself is pinned
+# by tests/test_contract_history_fields.py.
+def test_ticket_070_the_json_output_names_the_history_fields_file_apart_from_the_schemas(capsys):
+    assert cli.main(["contract", "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    on_disk = json.loads((ROOT / "contracts/history-fields.json").read_text())
+    assert doc["history_fields"] == {"name": "history-fields", "format": "simon.part5.history-fields.v1",
+                                     "version": on_disk["version"], "analysis_schema_version": on_disk["analysis_schema_version"],
+                                     "file": "contracts/history-fields.json", "entries": len(on_disk["fields"])}
+    assert on_disk["fields"] and "history-fields" not in [s["name"] for s in doc["schemas"]]   # not a schema
+
+
+def test_ticket_070_the_text_output_names_the_history_fields_file_apart_from_the_schemas_and_the_word_lists(capsys):
+    assert cli.main(["contract"]) == 0
+    out = capsys.readouterr().out
+    before, rest = out.split("\nHistory fields (not a schema)\n")
+    block, _ = rest.split("\nCompatibility", 1)
+    on_disk = json.loads((ROOT / "contracts/history-fields.json").read_text())
+    assert "history-fields" not in before
+    assert block.split() == ["history-fields", on_disk["version"], "contracts/history-fields.json",
+                             "simon.part5.history-fields.v1", f"({len(on_disk['fields'])}", "fields", "for", "analysis",
+                             f"{on_disk['analysis_schema_version']})"]
+    assert "Word lists (not schemas)" in before   # the history block follows the word lists
+
+
+def test_ticket_070_the_history_entry_is_read_from_the_file_of_the_root_it_is_given(tmp_path):
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts/history-fields.json").write_text(json.dumps(
+        {"format": "simon.part5.history-fields.v1", "version": "9.9.9", "analysis_schema_version": "1.2.3", "fields": [{}, {}]}))
+    assert contract.history_fields_entry(tmp_path) == {
+        "name": "history-fields", "format": "simon.part5.history-fields.v1", "version": "9.9.9",
+        "analysis_schema_version": "1.2.3", "file": "contracts/history-fields.json", "entries": 2}
 
 
 def test_ac_c04_unknown_schema_exits_2_naming_the_valid_names(capsys):
@@ -476,7 +512,7 @@ def test_the_table_and_contract_md_carry_the_profile_row_and_the_analysis_row_na
     assert row["verdict"] == "works with an option" and row["part5_role"] == "option for Part 7"
     assert "probe `part5 analyse --help` for `--profile`" in row["fix"] and "omitted means `fitness`" in row["fix"]
     analysis = next(r for r in rows if r["file"] == "`analysis.json`")
-    assert "1.2.0 to 1.10.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
+    assert "1.2.0 to 1.11.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
     text = (ROOT / "CONTRACT.md").read_text()
     assert contract.table_markdown([row]).splitlines()[-1] in text
     assert "[--profile {dance,rehab,fitness}]" in text

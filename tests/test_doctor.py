@@ -10,7 +10,7 @@ import pytest
 
 from part5 import cli, contract, doctor
 from part5.io import JOINTS
-from shipped_score import IS_V2
+from shipped_score import IS_CAPPED, IS_V3, capped_only
 
 ROOT = Path(__file__).resolve().parent.parent
 P3 = ROOT / "fixtures/input/contract/part3"
@@ -20,6 +20,7 @@ PART3_NATIVE = P3 / "native/skeleton.json"
 PART3_VIEW4 = P3 / "view-part4/skeleton.json"
 EXAMPLE = ROOT / "fixtures/output/analysis.example.json"
 NO_FAULTS = ROOT / "fixtures/output/analysis.no-faults.example.json"
+ONE_FAULT = ROOT / "fixtures/output/analysis.fault-capped.example.json"   # one fault, ceiling 89
 
 
 def run(args, capsys):
@@ -495,9 +496,9 @@ def test_ac_r03_a_replay_with_extra_fields_is_accepted(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------- what Part 7 reads (AC-C02, ADR-0012, ADR-0014)
-def warned_analysis():
+def warned_analysis(source=EXAMPLE):
     """A 1.9.0 analysis of a take that earned a low_match warning: faults at confidence "low", the score capped at F."""
-    doc = json.loads(EXAMPLE.read_text())
+    doc = json.loads(source.read_text())
     doc["warnings"] = [{"code": "low_match", "text": "This take doesn't closely match the trainer's movement, so the "
                                                      "grade is capped at F. Check that you picked the right movement."}]
     doc["match"] = {"quality": "low", "residual": 0.6122, "timing_corr": 0.4998,
@@ -510,14 +511,48 @@ def warned_analysis():
 
 def test_part7_accepts_a_warned_1_6_0_analysis_and_notes_what_it_carries(tmp_path, capsys):
     doc = warned_analysis()
-    assert doc["schema_version"] == "1.10.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
+    assert doc["schema_version"] == "1.11.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
     code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
-    assert code == 0 and "simon.analysis.v1 1.10.0; accepted for part7" in out
+    assert code == 0 and "simon.analysis.v1 1.11.0; accepted for part7" in out
     assert "warning: low_match: This take doesn't closely match" in out and "warning: warning" not in out
     assert 'note: 2 of 2 faults have confidence "low" (a low match)' in out
     assert "note: score 59 out of 100, grade F, capped at F by low_match" in out
     assert "note: 2 of 2 faults carry at_s and text_timed" in out
     assert "note: score.timeline has 1 window (basis windows): show it as a timeline" in out
+
+
+@capped_only
+def test_a_warned_take_names_the_fault_ceiling_and_says_the_warning_cap_binds_lower(tmp_path, capsys):
+    """The F cap (59) binds lower than the fault ceiling (89 or 79), so the note must not read as if the ceiling were the cap."""
+    for source, who in ((EXAMPLE, "2 faults"), (ONE_FAULT, "a fault")):
+        doc = warned_analysis(source)
+        cap = doc["score"]["fault_cap"]
+        code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
+        assert code == 0
+        assert (f"note: score 59 out of 100, grade F, capped at F by low_match (show the warnings beside it); the take reports "
+                f"{who}, so its score is at most {cap} by the fault ceiling (score.fault_cap); the low_match warning caps it "
+                f"lower, at F") in out
+        assert "the ceiling in force" not in out and f"at most {cap} (score.fault_cap" not in out
+
+
+@capped_only
+def test_a_take_with_no_warning_keeps_the_fault_ceiling_as_the_cap_in_force(capsys):
+    code, out, _ = run([EXAMPLE, "--for", "part7"], capsys)
+    cap = json.loads(EXAMPLE.read_text())["score"]["fault_cap"]
+    assert code == 0 and f"the take reports 2 faults, so its score is at most {cap} (score.fault_cap" in out
+    assert "caps it lower" not in out and "by the fault ceiling" not in out
+    code, out, _ = run([ONE_FAULT, "--for", "part7"], capsys)
+    assert code == 0 and "the take reports a fault, so its score is at most 89 (score.fault_cap)" in out
+    assert "caps it lower" not in out and "by the fault ceiling" not in out
+
+
+@capped_only
+def test_two_warning_caps_are_named_in_the_plural():
+    doc = warned_analysis()
+    doc["score"]["capped_by"] = ["low_match", "not_enough_visible"]
+    report = doctor.Report("analysis.json")
+    doctor._score_notes(report, doc)
+    assert any(n.endswith("; the low_match and not_enough_visible warnings cap it lower, at F") for n in report.notes)
 
 
 def test_part7_accepts_a_warned_analysis_without_jsonschema_too(monkeypatch, tmp_path, capsys):
@@ -540,8 +575,12 @@ def test_part7_accepts_its_own_minimal_1_4_0_fallback_analysis(tmp_path, capsys)
 
 def test_part7_gets_the_time_and_score_notes_for_the_shipped_goldens(capsys):
     code, out, _ = run([EXAMPLE, "--for", "part7"], capsys)
-    if IS_V2:   # ADR-0018: a take that reports a fault says its ceiling; the doctor names the version either way
-        assert code == 0 and "note: score 75 out of 100, grade C; the take reports a fault, so its score is at most 89 (score.fault_cap)" in out
+    if IS_V3:   # ADR-0019: a take that reports two faults says the ceiling in force (79); the doctor names the version
+        assert code == 0 and ("note: score 75 out of 100, grade C; the take reports 2 faults, so its score is at most 79 "
+                              "(score.fault_cap, the ceiling in force)") in out
+        assert "note: score version simon.score.v3: score.value compares only within one score.version" in out
+    elif IS_CAPPED:   # ADR-0018: a take that reports a fault says its ceiling; the doctor names the version either way
+        assert code == 0 and "note: score 75 out of 100, grade C; the take reports 2 faults, so its score is at most 89 (score.fault_cap" in out
         assert "note: score version simon.score.v2: score.value compares only within one score.version" in out
     else:
         assert code == 0 and "note: score 67 out of 100, grade D" in out and "fault_cap" not in out

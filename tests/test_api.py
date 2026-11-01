@@ -171,8 +171,10 @@ def _analysed_with_low_match(analysis):
             and analysis["score"]["grade"] == "F" and analysis["score"]["capped_by"] == ["low_match"])
 
 
-def test_AC_S06_a_yoga_or_dance_clip_against_the_squat_is_analysed_with_a_warning_and_grade_f():
-    for follower in ("part2-class", "part2-dance"):
+def test_AC_S06_a_yoga_dance_or_stretch_clip_against_the_squat_is_analysed_with_a_warning_and_grade_f():
+    # TICKET-061: part2-stretch (seated stretches, a mismatch in the manifest) was listed but never driven through the API
+    assert MISMATCH["fixtures"]["part2-stretch"]["population"] == "mismatch"
+    for follower in ("part2-class", "part2-dance", "part2-stretch"):
         status, _, body = analyse({"sample": "part3-squat"}, {"sample": follower})
         assert status == 200 and _analysed_with_low_match(body["analysis"]), follower
         assert len(body["replay"]["exp_to_fol"]) == len(body["replay"]["expected"])  # the replay still comes back

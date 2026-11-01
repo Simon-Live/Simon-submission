@@ -185,6 +185,13 @@ does not record `holds` (fail closed); without this a reverted fallback would ha
 attempt is v2's when it says so, is for seed 59, or carries the v2 freeze's hash, so a failed attempt recorded without its
 `version` is caught all the same. A v1 block is never judged by a v2 attempt: v1 shipped with its misses on record (ADR-0007).
 
+## Amendments
+- 2026-11-01, ADR-0019: seed 59 missed target 5 and v2 did not ship; `simon.score.v3` keeps this ADR's range weight and its
+  ceiling of 89 for a take that reports one fault, adds a ceiling of 79 for two or more, and reuses this ADR's five targets
+  and its fail-closed clause on seed 61. The v2 block stays in `part5/rules.json` as `score.v2`, byte for byte
+  (`params_sha256` `60116de4...`), the v2 code stays version-aware, and `make score-fallback` accepts a v3 tree. Seed 61 is
+  no longer reserved for a new approach family; it is v3's seed.
+
 ## Consequences
 - **Positive**: a take that reports a fault is never an A, so the grade agrees with the fault list the viewer reads; a
   fault on a measure the exercise does not move costs less than a fault on one it does, and still costs, for the foot

@@ -451,6 +451,15 @@ hand-made scores), `test_a_left_out_tempo_item_gives_its_place_back_to_the_other
 `test_a_reassurance_cue_adds_no_tempo_item_and_an_action_cue_keeps_it` (a reassurance drops the item, an action cue keeps
 it).
 
+Amendment 2, 2026-11-01 (TICKET-073, found by the TICKET-070 lane). The `cue` enums of `score.tempo` and
+`score.timeline[].tempo` in `contracts/analysis.schema.json` listed only null and the two default cues, so a slow `rehab`
+take, which carries "Slower is fine" since 1.7.0, failed Part 5's own published schema. Both enums now list every tempo
+cue a profile can write; `schema_version` does not change, because the documents did not. A profile that adds or changes
+a tempo cue has to list it in the schema in the same change. Tests (`tests/test_contract_tempo_cue.py`):
+`test_every_profile_tempo_cue_and_both_defaults_are_in_the_schema_enum` (reads `part5/profiles.json`),
+`test_the_cue_cues_writes_under_each_profile_is_in_both_enums`, `test_a_built_slow_rehab_score_block_validates_against_the_schema`
+and `test_a_half_speed_rehab_take_through_the_pipeline_validates_against_the_schema`.
+
 ### AC-PROF-08: dance weights tempo, the score params stay frozen
 Given the `dance` profile and windows with known tempo ratios
 When the take is scored
@@ -657,6 +666,7 @@ baseline taken before it would be stale the day it lands.
 | `tests/test_profiles.py` (new) | AC-PROF-01 to 08, NFR-01 (the rehab tempo tests of AC-PROF-07 are in the next file) | TICKET-042 | yes |
 | `tests/test_profiles_tempo.py` (new) | AC-PROF-07 and its amendment: the rehab tempo and reassurance tests, split off `tests/test_profiles.py` to keep it under the 800 line limit; the `seed5` fixture they share with it is in `tests/conftest.py` | TICKET-042 | yes |
 | `tests/test_profiles_wiring.py` (new) | AC-PROF-09 to 11, 13, 14 | TICKET-042 | yes |
+| `tests/test_contract_tempo_cue.py` (new) | AC-PROF-07 amendment 2: every profile's tempo cue is in the schema's two enums, and a slow rehab take validates | TICKET-073 | yes |
 | `tests/test_profile_run_choice.py` (new) | AC-PROF-16: the run a profile fault reports | TICKET-042 | yes |
 | `fixtures/profiles-fitness-baseline.json` (new) | sha256 per seed 5 take of the fitness analysis, written once before any wiring edit | TICKET-042 | yes |
 | `part5/detect.py` | baseline/effective detection when `rules["profile"]` is present, and the run a profile fault reports (`_reported_run`, AC-PROF-16); the `fitness` path unchanged | TICKET-042 | yes |
@@ -774,6 +784,7 @@ operator's request: "weights tempo in the score").
 | Fix-batch review R1 (`progress/review-20261031-fix-batch.md`): a profile fault reports the run that overlaps the fitness fault's | AC-PROF-16 | `tests/test_profile_run_choice.py` | done |
 | Delivery review B3 (Writer ruling): "Slower is fine" is a reassurance, not an item of "what to work on first" | AC-PROF-07 | `tests/test_profiles_tempo.py`: `test_rehab_adds_no_tempo_item_for_a_slow_take_and_keeps_the_cue`, `test_only_rehab_leaves_the_slow_tempo_cue_out_of_the_insights` | done |
 | Delivery review R3: the reassurance is a named set (`cues.REASSURANCE_CUES`), so an action cue in its place keeps its item | AC-PROF-07 | `tests/test_profiles_tempo.py`: `test_the_reassurance_cues_are_named_and_rehabs_replacement_is_one_of_them`, `test_a_reassurance_cue_adds_no_tempo_item_and_an_action_cue_keeps_it` | done |
+| TICKET-073: the schema's tempo cue enums omitted rehab's "Slower is fine" | AC-PROF-07 | `tests/test_contract_tempo_cue.py`: `test_every_profile_tempo_cue_and_both_defaults_are_in_the_schema_enum`, `test_a_half_speed_rehab_take_through_the_pipeline_validates_against_the_schema` | done |
 | Delivery review R1: a model line that praises falls back under a profile and the mode is kept | AC-PROF-05, phrasing AC-P09 | `test_a_praising_model_line_falls_back_under_a_profile_and_the_profile_is_kept` | done |
 
 ## Test Scenarios (maps 1:1 to acceptance criteria)

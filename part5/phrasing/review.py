@@ -45,8 +45,16 @@ def timed_faults():
     return out
 
 
-def pick(faults, n):
-    """`n` faults, spread over the measures first, then in order."""
+TIERS = ("stock", "kit", "synthetic")   # AC-P07's order: the stock takes first, then the kit's, the synthetic ones last
+
+
+def source_of(take):
+    """`stock`, `kit` or `synthetic`: where a take comes from, by its id."""
+    return "synthetic" if take.startswith("exercise_") else "stock" if take.startswith("pexels") else "kit"
+
+
+def spread(faults, n):
+    """Up to `n` faults, spread over the measures first, then in order."""
     by_measure = {}
     for item in faults:
         by_measure.setdefault(item[1]["measure"], []).append(item)
@@ -58,11 +66,19 @@ def pick(faults, n):
     return picked
 
 
+def pick(faults, n):
+    """`n` faults in AC-P07's order (TICKET-061): the stock takes' first, then the kit takes' when the stock takes hold
+    fewer than `n`, and the synthetic ones only when those two together hold fewer; each tier spread over the measures."""
+    picked = []
+    for tier in TIERS:
+        picked += spread([item for item in faults if source_of(item[0]) == tier], n - len(picked))
+    return picked
+
+
 def sample(take, fault):
     result = phrasing.phrase_fault(fault, timeout_s=10, live=True)
     keys = ("measure", "side", "direction", "lateral", "at_s", "magnitude_deg", "threshold_deg", "text_timed")
-    source = "synthetic" if take.startswith("exercise_") else "stock" if take.startswith("pexels") else "kit"
-    return {"take": take, "source": source, "fault": {k: fault[k] for k in keys}, **result}
+    return {"take": take, "source": source_of(take), "fault": {k: fault[k] for k in keys}, **result}
 
 
 def main(argv=None):

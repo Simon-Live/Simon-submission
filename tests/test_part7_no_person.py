@@ -62,7 +62,7 @@ def test_part5_doctor_for_part7_accepts_the_no_person_document_and_says_what_it_
     pytest.param({"score": {"version": "simon.score.v1", "value": 0, "grade": "F", "capped_by": ["no_person"]}},
                  id="score-names-the-code"),
     pytest.param({"match": {"quality": "low", "residual": None, "timing_corr": None, "limits": {}}}, id="with-a-match"),
-    pytest.param({"profile": "fitness", "schema_version": "1.10.0"}, id="current-schema-version-with-its-profile"),
+    pytest.param({"profile": "fitness", "schema_version": "1.11.0"}, id="current-schema-version-with-its-profile"),
 ])
 def test_the_no_person_document_also_validates_in_these_shapes(change, tmp_path, capsys):
     doc = {**no_person_doc(), **change}
@@ -195,10 +195,10 @@ def test_a_score_without_uncapped_has_no_such_note(tmp_path, capsys):
 
 # ---------------------------------------------------------------- score.fault_cap and the wider uncapped (1.10.0, ADR-0018)
 FAULT_CAPPED = ROOT / "fixtures/output/analysis.fault-capped.example.json"
-v2_only = shipped_score.v2_only   # the sample is a simon.score.v2 document, written only while the rules ship v2
+capped_only = shipped_score.capped_only   # the sample is a score with a ceiling (v2 or v3), written only while the rules ship one
 
 
-@v2_only
+@capped_only
 def test_a_faulted_take_the_fault_cap_lowered_has_uncapped_and_no_capped_by_and_the_doctor_says_so(tmp_path, capsys):
     """Part 7's answer: `capped_by` is the low-match warning cap only; `uncapped` is the value before every cap."""
     doc = json.loads(FAULT_CAPPED.read_text())
@@ -212,7 +212,7 @@ def test_a_faulted_take_the_fault_cap_lowered_has_uncapped_and_no_capped_by_and_
     assert "capped at F" not in out
 
 
-@v2_only
+@capped_only
 def test_a_take_with_both_caps_names_the_warning_in_capped_by_only(tmp_path, capsys):
     doc = json.loads(FAULT_CAPPED.read_text())
     doc["warnings"] = [{"code": "low_match", "text": "This take doesn't closely match the trainer's movement."}]
@@ -226,7 +226,7 @@ def test_a_take_with_both_caps_names_the_warning_in_capped_by_only(tmp_path, cap
     assert doc["score"]["capped_by"] == ["low_match"]   # the fault cap is never listed there
 
 
-@v2_only
+@capped_only
 @pytest.mark.parametrize("bad", [89.5, "89", -1, 101, True])
 def test_a_malformed_fault_cap_is_rejected_by_the_schema(bad):
     doc = json.loads(FAULT_CAPPED.read_text())
@@ -238,3 +238,38 @@ def test_a_take_with_no_fault_has_no_fault_cap_note(tmp_path, capsys):
     path = tmp_path / "analysis.json"
     path.write_text((ROOT / "fixtures/output/analysis.no-faults.example.json").read_text())
     assert "fault_cap" not in doctor_part7(path, capsys)[1]
+
+
+# ---------------------------------------------------------------- score.fault_cap is the ceiling in force, 89 or 79 (1.11.0, ADR-0019)
+DOUBLE_CAPPED = ROOT / "fixtures/output/analysis.double-capped.example.json"
+v3_only = shipped_score.v3_only   # the sample is a simon.score.v3 document, written only while the rules ship v3
+
+
+@v3_only
+def test_a_two_fault_take_the_79_ceiling_lowered_has_uncapped_and_no_capped_by_and_the_doctor_names_the_ceiling_in_force(capsys):
+    doc = json.loads(DOUBLE_CAPPED.read_text())
+    assert schema_problems(doc) == []
+    validate_analysis(doc)
+    assert len(doc["faults"]) == 2 and "capped_by" not in doc["score"] and "warnings" not in doc and doc["schema_version"] == "1.11.0"
+    code, out = doctor_part7(DOUBLE_CAPPED, capsys)
+    assert code == 0
+    assert "note: score 79 out of 100, grade C; the take reports 2 faults, so its score is at most 79 (score.fault_cap, the ceiling in force)" in out
+    assert "it was 82 (B) before the cap (score.uncapped)" in out
+    assert "note: score version simon.score.v3: score.value compares only within one score.version" in out
+    assert "capped at F" not in out
+
+
+@v3_only
+def test_the_one_fault_sample_still_says_89_beside_the_two_fault_sample_that_says_79(capsys):
+    one = doctor_part7(FAULT_CAPPED, capsys)[1]
+    assert "the take reports a fault, so its score is at most 89 (score.fault_cap)" in one and "at most 79" not in one
+
+
+@v3_only
+@pytest.mark.parametrize("ceiling", [79, 89])
+def test_either_ceiling_validates_as_the_ceiling_in_force_and_a_v1_document_of_the_same_take_has_none(ceiling):
+    doc = json.loads(DOUBLE_CAPPED.read_text())
+    doc["score"]["fault_cap"] = ceiling
+    assert schema_problems(doc) == []
+    v1 = {k: v for k, v in doc["score"].items() if k not in ("fault_cap", "uncapped")}
+    assert schema_problems({**doc, "score": {**v1, "version": "simon.score.v1"}}) == []

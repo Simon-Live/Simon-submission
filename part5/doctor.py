@@ -430,16 +430,25 @@ def _score_notes(r, doc):
         return
     line = (f"score {score['value']} out of 100, grade {score['grade']}" if "value" in score and "grade" in score
             else "score present")
-    if score.get("capped_by"):
-        line += f", capped at F by {', '.join(score['capped_by'])} (show the warnings beside it)"
+    capped_by = score.get("capped_by")
+    if capped_by:
+        line += f", capped at F by {', '.join(capped_by)} (show the warnings beside it)"
     cap = score.get("fault_cap")   # 1.10.0 (ADR-0018): the ceiling of a take that reports a fault; not a warning
     if isinstance(cap, int) and not isinstance(cap, bool):
-        line += f"; the take reports a fault, so its score is at most {cap} (score.fault_cap)"
+        n = len(doc.get("faults") or [])   # 1.11.0 (ADR-0019): under v3 the ceiling in force depends on how many
+        if capped_by:   # the warning cap at F (59) binds lower than the fault ceiling (89 or 79): say both, rank them
+            what = "a fault" if n == 1 else f"{n} faults"
+            codes, verb = " and ".join(capped_by), ("warning caps" if len(capped_by) == 1 else "warnings cap")
+            line += (f"; the take reports {what}, so its score is at most {cap} by the fault ceiling (score.fault_cap); "
+                     f"the {codes} {verb} it lower, at F")
+        else:
+            line += (f"; the take reports a fault, so its score is at most {cap} (score.fault_cap)" if n == 1 else
+                     f"; the take reports {n} faults, so its score is at most {cap} (score.fault_cap, the ceiling in force)")
     before = score.get("uncapped")   # 1.9.0 (Part 7 TICKET-155), 1.10.0: the value before every cap that lowered it
     if isinstance(before, dict) and "value" in before and "grade" in before:
         line += f"; it was {before['value']} ({before['grade']}) before the cap (score.uncapped)"
     r.notes.append(line)
-    if score.get("version"):   # ADR-0018: a v1 and a v2 value are not on one scale
+    if score.get("version"):   # ADR-0018, ADR-0019: a v1, a v2 and a v3 value are not on one scale
         r.notes.append(f"score version {score['version']}: score.value compares only within one score.version")
     windows = score.get("timeline")
     if isinstance(windows, list):

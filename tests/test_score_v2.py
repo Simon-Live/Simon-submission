@@ -1,7 +1,6 @@
 """simon.score.v2 (ADR-0018, docs/specs/score-v2.md): the weight by the trainer's range, the ceiling of a take that reports a
 fault and its own field `fault_cap`, `uncapped` as the value before every cap, v1 kept reproducible, the rule for the
 floor, the five targets and the freeze lookup."""
-import copy
 import hashlib
 import json
 from pathlib import Path
@@ -13,39 +12,21 @@ from part5 import score, score_report
 from part5.detect import load_rules
 from part5.measures import MEASURES
 from part5.output import fault_to_dict
-from part5.pipeline import run
-from shipped_score import FLOOR, by_version, frozen_v1, v2_only, v2_rules
+from shipped_score import (FLOOR, IS_V3, N, SHIPPED, V1_SHA, V2, V2_SHA, V3, aligned, analysis, by_version, capped_only,
+                           check_share_of_the_take, check_windows_add_up, fault, fresh_v1, frozen_v1, frozen_v2, lateral_raise_run,
+                           lengths, small_set, timed_take, v2_rules, window)
 
 ROOT = Path(__file__).resolve().parent.parent
-N = 20
-V1 = {"version": "simon.score.v1", "z0": 0.0, "z1": 1.0, "s_max": 4.0, "base": 10, "slope": 5.0, "cap": 30.0,
-      "bands": [[90, "A"], [80, "B"], [70, "C"], [60, "D"], [0, "F"]], "calibrated_on": "test"}
+
+
 @pytest.fixture
 def rules():
-    return {**load_rules(), "score": score.block_v2(copy.deepcopy(V1), FLOOR)}
+    return {**load_rules(), "score": score.block_v2(fresh_v1(), FLOOR)}
 
 
 @pytest.fixture
 def rules_v1():
-    return {**load_rules(), "score": copy.deepcopy(V1)}
-
-
-def aligned(still=True, n=N, nan=False):
-    """Every measure is zero in the follower (NaN with `nan`: nothing to measure); in the expected clip every measure is
-    still (range 0) or swings 100 degrees."""
-    swing = np.linspace(0.0, 100.0, n)
-    exp = {m: (np.zeros(n) if still else swing.copy()) for m in MEASURES}
-    return {"expected": exp, "follower": {m: np.full(n, np.nan) if nan else np.zeros(n) for m in MEASURES},
-            "exp_to_fol": list(range(n))}
-
-
-def fault(measure="foot_out", side="left", mag=20.0, thr=10.0, runs=((0, 9),), cov=1.0):
-    return {"measure": measure, "side": side, "magnitude_deg": mag, "threshold_deg": thr, "text": "left foot too far out",
-            "runs": [list(r) for r in runs], "coverage": cov, "expected_frames": list(runs[0])}
-
-
-def analysis(faults=(), **extra):
-    return {"status": {"code": "ok"}, "faults": list(faults), **extra}
+    return {**load_rules(), "score": fresh_v1()}
 
 
 # ---------------------------------------------------------------- AC-V2-01: the weight
@@ -157,16 +138,8 @@ def test_ac_v2_05_a_faulted_take_with_no_warning_has_uncapped_and_no_capped_by(r
     assert s["value"] <= 89 and "uncapped" in s and "capped_by" not in s
 
 
-def test_ac_v2_05_with_both_caps_uncapped_is_the_value_before_the_first_and_capped_by_names_warnings_only(rules):
-    a = analysis([fault(mag=10.0, runs=((0, 1),), cov=0.5)], warnings=[{"code": "low_match", "text": "x"}])
-    block = score.compute(a, aligned(), rules)
-    before = block["uncapped"]
-    assert block["value"] == 89
-    capped = score.cap_by_warnings(block, a, rules)
-    assert capped["value"] == 59 and capped["grade"] == "F" and capped["capped_by"] == ["low_match"]
-    assert capped["uncapped"] == before and before["value"] > 89 and capped["fault_cap"] == 89
-
-
+# The case of a faulted take that also carries the low-match warning (both caps) is one parametrized test with AC-V3-04's, in
+# tests/test_score_v3.py: test_ac_v2_05_and_ac_v3_04_with_both_caps_..., its "v2, one fault, 89" row is this file's old case.
 def test_ac_v2_05_a_warning_cap_alone_keeps_the_uncapped_it_always_had(rules):
     good = score.compute(analysis(), aligned(), rules)
     capped = score.cap_by_warnings(good, analysis(warnings=[{"code": "low_match", "text": "x"}]), rules)
@@ -174,53 +147,33 @@ def test_ac_v2_05_a_warning_cap_alone_keeps_the_uncapped_it_always_had(rules):
 
 
 # ---------------------------------------------------------------- AC-V2-06: the mean of the windows, capped once
-def window(raw, k):
-    return {"t_s": (5.0 * k, 5.0 * k + 5.0), "raw": raw, "value": int(round(raw)), "grade": score.grade(int(round(raw))),
-            "components": {"faults": 100 - raw, "similarity": 0.0}, "misses": []}
-
-
 def test_ac_v2_06_the_ceiling_is_applied_to_the_mean_and_never_to_a_window(rules):
     windows = [window(95.0, 0), window(97.0, 1)]
-    block = score.timeline_block(windows, "windows", rules, reports_fault=True)
+    block = score.timeline_block(windows, "windows", rules, n_faults=1)
     assert block["value"] == 89 and block["uncapped"] == {"value": 96, "grade": "A"} and block["fault_cap"] == 89
     assert [w["value"] for w in block["timeline"]] == [95, 97]
 
 
 def test_ac_v2_06_there_is_no_worst_window_rule(rules):
     windows = [window(100.0, 0), window(60.0, 1)]   # one bad window: the take is the mean, 80, not the worst, 60
-    assert score.timeline_block(windows, "windows", rules, reports_fault=True)["value"] == 80
+    assert score.timeline_block(windows, "windows", rules, n_faults=1)["value"] == 80
 
 
 def test_ac_v2_06_no_reported_fault_no_ceiling(rules):
-    block = score.timeline_block([window(95.0, 0), window(97.0, 1)], "windows", rules, reports_fault=False)
+    block = score.timeline_block([window(95.0, 0), window(97.0, 1)], "windows", rules, n_faults=0)
     assert block["value"] == 96 and "fault_cap" not in block
 
 
-def timed_take(rules, seconds, misses, fps=30):
-    """A take of `seconds` with `misses` one-second faults spread evenly, scored in 5 s windows under `rules`. The expected
-    clip is still, so every miss is weighted by the floor and costs a fractional number of points."""
-    n = seconds * fps
-    starts = np.linspace(0, n - fps, misses, dtype=int) if misses else []
-    faults = [{**fault(runs=((int(s), int(s) + fps - 1),)), "follower_t_s": [s / fps, s / fps + 1], "at_s": s / fps} for s in starts]
-    return score.compute_timeline(analysis(faults), aligned(n=n), np.arange(n) / fps, rules)
-
-
 def test_ac_v2_06_one_miss_a_minute_costs_like_ten_in_ten_minutes_before_the_ceiling_and_all_three_takes_are_capped(rules):
-    one, ten, crowded = timed_take(rules, 60, 1), timed_take(rules, 600, 10), timed_take(rules, 60, 10)
-    assert one["uncapped"]["value"] == pytest.approx(ten["uncapped"]["value"], abs=1)
-    assert one["uncapped"]["value"] > crowded["uncapped"]["value"]   # more misses in the same time cost more
+    one, ten, crowded = lengths(rules)
+    check_share_of_the_take(one, ten, crowded)   # more misses in the same time cost more
     assert one["value"] == ten["value"] == crowded["value"] == one["fault_cap"] == 89   # a take that reports a fault is a B at most
 
 
 def test_ac_v2_06_each_window_lists_its_misses_and_they_add_up_to_its_value_and_the_take_to_the_mean(rules):
     block = timed_take(rules, 30, 3)
     assert block["basis"] == "windows" and len(block["timeline"]) == 6
-    for w in block["timeline"]:   # the points shown are rounded to 0.1 (a v2 miss costs a weighted, fractional number of points)
-        assert w["value"] == pytest.approx(100 - sum(m["points"] for m in w["misses"]) - w["components"]["similarity"], abs=0.6)
-        for m in w["misses"]:
-            assert m["text"] and m["points"] > 0 and w["t_s"][0] - 1 <= m["at_s"] <= w["t_s"][1]
-    # the take is the mean of the windows' unrounded values (before the ceiling), so it sits within a point of the mean of their shown values
-    assert block["uncapped"]["value"] == pytest.approx(sum(w["value"] for w in block["timeline"]) / 6, abs=1)
+    check_windows_add_up(block, 6)   # the points shown are rounded to 0.1 (a v2 miss costs a weighted, fractional number of points)
 
 
 # ---------------------------------------------------------------- AC-V2-07: v1 stays reproducible
@@ -228,20 +181,39 @@ def test_ac_v2_07_the_v1_block_is_the_frozen_one_and_hashes_to_the_recorded_seed
     record = json.loads((ROOT / "fixtures/score-heldout.json").read_text())
     frozen = {a["params_sha256"] for a in record["attempts"] if a["seed"] in (47, 53)}   # a seed 59 attempt is v2's
     v1 = frozen_v1()
-    assert frozen == {"e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62"}
+    assert frozen == {V1_SHA}
     assert score.params_sha256(v1) == frozen.pop() and v1["version"] == "simon.score.v1"
     assert hashlib.sha256(json.dumps(v1, sort_keys=True, separators=(",", ":")).encode()).hexdigest() == score.params_sha256(v1)
 
 
-@v2_only
 def test_ac_v2_07_the_v2_block_repeats_the_v1_numbers_it_does_not_change():
-    block = load_rules()["score"]
+    """The v2 block as frozen for seed 59 (`V2_SHA`): kept verbatim in a v3 score section (ADR-0019), rebuilt from the
+    frozen v1 params in a v1 tree. Either way it is the same dict."""
+    block = frozen_v2()
+    assert score.params_sha256(block) == V2_SHA
     assert block["version"] == "simon.score.v2"
     for key in score.SHARED_V1:
         assert block[key] == block["v1"][key], key
     assert block["range_full"] == 3.0 and block["fault_cap"] == 89 and block["calibrated_on"] == "seed 5"
     assert block["range_floor"] == FLOOR, "tests/shipped_score.FLOOR is the floor the rule picked; change it there"
     assert set(block) == {"version", *score.SHARED_V1, "range_floor", "range_full", "fault_cap", "calibrated_on", "v1"}
+    assert block["v1"] == frozen_v1() and score.block_v2(frozen_v1(), FLOOR) == block
+
+
+def test_ac_v2_07_rules_v2_scores_as_v2_did_and_the_v2_code_reads_the_kept_block():
+    """`score.rules_v2` swaps the kept v2 block in; a seed 5 take scored with it has the values v2 gave it (docs/thresholds.md)."""
+    rules = {**load_rules(), "score": frozen_v2()}
+    assert score.params_of(rules)["version"] == "simon.score.v2"
+    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
+    want = {"exercise_front_good_08_arms_wider-both+elbow_bent-right": (75, "C"), "exercise_front_good_00_correct": (100, "A"),
+            "dance_side_good_11_ankle_rolled_in-right": (89, "B")}
+    labels["takes"] = [t for t in labels["takes"] if t["take_id"] in want]
+    for take, result in score_report.run_set(labels):
+        block = score_report.score_block(result, rules)
+        assert block["version"] == "simon.score.v2" and (block["value"], block["grade"]) == want[take["take_id"]]
+        assert block["params_sha256"] == V2_SHA
+    if IS_V3:   # the tree's own substitution gives the same rules
+        assert score.rules_v2(load_rules())["score"] == frozen_v2()
 
 
 def test_ac_v2_07_rules_v1_scores_as_v1_did_on_seed_5_takes():
@@ -262,9 +234,10 @@ def test_ac_v2_07_rules_v1_refuses_a_score_section_that_has_none():
         score.rules_v1({"score": {"version": "simon.score.v2"}})
 
 
-def test_params_of_accepts_both_versions_and_names_both_when_neither(rules, rules_v1):
+def test_params_of_accepts_all_three_versions_and_names_them_when_none(rules, rules_v1):
     assert score.params_of(rules)["version"] == "simon.score.v2" and score.params_of(rules_v1)["version"] == "simon.score.v1"
-    with pytest.raises(ValueError, match="has no simon.score.v1 or simon.score.v2 'score' block"):   # TICKET-054 R8
+    assert score.params_of({"score": {"version": "simon.score.v3"}})["version"] == "simon.score.v3"
+    with pytest.raises(ValueError, match="has no simon.score.v1, simon.score.v2 or simon.score.v3 'score' block"):   # TICKET-054 R8
         score.params_of({"score": {"version": "simon.score.v0"}})
 
 
@@ -300,34 +273,26 @@ def test_ac_v2_08_block_v2_is_v1_plus_the_three_params_and_the_frozen_v1():
     assert {k: block[k] for k in score.SHARED_V1} == {k: v1[k] for k in score.SHARED_V1}
 
 
-@pytest.fixture(scope="module")
-def seed5():
-    """Seed 5 through the pipeline once: (labels, the shipped rules, [(take, PipelineResult)])."""
-    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
-    rules = load_rules()
-    return labels, rules, score_report.run_set(labels, rules)
-
-
-@v2_only
-def test_ac_v2_08_the_shipped_floor_is_the_one_the_rule_picks_on_seed_5(seed5):
-    """Seed 5 under the shipped detection, the sweep included: the rule run on rules that ship the v2 form returns the
-    shipped block, v1 kept as frozen. (About 20 s: eleven floors, each with the sweep.)"""
-    labels, rules, results = seed5
-    block, measured = score_report.calibrate_v2_set(labels, rules, results=results)
-    assert block == rules["score"] and score.choose_floor(measured) == block["range_floor"]
+def test_ac_v2_08_the_floor_rule_run_under_the_v2_code_returns_the_v2_block_that_was_frozen(seed5_scored):
+    """Seed 5 under the shipped detection, the sweep included: ADR-0018's rule run under the v2 code (as `--calibrate-v2` does)
+    returns the v2 block frozen for seed 59 whichever score the rules ship, so the v2 table is reproducible from a v3 tree.
+    (About 20 s: eleven floors, each with the sweep.)"""
+    labels, rules, results = seed5_scored
+    block, measured = score_report.calibrate_floor_set(labels, v2_rules(), results=results, version=V2)
+    assert block == frozen_v2() and score.choose_floor(measured) == block["range_floor"] == FLOOR
 
 
 def test_calibrate_set_gives_the_v2_form_to_rules_that_ship_it_and_the_v1_calibration_to_any_other(monkeypatch):
     labels, shipped = {"takes": []}, v2_rules()
-    monkeypatch.setattr(score_report, "calibrate_v2_set", lambda *a, **k: ("v2 form", {}))
+    monkeypatch.setattr(score_report, "calibrate_floor_set", lambda *a, **k: ("v2 form", {}))
     monkeypatch.setattr(score_report, "rows_of_set", lambda *a, **k: "rows")
     monkeypatch.setattr(score, "calibrate", lambda rows, min_fraction: ("v1 calibration", rows, min_fraction))
     assert score_report.calibrate_set(labels, shipped) == "v2 form"   # the block, not the measurements
     assert score_report.calibrate_set(labels, {**shipped, "score": {}}) == ("v1 calibration", "rows", shipped["default"]["min_fraction"])
 
 
-def test_ac_v2_08_on_seed_5_the_shipped_block_meets_the_conditions_and_every_target(seed5):
-    labels, _, results = seed5
+def test_ac_v2_08_on_seed_5_the_shipped_block_meets_the_conditions_and_every_target(seed5_scored):
+    labels, _, results = seed5_scored
     rules = v2_rules()   # v2 at the shipped floor, whichever score the rules ship
     m = score_report.measure_floor(results, rules)
     assert score.floor_holds(m) and m["correct_all_a"] and m["single_min"] >= 70 and m["double_max"] <= 75
@@ -393,8 +358,9 @@ def test_ac_v2_11_the_report_lines_name_every_target_and_the_takes_not_judged():
 
 
 def test_the_slice_targets_follow_the_version_the_rules_ship():
-    assert score_report.targets_of("simon.score.v1")["good/2"] == "DF" and score_report.targets_of("simon.score.v2")["good/2"] == "CDF"
-    assert score_report.shipped_targets()["good/2"] == by_version("DF", "CDF")
+    assert score_report.targets_of("simon.score.v1")["good/2"] == "DF"
+    assert score_report.targets_of(V2)["good/2"] == score_report.targets_of(V3)["good/2"] == "CDF"   # v3 reuses ADR-0018's
+    assert score_report.shipped_targets()["good/2"] == by_version("DF", "CDF", "CDF")
     dist = score_report.distribution([({"lighting": "good", "faults": [1, 2]}, {"value": 72})])
     assert score_report.verdicts(dist, score_report.TARGETS_V2)["good/2"] == "pass"
     assert score_report.verdicts(dist, score_report.TARGETS_V1)["good/2"] == "fail"
@@ -410,37 +376,31 @@ def test_a_dance_take_that_reports_a_fault_hits_the_ceiling_through_the_pipeline
     assert s["fault_cap"] == 89 and s["uncapped"] == {"value": 94, "grade": "A"} and "capped_by" not in s
 
 
-@pytest.fixture(scope="module")
-def lateral_raise_under_v2():
+def test_a_real_rep_by_rep_take_adds_up_under_v2_rep_by_rep_and_to_the_mean_of_the_reps():
     """The real fast lateral-raise follower (8 reps, tests/test_reps.py), scored under v2 whichever score the rules ship."""
-    lateral = ROOT / "fixtures/input/real/lateral-raise"
-    result = run(str(lateral / "pexels-5319084/animation.json"), str(lateral / "pexels-40297504/animation.json"))
-    return score_report.score_block(result, v2_rules())
-
-
-def test_a_real_rep_by_rep_take_adds_up_under_v2_rep_by_rep_and_to_the_mean_of_the_reps(lateral_raise_under_v2):
-    block = lateral_raise_under_v2
-    timeline = [w for w in block["timeline"] if w["compared"]]
-    assert block["version"] == "simon.score.v2" and block["basis"] == "reps" and len(timeline) == 8
-    for w in timeline:   # the points shown are rounded to 0.1 (a v2 miss costs a weighted, fractional number of points)
-        assert w["value"] == pytest.approx(100 - sum(m["points"] for m in w["misses"]) - w["components"]["similarity"], abs=0.6)
+    block = score_report.score_block(lateral_raise_run(), v2_rules())
+    assert block["version"] == "simon.score.v2" and block["basis"] == "reps"
+    check_windows_add_up(block, 8)
     assert (block["value"], block["grade"]) == (82, "B")   # 80 (B) under v1: a miss on a measure the trainer moves little costs less
-    assert abs(block["value"] - sum(w["value"] for w in timeline) / len(timeline)) <= 1
 
 
-@v2_only
+@capped_only
 def test_the_committed_sample_for_part_7_is_that_take():
+    """One fault reported, so the ceiling in force is 89 under v2 and under v3 alike (a v3 take with two faults has 79)."""
     sample = json.loads((ROOT / "fixtures/output/analysis.fault-capped.example.json").read_text())
     s = sample["score"]
-    assert sample["schema_version"] == "1.10.0" and sample["faults"]
-    assert (s["version"], s["value"], s["grade"], s["fault_cap"]) == ("simon.score.v2", 89, "B", 89)
+    assert sample["schema_version"] == "1.11.0" and len(sample["faults"]) == 1
+    assert (s["version"], s["value"], s["grade"], s["fault_cap"]) == (SHIPPED, 89, "B", 89)
     assert s["uncapped"] == {"value": 94, "grade": "A"} and "capped_by" not in s and "warnings" not in sample
 
 
 # ---------------------------------------------------------------- the command
 def test_params_sha256_flag_prints_the_hash_of_the_shipped_score_block(capsys):
     assert score_report.main(["--params-sha256"]) == 0
-    assert capsys.readouterr().out.strip() == score.params_sha256(load_rules()["score"])
+    printed = capsys.readouterr().out.strip()
+    assert printed == score.params_sha256(load_rules()["score"])
+    if IS_V3:   # the shipped block is v3 as designed: v1 and v2 kept verbatim beside the v3 params at the floor the rule picked
+        assert printed == score.params_sha256(score.block_v3(frozen_v1(), frozen_v2(), FLOOR))
 
 
 def test_the_set_is_required_unless_a_flag_replaces_it(capsys):
@@ -449,21 +409,15 @@ def test_the_set_is_required_unless_a_flag_replaces_it(capsys):
     assert "--set is required" in capsys.readouterr().err
 
 
-@v2_only
+@capped_only
 def test_the_report_on_a_small_seed_5_set_prints_the_five_targets(tmp_path, capsys):
-    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     keep = ("exercise_front_good_00_correct", "exercise_front_good_08_arms_wider-both+elbow_bent-right",
             "exercise_front_good_03_foot_out-right")
-    labels["takes"] = [t for t in labels["takes"] if t["take_id"] in keep]
-    for t in labels["takes"]:
-        for key in ("expected", "follower", "expected_feet", "follower_feet"):
-            if t.get(key):
-                t[key] = str(ROOT / t[key])
-    (tmp_path / "labels.json").write_text(json.dumps(labels))
-    assert score_report.main(["--set", str(tmp_path)]) == 0
+    assert score_report.main(["--set", str(small_set(tmp_path, keep))]) == 0
     out = capsys.readouterr().out
-    assert "simon.score.v2" in out and "ADR-0018 targets" in out and "all five hold: yes" in out
-    assert score_report.COMPARABILITY in out   # R3: the publication reads the strict verdict with this beside it
+    assert SHIPPED in out and "ADR-0018 targets" in out and "all five hold: yes" in out
+    assert score_report.comparability_of(SHIPPED) in out   # R3: the publication reads the strict verdict with this beside it
+    assert ("published beside the targets" in out) is IS_V3   # ADR-0019: only a v3 report prints the measures beside them
 
 
 # ---------------------------------------------------------------- B1: a target with no judged take does not hold
@@ -490,42 +444,27 @@ def test_adr_0018_target_3_with_no_take_that_reports_a_fault_does_not_hold_eithe
     assert t["no_reported_fault_grades_a"]["verdict"] == "no takes" and not score_report.targets_hold(t, [])
 
 
-def small_set(tmp_path, keep):
-    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
-    labels["takes"] = [t for t in labels["takes"] if t["take_id"] in keep]
-    for t in labels["takes"]:
-        for key in ("expected", "follower", "expected_feet", "follower_feet"):
-            if t.get(key):
-                t[key] = str(ROOT / t[key])
-    (tmp_path / "labels.json").write_text(json.dumps(labels))
-    return tmp_path
-
-
-@pytest.fixture
-def report_as_v2(monkeypatch):
-    """`score_report.main` under the v2 rules whichever score the tree ships, with the sweep (run elsewhere) left out."""
-    monkeypatch.setattr(score_report, "load_rules", v2_rules)
-    monkeypatch.setattr(score_report, "_sweep_failures", lambda: [])
-
-
 NO_DOUBLE = ("exercise_front_good_00_correct", "exercise_front_good_03_foot_out-right")   # a correct take and a single fault
 
 
-def test_adr_0018_the_summary_says_all_five_hold_no_when_target_5_has_no_judged_take(tmp_path, capsys, report_as_v2):
+def test_adr_0018_the_summary_says_all_five_hold_no_when_target_5_has_no_judged_take(tmp_path, capsys, report_as):
+    report_as(v2_rules)
     assert score_report.main(["--set", str(small_set(tmp_path, NO_DOUBLE))]) == 0
     out = capsys.readouterr().out
     assert "5 double faults C, D or F (reported exactly): no takes (n 0)" in out
     assert "all five hold: no  (a target with no judged take does not hold)" in out
 
 
-def test_adr_0018_the_json_carries_holds_false_when_target_4_or_5_has_no_judged_take(tmp_path, capsys, report_as_v2):
+def test_adr_0018_the_json_carries_holds_false_when_target_4_or_5_has_no_judged_take(tmp_path, capsys, report_as):
+    report_as(v2_rules)
     only_correct = small_set(tmp_path, ("exercise_front_good_00_correct",))
     assert score_report.main(["--set", str(only_correct), "--json"]) == 0
     t = json.loads(capsys.readouterr().out)["targets_v2"]
     assert t["single_b_or_c"]["n"] == 0 and t["double_c_d_or_f"]["n"] == 0 and t["holds"] is False and t["sweep_failures"] == []
 
 
-def test_adr_0018_the_json_carries_holds_true_when_all_five_hold(tmp_path, capsys, report_as_v2):
+def test_adr_0018_the_json_carries_holds_true_when_all_five_hold(tmp_path, capsys, report_as):
+    report_as(v2_rules)
     keep = (*NO_DOUBLE, "exercise_front_good_08_arms_wider-both+elbow_bent-right")
     assert score_report.main(["--set", str(small_set(tmp_path, keep)), "--json"]) == 0
     t = json.loads(capsys.readouterr().out)["targets_v2"]
@@ -643,20 +582,21 @@ def test_n7_the_score_reads_the_reference_reps_foot_series_and_not_the_whole_exa
 
 
 # ---------------------------------------------------------------- R8: the floor is tuned on seed 5 only
-def test_r8_calibrate_v2_refuses_a_set_that_is_not_seed_5(tmp_path, capsys, monkeypatch):
+@pytest.mark.parametrize("flag, seed", [("--calibrate-v2", 29), ("--calibrate-v3", 61)])
+def test_r8_calibrate_refuses_a_set_that_is_not_seed_5(tmp_path, capsys, monkeypatch, flag, seed):
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
-    (tmp_path / "labels.json").write_text(json.dumps({**labels, "seed": 29, "takes": []}))
+    (tmp_path / "labels.json").write_text(json.dumps({**labels, "seed": seed, "takes": []}))
     monkeypatch.setattr(score_report, "run_set", lambda *a, **k: pytest.fail("a set that is not seed 5 must not be run"))
-    assert score_report.main(["--calibrate-v2", "--set", str(tmp_path)]) == 2
+    assert score_report.main([flag, "--set", str(tmp_path)]) == 2
     err = capsys.readouterr().err
-    assert "--calibrate-v2 runs on the seed 5 tuning set only, not seed 29" in err and "ADR-0003" in err
+    assert f"{flag} runs on the seed 5 tuning set only, not seed {seed}" in err and "ADR-0003" in err
 
 
 def test_r8_calibrate_v2_on_seed_5_prints_the_table_and_the_block(tmp_path, capsys, monkeypatch):
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     (tmp_path / "labels.json").write_text(json.dumps({**labels, "takes": []}))
     block = score.block_v2(frozen_v1(), 0.8)
-    monkeypatch.setattr(score_report, "calibrate_v2_set", lambda *a, **k: (block, {0.8: measured()}))
+    monkeypatch.setattr(score_report, "calibrate_floor_set", lambda *a, **k: (block, {0.8: measured()}))
     assert score_report.main(["--calibrate-v2", "--set", str(tmp_path)]) == 0
     out, err = capsys.readouterr()
     assert json.loads(out) == block and "0.80" in err and "<- chosen" in err
@@ -671,9 +611,9 @@ def test_r9_a_take_with_faults_that_nothing_could_be_measured_on_has_fault_cap_a
 
 def test_r9_no_window_compared_and_a_fault_reported_still_has_fault_cap(rules):
     uncompared = [{"t_s": (0.0, 5.0), "compared": False}]
-    with_fault = score.timeline_block(uncompared, "reps", rules, reports_fault=True)
+    with_fault = score.timeline_block(uncompared, "reps", rules, n_faults=1)
     assert (with_fault["value"], with_fault["fault_cap"]) == (0, 89) and with_fault["timeline"][0]["compared"] is False
-    assert "fault_cap" not in score.timeline_block(uncompared, "reps", rules, reports_fault=False)
+    assert "fault_cap" not in score.timeline_block(uncompared, "reps", rules, n_faults=0)
 
 
 # ---------------------------------------------------------------- R10: the rep path's range is the reference rep's

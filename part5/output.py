@@ -23,6 +23,7 @@ from .detect import EXPLAINED_BY, MAX_NEAR_MISSES, PERSISTENCE, REASONS
 from .insights import MAX_INSIGHTS, insights_of
 from .lateral import lateral_for
 from .words import describe, describe_timed
+from .score import VERSION_V1, VERSION_V2, VERSION_V3, document_ceiling
 from .opinion.guard import validate_block as _validate_second_opinion
 
 FORMAT = "simon.analysis.v1"
@@ -40,7 +41,9 @@ FORMAT = "simon.analysis.v1"
 # 1.10.0 (TICKET-047, ADR-0018) adds `score.fault_cap` and `score.version` "simon.score.v2": a take that reports a fault
 # is capped at 89, `fault_cap` says so, and `score.uncapped` is the value before every cap (the fault cap and the
 # warning cap); `capped_by` stays the warning codes only. Every new document is 1.10.0.
-SCHEMA_VERSION = "1.10.0"
+# 1.11.0 (TICKET-060, ADR-0019) adds `score.version` "simon.score.v3": `score.fault_cap` is the ceiling in force, 89 for a
+# take that reports one fault and 79 for two or more. Every new document is 1.11.0.
+SCHEMA_VERSION = "1.11.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 PROFILE_SINCE = (1, 7, 0)   # from this schema version on, `profile` is required
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
@@ -260,6 +263,7 @@ def validate_analysis(doc, source="<analysis>"):
         _validate_second_opinion(doc["second_opinion"], len(faults), fail)
     if "score" in doc and doc["score"] is not None and not isinstance(doc["score"], dict):
         fail("score must be an object or null")
+    _validate_fault_cap(doc.get("score"), len(faults), fail)
     if "insights" in doc:
         _validate_insights(doc["insights"], fail)
     if isinstance(doc.get("score"), dict) and doc.get("status", {}).get("code") in REFUSED_CODES:
@@ -269,6 +273,25 @@ def validate_analysis(doc, source="<analysis>"):
     except (TypeError, ValueError) as e:
         fail(f"document is not JSON-serialisable ({e})")
     return doc
+
+
+def _validate_fault_cap(score, n_faults, fail):
+    """The 1.10.0 and 1.11.0 `score.fault_cap` (ADR-0018, ADR-0019) must be the ceiling in force for the faults the document
+    reports: under `simon.score.v2` 89 for one or more, under `simon.score.v3` 89 for one and 79 for two or more, and
+    absent for none. A producer that wrote 89 on a two-fault v3 take, or left it out, would otherwise still validate. A
+    `simon.score.v1` block has no ceiling, so it carries no `fault_cap` at all (a writer that put one there has mixed two
+    versions up)."""
+    if isinstance(score, dict) and score.get("version") == VERSION_V1 and "fault_cap" in score:
+        fail(f"score.fault_cap must be absent from a {VERSION_V1} score block, which has no ceiling, got {score['fault_cap']!r}")
+    if not isinstance(score, dict) or score.get("version") not in (VERSION_V2, VERSION_V3):
+        return
+    want = document_ceiling(score["version"], n_faults)
+    if want is None:
+        if "fault_cap" in score:
+            fail(f"score.fault_cap must be absent for a take that reports no fault, got {score['fault_cap']!r}")
+    elif score.get("fault_cap") != want:   # 89 and 79 are never equal to True or False, so a boolean fails here too
+        fail(f"score.fault_cap must be {want} for a {score['version']} take that reports {n_faults} fault"
+             f"{'s' if n_faults != 1 else ''}, got {score.get('fault_cap')!r}")
 
 
 def _validate_profile(doc, version, fail):
@@ -534,6 +557,9 @@ def _validate_times(f, where, fail):
             fail(f"{where}.follower_t_s must be [start_s, end_s] numbers with start <= end, got {v!r}")
     if "at_s" in f and not _is_number(f["at_s"]):
         fail(f"{where}.at_s must be a number, got {f['at_s']!r}")
+    if "at_s" in f and "follower_t_s" in f and f["at_s"] != round_half_up_tenth(f["follower_t_s"][0]):
+        # TICKET-061: the J-1 rule (journey-followup.md, analysis.schema.json at_s); follower_t_s is valid by here
+        fail(f"{where}.at_s {f['at_s']!r} is not follower_t_s[0] {f['follower_t_s'][0]!r} rounded half up to 0.1 s")
     if "follower_runs" in f:
         _validate_runs(f["follower_runs"], where, fail, "follower_runs")
         if "runs" in f and len(f["follower_runs"]) != len(f["runs"]):

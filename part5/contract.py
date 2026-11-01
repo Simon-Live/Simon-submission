@@ -1,5 +1,6 @@
 """Part 5's published contract: seven JSON Schemas, the compatibility table, `part5 contract` and
-`make check-5-contract` (`python -m part5.contract --check`). Who sends what is in CONTRACT.md.
+`make check-5-contract` (`python -m part5.contract --check`). Who sends what is in CONTRACT.md. Two published files are
+not schemas: the word lists (`contracts/student-words.json`) and the history allowlist (`contracts/history-fields.json`).
 
 `contract_document()` is exactly what `part5 contract --json` prints; the staging API serves it at
 `api/contract`. `check()` proves the schemas, the committed fixtures and the golden outputs agree.
@@ -33,7 +34,7 @@ DRAFT = "https://json-schema.org/draft/2020-12/schema"
 # recorded in its run 2 of 2026-11-01. They win over contracts/sources.lock.json, which says where the copied schemas
 # and fixtures of Parts 3 and 4 came from, not which head the rows were checked against.
 NEIGHBOUR_COMMITS = {"part2": "5076cfd", "part3": "fd96379", "part4": "7036622",
-                     "part6": "ced3f3d"}  # progress/neighbour-check-20261101.json
+                     "part6": "ced3f3d"}  # progress/neighbour-check-20261101-run2.json
 # The Part 2 commit whose CONTRACT.md ("Extra joints (optional)") publishes the foot points the feet row was checked against.
 PART2_FEET_COMMIT = "e8ac336"
 TABLE_COLUMNS = ("Producer", "File", "format", "Part 5 role", "Verdict", "Fix", "Checked against")
@@ -66,7 +67,7 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.10.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
+     "the 1.2.0 to 1.11.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
      "`profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`, "
      "`score.fault_cap`) are all "
      "optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near "
@@ -76,10 +77,13 @@ TABLE_ROWS = (
      "`score.uncapped` (the value and grade before a cap lowered them, present only when one did) and the optional "
      "top-level `source` (the producing part; absent means part5) with the warning code "
      "`no_person` (written only by Part 7's own analysis, never by Part 5); 1.10.0 (ADR-0018) allows the score "
-     "to be `simon.score.v2` (read `score.version`; a v1 score can still be written inside 1.10.0) and adds, under v2 only, "
-     "`score.fault_cap` (the integer 89, present when the take reports a fault: such a take scores at most 89, a B; it is "
+     "to be `simon.score.v2` (read `score.version`; a v1 score can still be written inside 1.10.0) and adds "
+     "`score.fault_cap`, present under v2 and v3 when the take reports a fault (under v2 the integer 89, so such a take "
+     "scores at most 89, a B; under v3 89 for one fault and 79 for two or more, see 1.11.0 below; it is "
      "not a warning, `score.capped_by` still names the low-match cap at 59 F only) and widens `score.uncapped` to the "
-     "value and grade before every cap, the fault cap and the warning cap; "
+     "value and grade before every cap, the fault cap and the warning cap; 1.11.0 (ADR-0019) allows the score to be "
+     "`simon.score.v3`, under which `score.fault_cap` is the ceiling in force, 89 for a take that reports one fault and "
+     "79 for a take that reports two or more (read it, never assume 89), and `capped_by` is still the low-match cap only; "
      "a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
      "reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its "
      "`profile`", "Part 5 (this repo)"),
@@ -317,15 +321,29 @@ def word_list_entries(root=ROOT):
     return out
 
 
+HISTORY_FIELDS = "history-fields"   # TICKET-070: the allowlist of the fields a report across takes reads
+
+
+def history_fields_entry(root=ROOT):
+    """The published history allowlist, read from its own file: name, format, version, the analysis schema version it
+    describes, file and how many fields it lists. `contracts/history-fields.json` (`simon.part5.history-fields.v1`) says
+    what each field of `analysis.json` means across takes (CONTRACT.md, "History across takes")."""
+    doc = json.loads((Path(root) / "contracts" / f"{HISTORY_FIELDS}.json").read_text())
+    return {"name": HISTORY_FIELDS, "format": doc["format"], "version": doc["version"],
+            "analysis_schema_version": doc["analysis_schema_version"], "file": f"contracts/{HISTORY_FIELDS}.json",
+            "entries": len(doc["fields"])}
+
+
 def contract_document(root=ROOT):
     """Exactly what `part5 contract --json` prints and the staging API serves at api/contract."""
-    return {"schemas": schema_entries(root), "word_lists": word_list_entries(root), "table": table_rows(root)}
+    return {"schemas": schema_entries(root), "word_lists": word_list_entries(root),
+            "history_fields": history_fields_entry(root), "table": table_rows(root)}
 
 
 def add_parser(sub):
     c = sub.add_parser("contract", help="print the schemas and the compatibility table")
     c.add_argument("--schema", metavar="NAME", help=f"print one schema verbatim ({', '.join(SCHEMA_NAMES)})")
-    c.add_argument("--json", action="store_true", help="print {schemas, table} as JSON")
+    c.add_argument("--json", action="store_true", help="print {schemas, word_lists, history_fields, table} as JSON")
     c.set_defaults(run=run_contract)
 
 
@@ -355,6 +373,10 @@ def _print_contract(args):
     print("\nWord lists (not schemas)")
     for w in doc["word_lists"]:
         print(f"  {w['name']:<16} {w['version']:<6} {w['file']}  {w['format']}")
+    h = doc["history_fields"]
+    print("\nHistory fields (not a schema)")
+    print(f"  {h['name']:<16} {h['version']:<6} {h['file']}  {h['format']}  "
+          f"({h['entries']} fields for analysis {h['analysis_schema_version']})")
     print("\nCompatibility (the last column is the producer commit each row was checked against)\n")
     print(table_markdown(doc["table"]))
     return 0

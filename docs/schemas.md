@@ -90,7 +90,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.10.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.11.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -99,13 +99,16 @@ so the format can grow without breaking older readers. Live examples, generated 
 takes by `make output-examples` through the same pipeline and score hook `part5 analyse` uses (with the
 `template` phrasing, whatever the environment): `fixtures/output/analysis.example.json` (two faults),
 `fixtures/output/analysis.no-faults.example.json` (a correct take), `fixtures/output/analysis.fault-capped.example.json`
-(present while Part 5 ships v2: a take that reports a fault and hits the ceiling of `simon.score.v2`, value 89 B, `fault_cap` 89, `uncapped` 94 A, no
+(present while the rules ship v2 or v3: a take that reports one fault and hits the ceiling of 89, value 89 B, `fault_cap` 89, `uncapped` 94 A, no
 `capped_by`; a dance take analysed without its foot files, so the arm fault it reports is not the foot fault its name
-mentions) and `fixtures/output/replay.example.json`
-(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.10.0):
+mentions), `fixtures/output/analysis.double-capped.example.json` (present while the rules ship v3: a real
+take that reports two faults and hits the ceiling of 79, value 79 C, `fault_cap` 79, `uncapped` 82 B, no `capped_by`) and
+`fixtures/output/replay.example.json` (the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.11.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
-Part 7 must read first. Part 5 ships `simon.score.v1`; `simon.score.v2` failed held-out score seed 59
-(docs/thresholds.md), so the fault-capped example is not written now.
+Part 7 must read first. `simon.score.v2` failed held-out score seed 59 (docs/thresholds.md) and ADR-0018's fallback shipped
+`simon.score.v1`; `simon.score.v3` then held all five targets on score seed 61 (docs/thresholds-score-v3.md) and ships, so the
+rules in this tree carry it and both samples above are written. `make score-fallback` remains the reversal recipe: it puts v1
+back and removes both.
 
 Every addition is optional and told apart by its fields; `schema_version` says which to expect:
 
@@ -122,11 +125,12 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.8.0` | `diagnostics.near_misses` (TICKET-043, `docs/specs/near-misses.md`) | every new document is `1.8.0`; the field is present whenever the take was compared, also when it lists nothing, and absent on a take that could not be aligned |
 | `1.9.0` | `phrasing.lang`, `phrasing.lang_requested`, `phrasing.faults[].text` and `.lang`; top-level `second_opinion` (TICKET-045, TICKET-046, `docs/specs/second-opinion.md`); `score.uncapped` (Part 7 TICKET-155); the top-level `source` and the `no_person` warning code (TICKET-048) | every new document is `1.9.0` and carries the language fields; `second_opinion` is written only when both clips were given as videos (`--expected-video`, `--follower-video`), with `status` `ok`, `fallback` or `skipped`, and is never read by the score; `score.uncapped` only when a warning's cap lowered the value; `source` and `no_person` only in Part 7's own analysis of a take with no person (below), never by Part 5 |
 | `1.10.0` | `score.fault_cap`; `score.version` `simon.score.v2`; the wider meaning of `score.uncapped` (TICKET-047, ADR-0018, `docs/specs/score-v2.md`) | every new document is `1.10.0`; its score is `simon.score.v1` (`simon.score.v2` failed held-out score seed 59 and ADR-0018's fallback shipped v1; read `score.version`); under v2 `fault_cap` (89) is written when the take reports a fault, and `uncapped` when the fault cap or the warning cap lowered the value; `capped_by` is unchanged |
+| `1.11.0` | `score.version` `simon.score.v3`; `score.fault_cap` is the ceiling in force, 89 or 79 (TICKET-060, ADR-0019, `docs/specs/score-v3.md`) | every new document is `1.11.0`; read `score.version` (the rules in this tree ship `simon.score.v3`: it held all five targets on score seed 61, docs/thresholds-score-v3.md; `make score-fallback` remains the reversal recipe and puts `simon.score.v1` back); under v3 `fault_cap` is 89 for a take that reports one fault and 79 for a take whose `faults` list holds two or more entries, written whether or not it lowered the value; `uncapped` and `capped_by` mean what they meant in `1.10.0` |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.10.0",
+  "schema_version": "1.11.0",
   "profile": "fitness",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
@@ -194,7 +198,7 @@ Top level:
 - `faults`: sorted by \(|magnitude|\) descending. An empty list means no faults were found:
   a correct take still gets a file.
 - `warnings` and `match` (1.4.0): present only when the take earned a warning, see "Always analysed" below.
-- `score` (1.2.0, never null from 1.4.0): `simon.score.v1`, or `simon.score.v2` from 1.10.0, see "Score" below.
+- `score` (1.2.0, never null from 1.4.0): `simon.score.v1`, `simon.score.v2` from 1.10.0 or `simon.score.v3` from 1.11.0, see "Score" below.
 - `insights` (1.5.0): what to work on, see "Coaching cues and insights" below.
 - `phrasing` (optional, 1.1.0): who phrased `faults[].coaching`: `requested` and `backend` (`template`,
   `local-llm` or `muse-spark`), `model`, `fallback_reason`, `selected_by` (`flag` for an explicit backend, `live`
@@ -321,7 +325,7 @@ Per fault:
 - `cue` and `cue_kind` (1.5.0): what to do ("Bend your knees more"), at most 6 words; `range` or `position`.
 - `reps` (1.3.0): see `diagnostics.guard.reps` above.
 
-## Score (`simon.score.v1`, or `simon.score.v2` from 1.10.0: read `score.version`)
+## Score (`simon.score.v1`, `simon.score.v2` from 1.10.0 or `simon.score.v3` from 1.11.0: read `score.version`)
 
 `score` is `{version, value, grade, components, params_sha256}` plus the groups below. It is never null from
 `1.4.0` (a take nothing could be measured on scores 0, grade F); before that a refused take had `score: null`.
@@ -346,8 +350,10 @@ on each window; the three add up to `100 - value` within rounding), `params_sha2
   value and grade **before every cap**, the fault cap (`fault_cap`) and the warning cap (`capped_by`): written when
   either lowered `value`, and when both did, the value before the first. A faulted take with no warning whose mean of
   windows was 94 A and was lowered to 89 B has `uncapped: {value: 94, grade: "A"}`, `fault_cap: 89` and no `capped_by`.
-- `fault_cap` (1.10.0, ADR-0018, `simon.score.v2` only): an integer, 89, the highest `value` a take that reports a
-  fault can score (the top of B). Present when the take's `faults` list is not empty, whether or not the cap lowered
+- `fault_cap` (1.10.0, ADR-0018, `simon.score.v2` and from 1.11.0 `simon.score.v3`): an integer, the highest `value` a take
+  that reports a fault can score, the ceiling in force. Under v2 it is 89 (the top of B) for any reported fault; under v3
+  (ADR-0019) it is 89 for a take that reports one fault and 79 (the top of C) for a take whose `faults` list holds two or
+  more entries (read it; never assume 89). Present when the take's `faults` list is not empty, whether or not the cap lowered
   `value`; absent for a take with no faults and under `simon.score.v1`. It is not a warning: `capped_by` never names it and
   keeps its meaning exactly (the warning codes of the low-match cap at 59 F). The cap is applied once, to the mean of the
   windows (ADR-0013); `timeline[]` windows and `per_rep` keep their own values.
@@ -363,6 +369,17 @@ one `score.version`: a v2 value is not on the v1 scale. The
 take's `value` is the mean of its windows and then at most `fault_cap` when it reports a fault. The penalty curve, the
 similarity term, the bands and the warning cap are v1's, and the v1 block is kept in `part5/rules.json` as `score.v1` so
 a v1 score can be reproduced. `params_sha256` is the hash of the whole `score` block, v1 block included.
+
+## Score v3 (`simon.score.v3`, from 1.11.0)
+
+v2's weight and ceiling with a second ceiling (ADR-0019). A miss costs what it costs under v2 (`range_floor` 0.75,
+`range_full` 3). A take that reports one fault scores at most 89 (`fault_cap` 89); a take whose `faults` list holds two or
+more entries scores at most 79 (`fault_cap` 79, the top of C). The ceiling is applied once, to the mean of the windows, and
+`fault_cap` says which one was in force; `uncapped` is the value before every cap, and `capped_by` is still the warning
+codes only. A take that reports two or more faults is therefore a C at best, one that reports a fault a B at best, and A
+means no fault was reported. `score.value` compares only within one `score.version`. The `score` block of `part5/rules.json`
+keeps the frozen v1 and v2 blocks as `score.v1` and `score.v2`, and `params_sha256` is the hash of the whole block.
+`fixtures/output/analysis.double-capped.example.json` is a sample of a take that reports two faults and hits the 79 ceiling.
 
 ## Replay: `replay.json` (`simon.replay.v1`, schema 1.0.0)
 
@@ -460,8 +477,9 @@ Every new document is `1.5.0`. Each fault carries `cue`, an imperative of at mos
 fix is how far a joint bends or a limb lifts, `position` when it is where a body part is placed. Each
 `score.timeline[].misses[]` repeats its fault's `cue`, `cue_kind` and `direction`. Each compared window has
 `tempo: {ratio, cue}`: follower seconds per example second over the window (a rep against the example rep);
-below 0.85 the cue is "Slow down to match the trainer", above 1.15 "Speed up to match the trainer", else
-null; `ratio` is null when the example side spans under 1 s. `score.tempo` is the same for the whole take (the
+below 0.85 the cue is "Slow down to match the trainer", above 1.15 "Speed up to match the trainer" (under the rehab
+profile "Slower is fine", ADR-0016), else null; `ratio` is null when the example side spans under 1 s, and for every tempo of a document whose
+`match.quality` is low (ADR-0014, Amendment 4). `score.tempo` is the same for the whole take (the
 median of the reps). The top-level `insights` lists at most 5 `{cue, why, kind, at_s, window, points, measure,
 side, joint}`: one per distinct cue among the misses, ranked by `points` (their summed points over the compared
 windows divided by the number of those windows, so their share of the score), `at_s` and `window` at the first

@@ -21,6 +21,7 @@ from part5.detect import detect, load_rules
 from part5.io import JOINTS, load_clip
 from part5.measures import MEASURES, compute
 from part5.output import write_analysis
+from shipped_score import tempo_items
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -602,10 +603,6 @@ def test_cue_overrides():
     assert cues.tempo_block(1.301, rehab) == {"ratio": 1.3, "cue": "Slower is fine"}
     assert cues.tempo_block(1.301) == {"ratio": 1.3, "cue": cues.SPEED_UP}
     assert len("Slower is fine".split()) == 3
-
-
-def tempo_items(a):
-    return [i for i in a["insights"] if i["kind"] == "tempo"]
 
 
 # --- AC-PROF-08: dance weights tempo, the score params stay frozen ---

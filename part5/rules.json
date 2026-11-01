@@ -94,7 +94,7 @@
     ]
   },
   "score": {
-    "version": "simon.score.v1",
+    "version": "simon.score.v3",
     "z0": 0.289,
     "z1": 0.732,
     "s_max": 4.0,
@@ -123,6 +123,110 @@
         "F"
       ]
     ],
-    "calibrated_on": "seed 5"
+    "range_floor": 0.75,
+    "range_full": 3.0,
+    "fault_cap": 89,
+    "fault_cap_many": 79,
+    "many_faults": 2,
+    "calibrated_on": "seed 5",
+    "v1": {
+      "version": "simon.score.v1",
+      "z0": 0.289,
+      "z1": 0.732,
+      "s_max": 4.0,
+      "base": 16,
+      "slope": 5.9,
+      "cap": 31.1,
+      "bands": [
+        [
+          90,
+          "A"
+        ],
+        [
+          80,
+          "B"
+        ],
+        [
+          70,
+          "C"
+        ],
+        [
+          60,
+          "D"
+        ],
+        [
+          0,
+          "F"
+        ]
+      ],
+      "calibrated_on": "seed 5"
+    },
+    "v2": {
+      "version": "simon.score.v2",
+      "z0": 0.289,
+      "z1": 0.732,
+      "s_max": 4.0,
+      "base": 16,
+      "slope": 5.9,
+      "cap": 31.1,
+      "bands": [
+        [
+          90,
+          "A"
+        ],
+        [
+          80,
+          "B"
+        ],
+        [
+          70,
+          "C"
+        ],
+        [
+          60,
+          "D"
+        ],
+        [
+          0,
+          "F"
+        ]
+      ],
+      "range_floor": 0.75,
+      "range_full": 3.0,
+      "fault_cap": 89,
+      "calibrated_on": "seed 5",
+      "v1": {
+        "version": "simon.score.v1",
+        "z0": 0.289,
+        "z1": 0.732,
+        "s_max": 4.0,
+        "base": 16,
+        "slope": 5.9,
+        "cap": 31.1,
+        "bands": [
+          [
+            90,
+            "A"
+          ],
+          [
+            80,
+            "B"
+          ],
+          [
+            70,
+            "C"
+          ],
+          [
+            60,
+            "D"
+          ],
+          [
+            0,
+            "F"
+          ]
+        ],
+        "calibrated_on": "seed 5"
+      }
+    }
   }
 }

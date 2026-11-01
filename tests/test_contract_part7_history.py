@@ -16,20 +16,22 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from shipped_score import IS_V2, v2_only
+from shipped_score import IS_CAPPED, IS_V3, SHIPPED, capped_only, v3_only
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = json.loads((ROOT / "contracts/analysis.schema.json").read_text())
 VALIDATOR = jsonschema.Draft202012Validator(SCHEMA)
 GOLDEN_FILES = {"double-fault": "analysis.example.json", "no-faults": "analysis.no-faults.example.json",
-                # the simon.score.v2 sample: written only while the rules ship v2 (make score-fallback removes it)
-                **({"fault-capped": "analysis.fault-capped.example.json"} if IS_V2 else {})}
+                # the samples with a ceiling: written only while the rules ship v2 or v3 (the second only v3); make score-fallback
+                # removes them
+                **({"fault-capped": "analysis.fault-capped.example.json"} if IS_CAPPED else {}),
+                **({"double-capped": "analysis.double-capped.example.json"} if IS_V3 else {})}
 GOLDENS = {name: json.loads((ROOT / "fixtures/output" / f).read_text()) for name, f in GOLDEN_FILES.items()}
 REPLAY = json.loads((ROOT / "fixtures/output/replay.example.json").read_text())
 OLD_1_1_0 = json.loads((ROOT / "tests/fixtures/analysis-1.1.0.example.json").read_text())
 
 # Every analysis schema version from 1.5.0 (ADR-0014, the cues) to the schema's own.
-VERSIONS = ("1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0")
+VERSIONS = ("1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0")
 
 FAULT = SCHEMA["$defs"]["fault"]["properties"]
 SCORE = SCHEMA["properties"]["score"]["properties"]
@@ -58,6 +60,10 @@ def as_version(doc, version):
     doc = copy.deepcopy(doc)
     doc["schema_version"] = version
     v = version_of(version)
+    if v < (1, 11, 0) and doc["score"]["version"] == "simon.score.v3":   # simon.score.v3 and a fault_cap of 79 (ADR-0019)
+        doc["score"]["version"] = "simon.score.v2"
+        if "fault_cap" in doc["score"]:
+            doc["score"]["fault_cap"] = 89
     if v < (1, 10, 0):   # score.fault_cap and simon.score.v2 (the version enum of v1 documents is v1)
         doc["score"].pop("fault_cap", None)
         doc["score"]["version"] = "simon.score.v1"
@@ -144,22 +150,22 @@ def test_1_10_0_fault_cap_is_an_optional_integer_and_capped_by_keeps_its_meaning
     cap = SCORE["fault_cap"]
     assert cap["type"] == "integer" and (cap["minimum"], cap["maximum"]) == (0, 100) and cap["description"].startswith("1.10.0")
     assert "faults list is not empty" in cap["description"] and "capped_by does not name it" in cap["description"]
-    assert SCORE["version"] == {"enum": ["simon.score.v1", "simon.score.v2"]}
+    assert SCORE["version"] == {"enum": ["simon.score.v1", "simon.score.v2", "simon.score.v3"]}
     assert "required" not in SCHEMA["properties"]["score"], "fault_cap is optional: absent for a take with no faults"
     assert SCORE["capped_by"]["items"] == {"type": "string"} and "never in this list" in SCORE["capped_by"]["description"]
     assert "before every cap" in SCORE["uncapped"]["description"] and "no capped_by" in SCORE["uncapped"]["description"]
 
 
-@v2_only
+@capped_only
 def test_1_10_0_the_sample_for_part_7_reports_a_fault_and_hits_the_cap_without_a_warning():
     doc = GOLDENS["fault-capped"]
     score = doc["score"]
-    assert problems(doc) == [] and doc["faults"] and "warnings" not in doc
-    assert (score["version"], score["value"], score["grade"], score["fault_cap"]) == ("simon.score.v2", 89, "B", 89)
+    assert problems(doc) == [] and len(doc["faults"]) == 1 and "warnings" not in doc
+    assert (score["version"], score["value"], score["grade"], score["fault_cap"]) == (SHIPPED, 89, "B", 89)
     assert score["uncapped"]["value"] > 89 and score["uncapped"]["grade"] == "A" and "capped_by" not in score
 
 
-@v2_only
+@capped_only
 def test_1_10_0_a_take_with_both_caps_keeps_the_value_before_the_first_and_capped_by_names_the_warning_only():
     doc = copy.deepcopy(GOLDENS["fault-capped"])
     before = doc["score"]["uncapped"]
@@ -171,8 +177,9 @@ def test_1_10_0_a_take_with_both_caps_keeps_the_value_before_the_first_and_cappe
 
 def test_1_10_0_a_take_with_no_fault_has_no_fault_cap():
     assert "fault_cap" not in GOLDENS["no-faults"]["score"] and GOLDENS["no-faults"]["faults"] == []
-    if IS_V2:
-        assert "fault_cap" in GOLDENS["double-fault"]["score"] and GOLDENS["double-fault"]["score"]["value"] <= 89
+    if IS_CAPPED:
+        double = GOLDENS["double-fault"]["score"]
+        assert double["value"] <= double["fault_cap"] == (79 if IS_V3 else 89)   # two faults: 79 under v3 (ADR-0019), 89 under v2
     else:
         assert "fault_cap" not in GOLDENS["double-fault"]["score"]
 
@@ -180,6 +187,44 @@ def test_1_10_0_a_take_with_no_fault_has_no_fault_cap():
 def test_a_1_9_0_score_of_v1_validates_and_carries_no_fault_cap():
     doc = as_version(GOLDENS["double-fault"], "1.9.0")
     assert doc["score"]["version"] == "simon.score.v1" and "fault_cap" not in doc["score"] and problems(doc) == []
+
+
+# ---------------------------------------------------------------- 1.11.0: simon.score.v3 and the ceiling in force (ADR-0019)
+def test_1_11_0_fault_cap_is_the_ceiling_in_force_89_or_79_and_a_1_10_0_document_still_validates():
+    cap = SCORE["fault_cap"]
+    assert "79" in cap["description"] and "ceiling in force" in cap["description"] and "two or more" in cap["description"]
+    assert "1.11.0" in SCHEMA["description"] and "never assume 89" in SCHEMA["description"] and SCHEMA["version"] == "1.11.0"
+    doc = as_version(GOLDENS["double-fault"], "1.10.0")   # what a 1.10.0 writer made of the same take: v2, ceiling 89
+    assert doc["schema_version"] == "1.10.0" and problems(doc) == []
+    if IS_CAPPED:
+        assert doc["score"]["version"] == "simon.score.v2" and doc["score"]["fault_cap"] == 89
+
+
+@v3_only
+def test_1_11_0_the_double_capped_sample_reports_two_faults_and_hits_the_79_ceiling_without_a_warning():
+    doc = GOLDENS["double-capped"]
+    score = doc["score"]
+    assert problems(doc) == [] and len(doc["faults"]) == 2 and "warnings" not in doc and doc["schema_version"] == "1.11.0"
+    assert (score["version"], score["value"], score["grade"], score["fault_cap"]) == ("simon.score.v3", 79, "C", 79)
+    assert score["uncapped"]["value"] > 79 and "capped_by" not in score
+
+
+@v3_only
+def test_1_11_0_one_fault_has_ceiling_89_and_two_or_more_have_79_in_the_goldens():
+    assert GOLDENS["fault-capped"]["score"]["fault_cap"] == 89 and len(GOLDENS["fault-capped"]["faults"]) == 1
+    for name in ("double-fault", "double-capped"):
+        assert GOLDENS[name]["score"]["fault_cap"] == 79 and len(GOLDENS[name]["faults"]) >= 2, name
+    assert "fault_cap" not in GOLDENS["no-faults"]["score"]
+
+
+@v3_only
+def test_1_11_0_a_two_fault_take_with_both_caps_keeps_the_value_before_the_first_and_capped_by_names_the_warning_only():
+    doc = copy.deepcopy(GOLDENS["double-capped"])
+    before = doc["score"]["uncapped"]
+    doc["warnings"] = [{"code": "low_match", "text": "This take doesn't closely match the trainer's movement."}]
+    doc["match"] = {"quality": "low", "residual": 0.2, "timing_corr": 0.1, "limits": {"max_residual": 0.18, "min_timing_corr": 0.5}}
+    doc["score"].update(value=59, grade="F", capped_by=["low_match"])
+    assert problems(doc) == [] and doc["score"]["uncapped"] == before and doc["score"]["fault_cap"] == 79
 
 
 # ---------------------------------------------------------------- the same fields in a document of each version
@@ -308,7 +353,7 @@ def test_the_end_of_the_compared_span_is_in_the_timeline_and_the_replay_ends_at_
     assert number(end) and timeline[-1]["t_s"][0] < end
     assert all(a["t_s"][1] <= b["t_s"][0] + 1e-9 for a, b in zip(timeline, timeline[1:])), "windows run in time order"
     assert all(f["follower_t_s"][1] <= end + 1e-9 for f in doc["faults"]), "no fault ends after the compared span"
-    assert doc["score"]["basis"] == ("reps" if name == "fault-capped" else "windows")   # a dance take is compared rep by rep
+    assert doc["score"]["basis"] == ("reps" if name in ("fault-capped", "double-capped") else "windows")   # a dance take and the real lateral raise are compared rep by rep
 
 
 def test_the_replay_follower_clock_is_the_exact_duration_and_the_compared_span_never_exceeds_it():

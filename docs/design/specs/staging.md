@@ -16,6 +16,8 @@ lists the modes, and verify and a recipe drive the page's "Mode" select (`viewer
 Delivery fixes of 2026-10-31 (lane delivery-fixes): the API analyses a labelled sample with its foot files (AC-S10).
 Walkthrough notes of 2026-11-01 (lane qa-notes-web, TICKET-057): the picker words every label in the analysis's timed words
 (AC-S10, WR9), the walkthrough files and their review frames are named, with one key-moment frame per step (WR5, WR1, WR6).
+Walkthrough residuals of 2026-11-01 (lane walkthrough-r, TICKET-062): the score frame is described by its form, the upload
+keeps the fixture's file name, and two key moments are added, `low-confidence` on desktop and `score` on the phone.
 Milestones: S0 (target 2026-10-29), M3 (target 2026-11-01). Use cases: uc-analyse-take, uc-correct-take,
 uc-wrong-movement, uc-real-takes.
 
@@ -100,7 +102,10 @@ As a follower, I pick or upload the expected movement and my take and see each f
   `engagements/simon-part-5.yaml` (brief, section 0).
 - Local dev: `scripts/dev.sh` (firm only) starts the server on `127.0.0.1:8725` detached; `scripts/dev.sh
   stop` stops it; health `curl -fsS http://127.0.0.1:8725/api/health`. `make demo` (published) serves in
-  the foreground on its own port, 8735, so the two never clash.
+  the foreground on its own port, 8735, so the two never clash. The server stops on SIGINT or SIGTERM with exit code 0 and
+  a clean log: its SIGTERM handler is one-shot (the first TERM sets SIG_IGN, then exits `serve_forever`), so a second TERM
+  from `make` or `uv run` during interpreter shutdown is ignored (`tests/test_server.py`,
+  `test_serve_stops_with_exit_0_and_a_clean_log_on_repeated_sigterm`).
 
 ## Verify suite
 `staging/verify.sh` runs `staging/verify.mjs` with Playwright 1.61.1 (pinned in a local-only
@@ -147,19 +152,48 @@ the preview's field name "Why the grade is limited" is one line. The exit code i
   file and together: each file under 90 s and under 15 MB, and the two together under 90 s and under 15 MB
   (`walkthrough.mjs` refuses a recording over 88 s, so a joined video would also stay under 90 s); no still stretch of
   5 s in either (`ffmpeg freezedetect n=-60dB:d=5` finds none, so a hold is never lengthened to give a frame more time).
-  The steps, in order: pick, Analyse (score, timed lines), replay, tap a fault, upload, a different movement warned and
-  graded F, the real takes, and on the phone the preview at phone width. The recording chooses Template before each
-  Analyse (AC-V19), so it makes no live call.
+  The steps, in order: pick, Analyse (score, timed lines), replay, tap a fault, upload (the committed Take 03 fixture,
+  sent under the file name it has on disk, so the page shows "Using your file: skeleton.json"; every labelled take's
+  follower file has that name, so the orchestrator's review names the fixture's repository path to say which take it is),
+  a different movement warned and graded F and then its fault rows with their low confidence notes (AC-S06), the real
+  takes, and on the phone Analyse with its own score, then the preview at phone width. The recording chooses Template
+  before each Analyse (AC-V19), so it makes no live call.
 - Review frames, read from the videos. The sampled frames (`frame-NNNN.png`, one every 4 s of the desktop video and one
   every 3 s of the phone video) stay as they were. After recording, one settled key-moment frame per step is added
-  (TICKET-057, walkthrough review R1 and R6): `key-NN-<step>.png` in the segment's frames folder, `NN` counting the steps
-  of that video, `<step>` one of `pick`, `score` (the score line, "Score: 84 out of 100, grade B"), `replay` (with the
-  timed fault line), `tap-fault`, `upload`, `warned` and `real-takes` on desktop and `preview` on the phone.
-  `walkthrough.mjs` writes `walkthrough-key-moments.txt` next to the videos, one `<segment> <step> <seconds>` line per
-  step, each taken at the end of a hold the drive already makes, so recording adds no pause and the length stays as it
-  was. `staging/walkthrough-frames.sh <key-moments.txt> <desktop video> <phone video> [<frames-root>]` then reads each
-  frame 0.4 s before its instant, inside the hold (exit 0 every frame written, 1 a frame could not be read, 2 a bad
-  argument or line; `<frames-root>` defaults to `demos/videos`). The orchestrator records and commits them; this step
+  (TICKET-057, walkthrough review R1 and R6; TICKET-062, third review R1, R4 and R5): `key-NN-<step>.png` in the
+  segment's frames folder, `NN` counting the steps of that video, `<step>` one of `pick`, `score` (the score line, in the
+  form "Score: N out of 100, grade G", where N and G are the value and grade the served analysis of Take 03 gives; this
+  spec fixes no number, so a change of score version does not make it wrong), `replay` (with the timed fault line),
+  `tap-fault`, `upload`, `warned`, `low-confidence` (the same warned result scrolled to its fault rows, each showing its
+  low confidence note) and `real-takes` on desktop, and `score` (the phone's own Analyse result, with the same score
+  line) and `preview` on the phone, so the phone's frames are `key-01-score.png` and `key-02-preview.png`.
+  `walkthrough.mjs` writes `walkthrough-key-moments.txt` next to the videos, one `<segment> <step> <end> <start>` line per
+  step: the end and the start, in seconds on the drive's clock, of a hold the drive already makes, so a mark adds no
+  pause. A mark must directly follow the pause it ends and refuses to run without one. `low-confidence` shares the
+  hold `warned` had: that 2.5 s hold is split into two of 1.5 s, the first on the warning panel and the second on the
+  fault rows, so the recording is 0.5 s longer and the phone's `score` mark adds nothing.
+  `staging/walkthrough-frames.sh <key-moments.txt> <desktop video> <phone video> [<frames-root>]` then reads each frame
+  at the middle of its hold, `(start + end) / 2` on the drive's clock (exit 0 every frame written, 1 a hold too short for
+  the margin below, a key frame that changes in the video beside its reading, or a frame that could not be read, 2 a bad
+  argument or line, a line without a hold start, or a frames folder that already holds a `key-*.png`; `<frames-root>`
+  defaults to `demos/videos`). The video does not run on that
+  clock. Measured on the 897ddad recording, a frame read at second T of the desktop video shows the page 0.22 to 0.36 s
+  after T on the drive's clock, and on the phone 0.06 to 0.08 s after T; the video also ends 0.06 to 0.4 s before the
+  drive's last mark. The script corrects for none of this. Half of a hold has to cover the largest lag measured, and the
+  sign of the lag is not assumed, so the middle must be 0.4 s or more from each end of its hold. A shorter hold is
+  refused with exit 1 before any frame is written, which makes 0.8 s the shortest hold accepted (0.79 s, which is 0.8 s
+  within mark rounding: the marks are written to 0.01 s). The shortest hold the drive makes is `replay`, at 0.8 s: at the largest desktop lag it
+  keeps 0.04 s before its end, as the old fixed offset did, and every other hold keeps more, because the margin grows
+  with the hold. That margin is on the drive's clock, so the script also compares each key frame with the video's own
+  frames 0.12 s before and after it, and removes the frame and exits 1 when either differs in more than 64 pixels (a
+  pixel counts when a colour value moves by more than 32 of 255; 64 is twice the noise measured on the committed
+  videos, set before the check ran on a key frame, and `SETTLE_REPORT=1` prints each count). A key frame whose middle
+  falls past the end of its video is read from the last frame only when that
+  frame comes after the hold's start and is within the loss measured at the end of a video, else the script exits 1
+  (TICKET-065, TICKET-067). A moments file from before the start marks (`<segment> <step> <seconds>`) is refused with
+  exit 2 and a request to re-record, because a guessed offset would bring the old margin back. The old frames
+  are archived before a re-record: the script refuses ("archive the old frames first") before it writes anything, so a
+  changed step list never leaves old frames beside the new ones. The orchestrator records and commits them; this step
   is the one command that turns a recording into the frames.
 
 ## Acceptance Criteria
@@ -255,6 +289,36 @@ at all, so there is nothing to compare. Tests
 row the page then shows says "too far right at N.N s". Negative assertion: no picker label or listed fault of Take 03 reads
 "too far out".
 
+### AC-S11: a long terminal transcript is drawn in whole steps, never cut
+`qa/tools/render_transcript.py <transcript.txt> <out.png> [--max-lines N] [--cols N]` draws the `.txt` of a terminal frame
+(`qa/INTERFACE.md`, "Terminal frames") as PNG frames. It is firm QA tooling: `qa/` is on the publish denylist and not in
+`.simon-publish`, so it is never published.
+- Given a transcript that fits in `--max-lines` drawn lines (default 100; a line wider than `--cols`, default 150, wraps and
+  counts as its rows), it writes `<out.png>` and nothing else, with no header.
+- Given a longer one, it writes `<out>-p<k>of<N>.png` for k from 1 to N, and the first line of each frame names its part:
+  "part 2 of 5: transcript lines 91 to 180 of 567". The parts are contiguous, overlap nowhere and together hold every line:
+  no line is left out and no frame says that lines are left out. A part after the first repeats the command under its
+  header, and every part but the last ends with "(continues in part k+1 of N)".
+- A part ends only at a step boundary. It never ends inside a bracket group (`{...}` or `[...]` outside double quotes), a
+  line with the lines indented under it, a paragraph between blank lines, the `--- stderr ---` section, the command lines
+  with the first line of output, or just before the closing `$ echo $?` line, when that group is at most `--max-lines`
+  drawn lines. A group longer than that cannot sit in one frame and is split at its own inner boundaries only, the
+  outermost ones that fit. A part is therefore taller than `--max-lines` only when no step boundary lies within that height of its
+  start: a group that has to stay whole, which in practice is a chain of overlapping groups, each at most `--max-lines`
+  drawn lines, that together span it (a bracket group that spans a blank line between two paragraphs is one), or a single
+  line that wraps into more rows than that. Nothing is lost in either case: the parts stay contiguous and together hold
+  every line.
+- Exit 0 every frame written; 1 the frames could not be drawn (Pillow or the DejaVu Sans Mono font missing; run it with
+  the system `python3`, not the project venv); 2 a usage error or an unreadable transcript. Stdout has one tab separated
+  line per frame: path, size, part, transcript lines, rows drawn.
+Why: the first renderer kept the head (150 lines) and tail (70) of anything over 230 drawn lines. Frame 09 of
+`qa/runs/20261101T113735Z-uc-integration-contract` (567 lines, 61 steps) drew step 55's lines under step 15's, and frame 03
+of `qa/runs/20261101T113936Z-uc-done-check` (319 lines) left out the attempts of seeds 37 and 67 (delivery review
+2026-11-01, R4b). Tests (`tests/staging/test_qa_render_transcript.py`): the two transcripts above rebuilt in their own
+shape split with no step cut and no line lost, a short one is one frame with the old name, blank-line paragraphs, the
+stderr section and the exit line stay whole, a group longer than the cap is split only between its children, the part
+header and file names, the exit codes, and the tool stays off the publish list.
+
 ## Error Cases
 | Condition | Behavior | Message format | AC |
 |---|---|---|---|
@@ -318,6 +382,33 @@ Kept: it lets the browser render without parsing uploads twice and keeps the ali
   (`words.phrase_timed`, the timed vocabulary `describe_timed` already used), so Take 03 reads "Right foot too far right"
   and no longer "too far out" over a result that says "too far right". Label ids, label files and fixture bytes are
   unchanged; so is every `analysis.json`. The log line of 2026-10-31 above stays true for the foot takes.
+
+- 2026-11-01 (delivery review R4b, lane dr-qa, TICKET-058): AC-S11. The terminal-frame renderer is committed as
+  `qa/tools/render_transcript.py` and splits a long transcript into numbered frames at step boundaries instead of
+  drawing its head and tail. Drivers declare every frame it prints. `qa/INTERFACE.md` documents the call.
+
+- 2026-11-01 (third walkthrough frame review R1, R2, R4, R5, lane walkthrough-r, TICKET-062): the score key frame is
+  described by its form and no longer quotes a number the score version had changed; `staging/walkthrough.mjs` uploads the
+  Take 03 fixture under its own file name instead of "my-take.json", scrolls the warned result to its fault rows for the
+  `low-confidence` moment and marks the phone's own result as `score`. `staging/walkthrough-frames.sh` is unchanged: it
+  numbers the steps of each video in the order the marks were made.
+- 2026-11-01 (sixth walkthrough frame review R1, lane score-wrap, TICKET-065): `staging/walkthrough-frames.sh` reads each
+  video's length and last frame time with ffprobe; the video ends 0.06 to 0.4 s before the drive's clock, so the last mark's
+  seek time can fall past the end, and that frame is then read from the last frame, but only when it comes after the previous
+  mark of the same video (else exit 1, as before). The 0.4 s offset is on the drive's clock, not the video's.
+- 2026-11-01 (seventh walkthrough frame review R2, lane hold-midpoints, TICKET-068): `staging/walkthrough.mjs` writes the
+  start of each hold beside its end (`<segment> <step> <end> <start>`), and `staging/walkthrough-frames.sh` reads each key
+  frame at the middle of its hold instead of a fixed offset before the end. With the desktop lag measured at up to 0.36 s,
+  the fixed offset left as little as 0.04 s before the end of a hold; the middle's margin grows with the hold. A hold
+  shorter than twice the margin is refused, a moments file without start marks is refused, and the past-the-end read is
+  checked against the hold's start instead of the previous mark.
+- 2026-11-01 (eighth walkthrough frame review R1, lane closing-batch, TICKET-069): the offsets measured on the 897ddad
+  recording (a frame read at second T showed the desktop page 0.22 to 0.36 s later on the drive's clock, the phone 0.06 to
+  0.08 s later) did not hold for the next recording. On the d61b2f6 recording the desktop video starts a hold up to 0.34 s
+  late and ends it 0.06 to 0.14 s early, the opposite sign at the start. A margin on the drive's clock cannot see that, so
+  `staging/walkthrough-frames.sh` also checks the video itself: a key frame must match the frames either side of it. Its
+  threshold was measured on those two videos and committed first; all ten key frames of that recording pass and are
+  unchanged.
 
 ## Deviations from PRD
 None.

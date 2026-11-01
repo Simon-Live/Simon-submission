@@ -11,13 +11,15 @@ import pytest
 
 from part5 import cli, contract
 from part5.output import validate_analysis
-from shipped_score import IS_V2, SHIPPED
+from shipped_score import IS_CAPPED, IS_V3, SHIPPED
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "fixtures/output"
 ANALYSES = ["analysis.example.json", "analysis.no-faults.example.json"]
-V2_SAMPLE = "analysis.fault-capped.example.json"   # a simon.score.v2 sample, written only while the rules ship v2
-GOLDENS = sorted([*ANALYSES, "replay.example.json", *([V2_SAMPLE] if IS_V2 else [])])
+CEILING_SAMPLE = "analysis.fault-capped.example.json"   # a sample with a ceiling, written only while the rules ship v2 or v3
+DOUBLE_SAMPLE = "analysis.double-capped.example.json"   # a simon.score.v3 sample, written only while the rules ship v3
+SAMPLES = [*([CEILING_SAMPLE] if IS_CAPPED else []), *([DOUBLE_SAMPLE] if IS_V3 else [])]
+GOLDENS = sorted([*ANALYSES, "replay.example.json", *SAMPLES])
 
 
 def load_script():
@@ -57,11 +59,11 @@ def test_ac_nfr_j02_a_second_run_writes_the_same_bytes(rebuilt, tmp_path):
         assert (tmp_path / name).read_bytes() == (rebuilt / name).read_bytes(), name
 
 
-@pytest.mark.parametrize("name", [*ANALYSES, *([V2_SAMPLE] if IS_V2 else [])])
+@pytest.mark.parametrize("name", [*ANALYSES, *SAMPLES])
 def test_r11_a_golden_analysis_carries_what_a_real_run_carries(name):
     doc = json.loads((OUT / name).read_text())
     score = doc["score"]
-    assert doc["schema_version"] == "1.10.0" and doc["status"]["code"] == "ok"
+    assert doc["schema_version"] == "1.11.0" and doc["status"]["code"] == "ok"
     assert score["version"] == SHIPPED and 0 <= score["value"] <= 100 and score["grade"] in "ABCDF"
     assert score["basis"] in ("windows", "reps") and score["timeline"] and score["tempo"] is not None
     assert all("tempo" in w for w in score["timeline"] if w["compared"])

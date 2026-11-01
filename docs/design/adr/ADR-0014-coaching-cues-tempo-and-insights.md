@@ -32,7 +32,7 @@ advice belongs in Part 5's output.
 ## Decision
 - **Cue per fault and per miss.** `faults[].cue` is an imperative of at most 6 words from the fault's
   `measure`, `direction` and `side` (`part5/cues.py`): "Bend your knees more", "Raise your left arm higher",
-  "Lean forward more", "Lower your hips more". Every cue moves the follower toward the example: `direction`
+  "Lean forward more", "Raise your thighs higher". Every cue moves the follower toward the example: `direction`
   is the sign of follower minus example. `cue_kind` is `range` (how far a joint bends or a limb lifts:
   elbow and knee flexion, upper arm out and forward, thigh forward) or `position` (where a part is placed or
   how it is aligned: forearm, thigh and foot out, knee valgus, trunk lean, shoulder tilt, head forward). Each
@@ -40,9 +40,10 @@ advice belongs in Part 5's output.
 - **Tempo.** Each compared window carries `tempo: {ratio, cue}`, where `ratio` is follower seconds per example
   second: for a take compared as a whole, the follower span over the example span of the expected frames
   matched into the window (from the alignment's `exp_to_fol`); for a rep, the rep's length over the example
-  rep's. `ratio` is null when the example side spans under 1 s. Below 0.85 the cue is "Slow down to match the
-  trainer", above 1.15 "Speed up to match the trainer", otherwise null. `score.tempo` is the same for the take
-  (the whole span, or the median of the reps). Tempo is not scored: the score is unchanged.
+  rep's. `ratio` is null when the example side spans under 1 s, and for every tempo of a low match (Amendment 4).
+  Below 0.85 the cue is "Slow down to match the trainer", above 1.15 "Speed up to match the trainer", otherwise
+  null. `score.tempo` is the same for the take (the whole span, or the median of the reps). Tempo is not scored (except
+  under dance, ADR-0016): the score is unchanged.
 - **Insights.** The top-level `insights` lists at most 5 `{cue, why, kind, at_s, window, points, measure,
   side, joint}`. With a timeline: one item per distinct cue among the misses, ranked by `points`, the cue's
   summed miss points over the compared windows divided by their number (the score is the mean of the
@@ -102,10 +103,11 @@ Decision (operator, 2026-10-31):
   plain-words templates of the Decision above. Nothing else about insights changes: order, points, `at_s`,
   `window`, the cap of 5 and the tempo item last.
 - `thigh_forward` with direction `less` says "not raised enough" in the timed words too (`part5/words.py`:
-  "right thigh not raised enough", sizes "not quite", "nowhere near"), not "too low". The cue ("Lower your hips
-  more") and `text` are unchanged. `upper_arm_forward` with direction `less` keeps "too low". The live timed
-  validator holds a Muse Spark line to the same meaning: for this fault the words "low", "lower", "hang" and
-  "drop" carry no direction, so "thigh too low" fails the word test and the line falls back to `text_timed`.
+  "right thigh not raised enough", sizes "not quite", "nowhere near"), not "too low". The cue (then "Lower your
+  hips more"; reworded in Amendment 3) and `text` are unchanged by this amendment. `upper_arm_forward` with
+  direction `less` keeps "too low". The live timed validator holds a Muse Spark line to the same meaning: for this
+  fault the words "low", "lower", "hang" and "drop" carry no direction, so "thigh too low" fails the word test and the
+  line falls back to `text_timed`.
 
 Consequences: `why` is still template text and deterministic. The schema is unchanged (`why` stays a non-empty
 string), the goldens are rebuilt, and `make check-5` is unchanged (it reads faults, not their words).
@@ -139,3 +141,56 @@ Consequences: the schema is unchanged (`why` stays a non-empty string). The gold
 template-phrased document are byte-identical, because the template backend never meets the scope above.
 `pipeline._phrased` makes the insights again after the lines are written, so a document phrased by a live model keeps
 the rule whether or not it is scored.
+
+## Amendment 3 (2026-11-01): the both-sides `thigh_forward` cues agree with their fault lines
+Context: the insights show a fault's cue beside its words. After Amendment 1 the words say "Thighs nowhere near raised
+enough", and the cue still said "Lower your hips more", which a reader takes as the opposite instruction (the third
+walkthrough frame review, TICKET-062 R3). The delta review of that fix found the same fault in the other direction:
+the `more` cue "Keep your hips higher" sat beside the line "thighs raised too high" (`part5/words.py`), which reads as
+the opposite instruction too.
+
+Decision (stakeholder-proxy, 2026-11-01, TICKET-062):
+- The cue for `thigh_forward`, direction `less`, side `both` is "Raise your thighs higher" (four words). It uses the
+  words of the fault line, so the two read as one instruction, and it stays true for a squat, where sitting deeper is
+  what raises the thighs. The one-side cue "Lift your {side} knee higher" and every other cue are unchanged.
+- The cue for `thigh_forward`, direction `more`, side `both` is "Keep your thighs lower" (four words), the mirror of
+  the `less` cue: it names the thighs as the line "thighs raised too high" does and moves them the way the line asks,
+  with no word about the hips. The one-side cue "Keep your {side} knee lower" and every other cue are unchanged.
+- Detection, faults, scores, the schema and `text` are unchanged; `make check-5` stdout is byte-identical.
+
+## Amendment 4 (2026-11-01): a low match has no tempo
+Context: Part 7's QA sent a follower take that was the matching clip slowed to half speed (staging job 1538d81126c2,
+rehab, 23.9 s against a 6.9 s example). Part 5 returned `score.tempo` `{ratio: 0.66, cue: "Slow down to match the
+trainer"}` and Part 7 showed "Rushing", the opposite of what happened. The match was low (residual 0.6233 against the
+limit 0.5677). The alignment had put all 208 example frames on take frames 59 to 195, which span 4.53 s of the take, and
+the ratio is the follower time the matched frames span over the example's time, so it measured how long the stretch the
+alignment found lasted and not how fast the take was done. ADR-0012 already gives every fault of a low match the
+confidence "low"; the tempo carried no such mark and was shown as an action.
+
+Decision (stakeholder-proxy, 2026-11-01T19:10Z, TICKET-063):
+- When the document's `match.quality` is "low", every tempo in it is unmeasured: `score.tempo` and the `tempo` of each
+  window (each rep, for a take compared rep by rep) are `{ratio: null, cue: null}`. A stretch of the example under 1 s
+  already has that value, and the contract already says to show a window's `tempo.cue` only when it is not null.
+- Nothing else is switched off by hand. With no `score.tempo.cue` the insights hold no tempo item, so the fault items
+  keep all five places (this narrows "a tempo item is added last and always kept" to a measured tempo). Under the dance
+  profile (ADR-0016) a null ratio is charged nothing, so `components.tempo` is 0.0 on each window and on the take, and
+  the value is what the faults and the similarity give.
+- One function decides: `score.tempo_ratio`. The windows of a take compared as a whole, the reps of a take compared rep
+  by rep and the take itself all take their ratio from it. A take is accepted rep by rep only when its reps pass the
+  guard, so today its quality is ok; the rule is written for both bases so it holds on whichever path a later change
+  sends a refused take down.
+- A match of quality "ok" is unchanged, and so is a take that could not be aligned at all: its zero score has no
+  timeline and no tempo.
+- No corrected ratio is offered. A partial alignment does not say how much of the take it left out, so any figure
+  would be a second guess shown as a measurement.
+- The case against: a take that is both rushed and a low match gets no "Slow down" either. That is the price of not
+  telling a follower the wrong thing, and such a take already carries the `low_match` warning and grade F. Why the
+  alignment of a slowed take is partial is a separate question (TICKET-064); this amendment changes no alignment,
+  detection or guard.
+
+Consequences: the schema is unchanged (`ratio` and `cue` are already nullable). The goldens and the stdout of
+`make check-5` are byte-identical: no golden is a low match, and `make check-5` runs the fitness profile, which charges
+no tempo. Part 7's half speed take still grades F on `low_match`; what changes is that it no longer carries a pace
+instruction the alignment could not support. Tests: `tests/test_score_timeline.py` (the window basis under fitness,
+rehab and dance, and the dance charge), `tests/test_reps.py` (the rep basis) and `tests/test_profiles_tempo.py` (half
+speed copies of two committed seed 5 takes, one a good match and one a low match).

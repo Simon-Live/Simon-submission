@@ -701,6 +701,61 @@ would have shown that v2 does not break them, not that it fixes v1's recorded mi
 floor was fitted to seed 5's doubles (highest exactly reported double 75, on the rule's bound) and seed 59's milder doubles
 land at B. Seed 59 is retired.
 
+### Score v3 (`simon.score.v3`, ADR-0019, TICKET-060)
+Rulings of 2026-11-01T13:20Z (operator, moalborati/simon#61) and 13:35Z (stakeholder-proxy), quoted in ADR-0019; tuned on seed 5 only,
+scored once on score seed 61 after the freeze, published pass or fail. Detection, its thresholds, `part5/profiles.json` and every
+detection seed are untouched: `detection_sha256` above is unchanged, and `status`, `warnings`, the faults and the near misses of
+all 156 seed 5 takes are byte-identical to those of main (`fixtures/seed5-detection-baseline.json`, compared on every test run).
+`part5/rules.json` changed in its `score` section only: it carries the shipped v3 block, the frozen v1 block as `score.v1`
+(`e818635b...`, the hash recorded for seeds 47 and 53) and the frozen v2 block as `score.v2` (`60116de4...`, byte for byte what was
+frozen for seed 59, its own nested `v1` included).
+
+| param | value | rule |
+| --- | ---: | --- |
+| `z0`, `z1`, `s_max`, `base`, `slope`, `cap`, `bands` | v1's | unchanged |
+| `range_full` | 3 | v2's design constant (ADR-0018) |
+| `fault_cap` | 89 | v2's: a take that reports one fault scores at most 89 |
+| `fault_cap_many` | 79 | ruled: a take whose `faults` list holds `many_faults` or more entries scores at most 79 (the top of C) |
+| `many_faults` | 2 | ruled |
+| `range_floor` | 0.75 | the output of ADR-0018's rule, run again unchanged on seed 5 under the v3 code (`python -m part5.score_report --calibrate-v3`), kept with no hand nudge |
+
+`params_sha256` of the shipped `score` block (what the freeze records): `4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07`
+(`python -m part5.score_report --params-sha256`).
+
+The whole-file hash moved with the score block, the detection hash did not. `detection_sha256` stays `c92ae9a8...` (above), and the
+attempts keep the whole-file `rules_sha256` of the file as it was when each was scored (`1d6a3f86...` for seeds 71 and 73,
+`attempts[-1].rules_sha256` of `fixtures/heldout-attempts.json`). The top-level `rules_sha256` that `make check-5` prints is the
+sha256 of the committed `part5/rules.json`, recorded here for the v3 file (git blob `b13c6bea`, unchanged since 70d1a40); a later
+change to that file moves it:
+
+rules_sha256: `23da0c7291eb4b4a27e4d8de6a3b44c2d18c7cd1de30270c52d9e6ade76b4a7b`
+
+The rule's measurements on seed 5 under the v3 code (good light; the rule reads nothing else). "Highest double" is as v3 scores
+it, after the 79 ceiling; "before the cap" is the same take's value before any ceiling (the column the rule does not read):
+
+| floor | correct all A | lowest single | highest double | before the cap | sweep rises | holds |
+| ---: | --- | ---: | ---: | ---: | --- | --- |
+| 0.50 | yes | 75 | 79 | 83 | no | no |
+| 0.55 | yes | 75 | 79 | 81 | no | no |
+| 0.60 | yes | 75 | 79 | 80 | no | no |
+| 0.65 | yes | 75 | 78 | 78 | no | no |
+| 0.70 | yes | 75 | 76 | 76 | no | no |
+| **0.75** | yes | 75 | 75 | 75 | no | **yes (chosen)** |
+| 0.80 | yes | 75 | 73 | 73 | no | yes |
+| 0.85 | yes | 75 | 72 | 72 | no | yes |
+| 0.90 | yes | 75 | 70 | 70 | no | yes |
+| 0.95 | yes | 74 | 68 | 68 | no | yes |
+| 1.00 | yes | 73 | 67 | 67 | no | yes |
+
+The rule gives v2's floor again and the v2 table's rows again, except that the three lowest floors, whose highest double was 83, 81
+and 80 under v2, now read 79 because the ceiling lowers them: it changes no row's verdict.
+
+The seed 5 record under v1, v2 and v3 (grade counts per slice, the sweep, the worst exact single, the highest exact double before and
+after the 79 ceiling, ADR-0018's five targets and what is published beside them), the three real takes with their v1, v2 and v3
+columns, and the proofs (the fallback and the simulated seed 61 record on throwaway copies, `make check-5` with a simulated freeze) are
+in `docs/thresholds-score-v3.md`, split out of this file to keep it under 800 lines (as `docs/thresholds-profiles.md` was).
+The v3 freeze record (freeze commit `59918a1`, params sha `4261f8d7`) and the seed 61 result are there too.
+
 ## Repetitions
 
 Constants of `part5/reps.py` and `part5/repwise.py` (ADR-0010), fixed from seed 5 and the documented real takes

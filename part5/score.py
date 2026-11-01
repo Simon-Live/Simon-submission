@@ -1,7 +1,9 @@
-"""The take's score out of 100 with a grade A to F. Part 5 ships `simon.score.v1` (ADR-0007, docs/specs/journey-followup.md
-J-4): `simon.score.v2` (ADR-0018, docs/specs/score-v2.md) failed held-out score seed 59 (docs/thresholds.md), so the
-`score` block of part5/rules.json is its frozen v1 block (`make score-fallback`). This module still reads both versions
-and scores by the one the rules' block names.
+"""The take's score out of 100 with a grade A to F. Part 5 ships `simon.score.v3` (ADR-0019, docs/specs/score-v3.md): it held
+all five targets on score seed 61 (docs/thresholds-score-v3.md). It replaces `simon.score.v1` (ADR-0007,
+docs/specs/journey-followup.md J-4) after `simon.score.v2` (ADR-0018, docs/specs/score-v2.md) failed held-out score seed 59
+(docs/thresholds.md). The `score` block of part5/rules.json names the version in force and keeps the frozen v1 and v2 blocks;
+`make score-fallback` is the reversal recipe and puts v1 back. This module reads all three versions and scores by the one the
+rules' block names.
 
     compute(analysis, aligned, rules=None) -> {version, value, grade, components: {faults, similarity},
                                                params_sha256}   or None when the take was refused
@@ -30,10 +32,16 @@ the body measures, and the similarity term reads the body measures only), and a 
 empty is capped at `fault_cap` (89), with `fault_cap` in the block and `uncapped` holding the value before every cap.
 A v2 block holds the v1 params as `v1` (`rules_v1`).
 
+Version 3 (ADR-0019) is v2 with a second ceiling: a take whose `faults` list holds `many_faults` (2) or more entries is
+capped at `fault_cap_many` (79) instead of 89, and `fault_cap` in the block is the ceiling in force (`ceiling_of`). The
+ceiling is applied once, to the mean of the windows. A v3 block holds the frozen v1 and v2 blocks as `v1` and `v2`
+(`rules_v1`, `rules_v2`).
+
 Under the dance profile (ADR-0016) each window is also charged a tempo term T, `profiles.tempo_points` of the window's
 tempo ratio, taken off the value (`100 - F - S - T`) and shown as `components.tempo`. It is a run-time term of the
 profile, not a score param: `params_sha256` and the frozen `score` block are the same in every profile. Thresholds in
-`rules` are the profile's own, so a score is only comparable within one profile.
+`rules` are the profile's own, so a score is only comparable within one profile. A take whose `match.quality` is low has
+no tempo at all (`tempo_ratio`, ADR-0014 Amendment 4), so under dance it is charged none.
 """
 import hashlib
 import json
@@ -48,8 +56,13 @@ from .detect import load_rules
 from .measures import MEASURES
 
 VERSION_V1 = "simon.score.v1"
-VERSION = "simon.score.v2"
-VERSIONS = (VERSION_V1, VERSION)
+VERSION_V2 = "simon.score.v2"
+VERSION_V3 = "simon.score.v3"
+VERSIONS = (VERSION_V1, VERSION_V2, VERSION_V3)
+# The held-out score seed each version after v1 is scored on, once (ADR-0018, ADR-0019): the one place that names them.
+SCORE_SEEDS = {VERSION_V2: 59, VERSION_V3: 61}
+# The frozen blocks a later version's `score` section keeps verbatim beside its own params (ADR-0018, ADR-0019).
+KEPT_BLOCKS = {VERSION_V2: ("v1",), VERSION_V3: ("v1", "v2")}
 SIDES = ("left", "right")
 MIN_COVER = 0.5      # the penalty weight of a fault with no duration: 0.5 + 0.5 * dur
 CLIP_Z = 2.0         # a measure frame is never worse than twice its threshold
@@ -61,31 +74,51 @@ WARNING_CAP = 59     # a take with any warning never scores above this, so its g
 # ADR-0018, the v2 design constants (not fitted); `range_floor` is the one fitted number (`choose_floor`).
 RANGE_FULL = 3.0     # a measure the trainer moves this many of its own thresholds in a window costs in full
 FAULT_CAP = 89       # a take that reports a fault scores at most this (the top of B); ruled, not fitted
+# ADR-0019, the v3 design constants (ruled, not fitted): a take that reports MANY_FAULTS or more faults scores at most this.
+FAULT_CAP_MANY = 79  # the top of C
+MANY_FAULTS = 2      # the number of entries in `analysis.faults` from which the second ceiling applies
 FLOOR_GRID = [round(0.5 + 0.05 * i, 2) for i in range(11)]   # 0.50 to 1.00
 SINGLE_MIN = 70      # a take that reports exactly its one labelled fault scores at least this (ADR-0007 worst single)
 DOUBLE_MAX = 75      # a take that reports exactly its two labelled faults scores at most this (5 under 80, the first B)
 SHARED_V1 = ("z0", "z1", "s_max", "base", "slope", "cap", "bands")   # v2 repeats these from v1, equal
 
 
-def ships_v2(rules=None):
-    """Do the rules ship `simon.score.v2`? (After `make score-fallback`, ADR-0018, they ship v1.) The one place that asks."""
-    return params_of(rules or load_rules())["version"] == VERSION
+def ships(version, rules=None):
+    """Do the rules ship the score `version`? (After `make score-fallback`, ADR-0018, ADR-0019, they ship v1.)"""
+    return params_of(rules or load_rules())["version"] == version
+
+
+def has_ceiling(rules=None):
+    """Do the rules ship a score with a ceiling for a take that reports a fault (v2 or v3)? The one place that asks."""
+    return "fault_cap" in params_of(rules or load_rules())
 
 
 def params_of(rules):
-    """The `score` block of the rules (v1 or v2), or a ValueError naming what is missing."""
+    """The `score` block of the rules (v1, v2 or v3), or a ValueError naming what is missing."""
     block = (rules or {}).get("score")
     if not isinstance(block, dict) or block.get("version") not in VERSIONS:
-        raise ValueError(f"part5/rules.json has no {VERSION_V1} or {VERSION} 'score' block")
+        raise ValueError(f"part5/rules.json has no {VERSION_V1}, {VERSION_V2} or {VERSION_V3} 'score' block")
     return block
 
 
+def rules_of(rules, version):
+    """`rules` scored by the frozen `version` params kept in their `score` section: the section replaced by its `v1` block
+    (ADR-0018, reversal) or, from ADR-0019, its `v2` block."""
+    key = {VERSION_V1: "v1", VERSION_V2: "v2"}[version]
+    block = ((rules or {}).get("score") or {}).get(key)
+    if not isinstance(block, dict) or block.get("version") != version:
+        raise ValueError(f"part5/rules.json 'score' block has no {version} '{key}' block")
+    return {**rules, "score": block}
+
+
 def rules_v1(rules):
-    """`rules` scored by the frozen v1 params: the `score` section replaced by its `v1` block (ADR-0018, reversal)."""
-    v1 = ((rules or {}).get("score") or {}).get("v1")
-    if not isinstance(v1, dict) or v1.get("version") != VERSION_V1:
-        raise ValueError(f"part5/rules.json 'score' block has no {VERSION_V1} 'v1' block")
-    return {**rules, "score": v1}
+    """`rules` scored by the frozen v1 params (the `score` section replaced by its `v1` block)."""
+    return rules_of(rules, VERSION_V1)
+
+
+def rules_v2(rules):
+    """`rules` scored by the frozen v2 params (the `score` section replaced by its `v2` block, ADR-0019)."""
+    return rules_of(rules, VERSION_V2)
 
 
 def params_sha256(block):
@@ -194,19 +227,43 @@ def zero_block(rules=None):
             "components": {"faults": 0.0, "similarity": 0.0}, "params_sha256": params_sha256(p)}
 
 
-def apply_fault_cap(block, reports_fault, rules=None):
-    """v2 (ADR-0018): a take that reports a fault scores at most `fault_cap`. `block` gains `fault_cap` (an integer, in
-    force whether or not it lowered the value) and, when it lowered the value, `uncapped`, the value and grade before.
-    Not `capped_by`: that names the warning codes of the low-match cap and nothing else. A v1 block, or a take that
-    reports no fault, is returned as it is."""
+def reported_faults(analysis):
+    """How many entries the analysis's `faults` list holds: what the ceiling of a v2 or v3 block is chosen by."""
+    return len(analysis.get("faults") or [])
+
+
+def ceiling_of(p, n_faults):
+    """The highest value a take that reports `n_faults` faults can score under the block `p`, or None when it has none: a
+    v1 block, or no fault. v2 (ADR-0018): `fault_cap` for any fault. v3 (ADR-0019): `fault_cap` for fewer than `many_faults`
+    faults, else `fault_cap_many`."""
+    if "fault_cap" not in p or not n_faults:
+        return None
+    if "fault_cap_many" in p and n_faults >= p["many_faults"]:
+        return int(p["fault_cap_many"])
+    return int(p["fault_cap"])
+
+
+def document_ceiling(version, n_faults):
+    """The `fault_cap` a written document of the score `version` that reports `n_faults` faults must carry, or None when it
+    must carry none (v1, or no fault). A document names its version and not the params, so this reads the design constants
+    that `block_v2` and `block_v3` put into the rules; `part5.output.validate_analysis` checks a document against it."""
+    constants = {VERSION_V2: {"fault_cap": FAULT_CAP},
+                 VERSION_V3: {"fault_cap": FAULT_CAP, "fault_cap_many": FAULT_CAP_MANY, "many_faults": MANY_FAULTS}}
+    return ceiling_of(constants.get(version, {}), n_faults)
+
+
+def apply_fault_cap(block, n_faults, rules=None):
+    """v2 and v3 (ADR-0018, ADR-0019): a take that reports `n_faults` faults scores at most `ceiling_of`. `block` gains
+    `fault_cap` (the integer ceiling in force, whether or not it lowered the value) and, when it lowered the value,
+    `uncapped`, the value and grade before. Not `capped_by`: that names the warning codes of the low-match cap and nothing
+    else. A v1 block, or a take that reports no fault, is returned as it is."""
     p = params_of(rules or load_rules())
-    cap = p.get("fault_cap")
-    if cap is None or not reports_fault:
+    cap = ceiling_of(p, n_faults)
+    if cap is None:
         return block
-    out = dict(block, fault_cap=int(cap))
+    out = dict(block, fault_cap=cap)
     if block["value"] > cap:
-        out.update(value=int(cap), grade=grade(int(cap), p["bands"]),
-                   uncapped={"value": block["value"], "grade": block["grade"]})
+        out.update(value=cap, grade=grade(cap, p["bands"]), uncapped={"value": block["value"], "grade": block["grade"]})
     return out
 
 
@@ -232,13 +289,13 @@ def compute(analysis, aligned, rules=None):
     p = params_of(rules)
     feats = features(analysis, aligned, rules)
     if feats is None:   # a take with faults still says its ceiling (fault_cap), though its value is 0
-        return apply_fault_cap(zero_block(rules), bool(analysis.get("faults")), rules)
+        return apply_fault_cap(zero_block(rules), reported_faults(analysis), rules)
     f, s = components(feats, p)
     value = max(0, min(100, int(round_half_up(100 - f - s))))
     block = {"version": p["version"], "value": value, "grade": grade(value, p["bands"]),
              "components": {"faults": float(round_half_up(f, 2)), "similarity": float(round_half_up(s, 2))},
              "params_sha256": params_sha256(p)}
-    return apply_fault_cap(block, bool(analysis.get("faults")), rules)
+    return apply_fault_cap(block, reported_faults(analysis), rules)
 
 
 # --- calibration on seed 5 only (part5.calibrate --score) ---
@@ -281,8 +338,17 @@ def choose_floor(measured):
 def block_v2(v1, floor):
     """The v2 `score` block: v1's numbers repeated at the top level (the penalty curve, the similarity term and the bands
     are unchanged, ADR-0018), the three v2 params, and the frozen v1 block verbatim as `v1`."""
-    return {"version": VERSION, **{k: v1[k] for k in SHARED_V1}, "range_floor": floor, "range_full": RANGE_FULL,
+    return {"version": VERSION_V2, **{k: v1[k] for k in SHARED_V1}, "range_floor": floor, "range_full": RANGE_FULL,
             "fault_cap": FAULT_CAP, "calibrated_on": "seed 5", "v1": v1}
+
+
+def block_v3(v1, v2, floor):
+    """The v3 `score` block (ADR-0019): v1's numbers at the top level, v2's `range_floor`, `range_full` and `fault_cap`
+    (the ceiling for one reported fault), the second ceiling `fault_cap_many` from `many_faults` reported faults, and the
+    frozen v1 and v2 blocks verbatim as `v1` and `v2`."""
+    return {"version": VERSION_V3, **{k: v1[k] for k in SHARED_V1}, "range_floor": floor, "range_full": RANGE_FULL,
+            "fault_cap": FAULT_CAP, "fault_cap_many": FAULT_CAP_MANY, "many_faults": MANY_FAULTS,
+            "calibrated_on": "seed 5", "v1": v1, "v2": v2}
 
 
 # --- the score timeline (ADR-0013) ---
@@ -380,25 +446,25 @@ def timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, tim
     return {"t_s": span, **scored}
 
 
-def timeline_block(windows, basis, rules=None, tempo=NO_TEMPO, reports_fault=False):
+def timeline_block(windows, basis, rules=None, tempo=NO_TEMPO, n_faults=0):
     """The take's `score` block from its windows, each `{t_s, ...window_score}` or `{t_s, compared: False}`.
     The value is the mean of the compared windows; `timeline` lists every window. `tempo`, when given, is the
-    take's follower/example time ratio (or None, unmeasured) and becomes `score.tempo` (ADR-0014). `reports_fault` is
-    whether the take's `faults` list has anything in it: a v2 block (ADR-0018) then carries `fault_cap` and the value
-    is capped once, on the mean, never on a window."""
+    take's follower/example time ratio (or None, unmeasured) and becomes `score.tempo` (ADR-0014). `n_faults` is
+    how many entries the take's `faults` list holds: a v2 or v3 block (ADR-0018, ADR-0019) then carries `fault_cap`, the
+    ceiling for that many faults (`ceiling_of`), and the value is capped once, on the mean, never on a window."""
     p = params_of(rules or load_rules())
     scored = [w for w in windows if w.get("compared", True)]
     cues = profiles.tempo_of(rules or {})["cues"]   # the profile's tempo words (ADR-0016); none for plain rules
     extra = {} if tempo is NO_TEMPO else {"tempo": tempo_block(tempo, cues)}
     if not scored:
         block = dict(zero_block(rules), basis=basis, timeline=[_public(w) for w in windows], **extra)
-        return apply_fault_cap(block, reports_fault, rules)   # value 0 under any ceiling; fault_cap iff the take reports a fault
+        return apply_fault_cap(block, n_faults, rules)   # value 0 under any ceiling; fault_cap iff the take reports a fault
     value = int(round_half_up(sum(w["raw"] for w in scored) / len(scored)))
     parts = {key: float(round_half_up(sum(w["components"][key] for w in scored) / len(scored), 2))
              for key in ("faults", "similarity", *(("tempo",) if "tempo" in scored[0]["components"] else ()))}
     block = {"version": p["version"], "value": value, "grade": grade(value, p["bands"]), "components": parts,
              "params_sha256": params_sha256(p), "basis": basis, "timeline": [_public(w) for w in windows], **extra}
-    return apply_fault_cap(block, reports_fault, rules)
+    return apply_fault_cap(block, n_faults, rules)
 
 
 def span_ratio(follower_t, expected_t):
@@ -413,6 +479,19 @@ def span_ratio(follower_t, expected_t):
     return float(np.max(fol) - np.min(fol)) / d_exp
 
 
+def low_match(analysis):
+    """True when the document's `match.quality` is "low" (ADR-0012): the take was not matched to the example."""
+    return (analysis.get("match") or {}).get("quality") == "low"
+
+
+def tempo_ratio(analysis, follower_t, expected_t):
+    """`span_ratio` of a stretch of a take, or None (unmeasured) when the take's match is low. ADR-0014, Amendment 4:
+    on a low match the alignment covers only part of the take, so the follower time its frames span is no measure of
+    how fast the take was done. Every tempo of a document (each window's, each rep's and the take's) comes through
+    here, so the block, the cue, the insight and the dance charge all follow the one rule."""
+    return None if low_match(analysis) else span_ratio(follower_t, expected_t)
+
+
 def _public(window):
     out = {k: v for k, v in window.items() if k != "raw"}
     out["t_s"] = [round(float(window["t_s"][0]), 3), round(float(window["t_s"][1]), 3)]
@@ -423,7 +502,8 @@ def _public(window):
 def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW_S, expected_times=None):
     """The `score` block of a take compared as a whole: windows of about `window_s` on the follower's clock.
     `frame_times[i]` is the follower file time expected frame i was matched to. With `expected_times` (the
-    example's own time per frame) each compared window and the take get their tempo (ADR-0014)."""
+    example's own time per frame) each compared window and the take get their tempo (ADR-0014), unmeasured on a low
+    match (`tempo_ratio`)."""
     rules = rules or load_rules()
     p = params_of(rules)
     index, spans = windows_of(frame_times, window_s)
@@ -433,7 +513,7 @@ def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW
     windows = []
     for k, span in enumerate(spans):
         frames = np.flatnonzero(index == k)
-        ratio = span_ratio(fol_t[frames], exp_t[frames]) if exp_t is not None and frames.size else None
+        ratio = tempo_ratio(analysis, fol_t[frames], exp_t[frames]) if exp_t is not None and frames.size else None
         windows.append(timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=exp_t is not None))
-    return timeline_block(windows, "windows", rules, NO_TEMPO if exp_t is None else span_ratio(fol_t, exp_t),
-                          reports_fault=bool(analysis.get("faults")))
+    return timeline_block(windows, "windows", rules, NO_TEMPO if exp_t is None else tempo_ratio(analysis, fol_t, exp_t),
+                          n_faults=reported_faults(analysis))

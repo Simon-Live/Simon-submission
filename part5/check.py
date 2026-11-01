@@ -25,7 +25,7 @@ from pathlib import Path
 from . import profiles, real
 from .detect import RULES_PATH
 from .evaluate import evaluate_corpus, is_refused, slice_name
-from .score import VERSION, VERSION_V1, params_sha256
+from .score import SCORE_SEEDS, VERSION_V1, params_sha256
 from .score_report import (FEET_KEYS, TUNING_SEED, analyse, correct_good_failures, distribution, entries_of, feet_kwargs,
                            run_sweep, sweep_failures, targets_of, verdicts)
 
@@ -35,11 +35,10 @@ HELDOUT = ROOT / "fixtures" / "input" / "heldout"
 TUNING = ROOT / "fixtures" / "input" / "followers"
 ATTEMPTS = ROOT / "fixtures" / "heldout-attempts.json"
 SCORE_RECORD = ROOT / "fixtures" / "score-heldout.json"
-V2_SEED = 59   # ADR-0018: the score seed simon.score.v2 is scored on, once
 THRESHOLDS_DOC = ROOT / "docs" / "thresholds.md"
 OUT_DIR = ROOT / "out" / "check-5"
 # ADR-0003: fixed before any tuning, scored in this order, once each. ADR-0017 appended the second series (67, 71, 73)
-# before any detection change of attempt 4; 59 and 61 stay reserved for the score's retries (ADR-0007), not seeds here.
+# before any detection change of attempt 4; 59 and 61 are the score seeds of v2 and v3 (ADR-0018, ADR-0019), not seeds here.
 HELDOUT_SEEDS = (29, 31, 37, 67, 71, 73)
 # The second series (ADR-0017): a scored seed of it must carry its own `detection_sha256` line in its attempt record
 # (recheck residual 4), so `require_frozen` never judges it by the one global line under "Score".
@@ -196,10 +195,16 @@ def thresholds_record(seed, text):
     return found
 
 
-def current_attempt(seed, passed, metrics, rules_sha, recorded):
-    return {"seed": seed, "freeze_commit": recorded.get("freeze_commit", "not recorded"),
-            "rules_sha256": recorded.get("rules_sha256", rules_sha), "approach": recorded.get("approach", "not recorded"),
-            "passed": passed, "slices": metrics["slices"]}
+def current_attempt(seed, passed, metrics, rules_sha, recorded, record=None):
+    """This run's attempt entry. `recorded` is the freeze section of docs/thresholds.md merged with the seed's record;
+    `record` is the seed's entry in fixtures/heldout-attempts.json, or None for a seed not scored yet (TICKET-058 R4a).
+    A recorded seed carries every other field of its record verbatim (`scored`, `scored_at`, `command`, `exit`, as the
+    earlier attempts are published); `passed` stays this run's gate and `slices` this run's numbers, which
+    `require_unchanged_scores` has already made equal to the record's. A seed with no record gets the six fields only."""
+    entry = {"seed": seed, "freeze_commit": recorded.get("freeze_commit", "not recorded"),
+             "rules_sha256": recorded.get("rules_sha256", rules_sha), "approach": recorded.get("approach", "not recorded"),
+             "passed": passed, "slices": metrics["slices"]}
+    return {**entry, **{k: v for k, v in (record or {}).items() if k not in entry}}
 
 
 def attempts_list(seed, current, earlier):
@@ -299,53 +304,82 @@ def score_version(path=RULES_PATH):
 
 def recorded_freeze(path, version):
     """The newest `freezes` entry of fixtures/score-heldout.json that names the score `version` (ADR-0018:
-    `{version, freeze_commit, params_sha256, seed}`), or None when the record is missing or has none."""
+    `{version, freeze_commit, params_sha256, seed}`), or None when the record is missing or has none. A record holds one
+    freeze per version: `require_held` refuses a second, so the newest is the only one `make check-5` ever accepts."""
     try:
         return [f for f in json.loads(Path(path).read_text())["freezes"] if f.get("version") == version][-1]
     except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError):
         return None
 
 
+def attempts_of(doc, version):
+    """The attempts of a parsed fixtures/score-heldout.json that belong to the score `version` (v2 or v3, ADR-0018,
+    ADR-0019): the attempt says so (`version`), is for the seed that version is scored on (`SCORE_SEEDS`) or carries the hash
+    a freeze of that version froze, so an attempt recorded without its `version` is caught all the same."""
+    frozen = {f.get("params_sha256") for f in doc.get("freezes", []) if f.get("version") == version} - {None, ""}
+    seed = SCORE_SEEDS.get(version)
+    return [a for a in doc["attempts"]
+            if a.get("version") == version or (seed is not None and a.get("seed") == seed) or a.get("params_sha256") in frozen]
+
+
 def recorded_score_hash(path, version=None):
     """The `params_sha256` fixtures/score-heldout.json froze for the score `version` the rules ship, or None when
-    the record is missing or has none. A v2 block (ADR-0018) is frozen by the newest entry of the record's `freezes`
-    list that names that version; a v1 block by the newest attempt that is not a v2 one (ADR-0007: the attempts for
-    seeds 47 and 53 carry no version). With no `version`, the newest attempt, as before."""
-    if version == VERSION:
+    the record is missing or has none. A v2 or v3 block (ADR-0018, ADR-0019) is frozen by the newest entry of the record's
+    `freezes` list that names that version; a v1 block by the newest attempt that is not a later version's (ADR-0007: the
+    attempts for seeds 47 and 53 carry no version; an attempt for seed 59 or 61, or with a freeze's hash, is v2's or v3's
+    whether or not it names its version). With no `version`, the newest attempt, as before."""
+    if version in SCORE_SEEDS:
         entry = recorded_freeze(path, version)
         return entry.get("params_sha256") if entry else None
     try:
         doc = json.loads(Path(path).read_text())
-        attempts = doc["attempts"] if version is None else [a for a in doc["attempts"] if a.get("version", VERSION_V1) == version]
+        later = [a for v in SCORE_SEEDS for a in attempts_of(doc, v)]
+        attempts = doc["attempts"] if version is None else [a for a in doc["attempts"] if a.get("version", VERSION_V1) == version
+                                                              and not any(a is b for b in later)]
         return attempts[-1]["params_sha256"]
-    except (OSError, ValueError, KeyError, IndexError, TypeError):
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError):
         return None
 
 
-def require_v2_held(path, version):
-    """ADR-0018: a v2 block is refused once the record says v2 did not hold on seed 59, and a record of that attempt that
-    does not say it fails closed. Without this a reverted fallback would hash to the freeze again and `make check-5`
-    would accept a score that failed its targets. v2 only: v1 shipped with its misses on record (ADR-0007), so a v1 block
-    is never judged by an attempt's `holds`. Each v2 attempt must carry `holds`, the report's `targets_v2.holds`. An attempt
-    is v2's when it says so (`version`), is for seed `V2_SEED`, or carries the hash a v2 freeze froze, so a failed attempt
-    recorded without its `version` is caught all the same."""
-    if version != VERSION:
+ADR_OF = {"simon.score.v2": "ADR-0018", "simon.score.v3": "ADR-0019"}   # the ADR that fixed the targets a version is judged on
+
+
+def require_held(path, version, shipped=None):
+    """ADR-0018, ADR-0019: the record judges a v2 or v3 block. It is refused once the record says that version did not hold
+    on its score seed (59, 61), and a record of that attempt that does not say it fails closed. Without this a reverted
+    fallback would hash to the freeze again and `make check-5` would accept a score that failed its targets. v2 and v3 only:
+    v1 shipped with its misses on record (ADR-0007), so a v1 block is never judged by an attempt's `holds`, and a version is
+    judged by its own attempts only (`attempts_of`). Each attempt must carry `holds`, the report's `targets_v2.holds`.
+
+    Two more refusals close a retune after the seed was scored (pre-freeze review R1). A record holds one freeze per version,
+    as `make score-heldout` requires: a second one is a re-freeze, and with two the newest would let a block that was never
+    scored pass. And with `shipped`, the `params_sha256` of the block in part5/rules.json, an attempt must have been scored
+    with exactly that block."""
+    if version not in SCORE_SEEDS:
         return
     try:
         doc = json.loads(Path(path).read_text())
-        frozen = {f.get("params_sha256") for f in doc.get("freezes", []) if f.get("version") == VERSION} - {None, ""}
-        attempts = [a for a in doc["attempts"]
-                    if a.get("version") == VERSION or a.get("seed") == V2_SEED or a.get("params_sha256") in frozen]
+        attempts = attempts_of(doc, version)
+        freezes = [f for f in doc.get("freezes", []) if f.get("version") == version]
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return
+    adr = ADR_OF[version]
+    if len(freezes) > 1:
+        raise CheckError([f"check-5: fixtures/score-heldout.json holds {len(freezes)} {version} freeze entries; a score is "
+                          f"frozen once and scored once, and a re-freeze after seeing the seed is refused ({adr})"])
     for a in attempts:
         if a.get("holds") is False:
-            raise CheckError([f"check-5: fixtures/score-heldout.json records that {VERSION} did not hold every target on seed "
-                              f"{a.get('seed')} (holds false); v1 stays: run make score-fallback (ADR-0018)"])
+            raise CheckError([f"check-5: fixtures/score-heldout.json records that {version} did not hold every target on seed "
+                              f"{a.get('seed')} (holds false); v1 stays: run make score-fallback ({adr})"])
         if a.get("holds") is not True:
-            raise CheckError([f"check-5: the {VERSION} attempt for seed {a.get('seed')} in fixtures/score-heldout.json does not "
+            raise CheckError([f"check-5: the {version} attempt for seed {a.get('seed')} in fixtures/score-heldout.json does not "
                               "record `holds` (true or false, the report's targets_v2.holds); record it, and make "
-                              "score-fallback if it is false (ADR-0018)"])
+                              f"score-fallback if it is false ({adr})"])
+        if shipped is not None and a.get("params_sha256") != shipped:
+            scored = str(a.get("params_sha256"))[:12]
+            raise CheckError([f"check-5: the {version} attempt for seed {a.get('seed')} in fixtures/score-heldout.json was "
+                              f"scored with the score params of sha256 {scored}, and the ones in part5/rules.json are "
+                              f"{shipped[:12]}; a block that differs from the one scored on its seed is refused ({adr})"])
 
 
 def require_score_frozen(current, recorded, version=None):
@@ -379,7 +413,7 @@ def real_grades(block):
     return grades
 
 
-def score_block(held, held_analyses, tune, tune_analyses, real_report, version=VERSION):
+def score_block(held, held_analyses, tune, tune_analyses, real_report, version):
     """The reported (never gated beyond `gate`) grade distribution per slice of every set: held-out, seed 5,
     kit and stock. Low light is reported, never graded against a target. `version` is the score the rules ship: it
     names the report and picks the slice targets (ADR-0007 for v1, ADR-0018 for v2)."""
@@ -441,7 +475,7 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
     version = score_version(rules_path)
     require_score_frozen(score_params_hash(rules_path), recorded_score_hash(score_record_path or SCORE_RECORD, version),
                          version)
-    require_v2_held(score_record_path or SCORE_RECORD, version)
+    require_held(score_record_path or SCORE_RECORD, version, score_params_hash(rules_path))
     (held_analyses, held_errors), (tune_analyses, tune_errors) = analyse_set(held, root), analyse_set(tune, root)
     if held_errors or tune_errors:
         raise CheckError(held_errors + tune_errors)
@@ -450,8 +484,9 @@ def run_check(heldout=None, tuning=None, attempts_path=None, thresholds_path=Non
     require_unchanged_scores(held["seed"], held_metrics, attempts)
 
     g = score_gate(gate(held_metrics), held, held_analyses, run_sweep(OUT_DIR / "sweep"))
-    recorded = {**frozen, **{k: v for a in attempts if a["seed"] == held["seed"] for k, v in a.items()}}
-    current = current_attempt(held["seed"], g["passed"], held_metrics, sha, recorded)
+    record = next((a for a in attempts if a["seed"] == held["seed"]), None)
+    recorded = {**frozen, **(record or {})}
+    current = current_attempt(held["seed"], g["passed"], held_metrics, sha, recorded, record)
     doc = {
         "format": FORMAT,
         "data_source": DATA_SOURCE.format(seed=held["seed"], path=rel(heldout)),

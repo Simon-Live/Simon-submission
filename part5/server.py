@@ -148,6 +148,16 @@ def make_server(host="127.0.0.1", port=8725, base_path="/", web_dir=WEB_DIR):
     return Server((host, port), base, static_table(web_dir))
 
 
+def _stop_on_term(*_):
+    """One-shot SIGTERM handler: ignore any later TERM, then leave serve_forever with exit code 0.
+
+    A stop through `make` or `uv run` can deliver a second TERM while the interpreter is shutting down
+    (threading._shutdown); a handler that raised again printed "Exception ignored ... SystemExit: 0" to the log.
+    """
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    raise SystemExit(0)
+
+
 def serve(host="127.0.0.1", port=8725, base_path="/"):
     """Serve until interrupted. Returns the process exit code."""
     try:
@@ -156,7 +166,7 @@ def serve(host="127.0.0.1", port=8725, base_path="/"):
         print(f"part5 serve: cannot start ({getattr(e, 'strerror', None) or e})", file=sys.stderr)
         return 1
     if threading.current_thread() is threading.main_thread():
-        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+        signal.signal(signal.SIGTERM, _stop_on_term)
     bound = server.server_address
     print(f"part5 serve: http://{bound[0]}:{bound[1]}{server.base_path}", flush=True)
     try:

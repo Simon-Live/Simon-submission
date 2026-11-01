@@ -68,7 +68,9 @@ synthetic matching takes, which carry no warning, so they are unchanged.
 `stock` entries follow `real-takes.md`. `attempts[]` lists every held-out attempt so far in seed order,
 pass or fail. Earlier attempts come from `fixtures/heldout-attempts.json` (published, one entry
 appended when an attempt is scored, never edited; `docs/thresholds.md` carries the same records); the
-current attempt is computed by this run, is the last entry and matches `gate`.
+current attempt is computed by this run, is the last entry and matches `gate`. When the current seed already has a
+record, its entry also carries every other field of that record (`scored`, `scored_at`, `command`, `exit`), verbatim,
+so it reads like the earlier entries (TICKET-058 R4a); a seed with no record yet has the six core fields.
 
 ## API / Interface Contract
 - `python -m part5.check [--set <dir>] [--json-out <path>]`. Defaults: gate on `fixtures/input/heldout`
@@ -106,8 +108,11 @@ Given two runs on the same tree, stdout is byte-identical.
 Given a run, `tuning.seed` is 5, `gate.seed` equals the `seed` in `fixtures/input/heldout/labels.json`
 (one of 29, 31, 37, 67, 71, 73), and `detection_sha256` (the hash of `part5/rules.json` without its `score` key) equals the
 `detection_sha256` in `docs/thresholds.md`, the detection rules frozen for the attempts (ADR-0007, AC-S06).
-`rules_sha256` is the whole file's hash and is reported; it differs from the attempts' `60f2e60b...` since the
-`score` block was added after the freeze. When the detection hash does not match, or the seed has no record
+`rules_sha256` is the whole file's hash, the sha256 of the committed `part5/rules.json`, and is reported. It differs from the
+`rules_sha256` of the attempts (`attempts[]`, each the hash of the file as it was when that seed was scored: `60f2e60b...` for
+seeds 29 and 31, `1d6a3f86...` for seeds 71 and 73) because the `score` block has changed since: a change to the `score`
+block rewrites the whole-file hash and leaves `detection_sha256` alone (the file that ships `simon.score.v3` hashes to
+`23da0c72...`, recorded in `docs/thresholds.md` "Score v3"). When the detection hash does not match, or the seed has no record
 there, the check exits 2 instead of scoring. A seed is judged against its own freeze (pre-freeze review B3): each attempt
 section of `docs/thresholds.md` carries its own `detection_sha256` line, and a seed that already has an attempt in
 `fixtures/heldout-attempts.json` is refused with exit 2 before any take is analysed when the current detection rules differ

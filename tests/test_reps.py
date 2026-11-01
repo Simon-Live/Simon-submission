@@ -15,11 +15,12 @@ import pytest
 
 from part5 import pipeline, profiles, profiles_report, reps, repwise
 from part5.detect import Detection, Fault, load_rules
+from part5.insights import insights_of
 from part5.pipeline import run
 from part5.replay import build_replay
 from part5.score_report import score_block
 from part5.visibility import measures_of
-from shipped_score import by_version
+from shipped_score import UNMEASURED_TEMPO, by_version, not_v3, tempo_items
 
 ROOT = Path(__file__).resolve().parent.parent
 LATERAL = ROOT / "fixtures/input/real/lateral-raise"
@@ -279,7 +280,7 @@ def slow():
 def test_real_lateral_raise_followers_are_accepted_rep_by_rep(which, n_reps, request):
     a = request.getfixturevalue(which).analysis
     jsonschema.Draft202012Validator(SCHEMA).validate(a)
-    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.10.0"
+    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.11.0"
     guard = a["diagnostics"]["guard"]
     assert len(guard["reps"]) == n_reps and all(r["ok"] for r in guard["reps"])
     for r in guard["reps"]:   # the frozen limits, the numbers of the diagnosis
@@ -303,6 +304,7 @@ def test_the_slow_follower_reports_its_faults_once_with_reps_and_the_files_clock
         assert f["follower_t_s"][0] < 16.5 and f["at_s"] == pytest.approx(f["follower_t_s"][0], abs=0.06)
 
 
+@not_v3   # under v3 the take's 79 sits below the mean of its windows (82): tests/test_score_v3.py pins this take before the ceiling
 def test_a_rep_by_rep_take_is_scored_on_each_reps_own_misses(fast):
     """ADR-0013: the take reports only the two faults found in half the reps (reps 4 to 7), each on the right side: the
     right elbow and hand are in all four of them (alone in reps 4 to 6, as part of `both` in rep 7), the left in one at
@@ -316,7 +318,9 @@ def test_a_rep_by_rep_take_is_scored_on_each_reps_own_misses(fast):
     assert (sc["value"], sc["grade"]) == by_version((80, "B"), (82, "B"))   # 77 (C) before the re-sweep moved `upper_arm_out` to 11: rep 3's
     #                                                        left upper arm, a fault at 10 degrees, is under the new threshold;
     #                                                        80 under simon.score.v1, 82 under v2 (ADR-0018: a miss on a
-    #                                                        measure the trainer moves little costs less)
+    #                                                        measure the trainer moves little costs less); under v3 this test is skipped
+    #                                                        (`@not_v3`): the take reports two faults, ADR-0019's ceiling of 79 lowers
+    #                                                        its 82, and tests/test_score_v3.py pins the take with the three values
     timeline = [w for w in sc["timeline"] if w["compared"]]
     assert sc["basis"] == "reps" and len(timeline) == len(sc["per_rep"]) == 8
     assert all(w["misses"] == [] and w["value"] >= 90 for w in timeline[:3])          # the first reps are clean
@@ -461,10 +465,36 @@ def test_the_fast_and_the_slow_follower_agree_with_the_trainer_on_the_verdict(fa
     assert fast.analysis["status"]["code"] == slow.analysis["status"]["code"] == "ok"
 
 
+@pytest.mark.parametrize("profile", profiles.names())
+def test_a_low_match_has_no_tempo_per_rep_or_for_the_take_and_an_ok_one_keeps_it(fast, profile):
+    """ADR-0014 Amendment 4 (TICKET-063) on the rep basis. The pipeline accepts a take rep by rep only when its reps pass
+    the guard, so its own `match.quality` is ok (it has no `match` at all); the rule is a property of the document, so the
+    same eight reps scored with a low `match` are the case. Unmeasured: each rep's `tempo`, the take's, the insights and,
+    under dance, the charge. The ok take keeps all four."""
+    rules = profiles.effective_rules(load_rules(), profile)
+    match = {"quality": "low", "residual": 0.7, "timing_corr": 0.5,
+             "limits": {"max_residual": 0.5677, "min_timing_corr": 0.8336}}
+    ok, low = score_block(fast, rules), score_block(replace(fast, analysis={**fast.analysis, "match": match}), rules)
+    assert ok["basis"] == low["basis"] == "reps" and len(ok["per_rep"]) == len(low["per_rep"]) == 8
+    assert low["tempo"] == UNMEASURED_TEMPO and all(w["tempo"] == UNMEASURED_TEMPO for w in low["timeline"] if w["compared"])
+    assert all(w["tempo"]["ratio"] < 0.5 for w in ok["timeline"] if w["compared"]) and ok["tempo"]["ratio"] < 0.5
+
+    def tempo_of(block):
+        return tempo_items({"insights": insights_of({**fast.analysis, "score": block})})
+
+    assert tempo_of(low) == [] and len(tempo_of(ok)) == 1
+    if profile == "dance":
+        assert low["components"]["tempo"] == 0.0 and ok["components"]["tempo"] > 0
+        assert all(w["components"]["tempo"] == 0.0 for w in low["timeline"] if w["compared"])
+        assert all(w["components"]["tempo"] > 0 for w in ok["timeline"] if w["compared"])
+    else:
+        assert "tempo" not in low["components"]
+
+
 # --- different movements are analysed with a low_match warning and grade F (ADR-0012) ---
 def low_match(a):
     return a["status"]["code"] == "ok" and [w["code"] for w in a["warnings"]] == ["low_match"] \
-        and a["match"]["quality"] == "low" and a["schema_version"] == "1.10.0"
+        and a["match"]["quality"] == "low" and a["schema_version"] == "1.11.0"
 
 
 @pytest.mark.parametrize("name", ["part2-dance", "part2-class", "part2-single", "part2-stretch"])
@@ -505,7 +535,7 @@ def test_ac_rep_4_the_squat_takes_are_compared_whole_and_the_dance_takes_rep_by_
     for take in SEED5["takes"]:
         r = run(str(ROOT / take["expected"]), {"path": str(ROOT / take["follower"]), "take_id": take["take_id"]})
         d = r.analysis["diagnostics"]
-        assert r.analysis["schema_version"] == "1.10.0" and "warnings" not in r.analysis, take["take_id"]
+        assert r.analysis["schema_version"] == "1.11.0" and "warnings" not in r.analysis, take["take_id"]
         if take["set"] == "exercise" or r.reps is None:
             assert r.reps is None and "reps" not in d["guard"] and "expected_reference" not in d, take["take_id"]
             assert all("reps" not in f for f in r.analysis["faults"])

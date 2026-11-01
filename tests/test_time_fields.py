@@ -59,6 +59,20 @@ def test_ac_t01_a_late_clock_is_not_shifted(result):
     assert got == pytest.approx([base[0] + 5.0, base[1] + 5.0], abs=1e-3)
 
 
+def test_ac_t01_a_clip_without_t_gets_it_from_index_over_fps(result):
+    """TICKET-061 (lost intent, salvage/j-time-maintree): part5/io.py reads a frame with no `t` as index / fps."""
+    doc = json.loads(TAKE.read_text())
+    assert doc["fps"] == 30
+    for fr in doc["frames"]:
+        del fr["t"]
+    f = run(str(EXPECTED), {"path": "follower.upload", "doc": doc}).analysis["faults"][0]
+    first, last = f["follower_frames"]
+    assert last > first > 0
+    assert f["follower_t_s"] == [round(first / 30, 3), round(last / 30, 3)]
+    assert f["at_s"] == round_half_up_tenth(first / 30)
+    assert f["follower_frames"] == result.analysis["faults"][0]["follower_frames"]  # the frames do not move
+
+
 def test_ac_t02_every_run_is_mapped_and_the_longest_matches(result):
     for f in result.analysis["faults"]:
         assert len(f["follower_runs"]) == len(f["runs"])
@@ -185,7 +199,7 @@ def test_a_fault_without_direction_has_null_lateral_and_no_offset():
 
 
 # ---- validation ----------------------------------------------------------------------------
-@pytest.mark.parametrize("key,value", [("follower_t_s", [2.0, 1.0]), ("at_s", "x"), ("lateral", "up"),
+@pytest.mark.parametrize("key,value", [("follower_t_s", [2.0, 1.0]), ("at_s", "x"), ("at_s", 99.0), ("lateral", "up"),
                                        ("lateral_m", "far"), ("text_timed", ""),
                                        ("follower_runs", [[3, 1]])])
 def test_validation_names_a_bad_time_field(result, key, value):
@@ -194,6 +208,20 @@ def test_validation_names_a_bad_time_field(result, key, value):
     a["faults"][0][key] = value
     with pytest.raises(OutputError, match=key):
         validate_analysis(a)
+
+
+@pytest.mark.parametrize("at_s,accepted", [(1.9, True), (1.8, False)])
+def test_at_s_is_follower_t_s_start_rounded_half_up_at_the_boundary(result, at_s, accepted):
+    # TICKET-061 / final delta review R7: follower_t_s[0] 1.85 is a half, so it rounds up; 1.9 is accepted, 1.8 is refused
+    import copy
+    a = copy.deepcopy(result.analysis)
+    a["faults"][0]["follower_t_s"] = [1.85, 2.5]
+    a["faults"][0]["at_s"] = at_s
+    if accepted:
+        validate_analysis(a)
+    else:
+        with pytest.raises(OutputError, match="at_s 1.8 is not follower_t_s"):
+            validate_analysis(a)
 
 
 def test_score_hook_is_absent_by_default_and_called_on_every_take(result):

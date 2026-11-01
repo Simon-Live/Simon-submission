@@ -116,7 +116,7 @@ Generators: `make dummy-data` rebuilds the seed 5 set, `make output-examples` re
 hook and the `template` phrasing forced), `make heldout-data SEED=29|31|37` writes a held-out set (once per seed,
 under the protocol in `docs/thresholds.md`). `make score-heldout SEED=<n>` generates a set under
 `out/score-heldout/seed-<n>/` and prints its score distribution; it refuses (exit 2) a seed already recorded in
-`fixtures/score-heldout.json`, since a recorded seed is retired. `make design-copies` rewrites `docs/design/specs/`
+`fixtures/score-heldout.json`, since a recorded seed is retired (seed 61, v3's, is recorded and held). `make design-copies` rewrites `docs/design/specs/`
 and `docs/design/adr/` from `docs/specs/` and `docs/adr/` (`python3 scripts/make_design_copies.py --check` exits 1
 when a copy differs). `make smoke-muse-spark` makes one live call; it is never part of `make test` or
 `make check-5`.
@@ -204,12 +204,17 @@ carries no `conf`.
 
 ### Score
 
-`score` is `simon.score.v1` or, from schema 1.10.0, `simon.score.v2` (ADR-0018; read `score.version`): `value` 0 to 100, `grade` A (90+), B, C, D, F (below 60),
+`score` is `simon.score.v1`, from schema 1.10.0 `simon.score.v2` (ADR-0018) or from 1.11.0 `simon.score.v3` (ADR-0019); read
+`score.version`: `value` 0 to 100, `grade` A (90+), B, C, D, F (below 60),
 `components` (`faults`, `similarity`) and `params_sha256` of the `score` block in `part5/rules.json`. Under v2 a take that
-reports a fault scores at most 89 and says so in `fault_cap`; `uncapped` is the value before every cap; `capped_by`
-is the low-match warning cap only. The frozen v1 params are `score.v1` in the same block
-(`python -m part5.score_report --params-sha256` prints the hash the freeze records). If seed 59 does not hold every target,
-`make score-fallback` puts v1 back (ADR-0018 "Reversal"); a test that pins a v2 value reads `tests/shipped_score.py`.
+reports a fault scores at most 89; under v3 a take that reports one fault scores at most 89 and a take whose `faults` list
+holds two or more entries at most 79. `fault_cap` is the ceiling in force (89 or 79); `uncapped` is the value before every
+cap; `capped_by` is the low-match warning cap only. The frozen v1 and v2 params are `score.v1` and `score.v2` in the same
+block (`python -m part5.score_report --params-sha256` prints the hash the freeze records; `--calibrate-v3` runs
+ADR-0018's floor rule under the v3 code on seed 5). v3 ships: it held all five targets on score seed 61
+(`docs/thresholds-score-v3.md`; `make score-heldout SEED=61` is spent, and refuses a seed already recorded). `make
+score-fallback` remains the reversal recipe and puts v1 back from a v2 or v3 tree (ADR-0018, ADR-0019 "Reversal"); a test
+that pins a v2 or v3 value reads `tests/shipped_score.py`.
 The formula is at the top of `part5/score.py`.
 
 ### Replay

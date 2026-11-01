@@ -162,6 +162,12 @@ whose `faults` is not empty (`score.fault_cap`; `score.uncapped` is the value be
 The block above is the `score.v1` sub-block of the `score` section, kept verbatim. `python -m part5.calibrate --score` on rules
 that ship the v2 form rewrites the v2 block: the v1 sub-block stays as frozen and `range_floor` is fitted by ADR-0018's rule.
 
+Amended by ADR-0019 (`docs/design/specs/score-v3.md`, schema 1.11.0): the score of a new document may be `simon.score.v3`, v2 with a
+second ceiling: a take whose `faults` holds two or more entries scores at most 79 (the top of C), one that holds one entry at
+most 89, and `score.fault_cap` is the ceiling in force. The `score` section keeps the frozen v1 and v2 blocks as `score.v1` and
+`score.v2`; `python -m part5.calibrate --score` on rules that ship the v3 form rewrites the v3 block, with both kept blocks as
+they are.
+
 ### J-5 Phrasing (`phrasing`, `faults[].coaching`)
 Live mode is on when any of: `part5 analyse --live`, `part5 serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`. In live
 mode the default backend is `muse-spark`; elsewhere it stays `template`. An explicit `--phrasing` (or the API's

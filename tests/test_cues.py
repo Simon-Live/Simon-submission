@@ -56,13 +56,32 @@ def test_opposite_directions_give_different_cues():
     ("knee_flexion", "less", "both", "Bend your knees more"),
     ("upper_arm_out", "less", "left", "Raise your left arm higher"),
     ("trunk_lean_forward", "less", "center", "Lean forward more"),
-    ("thigh_forward", "less", "both", "Lower your hips more"),
+    ("thigh_forward", "less", "both", "Raise your thighs higher"),   # TICKET-062 R3: agrees with "thighs not raised enough"
+    ("thigh_forward", "more", "both", "Keep your thighs lower"),     # TICKET-062 delta residual: agrees with "thighs raised too high"
     ("knee_valgus", "more", "right", "Push your right knee out"),
     ("foot_rotation", "less", "left", "Turn your left foot out"),     # ADR-0015, the ticket's two phrases word for word
     ("ankle_inversion", "more", "left", "Keep your left ankle straight"),
 ])
 def test_the_cues_say_what_to_do_toward_the_example(measure, direction, side, want):
     assert cues.cue_for(measure, direction, side)[0] == want
+
+
+def test_the_thigh_cues_agree_with_the_fault_lines_they_sit_beside():
+    """TICKET-062 R3 and its delta review: the insights pair a fault's cue with its words, so a thigh "not raised
+    enough" is not met with "lower", nor thighs "raised too high" with "higher". Each cue names the thighs in the
+    line's own word and moves them the way the line asks. Neither names a direction that is only true when standing
+    (a squat raises the thighs by sitting deeper, so the cues say nothing about the hips or going down)."""
+    from part5.words import phrase
+    less = phrase("thigh_forward", "less", "both", "much")
+    less_cue = cues.cue_for("thigh_forward", "less", "both")[0].lower()
+    assert "raised" in less and "raise" in less_cue and "thighs" in less and "thighs" in less_cue
+    assert not {"lower", "down", "hips", "sit", "squat"} & set(less_cue.split())
+    more = phrase("thigh_forward", "more", "both", "much")
+    more_cue = cues.cue_for("thigh_forward", "more", "both")[0].lower()
+    assert "raised" in more and "too high" in more and "thighs" in more and "thighs" in more_cue and "lower" in more_cue
+    assert not {"higher", "raise", "lift", "up", "hips", "sit", "squat"} & set(more_cue.split())
+    assert cues.cue_for("thigh_forward", "less", "left")[0] == "Lift your left knee higher"   # the one-side cues stay
+    assert cues.cue_for("thigh_forward", "more", "left")[0] == "Keep your left knee lower"
 
 
 @pytest.mark.parametrize("args", [("ankle_twist", "more", "left"), ("knee_flexion", "up", "left"),
@@ -266,7 +285,7 @@ def test_misses_written_before_cues_give_no_insights():
 
 def test_without_a_timeline_insights_follow_the_faults_with_no_points():
     a = json.loads(EXAMPLE.read_text())
-    assert a["schema_version"] == "1.10.0"
+    assert a["schema_version"] == "1.11.0"
     del a["score"]   # the golden is built with the score hook (like real output); this is a producer that does not score
     a["insights"] = insights_of(a)
     assert [x["cue"] for x in a["insights"]] == [f["cue"] for f in a["faults"]]
@@ -292,7 +311,8 @@ def test_one_miss_a_minute_and_ten_in_ten_minutes_cost_about_the_same_share():
         return block, insights_of({"faults": faults, "score": block})
 
     (one, one_ins), (ten, ten_ins) = take(60, 1), take(600, 10)
-    assert abs(one["value"] - ten["value"]) <= 3
+    before_cap = lambda block: block.get("uncapped", block)["value"]   # noqa: E731  v2 and v3 cap a take that reports a fault (ADR-0018, ADR-0019)
+    assert abs(before_cap(one) - before_cap(ten)) <= 3
     assert one_ins[0]["points"] == pytest.approx(ten_ins[0]["points"], abs=0.5)
     assert one["tempo"] == {"ratio": 1.0, "cue": None} and all(x["kind"] != "tempo" for x in ten_ins)
 

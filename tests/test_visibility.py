@@ -108,7 +108,7 @@ def test_a_skeleton_without_conf_gives_no_visibility(tmp_path):
 def test_a_full_body_pair_is_unchanged_and_carries_no_visibility():
     plain = run(str(EXPECTED), str(follower("exercise_45_good_02"))).analysis
     marked = run(str(EXPECTED), with_unseen(follower("exercise_45_good_02"), [])).analysis
-    assert "visibility" not in plain["diagnostics"] and plain["schema_version"] == "1.10.0"
+    assert "visibility" not in plain["diagnostics"] and plain["schema_version"] == "1.11.0"
     assert marked["faults"] == plain["faults"] and marked["diagnostics"] == plain["diagnostics"]
 
 
@@ -116,7 +116,7 @@ def test_an_upper_body_take_of_the_squat_is_accepted_with_its_arm_faults_only():
     take = follower("exercise_45_good_02")    # arms wider on one side
     full = run(str(EXPECTED), str(take)).analysis
     cut = run(str(EXPECTED), with_unseen(take, HIPS_AND_LEGS), score=lambda r: {"value": 1}).analysis
-    assert cut["status"]["code"] == "ok" and cut["schema_version"] == "1.10.0"
+    assert cut["status"]["code"] == "ok" and cut["schema_version"] == "1.11.0"
     vis = cut["diagnostics"]["visibility"]
     assert "left_knee_flexion" in vis["excluded"] and "rule" in vis
     assert vis["usable_measures"] >= MIN_USABLE_MEASURES
@@ -149,7 +149,7 @@ def test_a_head_only_clip_is_not_enough_visible(tmp_path):
     res = run(str(EXPECTED), ref, score=score_block)
     a = res.analysis
     assert a["status"]["code"] == "ok" and a["score"]["grade"] == "F" and a["score"]["value"] <= 59
-    assert "not_enough_visible" in a["score"]["capped_by"] and a["schema_version"] == "1.10.0"
+    assert "not_enough_visible" in a["score"]["capped_by"] and a["schema_version"] == "1.11.0"
     assert "not_enough_visible" in [w["code"] for w in a["warnings"]]
     assert "more of the body" in next(w["text"] for w in a["warnings"] if w["code"] == "not_enough_visible")
     assert a["diagnostics"]["visibility"]["usable_measures"] < MIN_USABLE_MEASURES
@@ -205,7 +205,7 @@ def test_the_salute_pair_names_the_right_arm_as_out_of_frame():
     assert text.startswith("Your right arm is mostly out of frame, so it can't be compared.")
     assert "left" not in text and "leg" not in text
     vis = a["diagnostics"]["visibility"]
-    assert vis["moving_measures"] and vis["moving_usable"] == [] and a["schema_version"] == "1.10.0"
+    assert vis["moving_measures"] and vis["moving_usable"] == [] and a["schema_version"] == "1.11.0"
     assert all(m.startswith("right_") for m in vis["moving_measures"])
 
 

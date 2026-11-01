@@ -577,6 +577,35 @@ def test_review_pick_spreads_over_the_measures_first():
     assert [f["measure"] for _, f in review.pick(faults, 4)] == ["a", "b", "c", "a"]
 
 
+def test_ac_p07_pick_takes_stock_first_then_kit_and_only_then_synthetic_each_spread_by_measure():
+    """TICKET-061 (lost intent, salvage/ticket-038-partial): `pick` used to spread over all three tiers at once."""
+    from part5.phrasing import review
+    stock, kit, synthetic = "pexels-1", "squat_front_x", "exercise_front_good_03_y"
+    faults = ([(stock, {"measure": m}) for m in "aab"] + [(kit, {"measure": m}) for m in "aabbc"]
+              + [(synthetic, {"measure": m}) for m in "ddd"])
+    def took(n):
+        return [(review.source_of(t), f["measure"]) for t, f in review.pick(faults, n)]
+
+    assert took(2) == [("stock", "a"), ("stock", "b")]                                  # the stock takes alone fill 2
+    assert took(6) == [("stock", "a"), ("stock", "b"), ("stock", "a"),                  # all stock, then the kit takes
+                       ("kit", "a"), ("kit", "b"), ("kit", "c")]                         # spread by measure
+    assert took(8) == took(6) + [("kit", "a"), ("kit", "b")]                            # the kit takes run out last
+    assert [s for s, _ in took(9)][-1] == "synthetic" and [s for s, _ in took(9)].count("synthetic") == 1
+    assert len(took(99)) == len(faults) and review.pick(faults, 0) == []                 # never more than there are
+
+
+def test_ac_p07_the_real_fixtures_give_7_stock_and_13_kit_lines_and_no_synthetic_one():
+    """The stock takes hold 7 faults and the kit takes 14: 20 lines are 7 stock and 13 kit (it was 7, 9 and 4)."""
+    from collections import Counter
+
+    from part5.phrasing import review
+    faults = review.timed_faults()
+    held = Counter(review.source_of(take) for take, _ in faults)
+    assert held["stock"] < 20 <= held["stock"] + held["kit"]                             # the case AC-P07 describes
+    assert Counter(review.source_of(take) for take, _ in review.pick(faults, 20)) == {"stock": 7, "kit": 13}
+    assert (held["stock"], held["kit"]) == (7, 14)
+
+
 def test_review_exits_1_without_the_key_and_makes_no_call(capsys):
     from part5.phrasing import review
     assert review.main(["--n", "1"]) == 1

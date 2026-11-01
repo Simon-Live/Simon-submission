@@ -45,7 +45,14 @@ As the team, I want thresholds chosen on data the gate never sees, so that a gre
   (`make heldout-data SEED=<n>`, which passes `--dropout-variant`) and scores it once (`make check-5`).
 - Every attempt's result, pass or fail, is published in `docs/thresholds.md` and in the `make check-5`
   JSON under `attempts[]`, and appended once to `fixtures/heldout-attempts.json` (seed, freeze commit, `rules_sha256`, approach family, per-slice numbers,
-  passed).
+  passed, and the scored-record fields `scored`, `scored_at`, `command` and `exit`). In the `attempts[]` of the
+  `make check-5` JSON, the entry of a seed that already has a record there carries every field of that record
+  (amendment, stakeholder-proxy ruling 2026-11-01T13:20Z, TICKET-058 R4a): the newest seed's entry used to be built from
+  the run and carry six fields only, while every earlier entry was printed as recorded. `passed` stays this run's gate
+  and `slices` this run's numbers, which `require_unchanged_scores` has already made equal to the record's; every other
+  recorded field is copied verbatim, in the record's order, after the six. A seed with no record yet keeps the six
+  fields. No detection metric, gate value, `rules_sha256` or `detection_sha256` changes (`check.current_attempt`,
+  `tests/test_check_freeze.py` `test_r4a_*`).
 - A seed once scored is retired: never regenerated, rescored or used for tuning.
 - A retry is allowed only for a distinct approach family (a new measure, a different alignment or
   persistence rule), never a threshold nudge alone. The rationale paragraph names the family.

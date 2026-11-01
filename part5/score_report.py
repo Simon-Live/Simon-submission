@@ -2,13 +2,16 @@
 
     python -m part5.score_report --set <dir with labels.json> [--json]
     python -m part5.score_report --calibrate-v2 [--set <seed 5 dir>]
+    python -m part5.score_report --calibrate-v3 [--set <seed 5 dir>]
     python -m part5.score_report --params-sha256
 
 Prints, per `<lighting>/<labelled faults>` slice, `{n, min, median, max, grades}` and the verdict of each
 target (correct good-light takes all A; single faults B or C; double faults D or F, C, D or F from v2; the sweep never
-rises). Under `simon.score.v2` it also prints ADR-0018's five targets, judged on the takes that report exactly their
-labelled faults, and the takes that do not. `--calibrate-v2` runs ADR-0018's rule for `range_floor` on seed 5 and
-prints the v2 `score` block; `--params-sha256` prints the hash the orchestrator records at the freeze.
+rises). Under `simon.score.v2` or `simon.score.v3` it also prints ADR-0018's five targets, judged on the takes that
+report exactly their labelled faults, and the takes that do not; under v3 (ADR-0019) it prints beside them, as measured
+and not as a target, what the 79 ceiling did to the doubles. `--calibrate-v2` and `--calibrate-v3` run ADR-0018's rule for
+`range_floor` on seed 5 and print the `score` block of that version; `--params-sha256` prints the hash the orchestrator
+records at the freeze.
 The same functions feed `make check-5` (the gate and the report) and `python -m part5.calibrate --score`.
 A report is never a tuning step: the targets are printed as measured.
 """
@@ -43,15 +46,33 @@ TARGETS_V1 = {"good/0": "A", "good/1": "BC", "good/2": "DF"}   # ADR-0007: slice
 TARGETS_V2 = {"good/0": "A", "good/1": "BC", "good/2": "CDF"}  # ADR-0018: double faults C, D or F
 TUNING_SEED = 5   # the only set the score is tuned on (ADR-0003, ADR-0007, ADR-0018)
 # ADR-0018, printed beside the strict good/1 verdict of a score report so a pass is not read as more than it shows:
-COMPARABILITY = ("comparability: by the recorded v1 numbers (fixtures/score-heldout.json, seeds 47 and 53, measured under earlier "
-                 "detection rules) v1 itself would have met targets 1, 3, 4 and 5 (every good/1 A there was a fault not "
-                 "detected, every good/1 minimum was 72 or more, every good/2 grade was D or F); a pass here shows that v2 does "
-                 "not break those targets, not that it fixes v1's recorded misses")
+_COMPARABILITY = ("comparability: by the recorded v1 numbers (fixtures/score-heldout.json, seeds 47 and 53, measured under earlier "
+                  "detection rules) v1 itself would have met targets 1, 3, 4 and 5 (every good/1 A there was a fault not "
+                  "detected, every good/1 minimum was 72 or more, every good/2 grade was D or F); a pass here shows that "
+                  "{version} does not break those targets, not that it fixes v1's recorded misses")
+COMPARABILITY = _COMPARABILITY.format(version="v2")
+# ADR-0019: the same sentence for v3, with what the ADR says is settled before seed 61 beside it (pre-freeze review R6): the
+# sweep is one fixed take that never reads the seed, and the two ceilings force targets 3 and 5 for the takes they judge.
+COMPARABILITY_V3 = (_COMPARABILITY.format(version="v3") + "; targets 2, 3 and 5 are settled before seed 61 is generated: the "
+                    "sweep (2) is one fixed take built with Random(1234) that never reads the seed, and targets 3 and 5 hold by "
+                    "construction of the ceilings (89 for one reported fault, 79 for two or more), so only targets 1 and 4 test "
+                    "anything on this seed (ADR-0019)")
+
+
+# ADR-0019 (pre-freeze review R7), printed with the measures beside the targets: what the 79 ceiling counts.
+ENTRY_COUNT_NOTE = ("  the ceiling counts the entries of the take's faults list: detection (part5/detect.py) merges the left and right "
+                    "of one measure into one `both` entry only for the same direction with overlapping frames, otherwise they "
+                    "are two entries, and two entries put the 79 ceiling on the take")
 
 
 def targets_of(version):
-    """The slice targets of a score version: ADR-0007's for v1, ADR-0018's otherwise."""
+    """The slice targets of a score version: ADR-0007's for v1, ADR-0018's otherwise (v3 reuses them, ADR-0019)."""
     return TARGETS_V1 if version == score.VERSION_V1 else TARGETS_V2
+
+
+def comparability_of(version):
+    """The comparability sentence of a score version's report."""
+    return COMPARABILITY_V3 if version == score.VERSION_V3 else COMPARABILITY
 
 
 # --- one take ---
@@ -110,7 +131,8 @@ def _rep_timeline(result, rules):
         if not r.ok:
             windows.append({"t_s": span, "compared": False})
             continue
-        ratio = score.span_ratio(span, (float(r.expected.t[0]), float(r.expected.t[-1])))   # ADR-0014: rep over example rep
+        # ADR-0014: rep over example rep, unmeasured on a low match (Amendment 4)
+        ratio = score.tempo_ratio(result.analysis, span, (float(r.expected.t[0]), float(r.expected.t[-1])))
         faults = []
         for f in [*r.faults, *r.continued]:
             # the take's coaching line carries the first rep's time, so each rep says its own (text_timed)
@@ -124,7 +146,7 @@ def _rep_timeline(result, rules):
         windows.append(window)
     timed = [x for x in ratios if x is not None]
     block = score.timeline_block(windows, "reps", rules, float(np.median(timed)) if timed else None,
-                                 reports_fault=bool(result.analysis.get("faults")))
+                                 n_faults=score.reported_faults(result.analysis))
     block["per_rep"] = [{"value": w["value"], "grade": w["grade"]} for w in block["timeline"] if w["compared"]]
     return block
 
@@ -326,12 +348,14 @@ def report_lines(dist, verdict, targets=None):
 
 def calibrate_set(labels_doc, rules=None, base=ROOT):
     """The `score` block calibrated on the seed 5 set (the caller checks the seed). Rules that ship the v2 form (a v2
-    block holding the frozen `v1` block) get a v2 block back: v1 stays as frozen and `range_floor` is fitted by ADR-0018's
-    rule. Any other rules get the v1 calibration (`score.calibrate`), as ADR-0007 states it."""
+    block holding the frozen `v1` block) or the v3 form (a v3 block holding the frozen `v1` and `v2` blocks) get a block of
+    that version back: v1 (and v2) stay as frozen and `range_floor` is fitted by ADR-0018's rule. Any other rules get the
+    v1 calibration (`score.calibrate`), as ADR-0007 states it."""
     rules = rules or load_rules()
     shipped = rules.get("score") or {}
-    if shipped.get("version") == score.VERSION and isinstance(shipped.get("v1"), dict):
-        return calibrate_v2_set(labels_doc, rules, base)[0]
+    version = shipped.get("version")
+    if version in score.KEPT_BLOCKS and all(isinstance(shipped.get(k), dict) for k in score.KEPT_BLOCKS[version]):
+        return calibrate_floor_set(labels_doc, rules, base, version=version)[0]
     return score.calibrate(rows_of_set(labels_doc, rules, base), rules["default"]["min_fraction"])
 
 
@@ -415,21 +439,69 @@ def targets_v2_lines(targets, sweep_failed=None):
     return lines
 
 
+def beside_targets(entries, strict_verdicts):
+    """What a v3 report publishes beside ADR-0018's five targets (ADR-0019), as measured and never as a target, from
+    `[(label, analysis, score block or None)]`: for each good-light take that reports exactly its two labelled faults its
+    value before the 79 ceiling (`uncapped_value`) and after, whether the ceiling lowered it and how many it lowered;
+    ADR-0007's reading of the double-fault slice, D or F, as counts (D or F, and C, which ADR-0018 and ADR-0019 allow); and
+    the strict slice verdicts (every take of the slice, `verdicts`)."""
+    rows = [{"take_id": t["take_id"], "before": uncapped_value(b), "after": b["value"], "grade": b["grade"],
+             "lowered": uncapped_value(b) > b.get("fault_cap", float("inf"))} for t, _, b in split_good(entries)["double"]]
+    count = lambda *grades: sum(r["grade"] in grades for r in rows)   # noqa: E731
+    return {"doubles": rows, "n": len(rows), "lowered": sum(r["lowered"] for r in rows), "d_or_f": count("D", "F"),
+            "c": count("C"), "strict_verdicts": strict_verdicts}
+
+
+def beside_lines(beside):
+    """The lines of `beside_targets`, printed under the five targets."""
+    n = beside["n"]
+    lines = ["published beside the targets (as measured, not targets; ADR-0019):",
+             f"  exactly reported doubles (n {n}): the 79 ceiling lowered {beside['lowered']} of {n}; value before it, after it:"]
+    lines += [f"      {r['take_id']}: {r['before']} -> {r['after']} ({r['grade']}){' lowered' if r['lowered'] else ''}"
+              for r in beside["doubles"]]
+    lines += [f"  ADR-0007's reading of the doubles (D or F): {beside['d_or_f']} of {n} grade D or F, {beside['c']} grade C",
+              "  strict slice verdicts (every take of the slice, nothing excluded): "
+              + ", ".join(f"{k} {v}" for k, v in beside["strict_verdicts"].items()),
+              ENTRY_COUNT_NOTE]
+    return lines
+
+
 def v1_of(rules):
     """The frozen v1 block of the score section `rules` ship: the section itself when it is v1, else its `v1`."""
     block = score.params_of(rules)
     return block if block["version"] == score.VERSION_V1 else score.rules_v1(rules)["score"]
 
 
-def rules_with_floor(rules, floor):
-    """`rules` with the v2 block built from their v1 block and `floor` (what ADR-0018's rule tries on seed 5)."""
-    return {**rules, "score": score.block_v2(v1_of(rules), floor)}
+def v2_of(rules):
+    """The frozen v2 block of the score section `rules` ship (ADR-0019): the section itself when it is v2, else its `v2`
+    (a v3 section keeps it verbatim)."""
+    block = score.params_of(rules)
+    return block if block["version"] == score.VERSION_V2 else score.rules_v2(rules)["score"]
+
+
+def block_of(version, rules, floor):
+    """The `version` score block (v2 or v3) built from the frozen blocks `rules` keep and `floor`."""
+    if version == score.VERSION_V3:
+        return score.block_v3(v1_of(rules), v2_of(rules), floor)
+    return score.block_v2(v1_of(rules), floor)
+
+
+def rules_with_floor(rules, floor, version):
+    """`rules` with the `version` block built from their frozen blocks and `floor` (what ADR-0018's rule tries on seed 5)."""
+    return {**rules, "score": block_of(version, rules, floor)}
+
+
+def uncapped_value(block):
+    """The value of a score block before the fault ceiling: `uncapped.value` when a cap lowered it, else the value itself."""
+    return (block.get("uncapped") or block)["value"]
 
 
 def measure_floor(results, rules, sweep=True):
-    """ADR-0018's four conditions for the v2 `rules` on seed 5 `results` (`run_set`'s output), as
+    """ADR-0018's four conditions for the v2 or v3 `rules` on seed 5 `results` (`run_set`'s output), as
     `score.floor_holds` reads them: every correct good-light take an A, the lowest score of a good-light take that reports
-    exactly its one labelled fault, the highest of one that reports exactly its two, and whether the sweep rises."""
+    exactly its one labelled fault, the highest of one that reports exactly its two (as the rules' own ceiling leaves it),
+    and whether the sweep rises. `double_max_uncapped`, the highest of those doubles before any cap, is for the table
+    only: the rule does not read it."""
     g = split_good([(t, r.analysis, b) for t, r, b in scored_results(None, rules, results=results)])
     rises = False
     if sweep:
@@ -437,28 +509,31 @@ def measure_floor(results, rules, sweep=True):
             rises = bool(sweep_failures(run_sweep(tmp, rules, analyse_fn=lambda e, f: analyse(e, f, rules))))
     return {"correct_all_a": all(b["grade"] == "A" for _, _, b in g["correct"]),
             "single_min": min((b["value"] for _, _, b in g["single"]), default=None),
-            "double_max": max((b["value"] for _, _, b in g["double"]), default=None), "sweep_rises": rises}
+            "double_max": max((b["value"] for _, _, b in g["double"]), default=None), "sweep_rises": rises,
+            "double_max_uncapped": max((uncapped_value(b) for _, _, b in g["double"]), default=None)}
 
 
-def measure_floors(results, rules, sweep=True):
+def measure_floors(results, rules, version, sweep=True):
     """{floor: measurement} over `score.FLOOR_GRID`: the data `score.choose_floor` reads."""
-    return {f: measure_floor(results, rules_with_floor(rules, f), sweep) for f in score.FLOOR_GRID}
+    return {f: measure_floor(results, rules_with_floor(rules, f, version), sweep) for f in score.FLOOR_GRID}
 
 
-def calibrate_v2_set(labels_doc, rules=None, base=ROOT, results=None, sweep=True):
-    """`(v2 score block, measurements)` for the seed 5 set: the frozen v1 block of `rules` and the floor ADR-0018's rule
-    picks from the measurements of every floor of the grid."""
+def calibrate_floor_set(labels_doc, rules=None, base=ROOT, results=None, sweep=True, version=score.VERSION_V3):
+    """`(score block of version, measurements)` for the seed 5 set: the frozen blocks of `rules` and the floor ADR-0018's
+    rule picks from the measurements of every floor of the grid, run under the code of `version` (v3 measures the
+    doubles after its 79 ceiling, ADR-0019)."""
     rules = rules or load_rules()
     results = run_set(labels_doc, rules, base) if results is None else results
-    measured = measure_floors(results, rules, sweep)
-    return score.block_v2(v1_of(rules), score.choose_floor(measured)), measured
+    measured = measure_floors(results, rules, version, sweep)
+    return block_of(version, rules, score.choose_floor(measured)), measured
 
 
 def floor_table(measured, chosen):
-    lines = ["floor  correct all A  single min  double max  sweep rises  holds"]
+    lines = ["floor  correct all A  single min  double max  before cap  sweep rises  holds"]
     for f, m in measured.items():
         lines.append(f"{f:5.2f}  {str(m['correct_all_a']):13s}  {str(m['single_min']):10s}  {str(m['double_max']):10s}  "
-                     f"{str(m['sweep_rises']):11s}  {'yes' if score.floor_holds(m) else 'no'}{'  <- chosen' if f == chosen else ''}")
+                     f"{str(m.get('double_max_uncapped')):10s}  {str(m['sweep_rises']):11s}  "
+                     f"{'yes' if score.floor_holds(m) else 'no'}{'  <- chosen' if f == chosen else ''}")
     return lines
 
 
@@ -468,43 +543,53 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true", help="print the distribution as JSON")
     ap.add_argument("--json-out", default=None, metavar="PATH",
                     help="also write the report as JSON here (the text report is still printed); `make score-heldout` reads "
-                         "`targets_v2.holds` from it to name what the v2 attempt records")
-    ap.add_argument("--calibrate-v2", action="store_true",
-                    help="run ADR-0018's rule for range_floor on --set (default: seed 5) and print the v2 score block")
+                         "`targets_v2.holds` (ADR-0018's five targets, which v3 reuses) from it to name what the attempt records")
+    for version in (score.VERSION_V2, score.VERSION_V3):
+        ap.add_argument(f"--calibrate-{version[-2:]}", action="store_true",
+                        help=f"run ADR-0018's rule for range_floor on --set (default: seed 5) under the {version} code and "
+                             f"print its score block")
     ap.add_argument("--params-sha256", action="store_true",
                     help="print the sha256 of the score block of part5/rules.json (what the freeze records)")
     args = ap.parse_args(argv)
     if args.params_sha256:
         print(score.params_sha256(score.params_of(load_rules())))
         return 0
-    if args.calibrate_v2:
-        return _print_calibration(args.set or str(ROOT / "fixtures" / "input" / "followers"))
+    for version in (score.VERSION_V2, score.VERSION_V3):
+        if getattr(args, f"calibrate_{version[-2:]}"):
+            return _print_calibration(args.set or str(ROOT / "fixtures" / "input" / "followers"), version)
     if not args.set:
         ap.error("--set is required")
     labels = load_labels(args.set)
     rules = load_rules()
+    version = score.params_of(rules)["version"]
     scored = scored_results(labels, rules)
     dist = distribution([(t, b) for t, _, b in scored])
     verdict = verdicts(dist)
-    v2 = score.params_of(rules)["version"] == score.VERSION
-    targets = targets_v2([(t, r.analysis, b) for t, r, b in scored]) if v2 else None
-    sweep_failed = _sweep_failures() if v2 else None
-    holds = targets_hold(targets, sweep_failed) if v2 else None
-    doc = {"seed": labels["seed"], "version": score.params_of(rules)["version"], "distribution": dist, "verdicts": verdict}
-    if v2:
+    capped = version != score.VERSION_V1   # v2 and v3: ADR-0018's five targets are judged
+    entries = [(t, r.analysis, b) for t, r, b in scored]
+    targets = targets_v2(entries) if capped else None
+    sweep_failed = _sweep_failures() if capped else None
+    holds = targets_hold(targets, sweep_failed) if capped else None
+    beside = beside_targets(entries, verdict) if version == score.VERSION_V3 else None
+    doc = {"seed": labels["seed"], "version": version, "distribution": dist, "verdicts": verdict}
+    if capped:
         doc["targets_v2"] = {**targets, "sweep_failures": sweep_failed, "holds": holds}
+    if beside:
+        doc["beside_targets"] = beside
     if args.json_out:
         Path(args.json_out).write_text(json.dumps(doc, indent=1) + "\n")
     if args.json:
         print(json.dumps(doc, indent=1))
     else:
-        print(f"score_report: seed {labels['seed']}, {len(labels['takes'])} takes, {score.params_of(rules)['version']}")
+        print(f"score_report: seed {labels['seed']}, {len(labels['takes'])} takes, {version}")
         print("\n".join(report_lines(dist, verdict)))
-        if v2:
+        if capped:
             print("ADR-0018 targets (good-light takes; the strict slice verdicts above are reported beside them):")
             print("\n".join(targets_v2_lines(targets, sweep_failed)))
             print(f"  all five hold: {'yes' if holds else 'no'}  (a target with no judged take does not hold)")
-            print(f"  {COMPARABILITY}")
+            if beside:
+                print("\n".join(beside_lines(beside)))
+            print(f"  {comparability_of(version)}")
     return 0
 
 
@@ -513,15 +598,16 @@ def _sweep_failures():
         return sweep_failures(run_sweep(tmp))
 
 
-def _print_calibration(directory):
-    """`--calibrate-v2`: the rule's table on stderr and the v2 block on stdout. Seed 5 only, like `calibrate.py` (ADR-0003)."""
+def _print_calibration(directory, version):
+    """`--calibrate-v2` and `--calibrate-v3`: the rule's table on stderr and the block of `version` on stdout. Seed 5 only,
+    like `calibrate.py` (ADR-0003)."""
     labels = load_labels(directory)
     if labels.get("seed") != TUNING_SEED:
-        print(f"score_report: --calibrate-v2 runs on the seed {TUNING_SEED} tuning set only, not seed {labels.get('seed')} "
-              f"({directory}); the floor is tuned on seed 5 alone (ADR-0003, ADR-0018)", file=sys.stderr)
+        print(f"score_report: --calibrate-{version[-2:]} runs on the seed {TUNING_SEED} tuning set only, not seed "
+              f"{labels.get('seed')} ({directory}); the floor is tuned on seed 5 alone (ADR-0003, ADR-0018)", file=sys.stderr)
         return 2
     rules = load_rules()
-    block, measured = calibrate_v2_set(labels, rules)
+    block, measured = calibrate_floor_set(labels, rules, version=version)
     print("\n".join(floor_table(measured, block["range_floor"])), file=sys.stderr)
     print(json.dumps(block, indent=2))
     return 0

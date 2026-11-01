@@ -52,6 +52,11 @@ bands A 90+, B 80 to 89, C 70 to 79, D 60 to 69, F below 60, `null` on a refused
   its measure, a ceiling of 89 for a take that reports a fault, `score.fault_cap`), tuned on seed 5 only and scored once
   on seed 59. This ADR stands as the v1 record; v1 stays reproducible (`score.v1` in `part5/rules.json`) and is the
   fallback if v2 does not ship; seed 61 stays reserved.
+- 2026-11-01, ADR-0019: v2 was scored on seed 59 and missed target 5, so v1 stayed; the operator asked for a reconciliation
+  and the retry is `simon.score.v3` (v2's range weight and 89 ceiling, plus a ceiling of 79 for a take that reports two or
+  more faults), tuned on seed 5 only and scored once on seed 61. This ADR still stands as the v1 record, v1 stays
+  reproducible (`score.v1` in `part5/rules.json`) and is the fallback if v3 does not ship; the retry rule above ("the next
+  unused seed, 59, then 61") ends with seed 61, and a fail opens no further score series in this run.
 
 ## Consequences
 - **Positive**: Part 7 gets one explainable number; the faults and the score never disagree in direction.

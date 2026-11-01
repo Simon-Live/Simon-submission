@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.10.0",
+  "schema_version": "1.11.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
@@ -235,7 +235,7 @@
       "kind": "range",
       "at_s": 0.7,
       "window": 0,
-      "points": 17.2,
+      "points": 12.9,
       "measure": "elbow_flexion",
       "side": "right",
       "joint": "right_elbow"
@@ -246,7 +246,7 @@
       "kind": "range",
       "at_s": 0.4,
       "window": 0,
-      "points": 15.7,
+      "points": 11.8,
       "measure": "upper_arm_out",
       "side": "both",
       "joint": "shoulder"
@@ -288,14 +288,14 @@
     "selected_by": "default"
   },
   "score": {
-    "version": "simon.score.v1",
-    "value": 67,
-    "grade": "D",
+    "version": "simon.score.v3",
+    "value": 75,
+    "grade": "C",
     "components": {
-      "faults": 32.93,
+      "faults": 24.7,
       "similarity": 0.46
     },
-    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
     "basis": "windows",
     "timeline": [
       {
@@ -303,10 +303,10 @@
           0.1,
           2.5
         ],
-        "value": 67,
-        "grade": "D",
+        "value": 75,
+        "grade": "C",
         "components": {
-          "faults": 32.93,
+          "faults": 24.7,
           "similarity": 0.46
         },
         "misses": [
@@ -320,7 +320,7 @@
               2.067
             ],
             "at_s": 0.4,
-            "points": 15.7,
+            "points": 11.8,
             "cue": "Keep your elbows closer in",
             "cue_kind": "range",
             "direction": "more"
@@ -335,7 +335,7 @@
               2.167
             ],
             "at_s": 0.7,
-            "points": 17.2,
+            "points": 12.9,
             "cue": "Straighten your right arm more",
             "cue_kind": "range",
             "direction": "more"
@@ -351,6 +351,7 @@
     "tempo": {
       "ratio": 0.8,
       "cue": "Slow down to match the trainer"
-    }
+    },
+    "fault_cap": 79
   }
 }

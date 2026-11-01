@@ -349,7 +349,7 @@ def test_ac_k12_a_1_1_0_document_without_the_refusals_flag_still_validates_and_a
     base = {"low_light": {"gated": False}, "dropout": {"gated": False}, "kit": {"gated": False},
             "stock": {"gated": False}, "refusals": {"good/front": 0}}
     validator = jsonschema.Draft202012Validator(SCHEMA["properties"]["report"])
-    assert SCHEMA["version"] == "1.4.0" and list(validator.iter_errors(base)) == []
+    assert SCHEMA["version"] == "1.5.0" and list(validator.iter_errors(base)) == []
     assert list(validator.iter_errors({**base, "refusals": {"gated": False, "good/front": 0}})) == []
     assert list(validator.iter_errors({**base, "refusals": {"gated": True, "good/front": 0}}))
     assert list(validator.iter_errors({**base, "refusals": {"gated": False, "good/front": -1}}))

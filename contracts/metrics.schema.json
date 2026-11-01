@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/metrics.schema.json",
   "title": "Part 5 make check-5 document (simon.part5.check.v1)",
-  "version": "1.4.0",
-  "description": "The JSON make check-5 prints. gate carries the held-out result and decides the exit code; tuning and report are reported and never gated. Extra fields are allowed. 1.1.0 (ADR-0007) adds the score report that check-5 writes: gate.sweep (the monotonicity sweep the gate reads), report.score (the grade distribution per slice of every set; reported, never gated beyond gate) and detection_sha256 (the frozen detection rules). A 1.0.0 document validates. 1.2.0 adds report.refusals.gated (always false), so the six report blocks all carry gated false; refusals stays a map of slice to count with that one boolean key beside the slice keys, and a 1.1.0 document without the key still validates. 1.3.0 (ADR-0016) adds the optional top-level profiles_sha256, the sha256 of part5/profiles.json, printed for information beside rules_sha256 and detection_sha256; check-5 runs the fitness profile only. 1.4.0 (ADR-0018) lets report.score.version be simon.score.v2 as well as simon.score.v1 (the score the rules ship); a 1.3.0 document with simon.score.v1 still validates.",
+  "version": "1.5.0",
+  "description": "The JSON make check-5 prints. gate carries the held-out result and decides the exit code; tuning and report are reported and never gated. Extra fields are allowed. 1.1.0 (ADR-0007) adds the score report that check-5 writes: gate.sweep (the monotonicity sweep the gate reads), report.score (the grade distribution per slice of every set; reported, never gated beyond gate) and detection_sha256 (the frozen detection rules). A 1.0.0 document validates. 1.2.0 adds report.refusals.gated (always false), so the six report blocks all carry gated false; refusals stays a map of slice to count with that one boolean key beside the slice keys, and a 1.1.0 document without the key still validates. 1.3.0 (ADR-0016) adds the optional top-level profiles_sha256, the sha256 of part5/profiles.json, printed for information beside rules_sha256 and detection_sha256; check-5 runs the fitness profile only. 1.4.0 (ADR-0018) lets report.score.version be simon.score.v2 as well as simon.score.v1 (the score the rules ship); a 1.3.0 document with simon.score.v1 still validates. 1.5.0 (ADR-0019) lets it be simon.score.v3 too; a 1.4.0 document still validates.",
   "type": "object",
   "required": [
     "format",
@@ -271,7 +271,8 @@
             "version": {
               "enum": [
                 "simon.score.v1",
-                "simon.score.v2"
+                "simon.score.v2",
+                "simon.score.v3"
               ]
             },
             "heldout": {

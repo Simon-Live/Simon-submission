@@ -1,8 +1,8 @@
-"""`make score-fallback` (ADR-0018, "Reversal"; pre-freeze review R1 and R2): the recipe for "v2 failed on seed 59".
+"""`make score-fallback` (ADR-0018 and ADR-0019, "Reversal"; pre-freeze review R1 and R2): the recipe for "v2 failed on seed 59" and
+for "v3 failed on seed 61".
 
-The script is tested on a small tree built here (rules, the v2 sample, the score record, the goldens' inputs left out); the
+The script is tested on a small tree built here (rules, the samples, the score record, the goldens' inputs left out); the
 full proof, a copy of the repository with the fallback applied and `make test` green on it, is in docs/thresholds.md."""
-import hashlib
 import importlib.util
 import json
 import shutil
@@ -13,10 +13,12 @@ import pytest
 
 from part5 import check, score
 from part5.detect import load_rules
-from shipped_score import FLOOR, IS_V2, frozen_v1, v2_block
+from shipped_score import DETECTION_SHA, IS_CAPPED, V1_SHA, V2, V2_SHA, V3, frozen_v1, v2_block, v3_block
 
 ROOT = Path(__file__).resolve().parent.parent
-V1_SHA = "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62"   # recorded for seeds 47 and 53
+BLOCKS = {V2: v2_block, V3: v3_block}
+SAMPLES = {V2: ("analysis.fault-capped.example.json",), V3: ("analysis.fault-capped.example.json", "analysis.double-capped.example.json")}
+VERSIONS = pytest.mark.parametrize("version", [V2, V3])   # a tree that ships v2 (before 59 was scored) or v3 (before 61 is)
 
 
 def load_script():
@@ -29,26 +31,34 @@ def load_script():
 script = load_script()
 
 
-def v2_tree(tmp_path):
-    """A tree that ships v2 (the rules file as `part5.calibrate` writes it, plus the v2 sample and a record)."""
+def tree(tmp_path, version):
+    """A tree that ships `version` (the rules file as `part5.calibrate` writes it, plus its samples and a record)."""
     rules = load_rules()
-    rules["score"] = v2_block()
+    rules["score"] = BLOCKS[version]()
     (tmp_path / "part5").mkdir()
     (tmp_path / "part5" / "rules.json").write_text(json.dumps(rules, indent=2) + "\n")
     (tmp_path / "fixtures" / "output").mkdir(parents=True)
-    (tmp_path / "fixtures" / "output" / "analysis.fault-capped.example.json").write_text("{}")
-    (tmp_path / "fixtures" / "score-heldout.json").write_text(json.dumps(record_after_59()))
+    for name in SAMPLES[version]:
+        (tmp_path / "fixtures" / "output" / name).write_text("{}")
+    (tmp_path / "fixtures" / "score-heldout.json").write_text(json.dumps(record_after(version)))
     return tmp_path
 
 
-def record_after_59(extra_attempt=True):
-    """The record after the planned steps: the v1 attempts of seeds 47 and 53, the v2 freeze and a v2 attempt for seed 59."""
+def record_after(version, holds=False, scored=True):
+    """The record after the planned steps: the v1 attempts of seeds 47 and 53, the v2 freeze and its failed attempt for seed 59
+    and, for a v3 tree, the v3 freeze and (with `scored`) a v3 attempt for seed 61 that holds or not."""
     v2 = score.params_sha256(v2_block())
     attempts = [{"seed": 47, "params_sha256": V1_SHA}, {"seed": 53, "params_sha256": V1_SHA}]
-    if extra_attempt:
-        attempts.append({"seed": 59, "version": "simon.score.v2", "params_sha256": v2})
+    freezes = [{"version": V2, "freeze_commit": "abc1234", "params_sha256": v2, "seed": 59}]
+    if version == V2:
+        return {"format": "simon.part5.score-heldout.v1", "attempts": [*attempts, {"seed": 59, "version": V2, "params_sha256": v2}],
+                "freezes": freezes}
+    v3 = score.params_sha256(v3_block())
+    attempts.append({"seed": 59, "version": V2, "params_sha256": v2, "holds": False})
+    if scored:
+        attempts.append({"seed": 61, "version": V3, "params_sha256": v3, "holds": holds})
     return {"format": "simon.part5.score-heldout.v1", "attempts": attempts,
-            "freezes": [{"version": "simon.score.v2", "freeze_commit": "abc1234", "params_sha256": v2, "seed": 59}]}
+            "freezes": [*freezes, {"version": V3, "freeze_commit": "def5678", "params_sha256": v3, "seed": 61}]}
 
 
 class Recorder:
@@ -60,8 +70,9 @@ class Recorder:
 
 
 # ---------------------------------------------------------------- the rules file
-def test_the_score_section_becomes_the_frozen_v1_block_and_nothing_else_in_the_rules_file_moves(tmp_path):
-    root = v2_tree(tmp_path)
+@VERSIONS
+def test_the_score_section_becomes_the_frozen_v1_block_and_nothing_else_in_the_rules_file_moves(tmp_path, version):
+    root = tree(tmp_path, version)
     path = root / "part5" / "rules.json"
     before = path.read_text()
     lines = script.fall_back(root, regenerate=False)
@@ -76,31 +87,44 @@ def test_the_score_section_becomes_the_frozen_v1_block_and_nothing_else_in_the_r
 
 def test_the_detection_hash_is_the_one_check_5_records(tmp_path):
     rules = load_rules()
-    assert script.detection_hash(rules) == check.detection_hash() == "c92ae9a8524c559741cdaebcd14bb5305e91479d19123e15c3a5e14efb1337fb"
+    assert script.detection_hash(rules) == check.detection_hash() == DETECTION_SHA
 
 
-def test_the_v2_sample_is_removed_and_the_goldens_and_the_baseline_are_written_again(tmp_path):
-    root, run = v2_tree(tmp_path), Recorder()
+@VERSIONS
+def test_the_samples_are_removed_and_the_goldens_and_the_baseline_are_written_again(tmp_path, version):
+    root, run = tree(tmp_path, version), Recorder()
     lines = script.fall_back(root, regenerate=True, runner=run)
-    assert not (root / "fixtures/output/analysis.fault-capped.example.json").exists()
+    assert not [n for n in SAMPLES[V3] if (root / "fixtures/output" / n).exists()]
+    assert sum(f"removed fixtures/output/{n} (a {version} sample)" in "\n".join(lines) for n in SAMPLES[version]) == len(SAMPLES[version])
     commands = [c[0] for c in run.calls]
     assert commands[0][1] == str(root / "scripts" / "make_output_examples.py")
     assert commands[1][1:] == ["-m", "part5.profiles_report", "--write-baseline"]
     assert all(c[1] == root for c in run.calls) and any("goldens and the fitness baseline" in x for x in lines)
 
 
-def test_no_regenerate_stops_after_the_rules_and_the_sample(tmp_path):
-    root, run = v2_tree(tmp_path), Recorder()
+@VERSIONS
+def test_no_regenerate_stops_after_the_rules_and_the_samples(tmp_path, version):
+    root, run = tree(tmp_path, version), Recorder()
     script.fall_back(root, regenerate=False, runner=run)
-    assert run.calls == [] and not (root / "fixtures/output/analysis.fault-capped.example.json").exists()
+    assert run.calls == [] and not [n for n in SAMPLES[V3] if (root / "fixtures/output" / n).exists()]
 
 
-def test_the_score_record_is_not_touched(tmp_path):
-    root = v2_tree(tmp_path)
+@VERSIONS
+def test_the_score_record_is_not_touched(tmp_path, version):
+    root = tree(tmp_path, version)
     record = root / "fixtures" / "score-heldout.json"
     before = record.read_bytes()
     script.fall_back(root, regenerate=False)
     assert record.read_bytes() == before
+
+
+def test_a_v3_tree_loses_its_kept_v2_block_with_the_rest_of_the_section_and_the_record_still_has_its_hash(tmp_path):
+    root = tree(tmp_path, V3)
+    kept = json.loads((root / "part5" / "rules.json").read_text())["score"]["v2"]
+    assert score.params_sha256(kept) == V2_SHA
+    script.fall_back(root, regenerate=False)
+    assert "v2" not in json.loads((root / "part5" / "rules.json").read_text())["score"]
+    assert json.loads((root / "fixtures" / "score-heldout.json").read_text())["freezes"][0]["params_sha256"] == V2_SHA
 
 
 # ---------------------------------------------------------------- refusals and --check
@@ -115,20 +139,22 @@ def test_a_tree_that_ships_v1_is_refused_with_exit_3_and_nothing_is_written(tmp_
     assert (tmp_path / "part5" / "rules.json").read_bytes() == before
 
 
-def test_a_v2_block_without_a_v1_block_is_refused_with_exit_2(tmp_path, capsys):
+@VERSIONS
+def test_a_block_without_a_v1_block_is_refused_with_exit_2(tmp_path, capsys, version):
     rules = load_rules()
-    rules["score"] = {k: v for k, v in v2_block().items() if k != "v1"}
+    rules["score"] = {k: v for k, v in BLOCKS[version]().items() if k != "v1"}
     (tmp_path / "part5").mkdir()
     (tmp_path / "part5" / "rules.json").write_text(json.dumps(rules))
     assert script.main(["--root", str(tmp_path)]) == 2
     assert "no simon.score.v1 'v1' block to go back to" in capsys.readouterr().err
 
 
-def test_check_says_whether_the_tree_can_go_back_and_changes_nothing(tmp_path, capsys):
-    root = v2_tree(tmp_path)
+@VERSIONS
+def test_check_says_whether_the_tree_can_go_back_and_changes_nothing(tmp_path, capsys, version):
+    root = tree(tmp_path, version)
     before = (root / "part5" / "rules.json").read_bytes()
     assert script.main(["--root", str(root), "--check"]) == 0
-    assert "ships simon.score.v2 and holds the simon.score.v1 block" in capsys.readouterr().out
+    assert f"ships {version} and holds the simon.score.v1 block" in capsys.readouterr().out
     assert (root / "part5" / "rules.json").read_bytes() == before and (root / "fixtures/output/analysis.fault-capped.example.json").exists()
 
 
@@ -137,43 +163,66 @@ def test_a_missing_rules_file_is_refused_not_a_traceback(tmp_path, capsys):
     assert "cannot read" in capsys.readouterr().err
 
 
-def test_a_failing_step_exits_1_naming_it(tmp_path, capsys):
+@VERSIONS
+def test_a_failing_step_exits_1_naming_it(tmp_path, capsys, version):
     def broken(command, root):
         raise script.Refused("failed: make_output_examples.py", 1)
-    assert script.main(["--root", str(v2_tree(tmp_path))], runner=broken) == 1
+    assert script.main(["--root", str(tree(tmp_path, version))], runner=broken) == 1
     assert "failed: make_output_examples.py" in capsys.readouterr().err
 
 
-# ---------------------------------------------------------------- R2: the check, after the fallback, with the v2 record
-def test_after_the_fallback_check_5_finds_the_v1_hash_whatever_was_appended_after(tmp_path):
-    """The record holds the v2 freeze and the seed 59 attempt (version v2); the rules ship v1 again. The lookup is by the
-    version the rules ship, so it finds e818635b and not the newest attempt's v2 hash (the old `attempts[-1]`)."""
-    root = v2_tree(tmp_path)
+# ---------------------------------------------------------------- R2: the check, after the fallback, with the later versions' record
+@VERSIONS
+def test_after_the_fallback_check_5_finds_the_v1_hash_whatever_was_appended_after(tmp_path, version):
+    """The record holds the freezes and the failed attempts (versions v2 and v3); the rules ship v1 again. The lookup is by the
+    version the rules ship, so it finds e818635b and not the newest attempt's hash (the old `attempts[-1]`)."""
+    root = tree(tmp_path, version)
     script.fall_back(root, regenerate=False)
     rules_path, record = root / "part5" / "rules.json", root / "fixtures" / "score-heldout.json"
-    version = check.score_version(rules_path)
-    assert version == "simon.score.v1"
-    assert check.recorded_score_hash(record, version) == V1_SHA == check.score_params_hash(rules_path)
-    assert json.loads(record.read_text())["attempts"][-1]["params_sha256"] != V1_SHA   # the newest attempt is v2's
-    check.require_score_frozen(check.score_params_hash(rules_path), check.recorded_score_hash(record, version), version)
+    shipped = check.score_version(rules_path)
+    assert shipped == "simon.score.v1"
+    assert check.recorded_score_hash(record, shipped) == V1_SHA == check.score_params_hash(rules_path)
+    assert json.loads(record.read_text())["attempts"][-1]["params_sha256"] != V1_SHA   # the newest attempt is a later version's
+    check.require_score_frozen(check.score_params_hash(rules_path), check.recorded_score_hash(record, shipped), shipped)
+    check.require_held(record, shipped)   # and a v1 block is never judged by the failed attempts
 
 
-def test_a_v2_tree_with_the_record_after_59_finds_the_v2_freeze(tmp_path):
-    root = v2_tree(tmp_path)
+@VERSIONS
+def test_a_tree_with_the_record_after_the_seed_finds_its_versions_freeze(tmp_path, version):
+    root = tree(tmp_path, version)
     rules_path, record = root / "part5" / "rules.json", root / "fixtures" / "score-heldout.json"
-    assert check.recorded_score_hash(record, "simon.score.v2") == check.score_params_hash(rules_path)
+    assert check.recorded_score_hash(record, version) == check.score_params_hash(rules_path)
     assert check.recorded_score_hash(record, "simon.score.v1") == V1_SHA
 
 
-# ---------------------------------------------------------------- R1: the seed 59 record does not break the committed record's tests
-def test_seed_59_once_recorded_is_retired_in_the_simulated_record(tmp_path):
-    root = v2_tree(tmp_path)
+# ---------------------------------------------------------------- R1: a recorded seed does not break the committed record's tests
+@pytest.mark.parametrize("version, seed", [(V2, 59), (V3, 61)])
+def test_a_score_seed_once_recorded_is_retired_in_the_simulated_record(tmp_path, version, seed):
+    root = tree(tmp_path, version)
     check_seed = importlib.util.spec_from_file_location("make_score_heldout", ROOT / "scripts/make_score_heldout.py")
     heldout = importlib.util.module_from_spec(check_seed)
     check_seed.loader.exec_module(heldout)
-    with pytest.raises(heldout.Refused, match="seed 59 is already recorded"):
-        heldout.check_seed("59", root / "fixtures" / "score-heldout.json", root / "part5" / "rules.json")
-    assert heldout.recorded_seeds(root / "fixtures" / "score-heldout.json") == [47, 53, 59]
+    with pytest.raises(heldout.Refused, match=f"seed {seed} is already recorded"):
+        heldout.check_seed(str(seed), root / "fixtures" / "score-heldout.json", root / "part5" / "rules.json")
+    assert heldout.recorded_seeds(root / "fixtures" / "score-heldout.json")[-1] == seed
+
+
+@pytest.mark.parametrize("holds", [True, False])
+def test_the_committed_trees_tests_survive_a_recorded_seed_61_attempt_either_way(tmp_path, holds):
+    """AC-V3-12: with the v3 freeze and a seed 61 attempt in the record, whether v3 held or not, the lookups the suite and
+    `make check-5` use still answer: the v3 hash by the freeze, v1's by the 47 and 53 attempts, and a v3 block is refused
+    exactly when the attempt says it did not hold."""
+    root = tree(tmp_path, V3)
+    record = root / "fixtures" / "score-heldout.json"
+    record.write_text(json.dumps(record_after(V3, holds=holds)))
+    assert check.recorded_score_hash(record, V3) == score.params_sha256(v3_block()) and check.recorded_score_hash(record, "simon.score.v1") == V1_SHA
+    if holds:
+        check.require_held(record, V3)
+    else:
+        with pytest.raises(check.CheckError, match="did not hold"):
+            check.require_held(record, V3)
+    with pytest.raises(check.CheckError, match="seed 59 \\(holds false\\)"):   # v2's failed attempt still refuses a v2 block
+        check.require_held(record, V2)
 
 
 # ---------------------------------------------------------------- the make target
@@ -184,6 +233,6 @@ def test_make_score_fallback_is_a_target_that_runs_the_script_and_only_listing_i
     assert out.returncode == 0 and "scripts/make_score_fallback.py" in out.stdout
 
 
-def test_the_script_check_on_this_tree_exits_0_when_it_ships_v2_and_3_when_it_ships_v1():
+def test_the_script_check_on_this_tree_exits_0_when_it_ships_v2_or_v3_and_3_when_it_ships_v1():
     done = subprocess.run(["python3", str(ROOT / "scripts/make_score_fallback.py"), "--check"], capture_output=True, text=True)
-    assert done.returncode == (0 if IS_V2 else 3), done.stderr
+    assert done.returncode == (0 if IS_CAPPED else 3), done.stderr

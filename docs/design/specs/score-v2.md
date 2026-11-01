@@ -221,3 +221,29 @@ files marks a foot fault as not a fault, or a labelled real set exists.
 - `make check-5` is run by the orchestrator once the freeze is recorded (exit 0 on seed 73, detection metrics and
   `detection_sha256` byte-identical).
 - `make score-heldout SEED=59` once, by the orchestrator, after the freeze; the result is published pass or fail.
+
+## Dissent Review
+Reviewed by: the pre-freeze reviewer (reviewer, model: opus), progress/review-20261101-prefreeze-score-v2.md and its two
+rechecks; the stakeholder-proxy rulings of 2026-11-01T05:00Z and 05:45Z.
+Date: 2026-11-01
+
+### Concern 1: judging targets 4 and 5 only on takes that report exactly their labels hides misses
+Challenge: a score that cannot be judged on a missed or extra fault looks better than it is.
+Impact if right: seed 59 passes on a subset while the strict slices miss.
+Mitigation: the strict slice verdicts and the comparability sentence are printed beside the targets; a target with no
+judged take does not hold (fail closed).
+Resolution: ADDRESSED_IN_SPEC
+
+### Concern 2: the floor sits on the rule's boundary (highest exact double 75 on seed 5)
+Challenge: a floor fitted to seed 5's doubles lets milder doubles on another seed grade B.
+Impact if right: target 5 misses on seed 59.
+Mitigation: the rule and its margin were fixed before tuning and no hand nudge was allowed (pre-mortem 1). Outcome: seed 59
+missed target 5 exactly this way (3 of 10 doubles at B), so v2 did not ship and v1 stays; seed 61 is reserved (TICKET-053).
+Resolution: ACCEPTED_RISK
+
+### Concern 3: falling back to v1 is a one-line substitution
+Challenge: tests and goldens pinned to v2 turn red on the fail branch under the deadline.
+Impact if right: a red tree after seed 59 fails.
+Mitigation: `make score-fallback`, version-aware tests (`tests/shipped_score.py`), proven on a throwaway copy before the
+freeze and used for real at bbfe036 (make test 0).
+Resolution: REQUIRES_CHANGE (done)

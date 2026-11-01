@@ -42,7 +42,7 @@ WARNING_TEXT = ("This take doesn't closely match the trainer's movement, so the 
 def test_an_accepted_take_carries_the_schema_version_status_runs_and_guard():
     res = run(str(EXPECTED), str(TAKE))
     a = res.analysis
-    assert a["schema_version"] == "1.10.0"
+    assert a["schema_version"] == "1.11.0"
     assert a["status"] == {"code": "ok", "text": "Compared with the expected movement."}
     assert res.guard is not None and res.guard.ok
     g = a["diagnostics"]["guard"]
@@ -101,7 +101,7 @@ def test_a_take_of_another_movement_is_analysed_with_a_low_match_warning():
     assert a["match"]["limits"] == a["diagnostics"]["guard"]["limits"]
     assert a["diagnostics"]["guard"]["residual"] > a["diagnostics"]["guard"]["limits"]["max_residual"]
     assert all(f["confidence"] == "low" for f in a["faults"])
-    assert a["schema_version"] == "1.10.0"
+    assert a["schema_version"] == "1.11.0"
 
 
 def test_the_guard_limits_come_from_the_rules_passed_in():

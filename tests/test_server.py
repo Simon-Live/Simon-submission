@@ -3,8 +3,12 @@ import gzip
 import http.client
 import json
 import re
+import signal
 import socket
+import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -249,3 +253,45 @@ def test_AC_V11_make_demo_serves_the_page_on_its_own_port_8735():
 
     args = build_parser().parse_args(["serve", "--port", "8735"])
     assert (args.host, args.port, args.base_path) == ("127.0.0.1", 8735, "/")
+
+
+def _start_serve_subprocess():
+    """`python -m part5 serve` on a free 127.0.0.1 port, started once api/health answers: (process, port)."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    proc = subprocess.Popen([sys.executable, "-m", "part5", "serve", "--port", str(port)], cwd=ROOT,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    deadline = time.monotonic() + 30
+    while proc.poll() is None and time.monotonic() < deadline:
+        try:
+            if fetch(port, "GET", "/api/health")[0] == 200:
+                return proc, port
+        except OSError:
+            time.sleep(0.1)
+    proc.kill()
+    _, err = proc.communicate()
+    pytest.fail("part5 serve never answered api/health: " + err)
+
+
+@pytest.mark.parametrize("terms, gap", [(2, 0.05), (400, 0.002)],
+                         ids=["two_terms_50ms_apart", "a_term_every_2ms_until_exit"])
+def test_serve_stops_with_exit_0_and_a_clean_log_on_repeated_sigterm(terms, gap):
+    """A stop through `make demo` can deliver a second SIGTERM while the interpreter shuts down; the handler is
+    one-shot (SIG_IGN after the first), so the second neither raises "Exception ignored ... SystemExit: 0" nor kills the
+    process with -15. The 2 ms burst covers the whole shutdown window; the 50 ms pair is the plain double stop."""
+    proc, _ = _start_serve_subprocess()
+    try:
+        proc.send_signal(signal.SIGTERM)
+        for _ in range(terms - 1):
+            time.sleep(gap)
+            if proc.poll() is not None:
+                break
+            proc.send_signal(signal.SIGTERM)
+        _, err = proc.communicate(timeout=20)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+    assert proc.returncode == 0, err
+    assert "Traceback" not in err and "Exception ignored" not in err, err

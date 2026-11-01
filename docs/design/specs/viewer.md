@@ -136,8 +136,12 @@ on 2026-11-01: the button is 24 px at 390 px before the rule and 44 px after it,
 the preview's field list takes the whole row at phone width (`.field-row dt`, flex basis 100%), so "Why the grade is
 limited" (222 px) is one line on the 316 px row and no longer breaks after "is" (walkthrough review R10); the preview's
 heading "Part 5's preview of its published result contract" is 496 px on one line, so it wraps as any heading that long
-does, and the wide layout keeps its 11rem name column. Checked by `staging/verify.mjs` (the phone drive reads the used
-height of `::file-selector-button` and the lines of that field name) and `tests/staging/test_web_files.py`.
+does, and the wide layout keeps its 11rem name column. The score line "Score: N out of 100, grade G" (`.score` on the
+Compare tab, `.phone-score` on the preview) is set with `text-wrap: balance`, so at 390 px it never leaves the grade letter
+alone on a line (sixth walkthrough frame review R2); the sentence itself is unchanged. Checked by `staging/verify.mjs` (the
+phone drive reads the used height of `::file-selector-button` and the lines of that field name),
+`qa/recipes/compare/phone-width-preview.md` (the words on each line of both score lines) and
+`tests/staging/test_web_files.py`.
 ### AC-V11: `make demo`
 Given `make demo`, the page loads on `http://127.0.0.1:8735/` with the fixtures and the replay works,
 while `scripts/dev.sh` may hold 8725.

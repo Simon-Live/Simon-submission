@@ -1,0 +1,368 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.11.0",
+  "profile": "fitness",
+  "expected": {
+    "path": "fixtures/input/expected/dance/animation.json",
+    "set": "dance",
+    "movement": "step_touch"
+  },
+  "follower": {
+    "path": "fixtures/input/followers/dance/dance_side_good_11_ankle_rolled_in-right/skeleton.json",
+    "take_id": "dance_side_good_11_ankle_rolled_in-right"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [
+    {
+      "measure": "upper_arm_out",
+      "measure_kind": "direction",
+      "joint": "right_shoulder",
+      "body_part": "arms",
+      "side": "right",
+      "direction": "less",
+      "magnitude_deg": -19.3,
+      "peak_deg": -28.8,
+      "threshold_deg": 11.0,
+      "unit": "degrees",
+      "expected_frames": [
+        1,
+        19
+      ],
+      "follower_frames": [
+        12,
+        27
+      ],
+      "runs": [
+        [
+          1,
+          19
+        ]
+      ],
+      "phase": [
+        0.008,
+        0.158
+      ],
+      "coverage": 1.0,
+      "confidence": 1.0,
+      "text": "right arm too close to the body",
+      "cue": "Raise your right arm higher",
+      "cue_kind": "range",
+      "follower_t_s": [
+        0.4,
+        0.9
+      ],
+      "at_s": 0.4,
+      "follower_runs": [
+        [
+          12,
+          27
+        ]
+      ],
+      "lateral": "left",
+      "text_timed": "right arm too far left at 0.4 s",
+      "reps": [
+        0
+      ],
+      "joints": [
+        "right_shoulder"
+      ],
+      "coaching": "right arm too far left at 0.4 s"
+    }
+  ],
+  "diagnostics": {
+    "alignment_residual": 0.3211,
+    "alignment_measures": [
+      "left_knee_flexion",
+      "left_upper_arm_out",
+      "left_upper_arm_forward",
+      "left_forearm_out",
+      "left_thigh_forward",
+      "right_knee_flexion",
+      "right_upper_arm_out",
+      "right_upper_arm_forward",
+      "right_forearm_out",
+      "right_thigh_forward",
+      "shoulder_tilt"
+    ],
+    "follower_span": [
+      3,
+      95
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.3211,
+      "timing_corr": 0.9902,
+      "span_share": 0.8988,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      },
+      "reps": [
+        {
+          "span_s": [
+            0.1,
+            1.567
+          ],
+          "residual": 0.3422,
+          "timing_corr": 0.9919,
+          "ok": true
+        },
+        {
+          "span_s": [
+            1.567,
+            3.167
+          ],
+          "residual": 0.3,
+          "timing_corr": 0.9884,
+          "ok": true
+        }
+      ]
+    },
+    "expected_reference": {
+      "kind": "first_rep",
+      "frames": [
+        0,
+        42
+      ],
+      "span_s": [
+        0.0,
+        1.4
+      ],
+      "expected_reps": 2,
+      "follower_reps": 2,
+      "measure": "left_upper_arm_forward"
+    },
+    "near_misses": {
+      "total": 4,
+      "omitted": 0,
+      "items": [
+        {
+          "measure": "elbow_flexion",
+          "side": "right",
+          "joint": "right_elbow",
+          "body_part": "arms",
+          "direction": "more",
+          "magnitude_deg": 22.1,
+          "peak_deg": 22.1,
+          "threshold_deg": 20.0,
+          "expected_frames": [
+            3,
+            6
+          ],
+          "follower_frames": [
+            13,
+            17
+          ],
+          "frames_over": 4,
+          "counted_frames": 4,
+          "needed_frames": 16,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 12,
+          "reps": [
+            0
+          ]
+        },
+        {
+          "measure": "forearm_out",
+          "side": "right",
+          "joint": "right_elbow",
+          "body_part": "arms",
+          "direction": "more",
+          "magnitude_deg": 18.7,
+          "peak_deg": 19.0,
+          "threshold_deg": 17.0,
+          "expected_frames": [
+            0,
+            4
+          ],
+          "follower_frames": [
+            11,
+            15
+          ],
+          "frames_over": 5,
+          "counted_frames": 5,
+          "needed_frames": 16,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 11,
+          "reps": [
+            0,
+            1
+          ]
+        },
+        {
+          "measure": "upper_arm_out",
+          "side": "right",
+          "joint": "right_shoulder",
+          "body_part": "arms",
+          "direction": "more",
+          "magnitude_deg": 15.9,
+          "peak_deg": 17.2,
+          "threshold_deg": 11.0,
+          "expected_frames": [
+            33,
+            42
+          ],
+          "follower_frames": [
+            39,
+            47
+          ],
+          "frames_over": 10,
+          "counted_frames": 10,
+          "needed_frames": 16,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 6,
+          "reps": [
+            0
+          ]
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "right",
+          "joint": "right_knee",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 11.0,
+          "peak_deg": 11.0,
+          "threshold_deg": 10.0,
+          "expected_frames": [
+            70,
+            72
+          ],
+          "follower_frames": [
+            71,
+            73
+          ],
+          "frames_over": 3,
+          "counted_frames": 0,
+          "needed_frames": 23,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 23,
+          "reps": [
+            1
+          ]
+        }
+      ]
+    }
+  },
+  "insights": [
+    {
+      "cue": "Raise your right arm higher",
+      "why": "Right arm too far left at 0.4 s (1 of 2 reps)",
+      "kind": "range",
+      "at_s": 0.4,
+      "window": 0,
+      "points": 5.5,
+      "measure": "upper_arm_out",
+      "side": "right",
+      "joint": "right_shoulder"
+    }
+  ],
+  "phrasing": {
+    "requested": "template",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "lang": "en",
+    "faults": [
+      {
+        "backend": "template",
+        "model": null,
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "right arm too far left at 0.4 s"
+      }
+    ],
+    "selected_by": "default"
+  },
+  "score": {
+    "version": "simon.score.v3",
+    "value": 89,
+    "grade": "B",
+    "components": {
+      "faults": 5.53,
+      "similarity": 0.13
+    },
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
+    "basis": "reps",
+    "timeline": [
+      {
+        "t_s": [
+          0.1,
+          1.567
+        ],
+        "value": 89,
+        "grade": "B",
+        "components": {
+          "faults": 11.06,
+          "similarity": 0.25
+        },
+        "misses": [
+          {
+            "text": "right arm too far left at 0.4 s",
+            "measure": "upper_arm_out",
+            "side": "right",
+            "joint": "right_shoulder",
+            "t_s": [
+              0.4,
+              0.9
+            ],
+            "at_s": 0.4,
+            "points": 11.1,
+            "cue": "Raise your right arm higher",
+            "cue_kind": "range",
+            "direction": "less"
+          }
+        ],
+        "tempo": {
+          "ratio": 1.05,
+          "cue": null
+        },
+        "compared": true
+      },
+      {
+        "t_s": [
+          1.567,
+          3.167
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.0
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": 0.8,
+          "cue": "Slow down to match the trainer"
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.92,
+      "cue": null
+    },
+    "fault_cap": 89,
+    "uncapped": {
+      "value": 94,
+      "grade": "A"
+    },
+    "per_rep": [
+      {
+        "value": 89,
+        "grade": "B"
+      },
+      {
+        "value": 100,
+        "grade": "A"
+      }
+    ]
+  }
+}

@@ -206,3 +206,27 @@ three profiles):
 - A far foot with a real fault is not found when it jitters above the limit; on seed 5 that is nothing at good light.
 - Which foot was hidden is visible only as the missing names in `diagnostics.feet.<clip>.usable` and `compared`; the schema,
   its version and the shape of `diagnostics.feet` are unchanged.
+
+## Dissent Review
+Reviewed by: the pre-freeze reviewer (reviewer, model: opus), progress/review-20261101-prefreeze-attempt5.md; TICKET-051.
+Date: 2026-11-01
+
+### Concern 1: a quick real foot movement reads as jitter
+Challenge: the median absolute frame-to-frame change cannot tell a fast real movement from noise.
+Impact if right: a real foot fault in a fast movement is hidden.
+Mitigation: recorded as a limit and pinned by a test; the median absolute second difference is named as the candidate for
+a later held-out family; on seed 5 good light nothing real is lost.
+Resolution: ACCEPTED_RISK
+
+### Concern 2: the statistic depends on the frame rate and on duplicated frames
+Challenge: at a low frame rate a steady foot moves more per frame; duplicated frames pull the median down.
+Impact if right: the same foot is read at one frame rate and hidden at another.
+Mitigation: recorded with Concern 1 in ADR-0015 Amendment 4; held-out seeds 71 and 73 passed with it.
+Resolution: ACCEPTED_RISK
+
+### Concern 3: a hidden far foot is not visible to the reader
+Challenge: a reader cannot tell a measured foot with no fault from a foot that was not read.
+Impact if right: "no foot fault" is read as "the foot was fine".
+Mitigation: `diagnostics.feet.<clip>.usable` and `compared` name what was read, and the why_not message names both causes
+(TICKET-051).
+Resolution: ADDRESSED_IN_SPEC

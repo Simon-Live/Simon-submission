@@ -5,7 +5,7 @@ from pathlib import Path
 from part5 import score, score_report
 from part5.detect import load_rules
 from part5.evaluate import match_pairs
-from shipped_score import IS_V2
+from shipped_score import IS_CAPPED
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -119,7 +119,7 @@ def test_every_good_light_single_fault_take_outside_b_or_c_has_a_cause_the_spec_
             outside.append((t["take_id"], block["grade"], missed, partial, bool(result.analysis["faults"])))
     assert sorted(missed_takes) == ["dance_side_good_11_ankle_rolled_in-right",
                                     "exercise_front_good_12_ankle_rolled_out-both"], missed_takes   # the two missed foot faults
-    if IS_V2:   # nothing reported, nothing to cap
+    if IS_CAPPED:   # nothing reported, nothing to cap
         assert outside == [("exercise_front_good_12_ankle_rolled_out-both", "A", 1, False, False)], outside
     else:       # simon.score.v1: the two missed faults and the four found in one rep of two
         assert all(missed >= 1 or partial for _, _, missed, partial, _ in outside), outside

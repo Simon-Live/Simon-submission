@@ -120,3 +120,24 @@ def seed5():
     from part5 import profiles_report   # here and not at the top, so a test that never asks for it does not import it
     labels = profiles_report.tuning_labels()
     return {name: profiles_report.run_profile(labels, name)[0] for name in PROFILE_NAMES}, labels
+
+
+@pytest.fixture(scope="session")
+def seed5_scored():
+    """`(labels, the shipped rules, [(take, PipelineResult)])`: seed 5 through the pipeline once per session, for the score tests
+    of tests/test_score_v2.py and tests/test_score_v3.py (the results are only read). Not `seed5` above, which holds the
+    profiles' analyses."""
+    from shipped_score import seed5_run   # lazily, like `seed5`: a test that never asks for it does not run the pipeline
+    return seed5_run()
+
+
+@pytest.fixture
+def report_as(monkeypatch):
+    """`report_as(rules_fn)`: `score_report.main` reads the rules `rules_fn()` returns, whichever score the tree ships, with the
+    sweep (run elsewhere) left out. One fixture for the v2 and the v3 reports (tests/shipped_score.py has `v2_rules`, `v3_rules`)."""
+    from part5 import score_report
+
+    def apply(rules_fn):
+        monkeypatch.setattr(score_report, "load_rules", rules_fn)
+        monkeypatch.setattr(score_report, "_sweep_failures", lambda: [])
+    return apply

@@ -84,8 +84,9 @@ heldout-data:
 # Held-out score report for one seed (docs/specs/journey-followup.md AC-S05, ADR-0007): generates the set under
 # out/score-heldout/seed-<SEED>/ and prints the per-slice score distribution and target verdicts. SEED is required.
 # A seed already recorded in fixtures/score-heldout.json is retired and refused (exit 2); record a new run by hand.
-# Score v2 (ADR-0018): SEED=59 is refused (exit 2) until fixtures/score-heldout.json lists a simon.score.v2 freeze whose
-# params_sha256 is the shipped score block's (the orchestrator records it at the freeze); SEED=61 is reserved and refused.
+# Score v3 (ADR-0019): SEED=61 is refused (exit 2) until fixtures/score-heldout.json lists exactly one simon.score.v3
+# freeze whose params_sha256 is the shipped score block's (the orchestrator records it at the freeze), and then runs once;
+# SEED=59 was v2's (ADR-0018) and is recorded, so retired.
 score-heldout:
 	@case "$(SEED)" in \
 	  "") echo "score-heldout: SEED is required: make score-heldout SEED=<seed>" >&2; exit 2 ;; \
@@ -93,10 +94,10 @@ score-heldout:
 	esac
 	@uv run python scripts/make_score_heldout.py $(SEED)
 
-# Go back to simon.score.v1 (ADR-0018 "Reversal"; the recipe for "v2 failed on seed 59"): the score section of
-# part5/rules.json becomes its frozen v1 block, the v2 sample is removed and the goldens and the fitness baseline are
-# written again. `python3 scripts/make_score_fallback.py --check` says whether the tree can go back; `--root DIR` rolls
-# back a copy. Run it only on the decision; the result of seed 59 is published by hand.
+# Go back to simon.score.v1 (ADR-0018, ADR-0019 "Reversal"; the recipe for "v2 failed on seed 59" and "v3 failed on seed
+# 61"): the score section of part5/rules.json becomes its frozen v1 block, the v2 and v3 samples are removed and the
+# goldens and the fitness baseline are written again. `python3 scripts/make_score_fallback.py --check` says whether the
+# tree can go back; `--root DIR` rolls back a copy. Run it only on the decision; the result of the seed is published by hand.
 .PHONY: score-fallback
 score-fallback:
 	@uv run python scripts/make_score_fallback.py

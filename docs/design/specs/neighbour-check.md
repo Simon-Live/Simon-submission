@@ -12,6 +12,10 @@ Revised 2026-11-01 for TICKET-040 (ADR-0015): `part5 doctor` accepts a Part 2 `p
 side input (exit 0, a feet file summary), so the doctor step on Part 2's own file expects exit 0 and that summary, not
 the rejection (exit 1) it expected before. The first run after the change (run 1 of 2026-11-01) recorded the 8
 doctor steps red against the old expectation; that record stays as measured.
+Revised 2026-11-01 for TICKET-058 (delivery review residual): every step id of a record is unique. Part 2's `single` and
+`scored/single` are two clips with one folder name, so runs 1 and 2 of that day recorded `doctor-pose3d-single`,
+`part3-run-single` and `doctor-part3-single` twice (steps 8 to 10 and 23 to 25). The scored set now has its own prefix
+(AC-N07). Runs 1 and 2 stay as measured, with the repeated ids; run 3 is the first record with unique ids.
 
 ## Overview
 A firm-only script that clones the current upstream `main` of Parts 2, 3 and 4 into a temporary
@@ -36,7 +40,11 @@ As the team at stitching time, I see whether today's Parts 2, 3 and 4 files go t
 1. Clone `moalborati/simon-part-2-images-to-3d`, `moalborati/simon-part-3-skeleton-consistency` and
    `moalborati/simon-part-4-animate-keyframes`, and read `moalborati/simon-part-6-recording-catalog` `CONTRACT.md`
    (shallow `git clone`; names confirmed with `gh repo list the team` on 2026-10-28). Record each commit.
-2. For each committed Part 2 `pose3d.json` (single, class, dance, `scored/single` and every `stock/<clip>`), two steps.
+2. For each committed Part 2 `pose3d.json` (single, class, dance, `scored/single` and every `stock/<clip>`), two steps
+   (`doctor-pose3d-<tag>`, `part3-run-<tag>`; step 3 adds `doctor-part3-<tag>`). `<tag>` is the clip's folder name
+   (`single`, `class`, `dance`, a stock clip's name) and, for the scored set, `scored-<clip>`: the ids
+   `doctor-pose3d-scored-single`, `part3-run-scored-single` and `doctor-part3-scored-single` keep `scored/single` apart
+   from `single`, so no two steps of a record share an id (AC-N07).
    First `python -m part5 doctor <pose3d.json> --for part5`. Since TICKET-040 the doctor accepts the file as the optional
    feet side input (ADR-0015; `part5/doctor.py` `_for_part5_pose3d`, `integration-contract.md` AC-C11), so the step
    passes only on exit 0 and an output that holds the kind line `part2.pose3d (Part 2); accepted for part5`, one note
@@ -92,7 +100,7 @@ step met its expectation, 1 when any step is red, 3 on a named blocker (network,
 
 Records and the newest one. The script writes the file of the current UTC date and overwrites it, so a second run on
 one date keeps the first by renaming it to `progress/neighbour-check-<YYYYMMDD>-run<N>.json` before the rerun (as
-`neighbour-check-20261101-run1.json` is). The newest record is the file whose name sorts last in the C locale
+`neighbour-check-20261101-run1.json` and `-run2.json` are; the unsuffixed 2026-11-01 file is run 3). The newest record is the file whose name sorts last in the C locale
 (`ls progress/neighbour-check-*.json | LC_ALL=C sort | tail -n 1`): the date is the sort key, and on one date the
 unsuffixed `<YYYYMMDD>.json` (the latest run of the day) sorts after every `-run<N>` copy, because `-` sorts before
 `.`. The QA recipe `neighbour-check-record` and `tests/neighbour/test_neighbour_check.py` read the newest record by that rule.
@@ -117,11 +125,19 @@ and its output holds the kind line, the feet file summary note and the validator
 summary is kept in the step's note. Exit 1 (the rejection of before TICKET-040) is red, and so is exit 0 without
 one of those lines (the step then records exit 4 and names the missing line).
 
+### AC-N07: every step id is unique
+Given a run, no two steps of the record share an `id`. Given Part 2's `single` and `scored/single`, the second set's
+steps are `doctor-pose3d-scored-single`, `part3-run-scored-single` and `doctor-part3-scored-single`. A script that
+would write a repeated id still writes the record, names the id on stderr (`neighbour-check: step id repeated: <id>`) and
+exits 1. Runs 1 and 2 of 2026-11-01 predate this and keep their repeated ids as measured; the record the QA recipes and
+`tests/neighbour/test_neighbour_check.py` read (the newest) has none.
+
 ## Error Cases
 | Condition | Behavior | Message format | AC |
 |---|---|---|---|
 | Clone fails | exit 3 | `neighbour-check: blocker: cannot clone <repo>` | AC-N04 |
 | Part 3 run fails | step red, continue | `step <n>: exit <code>` | AC-N02 |
+| A step id repeats | record written, exit 1 | `neighbour-check: step id repeated: <id>` | AC-N07 |
 
 ## Edge Cases
 - Part 2 adds new output folders: every committed `pose3d.json` is included and named.
