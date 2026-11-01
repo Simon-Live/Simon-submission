@@ -5,8 +5,8 @@ body { background: var(--backdrop); background-attachment: fixed; background-ble
 body::before, body::after { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; }
 body::before {
   background: radial-gradient(circle, var(--color-pink-dot) 0 1.7px, transparent 2.2px) 0 0 / var(--halftone-back-size) var(--halftone-back-size);
-  -webkit-mask-image: radial-gradient(ellipse 30% 28% at 100% 0%, var(--mask-on) 0%, transparent 72%), radial-gradient(ellipse 26% 26% at 0% 100%, var(--mask-on) 0%, transparent 70%);
-  mask-image: radial-gradient(ellipse 30% 28% at 100% 0%, var(--mask-on) 0%, transparent 72%), radial-gradient(ellipse 26% 26% at 0% 100%, var(--mask-on) 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 26% 40% at 100% 30%, var(--mask-on) 0%, transparent 72%), radial-gradient(ellipse 24% 40% at 0% 68%, var(--mask-on) 0%, transparent 70%);
+  mask-image: radial-gradient(ellipse 26% 40% at 100% 30%, var(--mask-on) 0%, transparent 72%), radial-gradient(ellipse 24% 40% at 0% 68%, var(--mask-on) 0%, transparent 70%);
 }
 body::after {
   background: radial-gradient(circle, var(--color-lime-dot) 0 1.3px, transparent 1.8px) 0 0 / var(--halftone-lime-size) var(--halftone-lime-size);
@@ -61,3 +61,9 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 .brand .logo-head { height: 40px; width: auto; }
 .splash-tag { color: var(--color-text); font-size: var(--text-md); }
 @media (prefers-reduced-motion: reduce) { .splash { transition: none; } }
+
+/* the content column sits on a soft dark veil, so text placed straight on the page stays readable over the chalk;
+   the veil fades out at both sides and the chalk stays dense in the margins (brand design 2026-11-01) */
+main#app { position: relative; }
+main#app::before { content: ""; position: absolute; top: 0; bottom: 0; left: -64px; right: -64px; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0, var(--color-content-veil) 64px, var(--color-content-veil) calc(100% - 64px), transparent 100%); }
