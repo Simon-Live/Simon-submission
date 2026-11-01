@@ -2,6 +2,7 @@
 // where known, an estimate). createProgress is the bar with text and elapsed time; showLoading and
 // hideLoading are the spinner and skeleton for screens that load JSON or 3D.
 import { h, mmss, ensureCss } from "./ui.js";
+import { pawTrail } from "./views/paw-loader.js";
 
 /** Typical seconds per job stage [low, high], from app.md and the processor timings. api/config may override. */
 export const TYPICAL_S = {
@@ -68,7 +69,7 @@ export function showLoading(root, text = "Loading", { compact = false } = {}) {
   let box = root.querySelector(":scope > .pg-loading");
   if (!box) {
     box = h("div", { class: `pg-loading${compact ? " compact" : ""}`, "data-testid": "loading" },
-      h("span", { class: "pg-spinner", "aria-hidden": "true" }),
+      compact ? h("span", { class: "pg-spinner", "aria-hidden": "true" }) : pawTrail(), // brand: paw prints walk in place of the spinner
       h("span", { class: "pg-loading-text", role: "status", "aria-live": "polite" }),
       compact ? null : h("span", { class: "pg-skel", "aria-hidden": "true" }, h("i"), h("i"), h("i")));
     root.append(box);

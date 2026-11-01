@@ -1,0 +1,37 @@
+/* Loading: a trail of paw prints that walks across, one step at a time (views/paw-loader.js). Tokens only. */
+.paw-loading { display: grid; justify-items: center; align-content: center; gap: var(--space-4); padding: var(--space-6) var(--space-4); color: var(--color-text-muted); }
+.paw-loading.boot { min-height: 60vh; }
+.paw-loading-text { font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
+
+/* six prints, walking right; left and right feet alternate above and below the line */
+.paw-trail { display: flex; align-items: center; gap: var(--space-2); height: 64px; }
+.paw-trail i {
+  display: block; width: 26px; height: 26px; flex: none;
+  background: var(--color-accent);
+  -webkit-mask: var(--paw-mask) center / contain no-repeat; mask: var(--paw-mask) center / contain no-repeat;
+  transform: rotate(90deg) translateX(calc(var(--side, 1) * 10px));
+  opacity: 0;
+  animation: paw-step calc(var(--paw-step-ms) * 8) steps(1, end) infinite;
+  animation-delay: calc(var(--paw-step-ms) * var(--n, 0));
+}
+.paw-trail i:nth-child(odd) { --side: -1; }
+.paw-trail i:nth-child(1) { --n: 0; } .paw-trail i:nth-child(2) { --n: 1; } .paw-trail i:nth-child(3) { --n: 2; }
+.paw-trail i:nth-child(4) { --n: 3; } .paw-trail i:nth-child(5) { --n: 4; } .paw-trail i:nth-child(6) { --n: 5; }
+/* a print lands, stays while the next few land, then fades as the trail moves on */
+@keyframes paw-step {
+  0% { opacity: 1; }
+  40% { opacity: 0.55; }
+  62% { opacity: 0.2; }
+  75%, 100% { opacity: 0; }
+}
+/* the first load gets bigger prints */
+.paw-loading.boot .paw-trail { height: 84px; gap: var(--space-3); }
+.paw-loading.boot .paw-trail i { width: 36px; height: 36px; transform: rotate(90deg) translateX(calc(var(--side, 1) * 14px)); }
+/* small: the inline trail that replaces the spinner beside a short status line */
+.paw-trail.small { height: 28px; gap: 2px; }
+.paw-trail.small i { width: 14px; height: 14px; transform: rotate(90deg) translateX(calc(var(--side, 1) * 5px)); }
+
+@media (prefers-reduced-motion: reduce) {
+  /* a still trail, fading toward the front, so the screen still says "on its way" */
+  .paw-trail i { animation: none; opacity: calc(0.25 + var(--n, 0) * 0.15); }
+}
