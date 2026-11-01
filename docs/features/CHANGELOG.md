@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-31 offline takes
+
+A camera take is saved on the device as soon as it is trimmed, sent by itself when the app is back, and deleted once the
+server accepts the job (202). Adds `#/pending`, a header banner, `Idempotency-Key` on uploads and the three job routes, and
+an in-tab Try again. Additive; no shared file or other part is affected. Known limits: the app has to be open to send,
+Safari may evict stored data, saved takes expire after 7 days. Details: [2026-10-31-offline-takes.md](2026-10-31-offline-takes.md).
+
 ## 2026-10-31 video quality feedback (Part 7)
 
 Tips before recording (dark, backlit, washed out, blurry, camera moving, busy background), a "Tips for your next take"

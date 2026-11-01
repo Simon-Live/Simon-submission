@@ -8,11 +8,17 @@ const MESSAGES = {
 const OFFLINE = "The app could not be reached. Check your connection and try again.";
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  /** `detail` is the server's own sentence (not the on-screen text); the offline-takes retry sorts failures with it. */
+  constructor(status, message, detail = "") {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
+
+/** The header that makes a repeated create call safe (part7/idempotency.py). */
+export const IDEMPOTENCY_HEADER = "Idempotency-Key";
+const keyHeader = (key) => (key ? { [IDEMPOTENCY_HEADER]: key } : {});
 
 /** The on-screen text for a failed response, from app.md "Error Cases". */
 export function messageFor(status, body) {
@@ -48,7 +54,7 @@ async function request(url, init) {
     throw new ApiError(0, OFFLINE);
   }
   const body = await parse(res);
-  if (!res.ok) throw new ApiError(res.status, messageFor(res.status, body));
+  if (!res.ok) throw new ApiError(res.status, messageFor(res.status, body), body && typeof body.error === "string" ? body.error : "");
   return body;
 }
 
@@ -113,9 +119,9 @@ export function clientLog(level, event, detail = {}) {
   } catch { /* logging must never break the screen */ }
 }
 
-const postJSON = (url, data) => request(url, {
+const postJSON = (url, data, key) => request(url, {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: { "Content-Type": "application/json", ...keyHeader(key) },
   body: JSON.stringify(data),
 });
 
@@ -153,21 +159,24 @@ export const getReplay = (job, pid) => request(resultUrl(job, "replay.json", pid
  * POST api/uploads with the raw blob; resolves {upload_id, duration_ms, width, height}.
  * `onProgress(loaded, total)` reports the bytes sent (XHR upload.onprogress).
  */
-export function uploadVideo(blob, { onProgress } = {}) {
+export function uploadVideo(blob, { onProgress, key } = {}) {
   const type = (blob.type || "").split(";")[0] || "video/mp4";
   if (typeof onProgress !== "function" || typeof XMLHttpRequest === "undefined") {
-    return request("api/uploads", { method: "POST", headers: { "Content-Type": type }, body: blob });
+    return request("api/uploads", { method: "POST", headers: { "Content-Type": type, ...keyHeader(key) }, body: blob });
   }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "api/uploads");
     xhr.setRequestHeader("Content-Type", type);
+    if (key) xhr.setRequestHeader(IDEMPOTENCY_HEADER, key);
     xhr.upload.onprogress = (e) => onProgress(e.loaded, e.lengthComputable ? e.total : blob.size);
     xhr.onerror = () => reject(new ApiError(0, OFFLINE));
+    xhr.onabort = () => reject(new ApiError(0, OFFLINE));
+    xhr.ontimeout = () => reject(new ApiError(0, OFFLINE));
     xhr.onload = () => {
       let body = null;
       try { body = JSON.parse(xhr.responseText); } catch { body = null; }
-      if (xhr.status >= 200 && xhr.status < 300) { onProgress(blob.size, blob.size); resolve(body); } else reject(new ApiError(xhr.status, messageFor(xhr.status, body)));
+      if (xhr.status >= 200 && xhr.status < 300) { onProgress(blob.size, blob.size); resolve(body); } else reject(new ApiError(xhr.status, messageFor(xhr.status, body), body && typeof body.error === "string" ? body.error : ""));
     };
     xhr.send(blob);
   });
@@ -177,12 +186,21 @@ export function uploadVideo(blob, { onProgress } = {}) {
 const extras = (trim, labels, person) => ({
   ...(trim ? { trim } : {}), ...(labels ? { labels } : {}), ...(person ? { people_job: person.people_job, person_id: person.person_id } : {}),
 });
-export const createTrainerJob = (upload_id, name, category, trim, labels, person) =>
-  postJSON("api/trainer", { upload_id, name, category, ...extras(trim, labels, person) });
+// The last argument of each create call is the take's id, sent as Idempotency-Key (offline-takes.md).
+export const createTrainerJob = (upload_id, name, category, trim, labels, person, key) =>
+  postJSON("api/trainer", { upload_id, name, category, ...extras(trim, labels, person) }, key);
 // practice-and-modes.md: `more` is {mode?, section?}
-export const createFollowJob = (upload_id, entry_id, trim, labels, person, more) =>
-  postJSON("api/follow", { upload_id, entry_id, ...extras(trim, labels, person), ...(more || {}) });
+export const createFollowJob = (upload_id, entry_id, trim, labels, person, more, key) =>
+  postJSON("api/follow", { upload_id, entry_id, ...extras(trim, labels, person), ...(more || {}) }, key);
 /** POST api/people: finds everyone in the trimmed clip; the picker polls the job. */
 export const createPeopleJob = (upload_id, trim) => postJSON("api/people", { upload_id, ...(trim ? { trim } : {}) });
 /** POST api/group: {upload_id, trim, people_job, trainer_id, follower_ids, name, category, labels, save_entry}. */
-export const createGroupJob = (body) => postJSON("api/group", body);
+export const createGroupJob = (body, key) => postJSON("api/group", body, key);
+
+/** Send the request `buildSubmit` built (take-request.js), with the take's id as the Idempotency-Key. */
+export function submitJob(req, key) {
+  const a = req.args;
+  if (req.kind === "trainer") return createTrainerJob(a[0], a[1], a[2], a[3], a[4], a[5], key);
+  if (req.kind === "follow") return createFollowJob(a[0], a[1], a[2], a[3], a[4], a[5], key);
+  return createGroupJob(a[0], key);
+}

@@ -106,6 +106,13 @@ export function mountLabels(root) {
   draw();
 
   return {
+    /** Fill the form from saved labels {tags, notes} (a resumed take). */
+    set: (v) => {
+      tags.length = 0;
+      for (const t of (v && Array.isArray(v.tags) ? v.tags : []).slice(0, MAX_TAGS)) tags.push(t);
+      notes.value = String((v && v.notes) || "").slice(0, MAX_NOTES);
+      draw();
+    },
     value: () => {
       const r = parseTag(input.value);
       const pending = r.tag && !tags.includes(r.tag) && tags.length < MAX_TAGS ? [r.tag] : [];
