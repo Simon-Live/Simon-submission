@@ -20,3 +20,8 @@
 .lib-use { min-height: var(--target-min); font-size: var(--text-sm); }
 .lib-empty { color: var(--color-text-muted); font-size: var(--text-sm); }
 .lib-foot { margin: var(--space-6) 0 var(--space-2); text-align: center; color: var(--color-text-muted); font-size: var(--text-xs); }
+
+/* Part 6's sample thumbnails draw the skeleton in their own colors: tint them to the brand (lime lines on dark) */
+.lib-thumb { position: relative; isolation: isolate; }
+.lib-thumb img { filter: grayscale(1) brightness(1.35) contrast(1.15); }
+.lib-thumb:has(img)::after { content: ""; position: absolute; inset: 0; background: var(--color-accent); mix-blend-mode: multiply; pointer-events: none; border-radius: inherit; }

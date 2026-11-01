@@ -4,10 +4,13 @@ import { KINDS, KIND_LABEL, currentKind, setKind, onKindChange } from "./model/k
 import { takeSplash, SPLASH_TEXT, SPLASH_MS } from "./model/splash.js";
 import { renderKindSwitch } from "./views/kind-switch.js";
 import { renderSplash } from "./views/splash.js";
+import { logoHead } from "./views/logo.js";
 
 export function mountShell({ switchHost, body = document.body }) {
   const sw = renderKindSwitch(switchHost, KINDS.map((key) => ({ key, label: KIND_LABEL[key] })), (key) => setKind(key));
   sw.setActive(currentKind());
   onKindChange((kind) => sw.setActive(kind));
   if (takeSplash()) renderSplash(body, SPLASH_TEXT, SPLASH_MS);
+  const brand = document.querySelector(".brand");
+  if (brand && !brand.querySelector(".logo-head")) brand.prepend(logoHead("logo-head"));
 }

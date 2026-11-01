@@ -12,3 +12,62 @@ body .ch-badge { background: var(--color-accent-soft); color: var(--color-accent
 body .ch-grade[data-grade="C"] { background: var(--color-warn-soft); color: var(--color-warn); }
 body .ch-grade[data-grade="D"] { background: var(--color-bad-soft); color: var(--color-bad); }
 body .ch-tag { background: var(--color-warn-soft); color: var(--color-warn); }
+
+/* header: the head mark alone on phones, so the switch and Record fit */
+@media (max-width: 480px) { .brand .brand-word { display: none; } }
+
+/* app-wide: primary buttons are lime, hover stays on brand */
+body .btn.primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+body .btn.primary:hover { background: var(--color-accent); filter: brightness(1.08); }
+body .bar { background: var(--color-scrim); }
+
+/* capture (Record and Follow): a rounded camera frame on the media surface, accent actions, the alert recording dot */
+body .cam { background: var(--color-media-bg); border-radius: var(--radius-lg); border: 1px solid var(--color-line); }
+body .cam video, body .trainer, body .trim-stage, body .trim-video { background: var(--color-media-bg); }
+body .trainer, body .trim-stage { border-radius: var(--radius-lg); }
+body .cam-text { color: var(--color-text-muted); }
+body .cam-empty .btn.primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+body .cam[data-state="recording"]::after { background: var(--color-bad); box-shadow: 0 0 0 4px var(--color-bad-soft); }
+body [data-testid="cam-start"] { min-height: var(--button-height); padding: 0 var(--space-6); border-radius: var(--radius-pill); font-weight: var(--weight-bold); }
+body .trim-mask { background: var(--color-scrim); }
+body .trim-handle, body .trim-playhead { background: var(--color-accent); }
+
+/* countdown overlay (countdown.js) */
+body .rc-over { background: var(--color-scrim-light); color: var(--color-on-media); }
+body .rc-over .btn { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+body .rc-rec { background: var(--color-scrim); color: var(--color-on-media); }
+
+/* reference video panel (reference.css) */
+body .ref, body .ref-stage, body .ref-media { background: var(--color-media-bg); }
+body .ref { border-radius: var(--radius-lg); }
+body .ref-bar { background: var(--color-surface); }
+
+/* people picker and group board (people.css) */
+body .pp, body .pp-board-screen { --pp-accent: var(--color-accent); --pp-ok: var(--color-good); --pp-warn: var(--color-warn); }
+body .pp-seg-btn[aria-pressed="true"] { background: var(--color-accent); color: var(--color-on-accent); box-shadow: none; }
+body .pp-frame-wrap { background: var(--color-media-bg); border-radius: var(--radius-lg); }
+body .pp-item[data-role="trainer"] .pp-card { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent) inset; background: var(--color-accent-soft); }
+body .pp-num { background: var(--color-accent); color: var(--color-on-accent); }
+body .pp-quality-chip, body .pp-warn { background: var(--color-warn-soft); color: var(--color-warn); }
+body .pp-badge[aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-on-accent); }
+body .pp-row:hover { border-color: var(--color-text-muted); }
+body .pp-grade[data-grade="C"] { background: var(--color-warn-soft); color: var(--color-warn); }
+body .pp-grade[data-grade="D"] { background: var(--color-bad-soft); color: var(--color-bad); }
+body .pp-toggle[aria-pressed="false"] i { box-shadow: 0 0 0 2px var(--color-text-muted) inset; }
+body *:focus-visible { outline-color: var(--color-accent); }
+
+/* loading chip over a strip */
+body .pg-loading.compact { background: var(--color-scrim); }
+
+/* result screen leftovers (result.css, breakdown.css) */
+body .sr-stage { background: radial-gradient(120% 90% at 50% 0%, var(--color-raised) 0%, var(--color-bg) 70%); }
+body .sr-btn:hover, body .sr-insight:hover { background: var(--color-raised); }
+body .sr-play, body .sr-mode[aria-pressed="true"] { color: var(--color-on-accent); }
+body .sr-play:hover { background: var(--color-accent); filter: brightness(1.08); }
+body .sr-chip { color: var(--color-on-accent); }
+body .sr-marker { background: var(--color-text); }
+body .sr-legend li { background: var(--color-scrim); }
+body .sr-video-frame { background: var(--color-media-bg); }
+body .sb-chip-dragging { background: var(--color-warn-soft); color: var(--color-warn); }
+body .rc-digit { color: var(--color-accent); }
+.brand { min-width: var(--target-min); min-height: var(--target-min); justify-content: center; }

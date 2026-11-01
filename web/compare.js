@@ -4,12 +4,13 @@
 // without WebGL still gets the rest of the screen.
 import { el } from "./score.js";
 import { clientLog } from "./api.js";
+import { tokenHex } from "./theme-colors.js";
 
 export const MSG_NO_WEBGL = "3D view is not available in this browser.";
 export const MSG_BAD_REPLAY = "The replay file could not be read.";
 export const MSG_NO_ANIMATION = "This movement has no 3D animation yet.";
-export const TRAINER_COLOR = 0x8aa4ff;
-export const YOU_COLOR = 0x3ddc97;
+export const TRAINER_COLOR = tokenHex("--3d-trainer", 0x8aa4ff); // brand: theme/tokens.css
+export const YOU_COLOR = tokenHex("--3d-you", 0x3ddc97);
 
 // ---- body ----------------------------------------------------------------------------------
 

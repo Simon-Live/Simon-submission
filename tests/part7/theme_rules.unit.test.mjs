@@ -34,3 +34,11 @@ test("view modules fetch nothing and store nothing", () => {
     assert.doesNotMatch(read(f), /\bfetch\(|localStorage|sessionStorage|from "\.\.\/api\.js"|from "\.\.\/model\//, `${f} holds logic`);
   }
 });
+
+test("the favicon repeats the accent and background tokens exactly (a file cannot read CSS variables)", () => {
+  const tokens = fs.readFileSync(path.join(web, "theme/tokens.css"), "utf8");
+  const val = (name) => tokens.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`))[1].toLowerCase();
+  const fav = fs.readFileSync(path.join(web, "favicon.svg"), "utf8").toLowerCase();
+  const used = new Set(fav.match(/#[0-9a-f]{6}/g));
+  assert.deepEqual([...used].sort(), [val("palette-black"), val("palette-lime")].sort());
+});

@@ -36,6 +36,10 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
   transition: opacity var(--splash-fade) ease; }
 .splash[data-done="true"] { opacity: 0; pointer-events: none; }
 .splash-inner { display: grid; justify-items: center; gap: var(--space-3); }
-.splash-word { font: var(--weight-black) var(--text-display)/1 var(--font-sans); letter-spacing: -0.04em; color: var(--color-accent); }
+/* the mark: the golden over the simon sign (views/logo.js); lines take the accent, knockouts the surface behind */
+.logo-sign, .logo-head { display: block; color: var(--color-accent); --logo-cut: var(--color-bg); }
+.splash-mark .logo-sign { width: min(64vw, 280px); height: auto; }
+.brand { display: inline-flex; align-items: center; gap: var(--space-2); text-decoration: none; }
+.brand .logo-head { height: 30px; width: auto; }
 .splash-tag { color: var(--color-text); font-size: var(--text-md); }
 @media (prefers-reduced-motion: reduce) { .splash { transition: none; } }

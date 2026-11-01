@@ -2,6 +2,7 @@
 // One scene, one perspective camera and one orbit state shared by every figure. Drag orbits,
 // pinch or wheel zooms. No dependency on another part; three@0.170.0 is vendored in web/vendor.
 import * as THREE from "./vendor/three/three.module.min.js";
+import { tokenHex } from "./theme-colors.js";
 
 const SIDE_GAP_M = 0.8; // compare-view.md, Modes: figures 0.8 m apart on x
 const TARGET = new THREE.Vector3(0, -0.06, 0);
@@ -52,7 +53,7 @@ export function createStage(host, { joints, bones, tracks }) {
   const key = new THREE.DirectionalLight(0xffffff, 1.6);
   key.position.set(1.5, 3, 2.5);
   scene.add(key);
-  const grid = new THREE.GridHelper(4, 16, 0x3a4658, 0x232c3a);
+  const grid = new THREE.GridHelper(4, 16, tokenHex("--3d-grid", 0x3a4658), tokenHex("--3d-grid-center", 0x232c3a));
   grid.position.y = -0.95;
   scene.add(grid);
 
@@ -60,8 +61,8 @@ export function createStage(host, { joints, bones, tracks }) {
   const hipR = joints.indexOf("right_hip");
   const boneGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
   const jointGeo = new THREE.SphereGeometry(1, 14, 10);
-  const haloMat = new THREE.MeshBasicMaterial({ color: 0xffc83d, transparent: true, opacity: 0.4, depthWrite: false });
-  const hotMat = new THREE.MeshStandardMaterial({ color: 0xffc83d, emissive: 0xffa400, emissiveIntensity: 0.9, roughness: 0.4 });
+  const haloMat = new THREE.MeshBasicMaterial({ color: tokenHex("--3d-hot", 0xffc83d), transparent: true, opacity: 0.4, depthWrite: false });
+  const hotMat = new THREE.MeshStandardMaterial({ color: tokenHex("--3d-hot", 0xffc83d), emissive: tokenHex("--3d-hot", 0xffa400), emissiveIntensity: 0.9, roughness: 0.4 });
 
   const figures = tracks.map((t) => {
     const group = new THREE.Group();
