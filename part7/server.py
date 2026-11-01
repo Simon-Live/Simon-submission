@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 import uuid
 
 from part7 import (
-    applog, buildinfo, challenge_routes, client_log, config, heartbeat, jobs, labels, media, modes, modules, people, people_routes,
+    applog, buildinfo, challenge_routes, client_log, config, heartbeat, idempotency, jobs, labels, media, modes, modules, people, people_routes,
     processor, proxy, quota, replay, result_media, sections,
 )
 from part7.parts import p5_analyse
@@ -70,6 +70,13 @@ class App:
     backend: str = "gpu"
     build: dict[str, Any] = field(default_factory=buildinfo.unknown)
     client_rate: client_log.RateLimit = field(default_factory=client_log.RateLimit)
+    idem: idempotency.Store | None = None
+
+    @property
+    def idempotency(self) -> idempotency.Store:
+        if self.idem is None:
+            self.idem = idempotency.Store(self.state)
+        return self.idem
 
     @property
     def uploads(self) -> Path:
@@ -121,6 +128,12 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _json(self, status: int, obj: Any) -> None:
+        idem = getattr(self, "_idem", None)
+        if idem is not None and status in idempotency.REPLAYABLE:
+            try:  # remembered before the answer goes out, so a lost answer can be replayed
+                self.app.idempotency.put(idem[0], idem[1], status, obj)
+            except OSError:
+                pass
         self._send(status, json.dumps(obj).encode("utf-8"), "application/json; charset=utf-8")
 
     def _error(self, status: int, message: str, **extra: Any) -> None:
@@ -245,6 +258,51 @@ class _Handler(BaseHTTPRequestHandler):
         proxy.forward(self, "127.0.0.1", child.port, self.path)
 
     def _api(self, route: str) -> None:
+        self._idem = None
+        claimed = self._idempotent_begin(route)
+        if claimed is False:
+            return  # replayed, or the same request is still running: already answered
+        try:
+            self._api_routes(route)
+        finally:
+            if claimed:
+                self.app.idempotency.end(*self._idem)
+                self._idem = None
+
+    def _idempotent_begin(self, route: str) -> bool | None:
+        """Idempotency-Key (idempotency.py). None: no key applies. True: this request owns its key.
+        False: it was answered here, from the stored answer or with "busy" while the first copy still runs."""
+        if self.command != "POST" or route not in idempotency.ROUTES:
+            return None
+        key = idempotency.valid_key(self.headers.get(idempotency.HEADER))
+        if key is None:
+            return None
+        store = self.app.idempotency
+        found = store.get(route, key)
+        if found is not None and route == "uploads":  # the stored upload may be gone (server state lost): then upload again
+            upload_id = str((found[1] or {}).get("upload_id") or "")
+            if self.app.upload_file(upload_id) is None:
+                store.drop(route, key)
+                found = None
+        if found is not None:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            self._drain(max(length, 0))  # the copy of the request is not needed; keep the connection in step
+            self.close_connection = True
+            self._send(found[0], json.dumps(found[1]).encode("utf-8"), "application/json; charset=utf-8",
+                       {"Idempotent-Replayed": "true"})
+            return False
+        if not store.begin(route, key):
+            self._drain(max(int(self.headers.get("Content-Length") or 0), 0) if route == "uploads" else 0)
+            self.close_connection = True
+            self._error(503, jobs.QUEUE_FULL_MESSAGE)
+            return False
+        self._idem = (route, key)
+        return True
+
+    def _api_routes(self, route: str) -> None:
         method, parts = self.command, route.split("/")
         if result_media.handle(self, method, route):  # the follower clip, with Range (coaching-moments.md)
             return
@@ -642,6 +700,7 @@ def build_app(
     )
     app.uploads.mkdir(parents=True, exist_ok=True)
     _clean_uploads(app.uploads)
+    app.idempotency.prune(config.RETENTION_DAYS)
     return app
 
 

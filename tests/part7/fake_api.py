@@ -33,7 +33,8 @@ ENTRIES = [
 TRAINER_STAGES = ["upload", "keyframes", "pose", "skeleton", "animation", "catalog"]
 FOLLOW_STAGES = ["upload", "pose", "skeleton", "analyse"]
 
-STATE = {"uploads": [], "jobs": {}, "polls": {}, "range_requests": 0, "people_jobs": 0}
+STATE = {"uploads": [], "jobs": {}, "polls": {}, "range_requests": 0, "people_jobs": 0, "idem": {}, "replays": 0,
+         "people": None}
 _video = {}
 
 
@@ -69,8 +70,11 @@ def animation() -> dict:
 def people_job_view(job_id: str) -> tuple[int, dict]:
     """The people check every take runs after the trim: one person found, so the picker is skipped."""
     person = {"id": "0", "coverage": 0.9, "frames": 40, "box_mid": [10, 10, 50, 120]}
+    result = {"people": [person], "auto_id": "0", "frame": "people/frame.jpg"}
+    if STATE.get("people"):  # a test chose the people job's answer (POST __test/people), e.g. two people and no auto_id
+        result = {**STATE["people"], "frame": "people/frame.jpg"}
     return 200, {"id": job_id, "kind": "people", "status": "done", "stage": "people", "entry_id": None, "note": "",
-                 "queue_position": None, "result": {"people": [person], "auto_id": "0", "frame": "people/frame.jpg"}}
+                 "queue_position": None, "result": result}
 
 
 def job_view(job_id: str) -> tuple[int, dict]:
@@ -187,27 +191,47 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0].lstrip("/")
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-        if path == "api/uploads":
-            if not (self.headers.get("Content-Type") or "").startswith("video/"):
-                return self.send(400, {"error": "not a video"})
-            STATE["uploads"].append({"size": len(body), "type": self.headers.get("Content-Type")})
-            return self.send(201, {"upload_id": f"u{len(STATE['uploads'])}", "duration_ms": 3000, "width": 320, "height": 240})
-        if path == "api/people":
-            STATE["people_jobs"] += 1
-            return self.send(202, {"job": f"pj{STATE['people_jobs']}"})
+        key = (self.headers.get("Idempotency-Key") or "").strip().lower()
+        idem_route = path in ("api/uploads", "api/trainer", "api/follow", "api/group") and re.fullmatch(r"[0-9a-f-]{36}", key)
+        ikey = f"{path}|{key}"
         if path.startswith("api/challenges") or path == "__test/challenges":
             return fake_challenges.post(self, self.path, body)
+        if idem_route and ikey in STATE["idem"]:  # the same key on the same route: the original answer, nothing new
+            STATE["replays"] += 1
+            code, answer = STATE["idem"][ikey]
+            return self.send(code, answer)
+        if path == "__test/reset":  # forget uploads, jobs, keys and the chosen people answer
+            STATE.update({"uploads": [], "jobs": {}, "polls": {}, "people_jobs": 0, "idem": {}, "replays": 0, "people": None})
+            return self.send(200, {"ok": True})
+        if path == "__test/people":  # the next people jobs answer with this {people, auto_id}
+            STATE["people"] = json.loads(body or b"null")
+            return self.send(200, {"ok": True})
+        code, answer = self.create(path, body)
+        if idem_route and code in (201, 202):
+            STATE["idem"][ikey] = (code, answer)
+        return self.send(code, answer) if code != 204 else self.send(204)
+
+    def create(self, path, body):
+        """The POST routes; returns (status, body). Kept apart so a repeated Idempotency-Key can replay the answer."""
+        if path == "api/uploads":
+            if not (self.headers.get("Content-Type") or "").startswith("video/"):
+                return 400, {"error": "not a video"}
+            STATE["uploads"].append({"size": len(body), "type": self.headers.get("Content-Type")})
+            return 201, {"upload_id": f"u{len(STATE['uploads'])}", "duration_ms": 3000, "width": 320, "height": 240}
+        if path == "api/people":
+            STATE["people_jobs"] += 1
+            return 202, {"job": f"pj{STATE['people_jobs']}"}
         if path == "api/client-log":  # the browser's own events (app.md "Client log"), as the real app answers
-            return self.send(204)
+            return 204, None
         data = json.loads(body or b"{}")
-        if path in ("api/trainer", "api/follow"):
-            kind = "trainer" if path.endswith("trainer") else "follow"
+        if path in ("api/trainer", "api/follow", "api/group"):
+            kind = path.rsplit("/", 1)[1]
             if kind == "follow" and data.get("entry_id") == "nope":
-                return self.send(404, {"error": "unknown entry"})
+                return 404, {"error": "unknown entry"}
             jid = f"bad{len(STATE['jobs'])}" if data.get("name") == "Fails" else f"job{len(STATE['jobs']) + 1}"
             STATE["jobs"][jid] = {"kind": kind, **data}
-            return self.send(202, {"job": {"id": jid}})
-        return self.send(404, {"error": "not found"})
+            return 202, {"job": {"id": jid}}
+        return 404, {"error": "not found"}
 
 
 if __name__ == "__main__":

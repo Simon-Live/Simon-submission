@@ -88,7 +88,7 @@ screen and on the Watch screen; catalog search matches name, category and tags.
 
 ## data-testid
 `countdown-select`, `duration-select`, `countdown` (the overlay digits), `countdown-cancel`, `rec-timer`,
-`framing-hint`, `prerecord-tips`, `prerecord-tip-<code>`, `trim`, `trim-start`, `trim-end`, `trim-play`, `trim-set-start`, `trim-set-end`,
+`framing-hint`, `saved-panel`, `saved-title`, `saved-message`, `saved-auto`, `pending-send`, `pending-delete`, `pending-notice`, `try-again`, `prerecord-tips`, `prerecord-tip-<code>`, `trim`, `trim-start`, `trim-end`, `trim-play`, `trim-set-start`, `trim-set-end`,
 `trim-length`, `trim-error`, `trim-continue`, `tags`, `tag-input`, `notes`, `entry-tags` (Watch),
 `entry-notes` (Watch), `take-labels`, `take-tags`, `take-notes` (result), `record-again`, `people-checking`, and from `people.md` the picker ids `people`, `people-continue`, `person-<id>`,
 `person-trainer-<id>`, `person-label-<id>`.
@@ -127,6 +127,20 @@ The follower sees the trainer while recording and editing. Source: the entry's `
 
 ## Error Cases
 - The camera is refused: the Upload path is offered (unchanged).
+- The upload or the people job cannot be reached (offline takes, `docs/features/2026-10-31-offline-takes.md`). A camera
+  take is saved in IndexedDB (`simon-local`, store `pending-takes`) as soon as it is trimmed, before any upload. When
+  the call fails with status 0, 500, 502, 504 or a busy 503, the screen shows the panel `saved-panel` ("Saved on this
+  device"): "Couldn't reach the app. Your take is saved on this device and will be sent when the app is back." with
+  Send now (`pending-send`), Delete take (`pending-delete`) and Record again (`record-again`), the offline details
+  (name and category for a trainer, tags and notes) and the checkbox "Start the analysis automatically when the app is
+  back" (`saved-auto`, on by default). The take is sent by itself when the app is reachable (see app.md "Offline
+  takes"). A daily-limit answer (429, 503 "today's limit") waits for the next UTC midnight and says so. A refusal of
+  the file itself (400 not a video, 413, 404, 409) shows the message with Record again and deletes the saved copy.
+- A file picked from the device is not saved (the original is still on the device). An upload or people-job failure
+  shows the message with Try again (`try-again`, resends the in-memory file) and Record again.
+- IndexedDB is missing (private mode), the device has no room, three takes or 300 MB are already saved, or the save
+  fails: the flow carries on as before and says "This take is only kept while this page is open." (`pending-notice`);
+  when the caps are full it asks the person to delete a saved take first. Try again resends the in-memory take.
 - WebAudio is blocked: the countdown runs silently.
 - Thumbnails fail to draw (codec): the range control still works without the strip.
 

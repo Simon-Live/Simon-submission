@@ -11,6 +11,8 @@ import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading } from "./progress.js";
 import { mountBuildStamp } from "./build.js";
 import { mountShell } from "./shell.js";
+import { mountPendingList, mountPendingResume, mountPendingBanner } from "./pending-ui.js";
+import { startPending } from "./pending-app.js";
 
 installErrorCapture(); // uncaught errors and failed fetches reach the server log (observability.md)
 const root = document.getElementById("app");
@@ -68,6 +70,8 @@ export const ROUTES = [
   [/^result\/([^/]+)\/([^/]+)$/, (el, m) => mountResultRoute(el, m[1], m[2])],
   [/^group\/([^/]+)$/, (el, m) => mountGroupResult(el, m[1])],
   [/^challenge\/([^/]+)$/, (el, m) => mountChallengeRoute(el, m[1])],
+  [/^pending$/, (el) => mountPendingList(el)], // saved takes (offline-takes.md)
+  [/^pending\/([^/]+)$/, (el, m) => mountPendingResume(el, m[1])],
 ];
 
 export function resolve(hash) {
@@ -97,3 +101,5 @@ window.addEventListener("hashchange", show);
 mountShell({ switchHost: document.getElementById("kind-switch") });
 show();
 mountBuildStamp(document.getElementById("build"));
+// Saved takes: drop expired ones, send what is waiting, and show the banner on every screen (offline-takes.md).
+startPending().then((pending) => mountPendingBanner(document.getElementById("pending"), pending)).catch(() => {});

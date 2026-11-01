@@ -31,7 +31,7 @@ stdlib `ThreadingHTTPServer`, 127.0.0.1 only. Paths are relative to the base pat
 |---|---|
 | `GET api/health` | 200 `{ok, part6: {ok, entries}, pins: {<n>: <sha12>}, queue: {running, waiting}, gpu_jobs_today}`; 503 when Part 6 does not answer |
 | `GET api/config` | 200 `{base, limits: {max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000}, phrasing: "live"\|"template", movement, fixture_result: true}` |
-| `POST api/uploads` | raw body, `Content-Type: video/mp4` or `video/webm` (also `video/quicktime`); 201 `{upload_id, duration_ms, width, height}`; 400 not a video; 413 over 95,000,000 bytes or 60 s |
+| `POST api/uploads` | raw body, `Content-Type: video/mp4` or `video/webm` (also `video/quicktime`); 201 `{upload_id, duration_ms, width, height}`; 400 not a video; 413 over 95,000,000 bytes or 60 s. Takes an optional `Idempotency-Key` (below) |
 | `POST api/trainer` | `{upload_id, name, category}`; 202 `{job}` (`processor.md`); 429 over the visitor quota; 503 queue full |
 | `POST api/follow` | `{upload_id, entry_id}`; 202 `{job}`; 404 unknown entry; 409 entry has no animation or skeleton; 429 over the visitor quota |
 | `GET api/jobs/<id>` | 200 `{id, kind, status: queued|running|done|failed, stage, note, entry_id, result, queue_position}`; stages per `journey.md` (trainer: `upload`, `keyframes`, `pose`, `skeleton`, `animation`, `catalog`; follow: `upload`, `pose`, `skeleton`, `analyse`); 404 |
@@ -52,6 +52,17 @@ Part 2, Part 3 `--view part5 --fps 30 --body simon-standard`, Part 5 `analyse --
 its doctor (`parts-harness.md`).
 Daily caps on staging: 40 GPU jobs and 10 trainer jobs per UTC day (`api/health` shows the count); over
 either, 503 "The app has reached today's limit. Try again tomorrow."
+
+### Idempotency-Key (`part7/idempotency.py`, offline takes)
+`POST api/uploads`, `api/follow`, `api/trainer` and `api/group` take an optional `Idempotency-Key: <UUID>` header; the
+browser sends the saved take's id on all four. The first accepted answer (201 or 202) is stored under
+`<state>/idempotency/<route>-<key>.json` for 7 days (pruned at start like uploads). A repeat of the same key on the
+same route answers the stored body with `Idempotent-Replayed: true`: no new upload, no new job, no quota charge. This
+makes a retry safe when the response was lost after the server accepted the request. Rules: only 201 and 202 are
+stored (a refusal is retried for real); the key is scoped to its route (the take id is the key on the upload and on
+the job); a stored upload whose file is gone is uploaded again under the same key; a second request with a key that
+is still running answers 503 "The app is busy" (the browser retries); a missing or invalid key (not a UUID), or a key
+on any other route, behaves exactly as before.
 
 ### Quotas and spend (`part7/quota.py`)
 - Per visitor, keyed on `Cf-Connecting-Ip` (the gateway forwards it; local requests have none and skip
@@ -114,6 +125,40 @@ trainer's video and never affects the follower). Part 7 only displays it and nev
   no `quality` key. The reader ignores the schema version and unknown fields.
 - With no quality anywhere every screen looks as before.
 
+## Offline takes (`web/pending.js`, `web/pending-app.js`, `web/pending-ui.js`, `web/take-request.js`)
+A camera take is saved in IndexedDB (`simon-local`, `pending-takes`) when it is trimmed, and deleted only when the
+server answers 202 to the job call (`api/follow`, `api/trainer`, `api/group`), when the person taps Delete, after a
+non-retryable error, or after 7 days. At most 3 takes and 300 MB; `navigator.storage.persist()` is asked once and
+`estimate()` checked before saving. Picked files are not saved. A record holds `id, created_at, expires_at, role
+(trainer|follow|group), entry_id, entry_name, mode, section, trim, labels, name, category, mime, size, blob, stage
+(saved|uploaded|people_ready|ready_to_submit|submitting), upload_id, people_job, choice, auto_submit, attempts,
+next_try_at, last_error {status, message, kind}` (plus `challenge_id`), updated as each step completes.
+- Failures: retry automatically (status 0, XHR error/abort/timeout, 500, 502, 504, busy 503) on 10 s, 30 s, 1 min,
+  2 min, then every 5 min; retry later (429, 503 "today's limit") at just after the next UTC midnight; do not retry
+  (400 not a video, 413, 404, 409): show the message and delete the copy; 400 "The upload was not found" on a job call:
+  clear `upload_id`, back to `saved`, upload again from the saved Blob. A 400 on the job call that is not that (a bad
+  name) keeps the take and returns it to the details.
+- Triggers: app start, `online`, `visibilitychange` to visible, the backoff timer, and Send now. Before re-sending a
+  file over 5 MB it pings `GET api/health` and only uploads on 200. One sender at a time across tabs
+  (`navigator.locks.request("simon-pending-sender", {ifAvailable: true})`, a BroadcastChannel lease as fallback),
+  oldest take first. There is no service worker or Background Sync: the app has to be open to send.
+- Resume: upload, `POST api/people`, poll the people job. One person (`auto_id`), details complete (a trainer needs a
+  name) and `auto_submit` on: the job is submitted by itself. Otherwise the stage is `people_ready` and the banner and
+  panel say "Your take is uploaded. Choose who is in it to finish." with Finish to `#/pending/<id>`, which reopens the
+  take flow at the picker and details from the record (no camera, trim or upload). Mode, section and group mode are
+  in the record.
+- Screens: `#/pending` (`pending-list`, `pending-<id>`, `pending-status-<id>`, `pending-send-<id>`,
+  `pending-finish-<id>`, `pending-delete-<id>`, `pending-empty`); `#/pending/<id>` (`pending-resume`, `pending-gone`,
+  `pending-busy`); the header banner on every screen (`pending-banner`, `pending-count` "1 take waiting to send",
+  `pending-progress` "Sending, 42%", `pending-link`, `pending-sent` "Your take was sent. The analysis has started."
+  with `pending-sent-link` to `#/job/<id>` and `pending-dismiss`), `aria-live="polite"`.
+- Client log (numbers and statuses only): `take_saved_local`, `take_save_skipped {reason}`, `pending_retry {attempt,
+  status}`, `pending_sent`, `pending_resumed {stage}`, `pending_deleted {reason}`.
+- Nothing else changes: no shared file, no other part and no existing field is touched. Known limits: the app has to
+  be open to send; Safari may evict stored data after a period of not using the site; a saved take expires after 7
+  days; the whole file is resent (no resumable upload); a take sent in the background does not update a practice
+  ladder step's pending mark.
+
 ## Web (`web/`)
 Hash routes, relative URLs only, no build step, three@0.170.0 vendored (sha256 in
 `web/vendor/README.md`, fetched from the npm registry tarball, never from another part's repo).
@@ -126,6 +171,7 @@ Hash routes, relative URLs only, no build step, three@0.170.0 vendored (sha256 i
 | `#/job/<id>` | Stage list with the current stage, elapsed time, queue position while waiting, Try again on failure | `stage`, `retry` |
 | `#/result/<job>`, `#/result/<job>/<pid>` (one person of a group job) | Score panel; compare view (`compare-view.md`); fault list: `fault-<i>` rows show `text_timed` in Part 5's order, a tap seeks to `at_s`, highlights exactly the fault's `joints` and sets `aria-pressed`; a warning banner (`warning`, `warning-<code>`) and a Record again button (`record-again`) when the take has warnings or the pinned Part 5 refused it; low-confidence faults marked (`fault-<i>-low`); the follower's take labels (`take-labels`); downloads | `score`, `grade`, `compare`, `mode-toggle`, `play`, `scrub`, `clock`, `view-front`, `view-side`, `view-top`, `fault-<i>`, `fault-<i>-low`, `warning`, `warning-<code>`, `record-again`, `download-analysis`, `download-replay` |
 | `#/result/fixture` | the same screen on Part 5's example (S0) | as above |
+| `#/pending`, `#/pending/<id>` | Saved takes (offline takes, above); Finish reopens a saved take at the picker and details | `pending-list`, `pending-<id>`, `pending-send-<id>`, `pending-finish-<id>`, `pending-delete-<id>` |
 
 Follow hand-off: Watch listens for `message` events with `data.type === "simon:follow"` and
 `event.origin === location.origin`, then opens `#/follow/<data.id>`. The follow URL given to Part 6
@@ -165,6 +211,9 @@ strings: the warning and error texts come from Part 5 (or from `chain.py` for Pa
 | Queue full | 503 | `The app is busy. Try again in a few minutes.` |
 | Camera refused | none | `Camera access is off. Allow it in the browser, or upload a video.` |
 | Job failed | none | the job's plain reason plus Try again |
+| Server unreachable (0, 500, 502, 504, busy 503) on upload, people job or job call | any | `Couldn't reach the app. Your take is saved on this device and will be sent when the app is back.` (camera take); `Try again` (file or not saved) |
+| Daily limit (429, 503 "today's limit") on a saved take | 429, 503 | `The app has reached its limit for today. Your take is saved on this device and will be sent tomorrow.` |
+| Upload not found on a job call | 400 | none: the saved take is uploaded again, without asking |
 
 ## Edge Cases
 - Entry with only a skeleton (Part 6 fixture): Follow uses `skeleton.json` as the expected clip only when

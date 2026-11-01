@@ -52,9 +52,9 @@ def test_record_and_follow_are_thin_wrappers_over_one_take_flow():
     for s in (r, f):
         assert "mountTakeFlow" in s and "mountCapture" not in s and "editTake" not in s and len(s.splitlines()) < (50 if s is r else 90)  # follow also hosts the mode picker and the practice ladder
     assert 'role: "trainer"' in r and 'role: "follower"' in f
-    assert "editTake" in t and "capture.reset()" in t and "createPeopleJob(upload, trim)" in t
+    assert "editTake" in t and "capture.reset()" in t and "pending.front(rec" in t  # the upload and people job run in web/pending.js (offline takes)
     assert "openPeoplePicker" in t and "mountModeSwitch" in t and "mountLabels" in t and "labels.value()" in t
-    assert "createTrainerJob" in t and "createFollowJob" in t and "createGroupJob" in t
+    assert "pending.submit(rec)" in t and "createTrainerJob" in (WEB / "api.js").read_text(encoding="utf-8")  # the job call goes through submitJob (offline takes)
     assert "trim ? { trim }" in a and "labels ? { labels }" in a and "api/people" in a and "api/group" in a
 
 

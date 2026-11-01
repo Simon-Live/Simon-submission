@@ -254,6 +254,7 @@ Install Playwright once in the repo root, then run any of them with Node:
 ```bash
 npm install --no-save playwright@1.61.1 && npx playwright install chromium
 node tests/part7/result.browser.mjs
+node tests/part7/pending.browser.mjs   # offline takes: needs python3 and ffmpeg (it starts tests/part7/fake_api.py)
 node tests/part7/drive_web.mjs /tmp/simon-shots/web    # screenshots go to the folder given
 ```
 
