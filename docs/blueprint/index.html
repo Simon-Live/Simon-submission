@@ -203,7 +203,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="meta">
     <span class="chip">Meta Global AI Developer Hackathon · <b>Indie track</b></span>
     <span class="chip">Due <b>Wed 4 Nov 2026, 9 PM ET</b></span>
-    <span class="chip">State as of <b>1 Nov 2026, 05:20 UTC</b></span>
+    <span class="chip">State as of <b>1 Nov 2026, 17:30 UTC</b></span>
     <span class="chip">Hub <b>moalborati/simon</b></span>
   </div>
 </header>
@@ -220,7 +220,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <div class="tile"><span class="n warn">14 / 16</span><span class="l">check-7 gates green on the serverless route (31 Oct)</span></div>
   </div>
   <div class="callout">
-    <p><b>Before the demo:</b> the #59 scoring fix is published (Part 5 <code>3530514</code>): the shallow-hinge take now reports the fault and scores 93 instead of 100. Two things remain: <code>simon.score.v2</code>, which caps a take that reports a fault at 89 (B), and Mo's releases 9 to 14 reaching GitHub <code>main</code>: live on staging (failure causes, warm worker, sample-format converter, restart drain TICKET-115, trainer delete TICKET-111, unseen trainer joints dimmed TICKET-116), while the last Part 7 release on GitHub <code>main</code> is release 7 (<code>cbb589b</code>), plus the redesign.</p>
+    <p><b>Before the demo:</b> Part 7 is published on GitHub <code>main</code> as release 17 (<code>3f1ac4b</code>), with the redesign, Shruti's work, warm SAM 3.1 tracking on the host and everything since release 7. Scoring: <code>simon.score.v2</code> failed its held-out check; <code>simon.score.v3</code> (a take with one reported fault caps at 89, two or more at 79) passed on seed 61 and ships in Part 5's next publish. Still open: 30 provisional changes to our team's lines in Part 7 await our answer, and whether 3 fps tracking can lose people in group takes.</p>
   </div>
 </section>
 
@@ -316,6 +316,9 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>Challenges</td><td>Share a score, friend and crew boards, sponsored boards, end dates</td><td>Part 7</td><td><span class="status s-done">Done (brand theme)</span></td></tr>
       <tr><td>Capture screen redesign</td><td>Reference routine on top, your camera below, Recording pill, ring record button, steady-phone tip</td><td>Part 7 UI</td><td><span class="status s-done">Done (redesign)</span></td></tr>
       <tr><td>Logo and loading</td><td>The golden retriever over the simon sign; paw prints walk across while loading</td><td>Part 7 UI</td><td><span class="status s-done">Done (logo B, to refine)</span></td></tr>
+      <tr><td>Your takes over time</td><td>Opt-in sign-in with a history of your takes; a Muse Spark report across them</td><td>Part 7 release 15</td><td><span class="status s-part">Shipped, off unless mail is set up</span></td></tr>
+      <tr><td>Second opinion and languages</td><td>"What muse-spark-1.3 also noticed" per fault; cues in the follower's language</td><td>Part 5 1.9.0 + Part 7</td><td><span class="status s-done">Done</span></td></tr>
+      <tr><td>3D body mesh, clip export, teacher page</td><td>The body mesh in the compare (<code>--mesh</code>), a clip to save, a page for teachers, trainer narration</td><td>Part 2 + Part 7</td><td><span class="status s-done">Done (staging)</span></td></tr>
       <tr><td>People who move</td><td>The picker offers only tracks that move, so things on a wall never stop the automatic pick</td><td>Part 7 (<code>e6d65a7</code>)</td><td><span class="status s-done">Done</span></td></tr>
     </tbody>
   </table></div>
@@ -336,14 +339,14 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td><span class="id">FR-04</span></td><td>Skeletons have fixed bone lengths, a standard facing and no left/right flips.</td><td><code>make check-3</code></td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-05</span></td><td>The trainer's movement becomes a smooth 30 fps reference animation.</td><td><code>make check-4</code></td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-06</span></td><td>Each recorded movement is saved, named, searchable and playable in 3D.</td><td><code>make check-6</code></td><td><span class="status s-done">Met</span></td></tr>
-      <tr><td><span class="id">FR-07</span></td><td>A follower's take is compared with the reference and every real difference is reported with joint, size, time and plain words.</td><td><code>make check-5</code>; #59 evidence</td><td><span class="status s-part">Met; held-out seeds 71 and 73 pass (<code>e077f44</code>); <code>simon.score.v2</code> grade cap in progress</span></td></tr>
+      <tr><td><span class="id">FR-07</span></td><td>A follower's take is compared with the reference and every real difference is reported with joint, size, time and plain words.</td><td><code>make check-5</code>; #59 evidence</td><td><span class="status s-part">Met; detection passes held-out seeds 71 and 73; <code>simon.score.v3</code> grade cap passed seed 61, ships next</span></td></tr>
       <tr><td><span class="id">FR-08</span></td><td>The take gets a score out of 100 and a grade that do not depend on its length.</td><td>Part 5 ADR-0013 tests</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-09</span></td><td>A different movement is still analysed, but flagged as a low match and capped at F.</td><td>check-7 mismatch gate</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-10</span></td><td>Poor video (dark, cut off, shaky) is named with a tip, and a major issue caps the score at 59.</td><td>check-7 quality gates</td><td><span class="status s-part">Part 7 met; Parts 2/3/5 pending</span></td></tr>
       <tr><td><span class="id">FR-11</span></td><td>The follower sees live joint feedback while recording, clearly labelled as approximate.</td><td>Part 7 live-check tests</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-12</span></td><td>In a take with several people, the user picks who is scored.</td><td>Part 7 people tests</td><td><span class="status s-done">Met</span></td></tr>
       <tr><td><span class="id">FR-13</span></td><td>A follower can challenge others and compare scores on a board.</td><td>Part 7 challenge tests</td><td><span class="status s-done">Met</span></td></tr>
-      <tr><td><span class="id">FR-14</span></td><td>A failed job says which step failed and why, in words a user can act on.</td><td>TICKET-103 (Mo)</td><td><span class="status s-part">Live on staging (releases 13 and 14); not yet on GitHub <code>main</code></span></td></tr>
+      <tr><td><span class="id">FR-14</span></td><td>A failed job says which step failed and why, in words a user can act on.</td><td>TICKET-103 (Mo)</td><td><span class="status s-part">Published (Part 7 releases 15 to 17 on <code>main</code>)</span></td></tr>
     </tbody>
   </table></div>
   <h3>Non-functional</h3>
@@ -732,7 +735,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td><code>pose3d.json</code></td><td>Part 2</td><td>3</td><td>Per frame, per person: 17 canonical joints in 3D with confidence</td></tr>
       <tr><td><code>skeleton.json</code></td><td>Part 3</td><td>4, 5</td><td>Fixed bone lengths, standard facing, no flips (a Part 4 view and a Part 5 view)</td></tr>
       <tr><td><code>animation.json</code></td><td>Part 4</td><td>5, 6, 7</td><td>The trainer's smooth 30 fps reference (<code>simon.animation.v1</code>); since Part 4 <code>7036622</code> also optional <code>frames[].conf</code> and <code>unseen_joints</code></td></tr>
-      <tr><td><code>analysis.json</code></td><td>Part 5</td><td>7</td><td>Status, warnings, faults, diagnostics, insights, and the score with its timeline (<code>simon.score.v1</code>); schema 1.9.0 at Part 5 <code>e077f44</code> adds <code>second_opinion</code>, <code>phrasing.lang</code> (<code>--lang</code>) and <code>score.uncapped</code></td></tr>
+      <tr><td><code>analysis.json</code></td><td>Part 5</td><td>7</td><td>Status, warnings, faults, diagnostics, insights, and the score with its timeline (<code>simon.score.v1</code>); schema 1.9.0 at Part 5 <code>e077f44</code> adds <code>second_opinion</code>, <code>phrasing.lang</code> (<code>--lang</code>) and <code>score.uncapped</code>; 1.10.0 at <code>5cf69e9</code> is additive; <code>simon.score.v3</code> next</td></tr>
       <tr><td><code>replay.json</code></td><td>Part 5</td><td>7</td><td>Both skeletons on one clock for the 3D compare</td></tr>
       <tr><td><code>mesh3d.json</code> + <code>mesh3d.bin</code></td><td>Part 2 (<code>part2 run --mesh</code>)</td><td>7</td><td>The 3D body mesh drawn in the compare (Part 7 <code>docs/specs/mesh-view.md</code>)</td></tr>
     </tbody>
@@ -773,7 +776,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <figcaption><b>A difference becomes a fault only when it is big enough and lasts.</b> Faults explained by another kept fault are dropped. Per window, the score is 100 minus each fault's points (size, duration, coverage) minus a small similarity term.</figcaption>
   </figure>
   <div class="callout ok">
-    <p><b>Fixed (#59).</b> Persistence was measured over the whole clip (38%). On a 10 s multi-rep take, a 1.6 s, 20° shallower hinge was dropped, and the take scored 100 with 0 faults. The fix (ADR-0017) measures persistence per rep and compares rep by rep whenever the trainer has two or more reps. Published on Part 5 <code>3530514</code> (1 Nov): the take now reports <code>trunk_lean_forward</code> 16.8° less than the trainer in the first of two reps, and scores 93 (A). The ruling (TICKET-047): a take that reports a fault should not grade A. <code>simon.score.v2</code> (score only; any fault caps the take at 89, B) is in progress and is scored once on score seed 59; v1 stays if it misses. Detection passed its held-out checks: attempt 5 passed seed 71, was confirmed on seed 73, and <code>make check-5</code> exits 0 (Part 5 <code>e077f44</code>).</p>
+    <p><b>Fixed (#59).</b> Persistence was measured over the whole clip (38%). On a 10 s multi-rep take, a 1.6 s, 20° shallower hinge was dropped, and the take scored 100 with 0 faults. The fix (ADR-0017) measures persistence per rep and compares rep by rep whenever the trainer has two or more reps. Published on Part 5 <code>3530514</code> (1 Nov): the take now reports <code>trunk_lean_forward</code> 16.8° less than the trainer in the first of two reps, and scores 93 (A). The ruling (TICKET-047): a take that reports a fault should not grade A. <code>simon.score.v2</code> (each miss weighted by how much the trainer moves that measure; any fault capped at 89) failed its held-out check on score seed 59, so v1 stayed and this take is a recorded A. On the operator's ruling to reconcile, <code>simon.score.v3</code> keeps v2's improvements: one reported fault caps a take at 89 (B), two or more at 79, and the length-agnostic mean survives as <code>score.uncapped</code>. v3 passed its one held-out score on seed 61 and ships in Part 5's next publish (TICKET-060, ADR-0019). Detection passed its held-out checks: attempt 5 passed seed 71, was confirmed on seed 73, and <code>make check-5</code> exits 0 (Part 5 <code>e077f44</code>).</p>
   </div>
   <p><b>Live check.</b> During the take, MediaPipe on the phone draws the joints, says whether the whole body is in view, and compares 8 joint angles with the trainer's animation, flagging joints more than 25° off. It is labelled approximate; the 3D score after the take is the one that counts.</p>
 </section>
@@ -847,6 +850,8 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>SAM 3.1 warm, 5 fps</td><td>10 s</td><td class="num">15.0 to 16.4 s</td><td class="num">n/a</td><td class="num">n/a</td><td class="num">n/a</td><td><code>237045aa</code>, <code>1fec1599</code></td></tr>
       <tr><td><b>SAM 3.1 warm, people 3 fps, 3D 5 fps</b></td><td>10 s</td><td class="num"><b>11.5 s</b></td><td class="num"><b>27.8 s</b></td><td class="num"><b>~39 s</b></td><td class="num"><b>$0.020</b></td><td><code>6d05653d</code>, <code>e6cdca79</code></td></tr>
       <tr><td><b>Same, your own take</b> (Pray up and down)</td><td>5 s</td><td class="num"><b>9.3 to 9.7 s</b></td><td class="num"><b>15.3 s</b></td><td class="num"><b>~25 s</b></td><td class="num"><b>$0.013</b></td><td><code>767dbc9c</code>, <code>9832904c</code></td></tr>
+      <tr><td>Yoga class, 7 people (Part 2 class fixture), SAM 3.1 at 3 fps, warm</td><td>17.6 s</td><td class="num">17.1 s tracking, 18.7 s step</td><td class="num">n/a</td><td class="num">n/a</td><td class="num">$0.009</td><td>7 of 7 found in all 18 key frames, no ID swaps (<code>59293e0a</code>, <code>d8752208</code>)</td></tr>
+      <tr><td>Same clip at 10 fps, warm</td><td>17.6 s</td><td class="num">40.5 s tracking, 42.3 s step</td><td class="num">n/a</td><td class="num">n/a</td><td class="num">$0.022</td><td>7 of 7, no ID swaps (<code>9ee931ad</code>)</td></tr>
       <tr><td>Same, cold start</td><td>10 s</td><td class="num">47.9 s</td><td class="num">n/a</td><td class="num">+36 s</td><td class="num">+$0.020</td><td><code>2842ca32</code></td></tr>
       <tr><td>Trainer recording (Part 2 on Modal, Part 1 on the Mac)</td><td>5 s</td><td class="num" colspan="2">50.7 s in all: Part 1 key frames 49.5 s, Part 2 3D 14.4 s, alongside</td><td class="num">50.7 s</td><td class="num">$0.008 GPU</td><td><code>1e9dbbb3</code></td></tr>
     </tbody>
@@ -1057,7 +1062,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 
   <div class="two">
     <div class="scenario"><div class="head"><h4>Now: to 4 Nov</h4><span class="sid">NOW</span></div>
-      <ol><li><s>Part 5 rep-by-rep detection (#59)</s>: published, the hinge is now a fault; <code>simon.score.v2</code> grade cap in progress.</li><li><s>UI redesign, logo, capture and results screens</s>: on Part 7 <code>main</code>.</li><li><s>SAM 3.1 warm on our GPU, 3 fps people, 5 fps 3D</s> (#62): on the serverless route.</li><li>Releases 9 to 14 on GitHub <code>main</code> (live on staging; release 14 <code>4b33cb8</code>), then the serverless route; <code>simon.score.v2</code>; Part 5's second opinion and <code>--lang</code> are published.</li><li>Live check on a real phone (Safari and Chrome).</li><li>Demo video and submission by noon ET.</li></ol></div>
+      <ol><li><s>Part 5 rep-by-rep detection (#59)</s>; <code>simon.score.v3</code> passed, ships next.</li><li><s>UI redesign, logo, capture and results</s>; <s>Part 7 releases 15 to 17 on GitHub <code>main</code></s>.</li><li><s>Warm SAM 3.1</s>: host (10 fps) and serverless (3 fps / 5 fps); next, the frame rate by take mode ("Just me" 3 fps, "Group" 10 fps).</li><li>Answer the 30 provisional changes to our lines (#61).</li><li>Part 1 SAM 3.1 timeouts (Part 1 #2, #3), which the demo re-cut waits on.</li><li>Demo video and submission by noon ET.</li></ol></div>
     <div class="scenario"><div class="head"><h4>Next: Nov 2026 – Feb 2027</h4><span class="sid">NEXT</span></div>
       <ol><li>Pilot with five customers; measure miss accuracy against trainers.</li><li>Learning loop, step 1: each follower's history per routine (the trend, the rep that keeps drifting).</li><li>Reuse Part 2's tracks in Part 1; warm tracking in Part 2's own worker; deterministic GPU runs.</li><li>Video quality in Parts 2, 3, 5 (the cap end to end).</li><li>Progress over sessions; rehab wording and range tracking.</li><li>Installable web app for phones.</li></ol></div>
     <div class="scenario"><div class="head"><h4>Later: Mar – Jun 2027</h4><span class="sid">LATER</span></div>
@@ -1075,8 +1080,9 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <thead><tr><th>Risk or issue</th><th>Impact</th><th>Mitigation</th><th>Owner</th><th>Status</th></tr></thead>
     <tbody>
       <tr><td>Lenient scoring on multi-rep takes (#59)</td><td>High: a wrong 100 undermines trust in the demo</td><td>Per-rep persistence, rep-by-rep compare (Part 5 <code>3530514</code>); grade curve TICKET-047</td><td>Mo</td><td><span class="status s-part">Fixed; grade pending</span></td></tr>
-      <tr><td>Releases live on staging but not on GitHub <code>main</code></td><td>Medium: what staging runs differs from <code>main</code></td><td>Staging takes GitHub <code>main</code> automatically since 31 Oct, and the publish guard protects teammates' commits; Part 7 releases 9 to 13 still need publishing</td><td>Mo</td><td><span class="status s-part">Open</span></td></tr>
-      <tr><td>Cold model load and an unstable warm worker on the host</td><td>Medium: latency</td><td>The 3D step is warm (one <code>part2 run</code> call: 97.1 s cold → 51.7 s warm). On staging the worker dropped 3 requests between 04:17 and 04:37 UTC on 1 Nov and failed to restart at 05:01, so 3D fell back to in-process (<code>p2_worker_unhealthy</code>). Tracking still loads per call; warm SAM 3.1 is TICKET-117. Serverless: both warm</td><td>Mo, the team</td><td><span class="status s-open">Open on the host</span></td></tr>
+      <tr><td>Changes to our team's lines published before we agreed</td><td>Medium: intent lost silently</td><td>Part 7 releases 15 to 17 are on GitHub <code>main</code>. 30 changes to lines our team wrote ship provisionally; any we name is restored the same day. The publish guard now refuses changes to our lines without our agreement comment, and every session works by merge, never rebase or force-push</td><td>Mo, the team</td><td><span class="status s-part">Awaiting our answer</span></td></tr>
+      <tr><td>3 fps tracking may lose people in group takes</td><td>Medium for group mode</td><td>On the yoga class 3 fps found all 7 people; Mo saw it lose a second person in one clip (asked for on #62). Proposal: "Just me" takes at 3 fps, "Group" takes at 10 fps until tested</td><td>the team, Mo</td><td><span class="status s-part">Testing</span></td></tr>
+      <tr><td>Cold model load and an unstable warm worker on the host</td><td>Medium: latency</td><td>The 3D step is warm (97.1 s cold → 51.7 s warm for one call). Release 17: warm SAM 3.1 tracking runs through Part 2\'s <code>serve-worker --mode track</code> (Part 2 <code>a8f91ac</code>), on in staging at 10 fps: who\'s in your clip 61 s → 23 s median. A hung call restarts the worker; a cold retry waits at most 60 s for memory, then falls back to <code>local-open</code>. Serverless: both warm</td><td>Mo, the team</td><td><span class="status s-done">Mitigated in release 17</span></td></tr>
       <tr><td>Non-deterministic Part 2 on Modal</td><td>Low: ±1 point between runs</td><td>Deterministic GPU settings</td><td>the team</td><td><span class="status s-plan">Planned</span></td></tr>
       <tr><td>Quality cap missing in Parts 2, 3, 5</td><td>Medium: dark takes not capped</td><td>Not planned before 4 Nov; check-7's <code>quality_degraded_major_capped</code> gate is declared expected-red for the submission</td><td>Shruti, Mo</td><td><span class="status s-open">Expected red</span></td></tr>
       <tr><td>Part 1: SAM 3.1 stream cut mid-response</td><td>Low</td><td>Part 7 retries Part 1 once when time allows, pauses it for 20 minutes after 3 cuts in 30 minutes, and falls back to Part 3's key frames</td><td>Shruti, Mo</td><td><span class="status s-part">Mitigated in Part 7</span></td></tr>
@@ -1106,7 +1112,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 </section>
 
 <footer>
-  Simon design blueprint · state as of 1 November 2026, 05:20 UTC · source: <code>moalborati/simon/docs/blueprint/index.html</code>. Business figures are planning estimates; technical figures come from measured runs.
+  Simon design blueprint · state as of 1 November 2026, 17:30 UTC · source: <code>moalborati/simon/docs/blueprint/index.html</code>. Business figures are planning estimates; technical figures come from measured runs.
 </footer>
 </main>
 </div>
