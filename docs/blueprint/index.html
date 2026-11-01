@@ -947,6 +947,42 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   </table></div>
   <p class="muted">At 10,000 active users a month (65 takes each): ~$92,000 compute with the Meta APIs; about $13,000 with SAM 3.1 on our own GPUs at the measured busy rate ($0.020 a take), plus cold starts and warm windows. Earlier estimate for comparison: $35,000 to $48,000 on rented GPUs. Serverless is cheaper until a rented GPU would be busy more than ~38% of the time; from about 1,000 active users, an always-on base plus serverless peaks is cheapest. Cold starts (about 35 s more GPU time) and keep-warm idle time are not in the per-take figure; the pilot should measure them.</p>
 
+  <h3>Scaling up: serverless, always-on or hybrid GPUs</h3>
+  <p>Built from the measured 37 s of L40S time per 10 s take. One GPU finishes about 97 takes an hour, one at a time. The question is how to buy that GPU time as users grow.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 960 304" role="img" aria-label="GPU cost per active user per month: serverless $1.50 at every size; always-on sized for the peak $5.40 at 100 users falling to $2.58; hybrid $1.50 at 100 users falling to $0.86 from 10,000 users.">
+      <line class="grid-line" x1="220" y1="40" x2="220" y2="268" stroke-dasharray="3 5"/><text class="tm" x="220" y="282" text-anchor="middle">$0</text><line class="grid-line" x1="340" y1="40" x2="340" y2="268" stroke-dasharray="3 5"/><text class="tm" x="340" y="282" text-anchor="middle">$1</text><line class="grid-line" x1="460" y1="40" x2="460" y2="268" stroke-dasharray="3 5"/><text class="tm" x="460" y="282" text-anchor="middle">$2</text><line class="grid-line" x1="580" y1="40" x2="580" y2="268" stroke-dasharray="3 5"/><text class="tm" x="580" y="282" text-anchor="middle">$3</text><line class="grid-line" x1="700" y1="40" x2="700" y2="268" stroke-dasharray="3 5"/><text class="tm" x="700" y="282" text-anchor="middle">$4</text><line class="grid-line" x1="820" y1="40" x2="820" y2="268" stroke-dasharray="3 5"/><text class="tm" x="820" y="282" text-anchor="middle">$5</text><text class="t" x="206" y="71" text-anchor="end">100 users</text><rect x="220" y="50" width="180" height="11" rx="2" fill="var(--lime)"/><text class="tm" x="406" y="59">$1.50</text><rect x="220" y="63" width="648" height="11" rx="2" fill="var(--coral)"/><text class="tm" x="874" y="72">$5.40</text><rect x="220" y="76" width="180" height="11" rx="2" fill="var(--amber)"/><text class="tm" x="406" y="85">$1.50</text><text class="t" x="206" y="127" text-anchor="end">1,000</text><rect x="220" y="106" width="180" height="11" rx="2" fill="var(--lime)"/><text class="tm" x="406" y="115">$1.50</text><rect x="220" y="119" width="324" height="11" rx="2" fill="var(--coral)"/><text class="tm" x="550" y="128">$2.70</text><rect x="220" y="132" width="121" height="11" rx="2" fill="var(--amber)"/><text class="tm" x="347" y="141">$1.01</text><text class="t" x="206" y="183" text-anchor="end">10,000</text><rect x="220" y="162" width="180" height="11" rx="2" fill="var(--lime)"/><text class="tm" x="406" y="171">$1.50</text><rect x="220" y="175" width="311" height="11" rx="2" fill="var(--coral)"/><text class="tm" x="537" y="184">$2.59</text><rect x="220" y="188" width="103" height="11" rx="2" fill="var(--amber)"/><text class="tm" x="329" y="197">$0.86</text><text class="t" x="206" y="239" text-anchor="end">100,000</text><rect x="220" y="218" width="180" height="11" rx="2" fill="var(--lime)"/><text class="tm" x="406" y="227">$1.50</text><rect x="220" y="231" width="310" height="11" rx="2" fill="var(--coral)"/><text class="tm" x="536" y="240">$2.58</text><rect x="220" y="244" width="103" height="11" rx="2" fill="var(--amber)"/><text class="tm" x="329" y="253">$0.86</text>
+    </svg>
+    </div>
+    <div class="legend"><span><i style="background:var(--lime)"></i>Serverless (Modal, per second)</span><span><i style="background:var(--coral)"></i>Always-on, sized for the busiest hour</span><span><i style="background:var(--amber)"></i>Hybrid: always-on for the average load, serverless for the peaks</span></div>
+    <figcaption><b>GPU cost per active user per month.</b> Serverless is cheapest until about 1,000 users. After that, a hybrid that keeps the average load on always-on GPUs and sends the peaks to serverless is cheapest. Always-on sized for the peak never wins, because workout traffic bunches up.</figcaption>
+  </figure>
+  <div class="table-wrap"><table>
+    <thead><tr><th class="num">Active users</th><th class="num">Takes / month</th><th class="num">Busiest hour</th><th class="num">GPUs at peak</th><th class="num">Serverless</th><th class="num">Always-on</th><th class="num">Hybrid</th><th>Cheapest</th></tr></thead>
+    <tbody>
+      <tr><td class="num">100</td><td class="num">6,500</td><td class="num">32 takes</td><td class="num">1</td><td class="num">$150</td><td class="num">$540</td><td class="num">$150</td><td>Serverless</td></tr>
+      <tr><td class="num">1,000</td><td class="num">65,000</td><td class="num">325</td><td class="num">5</td><td class="num">$1,500</td><td class="num">$2,700</td><td class="num">$1,010</td><td>Hybrid (1 always-on GPU)</td></tr>
+      <tr><td class="num">10,000</td><td class="num">650,000</td><td class="num">3,250</td><td class="num">48</td><td class="num">$15,000</td><td class="num">$25,900</td><td class="num">$8,600</td><td>Hybrid (13 always-on)</td></tr>
+      <tr><td class="num">100,000</td><td class="num">6.5 M</td><td class="num">32,500</td><td class="num">478</td><td class="num">$150,000</td><td class="num">$258,000</td><td class="num">$86,000</td><td>Hybrid (130 always-on)</td></tr>
+    </tbody>
+  </table></div>
+  <h4>Other costs that grow with users (at 100,000 users)</h4>
+  <ul class="clean">
+    <li><b>Muse Spark phrasing:</b> about $0.0026 a take (about 1,000 tokens in and 300 out), so about $17,000 a month. The template wording costs nothing; spending this only on paid plans keeps it in line.</li>
+    <li><b>CPU for Parts 3 to 6 and the app:</b> about 2 s of CPU a take, so about 3,600 CPU-hours, about $150 a month.</li>
+    <li><b>Clip storage:</b> about 1 MB a take kept 30 days, so about 6.5 TB, about $150 a month.</li>
+    <li><b>Trainer recordings</b> add Part 1 (SAM 3.1 key frames through the Meta API, $0.20 per 1,000 frames). They are rare next to follower takes.</li>
+  </ul>
+  <h4>What the model assumes</h4>
+  <ul class="clean">
+    <li>65 takes per active user a month (the plan's figure) and 15% of a day's takes in the busiest hour.</li>
+    <li>Measured 37 s of GPU per 10 s take, warm; serverless adds 15% for cold starts and warm windows at scale.</li>
+    <li>Modal L40S at $1.95 an hour on demand. A rented always-on L40S at $0.74 an hour, a planning price. An always-on GPU runs at most 70% busy at peak.</li>
+    <li>An always-on GPU pays off over serverless once it is busy more than about 33% of the time. The hybrid keeps that many on (average load ÷ 70%) and sends the rest to serverless.</li>
+    <li>Not modelled: GPU quotas and burst limits at large scale, owned hardware (an RTX 5090 bought outright costs much less per hour once it is kept busy), and longer takes (GPU time grows with clip length).</li>
+  </ul>
+
   <h3>Go to market</h3>
   <ol class="clean" style="padding-left:20px">
     <li><b>Pilot (Nov–Dec 2026):</b> 3 trainers, 1 dance studio, 1 physio clinic; free in exchange for weekly feedback and permission to measure accuracy on real takes.</li>
