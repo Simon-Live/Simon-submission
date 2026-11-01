@@ -1,5 +1,5 @@
 /* App-wide components on the brand tokens (theme/tokens.css). No literal colors or sizes here. */
-body { background: var(--backdrop); background-attachment: fixed; color: var(--color-text); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+body { background: var(--backdrop); background-attachment: fixed; background-blend-mode: screen; color: var(--color-text); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 /* the back layer (brand design 2026-11-01): pink halftone fields fading out of the smoke, lime halftone in two corners;
    fixed behind everything and never hit by a tap */
 body::before, body::after { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; }

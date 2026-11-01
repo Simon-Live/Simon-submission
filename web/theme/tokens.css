@@ -62,8 +62,13 @@
   /* the backgrounds to use for a grey card: the halftone, faded toward the bottom right, over the grey */
   --card-fill: var(--card-fade), var(--halftone-card), var(--color-surface);
   --card-fill-raised: var(--card-fade-raised), var(--halftone-card), var(--color-raised);
-  /* the page's back layer: pink smoke under the halftone fields drawn by base.css */
-  --backdrop: radial-gradient(ellipse 62% 50% at 90% 6%, var(--color-pink-smoke) 0%, transparent 72%),
+  /* the page's back layer: chalk-powder bursts (generated images, pink on black, screen-blended so the black drops
+     out) over soft pink smoke, under the halftone fields drawn by base.css; img/ is beside this file */
+  --powder-a: url("img/powder-a.jpg");
+  --powder-b: url("img/powder-b.jpg");
+  --backdrop: var(--powder-a) right -26vw top -16vh / min(70vw, 1050px) auto no-repeat,
+              var(--powder-b) left -28vw bottom -20vh / min(62vw, 950px) auto no-repeat,
+              radial-gradient(ellipse 62% 50% at 90% 6%, var(--color-pink-smoke) 0%, transparent 72%),
               radial-gradient(ellipse 55% 45% at 4% 98%, var(--color-pink-smoke) 0%, transparent 72%),
               radial-gradient(ellipse 35% 30% at 50% 55%, var(--color-pink-smoke-soft) 0%, transparent 75%),
               var(--color-bg);
