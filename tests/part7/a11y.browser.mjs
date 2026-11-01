@@ -156,12 +156,13 @@ for (const [size, width, height] of SIZES) {
   await audit(size, "follow-ladder", page);
   await ctx.close();
 
-  // the catalog mode filter
-  ({ ctx, page } = await visit(size, width, height, "/#/", "[data-testid=mode-filter]"));
-  const filter = page.locator('[data-testid^="mode-filter-"]');
-  await filter.nth(1).click();
-  assert.equal(await filter.nth(1).getAttribute("aria-pressed"), "true");
-  assert.equal(await page.locator('[data-testid^="mode-filter-"][aria-pressed="true"]').count(), 1, `${size}: one filter pressed at a time`);
+  // the Exercise / Dance / Rehab switch in the header (it replaced the catalog mode filter)
+  ({ ctx, page } = await visit(size, width, height, "/#/", "[data-testid=kind-dance]"));
+  const kinds = page.locator('[data-testid^="kind-"]');
+  await page.getByTestId("kind-dance").click();
+  assert.equal(await page.getByTestId("kind-dance").getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator('[data-testid^="kind-"][aria-pressed="true"]').count(), 1, `${size}: one kind pressed at a time`);
+  assert.equal(await kinds.count(), 3, `${size}: exercise, dance, rehab`);
   await audit(size, "catalog-filtered", page);
   await ctx.close();
   console.log(`checked - ${size} states`);

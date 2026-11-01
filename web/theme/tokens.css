@@ -38,6 +38,8 @@
   --color-bad: var(--palette-coral);
   --color-bad-soft: rgb(255 107 74 / 14%);
   --color-warn: var(--palette-amber);
+  --color-warn-soft: rgb(255 200 61 / 12%);
+  --color-warn-line: rgb(255 200 61 / 35%);
 
   /* semantic: overlays on top of video or the page */
   --color-header-glass: rgb(10 10 10 / 92%);
@@ -70,6 +72,7 @@
   --space-6: 24px;
   --tap-target: 44px;
   --button-height: 48px;
+  --target-min: 44px;   /* the smallest tap target (WCAG 2.5.5; checked by a11y.browser.mjs) */
   --header-blur: 10px;
 
   /* motion */

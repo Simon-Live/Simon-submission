@@ -1,0 +1,14 @@
+/* Brand overrides for Part 7 screens whose stylesheets carry light-theme literals (challenge.css, practice.css).
+   Those files stay as they are; these rules win by specificity (body prefix) and use tokens only. */
+
+/* practice: the pressed mode button */
+body .mode-btn[aria-pressed="true"] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+
+/* challenge: gold first place, sponsor banner and grade chips */
+body .ch-screen, body .ch-actions-box { --ch-gold: var(--color-warn); }
+body .ch-sponsor { border-color: var(--color-warn-line); background: var(--color-warn-soft); color: var(--color-text); }
+body .ch-row:first-child { border-color: var(--color-warn-line); background: var(--color-warn-soft); color: var(--color-text); }
+body .ch-badge { background: var(--color-accent-soft); color: var(--color-accent); }
+body .ch-grade[data-grade="C"] { background: var(--color-warn-soft); color: var(--color-warn); }
+body .ch-grade[data-grade="D"] { background: var(--color-bad-soft); color: var(--color-bad); }
+body .ch-tag { background: var(--color-warn-soft); color: var(--color-warn); }

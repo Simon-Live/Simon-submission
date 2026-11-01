@@ -45,3 +45,8 @@ export function entryInKind(entry, kind, labels = {}) {
   if (kind === "rehab") return (((labels || {})[entry.id] || {}).tags || []).includes(REHAB_TAG);
   return kindOfEntry(entry) === kind;
 }
+
+/** The kind a stored practice mode stands for (fitness -> exercise), or null for an unknown or missing mode. */
+export function kindForMode(mode) {
+  return KINDS.find((k) => KIND_MODE[k] === mode) || null;
+}

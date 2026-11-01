@@ -6,6 +6,10 @@ import { mountCompare, mountViewer, normalizeReplay, ensureStyles, MSG_BAD_REPLA
 import { worstMoment, momentsToReview, flaggedWindows } from "./coaching.js";
 import { mountCoachStage, renderMomentList, momentChip } from "./coach-view.js";
 import { qualityIssues, qualityTips, qualityWarning } from "./quality-result.js";
+import { getEntry } from "./api.js";
+import { summaryOf } from "./model/result-summary.js";
+import { currentKind, kindForMode } from "./model/kind.js";
+import { renderResultSummary } from "./views/result-summary.js";
 
 // How long the result waits for the follower video to say it loads before showing the rest without it.
 export const SETTLE_TIMEOUT_MS = 4000;
@@ -301,6 +305,22 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   }
   const shown = withScore(analysis);
   const real = hasScore(analysis);
+  // brand summary on top (model/result-summary.js -> views/result-summary.js); the old score panel stays hidden below
+  const summarySlot = el("div", { class: "rs-slot" });
+  root.append(summarySlot);
+  root.dataset.summary = "true";
+  let summaryModel = null;
+  try { summaryModel = replay ? normalizeReplay(replay) : null; } catch { summaryModel = null; }
+  const summaryOpts = { kind: kindForMode(record && record.mode) || currentKind(), model: summaryModel, retryHref: recordAgainHref(record) };
+  const summaryOn = { seek: (t) => getView() && view.jump(t), replay: () => zone.scrollIntoView({ behavior: "smooth", block: "start" }) };
+  const paintSummary = (entryName = "") => {
+    summarySlot.replaceChildren();
+    renderResultSummary(summarySlot, summaryOf(shown, { ...summaryOpts, entryName }), summaryOn);
+  };
+  paintSummary();
+  // the routine's name only appears in a rep title ("Lateral raise, rep 3 of 8"); look it up only then
+  const namesRep = shown.score && shown.score.basis === "reps" && worstMoment(shown);
+  if (namesRep && record && record.entry_id) getEntry(record.entry_id).then((e) => e && e.name && paintSummary(e.name)).catch(() => {});
   const modeSlot = makeSlot(root, "mode-slot");
   fillSlot(modeSlot, () => import("./modes.js").then((m) => m.mountModeNote), ctx, cleanups);
   renderScore(root, shown);
