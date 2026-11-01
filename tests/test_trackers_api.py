@@ -1,13 +1,14 @@
 """Tracker registry, the SAM 3.1 API tracker and the budget (docs/specs/tracker-registry.md): the api-sam31 shape and
 provenance (AC-R04, AC-R05, TICKET-047), the order and fallback of the registry (AC-R08) and the spend caps (AC-R09).
 
-Split from tests/test_trackers.py (800-line limit); the fixtures and helpers are that file's, imported here."""
+Split from tests/test_trackers.py (800-line limit); the fixtures and helpers are in tests/tracker_helpers.py."""
 import json
 import os
 
 import pytest
-from test_trackers import (  # noqa: F401  (env is a fixture)
-    MASK, _no_network, api_client, check_shape, env, fake_tracker, ledger_line, make_frames, put_key)
+from test_trackers_adapters import check_shape
+from tracker_helpers import (  # noqa: F401  (env is a fixture)
+    MASK, _no_network, api_client, env, fake_tracker, ledger_line, make_frames, put_key)
 
 from part2 import backends, meta_api, track, trackers
 from part2.trackers import api_sam31

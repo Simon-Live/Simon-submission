@@ -25,7 +25,8 @@ from pathlib import Path
 
 import pytest
 from test_cli import _image_dir
-from test_trackers import FakeSam3, env, put_key  # noqa: F401  (env is a fixture)
+from test_trackers_adapters import FakeSam3
+from tracker_helpers import env, put_key  # noqa: F401  (env is a fixture)
 
 from part2 import backends, cli, trackers, warm_track, worker
 from part2.trackers import local_sam31

@@ -1,5 +1,5 @@
-"""The run API over HTTP (docs/specs/run-app.md: AC-A04 to AC-A12), split from tests/test_server.py to keep it under
-800 lines. The synthetic repo, the server runner, the request helpers and the per-test isolation are test_server's;
+"""The run API over HTTP (docs/specs/run-app.md: AC-A04 to AC-A12), split from tests/test_server.py by topic. The
+synthetic repo, the server runner, the request helpers and the per-test isolation are tests/server_helpers.py's;
 jobs run the fake runner of tests/test_jobs.py."""
 import json
 import shutil
@@ -9,7 +9,7 @@ import time
 import pytest
 from test_jobs import FAKE_RUN, fake_command
 from test_runapi import form, jpeg
-from test_server import (  # noqa: F401  (repo and isolated_jobs are fixtures pytest finds by name)
+from server_helpers import (  # noqa: F401  (repo and isolated_jobs are fixtures pytest finds by name)
     fake_smi, fetch, get_json, isolated_jobs, raw_exchange, repo, running, snapshot)
 
 from part2 import jobs, runapi

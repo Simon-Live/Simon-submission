@@ -1,140 +1,26 @@
-"""part2/server.py and the pages (docs/specs/run-app.md: AC-A01, AC-A02, AC-A10 to AC-A12; the run API over HTTP,
-AC-A04 to AC-A12, is in tests/test_server_run.py).
+"""part2/server.py: health, pages, headers, methods, paths, base path, outputs and the contract (docs/specs/run-app.md:
+AC-A01, AC-A02, AC-A10, AC-A11).
 
-Most tests serve a small synthetic repo from tmp_path so every edge case is exact; the AC-A01 tests also
-serve the committed outputs under fixtures/output/. Job dirs, the GPU lock and nvidia-smi are temp files or fakes,
-and the capability probe is a fake. The fixtures and request helpers here are shared with tests/test_server_run.py.
+Most tests serve a small synthetic repo from tmp_path so every edge case is exact; the AC-A01 tests also serve the
+committed outputs under fixtures/output/. Shared fixtures and helpers: tests/server_helpers.py. The run API over HTTP
+is in test_server_run.py; the pages, the process and scripts/dev.sh are in test_server_pages.py.
 """
-import contextlib
-import http.client
 import json
-import os
 import re
-import signal
-import socket
-import subprocess
 import sys
-import tempfile
-import threading
-import time
-import urllib.request
 from pathlib import Path
 
 import pytest
 
 import part2.contract
-from part2 import jobs, runapi, server
-from part2.joints import CANONICAL
-from test_runapi import ALL_UP
+from part2 import server
+from server_helpers import (JPEG, ROOT, fake_smi, fetch, get_json, isolated_jobs, port, raw_exchange,  # noqa: F401
+                            real_port, repo, running, write_output)
 
-ROOT = Path(__file__).resolve().parent.parent
-JPEG = b"\xff\xd8\xff\xe0fake-jpeg"
 CSP = "default-src 'self'; img-src 'self' data: blob:"
 CONTRACT_DATA = {"schemas": [{"name": "pose3d", "version": "part2.pose3d/2026-10-28", "direction": "produces",
                               "file": "contracts/pose3d.schema.json"}],
                  "compatibility": [{"producer_file": "pose3d.json", "consumer": "Part 3", "result": "works"}]}
-
-
-# ---- helpers -----------------------------------------------------------------------------------------
-
-def write_output(d: Path, ids=(0,), n=3, step=200.0, provenance=None, tracks=False):
-    d.mkdir(parents=True)
-    joints = {name: {"x": 0.01 * k, "y": 0.1 * k, "z": 0.0, "conf": 1.0} for k, name in enumerate(CANONICAL)}
-    frames = [{"frame": f, "t_ms": f * step, "people": [{"id": i, "joints": joints} for i in ids]} for f in range(n)]
-    (d / "pose3d.json").write_text(json.dumps({"frames": frames, **({"provenance": provenance} if provenance else {})}))
-    eye = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-    (d / "camera.json").write_text(json.dumps({"K": eye, "image_size": [1280, 720], "frames": [
-        {"frame": f, "people": [{"id": i, "R": eye, "t": [0, 0, 3]} for i in ids]} for f in range(n)]}))
-    if tracks:
-        (d / "tracks.json").write_text(json.dumps({"frames": [
-            {"frame": f, "people": [{"id": i, "bbox": [0, 0, 1, 1], "confidence": 1.0} for i in ids]} for f in range(n)]}))
-
-
-def write_frames(d: Path, n=3, step=200.0, name=lambda f: f"{f:06d}.jpg"):
-    d.mkdir(parents=True)
-    for f in range(n):
-        (d / name(f)).write_bytes(JPEG + str(f).encode())
-    (d / "frames.json").write_text(json.dumps({"source": "/somewhere/clip.mp4", "frames": [
-        {"frame": f, "t_ms": f * step, "file": name(f)} for f in range(n)]}))
-
-
-@pytest.fixture
-def repo(tmp_path):
-    """A small repo root: pages, three outputs (class with matching pictures), a scored output, contracts."""
-    root = tmp_path / "repo"
-    web = root / "web"
-    web.mkdir(parents=True)
-    for name in ("index.html", "contract.html"):
-        (web / name).write_text(f"<!doctype html><title>{name}</title>")
-    (web / "browse.js").write_text("// browse")
-    (web / "viewer.js").write_text("// viewer")
-    (web / "style.css").write_text("body{}")
-    (web / "icon.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
-    (web / "unlisted.html").write_text("NOT-IN-THE-TABLE")
-    out = root / "fixtures" / "output"
-    write_output(out / "single", n=4, step=100.0)
-    write_output(out / "class", ids=(0, 1, 2), tracks=True)
-    write_output(out / "scored" / "cpu-single", n=4, step=100.0, provenance={"backend": "cpu", "tracker": None})
-    write_frames(root / "fixtures" / "input" / "class" / "frames")
-    write_frames(root / "fixtures" / "input" / "single" / "frames", n=4, step=100.0)
-    (root / "contracts" / "consumers").mkdir(parents=True)
-    (root / "contracts" / "pose3d.schema.json").write_text('{"title": "pose3d"}')
-    (root / "contracts" / "consumers" / "part3.json").write_text('{"title": "part3"}')
-    (root / "contracts" / "notes.txt").write_text("not json")
-    (root / "CONTRACT.md").write_text("# Contract\n\nText.\n")
-    (root / "private.txt").write_text("PRIVATE-DATA")
-    (tmp_path / "secret.txt").write_text("TOP-SECRET")
-    return root
-
-
-@pytest.fixture(autouse=True)
-def isolated_jobs(tmp_path_factory, monkeypatch):
-    """Job dirs and the GPU lock in temp dirs; no nvidia-smi (health says gpu null) unless a test fakes one."""
-    monkeypatch.setenv("PART2_JOBS_DIR", str(tmp_path_factory.mktemp("jobs")))
-    monkeypatch.setenv("PART2_GPU_LOCK", str(tmp_path_factory.mktemp("lock") / "gpu.lock"))
-    monkeypatch.setenv("PART2_NVIDIA_SMI", str(tmp_path_factory.mktemp("nosmi") / "nvidia-smi"))
-    monkeypatch.setenv("PYTHONPATH", str(ROOT))
-
-
-FAST = jobs.Settings(gpu_poll_s=0.05, poll_s=0.05, kill_grace_s=2.0, gpu_wait_s=0.5)
-
-
-@contextlib.contextmanager
-def running(root: Path, base: str = "/", probe=None, **kw):
-    """A server on a free port with its own temp job dir and a fake capability probe (all available)."""
-    with tempfile.TemporaryDirectory() as jobs_dir:
-        caps = runapi.Capabilities(probe=probe or (lambda: ALL_UP))
-        srv = server.make_server("127.0.0.1", 0, base, root, jobs_dir=kw.pop("jobs_dir", Path(jobs_dir)),
-                                 caps=caps, settings=kw.pop("settings", FAST), **kw)
-        thread = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
-        thread.start()
-        try:
-            yield srv.server_address[1]
-        finally:
-            srv.shutdown()
-            srv.server_close()
-            thread.join(5)
-
-
-@pytest.fixture
-def port(repo):
-    with running(repo) as p:
-        yield p
-
-
-def fetch(port, path, method="GET", body=None, headers=None):
-    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-    try:
-        conn.request(method, path, body=body, headers=headers or {})
-        r = conn.getresponse()
-        return r.status, {k.lower(): v for k, v in r.getheaders()}, r.read()
-    finally:
-        conn.close()
-
-
-def get_json(port, path):
-    status, headers, body = fetch(port, path)
-    return status, json.loads(body)
 
 
 # ---- health, pages, headers ---------------------------------------------------------------------------
@@ -144,13 +30,6 @@ def test_health_answers_ok_with_version_gpu_and_worker(port):
     assert status == 200
     assert doc["ok"] is True and isinstance(doc["version"], str) and doc["version"]
     assert doc["gpu"] is None and doc["worker"] == "idle"
-
-
-def fake_smi(tmp_path: Path, monkeypatch, line: str = "20480, 32768") -> None:
-    script = tmp_path / "nvidia-smi"
-    script.write_text(f"#!/bin/sh\necho '{line}'\n")
-    script.chmod(0o755)
-    monkeypatch.setenv("PART2_NVIDIA_SMI", str(script))
 
 
 def test_health_names_free_gpu_memory_when_nvidia_smi_answers(repo, tmp_path, monkeypatch):
@@ -235,19 +114,6 @@ def test_an_unknown_method_is_a_json_error_not_an_html_page(port):
     status, headers, body = fetch(port, "/api/health", "TRACE")
     assert status == 501 and headers["content-type"] == "application/json"
     assert set(json.loads(body)) == {"error", "code"} and headers["x-content-type-options"] == "nosniff"
-
-
-def raw_exchange(port, request: bytes) -> tuple:
-    with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
-        s.sendall(request)
-        data = b""
-        try:
-            while chunk := s.recv(4096):
-                data += chunk
-        except ConnectionResetError:  # the server closes with part of an oversize request unread: TCP resets after the reply
-            pass
-    head, _, body = data.partition(b"\r\n\r\n")
-    return head.decode(), body
 
 
 def test_protocol_errors_are_json_with_the_security_headers(port):
@@ -470,12 +336,6 @@ def test_the_index_follows_the_files(repo):
 
 # ---- the committed outputs ------------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
-def real_port():
-    with running(ROOT) as p:
-        yield p
-
-
 def test_committed_outputs_are_listed_with_their_real_counts(real_port):
     _, rows = get_json(real_port, "/api/outputs")
     by_id = {r["id"]: r for r in rows}
@@ -560,206 +420,3 @@ def test_contract_page_data_equals_the_contract_command_and_every_schema_downloa
     listed = {Path(s["file"]).name for s in doc["schemas"]}
     on_disk = {p.name for p in (ROOT / "contracts").glob("*.schema.json")}
     assert on_disk <= listed
-
-
-# ---- nothing is written, pages are CSP safe ----------------------------------------------------------------
-
-def snapshot(root: Path):
-    return {p.relative_to(root).as_posix(): (p.stat().st_mtime_ns, p.stat().st_size) for p in root.rglob("*") if p.is_file()}
-
-
-def test_serving_writes_nothing_in_the_tree(repo):
-    before = snapshot(repo)
-    with running(repo) as p:
-        for path in ("/", "/api/health", "/api/outputs", "/api/outputs/class", "/api/outputs/class/frames/0.jpg",
-                     "/contracts/pose3d.schema.json", "/CONTRACT.md", "/nope"):
-            fetch(p, path)
-        fetch(p, "/api/outputs", "POST", body=b"abc")
-    assert snapshot(repo) == before
-
-
-def web_text(name: str) -> str:
-    return (ROOT / "web" / name).read_text()
-
-
-def page_ids(html: str) -> set:
-    return set(re.findall(r'\bid="([^"]+)"', html))
-
-
-def test_pages_use_no_inline_script_style_or_handler_so_the_csp_holds():
-    for name in ("index.html", "contract.html", "run.html"):
-        html = web_text(name)
-        assert not re.search(r"<script(?![^>]*\ssrc=)", html), name
-        assert not re.search(r"<style|\sstyle=|\son[a-z]+=", html), name
-        assert 'rel="icon" href="icon.svg"' in html and 'href="style.css"' in html
-        assert not re.search(r'(?:src|href)="/', html), f"{name} must use relative URLs"
-    js = web_text("browse.js") + web_text("viewer.js") + web_text("run.js") + web_text("overlay.js")
-    assert not re.search(r"""(?:fetch|href\s*=|src\s*=)\s*\(?\s*['"]/""", js), "scripts must use relative URLs"
-    assert "setAttribute('style'" not in js and "innerHTML" not in js
-
-
-def test_every_element_the_scripts_look_up_exists_on_its_page():
-    index, contract = page_ids(web_text("index.html")), page_ids(web_text("contract.html"))
-    looked_up = set(re.findall(r"\$\('([a-z-]+)'\)", web_text("browse.js")))
-    assert looked_up <= index | contract
-    browse_ids = {"output-select", "source-line", "frame-img", "frame-empty", "viewer", "legend", "view-front", "view-side",
-                  "view-top", "view-reset", "play-toggle", "frame-slider", "frame-info", "status", "alert", "overlay",
-                  "person-picker", "person-select"}
-    contract_ids = {"status", "alert", "schemas", "schemas-empty", "compat", "compat-empty", "contract-doc"}
-    assert browse_ids <= index and contract_ids <= contract
-    assert {"viewer"} & contract == set()          # browse.js tells the pages apart by the canvas
-
-
-def test_controls_have_the_accessible_names_the_verify_suite_uses():
-    html = web_text("index.html")
-    for ident, name in (("view-front", "Front"), ("view-side", "Side"), ("view-top", "Top"),
-                        ("view-reset", "Reset"), ("play-toggle", "Play")):
-        assert f'<button type="button" id="{ident}">{name}</button>' in html
-    assert '<label for="frame-slider">Frame</label>' in html and 'id="frame-slider" min="0"' in html
-    assert '<label for="output-select">Output</label>' in html
-    assert 'role="status"' in html and 'role="alert"' in html
-    assert 'aria-label="3D skeleton view"' in html
-
-
-def test_nothing_we_wrote_uses_an_em_or_en_dash():
-    files = [*(ROOT / "web").glob("*"), *(ROOT / "part2" / n for n in ("server.py", "runapi.py", "jobs.py", "gpu_guard.py")),
-             ROOT / "scripts" / "dev.sh", Path(__file__), *(ROOT / "tests" / n for n in (
-                 "test_viewer_js.py", "test_jobs.py", "test_runapi.py", "test_gpu_guard.py", "test_server_run.py"))]
-    banned = (chr(0x2014), chr(0x2013))
-    for path in (f for f in files if f.exists()):  # scripts/dev.sh is firm-only and absent upstream
-        assert not any(ch in path.read_text() for ch in banned), path
-
-
-# ---- the process: python -m part2.server and scripts/dev.sh ---------------------------------------------------
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def test_main_exits_1_with_a_plain_message_when_the_port_is_taken(capsys):
-    with socket.socket() as busy:
-        busy.bind(("127.0.0.1", 0))
-        busy.listen()
-        assert server.main(["--port", str(busy.getsockname()[1])]) == 1
-    assert "in use by another program" in capsys.readouterr().err
-
-
-DEV_SH = ROOT / "scripts" / "dev.sh"
-# scripts/dev.sh is a firm-only file (never published), so a clean clone of upstream skips its tests.
-needs_dev_sh = pytest.mark.skipif(not DEV_SH.exists(), reason="scripts/dev.sh is firm-only; absent in this checkout")
-
-
-def dev(args, port, state, timeout=40):
-    env = {**os.environ, "PART2_DEV_PORT": str(port), "PART2_DEV_STATE": str(state)}
-    return subprocess.run(["bash", str(ROOT / "scripts" / "dev.sh"), *args], env=env, capture_output=True, text=True, timeout=timeout)
-
-
-def alive(pid: int) -> bool:
-    try:
-        return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
-    except OSError:
-        return False
-
-
-@needs_dev_sh
-def test_dev_script_starts_serves_and_stops(tmp_path):
-    port, state = free_port(), tmp_path / "state"
-    try:
-        started = dev(["start"], port, state)
-        assert started.returncode == 0, started.stderr
-        pid = int((state / "dev.pid").read_text())
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=5) as r:
-            assert json.load(r)["ok"] is True
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5) as r:
-            assert b"Browse outputs" in r.read()
-        again = dev([], port, state)                                  # no argument means start; already running
-        assert again.returncode == 0 and "already running" in again.stdout
-        assert int((state / "dev.pid").read_text()) == pid
-        stopped = dev(["stop"], port, state)
-        assert stopped.returncode == 0 and not (state / "dev.pid").exists()
-        for _ in range(50):
-            if not alive(pid):
-                break
-            time.sleep(0.1)
-        assert not alive(pid)
-        assert dev(["stop"], port, state).returncode == 0              # idempotent
-    finally:
-        dev(["stop"], port, state)
-
-
-@needs_dev_sh
-def test_dev_stop_leaves_a_foreign_process_alone(tmp_path):
-    state = tmp_path / "state"
-    state.mkdir()
-    other = subprocess.Popen(["sleep", "30"])
-    try:
-        (state / "dev.pid").write_text(str(other.pid))
-        done = dev(["stop"], free_port(), state)
-        assert done.returncode == 0 and other.poll() is None
-        assert not (state / "dev.pid").exists()
-    finally:
-        other.send_signal(signal.SIGKILL)
-        other.wait()
-
-
-@needs_dev_sh
-def test_dev_script_refuses_a_port_held_by_another_program_and_unknown_arguments(tmp_path):
-    with running(ROOT) as held:
-        busy = dev(["start"], held, tmp_path / "state")
-        assert busy.returncode == 1 and "in use by another program" in busy.stderr
-    assert dev(["bogus"], free_port(), tmp_path / "state").returncode == 2
-
-
-# ---- the run page (TICKET-025) and the page contract ---------------------------------------------------------------
-
-def test_the_run_page_has_every_element_its_script_looks_up():
-    run_ids = page_ids(web_text("run.html"))
-    looked_up = set(re.findall(r"\$\('([a-z0-9-]+)'\)", web_text("run.js")))
-    assert looked_up and looked_up <= run_ids
-    viewer_ids = set(re.findall(r"\$\('([a-z-]+)'\)", web_text("viewer.js")))
-    assert viewer_ids <= run_ids and viewer_ids <= page_ids(web_text("index.html"))
-
-
-def test_run_page_controls_have_the_accessible_names_the_verify_suite_uses():
-    html = web_text("run.html")
-    assert "<legend>Input</legend>" in html and "<legend>Mode</legend>" in html
-    assert '<label for="file-input">Video or photo</label>' in html
-    assert 'id="mode-single" value="single" checked> One person</label>' in html
-    assert 'id="mode-class" value="class"> Class</label>' in html and 'id="input-file" value="file"> Your own file</label>' in html
-    for ident, name in (("backend-select", "Backend"), ("tracker-select", "Tracker"), ("person-select", "Person"),
-                        ("frame-slider", "Frame")):
-        assert f'<label for="{ident}">{name}</label>' in html
-    for ident, name in (("run-button", "Run"), ("cancel-button", "Cancel"), ("view-front", "Front"), ("view-side", "Side"),
-                        ("view-top", "Top"), ("view-reset", "Reset"), ("play-toggle", "Play"),
-                        ("download-pose3d", "Download pose3d.json"), ("download-tracks", "Download tracks.json")):
-        assert re.search(rf'<button type="(button|submit)" id="{ident}"[^>]*>{re.escape(name)}</button>', html), ident
-    assert 'id="status" role="status"' in html and 'id="alert" role="alert"' in html
-    assert 'aria-label="3D skeleton view"' in html and 'aria-label="People"' in html
-    assert "input-sample-" in web_text("run.js")                     # sample radios: input-sample-<id>, label = title
-
-
-def test_every_page_links_the_others_and_marks_itself():
-    for name, current in (("index.html", "Browse"), ("contract.html", "Contract"), ("run.html", "Run")):
-        nav = re.search(r'<nav id="site-nav" aria-label="Pages">(.*?)</nav>', web_text(name), re.S).group(1)
-        links = re.findall(r'<a href="([a-z.]+)"( aria-current="page")?>([A-Za-z]+)</a>', nav)
-        assert [(h, n) for h, _, n in links] == [("index.html", "Browse"), ("contract.html", "Contract"), ("run.html", "Run")]
-        assert [n for _, cur, n in links if cur] == [current], name
-
-
-def test_the_page_hooks_are_declared_on_window_app():
-    run, browse = web_text("run.js"), web_text("browse.js")
-    for key in ("ready", "output", "job", "runs", "frame", "frameCount", "playing", "people", "colors", "person",
-                "viewerPeople", "camera", "target"):
-        assert re.search(rf"\b{key}\b", run), key
-    for key in ("ready", "output", "job", "runs", "frame", "frameCount", "playing", "people", "colors", "person",
-                "camera", "target"):
-        assert re.search(rf"\b{key}\b", browse), key
-
-
-def test_the_run_page_is_served_with_its_scripts(real_port):
-    for path, ctype in (("/run.html", "text/html"), ("/run.js", "text/javascript"), ("/overlay.js", "text/javascript")):
-        status, headers, body = fetch(real_port, path)
-        assert status == 200 and headers["content-type"].startswith(ctype) and body
-    assert b'src="overlay.js"' in fetch(real_port, "/index.html")[2]
