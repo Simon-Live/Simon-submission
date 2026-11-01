@@ -614,6 +614,10 @@ def test_the_foot_sweep_is_a_re_sweep_it_keeps_a_current_value_strictly_inside_i
     assert chosen == {"foot_rotation": 12.0, "ankle_inversion": 15.0}
     assert verdicts == {"foot_rotation": (True, []), "ankle_inversion": (True, [])}
     text = "\n".join(lines)
+    # TICKET-051: the header states the rule actually used, not the plain rule's "the middle of the plateau is kept"
+    assert lines[0].startswith("calibrate --feet: seed ")
+    assert "a current value that ties at the best objective strictly inside its plateau is kept" in lines[0]
+    assert "any other goes to the plateau middle" in lines[0] and "the middle of the plateau is kept" not in lines[0]
     assert "== foot_rotation threshold_deg (current 12) ==" in text and "== ankle_inversion threshold_deg (current 15) ==" in text
     assert "chosen 12, plateau 9..18, grid 1..24, plain rule 14" in text
     assert "chosen 15, plateau 11..17, grid 9..21, plain rule 14" in text

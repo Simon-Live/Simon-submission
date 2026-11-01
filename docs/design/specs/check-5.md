@@ -50,11 +50,16 @@ set, with good light gated at every angle and the rest reported.
     "kit": {"gated": false, "source": "Part 3 conformance kit", "takes": []},
     "stock": {"gated": false, "source": "fixtures/input/eval/real", "takes": []},
     "refusals": {"gated": false, "<slice>": 0},
-    "score": {"gated": false, "version": "simon.score.v1"}
+    "score": {"gated": false, "version": "simon.score.v2"}
   },
   "rules_sha256": "<sha256 of part5/rules.json>"
 }
 ```
+`report.score.version` names the score the rules ship (`simon.score.v1` until ADR-0018; the metrics schema is 1.4.0) and
+the slice targets follow it (good/2 is D or F under v1, C, D or F under v2). The score gate is unchanged (correct good-light
+takes at A, the monotonic sweep). Before it scores anything `make check-5` needs the freeze of the shipped `score` block in
+`fixtures/score-heldout.json`: the newest v1 attempt for a v1 block, the newest `freezes` entry of `simon.score.v2` for a v2
+block (exit 2 without it).
 The zeros above show shape only. Per-slice numbers keep the `simon.part5.metrics.v1` fields of #13 and
 add `refused` (takes analysed with a warning and graded F, ADR-0012; the key keeps its name. Each such take scores its
 labels as misses, and a correct take with a warning counts once in `faults_on_correct_takes`). The gated slices use

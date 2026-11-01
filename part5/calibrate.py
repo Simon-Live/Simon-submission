@@ -33,7 +33,7 @@ labels.json). The objective counts only the measure being swept. Since attempt 5
 in force: the current value is kept when it ties at the best objective strictly inside its plateau (as above), and
 the plain rule's choice is printed beside it. A foot measure's `max_jitter_deg` (the steadiness gate of
 ADR-0015 Amendment 4) is in the rules the sweep runs under and is not swept: it is a visibility rule, chosen by the
-evidence table of docs/specs/foot-keypoints.md "Attempt 5". Then the go/no-go per measure at the chosen
+evidence table of docs/specs/foot-keypoints-attempt-5.md. Then the go/no-go per measure at the chosen
 value, on the good-light slices at every angle: precision >= 0.85, recall >= 0.75, 0 faults on correct takes
 and both directions found. Faults a measure raises on takes labelled with something else are listed (they count
 in precision). `--write` writes the chosen values of the measures that are a GO into part5/rules.json and
@@ -62,11 +62,11 @@ from .measures import compute
 from .normalise import normalise
 from .pipeline import clip_fps, resample, run
 from . import score_report
+from .score_report import TUNING_SEED
 from .sweep import (FOOT_MEASURES, RADIUS_DEG, Param, angle_cells, cells_text, change_lines, get_path, run_sweep,
                     sweep_lines, sweep_param, with_value)
 
 ROOT = Path(__file__).resolve().parent.parent
-TUNING_SEED = 5
 TUNING = ROOT / "fixtures" / "input" / "followers"
 MISMATCH_DIR = ROOT / "fixtures" / "input" / "mismatch"
 THRESHOLDS_DOC = ROOT / "docs" / "thresholds.md"
@@ -564,7 +564,9 @@ def calibrate_feet(labels, rules, workers=1, radius=None, run_fn=_faults_of, bas
     chosen = {m: get_path(current, ("measures", m, "threshold_deg")) for m in FOOT_MEASURES}
     head = (f"calibrate --feet: seed {labels['seed']}, {len(prepared)} takes ({len(good)} at good light are swept); "
             f"objective per measure on good light: precision >= {MIN_PRECISION} and {MAX_FAULTS_ON_CORRECT} faults on "
-            f"correct takes at every angle, then the highest minimum recall; the middle of the plateau is kept")
+            f"correct takes at every angle, then the highest minimum recall; a current value that ties at the best "
+            f"objective strictly inside its plateau is kept, any other goes to the plateau middle (the plain rule's "
+            f"choice is printed beside each)")
     return [head] + feet_lines(results, finals, verdicts), chosen, verdicts
 
 

@@ -3,7 +3,7 @@
 `analyse` returns a validated `simon.analysis.v1` document (see docs/schemas.md) without
 writing anything, so the CLI, `make check-5` and the example script share one code path.
 """
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -63,7 +63,9 @@ class PipelineResult:
     the expected clock (what was aligned), and `to_original[j]` is the follower file's frame for
     resampled frame `j`. `alignment` indexes the resampled frames. `guard` is the movement
     guard's verdict (None when the take could not be aligned, ADR-0012). `vis` is the pair's `Visibility`
-    (ADR-0011), which the score needs to leave out the measures the camera did not see.
+    (ADR-0011), which the score needs to leave out the measures the camera did not see. `foot_expected` is the
+    trainer's foot series the pair was compared on (`_foot_series`: the compared foot measures on the expected clip's own
+    frames, `{}` without feet files), which the score reads for the range weight of a foot fault (ADR-0018).
     """
     analysis: dict
     alignment: Alignment | None
@@ -77,6 +79,7 @@ class PipelineResult:
     vis: object = None
     rules: dict | None = None   # the effective rules the take was detected and scored with (ADR-0016)
     profile: str = profiles.IDENTITY
+    foot_expected: dict = field(default_factory=dict)
 
 
 def analyse(expected, follower, rules=None, *, expected_feet=None, follower_feet=None,
@@ -201,7 +204,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         diagnostics["feet"] = feet.diagnostics()   # ADR-0017: compared rep by rep too, it is no longer hidden in rep mode
     result = PipelineResult(None, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
                             reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None, vis=vis,
-                            rules=rules, profile=profile)
+                            rules=rules, profile=profile, foot_expected=exp_f)
     return _finish(ctx, result, faults, times, diagnostics, guard.stats, not guard.ok, rules)
 
 

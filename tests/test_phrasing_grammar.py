@@ -82,6 +82,49 @@ def test_review_r4_a_real_doubling_is_still_rejected(line, pair):
     assert template._doubled_part(line.lower()) == f"doubles the body part ({pair})"
 
 
+def at(measure, side, direction, text, body_part, joint="left_ankle", at_s=1.2):
+    """A timed fault of `measure`, worded `text` (the part named once), for the word test."""
+    return make_fault(measure, side, direction, text=text, joint=joint, body_part=body_part, at_s=at_s, lateral=None,
+                      text_timed=f"{text} at {at_s:.1f} s")
+
+
+FACE_FAULTS = {   # the lines of Part 7's review: "face" is the verb of the feet, toes, knees and hips
+    "Your feet face out at 1.2 s.": at("foot_rotation", "both", "more", "feet turned out", "feet"),
+    "Your toes face out at 1.2 s.": at("foot_rotation", "both", "more", "toes turned out", "feet"),
+    "Your knees face inward at 1.2 s.": at("knee_valgus", "both", "more", "knees caving in", "legs", "left_knee"),
+    "Your hips face out to the side at 1.2 s.": at("thigh_out", "both", "more", "legs too far out", "legs", "left_hip"),
+}
+
+
+@pytest.mark.parametrize("line", FACE_FAULTS)
+def test_recheck_1_face_as_a_verb_after_a_plural_part_passes_the_word_test_the_student_sees(line):
+    """The review of the doubled-noun fix: `_doubled_part` passed these lines but the body test read "face" as the
+    head and sent them back to the template ("adds another body part (head)")."""
+    fault = FACE_FAULTS[line]
+    assert template._doubled_part(line.lower()) is None
+    assert problem(fault, line) is None
+    assert template.line_problem(fault, line.replace(" at 1.2 s", ""), timed=False) is None   # and without the time
+
+
+def test_recheck_1_the_head_noun_face_is_still_the_head():
+    foot = FACE_FAULTS["Your feet face out at 1.2 s."]
+    assert problem(foot, "Your face and feet turn out at 1.2 s.") == "adds another body part (head)"
+    assert problem(foot, "Your feet turn out, face forward, at 1.2 s.") == "adds another body part (head)"
+    assert problem(foot, "Your face is level and your feet turn out at 1.2 s.") == "adds another body part (head)"
+    head = make_fault("head_forward", "center", "more", "head too far forward", "nose", "head", at_s=1.2, lateral=None,
+                      text_timed="head too far forward at 1.2 s")
+    assert problem(head, "Your face pokes forward at 1.2 s.") is None
+
+
+def test_recheck_1_face_after_a_part_is_a_verb_only_after_a_body_part_noun():
+    assert template.parts_named("your feet face out") == {"foot"}
+    assert template.parts_named("your face and feet") == {"head", "foot"}
+    assert template.parts_named("face the wall, feet out") == {"head", "foot"}
+    assert template.parts_named("your hips face the side") == {"hip"}
+    assert template.without_face_verbs("knees face inward, toes face out") == "knees inward, toes out"
+    assert template.without_face_verbs("her face is level") == "her face is level"
+
+
 def test_review_r4_a_sound_line_with_shoulder_width_passes_the_word_test():
     feet = make_fault("foot_out", "both", "more", text="feet too far out", joint="left_ankle", body_part="legs",
                       at_s=1.2, lateral=None, text_timed="feet too far out at 1.2 s")

@@ -13,6 +13,9 @@ import pytest
 from part5 import check
 from test_check import ROOT, RULES_SHA, World, errors_of, freeze_section, green, world
 
+IN_FORCE_SEEDS = [71, 73]    # the seeds scored under part5/rules.json as it is: attempt 5 and its confirmation
+IN_FORCE_FREEZE = "4c55af0"  # the one freeze commit they share
+
 
 def test_ac_k07_exits_2_when_rules_changed_after_the_freeze(tmp_path, monkeypatch, capsys):
     (tmp_path / "thresholds.md").write_text(freeze_section(29, sha="0" * 64))
@@ -106,9 +109,10 @@ def test_b3_require_frozen_cases():
 def test_b3_the_committed_record_refuses_every_scored_seed_under_other_rules():
     """Each scored attempt carries its own detection hash. A seed scored under other rules than the current ones
     stops at the freeze check before analysing a take; only the newest scored attempts (an attempt and its confirmation) can have been scored under the
-    rules in force, and it passes the check, so the done-check can reproduce its recorded numbers. Between a candidate's
-    rules change and the scoring of its seed (attempt 5 before seed 71) no scored seed holds the rules in force, so
-    none passes."""
+    rules in force, and they pass the check, so the done-check can reproduce their recorded numbers. The seeds that pass
+    are pinned (`IN_FORCE_SEEDS`: 71 and 73 today). Between a candidate's rules change and the scoring of its seed
+    (attempt 5 before seed 71) no scored seed holds the rules in force, so none passes and the pin is edited with the
+    new freeze."""
     text = (ROOT / "docs/thresholds.md").read_text()
     current = check.detection_hash()
     passed_under_current = []
@@ -124,11 +128,14 @@ def test_b3_the_committed_record_refuses_every_scored_seed_under_other_rules():
         with pytest.raises(check.CheckError, match=f"differs from the hash frozen for seed {a['seed']}"):
             check.require_frozen(a["seed"], check.rules_hash(), record, current,
                                  check.recorded_detection_hash(text), scored=True)
-    # The seeds scored under the rules in force are the newest scored ones and share one freeze: an attempt and its
-    # confirmation (attempt 5 on 71 and attempt 6 on 73, both frozen at 4c55af0), or none before a candidate is scored.
-    tail = [a["seed"] for a in scored[len(scored) - len(passed_under_current):]] if passed_under_current else []
-    assert passed_under_current == tail
-    assert len({a["freeze_commit"] for a in scored if a["seed"] in passed_under_current}) <= 1
+    # The seeds scored under the rules in force are exactly attempt 5 on seed 71 and its confirmation, attempt 6 on
+    # seed 73, both frozen at 4c55af0, and they are the newest scored seeds. Put rules.json back to an earlier attempt's
+    # bytes and this list is shorter; change the rules for a new candidate and it is empty until that candidate is
+    # scored: the list is then edited on purpose, with the new freeze, and not loosened to "any newest seeds"
+    # (TICKET-051, pre-freeze review of attempt 5, residual 5).
+    assert passed_under_current == IN_FORCE_SEEDS
+    assert [a["seed"] for a in scored[-len(IN_FORCE_SEEDS):]] == IN_FORCE_SEEDS
+    assert {a["freeze_commit"][:7] for a in scored if a["seed"] in IN_FORCE_SEEDS} == {IN_FORCE_FREEZE}
 
 
 def test_ac_k07_exits_2_when_the_current_seed_has_no_freeze_record(tmp_path, monkeypatch, capsys):

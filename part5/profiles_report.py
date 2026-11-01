@@ -2,6 +2,7 @@
 
     python -m part5.profiles_report [--set DIR] [--json-out PATH]     the per-profile report (make report-profiles)
     python -m part5.profiles_report --write-baseline [--out PATH]     the fitness baseline
+    python -m part5.profiles_report --write-detection-baseline [--out PATH]   what detection finds, no words, no score (TICKET-047)
 
 The report analyses the seed 5 set under each profile and prints, per profile and slice, the precision, recall and
 faults on correct takes (`evaluate.evaluate_corpus`, the same match rule as `make check-5`), the grade distribution, how
@@ -29,14 +30,13 @@ from pathlib import Path
 
 from . import profiles
 from .evaluate import evaluate_corpus
-from .score_report import analyse, distribution, entries_of, feet_kwargs, load_labels, report_lines
+from .score_report import TUNING_SEED, analyse, distribution, entries_of, feet_kwargs, load_labels, report_lines
 
 ROOT = Path(__file__).resolve().parent.parent
 TUNING = ROOT / "fixtures" / "input" / "followers"
 BASELINE = ROOT / "fixtures" / "profiles-fitness-baseline.json"
 BASELINE_FORMAT = "simon.profiles.baseline.v1"
 REPORT_FORMAT = "simon.part5.profiles.report.v1"
-TUNING_SEED = 5
 # What a profile adds to a document; the fitness baseline is taken without them.
 ADDED_BY_PROFILES = ("profile", "schema_version")
 
@@ -86,6 +86,42 @@ def analysis_digest(analysis, root=ROOT):
     return hashlib.sha256(text.replace(f"{Path(root)}/", "").encode()).hexdigest()
 
 
+# --- the detection baseline (TICKET-047): what detection found, with none of the words and none of the score ---
+WORDS = ("text", "text_timed", "coaching", "cue", "cue_kind")   # presentation of a fault, not detection
+DETECTION_BASELINE = ROOT / "fixtures" / "seed5-detection-baseline.json"
+DETECTION_BASELINE_FORMAT = "simon.part5.detection.baseline.v1"
+
+
+def detection_digest(analysis):
+    """sha256 of what detection found in an analysis: `status`, the `warnings`, every fault and every near miss without its
+    words (`WORDS`), as sorted compact JSON. It leaves out the score, the insights, the phrasing and the schema version, so a
+    change to the score cannot move it; a change to a fault, a near miss, a warning or the status does (TICKET-047, R7)."""
+    bare = lambda items: [{k: v for k, v in item.items() if k not in WORDS} for item in items]   # noqa: E731
+    near = (analysis.get("diagnostics") or {}).get("near_misses")
+    doc = {"status": analysis.get("status"), "warnings": analysis.get("warnings"), "faults": bare(analysis["faults"]),
+           "near_misses": None if near is None else {**near, "items": bare(near["items"])}}
+    return hashlib.sha256(json.dumps(doc, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def detection_baseline_document(labels_doc, root=ROOT):
+    return {"format": DETECTION_BASELINE_FORMAT,
+            "_comment": ("Written by `python -m part5.profiles_report --write-detection-baseline` (TICKET-047, ADR-0018) from "
+                         "the detection of attempt 5, before score v2 existed in the tree's output: a test compares "
+                         "what detection finds in every seed 5 take (`status`, `warnings`, faults and near misses without "
+                         "their words) with these hashes, so a score change cannot move detection unseen. Do not regenerate "
+                         "it for a score change; a detection change is an attempt (ADR-0003) and retakes it."),
+            "seed": labels_doc["seed"],
+            "hashed": "sha256 of sorted compact JSON of status, warnings, faults and near misses, without text, text_timed, "
+                      "coaching, cue and cue_kind (profiles_report.detection_digest)",
+            "takes": {t["take_id"]: detection_digest(analyse_take(t, root)) for t in labels_doc["takes"]}}
+
+
+def write_detection_baseline(path=DETECTION_BASELINE, directory=None):
+    doc = detection_baseline_document(tuning_labels(directory))
+    Path(path).write_text(json.dumps(doc, indent=1) + "\n")
+    return doc
+
+
 def fitness_digests(labels_doc, root=ROOT, profile=None):
     """{take_id: digest} of every take of the set analysed with no profile named (or `profile`)."""
     return {t["take_id"]: analysis_digest(analyse_take(t, root, profile), root) for t in labels_doc["takes"]}
@@ -102,8 +138,10 @@ def baseline_document(labels_doc, root=ROOT):
                          "two thresholds under it and keeps a rep's two-sided fault in its window when the take "
                          "reports either side, and once more at attempt 5 (TICKET-040, ADR-0015 Amendment 4), "
                          "whose steadiness gate leaves out a foot measure that jitters and so moves the "
-                         "`diagnostics.feet` and the faults of the takes with such a foot. Do not regenerate it "
-                         "otherwise: a test "
+                         "`diagnostics.feet` and the faults of the takes with such a foot, and once more for score v2 "
+                         "(TICKET-047, ADR-0018), which changes the `score` block of every analysis (the version, the "
+                         "hash, the values) and nothing detection finds (see seed5-detection-baseline.json). Do not "
+                         "regenerate it otherwise: a test "
                          "compares the fitness analysis of every seed 5 take with these hashes."),
             "seed": labels_doc["seed"],
             "hashed": "sha256 of the analysis with the checkout path removed, as sorted compact JSON, "
@@ -187,12 +225,18 @@ def main(argv=None):
     ap.add_argument("--set", default=None, help="the seed 5 set (default fixtures/input/followers); any other seed is refused")
     ap.add_argument("--json-out", default=None, help="also write the report as JSON here")
     ap.add_argument("--write-baseline", action="store_true", help="write the fitness baseline and stop")
-    ap.add_argument("--out", default=None, help="where --write-baseline writes (default the committed baseline)")
+    ap.add_argument("--write-detection-baseline", action="store_true",
+                    help="write the detection baseline (faults, near misses, warnings and status, no words, no score) and stop")
+    ap.add_argument("--out", default=None, help="where a --write-* option writes (default the committed file)")
     args = ap.parse_args(argv)
     try:
         if args.write_baseline:
             doc = write_baseline(args.out or BASELINE, args.set)
             print(f"profiles_report: wrote {len(doc['takes'])} take hashes to {args.out or BASELINE}")
+            return 0
+        if args.write_detection_baseline:
+            doc = write_detection_baseline(args.out or DETECTION_BASELINE, args.set)
+            print(f"profiles_report: wrote {len(doc['takes'])} detection hashes to {args.out or DETECTION_BASELINE}")
             return 0
         report = build_report(tuning_labels(args.set))
     except ReportError as e:

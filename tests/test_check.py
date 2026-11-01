@@ -143,10 +143,28 @@ def green(prefix, overrides=None, dropout=True):
     return takes, analyses
 
 
+REAL_SCORE_RECORD = ROOT / "fixtures" / "score-heldout.json"
+
+
+def shipped_score_record():
+    """A score record that freezes the `score` block part5/rules.json ships, as the real record does: a v2 block by a
+    `freezes` entry (simon.score.v2, ADR-0018) beside the v1 attempts of seeds 47 and 53 (their hash is the frozen v1
+    block's, not the v2 freeze's), a v1 block by its attempt (ADR-0007). The committed fixtures/score-heldout.json holds the
+    v2 freeze only once the orchestrator records it; the check's own tests do not wait for that."""
+    hash_of = lambda b: hashlib.sha256(json.dumps(b, sort_keys=True, separators=(",", ":")).encode()).hexdigest()   # noqa: E731
+    block = json.loads((ROOT / "part5/rules.json").read_text())["score"]
+    v1_sha = hash_of(block.get("v1", block))
+    freezes = [{"version": block["version"], "params_sha256": hash_of(block), "seed": 59}] if "v1" in block else []
+    return {"format": "simon.part5.score-heldout.v1", "attempts": [{"seed": 47, "params_sha256": v1_sha}], "freezes": freezes}
+
+
 class World:
     def __init__(self, tmp_path, monkeypatch):
         self.root, self.monkeypatch = tmp_path, monkeypatch
         self.analyses = {}
+        if check.SCORE_RECORD == REAL_SCORE_RECORD:   # a test that set its own record keeps it
+            (tmp_path / "score-heldout.json").write_text(json.dumps(shipped_score_record()))
+            monkeypatch.setattr(check, "SCORE_RECORD", tmp_path / "score-heldout.json")
         monkeypatch.setattr(check, "ROOT", tmp_path)
         monkeypatch.setattr(check, "HELDOUT", tmp_path / "heldout")
         monkeypatch.setattr(check, "TUNING", tmp_path / "followers")
@@ -331,7 +349,7 @@ def test_ac_k12_a_1_1_0_document_without_the_refusals_flag_still_validates_and_a
     base = {"low_light": {"gated": False}, "dropout": {"gated": False}, "kit": {"gated": False},
             "stock": {"gated": False}, "refusals": {"good/front": 0}}
     validator = jsonschema.Draft202012Validator(SCHEMA["properties"]["report"])
-    assert SCHEMA["version"] == "1.3.0" and list(validator.iter_errors(base)) == []
+    assert SCHEMA["version"] == "1.4.0" and list(validator.iter_errors(base)) == []
     assert list(validator.iter_errors({**base, "refusals": {"gated": False, "good/front": 0}})) == []
     assert list(validator.iter_errors({**base, "refusals": {"gated": True, "good/front": 0}}))
     assert list(validator.iter_errors({**base, "refusals": {"gated": False, "good/front": -1}}))
@@ -555,8 +573,9 @@ def test_nfr_the_real_pipeline_runs_offline_with_sockets_blocked(tmp_path, monke
         (tmp_path / name / "labels.json").write_text(json.dumps({**labels, "seed": seed, "takes": cell_takes}))
     for attr, path in (("ROOT", tmp_path), ("HELDOUT", tmp_path / "heldout"), ("TUNING", tmp_path / "followers"),
                        ("ATTEMPTS", tmp_path / "none.json"), ("THRESHOLDS_DOC", tmp_path / "thresholds.md"),
-                       ("OUT_DIR", tmp_path / "out")):
+                       ("OUT_DIR", tmp_path / "out"), ("SCORE_RECORD", tmp_path / "score-heldout.json")):
         monkeypatch.setattr(check, attr, path)
+    (tmp_path / "score-heldout.json").write_text(json.dumps(shipped_score_record()))
     (tmp_path / "thresholds.md").write_text(freeze_section(29))
 
     def no_network(*a, **k):

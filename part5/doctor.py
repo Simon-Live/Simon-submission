@@ -431,10 +431,15 @@ def _score_notes(r, doc):
             else "score present")
     if score.get("capped_by"):
         line += f", capped at F by {', '.join(score['capped_by'])} (show the warnings beside it)"
-    before = score.get("uncapped")   # 1.9.0 (Part 7 TICKET-155): the value the cap lowered
+    cap = score.get("fault_cap")   # 1.10.0 (ADR-0018): the ceiling of a take that reports a fault; not a warning
+    if isinstance(cap, int) and not isinstance(cap, bool):
+        line += f"; the take reports a fault, so its score is at most {cap} (score.fault_cap)"
+    before = score.get("uncapped")   # 1.9.0 (Part 7 TICKET-155), 1.10.0: the value before every cap that lowered it
     if isinstance(before, dict) and "value" in before and "grade" in before:
         line += f"; it was {before['value']} ({before['grade']}) before the cap (score.uncapped)"
     r.notes.append(line)
+    if score.get("version"):   # ADR-0018: a v1 and a v2 value are not on one scale
+        r.notes.append(f"score version {score['version']}: score.value compares only within one score.version")
     windows = score.get("timeline")
     if isinstance(windows, list):
         r.notes.append(f"score.timeline has {len(windows)} window{'s' if len(windows) != 1 else ''} "

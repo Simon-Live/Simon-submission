@@ -9,8 +9,8 @@ comes back in nearly every line, and the validator rejects `template.PRAISE_PHRA
 same reason it offers no closing phrase: the lines of a result are written in parallel, and an offered
 ending came back in every one. Each fault gets one of `SHAPES` by its position so that lines start
 differently (docs/specs/second-opinion.md AC-VA-01); `variety.repeats` is the guarantee. For a language other
-than English the reply is a JSON pair (`lang.reply_instruction`). `docs/phrasing-review.md` records how the
-text was tuned.
+than English the reply is a JSON pair (`lang.reply_instruction`) and the first shape drops its English example
+(`SHAPE_TIME_FIRST_OTHER`). `docs/phrasing-review.md` records how the text was tuned.
 """
 import json
 
@@ -48,11 +48,16 @@ SHAPES = (
     "Start the sentence with \"Around\" and the time.",
     "Start the sentence with \"Compared with the recording,\" then the body part.",
 )
+# The first shape for a reply in another language, without its English example: the model copied the example's "At"
+# into the translated line (TICKET-052). `lang.check_translated` rejects such a line; this keeps the prompt from asking.
+SHAPE_TIME_FIRST_OTHER = "Start the sentence with the time, then the body part."
 
 
-def shape_for(index):
-    """The sentence shape for the fault at `index` of a result: 0, 1, 2, 3, then 0, 1, 2 again."""
-    return SHAPES[index] if index < len(SHAPES) else SHAPES[index % (len(SHAPES) - 1)]
+def shape_for(index, language=EN):
+    """The sentence shape for the fault at `index` of a result: 0, 1, 2, 3, then 0, 1, 2 again. For a language other
+    than English the first one is `SHAPE_TIME_FIRST_OTHER`."""
+    shape = SHAPES[index] if index < len(SHAPES) else SHAPES[index % (len(SHAPES) - 1)]
+    return SHAPE_TIME_FIRST_OTHER if language != EN and shape == SHAPES[0] else shape
 
 
 def timed_record(fault):
@@ -70,7 +75,7 @@ def _measure_meaning(measure):
 
 def system_timed(shape=0, language=EN):
     """The timed system text for the fault at position `shape` of a result, replying in `language`."""
-    return SYSTEM_TIMED.format(reply=reply_instruction(language), shape=shape_for(shape))
+    return SYSTEM_TIMED.format(reply=reply_instruction(language), shape=shape_for(shape, language))
 
 
 def timed_messages(fault, shape=0, language=EN):

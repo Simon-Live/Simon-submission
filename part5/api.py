@@ -15,7 +15,7 @@ Endpoints, relative to the base path (docs/specs/staging.md):
                        anything not a string is a 400); `profile` is optional and
                        omitted or null means fitness; a name that is not in part5/profiles.json is a 400. Two
                        samples whose labels name foot side files are compared with them (`diagnostics.feet`, ADR-0015)
-    GET  api/contract  what `part5 contract --json` prints (schemas and compatibility table)
+    GET  api/contract  what `part5 contract --json` prints (schemas, word lists and compatibility table)
     GET  api/real-takes the real-take report (part5.real), built on first use and kept for the process
 
 Errors are `{error: {field, message}}`: 400 names the field that broke, 404 an unknown sample,

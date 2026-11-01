@@ -10,16 +10,17 @@ a reason. Live calls need the key file AND live mode (the phrasing switches, `mu
 
 Spend: the total cap is checked before anything is uploaded; the input is then counted, and the call is refused when
 its estimate (the counted input plus the full output allowance at Part 1's list rates) passes `PART5_META_CALL_MAX_USD`
-(default 0.50) or would take the ledger past `PART5_META_SPEND_CAP_USD` (default 5.00). A value of either variable that
-is not a finite amount from 0 up keeps the default and logs a warning. The ledger `~/.simon/meta_usage.jsonl`
+(default 0.50) or would take the ledger past `PART5_META_SPEND_CAP_USD` (default 5.00). A limit that is set but is not a
+finite amount from 0 up refuses the call (a limit that cannot be read must not become another one), and so does a
+ledger that exists and cannot be read (an unknown total is not a total of 0). The ledger `~/.simon/meta_usage.jsonl`
 (`PART5_META_USAGE_FILE`) is opened and locked (flock) before the cap check and held until the call is recorded, so two
 processes cannot both pass the cap; it gets one line per call: UTC time, model, HTTP status, token counts and USD,
-never the key or text. A call that failed with no answer from the API (a timeout, a connection error, an unreadable
-body) may still have been billed, so its line carries the pre-call estimate with `estimated: true`; a call the API
-answered with an error status is recorded at $0.
+never the key or text. A call whose cost is not known may still have been billed, so its line carries the pre-call
+estimate with `estimated: true`: one that failed with no answer from the API (a timeout, a connection error, an
+unreadable body), one the API answered with a 5xx status (a gateway may answer after the model ran) and one answered
+with a body that holds no token counts. A call the API refused with a status below 500 is recorded at $0.
 """
 import json
-import logging
 import math
 import os
 import shutil
@@ -28,11 +29,10 @@ import subprocess
 import urllib.error
 import urllib.request
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 from ..phrasing.local_llm import no_redirect_opener
-from ..phrasing.muse_spark import open_ledger_at, path_of, read_key_from, unavailable_for
+from ..phrasing.muse_spark import append_line, open_ledger_at, path_of, read_key_from, unavailable_for, utc_now
 
 API = "https://api.meta.ai/v1"
 MODEL = "muse-spark-1.3"
@@ -49,7 +49,6 @@ CLIP_MAX_S, CLIP_FPS, CLIP_WIDTH = 60, 8, 480   # what is sent: the first minute
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 UPLOAD_NAME = "clip.mp4"   # the name in the multipart header: a fixed one, so a path's characters never reach it
 CLIP_UNREADABLE = "clip not readable"
-_log = logging.getLogger(__name__)
 
 
 class OpinionError(Exception):
@@ -78,8 +77,9 @@ def read_key():
 
 
 def _env_usd(name, default):
-    """The USD amount in the variable `name`; `default` when it is unset, and, with a logged warning, when it is not a
-    finite number from 0 up (a cap of nan, inf or -1 would stop nothing)."""
+    """The USD amount in the variable `name`; `default` when it is unset or blank. A value that is set and is not a
+    finite number from 0 up (`1,5`, nan, inf, -1) raises OpinionError: a limit that cannot be read must not run at
+    another one (a cap of nan or inf would stop nothing). The reason names the variable and never its value."""
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         return default
@@ -88,8 +88,7 @@ def _env_usd(name, default):
     except ValueError:
         value = math.nan
     if not math.isfinite(value) or value < 0:
-        _log.warning("%s=%r is not a finite amount of USD from 0 up; using the default $%.2f", name, raw, default)
-        return default
+        raise OpinionError(f"{name} is not an amount of USD from 0 up")
     return value
 
 
@@ -101,11 +100,15 @@ def price(input_tokens, output_tokens, cached_tokens=0):
 
 
 def spent():
-    """USD recorded in the ledger so far; 0 when there is none."""
+    """USD recorded in the ledger so far; 0 when there is no ledger yet. A ledger that is there and cannot be read
+    (no read permission, not text) raises OpinionError("usage ledger not readable"): the total is unknown, and an
+    unknown total is not a total of 0 (it fails closed)."""
     try:
         lines = usage_path().read_text().splitlines()
-    except OSError:
-        return 0.0
+    except (FileNotFoundError, NotADirectoryError):   # nothing recorded yet; a path that cannot hold a ledger is the
+        return 0.0                                     # writer's to refuse ("usage ledger not writable")
+    except (OSError, ValueError):
+        raise OpinionError("usage ledger not readable") from None
     total = 0.0
     for line in lines:
         try:
@@ -113,6 +116,13 @@ def spent():
         except (ValueError, AttributeError, TypeError):
             continue
     return total
+
+
+def check_settings():
+    """Raise OpinionError when either limit variable is set to something that is not an amount (see `_env_usd`), so a
+    call is refused before anything is uploaded."""
+    _env_usd(CAP_ENV, CAP_USD)
+    _env_usd(CALL_MAX_ENV, CALL_MAX_USD)
 
 
 def check_cap(estimate=0.0):
@@ -137,42 +147,54 @@ def open_ledger():
     return open_ledger_at(usage_path(), OpinionError, LOCK_WAIT_S)
 
 
-def failed_usage(status, input_tokens, estimate):
-    """The usage to record for a failed call: nothing when the API answered with an error `status` (it refused the
-    call), else the pre-call `estimate` for the counted input and the full output allowance (no answer reached us, so
-    the spend is unknown and may have happened)."""
-    if status is not None:
-        return read_usage({})
+def estimated_usage(input_tokens, estimate):
+    """The usage to record when the spend is unknown and may have happened: the pre-call `estimate` for the counted
+    input and the full output allowance, marked `estimated`."""
     return {"input_tokens": input_tokens, "output_tokens": MAX_OUTPUT_TOKENS, "cached_tokens": 0, "usd": estimate,
             "estimated": True}
 
 
+def failed_usage(status, input_tokens, estimate):
+    """The usage to record for a failed call: $0 when the API refused it with a `status` below 500 (a 4xx, such as 429:
+    the model did not run), else the pre-call `estimate`. No status means no answer reached us, and a 5xx may come from
+    a gateway after the model ran, so in both the spend is unknown and may have happened."""
+    if status is not None and status < 500:
+        return read_usage({})
+    return estimated_usage(input_tokens, estimate)
+
+
+def answered_usage(payload, input_tokens, estimate):
+    """The usage to record for a call the API answered with `payload`: the body's own token counts, or, when it holds
+    no input and output counts, the pre-call `estimate` (an answer that does not say what it cost may have cost it)."""
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    if isinstance(usage, dict) and all(_count(usage.get(k)) is not None for k in ("input_tokens", "output_tokens")):
+        return read_usage(payload)
+    return estimated_usage(input_tokens, estimate)
+
+
 def ledger_line(status, usage):
     """One ledger line: no key, no text."""
-    return {"time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "model": MODEL, "purpose":
-            "second_opinion", "http_status": status, **usage}
+    return {"time": utc_now(), "model": MODEL, "purpose": "second_opinion", "http_status": status, **usage}
 
 
 def write_ledger(ledger, status, usage):
     """Append one ledger line to the open `ledger`; OpinionError when it cannot be written."""
-    try:
-        ledger.write(json.dumps(ledger_line(status, usage), sort_keys=True) + "\n")
-        ledger.flush()
-    except OSError:
-        raise OpinionError("usage ledger not writable") from None
+    append_line(ledger, ledger_line(status, usage), OpinionError)
+
+
+def _count(value):
+    """`value` when it is a token count (a whole number from 0 up, not a bool), else None."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
 def read_usage(payload):
-    """`{input_tokens, output_tokens, cached_tokens, usd}` from a Responses body."""
+    """`{input_tokens, output_tokens, cached_tokens, usd}` from a Responses body; a count it does not hold reads 0."""
     usage = payload.get("usage") if isinstance(payload, dict) else None
     usage = usage if isinstance(usage, dict) else {}
-
-    def count(value):
-        return value if isinstance(value, int) and not isinstance(value, bool) else 0
-
     details = usage.get("input_tokens_details") if isinstance(usage.get("input_tokens_details"), dict) else {}
-    tokens = {"input_tokens": count(usage.get("input_tokens")), "output_tokens": count(usage.get("output_tokens")),
-              "cached_tokens": count(details.get("cached_tokens"))}
+    tokens = {"input_tokens": _count(usage.get("input_tokens")) or 0,
+              "output_tokens": _count(usage.get("output_tokens")) or 0,
+              "cached_tokens": _count(details.get("cached_tokens")) or 0}
     return {**tokens, "usd": price(tokens["input_tokens"], tokens["output_tokens"], tokens["cached_tokens"])}
 
 

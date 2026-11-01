@@ -77,7 +77,7 @@ def test_knee_valgus_fault_builds_validates_and_reads_in_plain_words():
 def test_fault_dict_lists_every_run_and_the_document_names_its_schema_version():
     d = doc([make_fault(runs=((19, 30), (35, 43)))])
     assert d["faults"][0]["runs"] == [[19, 30], [35, 43]]
-    assert d["schema_version"] == "1.9.0"
+    assert d["schema_version"] == "1.10.0"
     assert doc([make_fault()])["faults"][0]["runs"] == [[19, 43]]  # a single run is the fault's frames
     assert list(d)[:2] == ["format", "schema_version"]
 

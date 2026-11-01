@@ -529,6 +529,178 @@ N1 (a rep's two-sided fault stays in its window when the take reports either sid
 `dance_front_low_04_knees_shallow-both` (90 to 73) and `dance_side_good_08_arms_wider-both+foot_out-left` (63 to 57)
 together with the floor.
 
+### Score v2 (`simon.score.v2`, ADR-0018, TICKET-047)
+Ruling of 2026-11-01T05:00Z (quoted in ADR-0018); tuned on seed 5 only, scored once on score seed 59 after the freeze,
+published pass or fail. Detection, its thresholds, `part5/profiles.json` and every detection seed are untouched:
+`detection_sha256` above is unchanged, and `status`, `warnings`, the faults and the near misses of all 156 seed 5 takes are
+byte-identical to those of main before score v2 (method: the same digest, `profiles_report.detection_digest`, computed from a
+`git archive` of main and from this tree, 0 of 156 differ; the digests are committed in
+`fixtures/seed5-detection-baseline.json` and `tests/test_detection_baseline.py` compares them on every run).
+`part5/rules.json` changed in its `score` section only. The v1 block is kept verbatim as `score.v1` and still
+hashes to the `params_sha256` that `fixtures/score-heldout.json` recorded for seeds 47 and 53
+(`e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62`).
+
+| param | value | rule |
+| --- | ---: | --- |
+| `z0`, `z1`, `s_max`, `base`, `slope`, `cap`, `bands` | v1's | unchanged (the penalty curve, the similarity term and the bands) |
+| `range_full` | 3 | design constant: a measure the trainer moves by three of its own thresholds in the window costs in full; the foot measures take the weight from the trainer's foot series (ruling of 2026-11-01T05:45Z, Q4) |
+| `fault_cap` | 89 | ruled: a take that reports a fault scores at most 89; the field `score.fault_cap` |
+| `range_floor` | 0.75 | the lowest floor on a 0.05 grid (0.50 to 1.00) for which, on seed 5, every correct good-light take is an A, the worst take that reports exactly one labelled fault is 70 or above, the best take that reports exactly two is 75 or below, and the sweep never rises (`python -m part5.score_report --calibrate-v2`) |
+
+The rule's measurements on seed 5 (good light; the rule reads nothing else). The rule was run once before the foot weight and
+again, unchanged, after it (Q4); its output was kept (Q2) and is the same: the floor and every row below did not move,
+because the foot-fault takes are single faults whose lowest score is set by other takes, and no double holds a foot fault.
+
+| floor | correct all A | lowest single | highest double | sweep rises | holds |
+| ---: | --- | ---: | ---: | --- | --- |
+| 0.50 | yes | 75 | 83 | no | no |
+| 0.55 | yes | 75 | 81 | no | no |
+| 0.60 | yes | 75 | 80 | no | no |
+| 0.65 | yes | 75 | 78 | no | no |
+| 0.70 | yes | 75 | 76 | no | no |
+| **0.75** | yes | 75 | 75 | no | **yes (chosen)** |
+| 0.80 | yes | 75 | 73 | no | yes |
+| 0.85 | yes | 75 | 72 | no | yes |
+| 0.90 | yes | 75 | 70 | no | yes |
+| 0.95 | yes | 74 | 68 | no | yes |
+| 1.00 | yes | 73 | 67 | no | yes |
+
+`params_sha256` of the shipped `score` block (what the freeze records): `60116de4cede436c574b91b15a74a7f0c5561790ac6f61cf9181a8317575fe95`
+(`python -m part5.score_report --params-sha256`). The v2 freeze is recorded by the orchestrator under `freezes` in
+`fixtures/score-heldout.json` before seed 59 is generated; until then `make check-5` exits 2 ("no frozen score params ...
+for simon.score.v2") and `make score-heldout SEED=59` exits 2. The freeze entry names its `freeze_commit`, and seed 59 is
+refused unless the tree is clean and `git diff <freeze_commit> HEAD` is empty under `part5`, `scripts`, `contracts`,
+`fixtures/input/expected`, `fixtures/input/expected-feet`, `pyproject.toml` and `uv.lock` (the score code, the trainer's clips
+and the dependencies are frozen with the params), when the record holds more than one v2 freeze, and when
+`out/score-heldout/seed-59/` already exists. The script prints the exact JSON line to append to `attempts`: `version`
+`simon.score.v2`, `scored_at` (`git rev-parse HEAD`) and `holds` (the report's `targets_v2.holds`, written by
+`score_report --json-out`). `make check-5` refuses a v2 block whose seed 59 attempt (with or without a `version`, or carrying the
+freeze's hash) has `holds` false or lacks it, and says to run `make score-fallback`. The block, and so this hash, did not change with the foot
+weight (the weight is code, the floor is the rule's output).
+
+Disclosure (ADR-0018, "Calibration"): 7a1c344 worded condition (iii) "75 or below, five points under the top of C"; the commit
+that set the floor (3fe95f3) reworded it "five points under 80 (the lowest B)". The number 75 never changed, but the highest
+double at floor 0.75 is exactly 75, so a reading of 74 would have given 0.80. The publication of seed 59 repeats this.
+
+Seed 5, score per slice (reported, as measured; no claim is made on seed 5):
+
+| slice | v1 | v2 |
+| --- | --- | --- |
+| good/0 (12 takes) | min 100, A 12 | min 100, A 12 |
+| good/1 (60) | min 73, median 83: A 6, B 46, C 8 | min 75, median 87.5: A 1, B 54, C 5 |
+| good/2 (6) | min 57, median 62.5: D 5, F 1 | min 64, median 71: C 4, D 2 |
+| low/0 (12) | A 6, B 2, C 2, D 1, F 1 | A 6, B 2, C 3, D 1 |
+| low/1 (60) | min 30, median 77.5: A 13, B 13, C 14, D 8, F 12 | min 45, median 82.5: A 9, B 24, C 15, D 9, F 3 |
+| low/2 (6) | D 2, F 4 | C 2, D 2, F 2 |
+
+The one good/1 take graded A under v2 reports no fault (`exercise_front_good_12_ankle_rolled_out-both`, a missed foot
+fault); the other missed foot fault (`dance_side_good_11_ankle_rolled_in-right`) reports a different fault and is a B.
+The five targets of ADR-0018 on seed 5: 1 pass (12 takes), 2 the sweep never rises (pass), 3 no take that reports a fault
+grades A (pass, 65 takes), 4 single faults B or C (pass, 56 takes that report exactly their fault), 5 double faults C, D
+or F (pass, 5 takes). Not judged by 4 and 5, listed with their grades (their reported faults differ from their labels):
+`dance_front_good_04_knees_shallow-both` 76 C, `exercise_front_good_12_ankle_rolled_out-both` 100 A,
+`dance_side_good_09_foot_turned_out-both` 83 B, `dance_side_good_11_ankle_rolled_in-right` 89 B,
+`dance_side_good_08_arms_wider-both+foot_out-left` 64 D. The strict slice verdicts (every take of the slice) are
+good/0 pass, good/1 fail (the one A), good/2 pass. (The foot weight moved the foot-fault takes up a few points: good/1 went
+from B 53, C 6 to B 54, C 5, and `dance_side_good_09_foot_turned_out-both`, not judged, from 79 C to 83 B.) A pass on seed 59
+shows that v2 does not break targets 1, 3, 4 and 5; it does not show that v2 fixes v1's recorded misses: by the recorded v1
+numbers (seeds 47 and 53, measured under earlier detection rules) v1 itself would have met them, every good/1 A there being a
+fault not detected, every good/1 minimum 72 or more and every good/2 grade D or F. The report prints this beside the strict
+verdicts, and the publication of seed 59 carries it. A target with no judged take does not hold (ruling of 05:45Z).
+
+The sweep (`foot_out` right, `arms_wider` both, `trunk_lean` center; score by fault size in degrees), v1 then v2:
+
+| fault | v1 | v2 |
+| --- | --- | --- |
+| foot_out right (0 to 28, step 4) | 100 100 100 86 83 81 79 77 | 100 100 100 89 87 86 84 83 |
+| arms_wider both (0 to 35, step 5) | 100 100 100 85 83 81 78 76 | 100 100 100 89 87 85 84 82 |
+| trunk_lean center (0 to 30, step 5) | 100 100 87 84 81 78 76 | 100 100 89 88 86 84 82 |
+
+Worst good-light take that reports exactly its one labelled fault: 73 under v1, 75 under v2 (ADR-0007's rule of 70 or above
+holds). Cost: every `score` block changes (version, `params_sha256`, values), so all 156 hashes of
+`fixtures/profiles-fitness-baseline.json` were taken again and the goldens were regenerated; a take that reports a fault
+and was an A under v1 is now a B (nine seed 5 takes lose points to the ceiling; 104 gain from the weight, foot faults
+included).
+
+Real takes, read once after the tuning above and never tuned on (reported, not used to choose anything; the knee raises are
+Part 7's two stock-clip jobs and the third is the moalborati/simon#59 Romanian deadlift, all scored by reference):
+
+| take | faults | v1 | v2 |
+| --- | --- | --- | --- |
+| knee raise, job 64225b97a879 | 2 (`upper_arm_forward` less, `knee_flexion` more) | 45 F | 53 F |
+| knee raise, job 1028ae59e0e2 | 5 (`elbow_flexion`, `upper_arm_out`, `knee_flexion`, `trunk_lean_side`, `shoulder_tilt`) | 25 F | 40 F |
+| deadlift, moalborati/simon#59 | 1 (`trunk_lean_forward` less) | 93 A | 89 B (`fault_cap` 89, `uncapped` 93 A) |
+
+The deadlift is no longer an A, as the reporter asked. The two knee raises stay F: most of their misses are on measures the
+trainer moves a lot (`upper_arm_forward`, `knee_flexion`), which the weight leaves at full cost, and every rep window
+carries two to five misses at about 10 to 20 points each. A change that would lift them (a ceiling on a window's total cost,
+or a gentler `base`) is a different approach family and would be seed 61's; it is reported here and not made. (They were read
+again after the foot weight landed, with the same result: those takes carry no feet files.) Part 7's figures for the two
+knee raises (44 F with 2 faults and 30 F with 4 faults, TICKET-161) are from their own time; this checkout, with attempt 5's
+detection, reads the same takes as 45 F with 2 faults and 25 F with 5 faults under v1.
+
+Going back to v1 is a command (`make score-fallback`, `scripts/make_score_fallback.py`, ADR-0018 "Reversal"). Proof, on a
+throwaway copy of this tree (never committed) whose `fixtures/score-heldout.json` held the v2 freeze and a simulated seed 59
+attempt: `make score-fallback` printed that `part5/rules.json` ships `simon.score.v1` (the `v1` block, `e818635b...`), removed
+the v2 sample and wrote the goldens and the fitness baseline (their `score` blocks equal main's v1 goldens, byte for byte but
+for `schema_version`); `make test` on the copy then exited 0 (4966 passed, 26 skipped: the v2-only tests), `make
+check-5-contract` exited 0, and `make check-5` exited 0 on seed 73 with the score lookup finding `e818635b...` for the v1
+block while the v2 freeze and the seed 59 attempt were in the record, its `gate`, `attempts`, `tuning` and `detection_sha256`
+byte-identical to main's own seed 73 run. The seed 59 result is published by hand.
+
+`make check-5` on a throwaway copy of the v2 tree with a simulated v2 freeze in its record (never committed) exited 0 on seed
+73, against main's own run of the same set (an archive of main, exit 0): the three detection lines of the summary, `gate`
+(metrics, slices, failures, thresholds, passed), `attempts`, `tuning`, `report.low_light`, `report.dropout`,
+`report.refusals`, `detection_sha256` and `profiles_sha256` are byte-identical; what differs is the score and what carries it
+(`gate.sweep`, `report.score`, the `score` of each kit and stock take, and `rules_sha256`, the hash of the whole file).
+
+#### v2 freeze record
+Freeze commit: `1f2f07a27e226fe8afebd8a87d20186d68c38dee`
+params_sha256: `60116de4cede436c574b91b15a74a7f0c5561790ac6f61cf9181a8317575fe95`
+Date: 2026-11-01
+Approach family: simon.score.v2 (ADR-0018): each miss weighted by the trainer's range of its measure in its window
+(`range_floor` 0.75 from the rule fixed before tuning, `range_full` 3), the foot measures included when a feet file is
+given; a take that reports a fault capped at 89 in `score.fault_cap`; the take the mean of its windows (ADR-0013).
+
+Rationale. The stakeholder-proxy rulings of 2026-11-01T05:00Z and 05:45Z (STATUS.md Decisions, ADR-0018). Reviewed before
+the freeze: `progress/review-20261101-prefreeze-score-v2.md` (NEEDS_WORK, B1 and R1 to R11 fixed) and
+`progress/review-20261101-prefreeze-score-v2-recheck.md` (the first recheck NEEDS_WORK on N1, N1 to N8 fixed; the second
+APPROVED, its residuals R-a to R-c fixed in e995a41). Candidate `make test` exit 0 (5045 passed, 1 skipped) at e995a41;
+the freeze commit is that candidate merged into main (no part5, scripts or contracts change between them). Seed 59 is
+generated and scored once after this record by `make score-heldout SEED=59`, at a commit whose `part5`, `scripts`,
+`contracts`, expected clips and dependencies equal the freeze commit's. v2 ships only if all five targets hold
+(`holds` true); otherwise `make score-fallback` puts `score.v1` back, the result is published, and seed 61 stays reserved.
+
+#### v2 held-out result: seed 59
+Held-out result as measured (`make score-heldout SEED=59` at `0aba9742f0dd2609262258c3741084e530ebe40b`, 2026-11-01T07:57Z,
+exit 0; labels.json sha256 `bab05a33762434332eddaeb5ac9dde415bc5782a9f4afd37c863e2588b7d73fe`): **failed**, target 5.
+`holds` false, so v2 does not ship: `make score-fallback` puts `score.v1` back (the next commit), and seed 61 stays reserved
+for a new approach family (TICKET-053). `make check-5` at the freeze record `0aba974` exited 0 on seed 73 with every
+detection field of `out/check-5/metrics.json` identical to attempt 6's (gate metrics, slices, failures, thresholds,
+attempts, tuning, low light, dropout, refusals, the kit and stock faults, `detection_sha256`, `profiles_sha256`).
+
+| slice | n | min | median | max | grades |
+| --- | ---: | ---: | ---: | ---: | --- |
+| good/0 | 20 | 100 | 100.0 | 100 | A 20 |
+| good/1 | 60 | 73 | 85.0 | 89 | B 53, C 7 |
+| good/2 | 10 | 69 | 74.0 | 85 | B 3, C 5, D 2 |
+| low/0 | 20 | 68 | 93.5 | 100 | A 10, B 6, C 3, D 1 |
+| low/1 | 60 | 50 | 74.5 | 89 | B 23, C 18, D 8, F 11 |
+| low/2 | 10 | 51 | 62.0 | 73 | C 1, D 6, F 3 |
+
+ADR-0018 targets on the good-light takes: 1 correct takes all A, pass (n 20); 2 the sweep never rises, pass; 3 no take
+that reports a fault grades A, pass (n 70); 4 single faults B or C (reported exactly), pass (n 54); 5 double faults C, D or
+F (reported exactly), **fail** (n 10): `dance_front_good_08_elbow_bent-right+arms_wider-right` 85 B,
+`dance_side_good_08_arms_wider-right+trunk_lean-center` 80 B and its dropout copy 80 B. Not judged by 4 and 5 (reported
+faults differ from the labels), 6: `dance_front_good_04_knees_shallow-both` (2 reported, 85 B),
+`dance_front_good_07_knee_caving-left` (2 reported, 88 B), `dance_side_good_04_knees_shallow-both` and its dropout copy
+(2 reported, 85 B), `dance_side_good_07_knee_caving-left` and its dropout copy (3 reported, 76 C). Strict slice verdicts,
+reported beside: good/1 B or C, pass; good/2 C, D or F, fail. Comparability (printed by the report): by the recorded v1
+numbers (seeds 47 and 53, measured under earlier detection rules) v1 itself would have met targets 1, 3, 4 and 5, so a pass
+would have shown that v2 does not break them, not that it fixes v1's recorded misses. This is ADR-0018's pre-mortem 1: the
+floor was fitted to seed 5's doubles (highest exactly reported double 75, on the rule's bound) and seed 59's milder doubles
+land at B. Seed 59 is retired.
+
 ## Repetitions
 
 Constants of `part5/reps.py` and `part5/repwise.py` (ADR-0010), fixed from seed 5 and the documented real takes

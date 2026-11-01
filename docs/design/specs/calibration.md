@@ -89,7 +89,7 @@ As the team, I want thresholds chosen on data the gate never sees, so that a gre
   alignments before. The two foot thresholds are not swept (`--feet` owns them, TICKET-040; attempt 4 holds them). Since
   attempt 5 `--feet` is a re-sweep of the values in force and follows the rule below (a current value that ties at the
   best objective strictly inside its plateau is kept, the plain choice is printed beside it), and the rules it runs under
-  carry the foot measures' `max_jitter_deg` steadiness limits (`docs/design/specs/foot-keypoints.md` "Attempt 5"), which it does not sweep.
+  carry the foot measures' `max_jitter_deg` steadiness limits (`docs/design/specs/foot-keypoints-attempt-5.md`), which it does not sweep.
 - Thresholds: per measure, `threshold_deg` over a grid of 1 degree steps around the current value; then
   `min_frames_floor_body` (steps of 4 frames, six each side, extended once; a duration, written as frames at 30 fps, that
   a deviation must hold in a rep whatever its length, at most `floor_share` (three quarters) of the rep; the floor of the

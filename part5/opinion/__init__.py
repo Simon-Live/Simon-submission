@@ -40,10 +40,12 @@ def _ask(client, faults, clips, duration_s):
     """Check the total cap, upload both clips, count, ask; (answer text, usage). Files are deleted on every path.
 
     The ledger is opened and locked after the count and held until the call is recorded: the budget check and the
-    call happen under the lock, so two processes cannot both pass the cap. A call that fails with no answer from the
-    API is recorded at its pre-call estimate (`meta_api.failed_usage`)."""
+    call happen under the lock, so two processes cannot both pass the cap. A call whose cost is not known (no answer
+    from the API, a 5xx, an answer with no token counts) is recorded at its pre-call estimate
+    (`meta_api.failed_usage`, `meta_api.answered_usage`)."""
     ids = []
     try:
+        meta_api.check_settings()   # a limit set to something that is not an amount refuses the call before any upload
         meta_api.check_cap()   # nothing is uploaded when the total cap is already spent
         with tempfile.TemporaryDirectory(prefix="part5-opinion-") as tmp:
             for clip in clips:
@@ -59,7 +61,7 @@ def _ask(client, faults, clips, duration_s):
                 status = getattr(client, "last_status", None)
                 meta_api.write_ledger(ledger, status, meta_api.failed_usage(status, counted, estimate))
                 raise
-            usage = meta_api.read_usage(payload)
+            usage = meta_api.answered_usage(payload, counted, estimate)
             meta_api.write_ledger(ledger, getattr(client, "last_status", 200), usage)
         return meta_api.output_text(payload), usage
     finally:

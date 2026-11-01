@@ -1,6 +1,9 @@
 {
   "format": "simon.part5.score-heldout.v1",
-  "note": "Append-only (ADR-0007). Each seed was generated once after the score freeze commit and scored once; no param changed afterwards. Measured, pass or fail.",
+  "note": "Append-only (ADR-0007). Each seed was generated once after the score freeze commit and scored once; no param changed afterwards. Measured, pass or fail. `freezes` (ADR-0018) holds the freeze of a score version that is recorded before its seed is generated: {version, freeze_commit, params_sha256, seed}, with params_sha256 printed by `python -m part5.score_report --params-sha256`. The attempts of seeds 47 and 53 are simon.score.v1; their params_sha256 is the hash of `score.v1` in part5/rules.json.",
+  "freezes": [
+    {"version": "simon.score.v2", "freeze_commit": "1f2f07a27e226fe8afebd8a87d20186d68c38dee", "params_sha256": "60116de4cede436c574b91b15a74a7f0c5561790ac6f61cf9181a8317575fe95", "seed": 59}
+  ],
   "attempts": [
     {
       "seed": 47,
@@ -38,6 +41,7 @@
       "targets": {"correct good-light all A": "pass", "single faults B or C": "fail", "double faults D or F": "pass"},
       "misses": ["dance_45_good_04_knees_shallow-both: fault not detected, scored A",
                  "dance_45_good_04_knees_shallow-both_dropout: fault not detected, scored A"]
-    }
+    },
+    {"seed": 59, "version": "simon.score.v2", "freeze_commit": "1f2f07a27e226fe8afebd8a87d20186d68c38dee", "params_sha256": "60116de4cede436c574b91b15a74a7f0c5561790ac6f61cf9181a8317575fe95", "scored_at": "0aba9742f0dd2609262258c3741084e530ebe40b", "holds": false, "generator": "python3 scripts/make_dummy_followers.py --seed 59 --out out/score-heldout/seed-59 --dropout-variant", "scorer": "python3 -m part5.score_report --set out/score-heldout/seed-59 --json-out out/score-heldout/seed-59/report.json", "labels_sha256": "bab05a33762434332eddaeb5ac9dde415bc5782a9f4afd37c863e2588b7d73fe", "slices": {"good/0": {"n": 20, "min": 100, "median": 100.0, "max": 100, "grades": {"A": 20}}, "good/1": {"n": 60, "min": 73, "median": 85.0, "max": 89, "grades": {"B": 53, "C": 7}}, "good/2": {"n": 10, "min": 69, "median": 74.0, "max": 85, "grades": {"B": 3, "C": 5, "D": 2}}, "low/0": {"n": 20, "min": 68, "median": 93.5, "max": 100, "grades": {"A": 10, "B": 6, "C": 3, "D": 1}}, "low/1": {"n": 60, "min": 50, "median": 74.5, "max": 89, "grades": {"B": 23, "C": 18, "D": 8, "F": 11}}, "low/2": {"n": 10, "min": 51, "median": 62.0, "max": 73, "grades": {"C": 1, "D": 6, "F": 3}}}, "targets": {"correct_all_a": "pass", "no_reported_fault_grades_a": "pass", "single_b_or_c": "pass", "double_c_d_or_f": "fail", "sweep": "pass"}}
   ]
 }

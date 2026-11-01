@@ -90,7 +90,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.9.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.10.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -98,8 +98,11 @@ through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); va
 so the format can grow without breaking older readers. Live examples, generated from dummy
 takes by `make output-examples` through the same pipeline and score hook `part5 analyse` uses (with the
 `template` phrasing, whatever the environment): `fixtures/output/analysis.example.json` (two faults),
-`fixtures/output/analysis.no-faults.example.json` (a correct take) and `fixtures/output/replay.example.json`
-(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.9.0):
+`fixtures/output/analysis.no-faults.example.json` (a correct take), `fixtures/output/analysis.fault-capped.example.json`
+(present while Part 5 ships v2: a take that reports a fault and hits the ceiling of `simon.score.v2`, value 89 B, `fault_cap` 89, `uncapped` 94 A, no
+`capped_by`; a dance take analysed without its foot files, so the arm fault it reports is not the foot fault its name
+mentions) and `fixtures/output/replay.example.json`
+(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.10.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
 Part 7 must read first.
 
@@ -117,11 +120,12 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.7.0` | `profile`; `score.components.tempo` and the same on each window, dance only (ADR-0016) | every new document is `1.7.0`, and `profile` is always present; the tempo points appear only under the dance profile |
 | `1.8.0` | `diagnostics.near_misses` (TICKET-043, `docs/specs/near-misses.md`) | every new document is `1.8.0`; the field is present whenever the take was compared, also when it lists nothing, and absent on a take that could not be aligned |
 | `1.9.0` | `phrasing.lang`, `phrasing.lang_requested`, `phrasing.faults[].text` and `.lang`; top-level `second_opinion` (TICKET-045, TICKET-046, `docs/specs/second-opinion.md`); `score.uncapped` (Part 7 TICKET-155); the top-level `source` and the `no_person` warning code (TICKET-048) | every new document is `1.9.0` and carries the language fields; `second_opinion` is written only when both clips were given as videos (`--expected-video`, `--follower-video`), with `status` `ok`, `fallback` or `skipped`, and is never read by the score; `score.uncapped` only when a warning's cap lowered the value; `source` and `no_person` only in Part 7's own analysis of a take with no person (below), never by Part 5 |
+| `1.10.0` | `score.fault_cap`; `score.version` `simon.score.v2`; the wider meaning of `score.uncapped` (TICKET-047, ADR-0018, `docs/specs/score-v2.md`) | every new document is `1.10.0`; its score is `simon.score.v2`, or `simon.score.v1` if seed 59 fails its targets and ADR-0018's fallback ships v1 (read `score.version`); under v2 `fault_cap` (89) is written when the take reports a fault, and `uncapped` when the fault cap or the warning cap lowered the value; `capped_by` is unchanged |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.9.0",
+  "schema_version": "1.10.0",
   "profile": "fitness",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
@@ -185,7 +189,7 @@ Top level:
 - `faults`: sorted by \(|magnitude|\) descending. An empty list means no faults were found:
   a correct take still gets a file.
 - `warnings` and `match` (1.4.0): present only when the take earned a warning, see "Always analysed" below.
-- `score` (1.2.0, never null from 1.4.0): `simon.score.v1`, see "Score" below.
+- `score` (1.2.0, never null from 1.4.0): `simon.score.v1`, or `simon.score.v2` from 1.10.0, see "Score" below.
 - `insights` (1.5.0): what to work on, see "Coaching cues and insights" below.
 - `phrasing` (optional, 1.1.0): who phrased `faults[].coaching`: `requested` and `backend` (`template`,
   `local-llm` or `muse-spark`), `model`, `fallback_reason`, `selected_by` (`flag` for an explicit backend, `live`
@@ -311,7 +315,7 @@ Per fault:
 - `cue` and `cue_kind` (1.5.0): what to do ("Bend your knees more"), at most 6 words; `range` or `position`.
 - `reps` (1.3.0): see `diagnostics.guard.reps` above.
 
-## Score (`simon.score.v1`, 1.2.0 to 1.5.0)
+## Score (`simon.score.v1`, or `simon.score.v2` from 1.10.0: read `score.version`)
 
 `score` is `{version, value, grade, components, params_sha256}` plus the groups below. It is never null from
 `1.4.0` (a take nothing could be measured on scores 0, grade F); before that a refused take had `score: null`.
@@ -332,7 +336,27 @@ on each window; the three add up to `100 - value` within rounding), `params_sha2
 - `capped_by` (1.4.0): the warning codes that capped `value` at 59, present only with `warnings`.
 - `uncapped` (1.9.0, Part 7 TICKET-155): `{value, grade}` before the cap, written only when the cap lowered `value`
   (a one-fault take that scored 73 C and shows 59 F because of `low_match` keeps `uncapped: {value: 73, grade: "C"}`), so a
-  reader can say what the warning cost. Nothing reads it back: the score is the capped `value`.
+  reader can say what the warning cost. Nothing reads it back: the score is the capped `value`. From 1.10.0 it is the
+  value and grade **before every cap**, the fault cap (`fault_cap`) and the warning cap (`capped_by`): written when
+  either lowered `value`, and when both did, the value before the first. A faulted take with no warning whose mean of
+  windows was 94 A and was lowered to 89 B has `uncapped: {value: 94, grade: "A"}`, `fault_cap: 89` and no `capped_by`.
+- `fault_cap` (1.10.0, ADR-0018, `simon.score.v2` only): an integer, 89, the highest `value` a take that reports a
+  fault can score (the top of B). Present when the take's `faults` list is not empty, whether or not the cap lowered
+  `value`; absent for a take with no faults and under `simon.score.v1`. It is not a warning: `capped_by` never names it and
+  keeps its meaning exactly (the warning codes of the low-match cap at 59 F). The cap is applied once, to the mean of the
+  windows (ADR-0013); `timeline[]` windows and `per_rep` keep their own values.
+
+## Score v2 (`simon.score.v2`, from 1.10.0)
+
+The formula is v1's (ADR-0007) with a weight on each miss and a ceiling (ADR-0018). A miss costs
+`penalty(r) * (0.5 + 0.5 * dur) * coverage * w`, where `w = min(1, max(range_floor, u / range_full))` and `u` is how far
+the trainer (the expected clip) moves the missed measure in that window, in that measure's detection thresholds
+(`range_full` 3, `range_floor` 0.75). The foot measures take the same weight from the trainer's foot series; `w` is 1 only
+where no trainer series exists (no feet file, a foot measure that was not compared). `score.value` compares only within
+one `score.version`: a v2 value is not on the v1 scale. The
+take's `value` is the mean of its windows and then at most `fault_cap` when it reports a fault. The penalty curve, the
+similarity term, the bands and the warning cap are v1's, and the v1 block is kept in `part5/rules.json` as `score.v1` so
+a v1 score can be reproduced. `params_sha256` is the hash of the whole `score` block, v1 block included.
 
 ## Replay: `replay.json` (`simon.replay.v1`, schema 1.0.0)
 

@@ -64,15 +64,20 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.9.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
-     "`profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`) are all "
+     "the 1.2.0 to 1.10.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
+     "`profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`, "
+     "`score.fault_cap`) are all "
      "optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near "
      "misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and "
      "`phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level "
      "`second_opinion` (Muse Spark's view of the take, label it as the model's opinion; the score never reads it), "
-     "`score.uncapped` (the value and grade before a warning capped them at 59 F, present only when the cap lowered "
-     "them) and the optional top-level `source` (the producing part; absent means part5) with the warning code "
-     "`no_person` (written only by Part 7's own analysis, never by Part 5); "
+     "`score.uncapped` (the value and grade before a cap lowered them, present only when one did) and the optional "
+     "top-level `source` (the producing part; absent means part5) with the warning code "
+     "`no_person` (written only by Part 7's own analysis, never by Part 5); 1.10.0 (ADR-0018) allows the score "
+     "to be `simon.score.v2` (read `score.version`; a v1 score can still be written inside 1.10.0) and adds, under v2 only, "
+     "`score.fault_cap` (the integer 89, present when the take reports a fault: such a take scores at most 89, a B; it is "
+     "not a warning, `score.capped_by` still names the low-match cap at 59 F only) and widens `score.uncapped` to the "
+     "value and grade before every cap, the fault cap and the warning cap; "
      "a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
      "reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its "
      "`profile`", "Part 5 (this repo)"),
@@ -295,9 +300,24 @@ def schema_entries(root=ROOT):
     return out
 
 
+WORD_LISTS = ("student-words",)   # published files that are not schemas (CONTRACT.md, Part 7's duty 11)
+
+
+def word_list_entries(root=ROOT):
+    """The published word lists, read from their own files: name, format, version, file and the hash of their lists.
+    `contracts/student-words.json` (`simon.student-words.v1`, version `1.0.0`) holds the stems and praise phrases Part 5's
+    validators refuse, for a reader that applies the same test (TICKET-049)."""
+    out = []
+    for name in WORD_LISTS:
+        doc = json.loads((Path(root) / "contracts" / f"{name}.json").read_text())
+        out.append({"name": name, "format": doc["format"], "version": doc["version"],
+                    "file": f"contracts/{name}.json", "lists_sha256": doc["lists_sha256"]})
+    return out
+
+
 def contract_document(root=ROOT):
     """Exactly what `part5 contract --json` prints and the staging API serves at api/contract."""
-    return {"schemas": schema_entries(root), "table": table_rows(root)}
+    return {"schemas": schema_entries(root), "word_lists": word_list_entries(root), "table": table_rows(root)}
 
 
 def add_parser(sub):
@@ -330,6 +350,9 @@ def _print_contract(args):
     print("Part 5 contract. Field rules: docs/schemas.md. Who sends what: CONTRACT.md.\n\nSchemas")
     for s in doc["schemas"]:
         print(f"  {s['name']:<16} {s['version']:<6} {s['file']}  {s['title']}")
+    print("\nWord lists (not schemas)")
+    for w in doc["word_lists"]:
+        print(f"  {w['name']:<16} {w['version']:<6} {w['file']}  {w['format']}")
     print("\nCompatibility (the last column is the producer commit each row was checked against)\n")
     print(table_markdown(doc["table"]))
     return 0

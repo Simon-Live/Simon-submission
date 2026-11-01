@@ -47,8 +47,8 @@ Other environment variables the code reads:
 | `PART5_MUSE_PER_MINUTE` | 30 | Muse Spark calls per process per minute |
 | `PART5_META_KEY_FILE` | `~/.config/firm/operator-keys/MODEL_API_KEY` | the key file of the second opinion (Meta Model API, `--expected-video` with `--follower-video` in live mode); read at the call, stripped, used for the `Authorization` header only. Tests point it at a path that does not exist |
 | `PART5_META_USAGE_FILE` | `~/.simon/meta_usage.jsonl` | ledger of the second opinion, one line per call (model, UTC time, HTTP status, tokens, USD; never the key or the text). It is opened and locked before the call and held until the call is recorded, so two processes cannot both pass the cap. A call that failed with no answer from the API (a timeout, a connection error) is recorded at its pre-call estimate with `estimated: true` |
-| `PART5_META_SPEND_CAP_USD` | 5.00 | total USD the ledger may reach; checked before the clips are uploaded and again, with the call's estimate, before the call. A value that is not a finite number of 0 or more keeps the default and logs a warning |
-| `PART5_META_CALL_MAX_USD` | 0.50 | USD one call may be estimated at (the counted input plus the full output allowance, at Part 1's list rates); same rule for a bad value |
+| `PART5_META_SPEND_CAP_USD` | 5.00 | total USD the ledger may reach; checked before the clips are uploaded and again, with the call's estimate, before the call. A value that is set and is not a finite number of 0 or more refuses the call (the second opinion ends in a fallback block naming the variable), and so does a ledger that exists and cannot be read; unset or blank is the default |
+| `PART5_META_CALL_MAX_USD` | 0.50 | USD one call may be estimated at (the counted input plus the full output allowance, at Part 1's list rates); a bad value refuses the call, as for the cap |
 | `PART5_PHRASING_BUDGET_S` | 20 | seconds one analysis may spend on phrasing |
 | `PART5_PHRASING_CONCURRENCY` | 4 | model calls in flight at once |
 | `PART5_OLLAMA_MODEL` | unset | model name for `--phrasing local-llm` (needs `ollama` on `PATH`, served on `127.0.0.1:11434`) |
@@ -204,9 +204,13 @@ carries no `conf`.
 
 ### Score
 
-`score` is `simon.score.v1`: `value` 0 to 100, `grade` A (90+), B, C, D, F (below 60), `components`
-(`faults`, `similarity`) and `params_sha256` of the `score` block in `part5/rules.json`. The formula is
-at the top of `part5/score.py`.
+`score` is `simon.score.v1` or, from schema 1.10.0, `simon.score.v2` (ADR-0018; read `score.version`): `value` 0 to 100, `grade` A (90+), B, C, D, F (below 60),
+`components` (`faults`, `similarity`) and `params_sha256` of the `score` block in `part5/rules.json`. Under v2 a take that
+reports a fault scores at most 89 and says so in `fault_cap`; `uncapped` is the value before every cap; `capped_by`
+is the low-match warning cap only. The frozen v1 params are `score.v1` in the same block
+(`python -m part5.score_report --params-sha256` prints the hash the freeze records). If seed 59 does not hold every target,
+`make score-fallback` puts v1 back (ADR-0018 "Reversal"); a test that pins a v2 value reads `tests/shipped_score.py`.
+The formula is at the top of `part5/score.py`.
 
 ### Replay
 

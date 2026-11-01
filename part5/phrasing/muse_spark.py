@@ -15,9 +15,9 @@ at most 30 calls a minute (`PART5_MUSE_PER_MINUTE`), counted under a lock becaus
 (token counts, model, UTC time, HTTP status; never the key or the text) to
 `~/.simon/baseten_usage.jsonl` (`PART5_BASETEN_USAGE_FILE` for tests).
 
-The key file and ledger helpers (`path_of`, `unavailable_for`, `read_key_from`, `open_ledger_at`) are shared with the
-Meta Model API client of the second opinion (`opinion.meta_api`), which keeps its own key and ledger files: each
-caller names the file and the error to raise.
+The key file and ledger helpers (`path_of`, `unavailable_for`, `read_key_from`, `open_ledger_at`, `append_line`,
+`utc_now`) are shared with the Meta Model API client of the second opinion (`opinion.meta_api`), which keeps its own
+key and ledger files: each caller names the file and the error to raise.
 """
 import json
 import os
@@ -140,6 +140,21 @@ def open_ledger_at(path, error, lock_wait_s=None):
     return ledger
 
 
+def utc_now():
+    """The time of a ledger line: UTC, to the second, `2026-11-01T05:40:00Z`."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def append_line(ledger, line, error):
+    """Write `line` (a dict) to the open `ledger` as one JSON line and flush it; `error("usage ledger not writable")`
+    when it cannot be written. The one place either client writes a ledger line."""
+    try:
+        ledger.write(json.dumps(line, sort_keys=True) + "\n")
+        ledger.flush()
+    except OSError:
+        raise error("usage ledger not writable") from None
+
+
 def _per_minute():
     try:
         return int(os.environ.get(PER_MINUTE_ENV, PER_MINUTE))
@@ -174,7 +189,7 @@ def _count(usage, *path):
 def _usage_line(outcome):
     usage = (outcome.body or {}).get("usage")
     reasoning = _count(usage, "completion_tokens_details", "reasoning_tokens")
-    return {"time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "model": MODEL,
+    return {"time": utc_now(), "model": MODEL,
             "http_status": outcome.status,
             "prompt_tokens": _count(usage, "prompt_tokens"),
             "completion_tokens": _count(usage, "completion_tokens"),
@@ -200,12 +215,8 @@ def line(fault, *, timeout_s, client, shape=0, language=EN):
                            language=language)
     with _open_ledger() as ledger:
         outcome = send(client or urllib_client, request)
-        try:
-            with _ledger_lock:
-                ledger.write(json.dumps(_usage_line(outcome), sort_keys=True) + "\n")
-                ledger.flush()
-        except OSError:
-            raise BackendError("usage ledger not writable") from None
+        with _ledger_lock:
+            append_line(ledger, _usage_line(outcome), BackendError)
     if outcome.error:
         raise outcome.error
     return content(outcome.body)

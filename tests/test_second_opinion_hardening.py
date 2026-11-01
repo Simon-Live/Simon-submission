@@ -14,7 +14,7 @@ from part5.opinion import guard, meta_api
 from part5.opinion.meta_api import OpinionError
 from part5.output import OutputError, validate_analysis
 from test_second_opinion import (  # noqa: F401  (the fixtures are used by name)
-    UPPER, Fake, answer, attach, clip_showing, meta, take)
+    UPPER, Fake, all_verdicts, answer, attach, clip_showing, meta, take)
 
 ROOT = Path(__file__).resolve().parents[1]
 REAL_PREPARE = meta_api.prepare   # the fixture `meta` replaces it; the real one is tested here
@@ -102,6 +102,64 @@ def test_review_r5_the_same_words_pass_when_the_clip_shows_the_part(text):
 def test_review_r5_back_as_a_direction_is_not_the_trunk(text):
     assert "trunk" not in LEFT_ARM_ONLY
     assert problem(text, LEFT_ARM_ONLY) is None
+
+
+NO_TRUNK = guard.supported(clip_showing("left_shoulder", "left_elbow", "left_wrist", "left_hip", "right_hip", "left_knee",
+                                         "left_ankle", "right_ankle"))   # no right shoulder: the trunk is not shown
+
+
+@pytest.mark.parametrize("text", [
+    "The back hip drops lower than the teacher's.", "The back hips drop lower than the teacher's.",
+    "The back shoulder rolls forward.", "The back ankle turns out.", "The back toe lifts early.",
+    "The back wrist bends late.", "The back side stays level.", "The back sides stay level.",
+    "The weight shifts to the back.", "The weight moves toward the back.", "The weight moves towards the back.",
+    "The left elbow moves back and forth.", "Back and forth, the left elbow bends.",
+    "The back foot, the back leg and the back knee stay planted.", "The back heel lifts.",
+])
+def test_recheck_2_back_as_a_direction_or_the_far_one_of_a_pair_is_not_the_trunk(text):
+    assert "trunk" not in NO_TRUNK
+    assert problem(text, NO_TRUNK) is None
+
+
+@pytest.mark.parametrize("text", [
+    "The back rounds late.", "Your upper back is flat.", "Back stays straight.", "His back rounds.",
+    "The back and shoulders drop together.", "The back rounds, and the weight shifts to the back.",
+    "The lower back arches.",
+])
+def test_recheck_2_back_as_the_noun_is_still_the_trunk(text):
+    assert problem(text, NO_TRUNK) == "names a body part the clip does not show (trunk)"
+
+
+def test_recheck_2_the_pair_words_still_need_their_own_joints():
+    assert problem("The back hip drops.", LEFT_ARM_ONLY) == "names a body part the clip does not show (hip)"
+    assert problem("The back ankle turns out.", LEFT_ARM_ONLY) == "names a body part the clip does not show (foot)"
+
+
+def test_recheck_1_the_guard_reads_face_after_a_body_part_as_a_verb_and_the_head_noun_as_the_head():
+    feet_only = guard.supported(clip_showing("left_ankle", "right_ankle", "left_knee", "right_knee"))
+    assert "head" not in feet_only
+    for text in ("Your feet face out more than the teacher's.", "The knees face inward.", "The toes face out."):
+        assert problem(text, feet_only) is None
+    for text in ("Your face is level.", "The face turns down.", "Your face and feet turn out."):
+        assert problem(text, feet_only) == "names a body part the clip does not show (head)"
+
+
+@pytest.mark.parametrize("text", [
+    "In the second half the left elbow drifts.", "The first half of the take is clean.",
+    "The left elbow drifts in the other half.", "The left elbow drifts in the last half of the clip.",
+    "The final half is steadier.", "The latter half is steadier.", "Over the lower half the left elbow stays bent.",
+])
+def test_recheck_3_half_as_a_stretch_of_the_take_is_not_a_number(text):
+    assert problem(text) is None
+
+
+@pytest.mark.parametrize("text", [
+    "The left elbow bends by half as much.", "The left elbow lags half a beat.", "The left elbow bends half a degree more.",
+    "The left elbow drops by half.", "The left elbow drops half the depth.", "Half the reps look the same.",
+    "The left elbow bends in two halves.",
+])
+def test_recheck_3_half_as_an_amount_is_still_a_number(text):
+    assert problem(text) == "adds a number"
 
 
 # ---- R13: links and control characters -------------------------------------------------------------------------------
@@ -215,11 +273,84 @@ def test_review_r1_a_call_the_api_refused_is_recorded_at_zero(take, meta):
     assert meta_api.spent() == 0.0
 
 
-def test_review_r1_failed_usage_is_the_estimate_only_when_no_status_came_back():
-    assert meta_api.failed_usage(None, 1000, 0.014) == {
-        "input_tokens": 1000, "output_tokens": 3000, "cached_tokens": 0, "usd": 0.014, "estimated": True}
-    assert meta_api.failed_usage(503, 1000, 0.014)["usd"] == 0.0
-    assert "estimated" not in meta_api.failed_usage(429, 1000, 0.014)
+ESTIMATED = {"input_tokens": 1000, "output_tokens": 3000, "cached_tokens": 0, "usd": 0.014, "estimated": True}
+
+
+@pytest.mark.parametrize("status", [None, 500, 502, 503, 504, 599])
+def test_recheck_5_no_answer_or_a_5xx_is_recorded_at_the_estimate(status):
+    """A gateway (502, 504) can answer after the model ran, so a 5xx is a call of unknown cost like a timeout."""
+    assert meta_api.failed_usage(status, 1000, 0.014) == ESTIMATED
+
+
+@pytest.mark.parametrize("status", [301, 400, 401, 403, 404, 408, 413, 429, 499])
+def test_recheck_5_a_refusal_below_500_is_recorded_at_zero(status):
+    usage = meta_api.failed_usage(status, 1000, 0.014)
+    assert usage["usd"] == 0.0 and "estimated" not in usage
+
+
+class Gateway(Fake):
+    """A call a gateway answered with a 5xx: the model may have run."""
+
+    def respond(self, body):
+        self.bodies.append(body)
+        self.last_status = 504
+        raise self.payload
+
+
+def test_recheck_5_a_5xx_answer_is_recorded_at_the_estimate_and_counts_toward_the_cap(take, meta, monkeypatch):
+    block = attach(take, meta, Gateway(OpinionError("HTTP 504 on responses"), count=9000))["second_opinion"]
+    assert (block["status"], block["reason"]) == ("fallback", "HTTP 504 on responses")
+    [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
+    assert line["http_status"] == 504 and line["estimated"] is True and line["usd"] == 0.024
+    assert (line["input_tokens"], line["output_tokens"]) == (9000, 3000) and meta_api.spent() == pytest.approx(0.024)
+    monkeypatch.setenv("PART5_META_SPEND_CAP_USD", "0.03")
+    again = Fake(answer())
+    block = attach(take, meta, again)["second_opinion"]
+    assert (block["status"], block["reason"]) == ("fallback", "spend cap reached") and again.bodies == []
+
+
+def without(payload, *path_and_value):
+    """`payload` with its `usage` replaced by the given value (or removed when no value is given)."""
+    doc = {k: v for k, v in payload.items() if k != "usage"}
+    if path_and_value:
+        doc["usage"] = path_and_value[0]
+    return doc
+
+
+@pytest.mark.parametrize("usage", [
+    (), (None,), ("lots",), ([],), ({},), ({"output_tokens": 400},), ({"input_tokens": 9000},),
+    ({"input_tokens": "9000", "output_tokens": 400},), ({"input_tokens": True, "output_tokens": 400},),
+    ({"input_tokens": 9000, "output_tokens": 4.5},), ({"input_tokens": -5, "output_tokens": 400},),
+])
+def test_recheck_5_an_answer_with_no_token_counts_is_recorded_at_the_estimate(take, meta, usage):
+    """HTTP 200 and a body, but the body does not say what the call cost: the estimate is recorded, not $0."""
+    n = len(take.analysis["faults"])
+    fake = Fake(without(answer(all_verdicts(n, True)), *usage), count=9000)
+    block = attach(take, meta, fake)["second_opinion"]
+    assert block["status"] == "ok" and len(block["verdicts"]) == n
+    assert block["usage"] == {"input_tokens": 9000, "output_tokens": 3000, "cached_tokens": 0, "usd": 0.024, "estimated": True}
+    [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
+    assert line["http_status"] == 200 and line["estimated"] is True and line["usd"] == 0.024
+    assert meta_api.spent() == pytest.approx(0.024)
+
+
+def test_recheck_5_an_answer_that_says_what_it_cost_is_recorded_as_it_says(take, meta):
+    n = len(take.analysis["faults"])
+    block = attach(take, meta, Fake(answer(all_verdicts(n, True), tokens=(9000, 400))))["second_opinion"]
+    assert block["usage"] == {"input_tokens": 9000, "output_tokens": 400, "cached_tokens": 0, "usd": 0.01295}
+    [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
+    assert "estimated" not in line and line["usd"] == 0.01295
+    zero = {"input_tokens": 0, "output_tokens": 0}   # a stated zero is a statement, however odd
+    assert meta_api.answered_usage(without(answer(), zero), 9000, 0.024)["usd"] == 0.0
+    assert meta_api.answered_usage({"usage": {"input_tokens": 100, "output_tokens": 50}}, 9000, 0.024)["usd"] == pytest.approx(
+        meta_api.price(100, 50))
+    assert meta_api.answered_usage("not a body", 9000, 0.024)["estimated"] is True
+
+
+def test_recheck_5_read_usage_reads_a_missing_or_negative_count_as_zero():
+    assert meta_api.read_usage({}) == {"input_tokens": 0, "output_tokens": 0, "cached_tokens": 0, "usd": 0.0}
+    odd = {"usage": {"input_tokens": -4, "output_tokens": 7, "input_tokens_details": {"cached_tokens": True}}}
+    assert meta_api.read_usage(odd) == {"input_tokens": 0, "output_tokens": 7, "cached_tokens": 0, "usd": meta_api.price(0, 7)}
 
 
 # ---- R6: a clip that cannot be read ----------------------------------------------------------------------------------

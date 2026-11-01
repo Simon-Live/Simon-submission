@@ -235,7 +235,7 @@ def _unsteady(raw, index, limits):
     first, last = int(index[taken].min()), int(index[taken].max())
     out = {}
     for name, limit in limits.items():
-        j = jitter(raw[name][first:last + 1]) if name in raw else math.nan
+        j = jitter(raw[name][first:last + 1])   # `compute_feet` returns all four foot measures
         if j > limit:   # NaN (too little to judge) compares false: the measure stays
             out[name] = j
     return out
@@ -269,8 +269,12 @@ class FootSide:
         if not self.usable:
             if self.unsteady:
                 worst = max(self.unsteady, key=self.unsteady.get)
-                return (f"no foot measure is steady enough to read in the {self.label} frames ({worst} jitters "
-                        f"{self.unsteady[worst]:.1f} degrees a frame, the limit is {self.limits[worst]:g})")
+                reason = (f"no foot measure is steady enough to read in the {self.label} frames ({worst} jitters "
+                          f"{self.unsteady[worst]:.1f} degrees a frame, the limit is {self.limits[worst]:g})")
+                # Nothing is usable, so a measure that is not unsteady is one the 80% rule left out: two causes.
+                if any(name not in self.unsteady for name in FOOT_MEASURES):
+                    reason += f", and the rest are not seen in {MIN_SEEN_SHARE:.0%} of them"
+                return reason
             return f"no foot measure is seen in {MIN_SEEN_SHARE:.0%} of the {self.label} frames"
         return None
 

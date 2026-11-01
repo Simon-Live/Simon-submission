@@ -11,10 +11,13 @@ import pytest
 
 from part5 import cli, contract
 from part5.output import validate_analysis
+from shipped_score import IS_V2, SHIPPED
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "fixtures/output"
-GOLDENS = ["analysis.example.json", "analysis.no-faults.example.json", "replay.example.json"]
+ANALYSES = ["analysis.example.json", "analysis.no-faults.example.json"]
+V2_SAMPLE = "analysis.fault-capped.example.json"   # a simon.score.v2 sample, written only while the rules ship v2
+GOLDENS = sorted([*ANALYSES, "replay.example.json", *([V2_SAMPLE] if IS_V2 else [])])
 
 
 def load_script():
@@ -37,7 +40,7 @@ def rebuilt(tmp_path_factory):
     return out
 
 
-def test_ac_c03_the_script_writes_the_three_goldens_and_they_equal_the_committed_files(rebuilt):
+def test_ac_c03_the_script_writes_the_goldens_the_shipped_score_has_and_they_equal_the_committed_files(rebuilt):
     assert sorted(p.name for p in rebuilt.glob("*.json")) == sorted(GOLDENS)
     for name in GOLDENS:
         assert (rebuilt / name).read_bytes() == (OUT / name).read_bytes(), name
@@ -54,12 +57,12 @@ def test_ac_nfr_j02_a_second_run_writes_the_same_bytes(rebuilt, tmp_path):
         assert (tmp_path / name).read_bytes() == (rebuilt / name).read_bytes(), name
 
 
-@pytest.mark.parametrize("name", ["analysis.example.json", "analysis.no-faults.example.json"])
+@pytest.mark.parametrize("name", [*ANALYSES, *([V2_SAMPLE] if IS_V2 else [])])
 def test_r11_a_golden_analysis_carries_what_a_real_run_carries(name):
     doc = json.loads((OUT / name).read_text())
     score = doc["score"]
-    assert doc["schema_version"] == "1.9.0" and doc["status"]["code"] == "ok"
-    assert score["version"] == "simon.score.v1" and 0 <= score["value"] <= 100 and score["grade"] in "ABCDF"
+    assert doc["schema_version"] == "1.10.0" and doc["status"]["code"] == "ok"
+    assert score["version"] == SHIPPED and 0 <= score["value"] <= 100 and score["grade"] in "ABCDF"
     assert score["basis"] in ("windows", "reps") and score["timeline"] and score["tempo"] is not None
     assert all("tempo" in w for w in score["timeline"] if w["compared"])
     assert isinstance(doc["insights"], list)

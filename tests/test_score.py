@@ -11,6 +11,7 @@ import pytest
 from part5 import calibrate, check, score, score_report
 from part5.detect import load_rules
 from part5.measures import MEASURES
+from shipped_score import SHIPPED, frozen_v1
 
 ROOT = Path(__file__).resolve().parent.parent
 N = 10
@@ -140,9 +141,9 @@ def test_the_params_hash_is_the_sha256_of_the_score_block(rules):
 
 def test_the_shipped_rules_have_a_score_block_and_compute_reads_it():
     rules = load_rules()
-    assert score.params_of(rules)["version"] == "simon.score.v1"
+    assert score.params_of(rules)["version"] == SHIPPED   # simon.score.v2 (ADR-0018) with the frozen v1 params as rules["score"]["v1"]
     assert score.compute(analysis(), aligned())["params_sha256"] == score.params_sha256(rules["score"])
-    with pytest.raises(ValueError, match="no simon.score.v1"):
+    with pytest.raises(ValueError, match="no simon.score.v2"):
         score.params_of({"default": {}})
 
 
@@ -206,10 +207,10 @@ def attempt3_detection(monkeypatch):
 
 def test_ac_s01_seed_5_reproduces_the_research_prototype_and_the_shipped_block(attempt3_detection):
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
-    block = score_report.calibrate_set(labels, attempt3_detection)
+    block = score_report.calibrate_set(labels, {**attempt3_detection, "score": {}})   # rules that ship no v2 form: the v1 calibration
     assert {k: block[k] for k in ("z0", "z1", "s_max", "base", "slope", "cap")} == {
         "z0": 0.289, "z1": 0.732, "s_max": 4.0, "base": 16, "slope": 5.9, "cap": 31.1}
-    assert block == load_rules()["score"]
+    assert block == frozen_v1()   # frozen at attempt 3 and kept verbatim by v2 (ADR-0018)
 
 
 def test_calibrate_score_writes_only_the_score_key(tmp_path, attempt3_detection):
@@ -219,7 +220,7 @@ def test_calibrate_score_writes_only_the_score_key(tmp_path, attempt3_detection)
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     assert calibrate.write_score_block(labels, rules_path) == 0
     written = json.loads(rules_path.read_text())
-    assert {k: v for k, v in written.items() if k != "score"} == original and written["score"] == load_rules()["score"]
+    assert {k: v for k, v in written.items() if k != "score"} == original and written["score"] == frozen_v1()
 
 
 def test_the_score_calibration_still_runs_on_a_take_compared_rep_by_rep():

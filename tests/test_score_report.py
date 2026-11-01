@@ -5,6 +5,7 @@ from pathlib import Path
 from part5 import score, score_report
 from part5.detect import load_rules
 from part5.evaluate import match_pairs
+from shipped_score import IS_V2
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -98,25 +99,31 @@ def test_the_cli_prints_the_distribution_and_the_verdicts(capsys):
 
 
 def test_every_good_light_single_fault_take_outside_b_or_c_has_a_cause_the_spec_names():
-    """Seed 5 `good/1` misses its target (B or C) once the foot fault takes are in the set. Two takes score A because
-    their one fault is missed (docs/specs/foot-keypoints.md "Seed 5 result"), and since attempt 4 (ADR-0017) four dance
-    takes score A (92 or 93) because their foot fault is found in one of the two reps and the other rep is scored clean.
-    TARGETS is unchanged and no foot take is dropped; this pins the causes, so a take outside B or C for any other
-    reason fails."""
+    """Seed 5 `good/1` and its target (B or C). Under v1 six takes were outside it: two scored A because their one foot fault
+    is missed (docs/specs/foot-keypoints.md "Seed 5 result") and four dance takes scored A (92 or 93) because their foot fault
+    is found in one rep of two and the other rep is scored clean. Under v2 (ADR-0018) a take that reports a fault is at most a
+    B, so those four are B now; the one take outside B or C reports no fault at all, and the second missed foot fault
+    reports a different one and is capped. This pins the causes, so a take outside B or C for any other reason fails."""
     labels = score_report.load_labels(ROOT / "fixtures/input/followers")
     labels["takes"] = [t for t in labels["takes"] if t["lighting"] == "good" and len(t["faults"]) == 1]
     assert len(labels["takes"]) == 60
-    outside = []
+    outside, missed_takes = [], []
     for t, result in score_report.run_set(labels):
         block = score_report.score_block(result) if result.alignment is not None else None
-        if block and block["grade"] not in score_report.TARGETS["good/1"]:
-            missed = len(t["faults"]) - len(match_pairs(result.analysis["faults"], t["faults"]))
+        missed = len(t["faults"]) - len(match_pairs(result.analysis["faults"], t["faults"]))
+        if missed:
+            missed_takes.append(t["take_id"])
+        if block and block["grade"] not in score_report.shipped_targets()["good/1"]:
             accepted = len([r for r in result.reps or [] if r.ok])
             partial = any(len(f.get("reps", [])) < accepted for f in result.analysis["faults"])
-            outside.append((t["take_id"], block["grade"], missed, partial))
-    assert all(missed >= 1 or partial for _, _, missed, partial in outside), outside
-    assert len([o for o in outside if o[2] >= 1]) == 2, outside     # the two missed foot faults named in the spec
-    assert len(outside) == 6, outside                              # and the four found in one rep of two
+            outside.append((t["take_id"], block["grade"], missed, partial, bool(result.analysis["faults"])))
+    assert sorted(missed_takes) == ["dance_side_good_11_ankle_rolled_in-right",
+                                    "exercise_front_good_12_ankle_rolled_out-both"], missed_takes   # the two missed foot faults
+    if IS_V2:   # nothing reported, nothing to cap
+        assert outside == [("exercise_front_good_12_ankle_rolled_out-both", "A", 1, False, False)], outside
+    else:       # simon.score.v1: the two missed faults and the four found in one rep of two
+        assert all(missed >= 1 or partial for _, _, missed, partial, _ in outside), outside
+        assert len([o for o in outside if o[2] >= 1]) == 2 and len(outside) == 6, outside
 
 
 def test_the_cli_text_report_marks_low_light_as_reported(capsys):

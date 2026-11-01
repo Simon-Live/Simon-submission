@@ -156,6 +156,12 @@ Params in `part5/rules.json` under `"score"`: `{"version", "z0", "z1", "s_max", 
 "calibrated_on"}`, calibrated by `python -m part5.calibrate --score --set fixtures/input/followers` on seed 5 only.
 The research prototype gave `z0 0.289`, `z1 0.732`, `s_max 4.0`, `base 16`, `slope 5.9`, `cap 31.1`.
 
+Amended by ADR-0018 (`docs/design/specs/score-v2.md`, schema 1.10.0): the score of a new document is `simon.score.v2`. The formula
+above holds, with a weight on each miss from the trainer's range of its measure in the window and a ceiling of 89 for a take
+whose `faults` is not empty (`score.fault_cap`; `score.uncapped` is the value before every cap; `capped_by` is unchanged).
+The block above is the `score.v1` sub-block of the `score` section, kept verbatim. `python -m part5.calibrate --score` on rules
+that ship the v2 form rewrites the v2 block: the v1 sub-block stays as frozen and `range_floor` is fitted by ADR-0018's rule.
+
 ### J-5 Phrasing (`phrasing`, `faults[].coaching`)
 Live mode is on when any of: `part5 analyse --live`, `part5 serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`. In live
 mode the default backend is `muse-spark`; elsewhere it stays `template`. An explicit `--phrasing` (or the API's

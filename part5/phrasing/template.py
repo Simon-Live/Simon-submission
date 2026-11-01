@@ -150,6 +150,20 @@ _SECOND_PART = "|".join(f"(?:{words})" for words in
                         {**GROUPS, "head": GROUPS["head"].replace("|face", ""),
                          "shoulder": GROUPS["shoulder"] + r"(?!-|\swidth)"}.values())
 _DOUBLED_PART = re.compile(rf"\b(?:{_ANY_PART})\s+(?:{_SECOND_PART})\b")
+# The same "face" the other way round: after a body-part noun it is a verb ("your feet face out"), so it names no head.
+_FACE_VERB = re.compile(rf"\b({_ANY_PART})\s+face\b")
+
+
+def without_face_verbs(text):
+    """`text` with "face" dropped where it follows a body-part noun ("your feet face out" reads "your feet out"), so
+    that only the "face" that names the head is left for the body-part word test (`parts_named`)."""
+    return _FACE_VERB.sub(r"\1", text)
+
+
+def parts_named(text):
+    """The body-part groups (keys of `GROUPS`) that `text` names; "face" names the head only where it is a noun."""
+    plain = without_face_verbs(text)
+    return {g for g, rx in GROUP_RX.items() if rx.search(plain)}
 
 
 def _numbers(fault, text):
@@ -178,7 +192,7 @@ def _body(fault, text):
     allowed = NAMES.get(fault["measure"])
     if allowed is None:
         return f"no word test for measure {fault['measure']!r}"
-    found = {g for g, rx in GROUP_RX.items() if rx.search(text)}
+    found = parts_named(text)
     if not (found & set(allowed)) and not (allowed == ("trunk",) and _TRUNK_CUES.search(text)):
         return "does not name the body part"
     extra = sorted(found - set(allowed))
@@ -254,7 +268,7 @@ def _timed_side(fault, text):
 
 
 def _timed_body(fault, text):
-    found = {g for g, rx in GROUP_RX.items() if rx.search(text)}
+    found = parts_named(text)
     own = set(NAMES.get(fault["measure"], ()))
     if not (found & own) and not (own == {"trunk"} and _TRUNK_CUES.search(text)):
         return "does not name the body part"
@@ -298,7 +312,8 @@ def line_problem(fault, line, timed=False):
     """None when `line` fairly phrases the measured `fault`, else the short reason it does not.
 
     Timed or not, a line is one short line, carries no praise (`PRAISE_PHRASES`; the reason is "adds praise") and
-    never puts two body-part nouns side by side (the reason is "doubles the body part (arms elbows)").
+    never puts two body-part nouns side by side (the reason is "doubles the body part (arms elbows)"). "face" after a
+    body-part noun is a verb ("your feet face out"), not the head that "adds another body part" (`parts_named`).
     `timed=True` is the live-mode test (ADR-0008): the line must also say `fault["at_s"]` once, may name
     `fault["lateral"]` as a direction and may name the measure's landmarks.
     """

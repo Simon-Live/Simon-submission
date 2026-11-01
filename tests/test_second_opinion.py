@@ -57,10 +57,11 @@ def answer(verdicts=(), observations=(), tokens=(9000, 400)):
 
 
 class Fake:
-    """The Meta Model API stand-in. `respond` returns `payload` or raises it; every call is recorded."""
+    """The Meta Model API stand-in. `respond` returns `payload` or raises it, with HTTP status `status` (500 unless
+    given) for a failure; every call is recorded."""
 
-    def __init__(self, payload=None, count=9000, upload_error=None):
-        self.payload, self.count_tokens, self.upload_error = payload, count, upload_error
+    def __init__(self, payload=None, count=9000, upload_error=None, status=500):
+        self.payload, self.count_tokens, self.upload_error, self.failure_status = payload, count, upload_error, status
         self.uploaded, self.deleted, self.bodies, self.last_status = [], [], [], None
 
     def upload(self, path):
@@ -78,7 +79,7 @@ class Fake:
     def respond(self, body):
         self.bodies.append(body)
         if isinstance(self.payload, Exception):
-            self.last_status = 500
+            self.last_status = self.failure_status
             raise self.payload
         self.last_status = 200
         return self.payload
@@ -279,9 +280,9 @@ def test_ac_so_06_a_ledger_that_cannot_be_written_stops_the_call(take, meta, mon
 def test_ac_so_07_each_call_writes_one_line_without_key_or_text(take, meta):
     n = len(take.analysis["faults"])
     attach(take, meta, Fake(answer(all_verdicts(n, True), tokens=(10_000, 1_000))))
-    attach(take, meta, Fake(OpinionError("HTTP 500 on responses")))
+    attach(take, meta, Fake(OpinionError("HTTP 429 on responses"), count=10_000, status=429))
     lines = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
-    assert [(x["http_status"], x["input_tokens"], x["usd"]) for x in lines] == [(200, 10_000, 0.01675), (500, 0, 0.0)]
+    assert [(x["http_status"], x["input_tokens"], x["usd"]) for x in lines] == [(200, 10_000, 0.01675), (429, 0, 0.0)]
     assert all(x["model"] == "muse-spark-1.3" and x["purpose"] == "second_opinion" for x in lines)
     text = meta.ledger.read_text()
     assert SENTINEL not in text and "The take shows" not in text

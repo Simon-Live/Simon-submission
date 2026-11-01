@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.9.0",
+  "schema_version": "1.10.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",

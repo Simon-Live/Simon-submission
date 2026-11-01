@@ -49,8 +49,9 @@ in every new document; `phrasing.lang_requested` when the request named a langua
    call writes one ledger line.
 4. **A translated line cannot be held by an English word test.** Answer: the model returns both lines in one answer;
    the English line carries the facts through the existing test, the translated line is held to the time, the
-   absence of other numbers and the absence of praise (the English phrases, and the common ones of ten other Latin
-   script languages; a language in another script is checked for the English phrases only). That a translation says
+   absence of other numbers, the absence of an English time phrase before the time (TICKET-052) and the absence of
+   praise (the English phrases, and the common ones of ten other Latin script languages; a language in another script
+   is checked for the English phrases only). That a translation says
    the same as its English twin is ASM-014, revisited by a native speaker read of three languages (Part 7 TICKET-145
    acceptance).
 5. **Index-based sentence shapes are a crude way to get variety.** Answer: the lines are phrased in parallel, so no
@@ -92,7 +93,8 @@ template.
 - `verdicts`: at most one per fault, in fault order; a fault the model left out or whose verdict was dropped has none.
 - `observations`: at most 2, each `at_s` inside the follower clip.
 - `note` and observation `text`: one line, at most 140 characters, English.
-- `rejected` and `usage` are additive extras for debugging and cost; Part 7 need not read them.
+- `rejected` and `usage` are additive extras for debugging and cost; Part 7 need not read them. `usage.estimated` is
+  `true` when the answer held no token counts and the pre-call estimate was recorded instead.
 
 ## Acceptance Criteria
 - AC-SO-01: with both clips, live mode and a key, one Responses request carries both uploaded files (teacher first,
@@ -105,7 +107,11 @@ template.
   it does not show, a time in the text outside the clip, any other number (digits, units and number words as
   `template.NUMBER` holds them, and counts such as "twice"), praise, the banned words, a link or domain, a control
   character other than CR and LF, more than one line, and more than 140 characters; each rejection is listed with its
-  reason.
+  reason. Three words are read by how they are used (TICKET-050): "back" is the trunk only as a noun ("the back
+  rounds"), not in "steps back", "shifts to the back", "back and forth" or "the back hip", "shoulder", "ankle", "toe",
+  "wrist", "foot", "side" and the like; "half" is a number as an amount ("by half", "half as much", "half a beat"), not
+  as a stretch of the take ("the second half", "the other half"); "face" after a body-part noun is a verb ("your feet
+  face out") and names no head, the same reading `template.line_problem` gives a fault line (AC-VA-05).
 - AC-SO-05: disputes never change the measured score, faults or insights (byte comparison).
 - AC-SO-06: no key, live off, one clip missing or unreadable, an upload or call failure, unreadable JSON, the per-call
   ceiling or the spend cap: the block says `skipped` or `fallback` with the reason, the analysis is written and the
@@ -113,10 +119,14 @@ template.
 - AC-SO-07: every attempted call appends one ledger line (model, UTC time, tokens, USD; never the key or text); the
   ledger is opened and locked (flock) before the call, after the spend cap is checked once for the total before any
   upload and again, with the call's estimate, under the lock; so a spend that cannot be recorded is not made and two
-  processes cannot both pass the cap. A call that fails with no answer from the API (timeout, connection error,
-  unreadable body) is recorded at its pre-call estimate with `estimated: true`, one the API refused with an error
-  status at $0. `PART5_META_SPEND_CAP_USD` and `PART5_META_CALL_MAX_USD` that are not finite and 0 or more keep the
-  default and log a warning.
+  processes cannot both pass the cap. A call whose cost is not known is recorded at its pre-call estimate (the counted
+  input and the full output allowance) with `estimated: true`: one that fails with no answer from the API (timeout,
+  connection error, unreadable body), one the API answered with a 5xx status (a gateway may answer after the model ran)
+  and one answered with HTTP 200 and a body that holds no input and output token counts (TICKET-050). A call the API
+  refused with a status below 500 (such as 429) is recorded at $0. Two things refuse the call, as a fallback block
+  before anything is uploaded (TICKET-050): `PART5_META_SPEND_CAP_USD` or `PART5_META_CALL_MAX_USD` set to something that
+  is not a finite amount of USD from 0 up (a limit that cannot be read must not run as another one; unset or blank is
+  the default), and a ledger that exists and cannot be read (an unknown total is not a total of 0; no ledger yet is 0).
 - AC-VA-01: the timed prompt offers no closing phrase and asks for one of four sentence shapes by fault position.
 - AC-VA-02: after phrasing, a model line that repeats a non-fact phrase of an earlier line falls back to its template
   line with the reason `<backend>: repeats a phrase of another line`.
@@ -136,7 +146,16 @@ template.
   with no `lang_requested`.
 - AC-LA-02: for a listed language other than English, a model line is accepted only when its English twin passes
   `template.line_problem` and the translated line says the same time once (dot or comma decimal), no other digit,
-  one line, at most 200 characters, no praise phrase (`translated line adds praise`).
+  one line, at most 200 characters, no praise phrase (`translated line adds praise`): the English phrases in every
+  language and, for the ten Latin script languages of `lang.PRAISE`, their common phrases; a language in another script
+  and Vietnamese are checked for the English phrases only (see Compromises). The translated line also keeps no English
+  time phrase: when one of `lang.ENGLISH_TIME_WORDS` (at, around, about, by, near, after, before, approximately,
+  roughly; whole word, any letter case) stands directly before the time number, written with a dot or a comma and with
+  or without a following "s", the line is refused with the reason `translated line keeps an English time phrase` and
+  the fault takes the AC-LA-03 fallback. The set leaves out every word a listed language writes in that place (in, a,
+  en, um, om, bei, vers and the like), and `tests/test_phrasing_time_phrase.py` pins a correct time phrase in each
+  listed language as passing. For a language other than English the first sentence shape of the prompt has no English
+  example (`prompt.SHAPE_TIME_FIRST_OTHER`), since the model copied its "At 1.9 s" into the translated line (TICKET-052).
 - AC-LA-03: a fault that falls back gets its English template line and `phrasing.faults[i].lang` `"en"`; the template
   backend writes English and says so in the fault's reason when another language was asked.
 - AC-LA-04: `phrasing.lang` and every `phrasing.faults[i].text` and `.lang` are in every new document; `text` equals the
@@ -156,7 +175,9 @@ template.
 | HTTP error, timeout | `fallback`, `HTTP <code> on <step>` or `timeout on <step>` (step: `upload`, `count`, `responses`) |
 | Model answer not JSON | `fallback`, `unreadable answer` |
 | Over the ceiling or the cap | `fallback`, `estimated $x over the per-call limit of $y` or `spend cap reached` (the cap is checked before the upload too) |
+| A limit variable set to something that is not an amount of USD from 0 up | `fallback` before any upload, `<variable> is not an amount of USD from 0 up` (the variable's name, never its value) |
 | Ledger not writable, or held by another process for more than the longest call | `fallback`, `usage ledger not writable` or `usage ledger busy` |
+| Ledger there but not readable (no permission, not text, a directory) | `fallback` before any upload, `usage ledger not readable` |
 | Unknown language | English, `phrasing.lang_requested` holds the tag |
 
 ## Edge Cases
@@ -175,7 +196,21 @@ template.
   the language feature.
 - The translated praise check lists the common phrases of ten Latin script languages next to the English ones; a
   language in another script (Russian, Arabic, Hindi, Japanese, Korean, Chinese) and Vietnamese are checked for the
-  English phrases only.
+  English phrases only. `contracts/student-words.json` carries the English phrases and not `lang.PRAISE`. Part 7 was
+  asked on 2026-11-01 (comms message `iem-20261101T044438Z-simon-part-5-fa43`, topic `part5-contract`) whether its guard
+  needs the per-language phrases there, and answered the same day (ack `iem-20261101T044658Z-simon-part-7-1bd3`): no,
+  Part 7's main does not read `lang.PRAISE`; the history guard that reads `contracts/student-words.json` is in the
+  long-context candidate (claude-template-54, not yet integrated), which will ask Part 5 directly if it needs
+  per-language praise. So the file stays English only (TICKET-050).
+- Of the English words a translated line may keep, only the time position is checked (`lang.ENGLISH_TIME_WORDS`
+  directly before the time number). The live run of 2026-11-01 kept "At 0.0 s" in the line written to the first
+  sentence shape, the same opening as the run of 2026-10-31, and the record called that line Spanish. Any other English
+  word in a translated line still rests on ASM-014 and the native-speaker read. The fallback costs the follower their
+  language on that fault: they get the English template line, with `lang` `"en"` and the reason in `fallback_reason`.
+  Option (c), asking the model to rewrite the line in each language, is not built: its output cannot be checked
+  without that read, so it would add a second unchecked step to a line already held only by ASM-014. It reopens if the
+  native-speaker read (ASM-014) or a later live run shows that the fallback costs the follower their language
+  (TICKET-052, decided by the stakeholder-proxy on 2026-11-01).
 - Video tokens are priced from the API's own count; the list rates are Part 1's (`$1.25` input, `$4.25` output per
   million tokens).
 
@@ -200,9 +235,13 @@ template.
 | `part5/phrasing/muse_spark.py`, `part5/opinion/meta_api.py` | the key file and ledger helpers the two share (`path_of`, `unavailable_for`, `read_key_from`, `open_ledger_at` with its lock); the cap before upload, the estimate for a failed call, checked env amounts, `-map_metadata -1`, a fixed upload name | TICKET-045 | yes |
 | `part5/phrasing/template.py`, `part5/phrasing/lang.py`, `part5/opinion/guard.py`, `part5/output.py` | public names (`GROUP_RX`, `TIME`, `praise`), one `json_object`, the translated praise check, the tag cleaned and capped, guard numbers, links, control characters and more body words, `text` equals `coaching` | TICKET-045, TICKET-046 | yes |
 | `tests/test_second_opinion_hardening.py`, `tests/test_second_opinion_keys.py` (new) | the review's fixes B2 to B5 and R1 to R17 | TICKET-045 | yes |
+| `part5/opinion/meta_api.py`, `part5/opinion/__init__.py`, `part5/phrasing/muse_spark.py` | the recheck's residuals: a 5xx and a 200 with no token counts recorded at the estimate (`failed_usage`, `answered_usage`, `estimated_usage`), an unreadable ledger and a malformed limit refuse the call (`spent`, `_env_usd`, `check_settings`), one ledger-line writer and time format for both clients (`append_line`, `utc_now`) | TICKET-050 | yes |
+| `part5/opinion/guard.py`, `part5/phrasing/template.py` | "back", "half" and "face" read by how they are used (`_BACK`, `QUANTITY`, `without_face_verbs`, `parts_named`) | TICKET-050 | yes |
+| `tests/test_second_opinion.py`, `tests/test_second_opinion_hardening.py`, `tests/test_second_opinion_keys.py`, `tests/test_phrasing_grammar.py` | the recheck's tests, the held ledger, the shared six-answer opener | TICKET-050 | yes |
 | `part5/pipeline.py`, `part5/cli.py`, `part5/api.py` | `lang`; `--lang`, `--expected-video`, `--follower-video` | TICKET-045, TICKET-046 | yes |
 | `part5/output.py` | `SCHEMA_VERSION` 1.9.0, phrasing lang and `second_opinion` validated | TICKET-045 | yes |
 | `part5/doctor.py`, `part5/contract.py` | notes, table rows | TICKET-045 | yes |
+| `part5/phrasing/lang.py`, `part5/phrasing/prompt.py`, `tests/test_phrasing_time_phrase.py` (new) | the English time phrase check in `check_translated` (`ENGLISH_TIME_WORDS`), shape 0 without its English example for another language (`SHAPE_TIME_FIRST_OTHER`), a time phrase pinned in each listed language, the recorded live lines | TICKET-052 | yes |
 | `part5/phrasing/local_llm.py`, `part5/phrasing/__init__.py`, `tests/test_phrasing_local_settings.py`, `docs/dev/DEVELOPING.md` | `PART5_LOCAL_LLM_TIMEOUT_S` and `PART5_LOCAL_LLM_THINK` for a slow local model (Part 7 TICKET-147; documented in `part5-fault-analysis.md`) | TICKET-045 | yes |
 | `part5/profiles_report.py` | the fitness baseline digest also leaves out the 1.9.0 fields | TICKET-045 | yes |
 | `tests/conftest.py`, `tests/test_phrasing*.py`, `tests/test_live_fallback.py`, `tests/test_near_misses.py` | the Meta key and ledger in the hermetic guard; record entries with `text` and `lang`; the prompt's new rules | TICKET-045 | yes |
@@ -268,6 +307,7 @@ ledger. Resolution: ADDRESSED_IN_SPEC.
 | TICKET-144: no phrase repeated across lines | AC-VA-01 to 03 | `tests/test_phrasing_variety.py` | done |
 | Part 7: the local model wrote "Arms elbows wider than the example at 0.4 s" | AC-VA-04, AC-VA-05 | `tests/test_phrasing_grammar.py` | done |
 | TICKET-145: cues in the follower's language | AC-LA-01 to 04 | `tests/test_phrasing_lang.py` | done |
+| TICKET-050 R16 live run: "At 0.0 s, tus codos ..." kept an English time phrase | AC-LA-02 | `tests/test_phrasing_time_phrase.py` | done |
 | Contract C1 | AC-SC-01 | `tests/test_second_opinion.py`, `make check-5-contract` | done |
 
 ## Deviations from PRD

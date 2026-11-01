@@ -47,6 +47,12 @@ bands A 90+, B 80 to 89, C 70 to 79, D 60 to 69, F below 60, `null` on a refused
   `git show fbb0bea:part5/rules.json` (command and value recorded). The whole-file hash still passes on its own,
   so attempts recorded before this ADR verify unchanged. Changing any detection key still exits 2.
 
+## Amendments
+- 2026-10-31, ADR-0018: a retry under a new approach family, `simon.score.v2` (a miss weighted by the trainer's range of
+  its measure, a ceiling of 89 for a take that reports a fault, `score.fault_cap`), tuned on seed 5 only and scored once
+  on seed 59. This ADR stands as the v1 record; v1 stays reproducible (`score.v1` in `part5/rules.json`) and is the
+  fallback if v2 does not ship; seed 61 stays reserved.
+
 ## Consequences
 - **Positive**: Part 7 gets one explainable number; the faults and the score never disagree in direction.
 - **Negative**: the number inherits the generator's fault model; low light is not graded.

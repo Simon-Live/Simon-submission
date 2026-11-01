@@ -10,6 +10,7 @@ import pytest
 
 from part5 import cli, contract, doctor
 from part5.io import JOINTS
+from shipped_score import IS_V2
 
 ROOT = Path(__file__).resolve().parent.parent
 P3 = ROOT / "fixtures/input/contract/part3"
@@ -509,9 +510,9 @@ def warned_analysis():
 
 def test_part7_accepts_a_warned_1_6_0_analysis_and_notes_what_it_carries(tmp_path, capsys):
     doc = warned_analysis()
-    assert doc["schema_version"] == "1.9.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
+    assert doc["schema_version"] == "1.10.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
     code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
-    assert code == 0 and "simon.analysis.v1 1.9.0; accepted for part7" in out
+    assert code == 0 and "simon.analysis.v1 1.10.0; accepted for part7" in out
     assert "warning: low_match: This take doesn't closely match" in out and "warning: warning" not in out
     assert 'note: 2 of 2 faults have confidence "low" (a low match)' in out
     assert "note: score 59 out of 100, grade F, capped at F by low_match" in out
@@ -539,7 +540,13 @@ def test_part7_accepts_its_own_minimal_1_4_0_fallback_analysis(tmp_path, capsys)
 
 def test_part7_gets_the_time_and_score_notes_for_the_shipped_goldens(capsys):
     code, out, _ = run([EXAMPLE, "--for", "part7"], capsys)
-    assert code == 0 and "note: score 67 out of 100, grade D" in out and "capped" not in out
+    if IS_V2:   # ADR-0018: a take that reports a fault says its ceiling; the doctor names the version either way
+        assert code == 0 and "note: score 75 out of 100, grade C; the take reports a fault, so its score is at most 89 (score.fault_cap)" in out
+        assert "note: score version simon.score.v2: score.value compares only within one score.version" in out
+    else:
+        assert code == 0 and "note: score 67 out of 100, grade D" in out and "fault_cap" not in out
+        assert "note: score version simon.score.v1: score.value compares only within one score.version" in out
+    assert "capped" not in out
     assert "note: 2 of 2 faults carry at_s and text_timed" in out
     code, out, _ = run([NO_FAULTS, "--for", "part7"], capsys)
     assert code == 0 and "note: score 100 out of 100, grade A" in out

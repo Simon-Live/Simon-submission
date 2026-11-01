@@ -1,4 +1,4 @@
-"""A foot that is not steady is not measured (docs/specs/foot-keypoints.md "Attempt 5", AC-FOOT-22 to AC-FOOT-27,
+"""A foot that is not steady is not measured (docs/specs/foot-keypoints-attempt-5.md, AC-FOOT-22 to AC-FOOT-27,
 ADR-0015 Amendment 4, TICKET-040).
 
 The far foot of a side view is the case it exists for: the model sees it least, its heel and toe points jitter, and the
@@ -97,6 +97,20 @@ def test_ac_foot_22_the_noise_is_read_and_a_fault_added_to_it_is_not():
     bump[30:50] = np.sin(np.linspace(0.0, np.pi, 20)) * 25.0                     # a 25 degree fault over 20 frames
     assert jitter(noise) == pytest.approx(0.6745 * np.sqrt(2) * 5.0, rel=0.25)   # about 4.8
     assert abs(jitter(noise + bump) - jitter(noise)) < 0.6
+
+
+def test_ticket_051_the_known_limits_of_the_median_step_are_pinned_until_a_later_held_out_family_changes_it():
+    """The statistic is frozen with attempt 5's record (ADR-0015 Amendment 4, "Known limit"). These three readings are
+    its limits, kept as facts: a quick real movement reads as jitter, the frame rate changes the reading, and duplicated
+    frames pull the median down. The candidate that does not have them is the median absolute second difference."""
+    assert jitter([2.0 * i for i in range(30)]) == pytest.approx(2.0)       # a steady quick movement reads its speed
+    t = np.arange(90)
+    per_frame = {rate: jitter(10.0 * np.sin(2 * np.pi * 0.5 * t / rate)) for rate in (30, 60)}
+    assert per_frame[60] < 0.6 * per_frame[30]                              # the same movement, a smaller step at 60 fps
+    noise = np.random.default_rng(5).normal(0.0, 5.0, 90)
+    assert jitter(np.repeat(noise, 2)) == 0.0 < jitter(noise)               # every second step is 0: the median is 0
+    second = lambda v: float(np.median(np.abs(np.diff(np.asarray(v, float), 2))))   # the candidate, for comparison
+    assert second([2.0 * i for i in range(30)]) == pytest.approx(0.0) and second(noise) > 1.0
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -201,6 +215,46 @@ def test_ac_foot_24_why_not_names_the_measure_its_jitter_and_its_limit_when_noth
     worst = max(side.unsteady, key=side.unsteady.get)
     assert side.why_not() == (f"no foot measure is steady enough to read in the follower frames ({worst} jitters "
                               f"{side.unsteady[worst]:.1f} degrees a frame, the limit is -1)")
+
+
+RIGHT_FOOT = ("right_heel", "right_big_toe", "right_small_toe")
+
+
+def test_ticket_051_why_not_names_both_causes_when_some_measures_are_unsteady_and_the_rest_unseen(tmp_path):
+    """Nothing is usable for two reasons: the left measures jitter above their limits and the right foot is never seen."""
+    left = {"left_foot_rotation": -1.0, "left_ankle_inversion": -1.0}      # a still foot (jitter 0) is above -1
+    side = loaded(side_doc(TAKE, hide={name: (0.0, 1.0) for name in RIGHT_FOOT}), tmp_path, left)
+    assert side.usable == [] and set(side.unsteady) == set(left)
+    worst = max(side.unsteady, key=side.unsteady.get)
+    assert side.why_not() == (f"no foot measure is steady enough to read in the follower frames ({worst} jitters "
+                              f"{side.unsteady[worst]:.1f} degrees a frame, the limit is -1), and the rest are not seen "
+                              f"in 80% of them")
+    steady = loaded(side_doc(TAKE), tmp_path, {}, "expected")
+    reason = pair_of(steady, side).hidden_reason
+    assert reason.endswith("and the rest are not seen in 80% of them") and reason.count("; ") == 0
+
+
+def test_ticket_051_why_not_keeps_each_single_cause_as_it_was(tmp_path):
+    all_unsteady = loaded(side_doc(TAKE), tmp_path, NOTHING_MEETS)
+    assert set(all_unsteady.unsteady) == set(FOUR) and "and the rest" not in all_unsteady.why_not()
+    unseen = loaded(side_doc(TAKE, hide={name: (0.0, 1.0) for name in (*RIGHT_FOOT, "left_heel", "left_big_toe",
+                                                                        "left_small_toe")}), tmp_path, SHIPPED)
+    assert unseen.usable == [] and unseen.unsteady == {}
+    assert unseen.why_not() == "no foot measure is seen in 80% of the follower frames"
+    some_left = loaded(side_doc(TAKE, hide={name: (0.0, 1.0) for name in RIGHT_FOOT}), tmp_path,
+                       {"left_foot_rotation": -1.0})
+    assert some_left.usable == ["left_ankle_inversion"] and some_left.why_not() is None   # something is left to read
+
+
+def test_ticket_051_a_limited_measure_is_always_one_compute_feet_returns():
+    """What made the `name in raw` guard of `_unsteady` unreachable: `jitter_limits` names foot measures only, and
+    `compute_feet` returns all four of them."""
+    doc = side_doc(TAKE)
+    points = {name: np.array([[fr["people"][0]["joints"][name][k] for k in "xyz"] for fr in doc["frames"]])
+              for name in ("left_hip", "right_hip")}
+    points.update({name: np.array([[fr["people"][0]["extra_joints"][name][k] for k in "xyz"] for fr in doc["frames"]])
+                   for name in FOOT_POINTS})
+    assert set(compute_feet(points)) == set(FOOT_MEASURES) == set(jitter_limits(rules_with(6.0)))
 
 
 def test_ac_foot_24_a_missing_person_is_still_an_input_error_and_no_file_is_still_an_empty_side():
@@ -308,7 +362,7 @@ def test_ac_foot_26_a_pair_with_no_steady_measure_on_one_side_says_which_side_an
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# AC-FOOT-27: seed 5, from the committed fixtures (the numbers of docs/specs/foot-keypoints.md "Attempt 5")
+# AC-FOOT-27: seed 5, from the committed fixtures (the numbers of docs/specs/foot-keypoints-attempt-5.md)
 # ---------------------------------------------------------------------------------------------------------------
 @pytest.fixture(scope="module")
 def seed5():

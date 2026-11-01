@@ -229,7 +229,7 @@ and no direction; the foot points of all three real Part 2 files have `conf` 1.0
 says nothing about which foot is occluded. The synthetic base takes carry no `conf`, and the dropout copies that do are reported slices the failing takes
 are not in. A rule that reads the camera axis or the foot's `conf` therefore cannot reach the failing takes; the one thing
 the data carry about a foot the camera does not see is that its points move about. The options and their seed 5 numbers are in
-`docs/design/specs/foot-keypoints.md` ("Attempt 5").
+`docs/design/specs/foot-keypoints-attempt-5.md`.
 
 **Decision.** A foot measure whose rules entry has a `max_jitter_deg` is not used in a clip when its jitter is above it. The
 jitter is the median absolute change of the measure between consecutive frames of the side file, in degrees a frame, over
@@ -276,6 +276,17 @@ them (`feet.jitter_limits` returns nothing).
 (the largest jitter of a near foot is 3.7). If a real far foot shows a bias with no jitter, this rule will not see it, and a
 view-aware rule from a camera Part 3 could pass on would be the next candidate.
 
+**Known limit of the statistic, and a candidate for a later held-out family** (TICKET-051, from the pre-freeze review of
+attempt 5). The median step is frozen with attempt 5's record and is not changed outside a new held-out family (ADR-0017);
+a hardening is that family's, scored on a fresh seed. It has three weaknesses. (1) It reads a quick real foot movement as
+jitter: a steady swing of 2 degrees a frame reads 2.0, so a twist-style dance whose foot turns faster than 4 degrees a frame
+would hide `foot_rotation` on both clips with `hidden_reason` null (the Dissent above states the risk). (2) It depends on the
+frame rate: the step is per frame of the side file, so the same movement reads a smaller step at a higher rate (Costs, 5).
+(3) Duplicated frames add pairs with a step of 0 and pull the median down, so a file that repeats frames reads steadier than
+its noise is. The candidate that separates movement from noise is the median absolute second difference of the series (or the
+residual from a 3-frame median): it is 0 for a steady movement whatever its speed, and not for noise. Its limit would be
+measured on seed 5 like the table in the record, and the family reviewed before its freeze like this one.
+
 Code (`# ADR-0015` backlinks): `part5/feet.py` (`jitter`, `jitter_limits`, `_unsteady`, `FootSide.unsteady`), `part5/pipeline.py`
 (`run` hands the limits to both `load_side` calls), `part5/rules.json` (`max_jitter_deg`), `part5/calibrate.py` (`--feet` as a
-re-sweep, `held_table`), `tests/test_feet_steady.py`. The record is `docs/design/specs/foot-keypoints.md` "Attempt 5".
+re-sweep, `held_table`), `tests/test_feet_steady.py`. The record is `docs/design/specs/foot-keypoints-attempt-5.md`.

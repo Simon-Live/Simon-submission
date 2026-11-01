@@ -638,7 +638,8 @@ def test_dance_score_adds_up(seed5):
                 assert abs(100 - w["value"] - (parts["faults"] + parts["similarity"] + parts["tempo"])) <= TOLERATED
                 assert w["grade"] == score.grade(w["value"])
         parts = s["components"]
-        assert abs(100 - s["value"] - (parts["faults"] + parts["similarity"] + parts["tempo"])) <= TOLERATED, take_id
+        before_cap = s.get("uncapped", s)["value"]   # simon.score.v2 (ADR-0018): the value the components add up to
+        assert abs(100 - before_cap - (parts["faults"] + parts["similarity"] + parts["tempo"])) <= TOLERATED, take_id
         assert parts["tempo"] == pytest.approx(sum(w["components"]["tempo"] for w in windows_of(a)) / len(windows_of(a)),
                                                abs=0.006)
         charged += parts["tempo"] > 0

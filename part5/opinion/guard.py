@@ -5,8 +5,9 @@ when one of its joints there is usable in at least half the frames (`clip.mask`,
 does not see). `read_answer` parses the model's JSON and keeps only the verdicts and observations that pass
 `text_problem`: one line of at most 140 characters, no control character, no link, a body part the clip shows (the
 `template.GROUPS` words and the `EXTRA_PARTS` words, such as "back" and "shins"), times inside the clip, no other
-number (`template.NUMBER`, and `QUANTITY` words such as "twice"), no praise and none of `BANNED`. Each dropped item
-is listed with its reason.
+number (`template.NUMBER`, and `QUANTITY` words such as "twice" and "half" as an amount), no praise and none of
+`BANNED`. "back" is the trunk only as a noun, and "face" after a body-part noun is a verb that names no head. Each
+dropped item is listed with its reason.
 """
 import math
 import re
@@ -14,7 +15,7 @@ import unicodedata
 
 from ..io import JOINTS
 from ..phrasing.lang import json_object
-from ..phrasing.template import GROUP_RX, NUMBER, SIDE_WORDS, TIME, praise
+from ..phrasing.template import GROUP_RX, NUMBER, SIDE_WORDS, TIME, praise, without_face_verbs
 from .prompt import MAX_NOTE, MAX_OBSERVATIONS
 
 LABEL = "model_opinion"
@@ -24,17 +25,23 @@ MIN_SHOWN = 0.5   # share of frames a joint must be usable in for its body part 
 # against, not a health product).
 BANNED = re.compile(r"\b(?:coach\w*|rehab\w*|medic\w*|injur\w*|pain\w*|therap\w*|diagnos\w*|physio\w*|"
                     r"clinic\w*|doctor\w*|patient\w*|health\w*)\b", re.I)
-# A count said in words that `template.NUMBER` (digits, units, number words) does not hold.
-QUANTITY = re.compile(r"\b(?:twice|thrice|doubl(?:e|ed)|tripl(?:e|ed)|half|halves|dozens?)\b")
+# A count said in words that `template.NUMBER` (digits, units, number words) does not hold. "half" is a count ("by
+# half", "half as much", "half a beat") but not when it names a stretch of the take ("the second half", "the first
+# half of the clip", "the lower half"): the word before it is then a position.
+QUANTITY = re.compile(r"\b(?:twice|thrice|doubl(?:e|ed)|tripl(?:e|ed)|halves|dozens?)\b|"
+                      r"(?<!first )(?<!second )(?<!last )(?<!final )(?<!other )(?<!latter )(?<!upper )(?<!lower )"
+                      r"(?<!top )(?<!bottom )(?<!front )(?<!back )\bhalf\b")
 # A link or a domain: a note is about the take and sends nobody anywhere.
 _LINK = re.compile(r"\b[a-z][a-z0-9+.\-]*://|\bwww\.|\bmailto:|\b[a-z0-9\-]+(?:\.[a-z0-9\-]+)*\.(?:com|net|org|io|ai|app|"
                    r"dev|co|me|ly|info|biz|edu|gov|xyz|site|online|link|top|club|shop|store|tv|cc|uk|us|de|fr|ru|cn|"
                    r"tk)\b")
 # Body words a free note uses that `template.GROUPS` leaves out (a fault line never needs them), each with the group
 # whose joints the clip must show. "back" counts as the trunk when it is the noun ("the back rounds"), not a direction
-# ("steps back", "the back foot").
-_BACK = (r"(?:^|\b(?:the|your|his|her|upper|lower|mid|middle)\s+)back\b(?!\s+(?:foot|feet|leg|legs|knee|knees|arm|"
-         r"arms|hand|hands|elbow|elbows|heel|heels|of|to|toward|towards|into|up|down)\b)")
+# ("steps back", "shifts to the back", "back and forth") and not the far one of a pair ("the back foot", "the back hip",
+# "the back side"): those name the part after it, or nothing.
+_BACK = (r"(?:^|(?<!to )(?<!toward )(?<!towards )\bthe\s+|\b(?:your|his|her|upper|lower|mid|middle)\s+)back\b"
+         r"(?!\s+(?:and\s+forth|foot|feet|leg|legs|knee|knees|ankle|ankles|toe|toes|hip|hips|shoulder|shoulders|"
+         r"wrist|wrists|side|sides|arm|arms|hand|hands|elbow|elbows|heel|heels|of|to|toward|towards|into|up|down)\b)")
 EXTRA_PARTS = (
     ("trunk", re.compile(_BACK + r"|\b(?:ribs?|ribcage|abs|abdomen|belly|stomach|lats?)\b")),
     ("hip", re.compile(r"\b(?:waist|waistline|glutes?|buttocks?|butt)\b")),
@@ -93,8 +100,9 @@ def text_problem(text, duration_s, shows):
     if NUMBER.search(untimed) or QUANTITY.search(untimed):
         return "adds a number"
     sides = set(SIDE_WORDS.findall(lowered))
+    parts = without_face_verbs(lowered)   # "the feet face out" names no head
     for group, rx in BODY_PARTS:
-        if not rx.search(lowered):
+        if not rx.search(parts):
             continue
         shown = shows.get(group, set())
         if not shown:

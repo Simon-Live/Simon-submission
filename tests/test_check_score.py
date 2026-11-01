@@ -8,7 +8,8 @@ import json
 import pytest
 
 from part5 import check
-from test_check import A_SCORE, errors_of, freeze_section, green, world
+from shipped_score import SHIPPED, V1, V2, frozen_v1, v2_only
+from test_check import A_SCORE, REAL_SCORE_RECORD as COMMITTED_RECORD, errors_of, freeze_section, green, world
 
 
 # ----------------------------------------------------------------- the score (ADR-0007, AC-S04, AC-S06)
@@ -123,10 +124,18 @@ def edit_score_block(tmp_path, monkeypatch):
     return changed
 
 
-def score_record(tmp_path, *hashes):
+def score_record(tmp_path, *hashes, version=None):
+    """A score record whose newest entries freeze `hashes` for `version` (default: the version the shipped rules name):
+    v2 hashes are `freezes` entries (ADR-0018), v1 hashes are attempts (ADR-0007)."""
+    version = version or check.score_version()
     path = tmp_path / "score-heldout.json"
-    path.write_text(json.dumps({"format": "simon.part5.score-heldout.v1",
-                                "attempts": [{"seed": 47 + i, "params_sha256": h} for i, h in enumerate(hashes)]}))
+    doc = {"format": "simon.part5.score-heldout.v1", "attempts": [], "freezes": []}
+    for i, h in enumerate(hashes):
+        if version == "simon.score.v2":
+            doc["freezes"].append({"version": version, "params_sha256": h, "seed": 59})
+        else:
+            doc["attempts"].append({"seed": 47 + i, "params_sha256": h})
+    path.write_text(json.dumps(doc))
     return path
 
 
@@ -139,10 +148,63 @@ def test_ac_s06_editing_only_the_score_block_leaves_the_detection_freeze_passing
     assert world(tmp_path, monkeypatch, seed=29).run(capsys)[0] == 0
 
 
-def test_ac_k10_the_committed_score_params_are_the_ones_the_score_report_froze():
-    recorded = json.loads(check.SCORE_RECORD.read_text())["attempts"]
-    assert recorded and check.score_params_hash() == check.recorded_score_hash(check.SCORE_RECORD)
-    assert {a["params_sha256"] for a in recorded} == {check.score_params_hash()}
+def test_ac_k10_the_committed_score_params_are_the_ones_the_record_froze_or_the_v2_freeze_is_not_recorded_yet():
+    """v1 (ADR-0007): the attempts for seeds 47 and 53 froze the block. v2 (ADR-0018): the orchestrator records the freeze in
+    `freezes` before seed 59; until then there is none and `make check-5` exits 2 (the next test)."""
+    doc = json.loads(check.SCORE_RECORD.read_text())
+    version = check.score_version()
+    frozen = check.recorded_score_hash(check.SCORE_RECORD, version)
+    if version == "simon.score.v1":   # the attempts that froze v1: those with no version (47, 53); a seed 59 attempt is v2's
+        v1_attempts = [a for a in doc["attempts"] if a.get("version", "simon.score.v1") == "simon.score.v1"]
+        assert v1_attempts and {a["params_sha256"] for a in v1_attempts} == {check.score_params_hash()} == {frozen}
+    elif frozen is None:
+        assert version == "simon.score.v2" and not [f for f in doc.get("freezes", []) if f.get("version") == version]
+    else:
+        assert frozen == check.score_params_hash() and doc["freezes"][-1]["seed"] == 59
+    # the attempts of seeds 47 and 53 froze the v1 block, which v2 carries verbatim as `score.v1`
+    shipped = json.loads(check.RULES_PATH.read_text())["score"]
+    assert {a["params_sha256"] for a in doc["attempts"] if a["seed"] in (47, 53)} == {
+        check.params_sha256(shipped["v1"] if "v1" in shipped else shipped)}
+
+
+def test_adr_0018_a_v2_block_is_checked_against_the_freezes_and_a_v1_attempt_does_not_stand_in(tmp_path):
+    v2, v1 = "simon.score.v2", "simon.score.v1"
+    path = tmp_path / "score-heldout.json"
+    path.write_text(json.dumps({"attempts": [{"seed": 47, "params_sha256": "a" * 64}],
+                                "freezes": [{"version": v2, "params_sha256": "b" * 64, "seed": 59}]}))
+    assert check.recorded_score_hash(path, v2) == "b" * 64
+    assert check.recorded_score_hash(path, v1) == "a" * 64
+    assert check.recorded_score_hash(path) == "a" * 64   # no version: the newest attempt, as before
+    path.write_text(json.dumps({"attempts": [{"seed": 47, "params_sha256": "a" * 64}]}))
+    assert check.recorded_score_hash(path, v2) is None   # no freeze recorded yet: nothing to compare with
+    path.write_text(json.dumps({"attempts": [{"seed": 47, "params_sha256": "a" * 64},
+                                             {"seed": 59, "version": v2, "params_sha256": "c" * 64}]}))
+    assert check.recorded_score_hash(path, v1) == "a" * 64   # a v2 attempt is not the v1 freeze
+
+
+def test_adr_0018_the_newest_v2_freeze_is_the_one_that_counts(tmp_path):
+    path = tmp_path / "score-heldout.json"
+    path.write_text(json.dumps({"attempts": [], "freezes": [
+        {"version": "simon.score.v2", "params_sha256": "a" * 64}, {"version": "simon.score.v2", "params_sha256": "b" * 64}]}))
+    assert check.recorded_score_hash(path, "simon.score.v2") == "b" * 64
+
+
+def test_adr_0018_the_refusal_names_the_version_that_has_no_freeze():
+    with pytest.raises(check.CheckError) as e:
+        check.require_score_frozen("a" * 64, None, "simon.score.v2")
+    assert "has no frozen score params (params_sha256) for simon.score.v2" in e.value.messages[0]
+    with pytest.raises(check.CheckError) as e:
+        check.require_score_frozen("a" * 64, "b" * 64, "simon.score.v2")
+    assert "ADR-0018" in e.value.messages[0] and "differ from the ones frozen" in e.value.messages[0]
+    check.require_score_frozen("a" * 64, "a" * 64, "simon.score.v2")
+
+
+def test_adr_0018_the_report_names_the_score_version_the_rules_ship_and_its_slice_targets(tmp_path, monkeypatch, capsys):
+    freeze_by_detection(tmp_path)
+    doc = json.loads(world(tmp_path, monkeypatch, seed=29).run(capsys)[1])
+    sc = doc["report"]["score"]
+    assert sc["version"] == check.score_version() == SHIPPED
+    assert set(sc["heldout"]["targets"]) == {"good/0", "good/1", "good/2"}
 
 
 def test_ac_k10_editing_a_score_param_after_the_freeze_exits_2_with_a_plain_message(tmp_path, monkeypatch, capsys):
@@ -155,9 +217,20 @@ def test_ac_k10_editing_a_score_param_after_the_freeze_exits_2_with_a_plain_mess
     assert not (tmp_path / "out" / "metrics.json").exists()   # nothing is scored against the wrong params
 
 
-def test_ac_k10_the_unedited_score_params_pass_against_the_committed_record(tmp_path, monkeypatch, capsys):
+def test_ac_k10_the_unedited_score_params_pass_against_a_record_that_freezes_them(tmp_path, monkeypatch, capsys):
     freeze_by_detection(tmp_path)
     assert world(tmp_path, monkeypatch, seed=29).run(capsys)[0] == 0
+
+
+def test_adr_0018_against_the_committed_record_check_5_passes_once_the_v2_freeze_is_recorded_and_exits_2_before(
+        tmp_path, monkeypatch, capsys):
+    freeze_by_detection(tmp_path)
+    monkeypatch.setattr(check, "SCORE_RECORD", COMMITTED_RECORD)
+    code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
+    if check.recorded_score_hash(check.SCORE_RECORD, check.score_version()) is None:
+        assert code == 2 and out == "" and "has no frozen score params (params_sha256) for simon.score.v2" in err
+    else:
+        assert code == 0
 
 
 def test_ac_k10_the_newest_attempts_hash_is_the_one_that_counts(tmp_path, monkeypatch, capsys):
@@ -183,3 +256,125 @@ def test_ac_k10_a_missing_or_empty_score_record_exits_2(tmp_path, monkeypatch, c
     monkeypatch.setattr(check, "SCORE_RECORD", record)
     code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
     assert code == 2 and out == "" and "fixtures/score-heldout.json has no frozen score params" in err
+
+
+# ---------------------------------------------------------------- N4: check-5 refuses a v2 block whose recorded attempt did not hold
+def attempts_record(tmp_path, *v2_attempts, v1_hash="a" * 64, freezes=()):
+    path = tmp_path / "attempts-record.json"
+    path.write_text(json.dumps({"attempts": [{"seed": 47, "params_sha256": v1_hash}, {"seed": 53, "params_sha256": v1_hash},
+                                             *v2_attempts], "freezes": list(freezes)}))
+    return path
+
+
+def v2_attempt(**over):
+    return {"seed": 59, "version": V2, "params_sha256": "b" * 64, "holds": True, **over}
+
+
+def test_n4_a_v2_block_with_no_v2_attempt_yet_or_one_that_held_is_not_refused(tmp_path):
+    check.require_v2_held(attempts_record(tmp_path), V2)                   # before seed 59 is scored
+    check.require_v2_held(attempts_record(tmp_path, v2_attempt()), V2)     # it held
+    check.require_v2_held(tmp_path / "missing.json", V2)                   # no record: the freeze check owns that
+
+
+def test_n4_a_v2_block_whose_recorded_attempt_has_holds_false_is_refused_pointing_to_the_fallback(tmp_path):
+    with pytest.raises(check.CheckError) as e:
+        check.require_v2_held(attempts_record(tmp_path, v2_attempt(holds=False)), V2)
+    assert "did not hold every target on seed 59 (holds false)" in e.value.messages[0]
+    assert "make score-fallback" in e.value.messages[0] and "ADR-0018" in e.value.messages[0]
+
+
+@pytest.mark.parametrize("attempt", [{"seed": 59, "version": V2}, v2_attempt(holds="yes"), v2_attempt(holds=None)])
+def test_n4_a_v2_attempt_that_does_not_record_holds_fails_closed(tmp_path, attempt):
+    with pytest.raises(check.CheckError) as e:
+        check.require_v2_held(attempts_record(tmp_path, {k: v for k, v in attempt.items() if not (k == "holds" and v is None)}), V2)
+    assert "does not record `holds`" in e.value.messages[0] and "make score-fallback" in e.value.messages[0]
+
+
+@pytest.mark.parametrize("version", [V1, None])
+def test_n4_a_v1_block_is_never_judged_by_a_v2_attempt_since_v1_shipped_with_its_misses(tmp_path, version):
+    check.require_v2_held(attempts_record(tmp_path, v2_attempt(holds=False)), version)
+    check.require_v2_held(attempts_record(tmp_path, {"seed": 59, "version": V2}), version)
+
+
+@v2_only
+def test_n4_check_5_on_the_shipped_v2_block_exits_2_when_the_recorded_attempt_did_not_hold(tmp_path, monkeypatch, capsys):
+    freeze_by_detection(tmp_path)
+    record = score_record(tmp_path, check.score_params_hash())
+    doc = json.loads(record.read_text())
+    doc["attempts"].append(v2_attempt(holds=False, params_sha256=check.score_params_hash()))
+    record.write_text(json.dumps(doc))
+    monkeypatch.setattr(check, "SCORE_RECORD", record)
+    code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
+    assert code == 2 and out == "" and "holds false" in err and "make score-fallback" in err
+
+
+@v2_only
+def test_n4_check_5_on_the_shipped_v2_block_passes_when_the_recorded_attempt_held(tmp_path, monkeypatch, capsys):
+    freeze_by_detection(tmp_path)
+    record = score_record(tmp_path, check.score_params_hash())
+    doc = json.loads(record.read_text())
+    doc["attempts"].append(v2_attempt(holds=True, params_sha256=check.score_params_hash()))
+    record.write_text(json.dumps(doc))
+    monkeypatch.setattr(check, "SCORE_RECORD", record)
+    assert world(tmp_path, monkeypatch, seed=29).run(capsys)[0] == 0
+
+
+def test_n4_check_5_on_a_v1_block_passes_with_a_failed_v2_attempt_in_the_record(tmp_path, monkeypatch, capsys):
+    """After `make score-fallback` the rules ship v1 again; the record keeps the v2 freeze and the failed attempt."""
+    freeze_by_detection(tmp_path)
+    rules = json.loads(check.RULES_PATH.read_text())
+    rules["score"] = frozen_v1()
+    changed = tmp_path / "rules-v1.json"
+    changed.write_text(json.dumps(rules))
+    monkeypatch.setattr(check, "RULES_PATH", changed)
+    record = attempts_record(tmp_path, v2_attempt(holds=False), v1_hash=check.score_params_hash(changed))
+    monkeypatch.setattr(check, "SCORE_RECORD", record)
+    assert world(tmp_path, monkeypatch, seed=29).run(capsys)[0] == 0
+
+
+# ---------------------------------------------------------------- R-c: a failed attempt recorded without its version is still v2's
+V2_FREEZE = {"version": V2, "freeze_commit": "abc1234", "params_sha256": "b" * 64, "seed": 59}
+
+
+def test_rc_a_failed_attempt_for_seed_59_without_a_version_is_refused(tmp_path):
+    versionless = {"seed": 59, "params_sha256": "b" * 64, "holds": False}
+    with pytest.raises(check.CheckError) as e:
+        check.require_v2_held(attempts_record(tmp_path, versionless), V2)
+    assert "holds false" in e.value.messages[0] and "seed 59" in e.value.messages[0] and "make score-fallback" in e.value.messages[0]
+
+
+def test_rc_an_attempt_with_the_v2_freezes_hash_is_v2s_whatever_its_seed_or_version(tmp_path):
+    other_seed = {"seed": 99, "params_sha256": V2_FREEZE["params_sha256"], "holds": False}
+    with pytest.raises(check.CheckError, match="holds false"):
+        check.require_v2_held(attempts_record(tmp_path, other_seed, freezes=[V2_FREEZE]), V2)
+    check.require_v2_held(attempts_record(tmp_path, {**other_seed, "params_sha256": "d" * 64}, freezes=[V2_FREEZE]), V2)   # not v2's
+
+
+def test_rc_a_versionless_attempt_for_seed_59_that_records_no_holds_fails_closed(tmp_path):
+    with pytest.raises(check.CheckError, match="does not record `holds`"):
+        check.require_v2_held(attempts_record(tmp_path, {"seed": 59, "params_sha256": "b" * 64}), V2)
+
+
+def test_rc_a_versionless_attempt_for_seed_59_that_held_is_accepted(tmp_path):
+    check.require_v2_held(attempts_record(tmp_path, {"seed": 59, "params_sha256": "b" * 64, "holds": True}), V2)
+
+
+def test_rc_the_v1_attempts_of_47_and_53_are_not_taken_for_v2s(tmp_path):
+    """They carry no version and no `holds`, and their hash is v1's, not the v2 freeze's."""
+    check.require_v2_held(attempts_record(tmp_path, freezes=[V2_FREEZE]), V2)
+
+
+def test_rc_a_v1_block_is_not_judged_by_a_failed_versionless_seed_59_attempt(tmp_path):
+    check.require_v2_held(attempts_record(tmp_path, {"seed": 59, "params_sha256": "b" * 64, "holds": False}), V1)
+
+
+@v2_only
+def test_rc_check_5_on_the_shipped_v2_block_exits_2_for_a_failed_attempt_recorded_without_its_version(tmp_path, monkeypatch, capsys):
+    freeze_by_detection(tmp_path)
+    record = score_record(tmp_path, check.score_params_hash())
+    doc = json.loads(record.read_text())
+    doc["attempts"].append({"seed": 59, "params_sha256": check.score_params_hash(), "holds": False})
+    record.write_text(json.dumps(doc))
+    monkeypatch.setattr(check, "SCORE_RECORD", record)
+    code, out, err = world(tmp_path, monkeypatch, seed=29).run(capsys)
+    assert code == 2 and out == "" and "holds false" in err and "make score-fallback" in err

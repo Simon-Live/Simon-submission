@@ -37,7 +37,10 @@ FORMAT = "simon.analysis.v1"
 # every new document, and the top-level `second_opinion` when clips were given (docs/specs/second-opinion.md). The same
 # 1.9.0 adds `score.uncapped` (Part 7 TICKET-155) and, for the reader, the optional top-level `source` and the warning
 # code `no_person` (TICKET-048), which only Part 7's own analysis carries; Part 5 writes neither.
-SCHEMA_VERSION = "1.9.0"
+# 1.10.0 (TICKET-047, ADR-0018) adds `score.fault_cap` and `score.version` "simon.score.v2": a take that reports a fault
+# is capped at 89, `fault_cap` says so, and `score.uncapped` is the value before every cap (the fault cap and the
+# warning cap); `capped_by` stays the warning codes only. Every new document is 1.10.0.
+SCHEMA_VERSION = "1.10.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 PROFILE_SINCE = (1, 7, 0)   # from this schema version on, `profile` is required
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".

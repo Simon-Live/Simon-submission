@@ -4,7 +4,8 @@
 asked for is kept so the document can say so. For a language other than English a model is asked for one JSON
 answer holding the English line and the translated line (`reply_instruction`, `read_pair`). The English line goes
 through the existing word test (`template.line_problem`); the translated line through `check_translated`, which
-holds what can be checked in any language: one line, the fault's time said once, no other number and no praise.
+holds what can be checked in any language: one line, the fault's time said once, no other number, no English time
+phrase before it (TICKET-052) and no praise.
 `json_object` is the one reader of a model's JSON answer (this module and `opinion.guard`).
 """
 import json
@@ -24,6 +25,14 @@ TAG = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*$")
 MAX_REQUESTED = 35     # characters kept of the tag asked for: BCP 47's practical maximum
 MAX_TRANSLATED = 200   # characters; a translation runs longer than the 160 an English line may take
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+# The English words that open a time phrase ("At 1.9 s", "Around 1.9 s"). The model copies its English twin's phrase
+# into the translated line, so a line that has one directly before the time number is English there and falls back to
+# the template line (TICKET-052, ASM-014). Whole words, any letter case. The set leaves out every word a listed
+# language writes in that place (in, a, en, um, om, bei, vers, aos, rond and the like); the test file
+# tests/test_phrasing_time_phrase.py pins a correct time phrase in each listed language. Only this position is
+# checked; other English words in a line rest on ASM-014 and the native-speaker read.
+ENGLISH_TIME_WORDS = ("at", "around", "about", "by", "near", "after", "before", "approximately", "roughly")
+_ENGLISH_TIME = re.compile(r"(?<!\w)(?:" + "|".join(ENGLISH_TIME_WORDS) + r")\s+\d+(?:[.,]\d+)?", re.I)
 # Praise in the other Latin-script languages a line is written in, by language, as the plain words (lower case, no
 # accents: `_praised` reads the line the same way). English praise (`template.PRAISE_PHRASES`) is checked in every
 # language, since a translated line often keeps an English phrase. A language left out here (the ones in other scripts)
@@ -103,15 +112,27 @@ def read_pair(text):
     return tuple(p.strip().strip("\"'`").strip() for p in pair)
 
 
+def _unhidden(text, format_as):
+    """`text` with each format character (zero-width and the like) read as `format_as`."""
+    return "".join(format_as if unicodedata.category(c) == "Cf" else c for c in text)
+
+
 def _folded(text, format_as):
     """`text` lower case, without accents, each format character (zero-width and the like) read as `format_as`."""
     plain = (c for c in unicodedata.normalize("NFD", text.lower()) if not unicodedata.combining(c))
-    return "".join(format_as if unicodedata.category(c) == "Cf" else c for c in plain)
+    return _unhidden(plain, format_as)
 
 
 def _praised(line):
     """True when `line` holds a praise phrase: an English one (`template.praise`) or one of `PRAISE`."""
     return bool(template.praise(line)) or any(_PRAISE.search(_folded(line, as_)) for as_ in ("", " "))
+
+
+def _english_time(line):
+    """True when an English time word (`ENGLISH_TIME_WORDS`) stands directly before a number in `line`. Accents are
+    kept (an accented word of a listed language is never read as an English one); a format character is read both
+    ways, as `_praised` does."""
+    return any(_ENGLISH_TIME.search(_unhidden(line, as_)) for as_ in ("", " "))
 
 
 def check_translated(fault, line, timed):
@@ -129,4 +150,4 @@ def check_translated(fault, line, timed):
         return "translated line does not say the time once"
     if round(float(numbers[0].replace(",", ".")), 1) != round(float(fault["at_s"]), 1):
         return "translated line has the wrong time"
-    return None
+    return "translated line keeps an English time phrase" if _english_time(line) else None

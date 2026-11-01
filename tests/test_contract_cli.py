@@ -17,6 +17,7 @@ import pytest
 from part5 import cli, contract
 from part5.io import JOINTS, parse_clip
 from part5.output import GENERIC_MEASURES, OutputError, SIDES, _joint_for, _spec, validate_analysis
+from shipped_score import by_version
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = ROOT / "fixtures/output/analysis.example.json"
@@ -38,9 +39,9 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.9.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.10.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
-                                          ("metrics", "1.3.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
+                                          ("metrics", "1.4.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
     schema = json.loads((ROOT / "contracts" / f"{name}.schema.json").read_text())
     assert schema["$id"] == f"{BASE}{name}.schema.json"
@@ -71,7 +72,7 @@ def test_ac_c02_every_committed_fixture_validates_and_loads(summary):
 
 def test_ac_c03_golden_outputs_rebuild_byte_for_byte(summary):
     goldens = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "fixtures/output").glob("*.json"))
-    assert len(goldens) == 3 and summary["rebuilt_identical"] == goldens
+    assert len(goldens) == by_version(3, 4) and summary["rebuilt_identical"] == goldens   # the v2 sample is the fourth
     assert "fixtures/output/replay.example.json" in goldens
 
 
@@ -88,9 +89,10 @@ def mini_root(tmp_path_factory):
     shutil.copytree(ROOT / "fixtures/input/contract", root / "fixtures/input/contract")
     shutil.copytree(ROOT / "fixtures/output", root / "fixtures/output")
     shutil.copytree(ROOT / "fixtures/input/expected/exercise", root / "fixtures/input/expected/exercise")
+    shutil.copytree(ROOT / "fixtures/input/expected/dance", root / "fixtures/input/expected/dance")   # the fault-capped golden's take
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     for take in labels["takes"]:
-        if take["take_id"].startswith(("exercise_front_good_08", "exercise_front_good_00")):
+        if take["take_id"].startswith(("exercise_front_good_08", "exercise_front_good_00", "dance_side_good_11")):
             dst = root / take["follower"]
             dst.parent.mkdir(parents=True)
             shutil.copy(ROOT / take["follower"], dst)
@@ -218,10 +220,41 @@ def test_ac_c04_schema_flag_prints_the_file_byte_for_byte(name):
 def test_ac_c04_json_flag_parses_and_is_the_contract_document(capsys):
     assert cli.main(["contract", "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
-    assert set(doc) == {"schemas", "table"} and doc == contract.contract_document()
+    assert set(doc) == {"schemas", "word_lists", "table"} and doc == contract.contract_document()
     assert [s["name"] for s in doc["schemas"]] == list(contract.SCHEMA_NAMES)
     assert doc["schemas"][0]["schema"]["$id"] == doc["schemas"][0]["id"]
     assert len(doc["table"]) == len(contract.TABLE_ROWS)
+
+
+# TICKET-049 box 3: `contracts/student-words.json` is published beside the schemas but is not one (CONTRACT.md, duty 11),
+# so `part5 contract` lists it apart, in both outputs, with the name, format and version CONTRACT.md words.
+STUDENT_WORDS = {"name": "student-words", "format": "simon.student-words.v1", "version": "1.0.0",
+                 "file": "contracts/student-words.json"}
+
+
+def test_ticket_049_the_json_output_lists_the_student_words_file_apart_from_the_schemas(capsys):
+    assert cli.main(["contract", "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert [{k: w[k] for k in STUDENT_WORDS} for w in doc["word_lists"]] == [STUDENT_WORDS]
+    on_disk = json.loads((ROOT / "contracts/student-words.json").read_text())
+    assert doc["word_lists"][0]["lists_sha256"] == on_disk["lists_sha256"]
+    assert "student-words" not in [s["name"] for s in doc["schemas"]]   # not a schema
+
+
+def test_ticket_049_the_text_output_lists_the_student_words_file_apart_from_the_schemas(capsys):
+    assert cli.main(["contract"]) == 0
+    out = capsys.readouterr().out
+    schemas, rest = out.split("\nWord lists (not schemas)\n")
+    words, _ = rest.split("\nCompatibility", 1)
+    assert "student-words" not in schemas
+    line = next(l for l in words.splitlines() if "student-words" in l)
+    assert line.split() == ["student-words", "1.0.0", "contracts/student-words.json", "simon.student-words.v1"]
+
+
+def test_ticket_049_the_listing_names_what_contract_md_names():
+    text = (ROOT / "CONTRACT.md").read_text()
+    assert "`contracts/student-words.json` (`simon.student-words.v1`, version `1.0.0`; not a schema)" in text
+    assert contract.word_list_entries()[0]["format"] == "simon.student-words.v1"
 
 
 def test_ac_c04_unknown_schema_exits_2_naming_the_valid_names(capsys):
@@ -637,13 +670,21 @@ def test_metrics_1_1_0_still_accepts_a_1_0_0_document():
     assert errors("metrics", metrics_doc()) == []
 
 
+@pytest.mark.parametrize("version", ["simon.score.v1", "simon.score.v2"])
+def test_metrics_1_4_0_accepts_the_score_version_the_rules_ship(version):
+    """ADR-0018: a v1 report (a 1.3.0 document) and a v2 report both validate."""
+    d = metrics_with_score()
+    d["report"]["score"]["version"] = version
+    assert errors("metrics", d) == []
+
+
 @pytest.mark.parametrize("change", [
     lambda d: d["report"]["score"]["heldout"]["slices"]["good/0"]["grades"].update(E=1),
     lambda d: d["report"]["score"]["heldout"]["slices"]["good/0"]["grades"].update(A=-1),
     lambda d: d["report"]["score"]["heldout"]["slices"]["good/0"].pop("median"),
     lambda d: d["report"]["score"]["heldout"]["targets"].update({"good/0": "maybe"}),
     lambda d: d["report"]["score"].update(gated=True),
-    lambda d: d["report"]["score"].update(version="simon.score.v2"),
+    lambda d: d["report"]["score"].update(version="simon.score.v3"),
     lambda d: d["report"]["score"].pop("kit"),
     lambda d: d["gate"]["sweep"]["foot_out right"].append([16]),
     lambda d: d["gate"]["sweep"]["foot_out right"].append([16, "high"]),
@@ -775,7 +816,7 @@ def test_the_table_and_contract_md_carry_the_profile_row_and_the_analysis_row_na
     assert row["verdict"] == "works with an option" and row["part5_role"] == "option for Part 7"
     assert "probe `part5 analyse --help` for `--profile`" in row["fix"] and "omitted means `fitness`" in row["fix"]
     analysis = next(r for r in rows if r["file"] == "`analysis.json`")
-    assert "1.2.0 to 1.9.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
+    assert "1.2.0 to 1.10.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
     text = (ROOT / "CONTRACT.md").read_text()
     assert contract.table_markdown([row]).splitlines()[-1] in text
     assert "[--profile {dance,rehab,fitness}]" in text

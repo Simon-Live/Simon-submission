@@ -7,6 +7,8 @@ from pathlib import Path
 import jsonschema
 import pytest
 
+import shipped_score
+
 from part5 import cli, contract, pipeline
 from part5.output import (NO_PERSON, READABLE_WARNING_CODES, SOURCE_PART5, WARNING_CODES, OutputError, load_analysis,
                           validate_analysis)
@@ -60,7 +62,7 @@ def test_part5_doctor_for_part7_accepts_the_no_person_document_and_says_what_it_
     pytest.param({"score": {"version": "simon.score.v1", "value": 0, "grade": "F", "capped_by": ["no_person"]}},
                  id="score-names-the-code"),
     pytest.param({"match": {"quality": "low", "residual": None, "timing_corr": None, "limits": {}}}, id="with-a-match"),
-    pytest.param({"profile": "fitness", "schema_version": "1.9.0"}, id="current-schema-version-with-its-profile"),
+    pytest.param({"profile": "fitness", "schema_version": "1.10.0"}, id="current-schema-version-with-its-profile"),
 ])
 def test_the_no_person_document_also_validates_in_these_shapes(change, tmp_path, capsys):
     doc = {**no_person_doc(), **change}
@@ -189,3 +191,50 @@ def test_a_score_without_uncapped_has_no_such_note(tmp_path, capsys):
     path = tmp_path / "analysis.json"
     path.write_text(json.dumps(doc))
     assert "score.uncapped" not in doctor_part7(path, capsys)[1]
+
+
+# ---------------------------------------------------------------- score.fault_cap and the wider uncapped (1.10.0, ADR-0018)
+FAULT_CAPPED = ROOT / "fixtures/output/analysis.fault-capped.example.json"
+v2_only = shipped_score.v2_only   # the sample is a simon.score.v2 document, written only while the rules ship v2
+
+
+@v2_only
+def test_a_faulted_take_the_fault_cap_lowered_has_uncapped_and_no_capped_by_and_the_doctor_says_so(tmp_path, capsys):
+    """Part 7's answer: `capped_by` is the low-match warning cap only; `uncapped` is the value before every cap."""
+    doc = json.loads(FAULT_CAPPED.read_text())
+    assert schema_problems(doc) == []
+    validate_analysis(doc)
+    assert "capped_by" not in doc["score"] and "warnings" not in doc
+    code, out = doctor_part7(FAULT_CAPPED, capsys)
+    assert code == 0
+    assert "note: score 89 out of 100, grade B; the take reports a fault, so its score is at most 89 (score.fault_cap)" in out
+    assert "it was 94 (A) before the cap (score.uncapped)" in out
+    assert "capped at F" not in out
+
+
+@v2_only
+def test_a_take_with_both_caps_names_the_warning_in_capped_by_only(tmp_path, capsys):
+    doc = json.loads(FAULT_CAPPED.read_text())
+    doc["warnings"] = [{"code": "low_match", "text": "This take doesn't closely match the trainer's movement."}]
+    doc["match"] = {"quality": "low", "residual": 0.6, "timing_corr": 0.5, "limits": {}}
+    doc["score"].update(value=59, grade="F", capped_by=["low_match"])
+    assert schema_problems(doc) == []
+    path = tmp_path / "analysis.json"
+    path.write_text(json.dumps(doc))
+    out = doctor_part7(path, capsys)[1]
+    assert "capped at F by low_match" in out and "fault_cap" in out and "it was 94 (A) before the cap" in out
+    assert doc["score"]["capped_by"] == ["low_match"]   # the fault cap is never listed there
+
+
+@v2_only
+@pytest.mark.parametrize("bad", [89.5, "89", -1, 101, True])
+def test_a_malformed_fault_cap_is_rejected_by_the_schema(bad):
+    doc = json.loads(FAULT_CAPPED.read_text())
+    doc["score"]["fault_cap"] = bad
+    assert schema_problems(doc)
+
+
+def test_a_take_with_no_fault_has_no_fault_cap_note(tmp_path, capsys):
+    path = tmp_path / "analysis.json"
+    path.write_text((ROOT / "fixtures/output/analysis.no-faults.example.json").read_text())
+    assert "fault_cap" not in doctor_part7(path, capsys)[1]

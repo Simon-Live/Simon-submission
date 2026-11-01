@@ -2,6 +2,9 @@
 
   fixtures/output/analysis.example.json           a double-fault take (faults listed)
   fixtures/output/analysis.no-faults.example.json a correct take (`faults: []`)
+  fixtures/output/analysis.fault-capped.example.json a take that reports a fault and hits the ceiling of simon.score.v2
+                                                  (`score.fault_cap` 89, `score.uncapped` the value before it, no
+                                                  `capped_by`; ADR-0018, a sample for Part 7)
   fixtures/output/replay.example.json             the replay (`simon.replay.v1`) of the double-fault take
 
 Every golden goes through `part5.contract.golden_run`: the score hook included, so a golden carries the score,
@@ -22,10 +25,15 @@ sys.path.insert(0, str(ROOT))
 from part5.contract import REPLAY_SOURCE, golden_run  # noqa: E402
 from part5.output import write_analysis                # noqa: E402
 from part5.replay import write_replay                  # noqa: E402
+from part5.score import ships_v2                       # noqa: E402
 
 OUT = ROOT / "fixtures" / "output"
 EXAMPLES = [("exercise_front_good_08", "analysis.example.json"),
             ("exercise_front_good_00", "analysis.no-faults.example.json")]
+V2_SAMPLE = "analysis.fault-capped.example.json"   # a simon.score.v2 sample: written only while the rules ship v2
+# a dance take analysed without its foot files: it reports one arm fault (a light one in one rep), and its mean
+# of windows is above 89 before the ceiling of simon.score.v2 (ADR-0018) lowers it
+EXAMPLES.append(("dance_side_good_11", V2_SAMPLE))
 REPLAY_FILE = "replay.example.json"
 
 
@@ -37,6 +45,8 @@ def main(out=OUT):
     out = Path(out)
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     for prefix, filename in EXAMPLES:
+        if filename == V2_SAMPLE and not ships_v2():   # after `make score-fallback` (ADR-0018) there is no ceiling to show
+            continue
         take = take_of(labels, prefix)
         result = golden_run({"path": take["expected"], "set": take["set"], "movement": take["movement"]},
                             {"path": take["follower"], "take_id": take["take_id"]})

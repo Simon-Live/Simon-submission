@@ -19,6 +19,7 @@ from part5.pipeline import run
 from part5.replay import build_replay
 from part5.score_report import score_block
 from part5.visibility import measures_of
+from shipped_score import by_version
 
 ROOT = Path(__file__).resolve().parent.parent
 LATERAL = ROOT / "fixtures/input/real/lateral-raise"
@@ -278,7 +279,7 @@ def slow():
 def test_real_lateral_raise_followers_are_accepted_rep_by_rep(which, n_reps, request):
     a = request.getfixturevalue(which).analysis
     jsonschema.Draft202012Validator(SCHEMA).validate(a)
-    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.9.0"
+    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.10.0"
     guard = a["diagnostics"]["guard"]
     assert len(guard["reps"]) == n_reps and all(r["ok"] for r in guard["reps"])
     for r in guard["reps"]:   # the frozen limits, the numbers of the diagnosis
@@ -312,8 +313,10 @@ def test_a_rep_by_rep_take_is_scored_on_each_reps_own_misses(fast):
     assert [(f["measure"], f["side"], f["reps"], f["text"]) for f in fast.analysis["faults"]] == \
            [("elbow_flexion", "right", [4, 5, 6, 7], "right elbow bent slightly more than the example"),
             ("forearm_out", "right", [4, 5, 6, 7], "right hand too close in")]
-    assert sc["value"] == 80 and sc["grade"] == "B"        # 77 (C) before the re-sweep moved `upper_arm_out` to 11: rep 3's
-    #                                                        left upper arm, a fault at 10 degrees, is under the new threshold
+    assert (sc["value"], sc["grade"]) == by_version((80, "B"), (82, "B"))   # 77 (C) before the re-sweep moved `upper_arm_out` to 11: rep 3's
+    #                                                        left upper arm, a fault at 10 degrees, is under the new threshold;
+    #                                                        80 under simon.score.v1, 82 under v2 (ADR-0018: a miss on a
+    #                                                        measure the trainer moves little costs less)
     timeline = [w for w in sc["timeline"] if w["compared"]]
     assert sc["basis"] == "reps" and len(timeline) == len(sc["per_rep"]) == 8
     assert all(w["misses"] == [] and w["value"] >= 90 for w in timeline[:3])          # the first reps are clean
@@ -461,7 +464,7 @@ def test_the_fast_and_the_slow_follower_agree_with_the_trainer_on_the_verdict(fa
 # --- different movements are analysed with a low_match warning and grade F (ADR-0012) ---
 def low_match(a):
     return a["status"]["code"] == "ok" and [w["code"] for w in a["warnings"]] == ["low_match"] \
-        and a["match"]["quality"] == "low" and a["schema_version"] == "1.9.0"
+        and a["match"]["quality"] == "low" and a["schema_version"] == "1.10.0"
 
 
 @pytest.mark.parametrize("name", ["part2-dance", "part2-class", "part2-single", "part2-stretch"])
@@ -502,7 +505,7 @@ def test_ac_rep_4_the_squat_takes_are_compared_whole_and_the_dance_takes_rep_by_
     for take in SEED5["takes"]:
         r = run(str(ROOT / take["expected"]), {"path": str(ROOT / take["follower"]), "take_id": take["take_id"]})
         d = r.analysis["diagnostics"]
-        assert r.analysis["schema_version"] == "1.9.0" and "warnings" not in r.analysis, take["take_id"]
+        assert r.analysis["schema_version"] == "1.10.0" and "warnings" not in r.analysis, take["take_id"]
         if take["set"] == "exercise" or r.reps is None:
             assert r.reps is None and "reps" not in d["guard"] and "expected_reference" not in d, take["take_id"]
             assert all("reps" not in f for f in r.analysis["faults"])
