@@ -118,8 +118,10 @@ export function posesAt(model, t) {
   let e = 0;
   for (let i = model.expToFol.length - 1; i >= 0; i--) if (model.expToFol[i] <= f) { e = i; break; }
   const project = (frame) => frame.map((p) => (p ? [p[0], -p[1]] : null));
-  const ref = project(model.expected[e]);
+  // a joint is drawn only where both bodies have it: Part 5 compares only measures seen in both clips, and the
+  // trainer's animation carries invented points (legs under a desk) that the follower's replay leaves out
   const you = project(model.follower[f]);
+  const ref = project(model.expected[e]).map((p, i) => (you[i] ? p : null));
   const all = [...ref, ...you].filter(Boolean);
   if (!all.length) return null;
   const xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
