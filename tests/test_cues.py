@@ -266,7 +266,7 @@ def test_misses_written_before_cues_give_no_insights():
 
 def test_without_a_timeline_insights_follow_the_faults_with_no_points():
     a = json.loads(EXAMPLE.read_text())
-    assert a["schema_version"] == "1.8.0"
+    assert a["schema_version"] == "1.9.0"
     del a["score"]   # the golden is built with the score hook (like real output); this is a producer that does not score
     a["insights"] = insights_of(a)
     assert [x["cue"] for x in a["insights"]] == [f["cue"] for f in a["faults"]]

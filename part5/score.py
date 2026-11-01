@@ -124,13 +124,17 @@ def zero_block(rules=None):
 
 def cap_by_warnings(block, analysis, rules=None):
     """`block` capped at WARNING_CAP when the analysis carries warnings (ADR-0012), with `capped_by` naming them.
-    A take without warnings, or already at or under the cap, keeps its value; `capped_by` is recorded either way."""
+    A take without warnings, or already at or under the cap, keeps its value; `capped_by` is recorded either way.
+    When the cap lowers the value, `uncapped` keeps what it was, so a reader can say what the warning cost."""
     codes = [w["code"] for w in analysis.get("warnings") or []]
     if not codes:
         return block
     p = params_of(rules or load_rules())
     value = min(block["value"], WARNING_CAP)
-    return dict(block, value=value, grade=grade(value, p["bands"]), capped_by=codes)
+    out = dict(block, value=value, grade=grade(value, p["bands"]), capped_by=codes)
+    if value < block["value"]:
+        out["uncapped"] = {"value": block["value"], "grade": block["grade"]}
+    return out
 
 
 def compute(analysis, aligned, rules=None):

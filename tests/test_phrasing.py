@@ -21,6 +21,12 @@ class NetworkUsed(BaseException):
     """Raised by the socket guard. A BaseException, so no `except Exception` in the code can hide it."""
 
 
+def bare(entries):
+    """Record entries without the 1.9.0 `text` and `lang` (TICKET-045, TICKET-046), for tests about the rest."""
+    strip = lambda e: {k: v for k, v in e.items() if k not in ("text", "lang")}  # noqa: E731
+    return strip(entries) if isinstance(entries, dict) else [strip(e) for e in entries]
+
+
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):
     """AC-NFR-002: nothing in these tests may open a socket."""
@@ -66,8 +72,9 @@ def test_template_returns_each_faults_text_in_order():
     lines, record = phrasing.phrase(FAULTS)
     assert lines == [f["text"] for f in FAULTS]
     assert record == {"requested": "template", "backend": "template", "model": None,
-                      "fallback_reason": None,
-                      "faults": [{"backend": "template", "model": None, "fallback_reason": None}] * 3}
+                      "fallback_reason": None, "lang": "en",
+                      "faults": [{"backend": "template", "model": None, "fallback_reason": None, "lang": "en",
+                                  "text": f["text"]} for f in FAULTS]}
 
 
 def test_template_is_the_default_and_needs_no_network_or_files():
@@ -98,7 +105,7 @@ def test_the_registry_names_the_three_backends_of_the_schema():
 def test_ac010_the_record_validates_against_the_analysis_schema(backend):
     _, record = phrasing.phrase(FAULTS, backend)
     PHRASING_SCHEMA.validate(record)
-    assert list(record) == ["requested", "backend", "model", "fallback_reason", "faults"]
+    assert list(record) == ["requested", "backend", "model", "fallback_reason", "lang", "faults"]
     assert len(record["faults"]) == len(FAULTS)
 
 

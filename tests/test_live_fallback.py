@@ -47,7 +47,8 @@ def test_ac_p01_live_with_the_network_refused_records_the_fallback_reason_per_fa
     assert record["fallback_reason"] == REFUSED
     assert len(doc["faults"]) == len(record["faults"]) >= 2
     for fault, entry in zip(doc["faults"], record["faults"]):
-        assert entry == {"backend": "template", "model": None, "fallback_reason": REFUSED}
+        assert entry == {"backend": "template", "model": None, "fallback_reason": REFUSED, "lang": "en",
+                         "text": entry["text"]}
         assert fault["coaching"] == fault["text_timed"]   # the template's timed line, not a model's
     assert SENTINEL not in text
 

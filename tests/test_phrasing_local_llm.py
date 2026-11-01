@@ -4,7 +4,7 @@ import pytest
 from part5 import phrasing
 from part5.phrasing import local_llm
 from part5.phrasing.local_llm import HttpResult
-from test_phrasing import FAULTS, FOOT, KNEE, clean_env, no_network  # noqa: F401
+from test_phrasing import FAULTS, FOOT, KNEE, bare, clean_env, no_network  # noqa: F401
 from test_phrasing_muse_spark import Client, reply
 
 GOOD = ["left foot sticking out too far", "right knee not bent enough", "leaning forward more than the example"]
@@ -24,7 +24,7 @@ def test_no_ollama_binary_falls_back_to_template_with_a_reason(monkeypatch):
     assert lines == [f["text"] for f in FAULTS] and client.requests == []
     assert record["requested"] == "local-llm" and record["backend"] == "template"
     assert record["fallback_reason"] == "ollama not found" and record["model"] is None
-    assert record["faults"] == [{"backend": "template", "model": None, "fallback_reason": "ollama not found"}] * 3
+    assert bare(record["faults"]) == [{"backend": "template", "model": None, "fallback_reason": "ollama not found"}] * 3
 
 
 def test_this_host_has_no_ollama_so_the_real_lookup_falls_back_too():
@@ -77,7 +77,7 @@ def test_the_local_request_carries_only_the_measured_record(ollama):
 def test_one_failing_fault_alone_falls_back(ollama, bad, reason):
     lines, record = phrasing.phrase(FAULTS, "local-llm", client=Client(reply(GOOD[0]), bad, reply(GOOD[2])))
     assert lines == [GOOD[0], KNEE["text"], GOOD[2]]
-    assert record["faults"][1] == {"backend": "template", "model": None, "fallback_reason": reason}
+    assert bare(record["faults"][1]) == {"backend": "template", "model": None, "fallback_reason": reason}
     assert record["backend"] == "local-llm"
 
 

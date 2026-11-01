@@ -16,7 +16,7 @@ import pytest
 from part5 import phrasing
 from part5.phrasing import local_llm, muse_spark
 from part5.phrasing.local_llm import HttpResult
-from test_phrasing import (FAULTS, FOOT, KNEE, NetworkUsed, clean_env, make_fault,  # noqa: F401
+from test_phrasing import (FAULTS, bare, FOOT, KNEE, NetworkUsed, clean_env, make_fault,  # noqa: F401
                            no_network)
 
 SENTINEL = "sentinel-baseten-key-4f9a1c7e-do-not-leak"
@@ -80,7 +80,7 @@ def test_ac010_no_key_file_falls_back_to_template_and_names_the_missing_key(monk
     assert lines == [f["text"] for f in FAULTS]
     assert record["requested"] == "muse-spark" and record["backend"] == "template"
     assert record["fallback_reason"] == "no key" and record["model"] is None
-    assert record["faults"] == [{"backend": "template", "model": None, "fallback_reason": "no key"}] * 3
+    assert bare(record["faults"]) == [{"backend": "template", "model": None, "fallback_reason": "no key"}] * 3
     assert "secret-dir" not in json.dumps(record)
     assert client.requests == []
 
@@ -166,8 +166,9 @@ def test_good_lines_replace_the_text_and_the_record_names_the_backend(live):
     lines, record = phrasing.phrase(FAULTS, "muse-spark", client=client)
     assert lines == GOOD
     assert record == {"requested": "muse-spark", "backend": "muse-spark",
-                      "model": "meta-models/muse-spark-open-1026", "fallback_reason": None,
-                      "faults": [{"backend": "muse-spark", "model": muse_spark.MODEL, "fallback_reason": None}] * 3}
+                      "model": "meta-models/muse-spark-open-1026", "fallback_reason": None, "lang": "en",
+                      "faults": [{"backend": "muse-spark", "model": muse_spark.MODEL, "fallback_reason": None,
+                                  "lang": "en", "text": line} for line in GOOD]}
     assert len(client.requests) == 3
 
 
@@ -210,7 +211,7 @@ FAILURES = [
 def test_ac010_one_failing_fault_alone_falls_back_to_its_text(live, label, bad, reason):
     lines, record = phrasing.phrase(FAULTS, "muse-spark", client=middle_fails(bad))
     assert lines == [GOOD[0], KNEE["text"], GOOD[2]]
-    assert record["faults"] == [{"backend": "muse-spark", "model": muse_spark.MODEL, "fallback_reason": None},
+    assert bare(record["faults"]) == [{"backend": "muse-spark", "model": muse_spark.MODEL, "fallback_reason": None},
                                 {"backend": "template", "model": None, "fallback_reason": reason},
                                 {"backend": "muse-spark", "model": muse_spark.MODEL, "fallback_reason": None}]
     assert record["backend"] == "muse-spark" and record["fallback_reason"] == reason

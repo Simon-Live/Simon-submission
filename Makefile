@@ -1,4 +1,4 @@
-.PHONY: check-5 test demo dummy-data output-examples test-contract contracts-check contracts-sync score-heldout design-copies
+.PHONY: check-5 test demo dummy-data output-examples test-contract contracts-check contracts-sync score-heldout design-copies student-words
 
 # Done-check for Part 5 (see README.md): analyse every labelled take, print the metrics JSON,
 # exit 0 only if good light passes at every angle (P >= 0.85, R >= 0.75, 0 faults on correct takes).
@@ -21,6 +21,12 @@ dummy-data:
 # Regenerate the shipped analysis.json examples (fixtures/output/).
 output-examples:
 	uv run python scripts/make_output_examples.py
+
+# Regenerate contracts/student-words.json (the banned word stems and the praise phrases Part 5's validators use, for
+# Part 7's guard) from part5.opinion.guard.BANNED and part5.phrasing.template.PRAISE_PHRASES. tests/test_student_words.py
+# fails when the committed file differs; `uv run python scripts/make_student_words.py --check` exits 1 on a difference.
+student-words:
+	uv run python scripts/make_student_words.py
 
 # Input contract (CONTRACT.md): load every Part 3 and Part 4 file through part5.io and validate it.
 test-contract:

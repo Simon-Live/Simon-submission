@@ -6,7 +6,7 @@ import pytest
 from part5 import phrasing
 from part5.phrasing import muse_spark, prompt, template
 from part5.phrasing.local_llm import HttpResult
-from test_phrasing import clean_env, make_fault, no_network  # noqa: F401
+from test_phrasing import bare, clean_env, make_fault, no_network  # noqa: F401
 from test_phrasing_muse_spark import SENTINEL, Client, http_error, live, reply  # noqa: F401,F401
 
 
@@ -340,7 +340,7 @@ def test_the_record_carries_selected_by():
 def test_phrase_fault_returns_text_model_backend_and_reason(live):  # noqa: F811
     out = phrasing.phrase_fault(RIGHT_FOOT, client=Client(reply(EXAMPLE)))
     assert out == {"text": EXAMPLE, "model": "meta-models/muse-spark-open-1026", "backend": "muse-spark",
-                   "fallback_reason": None}
+                   "fallback_reason": None, "lang": "en"}
 
 
 def test_the_request_carries_the_timed_facts_and_a_roomy_token_budget(live):  # noqa: F811
@@ -375,7 +375,7 @@ def test_one_failing_fault_falls_back_to_text_timed_and_the_others_keep_the_mode
             "Your right foot is too far right at 4.0 s"]
     lines, record = phrasing.phrase(faults, "muse-spark", client=Client(reply(good[0]), bad, reply(good[2])))
     assert lines == [good[0], faults[1]["text_timed"], good[2]]
-    assert record["faults"][1] == {"backend": "template", "model": None, "fallback_reason": reason}
+    assert bare(record["faults"][1]) == {"backend": "template", "model": None, "fallback_reason": reason}
     assert [record["faults"][i]["backend"] for i in (0, 2)] == ["muse-spark"] * 2
     assert [record["faults"][i]["model"] for i in (0, 2)] == [muse_spark.MODEL] * 2
 
@@ -394,7 +394,7 @@ def test_a_praised_line_falls_back_to_the_template_line_for_that_fault_alone(liv
     lines, record = phrasing.phrase(faults, "muse-spark", client=Client(reply(good[0]), reply(good[1]), reply(good[2])))
     assert lines == [good[0], faults[1]["text_timed"], good[2]]
     # The reason is the existing "muse-spark: <what>" kind (a free string in the schema), and it holds none of the model's text.
-    assert record["faults"][1] == {"backend": "template", "model": None, "fallback_reason": "muse-spark: adds praise"}
+    assert bare(record["faults"][1]) == {"backend": "template", "model": None, "fallback_reason": "muse-spark: adds praise"}
     assert praise not in json.dumps(record)
     assert [record["faults"][i]["backend"] for i in (0, 2)] == ["muse-spark"] * 2
     assert record["fallback_reason"] == "muse-spark: adds praise"
@@ -403,7 +403,7 @@ def test_a_praised_line_falls_back_to_the_template_line_for_that_fault_alone(liv
 def test_the_flagged_spark_line_never_reaches_the_user(live):  # noqa: F811
     out = phrasing.phrase_fault(KNEE, client=Client(reply(SPARK_LINE)))
     assert out == {"text": KNEE["text_timed"], "model": None, "backend": "template",
-                   "fallback_reason": "muse-spark: adds praise"}
+                   "fallback_reason": "muse-spark: adds praise", "lang": "en"}
 
 
 def test_the_template_backend_writes_text_timed():
@@ -414,7 +414,8 @@ def test_the_template_backend_writes_text_timed():
 def test_without_a_key_the_fault_falls_back_with_the_reason(monkeypatch, tmp_path):
     monkeypatch.setenv("SIMON5_LIVE", "1")
     out = phrasing.phrase_fault(RIGHT_FOOT, client=Client())
-    assert out == {"text": RIGHT_FOOT["text_timed"], "model": None, "backend": "template", "fallback_reason": "no key"}
+    assert out == {"text": RIGHT_FOOT["text_timed"], "model": None, "backend": "template", "fallback_reason": "no key",
+                   "lang": "en"}
 
 
 # ---- limits and ledger (AC-P05) -----------------------------------------------------------------
@@ -423,7 +424,7 @@ def test_the_31st_call_in_a_minute_falls_back_with_rate_limited(live):  # noqa: 
     client = Client(*[reply("Your right foot is too far right at 1.9 s")] * 30)
     lines, record = phrasing.phrase(faults, "muse-spark", client=client, budget_s=1e9)
     assert len(client.requests) == 30
-    assert record["faults"][30] == {"backend": "template", "model": None, "fallback_reason": "rate limited"}
+    assert bare(record["faults"][30]) == {"backend": "template", "model": None, "fallback_reason": "rate limited"}
     assert lines[30] == faults[30]["text_timed"] and len(live["ledger"].read_text().splitlines()) == 30
 
 
@@ -482,12 +483,12 @@ def test_the_prompt_lists_only_the_measures_landmarks():
     assert prompt.timed_record(timed("knee_flexion", "right", "less", None))["may_mention"] == []
 
 
-def test_ac_p08_the_timed_prompt_asks_for_normal_punctuation_with_a_comma_before_a_closing_phrase():
-    """No live call and no key: the system message is built from the module alone."""
+def test_ac_p08_the_timed_prompt_asks_for_normal_punctuation_and_a_full_stop():
+    """No live call and no key: the system message is built from the module alone. Since TICKET-045 the prompt offers
+    no closing phrase, so the comma rule for one is gone with it."""
     system = prompt.timed_messages(RIGHT_FOOT)[0]["content"]
-    assert prompt.SYSTEM_TIMED in system
-    assert "Use normal punctuation: put a comma before a closing phrase" in system
-    assert "end the sentence with a full stop" in system
+    assert prompt.system_timed(0) in system
+    assert "Use normal punctuation and end the sentence with a full stop" in system
 
 
 def test_ac_p09_the_timed_prompt_offers_no_praise_and_asks_for_none():
@@ -499,7 +500,7 @@ def test_ac_p09_the_timed_prompt_offers_no_praise_and_asks_for_none():
     assert [p for p in template.PRAISE_PHRASES if p in lowered] == []
     assert "almost there" not in lowered
     assert "carries no praise or congratulation" in system and "Say what is off" in system
-    assert '"keep going"' in system     # an encouraging ending is still allowed
+    assert "keep going" not in lowered and "Add no closing phrase" in system   # TICKET-045: no offered ending
 
 
 def test_the_prompt_example_and_the_ending_it_allows_pass_the_validator():

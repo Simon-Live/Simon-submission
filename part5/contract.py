@@ -64,12 +64,25 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.8.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
-     "`profile`, `diagnostics.near_misses`) are all optional; 1.8.0 adds only `diagnostics.near_misses` (the candidate "
-     "faults detection considered and dropped: near misses additive, optional, for debugging, never shown to the "
-     "follower); a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
+     "the 1.2.0 to 1.9.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
+     "`profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`) are all "
+     "optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near "
+     "misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and "
+     "`phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level "
+     "`second_opinion` (Muse Spark's view of the take, label it as the model's opinion; the score never reads it), "
+     "`score.uncapped` (the value and grade before a warning capped them at 59 F, present only when the cap lowered "
+     "them) and the optional top-level `source` (the producing part; absent means part5) with the warning code "
+     "`no_person` (written only by Part 7's own analysis, never by Part 5); "
+     "a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
      "reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its "
      "`profile`", "Part 5 (this repo)"),
+    ("Part 7 own analysis for a take with no person", "`analysis.json` with `source: \"part7\"`",
+     "`simon.analysis.v1` (`schema_version` 1.4.0, as Part 7 writes it today) with `source` and the warning "
+     "`no_person` (schema 1.9.0)", "none", "works",
+     "Part 7 writes it when Part 2 finds nobody in the take: `source` `part7`, the warning `no_person`, "
+     "`faults: []`, `expected` and `follower` with their real `path`, a score of 0 (F) and no `match`, because "
+     "nothing was compared; `part5 doctor <file> --for part7` accepts it and notes that nothing was looked at; "
+     "Part 5 never writes `no_person` or `source`", "Part 5 TICKET-048 (the document Part 7 described, moalborati/simon#61)"),
     ("Part 5 `analyse --replay <replay.json>`", "`replay.json`", "`simon.replay.v1`", "output for Part 7", "works",
      "optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>`",
      "Part 5 (this repo)"),
@@ -77,6 +90,18 @@ TABLE_ROWS = (
      "`simon.analysis.v1` with `phrasing.selected_by` `live`", "option for Part 7", "works with an option",
      "needs the Baseten key file on the host that runs Part 5; without it each fault keeps its timed template line "
      "(`fallback_reason: \"no key\"`); the template stays the default for tests and `make check-5`", "Part 5 (this repo)"),
+    ("Part 5 `analyse --lang`", "the follower's language (`--lang <bcp47>`, API field `lang`)",
+     "`simon.analysis.v1` 1.9.0 with `phrasing.lang`", "option for Part 7", "works with an option",
+     "pass the follower's BCP 47 tag; with `--live` Muse Spark writes each line in it and `phrasing.faults[i].text` "
+     "holds it (`phrasing.faults[i].lang` says the line's language: `en` for a line that fell back); an unlisted tag "
+     "falls back to English and `phrasing.lang_requested` keeps it; probe `part5 analyse --help` for `--lang`",
+     "Part 5 (this repo)"),
+    ("Part 5 `analyse --expected-video --follower-video`", "the two clips as video files, with `--live`",
+     "`simon.analysis.v1` 1.9.0 with `second_opinion`", "option for Part 7", "works with an option",
+     "pass the teacher's and the student's video with `--live`; the block is `ok`, `fallback` or `skipped` with a "
+     "`reason`; show `verdicts` (agree or dispute per `fault_index`, with `note`) and at most 2 `observations` "
+     "(`at_s`, `text`), labelled as the model's opinion; needs the Meta Model API key file on the host that runs Part 5",
+     "Part 5 (this repo)"),
     ("Part 5 `analyse --profile`", "analysis profile (`--profile {dance,rehab,fitness}`, API field `profile`)",
      "`simon.analysis.v1` 1.7.0 with `profile`", "option for Part 7", "works with an option",
      "pass the operator's mode as `--profile` or as the `profile` field of `POST api/analyse`; probe "

@@ -122,6 +122,17 @@ def test_adr_0012_any_warning_caps_the_value_at_59_and_names_the_codes(rules):
                                  rules)["value"] == 0
 
 
+def test_score_cap_records_the_uncapped_value_given_a_warning_lowers_it(rules):
+    # Part 7 TICKET-155: a one-fault take scored 73 C and the low_match cap made it 59 F; the reader needs the 73.
+    good = score.compute(analysis(), aligned(), rules)
+    capped = score.cap_by_warnings(good, dict(analysis(), warnings=[{"code": "low_match", "text": "x"}]), rules)
+    assert capped["uncapped"] == {"value": good["value"], "grade": good["grade"]}
+    assert "uncapped" not in score.cap_by_warnings(good, analysis(), rules)        # no warnings: unchanged
+    low = score.cap_by_warnings(score.zero_block(rules), dict(analysis(), warnings=[{"code": "low_match", "text": "x"}]),
+                                rules)
+    assert "uncapped" not in low and low["capped_by"] == ["low_match"]            # already under the cap
+
+
 def test_the_params_hash_is_the_sha256_of_the_score_block(rules):
     want = hashlib.sha256(json.dumps(PARAMS, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     assert score.compute(analysis(), aligned(), rules)["params_sha256"] == want == score.params_sha256(PARAMS)

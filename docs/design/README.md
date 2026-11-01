@@ -20,13 +20,14 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`journey-followup.md`](specs/journey-followup.md): time per fault, screen direction, the replay file, the score and live AI phrasing.
 - [`check-5.md`](specs/check-5.md): `make check-5`: the held-out gate and the reported slices.
 - [`calibration.md`](specs/calibration.md): calibration on seed 5, the frozen rules and the held-out attempts.
-- [`integration-contract.md`](specs/integration-contract.md): the schemas, the compatibility table, `part5 contract`, `part5 doctor`, `make check-5-contract`.
+- [`integration-contract.md`](specs/integration-contract.md): the schemas, the compatibility table, `part5 contract`, `part5 doctor`, `make check-5-contract`; Part 7's no-person analysis (`source`, `no_person`) and `score.uncapped` (schema 1.9.0).
 - [`real-takes.md`](specs/real-takes.md): `make report-real`: Part 3's kit, Part 2's takes, stock and multi-rep real takes.
 - [`viewer.md`](specs/viewer.md): the 3D replay page in `web/`, the fault list and the joint highlight.
 - [`staging.md`](specs/staging.md): the analysis API served by `part5 serve`; its staging stack is maintainers' tooling and not in this repo.
 - [`neighbour-check.md`](specs/neighbour-check.md): maintainers' tooling, not in this repo: the chain through Parts 2, 3 and 4.
 - [`oneshot-watch.md`](specs/oneshot-watch.md): maintainers' tooling, not in this repo: relaunching an unattended run.
 - [`simon-publish.md`](specs/simon-publish.md): maintainers' tooling, not in this repo: how files reach this repository.
+- [`second-opinion.md`](specs/second-opinion.md): Muse Spark's second opinion on both clips (`second_opinion`), lines that repeat no phrase, and the follower's language (`--lang`).
 - [`foot-keypoints.md`](specs/foot-keypoints.md): heel and toe points read from Part 2's pose3d.json as an optional side input, the `foot_rotation` and `ankle_inversion` measures, when they are hidden, their cues and how they are calibrated.
 - [`profiles.md`](specs/profiles.md): analysis profiles `dance`, `rehab` and `fitness`: the profiles file, the loosen-only rule, tempo, schema 1.7.0 and the seed 5 report (values set by hand).
 - [`near-misses.md`](specs/near-misses.md): `diagnostics.near_misses`, the candidate faults detection considered and dropped and why (schema 1.8.0); additive, nothing reads it.

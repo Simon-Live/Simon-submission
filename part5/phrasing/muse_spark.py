@@ -14,6 +14,10 @@ key file AND live mode (`--live`, `SIMON5_LIVE=1` or `META_LIVE=1`; #20, ADR-000
 at most 30 calls a minute (`PART5_MUSE_PER_MINUTE`), counted under a lock because calls run on a thread pool. Every call, whether it succeeds or not, appends one usage line
 (token counts, model, UTC time, HTTP status; never the key or the text) to
 `~/.simon/baseten_usage.jsonl` (`PART5_BASETEN_USAGE_FILE` for tests).
+
+The key file and ledger helpers (`path_of`, `unavailable_for`, `read_key_from`, `open_ledger_at`) are shared with the
+Meta Model API client of the second opinion (`opinion.meta_api`), which keeps its own key and ledger files: each
+caller names the file and the error to raise.
 """
 import json
 import os
@@ -23,6 +27,12 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    import fcntl
+except ImportError:   # not a POSIX host: no cross-process lock, the in-process checks still hold
+    fcntl = None
+
+from .lang import EN
 from .local_llm import BackendError, chat_request, content, send, urllib_client
 
 NAME = "muse-spark"
@@ -39,14 +49,20 @@ PER_MINUTE_ENV, PER_MINUTE = "PART5_MUSE_PER_MINUTE", 30
 _calls = deque()  # monotonic times of this process's recent model calls, for the rate limit
 _slot_lock = threading.Lock()  # phrasing runs calls on a thread pool: the limit is claimed under it
 _ledger_lock = threading.Lock()  # and each ledger line is appended under it
+LOCK_POLL_S = 0.05  # how often a process waiting for a locked ledger looks again
+
+
+def path_of(env, default):
+    """The file named by the variable `env`, else the built-in `default`, with `~` expanded."""
+    return Path(os.environ.get(env) or default).expanduser()
 
 
 def key_path():
-    return Path(os.environ.get(KEY_ENV) or KEY_FILE).expanduser()
+    return path_of(KEY_ENV, KEY_FILE)
 
 
 def usage_path():
-    return Path(os.environ.get(USAGE_ENV) or USAGE_FILE).expanduser()
+    return path_of(USAGE_ENV, USAGE_FILE)
 
 
 def model():
@@ -58,13 +74,70 @@ def live_on(live=False):
     return bool(live) or any(os.environ.get(name) == "1" for name in LIVE_ENVS)
 
 
-def unavailable(live=False):
-    """None when live calls are allowed, else the reason they are not. Never reads the key."""
-    if not key_path().is_file():
+def unavailable_for(key_file, live=False):
+    """None when a live call using the key in `key_file` is allowed, else the reason. Never reads the key."""
+    if not key_file.is_file():
         return "no key"
     if not live_on(live):
         return f"live calls are off (use --live, SIMON5_LIVE=1 or {LIVE_ENV}=1)"
     return None
+
+
+def unavailable(live=False):
+    """None when live calls are allowed, else the reason they are not. Never reads the key."""
+    return unavailable_for(key_path(), live)
+
+
+def read_key_from(key_file, error):
+    """The key in `key_file`, stripped; raises `error("key file unreadable")` or `error("key file is empty")`."""
+    try:
+        key = key_file.read_text().strip()
+    except (OSError, ValueError):
+        raise error("key file unreadable") from None
+    if not key:
+        raise error("key file is empty")
+    return key
+
+
+def _lock(ledger, wait_s):
+    """Take an exclusive lock on the open `ledger`, waiting up to `wait_s` seconds; False when it stayed taken."""
+    if fcntl is None:
+        return True
+    deadline = time.monotonic() + wait_s
+    while True:
+        try:
+            fcntl.flock(ledger.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(LOCK_POLL_S)
+
+
+def open_ledger_at(path, error, lock_wait_s=None):
+    """`path` opened for appending BEFORE the call (created 0600, its directory made), so a spend that cannot be
+    recorded is not made; `error("usage ledger not writable")` when it cannot be opened.
+
+    With `lock_wait_s` the file is also locked exclusively until it is closed, so one process's check of the ledger's
+    total and the call it allows cannot be interleaved with another's; `error("usage ledger busy")` after waiting
+    that many seconds.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ledger = os.fdopen(os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a")
+    except OSError:
+        raise error("usage ledger not writable") from None
+    if lock_wait_s is None:
+        return ledger
+    try:
+        locked = _lock(ledger, lock_wait_s)
+    except OSError:
+        ledger.close()
+        raise error("usage ledger not writable") from None
+    if not locked:
+        ledger.close()
+        raise error("usage ledger busy")
+    return ledger
 
 
 def _per_minute():
@@ -85,23 +158,11 @@ def _take_slot(now):
 
 
 def _read_key():
-    try:
-        key = key_path().read_text().strip()
-    except (OSError, ValueError):
-        raise BackendError("key file unreadable") from None
-    if not key:
-        raise BackendError("key file is empty")
-    return key
+    return read_key_from(key_path(), BackendError)
 
 
 def _open_ledger():
-    """The ledger opened for appending BEFORE the call, so a spend that cannot be recorded is not made."""
-    path = usage_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return os.fdopen(os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a")
-    except OSError:
-        raise BackendError("usage ledger not writable") from None
+    return open_ledger_at(usage_path(), BackendError)
 
 
 def _count(usage, *path):
@@ -129,12 +190,14 @@ def last_usage():
     return json.loads(lines[-1]) if lines else None
 
 
-def line(fault, *, timeout_s, client):
-    """One line for one fault from Muse Spark; raises BackendError on any failure."""
+def line(fault, *, timeout_s, client, shape=0, language=EN):
+    """One reply for one fault from Muse Spark (a JSON pair for a language other than English); raises
+    BackendError on any failure."""
     key = _read_key()
     _take_slot(time.monotonic())
     request = chat_request(URL, MODEL, fault, headers={"Authorization": f"Bearer {key}"},
-                           max_tokens=MAX_TOKENS, timeout_s=timeout_s, options=OPTIONS)
+                           max_tokens=MAX_TOKENS, timeout_s=timeout_s, options=OPTIONS, shape=shape,
+                           language=language)
     with _open_ledger() as ledger:
         outcome = send(client or urllib_client, request)
         try:

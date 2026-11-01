@@ -5,7 +5,7 @@ Date: 2026-10-28
 Request Type: new-feature
 Risk Level: medium
 Master spec: `part5-fault-analysis.md`. ADRs: ADR-0002, ADR-0004, ADR-0006. Tickets: TICKET-004 (lands #34),
-TICKET-009, TICKET-010, TICKET-011. Milestone M1 (stitch-ready, target 2026-10-29).
+TICKET-009, TICKET-010, TICKET-011, TICKET-049. Milestone M1 (stitch-ready, target 2026-10-29).
 Revised 2026-10-31 for the J1 additions (`journey-followup.md`: the `replay` schema, `metrics` 1.1.0, the goldens
 with a score and a replay) and ADR-0012 (always analyse: no refusal, no exit 3). Where the text below says refused,
 it describes a document written before schema 1.4.0.
@@ -37,7 +37,7 @@ that a mismatch is found in seconds with the fix named.
 ## Schemas (`contracts/`, published)
 | Name | File | `version` | Describes |
 |---|---|---|---|
-| `analysis` | `contracts/analysis.schema.json` | `1.8.0` (`1.1.0` when this spec was written) | Part 5's output, `simon.analysis.v1` with the additive fields of the master spec, `journey-followup.md`, `foot-keypoints.md` (`diagnostics.feet`), `profiles.md` (`profile`) and `near-misses.md` (`diagnostics.near_misses`) |
+| `analysis` | `contracts/analysis.schema.json` | `1.9.0` (`1.1.0` when this spec was written) | Part 5's output, `simon.analysis.v1` with the additive fields of the master spec, `journey-followup.md`, `foot-keypoints.md` (`diagnostics.feet`), `profiles.md` (`profile`), `near-misses.md` (`diagnostics.near_misses`) and `second-opinion.md` (`phrasing.lang`, `second_opinion`) |
 | `input-animation` | `contracts/input-animation.schema.json` | `1.0.0` | expected or follower clip in `simon.animation.v1` (frames, optional `null` joints and `conf`) |
 | `input-skeleton` | `contracts/input-skeleton.schema.json` | `1.0.0` | expected clip in `simon.skeleton.v1` (keyframes) |
 | `labels` | `contracts/labels.schema.json` | `1.0.0` | `labels.json` of the synthetic sets and the real takes (`label_source` optional) |
@@ -61,9 +61,12 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 | Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 dc3d9f2 |
 | Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
 | Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
-| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.8.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, `profile`, `diagnostics.near_misses`) are all optional; 1.8.0 adds only `diagnostics.near_misses` (the candidate faults detection considered and dropped: near misses additive, optional, for debugging, never shown to the follower); a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its `profile` | Part 5 (this repo) |
+| Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.9.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, `profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`) are all optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and `phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level `second_opinion` (Muse Spark's view of the take, label it as the model's opinion; the score never reads it), `score.uncapped` (the value and grade before a warning capped them at 59 F, present only when the cap lowered them) and the optional top-level `source` (the producing part; absent means part5) with the warning code `no_person` (written only by Part 7's own analysis, never by Part 5); a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its `profile` | Part 5 (this repo) |
+| Part 7 own analysis for a take with no person | `analysis.json` with `source: "part7"` | `simon.analysis.v1` (`schema_version` 1.4.0, as Part 7 writes it today) with `source` and the warning `no_person` (schema 1.9.0) | none | works | Part 7 writes it when Part 2 finds nobody in the take: `source` `part7`, the warning `no_person`, `faults: []`, `expected` and `follower` with their real `path`, a score of 0 (F) and no `match`, because nothing was compared; `part5 doctor <file> --for part7` accepts it and notes that nothing was looked at; Part 5 never writes `no_person` or `source` | Part 5 TICKET-048 (the document Part 7 described, moalborati/simon#61) |
 | Part 5 `analyse --replay <replay.json>` | `replay.json` | `simon.replay.v1` | output for Part 7 | works | optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>` | Part 5 (this repo) |
 | Part 5 `analyse --live` | live mode (`--live`, `serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`) | `simon.analysis.v1` with `phrasing.selected_by` `live` | option for Part 7 | works with an option | needs the Baseten key file on the host that runs Part 5; without it each fault keeps its timed template line (`fallback_reason: "no key"`); the template stays the default for tests and `make check-5` | Part 5 (this repo) |
+| Part 5 `analyse --lang` | the follower's language (`--lang <bcp47>`, API field `lang`) | `simon.analysis.v1` 1.9.0 with `phrasing.lang` | option for Part 7 | works with an option | pass the follower's BCP 47 tag; with `--live` Muse Spark writes each line in it and `phrasing.faults[i].text` holds it (`phrasing.faults[i].lang` says the line's language: `en` for a line that fell back); an unlisted tag falls back to English and `phrasing.lang_requested` keeps it; probe `part5 analyse --help` for `--lang` | Part 5 (this repo) |
+| Part 5 `analyse --expected-video --follower-video` | the two clips as video files, with `--live` | `simon.analysis.v1` 1.9.0 with `second_opinion` | option for Part 7 | works with an option | pass the teacher's and the student's video with `--live`; the block is `ok`, `fallback` or `skipped` with a `reason`; show `verdicts` (agree or dispute per `fault_index`, with `note`) and at most 2 `observations` (`at_s`, `text`), labelled as the model's opinion; needs the Meta Model API key file on the host that runs Part 5 | Part 5 (this repo) |
 | Part 5 `analyse --profile` | analysis profile (`--profile {dance,rehab,fitness}`, API field `profile`) | `simon.analysis.v1` 1.7.0 with `profile` | option for Part 7 | works with an option | pass the operator's mode as `--profile` or as the `profile` field of `POST api/analyse`; probe `part5 analyse --help` for `--profile` before relying on it; omitted means `fitness`, the analysis as it was; every document names its `profile`, and a score is read within one profile (a dance 84 and a fitness 84 differ) | Part 5 (this repo) |
 | Part 5 | `part5 analyse` exit code | 0 analysis written (with or without warnings), 1 unreadable or invalid input file or write error, 2 usage; 3 is no longer used (ADR-0012) | for Part 7 | works with a mapping | Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the contract (Part 3 CONTRACT.md, row for Part 7): 0 is "written" (read `warnings`), 1 and 2 are failures; 3 is no longer produced | Part 7 90aa473 (as Part 3 CONTRACT.md records it) |
 | Part 5 | `labels.json` | none | evaluation | works |  | Part 5 (this repo) |
@@ -81,7 +84,7 @@ make check-5-contract        # uv run python -m part5.contract --check
   verbatim (for any JSON Schema validator); `--json` prints `{schemas: [...], table: [...]}`. Exit 0;
   an unknown schema name exits 2 naming the valid names.
 - `doctor` reads one file, names its kind and version (`simon.animation.v1`, `simon.skeleton.v1`,
-  `simon.skeleton/1 (Part 3 native)`, `simon:follow v1 hand-off (Part 6)` (event detail or framed message), `part2.pose3d (Part 2)`, `simon.analysis.v1 1.8.0`,
+  `simon.skeleton/1 (Part 3 native)`, `simon:follow v1 hand-off (Part 6)` (event detail or framed message), `part2.pose3d (Part 2)`, `simon.analysis.v1 1.9.0`,
   `simon.replay.v1 1.0.0`, `labels`), validates it against the matching schema and, for `--for part5` (default), loads it through
   `part5.io`. Output: one verdict line, then one line per problem: field path, what is wrong, the option
   that fixes it. `--for part7` checks an `analysis.json` for Part 7, warns when `status.code` is not `ok` or the take
@@ -140,6 +143,50 @@ Given a `replay.json`, when `doctor` runs (either `--for`), then exit 0 naming `
 schema holds and the lengths of `expected`, `expected_t` and `exp_to_fol` and of `follower` and `follower_t`
 agree, every `exp_to_fol` and bone index is in range and both `t` lists strictly increase; otherwise exit 1 naming
 the field (`journey-followup.md` AC-R03; `tests/test_doctor.py`).
+### AC-C14: Part 7's no-person analysis and the uncapped score (analysis 1.9.0, TICKET-048, Part 7 TICKET-155)
+Given Part 7's own analysis for a take in which Part 2 found nobody (`schema_version` 1.4.0, `source` `part7`, the
+warning `no_person`, `faults` `[]`, `expected` and `follower` with their `path`, a score of 0 grade F, no `match`;
+the committed example is `fixtures/input/contract/part7/analysis.no-person.json`), when the schema, `part5.output`
+and `part5 doctor --for part7` read it, then it validates and the doctor exits 0 with the warning listed and two notes
+(who wrote it; that `faults: []` means nothing was looked at). `source` is an optional non-empty string (absent means
+`part5`); `no_person` is a `warnings[].code` that Part 5 never writes (`pipeline.WARNING_ORDER` and the goldens do not
+carry it); a `match` is required for every other warning code and checked when present. `score.uncapped`
+(`{value, grade}`, written only when the warning cap lowered the value) validates and the doctor notes the value it
+had before the cap. `tests/test_part7_no_person.py`.
+### AC-C15: the fields Part 7's takes-over-time report reads (TICKET-049, Part 7 TICKET-183)
+Part 7 reads these fields across many takes, without importing Part 5. For every analysis schema version from `1.5.0`
+(`1.5.0`, `1.6.0`, `1.7.0`, `1.8.0`, `1.9.0`; a new version added to `contracts/analysis.schema.json` fails the test until
+it is listed), `tests/test_contract_part7_history.py` pins each field's name, JSON type and meaning in the schema and in a
+document derived from the committed goldens (`fixtures/output/analysis*.example.json`) by removing what the later
+versions added, and pins which fields the schema leaves optional and what their absence means:
+
+| Field | JSON type | In the schema | Since | Meaning; what absence means |
+|---|---|---|---|---|
+| `faults[].measure` | string, one of the schema's `measure` values | required | 1.0.0 (`foot_rotation`, `ankle_inversion` 1.6.0) | what differed, side-less (`upper_arm_out`, `knee_flexion`, ...) |
+| `faults[].side` | `left`, `right`, `both` or `center` | required | 1.0.0 | the subject's own side |
+| `faults[].at_s` | number | optional | 1.2.0 | seconds on the follower file's own clock: `follower_t_s[0]` rounded half up to 0.1. Absent: the fault is untimed (a document before 1.2.0); leave it off a time axis |
+| `faults[].follower_t_s` | `[start, end]` numbers | optional | 1.2.0 | seconds on the follower file's own clock at `follower_frames[0]` and `[1]`. Absent as for `at_s` |
+| `faults[].text_timed` | non-empty string | optional | 1.2.0 | the timed words plus ` at <at_s> s`. Absent: show `text` |
+| `faults[].cue` | string of 1 to 6 words | optional | 1.5.0 | what to do, an imperative. Absent: a document before 1.5.0 |
+| `score.timeline[].misses[].cue` | string of 1 to 6 words | optional | 1.5.0 | the `cue` of the fault the miss came from; `misses` exists on a compared window only. Absent: before 1.5.0 |
+| `score.value` | integer 0 to 100 | optional (`score`) | 1.2.0 | the take's score; never null from 1.4.0; capped at 59 when `warnings` exist. `score` absent: the producer does not score |
+| `score.grade` | `A`, `B`, `C`, `D` or `F` | optional (`score`) | 1.2.0 | the grade of `value`, within the document's `profile` |
+
+The follower's duration has no field in `analysis.json` (the `follower` object is `{path}` plus whatever ids the caller
+passed in, such as `take_id`). The test pins what exists: `score.timeline[-1].t_s[1]`, the end of the compared span on
+the follower file's clock (equal to the duration when the whole clip was compared, less when the follower stood still
+at the end), and, from the optional `replay.json`, `follower_t[-1]`, the last frame time of the follower file. A
+dedicated field is an additive change to `part5/` and is not made by TICKET-049.
+### AC-C16: the student-words file (TICKET-049)
+Given `contracts/student-words.json` (`format` `simon.student-words.v1`, `version`, `banned`, `praise`, the rules that
+apply them, `ignored_characters`, `sources` and `lists_sha256`), when `scripts/make_student_words.py` (`make
+student-words`) runs, then it writes the file from Part 5's own constants, imported and never copied: `banned` is the
+word stems of `part5.opinion.guard.BANNED`, `praise` is `part5.phrasing.template.PRAISE_PHRASES` in order and
+`ignored_characters` are the zero-width characters `template` reads past. `tests/test_student_words.py` fails when the
+committed file differs from what the script generates, so the file cannot drift from the validator, and checks that a
+matcher built from the file alone agrees with the validator on a set of lines. `--check` exits 1 on a difference. The
+file is a published contract (`contracts/**`, written by the published `scripts/make_*.py`) and is listed in
+`CONTRACT.md`; it adds no schema and no `part5/` code.
 ### AC-C10: #34 plain errors
 Given `PART3_DIR` pointing at a checkout that lacks a copied file, when `make contracts-check` runs, then
 it exits 2 with a plain message naming the missing upstream path, never a traceback (TICKET-004).
@@ -185,6 +232,7 @@ ASM-005 (Part 7 reads `status` first) and ASM-012 (the Part 6 hand-off shape), `
 
 ## Delivery Verification Plan
 - `make check-5-contract` 0, `make test-contract` 0, `make test` 0.
+- `tests/test_contract_part7_history.py` and `tests/test_student_words.py` 0 (AC-C15, AC-C16); `python3 scripts/make_student_words.py --check` 0.
 - `python -m part5 contract` and `doctor` frames recorded as uc-integration-contract evidence.
 - The neighbour check (`neighbour-check.md`) runs `doctor` on Parts 3 and 4's current files.
 
@@ -201,6 +249,16 @@ version tells a careful reader what to expect.
   in the schema) and the metrics schema `1.3.0` (`profiles_sha256`); the table has a row "Part 5 `analyse --profile`" and
   the analysis row names `profile`; `part5 doctor --for part7` notes the profile ("scores compare within one profile",
   or "read it as fitness" for a document before `1.7.0`); `CONTRACT.md` carries the same rows and a Part 7 duty.
+- 2026-10-31 (TICKET-045, TICKET-046, `docs/design/specs/second-opinion.md`): the analysis schema is `1.9.0` (`phrasing.lang`, `phrasing.faults[].text` and `.lang` in every new document; `second_opinion` when clips were given). Two rows added: `analyse --lang` and `analyse --expected-video --follower-video`.
+- 2026-11-01 (TICKET-048, Part 7 TICKET-155; AC-C14): the same analysis schema `1.9.0` also carries the optional top-level
+  `source`, the `no_person` warning code (Part 7's own analysis only; `match` not required when it is the only code) and
+  `score.uncapped`. One row added: "Part 7 own analysis for a take with no person"; the analysis row names the three;
+  the table above is the one `part5 contract` prints (the `--lang` and video rows, missing from this copy, are in it).
+- 2026-11-01 (TICKET-049, Part 7 TICKET-183; AC-C15, AC-C16): no schema change. The fields of Part 7's takes-over-time
+  report are pinned for every analysis version from `1.5.0` (`tests/test_contract_part7_history.py`) and named in
+  `CONTRACT.md` (Part 7's duty 10); `contracts/student-words.json` is generated from the validator's own word lists
+  (`scripts/make_student_words.py`, `make student-words`, `tests/test_student_words.py`). The follower duration has no
+  analysis field; the test pins the two places it can be read.
 - 2026-10-31 (TICKET-043, `docs/design/specs/near-misses.md`): the analysis schema is `1.8.0` (`diagnostics.near_misses`, written
   whenever the take was compared, optional in the schema); the analysis row says so ("near misses additive, optional");
   `part5 doctor --for part7` notes how many near misses a document lists; `CONTRACT.md` carries the same row and sentence.

@@ -23,6 +23,7 @@ from .detect import EXPLAINED_BY, MAX_NEAR_MISSES, PERSISTENCE, REASONS
 from .insights import MAX_INSIGHTS, insights_of
 from .lateral import lateral_for
 from .words import describe, describe_timed
+from .opinion.guard import validate_block as _validate_second_opinion
 
 FORMAT = "simon.analysis.v1"
 # 1.2.0 time fields (ADR-0009), 1.3.0 rep fields (ADR-0010), 1.4.0 warnings and match (ADR-0012). From 1.5.0
@@ -32,13 +33,22 @@ FORMAT = "simon.analysis.v1"
 # 1.7.0 (ADR-0016) adds `profile`, the analysis profile that produced the document (always present in a new one).
 # 1.8.0 (TICKET-043) adds `diagnostics.near_misses`, the candidates detection considered and dropped (present in every
 # new document whose take was compared); every new document is 1.8.0.
-SCHEMA_VERSION = "1.8.0"
+# 1.9.0 (TICKET-045, TICKET-046) adds `phrasing.lang` (and `lang_requested`), `phrasing.faults[].text` and `.lang`, in
+# every new document, and the top-level `second_opinion` when clips were given (docs/specs/second-opinion.md). The same
+# 1.9.0 adds `score.uncapped` (Part 7 TICKET-155) and, for the reader, the optional top-level `source` and the warning
+# code `no_person` (TICKET-048), which only Part 7's own analysis carries; Part 5 writes neither.
+SCHEMA_VERSION = "1.9.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 PROFILE_SINCE = (1, 7, 0)   # from this schema version on, `profile` is required
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
 REFUSED_CODES = (DIFFERENT_MOVEMENT, NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME)
 STATUS_CODES = (OK, *REFUSED_CODES)
-WARNING_CODES = (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE, NO_USABLE_MEASURES)
+WARNING_CODES = (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE, NO_USABLE_MEASURES)   # what Part 5 writes
+# 1.9.0 (TICKET-048): Part 7 writes its own analysis when Part 2 finds nobody in the take: `source` "part7", the warning
+# below, no comparison and so no `match`. Part 5 never writes it; a reader of analysis.json accepts it.
+NO_PERSON = "no_person"
+READABLE_WARNING_CODES = (*WARNING_CODES, NO_PERSON)
+SOURCE_PART5 = "part5"   # what an absent `source` means
 LOW_CONFIDENCE = "low"   # a fault's `confidence` on a low match (ADR-0012)
 UNIT = "degrees"
 SIDES = ("left", "right", "both", "center")
@@ -237,10 +247,14 @@ def validate_analysis(doc, source="<analysis>"):
         _validate_status(doc["status"], faults, fail)
     for i, f in enumerate(faults):
         _validate_fault(f, f"faults[{i}]", fail)
+    if "source" in doc and not (isinstance(doc["source"], str) and doc["source"]):
+        fail(f"source must be a non-empty string (the producing part; absent means {SOURCE_PART5}), got {doc['source']!r}")
     if "warnings" in doc:
         _validate_warnings(doc["warnings"], doc.get("match"), fail)
     if "phrasing" in doc:
-        _validate_phrasing(doc["phrasing"], len(faults), fail)
+        _validate_phrasing(doc["phrasing"], faults, fail)
+    if "second_opinion" in doc:
+        _validate_second_opinion(doc["second_opinion"], len(faults), fail)
     if "score" in doc and doc["score"] is not None and not isinstance(doc["score"], dict):
         fail("score must be an object or null")
     if "insights" in doc:
@@ -353,14 +367,19 @@ def _validate_near_miss_reason(item, where, fail):
 
 
 def _validate_warnings(warnings, match, fail):
-    """The 1.4.0 `warnings` and `match` (ADR-0012)."""
+    """The 1.4.0 `warnings` and `match` (ADR-0012). `match` says how the comparison went, so a document whose only
+    warning is `no_person` (1.9.0, Part 7's own analysis: nothing was compared) may leave it out; if it has one, it is
+    checked like any other."""
     if not (isinstance(warnings, list) and warnings):
         fail("warnings must be a non-empty list of {code, text}")
     for i, w in enumerate(warnings):
-        if not isinstance(w, dict) or w.get("code") not in WARNING_CODES:
-            fail(f"warnings[{i}].code must be one of {WARNING_CODES}, got {(w or {}).get('code') if isinstance(w, dict) else w!r}")
+        if not isinstance(w, dict) or w.get("code") not in READABLE_WARNING_CODES:
+            fail(f"warnings[{i}].code must be one of {READABLE_WARNING_CODES}, "
+                 f"got {(w or {}).get('code') if isinstance(w, dict) else w!r}")
         if not isinstance(w.get("text"), str) or not w["text"]:
             fail(f"warnings[{i}].text must be a non-empty string")
+    if match is None and all(w["code"] == NO_PERSON for w in warnings):
+        return
     if not isinstance(match, dict) or match.get("quality") not in ("ok", "low"):
         fail("match must be an object with quality 'ok' or 'low' when there are warnings")
     for key in ("residual", "timing_corr"):
@@ -483,13 +502,25 @@ def _validate_insights(insights, fail):
             fail(f"{where}.window must be a window index (an integer from 0) or null, got {x['window']!r}")
 
 
-def _validate_phrasing(record, n_faults, fail):
-    """The phrasing record: who phrased each coaching line and why a fault fell back (ADR-0005)."""
+def _validate_phrasing(record, faults, fail):
+    """The phrasing record: who phrased each coaching line and why a fault fell back (ADR-0005). From 1.9.0 each
+    entry's `text` is the line shown, so it equals the fault's `coaching` when both are there (AC-LA-04)."""
     if not isinstance(record, dict) or not isinstance(record.get("backend"), str):
         fail("phrasing must be an object with a string 'backend'")
     per_fault = record.get("faults")
-    if not isinstance(per_fault, list) or len(per_fault) != n_faults:
-        fail(f"phrasing.faults must hold one entry per fault ({n_faults}), got {per_fault!r}")
+    if not isinstance(per_fault, list) or len(per_fault) != len(faults):
+        fail(f"phrasing.faults must hold one entry per fault ({len(faults)}), got {per_fault!r}")
+    for key in ("lang", "lang_requested"):   # 1.9.0 (TICKET-046)
+        if key in record and not (isinstance(record[key], str) and record[key]):
+            fail(f"phrasing.{key} must be a non-empty string, got {record[key]!r}")
+    for i, entry in enumerate(per_fault):
+        for key in ("text", "lang"):
+            if isinstance(entry, dict) and key in entry and not (isinstance(entry[key], str) and entry[key]):
+                fail(f"phrasing.faults[{i}].{key} must be a non-empty string, got {entry[key]!r}")
+        coaching = faults[i].get("coaching") if isinstance(faults[i], dict) else None
+        if isinstance(entry, dict) and isinstance(entry.get("text"), str) and isinstance(coaching, str) \
+                and entry["text"] != coaching:
+            fail(f"phrasing.faults[{i}].text must equal faults[{i}].coaching, got {entry['text']!r} and {coaching!r}")
 
 
 def _validate_times(f, where, fail):

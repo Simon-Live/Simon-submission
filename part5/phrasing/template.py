@@ -126,7 +126,7 @@ NUMBER = re.compile(
     r"sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|"
     r"hundred|thousand)\b")
 SIDE_WORDS = re.compile(r"\b(left|right)\b")
-_GROUP_RX = {g: re.compile(_w(words)) for g, words in GROUPS.items()}
+GROUP_RX = {g: re.compile(_w(words)) for g, words in GROUPS.items()}
 _TRUNK_CUES = re.compile(_w(TRUNK_CUES))
 
 
@@ -140,8 +140,26 @@ def _shape(fault, text):
     return None
 
 
+# Two body-part nouns side by side ("arms elbows wider than the example"): a model laying the record's group word in
+# front of the part the plain words already name (Part 7, Muse Glimmer 30B). A grammar fault, not a wrong fact, so the
+# test is the same for every measure; a comma, a conjunction or a preposition between two nouns is fine. In the second
+# place "face" is a verb ("feet face out", "knees face inward", "hips face the side") and "shoulder-" or "shoulder
+# width" is a measure ("feet shoulder-width apart"), so neither is a noun there.
+_ANY_PART = "|".join(f"(?:{words})" for words in GROUPS.values())
+_SECOND_PART = "|".join(f"(?:{words})" for words in
+                        {**GROUPS, "head": GROUPS["head"].replace("|face", ""),
+                         "shoulder": GROUPS["shoulder"] + r"(?!-|\swidth)"}.values())
+_DOUBLED_PART = re.compile(rf"\b(?:{_ANY_PART})\s+(?:{_SECOND_PART})\b")
+
+
 def _numbers(fault, text):
     return "adds a number" if NUMBER.search(text) else None
+
+
+def _doubled_part(text):
+    """The reason `doubles the body part (...)` when `text` has two body-part nouns side by side, else None."""
+    found = _DOUBLED_PART.search(text)
+    return f"doubles the body part ({found.group(0)})" if found else None
 
 
 def _side(fault, text):
@@ -160,7 +178,7 @@ def _body(fault, text):
     allowed = NAMES.get(fault["measure"])
     if allowed is None:
         return f"no word test for measure {fault['measure']!r}"
-    found = {g for g, rx in _GROUP_RX.items() if rx.search(text)}
+    found = {g for g, rx in GROUP_RX.items() if rx.search(text)}
     if not (found & set(allowed)) and not (allowed == ("trunk",) and _TRUNK_CUES.search(text)):
         return "does not name the body part"
     extra = sorted(found - set(allowed))
@@ -189,7 +207,7 @@ LANDMARKS = {
     "foot_rotation": ("hip", "knee"),   # ADR-0015: the pelvis, and the leg a line may name
     # ADR-0015: the ankle's roll reads the foot points alone (Amendment 1), so no knee or thigh is a reference for it
 }
-_TIME = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s?(?:seconds?|secs?|s)\b")
+TIME = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s?(?:seconds?|secs?|s)\b")
 _LATERAL = re.compile(r"\b(?:too far (?:to the )?|to the |toward the )(left|right)\b")
 _OPPOSITE = {"more": "less", "less": "more"}
 
@@ -197,7 +215,7 @@ _OPPOSITE = {"more": "less", "less": "more"}
 # "Your knees are not bent enough at 1.4 s, nice effort." because the prompt once offered the phrase. The prompt
 # no longer does, and this list is the guard: a line with one of these phrases, in any case, falls back to the
 # template line. It guards the timed and the untimed line alike. The words of a phrase may be joined by spaces or
-# hyphens ("nice-effort"), and a zero-width character hides nothing (see `_praise`).
+# hyphens ("nice-effort"), and a zero-width character hides nothing (see `praise`).
 PRAISE_PHRASES = (
     "nice effort", "good effort", "great effort", "solid effort", "great job", "good job", "nice job", "well done",
     "nicely done", "nice work", "good work", "great work", "excellent work", "nice going", "well played",
@@ -216,14 +234,14 @@ def _time(fault, text):
     at_s = fault.get("at_s")
     if at_s is None:
         return "no time to check against", text
-    found = _TIME.findall(text)
+    found = TIME.findall(text)
     if not found:
         return "does not say the time", text
     if len(found) > 1:
         return "says the time more than once", text
     if round(float(found[0]), 1) != round(float(at_s), 1):
         return "wrong time", text
-    return None, _TIME.sub(" ", text)
+    return None, TIME.sub(" ", text)
 
 
 def _timed_side(fault, text):
@@ -236,7 +254,7 @@ def _timed_side(fault, text):
 
 
 def _timed_body(fault, text):
-    found = {g for g, rx in _GROUP_RX.items() if rx.search(text)}
+    found = {g for g, rx in GROUP_RX.items() if rx.search(text)}
     own = set(NAMES.get(fault["measure"], ()))
     if not (found & own) and not (own == {"trunk"} and _TRUNK_CUES.search(text)):
         return "does not name the body part"
@@ -254,7 +272,7 @@ def _timed_direction(fault, text):
     return _direction(fault, text, hits)
 
 
-def _praise(text):
+def praise(text):
     """The reason `adds praise` when `text` holds one of `PRAISE_PHRASES`, else None.
 
     A zero-width character (U+200B, U+200C, U+200D, U+2060, U+FEFF) is invisible, so the line is read twice: with
@@ -279,12 +297,13 @@ def _timed_problem(fault, text):
 def line_problem(fault, line, timed=False):
     """None when `line` fairly phrases the measured `fault`, else the short reason it does not.
 
-    Timed or not, a line is one short line and carries no praise (`PRAISE_PHRASES`; the reason is "adds praise").
+    Timed or not, a line is one short line, carries no praise (`PRAISE_PHRASES`; the reason is "adds praise") and
+    never puts two body-part nouns side by side (the reason is "doubles the body part (arms elbows)").
     `timed=True` is the live-mode test (ADR-0008): the line must also say `fault["at_s"]` once, may name
     `fault["lateral"]` as a direction and may name the measure's landmarks.
     """
     text = line.strip().lower().replace("’", "'")
-    problem = _shape(fault, text) or _praise(text)
+    problem = _shape(fault, text) or praise(text) or _doubled_part(text)
     if problem:
         return problem
     if timed:

@@ -20,7 +20,7 @@ from pathlib import Path
 
 from . import contract, feet
 from .io import InputError, parse_clip
-from .output import OutputError, validate_analysis
+from .output import NO_PERSON, SOURCE_PART5, OutputError, validate_analysis
 
 MAX_PROBLEMS = 8
 POSE3D = "part2.pose3d/2026-10-28"  # Part 3 CONTRACT.md names this version of Part 2's pose3d.json
@@ -338,6 +338,50 @@ def _for_part7(r, doc):
     _feet_notes(r, doc)
     _profile_notes(r, doc)
     _near_miss_notes(r, doc)
+    _language_notes(r, doc)
+    _second_opinion_notes(r, doc)
+    _source_notes(r, doc)
+
+
+def _source_notes(r, doc):
+    """1.9.0 (TICKET-048): `source` names the producing part (absent means part5). Part 7's own analysis for a take
+    in which Part 2 found nobody carries the warning `no_person`: nothing was compared, so there is no `match` and
+    `faults` is empty because nothing was looked at, not because the take was clean."""
+    source = doc.get("source", SOURCE_PART5)
+    if source != SOURCE_PART5:
+        r.notes.append(f"written by {source}, not by Part 5 (source)")
+    if any(w["code"] == NO_PERSON for w in doc.get("warnings", [])):
+        r.notes.append("no_person: Part 2 found nobody in the take, so nothing was compared and faults [] means "
+                       "nothing was looked at, not a clean take; show the warning, not \"no faults\"")
+
+
+def _plural(n, word):
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def _language_notes(r, doc):
+    """1.9.0 (TICKET-046): the language of the fault lines; each fault's `phrasing.faults[i].lang` says its own."""
+    record = doc.get("phrasing") or {}
+    if "lang" not in record:
+        return
+    others = sorted({e.get("lang") for e in record.get("faults", []) if e.get("lang") != record["lang"]})
+    asked = f" ({record['lang_requested']} was asked)" if record.get("lang_requested") else ""
+    rest = f"; some lines are in {', '.join(others)} (their fallback)" if others else ""
+    r.notes.append(f"lines in {record['lang']}{asked}{rest}: show phrasing.faults[i].text")
+
+
+def _second_opinion_notes(r, doc):
+    """1.9.0 (TICKET-045): Muse Spark's second opinion, the model's view, never part of the score."""
+    block = doc.get("second_opinion")
+    if not isinstance(block, dict):
+        return
+    if block["status"] != "ok":
+        r.notes.append(f"second opinion {block['status']} ({block['reason']}): show nothing for it")
+        return
+    agree = sum(v["agrees"] for v in block["verdicts"])
+    r.notes.append(f"second opinion ok: {_plural(len(block['verdicts']), 'verdict')} ({agree} agrees, "
+                   f"{len(block['verdicts']) - agree} disputes), {_plural(len(block['observations']), 'observation')}; "
+                   "label it as the model's opinion, the score does not use it")
 
 
 def _near_miss_notes(r, doc):
@@ -387,6 +431,9 @@ def _score_notes(r, doc):
             else "score present")
     if score.get("capped_by"):
         line += f", capped at F by {', '.join(score['capped_by'])} (show the warnings beside it)"
+    before = score.get("uncapped")   # 1.9.0 (Part 7 TICKET-155): the value the cap lowered
+    if isinstance(before, dict) and "value" in before and "grade" in before:
+        line += f"; it was {before['value']} ({before['grade']}) before the cap (score.uncapped)"
     r.notes.append(line)
     windows = score.get("timeline")
     if isinstance(windows, list):

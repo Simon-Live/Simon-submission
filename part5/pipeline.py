@@ -94,7 +94,7 @@ def analyse(expected, follower, rules=None, *, expected_feet=None, follower_feet
 
 def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=None, score=None,
         live=False, selected_by=None, expected_visibility=None, expected_feet=None, follower_feet=None,
-        expected_feet_person=0, follower_feet_person=0, profile=None):
+        expected_feet_person=0, follower_feet_person=0, profile=None, lang=None):
     """`analyse` keeping the clips and the alignment (`PipelineResult`).
 
     A ref may carry the parsed JSON under `doc` (an upload held in memory): the clip is parsed
@@ -113,7 +113,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     when both clips have them and hidden, with the reason, when not. Without either, nothing changes.
 
     `profile` (ADR-0016) names the analysis profile, one of `profiles.names()`; None means `fitness`, the identity,
-    which leaves `rules` untouched. Any other profile detects and scores with `profiles.effective_rules(rules, profile)`
+    which leaves `rules` untouched.
+    `lang` (TICKET-046) is the follower's BCP 47 tag for the phrased lines; None means English. It changes only
+    `coaching` and `phrasing`. Any other profile detects and scores with `profiles.effective_rules(rules, profile)`
     (kept on the result as `rules`), and the document names the profile. An unknown name is a `profiles.ProfileError`.
     """
     if phrasing not in PHRASING_BACKENDS:
@@ -141,7 +143,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
             notes[MOVING_PART_OUT_OF_FRAME] = moving_text(moving_info["moving_measures"])
     usable = vis.align_usable   # None: the full-body choice; fewer than 3 measures are still used
     ctx = _Context(exp_ref, fol_ref, exp, fol, vis, moving_info, notes,
-                   (phrasing, phrasing_client, live, selected_by), score, feet, rules, profile)
+                   (phrasing, phrasing_client, live, selected_by, lang), score, feet, rules, profile)
     if usable is not None and not usable:   # nothing the camera sees can carry timing
         return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT, rules)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
@@ -285,12 +287,12 @@ def _fault_times(fault, exp, fol, fol_positions, alignment, to_original):
             "lateral_m": lateral_m(fault, exp.positions, fol_positions, alignment.exp_to_fol)}
 
 
-def _phrased(analysis, backend, client, live=False, selected_by=None):
+def _phrased(analysis, backend, client, live=False, selected_by=None, lang=None):
     """Canonical joints and the coaching line per fault, and the `phrasing` record (ADR-0005,
-    ADR-0006). Scored fields never depend on the backend: only `coaching` and `phrasing` do."""
+    ADR-0006). Scored fields never depend on the backend or the language: only `coaching` and `phrasing` do."""
     for f in analysis["faults"]:
         f["joints"] = fault_joints(f)
-    lines, record = phrase(analysis["faults"], backend, client=client, live=live, selected_by=selected_by)
+    lines, record = phrase(analysis["faults"], backend, client=client, live=live, selected_by=selected_by, lang=lang)
     for f, line in zip(analysis["faults"], lines):
         f["coaching"] = line
     analysis["phrasing"] = record

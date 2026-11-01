@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.8.0",
+  "schema_version": "1.9.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
@@ -80,6 +80,7 @@
     "backend": "template",
     "model": null,
     "fallback_reason": null,
+    "lang": "en",
     "faults": [],
     "selected_by": "default"
   },

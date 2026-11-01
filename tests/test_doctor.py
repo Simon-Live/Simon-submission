@@ -495,7 +495,7 @@ def test_ac_r03_a_replay_with_extra_fields_is_accepted(tmp_path, capsys):
 
 # ---------------------------------------------------------------- what Part 7 reads (AC-C02, ADR-0012, ADR-0014)
 def warned_analysis():
-    """A 1.8.0 analysis of a take that earned a low_match warning: faults at confidence "low", the score capped at F."""
+    """A 1.9.0 analysis of a take that earned a low_match warning: faults at confidence "low", the score capped at F."""
     doc = json.loads(EXAMPLE.read_text())
     doc["warnings"] = [{"code": "low_match", "text": "This take doesn't closely match the trainer's movement, so the "
                                                      "grade is capped at F. Check that you picked the right movement."}]
@@ -509,9 +509,9 @@ def warned_analysis():
 
 def test_part7_accepts_a_warned_1_6_0_analysis_and_notes_what_it_carries(tmp_path, capsys):
     doc = warned_analysis()
-    assert doc["schema_version"] == "1.8.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
+    assert doc["schema_version"] == "1.9.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
     code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
-    assert code == 0 and "simon.analysis.v1 1.8.0; accepted for part7" in out
+    assert code == 0 and "simon.analysis.v1 1.9.0; accepted for part7" in out
     assert "warning: low_match: This take doesn't closely match" in out and "warning: warning" not in out
     assert 'note: 2 of 2 faults have confidence "low" (a low match)' in out
     assert "note: score 59 out of 100, grade F, capped at F by low_match" in out

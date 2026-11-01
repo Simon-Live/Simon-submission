@@ -58,7 +58,7 @@ def test_ac004_a_take_of_another_movement_exits_0_with_a_low_match_warning_and_g
                      "--out", str(out)])
     assert code == 0
     doc = json.loads(out.read_text())
-    assert doc["status"]["code"] == "ok" and doc["schema_version"] == "1.8.0"
+    assert doc["status"]["code"] == "ok" and doc["schema_version"] == "1.9.0"
     assert [w["code"] for w in doc["warnings"]] == ["low_match"] and doc["match"]["quality"] == "low"
     assert doc["score"]["grade"] == "F" and doc["score"]["value"] <= 59
     assert all(f["confidence"] == "low" for f in doc["faults"])

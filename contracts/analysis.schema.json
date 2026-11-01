@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/analysis.schema.json",
   "title": "Part 5 analysis.json (simon.analysis.v1)",
-  "version": "1.8.0",
-  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score; 1.3.0: faults[].reps, diagnostics.guard.reps, diagnostics.expected_reference and score.per_rep, for a take compared one repetition at a time). A document without them keeps schema_version 1.2.0. A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed. 1.4.0 (ADR-0012): a take is always analysed. status.code is ok for every analysis; what used to be a refusal is an entry in the top-level warnings ([{code, text}]: low_match, moving_part_out_of_frame, not_enough_visible, no_usable_measures), with match ({quality ok|low, residual, timing_corr, limits}); on a low match each fault has confidence \"low\"; score is never null, is capped at 59 (grade F) when any warning is present, and then names the codes in score.capped_by. A document without warnings keeps its earlier schema_version. 1.5.0 (ADR-0014): every new document is 1.5.0 and carries cues: faults[].cue and cue_kind (position or range), the same on each score.timeline[].misses[] with its direction, score.timeline[].tempo and score.tempo ({ratio, cue}: follower seconds per example second, a cue below 0.85 or above 1.15), and the top-level insights (at most 5, ranked by the points they cost the score). 1.6.0 (ADR-0015): every new document is 1.6.0 and may carry the foot measures: faults with measure foot_rotation or ankle_inversion (body_part feet, joint an ankle, cue and words like any fault) and diagnostics.feet, written only when a feet file (Part 2 pose3d.json with extra_joints) was given for either clip. A document without them is exactly what 1.5.0 was apart from schema_version. 1.7.0 (ADR-0016): every new document is 1.7.0 and carries profile, the analysis profile that produced it (a non-empty string; the names are data in part5/profiles.json, today dance, rehab and fitness, fitness being the default and the unchanged analysis). A score is read within its profile. Under the dance profile only, score.components and each window's components carry tempo (points the take's pace cost) and the tempo insight's points equal it. A document before 1.7.0 has no profile and is read as fitness. The earlier field groups stay optional and are told apart by their fields. 1.8.0 (TICKET-043): every new document is 1.8.0 and may carry diagnostics.near_misses, the candidate faults detection considered and dropped: {total, omitted, items}, the items the largest first and at most 10, each a measure, side and direction with a frame past its threshold that failed persistence (reason persistence, with shortfall_frames) or was explained by a kept fault (reason explained_by); a take compared rep by rep adds the reasons reps and fitness. It is present whenever the take was compared (also with total 0) and absent when it could not be aligned. It changes no fault or score, is for people debugging a take and is not shown to the follower.",
+  "version": "1.9.0",
+  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score; 1.3.0: faults[].reps, diagnostics.guard.reps, diagnostics.expected_reference and score.per_rep, for a take compared one repetition at a time). A document without them keeps schema_version 1.2.0. A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed. 1.4.0 (ADR-0012): a take is always analysed. status.code is ok for every analysis; what used to be a refusal is an entry in the top-level warnings ([{code, text}]: low_match, moving_part_out_of_frame, not_enough_visible, no_usable_measures), with match ({quality ok|low, residual, timing_corr, limits}); on a low match each fault has confidence \"low\"; score is never null, is capped at 59 (grade F) when any warning is present, and then names the codes in score.capped_by. A document without warnings keeps its earlier schema_version. 1.5.0 (ADR-0014): every new document is 1.5.0 and carries cues: faults[].cue and cue_kind (position or range), the same on each score.timeline[].misses[] with its direction, score.timeline[].tempo and score.tempo ({ratio, cue}: follower seconds per example second, a cue below 0.85 or above 1.15), and the top-level insights (at most 5, ranked by the points they cost the score). 1.6.0 (ADR-0015): every new document is 1.6.0 and may carry the foot measures: faults with measure foot_rotation or ankle_inversion (body_part feet, joint an ankle, cue and words like any fault) and diagnostics.feet, written only when a feet file (Part 2 pose3d.json with extra_joints) was given for either clip. A document without them is exactly what 1.5.0 was apart from schema_version. 1.7.0 (ADR-0016): every new document is 1.7.0 and carries profile, the analysis profile that produced it (a non-empty string; the names are data in part5/profiles.json, today dance, rehab and fitness, fitness being the default and the unchanged analysis). A score is read within its profile. Under the dance profile only, score.components and each window's components carry tempo (points the take's pace cost) and the tempo insight's points equal it. A document before 1.7.0 has no profile and is read as fitness. The earlier field groups stay optional and are told apart by their fields. 1.8.0 (TICKET-043): every new document is 1.8.0 and may carry diagnostics.near_misses, the candidate faults detection considered and dropped: {total, omitted, items}, the items the largest first and at most 10, each a measure, side and direction with a frame past its threshold that failed persistence (reason persistence, with shortfall_frames) or was explained by a kept fault (reason explained_by); a take compared rep by rep adds the reasons reps and fitness. It is present whenever the take was compared (also with total 0) and absent when it could not be aligned. It changes no fault or score, is for people debugging a take and is not shown to the follower. 1.9.0 (TICKET-045, TICKET-046, docs/specs/second-opinion.md): every new document is 1.9.0. phrasing carries lang (the language of the fault lines, a listed BCP 47 primary subtag, en by default) and lang_requested when the request named a tag that is not listed as given; each phrasing.faults[] entry carries text (the line shown, equal to the fault's coaching) and lang (the line's own language: en for a line that fell back to the template). The optional top-level second_opinion is written when clips were given: Muse Spark's view of the take, labelled model_opinion and never read by the score, faults or insights; status ok, fallback (reason says why) or skipped (not attempted), per-fault verdicts {fault_index, agrees, note} and at most 2 observations {at_s, text, label}. The same 1.9.0 also carries score.uncapped ({value, grade}, Part 7 TICKET-155: the value and grade before the warning cap, present only when the cap lowered the value) and TICKET-048: the optional top-level source (the producing part; absent means part5) and the warnings code no_person, written only by Part 7's own analysis when Part 2 finds nobody in the take (schema_version 1.4.0 or later, source part7, faults [], score 0 F, no match).",
   "type": "object",
   "required": [
     "format",
@@ -18,6 +18,11 @@
     "schema_version": {
       "type": "string",
       "pattern": "^1\\.[0-9]+\\.[0-9]+$"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "1.9.0 (TICKET-048): the part that produced this document, part5 or part7 today. Absent means part5, so every document Part 5 writes omits it. Part 7 writes part7 on the analysis it makes itself when Part 2 finds nobody in the take (warnings code no_person)."
     },
     "profile": {
       "type": "string",
@@ -105,9 +110,29 @@
                   "string",
                   "null"
                 ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "description": "1.9.0: the line shown for this fault (equal to the fault's coaching)."
+              },
+              "lang": {
+                "type": "string",
+                "minLength": 1,
+                "description": "1.9.0: this line's language; en when it fell back to the template."
               }
             }
           }
+        },
+        "lang": {
+          "type": "string",
+          "minLength": 1,
+          "description": "1.9.0 (TICKET-046): the language the lines were asked in (en by default)."
+        },
+        "lang_requested": {
+          "type": "string",
+          "minLength": 1,
+          "description": "1.9.0: the tag the request named when it differs from lang (a region tag, or a language Part 5 does not list)."
         }
       }
     },
@@ -412,6 +437,30 @@
           },
           "description": "1.4.0: the warning codes that capped the value at 59."
         },
+        "uncapped": {
+          "type": "object",
+          "required": [
+            "value",
+            "grade"
+          ],
+          "properties": {
+            "value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "grade": {
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D",
+                "F"
+              ]
+            }
+          },
+          "description": "1.9.0 (Part 7 TICKET-155): the value and grade before the warning cap; present only when the cap lowered the value, so a reader can say what the warning cost. Never read back by the score."
+        },
         "basis": {
           "enum": [
             "windows",
@@ -570,7 +619,7 @@
     "warnings": {
       "type": "array",
       "minItems": 1,
-      "description": "1.4.0: why the grade is capped at F; present only when the take had a warning.",
+      "description": "1.4.0: why the grade is capped at F; present only when the take had a warning. A document with no_person alone (1.9.0) has no match, because nothing was compared.",
       "items": {
         "type": "object",
         "required": [
@@ -583,8 +632,10 @@
               "low_match",
               "moving_part_out_of_frame",
               "not_enough_visible",
-              "no_usable_measures"
-            ]
+              "no_usable_measures",
+              "no_person"
+            ],
+            "description": "no_person (1.9.0, TICKET-048): Part 2 found no person in the take; produced only by Part 7's own analysis (source part7), never by Part 5."
           },
           "text": {
             "type": "string",
@@ -693,6 +744,126 @@
               "null"
             ]
           }
+        }
+      }
+    },
+    "second_opinion": {
+      "type": "object",
+      "description": "1.9.0 (TICKET-045, contract C1): Muse Spark 1.3's second opinion, from one call that watched the teacher's recording and the student's take with the measured faults. The model's view: label it as such. The score, faults and insights never read it. Absent when no clip was given.",
+      "required": [
+        "status",
+        "reason",
+        "backend",
+        "model",
+        "verdicts",
+        "observations"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "fallback",
+            "skipped"
+          ],
+          "description": "ok: the model answered; fallback: a call was prepared or made and failed; skipped: not attempted (one clip, no key, live off)."
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why it is not ok; null when ok."
+        },
+        "backend": {
+          "type": "string",
+          "description": "meta-model-api"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "muse-spark-1.3 when ok, else null."
+        },
+        "lang": {
+          "type": "string",
+          "description": "The language of note and text (en)."
+        },
+        "verdicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "fault_index",
+              "agrees",
+              "note"
+            ],
+            "properties": {
+              "fault_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "agrees": {
+                "type": "boolean"
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 140
+              }
+            }
+          }
+        },
+        "observations": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "required": [
+              "at_s",
+              "text",
+              "label"
+            ],
+            "properties": {
+              "at_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 140
+              },
+              "label": {
+                "const": "model_opinion"
+              }
+            }
+          }
+        },
+        "rejected": {
+          "type": "array",
+          "description": "Items the guardrail dropped, with the reason; for debugging.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "verdict",
+                  "observation"
+                ]
+              },
+              "index": {
+                "type": "integer"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "description": "Tokens and USD of the call, at list rates."
         }
       }
     }

@@ -10,7 +10,9 @@ Endpoints, relative to the base path (docs/specs/staging.md):
                        server's default wording (`phrasing_default`, one of the offered; the page preselects it),
                        and the analysis profiles (`profiles`, in file order, and `profile_default`, ADR-0016;
                        both left out when part5/profiles.json will not load)
-    POST api/analyse   {expected, follower, phrasing, profile} -> {analysis, replay}; `profile` is optional and
+    POST api/analyse   {expected, follower, phrasing, profile, lang} -> {analysis, replay}; `lang` (TICKET-046) is an
+                       optional BCP 47 tag for the fault lines (a string; an unlisted one falls back to English,
+                       anything not a string is a 400); `profile` is optional and
                        omitted or null means fitness; a name that is not in part5/profiles.json is a 400. Two
                        samples whose labels name foot side files are compared with them (`diagnostics.feet`, ADR-0015)
     GET  api/contract  what `part5 contract --json` prints (schemas and compatibility table)
@@ -363,12 +365,12 @@ def _feet_of(request):
     return {**found[0].feet, **found[1].feet} if all(s is not None and s.feet for s in found) else {}
 
 
-def _analysis(expected, follower, phrasing, selected_by=None, profile=None, feet=None):
+def _analysis(expected, follower, phrasing, selected_by=None, profile=None, feet=None, lang=None):
     """The pipeline's answer and its replay. `feet` is `_feet_of(request)`; the files become `run` options through
     `feet_kwargs` and the document names them from the repository root, never by this server's absolute path."""
     names = feet or {}
     result = run(expected, follower, phrasing=phrasing, score=score_block, selected_by=selected_by, profile=profile,
-                 **feet_kwargs(names, ROOT))
+                 lang=lang, **feet_kwargs(names, ROOT))
     if "feet" in result.analysis.get("diagnostics", {}):
         result.analysis["diagnostics"]["feet"] = feet_diagnostics(result.analysis["diagnostics"]["feet"], names)
     return {"analysis": result.analysis, "replay": build_replay(result)}
@@ -487,6 +489,9 @@ def _analyse(body, client):
         raise ApiError(413, "upload", too_large_message("upload"))
     request = _read_request(body)
     profile = _profile_of(request)
+    lang = request.get("lang")
+    if lang is not None and not isinstance(lang, str):
+        raise ApiError(400, "lang", "lang: must be a language tag such as es or pt-BR")
     large = len(body) > MAX_UPLOAD_BYTES
     expected, expected_field = _resolve("expected", request.get("expected"), large)
     follower, follower_field = _resolve("follower", request.get("follower"), large)
@@ -502,7 +507,7 @@ def _analyse(body, client):
     try:
         with limited:
             return _respond(200, _in_worker(_analysis, expected, follower, phrasing, selected_by, profile,
-                                            _feet_of(request)))
+                                            _feet_of(request), lang))
     except (InputError, AnalysisError) as e:
         message = _plain(e)
         fields = {expected["path"]: expected_field, follower["path"]: follower_field}

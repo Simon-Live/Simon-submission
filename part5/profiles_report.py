@@ -69,11 +69,19 @@ def analyse_take(take, root=ROOT, profile=None):
 
 # --- the fitness baseline ---
 def analysis_digest(analysis, root=ROOT):
-    """sha256 of the analysis without `profile`, `schema_version` and `diagnostics.near_misses`, as canonical JSON
-    with the checkout's path taken off every file path, so the value does not depend on where the repository lives."""
-    doc = {k: v for k, v in analysis.items() if k not in ADDED_BY_PROFILES}
+    """sha256 of the analysis without `profile`, `schema_version`, `diagnostics.near_misses` and the 1.9.0 additions
+    (`second_opinion`, `phrasing.lang`, `phrasing.lang_requested`, `phrasing.faults[].text` and `.lang`; TICKET-045,
+    TICKET-046; `score.uncapped`, Part 7 TICKET-155), as canonical JSON with the checkout's path taken off every file
+    path, so the value does not depend on where the repository lives."""
+    doc = {k: v for k, v in analysis.items() if k not in ADDED_BY_PROFILES and k != "second_opinion"}
+    if isinstance(doc.get("score"), dict):
+        doc["score"] = {k: v for k, v in doc["score"].items() if k != "uncapped"}
     if "diagnostics" in doc:
         doc["diagnostics"] = {k: v for k, v in doc["diagnostics"].items() if k != "near_misses"}
+    if isinstance(doc.get("phrasing"), dict):
+        record = {k: v for k, v in doc["phrasing"].items() if k not in ("lang", "lang_requested")}
+        record["faults"] = [{k: v for k, v in e.items() if k not in ("text", "lang")} for e in record.get("faults", [])]
+        doc["phrasing"] = record
     text = json.dumps(doc, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(text.replace(f"{Path(root)}/", "").encode()).hexdigest()
 

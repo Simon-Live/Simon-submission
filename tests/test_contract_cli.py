@@ -38,7 +38,7 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.8.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.9.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
                                           ("metrics", "1.3.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
@@ -775,7 +775,7 @@ def test_the_table_and_contract_md_carry_the_profile_row_and_the_analysis_row_na
     assert row["verdict"] == "works with an option" and row["part5_role"] == "option for Part 7"
     assert "probe `part5 analyse --help` for `--profile`" in row["fix"] and "omitted means `fitness`" in row["fix"]
     analysis = next(r for r in rows if r["file"] == "`analysis.json`")
-    assert "1.2.0 to 1.8.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
+    assert "1.2.0 to 1.9.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
     text = (ROOT / "CONTRACT.md").read_text()
     assert contract.table_markdown([row]).splitlines()[-1] in text
     assert "[--profile {dance,rehab,fitness}]" in text

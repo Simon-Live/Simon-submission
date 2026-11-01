@@ -3,7 +3,7 @@ import os
 import argparse
 import sys
 
-from . import contract, doctor, profiles
+from . import contract, doctor, opinion, profiles
 from . import real
 from .io import InputError
 from .output import OutputError, write_analysis
@@ -48,6 +48,13 @@ def build_parser():
                    help="who the take is judged for (default fitness, the analysis as it is): dance and rehab are "
                    "looser about where a body part sits, rehab says 'Slower is fine' about pace, dance charges the "
                    "pace in the score; the tolerances are set by hand (docs/specs/profiles.md)")
+    a.add_argument("--lang", default=None, metavar="BCP47",
+                   help="the follower's language for the fault lines, a BCP 47 tag such as es or pt-BR (default en); "
+                   "a model writes them in live mode, an unlisted language falls back to English")
+    a.add_argument("--expected-video", metavar="MP4",
+                   help="optional: the teacher's recording as a video; with --follower-video and --live, Muse Spark "
+                   "watches both and gives its own opinion of each fault (second_opinion; the score never reads it)")
+    a.add_argument("--follower-video", metavar="MP4", help="optional: the student's take as a video (see --expected-video)")
     sv = sub.add_parser("serve", help="serve the web page and the analysis API")
     sv.add_argument("--host", default="127.0.0.1", help="address to listen on (default 127.0.0.1)")
     sv.add_argument("--port", type=int, default=8725, help="port to listen on (default 8725)")
@@ -74,7 +81,8 @@ def main(argv=None):
                          expected_visibility=args.expected_visibility,
                          expected_feet=args.expected_feet, follower_feet=args.follower_feet,
                          expected_feet_person=args.expected_feet_person,
-                         follower_feet_person=args.follower_feet_person, profile=profile)
+                         follower_feet_person=args.follower_feet_person, profile=profile, lang=args.lang)
+            result.analysis = opinion.attach(result, args.expected_video, args.follower_video, live=args.live)
             doc = write_analysis(args.out, result.analysis)
         except (InputError, AnalysisError, OutputError, profiles.ProfileError) as e:
             print(f"part5 analyse: {e}", file=sys.stderr)
@@ -94,6 +102,9 @@ def main(argv=None):
         print(f"{args.out}: {n} fault{'s' if n != 1 else ''}" + "".join(f"\n  - {f['text']}" for f in doc["faults"]))
         for w in doc.get("warnings", []):   # ADR-0012: a take is always analysed; the warning says why it is graded F
             print(f"  ! {w['text']}")
+        if "second_opinion" in doc:
+            block = doc["second_opinion"]
+            print(f"  second opinion: {block['status']}" + (f" ({block['reason']})" if block["reason"] else ""))
         return 0
     if args.command == "serve":
         from .server import serve

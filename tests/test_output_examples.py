@@ -58,7 +58,7 @@ def test_ac_nfr_j02_a_second_run_writes_the_same_bytes(rebuilt, tmp_path):
 def test_r11_a_golden_analysis_carries_what_a_real_run_carries(name):
     doc = json.loads((OUT / name).read_text())
     score = doc["score"]
-    assert doc["schema_version"] == "1.8.0" and doc["status"]["code"] == "ok"
+    assert doc["schema_version"] == "1.9.0" and doc["status"]["code"] == "ok"
     assert score["version"] == "simon.score.v1" and 0 <= score["value"] <= 100 and score["grade"] in "ABCDF"
     assert score["basis"] in ("windows", "reps") and score["timeline"] and score["tempo"] is not None
     assert all("tempo" in w for w in score["timeline"] if w["compared"])

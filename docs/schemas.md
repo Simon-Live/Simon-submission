@@ -88,7 +88,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.8.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.9.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -97,7 +97,7 @@ so the format can grow without breaking older readers. Live examples, generated 
 takes by `make output-examples` through the same pipeline and score hook `part5 analyse` uses (with the
 `template` phrasing, whatever the environment): `fixtures/output/analysis.example.json` (two faults),
 `fixtures/output/analysis.no-faults.example.json` (a correct take) and `fixtures/output/replay.example.json`
-(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.8.0):
+(the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.9.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
 Part 7 must read first.
 
@@ -114,11 +114,12 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.6.0` | faults with `measure` `foot_rotation` or `ankle_inversion` (`body_part` `feet`); `diagnostics.feet` (ADR-0015) | every new document is `1.6.0`; the foot fields appear only when a feet file was given for either clip |
 | `1.7.0` | `profile`; `score.components.tempo` and the same on each window, dance only (ADR-0016) | every new document is `1.7.0`, and `profile` is always present; the tempo points appear only under the dance profile |
 | `1.8.0` | `diagnostics.near_misses` (TICKET-043, `docs/specs/near-misses.md`) | every new document is `1.8.0`; the field is present whenever the take was compared, also when it lists nothing, and absent on a take that could not be aligned |
+| `1.9.0` | `phrasing.lang`, `phrasing.lang_requested`, `phrasing.faults[].text` and `.lang`; top-level `second_opinion` (TICKET-045, TICKET-046, `docs/specs/second-opinion.md`); `score.uncapped` (Part 7 TICKET-155); the top-level `source` and the `no_person` warning code (TICKET-048) | every new document is `1.9.0` and carries the language fields; `second_opinion` is written only when both clips were given as videos (`--expected-video`, `--follower-video`), with `status` `ok`, `fallback` or `skipped`, and is never read by the score; `score.uncapped` only when a warning's cap lowered the value; `source` and `no_person` only in Part 7's own analysis of a take with no person (below), never by Part 5 |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.8.0",
+  "schema_version": "1.9.0",
   "profile": "fitness",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
@@ -326,6 +327,9 @@ on each window; the three add up to `100 - value` within rounding), `params_sha2
   Under `rehab` the cue for a ratio above 1.15 reads "Slower is fine" instead of "Speed up to match the trainer".
 - `per_rep` (1.3.0): each accepted repetition's `value` and `grade`.
 - `capped_by` (1.4.0): the warning codes that capped `value` at 59, present only with `warnings`.
+- `uncapped` (1.9.0, Part 7 TICKET-155): `{value, grade}` before the cap, written only when the cap lowered `value`
+  (a one-fault take that scored 73 C and shows 59 F because of `low_match` keeps `uncapped: {value: 73, grade: "C"}`), so a
+  reader can say what the warning cost. Nothing reads it back: the score is the capped `value`.
 
 ## Replay: `replay.json` (`simon.replay.v1`, schema 1.0.0)
 
@@ -391,6 +395,7 @@ top-level `warnings: [{code, text}]`:
 | `moving_part_out_of_frame` | the part the example moves is not in frame in the take |
 | `not_enough_visible` | fewer than 3 measures are usable in both clips |
 | `no_usable_measures` | no measure can carry timing, or most of the body could not be measured: no faults, score 0 |
+| `no_person` | 1.9.0: Part 2 found no person in the take; written only by Part 7's own analysis (`source` `part7`), never by Part 5 |
 
 `match` is `{quality: "ok"|"low", residual, timing_corr, limits}` (null numbers when unmeasured); `quality` is `low`
 exactly when the guard would have refused. Both are written only with at least one warning, and then
@@ -400,6 +405,20 @@ detection use the usable measures (with fewer than 3, any visible one); on a low
 `score.capped_by` lists the codes. `part5 analyse` exits 0 for every written analysis, 1 for an unreadable or
 invalid input file, and no longer uses 3. A document written before 1.4.0 can still carry a refusal
 (`status.code` other than `ok`, `faults: []`, `score: null`): show it as a refusal, never as "no faults".
+
+## Part 7's own analysis: `source` and `no_person` (1.9.0, TICKET-048)
+
+`source` is an optional top-level string: the part that produced the document (`part5` or `part7` today). Absent
+means `part5`, and Part 5 never writes it, so every document `part5 analyse` writes is exactly what it was.
+
+When Part 2 finds nobody in a take, Part 7 has nothing to compare and writes its own `analysis.json`: `status` `ok`,
+`source` `part7`, a `warnings` entry with the code `no_person` ("Part 2 found no person in the take"; Part 5 never
+writes it), `faults: []`, `expected` and `follower` with their real `path`, a `score` of 0 (grade F) and no `match`,
+because nothing was compared. Its `schema_version` stays what Part 7 writes (`1.4.0` today). The schema validates it,
+`part5.output.validate_analysis` accepts it (a `match` is required for Part 5's own warning codes and is not for
+`no_person` alone) and `part5 doctor <file> --for part7` exits 0 with the warning and two notes: who wrote it, and
+that `faults: []` means nothing was looked at. A committed example is
+`fixtures/input/contract/part7/analysis.no-person.json`; `tests/test_part7_no_person.py` checks it.
 
 ## Coaching cues and insights (1.5.0, ADR-0014)
 

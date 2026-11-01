@@ -5,8 +5,9 @@ or `pipeline.run` without a `phrasing` takes the live default (ADR-0008). Withou
 shell would spend real Baseten calls with the operator's key. So every test starts with:
 
 - `SIMON5_LIVE` and `META_LIVE` unset, so the default backend is `template`;
-- the key file pointed at a path that does not exist and the usage ledger at a temp path, so even a test that turns
-  live mode on finds no key and writes no line to `~/.simon/baseten_usage.jsonl`;
+- the key files (Baseten, and the Meta Model API's for the second opinion) pointed at paths that do not exist and the
+  usage ledgers at temp paths, so even a test that turns live mode on finds no key and writes no line to
+  `~/.simon/baseten_usage.jsonl` or `~/.simon/meta_usage.jsonl`;
 - `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` unset in any case: a proxy on 127.0.0.1 passes the loopback rule
   below, so it could carry a test request off the host;
 - every socket connect, and every name lookup, for a host outside the loopback refused (`ConnectionRefusedError`),
@@ -29,6 +30,7 @@ import pytest
 
 LIVE_ENVS = ("SIMON5_LIVE", "META_LIVE")
 KEY_ENV, USAGE_ENV = "PART5_BASETEN_KEY_FILE", "PART5_BASETEN_USAGE_FILE"
+META_KEY_ENV, META_USAGE_ENV = "PART5_META_KEY_FILE", "PART5_META_USAGE_FILE"   # the second opinion (TICKET-045)
 PROXY_ENVS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
 PROFILE_NAMES = ("fitness", "dance", "rehab")
 BLIND_BASE = Path(__file__).resolve().parent.parent / "fixtures/input/expected/exercise/animation.json"
@@ -76,6 +78,8 @@ def no_live(mp, directory):
         mp.delenv(name)
     mp.setenv(KEY_ENV, str(directory / "no-such-key-file"))
     mp.setenv(USAGE_ENV, str(directory / "baseten_usage.jsonl"))
+    mp.setenv(META_KEY_ENV, str(directory / "no-such-meta-key-file"))
+    mp.setenv(META_USAGE_ENV, str(directory / "meta_usage.jsonl"))
 
 
 @pytest.fixture(scope="session", autouse=True)

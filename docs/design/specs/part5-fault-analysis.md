@@ -175,6 +175,9 @@ and the rep verdict that does not accept a take leaves the whole-clip comparison
 - New rules keys: `min_run_frames`, `min_overlap`. Starting values are the defaults above; tuning on
   seed 5 may change them, and the final values go in `docs/thresholds.md`.
 
+## Second opinion, varied lines and the follower's language (TICKET-045, TICKET-046; schema 1.9.0, `second-opinion.md`)
+With both clips as videos and live mode, one Muse Spark 1.3 call on the Meta Model API watches the teacher's recording and the student's take with the measured faults and writes the top-level `second_opinion`: agree or dispute per fault and at most two observations, labelled as the model's opinion and never read by the score. The timed prompt offers no closing phrase and a sentence shape per fault, and a model line that repeats a non-fact phrase of an earlier line falls back to its template line. `--lang` asks for the lines in the follower's language, held by the word test on an English twin (ASM-014).
+
 ## Near misses (TICKET-043; schema 1.8.0, `near-misses.md`)
 A candidate that detection considered and dropped (it had a frame past its threshold, then failed persistence, or a kept
 fault explained it) is recorded in the additive `diagnostics.near_misses`: measure, side, direction, size, the frames
@@ -206,7 +209,9 @@ refusal is a warning:
   `no_usable_measures`, and `match`: `{quality: "ok" | "low", residual, timing_corr, limits}`. A document with no
   warning has neither field.
 - `status.code` is `ok`. `score` is never null: it is computed, then capped at 59 (grade F) with `score.capped_by`
-  naming the codes. A take nothing could be aligned or measured on lists no fault, scores 0, and its replay plays
+  naming the codes. When the cap lowered the value, `score.uncapped: {value, grade}` (analysis 1.9.0) keeps the value before it, so
+  a reader can say what the warning cost (Part 7 TICKET-155: one fault, 73 C, shown as 59 F with no reason given).
+  A take nothing could be aligned or measured on lists no fault, scores 0, and its replay plays
   on a straight-line stand-in alignment.
 - On a low match each fault's `confidence` is the string `"low"`; the numeric confidence is not kept.
 - Only `AlignmentError` (a follower more than 2x faster than the example, or no path that ends where it must) makes
@@ -263,7 +268,17 @@ ACs (tests/test_cues.py):
 - `template` (default; the only backend in tests and `check-5`): returns each fault's `text`.
 - `local-llm`: Ollama on `http://127.0.0.1:11434` when `command -v ollama` succeeds and a model is
   pulled; model name from `PART5_OLLAMA_MODEL`. Any failure (no binary, no model, timeout 10 s, a line
-  that drops the joint, side or direction) falls back to `template` with `fallback_reason`.
+  that drops the joint, side or direction) falls back to `template` with `fallback_reason`. Two optional settings
+  for a slow local model (Part 7 TICKET-147, `muse-glimmer:30b`), both unset by default so nothing changes:
+  `PART5_LOCAL_LLM_TIMEOUT_S` replaces the 10 s per-call timeout of this backend (a positive number of seconds;
+  any other value keeps 10 s and logs a warning naming the variable), and `PART5_LOCAL_LLM_THINK` `0` or `false`
+  adds `"reasoning_effort": "none"` and `"think": false` to each request body (Ollama's OpenAI-compatible endpoint
+  ignores `think` and honours `reasoning_effort`; unset or `true` sends neither). The local backend's `max_tokens` is
+  2048, as for Muse Spark (it was 256; Glimmer reasons about 900 tokens even with `reasoning_effort: "none"`), and
+  `PART5_LOCAL_LLM_MAX_TOKENS` overrides it (a positive whole number; any other value keeps 2048 and logs a warning). An
+  answer cut off at the allowance (`finish_reason` `length`) with no content falls back with the reason
+  `local-llm: cut off at max_tokens`. A call starts only while the time spent plus the timeout fits in
+  `PART5_PHRASING_BUDGET_S` (default 20 s), so a longer timeout needs a longer budget.
 - `muse-spark` (Muse Spark served by Baseten; ADR-0005): OpenAI-compatible chat completions,
   `POST https://inference.baseten.co/v1/chat/completions`, header `Authorization: Bearer <key>`, model
   exactly `meta-models/muse-spark-open-1026`, `max_tokens` 512 or more (a reasoning model: a short budget
@@ -582,6 +597,11 @@ ASM-001 to ASM-012 in `docs/assumptions/` (ASM-008: Part 4 main's expected clips
 | `docs/design/specs/near-misses.md`, `tests/test_near_misses.py`, `tests/test_near_misses_reps.py` | TICKET-043 | yes |
 | `part5/measures.py` (`_sideways`), `part5/detect.py`, `part5/reps.py`, `part5/repwise.py`, `part5/pipeline.py`, `part5/replay.py`, `part5/calibrate.py`, `part5/check.py`, `part5/rules.json` (`min_frames_floor`) (attempt 4; `rep-persistence.md` has the full list) | TICKET-044 | yes |
 | `docs/design/specs/rep-persistence.md`, `tests/test_rep_persistence.py`, `scripts/attempt4_ablation.py` | TICKET-044 | yes |
+| `part5/opinion/`, `part5/phrasing/lang.py`, `part5/phrasing/variety.py`, `part5/phrasing/prompt.py`, `part5/phrasing/__init__.py`, `part5/cli.py`, `part5/api.py`, `part5/output.py`, `part5/doctor.py`, `part5/contract.py`, `contracts/analysis.schema.json` (1.9.0; `second-opinion.md` has the full list) | TICKET-045, TICKET-046 | yes |
+| `docs/design/specs/second-opinion.md`, `tests/test_second_opinion.py`, `tests/test_phrasing_variety.py`, `tests/test_phrasing_lang.py` | TICKET-045, TICKET-046 | yes |
+| `part5/phrasing/local_llm.py` (`grammar`), `part5/phrasing/template.py` (`_doubled_part`), `tests/test_phrasing_grammar.py` (the local backend's grammar rules and the doubled body-part test; `second-opinion.md` AC-VA-04, AC-VA-05) | Part 7 (Muse Glimmer) | yes |
+| `part5/score.py` (`score.uncapped`), `part5/profiles_report.py` (the digest leaves it out), `part5/output.py` (`source`, `no_person`, `READABLE_WARNING_CODES`), `part5/doctor.py`, `part5/contract.py`, `contracts/analysis.schema.json` (1.9.0), `fixtures/input/contract/part7/analysis.no-person.json` (`integration-contract.md` AC-C14) | TICKET-048, Part 7 TICKET-155 | yes |
+| `tests/test_part7_no_person.py`, `tests/test_score.py` (`score.uncapped`) | TICKET-048, Part 7 TICKET-155 | yes |
 | Tests: `tests/test_*.py` per module above | with each ticket | yes |
 
 ## Delivery Verification Plan

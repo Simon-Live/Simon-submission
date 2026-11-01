@@ -33,7 +33,7 @@ Part 5 needs no key for anything except live phrasing through Muse Spark.
 | Name | Read by Part 5 | How |
 |---|---|---|
 | `BASETEN_API_KEY` | yes, only for `--phrasing muse-spark` | From a file, never from an environment variable of that name. `PART5_BASETEN_KEY_FILE` names the file; without it the code uses its built-in default (`KEY_FILE` in `part5/phrasing/muse_spark.py`). The file is read at each call, stripped, and used only for the `Authorization` header. |
-| `MODEL_API_KEY` | no | Not read anywhere in `part5/`. |
+| `MODEL_API_KEY` | yes, only for the second opinion (`--expected-video` and `--follower-video` in live mode) | From a file, never from an environment variable of that name. `PART5_META_KEY_FILE` names the file; without it the code uses its built-in default (`KEY_FILE` in `part5/opinion/meta_api.py`). Read at each call, stripped, used only for the `Authorization` header. |
 | `HF_TOKEN` | no | Not read anywhere in `part5/`. Part 5 downloads no model. |
 
 A live call needs the key file and live mode: `--live` on `analyse` or `serve`, or `SIMON5_LIVE=1`, or
@@ -45,10 +45,24 @@ Other environment variables the code reads:
 |---|---|---|
 | `PART5_BASETEN_USAGE_FILE` | `~/.simon/baseten_usage.jsonl` | usage ledger, one line per Muse Spark call (token counts, model, UTC time, HTTP status; never the key or the text) |
 | `PART5_MUSE_PER_MINUTE` | 30 | Muse Spark calls per process per minute |
+| `PART5_META_KEY_FILE` | `~/.config/firm/operator-keys/MODEL_API_KEY` | the key file of the second opinion (Meta Model API, `--expected-video` with `--follower-video` in live mode); read at the call, stripped, used for the `Authorization` header only. Tests point it at a path that does not exist |
+| `PART5_META_USAGE_FILE` | `~/.simon/meta_usage.jsonl` | ledger of the second opinion, one line per call (model, UTC time, HTTP status, tokens, USD; never the key or the text). It is opened and locked before the call and held until the call is recorded, so two processes cannot both pass the cap. A call that failed with no answer from the API (a timeout, a connection error) is recorded at its pre-call estimate with `estimated: true` |
+| `PART5_META_SPEND_CAP_USD` | 5.00 | total USD the ledger may reach; checked before the clips are uploaded and again, with the call's estimate, before the call. A value that is not a finite number of 0 or more keeps the default and logs a warning |
+| `PART5_META_CALL_MAX_USD` | 0.50 | USD one call may be estimated at (the counted input plus the full output allowance, at Part 1's list rates); same rule for a bad value |
 | `PART5_PHRASING_BUDGET_S` | 20 | seconds one analysis may spend on phrasing |
 | `PART5_PHRASING_CONCURRENCY` | 4 | model calls in flight at once |
 | `PART5_OLLAMA_MODEL` | unset | model name for `--phrasing local-llm` (needs `ollama` on `PATH`, served on `127.0.0.1:11434`) |
+| `PART5_LOCAL_LLM_TIMEOUT_S` | unset (10 s, the phrasing default) | per-call timeout of `--phrasing local-llm` in seconds, for a slow model such as `muse-glimmer:30b`; a value that is not a positive number keeps the default and logs a warning. A call starts only while the time spent plus this timeout fits in `PART5_PHRASING_BUDGET_S`, so raise that too (for example 60 and 300) |
+| `PART5_LOCAL_LLM_THINK` | unset (the model's own behaviour) | `0` or `false` sends `reasoning_effort: "none"` and `think: false` with each `--phrasing local-llm` request, so a thinking model answers without a reasoning pass (Ollama's `/v1` endpoint honours the first and ignores the second); unset or `true` sends neither |
+| `PART5_LOCAL_LLM_MAX_TOKENS` | 2048 | completion allowance of `--phrasing local-llm` (a positive whole number; any other value keeps 2048 and logs a warning). A thinking model reasons first: `muse-glimmer:30b` uses about 935 tokens on the timed prompt. An answer cut off at the allowance with no content falls back with `local-llm: cut off at max_tokens` |
 | `PART3_DIR`, `PART4_DIR` | unset | local checkouts for `make contracts-check` and `make contracts-sync`; otherwise the repos are cloned from GitHub |
+
+The system message of `--phrasing local-llm` (and only that backend's) ends with grammar rules, `local_llm.grammar`: name
+the body part once, and for a timed fault write a sentence with a verb ("is" after one part, "are" after two or more).
+Muse Glimmer 30B had written "Arms elbows wider than the example at 0.4 s", the record's group word laid in front of the
+part the words name. The word test, for every backend, also rejects two body-part nouns side by side
+(`doubles the body part (arms elbows)`), so such a line falls back to its template line
+(`docs/specs/second-opinion.md`, AC-VA-04 and AC-VA-05).
 
 ## Commands
 
