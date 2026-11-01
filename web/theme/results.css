@@ -59,6 +59,8 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
 .rs-fig-ref line, .rs-fig-ref .rs-fig-head { stroke: var(--color-text); fill: none; }
 .rs-fig-you line, .rs-fig-you .rs-fig-head { stroke: var(--color-accent); fill: none; }
 .rs-fig-head { stroke-width: 3; }
+/* TICKET-116: a bone or head the camera never saw (Part 3 unseen mark) is drawn dimmed and dashed, not dropped */
+.rs-fig .rs-fig-dim { opacity: 0.35; stroke-dasharray: 3 4; }
 .rs-fig-off { fill: none; stroke: var(--color-bad); stroke-width: 2.5; }
 .rs-fig-you-wrap figcaption { color: var(--color-accent); }
 /* exercise: the reference in the accent, you in the alert color with the off joint ringed in it */
@@ -110,3 +112,81 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
 .rs-note-inner { background: var(--color-raised); }
 /* an open drift card carries the note, so the summary does not repeat it below */
 .rs:has(.rs-drift-detail) > .rs-note { display: none; }
+
+/* ----- result-redesign-additions.md ------------------------------------------------------------------------------- */
+/* R4 the reveal: the grade lands on the ring once the count-up ends (transform and opacity only: no layout shift) */
+.rs-ring-grade { position: absolute; top: 2px; right: 2px; min-width: 30px; height: 30px; padding: 0 var(--space-2); display: grid;
+  place-items: center; border-radius: var(--radius-pill); background: var(--color-accent); color: var(--color-on-accent);
+  font: var(--weight-black) var(--text-md)/1 var(--font-sans); box-shadow: 0 0 0 3px var(--color-bg); }
+.rs-ring[data-grade="D"] .rs-ring-grade, .rs-ring[data-grade="F"] .rs-ring-grade { background: var(--color-bad); }
+.rs-ring-value { font-variant-numeric: tabular-nums; }
+.rs-ring[data-reveal="playing"] .rs-ring-grade { opacity: 0; transform: scale(1.8); }
+.rs-ring[data-reveal="done"] .rs-ring-grade { animation: rs-grade-land var(--grade-land) var(--ease-out) both; }
+@keyframes rs-grade-land { from { opacity: 0; transform: scale(1.8) rotate(-12deg); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rs-ring[data-reveal] .rs-ring-grade { animation: none; opacity: 1; transform: none; } }
+
+/* R3 the 3D bodies in the worst moment's card, in place of the stick figures */
+.rs-mesh { display: grid; gap: var(--space-2); }
+.rs-mesh-stage { aspect-ratio: 1; max-height: 340px; width: 100%; border-radius: var(--radius-md); overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 0%, var(--color-raised) 0%, var(--color-surface) 70%); touch-action: pan-y; }
+.rs-mesh-legend { margin: 0; display: flex; justify-content: center; gap: var(--space-4); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+.rs-mesh-legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: var(--radius-pill); }
+.rs-mesh-ref::before { background: var(--mesh-trainer); opacity: 0.6; }
+.rs-mesh-you { color: var(--color-accent); }
+.rs-mesh-you::before { background: var(--mesh-you); }
+
+/* R6 slots another session fills; empty ones take no room */
+.rs-export:empty, .sr-voice-slot:empty, .sr-second-opinion:empty, .hm-slot:empty { display: none; }
+/* the fault card is the li: the row button fills it and the voice slot sits inside it, after the chips */
+body .simon-result .sr-fault-item { display: grid; border: 1px solid var(--sr-line); border-radius: 16px; background: var(--sr-surface);
+  overflow: hidden; transition: background 0.12s ease, border-color 0.12s ease; }
+body .simon-result .sr-fault-item > .sr-fault { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+body .simon-result .sr-fault-item:has(> .sr-fault:hover) { background: var(--sr-raised); }
+body .simon-result .sr-fault-item:has(> .sr-fault[aria-pressed="true"]) { border-color: var(--sr-hot);
+  background: color-mix(in srgb, var(--sr-hot) 10%, var(--sr-surface)); box-shadow: inset 4px 0 0 var(--sr-hot); }
+body .simon-result .sr-fault-item > .sr-voice-slot { padding: 0 16px 14px; }
+/* "Low confidence": the coral text on its soft fill (result.css had dark text on a dark fill, unreadable on the brand theme) */
+body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--color-bad-soft); border: 1px solid var(--color-bad-line); }
+/* any scroll to a part of the result (a seek, a module's own scrollIntoView) stops below the sticky header */
+.simon-result :is(section, li, .sr-zone, [data-at-s]) { scroll-margin-top: var(--header-height); }
+
+/* R1 "How this was made": the Meta models that ran, as a pipeline per clip */
+.hm { display: grid; gap: var(--space-4); margin-top: var(--space-4); padding: var(--space-4); border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--color-accent-soft), transparent 140px), var(--color-surface); border: 1px solid var(--color-line); }
+.hm-head { display: grid; gap: var(--space-1); }
+.hm-eyebrow { margin: 0; color: var(--color-accent); font: var(--weight-bold) var(--text-xs)/1 var(--font-sans); letter-spacing: 0.08em; text-transform: uppercase; }
+.hm-title { margin: 0; font-size: var(--text-lg); line-height: 1.15; }
+.hm-made { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.hm-group { display: grid; gap: var(--space-2); }
+.hm-clip { margin: 0; color: var(--color-text-muted); font: var(--weight-semibold) var(--text-xs)/1.2 var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; }
+.hm-steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.hm-step { position: relative; display: grid; grid-template-columns: 20px 1fr; gap: var(--space-3); padding-bottom: var(--space-3); }
+.hm-step:last-child { padding-bottom: 0; }
+/* the line between the dots: one clip's models ran one after the other */
+.hm-step:not(:last-child)::before { content: ""; position: absolute; left: 9px; top: 22px; bottom: 0; width: 2px; background: var(--color-line); }
+.hm-dot { width: 20px; height: 20px; margin-top: 1px; border-radius: var(--radius-pill); border: 2px solid var(--color-line); background: var(--color-bg); }
+.hm-step[data-tone="ran"] .hm-dot { border-color: var(--color-accent); background: var(--color-accent); box-shadow: inset 0 0 0 4px var(--color-bg); }
+.hm-step[data-tone="fallback"] .hm-dot { border-color: var(--color-warn); }
+.hm-body { display: grid; gap: 2px; min-width: 0; }
+.hm-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
+.hm-model { font-weight: var(--weight-bold); font-size: var(--text-md); }
+.hm-pill { padding: 3px var(--space-2); border-radius: var(--radius-pill); font: var(--weight-semibold) var(--text-xs)/1.2 var(--font-sans);
+  color: var(--color-text-muted); background: var(--color-raised); border: 1px solid var(--color-line); }
+.hm-step[data-tone="ran"] .hm-pill { color: var(--color-accent); background: var(--color-accent-soft); border-color: transparent; }
+.hm-step[data-tone="fallback"] .hm-pill { color: var(--color-warn); background: var(--color-warn-soft); border-color: var(--color-warn-line); }
+.hm-time { margin-left: auto; color: var(--color-text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.hm-task { margin: 0; font-size: var(--text-sm); }
+.hm-detail { margin: 0; color: var(--color-text-muted); font-size: var(--text-xs); }
+.hm-step[data-tone="quiet"] .hm-model, .hm-step[data-tone="quiet"] .hm-task { color: var(--color-text-muted); }
+.hm-total { margin: 0; padding-top: var(--space-3); border-top: 1px solid var(--color-line); color: var(--color-text-muted); font-size: var(--text-sm); }
+
+/* R5 the stage: the video with the 3D compare right under it, short enough that both fit one phone screen */
+.simon-result .sr-stage-zone { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); scroll-margin-top: var(--header-height); }
+.simon-result .sr-stage-zone .sr-coach { position: relative; margin-bottom: 0; }
+.simon-result .sr-stage-zone .sr-stage { aspect-ratio: auto; height: 30vh; min-height: 200px; max-height: 420px; }
+
+/* R2 the skeleton over your video */
+.simon-result .sv-host { position: relative; }
+.sv-skel { position: absolute; pointer-events: none; }
+.sv-toggle { min-height: var(--target-min); padding: 0 var(--space-3); }
+.sv-toggle[aria-pressed="false"] { color: var(--color-text-muted); }

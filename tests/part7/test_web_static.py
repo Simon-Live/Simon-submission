@@ -44,7 +44,7 @@ def test_testids_present(name, ids):
 
 
 def test_entry_row_testid_pattern():
-    assert "`entry-${c.id}`" in src("views/library")  # card data from model/library.js
+    assert "`entry-${entry.id}`" in src("model/library") and "c.testId" in src("views/library")  # card data from model/library.js
 
 
 def test_router_has_every_route():

@@ -61,6 +61,8 @@ Found while running the tests on a Mac with no GPU. None of it comes from the vi
 - **Own-analysis schema version.** Part 7's own `analysis.json` is now `1.5.0`, but Part 5's `1.5.0` already means
   "insights" and its quality fixtures say `1.6.0`. The Part 7 reader ignores the version, so nothing breaks, but the
   numbers should be agreed with Part 5.
+  Update (TICKET-118): agreed. The pinned Part 5 doctor accepts it up to `1.6.0` (from `1.7.0` it requires `profile`), so the
+  constant is `1.6.0` (`part7/quality_constants.py`).
 - **Dev setup.** A stray `~/package.json` (no `"type"`) makes Node 26 read the repo's `.js` files as CommonJS, so
   `node --test` fails on the ES module imports until a `{"type": "module"}` `package.json` is placed in the repo or
   the stray one is removed. The repo has no `package.json` of its own.

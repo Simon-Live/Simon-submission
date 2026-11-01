@@ -1,6 +1,6 @@
 export PATH := $(HOME)/.local/bin:$(PATH)
 
-.PHONY: setup test parts setup-parts videos chain serve dev check-7
+.PHONY: setup test parts setup-parts videos chain serve dev check-7 bench-faults
 
 setup:
 	uv sync
@@ -35,3 +35,7 @@ dev:
 # Note: make itself exits 2 when this recipe fails; run `uv run python -m part7 check` for the exact code.
 check-7:
 	@uv run python -m part7 check
+
+# Fault agreement on real takes (docs/specs/bench-faults.md); needs labels in bench/labels, exits 2 without them.
+bench-faults:
+	@uv run python -m part7.bench_faults

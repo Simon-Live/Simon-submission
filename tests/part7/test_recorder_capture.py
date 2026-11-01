@@ -78,8 +78,11 @@ def css(name: str) -> str:
 
 def test_camera_is_asked_for_on_mount_with_the_fallback_kept():
     c = src("capture")
-    assert "cameraAllowed" not in c and "permissions.query" not in c
-    assert re.search(r"\n  openPreview\(\);\n", c), "openPreview() runs when the capture mounts"
+    # Reconciled (TICKET-118, client a5e5503): cameraAllowed() reads the permission; only "denied" skips the
+    # on-mount prompt, every other answer (granted, prompt, unknown) keeps the operator's open-on-mount rule.
+    assert "export async function cameraAllowed" in c and "permissions.query" in c
+    assert 'state === "denied") { camStatus("blocked"); return; }' in c
+    assert re.search(r"\n    openPreview\(\);\n  \}\);\n", c), "openPreview() runs on mount unless the camera is denied"
     for key in ["blocked", "dark", "asking"]:
         assert f"{key}:" in c
     assert '"data-testid": "cam-open"' in c and '"Try again"' in c

@@ -1,0 +1,11 @@
+/* close calls (TICKET-100): near misses from Part 5 1.8.0, below "What to fix"; same card as "What to work on" */
+.sr-near { background: var(--sr-surface); border: 1px solid var(--sr-line); border-radius: 18px; padding: 18px; }
+.sr-near-note { margin: 0 0 12px; color: var(--sr-muted); font-size: 14px; text-wrap: pretty; }
+.sr-near-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sr-near-row { width: 100%; min-height: 48px; display: flex; align-items: center; padding: 10px 14px; border: 1px solid var(--sr-line);
+  border-radius: 14px; background: var(--sr-raised); color: var(--sr-text); font: inherit; text-align: left; box-sizing: border-box; }
+button.sr-near-row { cursor: pointer; }
+button.sr-near-row:hover { background: #222d3d; }
+button.sr-near-row:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.sr-near-words { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.sr-near-text { font-size: 15px; text-wrap: pretty; }

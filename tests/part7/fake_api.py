@@ -125,7 +125,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, page.read_bytes(), MIME.get(page.suffix, "text/html")) if ok else self.send(404, {"error": "not found"})
         if path == "api/config":
             return self.send(200, {"base": "", "limits": {"max_seconds": 60, "max_bytes": 95000000, "recorder_bps": 2500000},
-                                   "phrasing": "template", "movement": "lateral-raise", "fixture_result": True})
+                                   "phrasing": "template", "movement": "lateral-raise", "fixture_result": True,
+                                   "part5": {"lang": True, "video": True, "private": True}})
         if path == "api/health":
             return self.send(200, {"ok": True})
         if path == "__test/state":

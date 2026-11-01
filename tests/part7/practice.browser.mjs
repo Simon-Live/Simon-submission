@@ -44,7 +44,7 @@ const server = http.createServer((req, res) => {
   req.on("data", (c) => body.push(c));
   req.on("end", () => {
     let m;
-    if (p === "/api/config") return json(res, { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } });
+    if (p === "/api/config") return json(res, { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 }, part5: { lang: true, video: true, private: true } });
     if (p === "/api/client-log") { res.writeHead(204); return res.end(); }
     if (p === "/api/labels") return json(res, LABELS);
     if (p === "/catalog/api/entries") return json(res, { entries: ENTRIES });
@@ -95,32 +95,42 @@ const shot = (name) => page.screenshot({ path: path.join(out, `practice-${name}.
 const ok = (m) => console.log(`ok  ${m}`);
 const go = async (hash) => { await page.goto("about:blank"); await page.goto(`${BASE}${hash}`); };
 const store = (k) => page.evaluate((key) => localStorage.getItem(key), k);
-const shown = async () => (await page.locator('[data-testid="entries"] a.entry').evaluateAll((els) => els.map((e) => e.dataset.testid.replace("entry-", "")))).sort();
+// The routine library groups cards in sections by kind; the header switch (Exercise, Dance, Rehab) is the practice mode.
+const inSection = async (key) => (await page.locator(`[data-testid="section-${key}"] .lib-thumb`).evaluateAll((els) => els.map((e) => e.dataset.testid.replace(/^entry-(rehab-)?/, "")))).sort();
+const firstSection = () => page.locator("section.lib-section").first().getAttribute("data-testid");
+const pressed = (key) => tid(`kind-${key}`).getAttribute("aria-pressed");
 
 try {
-  // 1. Catalog: the mode filter and its persistence
+  // 1. Catalog: the kind switch and its persistence
   await go("#/");
   await tid("entry-sq").waitFor();
-  await page.waitForFunction(() => document.querySelector('[data-testid="tags-knee"]'));
-  assert.deepEqual(await shown(), ["knee", "salsa", "sq"]);
-  assert.equal(await tid("mode-filter").getAttribute("data-value"), "all");
-  await tid("mode-filter-dance").click();
-  assert.deepEqual(await shown(), ["salsa"]);
+  await page.waitForFunction(() => document.querySelector('[data-testid="section-rehab"] .lib-thumb'));
+  assert.deepEqual(await inSection("exercise"), ["knee", "sq"]);
+  assert.deepEqual(await inSection("dance"), ["salsa"]);
+  assert.deepEqual(await inSection("rehab"), ["knee"], "a rehab-tagged move also shows under Rehab");
+  const ids = await page.locator("[data-testid^=entry-]").evaluateAll((els) => els.map((e) => e.dataset.testid));
+  assert.equal(new Set(ids).size, ids.length, "negative: no test id repeats");
+  assert.equal(await tid("entry-knee").count(), 1, "entry-knee is on exactly one card");
+  assert.equal(await tid("entry-rehab-knee").count(), 1, "the Rehab copy has its own test id");
+  assert.equal(await pressed("exercise"), "true", "no stored choice reads as Exercise");
+  await tid("kind-dance").click();
+  assert.equal(await firstSection(), "section-dance");
   assert.equal(await store("simon.mode"), "dance");
-  await tid("mode-filter-rehab").click();
-  assert.deepEqual(await shown(), ["knee"], "rehab shows only the rehab-tagged movement");
-  assert.equal(await tid("entry-sq").count(), 0, "negative: the plain exercise is not under rehab");
-  await tid("mode-filter-fitness").click();
-  assert.deepEqual(await shown(), ["knee", "sq"]);
-  await tid("mode-filter-rehab").click();
+  await tid("kind-rehab").click();
+  assert.equal(await firstSection(), "section-rehab");
+  assert.deepEqual(await inSection("rehab"), ["knee"], "rehab shows only the rehab-tagged movement");
+  assert.ok(!(await inSection("rehab")).includes("sq"), "negative: the plain exercise is not under rehab");
+  assert.equal(await store("simon.mode"), "rehab");
+  await tid("kind-exercise").click();
+  assert.equal(await store("simon.mode"), "fitness", "Exercise is stored as fitness");
+  assert.equal(await firstSection(), "section-exercise");
+  await tid("kind-rehab").click();
   await go("#/");
-  await tid("entry-knee").waitFor();
-  assert.equal(await tid("mode-filter").getAttribute("data-value"), "rehab", "the choice survives a reload");
-  assert.deepEqual(await shown(), ["knee"]);
+  await tid("entry-knee").first().waitFor();
+  assert.equal(await pressed("rehab"), "true", "the choice survives a reload");
+  assert.equal(await firstSection(), "section-rehab");
   await shot("1-catalog-rehab");
-  await tid("mode-filter-all").click();
-  assert.deepEqual(await shown(), ["knee", "salsa", "sq"]);
-  ok("catalog: filter by mode, stored in simon.mode, kept after reload, All shows everything");
+  ok("catalog: the kind switch orders the sections, is stored in simon.mode, kept after reload");
 
   // 2. Follow screen: the default comes from the category until a choice is stored
   await page.evaluate(() => localStorage.clear());
@@ -175,9 +185,10 @@ try {
   await tid("trim-continue").click();
   await tid("analyse").waitFor();
   await tid("analyse").click();
-  await page.waitForURL(/#\/job\/fj1/);
+  await page.waitForURL(/#\/(job|result)\/fj1/);
   assert.deepEqual(posts.at(-1).section, { start_ms: 0, end_ms: 4000, index: 1, count: 3, speed: 0.5 });
   assert.equal(posts.at(-1).mode, "rehab");
+  assert.equal("lang" in posts.at(-1), false, "no language is sent until the person picks one");
   assert.deepEqual(JSON.parse(await store("simon.practice.sq")).pending, { key: "s1@slow", job: "fj1" });
   await go("#/follow/sq");
   await tid("ladder").waitFor();
@@ -218,7 +229,7 @@ try {
   assert.equal(rehab.section, "Section 1 of 3");
   assert.equal(rehab.back, true);
   const profiled = await note(JOBS.fj1, { score: { value: 85 }, profile: "rehab" });
-  assert.match(profiled.scoring, /^Scored with rehab rules\. These coaching rules are more forgiving\. They are not a more accurate measure\.$/);
+  assert.match(profiled.scoring, /^Scored with rehab rules\. These practice rules are more forgiving\. They are not a more accurate measure\.$/);
   assert.doesNotMatch(profiled.scoring, /standard rules/);
   const part7 = await note(JOBS.fj1, { score: { value: 85 }, profile: "dance", profile_source: "part7-rules" });
   assert.match(part7.scoring, /^Scored with dance rules\./, "a Part 7 profile reads like a Part 5 one");
@@ -241,7 +252,7 @@ try {
     await tid("trim-continue").click();
     await tid("analyse").waitFor();
     await tid("analyse").click();
-    await page.waitForURL(/#\/job\/fj1/);
+    await page.waitForURL(/#\/(job|result)\/fj1/);
     return posts.at(-1);
   };
   await page.evaluate(() => localStorage.clear());
@@ -252,13 +263,16 @@ try {
   let sent = await takeOne();
   assert.equal(sent.challenge_id, "chOpen", "the challenge id travels with the take");
   assert.equal("mode" in sent, false, "negative: no mode was chosen, so none is sent (the default is for presets only)");
+  assert.equal("lang" in sent, false, "no language is sent until the person picks one");
   assert.equal(await store("simon.mode"), null);
   await go("#/follow/sq/c/chEnded");
   await tid("follow-mode").waitFor();
   await page.waitForTimeout(400);
   assert.equal(await tid("follow-challenge").isHidden(), true, "an ended challenge is not offered");
+  await page.evaluate(() => localStorage.setItem("simon.lang", "es"));
   sent = await takeOne();
   assert.equal("challenge_id" in sent, false, "negative: an ended challenge is not sent");
+  assert.equal(sent.lang, "es", "the picked language (simon.lang) is sent with the take");
   await go("#/follow/salsa/c/chOpen");
   await tid("follow-mode").waitFor();
   await page.waitForTimeout(400);

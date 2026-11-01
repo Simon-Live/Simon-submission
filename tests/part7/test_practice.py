@@ -10,7 +10,7 @@ import pytest
 
 from part7 import chain, modes, sections
 from part7.parts import p5_analyse, probe
-from support import Api, ffmpeg_video, make_lock
+from support import Api, make_lock
 from test_server import _fake_follower, _upload
 from test_trainer_chain_and_harness import _capture_runner, step
 

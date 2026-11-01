@@ -107,6 +107,11 @@ def slow_stage_limit(stage: str) -> float:
     return env_float(f"SIMON7_SLOW_STAGE_{stage.upper()}_S", env_float("SIMON7_SLOW_STAGE_S", 300.0))
 
 
+def secs(value: float) -> str:
+    """Seconds for a log line or note: one decimal at most, no trailing `.0` (`26.5`, `90`). TICKET-101."""
+    return f"{round(float(value), 1):g}"
+
+
 def _value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"

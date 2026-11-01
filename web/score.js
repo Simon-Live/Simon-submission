@@ -22,6 +22,34 @@ export function el(tag, attrs = {}, ...kids) {
   return node;
 }
 
+// TICKET-155: why a score is capped (Part 5 ADR-0012: any warning caps the value at F, `score.capped_by` names the
+// warning codes). Without this line a one-fault take read as "one fault cost 40 points".
+const CAP_REASONS = {
+  low_match: "this take does not closely match the trainer's movement",
+  different_movement: "this looks like a different movement from the trainer's",
+  moving_part_out_of_frame: "a moving part of your body was out of frame",
+  not_enough_visible: "not enough of your body was in view",
+  no_usable_measures: "nothing in this take could be measured against the trainer",
+  no_person: "no person was found in this take",
+};
+
+/**
+ * The score card's line on a capped score, or null when nothing capped it. Reads `capped_by` and, when Part 5
+ * writes it, `uncapped: {value, grade}`; computes nothing.
+ */
+export function capNote(score) {
+  // quality_* caps are worded by qualityCapText (quality-result.js); this note covers the other codes
+  const codes = (score && Array.isArray(score.capped_by) ? score.capped_by : []).filter((c) => !(typeof c === "string" && c.startsWith("quality_")));
+  if (!codes.length) return null;
+  const reasons = [...new Set(codes.map((c) => CAP_REASONS[c] || "the take has a warning"))];
+  let note = `Graded F at most: ${reasons.join("; ")}.`;
+  const u = score.uncapped;
+  if (u && typeof u.value === "number" && typeof u.grade === "string" && u.value > score.value) {
+    note += ` Before the limit it scored ${u.value} (${u.grade}).`;
+  }
+  return note;
+}
+
 /** True when the analysis carries a usable score object. */
 export function hasScore(analysis) {
   const s = analysis && analysis.score;
@@ -78,9 +106,12 @@ export function renderScore(root, analysis) {
     rule.hidden = !open;
     gradeBtn.setAttribute("aria-expanded", String(open));
   });
-  panel.append(top, barWrap, rule);
+  panel.append(top, barWrap);
+  const note = capNote(analysis.score);
+  if (note) panel.append(el("p", { class: "sr-score-cap", "data-testid": "score-cap", text: note }));
   const cap = qualityCapText(analysis);
   if (cap) panel.append(el("p", { class: "sr-quality-cap", "data-testid": "quality-cap", text: cap }));
+  panel.append(rule);
   root.append(panel);
   return panel;
 }

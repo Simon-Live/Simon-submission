@@ -51,3 +51,24 @@ test("rehab: tagged entries show under Rehab, first when chosen, and still under
   assert.equal(lib.sections.at(0).cards.at(0).id, "squat");
   assert.equal(libraryOf(E, { kind: "rehab" }).sections.at(0).key, "rehab"); // chosen: shown even when empty
 });
+
+test("rehab: each test id appears once; entry-<id> stays on the category card", () => {
+  const labels = { squat: { tags: ["rehab"] }, misc: { tags: ["rehab"] } };
+  const lib = libraryOf(E, { kind: "exercise", labels });
+  const ids = lib.sections.flatMap((s) => s.cards.map((c) => c.testId));
+  assert.equal(new Set(ids).size, ids.length);
+  const card = (key, id) => lib.sections.find((s) => s.key === key).cards.find((c) => c.id === id);
+  assert.equal(card("exercise", "squat").testId, "entry-squat");
+  assert.equal(card("rehab", "squat").testId, "entry-rehab-squat");
+  assert.equal(card("rehab", "misc").testId, "entry-misc", "an uncategorised rehab entry has the one card");
+  assert.ok(!lib.sections.some((s) => s.key === "other"), "negative: it is not repeated under More moves");
+  const plain = libraryOf(E, { kind: "exercise" }).sections.flatMap((s) => s.cards);
+  assert.ok(plain.every((c) => c.testId === `entry-${c.id}`), "without tags every card keeps entry-<id>");
+});
+
+test("the submission profile hides the Rehab section, even when rehab was chosen", () => {
+  const labels = { squat: { tags: ["rehab"] } };
+  const lib = libraryOf(E, { kind: "rehab", labels, showRehab: false });
+  assert.ok(!lib.sections.some((s) => s.key === "rehab"));
+  assert.equal(lib.sections.at(0).key, "exercise");
+});

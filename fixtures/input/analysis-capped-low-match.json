@@ -1,0 +1,266 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.6.0",
+  "expected": {
+    "path": "expected.json"
+  },
+  "follower": {
+    "path": "follower/follower.json"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [
+    {
+      "measure": "upper_arm_out",
+      "measure_kind": "direction",
+      "joint": "shoulder",
+      "body_part": "arms",
+      "side": "both",
+      "direction": "more",
+      "magnitude_deg": 46.8,
+      "peak_deg": 67.3,
+      "threshold_deg": 10.0,
+      "unit": "degrees",
+      "expected_frames": [
+        57,
+        127
+      ],
+      "follower_frames": [
+        33,
+        68
+      ],
+      "runs": [
+        [
+          0,
+          25
+        ],
+        [
+          57,
+          127
+        ],
+        [
+          142,
+          147
+        ]
+      ],
+      "phase": [
+        0.275,
+        0.614
+      ],
+      "coverage": 1.0,
+      "confidence": "low",
+      "text": "elbows much wider than the example",
+      "cue": "Keep your elbows closer in",
+      "cue_kind": "range",
+      "follower_t_s": [
+        1.1,
+        2.267
+      ],
+      "at_s": 1.1,
+      "follower_runs": [
+        [
+          0,
+          17
+        ],
+        [
+          33,
+          68
+        ],
+        [
+          75,
+          78
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "elbows much wider than the example at 1.1 s",
+      "joints": [
+        "left_shoulder",
+        "right_shoulder"
+      ],
+      "coaching": "Your elbows are much wider than the example at 1.1 s, nice effort."
+    }
+  ],
+  "warnings": [
+    {
+      "code": "low_match",
+      "text": "This take doesn't closely match the trainer's movement, so the grade is capped at F. Check that you picked the right movement and that the whole movement is in the take."
+    }
+  ],
+  "match": {
+    "quality": "low",
+    "residual": 0.4709,
+    "timing_corr": 0.5038,
+    "limits": {
+      "max_residual": 0.5677,
+      "min_timing_corr": 0.8336
+    }
+  },
+  "diagnostics": {
+    "alignment_residual": 0.4709,
+    "alignment_measures": [
+      "left_upper_arm_out",
+      "right_upper_arm_out",
+      "neck_lean_forward"
+    ],
+    "follower_span": [
+      0,
+      150
+    ],
+    "warnings": [
+      "only 59% of the follower clip matched the expected movement: fine if the rest is standing still, but if the follower is much slower than the example or repeats the movement, timing and faults may be wrong"
+    ],
+    "guard": {
+      "residual": 0.4709,
+      "timing_corr": 0.5038,
+      "span_share": 0.5922,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    },
+    "visibility": {
+      "usable_measures": 9,
+      "excluded": [
+        "left_elbow_flexion",
+        "left_knee_flexion",
+        "left_knee_valgus",
+        "left_forearm_out",
+        "left_thigh_out",
+        "left_thigh_forward",
+        "left_foot_out",
+        "left_upper_arm_forward",
+        "right_elbow_flexion",
+        "right_knee_flexion",
+        "right_knee_valgus",
+        "right_forearm_out",
+        "right_thigh_out",
+        "right_thigh_forward",
+        "right_foot_out",
+        "right_upper_arm_forward",
+        "trunk_lean_forward",
+        "trunk_lean_side",
+        "head_forward",
+        "left_wrist_height",
+        "right_wrist_height",
+        "left_wrist_out",
+        "right_wrist_out"
+      ],
+      "rule": "a measure is used when all its joints are seen (conf is not the 0.3 unseen mark) in at least 80% of the clip's frames; the take is compared on the measures usable in both clips",
+      "moving_measures": [
+        "left_elbow_flexion",
+        "left_upper_arm_out",
+        "left_forearm_out",
+        "left_upper_arm_forward",
+        "right_elbow_flexion",
+        "right_upper_arm_out",
+        "right_forearm_out",
+        "right_upper_arm_forward",
+        "head_forward",
+        "neck_lean_forward",
+        "left_wrist_height",
+        "right_wrist_height",
+        "left_wrist_out",
+        "right_wrist_out"
+      ],
+      "moving_usable": [
+        "left_upper_arm_out",
+        "right_upper_arm_out",
+        "neck_lean_forward"
+      ]
+    }
+  },
+  "insights": [
+    {
+      "cue": "Keep your elbows closer in",
+      "why": "Elbows much wider than the example at 1.1 s",
+      "kind": "range",
+      "at_s": 1.1,
+      "window": 0,
+      "points": 23.3,
+      "measure": "upper_arm_out",
+      "side": "both",
+      "joint": "shoulder"
+    },
+    {
+      "cue": "Slow down to match the trainer",
+      "why": "You took 72% of the trainer's time",
+      "kind": "tempo",
+      "at_s": 0.0,
+      "window": 0,
+      "points": null,
+      "measure": null,
+      "side": null,
+      "joint": null
+    }
+  ],
+  "phrasing": {
+    "requested": "muse-spark",
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "faults": [
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null
+      }
+    ],
+    "selected_by": "flag"
+  },
+  "score": {
+    "version": "simon.score.v1",
+    "value": 59,
+    "grade": "F",
+    "components": {
+      "faults": 23.25,
+      "similarity": 4.0
+    },
+    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.0,
+          5.0
+        ],
+        "value": 73,
+        "grade": "C",
+        "components": {
+          "faults": 23.25,
+          "similarity": 4.0
+        },
+        "misses": [
+          {
+            "text": "Your elbows are much wider than the example at 1.1 s, nice effort.",
+            "measure": "upper_arm_out",
+            "side": "both",
+            "joint": "shoulder",
+            "t_s": [
+              1.1,
+              2.267
+            ],
+            "at_s": 1.1,
+            "points": 23.3,
+            "cue": "Keep your elbows closer in",
+            "cue_kind": "range",
+            "direction": "more"
+          }
+        ],
+        "tempo": {
+          "ratio": 0.72,
+          "cue": "Slow down to match the trainer"
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.72,
+      "cue": "Slow down to match the trainer"
+    },
+    "capped_by": [
+      "low_match"
+    ]
+  }
+}

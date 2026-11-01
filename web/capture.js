@@ -5,6 +5,7 @@
 import { h, mmss } from "./ui.js";
 import { clientLog } from "./api.js";
 import { openTrimEditor } from "./trim.js";
+import { releaseMediaUrl } from "./media-url.js";
 import { PRERECORD_THRESHOLDS as QUALITY_THRESHOLDS } from "./quality-constants.js";
 import { measurePreview, previewCodes, updateTipState, visibleTips } from "./quality-check.js";
 import {
@@ -23,12 +24,44 @@ export const CAMERA_TEXT = {
 const NO_PICTURE_MS = 3000; // a stream with no frame after this long is reported (another app holds the camera)
 export const MIME_ORDER = ["video/webm;codecs=vp9", "video/webm", "video/mp4"];
 
+/**
+ * The browser's camera permission: "granted", "prompt", "denied", or "unknown" when the Permissions API is missing
+ * or throws (Safari, some Firefox). Client a5e5503 + operator TICKET-063: see docs/specs/recorder.md.
+ */
+export async function cameraAllowed(nav = globalThis.navigator) {
+  try {
+    const status = await nav.permissions.query({ name: "camera" });
+    return status.state === "granted" || status.state === "prompt" || status.state === "denied" ? status.state : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+// A trainer take carries sound (the narration cues come from it); the codec list names an audio codec.
+export const MIME_ORDER_AUDIO = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm;codecs=h264,opus", "video/webm", "video/mp4"];
+export const AUDIO_OFF_HINT = "The microphone is off, so this take has no sound and no spoken cues. Allow it in the browser's site settings to record with sound.";
+
 /** "640x480" from a width and height; "" when either is unknown. */
 export const sizeText = (w, h2) => (w > 0 && h2 > 0 ? `${w}x${h2}` : "");
 
-export function pickMimeType(MR = globalThis.MediaRecorder) {
+export function pickMimeType(MR = globalThis.MediaRecorder, withAudio = false) {
   if (!MR || typeof MR.isTypeSupported !== "function") return "";
-  return MIME_ORDER.find((t) => MR.isTypeSupported(t)) || "";
+  return (withAudio ? MIME_ORDER_AUDIO : MIME_ORDER).find((t) => MR.isTypeSupported(t)) || "";
+}
+
+/**
+ * The camera stream. `audio` is true for a trainer take only. A refused microphone falls back to video only
+ * (audioOff true, so the screen can say so); a refused camera still throws.
+ */
+export async function requestStream(mediaDevices, audio) {
+  const video = { facingMode: "user" };
+  if (!audio) return { stream: await mediaDevices.getUserMedia({ video, audio: false }), audioOff: false };
+  try {
+    const stream = await mediaDevices.getUserMedia({ video, audio: true });
+    return { stream, audioOff: stream.getAudioTracks().length === 0 };
+  } catch (err) {
+    const stream = await mediaDevices.getUserMedia({ video, audio: false });
+    return { stream, audioOff: true, audioError: err };
+  }
 }
 
 /** Options handed to MediaRecorder; kept pure so a static test can read them. */
@@ -61,7 +94,9 @@ function selectField(id, label, values, current, text, onchange) {
  * fn(take, {source, countdownUsed, manual}) when a take arrives; reset() returns to the preview.
  * `reference` (follower only, reference.js) is docked beside the preview, shown in the countdown, and plays from its end.
  */
-export function mountCapture(root, limits, { reference = null, countdownDefault = null } = {}) {
+export function mountCapture(root, limits, { reference = null, countdownDefault = null, audio: audioOpt = false } = {}) {
+  // `audio` is a boolean, or a function read at each use (the trainer's Group mode records no sound: nothing transcribes it)
+  const wantAudio = () => (typeof audioOpt === "function" ? Boolean(audioOpt()) : Boolean(audioOpt));
   let stream = null;
   let recorder = null;
   let chunks = [];
@@ -97,7 +132,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   const live = h("video", { class: "mirror", muted: true, playsinline: true, "data-testid": "preview", "aria-label": "Camera preview" });
   live.muted = true;
-  const playback = h("video", { controls: true, playsinline: true, hidden: true, "data-testid": "take-preview", "aria-label": "Your take" });
+  const playback = h("video", { controls: true, preload: "auto", playsinline: true, hidden: true, "data-testid": "take-preview", "aria-label": "Your take" });
   const badge = recBadge();
   const camText = h("p", { class: "cam-text", "data-testid": "camera-status", text: CAMERA_TEXT.idle });
   const camOpen = h("button", { type: "button", class: "btn primary", "data-testid": "cam-open", text: "Open camera", onclick: () => openPreview() });
@@ -111,6 +146,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   const timer = h("span", { class: "timer", "data-testid": "timer", "aria-live": "off", text: `0:00 / ${mmss(RAW_LIMIT_S)}` });
   const error = h("p", { class: "error", role: "alert", "data-testid": "capture-error", hidden: true });
   const info = h("p", { class: "hint", "data-testid": "take-info", hidden: true });
+  const audioHint = h("p", { class: "hint", "data-testid": "audio-hint", role: "status", hidden: true, text: AUDIO_OFF_HINT });
 
   const start = h("button", { type: "button", class: "btn primary", "data-testid": "cam-start", text: "Record", onclick: () => startRecording() });
   const stop = h("button", { type: "button", class: "btn danger", "data-testid": "cam-stop", text: "Stop", hidden: true, onclick: () => stopRecording() });
@@ -120,10 +156,18 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   const camRow = reference ? h("div", { class: "ref-row" }, stage) : null;
   if (reference) reference.dock(camRow, "live");
   root.append(camRow || stage, framing, qualityTips, opts, h("div", { class: "row between" }, timer, h("div", { class: "row" }, start, stop, upload, input)), info, error);
+  framing.after(audioHint); // the microphone hint sits under the framing hint
 
   // Operator 2026-10-30: the live preview shows as soon as the screen opens, before Record, on Record and Follow.
   // The camera is asked for on mount; a refused, blocked or dark camera leaves Open camera (Try again) and Upload.
-  openPreview();
+  // Reconciled with the client's a5e5503: when the browser already says "denied", no prompt is raised on load (it
+  // can be blocked or missed and leave a black box); the blocked state with Open camera / Try again shows at once.
+  // "granted", "prompt" and "unknown" (no Permissions API) keep the operator's open-on-mount rule.
+  cameraAllowed().then((state) => {
+    if (destroyed || take) return;
+    if (state === "denied") { camStatus("blocked"); return; }
+    openPreview();
+  });
 
   function setError(msg) {
     error.textContent = msg || "";
@@ -136,7 +180,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   function setTake(blob, label) {
     take = blob;
-    if (takeUrl) URL.revokeObjectURL(takeUrl);
+    releaseMediaUrl(playback, takeUrl); // detach the element first; a retake must not leave a failed blob load
     takeUrl = blob ? URL.createObjectURL(blob) : null;
     playback.src = takeUrl || "";
     playback.hidden = !blob;
@@ -233,7 +277,13 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     }
     camStatus("asking");
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      const got = await requestStream(navigator.mediaDevices, wantAudio());
+      stream = got.stream;
+      audioHint.hidden = !(wantAudio() && got.audioOff);
+      if (wantAudio() && got.audioOff) {
+        console.warn("[capture] microphone not available:", got.audioError && got.audioError.name);
+        clientLog("warn", "microphone_off", { name: got.audioError && got.audioError.name });
+      }
     } catch (err) {
       console.warn("[capture] camera refused:", err && err.name, err && err.message);
       clientLog("warn", "camera_refused", { name: err && err.name, message: err && err.message });
@@ -329,9 +379,12 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   function beginRecorder(withCountdown) {
     chunks = [];
-    const mimeType = pickMimeType();
+    const sound = wantAudio() && stream.getAudioTracks().length > 0;
+    const mimeType = pickMimeType(globalThis.MediaRecorder, sound);
+    // a stream opened with sound before the person switched to Group is recorded without its audio tracks
+    const feed = !sound && stream.getAudioTracks().length > 0 ? new MediaStream(stream.getVideoTracks()) : stream;
     try {
-      recorder = new MediaRecorder(stream, recorderOptions(limits, mimeType));
+      recorder = new MediaRecorder(feed, recorderOptions(limits, mimeType));
     } catch (err) {
       console.warn("[capture] recorder did not start:", err && err.name);
       clientLog("error", "recorder_failed", { name: err && err.name, message: err && err.message, mime: mimeType });
@@ -396,11 +449,9 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     const url = URL.createObjectURL(blob);
     const probe = document.createElement("video");
     probe.muted = true;
-    probe.preload = "metadata";
+    probe.preload = "auto"; // fetch the whole take, so detaching it later cancels no request (media-url.js)
     const done = (detail, level = "info") => {
-      probe.removeAttribute("src");
-      probe.load();
-      URL.revokeObjectURL(url);
+      releaseMediaUrl(probe, url);
       stage.dataset.takeSize = detail.take || "";
       console.info("[capture] take frame:", detail.take || "unknown", "camera", size);
       clientLog(level, "take_dimensions", detail);
@@ -439,7 +490,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
       if (recorder) recorder.onstop = null;
       if (recorder && recorder.state !== "inactive") recorder.stop();
       releaseCamera();
-      if (takeUrl) URL.revokeObjectURL(takeUrl);
+      releaseMediaUrl(playback, takeUrl);
     },
   };
 }

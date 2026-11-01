@@ -32,6 +32,9 @@ LEVELS = {"info": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
 _CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\ud800-\udfff]")
 # What json.dumps(ensure_ascii=False) leaves raw inside a string and the log line must not carry raw.
 _JSON_ESCAPE = re.compile("[\x7f-\x9f\u2028\u2029\ud800-\udfff]")
+# TICKET-174: a route with arguments (`#/result/<job>`, `#/signin/<token>`) keeps its name only, so an old cached
+# client cannot put a job id or a sign-in token in the log. In `detail` (JSON text) a quote ends the argument.
+_ROUTE_ARGS = re.compile(r'(#/[A-Za-z0-9_-]+)/[^\s"\\]+')
 MSG_BAD = "The log event needs level info, warn or error, an event name of 64 characters at most, a detail object and a page."
 MSG_LARGE = "The log event is too large (4 KB at most)."
 MSG_RATE = "Too many log events. Try again in a minute."
@@ -81,8 +84,9 @@ def parse(raw: bytes) -> tuple[int, dict[str, Any] | str]:
     text = json.dumps(detail, separators=(",", ":"), ensure_ascii=False, sort_keys=True)
     if len(text.encode("utf-8", "surrogatepass")) > DETAIL_MAX:
         return (413, MSG_LARGE)
+    text = _ROUTE_ARGS.sub(r"\1", text)
     text = _JSON_ESCAPE.sub(lambda m: f"\\u{ord(m.group()):04x}", text)  # the same JSON, on one line, writable
-    return (200, {"level": level, "event": event, "detail": text, "page": _CONTROL.sub(" ", page)[:PAGE_MAX]})
+    return (200, {"level": level, "event": event, "detail": text, "page": _ROUTE_ARGS.sub(r"\1", _CONTROL.sub(" ", page))[:PAGE_MAX]})
 
 
 def error_fields(event: dict[str, Any]) -> dict[str, Any]:

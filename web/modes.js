@@ -1,6 +1,7 @@
-// Modes: dance, rehab, fitness (practice-and-modes.md "Modes"). A mode changes how Part 7 coaches and paces
-// practice. It does not change the score unless Part 5 offers a scoring profile (analysis.profile says so).
+// Modes: dance, rehab, fitness (practice-and-modes.md "Modes"). A mode changes how Part 7 guides and paces
+// practice. The submission profile (flags.js) hides the picker and every mode line; the code stays. It does not change the score unless Part 5 offers a scoring profile (analysis.profile says so).
 import { h, ensureCss } from "./ui.js";
+import { showModes } from "./flags.js";
 
 export const MODES = ["dance", "rehab", "fitness"];
 export const KEY = "simon.mode";
@@ -29,7 +30,7 @@ export const TEXT = {
   noProfile: "This score uses the standard rules.",
   profile: (p) => `Scored with ${p} rules.`,
   standard: "These are the standard rules.",
-  forgiving: "These coaching rules are more forgiving. They are not a more accurate measure.",
+  forgiving: "These practice rules are more forgiving. They are not a more accurate measure.",
   section: (i, n) => `Section ${i} of ${n}`,
   sections: (a, b, n) => `Sections ${a} to ${b} of ${n}`,
   practiceAgain: "Back to practice",
@@ -40,6 +41,7 @@ const store = (storage) => storage || globalThis.localStorage;
 
 /** The stored choice: a mode, ALL (catalog filter) or null when unset, blocked or junk. */
 export function loadChoice(storage) {
+  if (!showModes()) return null; // submission profile: no stored mode applies
   try {
     const v = store(storage).getItem(KEY);
     return isMode(v) || v === ALL ? v : null;
@@ -102,12 +104,13 @@ export function mountModePicker({ value, withAll = false, onChange, testid = "mo
     el.append(b);
   }
   paint(value);
+  if (!showModes()) el.hidden = true; // submission profile
   return { el, set: paint };
 }
 
 /** The safety line and the framing line of a mode, as elements. */
 export function modeCoaching(mode) {
-  if (!isMode(mode)) return [];
+  if (!isMode(mode) || !showModes()) return [];
   const p = PRESETS[mode];
   return [
     p.safety ? h("p", { class: "mode-safety", role: "note", "data-testid": "mode-safety", text: p.safety }) : null,
@@ -139,7 +142,7 @@ export function scoringLine(analysis) {
  */
 export function mountModeNote(slot, ctx) {
   const record = (ctx && ctx.jobRecord) || {};
-  const mode = isMode(record.mode) ? record.mode : null;
+  const mode = isMode(record.mode) && showModes() ? record.mode : null;
   const section = sectionLabel(record.section);
   if (!mode && !section) return;
   ensureStyles();

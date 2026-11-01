@@ -15,9 +15,9 @@ uploaded, `entry_id`). There is no import from social links. Ticket files are un
 
 | # | Requirement | Ticket | Spec | Lane doc | Status |
 |---|---|---|---|---|---|
-| R1 | Plain-language coaching tied to the moment | TICKET-071 | [coaching-moments](../specs/coaching-moments.md) | [coach](2026-10-31-coach.md) | built, in final acceptance |
+| R1 | Plain-language coaching tied to the moment (Close calls: TICKET-100) | TICKET-071 | [coaching-moments](../specs/coaching-moments.md) | [coach](2026-10-31-coach.md) | built, in final acceptance |
 | R2 | Challenge a friend, with a shareable result card | TICKET-072 | [challenges](../specs/challenges.md) | [challenge](2026-10-31-challenge.md) | built, in final acceptance |
-| R3 | Worst-moment replay, times of major variance marked | TICKET-073 | [coaching-moments](../specs/coaching-moments.md) | [coach](2026-10-31-coach.md) | built, in final acceptance |
+| R3 | Worst-moment replay, times of major variance marked (Close calls: TICKET-100) | TICKET-073 | [coaching-moments](../specs/coaching-moments.md) | [coach](2026-10-31-coach.md) | built, in final acceptance |
 | R4 | Body-adjusted scoring: confirm what exists, make it visible | TICKET-074 | [breakdown](../specs/breakdown.md) | [breakdown](2026-10-31-breakdown.md) | built, in final acceptance |
 | R5 | Tempo versus shape | TICKET-075 | [breakdown](../specs/breakdown.md) | [breakdown](2026-10-31-breakdown.md) | built, in final acceptance |
 | R6 | Crew challenge: leaderboard, per-person rank, "strongest section" badge | TICKET-076 | [challenges](../specs/challenges.md) | [challenge](2026-10-31-challenge.md) | built, in final acceptance |
@@ -83,6 +83,14 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
 - **Try it:** open a finished result and tap "Replay worst moment".
 - **Limits:** a moment is marked when it is 15 points under the take score, so an evenly weak take marks
   only its biggest misses.
+
+## R1/R3 addendum: Close calls (TICKET-100)
+
+- **Why:** moalborati/simon#59, a take scored 100 with no faults and no way to see why.
+- **Added:** a "Close calls" section after "What to fix": up to three things Part 5 almost counted, each tappable to its moment. They cost no points.
+- **Where:** web `near-misses.js`, `near-misses.css`; `near-misses-slot`.
+- **Tests:** `tests/part7/near-misses.unit.test.mjs`, `tests/part7/result.browser.mjs`, `staging/checks-nearmiss.mjs`.
+- **Limits:** needs Part 5 0144a34 or later; older analyses show nothing.
 
 ## R4 Body-adjusted scoring, made visible (TICKET-074)
 
@@ -188,7 +196,7 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
   (learning speed, countdown, coaching framing, challenge promotion); `mode` on `POST api/follow` and
   `POST api/group`; scoring by mode (native Part 5 `--profile <mode>` at d655d50, TICKET-094; the Part 7 rules
   for dance and rehab, ADR-0008, are the fallback for an older pin only); a result note.
-- **Where:** server modules `part7/modes.py`, `part7/mode_rules.py`, `part7/p5_mode_runner.py`, `part7/parts/p5_analyse.py`, `part7/chain.py`,
+- **Where:** server modules `part7/modes.py`, `part7/parts/p5_analyse.py`, `part7/chain.py`,
   `part7/processor.py`, `part7/group.py`, `part7/people_routes.py`; web `modes.js`, `catalog.js`,
   `follow.js`, `take-flow.js`, `capture.js`, `countdown.js`, `api.js`. `GET api/jobs/<id>` returns the mode.
 - **Test ids:** `mode-filter`, `mode-filter-<all|dance|rehab|fitness>`, `follow-mode`,

@@ -72,6 +72,32 @@ def test_health_and_config(api: Api) -> None:
     assert cfg["phrasing"] == "template" and cfg["fixture_result"] is True
 
 
+def test_config_reports_what_the_pinned_part5_offers(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.p5_analyse, "_KNOWN", None)
+    monkeypatch.setattr(server.p5_analyse, "capabilities",
+                        lambda lock=None: {"lang": False, "video": True, "private": False})
+    cfg = json.loads(api.request("GET", "api/config")[2])
+    assert cfg["part5"] == {"lang": False, "video": False, "private": False}, "false until the warm-up has finished"
+    server.p5_analyse.warm(api.app.lock).join(5)
+    cfg = json.loads(api.request("GET", "api/config")[2])
+    assert cfg["part5"] == {"lang": False, "video": True, "private": False}
+
+
+def test_config_never_waits_on_the_part5_probes(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    release = threading.Event()
+    monkeypatch.setattr(server.p5_analyse, "_KNOWN", None)
+    monkeypatch.setattr(server.p5_analyse, "capabilities",
+                        lambda lock=None: release.wait(10) and {"lang": True, "video": True, "private": True})
+    thread = server.p5_analyse.warm(api.app.lock)
+    try:
+        assert api.request("GET", "api/config")[0] == 200  # answers while the probes are still running
+    finally:
+        release.set()
+        thread.join(5)
+
+
 def test_health_503_when_part6_is_down(api: Api) -> None:
     api.app.child.up = False
     status, _, data = api.request("GET", "api/health")

@@ -21,6 +21,10 @@ from part7.parts import p2_pose
 
 AUTO_COVERAGE = 0.6  # exactly one person at or above this is chosen without asking
 MIN_COVERAGE = 0.1  # tracks seen in less of the clip are tracker noise and are not offered
+# A track whose box barely moves over the clip is a thing (a poster, a reflection), not a person moving: its box
+# centre, width and height each vary (10th to 90th percentile) by less than this share of its own height.
+# Measured on a 10 s take: the person 0.50; two objects SAM 3.1 tracked on the wall 0.03 and 0.04.
+MIN_MOTION = 0.10
 MAX_PEOPLE = 12
 GROUP_MAX_SECONDS = 30  # people.md "Limits"
 GROUP_MAX_FOLLOWERS = 8
@@ -137,14 +141,33 @@ def summarize(frames: list[dict[str, Any]], width: int, height: int) -> list[dic
         coverage = len({n for n, _, _ in boxes}) / len(frames)
         if coverage < MIN_COVERAGE:
             continue
+        motion = _motion([box for _, box, _ in boxes])
         mid = min(boxes, key=lambda item: abs(item[0] - middle))
         best = max(boxes, key=lambda item: item[1][2] * item[1][3] * (item[2] or 0.5))
         people.append(
             {"id": pid, "coverage": round(coverage, 3), "frames": len({n for n, _, _ in boxes}),
-             "box_mid": _scaled(mid[1], kx, ky), "best_frame": best[0], "best_box": _scaled(best[1], kx, ky)}
+             "box_mid": _scaled(mid[1], kx, ky), "best_frame": best[0], "best_box": _scaled(best[1], kx, ky),
+             "motion": motion}
         )
+    moving = [p for p in people if p["motion"] >= MIN_MOTION]
+    if moving:  # only people who move are offered; a clip where nothing moves keeps everyone rather than no one
+        people = moving
     people.sort(key=lambda p: -p["coverage"])
     return people[:MAX_PEOPLE]
+
+
+def _motion(boxes: list[list[float]]) -> float:
+    """How much a track's box moves over the clip: the largest 10th-to-90th percentile spread of its centre x,
+    centre y, width and height, as a share of its median height (0 for a box that never changes)."""
+    if len(boxes) < 2:
+        return 0.0
+    def spread(values: list[float]) -> float:
+        v = sorted(values)
+        return v[int(0.9 * (len(v) - 1))] - v[int(0.1 * (len(v) - 1))]
+    heights = sorted(b[3] for b in boxes)
+    h = heights[len(heights) // 2] or 1.0
+    series = ([b[0] + b[2] / 2 for b in boxes], [b[1] + b[3] / 2 for b in boxes], [b[2] for b in boxes], [b[3] for b in boxes])
+    return round(max(spread(s) for s in series) / h, 3)
 
 
 def auto_id(people: list[dict[str, Any]]) -> str | None:
@@ -315,8 +338,12 @@ def people_job(
         if signals:
             result["people_quality"] = {p["id"]: signals[p["id"]] for p in public if p["id"] in signals}
         (ctx.work / "people.json").write_text(json.dumps(result), encoding="utf-8")
-        found = ", ".join(f"{p['id']} (coverage {p['coverage']}, box {p['box_mid']})" for p in people)
+        found = ", ".join(f"{p['id']} (coverage {p['coverage']}, box {p['box_mid']}, motion {p['motion']})" for p in people)
         applog.log(f"people found in {len(frames)} tracked frames: {found}; auto_id {result['auto_id']}", ctx.id, ctx.dir)
+        tracked = {str(q.get("id")) for f in frames for q in f["people"] if isinstance(q, dict)}
+        still = sorted(tracked - {p["id"] for p in people})
+        if still:
+            applog.log(f"not offered (did not move, or seen too briefly): tracks {', '.join(still)}", ctx.id, ctx.dir)
         return {"result": result}
 
     return run

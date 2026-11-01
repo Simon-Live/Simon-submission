@@ -42,6 +42,7 @@ export function cardOf(entry, labels = {}) {
   const id = encodeURIComponent(entry.id);
   return {
     id: entry.id,
+    testId: `entry-${entry.id}`,
     name: entry.name || entry.id,
     meta,
     duration: durationText(entry.duration_ms),
@@ -57,18 +58,28 @@ export function cardOf(entry, labels = {}) {
  * The library for the chosen `kind`: {sections: [{key, title, aside, cards}], status: null | {kind, text}}.
  * The chosen kind's section comes first; entries of neither kind go in a last "More moves" section.
  */
-export function libraryOf(entries, { kind = "exercise", query = "", labels = {}, loading = false } = {}) {
+export function libraryOf(entries, { kind = "exercise", query = "", labels = {}, loading = false, showRehab = true } = {}) {
   if (loading) return { sections: [], status: { kind: "loading", text: TEXT.loading } };
   if (!entries.length) return { sections: [], status: { kind: "empty", text: TEXT.empty } };
   const shown = entries.filter((e) => matches(e, query, labels));
   if (!shown.length) return { sections: [], status: { kind: "no-match", text: TEXT.noMatch(query.trim()) } };
-  const order = [kind, ...KINDS.filter((k) => k !== kind)];
-  // a rehab-tagged entry shows under Rehab and under its own category; rehab shows only when something is tagged
+  // the submission profile hides Rehab (section and chip), so a rehab chosen earlier falls back to exercise
+  const kinds = showRehab ? KINDS : KINDS.filter((k) => k !== "rehab");
+  const first = kinds.includes(kind) ? kind : "exercise";
+  const order = [first, ...kinds.filter((k) => k !== first)];
+  // A rehab-tagged entry with a category shows under Rehab and under its category. `entry-<id>` stays on its category
+  // card; the Rehab copy is `entry-rehab-<id>`, so no test id repeats. An uncategorised rehab entry has only the Rehab card.
+  const cardIn = (e, k) => {
+    const card = cardOf(e, labels);
+    if (k === "rehab" && kindOfEntry(e)) card.testId = `entry-rehab-${e.id}`;
+    return card;
+  };
   const sections = order.map((k) => ({
     key: k, title: KIND_LABEL[k], aside: SECTION_ASIDE[k],
-    cards: shown.filter((e) => entryInKind(e, k, labels)).map((e) => cardOf(e, labels)),
-  })).filter((s) => s.cards.length || s.key === kind);
-  const rest = shown.filter((e) => !kindOfEntry(e));
+    cards: shown.filter((e) => entryInKind(e, k, labels)).map((e) => cardIn(e, k)),
+  })).filter((s) => s.cards.length || s.key === first);
+  const placed = (e) => showRehab && entryInKind(e, "rehab", labels);
+  const rest = shown.filter((e) => !kindOfEntry(e) && !placed(e));
   if (rest.length) sections.push({ key: "other", title: TEXT.other, aside: "", cards: rest.map((e) => cardOf(e, labels)) });
   return { sections, status: null };
 }

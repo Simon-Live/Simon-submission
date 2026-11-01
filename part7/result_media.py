@@ -52,7 +52,7 @@ def byte_range(header: str | None, size: int) -> tuple[int, int] | str | None:
     return (start, end)
 
 
-def _serve(h: Any, path: Path) -> None:
+def serve_file(h: Any, path: Path) -> None:
     size = path.stat().st_size
     rng = byte_range(h.headers.get("Range"), size)
     if rng == UNSATISFIABLE:
@@ -92,5 +92,5 @@ def handle(h: Any, method: str, route: str) -> bool:
     if path is None:
         h._error(404, MSG_GONE)
     else:
-        _serve(h, path)
+        serve_file(h, path)
     return True

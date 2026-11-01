@@ -3,7 +3,12 @@
 QUALITY_FORMAT = "simon.quality.v1"
 QUALITY_SCORE_CAP = 59
 # Part 7's own fallback analysis was 1.4.0. This additive change is one minor step.
-OWN_ANALYSIS_SCHEMA_VERSION = "1.5.0"
+# The schema version Part 7's own analysis declares. Shruti's ebc98b4 set 1.5.0; TICKET-105 (84ec1f9) lowered it to
+# 1.4.0; TICKET-118 never goes backwards on a client's version. The pinned Part 5 accepts 1.5.0 and 1.6.0 for a
+# document with these fields. From 1.7.0 its doctor requires `profile` (modules/part-5/part5/output.py line 278,
+# PROFILE_SINCE at line 42), which the own analysis does not have (nothing was analysed), so 1.6.0 is the newest
+# honest version. `quality` is an extra field (Part 5: extra fields are allowed) and `source: "part7"` names the producer.
+OWN_ANALYSIS_SCHEMA_VERSION = "1.6.0"
 
 QUALITY_TIPS = {
     "dark": "The room was dark. Turn on a light in front of you, not behind you.",

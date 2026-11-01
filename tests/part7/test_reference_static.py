@@ -25,7 +25,8 @@ def test_reference_testids(tid):
 def test_hooks_are_wired_for_the_follower_only():
     flow = src("take-flow.js")
     assert 'trainer || resume ? null : mountReference(entry)' in flow
-    assert "mountCapture(capBox, limits, { reference, countdownDefault })" in flow
+    # sound is asked for on a trainer take only (not a group take, nothing transcribes it): a follower take has no audio
+    assert 'mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group" })' in flow
     assert "editTake(editBox, take, info, reference)" in flow
     assert "entry: full" in src("follow.js")  # the catalog entry (with its id) is the take flow's reference
     cap = src("capture.js")

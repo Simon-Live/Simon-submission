@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-import os
 import contextlib
+import os
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from part7 import config, gpu_lock, keys, p2_worker, modules, runner
+from part7 import applog, config, gpu_lock, keys, p2_worker, modules, runner
 from part7.parts import p1_keyframes, probe
 
 API_TRACKER = "api-sam31"
 LOCAL_TRACKER = "local-open"  # the free retry after a failed api-sam31 run
 RETRY_LOG = "part2_track_retry.log"
+MESH_FILES = ("mesh3d.json", "mesh3d.bin")
 FPS = 10  # journey.md "Commands": Part 2 samples the take at 10 fps
 
 
@@ -30,25 +31,47 @@ def has_worker(lk: modules.Modules, clone: Path) -> bool:
     return probe.has_flag(2, [*base, "run"], clone, "--worker", lk)
 
 
-def start_workers(
-    slots: int, state: Path | str, lock: modules.Modules | None = None, backend: str = "gpu"
-) -> bool:
-    """Start one warm Part 2 worker per job slot under `<state>/p2-workers` when the pin has `run --worker`.
+def has_mesh(lk: modules.Modules, clone: Path) -> bool:
+    """True when the pinned `part2 run` offers `--mesh` (SAM 3D Body mesh files, TICKET-143); cached per clone."""
+    base = _command("cpu", [], clone)[0]
+    return probe.has_flag(2, [*base, "run"], clone, "--mesh", lk)
 
-    Returns False (and starts nothing) when it does not. Stopped with `p2_worker.stop_pool()`.
+
+def drop_mesh(out_dir: Path) -> bool:
+    """Remove `mesh3d.json` and `mesh3d.bin` from Part 2's folder (a malformed pair is treated as no mesh)."""
+    gone = False
+    for name in MESH_FILES:
+        with contextlib.suppress(OSError):
+            (out_dir / name).unlink()
+            gone = True
+    return gone
+
+
+WARM_WORKERS_DEFAULT = "1"  # env SIMON7_P2_WARM_WORKERS: ONE warm `serve-worker` for `part2 run`; "0" turns it off (TICKET-099)
+
+
+def warm_worker_enabled() -> bool:
+    """True when SIMON7_P2_WARM_WORKERS asks for the warm worker (any value but 0, off, no, false or empty)."""
+    value = os.environ.get("SIMON7_P2_WARM_WORKERS", WARM_WORKERS_DEFAULT).strip().lower()
+    return value not in ("", "0", "off", "no", "false")
+
+
+def start_workers(
+    state: Path | str, lock: modules.Modules | None = None, backend: str = "gpu"
+) -> bool:
+    """Start ONE warm Part 2 worker under `<state>/p2-workers` when enabled and the pin has `run --worker`.
+
+    Only `part2 run` uses it (`_execute`); `track` stays in-process. Returns False (and starts nothing) when it is
+    off or the pin lacks the flag. Stopped with `p2_worker.stop_pool()`.
     """
-    # Off by default (2026-10-30): on staging the warm workers stalled the follow-side tracking requests;
-    # set SIMON7_P2_WARM_WORKERS=1 to try them again once they are proven on real jobs.
-    if os.environ.get("SIMON7_P2_WARM_WORKERS", "0") != "1":
+    if not warm_worker_enabled():
         return False
     lk = lock or modules.load()
     clone = lk.path("2")
-    if backend != "gpu" or slots < 1 or not has_worker(lk, clone):
+    if backend != "gpu" or not has_worker(lk, clone):
         return False
     argv, env = _command(backend, ["serve-worker"], clone)
-    pool = p2_worker.Pool(
-        Path(state), slots, lambda sock: [*argv, "--socket", str(sock)], cwd=clone, env=env
-    )
+    pool = p2_worker.Pool(Path(state), 1, lambda sock: [*argv, "--socket", str(sock)], cwd=clone, env=env)
     p2_worker.start_pool(pool)
     return True
 
@@ -57,20 +80,53 @@ def _execute(
     sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
     acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None,
 ) -> runner.Step:
-    # a warm worker already holds the model in GPU memory, so its job needs no free memory, only an admission turn
-    lend = p2_worker.lease() if (backend == "gpu" and sub[0] == "run" and has_worker(lk, clone)) else contextlib.nullcontext()
-    with lend as sock:
-        if sock is not None:
-            sub = [*sub, "--worker", str(sock)]
-        argv, env_extra = _command(backend, sub, clone)
-        kwargs = {"hold_flock": False, "concurrent": True, "job_dir": work_p, **({"min_free_mib": 0} if sock else {}),
-                  **(gpu_lock_kwargs or {})}
-        ctx = gpu_lock.acquire(**kwargs) if (backend == "gpu" and acquire_lock) else contextlib.nullcontext()
-        with ctx:
-            return runner.run(
-                2, argv, cwd=clone, env_extra=env_extra, timeout_s=config.TIMEOUTS["2"],
-                log_path=work_p / "steps" / log_name, lock=lk,
-            )
+    # TICKET-101: only `run` (the 3D step) may use the warm worker, and it is leased AFTER the GPU admission, so a
+    # long flock wait never parks the worker as busy. An idle worker already holds the model in GPU memory, so its
+    # admission needs only a turn (min_free_mib=0); otherwise the memory check applies. A worker that is busy after
+    # admission is waited for a few seconds, then skipped: the run goes in-process as before.
+    if not (backend == "gpu" and sub[0] == "run" and has_worker(lk, clone)):
+        return _attempt(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
+    with _admission(backend, acquire_lock, work_p, p2_worker.state() == "idle", gpu_lock_kwargs):
+        with p2_worker.lease() as sock:
+            step = _launch(sub, sock, work_p, log_name, lk, clone, backend)
+    if sock is not None and step["exit"] != 0 and _worker_lost(work_p / "steps" / log_name):
+        applog.anomaly("p2_worker_unhealthy", "the worker dropped the request; the run repeats in-process",
+                       job_dir=work_p, exit=step["exit"])
+        return _attempt(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
+    return step
+
+
+def _worker_lost(log: Path) -> bool:
+    try:
+        return "the worker closed the connection" in log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def _admission(backend: str, acquire_lock: bool, work_p: Path, warm: bool,
+               gpu_lock_kwargs: dict[str, Any] | None) -> Any:
+    kwargs = {"hold_flock": False, "concurrent": True, "job_dir": work_p, **({"min_free_mib": 0} if warm else {}),
+              **(gpu_lock_kwargs or {})}
+    return gpu_lock.acquire(**kwargs) if (backend == "gpu" and acquire_lock) else contextlib.nullcontext()
+
+
+def _launch(sub: list[str], sock: Path | None, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
+            backend: str) -> runner.Step:
+    if sock is not None:
+        sub = [*sub, "--worker", str(sock)]
+    argv, env_extra = _command(backend, sub, clone)
+    return runner.run(
+        2, argv, cwd=clone, env_extra=env_extra, timeout_s=config.TIMEOUTS["2"],
+        log_path=work_p / "steps" / log_name, lock=lk,
+    )
+
+
+def _attempt(
+    sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
+    acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None,
+) -> runner.Step:
+    with _admission(backend, acquire_lock, work_p, False, gpu_lock_kwargs):
+        return _launch(sub, None, work_p, log_name, lk, clone, backend)
 
 
 def run(
@@ -104,6 +160,11 @@ def run(
         sub += ["--tracks", str(Path(tracks).resolve())]
     if ids:
         sub += ["--ids", ",".join(str(i) for i in ids)]
+    # TICKET-143: ask for the mesh only when the pin offers it. Part 7 never passes --refine (Part 2 exits 2 with both)
+    # and leaves --mesh-vertices at Part 2's default (it refuses less than 100). The warm worker gets the flag too:
+    # `_launch` forwards the whole `sub`, and a worker started before a deploy is restarted by it (staging.sh up).
+    if has_mesh(lk, clone) and "--refine" not in sub:
+        sub += ["--mesh"]
     step = _execute(sub, backend, work_p, "part2.log", lk, clone, acquire_lock, gpu_lock_kwargs)
     return (step, out_dir / "pose3d.json")
 

@@ -1,0 +1,133 @@
+{
+ "total_s": 153.37,
+ "scenes": [
+  {
+   "id": "s01-hook",
+   "start": 0.0,
+   "D": 6,
+   "vo_s": 2.46
+  },
+  {
+   "id": "s02-problem",
+   "start": 6.0,
+   "D": 7,
+   "vo_s": 3.6
+  },
+  {
+   "id": "s03-teacher",
+   "start": 13.0,
+   "D": 9,
+   "vo_s": 5.28
+  },
+  {
+   "id": "s04-watch3d",
+   "start": 22.0,
+   "D": 11,
+   "vo_s": 5.2
+  },
+  {
+   "id": "s05-follow",
+   "start": 33.0,
+   "D": 9,
+   "vo_s": 3.42
+  },
+  {
+   "id": "s06-wait",
+   "start": 42.0,
+   "D": 12,
+   "vo_s": 7.0
+  },
+  {
+   "id": "s07-tech",
+   "start": 54.0,
+   "D": 18.35,
+   "vo_s": 17.4
+  },
+  {
+   "id": "s07b-mesh",
+   "start": 72.35,
+   "D": 8,
+   "vo_s": 3.76
+  },
+  {
+   "id": "s08-reveal",
+   "start": 80.35,
+   "D": 7,
+   "vo_s": 3.16
+  },
+  {
+   "id": "s09-compare",
+   "start": 87.35,
+   "D": 12,
+   "vo_s": 6.3
+  },
+  {
+   "id": "s10-tap",
+   "start": 99.35,
+   "D": 8,
+   "vo_s": 4.6
+  },
+  {
+   "id": "s11-shape",
+   "start": 107.35,
+   "D": 9,
+   "vo_s": 4.36
+  },
+  {
+   "id": "s11b-share",
+   "start": 116.35,
+   "D": 12,
+   "vo_s": 5.28
+  },
+  {
+   "id": "s12-close",
+   "start": 128.35,
+   "D": 10,
+   "vo_s": 5.28
+  },
+  {
+   "id": "s13-end",
+   "start": 138.35,
+   "D": 15,
+   "vo_s": 13.04
+  }
+ ],
+ "marks": {
+  "catalog": {
+   "list": 3.115,
+   "filter": 8.824,
+   "end": 10.387
+  },
+  "watch": {
+   "video": 3.916,
+   "figure": 7.09,
+   "rotated": 11.883,
+   "side": 13.517,
+   "end": 16.132
+  },
+  "follow": {
+   "take": 4.209,
+   "ready": 8.113,
+   "end": 8.113
+  },
+  "result": {
+   "score": 1.739,
+   "worst": 7.698,
+   "next": 14.634,
+   "export_click": 25.841,
+   "export_ready": 27.169,
+   "models": 34.714,
+   "breakdown": 43.68,
+   "replay": 46.197,
+   "compare": 54.581,
+   "rotated": 57.688,
+   "fault": 62.28,
+   "hear": 62.297,
+   "end": 65.798
+  },
+  "mesh": {
+   "start": 0.39,
+   "end": 10.435
+  }
+ }
+}

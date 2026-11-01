@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<base href="/">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>history harness</title>
+<link rel="stylesheet" href="web/styles.css">
+<link rel="stylesheet" href="web/theme/tokens.css">
+<link rel="stylesheet" href="web/theme/base.css">
+<link rel="stylesheet" href="web/theme/screens.css">
+<link rel="stylesheet" href="web/theme/results.css">
+<style>.slot-frame { outline: 1px dashed var(--color-line); min-height: 8px; margin-top: 16px; }</style>
+<header class="bar"><a class="brand" href="#/"><span class="brand-word">simon</span></a></header>
+<main id="app" class="screen"></main>
+<script type="module">
+// ?mode=page mounts #/me/<entry>; ?mode=slot mounts the result-page slot under a stand-in result heading;
+// ?mode=list mounts #/me. The fake server (tests/part7/history.browser.mjs) answers api/me/history*.
+import { mountHistory, mountMyTakes } from "/web/history.js";
+const q = new URLSearchParams(location.search);
+const app = document.getElementById("app");
+const entry = q.get("entry") || "body-squat-19b06562";
+if (q.get("mode") === "slot") {
+  app.insertAdjacentHTML("beforeend", "<h2 data-testid='stand-in'>Result (stand-in for the result screen)</h2>");
+  const section = document.createElement("section");
+  section.dataset.testid = "history-slot";
+  section.className = "slot-frame";
+  app.append(section);
+  mountHistory(section, { jobId: "5277380db1e1", entryId: entry, analysis: {}, seek() {} });
+} else if (q.get("mode") === "list") mountMyTakes(app);
+else mountHistory(app, entry);
+</script>

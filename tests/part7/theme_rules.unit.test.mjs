@@ -23,6 +23,17 @@ test("no color literal outside theme/tokens.css", () => {
   }
 });
 
+// the 3D drawing files take their harness fallbacks from theme-fallbacks.js, the one module allowed to hold them
+test("only theme-fallbacks.js holds colour fallbacks for the 3D drawing files", () => {
+  const literal = new RegExp(`${COLOR.source}|\\b0x[0-9a-fA-F]{6}\\b`);
+  for (const f of ["viewer3d.js", "mesh-view.js", "compare.js", "theme-colors.js"]) {
+    const bad = read(f).split("\n").map((line, i) => [i + 1, line]).filter(([, line]) => !line.trim().startsWith("//") && literal.test(line));
+    assert.deepEqual(bad, [], `${f} holds a colour fallback: ${bad.map(([n, l]) => `${n}: ${l.trim()}`).join(" | ")}`);
+  }
+  assert.match(read("theme-fallbacks.js"), /harness fallbacks/);
+  assert.match(read("theme-fallbacks.js"), /0x[0-9a-f]{6}/);
+});
+
 test("model modules touch no DOM", () => {
   for (const f of list("model", ".js")) {
     assert.doesNotMatch(read(f), /\bdocument\.|\bh\(|createElement|querySelector|innerHTML|from "\.\.\/ui\.js"/, `${f} touches the DOM`);

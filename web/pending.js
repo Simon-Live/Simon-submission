@@ -36,6 +36,7 @@ export const TEXT = {
   peopleReady: "Your take is uploaded. Choose who is in it to finish.",
   sent: "Your take was sent. The analysis has started.",
   gone: "This take is no longer saved on this device.",
+  keyReused: "The app could not match this take with the one it already has. Your take is still saved on this device.",
   safe: "Saved on this device",
   privacy: "The video stays in this browser until it is sent. You can delete it any time.",
 };
@@ -57,6 +58,7 @@ export function classifyFailure(err, step = "upload") {
   if (status === 503) return { kind: /limit|today/i.test(said) ? "later" : "auto", status };
   if (status === 500 || status === 502 || status === 504) return { kind: "auto", status };
   if (status === 400) return { kind: step === "submit" ? "fixable" : "fatal", status };
+  if (status === 422) return { kind: step === "submit" ? "fixable" : "auto", status }; // never fatal: the job may be running server-side
   if (status === 413 || status === 404 || status === 409) return { kind: "fatal", status };
   return { kind: status >= 500 ? "auto" : "fatal", status };
 }
@@ -83,10 +85,10 @@ export function capacity(records, size) {
 
 export const isExpired = (rec, now) => !!rec && Number(rec.expires_at) <= now;
 
-export function newRecord({ id, now, role, entryId = null, entryName = "", mode = null, section = null, challengeId = null,
+export function newRecord({ id, now, role, entryId = null, entryName = "", mode = null, section = null, challengeId = null, lang = null,
   trim, labels = null, name = "", category = "exercise", blob }) {
   return {
-    id, created_at: now, expires_at: now + TTL_MS, role, entry_id: entryId, entry_name: entryName, mode, section,
+    id, created_at: now, expires_at: now + TTL_MS, role, entry_id: entryId, entry_name: entryName, mode, section, lang,
     challenge_id: challengeId, trim, labels, name, category, mime: (blob && blob.type) || "", size: (blob && blob.size) || 0, blob,
     stage: "saved", upload_id: null, people_job: null, choice: null, auto_submit: false, attempts: 0, next_try_at: null,
     last_error: null,
@@ -304,7 +306,7 @@ export function createPending(deps) {
     const c = classifyFailure(err, step);
     const e = err && typeof err === "object" ? err : new Error(String(err));
     e.kind = c.kind;
-    const message = (err && err.message) || "";
+    const message = c.status === 422 ? TEXT.keyReused : (err && err.message) || "";
     if (c.kind === "fatal") {
       await remove(rec.id, "fatal");
       return e;
@@ -374,7 +376,13 @@ export function createPending(deps) {
   async function submitNow(rec, { headless = false } = {}) {
     await patch(rec, { stage: "submitting" });
     const req = buildRequest(rec);
-    const made = await guard(rec, "submit", () => api.submitJob(req, rec.id));
+    // A 422 that names a job: the server already holds this take under its key, so it counts as sent.
+    const made = await guard(rec, "submit", async () => {
+      try { return await api.submitJob(req, rec.id); } catch (err) {
+        if (err && err.status === 422 && typeof err.job === "string" && err.job) return { job: err.job };
+        throw err;
+      }
+    });
     const job = typeof made.job === "object" ? made.job.id : made.job;
     log("info", "pending_sent", { attempts: rec.attempts || 0, bytes: rec.size, headless });
     await remove(rec.id, "sent");

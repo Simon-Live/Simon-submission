@@ -1,0 +1,14 @@
+/* Export button and its states (views/export.js): idle, making, ready, failed. Tokens only. */
+
+.export-clip { display: grid; gap: var(--space-3); }
+.export-clip .btn { width: 100%; min-height: var(--button-height); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.ex-busy { display: flex; align-items: center; justify-content: center; gap: var(--space-3); min-height: var(--button-height); margin: 0;
+  border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-line); color: var(--color-text-muted); font-size: var(--text-sm); }
+.ex-spin { width: 16px; height: 16px; border-radius: var(--radius-pill); border: 2px solid var(--color-line); border-top-color: var(--color-accent);
+  animation: ex-turn 0.9s linear infinite; }
+@keyframes ex-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ex-spin { animation: none; } }
+.export-ready { display: grid; gap: var(--space-3); }
+.export-ready video { width: 100%; max-height: 60vh; border-radius: var(--radius-lg); background: var(--color-media-bg); }
+.export-fail { display: grid; gap: var(--space-2); }
+.ex-error { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-bad-soft); color: var(--color-bad); font-size: var(--text-sm); }

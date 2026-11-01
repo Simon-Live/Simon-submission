@@ -1,0 +1,251 @@
+{
+ "_note": "Trimmed copy of two real cleared takes of body-squat-19b06562 (staging jobs 5277380db1e1 and cc7cd5469055, work/follower/analysis.json schema 1.6.0): score, faults and insights only. Test fixture for history_guard; not a live read.",
+ "takes": [
+  {
+   "analysis": {
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "coaching": "You are leaning forward more than the example at 0.9 s, nice effort.",
+      "confidence": 1.0,
+      "coverage": 1.0,
+      "cue": "Keep your chest up",
+      "cue_kind": "position",
+      "direction": "more",
+      "expected_frames": [
+       2,
+       91
+      ],
+      "follower_frames": [
+       27,
+       96
+      ],
+      "follower_runs": [
+       [
+        27,
+        96
+       ],
+       [
+        140,
+        198
+       ],
+       [
+        236,
+        291
+       ]
+      ],
+      "follower_t_s": [
+       0.9,
+       3.2
+      ],
+      "joint": "spine",
+      "joints": [
+       "left_shoulder",
+       "right_shoulder",
+       "left_hip",
+       "right_hip"
+      ],
+      "lateral": null,
+      "magnitude_deg": 21.4,
+      "measure": "trunk_lean_forward",
+      "measure_kind": "direction",
+      "peak_deg": 31.3,
+      "phase": [
+       0.007,
+       0.304
+      ],
+      "runs": [
+       [
+        2,
+        91
+       ],
+       [
+        115,
+        186
+       ],
+       [
+        213,
+        290
+       ]
+      ],
+      "side": "center",
+      "text": "leaning forward more than the example",
+      "text_timed": "leaning forward more than the example at 0.9 s",
+      "threshold_deg": 9.0,
+      "unit": "degrees"
+     }
+    ],
+    "format": "simon.analysis.v1",
+    "insights": [
+     {
+      "at_s": 0.9,
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "kind": "position",
+      "measure": "trunk_lean_forward",
+      "points": 21.8,
+      "side": "center",
+      "why": "Leaning forward more than the example at 0.9 s (2 times)",
+      "window": 0
+     }
+    ],
+    "schema_version": "1.6.0",
+    "score": {
+     "basis": "windows",
+     "components": {
+      "faults": 21.74,
+      "similarity": 1.17
+     },
+     "grade": "C",
+     "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+     "tempo": {
+      "cue": null,
+      "ratio": 0.91
+     },
+     "timeline": [
+      {
+       "compared": true,
+       "components": {
+        "faults": 21.96,
+        "similarity": 1.37
+       },
+       "grade": "C",
+       "misses": [
+        {
+         "at_s": 0.9,
+         "cue": "Keep your chest up",
+         "cue_kind": "position",
+         "direction": "more",
+         "joint": "spine",
+         "measure": "trunk_lean_forward",
+         "points": 22.0,
+         "side": "center",
+         "t_s": [
+          0.9,
+          3.2
+         ],
+         "text": "You are leaning forward more than the example at 0.9 s, nice effort."
+        }
+       ],
+       "t_s": [
+        0.833,
+        5.35
+       ],
+       "tempo": {
+        "cue": null,
+        "ratio": 0.98
+       },
+       "value": 77
+      },
+      {
+       "compared": true,
+       "components": {
+        "faults": 21.51,
+        "similarity": 0.97
+       },
+       "grade": "C",
+       "misses": [
+        {
+         "at_s": 0.9,
+         "cue": "Keep your chest up",
+         "cue_kind": "position",
+         "direction": "more",
+         "joint": "spine",
+         "measure": "trunk_lean_forward",
+         "points": 21.5,
+         "side": "center",
+         "t_s": [
+          0.9,
+          3.2
+         ],
+         "text": "You are leaning forward more than the example at 0.9 s, nice effort."
+        }
+       ],
+       "t_s": [
+        5.35,
+        9.867
+       ],
+       "tempo": {
+        "cue": "Slow down to match the trainer",
+        "ratio": 0.84
+       },
+       "value": 78
+      }
+     ],
+     "value": 77,
+     "version": "simon.score.v1"
+    }
+   },
+   "created_at": "2026-10-31T18:19:49Z",
+   "duration_ms": 9966,
+   "entry_id": "body-squat-19b06562",
+   "job_id": "5277380db1e1"
+  },
+  {
+   "analysis": {
+    "faults": [],
+    "format": "simon.analysis.v1",
+    "insights": [],
+    "schema_version": "1.6.0",
+    "score": {
+     "basis": "windows",
+     "components": {
+      "faults": 0.0,
+      "similarity": 0.0
+     },
+     "grade": "A",
+     "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+     "tempo": {
+      "cue": null,
+      "ratio": 0.99
+     },
+     "timeline": [
+      {
+       "compared": true,
+       "components": {
+        "faults": 0.0,
+        "similarity": 0.0
+       },
+       "grade": "A",
+       "misses": [],
+       "t_s": [
+        0.0,
+        4.917
+       ],
+       "tempo": {
+        "cue": null,
+        "ratio": 0.96
+       },
+       "value": 100
+      },
+      {
+       "compared": true,
+       "components": {
+        "faults": 0.0,
+        "similarity": 0.0
+       },
+       "grade": "A",
+       "misses": [],
+       "t_s": [
+        4.917,
+        9.833
+       ],
+       "tempo": {
+        "cue": null,
+        "ratio": 1.01
+       },
+       "value": 100
+      }
+     ],
+     "value": 100,
+     "version": "simon.score.v1"
+    }
+   },
+   "created_at": "2026-10-31T18:11:30Z",
+   "duration_ms": 9955,
+   "entry_id": "body-squat-19b06562",
+   "job_id": "cc7cd5469055"
+  }
+ ]
+}

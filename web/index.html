@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>Simon</title>
+<meta name="description" content="Record a movement once. Simon turns it into a 3D reference that your students are checked against.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <!-- brand theme: tokens first (the only file with literal colors), then components and screens on those tokens -->
@@ -17,6 +18,10 @@
 <link rel="stylesheet" href="theme/screens.css">
 <link rel="stylesheet" href="theme/loader.css">
 <link rel="stylesheet" href="theme/capture.css">
+<link rel="stylesheet" href="theme/voice.css">
+<link rel="stylesheet" href="theme/teacher.css">
+<link rel="stylesheet" href="theme/export.css">
+<link rel="stylesheet" href="theme/narration.css">
 <script type="importmap">
 {"imports": {"three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/"}}
 </script>
@@ -25,7 +30,7 @@
 <header class="bar">
   <a class="brand" href="#/" data-testid="home-link"><span class="brand-word">simon</span></a>
   <div id="kind-switch"></div>
-  <nav class="bar-nav" aria-label="Main"><a href="#/record" data-testid="nav-record">Record</a></nav>
+  <nav class="bar-nav" aria-label="Main"><a href="#/record" data-testid="nav-record">Record</a><span id="auth-link" hidden></span></nav>
   <div id="build" class="build" role="group" aria-label="Build" hidden></div>
 </header>
 <div id="pending" class="pending-banner" data-testid="pending-banner" role="status" aria-live="polite" hidden></div>

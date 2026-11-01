@@ -84,7 +84,7 @@ The journey has eight steps (`docs/design/specs/journey.md`):
 ## Keys
 
 Part 7 reads keys from files, one file per key, named after the key, in
-`~/.config/firm/operator-keys/` (override with `SIMON7_KEYS_DIR`). Give the directory mode 700
+`~/.config/simon/keys/` (override with `SIMON7_KEYS_DIR`). Give the directory mode 700
 and each file mode 600. Values never appear in a log: `part7/runner.py` replaces them with
 `<redacted>`.
 
@@ -92,7 +92,7 @@ and each file mode 600. Values never appear in a log: `part7/runner.py` replaces
 |---|---|---|
 | `MODEL_API_KEY` | Meta Model API: Part 1 keyframes and Part 2's `api-sam31` tracker | Part 7 checks the file before calling Part 1 or asking for `api-sam31`, then writes it to `<modules/part-1>/.env` (mode 600) for the length of the Part 1 call only. Part 2 reads its own key file (`PART2_KEY_DIR`, same default directory), the environment variable second. |
 | `HF_TOKEN` | the gated `facebook/sam3.1` weights for Part 2's `local-sam31` tracker | Part 2 only, from `PART2_KEY_DIR` or the environment variable |
-| `BASETEN_API_KEY` | Muse Spark phrasing of fault text in Part 5 | Part 5 only, from `~/.config/firm/operator-keys/BASETEN_API_KEY` or the file named by `PART5_BASETEN_KEY_FILE`; it logs usage in `~/.simon/baseten_usage.jsonl` |
+| `BASETEN_API_KEY` | Muse Spark phrasing of fault text in Part 5 | Part 5 only, from `~/.config/simon/keys/BASETEN_API_KEY` or the file named by `PART5_BASETEN_KEY_FILE`; it logs usage in `~/.simon/baseten_usage.jsonl` |
 
 Environment variables alone are not enough: Part 7 and Part 5 only look at files. Every key is
 optional. Without `MODEL_API_KEY` the trainer job skips Part 1 (Part 3 then picks keyframes every 10
@@ -152,11 +152,11 @@ All read from the environment (`part7/config.py`, `part7/quota.py`, `part7/serve
 | `SIMON7_PORT` | 8727 | port used by `bin/dev.sh` |
 | `SIMON7_PHRASING` | `live` | `live` asks Part 5 for `--phrasing muse-spark --live`; `template` for template text. Tests and `make check-7` use `template`. |
 | `SIMON7_GPU_WORKERS` | 2 | job threads; Part 2 calls still wait for free GPU memory |
-| `SIMON7_P2_WARM_WORKERS` | off | `1` starts one Part 2 `serve-worker` per job thread, keeping the 3D model loaded. Off because on the staging host the two warm workers held about 20 GB and follow-side tracking stalled behind them for 6 to 12 minutes. |
-| `SIMON7_PART1_TIMEOUT_S` | 90 | seconds the trainer job waits for Part 1; past it, the job falls back to keyframes every 10 frames instead of failing |
+| `SIMON7_P2_WARM_WORKERS` | 1 | `1` keeps ONE Part 2 `serve-worker` loaded for `part2 run` (the 3D step) only; `track` stays in-process. A `run` that cannot lease the worker within 5 s (`SIMON7_P2_LEASE_WAIT_S`) runs in-process. `0` turns it off. Measurements and the history of the 2026-10-30 stall: "Warm Part 2 worker" below. |
+| `SIMON7_PART1_TIMEOUT_S` | 150 | seconds the trainer job waits for Part 1; past it, the job falls back to keyframes every 10 frames instead of failing |
 | `SIMON7_LIMITS` | off | `on` enforces the daily caps (`SIMON7_DAILY_GPU` default 40 jobs, `SIMON7_DAILY_TRAINER` default 10) and the per-visitor caps (10 GPU and 3 trainer jobs a day). Jobs are counted either way under `<state>/quota/`. |
 | `SIMON7_STATE_DIR` | `~/.local/state/simon-part-7` | root for `videos/`, `dev/`, `check/` |
-| `SIMON7_KEYS_DIR` | `~/.config/firm/operator-keys` | where Part 7 looks for key files |
+| `SIMON7_KEYS_DIR` | `~/.config/simon/keys` | where Part 7 looks for key files |
 | `SIMON7_PART2_GPU_VENV` | `~/.local/state/simon-part-2/venvs/gpu-cu128` | Part 2's GPU venv |
 | `SIMON7_GPU_LOCK_PATH` | `~/.local/state/simon-part-2/gpu.lock` | the GPU lock shared with Part 2 |
 | `SIMON7_VIDEOS_MANIFEST` | `videos/manifest.json` | another test-video manifest |
@@ -213,8 +213,10 @@ Common failure reasons:
 
 - `the GPU is busy, try again later`: Part 2 waited 30 min for the lock and 12288 MiB of free
   memory. Check `nvidia-smi` and the lock holder.
-- `the server restarted`: the server stopped while the job was queued or running; on start every
-  such job is marked failed.
+- `the server restarted`: the server stopped while the job was running (or queued and not resumable); on
+  start such a job is marked failed. A queued trainer or follow job stays queued and runs after the restart.
+- `the app restarted before this take finished; record it again`: the stop waited `SIMON7_DRAIN_MAX_S` (600 s) and
+  the job was still running (`ANOMALY drain_cut_off`).
 - `... was rejected by part <n>`: a doctor check refused a hand-off file; the matching
   `*_doctor_*.log` says why.
 - `the step failed unexpectedly`: an exception in Part 7; the traceback is in `steps/error.log`.
@@ -287,10 +289,48 @@ The API underneath, for scripting: `POST api/uploads` (raw body, at most 95,000,
 `GET api/results/<id>/analysis.json`. The request fields are in
 `docs/design/specs/app.md` and `part7/server.py`.
 
+## Warm Part 2 worker (TICKET-099)
+
+`SIMON7_P2_WARM_WORKERS=1` (default) starts ONE `part2 serve-worker` under `<state>/p2-workers`. Only `part2 run`
+uses it. `track` stays in-process because it loads its own tracker and needs GPU admission. A `run` waits at most 5 s
+for the busy worker, then runs in-process as before; it never queues behind it. A worker that fails its health
+check logs `ANOMALY p2_worker_unhealthy`, the call runs in-process, and the worker is restarted once in the
+background (a failed restart is retried after 5 min). A run the worker drops mid-request repeats in-process. The
+heartbeat line ends with `p2_worker=off|starting|idle|busy|down`.
+
+Why the 2026-10-30 warm workers stalled (5eccc60): from the code, not GPU memory alone and not the worker serving one
+request at a time. The old pool had one worker per job slot (two), each leased to one job, so two `run` calls never
+queued on one worker. Tracking was never sent to a worker (`_execute` leases only for `run`). Tracking stalled in
+Part 7's own GPU admission (`gpu_lock.acquire`, `min_free_mib=12288`, polled every 15 s): two resident workers took
+about 20 GB, leaving less than 12 GiB free on a 32 GB card that other processes also use, so every in-process
+`track` that loads a local model waited, up to the 30 min limit, until a worker went away. Workers' own jobs were
+exempt (`min_free_mib=0`), which kept them running and the waiting tracker starved. That fits the reported 6 to 12
+minutes. With one worker (about 8 GB) free memory stays above the 12 GiB bar. The old logs of that run are gone, so this
+is a reading of code and the 5eccc60 commit message, not a replay.
+
+Measured 2026-10-31 on the RTX 5090 (32 607 MiB; 4 035 MiB already used by other processes before each run), staging
+idle (`staging_live.live_jobs() == 0` before every run), Part 2 `f1d0dc7` GPU venv, a 4 s 640x360 clip, `part2 run
+--mode single` through `p2_pose.run` with a local state folder:
+
+| Run | Wall time | GPU used at peak |
+|---|---|---|
+| cold (in-process) 1 | 104.6 s | 17 359 MiB |
+| cold 2 | 92.1 s | 16 107 MiB |
+| cold 3 | 94.6 s | 16 071 MiB |
+| warm (worker) 1 | 56.1 s | 16 065 MiB |
+| warm 2 | 52.0 s | 16 071 MiB |
+| warm 3 | 46.9 s | 16 071 MiB |
+
+Cold mean 97.1 s, warm mean 51.7 s: the worker saves about 45 s per run. The worker takes 36 to 42 s to start and
+holds 8 078 to 8 406 MiB while idle (12 113 to 12 441 MiB used against 4 035 MiB before). Worst case, with the worker
+busy and a second `run` falling back to in-process after the 5 s wait, GPU use peaked at 24 480 MiB of 32 607 MiB
+(8.1 GB spare); the in-process run took 139 s while the warm one took 49 s. A concurrent in-process `track` needs 12 GiB
+free for admission and finds about 20 GB with the worker resident. Default: on.
+
 ## Known issues and limits
 
-- Warm Part 2 workers are off (`SIMON7_P2_WARM_WORKERS`, above). Each follow job loads the 3D model
-  again, about 20 to 35 s per Part 2 run according to Part 2's contract.
+- The warm Part 2 worker holds about 8 GB of GPU memory while resident and serves one request at a time
+  (see "Warm Part 2 worker"). A SIGKILL of the server leaves it running; the next start stops it by its pid file.
 - Orphaned processes: Part 7 starts every part, the Part 6 child and any warm worker in its own
   process group. A clean stop (Ctrl-C or SIGTERM) stops Part 6 and the workers. A SIGKILL or crash
   leaves them running, including a Part 2 run that still holds GPU memory. Before restarting, look

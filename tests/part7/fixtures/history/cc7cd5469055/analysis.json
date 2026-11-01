@@ -1,0 +1,128 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.6.0",
+  "expected": {
+    "path": "/state/jobs/cc7cd5469055/work/expected.json"
+  },
+  "follower": {
+    "path": "/state/jobs/cc7cd5469055/work/follower/follower.json"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [],
+  "diagnostics": {
+    "alignment_residual": 0.2895,
+    "alignment_measures": [
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward",
+      "right_wrist_height"
+    ],
+    "follower_span": [
+      0,
+      295
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.2895,
+      "timing_corr": 0.9615,
+      "span_share": 0.9966,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    },
+    "visibility": {
+      "usable_measures": 26,
+      "excluded": [
+        "left_knee_flexion",
+        "left_knee_valgus",
+        "left_foot_out",
+        "right_knee_flexion",
+        "right_knee_valgus",
+        "right_foot_out"
+      ],
+      "rule": "a measure is used when all its joints are seen (conf is not the 0.3 unseen mark) in at least 80% of the clip's frames; the take is compared on the measures usable in both clips",
+      "moving_measures": [
+        "left_thigh_forward",
+        "left_upper_arm_forward",
+        "right_thigh_forward",
+        "trunk_lean_forward",
+        "head_forward"
+      ],
+      "moving_usable": [
+        "left_thigh_forward",
+        "left_upper_arm_forward",
+        "right_thigh_forward",
+        "trunk_lean_forward",
+        "head_forward"
+      ]
+    }
+  },
+  "insights": [],
+  "phrasing": {
+    "requested": "muse-spark",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": "no faults to phrase",
+    "faults": [],
+    "selected_by": "flag"
+  },
+  "score": {
+    "version": "simon.score.v1",
+    "value": 100,
+    "grade": "A",
+    "components": {
+      "faults": 0.0,
+      "similarity": 0.0
+    },
+    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.0,
+          4.917
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.0
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": 0.96,
+          "cue": null
+        },
+        "compared": true
+      },
+      {
+        "t_s": [
+          4.917,
+          9.833
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.0
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": 1.01,
+          "cue": null
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.99,
+      "cue": null
+    }
+  }
+}

@@ -1,0 +1,228 @@
+{
+ "format": "simon.analysis.v1",
+ "schema_version": "1.5.0",
+ "expected": {
+  "path": "fixtures/input/expected/exercise/animation.json",
+  "set": "exercise",
+  "movement": "squat"
+ },
+ "follower": {
+  "path": "fixtures/input/followers/exercise/exercise_front_good_08_arms_wider-both+elbow_bent-right/skeleton.json",
+  "take_id": "exercise_front_good_08_arms_wider-both+elbow_bent-right"
+ },
+ "status": {
+  "code": "ok",
+  "text": "Compared with the expected movement."
+ },
+ "faults": [
+  {
+   "measure": "elbow_flexion",
+   "measure_kind": "angle",
+   "joint": "right_elbow",
+   "body_part": "arms",
+   "side": "right",
+   "direction": "more",
+   "magnitude_deg": 36.1,
+   "peak_deg": 43.0,
+   "threshold_deg": 20.0,
+   "unit": "degrees",
+   "expected_frames": [
+    18,
+    77
+   ],
+   "follower_frames": [
+    20,
+    65
+   ],
+   "runs": [
+    [
+     18,
+     77
+    ]
+   ],
+   "phase": [
+    0.2,
+    0.856
+   ],
+   "coverage": 1.0,
+   "confidence": 1.0,
+   "text": "El codo derecho está más doblado que en el ejemplo.",
+   "cue": "Straighten your right arm more",
+   "cue_kind": "range",
+   "follower_t_s": [
+    0.667,
+    2.167
+   ],
+   "at_s": 0.7,
+   "follower_runs": [
+    [
+     20,
+     65
+    ]
+   ],
+   "lateral": null,
+   "text_timed": "right elbow bent more than the example at 0.7 s",
+   "joints": [
+    "right_elbow"
+   ],
+   "coaching": "right elbow bent more than the example at 0.7 s"
+  },
+  {
+   "measure": "upper_arm_out",
+   "measure_kind": "direction",
+   "joint": "shoulder",
+   "body_part": "arms",
+   "side": "both",
+   "direction": "more",
+   "magnitude_deg": 15.8,
+   "peak_deg": 17.0,
+   "threshold_deg": 10.0,
+   "unit": "degrees",
+   "expected_frames": [
+    10,
+    74
+   ],
+   "follower_frames": [
+    12,
+    63
+   ],
+   "runs": [
+    [
+     10,
+     74
+    ]
+   ],
+   "phase": [
+    0.111,
+    0.822
+   ],
+   "coverage": 1.0,
+   "confidence": 1.0,
+   "text": "Los codos están más abiertos que en el ejemplo.",
+   "cue": "Keep your elbows closer in",
+   "cue_kind": "range",
+   "follower_t_s": [
+    0.4,
+    2.1
+   ],
+   "at_s": 0.4,
+   "follower_runs": [
+    [
+     12,
+     63
+    ]
+   ],
+   "lateral": null,
+   "text_timed": "elbows wider than the example at 0.4 s",
+   "joints": [
+    "left_shoulder",
+    "right_shoulder"
+   ],
+   "coaching": "elbows wider than the example at 0.4 s"
+  }
+ ],
+ "diagnostics": {
+  "alignment_residual": 0.3925,
+  "alignment_measures": [
+   "left_elbow_flexion",
+   "left_knee_flexion",
+   "left_upper_arm_forward",
+   "left_thigh_forward",
+   "right_elbow_flexion",
+   "right_knee_flexion",
+   "right_upper_arm_forward",
+   "right_thigh_forward",
+   "trunk_lean_forward"
+  ],
+  "follower_span": [
+   3,
+   75
+  ],
+  "warnings": [],
+  "guard": {
+   "residual": 0.3925,
+   "timing_corr": 0.9892,
+   "span_share": 0.9605,
+   "limits": {
+    "max_residual": 0.5677,
+    "min_timing_corr": 0.8336
+   }
+  }
+ },
+ "insights": [
+  {
+   "cue": "Straighten your right arm more",
+   "why": "Right elbow bent more than the example at 0.7 s",
+   "kind": "range",
+   "at_s": 0.7,
+   "window": null,
+   "points": null,
+   "measure": "elbow_flexion",
+   "side": "right",
+   "joint": "right_elbow"
+  },
+  {
+   "cue": "Keep your elbows closer in",
+   "why": "Elbows wider than the example at 0.4 s",
+   "kind": "range",
+   "at_s": 0.4,
+   "window": null,
+   "points": null,
+   "measure": "upper_arm_out",
+   "side": "both",
+   "joint": "shoulder"
+  }
+ ],
+ "phrasing": {
+  "requested": "template",
+  "backend": "template",
+  "model": null,
+  "fallback_reason": null,
+  "faults": [
+   {
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "text": "El codo derecho está más doblado que en el ejemplo."
+   },
+   {
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "text": "Los codos están más abiertos que en el ejemplo."
+   }
+  ],
+  "lang": "es"
+ },
+ "_contract_fixture": "C1 contract fixture for tests (docs/specs/voice.md). Built from fixtures/input/analysis-1.5.0.json; the Spanish lines and the second_opinion block are hand-written to the C1 shape, not model output.",
+ "second_opinion": {
+  "status": "ok",
+  "reason": "",
+  "backend": "meta-api",
+  "model": "muse-spark-1.3",
+  "verdicts": [
+   {
+    "fault_index": 0,
+    "agrees": true,
+    "note": "El codo se cierra de más en la subida."
+   },
+   {
+    "fault_index": 1,
+    "agrees": false,
+    "note": "Los codos parecen alineados con el ejemplo en este ángulo."
+   }
+  ],
+  "observations": [
+   {
+    "at_s": 1.9,
+    "text": "La cabeza baja al final del movimiento.",
+    "label": "model_opinion"
+   },
+   {
+    "at_s": 0.9,
+    "text": "El ritmo es más lento que el del ejemplo.",
+    "label": "model_opinion"
+   }
+  ]
+ }
+}

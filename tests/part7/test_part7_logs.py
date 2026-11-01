@@ -200,7 +200,20 @@ def test_part1_cut_stream_with_too_little_time_logs_why_no_second_try(monkeypatc
     assert len(calls) == 2 and [c["timeout_s"] for c in calls[:-1]] == [90.0]  # no second run
     assert kf is None and note is not None and "first_try" not in step
     assert ("Part 1 lost its network stream after 82.4 s, no second try: 7.6 s of its 90 s budget left "
-            "(a retry needs 20 s)") in _job_log(tmp_path / "jobs" / "cccccccccccc")
+            "(a retry needs 40 s)") in _job_log(tmp_path / "jobs" / "cccccccccccc")
+
+
+def test_part1_retry_needs_40_s_left_and_the_budget_is_logged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """TICKET-113: 39 s left is not enough for a second try, 40 s is; the lines name the budget used."""
+    assert p1_keyframes.RETRY_MIN_S == 40.0
+    calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": CUT, "duration_s": 51.0}])
+    assert len(calls) == 2 and "no second try: 39.0 s of its 90 s budget left (a retry needs 40 s)" in _job_log(
+        tmp_path / "jobs" / "cccccccccccc")
+    (tmp_path / "b").mkdir()
+    calls = _p1(monkeypatch, tmp_path / "b", [{"exit": 1, "stdout": CUT, "duration_s": 50.0}, {"exit": 0, "stdout": "ok"}])
+    assert [c["timeout_s"] for c in calls[:-1]] == [90.0, 40.0]
+    text = _job_log(tmp_path / "b" / "jobs" / "cccccccccccc")
+    assert "Part 1 starts with a 90 s budget" in text and "retrying once with 40 s left of its 90 s budget" in text
 
 
 # ----- POST api/client-log ---------------------------------------------------------------------------------
@@ -339,3 +352,26 @@ def test_a_route_crashing_after_its_headers_sends_no_second_response(api: Api, c
     assert raw.count(b"HTTP/1.") == 1 and raw.startswith(b"HTTP/1.0 200") and raw.endswith(b"\r\n\r\npart")
     assert any("api/health crashed: RuntimeError" in r.getMessage() for r in caplog.records)
     assert api.request("GET", "api/version")[0] == 200  # the server still answers the next request
+
+
+# ----- TICKET-174: route arguments never reach the log -----------------------------------------------------
+TOKEN = "Zm9vYmFyLXRva2VuLXZhbHVlLTEyMzQ1Njc4OQabcdef0123456789"
+
+
+@pytest.mark.parametrize("page, shown", [
+    (f"#/signin/{TOKEN}", "page=#/signin "), ("#/result/0123456789ab", "page=#/result "),
+    ("#/result/0123456789ab/p2", "page=#/result "), ("#/record", "page=#/record "),
+])
+def test_client_log_scrubs_route_arguments_from_page(api: Api, caplog: pytest.LogCaptureFixture, page: str, shown: str) -> None:
+    with caplog.at_level(logging.INFO, logger="part7"):
+        assert _post(api, {**GOOD, "page": page})[0] == 204
+    msg = [r.getMessage() for r in caplog.records if r.getMessage().startswith("client ")][0]
+    assert shown in msg and TOKEN not in msg and "0123456789ab" not in msg
+
+
+def test_client_log_scrubs_signin_and_result_links_inside_detail(api: Api, caplog: pytest.LogCaptureFixture) -> None:
+    detail = {"href": f"https://x.test/#/signin/{TOKEN}", "from": "#/result/0123456789ab"}
+    with caplog.at_level(logging.INFO, logger="part7"):
+        assert _post(api, {**GOOD, "detail": detail})[0] == 204
+    msg = [r.getMessage() for r in caplog.records if r.getMessage().startswith("client ")][0]
+    assert "#/signin" in msg and "#/result" in msg and TOKEN not in msg and "0123456789ab" not in msg

@@ -7,9 +7,14 @@ import { worstMoment, momentsToReview, flaggedWindows } from "./coaching.js";
 import { mountCoachStage, renderMomentList, momentChip } from "./coach-view.js";
 import { qualityIssues, qualityTips, qualityWarning } from "./quality-result.js";
 import { getEntry } from "./api.js";
-import { summaryOf } from "./model/result-summary.js";
+import { summaryOf, TEXT as SUMMARY_TEXT } from "./model/result-summary.js";
 import { currentKind, kindForMode } from "./model/kind.js";
-import { renderResultSummary } from "./views/result-summary.js";
+import { renderResultSummary, REVEAL_MS } from "./views/result-summary.js";
+import { voiceSlot, secondOpinionSlot, historySection, keepTakeSlot, mountLaneModules, mountExport } from "./views/result-slots.js";
+import { hasJobFiles, mountModelsUsed, mountSkeleton, mountMesh, showStage } from "./result-wiring.js";
+
+// results whose reveal has played in this page's life: it plays once per result (result-redesign-additions.md R4)
+const revealed = new Set();
 
 // How long the result waits for the follower video to say it loads before showing the rest without it.
 export const SETTLE_TIMEOUT_MS = 4000;
@@ -190,6 +195,7 @@ function renderFaults(root, analysis, getCompare) {
       type: "button",
       class: "sr-fault",
       "data-testid": `fault-${i}`,
+      "data-fault-index": i,
       "data-at-s": f.at_s,
       "data-joints": (f.joints || []).join(","),
       "data-cue-kind": f.cue_kind || false,
@@ -202,7 +208,8 @@ function renderFaults(root, analysis, getCompare) {
     if (f.confidence === "low") meta.append(el("span", { class: "sr-chip sr-low", "data-testid": `fault-${i}-low`, text: "Low confidence" }));
     for (const j of f.joints || []) meta.append(el("span", { class: "sr-joint", text: j.replace(/_/g, " ") }));
     row.append(text, meta);
-    list.append(el("li", {}, row));
+    // the li is the card (theme/results.css): the row, then the voice slot inside it after the chips (contract C2)
+    list.append(el("li", { class: "sr-fault-item" }, row, voiceSlot(i, f.at_s)));
     return row;
   });
   list.addEventListener("click", (ev) => {
@@ -221,7 +228,7 @@ function renderFaults(root, analysis, getCompare) {
       cmp.jump(faults[i].at_s);
       cmp.highlight(faults[i].joints || []);
     }
-    row.scrollIntoView?.({ block: "nearest" });
+    // the jump brought the video and the 3D view into sight (result-redesign-additions.md R5); no scroll back to the row
   });
   section.append(list);
   const fb = fallbackSummary(analysis);
@@ -272,7 +279,7 @@ const timelineEnd = (analysis) => timelineOf(analysis).map((w) => w.t_s[1]);
  * `job` and `pid` name the result (the follower video is served for them; `videoUrl` overrides, for the harness).
  * @returns {{seek, highlight, compare, coach, destroy}}
  */
-export async function mountResult(root, { analysis, replay, record = null, job = null, pid = null, videoUrl } = {}) {
+export async function mountResult(root, { analysis, replay, trainerVisibility = null, record = null, job = null, pid = null, videoUrl } = {}) {
   ensureStyles();
   root.replaceChildren();
   root.classList.add("simon-result");
@@ -283,15 +290,23 @@ export async function mountResult(root, { analysis, replay, record = null, job =
     root.append(el("p", { class: "sr-note", role: "alert", text: "The analysis could not be read." }));
     return { seek() {}, highlight() {}, compare: null, coach: null, destroy() { root.replaceChildren(); } };
   }
-  // what the coaching rows drive: the video and the 3D view together (or whichever exists)
+  let skeleton = null;
+  let mesh = null;
+  // the stage: the follower's video with the 3D compare right under it (result-redesign-additions.md R5, TICKET-138)
+  const stage = el("div", { class: "sr-stage-zone", "data-testid": "stage" });
+  // what the coaching rows drive: the video and the 3D view together (or whichever exists); a jump first brings both
+  // into sight, so a row tapped far down the page shows the views it moves
   const view = {
     seek: (t) => (coach ? coach.seekTo(t) : compare && compare.seek(t)),
-    jump: (t) => (coach ? coach.goTo(t) : compare && compare.seek(t)),
-    highlight: (j) => compare && compare.highlight(j),
+    jump: (t) => {
+      showStage(stage, compare && compare.el);
+      return coach ? coach.goTo(t) : compare && compare.seek(t);
+    },
+    highlight: (j) => { if (compare) compare.highlight(j); if (skeleton) skeleton.pin(j); },
   };
   const getView = () => (coach || compare ? view : null);
   const cleanups = [];
-  const ctx = { job: job || "fixture", pid: pid || null, analysis, jobRecord: record };
+  const ctx = { job: job || "fixture", pid: pid || null, analysis, jobRecord: record, replay, view: getView };
 
   const warnings = resultWarnings(analysis);
   if (warnings.length) {
@@ -310,7 +325,7 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   root.append(summarySlot);
   root.dataset.summary = "true";
   let summaryModel = null;
-  try { summaryModel = replay ? normalizeReplay(replay) : null; } catch { summaryModel = null; }
+  try { summaryModel = replay ? normalizeReplay(replay, trainerVisibility) : null; } catch { summaryModel = null; }
   const summaryOpts = { kind: kindForMode(record && record.mode) || currentKind(), model: summaryModel, retryHref: recordAgainHref(record) };
   // the video and 3D view sit below the summary: taps scroll to whichever exists, then play the moment there
   const LEAD_S = 2; // the same lead-in the coaching rows use (coaching.js)
@@ -326,14 +341,40 @@ export async function mountResult(root, { analysis, replay, record = null, job =
     playWorst: (t) => { if (!getView()) return; toStage(); if (coach && coach.replayWorst) coach.replayWorst(); else playFrom(t); },
     replay: toStage,
   };
+  // R4: the ring counts up once per result; a repaint for the routine's name while it runs carries it on, never restarts it
+  const revealKey = `${job || "fixture"}/${pid || ""}`;
+  const revealStart = revealed.has(revealKey) ? null : performance.now();
+  revealed.add(revealKey);
+  const revealing = () => revealStart !== null && performance.now() - revealStart < REVEAL_MS;
+  let summary = null;
+  const meshStage = el("div", { class: "rs-mesh-stage" });
+  const meshHost = el("div", { class: "rs-mesh", "data-testid": "summary-mesh", hidden: true }, meshStage,
+    el("p", { class: "rs-mesh-legend" },
+      el("span", { class: "rs-mesh-ref", text: summaryOpts.kind === "dance" ? SUMMARY_TEXT.trainer : SUMMARY_TEXT.reference }),
+      el("span", { class: "rs-mesh-you", text: SUMMARY_TEXT.you })));
+  /** R3: the 3D bodies take the place of the worst moment's stick figures, in every paint of the summary. */
+  let meshWanted = false;   // set when this result loads meshes (a real job with a worst moment)
+  const placeMesh = () => {
+    if (!meshWanted || !summary || !summary.worstCard) return;
+    if (!mesh) { summary.worstCard.append(meshHost); return; }   // hidden until it mounts: it takes the theme's colours
+    meshHost.hidden = false;
+    if (summary.figures) summary.figures.replaceWith(meshHost); else summary.worstCard.append(meshHost);
+  };
   const paintSummary = (entryName = "") => {
+    if (summary) summary.destroy();
     summarySlot.replaceChildren();
-    renderResultSummary(summarySlot, summaryOf(shown, { ...summaryOpts, entryName }), summaryOn);
+    summary = renderResultSummary(summarySlot, summaryOf(shown, { ...summaryOpts, entryName }), { ...summaryOn, reveal: revealing() ? revealStart : false });
+    if (hasJobFiles(job, pid)) cleanups.push(mountExport(summary.exportSlot, job));   // C2b: the export button, again in each new slot (real single-person jobs only)
+    placeMesh();
   };
   paintSummary();
   // the routine's name only appears in a rep title ("Lateral raise, rep 3 of 8"); look it up only then
   const namesRep = shown.score && shown.score.basis === "reps" && worstMoment(shown);
   if (namesRep && record && record.entry_id) getEntry(record.entry_id).then((e) => e && e.name && paintSummary(e.name)).catch(() => {});
+  // R1: "How this was made", right under the summary (real jobs only: the example result has no job files)
+  const madeHolder = el("div", { class: "sr-slot hm-slot" });
+  root.append(madeHolder);
+  if (hasJobFiles(job, pid)) mountModelsUsed(madeHolder, job);
   const modeSlot = makeSlot(root, "mode-slot");
   fillSlot(modeSlot, () => import("./modes.js").then((m) => m.mountModeNote), ctx, cleanups);
   renderScore(root, shown);
@@ -343,11 +384,12 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   const challengeSlot = makeSlot(root, "challenge-slot");
   fillSlot(challengeSlot, () => import("./challenge-actions.js").then((m) => m.mountChallengeActions), ctx, cleanups);
 
-  // the zone keeps the video pinned while the coaching rows below it are used
+  // the zone: the stage (video, then the 3D compare) and the coaching rows below it
   const zone = el("div", { class: "sr-zone" });
   const stageHolder = el("div", { class: "sr-stage-holder" });
   const body = el("div", { class: "sr-zone-body" });
-  zone.append(stageHolder, body);
+  stage.append(stageHolder);
+  zone.append(stage, body);
   root.append(zone);
 
   const moments = momentsToReview(analysis);
@@ -361,10 +403,10 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   if (mine) body.append(mine);
   if (replay || !warnings.length) {
     const slot = el("div", { class: "sr-compare-slot" });
-    body.append(slot);
+    stage.append(slot);
     let model = null;
     try {
-      model = normalizeReplay(replay);
+      model = normalizeReplay(replay, trainerVisibility);
     } catch {
       slot.append(el("p", { class: "sr-note", role: "status", "data-testid": "compare-note", text: MSG_BAD_REPLAY }));
     }
@@ -386,6 +428,9 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   }
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
   renderFaults(body, analysis, getView);
+  fillSlot(makeSlot(body, "near-misses-slot"), () => import("./near-misses.js").then((m) => m.mountNearMisses), ctx, cleanups); // TICKET-100
+  body.append(secondOpinionSlot());   // contract C2: one section after the coaching rows
+  body.append(historySection(), keepTakeSlot());   // R6: "Your takes over time" and "Keep this take", empty unless signed in
   renderQualityTips(body, analysis);
   fillSlot(breakdownSlot, () => import("./breakdown.js").then((m) => m.mountBreakdown), ctx, cleanups);
   if (warnings.length) {
@@ -401,14 +446,46 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   const onSeek = (e) => { const at = e && e.detail && e.detail.at_s; if (typeof at === "number" && getView()) view.jump(at); };
   document.addEventListener(SEEK_EVENT, onSeek);
 
+  // contracts C2 and C2b: the other session's voice, second opinion and narration modules (missing ones stay silent)
+  mountLaneModules(root, { jobId: job || "fixture", analysis, video: coach ? coach.video : null,
+    seek: (t) => getView() && view.jump(t), entryId: (record && record.entry_id) || null });
+
+  let live = true;
+  if (hasJobFiles(job, pid)) {
+    // R2: the skeleton over the video; R3: the 3D bodies in the worst moment's card, on the stage's clock
+    if (coach) mountSkeleton(coach, { job, analysis }).then((s) => { if (live) skeleton = s; else if (s) s.destroy(); });
+    if (worst && summary && summary.worstCard) {
+      meshWanted = true;
+      placeMesh();
+      mountMesh(meshStage, { job, analysis, replay }).then((m) => {
+        if (!live) { if (m) m.destroy(); return; }
+        if (!m) { meshWanted = false; meshHost.remove(); return; }
+        mesh = m;
+        placeMesh();
+        mesh.setTime(worst.at);
+        const follow = (t) => mesh && mesh.setTime(t);
+        if (compare) cleanups.push(compare.onTick(follow));
+        else if (coach) {
+          const onTime = () => follow(coach.video.currentTime);
+          coach.video.addEventListener("timeupdate", onTime);
+          coach.video.addEventListener("seeked", onTime);
+        }
+      });
+    }
+  }
+
   return {
     compare,
     coach,
     seek: (t) => view.seek(t),
     highlight: (j) => view.highlight(j),
     destroy() {
+      live = false;
       document.removeEventListener(SEEK_EVENT, onSeek);
       cleanups.splice(0).forEach((fn) => fn());
+      skeleton && skeleton.destroy();
+      mesh && mesh.destroy();
+      summary && summary.destroy();
       coach && coach.destroy();
       compare && compare.destroy();
       urls.forEach((u) => URL.revokeObjectURL(u));

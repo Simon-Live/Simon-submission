@@ -21,6 +21,14 @@ def _part1_breaker_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SIMON7_PART1_BREAKER", "off")
 
 
+@pytest.fixture(autouse=True)
+def _private_gpu_lock(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never take the host's shared Part 2 GPU lock: another engagement holding it made fake-runner tests time
+    out with "the GPU is busy" (2026-10-31). A test that needs a lock path of its own still sets one."""
+    monkeypatch.setenv("SIMON7_GPU_LOCK_PATH", str(tmp_path_factory.mktemp("gpu") / "gpu.lock"))
+    monkeypatch.setenv("SIMON7_NARRATION", "off")  # TICKET-146: no test calls the paid transcription API unless it opts in
+
+
 @pytest.fixture()
 def state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Provide an isolated temporary state root for tests."""

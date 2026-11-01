@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simon: SAM 3D Body mesh compare</title>
+<style>
+  :root { --mesh-trainer: #8aa4ff; --mesh-you: #3ddc97; --mesh-fault: #ff4d4d; }
+  html, body { margin: 0; height: 100%; background: #10141c; color: #e8ecf4; font: 15px/1.4 system-ui, sans-serif; }
+  main { display: flex; flex-direction: column; height: 100%; }
+  header { padding: 12px 16px 4px; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .legend { display: flex; gap: 14px; font-size: 13px; color: #b8c0d0; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  #stage { flex: 1; min-height: 0; position: relative; touch-action: none; }
+  #fault { min-height: 22px; padding: 4px 16px; color: #ff8a8a; font-weight: 600; }
+  footer { display: flex; align-items: center; gap: 10px; padding: 8px 16px 16px; }
+  #scrub { flex: 1; }
+  #time { font-variant-numeric: tabular-nums; width: 52px; text-align: right; }
+  button { background: #253049; color: #e8ecf4; border: 0; border-radius: 6px; padding: 8px 12px; font: inherit; }
+  .fallback { padding: 24px 16px; color: #b8c0d0; }
+  .credit { font-size: 11px; color: #7d8799; padding: 0 16px 10px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Your body against the trainer's</h1>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--mesh-trainer)"></span>Trainer</span>
+      <span><span class="dot" style="background:var(--mesh-you)"></span>You</span>
+      <span><span class="dot" style="background:var(--mesh-fault)"></span>Fault</span>
+    </div>
+  </header>
+  <div id="stage"></div>
+  <div id="fault" aria-live="polite"></div>
+  <footer>
+    <button id="play" type="button">Pause</button>
+    <input id="scrub" type="range" min="0" max="6" step="0.01" value="0" aria-label="Time">
+    <span id="time">0.0 s</span>
+  </footer>
+  <div class="credit">Meshes from Meta SAM 3D Body (SAM License) with the MHR body model (Apache-2.0), run by Simon Part 2.
+    Clips: Pexels 6326808 and 8026937.</div>
+</main>
+<script type="module">
+import { mountMeshView, activeJoints } from "./mesh-view.js";
+
+const q = new URLSearchParams(location.search);
+const stage = document.getElementById("stage");
+const faultLine = document.getElementById("fault");
+const scrub = document.getElementById("scrub");
+const timeLabel = document.getElementById("time");
+const playBtn = document.getElementById("play");
+const t0 = performance.now();
+
+// The demo data is held back from the published repo until its licence notices are cleared (docs/specs/mesh-view.md).
+const faultRes = await fetch("mesh-demo/faults.json").catch(() => null);
+if (!faultRes || !faultRes.ok) {
+  stage.innerHTML = '<p class="fallback" data-testid="demo-data-missing">Demo data not included in this repo.</p>';
+  window.__meshDemo = { ready: true, missing: true };
+} else {
+  const faultDoc = await faultRes.json();
+  const view = await mountMeshView(stage, {
+    trainerMeshUrl: "mesh-demo/trainer/mesh3d.json",
+    followerMeshUrl: "mesh-demo/follower/mesh3d.json",
+    faults: faultDoc.faults,
+    fps: 10,
+  });
+  const loadMs = Math.round(performance.now() - t0);
+
+  const state = { loadMs, playing: !q.has("t"), t: Number(q.get("t") || 0), duration: faultDoc.duration_s, view };
+  window.__meshDemo = state;
+
+  if (!view) {
+    stage.innerHTML = '<p class="fallback">The 3D bodies could not be shown here; the skeleton view stays available.</p>';
+  } else {
+    scrub.max = String(state.duration);
+    const show = (t) => {
+      state.t = t;
+      view.setTime(t);
+      scrub.value = String(t);
+      timeLabel.textContent = `${t.toFixed(1)} s`;
+      const hits = faultDoc.faults.filter((f) => activeJoints([f], t).size);
+      faultLine.textContent = hits.map((f) => `${f.text} at ${f.at_s.toFixed(1)} s`).join("; ");
+    };
+    let last = performance.now();
+    const tick = (now) => {
+      if (state.playing) show((state.t + (now - last) / 1000) % state.duration);
+      last = now;
+      requestAnimationFrame(tick);
+    };
+    playBtn.textContent = state.playing ? "Pause" : "Play";
+    playBtn.addEventListener("click", () => { state.playing = !state.playing; playBtn.textContent = state.playing ? "Pause" : "Play"; });
+    scrub.addEventListener("input", () => { state.playing = false; playBtn.textContent = "Play"; show(Number(scrub.value)); });
+    show(state.t);
+    requestAnimationFrame(tick);
+  }
+  state.ready = true;
+}
+</script>
+</body>
+</html>

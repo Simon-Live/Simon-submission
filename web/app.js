@@ -1,18 +1,20 @@
 // Hash router. Relative URLs only; each screen returns a cleanup function.
 import { installErrorCapture } from "./errors.js";
-import { getAnalysis, getReplay, getFixtureResult, getJob, ApiError } from "./api.js";
+import { getAnalysis, getReplay, getTrainerVisibility, getFixtureResult, getJob, routeName, ApiError } from "./api.js";
 import { mountCatalog } from "./catalog.js";
 import { mountWatch } from "./watch.js";
 import { mountRecord } from "./record.js";
 import { mountFollow } from "./follow.js";
 import { mountJob } from "./job.js";
 import { mountGroupResult } from "./group-result.js";
+import { mountTeacher } from "./teacher.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading } from "./progress.js";
 import { mountBuildStamp } from "./build.js";
-import { mountShell } from "./shell.js";
+import { isDebug, profile, showModes } from "./flags.js";
 import { mountPendingList, mountPendingResume, mountPendingBanner } from "./pending-ui.js";
 import { startPending } from "./pending-app.js";
+import { mountShell } from "./shell.js";
 
 installErrorCapture(); // uncaught errors and failed fetches reach the server log (observability.md)
 const root = document.getElementById("app");
@@ -25,8 +27,8 @@ let cleanup = () => {};
 async function loadResult(job, pid) {
   if (job === "fixture") return getFixtureResult();
   const [analysis, record] = await Promise.all([getAnalysis(job, pid), getJob(job).catch(() => null)]);
-  const replay = await getReplay(job, pid).catch(() => null);
-  return { analysis, replay, record };
+  const [replay, trainerVisibility] = await Promise.all([getReplay(job, pid).catch(() => null), getTrainerVisibility(job)]);
+  return { analysis, replay, record, trainerVisibility };
 }
 
 function mountResultRoute(el, job, pid) {
@@ -37,8 +39,10 @@ function mountResultRoute(el, job, pid) {
     if (!live) return;
     clear(el);
     // TICKET-087: keep the handle, so leaving the screen stops its video and 3D clock
-    mod.mountResult(el, { analysis: data.analysis, replay: data.replay, job, record: data.record, pid }).then((h) => {
+    mod.mountResult(el, { analysis: data.analysis, replay: data.replay, trainerVisibility: data.trainerVisibility, job, record: data.record, pid }).then((h) => {
       handle = h;
+      // TICKET-159: "Delete this take" ends every real result (not the committed example)
+      if (live && job !== "fixture") import("./delete-take.js").then((m) => live && m.mountDeleteTake(el, { job, group: Boolean(pid) })).catch(() => {});
     });
   }).catch((err) => {
     if (!live) return;
@@ -59,6 +63,44 @@ function mountChallengeRoute(el, id) {
   return () => { live = false; stop(); };
 }
 
+/** `#/signin` and `#/signin/<token>`: opt-in sign-in, loaded on first use (identity.md). */
+function mountSigninRoute(el, token) {
+  let stop = () => {};
+  let live = true;
+  import("./auth.js").then((m) => { if (live) stop = m.mountSignin(el, token); }).catch(() => {});
+  return () => { live = false; stop(); };
+}
+
+/** `#/me`: the account page, with the list of movements the student has takes of under "Your takes over time". */
+function mountMeRoute(el) {
+  const stops = [];
+  let live = true;
+  const account = h("div");
+  const over = h("section", { class: "me-history", "data-testid": "me-history", hidden: true }, h("h2", { text: "Your takes over time" }));
+  const list = h("div");
+  over.append(list);
+  el.append(account, over);
+  (async () => {
+    const auth = await import("./auth.js");
+    if (!live) return;
+    stops.push(auth.mountMe(account));
+    if (!(await auth.fetchMe()).signedIn || !live) return; // signed out: the account page already says so
+    const history = await import("./history.js");
+    if (!live) return;
+    over.hidden = false;
+    stops.push(history.mountMyTakes(list));
+  })().catch(() => {});
+  return () => { live = false; stops.forEach((stop) => stop()); };
+}
+
+/** `#/me/<entry>`: one movement's takes over time, loaded on first use. */
+function mountHistoryRoute(el, entryId) {
+  let stop = () => {};
+  let live = true;
+  import("./history.js").then((m) => { if (live) stop = m.mountHistory(el, entryId); }).catch(() => {});
+  return () => { live = false; stop(); };
+}
+
 export const ROUTES = [
   [/^$/, (el) => mountCatalog(el)],
   [/^watch\/([^/]+)$/, (el, m) => mountWatch(el, m[1])],
@@ -72,6 +114,11 @@ export const ROUTES = [
   [/^challenge\/([^/]+)$/, (el, m) => mountChallengeRoute(el, m[1])],
   [/^pending$/, (el) => mountPendingList(el)], // saved takes (offline-takes.md)
   [/^pending\/([^/]+)$/, (el, m) => mountPendingResume(el, m[1])],
+  [/^teacher\/([^/]+)$/, (el, m) => mountTeacher(el, m[1])], // the followers of one movement (teacher-dashboard.md)
+  [/^signin$/, (el) => mountSigninRoute(el)],
+  [/^signin\/([^/]+)$/, (el, m) => mountSigninRoute(el, m[1])],
+  [/^me$/, (el) => mountMeRoute(el)],
+  [/^me\/([^/]+)$/, (el, m) => mountHistoryRoute(el, m[1])],
 ];
 
 export function resolve(hash) {
@@ -92,14 +139,18 @@ function show() {
     root.append(stateBlock("route-missing", "Page not found", "That address does not match a screen.", linkButton("#/", "Back to movements", "back-home")));
     return;
   }
-  document.body.dataset.route = location.hash || "#/";
+  document.body.dataset.route = routeName(location.hash) || "#/"; // the name only: a sign-in token or job id is never kept here (observability.md)
   cleanup = hit.mount(root, hit.params) || (() => {});
   window.scrollTo(0, 0);
 }
 
+profile(); // `?profile=submission` is read here before any screen and kept (flags.js)
 window.addEventListener("hashchange", show);
-mountShell({ switchHost: document.getElementById("kind-switch") });
+const kindHost = document.getElementById("kind-switch");
+kindHost.hidden = !showModes(); // the submission profile hides the Exercise / Dance / Rehab choice with the other modes
+mountShell({ switchHost: kindHost });
 show();
-mountBuildStamp(document.getElementById("build"));
+if (isDebug()) mountBuildStamp(document.getElementById("build")); // the build line shows only with ?debug=1
 // Saved takes: drop expired ones, send what is waiting, and show the banner on every screen (offline-takes.md).
+import("./auth.js").then((m) => m.mountAuthLink(document.getElementById("auth-link"))).catch(() => {}); // the header link, only when sign-in is on
 startPending().then((pending) => mountPendingBanner(document.getElementById("pending"), pending)).catch(() => {});

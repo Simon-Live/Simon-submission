@@ -14,6 +14,8 @@ KEY_NAMES: tuple[str, ...] = (
     "HF_TOKEN",
     "BASETEN_API_KEY",
     "MUSE_SPARK_API_KEY",
+    "SIMON7_SMTP_URL",
+    "SIMON7_AUTH_PEPPER",
 )
 
 _SECRETS: set[str] = set()

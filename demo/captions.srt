@@ -1,0 +1,130 @@
+1
+00:00:00,250 --> 00:00:02,666
+Learn any movement
+from a single recording.
+
+2
+00:00:06,250 --> 00:00:09,815
+You follow a video, and nobody
+tells you what your copy got wrong.
+
+3
+00:00:13,250 --> 00:00:15,924
+One teacher records a movement once.
+
+4
+00:00:15,964 --> 00:00:18,487
+That recording is all Simon needs.
+
+5
+00:00:22,250 --> 00:00:27,408
+It becomes a 3D movement that anyone
+can open, and turn to any angle.
+
+6
+00:00:33,250 --> 00:00:34,471
+Anyone can follow it.
+
+7
+00:00:34,511 --> 00:00:36,632
+They film their own copy on a phone.
+
+8
+00:00:42,250 --> 00:00:43,307
+Now the wait.
+
+9
+00:00:43,347 --> 00:00:47,524
+The analysis took
+3 minutes 27 seconds on the GPU.
+
+10
+00:00:47,564 --> 00:00:49,211
+Here it is, sped up.
+
+11
+00:00:54,250 --> 00:00:57,360
+Under the hood, SAM 3.1 tracks the person.
+
+12
+00:00:57,400 --> 00:01:00,809
+Muse Spark finds the sections
+of the movement.
+
+13
+00:01:00,849 --> 00:01:04,784
+SAM 3D Body, built on DINOv3,
+lifts the pose into 3D.
+
+14
+00:01:04,824 --> 00:01:07,633
+Then Simon compares the two skeletons,
+
+15
+00:01:07,673 --> 00:01:11,608
+and Muse Spark puts the differences
+into plain words.
+
+16
+00:01:12,598 --> 00:01:16,319
+Here is SAM 3D Body
+at work on two stock clips.
+
+17
+00:01:20,598 --> 00:01:21,580
+The result:
+
+18
+00:01:21,620 --> 00:01:23,718
+77 out of 100, grade C.
+
+19
+00:01:27,598 --> 00:01:31,500
+The 3D view lays the copy
+over the teacher, so you can turn it
+
+20
+00:01:31,540 --> 00:01:33,853
+and see exactly where the two differ.
+
+21
+00:01:39,598 --> 00:01:41,282
+And the cue is timed.
+
+22
+00:01:41,322 --> 00:01:44,155
+Keep your chest up, at 0.9 seconds.
+
+23
+00:01:47,598 --> 00:01:51,920
+Simon tells shape from timing,
+and replays your worst moment on a loop.
+
+24
+00:01:56,598 --> 00:02:01,834
+A clip to share is one tap away, and a card
+shows which Meta models made each step.
+
+25
+00:02:08,598 --> 00:02:10,246
+Dance, rehab or fitness:
+
+26
+00:02:10,286 --> 00:02:13,834
+one capability for any movement
+a teacher can show.
+
+27
+00:02:18,598 --> 00:02:23,787
+This is Simon, built on Meta's
+SAM 3.1, SAM 3D Body and Muse Spark.
+
+28
+00:02:23,827 --> 00:02:27,300
+The code was written
+in the hackathon window.
+
+29
+00:02:27,340 --> 00:02:31,593
+The footage is one real,
+cleared take plus stock clips.

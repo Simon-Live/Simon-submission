@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from part7 import check7, config, modules
+from part7 import check7, modules
 from support import stub_modules
 
 

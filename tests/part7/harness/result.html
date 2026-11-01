@@ -2,6 +2,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>result harness</title>
+<link rel="stylesheet" href="../../../web/theme/tokens.css">
+<link rel="stylesheet" href="../../../web/theme/base.css">
+<link rel="stylesheet" href="../../../web/theme/voice.css">
 <style>html,body{margin:0;background:#0c1118}</style>
 <div id="app"></div>
 <script type="module">
@@ -40,8 +43,18 @@ if (c === "partial") { // schema 1.4.0: status ok, warnings, low-confidence faul
   analysis.faults.forEach((f) => { f.confidence = "low"; });
   analysis.score = { ...analysis.score, value: 41, grade: "F", capped_by: ["moving_part_out_of_frame", "low_match"] };
 }
+// Part 5 1.8.0: diagnostics.near_misses (TICKET-100); "nearmiss-empty" lists none; the plain 1.2.0 cases have no field
+if (c === "nearmiss" || c === "nearmiss-empty") {
+  analysis = await fixture("analysis-near-misses.json");
+  if (c === "nearmiss-empty") analysis.diagnostics.near_misses = { total: 0, omitted: 0, items: [] };
+}
+// TICKET-155: staging job 02e783ae6e63, one fault, its window 73 C, capped to 59 F by low_match
+if (c === "capped") analysis = await fixture("analysis-capped-low-match.json");
 if (c === "nofaults") analysis.faults = [];
 if (c === "fallback") analysis.phrasing.faults[1] = { backend: "template", model: null, fallback_reason: "live phrasing timed out" };
+// TICKET-116: the trainer's Part 3 unseen mark (part7/trainer_visibility.py over a seated or a standing skeleton sample)
+const trainerVisibility = c === "trainer-seated" || c === "trainer-standing"
+  ? await fixture(`trainer-visibility-${c.slice(8)}.json`) : null;
 const root = document.getElementById("app");
 // TICKET-065: the replay's trainer track written as a Part 4 animation.json (virtual-joint spine, no torso sides)
 const part4Bones = [["left_hip", "right_hip"], ["hip_mid", "shoulder_mid"], ["left_shoulder", "right_shoulder"], ["left_hip", "left_knee"],
@@ -57,6 +70,6 @@ if (c === "animation-unseen") hideWrist(replay.expected);
 if (c === "viewer") window.__r = await mountViewer(root, { replay });
 else if (c === "animation-sim1") window.__r = await mountViewer(root, { animation: await fetch("../fixtures/input/animation-squat-sample.json").then((r) => r.json()) }); // TICKET-090
 else if (c === "animation" || c === "animation-unseen") window.__r = await mountViewer(root, { animation: animation() });
-else window.__r = await mountResult(root, { analysis, replay: c === "badreplay" ? { fps: 0 } : c === "noreplay" ? undefined : replay });
+else window.__r = await mountResult(root, { analysis, trainerVisibility, replay: c === "badreplay" ? { fps: 0 } : c === "noreplay" ? undefined : replay });
 window.__ready = true;
 </script>

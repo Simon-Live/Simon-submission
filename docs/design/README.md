@@ -23,11 +23,12 @@ The specs and architecture decision records (ADRs) behind Simon Part 7, copied f
 | File | Decision |
 |---|---|
 | [adr/ADR-0001-workspace-and-publish-layout.md](adr/ADR-0001-workspace-and-publish-layout.md) | The development workspace publishes to this repo through an allowlist |
-| [adr/ADR-0002-black-box-by-process-and-pins.md](adr/ADR-0002-black-box-by-process-and-pins.md) | Parts run as black boxes, by process, from pinned upstream clones |
+| [adr/ADR-0002-black-box-by-process-and-pins.md](adr/ADR-0002-black-box-by-process-and-pins.md) | Parts run as black boxes, by process (the pin part is superseded by ADR-0007) |
 | [adr/ADR-0003-app-architecture.md](adr/ADR-0003-app-architecture.md) | Part 7 server in front, Part 6 as the catalog and player behind it |
 | [adr/ADR-0004-test-videos-and-licences.md](adr/ADR-0004-test-videos-and-licences.md) | Openly licensed stock video, a movement chosen by a rule written first |
 | [adr/ADR-0005-check-7-definition-and-tolerance.md](adr/ADR-0005-check-7-definition-and-tolerance.md) | check-7 compares the app path with a direct run, under a fixed tolerance |
 | [adr/ADR-0006-journey-rescope.md](adr/ADR-0006-journey-rescope.md) | The eight-step journey: Part 6 import with the video, Part 5's score and timed text, the 3D compare |
+| [adr/ADR-0007-parts-as-git-submodules-tracking-main.md](adr/ADR-0007-parts-as-git-submodules-tracking-main.md) | Parts 1 to 6 are git submodules that follow each part's `main` |
 
 ## Not published
 

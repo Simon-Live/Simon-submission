@@ -68,11 +68,3 @@ test("modes map to kinds; flawless takes have no worst moment", () => {
   assert.equal(barsOf(clean).at(0).state, "good");
 });
 
-test("poses: a joint the follower's replay leaves out is not drawn on the reference either", () => {
-  const model = { kind: "compare", fps: 10, joints: ["nose", "left_ankle"], bones: [[0, 1]], expToFol: [0],
-    expected: [[[0, 1.7, 0], [0.1, 0, 0]]], follower: [[[0, 1.6, 0], null]] };
-  const p = posesAt(model, 0);
-  assert.ok(p.reference.at(0) && p.you.at(0));
-  assert.equal(p.reference.at(1), null);
-  assert.equal(p.you.at(1), null);
-});

@@ -1,0 +1,25 @@
+{
+  "_fixture": "TEST FIXTURE for the history page. The takes, scores, times, the fault and its cue are the real values of cleared takes cc7cd5469055 (Take 1) and 5277380db1e1 (Take 2) of body-squat-19b06562, read from their analysis.json. The model answer under report.summary, trends, focus, observations and report.usage is hand-written for layout checks: it is NOT a Muse Spark answer and its token counts are made up.",
+  "entry_id": "body-squat-19b06562",
+  "name": "Body squat",
+  "consent": { "keep": true, "video": true, "version": 1 },
+  "takes": [
+    { "take": 1, "job_id": "cc7cd5469055", "at": "2026-10-31T18:14:00Z", "duration_s": 9.833, "score": 100, "grade": "A", "private": false },
+    { "take": 2, "job_id": "5277380db1e1", "at": "2026-10-31T18:23:16Z", "duration_s": 9.867, "score": 77, "grade": "C", "private": false }
+  ],
+  "facts": {
+    "format": "simon.history.facts.v1",
+    "entry_id": "body-squat-19b06562",
+    "takes": [
+      { "take": 1, "score": 100, "grade": "A", "duration_s": 9.833, "faults": [], "cues": [] },
+      { "take": 2, "score": 77, "grade": "C", "duration_s": 9.867,
+        "faults": [{ "measure": "trunk_lean_forward", "side": "center", "at_s": 0.9, "span": [0.9, 3.2], "text_timed": "leaning forward more than the example at 0.9 s", "cue": "Keep your chest up" }],
+        "cues": ["Keep your chest up"] }
+    ],
+    "measures": [
+      { "measure": "trunk_lean_forward", "side": "center", "present_in": 1, "status": "new", "first": 2, "last": 2 }
+    ],
+    "best": 1,
+    "latest": 2
+  }
+}

@@ -8,6 +8,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { serveRoot } from "./serve_static.mjs";
+import { isResultScreen404 } from "./lane_modules.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const req = createRequire(path.join(process.env.PLAYWRIGHT_DIR || path.resolve(here, "../../node_modules"), "x.js"));
@@ -23,9 +24,9 @@ let passed = 0;
 const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 
 async function open(kase, { noWebgl = false } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true });
+  const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true, reducedMotion: "reduce" });
   const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error") errors.push(`${kase}: ${m.text()}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !isResultScreen404(m.location().url)) errors.push(`${kase}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
   if (noWebgl) {
     await page.addInitScript(() => {
@@ -184,7 +185,7 @@ try {
 
   // desktop cap
   {
-    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
     const p = await ctx.newPage();
     await p.goto(`http://127.0.0.1:${port}/tests/part7/harness/result.html`);
     await p.waitForFunction(() => window.__ready === true);
@@ -223,13 +224,28 @@ try {
     assert.ok(await tid(p, "compare").isVisible());
     assert.ok(await tid(p, "fault-0").isVisible());
     assert.ok(await tid(p, "fault-0-low").isVisible());
+    assert.match(await tid(p, "score-cap").textContent(), /^Graded F at most: a moving part of your body was out of frame; /);
     await p.screenshot({ path: path.join(SHOTS, "08b-partial.png"), fullPage: true });
     await p.context().close();
     const okp = await open("ok");
     assert.equal(await okp.getByTestId("warning").count(), 0);
     assert.equal(await okp.getByTestId("fault-0-low").count(), 0);
+    assert.equal(await okp.getByTestId("score-cap").count(), 0);
     await okp.context().close();
     ok("partial view: warning banner per code, score and F, faults with low-confidence marking; none on a clean take");
+  }
+  // TICKET-155: one fault, 59 F because of the low_match cap; the score card itself says why
+  {
+    const p = await open("capped");
+    assert.equal(await tid(p, "score").textContent(), "59");
+    assert.equal((await tid(p, "grade").textContent()).trim(), "F");
+    const cap = tid(p, "score-cap");
+    assert.ok(await cap.isVisible());
+    assert.equal(await cap.textContent(), "Graded F at most: this take does not closely match the trainer's movement.");
+    assert.ok(await p.evaluate(() => !!document.querySelector('[data-testid="score-panel"] [data-testid="score-cap"]')));
+    await p.screenshot({ path: path.join(SHOTS, "08c-capped.png"), clip: { x: 0, y: 0, width: 412, height: 560 } });
+    await p.context().close();
+    ok("TICKET-155 capped score: the score card says why; a clean take has no cap line");
   }
   // no faults, fallback, bad replay
   {
@@ -342,6 +358,38 @@ try {
       await o.context().close();
     }
     ok("an analysis older than 1.5.0 shows no insights section and no cues");
+  }
+  // TICKET-100: "Close calls" from Part 5 1.8.0 diagnostics.near_misses
+  {
+    const p = await open("nearmiss");
+    await p.getByTestId("near-misses").waitFor();
+    assert.equal(await p.locator('[data-testid^="near-miss-"][data-reason]').count(), 3, "three close calls, no more");
+    const first = await tid(p, "near-miss-0-text").textContent();
+    assert.match(first, /^Your head was further forward than the trainer's for part of the move, not long enough to count \(50 of 60 frames\)\.$/);
+    assert.match(await tid(p, "near-misses").textContent(), /did not cost you any points/);
+    // after "What to fix", and the explained_by item (shoulder tilt) is not shown
+    const order = await p.evaluate(() => {
+      const a = document.querySelector(".sr-faults"), b = document.querySelector('[data-testid="near-misses"]');
+      return !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    assert.ok(order, "Close calls follow What to fix");
+    assert.ok(!/shoulder/.test(await tid(p, "near-misses").textContent()));
+    const atS = Number(await attr(p, "near-miss-1", "data-at-s")); // trunk lean, follower frame 45
+    await tid(p, "near-miss-1").click();
+    await p.waitForTimeout(300);
+    const t = Number(await attr(p, "clock", "data-t"));
+    assert.ok(Math.abs(t - atS) <= 1 / 30, `clock ${t}, close call at ${atS}`);
+    assert.ok(atS > 1.4 && atS < 1.6, `frame 45 is about 1.5 s, got ${atS}`);
+    await p.context().close();
+    ok("close calls: three rows after What to fix, wording from Part 5's numbers, a tap moves the clock, explained_by hidden");
+    for (const kase of ["ok", "nearmiss-empty"]) { // 1.2.0 without the field, and 1.8.0 listing none
+      const o = await open(kase);
+      assert.equal(await o.getByTestId("near-misses").count(), 0, `${kase}: no close calls section`);
+      assert.equal(await o.getByText("Close calls").count(), 0, `${kase}: no heading`);
+      assert.ok(await tid(o, "fault-0").isVisible());
+      await o.context().close();
+    }
+    ok("no near_misses field, or an empty list, shows no Close calls section");
   }
   // TICKET-065 (compare-view.md AC-C9, AC-C10): the same body in every view for the same data
   {

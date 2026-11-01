@@ -8,7 +8,7 @@ function card(c) {
     : c.thumbUrl ? h("img", { src: c.thumbUrl, alt: "", loading: "lazy" }) : null;
   if (media && media.tagName === "VIDEO") media.muted = true;
   return h("li", { class: "lib-card" },
-    h("a", { class: "lib-thumb", href: c.watchHref, "data-testid": `entry-${c.id}`, "aria-label": `${c.name}${c.hasVideo ? ", video" : ""}` },
+    h("a", { class: "lib-thumb", href: c.watchHref, "data-testid": c.testId, "aria-label": `${c.name}${c.hasVideo ? ", video" : ""}` },
       media, c.duration ? h("span", { class: "lib-dur", text: `▶ ${c.duration}` }) : null),
     h("a", { class: "lib-name", href: c.watchHref, text: c.name }),
     c.meta ? h("p", { class: "lib-meta", text: c.meta }) : null,
@@ -28,7 +28,8 @@ export function mountLibraryView(root, text, onSearch) {
   const status = h("div", { class: "status", "data-testid": "library-status" });
   const sections = h("div", { "data-testid": "entries" });
   const screen = h("section", { class: "screen library" },
-    h("div", { class: "lib-head" }, h("h1", { text: text.title }), h("p", { text: text.lede })),
+    h("div", { class: "lib-head" }, h("h1", { text: text.title }), h("p", { text: text.lede }),
+      text.pitch ? h("p", { class: "lib-pitch", "data-testid": "pitch", text: text.pitch }) : null),
     h("div", { class: "lib-tools" }, search, linkButton("#/record", text.record, "record", "secondary")),
     status, sections,
     h("p", { class: "lib-foot", text: text.foot }));

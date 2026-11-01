@@ -58,6 +58,7 @@
 .sr-rule-list li[data-grade="F"] b { color: var(--sr-f); }
 .sr-rule-list li[data-current="true"] { background: var(--sr-raised); color: var(--sr-text); font-weight: 600; }
 .sr-rule-note { margin: 10px 0 0; color: var(--sr-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.sr-score-cap { margin: 12px 0 0; padding-left: 10px; border-left: 3px solid var(--sr-f); font-size: 15px; font-weight: 600; text-wrap: pretty; } /* TICKET-155 */
 
 /* compare and viewer */
 .sr-cmp { background: var(--sr-surface); border: 1px solid var(--sr-line); border-radius: 18px; overflow: hidden; max-width: 960px; }

@@ -1,0 +1,21 @@
+{
+  "voice": "Rachel",
+  "music_prompt": "Calm modern electronic instrumental, soft pulse, warm pads, light and optimistic, no vocals, steady tempo for a product demo",
+  "scenes": [
+    {"id": "s01-hook", "min_s": 6, "vo": "Learn any movement from a single recording."},
+    {"id": "s02-problem", "min_s": 7, "vo": "You follow a video, and nobody tells you what your copy got wrong."},
+    {"id": "s03-teacher", "min_s": 9, "vo": "One teacher records a movement once. That recording is all Simon needs."},
+    {"id": "s04-watch3d", "min_s": 11, "vo": "It becomes a 3D movement that anyone can open, and turn to any angle."},
+    {"id": "s05-follow", "min_s": 9, "vo": "Anyone can follow it. They film their own copy on a phone."},
+    {"id": "s06-wait", "min_s": 12, "vo": "Now the wait. The analysis took 3 minutes 27 seconds on the GPU. Here it is, sped up."},
+    {"id": "s07-tech", "min_s": 16, "vo": "Under the hood, SAM 3.1 tracks the person. Muse Spark finds the sections of the movement. SAM 3D Body, built on DINOv3, lifts the pose into 3D. Then Simon compares the two skeletons, and Muse Spark puts the differences into plain words."},
+    {"id": "s07b-mesh", "min_s": 8, "vo": "Here is SAM 3D Body at work on two stock clips."},
+    {"id": "s08-reveal", "min_s": 7, "vo": "The result: 77 out of 100, grade C."},
+    {"id": "s09-compare", "min_s": 12, "vo": "The 3D view lays the copy over the teacher, so you can turn it and see exactly where the two differ."},
+    {"id": "s10-tap", "min_s": 8, "vo": "And the cue is timed. Keep your chest up, at 0.9 seconds."},
+    {"id": "s11-shape", "min_s": 9, "vo": "Simon tells shape from timing, and replays your worst moment on a loop."},
+    {"id": "s11b-share", "min_s": 12, "vo": "A clip to share is one tap away, and a card shows which Meta models made each step."},
+    {"id": "s12-close", "min_s": 10, "vo": "Dance, rehab or fitness: one capability for any movement a teacher can show."},
+    {"id": "s13-end", "min_s": 15, "vo": "This is Simon, built on Meta's SAM 3.1, SAM 3D Body and Muse Spark. The code was written in the hackathon window. The footage is one real, cleared take plus stock clips."}
+  ]
+}

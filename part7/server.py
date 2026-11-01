@@ -23,13 +23,14 @@ from urllib.parse import urlsplit
 import uuid
 
 from part7 import (
-    applog, buildinfo, challenge_routes, client_log, config, heartbeat, idempotency, jobs, labels, media, modes, modules, people, people_routes,
-    processor, proxy, quota, replay, result_media, sections,
+    animation_format, applog, auth, auth_routes, buildinfo, challenge_routes, client_log, config, delete_routes, export_routes, heartbeat,
+    history_routes, history_store, idempotency, identity, jobs, labels, media, mesh_files, models_used, modes, modules, narration_routes,
+    people, people_routes, private_mode, processor, proxy, quota, replay, result_media, resume, sections, speech_routes, teacher_routes,
 )
 from part7.parts import p5_analyse
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{16}$")
+LANG_RE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
 VIDEO_TYPES = {"video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov"}
 CATEGORIES = ("exercise", "dance")
 NAME_MAX = 80
@@ -49,6 +50,8 @@ MSG_TRIM_LONG = "The selection is too long (60 s at most)."
 MSG_TOO_LARGE = "The file is too large (95 MB at most)."
 MSG_NO_ENTRY = "This movement is not in the catalog."
 MSG_NO_ANIMATION = "This movement has no animation to follow."
+MSG_BAD_ANIMATION = "This movement's animation is not in a form the comparison accepts."
+MSG_KEY_REUSED = "This Idempotency-Key was already used for a different request."
 MSG_NO_UPLOAD = "The upload was not found. Pick the video again."
 MSG_NAME = "Give the movement a name of 80 characters at most."
 MSG_CATEGORY = "Pick exercise or dance."
@@ -75,7 +78,7 @@ class App:
     @property
     def idempotency(self) -> idempotency.Store:
         if self.idem is None:
-            self.idem = idempotency.Store(self.state)
+            self.idem = idempotency.Store(self.state, config.RETENTION_DAYS)
         return self.idem
 
     @property
@@ -83,7 +86,7 @@ class App:
         return self.state / "uploads"
 
     def upload_file(self, upload_id: str) -> Path | None:
-        if not UPLOAD_ID_RE.match(upload_id):
+        if not jobs.UPLOAD_ID_RE.match(upload_id):
             return None
         found = sorted((self.uploads / upload_id).glob("upload.*")) if (self.uploads / upload_id).is_dir() else []
         return found[0] if found else None
@@ -94,6 +97,7 @@ def phrasing_from_env() -> str:
 
 
 SLOW_REQUEST_S = 2.0
+DRAIN_ROUTES = frozenset({"uploads", "trainer", "follow", "people", "group"})  # POSTs that start work
 SLOW_UPLOAD_S = 20.0  # a POST api/uploads carries the visitor's file: transfer time is part of it
 SLOW_MEDIA_S = 10.0  # media GETs stream; the limit applies to the time to the first byte (headers out)
 MEDIA_SUFFIXES = (".mp4", ".webm", ".mov")
@@ -108,6 +112,7 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
 
 
 class _Handler(BaseHTTPRequestHandler):
+    _body_cache: bytes | None = None  # a JSON body read early by the Idempotency-Key check
     app: App
     server_version = "Simon7"
     sys_version = ""
@@ -121,6 +126,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")  # a sign-in link or a job id in the URL never travels onward
         for key, value in (extra or {}).items():
             self.send_header(key, value)
         self.end_headers()
@@ -131,7 +137,7 @@ class _Handler(BaseHTTPRequestHandler):
         idem = getattr(self, "_idem", None)
         if idem is not None and status in idempotency.REPLAYABLE:
             try:  # remembered before the answer goes out, so a lost answer can be replayed
-                self.app.idempotency.put(idem[0], idem[1], status, obj)
+                self.app.idempotency.put(idem[0], idem[1], status, obj, getattr(self, "_idem_fp", None))
             except OSError:
                 pass
         self._send(status, json.dumps(obj).encode("utf-8"), "application/json; charset=utf-8")
@@ -165,7 +171,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._error(413, "The request is too large.")
             return None
         try:
-            doc = json.loads(self.rfile.read(length) or b"null")
+            raw = self._body_cache if self._body_cache is not None else self.rfile.read(length)
+            doc = json.loads(raw or b"null")
         except ValueError:
             doc = None
         if not isinstance(doc, dict):
@@ -259,6 +266,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _api(self, route: str) -> None:
         self._idem = None
+        self._idem_fp = None
+        self._body_cache = None
+        if self.command == "POST" and route in DRAIN_ROUTES and self.app.queue.draining:
+            return self._draining_answer(route)
         claimed = self._idempotent_begin(route)
         if claimed is False:
             return  # replayed, or the same request is still running: already answered
@@ -269,6 +280,13 @@ class _Handler(BaseHTTPRequestHandler):
                 self.app.idempotency.end(*self._idem)
                 self._idem = None
 
+    def _draining_answer(self, route: str) -> None:
+        """A restart is draining the running jobs: no new job or upload starts (jobs.drain)."""
+        self.close_connection = True  # an unread upload body must not be taken for the next request
+        body = json.dumps({"ok": False, "error": jobs.DRAINING_MESSAGE, "message": jobs.DRAINING_MESSAGE}).encode()
+        applog.log(f"POST {route} answered 503: draining", level=logging.WARNING)
+        self._send(503, body, "application/json; charset=utf-8", {"Retry-After": str(jobs.DRAIN_RETRY_AFTER_S)})
+
     def _idempotent_begin(self, route: str) -> bool | None:
         """Idempotency-Key (idempotency.py). None: no key applies. True: this request owns its key.
         False: it was answered here, from the stored answer or with "busy" while the first copy still runs."""
@@ -278,27 +296,46 @@ class _Handler(BaseHTTPRequestHandler):
         if key is None:
             return None
         store = self.app.idempotency
-        found = store.get(route, key)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return None  # the route answers a malformed length itself (400)
+        if length < 0:
+            return None
+        if route == "uploads":  # the body is a large stream: bind the key to its size and type, not to a hash of its bytes
+            fp = idempotency.fingerprint(f"uploads|{length}|{self.headers.get('Content-Type') or ''}".encode())
+        elif length > JSON_BODY_MAX:
+            return None  # the route answers 413
+        else:
+            self._body_cache = self.rfile.read(length)
+            fp = idempotency.identity_fingerprint(self._body_cache)
+        found = store.lookup(route, key)
         if found is not None and route == "uploads":  # the stored upload may be gone (server state lost): then upload again
             upload_id = str((found[1] or {}).get("upload_id") or "")
             if self.app.upload_file(upload_id) is None:
                 store.drop(route, key)
                 found = None
         if found is not None:
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-            except ValueError:
-                length = 0
-            self._drain(max(length, 0))  # the copy of the request is not needed; keep the connection in step
+            if route == "uploads":
+                self._drain(length)
             self.close_connection = True
+            legacy = idempotency.fingerprint(self._body_cache) if route != "uploads" else None
+            if found[2] is not None and found[2] not in (fp, legacy):
+                held = found[1].get("job") if route != "uploads" and isinstance(found[1], dict) else None
+                # the job id is already the capability; the app links the take to the job it holds.
+                self._error(422, MSG_KEY_REUSED, **({"job": held} if isinstance(held, str) and held else {}))
+                return False
+            if found[2] is not None and found[2] != fp:
+                store.mark_form(route, key, "whole-body")  # saved before the identity binding: matched on the old hash
             self._send(found[0], json.dumps(found[1]).encode("utf-8"), "application/json; charset=utf-8",
                        {"Idempotent-Replayed": "true"})
             return False
         if not store.begin(route, key):
-            self._drain(max(int(self.headers.get("Content-Length") or 0), 0) if route == "uploads" else 0)
+            self._drain(length if route == "uploads" else 0)
             self.close_connection = True
             self._error(503, jobs.QUEUE_FULL_MESSAGE)
             return False
+        self._idem_fp = fp
         self._idem = (route, key)
         return True
 
@@ -306,9 +343,27 @@ class _Handler(BaseHTTPRequestHandler):
         method, parts = self.command, route.split("/")
         if result_media.handle(self, method, route):  # the follower clip, with Range (coaching-moments.md)
             return
+        if models_used.handle(self, method, route):  # models that ran, 2D skeleton (models-and-skeleton-data.md)
+            return
+        if mesh_files.handle(self, method, route):  # each person's SAM 3D Body mesh (result-redesign-additions.md R3)
+            return
+        if auth_routes.handle(self, method, route):  # opt-in sign-in and api/me (identity.md)
+            return
         if people_routes.handle(self, method, route):  # people choice and group mode (people.md)
             return
+        if speech_routes.handle(self, method, route):  # spoken feedback lines (voice.md)
+            return
         if challenge_routes.handle(self, method, route):  # challenges and leaderboards (challenges.md)
+            return
+        if delete_routes.handle(self, method, route):  # delete this take (TICKET-159)
+            return
+        if teacher_routes.handle(self, method, route):  # the teacher page (teacher-dashboard.md)
+            return
+        if export_routes.handle(self, method, route):  # split-screen mp4 export (export-clip.md)
+            return
+        if narration_routes.handle(self, method, route):  # the trainer's spoken cues (narration.md)
+            return
+        if history_routes.handle(self, method, route):  # the student's history, api/me/history (history.md)
             return
         if method in ("GET", "HEAD"):
             if route == "health":
@@ -345,6 +400,7 @@ class _Handler(BaseHTTPRequestHandler):
             "part6": {"ok": part6 is not None, "entries": len(app.child.list_entries()) if part6 else 0},
             "pins": app.lock.shas_short(),
             "queue": app.queue.counts(),
+            "draining": app.queue.draining,
             "gpu_jobs_today": app.quota.gpu_jobs_today(),
             "build": app.build,
         }
@@ -369,6 +425,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "recorder_bps": config.RECORDER_BPS,
                 },
                 "phrasing": self.app.phrasing,
+                "part5": p5_analyse.known_capabilities(),
                 "movement": movement,
                 "fixture_result": _fixture_files()[0].is_file() and _fixture_files()[1].is_file(),
             },
@@ -493,9 +550,10 @@ class _Handler(BaseHTTPRequestHandler):
             return self._error(503, str(exc))
         try:
             job = app.queue.submit(kind, fn, entry_id=entry_id, **record)
-        except jobs.QueueFullError:
+        except (jobs.QueueFullError, jobs.DrainingError) as exc:
             app.quota.release(counted, visitor)
-            return self._error(503, jobs.QUEUE_FULL_MESSAGE)
+            return self._error(503, str(exc))
+        auth.attach_job(self, job)  # opt-in identity: records the owner when someone is signed in (identity.md)
         self._json(202, {"job": job["id"], **job})
 
     def _upload_for(self, doc: dict[str, Any]) -> Path | None:
@@ -583,11 +641,12 @@ class _Handler(BaseHTTPRequestHandler):
         trim, record, person = clip
         state = self.app.state
         on_entry = (lambda entry_id: labels.save(state, entry_id, entry_labels)) if entry_labels is not None else None
+        on_entry = auth.on_entry(self, on_entry)  # the signed-in person owns the new entry (identity.md)
         fn = processor.trainer_job(
             raw, name=name, category=category, catalog=self.app.child.catalog_dir, lock=self.app.lock,
             backend=self.app.backend, trim=trim, on_entry=on_entry, person=person,
         )
-        self._enqueue("trainer", fn, **record)
+        self._enqueue("trainer", fn, _resume=resume.trainer_spec(doc, name, category, person), **record)
 
     def _follow(self) -> None:
         doc = self._body_json()
@@ -611,6 +670,10 @@ class _Handler(BaseHTTPRequestHandler):
             return
         trim, record, person = clip
         record.update(practice)
+        record["upload_id"] = str(doc.get("upload_id"))  # so a deleted take can drop its raw upload (delete_routes.py)
+        lang = doc.get("lang")  # the language the person picked (lang-picker.js); kept in job.json
+        if isinstance(lang, str) and LANG_RE.match(lang):
+            record["lang"] = lang
         ref = challenge_routes.follow_ref(self, doc, entry_id)  # optional challenge_id (challenges.md); answers 400 or 409
         if ref is None:
             return
@@ -630,12 +693,21 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._error(400, str(exc))
         skeleton = manifest.get("skeleton")
         visibility = self.app.child.get_entry_file(entry_id, str(skeleton)) if skeleton else None
+        # Private mode for this take (private-mode.md): Part 7 keeps the feedback wording local and sends no trainer
+        # video to Part 5. Part 2 still sends frames to SAM 3.1 when a Meta key exists. True/False in the request
+        # wins over SIMON7_PRIVATE; absent leaves it to the env.
+        private = doc["private"] if isinstance(doc.get("private"), bool) else None
+        if private:
+            record["private"] = True
+        video_name = (manifest.get("video_uri")
+                      if self.app.phrasing == "live" and not private_mode.enabled(job_flag=private) else None)
+        trainer_video = self.app.child.get_entry_file(entry_id, str(video_name)) if video_name else None
         fn = processor.follow_job(
             raw, expected=expected, entry_id=entry_id, phrasing=self.app.phrasing, lock=self.app.lock,
             backend=self.app.backend, trim=trim, person=person, visibility=visibility,
-            mode=record.get("mode"),
+            mode=record.get("mode"), lang=record.get("lang"), trainer_video=trainer_video, private=private,
         )
-        self._enqueue("follow", fn, entry_id=entry_id, **record)
+        self._enqueue("follow", fn, entry_id=entry_id, _resume=resume.follow_spec(doc, person), **record)
 
     def _practice(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         """The optional `mode` and `section` of a request as job-record fields; answers 400 itself, returns None."""
@@ -660,7 +732,13 @@ class _Handler(BaseHTTPRequestHandler):
         if not manifest.get("animation") and not self._skeleton_accepted(data):
             self._error(409, MSG_NO_ANIMATION)
             return None
-        return data
+        if not manifest.get("animation"):
+            return data
+        converted = animation_format.to_v1(data)  # TICKET-110: sample entries are simon.animation/1
+        if converted != data and not self._skeleton_accepted(converted):  # Part 5's doctor decides before expected.json
+            self._error(409, MSG_BAD_ANIMATION)
+            return None
+        return converted
 
     def _skeleton_accepted(self, data: bytes) -> bool:
         """Part 5's doctor decides whether a skeleton-only entry can be the expected clip."""
@@ -700,8 +778,25 @@ def build_app(
     )
     app.uploads.mkdir(parents=True, exist_ok=True)
     _clean_uploads(app.uploads)
+    app.queue.on_cleanup = lambda: _sweep(app)  # with each job sweep, so a long-running server also frees them
+    auth_routes.TAKE_REMOVER = delete_routes.remove_for_account  # account delete removes the account's takes (identity.md)
     app.idempotency.prune(config.RETENTION_DAYS)
+    app.queue.resume(lambda record: resume.rebuild(app, record))  # jobs queued at the last stop run again
     return app
+
+
+def _sweep(app: App) -> None:
+    """The periodic sweep: old uploads, and history copies past their retention (history.md)."""
+    _clean_uploads(app.uploads)
+    try:
+        history_store.sweep(app.state)
+    except Exception as exc:  # a history fault must not stop the job sweep
+        applog.log(f"history: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
+    try:
+        if identity.db_path(app.state).is_file():  # expired sessions and sign-in challenges, and accounts idle for 180 days
+            auth.identity(app).prune(app.state)
+    except Exception as exc:
+        applog.log(f"auth: prune failed: {applog.cause(exc)}", level=logging.WARNING)
 
 
 def _clean_uploads(uploads: Path) -> None:
@@ -715,6 +810,15 @@ def make_server(app: App, host: str = config.DEV_HOST, port: int = 0) -> Threadi
     server = ThreadingHTTPServer((host, port), make_handler(app))
     server.daemon_threads = True
     return server
+
+
+def _drain_then_stop(queue: jobs.JobQueue, server: ThreadingHTTPServer) -> None:
+    """SIGTERM: refuse new jobs, let the running ones finish (up to SIMON7_DRAIN_MAX_S), then stop serving."""
+    try:
+        applog.log(f"SIGTERM: draining, at most {config.drain_max_s():.0f} s")
+        queue.drain(config.drain_max_s())
+    finally:
+        server.shutdown()
 
 
 def cli_serve(
@@ -742,10 +846,12 @@ def cli_serve(
         return 1
     app = build_app(state, base, child=child)
     applog.log(f"serve ready: build {app.build.get('short')}, pins {app.lock.shas_short()}")
-    p2_pose.start_workers(app.queue.workers, state, app.lock)  # warm Part 2 workers when the pin has them
+    p5_analyse.warm(app.lock)  # the Part 5 probes run off the request path; api/config reads the cached answer
+    p2_pose.start_workers(state, app.lock)  # the one warm Part 2 worker for `run`, when enabled and the pin has it
     server = make_server(app, host, port)
     beat = heartbeat.Heartbeat(app.queue, state).start()  # one line a minute; stops with the server
-    signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
+    signal.signal(signal.SIGTERM, lambda *_: threading.Thread(
+        target=_drain_then_stop, args=(app.queue, server), daemon=True).start())
     print(f"serving http://{host}:{server.server_address[1]}{base} (state {Path(state)})", flush=True)
     try:
         server.serve_forever()

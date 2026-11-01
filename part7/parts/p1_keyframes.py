@@ -15,7 +15,7 @@ from part7 import applog, config, keys, modules, part1_breaker, runner
 # Part 1 has no retry around Meta's streamed SAM answer; a stream cut short ends the run with exit 1 (3 staging
 # jobs on 2026-10-30, TICKET-064). These names in its output mean the network dropped, not that the clip is bad.
 TRANSIENT_MARKERS = ("IncompleteRead", "RemoteDisconnected", "ConnectionResetError", "ProtocolError")
-RETRY_MIN_S = 20.0  # retry only when at least this much of Part 1's time budget is left
+RETRY_MIN_S = 40.0  # retry only when at least this much of Part 1's time budget is left
 
 
 def transient_failure(step: runner.Step) -> bool:
@@ -110,6 +110,8 @@ def run(
     step: runner.Step | None = None
     budget = timeout_s if timeout_s is not None else config.TIMEOUTS["1"]
     argv = [py_exe, "-m", "keyframe_finder.from_video", inbox_rel]
+    applog.log(f"Part 1 starts with a {budget:.0f} s budget (a retry after a cut stream needs {RETRY_MIN_S:.0f} s left)",
+               applog.job_id_of(work_p), work_p)
     try:
         with keys.part1_dotenv(clone, keys_dir=keys_dir) as has_env:
             if not has_env:
@@ -128,7 +130,7 @@ def run(
                 first = log_path.with_name("part1.try1.log")
                 log_path.replace(first)
                 applog.log(f"Part 1 lost its network stream after {step['duration_s']:.1f} s, retrying once with "
-                           f"{left:.0f} s left (first try in {first.name})", applog.job_id_of(work_p), work_p,
+                           f"{left:.0f} s left of its {budget:.0f} s budget (first try in {first.name})", applog.job_id_of(work_p), work_p,
                            logging.WARNING)
                 first_try = {**step, "log": str(first)}
                 step = runner.run(1, argv, cwd=clone, timeout_s=left, log_path=log_path, lock=lk)

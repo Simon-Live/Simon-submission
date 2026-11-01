@@ -1,0 +1,58 @@
+{
+ "window_start": "2026-10-26",
+ "repos": {
+  "part-2": {
+   "first_commit": "2026-10-26T16:19:39-07:00",
+   "commits": 362,
+   "before_window": 0,
+   "source": "git log"
+  },
+  "part-3": {
+   "first_commit": "2026-10-26T16:19:47-07:00",
+   "commits": 180,
+   "before_window": 0,
+   "source": "git log"
+  },
+  "part-5": {
+   "first_commit": "2026-10-26T16:20:02-07:00",
+   "commits": 396,
+   "before_window": 0,
+   "source": "git log"
+  },
+  "part-6": {
+   "first_commit": "2026-10-26T16:20:10-07:00",
+   "commits": 99,
+   "before_window": 0,
+   "source": "git log"
+  },
+  "part-7": {
+   "first_commit": "2026-10-26T16:20:17-07:00",
+   "commits": 215,
+   "before_window": 0,
+   "source": "git log"
+  },
+  "part-1": {
+   "first_commit": "2026-10-26T23:19:31Z",
+   "commits": 11,
+   "before_window": 0,
+   "source": "gh api commits"
+  },
+  "part-4": {
+   "first_commit": "2026-10-26T23:19:54Z",
+   "commits": 10,
+   "before_window": 0,
+   "source": "gh api commits"
+  },
+  "hub": {
+   "first_commit": "2026-10-26T17:26:16Z",
+   "commits": 19,
+   "before_window": 0,
+   "source": "gh api commits"
+  }
+ },
+ "repo_count": 7,
+ "unread": [],
+ "repos_with_pre_window_commits": [],
+ "no_code_before_window": true,
+ "command": "python3 demo/history.py (git -C <repo> log --reverse --format=%aI; gh api repos/moalborati/<repo>/commits for parts 1, 4 and the hub)"
+}

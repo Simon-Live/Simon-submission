@@ -6,8 +6,12 @@ import { showLoading } from "./progress.js";
 import { MODES, effectiveMode, loadChoice, mountModePicker, modeCoaching, countdownFor, ensureStyles } from "./modes.js";
 import { mountPractice } from "./practice.js";
 import { getChallenge } from "./challenge-core.js";
+import { consentBlock } from "./consent.js";
+
+import { langOffered, langExtra } from "./follow-lang.js";
 
 export { TAKE_ERROR } from "./take-flow.js";
+export { currentLang, pickedLang, langOffered, langExtra } from "./follow-lang.js";
 
 /**
  * `challengeId` (route `#/follow/<id>/c/<challenge>`) is sent with the take once the challenge is known to be open and
@@ -33,6 +37,8 @@ export function mountFollow(root, id, challengeId = null) {
     const box = h("div", {});
     const coaching = h("div", { class: "mode-coaching", "data-testid": "mode-coaching" });
     const practiceBox = h("div", {});
+    const offerLang = langOffered(cfg);
+    const langSlot = h("div", { "data-testid": "lang-picker-slot" });
     const challengeNote = h("p", { class: "hint", role: "status", "data-testid": "follow-challenge", hidden: true });
     if (challengeId) {
       getChallenge(challengeId).then((ch) => {
@@ -58,11 +64,12 @@ export function mountFollow(root, id, challengeId = null) {
       h("p", { class: "crumb" }, h("a", { href: `#/watch/${encodeURIComponent(eid)}`, text: "Back to the movement" })),
       h("h1", { text: `Follow ${entry.name || eid}` }),
       h("p", { class: "lede", text: "Do the movement once, from the front, with your whole body in view." }),
-      challengeNote, picker.el, coaching, practiceBox, box);
+      challengeNote, picker.el, coaching, ...(offerLang ? [langSlot] : []), practiceBox, consentBlock(), box);
+    if (offerLang) import("./lang-picker.js").then((m) => m.mountLangPicker(langSlot)).catch(() => {}); // contract C4: another lane builds it
     practice = mountPractice(practiceBox, { entry: full, mode });
     stop = mountTakeFlow(box, {
       role: "follower", entryId: eid, entry: full, limits: cfg.limits,
-      extra: () => ({ ...(chosen ? { mode: chosen } : {}), ...(taking ? { challenge_id: taking.id } : {}), ...practice.extra() }),
+      extra: () => ({ ...langExtra(cfg), ...(chosen ? { mode: chosen } : {}), ...(taking ? { challenge_id: taking.id } : {}), ...practice.extra() }),
       onReference: (ref) => practice.attach(ref),
       countdownDefault: countdownFor(mode),
       onDone: (jobId) => { practice.markPending(jobId); location.hash = `#/job/${jobId}`; },

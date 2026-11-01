@@ -1,0 +1,252 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.6.0",
+  "expected": {
+    "path": "/state/jobs/5277380db1e1/work/expected.json"
+  },
+  "follower": {
+    "path": "/state/jobs/5277380db1e1/work/follower/follower.json"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [
+    {
+      "measure": "trunk_lean_forward",
+      "measure_kind": "direction",
+      "joint": "spine",
+      "body_part": "torso",
+      "side": "center",
+      "direction": "more",
+      "magnitude_deg": 21.4,
+      "peak_deg": 31.3,
+      "threshold_deg": 9.0,
+      "unit": "degrees",
+      "expected_frames": [
+        2,
+        91
+      ],
+      "follower_frames": [
+        27,
+        96
+      ],
+      "runs": [
+        [
+          2,
+          91
+        ],
+        [
+          115,
+          186
+        ],
+        [
+          213,
+          290
+        ]
+      ],
+      "phase": [
+        0.007,
+        0.304
+      ],
+      "coverage": 1.0,
+      "confidence": 1.0,
+      "text": "leaning forward more than the example",
+      "cue": "Keep your chest up",
+      "cue_kind": "position",
+      "follower_t_s": [
+        0.9,
+        3.2
+      ],
+      "at_s": 0.9,
+      "follower_runs": [
+        [
+          27,
+          96
+        ],
+        [
+          140,
+          198
+        ],
+        [
+          236,
+          291
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "leaning forward more than the example at 0.9 s",
+      "joints": [
+        "left_shoulder",
+        "right_shoulder",
+        "left_hip",
+        "right_hip"
+      ],
+      "coaching": "You are leaning forward more than the example at 0.9 s, nice effort."
+    }
+  ],
+  "diagnostics": {
+    "alignment_residual": 0.5451,
+    "alignment_measures": [
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward",
+      "right_wrist_height"
+    ],
+    "follower_span": [
+      25,
+      296
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.5451,
+      "timing_corr": 0.9284,
+      "span_share": 0.9128,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    },
+    "visibility": {
+      "usable_measures": 26,
+      "excluded": [
+        "left_knee_flexion",
+        "left_knee_valgus",
+        "left_foot_out",
+        "right_knee_flexion",
+        "right_knee_valgus",
+        "right_foot_out"
+      ],
+      "rule": "a measure is used when all its joints are seen (conf is not the 0.3 unseen mark) in at least 80% of the clip's frames; the take is compared on the measures usable in both clips",
+      "moving_measures": [
+        "left_thigh_forward",
+        "left_upper_arm_forward",
+        "right_thigh_forward",
+        "trunk_lean_forward",
+        "head_forward"
+      ],
+      "moving_usable": [
+        "left_thigh_forward",
+        "left_upper_arm_forward",
+        "right_thigh_forward",
+        "trunk_lean_forward",
+        "head_forward"
+      ]
+    }
+  },
+  "insights": [
+    {
+      "cue": "Keep your chest up",
+      "why": "Leaning forward more than the example at 0.9 s (2 times)",
+      "kind": "position",
+      "at_s": 0.9,
+      "window": 0,
+      "points": 21.8,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "joint": "spine"
+    }
+  ],
+  "phrasing": {
+    "requested": "muse-spark",
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "faults": [
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null
+      }
+    ],
+    "selected_by": "flag"
+  },
+  "score": {
+    "version": "simon.score.v1",
+    "value": 77,
+    "grade": "C",
+    "components": {
+      "faults": 21.74,
+      "similarity": 1.17
+    },
+    "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.833,
+          5.35
+        ],
+        "value": 77,
+        "grade": "C",
+        "components": {
+          "faults": 21.96,
+          "similarity": 1.37
+        },
+        "misses": [
+          {
+            "text": "You are leaning forward more than the example at 0.9 s, nice effort.",
+            "measure": "trunk_lean_forward",
+            "side": "center",
+            "joint": "spine",
+            "t_s": [
+              0.9,
+              3.2
+            ],
+            "at_s": 0.9,
+            "points": 22.0,
+            "cue": "Keep your chest up",
+            "cue_kind": "position",
+            "direction": "more"
+          }
+        ],
+        "tempo": {
+          "ratio": 0.98,
+          "cue": null
+        },
+        "compared": true
+      },
+      {
+        "t_s": [
+          5.35,
+          9.867
+        ],
+        "value": 78,
+        "grade": "C",
+        "components": {
+          "faults": 21.51,
+          "similarity": 0.97
+        },
+        "misses": [
+          {
+            "text": "You are leaning forward more than the example at 0.9 s, nice effort.",
+            "measure": "trunk_lean_forward",
+            "side": "center",
+            "joint": "spine",
+            "t_s": [
+              0.9,
+              3.2
+            ],
+            "at_s": 0.9,
+            "points": 21.5,
+            "cue": "Keep your chest up",
+            "cue_kind": "position",
+            "direction": "more"
+          }
+        ],
+        "tempo": {
+          "ratio": 0.84,
+          "cue": "Slow down to match the trainer"
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.91,
+      "cue": null
+    }
+  },
+  "profile": "fitness",
+  "profile_source": "part7-rules"
+}

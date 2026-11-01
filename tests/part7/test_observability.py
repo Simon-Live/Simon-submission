@@ -127,6 +127,21 @@ def test_a_timed_out_part_one_is_marked_for_the_summary(caplog: pytest.LogCaptur
     assert applog.pop_facts("ffffeeeedddd")["part1"] == "timeout"
 
 
+def test_a_float_timeout_is_rounded_in_the_note_and_the_anomaly(caplog: pytest.LogCaptureFixture, tmp_path: Path) -> None:
+    job = tmp_path / "jobs" / "ffffeeeedddd"
+    log_file = job / "work" / "steps" / "part1.log"
+    with caplog.at_level(logging.INFO, logger="part7"):
+        runner.run(1, [sys.executable, "-c", "import time; time.sleep(30)"], cwd=tmp_path,
+                   log_path=log_file, timeout_s=0.1 + 0.2 + 26.2999999)
+    assert "part 1 timed out after 26.6 s" in log_file.read_text(encoding="utf-8")
+    assert _lines(caplog)[0].endswith("detail=part 1 timed out after 26.6 s")
+    applog.pop_facts("ffffeeeedddd")
+
+
+def test_secs_rounds_to_one_decimal() -> None:
+    assert [applog.secs(x) for x in (26.502899999999997, 90.0, 1, 0.04, 0.25)] == ["26.5", "90", "1", "0", "0.2"]
+
+
 def test_last_meaningful_skips_progress_and_blank_lines(tmp_path: Path) -> None:
     log = tmp_path / "x.log"
     log.write_text("real error here\n\n  12%|##  | 1/8\n----\n", encoding="utf-8")
@@ -186,7 +201,7 @@ def test_a_failed_job_logs_job_failed_with_stage_and_reason_and_a_failed_summary
         job = queue.submit("trainer", fn)
         assert queue.wait(job["id"], 10)["status"] == "failed"
     queue.close()
-    assert _lines(caplog) == [f"ANOMALY job_failed job={job['id']} stage=pose kind=trainer seconds=7.0 detail=the pose step failed"]
+    assert _lines(caplog) == [f"ANOMALY job_failed job={job['id']} stage=pose cause=failed kind=trainer seconds=7.0 detail=the pose step failed"]
     assert _lines(caplog, f"job {job['id']} summary:") == [f"job {job['id']} summary: kind=trainer status=failed total=7.0s pose=7.0s"]
 
 
@@ -201,7 +216,7 @@ def test_a_crashing_job_is_job_failed_too(caplog: pytest.LogCaptureFixture, tmp_
         job = queue.submit("follow", fn)
         queue.wait(job["id"], 10)
     queue.close()
-    assert _lines(caplog)[0].startswith(f"ANOMALY job_failed job={job['id']} stage=skeleton kind=follow")
+    assert _lines(caplog)[0].startswith(f"ANOMALY job_failed job={job['id']} stage=skeleton cause=crash kind=follow")
 
 
 def test_gpu_wait_lines_are_captured_per_stage_without_gpu_lock() -> None:
@@ -231,6 +246,16 @@ def test_heartbeat_line_and_na_for_unreadable_values(caplog: pytest.LogCaptureFi
     assert first.startswith("heartbeat queued=1 running=2 oldest_running_s=33.0 load1=")
     assert " gpu_free_mib=14000 disk_free_gb=" in first and "gpu_free_mib=na" in second and "oldest_running_s=na" in second
     assert not _lines(caplog)
+    assert first.endswith(" p2_worker=off")  # no warm worker pool in this process (TICKET-099)
+
+
+def test_heartbeat_reports_the_warm_worker_state(caplog: pytest.LogCaptureFixture, tmp_path: Path,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    from part7 import p2_worker
+    monkeypatch.setattr(p2_worker, "state", lambda: "busy")
+    with caplog.at_level(logging.INFO, logger="part7"):
+        heartbeat.Heartbeat(FakeQueue(), tmp_path, gpu_free=lambda: 1).tick()
+    assert _lines(caplog, "heartbeat")[0].endswith(" p2_worker=busy")
 
 
 def test_queue_backlog_needs_more_than_two_queued_for_over_120_s(caplog: pytest.LogCaptureFixture, tmp_path: Path) -> None:
@@ -303,7 +328,7 @@ def test_slow_request_logs_method_path_without_query_and_status(api: Api, caplog
     with caplog.at_level(logging.INFO, logger="part7"):
         status, _, _ = api.request("GET", "api/health?who=me")
     assert status == 200
-    assert _wait_for(caplog) == [f"ANOMALY slow_request method=GET path=api/health status=200 seconds=6.0"]
+    assert _wait_for(caplog) == ["ANOMALY slow_request method=GET path=api/health status=200 seconds=6.0"]
 
 
 def _report(api: Api, caplog: pytest.LogCaptureFixture, method: str, rest: str, seconds: float, first: float | None = None,
@@ -372,7 +397,7 @@ def test_a_crashing_handler_is_http_5xx(api: Api, caplog: pytest.LogCaptureFixtu
         status, _, _ = api.request("GET", "api/health?secret=1")
     assert status == 500
     lines = _wait_for(caplog)
-    assert len(lines) == 1 and lines[0].startswith(f"ANOMALY http_5xx method=GET path=api/health status=500 seconds=")
+    assert len(lines) == 1 and lines[0].startswith("ANOMALY http_5xx method=GET path=api/health status=500 seconds=")
     assert "secret" not in lines[0]
 
 
@@ -385,7 +410,7 @@ def test_client_error_events_become_anomalies_with_the_page_and_cut_fields(api: 
     with caplog.at_level(logging.INFO, logger="part7"):
         assert _post(api, {"level": "error", "event": "client_error", "detail": detail, "page": "#/follow/e1"}) == 204
         assert _post(api, {"level": "warn", "event": "camera_dark", "detail": {"a": 1}, "page": "#/record"}) == 204
-    assert _lines(caplog) == ["ANOMALY client_error page=#/follow/e1 source=fetch status=502 path=api/jobs/ab12 detail=status 502"]
+    assert _lines(caplog) == ["ANOMALY client_error page=#/follow source=fetch status=502 path=api/jobs/ab12 detail=status 502"]
     assert _lines(caplog, "client warn camera_dark") == ['client warn camera_dark page=#/record {"a":1}']
 
 

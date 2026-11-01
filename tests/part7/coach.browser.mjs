@@ -8,6 +8,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { serveRoot } from "./serve_static.mjs";
+import { isResultScreen404 } from "./lane_modules.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const req = createRequire(path.join(process.env.PLAYWRIGHT_DIR || path.resolve(here, "../../node_modules"), "x.js"));
@@ -27,7 +28,7 @@ const EXPECTED_404 = /missing\.webm/;
 async function open(kase, { noWebgl = false, hangVideo = false, lateVideoMs = 0, block = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true });
   const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_404.test(m.location().url + m.text()) && !(block && m.location().url.endsWith(block))) errors.push(`${kase}: ${m.text()}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_404.test(m.location().url + m.text()) && !isResultScreen404(m.location().url) && !(block && m.location().url.endsWith(block))) errors.push(`${kase}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
   if (block) await page.route(`**/web/${block}`, (r) => r.fulfill({ status: 404, body: "" })); // a lazy slot module that is missing
   if (hangVideo) await page.route("**/coach.webm", () => {}); // the request never answers: no metadata, no error

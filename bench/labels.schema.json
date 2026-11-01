@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "simon.bench.labels/1",
+  "title": "Human fault labels for one recorded take",
+  "description": "One file per take in bench/labels/. at_s is seconds into the take. type is the Part 5 measure name (for example knee_flexion). A clean take has an empty faults list. Validated by part7/bench_faults.py validate_label.",
+  "type": "object",
+  "required": ["schema", "clip_sha256", "movement", "labeller", "labelled_on", "faults"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "simon.bench.labels/1"},
+    "clip_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "movement": {"type": "string", "minLength": 1},
+    "labeller": {"type": "string", "minLength": 1},
+    "labelled_on": {"type": "string", "format": "date"},
+    "synthetic": {"type": "boolean", "description": "true only for test fixtures; the benchmark refuses to score it"},
+    "faults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "side", "at_s"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {"type": "string", "minLength": 1},
+          "side": {"enum": ["left", "right", "both", "center"]},
+          "at_s": {"type": "number", "minimum": 0}
+        }
+      }
+    }
+  }
+}

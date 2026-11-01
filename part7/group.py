@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from part7 import chain, labels as entry_store, modules
+from part7 import chain, failcause, labels as entry_store, modules
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
 from part7.people import PersonSel, pose_for, reused_clip
@@ -108,7 +108,8 @@ def _pose_once(
     if note:
         ctx.add_note(note)
     if step["exit"] != 0 or not pose3d.is_file():
-        raise JobFailed("pose", "the 3D step took too long" if step.get("timed_out") else "the 3D step failed")
+        cause, text = failcause.classify("3D", step)
+        raise JobFailed("pose", text, cause)
     if p2_pose.doctor(pose3d, ctx.work, lock=lk, state=state)["exit"] != 0:
         raise JobFailed("pose", "pose3d.json was rejected by part 2")
     return pose3d

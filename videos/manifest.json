@@ -179,14 +179,14 @@
       "original_sha256": "7630463a4ef1103b02062359939da1a800f10579533f8e79bc5fb584f9e2e29c",
       "downloaded_at": "2026-10-31T17:09:08Z",
       "original": {
+        "file": "pexels-8026937-clip.mp4",
+        "size_bytes": 2831412,
         "width": 570,
         "height": 1080,
         "fps": 25.0,
-        "duration_s": 12.0,
-        "file": "pexels-8026937-clip.mp4",
-        "size_bytes": "recorded on generation"
+        "duration_s": 12.0
       },
-      "clip_sha256": null,
+      "clip_sha256": "c2dccb23161c9b72d8d3ef99f83102f42c5e7ad68c839cd280ecaf18abfaaade",
       "duration_s": 12.0,
       "width": 570,
       "height": 1080,

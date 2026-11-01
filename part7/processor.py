@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from part7 import chain, media, people, modules
+from part7 import chain, media, modules, narration, people
 from part7.jobs import JobContext, JobFailed, JobFn
 
 REASON_UNREADABLE = "the video could not be read"
@@ -39,7 +39,8 @@ def _raise_if_failed(result: dict[str, Any]) -> None:
     stage = str(result.get("stage") or "upload")
     error = str(result.get("error") or "")
     prefix = f"failed:{stage}: "
-    raise JobFailed(stage, error[len(prefix):] if error.startswith(prefix) else error)
+    raise JobFailed(stage, error[len(prefix):] if error.startswith(prefix) else error,
+                    str(result.get("cause") or "failed"))
 
 
 def trainer_job(
@@ -73,6 +74,9 @@ def trainer_job(
         entry_id = str(result["entry_id"])
         if on_entry is not None:
             on_entry(entry_id)
+        narration.attach(  # the trainer's spoken cues; never fails the job (narration.md)
+            raw, catalog / entry_id, files=result.get("files"), video=video, trim=trim, job_dir=ctx.work,
+        )
         return {"entry_id": entry_id, "result": {"entry_id": entry_id, "parts": result["parts"], "trim": trim}}
 
     return run
@@ -110,6 +114,9 @@ def follow_job(
     person: people.PersonSel | None = None,
     visibility: bytes | None = None,
     mode: str | None = None,
+    lang: str | None = None,
+    trainer_video: bytes | None = None,
+    private: bool | None = None,
 ) -> JobFn:
     """Return the job function for a follower upload against the entry's `expected` clip bytes.
 
@@ -119,6 +126,8 @@ def follow_job(
     `mode` (modes.py) goes to Part 5 as `--profile` when the pin offers it. The caller has already cut `expected`
     to a section when the request had one (sections.py).
     `person` (people.md) makes the analysis that of one person of a people job, on that job's trimmed clip.
+    `lang` (the follower's pick), `trainer_video` (the entry's video bytes, for Part 5's second opinion) and
+    `private` (private-mode.md) go to Part 5 only where the pin offers the matching flag (p5_analyse.py).
     """
 
     def run(ctx: JobContext) -> dict[str, Any]:
@@ -129,10 +138,14 @@ def follow_job(
         if visibility is not None:
             visibility_path = ctx.work / "expected_skeleton.json"
             visibility_path.write_bytes(visibility)
+        expected_video = None
+        if trainer_video is not None:
+            expected_video = ctx.work / "expected_video.mp4"
+            expected_video.write_bytes(trainer_video)
         result = chain.follower(
             video, expected_path, ctx.work / "follower", report=ctx.set_stage, lock=lock, backend=backend,
             state=state, phrasing=phrasing, person=person, expected_visibility=visibility_path,
-            mode=mode,
+            mode=mode, lang=lang, expected_video=expected_video, private=private,
         )
         if result.get("note"):
             ctx.add_note(str(result["note"]))

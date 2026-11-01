@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>result additions harness</title>
+<style>html,body{margin:0;background:#0a0a0a}</style>
+<div id="app"></div>
+<script type="module">
+// The result screen of a real-looking job (result-redesign-additions.md): the browser test answers the job's routes
+// (video, models.json, skeleton2d.json, mesh.json, the catalog entry, the other session's modules) with page.route.
+// Part 5 1.5.0 on the real fast lateral raise (analysis-insights.json) with two timed faults added, and its replay
+// tiled four times to cover the take, as in coach.html. Cases: ok (job with an entry), fixture (the example result).
+import { mountResult } from "../../../web/result.js";
+const q = new URLSearchParams(location.search);
+const get = (f) => fetch(`../../../fixtures/input/${f}`).then((r) => r.json());
+let [analysis, replay] = await Promise.all([get("analysis-insights.json"), get("replay.json")]);
+const reps = 4, nF = replay.follower.length, span = nF / replay.fps;
+const tile = (track) => Array.from({ length: reps }, () => structuredClone(track)).flat();
+const times = (ts) => Array.from({ length: reps }, (_, k) => ts.map((t) => +(t + k * span).toFixed(6))).flat();
+replay = { ...replay, expected: tile(replay.expected), follower: tile(replay.follower),
+  expected_t: times(replay.expected_t), follower_t: times(replay.follower_t),
+  exp_to_fol: Array.from({ length: reps }, (_, k) => replay.exp_to_fol.map((f) => f + k * nF)).flat() };
+analysis.faults = [
+  { at_s: 6.2, joints: ["right_elbow"], text: "Keep your right elbow closer in.", cue: "Elbow in", cue_kind: "position" },
+  { at_s: 9.1, joints: ["left_knee"], text: "Bend your left knee more.", cue: "Knee bent", cue_kind: "range", confidence: "low" },
+];
+const c = q.get("case") || "ok";
+const job = c === "fixture" ? "fixture" : "abcdef123456";
+const record = c === "fixture" ? null : { id: job, kind: "follow", status: "done", entry_id: "lateral-raise-0f13199f" };
+window.__mount = () => mountResult(document.getElementById("app"), { analysis, replay, job, record });
+window.__r = await window.__mount();
+window.__ready = true;
+</script>

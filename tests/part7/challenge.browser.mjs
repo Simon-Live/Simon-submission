@@ -1,6 +1,6 @@
 // Browser checks for challenges at 412x915: create from a result, the share card and its fallback, the leaderboard,
 // the sponsor banner and the ended negative (docs/specs/challenges.md). Own fake API: tests/part7/fake_api.py.
-//   /home/gingy/claude-template/scripts/with-browser-slot.sh node tests/part7/challenge.browser.mjs
+//   node tests/part7/challenge.browser.mjs
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -166,7 +166,8 @@ try {
   assert.equal(await tid(page, "take-challenge").getAttribute("href"), "#/follow/lateral-raise/c/board1");
   await tid(page, "take-challenge").tap();
   await page.waitForFunction(() => location.hash === "#/follow/lateral-raise/c/board1");
-  assert.equal(await page.evaluate(() => sessionStorage.length), 0, "negative: nothing is kept in the tab; the job record carries the link");
+  // the redesign's one-time splash flag is the only session key; nothing about the challenge is kept
+  assert.deepEqual(await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k !== "simon.splashSeen")), [], "negative: nothing is kept in the tab; the job record carries the link");
   ok("take the challenge: the follow address names the challenge, no session state");
 
   // ---- add my score: the job record names the challenge, so it works in any tab ------------------------

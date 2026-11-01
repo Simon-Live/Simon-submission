@@ -81,3 +81,13 @@ def all_labels(state: Path) -> dict[str, dict[str, Any]]:
         if found is not None:
             out[path.stem] = found
     return out
+
+
+def entry_name(child: Any, entry_id: str) -> str:
+    """The catalog name of an entry as the pages title it, or its id when Part 6 has no name (one lookup for every page)."""
+    try:
+        manifest = child.get_entry(entry_id)
+    except Exception:
+        manifest = None
+    name = manifest.get("name") if isinstance(manifest, dict) else None
+    return name if isinstance(name, str) and name.strip() else entry_id

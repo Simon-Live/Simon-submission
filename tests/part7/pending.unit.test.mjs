@@ -57,6 +57,32 @@ test("failures are sorted into retry now, retry later, drop and re-upload", () =
   assert.equal(classifyFailure(new TypeError("Failed to fetch")).kind, "auto");
   assert.equal(classifyFailure(null).kind, "auto");
   assert.equal(k(418, ""), "fatal");
+  assert.equal(k(422, "This Idempotency-Key was already used for a different request.", "submit"), "fixable");
+  assert.equal(k(422, "", "upload"), "auto", "a 422 is never fatal");
+});
+
+test("a 422 on the job call keeps the saved take and says so in plain words", async () => {
+  const r = rig({ script: { submit: [err(422, "This Idempotency-Key was already used for a different request.")] } });
+  const { record } = await begin(r, { role: "trainer", entryId: null, name: "x" });
+  await r.p.front(record);
+  await r.p.update(record, { choice: { person_id: "0" }, stage: "ready_to_submit" });
+  await assert.rejects(r.p.submit(record), (e) => e.kind === "fixable");
+  const [kept] = await r.store.all();
+  assert.ok(kept, "the record is still there");
+  assert.equal(kept.last_error.message, TEXT.keyReused);
+});
+
+test("a 422 that names the job the server holds counts as sent and leaves the saved takes", async () => {
+  const r = rig({ script: { submit: [Object.assign(err(422, "This Idempotency-Key was already used for a different request."), { job: "held123456ab" })] } });
+  const sent = [];
+  r.p.subscribe((e) => { if (e.type === "sent") sent.push(e); });
+  const { record } = await begin(r, { role: "trainer", entryId: null, name: "x" });
+  await r.p.front(record);
+  await r.p.update(record, { choice: { person_id: "0" }, stage: "ready_to_submit" });
+  const out = await r.p.submit(record);
+  assert.equal(out.job, "held123456ab");
+  assert.deepEqual(sent.map((e) => e.job), ["held123456ab"]);
+  assert.deepEqual(await r.store.all(), [], "the take is no longer saved");
 });
 
 test("the backoff is 10 s, 30 s, 1 min, 2 min, then every 5 min", () => {
@@ -407,6 +433,8 @@ test("the request a saved take sends is the one the open flow builds (role, mode
   assert.equal(follow.kind, "follow");
   assert.deepEqual(follow.args[5], { mode: "dance", section: { index: 1 }, challenge_id: "c9" });
   assert.deepEqual(follow.args.slice(0, 5), ["u1", "e1", trim, { tags: ["a"], notes: "" }, { people_job: "pj", person_id: "0" }]);
+  const spoken = requestOf({ ...base, role: "follow", entry_id: "e1", lang: "es" });
+  assert.deepEqual(spoken.args[5], { lang: "es" }, "a saved take keeps the feedback language it was recorded with");
   const group = requestOf({ ...base, role: "group", name: "Class", category: "dance", choice: { trainer_id: "0", follower_ids: ["1"], labels: {} }, mode: "rehab" });
   assert.equal(group.kind, "group");
   assert.equal(group.args[0].mode, "rehab");

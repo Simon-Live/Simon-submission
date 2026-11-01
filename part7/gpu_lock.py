@@ -26,7 +26,9 @@ UNKNOWN_MESSAGE = "gpu free memory unknown (nvidia-smi not found or failed); adm
 _warned_unknown = False
 WAIT_LOG_S = 1.0  # TICKET-067: an admission wait longer than this is logged with its reason
 HOLDER_LOG_S = 60.0  # TICKET-089: a flock wait this long names the holder, once per call
-PROC_LOCKS = "/proc/locks"
+HOLDER_RELOG_S = 300.0  # TICKET-101: a wait this long that now has a different holder names it once more
+PROC_ROOT = "/proc"
+PROC_LOCKS = f"{PROC_ROOT}/locks"
 
 
 class _Waits:
@@ -63,16 +65,67 @@ def _read_proc_locks() -> str:
         return ""
 
 
-def _read_cmdline(pid: int) -> str:
+def _read_cmdline(pid: int, limit: int = 120) -> str:
     try:
-        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        raw = Path(f"{PROC_ROOT}/{pid}/cmdline").read_bytes()
     except OSError:
         return ""
-    return raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()[:120]
+    return raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()[:limit]
 
 
-def lock_holder(lock_path: Path | str) -> str | None:
-    """`pid <n> <cmd>` of the process holding a flock on `lock_path`, or None. Reads only; never signals (TICKET-089).
+def _read_cwd(pid: int) -> str:
+    try:
+        return os.readlink(f"{PROC_ROOT}/{pid}/cwd")
+    except OSError:
+        return ""
+
+
+def _read_ppid_and_age(pid: int) -> tuple[int | None, float | None]:
+    """Parent pid and seconds since start from `/proc/<pid>/stat` (fields after the `(comm)`) and `/proc/uptime`."""
+    try:
+        stat = Path(f"{PROC_ROOT}/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+        rest = stat[stat.rindex(")") + 2:].split()  # rest[0] is field 3 (state)
+        ppid = int(rest[1])
+        start_ticks = int(rest[19])  # field 22
+        uptime = float(Path(f"{PROC_ROOT}/uptime").read_text(encoding="utf-8").split()[0])
+        return ppid, max(0.0, uptime - start_ticks / os.sysconf("SC_CLK_TCK"))
+    except (OSError, ValueError, IndexError):
+        return None, None
+
+
+def _under(path: str, root: Path | str) -> bool:
+    root_s = str(root).rstrip("/")
+    return path == root_s or path.startswith(root_s + "/")
+
+
+def holder_owner(cwd: str, cmd: str, ppid: int | None, lock_path: Path | str) -> str:
+    """Guess who started the holder (TICKET-101): `staging`, `part7-other`, `part2`, else `other`."""
+    state = config.state_root()
+    here = [cwd, *cmd.split()]
+    if any(_under(x, config.staging_dir() / "jobs") for x in here) and ppid == os.getpid():
+        return "staging"
+    if any(_under(x, state) for x in here):
+        return "part7-other"
+    part2_roots = (Path(lock_path).parent, config.part_dir(2))
+    if any(_under(x, r) for x in here for r in part2_roots) or "part2" in cmd:
+        return "part2"
+    return "other"
+
+
+def describe_holder(pid: int, lock_path: Path | str) -> str:
+    """One line that identifies a holder after it has exited: owner, cwd, parent, age and command. Read only."""
+    cmd = _read_cmdline(pid)
+    cwd = _read_cwd(pid)
+    ppid, age = _read_ppid_and_age(pid)
+    parent = _read_cmdline(ppid, 160) if ppid else ""
+    age_text = f"{age:.1f}" if age is not None else "?"
+    owner = holder_owner(cwd, cmd, ppid, lock_path)
+    return (f"pid {pid} owner={owner} cwd={cwd or '?'} ppid={ppid if ppid is not None else '?'} "
+            f"parent={parent or '?'} elapsed={age_text} s cmd={cmd}").rstrip()
+
+
+def lock_holder_pid(lock_path: Path | str) -> int | None:
+    """Pid of the process holding a flock on `lock_path` other than this one, or None. Reads only (TICKET-089).
 
     `/proc/locks` lines read `1: FLOCK  ADVISORY  WRITE <pid> <major>:<minor>:<inode> 0 EOF`.
     """
@@ -85,9 +138,14 @@ def lock_holder(lock_path: Path | str) -> str | None:
         if len(fields) < 6 or fields[1] != "FLOCK" or not fields[4].isdigit():
             continue
         if fields[5].rsplit(":", 1)[-1] == str(inode) and int(fields[4]) != os.getpid():
-            pid = int(fields[4])
-            return f"pid {pid} {_read_cmdline(pid)}".rstrip()
+            return int(fields[4])
     return None
+
+
+def lock_holder(lock_path: Path | str) -> str | None:
+    """`pid <n> owner=... cwd=... ppid=... parent=... elapsed=... s cmd=...` of the flock holder, or None. Never signals."""
+    pid = lock_holder_pid(lock_path)
+    return None if pid is None else describe_holder(pid, lock_path)
 
 
 def nvidia_smi_path() -> str | None:
@@ -163,19 +221,23 @@ def _take_thread_lock(deadline: float, step_sleep: float, waits: _Waits) -> None
 def _take_flock(fd: int, deadline: float, step_sleep: float, waits: _Waits,
                 lock_path: Path | None = None, job_dir: Path | str | None = None) -> bool:
     since = time.monotonic()
-    named = False
+    named_pid: int | None = None
+    relogged = False
     try:
         while True:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 return True
             except BlockingIOError as exc:
-                if not named and lock_path is not None and time.monotonic() - since >= HOLDER_LOG_S:
-                    named = True
-                    holder = lock_holder(lock_path)
-                    if holder:
+                waited = time.monotonic() - since
+                if lock_path is not None and waited >= HOLDER_LOG_S and not relogged:
+                    pid = lock_holder_pid(lock_path)
+                    again = named_pid is not None and waited >= HOLDER_RELOG_S and pid not in (None, named_pid)
+                    if pid is not None and (named_pid is None or again):
+                        relogged = again
+                        named_pid = pid
                         job = applog.job_id_of(job_dir) if job_dir is not None else None
-                        applog.log(f"gpu wait: lock held by {holder}", job, job_dir)
+                        applog.log(f"gpu wait: lock held by {describe_holder(pid, lock_path)}", job, job_dir)
                 if time.monotonic() >= deadline:
                     raise TimeoutError(BUSY_MESSAGE) from exc
                 time.sleep(min(step_sleep, max(0.001, deadline - time.monotonic())))

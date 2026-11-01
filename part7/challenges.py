@@ -316,6 +316,18 @@ def add_entries(state: Path, challenge_id: str, entries: list[dict[str, Any]]) -
     return doc
 
 
+def remove_job(state: Path, job_id: str) -> int:
+    """Take every board entry made from `job_id` off its board (a deleted take leaves no score behind); returns how many."""
+    removed = 0
+    with _locked(state):
+        for doc in _docs(state):
+            keep = [e for e in doc["entries"] if e.get("job_id") != job_id]
+            if len(keep) != len(doc["entries"]):
+                removed += len(doc["entries"]) - len(keep)
+                _write(state, {**doc, "entries": keep})
+    return removed
+
+
 def close(state: Path, challenge_id: str) -> dict[str, Any]:
     """End a challenge now (operator); its board stays readable."""
     with _locked(state):

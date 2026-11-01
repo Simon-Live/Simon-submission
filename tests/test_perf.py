@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import contextlib
 import threading
 import time
 from typing import Any
@@ -148,7 +149,7 @@ class _Proc:
         self.dead = True
 
 
-def _pool(tmp_path: Path, slots: int = 2) -> tuple[p2_worker.Pool, list[_Proc]]:
+def _pool(tmp_path: Path, slots: int = 1, lease_wait_s: float = 0.0) -> tuple[p2_worker.Pool, list[_Proc]]:
     procs: list[_Proc] = []
     up: set[str] = set()
 
@@ -159,34 +160,74 @@ def _pool(tmp_path: Path, slots: int = 2) -> tuple[p2_worker.Pool, list[_Proc]]:
 
     pool = p2_worker.Pool(
         tmp_path, slots, lambda sock: ["serve-worker", "--socket", str(sock)], launcher=launcher,
-        health=lambda sock: str(sock) in up, start_wait_s=2.0,
+        health=lambda sock: str(sock) in up, start_wait_s=2.0, lease_wait_s=lease_wait_s,
     )
     return pool, procs
 
 
-def test_pool_leases_one_worker_per_slot_and_never_waits(tmp_path: Path) -> None:
+def test_one_worker_is_leased_to_one_call_and_a_busy_one_is_skipped(tmp_path: Path) -> None:
     pool, procs = _pool(tmp_path)
     pool.start()
     time.sleep(0.5)
-    with pool.lease() as a, pool.lease() as b, pool.lease() as c:
-        assert a != b and a is not None and b is not None and c is None
+    assert pool.state() == "idle"
+    with pool.lease() as a, pool.lease() as b:
+        assert a is not None and b is None  # lease timeout: the second call runs in-process
+        assert pool.state() == "busy"
     with pool.lease() as again:
-        assert again in (a, b)
-    assert len(procs) == 2
+        assert again == a
+    assert len(procs) == 1
     pool.stop()
-    assert all(p.terminated for p in procs)
+    assert procs[0].terminated and pool.state() == "off"
     with pool.lease() as after_stop:
         assert after_stop is None
 
 
-def test_pool_restarts_a_dead_worker_on_lease(tmp_path: Path) -> None:
-    pool, procs = _pool(tmp_path, slots=1)
+def test_a_call_waits_a_short_time_for_the_busy_worker(tmp_path: Path) -> None:
+    pool, _ = _pool(tmp_path, lease_wait_s=3.0)
+    pool.start()
+    time.sleep(0.5)
+    got: list[Any] = []
+
+    def second() -> None:
+        with pool.lease() as sock:
+            got.append(sock)
+
+    with pool.lease() as first:
+        t = threading.Thread(target=second)
+        t.start()
+        time.sleep(0.3)
+    t.join(5)
+    assert first is not None and got == [first]  # freed within the wait: the second call got the worker
+    pool.stop()
+
+
+def test_lease_timeout_returns_none_after_the_wait(tmp_path: Path) -> None:
+    pool, _ = _pool(tmp_path, lease_wait_s=0.3)
+    pool.start()
+    time.sleep(0.5)
+    with pool.lease() as first:
+        t0 = time.monotonic()
+        with pool.lease() as second:
+            assert first is not None and second is None
+        assert 0.25 <= time.monotonic() - t0 < 2.0
+    pool.stop()
+
+
+def test_a_dead_worker_runs_this_call_in_process_logs_an_anomaly_and_restarts_once(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    pool, procs = _pool(tmp_path)
     pool.start()
     time.sleep(0.5)
     procs[0].dead = True
-    with pool.lease() as sock:
-        assert sock is not None
-    assert len(procs) == 2
+    with caplog.at_level("WARNING"):
+        with pool.lease() as sock:
+            assert sock is None  # never waits for a model load
+    assert "ANOMALY p2_worker_unhealthy" in caplog.text
+    time.sleep(0.6)
+    assert len(procs) == 2  # one restart
+    with pool.lease() as again:
+        assert again is not None
     pool.stop()
 
 
@@ -240,7 +281,7 @@ def test_run_has_no_worker_flag_without_pin_support_or_pool(
     lk, ran = _p2_env(state_dir, monkeypatch, set())
     p2_pose.run(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False)
     assert "--worker" not in ran[-1]
-    assert p2_pose.start_workers(2, state_dir, lk) is False
+    assert p2_pose.start_workers(state_dir, lk) is False
     lk2, ran2 = _p2_env(state_dir, monkeypatch, {"--worker"})
     p2_pose.run(_video(tmp_path), tmp_path / "w", lock=lk2, state=state_dir, acquire_lock=False)
     assert "--worker" not in ran2[-1]  # the pin has it but no pool runs: in-process
@@ -295,7 +336,154 @@ def test_part5_gets_phrasing_concurrency(tmp_path: Path, state_dir: Path, monkey
 
 
 def test_warm_workers_are_off_unless_enabled(monkeypatch, tmp_path) -> None:
-    """SIMON7_P2_WARM_WORKERS gates the pool (off by default after the staging stall of 2026-10-30)."""
-    monkeypatch.delenv("SIMON7_P2_WARM_WORKERS", raising=False)
+    """SIMON7_P2_WARM_WORKERS gates the pool; the default is WARM_WORKERS_DEFAULT (TICKET-099)."""
     monkeypatch.setattr(p2_pose, "has_worker", lambda *a, **k: True)
-    assert p2_pose.start_workers(2, tmp_path, object()) is False
+    monkeypatch.setenv("SIMON7_P2_WARM_WORKERS", "0")
+    assert p2_pose.start_workers(tmp_path, object()) is False
+
+
+def test_warm_worker_default_follows_the_constant(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SIMON7_P2_WARM_WORKERS", raising=False)
+    assert p2_pose.warm_worker_enabled() is (p2_pose.WARM_WORKERS_DEFAULT == "1")
+
+
+def test_start_workers_starts_a_single_pool_of_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SIMON7_P2_WARM_WORKERS", "1")
+    monkeypatch.setattr(p2_pose, "has_worker", lambda *a, **k: True)
+    seen: list[Any] = []
+    monkeypatch.setattr(p2_pose.p2_worker, "start_pool", lambda pool: seen.append(pool))
+    lk = _dummy_lock(tmp_path)
+    assert p2_pose.start_workers(tmp_path, lk) is True
+    assert len(seen[0]._slots) == 1
+
+
+def test_only_run_leases_the_worker_track_stays_in_process(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lk, ran = _p2_env(state_dir, monkeypatch, {"--worker", "--tracker"})
+    pool, _ = _pool(tmp_path)
+    p2_worker.start_pool(pool)
+    time.sleep(0.5)
+    try:
+        p2_pose.track(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False, tracker=None)
+        p2_pose.run(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False)
+    finally:
+        p2_worker.stop_pool()
+    assert "--worker" not in ran[0] and "--worker" in ran[1]
+
+
+def test_a_run_falls_back_in_process_when_the_worker_is_busy(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lk, ran = _p2_env(state_dir, monkeypatch, {"--worker"})
+    pool, _ = _pool(tmp_path)
+    p2_worker.start_pool(pool)
+    time.sleep(0.5)
+    try:
+        with p2_worker.lease() as held:
+            assert held is not None
+            p2_pose.run(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False)
+    finally:
+        p2_worker.stop_pool()
+    assert "--worker" not in ran[-1]
+
+
+def test_a_run_dropped_by_the_worker_repeats_in_process(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lk, ran = _p2_env(state_dir, monkeypatch, {"--worker"})
+    calls: list[bool] = []
+
+    def fake_run(part: Any, argv: list[str], **kw: Any) -> runner.Step:
+        calls.append("--worker" in argv)
+        if "--worker" in argv:
+            kw["log_path"].parent.mkdir(parents=True, exist_ok=True)
+            kw["log_path"].write_text("part2: the worker closed the connection before finishing", encoding="utf-8")
+            return {**_ok_step(2), "exit": 1}
+        return _ok_step(2)
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    pool, _ = _pool(tmp_path)
+    p2_worker.start_pool(pool)
+    time.sleep(0.5)
+    try:
+        step, _p = p2_pose.run(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False)
+    finally:
+        p2_worker.stop_pool()
+    assert calls == [True, False] and step["exit"] == 0
+
+
+def _order_env(tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch, sock: Path | None, state: str):
+    """Fakes for admission and lease that record their order and the admission arguments (TICKET-101)."""
+    lk, ran = _p2_env(state_dir, monkeypatch, {"--worker"})
+    events: list[str] = []
+    seen: list[dict[str, Any]] = []
+
+    @contextlib.contextmanager
+    def fake_acquire(**kw: Any):
+        seen.append(kw)
+        events.append("admit-start")  # a long flock wait would sit here
+        events.append("admitted")
+        try:
+            yield
+        finally:
+            events.append("admission-released")
+
+    @contextlib.contextmanager
+    def fake_lease():
+        events.append("lease")
+        yield sock
+
+    monkeypatch.setattr(p2_pose.gpu_lock, "acquire", fake_acquire)
+    monkeypatch.setattr(p2_pose.p2_worker, "lease", fake_lease)
+    monkeypatch.setattr(p2_pose.p2_worker, "state", lambda: state)
+    return lk, ran, events, seen
+
+
+def test_the_worker_is_leased_only_after_the_gpu_admission(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lk, ran, events, seen = _order_env(tmp_path, state_dir, monkeypatch, tmp_path / "w.sock", "idle")
+    p2_pose.run(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir)
+    assert events[:3] == ["admit-start", "admitted", "lease"]  # the lease never covers the flock wait
+    assert seen[0]["min_free_mib"] == 0 and "--worker" in ran[-1]
+
+
+def test_a_busy_worker_after_admission_runs_in_process_with_the_memory_check(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lk, ran, events, seen = _order_env(tmp_path, state_dir, monkeypatch, None, "busy")
+    p2_pose.run(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir)
+    assert events[:3] == ["admit-start", "admitted", "lease"]
+    assert "min_free_mib" not in seen[0] and "--worker" not in ran[-1]
+
+
+def test_part1_default_budget_is_150_s(monkeypatch: pytest.MonkeyPatch) -> None:
+    from part7 import config
+    monkeypatch.delenv("SIMON7_PART1_TIMEOUT_S", raising=False)
+    assert config.DEFAULT_PART1_TIMEOUT_S == 150.0 and config.part1_timeout_s() == 150.0
+
+
+def test_slow_part1_grows_the_job_by_at_most_budget_minus_pose(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TICKET-113: the chain joins Part 1 only after pose is done, so with pose at 0.5 s and Part 1 using its whole
+    (scaled) budget of 1.5 s the job takes about the budget, not pose + budget."""
+    seen: list[Any] = []
+    _patch_rest(monkeypatch, seen)
+    budget, pose = 1.5, 0.5
+
+    def p1(v: Path, w: Path, **kw: Any) -> Any:
+        time.sleep(kw["timeout_s"])  # a Part 1 that runs to the end of its budget
+        step = _ok_step(1)
+        step.update(exit=124, timed_out=True)
+        return (step, None, "key frames from Part 3, Part 1 exited 124")
+
+    monkeypatch.setattr(p1_keyframes, "run", p1)
+    monkeypatch.setattr(p2_pose, "run", _fake_p2(pose))
+    monkeypatch.setenv("SIMON7_PART1_TIMEOUT_S", str(budget))
+    t0 = time.monotonic()
+    res = chain.trainer(_video(tmp_path), tmp_path / "w", lock=_dummy_lock(state_dir), state=state_dir)
+    elapsed = time.monotonic() - t0
+    assert res["ok"] and seen == ["every:10"]
+    assert elapsed < budget + 0.3, elapsed  # not budget + pose (2.0 s)

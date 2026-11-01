@@ -9,10 +9,11 @@ const OFFLINE = "The app could not be reached. Check your connection and try aga
 
 export class ApiError extends Error {
   /** `detail` is the server's own sentence (not the on-screen text); the offline-takes retry sorts failures with it. */
-  constructor(status, message, detail = "") {
+  constructor(status, message, detail = "", job = "") {
     super(message);
     this.status = status;
     this.detail = detail;
+    this.job = job; // a 422 on a create call names the job the server already holds under that key
   }
 }
 
@@ -38,6 +39,8 @@ export function messageFor(status, body) {
   return "The app could not finish that. Try again in a moment.";
 }
 
+const jobOf = (body) => (body && typeof body.job === "string" ? body.job : "");
+
 async function parse(res) {
   try {
     return await res.json();
@@ -54,7 +57,7 @@ async function request(url, init) {
     throw new ApiError(0, OFFLINE);
   }
   const body = await parse(res);
-  if (!res.ok) throw new ApiError(res.status, messageFor(res.status, body), body && typeof body.error === "string" ? body.error : "");
+  if (!res.ok) throw new ApiError(res.status, messageFor(res.status, body), body && typeof body.error === "string" ? body.error : "", jobOf(body));
   return body;
 }
 
@@ -106,13 +109,16 @@ export function clientLogBody(level, event, detail, page = "") {
   return body;
 }
 
+/** The route name of a URL fragment: "#/result/<job>" becomes "#/result", so no id or token is logged (TICKET-174). */
+export const routeName = (hash) => String(hash || "").replace(/^(#\/[^/?#]*)[\s\S]*$/, "$1");
+
 /**
  * Fire and forget: POST one client event to api/client-log so the server log shows what the browser saw
  * (camera, recorder, take size, trim, upload). Never throws and never blocks the caller.
  */
 export function clientLog(level, event, detail = {}) {
   try {
-    const page = globalThis.location ? globalThis.location.hash : "";
+    const page = globalThis.location ? routeName(globalThis.location.hash) : "";
     const body = JSON.stringify(clientLogBody(level, event, detail, page));
     const sent = fetch("api/client-log", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true });
     if (sent && typeof sent.catch === "function") sent.catch(() => {});
@@ -154,6 +160,12 @@ export const resultUrl = (job, file, pid) =>
   `api/results/${encodeURIComponent(job)}/${pid == null ? "" : `${encodeURIComponent(pid)}/`}${file}`;
 export const getAnalysis = (job, pid) => request(resultUrl(job, "analysis.json", pid), NOT_FOUND_OK);
 export const getReplay = (job, pid) => request(resultUrl(job, "replay.json", pid), NOT_FOUND_OK);
+// result-redesign-additions.md: which Meta models ran, the follower's 2D skeleton, and each person's mesh URLs
+export const getModelsUsed = (job) => request(resultUrl(job, "models.json"), NOT_FOUND_OK);
+export const getSkeleton2d = (job) => request(resultUrl(job, "skeleton2d.json"), NOT_FOUND_OK);
+/** The trainer's joints Part 3 never saw (TICKET-116); null when the job has none (a 404 is a normal outcome). */
+export const getTrainerVisibility = (job) => request(resultUrl(job, "trainer-visibility.json"), NOT_FOUND_OK).catch(() => null);
+export const getMeshIndex = (job) => request(resultUrl(job, "mesh.json"), NOT_FOUND_OK);
 
 /**
  * POST api/uploads with the raw blob; resolves {upload_id, duration_ms, width, height}.
@@ -176,7 +188,7 @@ export function uploadVideo(blob, { onProgress, key } = {}) {
     xhr.onload = () => {
       let body = null;
       try { body = JSON.parse(xhr.responseText); } catch { body = null; }
-      if (xhr.status >= 200 && xhr.status < 300) { onProgress(blob.size, blob.size); resolve(body); } else reject(new ApiError(xhr.status, messageFor(xhr.status, body), body && typeof body.error === "string" ? body.error : ""));
+      if (xhr.status >= 200 && xhr.status < 300) { onProgress(blob.size, blob.size); resolve(body); } else reject(new ApiError(xhr.status, messageFor(xhr.status, body), body && typeof body.error === "string" ? body.error : "", jobOf(body)));
     };
     xhr.send(blob);
   });

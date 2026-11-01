@@ -79,7 +79,8 @@ def _post_people(h: Any) -> None:
     if clip is None:
         return
     fn = people.people_job(raw, trim=clip[0], lock=h.app.lock, backend=h.app.backend)
-    h._enqueue("people", fn, quota_kind="follow")  # finding people uses the GPU: it counts as one GPU job
+    # upload_id: so deleting a group take can drop the raw upload (delete_routes.py)
+    h._enqueue("people", fn, quota_kind="follow", upload_id=str(doc.get("upload_id")))  # finding people uses the GPU: it counts as one GPU job
 
 
 # ----- POST api/group -----------------------------------------------------------------------------------
@@ -128,7 +129,7 @@ def _group_request(h: Any, doc: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(split, str):
         return h._error(400, split)
     return {"name": name, "category": category, "work": work, "trainer": trainer, "followers": followers,
-            "labels": split[0], "entry_labels": split[1], "save_entry": doc.get("save_entry", True) is not False}
+            "people_job": doc.get("people_job"), "labels": split[0], "entry_labels": split[1], "save_entry": doc.get("save_entry", True) is not False}
 
 
 def _post_group(h: Any) -> None:
@@ -155,7 +156,9 @@ def _post_group(h: Any) -> None:
         previous = app.queue.get(active[key]) if key in active else None
         if previous and previous["status"] in GROUP_ACTIVE:
             return h._error(429, MSG_BUSY)
-        job = _submit_group(h, fn, 1 + len(req["followers"]), **({"mode": mode} if mode else {}))
+        # people_job and upload_id: so deleting the group take removes the cut video, tracks, crops and raw upload
+        record = {"people_job": req.get("people_job"), "upload_id": (app.queue.get(req.get("people_job") or "") or {}).get("upload_id")}
+        job = _submit_group(h, fn, 1 + len(req["followers"]), **record, **({"mode": mode} if mode else {}))
         if job is not None and key:
             active[key] = job["id"]
 
@@ -172,11 +175,11 @@ def _submit_group(h: Any, fn: jobs.JobFn, gpu_jobs: int, **record: Any) -> dict[
             app.quota.reserve(kind, visitor)
             taken.append(kind)
         job = app.queue.submit("group", fn, **record)
-    except (quota.VisitorQuotaError, quota.DailyCapError, jobs.QueueFullError) as exc:
+    except (quota.VisitorQuotaError, quota.DailyCapError, jobs.QueueFullError, jobs.DrainingError) as exc:
         for kind in taken:
             app.quota.release(kind, visitor)
         status = 429 if isinstance(exc, quota.VisitorQuotaError) else 503
-        h._error(status, jobs.QUEUE_FULL_MESSAGE if isinstance(exc, jobs.QueueFullError) else str(exc))
+        h._error(status, str(exc) if isinstance(exc, (jobs.DrainingError, quota.DailyCapError, quota.VisitorQuotaError)) else jobs.QUEUE_FULL_MESSAGE)
         return None
     h._json(202, {"job": job["id"], **job})
     return job

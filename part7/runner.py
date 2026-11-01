@@ -193,7 +193,7 @@ def run(
                 proc.wait()
         pump.join(timeout=5.0)
         if timed_out:
-            note = f"\npart {part} timed out after {timeout_s} s\n"
+            note = f"\npart {part} timed out after {applog.secs(timeout_s)} s\n"
             chunks.append(note)
             if sink is not None:
                 sink.write(note)

@@ -62,6 +62,7 @@ export function mountJob(root, id) {
   const meta = h("p", { class: "meta tnum" }, h("span", { "data-testid": "queue", hidden: true }));
   const actions = h("div", { class: "row", "data-testid": "job-actions" });
   const [queue] = meta.children;
+  let deleteSlot = null;
   root.append(h("section", { class: "screen" }, head, note, prog.el, detail, group, meta, list, actions));
 
   const tickClock = () => prog.setElapsed((Date.now() - startMs) / 1000);
@@ -96,6 +97,7 @@ export function mountJob(root, id) {
       } else {
         const entry = job.entry_id || (job.result && job.result.entry_id);
         actions.append(linkButton(entry ? `#/watch/${encodeURIComponent(entry)}` : "#/", "Open the movement", "open", "primary"));
+        if (job.kind === "trainer") mountTrainerDelete(job.id || id);
       }
     } else if (job.status === "failed") {
       stop();
@@ -103,10 +105,19 @@ export function mountJob(root, id) {
       note.textContent = job.note || "The job stopped. Try again with a new video.";
       const back = job.kind === "trainer" || job.kind === "group" ? "#/record" : `#/follow/${encodeURIComponent(job.entry_id || "")}`;
       actions.append(linkButton(back, "Try again", "retry", "primary"), linkButton("#/", "Back to movements", "back-home"));
+      if (job.kind === "trainer") mountTrainerDelete(job.id || id);
     } else {
       head.textContent = job.status === "queued" ? "Waiting in line" : "Working on it";
       note.textContent = job.note || "This takes a few minutes. You can leave this page open or come back to it.";
     }
+  }
+
+  /** TICKET-111: a trainer's recording (it has sound) can be deleted from its job view; the movement may stay. */
+  function mountTrainerDelete(jobId) {
+    if (deleteSlot) return;
+    deleteSlot = h("div", { "data-testid": "trainer-delete-slot" });
+    root.append(deleteSlot);
+    import("./delete-take.js").then((m) => m.mountDeleteTake(deleteSlot, { job: jobId, trainer: true })).catch(() => {});
   }
 
   function stop() {

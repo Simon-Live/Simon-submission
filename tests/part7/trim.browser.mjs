@@ -278,15 +278,18 @@ const labelRoutes = async (page) => {
 };
 {
   const page = await open("case=catalog", { route: labelRoutes });
-  await page.getByTestId("entry-e2").waitFor();
-  await page.getByTestId("tags-e2").waitFor();
-  assert.deepEqual(await page.getByTestId("tags-e2").locator(".chip").allTextContents(), ["isometric", "beginner"]);
-  assert.equal(await page.getByTestId("tags-e1").count(), 0);
+  // the routine library: a card's meta line carries the first tags; search matches all tags
+  const cardIds = async () => [...new Set(await page.locator('[data-testid="entries"] .lib-thumb').evaluateAll((els) => els.map((e) => e.dataset.testid)))];
+  await page.getByTestId("entry-e2").waitFor({ state: "attached" });
+  await page.waitForFunction(() => /isometric/.test(document.querySelector('[data-testid="entries"]').textContent));
+  const metaOf = (id) => page.locator(`.lib-card:has([data-testid="entry-${id}"]) .lib-meta`).first().textContent().catch(() => "");
+  assert.match(await metaOf("e2"), /isometric · beginner/);
+  assert.doesNotMatch(await metaOf("e1"), /isometric|beginner/);
   await tid(page, "search").fill("ISOMETRIC");
-  assert.equal(await page.locator('[data-testid="entries"] > li').count(), 1);
+  assert.deepEqual(await cardIds(), ["entry-e2"]);
   await page.screenshot({ path: path.join(SHOTS, "trim-06-catalog-tags.png") });
   await tid(page, "search").fill("nothing-like-this");
-  assert.equal(await page.locator('[data-testid="entries"] > li').count(), 0);
+  assert.deepEqual(await cardIds(), []);
   ok("catalog shows tags and search matches them");
   await page.context().close();
 }

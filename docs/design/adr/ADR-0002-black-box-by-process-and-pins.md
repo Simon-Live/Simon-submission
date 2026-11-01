@@ -2,7 +2,7 @@
 
 > Copy of `docs/adr/ADR-0002-black-box-by-process-and-pins.md` from the development workspace, edited for publication; the code is the authority where they differ.
 
-Status: Accepted
+Status: Accepted. The pin, the lock file and the private clone directory are superseded by [ADR-0007](ADR-0007-parts-as-git-submodules-tracking-main.md): Parts 1 to 6 are git submodules that follow each part's `main`, and the README says so. The black-box rule (process and shared files only) stands.
 Date: 2026-10-28
 
 ## Context

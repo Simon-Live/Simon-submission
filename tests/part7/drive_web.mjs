@@ -47,17 +47,19 @@ let step = "start";
 try {
   // 1. Home
   step = "home";
-  await page.goto(BASE);
+  await page.goto(`${BASE}?debug=1`); // the Video badge is a debug-only chip since the catalog curation
   await tid(page, "entry-lateral-raise").waitFor();
-  assert.equal(await page.locator("[data-testid^=entry-]").count(), 3);
-  assert.match(await tid(page, "entry-lateral-raise").innerText(), /VIDEO/i);
-  assert.doesNotMatch(await tid(page, "entry-reverse-lunge").innerText(), /VIDEO/i);
+  // the routine library lists a move under each kind it belongs to, so count the distinct cards
+  const cards = async () => new Set(await page.locator("[data-testid^=entry-]").evaluateAll((els) => els.map((e) => e.dataset.testid))).size;
+  assert.equal(await cards(), 3);
+  assert.match(await tid(page, "entry-lateral-raise").getAttribute("aria-label"), /video/i);
+  assert.doesNotMatch(await tid(page, "entry-reverse-lunge").getAttribute("aria-label"), /video/i);
   await shot(page, "01-home");
   await tid(page, "search").fill("salsa");
-  assert.equal(await page.locator("[data-testid^=entry-]").count(), 1);
+  assert.equal(await cards(), 1);
   await tid(page, "search").fill("zzzz");
-  assert.equal(await page.locator("[data-testid^=entry-]").count(), 0);
-  await tid(page, "empty").waitFor();
+  assert.equal(await cards(), 0);
+  await tid(page, "no-match").waitFor();
   await shot(page, "02-home-no-match");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 

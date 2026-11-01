@@ -5,12 +5,14 @@
 import { el } from "./score.js";
 import { clientLog } from "./api.js";
 import { tokenHex } from "./theme-colors.js";
+import { FALLBACK_3D as FB } from "./theme-fallbacks.js";
+import { trainerUnseenByFrame, unionIndices } from "./model/trainer-visibility.js";
 
 export const MSG_NO_WEBGL = "3D view is not available in this browser.";
 export const MSG_BAD_REPLAY = "The replay file could not be read.";
 export const MSG_NO_ANIMATION = "This movement has no 3D animation yet.";
-export const TRAINER_COLOR = tokenHex("--3d-trainer", 0x8aa4ff); // brand: theme/tokens.css
-export const YOU_COLOR = tokenHex("--3d-you", 0x3ddc97);
+export const TRAINER_COLOR = tokenHex("--3d-trainer", FB["--3d-trainer"]); // brand: theme/tokens.css
+export const YOU_COLOR = tokenHex("--3d-you", FB["--3d-you"]);
 
 // ---- body ----------------------------------------------------------------------------------
 
@@ -94,8 +96,10 @@ export function bodyReport(model) {
 
 const isPose = (f) => Array.isArray(f) && f.every((p) => p === null || (Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)));
 
-/** Validate a `simon.replay.v1` payload and return the model the view draws. Throws on a bad file. */
-export function normalizeReplay(replay) {
+/** Validate a `simon.replay.v1` payload and return the model the view draws. Throws on a bad file.
+ *  `trainerVisibility` (part7/trainer_visibility.py, TICKET-116) is the trainer's own Part 3 mark of the joints the camera
+ *  never saw: those joints are dimmed on the trainer's figure whatever the follower shows. */
+export function normalizeReplay(replay, trainerVisibility = null) {
   const bad = (why) => Object.assign(new Error(MSG_BAD_REPLAY), { detail: why });
   if (!replay || typeof replay !== "object") throw bad("not an object");
   const { fps, joints, bones, expected, follower, exp_to_fol: expToFol } = replay;
@@ -108,12 +112,12 @@ export function normalizeReplay(replay) {
   const ft = replay.follower_t;
   const duration = Array.isArray(ft) && ft.length === follower.length ? ft[ft.length - 1] : (follower.length - 1) / fps;
   const fol = fillUnseen(follower, joints.length);
-  // A joint the follower's camera never saw is not compared (Part 5 uses only measures seen in both clips); the
-  // trainer's animation still carries invented points for it (Part 4 drops Part 3's unseen marks, simon#58), so
-  // it is hidden on the trainer as well.
-  const hidden = new Set(fol.never);
-  const exp = fillUnseen(hidden.size ? expected.map((f) => f.map((p, j) => (hidden.has(j) ? null : p))) : expected, joints.length);
+  const exp = fillUnseen(expected, joints.length);
   const body = bodyBones(joints, bones);
+  const et = replay.expected_t;
+  const times = expected.map((_, i) => (Array.isArray(et) && et.length === expected.length && Number.isFinite(et[i]) ? et[i] : i / fps));
+  const seen = trainerUnseenByFrame(trainerVisibility, joints, times);
+  exp.unseen = exp.unseen.map((u, i) => unionIndices(u, seen[i]));
   return {
     kind: "compare", fps, joints, bones: body.bones, droppedBones: body.dropped, duration, expToFol,
     expected: exp.frames, expectedUnseen: exp.unseen, expectedNever: exp.never,

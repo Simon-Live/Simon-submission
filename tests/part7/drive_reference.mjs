@@ -61,6 +61,8 @@ const log = (m) => console.log(`ok  ${m}`);
 const refTime = () => tid("reference-video").evaluate((v) => v.currentTime);
 const refPlaying = () => tid("reference-video").evaluate((v) => !v.paused);
 const box = async (id) => (await tid(id).boundingBox());
+// The capture layout stacks the panels (client redesign): what matters is that they never overlap (TICKET-063).
+const apart = (a, b) => a.y + a.height <= b.y + 1 || b.y + b.height <= a.y + 1 || a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1;
 
 await page.goto(`${BASE}#/follow/e1`);
 await tid("reference").waitFor();
@@ -70,15 +72,15 @@ assert.equal(await tid("reference").getAttribute("data-mirror"), "true", "mirror
 assert.equal(await refPlaying(), false, "paused before recording");
 const over = await box("preview"), pip = await box("reference");
 // TICKET-063: beside the camera, never over it (an overlay hid the follower's legs).
-assert.ok(pip.width < over.width && pip.x >= over.x + over.width - 1 && Math.abs(pip.y - over.y) < 2, "panel beside the preview on a phone");
-log("panel shows beside the preview, not over it");
+assert.ok(apart(pip, over), `the panel does not cover the preview on a phone ${JSON.stringify({ pip, over })}`);
+log("panel shows apart from the preview, not over it");
 await shot("1-follow-beside");
 
 // Swap and mirror on the live screen.
 await tid("reference-swap").click();
 assert.equal(await tid("reference").getAttribute("data-swap"), "true");
 const big = await box("reference"), small = await box("preview");
-assert.ok(big.width > small.width * 1.5 && big.x + big.width <= small.x + 1, "swap makes the trainer large and the camera small, side by side");
+assert.ok(big.width * big.height > small.width * small.height && apart(big, small), `swap makes the trainer large and the camera small, apart ${JSON.stringify({ big, small })}`);
 await shot("2-follow-swapped");
 await tid("reference-swap").click();
 assert.equal(await tid("reference").getAttribute("data-swap"), "false");
@@ -113,7 +115,7 @@ await tid("trim-continue").waitFor({ timeout: 20000 });
 assert.equal(await refPlaying(), false, "stopped after recording");
 const take = await box("trim-start");
 const stage = await page.locator(".trim-stage video").boundingBox(), r = await box("reference");
-assert.ok(r.x > stage.x + stage.width - 2 && Math.abs(r.y - stage.y) < 4, "reference sits beside the take");
+assert.ok(apart(r, stage), "reference sits apart from the take, never over it");
 await tid("trim-play").click();
 await page.waitForTimeout(1200);
 const playing = await refPlaying();

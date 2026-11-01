@@ -239,8 +239,10 @@ def test_lock_holder_reads_proc_locks_and_cmdline(tmp_path: Path, monkeypatch: p
     ino = lpath.stat().st_ino
     locks = f"1: POSIX  ADVISORY  WRITE 99 00:01:{ino} 0 EOF\n2: FLOCK  ADVISORY  WRITE 4242 08:01:{ino} 0 EOF\n"
     monkeypatch.setattr(gpu_lock, "_read_proc_locks", lambda: locks)
-    monkeypatch.setattr(gpu_lock, "_read_cmdline", lambda pid: f"python -m part7 check {pid}")
-    assert gpu_lock.lock_holder(lpath) == "pid 4242 python -m part7 check 4242"
+    monkeypatch.setattr(gpu_lock, "_read_cmdline", lambda pid, limit=120: f"python -m part7 check {pid}")
+    assert gpu_lock.lock_holder_pid(lpath) == 4242
+    assert gpu_lock.lock_holder(lpath).startswith("pid 4242 owner=")  # type: ignore[union-attr]
+    assert gpu_lock.lock_holder(lpath).endswith("cmd=python -m part7 check 4242")  # type: ignore[union-attr]
     monkeypatch.setattr(gpu_lock, "_read_proc_locks", lambda: "2: FLOCK  ADVISORY  WRITE 4242 08:01:1 0 EOF\n")
     assert gpu_lock.lock_holder(lpath) is None
 
@@ -257,7 +259,7 @@ def test_a_flock_wait_names_the_holder_once(job_dir: Path, tmp_path: Path, monke
     ino = lpath.stat().st_ino
     monkeypatch.setattr(gpu_lock, "HOLDER_LOG_S", 0.1)
     monkeypatch.setattr(gpu_lock, "_read_proc_locks", lambda: f"1: FLOCK  ADVISORY  WRITE 4242 08:01:{ino} 0 EOF\n")
-    monkeypatch.setattr(gpu_lock, "_read_cmdline", lambda pid: "python -m part7 check")
+    monkeypatch.setattr(gpu_lock, "_read_cmdline", lambda pid, limit=120: "python -m part7 check")
     threading.Timer(0.5, lambda: fcntl.flock(fd, fcntl.LOCK_UN)).start()
     try:
         with gpu_lock.acquire(lock_path=lpath, min_free_mib=0, poll_s=0.05, timeout_s=5.0, job_dir=job_dir):
@@ -266,7 +268,8 @@ def test_a_flock_wait_names_the_holder_once(job_dir: Path, tmp_path: Path, monke
         time.sleep(0.05)
         os.close(fd)
     named = [x for x in _log(job_dir).splitlines() if "lock held by" in x]
-    assert len(named) == 1 and named[0].endswith("gpu wait: lock held by pid 4242 python -m part7 check")
+    assert len(named) == 1 and named[0].endswith("cmd=python -m part7 check")
+    assert "gpu wait: lock held by pid 4242 owner=" in named[0]
 
 
 def test_no_holder_line_when_the_wait_is_short(job_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -274,3 +277,79 @@ def test_no_holder_line_when_the_wait_is_short(job_dir: Path, tmp_path: Path, mo
     with gpu_lock.acquire(lock_path=tmp_path / "gpu.lock", min_free_mib=0, timeout_s=5.0, job_dir=job_dir):
         pass
     assert "lock held by" not in _log(job_dir)
+
+
+def _fake_proc(root: Path, pid: int, *, cmd: str, cwd: Path, ppid: int, age_s: float, parent_cmd: str = "") -> None:
+    """A fake /proc entry: cmdline, cwd symlink, stat with start time, and the parent's cmdline."""
+    (root / "uptime").write_text("5000.00 4000.00\n")
+    d = root / str(pid)
+    d.mkdir(parents=True)
+    (d / "cmdline").write_bytes(cmd.replace(" ", "\0").encode())
+    (d / "cwd").symlink_to(cwd)
+    start = int((5000 - age_s) * os.sysconf("SC_CLK_TCK"))
+    fields = ["S", str(ppid)] + ["0"] * 17 + [str(start)] + ["0"] * 5
+    (d / "stat").write_text(f"{pid} (python m) " + " ".join(fields) + "\n")
+    if parent_cmd:
+        p = root / str(ppid)
+        p.mkdir(exist_ok=True)
+        (p / "cmdline").write_bytes(parent_cmd.replace(" ", "\0").encode())
+
+
+@pytest.fixture
+def fake_proc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = tmp_path / "proc"
+    root.mkdir()
+    monkeypatch.setattr(gpu_lock, "PROC_ROOT", str(root))
+    monkeypatch.setenv("SIMON7_STATE_DIR", str(tmp_path / "state7"))
+    return root
+
+
+def test_the_holder_line_is_self_sufficient(fake_proc: Path, tmp_path: Path) -> None:
+    jobs = tmp_path / "state7" / "staging" / "jobs" / "abc"
+    jobs.mkdir(parents=True)
+    _fake_proc(fake_proc, 777, cmd="python -m part2 run --mode multi", cwd=jobs, ppid=os.getpid(),
+               age_s=42.0, parent_cmd="python -m part7 serve " + "x" * 300)
+    text = gpu_lock.describe_holder(777, tmp_path / "p2" / "gpu.lock")
+    assert text.startswith("pid 777 owner=staging ")
+    assert f"cwd={jobs} " in text and f"ppid={os.getpid()} " in text
+    assert "elapsed=42.0 s" in text and text.endswith("cmd=python -m part2 run --mode multi")
+    parent = text.split("parent=")[1].split(" elapsed=")[0]
+    assert parent.startswith("python -m part7 serve") and len(parent) == 160 and "\n" not in text
+
+
+def test_owner_guesses(fake_proc: Path, tmp_path: Path) -> None:
+    state_job = tmp_path / "state7" / "staging" / "jobs" / "abc"
+    lock = tmp_path / "simon-part-2" / "gpu.lock"
+    # under the staging jobs dir but not this server's child: part7-other
+    assert gpu_lock.holder_owner(str(state_job), "python x", 1, lock) == "part7-other"
+    assert gpu_lock.holder_owner(str(tmp_path / "state7" / "check"), "python x", os.getpid(), lock) == "part7-other"
+    assert gpu_lock.holder_owner(str(tmp_path / "simon-part-2" / "run"), "python x", 1, lock) == "part2"
+    assert gpu_lock.holder_owner("/", "python -m part2 run", 1, lock) == "part2"
+    assert gpu_lock.holder_owner("/", "sleep 5", 1, lock) == "other"
+    assert gpu_lock.holder_owner("/", f"cat {state_job}/video.mp4", os.getpid(), lock) == "staging"
+
+
+def test_an_exited_holder_still_gets_a_line(fake_proc: Path, tmp_path: Path) -> None:
+    text = gpu_lock.describe_holder(31337, tmp_path / "gpu.lock")
+    assert text == "pid 31337 owner=other cwd=? ppid=? parent=? elapsed=? s cmd="
+
+
+def test_a_changed_holder_is_named_again_after_300_s(job_dir: Path, tmp_path: Path,
+                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    lpath = tmp_path / "gpu.lock"
+    fd = os.open(str(lpath), os.O_CREAT | os.O_RDWR, 0o666)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    pids = iter([111] * 3 + [222] * 1000)
+    monkeypatch.setattr(gpu_lock, "HOLDER_LOG_S", 0.05)
+    monkeypatch.setattr(gpu_lock, "HOLDER_RELOG_S", 0.3)
+    monkeypatch.setattr(gpu_lock, "lock_holder_pid", lambda p: next(pids))
+    monkeypatch.setattr(gpu_lock, "describe_holder", lambda pid, p: f"pid {pid}")
+    threading.Timer(0.8, lambda: fcntl.flock(fd, fcntl.LOCK_UN)).start()
+    try:
+        with gpu_lock.acquire(lock_path=lpath, min_free_mib=0, poll_s=0.02, timeout_s=5.0, job_dir=job_dir):
+            pass
+    finally:
+        time.sleep(0.05)
+        os.close(fd)
+    named = [x.split("lock held by ")[1] for x in _log(job_dir).splitlines() if "lock held by" in x]
+    assert named == ["pid 111", "pid 222"]

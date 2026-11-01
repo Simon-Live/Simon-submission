@@ -82,3 +82,29 @@ test("sizeText names a frame size, empty when unknown", () => {
   assert.equal(sizeText(0, 360), "");
   assert.equal(sizeText(undefined, undefined), "");
 });
+
+// TICKET-174: the URL fragment's arguments (a sign-in token, a job id) never reach the server log.
+function sentPage(hash) {
+  const calls = [];
+  const savedFetch = globalThis.fetch, savedLocation = globalThis.location;
+  globalThis.fetch = (url, init) => { calls.push(init); return new Promise(() => {}); };
+  globalThis.location = { hash };
+  try { clientLog("info", "x", {}); } finally { globalThis.fetch = savedFetch; globalThis.location = savedLocation; }
+  return JSON.parse(calls[0].body).page;
+}
+
+test("clientLog sends the route name only, never the fragment's arguments", () => {
+  assert.equal(sentPage("#/result/0123456789ab"), "#/result");
+  assert.equal(sentPage("#/result/0123456789ab/p2"), "#/result");
+  assert.equal(sentPage("#/follow/e1"), "#/follow");
+  assert.equal(sentPage("#/record"), "#/record");
+  assert.equal(sentPage("#/"), "#/");
+  assert.equal(sentPage(""), "");
+});
+
+test("negative: a #/signin/<token> URL leaves no token in the posted body", () => {
+  const token = "Zm9vYmFyLXRva2VuLXZhbHVlLTEyMzQ1Njc4OQ";
+  assert.equal(sentPage(`#/signin/${token}`), "#/signin");
+  assert.equal(sentPage(`#/signin/${token}?x=1`), "#/signin");
+  assert.ok(!sentPage(`#/signin/${token}`).includes(token));
+});

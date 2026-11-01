@@ -74,7 +74,7 @@ test("labels and the scoring line say only what Part 5 reported", () => {
   const rehab = scoringLine({ profile: "rehab", profile_source: "part7-rules" });
   assert.equal(rehab.text.startsWith("Scored with rehab rules."), true);
   assert.match(rehab.text, /more forgiving.*not a more accurate measure/);
-  assert.match(scoringLine({ profile: "dance" }).text, /^Scored with dance rules\. These coaching rules are more forgiving/);
+  assert.match(scoringLine({ profile: "dance" }).text, /^Scored with dance rules\. These practice rules are more forgiving/);
   assert.equal(scoringLine({ profile: "fitness" }).text, "Scored with fitness rules. These are the standard rules.");
 });
 

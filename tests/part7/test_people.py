@@ -18,9 +18,9 @@ FRAMES = 20
 VISITOR = {"Cf-Connecting-Ip": "203.0.113.7"}
 
 
-def _step(part: int, code: int = 0) -> runner.Step:
+def _step(part: int, code: int = 0, stdout: str = "") -> runner.Step:
     return runner.Step(part=part, commit="c" * 12, argv=["fake"], cwd="/tmp", exit=code, timed_out=False,
-                       duration_s=0.0, log="", stdout="")
+                       duration_s=0.0, log="", stdout=stdout)
 
 
 def tracks_doc(counts: dict[int, int], frames: int = FRAMES, mask: list[int] | None = None) -> dict[str, Any]:
@@ -77,7 +77,7 @@ class Fakes:
         self.p2_calls.append({k: (str(v) if isinstance(v, Path) else v) for k, v in kw.items() if k in ("multi", "tracks", "ids", "fps")})
         out = Path(work) / "part2"
         out.mkdir(parents=True, exist_ok=True)
-        (out / "pose3d.json").write_text('{"frames": []}', encoding="utf-8")
+        (out / "pose3d.json").write_text('{"frames": [{"frame": 0, "people": [{"id": 0}]}]}', encoding="utf-8")
         (out / "tracks.json").write_text(json.dumps(tracks_doc(self.counts)), encoding="utf-8")
         return (_step(2), out / "pose3d.json")
 
@@ -434,7 +434,7 @@ def test_group_follower_that_cannot_be_measured_is_an_f_row_not_a_failure(
 
     def part5(pose: Path, work: Path, **kw: Any) -> tuple[runner.Step, Path]:
         step, out = real(pose, work, **kw)
-        return (_step(3, 1), out) if kw.get("person") == "2" else (step, out)
+        return (_step(3, 2, "part3: pose3d.frames: no person in any frame"), out) if kw.get("person") == "2" else (step, out)
 
     monkeypatch.setattr(p3_skeleton, "part5", part5)
     pj = _people_job(api, class_mp4)["id"]
@@ -499,7 +499,7 @@ def test_group_clip_over_30_seconds_is_400(api: Api, tmp_path: Path, monkeypatch
 
 
 def test_eight_followers_are_allowed(api: Api, class_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fakes = Fakes(monkeypatch, {i: 20 for i in range(9)})
+    Fakes(monkeypatch, {i: 20 for i in range(9)})
     pj = _people_job(api, class_mp4)["id"]
     ids = [str(i) for i in range(1, 9)]
     status, doc = api.json("POST", "api/group", _group_body(api, pj, follower_ids=ids), VISITOR)

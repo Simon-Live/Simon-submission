@@ -18,9 +18,10 @@
 /* the title sits under the reference, never over it: a 3D reference keeps its own controls at the bottom */
 .cap-ref-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
   padding: var(--space-3) var(--space-4); background: var(--color-surface); }
-.cap-ref-title { margin: 0; font: var(--weight-bold) var(--text-lg)/1.2 var(--font-sans); color: var(--color-on-media); }
+.cap-ref-meta > div { min-width: 0; } /* a long unbroken title wraps instead of widening the page */
+.cap-ref-title { overflow-wrap: anywhere; margin: 0; font: var(--weight-bold) var(--text-lg)/1.2 var(--font-sans); color: var(--color-on-media); }
 .cap-ref-sub { margin: 2px 0 0; font-size: var(--text-sm); color: var(--color-text-muted); }
-.cap-watch { display: inline-flex; align-items: center; min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-md);
+.cap-watch { flex: none; display: inline-flex; align-items: center; min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-md);
   border: 1.5px solid var(--color-text-muted); color: var(--color-on-media); text-decoration: none; font-weight: var(--weight-semibold); white-space: nowrap; }
 
 /* controls: Recording pill and timer on one line, then the ring between the round tools */

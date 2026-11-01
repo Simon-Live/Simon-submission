@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { pickFrames, createClock, normalizeReplay, normalizeAnimation, MSG_BAD_REPLAY } from "../../web/compare.js";
-import { BANDS, hasScore } from "../../web/score.js";
+import { BANDS, hasScore, capNote } from "../../web/score.js";
 import { fallbackSummary, resultWarnings, withScore } from "../../web/result.js";
 
 const load = (f) => JSON.parse(fs.readFileSync(new URL(`../../fixtures/input/${f}`, import.meta.url)));
@@ -102,6 +102,36 @@ test("AC-A12/J9 the fixture score is displayable and refusals carry none", () =>
   assert.deepEqual(BANDS.map((b) => b.grade), ["A", "B", "C", "D", "F"]);
   const band = BANDS.find((b) => b.grade === analysis.score.grade);
   assert.ok(band);
+});
+
+// TICKET-155: staging job 02e783ae6e63 (analysis-capped-low-match.json, paths made relative) scored its one
+// window 73 C, and the low_match cap made the take 59 F. The score card has to say why, not only the banner.
+const capped = load("analysis-capped-low-match.json");
+
+test("test_score_card_says_why_given_a_score_capped_by_a_warning", () => {
+  assert.deepEqual(capped.score.capped_by, ["low_match"]);
+  const note = capNote(capped.score);
+  assert.ok(note, "a capped score carries a note");
+  assert.match(note, /^Graded F at most: /);
+  assert.match(note, /does not closely match the trainer's movement/);
+  assert.doesNotMatch(note, /Before the limit/); // the pinned Part 5 writes no uncapped value
+});
+
+test("cap note: no note without capped_by; every code in plain words; unknown codes still say why", () => {
+  assert.equal(capNote(analysis.score), null);
+  assert.equal(capNote(null), null);
+  assert.equal(capNote({ value: 90, grade: "A", capped_by: [] }), null);
+  const two = capNote({ value: 41, grade: "F", capped_by: ["moving_part_out_of_frame", "low_match"] });
+  assert.match(two, /a moving part of your body was out of frame; this take does not closely match/);
+  assert.match(capNote({ value: 59, grade: "F", capped_by: ["something_new"] }), /^Graded F at most: the take has a warning\.$/);
+});
+
+test("cap note: Part 5's uncapped value is shown only when the limit lowered the score", () => {
+  const lowered = capNote({ value: 59, grade: "F", capped_by: ["low_match"], uncapped: { value: 73, grade: "C" } });
+  assert.match(lowered, /\. Before the limit it scored 73 \(C\)\.$/);
+  const unchanged = capNote({ value: 0, grade: "F", capped_by: ["low_match"], uncapped: { value: 0, grade: "F" } });
+  assert.doesNotMatch(unchanged, /Before the limit/);
+  assert.doesNotMatch(capNote({ value: 59, grade: "F", capped_by: ["low_match"], uncapped: { value: "x" } }), /Before/);
 });
 
 test("fallback summary counts rows with a fallback reason", () => {

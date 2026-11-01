@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Simon</title>
+<!-- Inter loads from theme/fonts.css off the render path, as on index.html; the font host is warmed up first -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="image" href="media/landing-poster.jpg">
+<link rel="stylesheet" href="theme/fonts.css" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="theme/fonts.css"></noscript>
+<link rel="stylesheet" href="theme/tokens.css">
+<link rel="stylesheet" href="theme/landing.css">
+</head>
+<body class="landing">
+<main class="ld">
+  <video class="ld-clip" data-testid="landing-loop" src="media/landing-loop.mp4" poster="media/landing-poster.jpg"
+    muted loop autoplay playsinline preload="auto" aria-label="A Simon result: a squat with the faults marked"></video>
+  <h1 class="ld-line" data-testid="landing-line">Copy a move. See where you drifted.</h1>
+  <a class="ld-try" data-testid="landing-try" href="./#/">Try it</a>
+</main>
+</body>
+</html>

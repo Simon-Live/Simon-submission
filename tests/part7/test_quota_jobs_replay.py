@@ -176,6 +176,39 @@ def test_restart_fails_unfinished_jobs_and_cleanup_removes_week_old_jobs(tmp_pat
     assert again.cleanup() == 1 and not (tmp_path / "jobs" / first).exists()
 
 
+def test_dequeue_does_not_sweep_the_periodic_thread_does_and_startup_does(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SIMON7_CLEANUP_EVERY_S", "1")
+    swept = threading.Event()
+    calls: list[str] = []
+    real = JobQueue.cleanup
+
+    def spy(self: JobQueue, now: float | None = None) -> int:
+        calls.append(threading.current_thread().name)
+        swept.set()
+        return real(self, now)
+
+    monkeypatch.setattr(JobQueue, "cleanup", spy)
+    q = JobQueue(tmp_path, start=False)  # no threads: only the startup sweep, on the constructing thread
+    assert calls == [threading.current_thread().name]
+    q.close()
+    calls.clear()
+    swept.clear()
+    monkeypatch.setenv("SIMON7_CLEANUP_EVERY_S", "3600")
+    q = JobQueue(tmp_path, start=True)
+    calls.clear()
+    done = q.submit("follow", lambda ctx: None)["id"]
+    assert q.wait(done, 10)["status"] == "done"
+    assert calls == [], "a job start sweeps nothing"
+    q.close()
+    monkeypatch.setenv("SIMON7_CLEANUP_EVERY_S", "1")
+    q = JobQueue(tmp_path, start=True)
+    calls.clear()
+    swept.clear()
+    assert swept.wait(5), "the periodic thread sweeps"
+    assert calls[0] == "part7-jobs-sweep"
+    q.close()
+
+
 # ----- replay -----------------------------------------------------------------------------------
 FIXTURE = config.REPO_ROOT / "fixtures" / "input" / "replay.json"
 

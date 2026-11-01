@@ -1,7 +1,7 @@
 """A heartbeat line every minute, and the anomalies a watcher needs from it (TICKET-091, observability.md).
 
 `Heartbeat(queue, state)` runs one daemon thread started by `serve`: it logs `heartbeat queued=N running=N
-oldest_running_s=.. load1=.. gpu_free_mib=.. disk_free_gb=..` (`na` for a reading it cannot take) and adds
+oldest_running_s=.. load1=.. gpu_free_mib=.. disk_free_gb=..` (`na` for a reading it cannot take; `p2_worker` is `off`, `starting`, `idle`, `busy` or `down`, TICKET-099) and adds
 `ANOMALY queue_backlog` (more than `BACKLOG_QUEUED` jobs waiting for over `BACKLOG_S`), `ANOMALY heartbeat_stale`
 (a job running longer than `STALE_RUNNING_S`) and `ANOMALY disk_low`. It reads counters and never touches a request.
 """
@@ -16,7 +16,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from part7 import applog, gpu_lock
+from part7 import applog, gpu_lock, p2_worker
 
 INTERVAL_S = 60.0  # env SIMON7_HEARTBEAT_S
 BACKLOG_QUEUED = 2  # env SIMON7_BACKLOG_QUEUED: more waiting jobs than this ...
@@ -80,7 +80,7 @@ class Heartbeat:
         r = self._readings()
         applog.log(f"heartbeat queued={r['queued']} running={r['running']} oldest_running_s={_num(r['oldest_running_s'])} "
                    f"load1={_num(r['load1'], 2)} gpu_free_mib={_num(r['gpu_free_mib'], 0)} "
-                   f"disk_free_gb={_num(r['disk_free_gb'])}")
+                   f"disk_free_gb={_num(r['disk_free_gb'])} p2_worker={p2_worker.state()}")
         now = self.clock()
         limit = applog.env_float("SIMON7_BACKLOG_QUEUED", BACKLOG_QUEUED)
         if r["queued"] > limit:

@@ -1,7 +1,7 @@
 // Accessibility pass over the 2026-10-31 screens at 412x915 and 1280x800 (docs/specs/ui-polish.md):
 // axe-core finds zero serious or critical violations; tap targets are >= 44 px; nothing overflows sideways;
 // the moments, share feedback and toggles carry their roles and states. Pages: the existing harnesses on tests/part7/fake_api.py.
-//   /home/gingy/claude-template/scripts/with-browser-slot.sh node tests/part7/a11y.browser.mjs
+//   node tests/part7/a11y.browser.mjs
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -42,6 +42,7 @@ const H = "/__harness";
 const PAGES = [
   ["result-coach", `${STATIC}/coach.html?case=ok`, "[data-testid=moments]"],
   ["result-insights", `${STATIC}/result.html?case=insights`, ".simon-result"],
+  ["result-close-calls", `${STATIC}/result.html?case=nearmiss`, "[data-testid=near-misses]"],
   ["breakdown", `${STATIC}/breakdown.html?case=breakdown-rushing`, "[data-testid=score-panel]"],
   ["challenge-actions", `${H}/challenge.html?screen=actions&job=job1&entry=lateral-raise&score=61`, "[data-testid=challenge-create]"],
   ["challenge-crew-button", `${H}/challenge.html?screen=crew&job=grp1&entry=salsa-basic`, "[data-testid]"],

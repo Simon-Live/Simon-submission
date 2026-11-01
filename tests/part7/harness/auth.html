@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>auth harness</title>
+<base href="/">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="theme/tokens.css">
+<link rel="stylesheet" href="theme/base.css">
+<link rel="stylesheet" href="theme/screens.css">
+<header class="bar">
+  <a class="brand" href="#/"><span class="brand-word">simon</span></a>
+  <nav class="bar-nav" aria-label="Main"><a href="#/record">Record</a><span id="auth-link" class="auth-link-host"></span></nav>
+</header>
+<main id="app" tabindex="-1"></main>
+<script type="module">
+// Served by fake_auth.py at /__harness/auth.html. The integrator's route lines, tried on their own:
+//   #/signin, #/signin/<token>, #/me, and #/keep/<job> (the Keep this take slot of a result screen).
+import { mountSignin, mountMe, mountKeepTake, mountAuthLink } from "./auth.js";
+const root = document.getElementById("app");
+let stop = () => {};
+function show() {
+  stop();
+  root.replaceChildren();
+  const path = location.hash.replace(/^#\/?/, "");
+  let m;
+  if ((m = /^signin\/([^/]+)$/.exec(path))) stop = mountSignin(root, decodeURIComponent(m[1]));
+  else if (path === "signin") stop = mountSignin(root);
+  else if (path === "me") stop = mountMe(root);
+  else if ((m = /^keep\/([^/]+)$/.exec(path))) stop = mountKeepTake(root, decodeURIComponent(m[1]));
+  else root.textContent = "home";
+  document.body.dataset.route = location.hash;
+}
+window.addEventListener("hashchange", show);
+mountAuthLink(document.getElementById("auth-link"));
+show();
+</script>

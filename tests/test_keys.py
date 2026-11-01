@@ -89,3 +89,25 @@ def test_part1_dotenv_removes_env_on_exception(tmp_path: Path) -> None:
             raise RuntimeError("boom")
 
     assert not (clone_dir / ".env").exists()
+
+
+def test_keys_dir_never_falls_back_to_a_shared_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                         caplog: pytest.LogCaptureFixture) -> None:
+    from part7 import config
+
+    monkeypatch.delenv("SIMON7_KEYS_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(config, "_KEYS_LOGGED", False)
+    own, other = tmp_path / ".config/simon/keys", tmp_path / ".config/firm/operator-keys"
+    other.mkdir(parents=True)
+    (other / "MODEL_API_KEY").write_text("secret-value-123\n", encoding="utf-8")
+    with caplog.at_level("INFO", logger="part7"):
+        assert config.keys_dir() == own.resolve(), "a firm-internal directory is never used"
+        assert config.keys_dir() == own.resolve()
+    assert [r.getMessage() for r in caplog.records].count(
+        f"keys: no keys directory is set (SIMON7_KEYS_DIR) and {own.resolve()} does not exist") == 1
+    assert "secret-value-123" not in caplog.text
+    own.mkdir(parents=True)
+    assert config.keys_dir() == own.resolve()
+    monkeypatch.setenv("SIMON7_KEYS_DIR", str(tmp_path / "x"))
+    assert config.keys_dir() == (tmp_path / "x").resolve()

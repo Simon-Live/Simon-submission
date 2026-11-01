@@ -123,9 +123,9 @@ def test_failure_reasons_carry_no_path_or_host(tmp_path: Path, seams: dict[str, 
 
     monkeypatch.setattr(p2_pose, "run", busy)
     res = run_trainer(tmp_path)
-    assert res["error"] == "failed:pose: the GPU is busy, try again later"
+    assert res["error"] == "failed:pose: The 3D step could not run: the GPU is busy, try again later."
     monkeypatch.setattr(p2_pose, "run", lambda v, w, **k: (step(2, None, timed_out=True), Path(w) / "none.json"))
-    assert run_trainer(tmp_path / "t2")["error"] == "failed:pose: the 3D step took too long"
+    assert run_trainer(tmp_path / "t2")["error"] == "failed:pose: The 3D step took too long."
     monkeypatch.setattr(p2_pose, "doctor", lambda *a, **k: step(2, 1))
     monkeypatch.setattr(p2_pose, "run", lambda v, w, **k: (step(2), _touch(Path(w) / "p.json")))
     err = run_trainer(tmp_path / "t3")["error"]
@@ -206,7 +206,10 @@ def test_part2_and_follower_argv_follow_the_journey(tmp_path: Path, monkeypatch:
     lk.path("2").mkdir(parents=True, exist_ok=True)
     video = tmp_path / "v.mp4"
     video.write_bytes(b"x")
+    probe.clear_cache()
     p2_pose.run(video, tmp_path / "w", backend="cpu", lock=lk, state=state)
+    probe.clear_cache()
+    argvs[:] = [a for a in argvs if a[-1] != "--help"]  # the `--mesh` probe also reads `run --help`
     assert argvs[0][argvs[0].index("--fps") + 1] == "10" and argvs[0][argvs[0].index("--backend") + 1] == "cpu"
     argvs.clear()
     lk.path("3").mkdir(parents=True, exist_ok=True)

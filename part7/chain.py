@@ -12,7 +12,7 @@ import sys
 import threading
 from typing import Any, Callable
 
-from part7 import applog, config, crop, modules, people, quality, runner, stagelog
+from part7 import applog, config, crop, failcause, modules, people, quality, runner, stagelog
 from part7.quality_constants import OWN_ANALYSIS_SCHEMA_VERSION
 from part7.parts import (
     p1_keyframes,
@@ -36,8 +36,6 @@ class _Stop(Exception):
         self.result = result
 
 
-def _step_failed(label: str, step: runner.Step) -> str:
-    return f"the {label} step took too long" if step.get("timed_out") else f"the {label} step failed"
 
 
 class _Run:
@@ -54,12 +52,19 @@ class _Run:
         if self.report is not None:
             self.report(name)
 
-    def fail(self, stage: str, reason: str) -> _Stop:
+    def fail_step(self, stage: str, label: str, step: runner.Step) -> _Stop:
+        """A part step that failed: the reason is built from its log, the cause class rides along."""
+        cause, text = failcause.classify(label, step)
+        return self.fail(stage, text, cause=cause)
+
+    def fail(self, stage: str, reason: str, take: str | None = None, cause: str | None = None) -> _Stop:
+        """The failure result. `take` is `no_person` or `no_usable_measures` only when a part ran and reported
+        that fact; the follower then answers with Part 7's own analysis. Anything else stays a failed job."""
         return _Stop(
             {
                 "ok": False, "status": "failed", "stage": stage, "error": f"failed:{stage}: {reason}",
                 "clip": str(self.video), "steps": self.steps, "files": {},
-                "note": "; ".join(self.notes) if self.notes else None, **self.extra,
+                "note": "; ".join(self.notes) if self.notes else None, "take": take, "cause": take or cause or "failed", **self.extra,
             }
         )
 
@@ -105,13 +110,26 @@ def _pose_run(
         else:
             step, pose3d = p2_pose.run(video, work, backend=backend, lock=lk, state=state)
     except TimeoutError:
-        raise run.fail("pose", "the GPU is busy, try again later") from None
+        raise run.fail("pose", failcause.busy_text("3D"), cause="busy") from None
     except RuntimeError:
-        raise run.fail("pose", "the 3D step is not available") from None
+        raise run.fail("pose", failcause.unavailable_text("3D"), cause="missing_tool") from None
+    if failcause.mesh_soft_miss(step, pose3d):  # TICKET-143: the take is analysed normally, without a mesh
+        step = {**step, "exit": 0, "mesh_miss": True}
+        run.notes.append(failcause.MESH_MISS_NOTE)
     run.steps.append(step)
+    if failcause.part2_found_nobody(step):
+        raise run.fail("pose", "No person was found in this video", take="no_person")
     if step["exit"] != 0 or not pose3d.is_file():
-        raise run.fail("pose", _step_failed("3D", step))
-    run.check("pose", p2_pose.doctor(pose3d, work, lock=lk, state=state), "pose3d.json", 2)
+        raise run.fail_step("pose", "3D", step)
+    if failcause.take_has_no_person(pose3d):
+        raise run.fail("pose", "No person was found in this video", take="no_person")
+    doc = p2_pose.doctor(pose3d, work, lock=lk, state=state)
+    # a malformed mesh is no mesh, not a failed job; any other doctor failure fails the job without a retry
+    if failcause.doctor_blames_mesh(doc) and p2_pose.drop_mesh(pose3d.parent):
+        run.steps.append(doc)
+        run.notes.append(failcause.MESH_MISS_NOTE)
+        doc = p2_pose.doctor(pose3d, work, lock=lk, state=state)
+    run.check("pose", doc, "pose3d.json", 2)
     return pose3d
 
 
@@ -137,15 +155,15 @@ def _keyframes(
 ) -> tuple[Path | None, int]:
     """Part 1 with the fallback of `processor.md`; return `(keyframes.json or None, provenance part)`.
 
-    Part 1 gets `SIMON7_PART1_TIMEOUT_S` (default 90); a timeout is a fallback to Part 3 `every:10`, never a failure.
+    Part 1 gets `SIMON7_PART1_TIMEOUT_S` (default 150); a timeout is a fallback to Part 3 `every:10`, never a failure.
     """
     timeout_s = config.part1_timeout_s()
     step, kf_path, note = p1_keyframes.run(
         video, work, lock=lk, state=state, keys_dir=keys_dir, timeout_s=timeout_s
     )
     if step is not None and step.get("timed_out"):
-        note = f"key frames from Part 3, Part 1 took longer than {timeout_s:g} s"
-        applog.log(f"Part 1 timed out after {timeout_s:g} s (load {_load_1m()})", applog.job_id_of(work), work,
+        note = f"key frames from Part 3, Part 1 took longer than {applog.secs(timeout_s)} s"
+        applog.log(f"Part 1 timed out after {applog.secs(timeout_s)} s (load {_load_1m()})", applog.job_id_of(work), work,
                    logging.WARNING)  # TICKET-089: a busy host is the usual cause
     if step is not None:
         run.steps.append(step)
@@ -212,7 +230,7 @@ def _skeleton(
         if note:
             run.notes.append(note)
         if steps[-1]["exit"] != 0 or not skel.is_file() or not kf_v1.is_file():
-            raise run.fail("skeleton", _step_failed("skeleton", steps[-1]))
+            raise run.fail_step("skeleton", "skeleton", steps[-1])
         run.check("skeleton", p3_skeleton.doctor(skel, "part4", work, lock=lk, state=state), "skeleton.json", 3)
     return (skel, kf_v1)
 
@@ -342,34 +360,37 @@ def trainer(
     }
 
 
-# processor.md "Always analysed": a take is never refused. When Part 2 finds no person, or Part 3 or Part 5 cannot run,
-# Part 7 writes the analysis itself (status ok, one warning, score 0, grade F). A busy GPU, a missing tool or a
-# timeout are infrastructure and stay failures.
+# processor.md "Always analysed": a take is never refused. Part 7 writes the analysis itself (status ok, one
+# warning, score 0, grade F) only for two facts: Part 2 ran and found nobody, or Part 3 ran and found nothing to
+# measure. Every other failure (a crash, a missing CUDA backend, a missing tool, memory, a timeout, a busy GPU) is
+# the machine's and stays a failed job with a specific reason (TICKET-103).
 _OWN_WARNING = {
-    "pose": ("no_person", "No person was found in this take."),
-    "skeleton": ("no_usable_measures", "Nothing in this take could be measured against the trainer."),
-    "analyse": ("no_usable_measures", "Nothing in this take could be measured against the trainer."),
+    "no_person": ("no_person", "No person was found in this take."),
+    "no_usable_measures": ("no_usable_measures", "Nothing in this take could be measured against the trainer."),
 }
-_INFRA_REASONS = ("busy", "not available", "took too long")
 
 
 def _is_analysis_case(result: dict[str, Any]) -> bool:
-    """True when a failed follower chain result is about the take (not the machine)."""
-    reason = str(result.get("error") or "")
-    return result.get("stage") in _OWN_WARNING and not any(m in reason for m in _INFRA_REASONS)
+    """True when a failed follower chain result carries a fact about the take (`take`), not a failed machine."""
+    return result.get("take") in _OWN_WARNING
 
 
-def write_own_analysis(path: Path, stage: str, reason: str, *,
+def write_own_analysis(path: Path, take: str, reason: str, *, expected: Path | str, follower: Path | str,
                        quality_paths: list[Path] | None = None, person_id: str | None = None) -> Path:
-    """Write Part 7's own analysis for a take Part 5 could not see: ok, one warning, score 0, grade F."""
-    code, text = _OWN_WARNING[stage]
+    """Write Part 7's own analysis for `take` = no_person or no_usable_measures: ok, one warning, score 0, grade F.
+
+    `expected` (the trainer clip) and `follower` (the take's video or pose file) are the clip references Part 5's
+    schema requires (`path`, non-empty); `faults` is empty.
+    """
+    code, text = _OWN_WARNING[take]
     doc = {
         "format": "simon.analysis.v1", "schema_version": OWN_ANALYSIS_SCHEMA_VERSION, "source": "part7",
+        "expected": {"path": str(expected)}, "follower": {"path": str(follower)},
         "status": {"code": "ok", "text": text},
         "warnings": [{"code": code, "text": text, "reason": reason}],
         "match": {"quality": "low", "residual": None, "timing_corr": None, "limits": {}},
         "faults": [],
-        "score": {"version": "simon.score.v1", "value": 0, "grade": "F", "components": None, "capped_by": [code]},
+        "score": {"version": "simon.score.v1", "value": 0, "grade": "F", "components": {}, "capped_by": [code]},
     }
     signal = quality.fallback_quality(quality_paths or [], person_id)
     if signal is not None:
@@ -391,14 +412,17 @@ def follower(
     person: people.PersonSel | None = None,
     expected_visibility: Path | str | None = None,
     mode: str | None = None,
+    lang: str | None = None,
+    expected_video: Path | str | None = None,
+    private: bool | None = None,
 ) -> dict[str, Any]:
     """`_follower_chain`, except that a failure about the take itself still ends in an analysis (an F with a warning)."""
     res = _follower_chain(
-        video, expected, work, report, lock, backend, state, phrasing, person, expected_visibility, mode
+        video, expected, work, report, lock, backend, state, phrasing, person, expected_visibility, mode,
+        lang, expected_video, private,
     )
     if res.get("ok") or not _is_analysis_case(res):
         return res
-    stage = str(res["stage"])
     reason = str(res.get("error") or "").split(": ", 1)[-1]
     work_path = Path(work)
     quality_paths = []
@@ -408,8 +432,9 @@ def follower(
                       work_path / "part2_track" / "tracks.json", work_path / "tracks.json"]
     if person is not None and person.people_work is not None:
         quality_paths += [person.people_work / "pose3d_all.json", person.people_work / "tracks.json"]
-    analysis = write_own_analysis(work_path / "analysis.json", stage, reason,
-                                  quality_paths=quality_paths, person_id=person.id if person else None)
+    analysis = write_own_analysis(work_path / "analysis.json", str(res["take"]), reason,
+                                  expected=expected, follower=video, quality_paths=quality_paths,
+                                  person_id=person.id if person else None)
     note = "; ".join(x for x in (res.get("note"), f"analysed by Part 7 alone: {reason}") if x)
     return {
         "ok": True, "status": "ok", "stage": "done", "clip": res.get("clip"), "steps": res.get("steps", []),
@@ -429,6 +454,9 @@ def _follower_chain(
     person: people.PersonSel | None = None,
     expected_visibility: Path | str | None = None,
     mode: str | None = None,
+    lang: str | None = None,
+    expected_video: Path | str | None = None,
+    private: bool | None = None,
 ) -> dict[str, Any]:
     """Run the follower chain of `journey.md` (Parts 2, 3 `--view part5 --fps 30`, 5) with every doctor.
 
@@ -446,7 +474,9 @@ def _follower_chain(
             step, follower_path = p3_skeleton.part5(pose3d, work_p, lock=lk, state=state, person=person and person.id)
             run.steps.append(step)
             if step["exit"] != 0 or not follower_path.is_file():
-                raise run.fail("skeleton", _step_failed("skeleton", step))
+                if failcause.part3_found_nothing(step):
+                    raise run.fail("skeleton", "Part 3 found nothing to measure", take="no_usable_measures")
+                raise run.fail_step("skeleton", "skeleton", step)
             run.check(
                 "skeleton", p3_skeleton.doctor(follower_path, "part5", work_p, lock=lk, state=state), "follower.json", 3
             )
@@ -454,7 +484,7 @@ def _follower_chain(
         with stagelog.stage(work_p, "analyse", run.steps, expected=expected_p.name, phrasing=phrasing,
                             visibility=bool(expected_visibility)) as end:
             analysis, status_code = _analyse(run, expected_p, follower_path, work_p, lk, state, phrasing,
-                                             expected_visibility, mode)
+                                             expected_visibility, mode, lang, expected_video, video_p, private)
             end["status"] = status_code
     except _Stop as stop:
         return stop.result
@@ -471,7 +501,8 @@ def _follower_chain(
 
 def _analyse(
     run: _Run, expected: Path, follower_path: Path, work: Path, lk: modules.Modules, state: Any, phrasing: str,
-    expected_visibility: Path | str | None, mode: str | None = None,
+    expected_visibility: Path | str | None, mode: str | None = None, lang: str | None = None,
+    expected_video: Path | str | None = None, follower_video: Path | str | None = None, private: bool | None = None,
 ) -> tuple[Path, str]:
     """Part 5's loader check, `analyse` and its Part 7 doctor; return `(analysis.json, status code)`."""
     run.check(
@@ -479,12 +510,12 @@ def _analyse(
     )
     step, analysis, status_code, notes = p5_analyse.run(
         expected, follower_path, work, lock=lk, state=state, phrasing=phrasing, expected_visibility=expected_visibility,
-        mode=mode,
+        mode=mode, lang=lang, expected_video=expected_video, follower_video=follower_video, private=private,
     )
     run.steps.append(step)
     run.notes.extend(notes)
     if step["exit"] not in (0, 3) or not analysis.is_file():
-        raise run.fail("analyse", _step_failed("analysis", step))
+        raise run.fail_step("analyse", "analysis", step)
     run.check(
         "analyse", p5_analyse.doctor(analysis, work, consumer="part7", lock=lk, state=state), "analysis.json", 5,
     )

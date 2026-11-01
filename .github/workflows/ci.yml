@@ -1,0 +1,32 @@
+name: CI
+
+# GPU-free checks only: the Python tests, the browser-module unit tests and the linter.
+# Real jobs (Parts 1 to 6 on a GPU) and `make check-7` need a CUDA host and run there.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Parts 1 to 6 are private repositories (checked 2026-10-31 with `gh repo view --json visibility`), so the
+      # default token cannot fetch them. The secret PARTS_READ_TOKEN (read access to the six part repos) is required
+      # until they are public; without it the checkout fails.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+          token: ${{ secrets.PARTS_READ_TOKEN || github.token }}
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Lint
+        run: uvx ruff check part7 tests
+      - name: Python tests
+        run: uv run pytest -q
+      - name: Browser-module unit tests
+        run: node --test tests/part7/*.unit.test.mjs

@@ -226,7 +226,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     const ex = extraFields();
     const begun = await pending.begin({
       source: info.source, blob: take, role: recRole(), entryId: trainer ? null : entryId, entryName: entry && entry.name ? entry.name : "",
-      mode: ex.mode || null, section: ex.section || null, challengeId: ex.challenge_id || null, trim,
+      mode: ex.mode || null, section: ex.section || null, challengeId: ex.challenge_id || null, lang: ex.lang || null, trim,
     });
     if (!alive) return;
     rec = begun.record;
@@ -297,7 +297,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
       if (alive) openPicker();
     });
   } else {
-    capture = mountCapture(capBox, limits, { reference, countdownDefault });
+    capture = mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group" });
     decorateCapture(capBox, captureChromeOf({ kind: currentKind(), entry: trainer ? null : entry })); // brand chrome (views/capture-chrome.js)
     capture.onChange(onTake);
   }

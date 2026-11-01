@@ -35,7 +35,8 @@ const uploads = [];
 const probe = (file) => {
   const o = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", file]).toString().trim();
   const [w, hgt] = o.split(",").map(Number);
-  return { width: w, height: hgt };
+  const audio = execFileSync("ffprobe", ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "csv=p=0", file]).toString().trim();
+  return { width: w, height: hgt, audio: audio ? audio.split("\n") : [] };
 };
 const body = (req) => new Promise((resolve) => { const parts = []; req.on("data", (c) => parts.push(c)); req.on("end", () => resolve(Buffer.concat(parts))); });
 const server = http.createServer(async (req, res) => {
@@ -113,6 +114,20 @@ async function run(role, viewport) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
+  // TICKET-121: an object URL the app revoked must never be loaded again (negative assertion).
+  await page.addInitScript(() => { // remember which element each object URL was given to, to name the culprit
+    const owner = (window.__blobOwner = {});
+    const d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "src");
+    Object.defineProperty(HTMLMediaElement.prototype, "src", { ...d, set(v) { owner[v] = `${this.tagName}[${this.dataset.testid || this.id || this.className || "probe"}]`; d.set.call(this, v); } });
+    const sa = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (k, v) { if (k === "src") owner[v] = `${this.tagName}[${this.dataset.testid || this.id || this.className || "probe"}]`; return sa.call(this, k, v); };
+  });
+  page.on("console", (m) => { if (m.type() === "error" && m.location().url.startsWith("blob:")) errors.push(`blob console error: ${m.text()}`); });
+  page.on("requestfailed", async (r) => {
+    if (!r.url().startsWith("blob:")) return;
+    const who = await page.evaluate((u) => window.__blobOwner[u] || "?", r.url()).catch(() => "?");
+    errors.push(`blob load failed: ${who} ${r.failure()?.errorText}`);
+  });
   await page.route("**/api/config", (r) => r.fulfill({ json: { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } } }));
   await page.route("**/catalog/api/entries/e1", (r) => r.fulfill({ json: { id: "e1", name: "Lateral raise", video_uri: "trainer.mp4" } }));
   await page.route("**/catalog/api/entries", (r) => r.fulfill({ json: { entries: [] } }));
@@ -123,12 +138,13 @@ async function run(role, viewport) {
   const shot = (name) => page.screenshot({ path: path.join(out, `${tag}-${name}.png`) });
   const since = logs.length;
 
-  await page.goto(`${BASE}${role === "trainer" ? "#/record" : "#/follow/e1"}`);
+  await page.goto(`${BASE}${role === "follower" ? "#/follow/e1" : "#/record"}`);
   await tid("preview").waitFor({ state: "attached" });
   const live = await page.waitForFunction(() => document.querySelector('[data-testid="preview"]').videoWidth > 0, null, { timeout: 8000 })
     .then(() => true, () => false);
   check(`${tag}: live preview shows on open, before Record`, live);
   if (role === "follower") await page.waitForFunction(() => document.querySelector('[data-testid="reference-video"]').readyState >= 1, null, { timeout: 8000 }).catch(() => {});
+  if (role === "group") await tid("mode-group").click(); // the camera opened with sound in Just me; Group records none (nothing transcribes it)
   await page.waitForTimeout(400);
   await shot("1-open");
   const open = await noCover(page, `${tag} open`);
@@ -177,11 +193,23 @@ async function run(role, viewport) {
   const sizes = await page.evaluate(() => { const c = document.querySelector(".cam"); return { track: c.dataset.trackSize || "", take: c.dataset.takeSize || "" }; });
   check(`${tag}: the recorded take keeps the camera frame`, sizes.take !== "" && sizes.take === sizes.track, `track ${sizes.track}, take ${sizes.take}`);
 
+  // R5: "Record again" retakes; the first take's object URL is released without a failed blob load (errors checked below)
+  await tid("trim-back").click();
+  await tid("cam-start").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(800);
+  await tid("cam-start").click();
+  await tid("trim-continue").waitFor({ timeout: 25000 });
+  await page.waitForFunction(() => document.querySelector(".trim")?.dataset.duration, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(800);
   await tid("trim-continue").click();
   await page.waitForFunction(() => document.querySelector('[data-testid="people"], [data-testid="people-error"], .save-step:not([hidden])'), null, { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(500);
   const up = uploads[uploads.length - 1];
   check(`${tag}: the uploaded file has the camera frame (ffprobe)`, up && `${up.width}x${up.height}` === sizes.track, up ? `${up.width}x${up.height}` : "no upload");
+  // sound is asked for on a trainer take only (the narration cues come from it); a follower take has none
+  const wantAudio = role === "trainer"; // a group take has no sound either: nothing transcribes it
+  check(`${tag}: the uploaded take ${wantAudio ? "has an audio track" : "has no audio track"} (ffprobe)`,
+    up && (up.audio.length > 0) === wantAudio, up ? `audio ${JSON.stringify(up.audio)}` : "no upload");
   const events = logs.slice(since).map((l) => l.event);
   for (const ev of ["camera_opened", "recorder_started", "take_recorded", "take_dimensions", "trim_chosen", "upload_done"]) {
     check(`${tag}: client log ${ev}`, events.includes(ev));
@@ -213,12 +241,37 @@ async function refused() {
   await ctx.close();
 }
 
+// Client a5e5503 reconciled with TICKET-063: a camera the browser already denies raises no prompt on load; the blocked
+// state with Try again shows at once, and a tap asks.
+async function denied() {
+  const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await ctx.addInitScript(() => {
+    window.__gum = 0;
+    navigator.permissions.query = () => Promise.resolve({ state: "denied" });
+    navigator.mediaDevices.getUserMedia = () => { window.__gum += 1; return Promise.reject(new DOMException("denied", "NotAllowedError")); };
+  });
+  const page = await ctx.newPage();
+  await page.route("**/api/config", (r) => r.fulfill({ json: { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } } }));
+  await page.goto(`${BASE}#/record`);
+  await page.getByTestId("cam-open").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  const text = await page.getByTestId("cam-open").textContent().catch(() => "");
+  check("denied: Try again shows at once", text === "Try again", text);
+  check("denied: no camera request on load", await page.evaluate(() => window.__gum) === 0);
+  check("denied: the status says access is off", /Camera access is off/.test(await page.getByTestId("camera-status").textContent()));
+  await page.getByTestId("cam-open").click();
+  await page.waitForTimeout(300);
+  check("denied: the tap asks for the camera (a trainer retries without sound)", await page.evaluate(() => window.__gum) >= 1);
+  await ctx.close();
+}
+
 for (const viewport of [{ width: 412, height: 915 }, { width: 1280, height: 800 }]) {
-  for (const role of ["follower", "trainer"]) {
+  for (const role of ["follower", "trainer", "group"]) {
     try { await run(role, viewport); } catch (e) { check(`${role}-${viewport.width}: drive ran`, false, e.message.split("\n")[0]); }
   }
 }
 try { await refused(); } catch (e) { check("refused: drive ran", false, e.message.split("\n")[0]); }
+try { await denied(); } catch (e) { check("denied: drive ran", false, e.message.split("\n")[0]); }
 fs.writeFileSync(path.join(out, "client-log.json"), JSON.stringify(logs, null, 2));
 await browser.close();
 server.close();

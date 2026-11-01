@@ -20,6 +20,9 @@ const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, pe
 const page = await ctx.newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
+// TICKET-121: no object URL may be loaded after the app revoked it (negative assertion).
+page.on("requestfailed", (r) => { if (r.url().startsWith("blob:")) errors.push(`blob load failed: ${r.url()} ${r.failure()?.errorText}`); });
+page.on("console", (m) => { if (m.type() === "error" && m.location().url.startsWith("blob:")) errors.push(`blob console error: ${m.text()}`); });
 await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/trim.html?case=none`);
 await page.waitForFunction(() => window.__ready === true);
 

@@ -67,7 +67,8 @@ export function mountWatch(root, id) {
     clear(screen).append(
       h("div", { class: "head" },
         h("div", {}, h("h1", { text: entry.name || eid }), h("p", { class: "hint", text: entry.category || "" })),
-        linkButton(`#/follow/${encodeURIComponent(eid)}`, "Follow this movement", "follow", "primary")),
+        linkButton(`#/follow/${encodeURIComponent(eid)}`, "Follow this movement", "follow", "primary"),
+        linkButton(`#/teacher/${encodeURIComponent(eid)}`, "Your followers", "watch-teacher")),
       labelBox,
       challengeBox,
       video,

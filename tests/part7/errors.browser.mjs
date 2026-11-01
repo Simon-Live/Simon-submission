@@ -33,7 +33,7 @@ try {
   const bySource = Object.fromEntries(errors.map((l) => [l.detail.source, l]));
   assert.match(bySource.onerror.detail.message, /harness boom$/);
   assert.equal(bySource.onerror.level, "error");
-  assert.equal(bySource.onerror.page, "#/follow/e1");
+  assert.equal(bySource.onerror.page, "#/follow"); // the route name only: no id or token is logged (TICKET-174)
   assert.equal(bySource.unhandledrejection.detail.message, "harness rejection");
   assert.deepEqual([bySource.fetch.detail.path, bySource.fetch.detail.status], ["api/broken", 500]);
   assert.ok(!JSON.stringify(logs).includes("secret"), "the query never leaves the page");

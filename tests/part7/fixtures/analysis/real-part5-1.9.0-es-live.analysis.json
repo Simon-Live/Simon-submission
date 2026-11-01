@@ -1,0 +1,1426 @@
+{
+ "format": "simon.analysis.v1",
+ "schema_version": "1.9.0",
+ "profile": "fitness",
+ "expected": {
+  "path": "fixtures/input/eval/real/pexels-5034562/skeleton.json"
+ },
+ "follower": {
+  "path": "fixtures/input/eval/real/pexels-8837221/skeleton.json"
+ },
+ "status": {
+  "code": "ok",
+  "text": "Compared with the expected movement."
+ },
+ "faults": [
+  {
+   "measure": "elbow_flexion",
+   "measure_kind": "angle",
+   "joint": "elbow",
+   "body_part": "arms",
+   "side": "both",
+   "direction": "more",
+   "magnitude_deg": 108.7,
+   "peak_deg": 120.9,
+   "threshold_deg": 20.0,
+   "unit": "degrees",
+   "expected_frames": [
+    0,
+    21
+   ],
+   "follower_frames": [
+    0,
+    43
+   ],
+   "runs": [
+    [
+     0,
+     21
+    ]
+   ],
+   "phase": [
+    0.0,
+    0.137
+   ],
+   "coverage": 1.0,
+   "confidence": 1.0,
+   "text": "elbows bent much more than the example",
+   "cue": "Straighten your arms more",
+   "cue_kind": "range",
+   "follower_t_s": [
+    0.0,
+    4.28
+   ],
+   "at_s": 0.0,
+   "follower_runs": [
+    [
+     0,
+     43
+    ]
+   ],
+   "lateral": null,
+   "text_timed": "elbows bent much more than the example at 0.0 s",
+   "reps": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "joints": [
+    "left_elbow",
+    "right_elbow"
+   ],
+   "coaching": "At 0.0 s, tus codos están mucho más flexionados que en el ejemplo."
+  },
+  {
+   "measure": "upper_arm_forward",
+   "measure_kind": "direction",
+   "joint": "shoulder",
+   "body_part": "arms",
+   "side": "both",
+   "direction": "more",
+   "magnitude_deg": 41.0,
+   "peak_deg": 61.9,
+   "threshold_deg": 15.0,
+   "unit": "degrees",
+   "expected_frames": [
+    0,
+    4
+   ],
+   "follower_frames": [
+    0,
+    4
+   ],
+   "runs": [
+    [
+     0,
+     4
+    ],
+    [
+     18,
+     21
+    ]
+   ],
+   "phase": [
+    0.0,
+    0.026
+   ],
+   "coverage": 1.0,
+   "confidence": 1.0,
+   "text": "arms raised too far forward",
+   "cue": "Keep your arms lower",
+   "cue_kind": "range",
+   "follower_t_s": [
+    0.0,
+    0.4
+   ],
+   "at_s": 0.0,
+   "follower_runs": [
+    [
+     0,
+     4
+    ],
+    [
+     36,
+     43
+    ]
+   ],
+   "lateral": null,
+   "text_timed": "arms raised too far forward at 0.0 s",
+   "reps": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "joints": [
+    "left_shoulder",
+    "right_shoulder"
+   ],
+   "coaching": "Tus brazos están elevados demasiado hacia adelante a los 0.0 s."
+  },
+  {
+   "measure": "upper_arm_forward",
+   "measure_kind": "direction",
+   "joint": "left_shoulder",
+   "body_part": "arms",
+   "side": "left",
+   "direction": "less",
+   "magnitude_deg": -37.7,
+   "peak_deg": -42.6,
+   "threshold_deg": 15.0,
+   "unit": "degrees",
+   "expected_frames": [
+    6,
+    14
+   ],
+   "follower_frames": [
+    11,
+    28
+   ],
+   "runs": [
+    [
+     6,
+     14
+    ]
+   ],
+   "phase": [
+    0.039,
+    0.092
+   ],
+   "coverage": 1.0,
+   "confidence": 1.0,
+   "text": "left arm not raised far enough forward",
+   "cue": "Raise your left arm forward more",
+   "cue_kind": "range",
+   "follower_t_s": [
+    1.12,
+    2.8
+   ],
+   "at_s": 1.1,
+   "follower_runs": [
+    [
+     11,
+     28
+    ]
+   ],
+   "lateral": null,
+   "text_timed": "left arm too low at 1.1 s",
+   "reps": [
+    0,
+    1,
+    4
+   ],
+   "joints": [
+    "left_shoulder"
+   ],
+   "coaching": "Alrededor de 1.1 s tu brazo izquierdo está demasiado bajo."
+  },
+  {
+   "measure": "forearm_out",
+   "measure_kind": "direction",
+   "joint": "elbow",
+   "body_part": "arms",
+   "side": "both",
+   "direction": "less",
+   "magnitude_deg": -30.1,
+   "peak_deg": -56.8,
+   "threshold_deg": 17.0,
+   "unit": "degrees",
+   "expected_frames": [
+    0,
+    21
+   ],
+   "follower_frames": [
+    45,
+    88
+   ],
+   "runs": [
+    [
+     0,
+     21
+    ]
+   ],
+   "phase": [
+    0.0,
+    0.137
+   ],
+   "coverage": 1.0,
+   "confidence": 1.0,
+   "text": "hands too close in",
+   "cue": "Move your hands out wider",
+   "cue_kind": "position",
+   "follower_t_s": [
+    4.52,
+    8.8
+   ],
+   "at_s": 4.5,
+   "follower_runs": [
+    [
+     45,
+     88
+    ]
+   ],
+   "lateral": null,
+   "text_timed": "hands too close in at 4.5 s",
+   "reps": [
+    1,
+    3,
+    4
+   ],
+   "joints": [
+    "left_elbow",
+    "right_elbow"
+   ],
+   "coaching": "En comparación con la grabación, tus manos están demasiado juntas hacia dentro a los 4.5 s."
+  },
+  {
+   "measure": "foot_out",
+   "measure_kind": "direction",
+   "joint": "ankle",
+   "body_part": "legs",
+   "side": "both",
+   "direction": "more",
+   "magnitude_deg": 9.9,
+   "peak_deg": 15.8,
+   "threshold_deg": 6.0,
+   "unit": "degrees",
+   "expected_frames": [
+    0,
+    21
+   ],
+   "follower_frames": [
+    0,
+    43
+   ],
+   "runs": [
+    [
+     0,
+     21
+    ]
+   ],
+   "phase": [
+    0.0,
+    0.137
+   ],
+   "coverage": 1.0,
+   "confidence": 0.777,
+   "text": "feet too far apart",
+   "cue": "Bring your feet closer together",
+   "cue_kind": "position",
+   "follower_t_s": [
+    0.0,
+    4.28
+   ],
+   "at_s": 0.0,
+   "follower_runs": [
+    [
+     0,
+     43
+    ]
+   ],
+   "lateral": null,
+   "text_timed": "feet too far apart at 0.0 s",
+   "reps": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "joints": [
+    "left_ankle",
+    "right_ankle"
+   ],
+   "coaching": "Tus pies están demasiado separados a las 0.0 s."
+  }
+ ],
+ "diagnostics": {
+  "alignment_residual": 0.4828,
+  "alignment_measures": [
+   "left_knee_flexion",
+   "left_upper_arm_forward",
+   "left_thigh_forward",
+   "right_knee_flexion",
+   "right_upper_arm_out",
+   "right_upper_arm_forward",
+   "right_forearm_out",
+   "right_thigh_forward",
+   "trunk_lean_forward"
+  ],
+  "follower_span": [
+   0,
+   254
+  ],
+  "warnings": [],
+  "guard": {
+   "residual": 0.4828,
+   "timing_corr": 0.9717,
+   "span_share": 0.9091,
+   "limits": {
+    "max_residual": 0.5677,
+    "min_timing_corr": 0.8336
+   },
+   "reps": [
+    {
+     "span_s": [
+      0.0,
+      4.52
+     ],
+     "residual": 0.4828,
+     "timing_corr": 0.9753,
+     "ok": true
+    },
+    {
+     "span_s": [
+      4.52,
+      9.32
+     ],
+     "residual": 0.4828,
+     "timing_corr": 0.9631,
+     "ok": true
+    },
+    {
+     "span_s": [
+      9.32,
+      14.72
+     ],
+     "residual": 0.5209,
+     "timing_corr": 0.9717,
+     "ok": true
+    },
+    {
+     "span_s": [
+      14.72,
+      20.0
+     ],
+     "residual": 0.5073,
+     "timing_corr": 0.9821,
+     "ok": true
+    },
+    {
+     "span_s": [
+      20.0,
+      25.4
+     ],
+     "residual": 0.4684,
+     "timing_corr": 0.9585,
+     "ok": true
+    }
+   ]
+  },
+  "expected_reference": {
+   "kind": "first_rep",
+   "frames": [
+    0,
+    21
+   ],
+   "span_s": [
+    0.0,
+    2.102
+   ],
+   "expected_reps": 4,
+   "follower_reps": 5,
+   "measure": "left_upper_arm_forward"
+  },
+  "near_misses": {
+   "total": 11,
+   "omitted": 1,
+   "items": [
+    {
+     "measure": "upper_arm_forward",
+     "side": "right",
+     "joint": "right_shoulder",
+     "body_part": "arms",
+     "direction": "less",
+     "magnitude_deg": -29.6,
+     "peak_deg": -33.3,
+     "threshold_deg": 15.0,
+     "expected_frames": [
+      7,
+      14
+     ],
+     "follower_frames": [
+      111,
+      129
+     ],
+     "frames_over": 8,
+     "counted_frames": 8,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "reps",
+     "found_in_reps": 2,
+     "needed_reps": 3,
+     "reps": [
+      0,
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "measure": "thigh_forward",
+     "side": "right",
+     "joint": "right_hip",
+     "body_part": "legs",
+     "direction": "more",
+     "magnitude_deg": 15.4,
+     "peak_deg": 15.4,
+     "threshold_deg": 15.0,
+     "expected_frames": [
+      9,
+      9
+     ],
+     "follower_frames": [
+      63,
+      63
+     ],
+     "frames_over": 1,
+     "counted_frames": 0,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "persistence",
+     "shortfall_frames": 8,
+     "reps": [
+      1
+     ]
+    },
+    {
+     "measure": "knee_flexion",
+     "side": "left",
+     "joint": "left_knee",
+     "body_part": "legs",
+     "direction": "less",
+     "magnitude_deg": -14.9,
+     "peak_deg": -15.0,
+     "threshold_deg": 9.0,
+     "expected_frames": [
+      12,
+      18
+     ],
+     "follower_frames": [
+      24,
+      36
+     ],
+     "frames_over": 7,
+     "counted_frames": 7,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "persistence",
+     "shortfall_frames": 1,
+     "reps": [
+      0,
+      1,
+      2,
+      4
+     ]
+    },
+    {
+     "measure": "thigh_out",
+     "side": "left",
+     "joint": "left_hip",
+     "body_part": "legs",
+     "direction": "more",
+     "magnitude_deg": 14.6,
+     "peak_deg": 15.9,
+     "threshold_deg": 13.0,
+     "expected_frames": [
+      5,
+      15
+     ],
+     "follower_frames": [
+      9,
+      30
+     ],
+     "frames_over": 11,
+     "counted_frames": 11,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "explained_by",
+     "explained_by": {
+      "measure": "foot_out",
+      "side": "both",
+      "direction": "more"
+     },
+     "reps": [
+      0,
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "measure": "knee_flexion",
+     "side": "right",
+     "joint": "right_knee",
+     "body_part": "legs",
+     "direction": "more",
+     "magnitude_deg": 13.6,
+     "peak_deg": 16.8,
+     "threshold_deg": 9.0,
+     "expected_frames": [
+      0,
+      2
+     ],
+     "follower_frames": [
+      0,
+      2
+     ],
+     "frames_over": 5,
+     "counted_frames": 0,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "persistence",
+     "shortfall_frames": 8,
+     "reps": [
+      0,
+      1,
+      3,
+      4
+     ]
+    },
+    {
+     "measure": "knee_flexion",
+     "side": "left",
+     "joint": "left_knee",
+     "body_part": "legs",
+     "direction": "more",
+     "magnitude_deg": 12.1,
+     "peak_deg": 13.6,
+     "threshold_deg": 9.0,
+     "expected_frames": [
+      0,
+      1
+     ],
+     "follower_frames": [
+      0,
+      2
+     ],
+     "frames_over": 2,
+     "counted_frames": 0,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "persistence",
+     "shortfall_frames": 8,
+     "reps": [
+      0,
+      1,
+      4
+     ]
+    },
+    {
+     "measure": "knee_flexion",
+     "side": "right",
+     "joint": "right_knee",
+     "body_part": "legs",
+     "direction": "less",
+     "magnitude_deg": -11.8,
+     "peak_deg": -11.9,
+     "threshold_deg": 9.0,
+     "expected_frames": [
+      8,
+      16
+     ],
+     "follower_frames": [
+      13,
+      32
+     ],
+     "frames_over": 9,
+     "counted_frames": 9,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "reps",
+     "found_in_reps": 1,
+     "needed_reps": 3,
+     "reps": [
+      0,
+      1,
+      2
+     ]
+    },
+    {
+     "measure": "upper_arm_out",
+     "side": "right",
+     "joint": "right_shoulder",
+     "body_part": "arms",
+     "direction": "less",
+     "magnitude_deg": -10.9,
+     "peak_deg": -13.1,
+     "threshold_deg": 10.0,
+     "expected_frames": [
+      0,
+      5
+     ],
+     "follower_frames": [
+      0,
+      9
+     ],
+     "frames_over": 11,
+     "counted_frames": 11,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "reps",
+     "found_in_reps": 2,
+     "needed_reps": 3,
+     "reps": [
+      0,
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "measure": "trunk_lean_forward",
+     "side": "center",
+     "joint": "spine",
+     "body_part": "torso",
+     "direction": "more",
+     "magnitude_deg": 9.6,
+     "peak_deg": 10.6,
+     "threshold_deg": 9.0,
+     "expected_frames": [
+      1,
+      8
+     ],
+     "follower_frames": [
+      210,
+      223
+     ],
+     "frames_over": 8,
+     "counted_frames": 8,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "reps",
+     "found_in_reps": 1,
+     "needed_reps": 3,
+     "reps": [
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "measure": "knee_valgus",
+     "side": "left",
+     "joint": "left_knee",
+     "body_part": "legs",
+     "direction": "less",
+     "magnitude_deg": -9.3,
+     "peak_deg": -9.3,
+     "threshold_deg": 9.0,
+     "expected_frames": [
+      7,
+      10
+     ],
+     "follower_frames": [
+      13,
+      15
+     ],
+     "frames_over": 4,
+     "counted_frames": 4,
+     "needed_frames": 8,
+     "min_run_frames": 4,
+     "reason": "persistence",
+     "shortfall_frames": 4,
+     "reps": [
+      0
+     ]
+    }
+   ]
+  }
+ },
+ "insights": [
+  {
+   "cue": "Straighten your arms more",
+   "why": "Elbows bent much more than the example at 0.0 s (5 of 5 reps)",
+   "kind": "range",
+   "at_s": 0.0,
+   "window": 0,
+   "points": 31.1,
+   "measure": "elbow_flexion",
+   "side": "both",
+   "joint": "elbow"
+  },
+  {
+   "cue": "Bring your feet closer together",
+   "why": "Feet too far apart at 0.0 s (5 of 5 reps)",
+   "kind": "position",
+   "at_s": 0.0,
+   "window": 0,
+   "points": 19.7,
+   "measure": "foot_out",
+   "side": "both",
+   "joint": "ankle"
+  },
+  {
+   "cue": "Keep your arms lower",
+   "why": "Arms raised too far forward at 0.0 s (4 of 5 reps)",
+   "kind": "range",
+   "at_s": 0.0,
+   "window": 0,
+   "points": 15.1,
+   "measure": "upper_arm_forward",
+   "side": "both",
+   "joint": "shoulder"
+  },
+  {
+   "cue": "Move your hands out wider",
+   "why": "Hands too close in at 4.5 s (3 of 5 reps)",
+   "kind": "position",
+   "at_s": 4.5,
+   "window": 1,
+   "points": 12.4,
+   "measure": "forearm_out",
+   "side": "both",
+   "joint": "elbow"
+  },
+  {
+   "cue": "Speed up to match the trainer",
+   "why": "Your reps took 2.5 times the trainer's time",
+   "kind": "tempo",
+   "at_s": 20.0,
+   "window": 4,
+   "points": null,
+   "measure": null,
+   "side": null,
+   "joint": null
+  }
+ ],
+ "phrasing": {
+  "requested": "muse-spark",
+  "backend": "muse-spark",
+  "model": "meta-models/muse-spark-open-1026",
+  "fallback_reason": null,
+  "lang": "es",
+  "faults": [
+   {
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "lang": "es",
+    "text": "At 0.0 s, tus codos están mucho más flexionados que en el ejemplo."
+   },
+   {
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "lang": "es",
+    "text": "Tus brazos están elevados demasiado hacia adelante a los 0.0 s."
+   },
+   {
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "lang": "es",
+    "text": "Alrededor de 1.1 s tu brazo izquierdo está demasiado bajo."
+   },
+   {
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "lang": "es",
+    "text": "En comparación con la grabación, tus manos están demasiado juntas hacia dentro a los 4.5 s."
+   },
+   {
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "lang": "es",
+    "text": "Tus pies están demasiado separados a las 0.0 s."
+   }
+  ],
+  "selected_by": "live"
+ },
+ "score": {
+  "version": "simon.score.v1",
+  "value": 0,
+  "grade": "F",
+  "components": {
+   "faults": 113.39,
+   "similarity": 4.0
+  },
+  "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+  "basis": "reps",
+  "timeline": [
+   {
+    "t_s": [
+     0.0,
+     4.52
+    ],
+    "value": 0,
+    "grade": "F",
+    "components": {
+     "faults": 129.59,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "elbows bent much more than the example at 0.0 s",
+      "measure": "elbow_flexion",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       0.0,
+       4.28
+      ],
+      "at_s": 0.0,
+      "points": 31.1,
+      "cue": "Straighten your arms more",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "left hand too far right at 0.0 s",
+      "measure": "forearm_out",
+      "side": "left",
+      "joint": "left_elbow",
+      "t_s": [
+       0.0,
+       4.28
+      ],
+      "at_s": 0.0,
+      "points": 21.4,
+      "cue": "Move your left hand out",
+      "cue_kind": "position",
+      "direction": "less"
+     },
+     {
+      "text": "arms raised too far forward at 0.0 s",
+      "measure": "upper_arm_forward",
+      "side": "both",
+      "joint": "shoulder",
+      "t_s": [
+       0.0,
+       0.4
+      ],
+      "at_s": 0.0,
+      "points": 15.6,
+      "cue": "Keep your arms lower",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "right arm slightly too far left at 0.0 s",
+      "measure": "upper_arm_out",
+      "side": "right",
+      "joint": "right_shoulder",
+      "t_s": [
+       0.0,
+       0.92
+      ],
+      "at_s": 0.0,
+      "points": 12.4,
+      "cue": "Raise your right arm higher",
+      "cue_kind": "range",
+      "direction": "less"
+     },
+     {
+      "text": "feet slightly too far apart at 0.0 s",
+      "measure": "foot_out",
+      "side": "both",
+      "joint": "ankle",
+      "t_s": [
+       0.0,
+       4.28
+      ],
+      "at_s": 0.0,
+      "points": 18.6,
+      "cue": "Bring your feet closer together",
+      "cue_kind": "position",
+      "direction": "more"
+     },
+     {
+      "text": "left arm too low at 1.1 s",
+      "measure": "upper_arm_forward",
+      "side": "left",
+      "joint": "left_shoulder",
+      "t_s": [
+       1.12,
+       2.8
+      ],
+      "at_s": 1.1,
+      "points": 18.0,
+      "cue": "Raise your left arm forward more",
+      "cue_kind": "range",
+      "direction": "less"
+     },
+     {
+      "text": "right knee not quite bent enough at 1.3 s",
+      "measure": "knee_flexion",
+      "side": "right",
+      "joint": "right_knee",
+      "t_s": [
+       1.32,
+       3.2
+      ],
+      "at_s": 1.3,
+      "points": 12.6,
+      "cue": "Bend your right knee more",
+      "cue_kind": "range",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 2.15,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     4.52,
+     9.32
+    ],
+    "value": 0,
+    "grade": "F",
+    "components": {
+     "faults": 106.75,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "elbows bent much more than the example at 4.5 s",
+      "measure": "elbow_flexion",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       4.52,
+       8.8
+      ],
+      "at_s": 4.5,
+      "points": 31.1,
+      "cue": "Straighten your arms more",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "arms raised too far forward at 4.5 s",
+      "measure": "upper_arm_forward",
+      "side": "both",
+      "joint": "shoulder",
+      "t_s": [
+       4.52,
+       5.4
+      ],
+      "at_s": 4.5,
+      "points": 18.8,
+      "cue": "Keep your arms lower",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "hands too close in at 4.5 s",
+      "measure": "forearm_out",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       4.52,
+       8.8
+      ],
+      "at_s": 4.5,
+      "points": 20.5,
+      "cue": "Move your hands out wider",
+      "cue_kind": "position",
+      "direction": "less"
+     },
+     {
+      "text": "feet too far apart at 4.5 s",
+      "measure": "foot_out",
+      "side": "both",
+      "joint": "ankle",
+      "t_s": [
+       4.52,
+       7.72
+      ],
+      "at_s": 4.5,
+      "points": 19.8,
+      "cue": "Bring your feet closer together",
+      "cue_kind": "position",
+      "direction": "more"
+     },
+     {
+      "text": "left arm too low at 6.1 s",
+      "measure": "upper_arm_forward",
+      "side": "left",
+      "joint": "left_shoulder",
+      "t_s": [
+       6.12,
+       7.52
+      ],
+      "at_s": 6.1,
+      "points": 16.5,
+      "cue": "Raise your left arm forward more",
+      "cue_kind": "range",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 2.28,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     9.32,
+     14.72
+    ],
+    "value": 0,
+    "grade": "F",
+    "components": {
+     "faults": 120.59,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "elbows bent much more than the example at 9.3 s",
+      "measure": "elbow_flexion",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       9.32,
+       14.2
+      ],
+      "at_s": 9.3,
+      "points": 31.1,
+      "cue": "Straighten your arms more",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "arms raised too far forward at 9.3 s",
+      "measure": "upper_arm_forward",
+      "side": "both",
+      "joint": "shoulder",
+      "t_s": [
+       9.32,
+       10.8
+      ],
+      "at_s": 9.3,
+      "points": 20.5,
+      "cue": "Keep your arms lower",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "left hand too far right at 9.3 s",
+      "measure": "forearm_out",
+      "side": "left",
+      "joint": "left_elbow",
+      "t_s": [
+       9.32,
+       14.2
+      ],
+      "at_s": 9.3,
+      "points": 20.8,
+      "cue": "Move your left hand out",
+      "cue_kind": "position",
+      "direction": "less"
+     },
+     {
+      "text": "right arm slightly too far left at 9.3 s",
+      "measure": "upper_arm_out",
+      "side": "right",
+      "joint": "right_shoulder",
+      "t_s": [
+       9.32,
+       10.32
+      ],
+      "at_s": 9.3,
+      "points": 12.7,
+      "cue": "Raise your right arm higher",
+      "cue_kind": "range",
+      "direction": "less"
+     },
+     {
+      "text": "feet too far apart at 9.3 s",
+      "measure": "foot_out",
+      "side": "both",
+      "joint": "ankle",
+      "t_s": [
+       9.32,
+       14.2
+      ],
+      "at_s": 9.3,
+      "points": 19.5,
+      "cue": "Bring your feet closer together",
+      "cue_kind": "position",
+      "direction": "more"
+     },
+     {
+      "text": "arms too low at 11.1 s",
+      "measure": "upper_arm_forward",
+      "side": "both",
+      "joint": "shoulder",
+      "t_s": [
+       11.12,
+       12.92
+      ],
+      "at_s": 11.1,
+      "points": 16.0,
+      "cue": "Raise your arms forward more",
+      "cue_kind": "range",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 2.57,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     14.72,
+     20.0
+    ],
+    "value": 0,
+    "grade": "F",
+    "components": {
+     "faults": 109.53,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "elbows bent much more than the example at 15.2 s",
+      "measure": "elbow_flexion",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       15.2,
+       19.52
+      ],
+      "at_s": 15.2,
+      "points": 31.1,
+      "cue": "Straighten your arms more",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "arms raised much too far forward at 15.2 s",
+      "measure": "upper_arm_forward",
+      "side": "both",
+      "joint": "shoulder",
+      "t_s": [
+       15.2,
+       16.0
+      ],
+      "at_s": 15.2,
+      "points": 20.5,
+      "cue": "Keep your arms lower",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "hands too close in at 15.2 s",
+      "measure": "forearm_out",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       15.2,
+       19.52
+      ],
+      "at_s": 15.2,
+      "points": 20.4,
+      "cue": "Move your hands out wider",
+      "cue_kind": "position",
+      "direction": "less"
+     },
+     {
+      "text": "feet too far apart at 15.2 s",
+      "measure": "foot_out",
+      "side": "both",
+      "joint": "ankle",
+      "t_s": [
+       15.2,
+       19.52
+      ],
+      "at_s": 15.2,
+      "points": 20.3,
+      "cue": "Bring your feet closer together",
+      "cue_kind": "position",
+      "direction": "more"
+     },
+     {
+      "text": "arms too low at 16.7 s",
+      "measure": "upper_arm_forward",
+      "side": "both",
+      "joint": "shoulder",
+      "t_s": [
+       16.72,
+       18.0
+      ],
+      "at_s": 16.7,
+      "points": 17.2,
+      "cue": "Raise your arms forward more",
+      "cue_kind": "range",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 2.51,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     20.0,
+     25.4
+    ],
+    "value": 0,
+    "grade": "F",
+    "components": {
+     "faults": 100.47,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "elbows bent much more than the example at 20.8 s",
+      "measure": "elbow_flexion",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       20.8,
+       25.4
+      ],
+      "at_s": 20.8,
+      "points": 31.1,
+      "cue": "Straighten your arms more",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "hands too close in at 20.8 s",
+      "measure": "forearm_out",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       20.8,
+       25.4
+      ],
+      "at_s": 20.8,
+      "points": 21.1,
+      "cue": "Move your hands out wider",
+      "cue_kind": "position",
+      "direction": "less"
+     },
+     {
+      "text": "feet too far apart at 20.8 s",
+      "measure": "foot_out",
+      "side": "both",
+      "joint": "ankle",
+      "t_s": [
+       20.8,
+       25.4
+      ],
+      "at_s": 20.8,
+      "points": 20.1,
+      "cue": "Bring your feet closer together",
+      "cue_kind": "position",
+      "direction": "more"
+     },
+     {
+      "text": "leaning forward slightly more than the example at 21.0 s",
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "joint": "spine",
+      "t_s": [
+       21.0,
+       22.32
+      ],
+      "at_s": 21.0,
+      "points": 11.2,
+      "cue": "Keep your chest up",
+      "cue_kind": "position",
+      "direction": "more"
+     },
+     {
+      "text": "left arm too low at 22.3 s",
+      "measure": "upper_arm_forward",
+      "side": "left",
+      "joint": "left_shoulder",
+      "t_s": [
+       22.32,
+       23.6
+      ],
+      "at_s": 22.3,
+      "points": 17.0,
+      "cue": "Raise your left arm forward more",
+      "cue_kind": "range",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 2.57,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   }
+  ],
+  "tempo": {
+   "ratio": 2.51,
+   "cue": "Speed up to match the trainer"
+  },
+  "per_rep": [
+   {
+    "value": 0,
+    "grade": "F"
+   },
+   {
+    "value": 0,
+    "grade": "F"
+   },
+   {
+    "value": 0,
+    "grade": "F"
+   },
+   {
+    "value": 0,
+    "grade": "F"
+   },
+   {
+    "value": 0,
+    "grade": "F"
+   }
+  ]
+ },
+ "second_opinion": {
+  "status": "ok",
+  "reason": null,
+  "backend": "meta-model-api",
+  "model": "muse-spark-1.3",
+  "lang": "en",
+  "verdicts": [
+   {
+    "fault_index": 0,
+    "agrees": true,
+    "note": "Both elbows stay sharply bent with hands clasped in front of chest"
+   },
+   {
+    "fault_index": 1,
+    "agrees": false,
+    "note": "Upper arms stay close to chest with hands held in near the body"
+   },
+   {
+    "fault_index": 2,
+    "agrees": false,
+    "note": "Both hands stay together at chest level during the deep squat"
+   },
+   {
+    "fault_index": 3,
+    "agrees": true,
+    "note": "Hands remain pressed together in front of chest while standing"
+   },
+   {
+    "fault_index": 4,
+    "agrees": true,
+    "note": "Feet stay set wide apart on the floor in a broad stance"
+   }
+  ],
+  "observations": [
+   {
+    "at_s": 2.5,
+    "text": "Head and eyes look straight ahead while body faces sideways in squat",
+    "label": "model_opinion"
+   },
+   {
+    "at_s": 9.0,
+    "text": "Legs keep moving through repeated squats with no long pause standing",
+    "label": "model_opinion"
+   }
+  ],
+  "usage": {
+   "input_tokens": 9701,
+   "output_tokens": 1164,
+   "cached_tokens": 0,
+   "usd": 0.017073
+  }
+ },
+ "_contract_fixture": "Real Part 5 output (rubric-coach 8822ca0, schema 1.9.0), copied from progress/second-opinion-live-20261031.json. Not hand-written."
+}

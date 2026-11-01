@@ -25,10 +25,12 @@ export function buildSubmit({ role, mode, upload, trim, peopleJob, choice, name,
 }
 
 /** The mode, section and challenge a take carries, from a saved record (offline-takes.md). */
+// lang, the feedback language the person picked, rides along with them.
 export const extraOf = (rec) => ({
   ...(rec && rec.mode ? { mode: rec.mode } : {}),
   ...(rec && rec.section ? { section: rec.section } : {}),
   ...(rec && rec.challenge_id ? { challenge_id: rec.challenge_id } : {}),
+  ...(rec && rec.lang ? { lang: rec.lang } : {}),
 });
 
 /** The request for a saved record: the same call the open take flow makes (role trainer | follow | group). */

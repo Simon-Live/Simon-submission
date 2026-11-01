@@ -205,3 +205,7 @@ li.failed .dot { background: var(--red-ink); border-color: var(--red-ink); }
 .trim-tools { margin-top: 12px; }
 .trim-tools .btn { flex: 1 1 auto; padding: 0 10px; white-space: nowrap; }
 .trim[data-failed] .trim-length { display: none; }
+
+/* Tap targets of the consent note and the language select (44 px, a11y.browser.mjs) */
+.consent-note summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; }
+[data-testid="lang-picker"] select { min-height: 44px; }

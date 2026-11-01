@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -31,7 +32,7 @@ DAILY_GPU_JOBS_LIMIT = 40
 PART1_RUN_SPEND_CAP_USD = 5.0
 
 DEFAULT_GPU_WORKERS = 2
-DEFAULT_PART1_TIMEOUT_S = 90.0
+DEFAULT_PART1_TIMEOUT_S = 150.0
 # TICKET-067: Part 2 `track` sends every frame to a remote tracker, so its time grows with the pixel count
 # (412.6 s for 176 frames at 2048x1080, 21.3 s at 608x1080). Every job's clip is scaled to this long side.
 DEFAULT_CLIP_MAX_SIDE = 1280
@@ -51,8 +52,21 @@ def gpu_workers() -> int:
     return int(_env_number("SIMON7_GPU_WORKERS", DEFAULT_GPU_WORKERS, 1))
 
 
+def cleanup_every_s() -> float:
+    """Seconds between retention sweeps of the job folders (`SIMON7_CLEANUP_EVERY_S`, default 600)."""
+    return _env_number("SIMON7_CLEANUP_EVERY_S", 600.0, 1)
+
+
+DEFAULT_DRAIN_MAX_S = 600.0
+
+
+def drain_max_s() -> float:
+    """Seconds a stopping server waits for running jobs (`SIMON7_DRAIN_MAX_S`, default 600)."""
+    return _env_number("SIMON7_DRAIN_MAX_S", DEFAULT_DRAIN_MAX_S, 0)
+
+
 def part1_timeout_s() -> float:
-    """Seconds the trainer chain waits for Part 1 (`SIMON7_PART1_TIMEOUT_S`, default 90)."""
+    """Seconds the trainer chain waits for Part 1 (`SIMON7_PART1_TIMEOUT_S`, default 150)."""
     return _env_number("SIMON7_PART1_TIMEOUT_S", DEFAULT_PART1_TIMEOUT_S, 1)
 
 
@@ -129,12 +143,23 @@ def manifest_path() -> Path:
     return REPO_ROOT / "videos" / "manifest.json"
 
 
+_KEYS_LOGGED = False
+
+
 def keys_dir() -> Path:
-    """Return the directory holding operator key files."""
+    """Return the directory holding key files: `SIMON7_KEYS_DIR` when set, else `~/.config/simon/keys`.
+
+    When neither is set nor present, one line says so (the directory is named, never any content).
+    """
+    global _KEYS_LOGGED
     env_val = os.environ.get("SIMON7_KEYS_DIR")
     if env_val:
         return Path(env_val).expanduser().resolve()
-    return (Path.home() / ".config" / "firm" / "operator-keys").resolve()
+    own = (Path.home() / ".config" / "simon" / "keys").resolve()
+    if not own.exists() and not _KEYS_LOGGED:
+        _KEYS_LOGGED = True
+        logging.getLogger("part7").info("keys: no keys directory is set (SIMON7_KEYS_DIR) and %s does not exist", own)
+    return own
 
 
 def gpu_lock_path() -> Path:

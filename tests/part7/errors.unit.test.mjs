@@ -133,3 +133,22 @@ test("a network error on a live page is reported; one cancelled by navigation, p
   await assert.rejects(win.fetch("api/labels"));
   assert.equal(sent.length, 0);
 });
+
+test("lane fetches with a normal 404 opt out of the report (narration, teacher, speech, export)", async () => {
+  const fs = await import("node:fs");
+  const read = (f) => fs.readFileSync(new URL(`../../web/${f}`, import.meta.url), "utf8");
+  assert.match(read("narration.js"), /api\/narration\/\$\{encodeURIComponent\(entryId\)\}`, \{ expectStatus: \[404\] \}/);
+  assert.match(read("teacher.js"), /fetch\(teacherUrl\(entryId\), \{ expectStatus: \[404\] \}\)/);
+  assert.match(read("voice.js"), /fetch\(speechUrl\(ctx\.jobId, i\), \{ expectStatus: \[404\]/);
+  assert.match(read("export.js"), /fetchFn\(url, \{ method, expectStatus: \[404, 409\] \}\)/);
+  // the api.js getters for models.json, skeleton2d.json and mesh.json already carry it
+  assert.equal((read("api.js").match(/NOT_FOUND_OK\)/g) || []).length >= 6, true);
+  // and the capture honours it: a narration 404 sends nothing, a 500 on the same route still does
+  const { win } = fakeWin(async (url) => ({ status: String(url).includes("boom") ? 500 : 404 }));
+  const sent = [];
+  installErrorCapture(win, createCapture({ send: (...a) => sent.push(a) }));
+  await win.fetch("api/narration/some-entry", { expectStatus: [404] });
+  assert.equal(sent.length, 0);
+  await win.fetch("api/narration/boom", { expectStatus: [404] });
+  assert.deepEqual(sent.map((x) => x[2].status), [500]);
+});

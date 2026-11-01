@@ -37,6 +37,7 @@
   --color-good: var(--palette-lime);
   --color-bad: var(--palette-coral);
   --color-bad-soft: rgb(255 107 74 / 14%);
+  --color-bad-line: rgb(255 107 74 / 35%);
   --color-warn: var(--palette-amber);
   --color-warn-soft: rgb(255 200 61 / 12%);
   --color-warn-line: rgb(255 200 61 / 35%);
@@ -87,9 +88,23 @@
   --color-scrim: rgb(10 10 10 / 72%);     /* dark veil over video (countdown, trim mask, legends) */
   --color-scrim-light: rgb(10 10 10 / 45%);   /* the smallest tap target (WCAG 2.5.5; checked by a11y.browser.mjs) */
   --header-blur: 10px;
+  --header-height: 88px; /* the sticky app header with its build line; a scroll to a screen part stops below it */
+
+  /* the 3D bodies (web/mesh-view.js reads these) and the 2D skeleton over your video (views/skeleton-overlay.js) */
+  --mesh-trainer: var(--palette-white);
+  --mesh-you: var(--palette-lime);
+  --mesh-fault: var(--palette-coral);
+  --mesh-light: var(--palette-pure-white);
+  --mesh-ground: var(--palette-grey-800);
+  --mesh-bg: transparent;
+  --skeleton-line: rgb(198 243 90 / 80%);
+  --skeleton-joint: var(--palette-pure-white);
+  --skeleton-hot: var(--palette-coral);
 
   /* motion */
   --splash-fade: 0.45s;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --grade-land: 0.4s;
 
   /* legacy aliases: the names the existing Part 7 stylesheets use */
   --bg: var(--color-bg);

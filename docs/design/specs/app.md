@@ -64,6 +64,17 @@ the job); a stored upload whose file is gone is uploaded again under the same ke
 is still running answers 503 "The app is busy" (the browser retries); a missing or invalid key (not a UUID), or a key
 on any other route, behaves exactly as before.
 
+What a key is bound to (`idempotency.identity_fingerprint`). A record keeps a hash of the fields that say WHICH take it
+is: `upload_id`, `entry_id`, `people_job`, `person_id`, `trim`, `trainer_id`, `follower_ids`, `mode`, `section`,
+`challenge_id`. The editable details (`name`, `category`, `labels`, notes) are not in it, so when the answer to a send
+is lost and the person edits the details in the offline form, the retry replays the original 202 and its job. The
+edits apply only if the first request had not been accepted yet; once it was, the original details stay and the app
+may say the details were already sent. A different identifying field under the same key answers 422 "This
+Idempotency-Key was already used for a different request."; the browser never treats that as final and keeps the
+saved take (`pending.js` `classifyFailure`). An upload is bound to its size and content type. The id index used by
+delete holds only id-shaped strings (12 or 16 lower-case hex: job, people-job and upload ids) and drops a record's
+paths when it is pruned or dropped.
+
 ### Quotas and spend (`part7/quota.py`)
 - Per visitor, keyed on `Cf-Connecting-Ip` (the gateway forwards it; local requests have none and skip
   the visitor quota): 3 trainer jobs and 10 GPU jobs per UTC day; over it, 429 "You have used today's
@@ -123,6 +134,7 @@ trainer's video and never affects the follower). Part 7 only displays it and nev
   as text and tip, so a take with no person found in a dark room still says "The room was dark...". The score
   stays 0, grade F, and its schema_version is `1.5.0` (`part7/quality_constants.py`). No quality in the input means
   no `quality` key. The reader ignores the schema version and unknown fields.
+  Update (TICKET-118): the constant is now `1.6.0`, the newest the pinned Part 5 doctor accepts without a `profile`; it never goes below the client's `1.5.0`.
 - With no quality anywhere every screen looks as before.
 
 ## Offline takes (`web/pending.js`, `web/pending-app.js`, `web/pending-ui.js`, `web/take-request.js`)
@@ -177,7 +189,7 @@ Follow hand-off: Watch listens for `message` events with `data.type === "simon:f
 `event.origin === location.origin`, then opens `#/follow/<data.id>`. The follow URL given to Part 6
 (`<base>#/follow/{id}`) covers the unframed case.
 
-Capture (`web/capture.js`): `getUserMedia({video: {facingMode: "user"}, audio: false})`, preview
+Capture (`web/capture.js`): `getUserMedia({video: {facingMode: "user"}, audio: false})` for a follow take, and `audio: true` for a trainer take (a refused microphone falls back to video only with a visible hint; the mime type then names opus; the raw upload keeps the sound for narration, the normalized clip drops it), preview
 mirrored with CSS only, `MediaRecorder` with the first supported of `video/webm;codecs=vp9`,
 `video/webm`, `video/mp4`, with `videoBitsPerSecond: 2500000`; chunks every 1 s; stops at 60 s. File input `accept="video/*"`.
 

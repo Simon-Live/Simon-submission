@@ -118,16 +118,15 @@ export function posesAt(model, t) {
   let e = 0;
   for (let i = model.expToFol.length - 1; i >= 0; i--) if (model.expToFol[i] <= f) { e = i; break; }
   const project = (frame) => frame.map((p) => (p ? [p[0], -p[1]] : null));
-  // a joint is drawn only where both bodies have it: Part 5 compares only measures seen in both clips, and the
-  // trainer's animation carries invented points (legs under a desk) that the follower's replay leaves out
+  const ref = project(model.expected[e]);
   const you = project(model.follower[f]);
-  const ref = project(model.expected[e]).map((p, i) => (you[i] ? p : null));
   const all = [...ref, ...you].filter(Boolean);
   if (!all.length) return null;
   const xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
   const x0 = Math.min(...xs), y0 = Math.min(...ys), size = Math.max(Math.max(...xs) - x0, Math.max(...ys) - y0) || 1;
   const fit = (pts) => pts.map((p) => (p ? [(p[0] - x0) / size, (p[1] - y0) / size] : null));
-  return { joints: model.joints, bones: model.bones, reference: fit(ref), you: fit(you) };
+  // referenceDim: the trainer's joints Part 3 never saw (compare.js normalizeReplay, TICKET-116); the follower's own figure is unchanged
+  return { joints: model.joints, bones: model.bones, reference: fit(ref), you: fit(you), referenceDim: [...(model.expectedUnseen?.[e] || [])] };
 }
 
 /** No row of dashes: when the analysis carries none of the stats, there is no stats row. */

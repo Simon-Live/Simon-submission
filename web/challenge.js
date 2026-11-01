@@ -6,6 +6,7 @@ import {
   ensureChallengeStyles, KIND_LABELS,
 } from "./challenge-core.js";
 import { shareLink } from "./share-card.js";
+import { showSponsored } from "./flags.js";
 
 const count = (n) => `${n} ${n === 1 ? "score" : "scores"}`;
 
@@ -87,6 +88,7 @@ export function mountChallenge(root, id) {
   (async () => {
     try {
       const ch = await getChallenge(id);
+      if (ch.kind === "sponsored" && !showSponsored()) throw new ChallengeError(404, "Not found."); // submission profile
       const entry = await getEntry(ch.entry_id).catch(() => null);
       if (live) render(ch, entry);
     } catch (err) {
@@ -104,7 +106,7 @@ export async function mountChallengeList(box, entryId) {
   ensureChallengeStyles();
   let rows = [];
   try { rows = await listChallenges(entryId); } catch { return; }
-  const open = rows.filter((c) => !c.ended);
+  const open = rows.filter((c) => !c.ended && (c.kind !== "sponsored" || showSponsored()));
   if (!open.length) return;
   clear(box).append(
     h("h2", { text: "Challenges" }),

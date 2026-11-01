@@ -73,11 +73,13 @@ Part 2 takes no `gpu.lock` in its single-mode CLI (in its workspace only the mul
 takes it; its backends spec plans it for its own job worker and `make outputs`). The lock therefore
 serializes Part 7's own calls and only those Part 2 paths that take it; the free-memory wait is the real
 guard against Part 2's run and staging.
+Warm worker (TICKET-099): one `part2 serve-worker` (default on, `SIMON7_P2_WARM_WORKERS=0` off) serves `part2 run`
+only; a call that cannot lease it within 5 s runs in-process, so nothing queues behind it. `track` is never sent to it.
 Part 2's GPU venv (ASM-012) is used read only and only if it exists; Part 7 never builds or rebuilds it
 while Part 2's own staging server is running on the same host.
 
 ## Keys (`part7/keys.py`)
-Key files: `~/.config/firm/operator-keys/<NAME>` (`MODEL_API_KEY`, `HF_TOKEN`, `BASETEN_API_KEY`); that is the default folder, and `SIMON7_KEYS_DIR` overrides it for Part 7.
+Key files: `~/.config/simon/keys/<NAME>` (`MODEL_API_KEY`, `HF_TOKEN`, `BASETEN_API_KEY`); that is the default folder, and `SIMON7_KEYS_DIR` overrides it for Part 7.
 Part 7 reads one only at the moment a part's documented channel needs it, never prints it, never stores
 it in a job record, and passes nothing a part does not document.
 | Part | Documented channel (at the setup reading) | Part 7 does |
@@ -217,6 +219,9 @@ trainer, followers and mismatch clips by default.
 - AC-H11 The Part 2 probe: a stub `part2 run --help` without `--backend` records `entry_point:
   missing` and `repin_due: true`; no adapter sets `SAM3D_REPO` or `SAM3D_CKPT` (test greps the source).
 - AC-H6 Two Part 2 calls never overlap (test with two threads and a stub that records its interval).
+- AC-H6c One warm worker: a second `run` while it is leased gets no `--worker` after the lease wait; `track` never
+  gets `--worker`; an unhealthy worker logs `ANOMALY p2_worker_unhealthy` and is restarted once; the heartbeat shows
+  `p2_worker=`.
 - AC-H7 `make chain` stops at the first failing step or doctor and names it; exit 1.
 - AC-H8 Part 1 failure takes the `every:10` fallback and records it; a Part 3 180 degree refusal retries
   once with `every:5`; at a pin with Part 3's follow-up the trainer argv carries `--keyframes-densify

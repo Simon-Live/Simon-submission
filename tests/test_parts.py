@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import stat
 import sys
 import pytest
 
-from part7 import config, modules, setup_parts
+from part7 import modules, setup_parts
 from support import stub_modules
 from part7.parts import (
     p1_keyframes,
@@ -194,7 +193,8 @@ def test_p4_and_p5_adapters(tmp_path: Path, state_dir: Path) -> None:
     bin_dir.mkdir()
     uv_stub = bin_dir / "uv"
     uv_stub.write_text(
-        f"#!/bin/sh\nshift\nexec {sys.executable} \"$@\"\n",
+        # `uv run [python] <args>`: drop `run`, and `python` when Part 7 names it
+        f"#!/bin/sh\nshift\n[ \"$1\" = python ] && shift\nexec {sys.executable} \"$@\"\n",
         encoding="utf-8",
     )
     uv_stub.chmod(0o755)

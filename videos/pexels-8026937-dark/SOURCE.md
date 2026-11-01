@@ -9,14 +9,14 @@
 - Page access: clip page answered HTTP 403 (Cloudflare challenge) to curl and to Chromium; title read from the page URL slug, author not read
 - Downloaded (UTC): 2026-10-31T17:09:08Z
 - Original file name: pexels-8026937-clip.mp4
-- Original size: recorded on generation bytes
+- Original size: 2831412 bytes
 - Original resolution: 570x1080
 - Original frame rate: 25.0 fps
 - Original duration: 12.0 s
 - original_sha256: 7630463a4ef1103b02062359939da1a800f10579533f8e79bc5fb584f9e2e29c
 - Time range used: 0.0 s to 12.0 s
 - Clip: 570x1080, 25.0 fps, 12.0 s
-- clip_sha256: pending first local build with make videos
+- clip_sha256: c2dccb23161c9b72d8d3ef99f83102f42c5e7ad68c839cd280ecaf18abfaaade
 - Role: degraded
 - Angle: three-quarter
 - Note: Deliberately darkened copy of the frozen good follower. Part 5 must independently establish a major impact; the recipe does not decide impact.

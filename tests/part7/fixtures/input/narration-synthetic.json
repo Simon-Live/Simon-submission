@@ -1,0 +1,82 @@
+{
+  "format": "simon.narration.v1",
+  "source": "muse-voice-transcribe-1.0",
+  "duration_s": 10.0,
+  "sections": [
+    {
+      "start_ms": 0,
+      "end_ms": 5000,
+      "index": 1,
+      "count": 2
+    },
+    {
+      "start_ms": 5000,
+      "end_ms": 10000,
+      "index": 2,
+      "count": 2
+    }
+  ],
+  "cues": [
+    {
+      "index": 0,
+      "start_s": 1.2,
+      "end_s": 2.37,
+      "text": "Nis and chestnut.",
+      "section": {
+        "start_ms": 0,
+        "end_ms": 5000,
+        "index": 1,
+        "count": 2
+      },
+      "also_sections": [],
+      "keyframe": {
+        "name": "key_30",
+        "t": 1.0
+      },
+      "api_start_s": 0.78,
+      "api_end_s": 2.7
+    },
+    {
+      "index": 1,
+      "start_s": 4.82,
+      "end_s": 6.26,
+      "text": "thou push the floor away.",
+      "section": {
+        "start_ms": 5000,
+        "end_ms": 10000,
+        "index": 2,
+        "count": 2
+      },
+      "also_sections": [
+        1
+      ],
+      "keyframe": {
+        "name": "key_140",
+        "t": 4.667
+      },
+      "api_start_s": 4.54,
+      "api_end_s": 6.3
+    },
+    {
+      "index": 2,
+      "start_s": 7.55,
+      "end_s": 9.34,
+      "text": "slowly back down and breath.",
+      "section": {
+        "start_ms": 5000,
+        "end_ms": 10000,
+        "index": 2,
+        "count": 2
+      },
+      "also_sections": [],
+      "keyframe": {
+        "name": "key_220",
+        "t": 7.333
+      },
+      "api_start_s": 7.1,
+      "api_end_s": 9.34
+    }
+  ],
+  "text": "Nis and chestnut. thou push the floor away. slowly back down and breath.",
+  "estimated_usd": 0.000499
+}

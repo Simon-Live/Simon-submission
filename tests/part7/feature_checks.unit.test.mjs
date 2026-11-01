@@ -1,4 +1,4 @@
-// Feature check discovery (staging/feature-checks.mjs): sorted discovery, a broken module is a FAIL
+// Feature check discovery (tests/part7/feature_checks.mjs, re-exported by staging/feature-checks.mjs): sorted discovery, a broken module is a FAIL
 // check, a throwing runChecks is a FAIL check, no files means nothing runs. Run:
 //   node --test tests/part7/feature_checks.unit.test.mjs
 import test from "node:test";
@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { discoverFeatureChecks, runFeatureChecks } from "../../staging/feature-checks.mjs";
+import { discoverFeatureChecks, runFeatureChecks } from "./feature_checks.mjs";
 
 function tmpDir(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "feature-checks-"));

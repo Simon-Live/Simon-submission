@@ -1,5 +1,5 @@
 // Browser checks for the Shape or timing breakdown at 412x915 (docs/specs/breakdown.md). Run:
-//   /home/gingy/claude-template/scripts/with-browser-slot.sh node tests/part7/breakdown.browser.mjs
+//   node tests/part7/breakdown.browser.mjs
 // Playwright comes from `npm i` in this repo, or from PLAYWRIGHT_DIR (a node_modules folder).
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -7,6 +7,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { serveRoot } from "./serve_static.mjs";
+import { isResultScreen404 } from "./lane_modules.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const req = createRequire(path.join(process.env.PLAYWRIGHT_DIR || path.resolve(here, "../../node_modules"), "x.js"));
@@ -24,7 +25,7 @@ const ok = (name) => { passed++; console.log(`ok: ${name}`); };
 async function open(kase) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true });
   const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error") errors.push(`${kase}: ${m.text()}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !isResultScreen404(m.location().url)) errors.push(`${kase}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
   await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/breakdown.html?case=${kase}`);
   await page.waitForFunction(() => window.__ready === true);

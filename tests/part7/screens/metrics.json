@@ -1,0 +1,50 @@
+{
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "sizes": {
+    "trainer": {
+      "json_bytes": 5241,
+      "bin_bytes": 919486,
+      "vertex_count": 2427,
+      "source_vertex_count": 18439,
+      "face_count": 4796,
+      "frames": 61,
+      "seconds": 6.06,
+      "bytes_per_second": 151730
+    },
+    "follower": {
+      "json_bytes": 5241,
+      "bin_bytes": 921010,
+      "vertex_count": 2431,
+      "source_vertex_count": 18439,
+      "face_count": 4805,
+      "frames": 61,
+      "seconds": 6.06,
+      "bytes_per_second": 151982
+    }
+  },
+  "load_ms_mount": 72,
+  "load_ms_navigation_to_ready": 137,
+  "webgl_renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+  "fps_playing": 60,
+  "tint": {
+    "knee": {
+      "red": 8332,
+      "line": "arms not raised far enough forward at 1.0 s; left knee bent more than the example at 1.5 s",
+      "tinted": "left_knee,left_shoulder,right_shoulder"
+    },
+    "shoulders": {
+      "red": 5922,
+      "line": "arms not raised far enough forward at 1.0 s; left knee bent more than the example at 1.5 s",
+      "tinted": "left_knee,left_shoulder,right_shoulder"
+    },
+    "clear": {
+      "red": 0,
+      "line": "",
+      "tinted": ""
+    }
+  },
+  "failures": []
+}

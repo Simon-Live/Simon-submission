@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Callable
 
 from part7 import modules, runner
@@ -17,13 +18,18 @@ def help_text(part: int | str, argv: list[str], clone: Path, lock: modules.Modul
     return step["stdout"] if step["exit"] == 0 else ""
 
 
+def mentions(text: str, flag: str) -> bool:
+    """True when `flag` appears in `text` as a whole option: `--live` does not match `--live-x` or `--no-live`."""
+    return re.search(r"(?<![\w-])" + re.escape(flag) + r"(?![\w-])", text) is not None
+
+
 def has_flag(
     part: int | str, argv: list[str], clone: Path, flag: str, lock: modules.Modules | None = None
 ) -> bool:
     """True when `<argv> --help` lists `flag`; the answer is cached for the clone and command."""
     key = (str(clone), tuple(argv), flag)
     if key not in _CACHE:
-        _CACHE[key] = flag in help_text(part, argv, clone, lock)
+        _CACHE[key] = mentions(help_text(part, argv, clone, lock), flag)
     return _CACHE[key]
 
 
