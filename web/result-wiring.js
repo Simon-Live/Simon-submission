@@ -68,3 +68,36 @@ export function showStage(stage, compareEl = null) {
   if (videoOk && cmpOk) return;
   stage.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
 }
+
+/**
+ * Result-intent.md R4 (TICKET-139): the reveal's last beat. Once the ring has counted up (`startedAt` plus `delayMs`,
+ * performance.now() times) and the 3D compare is mostly in sight, the trainer and you slide together into the overlay.
+ * `startedAt` null (the reveal does not play: a repeat in this session) or reduced motion leaves the view as it was.
+ * The compare's `data-reveal` reads waiting, playing, done or skipped. Returns a stop function.
+ */
+export function armSlide(compare, { startedAt, delayMs, reduce = reducedMotion() }) {
+  const wrap = compare && compare.el;
+  if (!wrap || typeof compare.slideTogether !== "function" || wrap.getAttribute("data-mode") !== "side") return () => {};
+  if (startedAt == null || reduce) { wrap.setAttribute("data-reveal", "skipped"); return () => {}; }
+  let stopped = false;
+  let obs = null;
+  const begin = () => {
+    if (stopped) return;
+    if (wrap.getAttribute("data-mode") !== "side") { wrap.setAttribute("data-reveal", "skipped"); return; }   // toggled by hand
+    wrap.setAttribute("data-reveal", "playing");
+    compare.slideTogether().then((done) => { if (!stopped) wrap.setAttribute("data-reveal", done ? "done" : "skipped"); });
+  };
+  wrap.setAttribute("data-reveal", "waiting");
+  const timer = setTimeout(() => {
+    if (stopped) return;
+    if (typeof IntersectionObserver !== "function") { begin(); return; }
+    obs = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      obs.disconnect();
+      obs = null;
+      begin();
+    }, { threshold: 0.6 });
+    obs.observe(wrap);
+  }, Math.max(0, startedAt + delayMs - performance.now()));
+  return () => { stopped = true; clearTimeout(timer); if (obs) obs.disconnect(); };
+}

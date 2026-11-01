@@ -13,6 +13,7 @@ import logging
 from typing import Any, Callable
 
 from part7 import applog, auth, challenge_routes, identity, jobs, labels, mail
+from part7.http_body import drain_before_refusal
 
 MSG_SIGN_IN = "Sign in to see this."
 MSG_CSRF = "This request came from another site."
@@ -68,7 +69,7 @@ def _post_body(h: Any, *, fields: bool = True) -> dict[str, Any] | None:
     except ValueError:
         length = -1
     if length < 0 or length > auth.BODY_MAX:
-        h.close_connection = True
+        drain_before_refusal(h, length)  # TICKET-194: the answer arrives instead of a connection reset
         _fail(h, 413 if length > auth.BODY_MAX else 400, MSG_TOO_BIG if length > auth.BODY_MAX else MSG_BAD)
         return None
     raw = h.rfile.read(length) if length else b""

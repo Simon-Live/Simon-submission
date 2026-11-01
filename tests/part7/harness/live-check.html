@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live check harness</title>
+<link rel="stylesheet" href="../../../web/styles.css">
+<link rel="stylesheet" href="../../../web/theme/tokens.css">
+<link rel="stylesheet" href="../../../web/theme/capture.css">
+<main id="capture" class="capture"></main>
+<script type="module">
+  import { mountCapture } from "../../../web/capture.js";
+  import { mountLiveCheck } from "../../../web/live-check.js";
+  const camera = document.createElement("canvas");
+  camera.width = 320; camera.height = 180;
+  const context = camera.getContext("2d");
+  setInterval(() => { context.fillStyle = "#335"; context.fillRect(0, 0, 320, 180); context.fillStyle = "#fa0"; context.fillRect(Date.now() % 200, 40, 40, 100); }, 50);
+  navigator.mediaDevices.getUserMedia = async () => camera.captureStream(20);
+  navigator.permissions.query = async () => ({ state: "granted" });
+  // a stand-in for Google's MediaPipe: a body whose feet are out of the picture (y beyond 1)
+  window.__loads = 0;
+  const points = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, visibility: 1 }));
+  points[27] = { x: 0.5, y: 1.05, visibility: 1 };
+  const loadVision = async () => {
+    window.__loads += 1;
+    return {
+      FilesetResolver: { forVisionTasks: async () => ({}) },
+      PoseLandmarker: { createFromOptions: async () => ({ detectForVideo: () => ({ landmarks: [points], worldLandmarks: [] }), close() {} }) },
+    };
+  };
+  const liveCheck = mountLiveCheck({ loadVision });
+  window.capture = mountCapture(document.getElementById("capture"), { recorder_bps: 2500000, max_bytes: 95000000 }, { liveCheck });
+  window.__ready = true;
+</script>
+</html>

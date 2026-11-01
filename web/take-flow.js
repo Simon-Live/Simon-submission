@@ -11,6 +11,7 @@ import { getPending } from "./pending-app.js";
 import { TEXT as PENDING_TEXT, failureText } from "./pending.js";
 export { buildSubmit };
 import { mountCapture, editTake } from "./capture.js";
+import { mountLiveCheck } from "./live-check.js";
 import { mountLabels } from "./labels.js";
 import { mountModeSwitch } from "./group.js";
 import { openPeoplePicker } from "./people.js";
@@ -21,6 +22,7 @@ import { createProgress } from "./progress.js";
 import { captureChromeOf } from "./model/capture-chrome.js";
 import { decorateCapture } from "./views/capture-chrome.js";
 import { currentKind } from "./model/kind.js";
+import { holdTakeWhen } from "./take-guard.js";
 
 export const NAME_ERROR = "Give the movement a name.";
 export const TAKE_ERROR = "Record a video or upload one first.";
@@ -297,7 +299,9 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
       if (alive) openPicker();
     });
   } else {
-    capture = mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group" });
+    // Live check (client 22d09a7): joints on the preview everywhere; the trainer comparison only on Follow
+    const liveCheck = mountLiveCheck({ entry: role === "follower" ? entry : null, reference });
+    capture = mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group", liveCheck });
     decorateCapture(capBox, captureChromeOf({ kind: currentKind(), entry: trainer ? null : entry })); // brand chrome (views/capture-chrome.js)
     capture.onChange(onTake);
   }
@@ -336,8 +340,11 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
       show(formError, err.message);
     }
   });
+  // The mode bar asks whether leaving would lose a take (take-guard.js): recording, or a take not yet submitted.
+  const releaseGuard = resume ? () => {} : holdTakeWhen(() => alive && Boolean((capture && capture.isBusy()) || takeBlob()));
   const stop = () => {
     alive = false;
+    releaseGuard();
     unsub();
     if (rec && saved && pending) pending.release(rec); // leaving the screen hands the saved take to the background sender
     if (capture) capture.destroy();

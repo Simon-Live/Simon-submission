@@ -24,6 +24,8 @@
   draw();
   const drawTimer = setInterval(draw, 50);
   navigator.mediaDevices.getUserMedia = async () => camera.captureStream(20);
+  // a returning visitor: the camera is already allowed, so the preview opens on load (TICKET-187)
+  navigator.permissions.query = async () => ({ state: "granted" });
   window.__samples = 0;
   const getImageData = CanvasRenderingContext2D.prototype.getImageData;
   CanvasRenderingContext2D.prototype.getImageData = function (...args) {

@@ -14,6 +14,7 @@
     {"id": "s09-compare", "min_s": 12, "vo": "The 3D view lays the copy over the teacher, so you can turn it and see exactly where the two differ."},
     {"id": "s10-tap", "min_s": 8, "vo": "And the cue is timed. Keep your chest up, at 0.9 seconds."},
     {"id": "s11-shape", "min_s": 9, "vo": "Simon tells shape from timing, and replays your worst moment on a loop."},
+    {"id": "s11c-opinion", "min_s": 11, "vo": "Muse Spark also watches both videos. It says whether it agrees with each fault, and what else it noticed."},
     {"id": "s11b-share", "min_s": 12, "vo": "A clip to share is one tap away, and a card shows which Meta models made each step."},
     {"id": "s12-close", "min_s": 10, "vo": "Dance, rehab or fitness: one capability for any movement a teacher can show."},
     {"id": "s13-end", "min_s": 15, "vo": "This is Simon, built on Meta's SAM 3.1, SAM 3D Body and Muse Spark. The code was written in the hackathon window. The footage is one real, cleared take plus stock clips."}

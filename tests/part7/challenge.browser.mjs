@@ -159,6 +159,9 @@ try {
   assert.match(await tid(page, "challenge-movement").textContent(), /Dumbbell lateral raise/);
   assert.equal(await tid(page, "challenge-thumb").count(), 1);
   assert.equal(await tid(page, "sponsor-banner").count(), 0);
+  assert.ok(!/\bnull\b/.test(await page.evaluate(() => document.body.innerText)), "negative: a friend board prints no null text");
+  assert.equal(await page.evaluate(() => document.querySelector("h1,h2,h3")?.dataset.testid), "challenge-title", "the title is the first heading");
+  assert.equal(await page.evaluate(() => [...document.querySelector(".ch-screen").childNodes].filter((n) => n.nodeType === 3).length), 0, "no stray text node on the board");
   await shot(page, "challenge-2-board.png");
   ok("leaderboard: rank order with tie to the earliest, strongest badge only with a timeline, movement shown");
 

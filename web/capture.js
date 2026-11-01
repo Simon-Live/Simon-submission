@@ -94,7 +94,7 @@ function selectField(id, label, values, current, text, onchange) {
  * fn(take, {source, countdownUsed, manual}) when a take arrives; reset() returns to the preview.
  * `reference` (follower only, reference.js) is docked beside the preview, shown in the countdown, and plays from its end.
  */
-export function mountCapture(root, limits, { reference = null, countdownDefault = null, audio: audioOpt = false } = {}) {
+export function mountCapture(root, limits, { reference = null, countdownDefault = null, audio: audioOpt = false, liveCheck = null } = {}) {
   // `audio` is a boolean, or a function read at each use (the trainer's Group mode records no sound: nothing transcribes it)
   const wantAudio = () => (typeof audioOpt === "function" ? Boolean(audioOpt()) : Boolean(audioOpt));
   let stream = null;
@@ -155,18 +155,26 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   const camRow = reference ? h("div", { class: "ref-row" }, stage) : null;
   if (reference) reference.dock(camRow, "live");
+  if (liveCheck) liveCheck.attach(stage, live); // client 22d09a7: joints on the preview, a chip, the trainer comparison
   root.append(camRow || stage, framing, qualityTips, opts, h("div", { class: "row between" }, timer, h("div", { class: "row" }, start, stop, upload, input)), info, error);
+  if (liveCheck) framing.before(liveCheck.el); // client 22d09a7 live check, placed after the preview (Shruti's line above kept as written)
   framing.after(audioHint); // the microphone hint sits under the framing hint
 
   // Operator 2026-10-30: the live preview shows as soon as the screen opens, before Record, on Record and Follow.
   // The camera is asked for on mount; a refused, blocked or dark camera leaves Open camera (Try again) and Upload.
-  // Reconciled with the client's a5e5503: when the browser already says "denied", no prompt is raised on load (it
-  // can be blocked or missed and leave a black box); the blocked state with Open camera / Try again shows at once.
-  // "granted", "prompt" and "unknown" (no Permissions API) keep the operator's open-on-mount rule.
+  // Reconciled with the client's a5e5503 (TICKET-187): the client's intent is that no permission prompt is raised on
+  // load, because a prompt on load can be blocked or missed and leave a black box. The camera opens by itself only
+  // when the browser already allows it ("granted"), which keeps the operator's "preview before Record" for every
+  // returning visitor. "prompt" (never asked) and "unknown" (no Permissions API) show the preview area with a clear
+  // Open camera as the first focus: one tap raises the prompt, from a gesture, with the status text beside it.
+  // "denied" shows the blocked state with Try again at once and raises nothing.
   cameraAllowed().then((state) => {
     if (destroyed || take) return;
+    if (state === "granted") { openPreview(); return; }
     if (state === "denied") { camStatus("blocked"); return; }
-    openPreview();
+    camStatus("idle");
+    const active = document.activeElement;
+    if (!active || active === document.body) camOpen.focus({ preventScroll: true });
   });
 
   function setError(msg) {
@@ -195,6 +203,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   }
 
   function releaseCamera() {
+    if (liveCheck) liveCheck.stop();
     stopQualitySampling(true);
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = null;
@@ -305,6 +314,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     });
     if (stage.dataset.state === "idle") stage.dataset.state = "preview";
     camStatus("idle");
+    if (liveCheck) liveCheck.start();
     startQualitySampling();
     setTimeout(() => {
       if (stream && !take && !destroyed && live.videoWidth === 0) {
@@ -398,6 +408,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     recorder.onstop = () => {
       clearInterval(tick);
+      if (liveCheck) liveCheck.recording(null);
       recordedMs = Date.now() - startedAt;
       const type = recorder.mimeType || mimeType || "video/webm";
       badge.set("");
@@ -421,6 +432,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     logQuality();
     startedAt = Date.now();
     if (reference) reference.startRecording(); // in step with the recording clock
+    if (liveCheck) liveCheck.recording(startedAt);
     timer.textContent = `0:00 / ${mmss(limitS)}`;
     stage.dataset.state = "recording";
     stop.hidden = false;
@@ -470,6 +482,8 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   return {
     getTake: () => take,
+    /** True while a countdown or a recording runs (the take does not exist yet). */
+    isBusy: () => stage.dataset.state === "counting" || stage.dataset.state === "recording",
     /** A mode's countdown default; ignored once the person chose one themselves. */
     setCountdownDefault(n) {
       if (!COUNTDOWNS.includes(n) || hasSavedPrefs()) return;
@@ -490,6 +504,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
       if (recorder) recorder.onstop = null;
       if (recorder && recorder.state !== "inactive") recorder.stop();
       releaseCamera();
+      if (liveCheck) liveCheck.destroy();
       releaseMediaUrl(playback, takeUrl);
     },
   };

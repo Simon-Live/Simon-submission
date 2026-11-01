@@ -3,6 +3,7 @@
 // Part 7 computes no score: every number here is Part 5's (score, timeline windows, misses, tempo ratio, insights);
 // this file only picks, groups and words them.
 import { worstMoment, momentsToReview, flaggedWindows } from "../coaching.js";
+import { scoreSum } from "./score-sum.js";
 
 export const TEXT = {
   eyebrow: "Session complete",
@@ -160,6 +161,7 @@ export function summaryOf(analysis, { kind = "exercise", model = null, entryName
   return {
     kind: k,
     ring: { value, grade, caption: kind === "dance" ? TEXT.ringDance : TEXT.ringExercise },
+    sum: scoreSum(score, Array.isArray(analysis && analysis.faults) ? analysis.faults.length : undefined),   // result-intent.md R2: how the score adds up, under the ring (null without components)
     eyebrow: TEXT.eyebrow,
     headline: HEADLINE[k][grade] || HEADLINE[k].F,
     stats: hideEmpty(statsOf(analysis, kind)),

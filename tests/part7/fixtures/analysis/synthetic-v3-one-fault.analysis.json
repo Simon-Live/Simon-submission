@@ -1,0 +1,613 @@
+{
+ "format": "simon.analysis.v1",
+ "schema_version": "1.5.0",
+ "expected": {
+  "path": "fixtures/input/real/lateral-raise/pexels-5319084/animation.json"
+ },
+ "follower": {
+  "path": "fixtures/input/real/lateral-raise/pexels-40297504/animation.json"
+ },
+ "status": {
+  "code": "ok",
+  "text": "Compared with the expected movement."
+ },
+ "faults": [],
+ "diagnostics": {
+  "alignment_residual": 0.3843,
+  "alignment_measures": [
+   "left_upper_arm_out",
+   "left_upper_arm_forward",
+   "left_forearm_out",
+   "right_elbow_flexion",
+   "right_upper_arm_out",
+   "right_upper_arm_forward",
+   "right_forearm_out",
+   "neck_lean_forward",
+   "left_wrist_height",
+   "right_wrist_height",
+   "left_wrist_out",
+   "right_wrist_out"
+  ],
+  "follower_span": [
+   10,
+   314
+  ],
+  "warnings": [],
+  "guard": {
+   "residual": 0.3843,
+   "timing_corr": 0.9699,
+   "span_share": 1.0,
+   "limits": {
+    "max_residual": 0.5677,
+    "min_timing_corr": 0.8336
+   },
+   "reps": [
+    {
+     "span_s": [
+      0.333,
+      1.633
+     ],
+     "residual": 0.3721,
+     "timing_corr": 0.9732,
+     "ok": true
+    },
+    {
+     "span_s": [
+      1.633,
+      2.867
+     ],
+     "residual": 0.3601,
+     "timing_corr": 0.9714,
+     "ok": true
+    },
+    {
+     "span_s": [
+      2.867,
+      4.133
+     ],
+     "residual": 0.3881,
+     "timing_corr": 0.9679,
+     "ok": true
+    },
+    {
+     "span_s": [
+      4.133,
+      5.4
+     ],
+     "residual": 0.3805,
+     "timing_corr": 0.9724,
+     "ok": true
+    },
+    {
+     "span_s": [
+      5.4,
+      6.667
+     ],
+     "residual": 0.4153,
+     "timing_corr": 0.9674,
+     "ok": true
+    },
+    {
+     "span_s": [
+      6.667,
+      7.867
+     ],
+     "residual": 0.4754,
+     "timing_corr": 0.9435,
+     "ok": true
+    },
+    {
+     "span_s": [
+      7.867,
+      9.1
+     ],
+     "residual": 0.4077,
+     "timing_corr": 0.9719,
+     "ok": true
+    },
+    {
+     "span_s": [
+      9.1,
+      10.467
+     ],
+     "residual": 0.371,
+     "timing_corr": 0.9683,
+     "ok": true
+    }
+   ]
+  },
+  "expected_reference": {
+   "kind": "first_rep",
+   "frames": [
+    0,
+    102
+   ],
+   "span_s": [
+    0.0,
+    3.4
+   ],
+   "expected_reps": 3,
+   "follower_reps": 8,
+   "measure": "right_upper_arm_forward"
+  },
+  "visibility": {
+   "usable_measures": 22,
+   "excluded": [
+    "left_knee_flexion",
+    "left_knee_valgus",
+    "left_thigh_out",
+    "left_thigh_forward",
+    "left_foot_out",
+    "right_knee_flexion",
+    "right_knee_valgus",
+    "right_thigh_out",
+    "right_thigh_forward",
+    "right_foot_out"
+   ],
+   "rule": "a measure is used when all its joints are seen (conf is not the 0.3 unseen mark) in at least 80% of the clip's frames; the take is compared on the measures usable in both clips",
+   "moving_measures": [
+    "left_upper_arm_out",
+    "left_forearm_out",
+    "left_upper_arm_forward",
+    "right_upper_arm_out",
+    "right_forearm_out",
+    "right_upper_arm_forward",
+    "head_forward",
+    "neck_lean_forward",
+    "left_wrist_height",
+    "right_wrist_height",
+    "left_wrist_out",
+    "right_wrist_out"
+   ],
+   "moving_usable": [
+    "left_upper_arm_out",
+    "left_forearm_out",
+    "left_upper_arm_forward",
+    "right_upper_arm_out",
+    "right_forearm_out",
+    "right_upper_arm_forward",
+    "head_forward",
+    "neck_lean_forward",
+    "left_wrist_height",
+    "right_wrist_height",
+    "left_wrist_out",
+    "right_wrist_out"
+   ]
+  }
+ },
+ "insights": [
+  {
+   "cue": "Raise your left arm higher",
+   "why": "Left arm too close to the body (3 of 8 reps)",
+   "kind": "range",
+   "at_s": 4.6,
+   "window": 3,
+   "points": 5.3,
+   "measure": "upper_arm_out",
+   "side": "left",
+   "joint": "left_shoulder"
+  },
+  {
+   "cue": "Straighten your right arm more",
+   "why": "Right elbow bent more than the example (3 of 8 reps)",
+   "kind": "range",
+   "at_s": 5.8,
+   "window": 4,
+   "points": 5.0,
+   "measure": "elbow_flexion",
+   "side": "right",
+   "joint": "right_elbow"
+  },
+  {
+   "cue": "Move your hands out wider",
+   "why": "Hands too close in (2 of 8 reps)",
+   "kind": "position",
+   "at_s": 5.8,
+   "window": 4,
+   "points": 3.8,
+   "measure": "forearm_out",
+   "side": "both",
+   "joint": "elbow"
+  },
+  {
+   "cue": "Move your right hand out",
+   "why": "Right hand too close in (2 of 8 reps)",
+   "kind": "position",
+   "at_s": 7.1,
+   "window": 5,
+   "points": 3.5,
+   "measure": "forearm_out",
+   "side": "right",
+   "joint": "right_elbow"
+  },
+  {
+   "cue": "Slow down to match the trainer",
+   "why": "Your reps took 37% of the trainer's time",
+   "kind": "tempo",
+   "at_s": 6.667,
+   "window": 5,
+   "points": null,
+   "measure": null,
+   "side": null,
+   "joint": null
+  }
+ ],
+ "phrasing": {
+  "requested": "template",
+  "backend": "template",
+  "model": null,
+  "fallback_reason": null,
+  "faults": [],
+  "selected_by": "flag"
+ },
+ "score": {
+  "version": "simon.score.v3",
+  "value": 89,
+  "grade": "B",
+  "components": {
+   "faults": 3.35,
+   "similarity": 3.65
+  },
+  "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+  "basis": "reps",
+  "timeline": [
+   {
+    "t_s": [
+     0.333,
+     1.633
+    ],
+    "value": 97,
+    "grade": "A",
+    "components": {
+     "faults": 0.0,
+     "similarity": 3.2
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 0.38,
+     "cue": "Slow down to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     1.633,
+     2.867
+    ],
+    "value": 97,
+    "grade": "A",
+    "components": {
+     "faults": 0.0,
+     "similarity": 3.32
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 0.36,
+     "cue": "Slow down to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     2.867,
+     4.133
+    ],
+    "value": 97,
+    "grade": "A",
+    "components": {
+     "faults": 0.0,
+     "similarity": 3.27
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 0.37,
+     "cue": "Slow down to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     4.133,
+     5.4
+    ],
+    "value": 83,
+    "grade": "B",
+    "components": {
+     "faults": 13.93,
+     "similarity": 3.48
+    },
+    "misses": [
+     {
+      "text": "left arm too far right at 4.6 s",
+      "measure": "upper_arm_out",
+      "side": "left",
+      "joint": "left_shoulder",
+      "t_s": [
+       4.633,
+       4.867
+      ],
+      "at_s": 4.6,
+      "points": 13.9,
+      "cue": "Raise your left arm higher",
+      "cue_kind": "range",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 0.37,
+     "cue": "Slow down to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     5.4,
+     6.667
+    ],
+    "value": 69,
+    "grade": "D",
+    "components": {
+     "faults": 27.02,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "right elbow bent slightly more than the example at 5.8 s",
+      "measure": "elbow_flexion",
+      "side": "right",
+      "joint": "right_elbow",
+      "t_s": [
+       5.833,
+       6.133
+      ],
+      "at_s": 5.8,
+      "points": 13.3,
+      "cue": "Straighten your right arm more",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "hands too close in at 5.8 s",
+      "measure": "forearm_out",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       5.833,
+       6.1
+      ],
+      "at_s": 5.8,
+      "points": 13.7,
+      "cue": "Move your hands out wider",
+      "cue_kind": "position",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 0.37,
+     "cue": "Slow down to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     6.667,
+     7.867
+    ],
+    "value": 55,
+    "grade": "F",
+    "components": {
+     "faults": 41.53,
+     "similarity": 3.96
+    },
+    "misses": [
+     {
+      "text": "right elbow bent slightly more than the example at 7.1 s",
+      "measure": "elbow_flexion",
+      "side": "right",
+      "joint": "right_elbow",
+      "t_s": [
+       7.133,
+       7.367
+      ],
+      "at_s": 7.1,
+      "points": 12.6,
+      "cue": "Straighten your right arm more",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "right hand too far left at 7.1 s",
+      "measure": "forearm_out",
+      "side": "right",
+      "joint": "right_elbow",
+      "t_s": [
+       7.133,
+       7.333
+      ],
+      "at_s": 7.1,
+      "points": 13.3,
+      "cue": "Move your right hand out",
+      "cue_kind": "position",
+      "direction": "less"
+     },
+     {
+      "text": "left arm too far right at 7.1 s",
+      "measure": "upper_arm_out",
+      "side": "left",
+      "joint": "left_shoulder",
+      "t_s": [
+       7.1,
+       7.333
+      ],
+      "at_s": 7.1,
+      "points": 15.6,
+      "cue": "Raise your left arm higher",
+      "cue_kind": "range",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 0.35,
+     "cue": "Slow down to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     7.867,
+     9.1
+    ],
+    "value": 54,
+    "grade": "F",
+    "components": {
+     "faults": 41.84,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "right elbow bent slightly more than the example at 7.9 s",
+      "measure": "elbow_flexion",
+      "side": "right",
+      "joint": "right_elbow",
+      "t_s": [
+       7.933,
+       8.567
+      ],
+      "at_s": 7.9,
+      "points": 14.4,
+      "cue": "Straighten your right arm more",
+      "cue_kind": "range",
+      "direction": "more"
+     },
+     {
+      "text": "right hand too far left at 8.3 s",
+      "measure": "forearm_out",
+      "side": "right",
+      "joint": "right_elbow",
+      "t_s": [
+       8.333,
+       8.633
+      ],
+      "at_s": 8.3,
+      "points": 14.3,
+      "cue": "Move your right hand out",
+      "cue_kind": "position",
+      "direction": "less"
+     },
+     {
+      "text": "left arm too far right at 8.3 s",
+      "measure": "upper_arm_out",
+      "side": "left",
+      "joint": "left_shoulder",
+      "t_s": [
+       8.333,
+       8.567
+      ],
+      "at_s": 8.3,
+      "points": 13.1,
+      "cue": "Raise your left arm higher",
+      "cue_kind": "range",
+      "direction": "less"
+     }
+    ],
+    "tempo": {
+     "ratio": 0.36,
+     "cue": "Slow down to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     9.1,
+     10.467
+    ],
+    "value": 65,
+    "grade": "D",
+    "components": {
+     "faults": 31.13,
+     "similarity": 4.0
+    },
+    "misses": [
+     {
+      "text": "hands slightly too close in at 9.6 s",
+      "measure": "forearm_out",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       9.567,
+       9.933
+      ],
+      "at_s": 9.6,
+      "points": 16.5,
+      "cue": "Move your hands out wider",
+      "cue_kind": "position",
+      "direction": "less"
+     },
+     {
+      "text": "elbows bent slightly more than the example at 9.6 s",
+      "measure": "elbow_flexion",
+      "side": "both",
+      "joint": "elbow",
+      "t_s": [
+       9.567,
+       9.867
+      ],
+      "at_s": 9.6,
+      "points": 14.6,
+      "cue": "Straighten your arms more",
+      "cue_kind": "range",
+      "direction": "more"
+     }
+    ],
+    "tempo": {
+     "ratio": 0.4,
+     "cue": "Slow down to match the trainer"
+    },
+    "compared": true
+   }
+  ],
+  "tempo": {
+   "ratio": 0.37,
+   "cue": "Slow down to match the trainer"
+  },
+  "per_rep": [
+   {
+    "value": 97,
+    "grade": "A"
+   },
+   {
+    "value": 97,
+    "grade": "A"
+   },
+   {
+    "value": 97,
+    "grade": "A"
+   },
+   {
+    "value": 83,
+    "grade": "B"
+   },
+   {
+    "value": 69,
+    "grade": "D"
+   },
+   {
+    "value": 55,
+    "grade": "F"
+   },
+   {
+    "value": 54,
+    "grade": "F"
+   },
+   {
+    "value": 65,
+    "grade": "D"
+   }
+  ],
+  "fault_cap": 89,
+  "uncapped": {
+   "value": 93,
+   "grade": "A"
+  }
+ }
+}

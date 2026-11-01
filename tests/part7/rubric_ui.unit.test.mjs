@@ -145,8 +145,13 @@ test("landing page: muted autoplay loop with poster, one line, a Try it link to 
   assert.ok(html.indexOf("preconnect") < html.indexOf("theme/tokens.css"), "the font host is warmed before the tokens load");
   assert.doesNotMatch(html, /<script/); // negative: the page needs no script
   // the client's font handling (ee3990c): theme/fonts.css loads Inter off the render path; the landing page does the same
-  assert.match(html, /<link rel="stylesheet" href="theme\/fonts\.css" media="print" onload="this\.media='all'">/);
+  const swapped = /<link rel="stylesheet" href="theme\/fonts\.css" media="print" onload="this\.media='all'">/;
+  assert.match(html, swapped);
   assert.match(html, /<noscript><link rel="stylesheet" href="theme\/fonts\.css"><\/noscript>/);
+  // lane/rubric-54-ui 92fea18: the app page swaps the same font link in, and the font itself is display=swap, so no
+  // page waits on the font host for first paint
+  assert.match(read("index.html"), swapped);
+  assert.match(read("theme/fonts.css"), /display=swap/);
   assert.doesNotMatch(read("theme/tokens.css"), /@import/); // negative: the tokens import nothing
   assert.doesNotMatch(read("index.html"), /https?:\/\//); // test_web_static: the app page names no outside host
 });

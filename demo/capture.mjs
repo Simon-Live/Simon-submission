@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 const OUT = path.resolve(process.argv[2] || path.join(os.tmpdir(), "simon-demo-work", "capture"));
 const BASE = (process.argv[3] || "http://127.0.0.1:17391/").replace(/\/?$/, "/");
 const TAKE = process.argv[4] || path.join(os.homedir(), ".local/state/simon-part-7/staging/jobs/5277380db1e1/work/video.mp4");
+const FRESH_JOB = process.env.DEMO_FRESH_JOB || "";
 const ENTRY = process.env.DEMO_ENTRY || "body-squat-19b06562";
 const JOB = process.env.DEMO_JOB || "5277380db1e1";
 const VIEWPORT = { width: 412, height: 915 };
@@ -36,7 +37,7 @@ async function segment(browser, name, fn) {
   await ctx.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
       const s = document.createElement("style");
-      s.textContent = '[data-testid="build-line"],[data-testid="build-details"]{display:none!important}';
+      s.textContent = '[data-testid="build-line"],[data-testid="build-details"],a[href="#/signin"]{display:none!important}';
       document.head.append(s);
     });
   });
@@ -53,8 +54,9 @@ async function segment(browser, name, fn) {
 
 // Smooth scroll by `px` over `ms`.
 async function glide(page, px, ms = 1400) {
+  // window.scrollBy in small steps: a mouse wheel over the 3D canvas zooms the figure instead of scrolling the page
   const steps = Math.max(6, Math.round(ms / 40));
-  for (let i = 0; i < steps; i++) { await page.mouse.wheel(0, px / steps); await sleep(ms / steps); }
+  for (let i = 0; i < steps; i++) { await page.evaluate((d) => window.scrollBy(0, d), px / steps); await sleep(ms / steps); }
 }
 
 async function scrollTo(page, testid, ms = 1600, offset = 90) {
@@ -180,7 +182,33 @@ try {
     await sleep(3500);
   });
 
-  if (want("mesh")) await meshSegment(browser);
+  // The fresh jobs (demo/make-jobs.py): in-app SAM 3D Body meshes, the Meta models card, the second opinion.
+  if (want("fresh")) await segment(browser, "fresh", async (page, m) => {
+    await page.goto(`${BASE}#/result/${FRESH_JOB}`, { waitUntil: "domcontentloaded" });
+    await page.locator('[data-testid="summary-score"]').waitFor({ timeout: 30000 });
+    await sleep(200); m.at("score");
+    await sleep(3000);
+    await page.locator('[data-testid="summary-mesh"]:not([hidden])').waitFor({ timeout: 30000 }).catch(() => {});
+    await scrollTo(page, "summary-mesh", 1400, 120); await sleep(1200); m.at("mesh");
+    await drag(page, "summary-mesh", 160, 0, 3200).catch(() => {}); await sleep(1200); m.at("meshrot");
+    await scrollTo(page, "export-slot", 1400, 260); await sleep(600);
+    m.at("export_click");
+    await page.locator('[data-testid="export-start"]').click().catch(() => {});
+    await Promise.race([
+      page.locator('[data-testid="export-video"]').waitFor({ timeout: 240000 }),
+      page.locator('[data-testid="export-error"]').waitFor({ timeout: 240000 }),
+    ]).catch(() => {});
+    await sleep(500); m.at("export_ready"); await sleep(2400);
+    await scrollTo(page, "models-used", 1600, 70); await sleep(600); m.at("models");
+    await glide(page, 300, 2200); await sleep(1400); m.at("modelsend");
+    // The verdict badges sit on the "What to fix" cards; the "also noticed" list is the second-opinion slot below.
+    await scrollTo(page, "fault-0", 1800, 110).catch(() => {}); await sleep(600); m.at("badge");
+    await sleep(3200);
+    await scrollTo(page, "second-opinion-slot", 1800, 110); await sleep(3000); m.at("second");
+    await page.locator('[data-testid="second-opinion-0"]').click().catch(() => {}); await sleep(1500); m.at("tap");
+  });
+
+  if (ONLY.includes("mesh")) await meshSegment(browser); // the standalone demo page; the cut now uses the in-app mesh view
 } finally {
   await browser.close();
 }

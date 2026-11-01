@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  rankEntries, strongestText, timeLeft, challengeUrl, safeHttps, cleanName, takeUrl,
+  rankEntries, compact, strongestText, timeLeft, challengeUrl, safeHttps, cleanName, takeUrl,
 } from "../../web/challenge-core.js";
 import { wrapText, layoutCard, shareCard, shareLink, copyText, CARD_W, CARD_H, PAD } from "../../web/share-card.js";
 import { titleFor } from "../../web/challenge-actions.js";
@@ -186,4 +186,10 @@ test("link share: the share sheet, else copy", async () => {
   const withSheet = fakeWin({ share: async () => {} });
   assert.deepEqual(await shareLink({ url, text: "t" }, withSheet), { mode: "shared" });
   assert.deepEqual(await shareLink({ url, text: "t" }, fakeWin({})), { mode: "copy", copied: true });
+});
+
+test("compact drops absent parts so a friend board prints no \"null\" (TICKET-195)", () => {
+  const a = { id: "a" };
+  assert.deepEqual(compact([null, a, undefined, false, a]), [a, a]);
+  assert.deepEqual(compact([null]), []);
 });

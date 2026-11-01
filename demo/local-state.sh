@@ -2,7 +2,7 @@
 # demo/local-state.sh: build a throwaway Part 7 state dir for the video capture and start a LOCAL server on it.
 # Usage: demo/local-state.sh start|stop   (env: DEMO_WORK, default /tmp/simon-demo-work; DEMO_PORT, default 17391)
 # Reads the finished job 5277380db1e1 and a few catalog entries READ ONLY from the staging state dir and copies
-# them. It never touches staging, never writes there, never uses the staging port.
+# them (DEMO_LIVE=1 adds the Meta key and a private Part 1 copy for the fresh jobs). It never touches staging, never writes there, never uses the staging port.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
@@ -18,8 +18,18 @@ case "${1:-}" in
     mkdir -p "$WORK" "$STATE/jobs" "$STATE/catalog"
     for j in $JOBS; do [ -d "$SRC/jobs/$j" ] && { [ -d "$STATE/jobs/$j" ] || cp -r "$SRC/jobs/$j" "$STATE/jobs/$j"; }; done
     for e in $ENTRIES; do [ -d "$SRC/catalog/$e" ] && { [ -d "$STATE/catalog/$e" ] || cp -r "$SRC/catalog/$e" "$STATE/catalog/$e"; }; done
-    cd "$REPO"
+    export SIMON7_P2_TRACK_WORKER=0   # no warm GPU worker: the demo server must not hold the shared card between jobs
+    cd "${DEMO_SERVER_REPO:-$REPO}"   # the tree whose web/ and part7/ the server runs (default: this checkout)
     export SIMON7_MODULES_DIR="${DEMO_MODULES_DIR:-$REPO/modules}"
+    if [ "${DEMO_LIVE:-0}" = 1 ]; then
+      # Live Meta calls for the fresh jobs: the key reaches this server process only (never printed), and Part 1 runs
+      # from a private copy of its module so its inbox, temporary .env and spend ledger never touch another checkout.
+      export SIMON7_KEYS_DIR="${DEMO_KEYS_DIR:-$HOME/.config/firm/operator-keys}"
+      PRIV="$WORK/modules"; mkdir -p "$PRIV"
+      for p in 2 3 4 5 6; do [ -e "$PRIV/part-$p" ] || ln -s "$SIMON7_MODULES_DIR/part-$p" "$PRIV/part-$p"; done
+      [ -e "$PRIV/part-1" ] || cp -a "$SIMON7_MODULES_DIR/part-1" "$PRIV/part-1"
+      export SIMON7_MODULES_DIR="$PRIV"
+    fi
     setsid nohup python3 -m part7 serve --host 127.0.0.1 --port "$PORT" --base-path / --state "$STATE" \
       > "$WORK/serve.log" 2>&1 < /dev/null &
     echo $! > "$WORK/serve.pid"

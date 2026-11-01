@@ -24,7 +24,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # part7 setup-parts
-    sub.add_parser("setup-parts", help="Run each part's documented setup in its module (skipped when done for its sha).")
+    p_setup = sub.add_parser("setup-parts", help="Run each part's documented setup in its module (skipped when done for its sha).")
+    p_setup.add_argument("--only", default="", help="Comma-separated part numbers to set up (default: all).")
+
+    # part7 parts-gate [--force]
+    p_gate = sub.add_parser("parts-gate", help="Check moved part mains in a throwaway worktree before staging adopts them.")
+    p_gate.add_argument("--force", action="store_true", help="Rerun although these shas already failed.")
+
+    # part7 parts-adopt --validated | --pins
+    p_adopt = sub.add_parser("parts-adopt", help="Move the part modules to shas already validated (gate result or HEAD pins).")
+    group = p_adopt.add_mutually_exclusive_group(required=True)
+    group.add_argument("--validated", action="store_true", help="The shas the last green parts gate recorded.")
+    group.add_argument("--pins", action="store_true", help="The gitlinks this checkout's HEAD commits, when they changed.")
 
     # part7 doctor-parts
     sub.add_parser("doctor-parts", help="Check each part's contract or help command in its module.")
@@ -100,7 +111,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "setup-parts":
         from part7 import setup_parts
 
-        return setup_parts.cli_setup_parts()
+        only = tuple(p for p in args.only.split(",") if p)
+        return setup_parts.cli_setup_parts(only=only or None)
+
+    if args.command == "parts-gate":
+        from part7 import parts_gate
+
+        return parts_gate.cli_parts_gate(force=args.force)
+
+    if args.command == "parts-adopt":
+        from part7 import parts_adopt
+
+        return parts_adopt.cli_parts_adopt(pins=args.pins, validated=args.validated)
 
     if args.command == "doctor-parts":
         from part7 import setup_parts

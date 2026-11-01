@@ -76,13 +76,14 @@ def css(name: str) -> str:
     return (WEB / name).read_text(encoding="utf-8")
 
 
-def test_camera_is_asked_for_on_mount_with_the_fallback_kept():
+def test_camera_opens_on_mount_only_when_allowed_with_the_fallback_kept():
     c = src("capture")
-    # Reconciled (TICKET-118, client a5e5503): cameraAllowed() reads the permission; only "denied" skips the
-    # on-mount prompt, every other answer (granted, prompt, unknown) keeps the operator's open-on-mount rule.
+    # TICKET-187, client a5e5503: no permission prompt on load. Only "granted" opens on mount; "denied" shows the
+    # blocked state; "prompt" and "unknown" show Open camera as the first focus (drive_capture.mjs proves it live).
     assert "export async function cameraAllowed" in c and "permissions.query" in c
+    assert 'if (state === "granted") { openPreview(); return; }' in c
     assert 'state === "denied") { camStatus("blocked"); return; }' in c
-    assert re.search(r"\n    openPreview\(\);\n  \}\);\n", c), "openPreview() runs on mount unless the camera is denied"
+    assert "camOpen.focus(" in c
     for key in ["blocked", "dark", "asking"]:
         assert f"{key}:" in c
     assert '"data-testid": "cam-open"' in c and '"Try again"' in c

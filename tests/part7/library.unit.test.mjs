@@ -72,3 +72,20 @@ test("the submission profile hides the Rehab section, even when rehab was chosen
   assert.ok(!lib.sections.some((s) => s.key === "rehab"));
   assert.equal(lib.sections.at(0).key, "exercise");
 });
+
+test("routeAfterKindChange: watch, follow and record pages go to the library; everything else stays (TICKET-186)", async () => {
+  const { routeAfterKindChange } = await import("../../web/model/kind.js");
+  for (const h of ["#/watch/squat", "#/follow/arm-wave", "#/follow/arm-wave/c/ch1", "#/record", "#/watch/squat?x=1"]) assert.equal(routeAfterKindChange(h), "#/", h);
+  for (const h of ["", "#", "#/", "#/result/rj1", "#/result/rj1/0", "#/job/j1", "#/group/g1", "#/me", "#/me/squat", "#/pending", "#/signin", "#/watching", undefined]) assert.equal(routeAfterKindChange(h), null, String(h));
+});
+
+test("routeForKindTap: same kind and a held take on record or follow stay; otherwise as routeAfterKindChange (TICKET-193)", async () => {
+  const { routeForKindTap } = await import("../../web/model/kind.js");
+  assert.equal(routeForKindTap("#/record", { changed: false, holdsTake: false }), null);
+  assert.equal(routeForKindTap("#/watch/squat", { changed: false, holdsTake: false }), null);
+  assert.equal(routeForKindTap("#/record", { changed: true, holdsTake: true }), null);
+  assert.equal(routeForKindTap("#/follow/arm-wave", { changed: true, holdsTake: true }), null);
+  assert.equal(routeForKindTap("#/record", { changed: true, holdsTake: false }), "#/");
+  assert.equal(routeForKindTap("#/follow/arm-wave", { changed: true, holdsTake: false }), "#/");
+  assert.equal(routeForKindTap("#/watch/squat", { changed: true, holdsTake: true }), "#/");
+});

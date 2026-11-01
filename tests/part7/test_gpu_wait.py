@@ -184,10 +184,11 @@ def test_free_memory_runs_the_resolved_binary(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(gpu_lock, "nvidia_smi_path", lambda: "/usr/lib/wsl/lib/nvidia-smi")
     monkeypatch.setattr(gpu_lock.subprocess, "run", fake_run)
-    assert gpu_lock.free_gpu_memory_mib() == 28000
+    real = gpu_lock.free_gpu_memory_mib.__wrapped__  # conftest fakes the host reading
+    assert real() == 28000
     assert seen[0][0] == "/usr/lib/wsl/lib/nvidia-smi"
     monkeypatch.setattr(gpu_lock, "nvidia_smi_path", lambda: None)
-    assert gpu_lock.free_gpu_memory_mib() is None
+    assert real() is None
 
 
 def test_unknown_reading_admits_at_once_with_a_warning(job_dir: Path, tmp_path: Path,

@@ -13,6 +13,9 @@ import { mountResult } from "../../../web/result.js";
 const q = new URLSearchParams(location.search);
 const get = (f) => fetch(`../../../fixtures/input/${f}`).then((r) => r.json());
 let [analysis, replay] = await Promise.all([get("analysis-insights.json"), get("replay.json")]);
+// ?analysis=<name> swaps in the score block of tests/part7/fixtures/analysis/<name>.analysis.json (synthetic, TICKET-120)
+const swap = q.get("analysis");
+if (swap) analysis.score = (await fetch(`../fixtures/analysis/${swap}.analysis.json`).then((r) => r.json())).score;
 const reps = 4, nF = replay.follower.length, span = nF / replay.fps;
 const tile = (track) => Array.from({ length: reps }, () => structuredClone(track)).flat();
 const times = (ts) => Array.from({ length: reps }, (_, k) => ts.map((t) => +(t + k * span).toFixed(6))).flat();

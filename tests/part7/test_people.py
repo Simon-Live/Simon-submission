@@ -12,7 +12,7 @@ import pytest
 
 from part7 import crop, group, media, people, runner
 from part7.parts import p1_keyframes, p2_pose, p3_skeleton, p4_animate, p5_analyse, p6_catalog
-from support import Api, ffmpeg_video
+from support import Api, ffmpeg_video, load_scaled
 
 FRAMES = 20
 VISITOR = {"Cf-Connecting-Ip": "203.0.113.7"}
@@ -140,7 +140,7 @@ def _people_job(api: Api, mp4: Path, trim: dict[str, int] | None = None) -> dict
     body: dict[str, Any] = {"upload_id": up["upload_id"], **({"trim": trim} if trim else {})}
     status, doc = api.json("POST", "api/people", body, VISITOR)
     assert status == 202, doc
-    job = api.app.queue.wait(doc["job"], 60)
+    job = api.app.queue.wait(doc["job"], load_scaled(60))  # polls to the terminal status; the deadline grows with host load
     assert job and job["status"] == "done", job
     return job
 

@@ -26,10 +26,13 @@ import time
 from pathlib import Path
 from typing import Callable, Iterator
 
-from part7 import applog, gpu_lock
+from part7 import applog, config, gpu_lock
 
 START_WAIT_S = 180.0  # a worker loads its model before it listens (on an idle host)
 START_LOAD_SCALE_MAX = 4.0  # a busy host (load1 per CPU above 1) stretches the start deadline by that factor, at most this
+START_LOCK_CAP_ENV = "SIMON7_P2_START_LOCK_CAP_S"  # TICKET-188: most extra seconds a start may wait for another process's GPU lock
+START_LOCK_CAP_S = 900.0
+LOCK_POLL_S = 1.0
 LOG_TAIL_LINES = 5
 HEALTH_TIMEOUT_S = 2.0
 LEASE_WAIT_S = 5.0  # env SIMON7_P2_LEASE_WAIT_S: the longest a call waits for the busy worker, then it runs in-process
@@ -64,6 +67,18 @@ def _load1() -> float:
         return os.getloadavg()[0]
     except OSError:
         return 0.0
+
+
+def _foreign_lock_holder(proc: "subprocess.Popen[bytes]", lock_path: Path | None) -> int | None:
+    """Pid of a process other than the starting worker (and its children) that holds the GPU flock, else None."""
+    try:
+        pid = gpu_lock.lock_holder_pid(lock_path if lock_path is not None else config.gpu_lock_path())
+    except OSError:
+        return None
+    own = getattr(proc, "pid", None)
+    if pid is None or (own is not None and (pid == own or gpu_lock._read_ppid_and_age(pid)[0] == own)):
+        return None
+    return pid
 
 
 def _exit_text(code: int) -> str:
@@ -175,6 +190,8 @@ class Pool:
             return False
         slot.pidfile.write_text(str(getattr(proc, "pid", 0)), encoding="utf-8")
         began = time.monotonic()
+        lock_wait, last_poll, announced = 0.0, began, False  # TICKET-188: time spent behind another process's GPU lock
+        cap = applog.env_float(START_LOCK_CAP_ENV, START_LOCK_CAP_S)
         while True:
             if self._closed:  # stop() killed the process and cleared slot.proc under this loop
                 self._kill(slot)
@@ -188,8 +205,20 @@ class Pool:
             if self._health(slot.sock):
                 slot.released, slot.last_used = False, time.monotonic()
                 return True
+            now = time.monotonic()
+            if now - last_poll >= LOCK_POLL_S and lock_wait < cap:
+                holder = _foreign_lock_holder(proc, self._gpu_lock_path)
+                if holder is not None:  # Part 2 builds its model under the host GPU lock: that wait is not the worker's
+                    lock_wait = min(cap, lock_wait + now - last_poll)
+                    if not announced:
+                        announced = True
+                        applog.log(f"{self.label}: worker start waiting for the GPU lock held by pid {holder} "
+                                   f"({gpu_lock._read_cmdline(holder)})")
+                last_poll = now
+            elif now - last_poll >= LOCK_POLL_S:
+                last_poll = now
             load = self._load1()
-            limit = self._wait * start_scale(load)  # re-read each pass: a host that gets busier gives it more time
+            limit = self._wait * start_scale(load) + lock_wait  # re-read each pass: a host that gets busier gives it more time
             if elapsed >= limit:
                 slot.why = (f"no answer within {elapsed:.0f} s (limit {limit:.0f} s, load1 {load:.1f} on "
                             f"{os.cpu_count() or 1} CPUs){_log_tail(slot.log)}")

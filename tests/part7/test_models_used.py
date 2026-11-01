@@ -54,6 +54,35 @@ def rows(doc: dict[str, Any]) -> dict[str, dict[str, Any]]:
 LIVE_PART1 = "p7-x.mp4: 10.3s at 25.0 fps, SAM about $0.03\n  SAM frames 200\n  spark sections 1: lateral_raise\n"
 
 
+SHORT_PART1 = ("p7-x.mp4: 12.0s at 25.0 fps, analysis 15.0 fps, 180 frames, SAM about $0.04\n  transcoding\n  uploading\n"
+               "  spark sections 1: high_knees\n  wrote out/p7-x/keyframes.json (1 people, 5 repetitions, names from spark)\n")
+
+
+def test_short_clip_without_a_sam_frames_line_is_live_from_part1s_own_record(tmp_path: Path) -> None:
+    # 180 analysis frames: Part 1 logs "SAM frames N" every 200, so the log has none; the cost line and the tracked
+    # person in keyframes.json are Part 1's record that the SAM 3.1 call ran.
+    trainer(tmp_path, SHORT_PART1, part7_log="2026 INFO job aaaaaaaaaaa1: part 1 exit 0 in 61.1 s (part1.log)\n")
+    d = job(tmp_path, "bbbbbbbbbbb1")
+    follower(d)
+    r = rows(models_used.collect(tmp_path, "bbbbbbbbbbb1"))
+    assert (r["sam31-trainer"]["status"], r["sam31-trainer"]["seconds"], r["sam31-trainer"]["facts"]["frames"]) == \
+        ("live", 61.1, 180)
+    assert r["spark-sections"]["status"] == "live"
+
+
+def test_short_clip_with_no_tracked_person_stays_unknown(tmp_path: Path) -> None:
+    d = trainer(tmp_path, SHORT_PART1)
+    write(d / "work" / "trainer" / "keyframes.json", {"spark_names": "spark", "people": []})
+    follower(job(tmp_path, "bbbbbbbbbbb1"))
+    assert rows(models_used.collect(tmp_path, "bbbbbbbbbbb1"))["sam31-trainer"]["status"] == "unknown"
+
+
+def test_no_cost_line_and_no_frames_line_stays_unknown(tmp_path: Path) -> None:
+    trainer(tmp_path, "p7-x.mp4: quality check\n  spark sections 1: high_knees\n")
+    follower(job(tmp_path, "bbbbbbbbbbb1"))
+    assert rows(models_used.collect(tmp_path, "bbbbbbbbbbb1"))["sam31-trainer"]["status"] == "unknown"
+
+
 def test_live_run_names_every_model_with_times(tmp_path: Path) -> None:
     trainer(tmp_path, LIVE_PART1, part7_log="2026 INFO job aaaaaaaaaaa1: part 1 exit 0 in 41.2 s (part1.log)\n")
     d = job(tmp_path, "bbbbbbbbbbb1")

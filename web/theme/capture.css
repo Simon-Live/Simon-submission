@@ -52,3 +52,19 @@ body .cap-controls label.btn.secondary::before { content: "↑"; font-size: var(
 /* Mirrored flips the picture only: the video, or the 3D canvas, never the viewer's text, legend or buttons */
 body .ref[data-mirror="true"] .ref-media:not(video) { transform: none; }
 body .ref[data-mirror="true"] .ref-media:not(video) canvas { transform: scaleX(-1); }
+
+/* Live check (web/live-check.js, client 22d09a7): joints over the preview, a status chip, a cue line, the note. */
+.live-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+.live-canvas.mirror { transform: scaleX(-1); }
+.cam[data-state="take"] .live-canvas, .cam[data-state="idle"] .live-canvas { display: none; }
+.live-chip { position: absolute; top: var(--space-3); right: var(--space-3); z-index: 3; margin: 0; padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill); background: var(--color-scrim); color: var(--color-on-media); font-size: var(--text-sm);
+  max-width: calc(100% - 24px); }
+.live-chip[data-ok="true"] { color: var(--color-accent); }
+.live-chip[data-ok="false"] { color: var(--color-bad); }
+.live-cue { position: absolute; left: var(--space-3); right: var(--space-3); bottom: var(--space-3); z-index: 3; margin: 0;
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--color-scrim); color: var(--color-on-media);
+  font-weight: var(--weight-bold); text-align: center; }
+.cam[data-state="take"] .live-chip, .cam[data-state="take"] .live-cue { display: none; }
+.live-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-2); }
+.live-bar .live-note { margin: 0; flex: 1 1 240px; }

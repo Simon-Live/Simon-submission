@@ -96,11 +96,16 @@ def trainer_rows(trainer_dir: Path | None) -> list[dict[str, Any]]:
         return [_row("sam31-trainer", "SAM 3.1", "trainer", "fallback", ran="part3_keyframes", reason=reason),
                 _row("spark-sections", "Muse Spark", "trainer", "fallback", ran="part3_keyframes", reason=reason)]
     cached = "rebuilt from saved SAM and Spark results" in log
-    sam = "cached" if cached else "live" if "SAM frames" in log else "unknown"
-    frames = re.search(r"SAM frames (\d+)", log)
+    kf = _json(work / "keyframes.json")
+    # Part 1 prints "SAM frames N" only for every 200 frames, so a clip of fewer than 200 analysis frames has no such
+    # line. Its own record of the call is then the cost line it printed before the call ("<n> frames, SAM about $x")
+    # together with the keyframes.json it wrote from the tracks: a file with at least one tracked person.
+    sized = re.search(r"(\d+) frames, SAM about \$", log)
+    tracked = isinstance(kf, dict) and any(isinstance(p, dict) for p in kf.get("people") or [])
+    sam = "cached" if cached else "live" if "SAM frames" in log or (sized and tracked) else "unknown"
+    frames = re.search(r"SAM frames (\d+)", log) or sized
     rows = [_row("sam31-trainer", "SAM 3.1", "trainer", sam, secs, via="meta_api",
                  frames=int(frames.group(1)) if frames else None)]
-    kf = _json(work / "keyframes.json")
     names = kf.get("spark_names") if isinstance(kf, dict) else None
     reps = sum(len(p.get("repetitions") or []) for p in kf.get("people") or [] if isinstance(p, dict)) \
         if isinstance(kf, dict) else None

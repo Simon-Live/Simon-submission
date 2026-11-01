@@ -3,15 +3,18 @@
 // selects and ranks Part 5's analysis.
 import { el } from "./score.js";
 import { LEAD_IN_S, TAIL_S, REVIEW_GAP, momentLabel } from "./coaching.js";
+import { markerGroups, markShare } from "./model/marker-groups.js";
 
 const DRIFT_S = 0.3;       // how far the video may stray from the clock while playing before it is put back
 const REST_S = 0.04;       // and while paused
 const SPAN_EPS = 0.02;
 
-/** aria-pressed on the marker and the row of the moment last opened (one state for both lists). */
+/** aria-pressed on the marker and the row of the moment last opened (one state for both lists); a merged mark
+ *  (`data-ats`, result-intent.md R1) is pressed when any of its moments is. */
 function pressMoment(from) {
   const scope = from.closest(".simon-result") || document;
-  scope.querySelectorAll('[data-testid^="moment-"][data-at]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.at === from.dataset.at)));
+  const at = from.dataset.at;
+  scope.querySelectorAll('[data-testid^="moment-"][data-at]').forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.ats || b.dataset.at).split(" ").includes(at))));
 }
 
 /** The lead-in label of a coaching row: "At 3.2 s:". */
@@ -78,17 +81,31 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
   const strip = el("div", { class: "sr-marks", "data-testid": "moments-strip", role: "group", "aria-label": "Moments to review on the video" });
   const head = el("div", { class: "sr-playhead", "data-testid": "moments-playhead", "aria-hidden": "true" });
   strip.append(head);
-  const markers = moments.map((m, i) => {
-    const left = total ? (m.from / total) * 100 : 0;
-    const width = total && m.to > m.from ? Math.max(1.2, ((m.to - m.from) / total) * 100) : 1.2;
-    const b = el("button", { type: "button", class: `sr-mark sr-mark-${m.kind}`, "data-testid": `moment-marker-${i}`, "data-at": m.at,
-      "aria-label": m.label, style: `left:min(calc(100% - 44px),${left}%);width:${width}%` });
-    b.setAttribute("aria-pressed", "false");
-    b.addEventListener("click", () => { pressMoment(b); goTo(m.at); });
-    strip.append(b);
-    return b;
-  });
   if (moments.length) figure.append(strip);
+  // result-intent.md R1: moments whose marks would overlap share one mark that names them all, so every mark can be
+  // tapped; the groups follow the strip's width (44 px per mark) and a tap plays the group's first moment
+  let drawnFor = "";
+  const drawMarks = () => {
+    const groups = markerGroups(moments, total, markShare(strip.clientWidth));
+    const sig = groups.map((g) => g.ats.join(" ")).join("|");
+    if (sig === drawnFor) return;
+    drawnFor = sig;
+    const pressed = strip.querySelector('.sr-mark[aria-pressed="true"]');
+    const pressedAt = pressed ? pressed.dataset.at : null;
+    strip.querySelectorAll(".sr-mark").forEach((b) => b.remove());
+    groups.forEach((g, i) => {
+      const b = el("button", { type: "button", class: `sr-mark sr-mark-${g.kind}`, "data-testid": `moment-marker-${i}`, "data-at": g.at,
+        "data-ats": g.ats.join(" "), "data-count": g.moments.length, "aria-label": g.label,
+        style: `left:${(g.left * 100).toFixed(2)}%;width:${(g.width * 100).toFixed(2)}%` });
+      b.setAttribute("aria-pressed", String(pressedAt !== null && g.ats.map(String).includes(pressedAt)));
+      if (g.moments.length > 1) b.append(el("span", { class: "sr-mark-count", "aria-hidden": "true", text: String(g.moments.length) }));
+      b.addEventListener("click", () => { pressMoment(b); goTo(g.at); });
+      strip.append(b);
+    });
+  };
+  if (moments.length) drawMarks();
+  const resizeObs = moments.length && typeof ResizeObserver === "function" ? new ResizeObserver(() => drawMarks()) : null;
+  if (resizeObs) resizeObs.observe(strip);
 
   // ----- moving both -------------------------------------------------------------------------------------
   function clearSpan() {
@@ -188,6 +205,7 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
     }),
     destroy() {
       off();
+      if (resizeObs) resizeObs.disconnect();
       video.pause();
       video.removeAttribute("src");
       video.load();

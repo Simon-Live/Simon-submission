@@ -52,8 +52,20 @@ def main():
         if not ok: fails.append(msg)
     rep = json.loads((HERE / "build-report.json").read_text())
     start = {s["id"]: s["start"] for s in rep["scenes"]}
+    # Where the models card and the verdict badges sit inside their scenes: the scene plays its capture windows in
+    # order at speed max(0.85, total / D), the same rule as build.py's phone().
+    fr, dur = rep["marks"]["fresh"], {s["id"]: s["D"] for s in rep["scenes"]}
+    def speed(total, d): return max(0.85, total / d)
+    op_total = (fr["tap"] + 1.4) - (fr["badge"] - 0.6)
+    op_speed = speed(op_total, dur["s11c-opinion"])
+    badge_t = (0.6 + 1.5) / op_speed                      # the badges are on screen a second and a half after the scroll
+    noticed_t = ((fr["second"] - fr["badge"] + 0.6) - 1.0) / op_speed
+    slow = fr["export_ready"] - fr["export_click"] >= 3.0  # a slow export is cut to two windows (see build.py)
+    first = 1.9 + 3.0 if slow else (fr["export_ready"] + 2.4) - (fr["export_click"] - 0.3)
+    sh_total = first + (fr["modelsend"] + 1.2) - (fr["models"] - 0.3)
+    share_t = (first + 1.2) / speed(sh_total, dur["s11b-share"])
     shots = REPO / "demos/rubric/140"; shots.mkdir(parents=True, exist_ok=True)
-    for name, t in [("0003-hook", 3.0), ("reveal", start["s08-reveal"] + 2.0), ("tech-beat", start["s07-tech"] + 6.0), ("mesh", start["s07b-mesh"] + 4.0), ("models-card", start["s11b-share"] + 5.2), ("wait", start["s06-wait"] + 6.0),
+    for name, t in [("0003-hook", 3.0), ("reveal", start["s08-reveal"] + 2.0), ("tech-beat", start["s07-tech"] + 6.0), ("mesh", start["s07b-mesh"] + 4.0), ("models-card", start["s11b-share"] + share_t), ("second-opinion", start["s11c-opinion"] + badge_t), ("second-opinion-noticed", start["s11c-opinion"] + noticed_t), ("wait", start["s06-wait"] + 6.0),
                     ("compare-3d", start["s09-compare"] + 5.0), ("end-card", start["s13-end"] + 6.0)]:
         grab(video, t, shots / f"{name}.png"); print("ok   frame", name)
     srt = (HERE / "captions.srt").read_text()

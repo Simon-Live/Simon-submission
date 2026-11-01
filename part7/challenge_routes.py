@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
 from part7 import challenges, client_log, group, jobs, quota
+from part7.http_body import drain_before_refusal
 
 BODY_MAX = 8192
 RATE_LIMIT = 20  # POSTs a minute from one visitor
@@ -59,7 +60,7 @@ def _body(h: Any) -> dict[str, Any] | None:
         h._error(400, MSG_BAD_LENGTH)
         return None
     if length > BODY_MAX:
-        h.close_connection = True  # the body is not read
+        drain_before_refusal(h, length)  # TICKET-194: the 413 arrives instead of a connection reset
         h._error(413, MSG_BODY_LARGE)
         return None
     if not _allowed(h):

@@ -40,8 +40,10 @@ class Heartbeat:
 
     def __init__(self, queue: Any, state: Path | str, *, interval: float | None = None,
                  clock: Callable[[], float] = time.monotonic,
-                 gpu_free: Callable[[], int | None] = gpu_lock.free_gpu_memory_mib) -> None:
-        self.queue, self.state, self.clock, self.gpu_free = queue, Path(state), clock, gpu_free
+                 gpu_free: Callable[[], int | None] | None = None) -> None:
+        self.queue, self.state, self.clock = queue, Path(state), clock
+        # read at call time so a test fake on gpu_lock.free_gpu_memory_mib is honoured (TICKET-193)
+        self.gpu_free = gpu_free or (lambda: gpu_lock.free_gpu_memory_mib())
         self.interval = interval if interval is not None else applog.env_float("SIMON7_HEARTBEAT_S", INTERVAL_S)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None

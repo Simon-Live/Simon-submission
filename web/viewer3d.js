@@ -125,7 +125,9 @@ export function createStage(host, { joints, bones, tracks }) {
     let cx = 0, cy = 0, cz = 0;
     const hl = pose[hipL], hr = pose[hipR];
     if (hl && hr) { cx = (hl[0] + hr[0]) / 2; cy = (hl[1] + hr[1]) / 2; cz = (hl[2] + hr[2]) / 2; }
-    const slot = state.mode === "side" ? (trackIdx === 0 ? -SIDE_GAP_M / 2 : SIDE_GAP_M / 2) : 0;
+    // result-intent.md R4: `spread` (1 side by side, 0 overlay) places the figures while the reveal slides them together
+    const spread = state.spread ?? (state.mode === "side" ? 1 : 0);
+    const slot = figures.length > 1 ? (trackIdx === 0 ? -SIDE_GAP_M / 2 : SIDE_GAP_M / 2) * spread : 0;
     fig.offset.set(slot - cx, -cy, -cz);
     fig.pelvis.set(slot, 0, 0);
     const hot = trackIdx === figures.length - 1 ? state.highlight : null;
@@ -276,8 +278,14 @@ export function createStage(host, { joints, bones, tracks }) {
     },
     /** Per figure, what the last render drew: {joints, dimmed, bones}, or null for a hidden figure. */
     drawStats: () => figures.map((f) => (f.stats ? { ...f.stats } : null)),
+    /** The gap between the figures as a share of side by side (1) down to overlay (0); null follows the mode again. */
+    setSpread(share) {
+      state.spread = share == null ? null : Math.min(1, Math.max(0, Number(share)));
+      invalidate();
+    },
     setMode(mode) {
       state.mode = mode;
+      state.spread = null;
       applyMaterials();
       invalidate();
     },

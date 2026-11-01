@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 from part7 import applog
+from part7.http_body import drain_before_refusal
 
 DETAIL_MAX = 4096  # bytes of `detail` as compact JSON
 BODY_MAX = DETAIL_MAX + 1024  # the envelope around it
@@ -115,7 +116,7 @@ def handle(h: Any, limiter: RateLimit) -> None:
     except ValueError:
         return h._error(400, MSG_BAD)
     if length > BODY_MAX:
-        h.close_connection = True  # the body is not read
+        drain_before_refusal(h, length)  # TICKET-194: the 413 arrives instead of a connection reset
         return h._error(413, MSG_LARGE)
     status, parsed = parse(h.rfile.read(length) if length > 0 else b"")
     if status != 200 or not isinstance(parsed, dict):

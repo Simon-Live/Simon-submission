@@ -51,11 +51,19 @@ def job_data():
     if not facts["no_code_before_window"]:
         sys.exit("demo/facts.json does not support the 'no code before the window' claim; rewrite the end card")
     t = float(total)
+    fresh = {}
+    fp = Path(os.environ.get("DEMO_FRESH_JSON", "/tmp/simon-demo-r17/fresh.json"))
+    if fp.exists():
+        f = json.loads(fp.read_text())
+        res = (f.get("follow") or {}).get("result") or {}
+        fresh = {"fresh_job": f["follow_job"], "fresh_trainer": f["trainer_job"], "fresh_entry": f["entry"],
+                 "fresh_score": res.get("score"), "fresh_grade": res.get("grade")}
     return {
         "job": JOB, "score": job["result"]["score"], "grade": job["result"]["grade"],
         "cue": fault["cue"], "at_s": fault["at_s"], "total_s": total, "gpu_wait_s": gpu_wait,
         "total_mmss": f"{int(t // 60)} min {int(round(t - 60 * (t // 60)))} s",
         "stage": {"upload": upload, "pose": pose, "skeleton": skel, "analyse": ana},
+        **fresh,
         "window_start": facts["window_start"], "repos": facts["repo_count"], "pexels": PEXELS,
     }
 
@@ -141,11 +149,9 @@ def scene_cmds(sid, D, src, cards, marks, data):
     elif sid == "s07-tech":
         inputs += card("tech"); last = over("[1:v]", 0, 0, "out")
     elif sid == "s07b-mesh":
-        inputs += ui("mesh") + card("mesh")
-        m0, m1 = marks["mesh"]["start"] + 0.2, marks["mesh"]["end"]
-        g.append(f"[1:v]trim=start={m0:.3f}:end={m1:.3f},setpts=(PTS-STARTPTS)/{max(0.85, (m1 - m0) / D):.4f},fps={FPS},"
-                 f"crop=960:750:288:40,scale=1152:900,tpad=stop_mode=clone:stop_duration={D:.2f},trim=duration={D:.2f},setpts=PTS-STARTPTS[mv]")
-        last = over("[mv]", 700, 30, "o2"); last = over("[2:v]", 0, 0, "out")
+        inputs += ui("fresh") + card("mesh")
+        p, x, y = phone(1, None, window(marks, "fresh", "mesh", -0.9, "meshrot", 0.6), D, 1330); g.append(p)
+        last = over("[ph]", x, y, "o2"); last = over("[2:v]", 0, 0, "out")
     elif sid == "s08-reveal":
         inputs += ui("result") + card("reveal")
         p, x, y = phone(1, None, window(marks, "result", "score", -0.3, "worst", -0.5), D, 1330); g.append(p)
@@ -162,12 +168,16 @@ def scene_cmds(sid, D, src, cards, marks, data):
         inputs += ui("result") + card("shape")
         p, x, y = phone(1, None, window(marks, "result", "breakdown", -0.3, "replay", 3.4), D, 1330); g.append(p)
         last = over("[ph]", x, y, "o2"); last = over("[2:v]", 0, 0, "out")
+    elif sid == "s11c-opinion":
+        inputs += ui("fresh") + card("opinion")
+        p, x, y = phone(1, None, window(marks, "fresh", "badge", -0.6, "tap", 1.4), D, 1330); g.append(p)
+        last = over("[ph]", x, y, "o2"); last = over("[2:v]", 0, 0, "out")
     elif sid == "s11b-share":
-        inputs += ui("result") + card("share")
-        r = marks["result"]
-        exp = ([window(marks, "result", "export_click", -0.3, "export_ready", 2.6)] if r["export_ready"] - r["export_click"] < 3.0 else
-               [window(marks, "result", "export_click", -0.3, "export_click", 1.6), window(marks, "result", "export_ready", -0.6, "export_ready", 2.6)])
-        p, x, y = phone(1, None, exp + [window(marks, "result", "models", -0.3, "models", 4.2)], D, 1330); g.append(p)
+        inputs += ui("fresh") + card("share")
+        r = marks["fresh"]
+        exp = ([window(marks, "fresh", "export_click", -0.3, "export_ready", 2.4)] if r["export_ready"] - r["export_click"] < 3.0 else
+               [window(marks, "fresh", "export_click", -0.3, "export_click", 1.6), window(marks, "fresh", "export_ready", -0.6, "export_ready", 2.4)])
+        p, x, y = phone(1, None, exp + [window(marks, "fresh", "models", -0.3, "modelsend", 1.2)], D, 1330); g.append(p)
         last = over("[ph]", x, y, "o2"); last = over("[2:v]", 0, 0, "out")
     elif sid == "s12-close":
         inputs += loop(src["klass"]) + card("close")

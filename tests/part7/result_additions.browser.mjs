@@ -48,7 +48,7 @@ let passed = 0;
 const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 
 /** Open the harness with the job's routes answered. `mesh`: "both" (real meshes), "none" (index nulls), "broken" (404 files). */
-async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduced = false } = {}) {
+async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduced = false, analysis = "" } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true, reducedMotion: reduced ? "reduce" : "no-preference" });
   const page = await ctx.newPage();
   // the 404s a case asks for: missing modules (no stubs), broken mesh files, a missing models.json
@@ -71,7 +71,7 @@ async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduce
   });
   await page.route("**/catalog/api/entries/*", (r) => json(r, { id: "lateral-raise-0f13199f", name: "Lateral raise" }));
   if (stubs) for (const [file, body] of Object.entries(STUB)) await page.route(`**/web/${file}`, (r) => r.fulfill({ contentType: "text/javascript", body }));
-  await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/result-additions.html?case=${kase}`);
+  await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/result-additions.html?case=${kase}${analysis ? `&analysis=${analysis}` : ""}`);
   await page.waitForFunction(() => window.__ready === true);
   await page.waitForTimeout(600);
   return page;
@@ -107,11 +107,81 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-testid="summary-score"]').dataset.reveal === "done");
   assert.equal(await tid(page, "summary-score").locator(".rs-ring-value").textContent(), "77");
   assert.equal(await tid(page, "summary-grade").textContent(), "C");
+
+  // ---- result-intent.md AC-I2 how the score adds up, under the ring --------------------------------------------
+  const sum = tid(page, "score-sum");
+  assert.equal((await sum.textContent()).replace(/ /g, " "), "Each rep started at 100 and lost, on average, 19.4 points for misses and 3.7 for overall match: "
+    + "100 − 19.4 − 3.7 ≈ 77. The points next to each miss count only in its own rep, so together they add up to more.");
+  assert.equal(await sum.getAttribute("data-adds"), "true");
+  assert.equal(await sum.evaluate((n) => n.previousElementSibling.matches(".rs-head") && n.nextElementSibling.matches(".rs-stats")), true, "between the ring and the stats");
+  assert.ok((await sum.evaluate((n) => n.getBoundingClientRect().bottom)) < 915, "on the first screen");
+  ok("AC-I2 how your score adds up: 100 minus Part 5's components lands on 77, under the ring, on the first screen");
+
+  // ---- result-intent.md AC-I4 the reveal's last beat: the trainer and you slide together, once seen --------------
+  const cmp = tid(page, "compare");
+  const gap = async () => {
+    const [a, b] = await Promise.all(["trainer", "you"].map((w) => cmp.getAttribute(`data-pelvis-${w}`).then((s) => s.split(",").map(Number))));
+    return Math.hypot(a[0] - b[0], a[1] - b[1]);
+  };
+  assert.equal(await cmp.getAttribute("data-reveal"), "waiting", "negative: off screen, the 3D view waits");
+  assert.equal(await cmp.getAttribute("data-mode"), "side");
+  await cmp.evaluate((n) => n.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(150);
+  const gapStart = await gap();
+  await page.waitForFunction(() => document.querySelector('[data-testid="compare"]').dataset.reveal === "done", null, { timeout: 5000 });
+  await page.waitForTimeout(150);
+  assert.equal(await cmp.getAttribute("data-mode"), "overlay");
+  assert.equal(await tid(page, "mode-toggle").getAttribute("aria-pressed"), "true");
+  const gapEnd = await gap();
+  assert.ok(gapStart > 40 && gapEnd < 5, `the pelvises close in: ${gapStart.toFixed(1)} px to ${gapEnd.toFixed(1)} px`);
+  ok(`AC-I4 once the ring has counted up and the 3D view is in sight, the figures slide together (${gapStart.toFixed(0)} px to ${gapEnd.toFixed(0)} px) and Overlay is on`);
+
+  // ---- result-intent.md AC-I5 every heading on the result screen meets WCAG AA (axe color-contrast) ------------------
+  await page.evaluate(fs.readFileSync(req.resolve("axe-core/axe.min.js"), "utf8"));
+  const heads = await page.evaluate(async () => {
+    const sel = ".simon-result h1, .simon-result h2, .simon-result h3, .simon-result h4, .simon-result [role=heading], .simon-result .rs-eyebrow, .simon-result .rs-note-title";
+    const nodes = [...document.querySelectorAll(sel)].filter((n) => n.getClientRects().length && n.textContent.trim());
+    const res = await axe.run(document.querySelectorAll(sel), { runOnly: ["color-contrast"] });
+    const why = (n) => [...n.any, ...n.all].map((c) => (c.data && c.data.messageKey) || c.message).join("; ");
+    const names = (list) => list.flatMap((v) => v.nodes.map((n) => `${n.target.join(" ")} (${why(n)})`));
+    // axe leaves text on a gradient undecided; for those, the text colour is held against every stop of the gradient,
+    // each laid over the card's own fill, and the lowest ratio must still be AA (4.5)
+    const rgb = (s) => { const m = s.match(/[\d.]+/g).map(Number); return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 }; };
+    const over = (top, base) => ({ r: top.r * top.a + base.r * (1 - top.a), g: top.g * top.a + base.g * (1 - top.a), b: top.b * top.a + base.b * (1 - top.a), a: 1 });
+    const lum = (c) => [c.r, c.g, c.b].map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+      .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    const gradientWorst = (sel) => {
+      const node = document.querySelector(sel);
+      let card = node;
+      while (card && getComputedStyle(card).backgroundImage === "none") card = card.parentElement;
+      if (!card) return null;
+      const fill = rgb(getComputedStyle(card).backgroundColor);
+      const stops = (getComputedStyle(card).backgroundImage.match(/rgba?\([^)]*\)/g) || []).map((s) => over(rgb(s), fill));
+      const text = rgb(getComputedStyle(node).color);
+      return Math.min(...[fill, ...stops].map((bg) => ratio(text, bg)));
+    };
+    const undecided = res.incomplete.flatMap((v) => v.nodes.map((n) => ({ target: n.target.join(" "), why: why(n),
+      worst: why(n) === "bgGradient" ? gradientWorst(n.target.join(" ")) : null })));
+    return { shown: nodes.map((n) => n.textContent.trim().slice(0, 30)), violations: names(res.violations), undecided, passes: names(res.passes) };
+  });
+  assert.deepEqual(heads.violations, [], `headings below AA: ${heads.violations.join(" | ")}`);
+  for (const u of heads.undecided) {
+    assert.equal(u.why, "bgGradient", `axe left ${u.target} undecided for a reason other than a gradient: ${u.why}`);
+    assert.ok(u.worst >= 4.5, `${u.target} on its gradient: ${u.worst && u.worst.toFixed(2)} at the worst stop`);
+  }
+  assert.ok(heads.shown.length >= 8, `the result's headings are checked: ${heads.shown.join(" | ")}`);
+  assert.equal(heads.passes.length + heads.undecided.length, heads.shown.length, `every shown heading checked: ${heads.passes.length} + ${heads.undecided.length} of ${heads.shown.length}`);
+  ok(`AC-I5 color contrast holds on all ${heads.shown.length} headings of the result screen (axe; ${heads.undecided.length} on a gradient checked at its worst stop: `
+    + `${heads.undecided.map((u) => u.worst.toFixed(2)).join(", ")})`);
+
   // the same result mounted again does not play it again
   await page.evaluate(async () => { window.__r.destroy(); window.__lane = []; window.__r = await window.__mount(); });
   await page.waitForFunction(() => /Lateral raise/.test(document.querySelector(".rs-worst h3")?.textContent || ""));
   assert.equal(await tid(page, "summary-score").getAttribute("data-reveal"), null);
   assert.equal(await tid(page, "summary-score").locator(".rs-ring-value").textContent(), "77");
+  assert.equal(await tid(page, "compare").getAttribute("data-reveal"), "skipped", "AC-I4 no second slide");
+  assert.equal(await tid(page, "compare").getAttribute("data-mode"), "side");
   await tid(page, "models-used").waitFor();
   ok("AC-R4 the ring counts up to Part 5's score once per result, the grade lands, a mid-count repaint carries it on");
 
@@ -213,8 +283,23 @@ try {
   const calm = await open("ok", { reduced: true });
   assert.equal(await tid(calm, "summary-score").getAttribute("data-reveal"), "skipped");
   assert.equal(await tid(calm, "summary-score").locator(".rs-ring-value").textContent(), "77");
+  assert.equal(await tid(calm, "compare").getAttribute("data-reveal"), "skipped", "AC-I4 no slide under reduced motion");
+  await tid(calm, "compare").evaluate((n) => n.scrollIntoView({ block: "center" }));
+  await calm.waitForTimeout(1500);
+  assert.equal(await tid(calm, "compare").getAttribute("data-mode"), "side", "negative: the figures stay side by side");
   await calm.context().close();
-  ok("AC-R4 prefers-reduced-motion shows the final score at once");
+  ok("AC-R4 and AC-I4 prefers-reduced-motion shows the final score at once and does not slide the figures");
+
+  // AC-I4 once per result per session: a reload in the same tab plays neither the count-up nor the slide again
+  const again = await open("ok");
+  await again.waitForFunction(() => document.querySelector('[data-testid="summary-score"]')?.dataset.reveal === "done");
+  await again.reload();
+  await again.waitForFunction(() => window.__ready === true);
+  assert.equal(await tid(again, "summary-score").getAttribute("data-reveal"), null, "no count-up after a reload");
+  assert.equal(await tid(again, "summary-score").locator(".rs-ring-value").textContent(), "77");
+  assert.equal(await tid(again, "compare").getAttribute("data-reveal"), "skipped", "no slide after a reload");
+  await again.context().close();
+  ok("AC-I4 the reveal plays once per result per session: a reload shows the end state at once");
 
   const fx = await open("fixture", { stubs: false });
   assert.equal(await tid(fx, "models-used").count(), 0, "the example result has no job files: no panel");
@@ -229,6 +314,20 @@ try {
   assert.equal(await tid(noModels, "models-used").count(), 0, "models.json 404: no panel, no error");
   await noModels.context().close();
   ok("the example result, a 404 models.json and missing modules leave the screen as it was");
+
+  // ---- TICKET-120 the fault cap (synthetic simon.score.v3 fixtures) ---------------------------------------------
+  const two = await open("ok", { analysis: "synthetic-v3-two-fault" });
+  const twoText = (await tid(two, "score-sum").textContent()).replace(/ /g, " ");
+  assert.equal((twoText.match(/Capped at/g) || []).length, 1, "the fault cap is explained exactly once");
+  assert.match(twoText, /Capped at 79 \(C\) because the take shows two or more faults\. Without the cap: 82 \(B\)\./);
+  assert.equal(await tid(two, "score-sum").getAttribute("data-capped"), "true");
+  assert.equal((await two.locator("body").innerText()).match(/Capped at/g).length, 1, "and nowhere else on the page");
+  await two.context().close();
+  const v1 = await open("ok");
+  assert.doesNotMatch(await v1.locator("body").innerText(), /Capped at|Without the cap/, "negative: a v1 result shows no fault cap");
+  assert.equal(await tid(v1, "score-sum").getAttribute("data-capped"), "false");
+  await v1.context().close();
+  ok("TICKET-120 the two-fault v3 result says it was capped at 79 (C), once, with the uncapped grade B; v1 says nothing");
 
   assert.deepEqual(errors, [], errors.join("\n"));
   ok("no console errors");

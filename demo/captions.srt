@@ -101,30 +101,39 @@ Simon tells shape from timing,
 and replays your worst moment on a loop.
 
 24
-00:01:56,598 --> 00:02:01,834
+00:01:56,598 --> 00:01:59,162
+Muse Spark also watches both videos.
+
+25
+00:01:59,202 --> 00:02:04,081
+It says whether it agrees with each
+fault, and what else it noticed.
+
+26
+00:02:07,598 --> 00:02:12,834
 A clip to share is one tap away, and a card
 shows which Meta models made each step.
 
-25
-00:02:08,598 --> 00:02:10,246
+27
+00:02:19,598 --> 00:02:21,246
 Dance, rehab or fitness:
 
-26
-00:02:10,286 --> 00:02:13,834
+28
+00:02:21,286 --> 00:02:24,834
 one capability for any movement
 a teacher can show.
 
-27
-00:02:18,598 --> 00:02:23,787
+29
+00:02:29,598 --> 00:02:34,787
 This is Simon, built on Meta's
 SAM 3.1, SAM 3D Body and Muse Spark.
 
-28
-00:02:23,827 --> 00:02:27,300
+30
+00:02:34,827 --> 00:02:38,300
 The code was written
 in the hackathon window.
 
-29
-00:02:27,340 --> 00:02:31,593
+31
+00:02:38,340 --> 00:02:42,593
 The footage is one real,
 cleared take plus stock clips.

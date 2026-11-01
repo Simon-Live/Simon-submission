@@ -24,7 +24,7 @@ export function el(tag, attrs = {}, ...kids) {
 
 // TICKET-155: why a score is capped (Part 5 ADR-0012: any warning caps the value at F, `score.capped_by` names the
 // warning codes). Without this line a one-fault take read as "one fault cost 40 points".
-const CAP_REASONS = {
+export const CAP_REASONS = {
   low_match: "this take does not closely match the trainer's movement",
   different_movement: "this looks like a different movement from the trainer's",
   moving_part_out_of_frame: "a moving part of your body was out of frame",

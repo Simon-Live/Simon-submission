@@ -7,6 +7,7 @@ import { clientLog } from "./api.js";
 import { tokenHex } from "./theme-colors.js";
 import { FALLBACK_3D as FB } from "./theme-fallbacks.js";
 import { trainerUnseenByFrame, unionIndices } from "./model/trainer-visibility.js";
+import { SLIDE_MS, spreadAt } from "./model/reveal.js";
 
 export const MSG_NO_WEBGL = "3D view is not available in this browser.";
 export const MSG_BAD_REPLAY = "The replay file could not be read.";
@@ -335,14 +336,39 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
     const b = ev.target.closest("button");
     if (b) stage.setView(b.getAttribute("data-testid").slice(5));
   });
-  if (modeBtn) {
-    modeBtn.addEventListener("click", () => {
-      const next = wrap.getAttribute("data-mode") === "side" ? "overlay" : "side";
-      wrap.setAttribute("data-mode", next);
-      modeBtn.setAttribute("aria-pressed", String(next === "overlay"));
-      stage.setMode(next);
-    });
-  }
+  // result-intent.md R4: the reveal's slide from side by side into the overlay; any mode change by hand ends it
+  let slide = null;
+  const endSlide = (done) => {
+    if (!slide) return;
+    cancelAnimationFrame(slide.raf);
+    const { resolve } = slide;
+    slide = null;
+    resolve(done);
+  };
+  const setMode = (next) => {
+    if (single) return;
+    endSlide(false);
+    wrap.setAttribute("data-mode", next);
+    modeBtn.setAttribute("aria-pressed", String(next === "overlay"));
+    stage.setMode(next);
+  };
+  /** Slide the trainer and you together over `ms`, then turn Overlay on; resolves true, or false when cut short. */
+  const slideTogether = (ms = SLIDE_MS) => new Promise((resolve) => {
+    if (single || wrap.getAttribute("data-mode") !== "side") return resolve(false);
+    endSlide(false);
+    const t0 = performance.now();
+    const step = (now) => {
+      if (!slide) return;
+      const k = Math.min(1, (now - t0) / ms);
+      stage.setSpread(spreadAt(k));
+      if (k < 1) { slide.raf = requestAnimationFrame(step); return; }
+      slide = null;
+      setMode("overlay");
+      resolve(true);
+    };
+    slide = { resolve, raf: requestAnimationFrame(step) };
+  });
+  if (modeBtn) modeBtn.addEventListener("click", () => setMode(wrap.getAttribute("data-mode") === "side" ? "overlay" : "side"));
 
   const round1 = (v) => String(Math.round(v * 10) / 10);
   stage.onCamera(({ azimuth, elevation }) => {
@@ -372,6 +398,9 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
     onTick(cb) { tickers.push(cb); return () => tickers.splice(tickers.indexOf(cb), 1); },
     play() { clock.play(); startLoop(); },
     pause() { clock.pause(); },
+    /** "side" or "overlay" (the Overlay toggle follows), and the reveal's slide from one to the other (result-intent.md R4). */
+    setMode,
+    slideTogether,
     highlight(names = []) {
       highlightNames = [...names];
       stage.setHighlight(highlightNames.map((n) => jointIdx.get(n)).filter((i) => i !== undefined));
@@ -379,6 +408,7 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
     },
     destroy() {
       if (raf) cancelAnimationFrame(raf);
+      endSlide(false);
       stage.dispose();
       wrap.remove();
     },
@@ -397,7 +427,7 @@ export function writeDrawStats(wrap, stats) {
 function noop(wrap) {
   return {
     el: wrap, stage: null,
-    seek() {}, play() {}, pause() {}, highlight() {}, time: () => 0, isPlaying: () => false, duration: 0, onTick: () => () => {},
+    seek() {}, play() {}, pause() {}, highlight() {}, setMode() {}, slideTogether: () => Promise.resolve(false), time: () => 0, isPlaying: () => false, duration: 0, onTick: () => () => {},
     destroy() { wrap.remove(); },
   };
 }

@@ -24,7 +24,7 @@ import uuid
 
 from part7 import (
     animation_format, applog, auth, auth_routes, buildinfo, challenge_routes, client_log, config, delete_routes, export_routes, heartbeat,
-    history_routes, history_store, idempotency, identity, jobs, labels, media, mesh_files, models_used, modes, modules, narration_routes,
+    health_probe, history_routes, history_store, idempotency, identity, jobs, labels, media, mesh_files, models_used, modes, modules, narration_routes,
     people, people_routes, private_mode, processor, proxy, quota, replay, result_media, resume, sections, speech_routes, teacher_routes,
 )
 from part7.parts import p5_analyse
@@ -74,6 +74,7 @@ class App:
     build: dict[str, Any] = field(default_factory=buildinfo.unknown)
     client_rate: client_log.RateLimit = field(default_factory=client_log.RateLimit)
     idem: idempotency.Store | None = None
+    part6_probe: health_probe.Part6Probe = field(default_factory=health_probe.Part6Probe)
 
     @property
     def idempotency(self) -> idempotency.Store:
@@ -394,17 +395,17 @@ class _Handler(BaseHTTPRequestHandler):
     # ----- read routes ------------------------------------------------------------------------
     def _health(self) -> None:
         app = self.app
-        part6 = app.child.health()
+        up, part6 = app.part6_probe.check(app.child)  # TICKET-188: a missed probe is tolerated while the last good one is fresh
         doc = {
-            "ok": part6 is not None,
-            "part6": {"ok": part6 is not None, "entries": len(app.child.list_entries()) if part6 else 0},
+            "ok": up,
+            "part6": part6,
             "pins": app.lock.shas_short(),
             "queue": app.queue.counts(),
             "draining": app.queue.draining,
             "gpu_jobs_today": app.quota.gpu_jobs_today(),
             "build": app.build,
         }
-        self._json(200 if part6 is not None else 503, doc)
+        self._json(200 if up else 503, doc)
 
     def _config(self) -> None:
         movement = None

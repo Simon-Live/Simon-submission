@@ -249,6 +249,15 @@ def test_heartbeat_line_and_na_for_unreadable_values(caplog: pytest.LogCaptureFi
     assert first.endswith(" p2_worker=off")  # no warm worker pool in this process (TICKET-099)
 
 
+def test_heartbeat_reads_gpu_memory_at_call_time(caplog: pytest.LogCaptureFixture, tmp_path: Path,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    beat = heartbeat.Heartbeat(FakeQueue(), tmp_path)  # built before the fake is installed
+    monkeypatch.setattr(heartbeat.gpu_lock, "free_gpu_memory_mib", lambda: 4242)
+    with caplog.at_level(logging.INFO, logger="part7"):
+        beat.tick()
+    assert " gpu_free_mib=4242 " in _lines(caplog, "heartbeat")[0]
+
+
 def test_heartbeat_reports_the_warm_worker_state(caplog: pytest.LogCaptureFixture, tmp_path: Path,
                                                  monkeypatch: pytest.MonkeyPatch) -> None:
     from part7 import p2_worker

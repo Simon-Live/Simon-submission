@@ -231,6 +231,33 @@ try {
   assert.match(await page.getByTestId("delete-done").textContent(), /stays in the catalog because/, "the server kept the movement and the page says so");
   ok("trainer job view: delete my recording keeps the movement; the second option removes it when it can");
 
+  // ---- the Exercise / Dance / Rehab bar on a movement page (TICKET-186): it leaves for that kind's library; a result stays
+  const firstSection = (pg) => pg.locator('[data-testid="entries"] .lib-section').first().getAttribute("data-testid");
+  // each tap names a kind other than the one chosen before it: the same kind does nothing (TICKET-193)
+  await page.goto(`${BASE}#/watch/arm-wave`);
+  await page.getByTestId("kind-exercise").click();
+  await page.waitForTimeout(400);
+  assert.match(page.url(), /#\/watch\/arm-wave$/, "negative: the kind already chosen does not leave the page");
+  await page.getByTestId("kind-dance").click();
+  await page.waitForSelector('[data-testid="section-dance"]');
+  assert.match(page.url(), /#\/$/, "witness 1: the address is the catalog");
+  assert.equal(await firstSection(page), "section-dance", "witness 2: the Dance cards come first");
+  await page.goto(`${BASE}#/follow/squat`);
+  await page.getByTestId("kind-exercise").click();
+  await page.waitForSelector('[data-testid="section-exercise"]');
+  assert.match(page.url(), /#\/$/);
+  assert.equal(await firstSection(page), "section-exercise");
+  await page.goto(`${BASE}#/record`);
+  await page.getByTestId("kind-dance").click();
+  await page.waitForSelector('[data-testid="section-dance"]');
+  assert.match(page.url(), /#\/$/);
+  await page.goto(`${BASE}#/result/rj1`);
+  await page.waitForTimeout(1500);
+  await page.getByTestId("kind-exercise").click();
+  await page.waitForTimeout(500);
+  assert.match(page.url(), /#\/result\/rj1$/, "negative: switching the bar on a result does not navigate");
+  ok("kind bar: watch, follow and record go to the chosen kind's library; a result stays");
+
   assert.deepEqual(errors, [], "no console errors");
   ok("no console errors");
 } finally {

@@ -1,6 +1,6 @@
 // Playwright drive of both record screens (TICKET-063): trainer `#/record` and follower `#/follow/e1` at 412x915
-// and 1280x800 with Chromium's fake camera. Proves, without clicking anything first, that the live preview shows
-// on open; that no person picture on the follower screen uses `object-fit: cover`; that the trainer reference and
+// and 1280x800 with Chromium's fake camera. Proves that a first visit raises no permission prompt on load, that one tap on Open camera shows
+// the live preview before Record (TICKET-187, client a5e5503); that no person picture on the follower screen uses `object-fit: cover`; that the trainer reference and
 // the camera never overlap; that the recorded file keeps the camera track's full frame (ffprobe on the upload);
 // and that the capture events reach api/client-log. A refused camera keeps Try again and Upload.
 //   PLAYWRIGHT_DIR=/path/to/node_modules/playwright WEB_DIR=web FAKE_CAM=<y4m> \
@@ -138,11 +138,26 @@ async function run(role, viewport) {
   const shot = (name) => page.screenshot({ path: path.join(out, `${tag}-${name}.png`) });
   const since = logs.length;
 
+  await page.addInitScript(() => { // count camera requests: a first visit raises none on load (client a5e5503, TICKET-187)
+    window.__gum = 0;
+    const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = (c) => { window.__gum += 1; return gum(c); };
+  });
   await page.goto(`${BASE}${role === "follower" ? "#/follow/e1" : "#/record"}`);
   await tid("preview").waitFor({ state: "attached" });
+  await tid("cam-open").waitFor({ state: "visible", timeout: 5000 });
+  await page.waitForTimeout(500);
+  // A first visit (permission "prompt"): the preview area is there with Open camera as the first focus, and no
+  // permission prompt was raised on load. Negative assertion: no camera request, no stream on the preview.
+  check(`${tag}: first visit, no camera request on load`, await page.evaluate(() => window.__gum) === 0);
+  check(`${tag}: first visit, the preview has no stream before the tap`, await page.evaluate(() => !document.querySelector('[data-testid="preview"]').srcObject));
+  check(`${tag}: first visit, Open camera is the first focus`, await page.evaluate(() => document.activeElement && document.activeElement.dataset.testid === "cam-open"));
+  check(`${tag}: first visit, the status invites the tap`, /Open the camera/.test(await tid("camera-status").textContent()));
+  await tid("cam-open").click();
   const live = await page.waitForFunction(() => document.querySelector('[data-testid="preview"]').videoWidth > 0, null, { timeout: 8000 })
     .then(() => true, () => false);
-  check(`${tag}: live preview shows on open, before Record`, live);
+  check(`${tag}: live preview shows after one tap on Open camera, before Record`, live);
+  check(`${tag}: the tap asked for the camera once`, await page.evaluate(() => window.__gum) >= 1);
   if (role === "follower") await page.waitForFunction(() => document.querySelector('[data-testid="reference-video"]').readyState >= 1, null, { timeout: 8000 }).catch(() => {});
   if (role === "group") await tid("mode-group").click(); // the camera opened with sound in Just me; Group records none (nothing transcribes it)
   await page.waitForTimeout(400);
@@ -193,6 +208,18 @@ async function run(role, viewport) {
   const sizes = await page.evaluate(() => { const c = document.querySelector(".cam"); return { track: c.dataset.trackSize || "", take: c.dataset.takeSize || "" }; });
   check(`${tag}: the recorded take keeps the camera frame`, sizes.take !== "" && sizes.take === sizes.track, `track ${sizes.track}, take ${sizes.take}`);
 
+  if (role === "trainer") { // TICKET-193: the mode bar keeps a held take; the same kind does nothing
+    await tid("kind-exercise").click();
+    check(`${tag}: same kind tapped, the page and the take stay`, await page.evaluate(() => location.hash) === "#/record" && await tid("trim-continue").isVisible());
+    await tid("kind-dance").click();
+    await page.waitForTimeout(300);
+    check(`${tag}: another kind tapped with a take, still on #/record with the take kept`,
+      await page.evaluate(() => location.hash) === "#/record" && await tid("trim-continue").isVisible());
+    check(`${tag}: the kind changed in place`, await tid("kind-dance").getAttribute("aria-pressed") === "true"
+      && await tid("kind-exercise").getAttribute("aria-pressed") === "false");
+    await tid("kind-exercise").click(); // back, so the rest of the drive runs as before
+    await page.waitForTimeout(200);
+  }
   // R5: "Record again" retakes; the first take's object URL is released without a failed blob load (errors checked below)
   await tid("trim-back").click();
   await tid("cam-start").waitFor({ timeout: 8000 });
@@ -233,6 +260,8 @@ async function refused() {
   const since = logs.length;
   await page.goto(`${BASE}#/record`);
   await page.getByTestId("cam-open").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  await page.getByTestId("cam-open").click(); // a first visit asks on the tap, and the refusal leaves Try again
+  await page.getByTestId("camera-status").filter({ hasText: "Camera access is off" }).waitFor({ timeout: 5000 }).catch(() => {});
   const text = await page.getByTestId("cam-open").textContent().catch(() => "");
   check("refused: Try again shows and Upload stays", text === "Try again" && await page.getByTestId("upload").count() === 1, text);
   await page.waitForTimeout(300);
@@ -265,12 +294,44 @@ async function denied() {
   await ctx.close();
 }
 
+// A returning visitor (permission already "granted") keeps the operator's rule: the preview shows on open, no tap.
+async function granted() {
+  const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, permissions: ["camera"] });
+  const page = await ctx.newPage();
+  await page.route("**/api/config", (r) => r.fulfill({ json: { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } } }));
+  await page.goto(`${BASE}#/record`);
+  const live = await page.waitForFunction(() => document.querySelector('[data-testid="preview"]')?.videoWidth > 0, null, { timeout: 8000 })
+    .then(() => true, () => false);
+  check("granted: the preview shows on open without a tap", live);
+  await ctx.close();
+}
+
+// TICKET-193: with no take on the record page, another kind goes to the library as before; the same kind does not move.
+async function modeBarNoTake() {
+  const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  const page = await ctx.newPage();
+  await page.route("**/api/config", (r) => r.fulfill({ json: { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } } }));
+  await page.route("**/catalog/api/entries", (r) => r.fulfill({ json: { entries: [] } }));
+  await page.route("**/api/labels", (r) => r.fulfill({ json: {} }));
+  await page.goto(`${BASE}#/record`);
+  await page.getByTestId("cam-open").waitFor({ state: "visible", timeout: 5000 });
+  await page.getByTestId("kind-exercise").click();
+  await page.waitForTimeout(300);
+  check("mode bar, no take: the same kind stays on #/record", await page.evaluate(() => location.hash) === "#/record");
+  await page.getByTestId("kind-dance").click();
+  await page.waitForFunction(() => location.hash === "#/", null, { timeout: 3000 }).catch(() => {});
+  check("mode bar, no take: another kind goes to the library", await page.evaluate(() => location.hash) === "#/");
+  await ctx.close();
+}
+
 for (const viewport of [{ width: 412, height: 915 }, { width: 1280, height: 800 }]) {
   for (const role of ["follower", "trainer", "group"]) {
     try { await run(role, viewport); } catch (e) { check(`${role}-${viewport.width}: drive ran`, false, e.message.split("\n")[0]); }
   }
 }
+try { await modeBarNoTake(); } catch (e) { check("mode bar no take: drive ran", false, e.message.split("\n")[0]); }
 try { await refused(); } catch (e) { check("refused: drive ran", false, e.message.split("\n")[0]); }
+try { await granted(); } catch (e) { check("granted: drive ran", false, e.message.split("\n")[0]); }
 try { await denied(); } catch (e) { check("denied: drive ran", false, e.message.split("\n")[0]); }
 fs.writeFileSync(path.join(out, "client-log.json"), JSON.stringify(logs, null, 2));
 await browser.close();

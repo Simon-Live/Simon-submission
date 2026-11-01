@@ -190,3 +190,11 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 .sv-skel { position: absolute; pointer-events: none; }
 .sv-toggle { min-height: var(--target-min); padding: 0 var(--space-3); }
 .sv-toggle[aria-pressed="false"] { color: var(--color-text-muted); }
+
+/* result-intent.md R2: how the score adds up, under the ring */
+.rs-sum { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.45; text-wrap: pretty;
+  font-variant-numeric: tabular-nums; }
+/* R1: a mark that holds several moments shows how many */
+.simon-result .sr-mark-count { position: absolute; top: var(--space-1); right: var(--space-1); min-width: 18px; height: 18px;
+  padding: 0 var(--space-1); border-radius: var(--radius-pill); background: var(--color-bg); color: var(--color-text);
+  font: var(--weight-bold) var(--text-xs)/18px var(--font-sans); text-align: center; pointer-events: none; }

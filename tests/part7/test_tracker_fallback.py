@@ -6,6 +6,7 @@ attempts wrote one log. The retry names `local-open` and has its own log; a doub
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,8 @@ class _Part2:
         self.real = runner.run
         mp.setattr(runner, "run", self.run)
         mp.setattr(p2_pose, "api_tracker_allowed", lambda *a, **k: True)
+        # TICKET-191: the GPU is not the subject here; a full host card must not fail these tests.
+        mp.setattr(p2_pose.gpu_lock, "acquire", lambda **kw: contextlib.nullcontext())
 
     def run(self, part: int, argv: list[str], **kw: Any) -> runner.Step:
         if "track" not in argv or "--input" not in argv:
@@ -99,3 +102,15 @@ def test_both_trackers_failing_names_both_reasons_and_both_logs(api: Api, wide_m
     assert REFUSED in job["error"] and NO_GPU in job["error"], job
     text = _log(api, job)
     assert "part2_track.api.log" in text and "part2_track_retry.log" in text
+
+
+def test_the_wait_deadline_grows_with_host_load_and_never_shrinks(monkeypatch: pytest.MonkeyPatch) -> None:
+    from support import load_scaled
+
+    monkeypatch.setattr("os.cpu_count", lambda: 8)
+    monkeypatch.setattr("os.getloadavg", lambda: (0.5, 0.0, 0.0))
+    assert load_scaled(60) == 60
+    monkeypatch.setattr("os.getloadavg", lambda: (16.0, 0.0, 0.0))
+    assert load_scaled(60) == 240
+    monkeypatch.setattr("os.getloadavg", lambda: (800.0, 0.0, 0.0))
+    assert load_scaled(60) == 600  # capped

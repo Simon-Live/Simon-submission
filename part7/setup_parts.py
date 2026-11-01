@@ -325,10 +325,11 @@ def doctor_parts(
 def cli_setup_parts(
     lock: modules.Modules | None = None,
     state: Path | str | None = None,
+    only: tuple[str, ...] | None = None,
 ) -> int:
     """CLI entry point for `part7 setup-parts`."""
     try:
-        res = setup_all(lock=lock, state=state)
+        res = setup_all(lock=lock, state=state, only=only)
     except Exception as exc:
         print(f"setup-parts: {exc}", file=sys.stderr)
         return 1

@@ -85,6 +85,9 @@
   --3d-hot: var(--palette-coral);
   --3d-grid: var(--palette-grey-800);
   --3d-grid-center: var(--palette-grey-850);
+  --live-bone: rgb(244 244 239 / 85%);   /* live check: the bones drawn over your camera */
+  --live-ok: var(--palette-lime);         /* live check: a joint within range */
+  --live-off: var(--palette-coral);       /* live check: a joint more than the threshold off */
   --color-scrim: rgb(10 10 10 / 72%);     /* dark veil over video (countdown, trim mask, legends) */
   --color-scrim-light: rgb(10 10 10 / 45%);   /* the smallest tap target (WCAG 2.5.5; checked by a11y.browser.mjs) */
   --header-blur: 10px;

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import subprocess
 import threading
@@ -13,6 +14,16 @@ import tempfile
 from part7 import config, modules, server
 
 VIDEO_BYTES = bytes(range(256)) * 400  # 102400 bytes for Range tests
+
+
+def load_scaled(seconds: float, cap: float = 10.0) -> float:
+    """A wait deadline stretched by host load (TICKET-188): `seconds` when idle, up to `cap` times that when the
+    1-minute load average is above half the CPU count. Never shorter than `seconds`."""
+    try:
+        per_cpu = os.getloadavg()[0] / max(1, os.cpu_count() or 1)
+    except (OSError, AttributeError):
+        return seconds
+    return seconds * min(cap, max(1.0, per_cpu * 2))
 
 
 _DEFAULT_ROOT = Path(tempfile.mkdtemp(prefix="part7-test-modules-"))

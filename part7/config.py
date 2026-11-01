@@ -65,6 +65,11 @@ def drain_max_s() -> float:
     return _env_number("SIMON7_DRAIN_MAX_S", DEFAULT_DRAIN_MAX_S, 0)
 
 
+def health_part6_stale_s() -> float:
+    """Seconds a missed Part 6 probe still counts as healthy (`SIMON7_HEALTH_PART6_STALE_S`, default 120)."""
+    return _env_number("SIMON7_HEALTH_PART6_STALE_S", 120.0, 0)
+
+
 def part1_timeout_s() -> float:
     """Seconds the trainer chain waits for Part 1 (`SIMON7_PART1_TIMEOUT_S`, default 150)."""
     return _env_number("SIMON7_PART1_TIMEOUT_S", DEFAULT_PART1_TIMEOUT_S, 1)

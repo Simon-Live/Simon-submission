@@ -60,6 +60,18 @@ COLD_WAIT_ENV = "SIMON7_P2_COLD_SAM31_WAIT_S"  # longest the cold repeat waits f
 COLD_WAIT_DEFAULT_S = 60.0
 
 
+TRACK_WAIT_ENV = "SIMON7_P2_TRACK_GPU_WAIT_S"  # longest an "auto" track waits for local-sam31's GPU admission (TICKET-191)
+TRACK_WAIT_DEFAULT_S = 90.0
+# local-open (a small detector, no SAM) needs far less than local-sam31's 12 GiB admission; there is no measurement
+# of its peak, so this is a modest documented floor (TICKET-193). Its wait is bounded by TRACK_WAIT_ENV again.
+LOCAL_OPEN_MIN_FREE_MIB = 4096
+
+
+def track_gpu_wait_s() -> float:
+    """Seconds an "auto" track waits for GPU admission before it goes to api-sam31 or local-open (default 90)."""
+    return applog.env_float(TRACK_WAIT_ENV, TRACK_WAIT_DEFAULT_S)
+
+
 def cold_min_free_mib() -> int:
     """Free GPU memory (MiB) the cold repeat of a warm call waits for: `COLD_MIN_FREE_ENV`, else the 26 GiB peak."""
     raw = os.environ.get(COLD_MIN_FREE_ENV, "").strip()
@@ -407,17 +419,41 @@ def track(
     sub = ["track", "--input", str(Path(video).resolve()), "--out", str(out_dir.resolve()), "--fps", str(TRACK_FPS)]
     if tracker == "auto" and os.environ.get(TRACKER_ENV, "").strip():
         tracker = os.environ[TRACKER_ENV].strip()  # e.g. local-open: the free tracker on the same GPU, no Meta API
+    auto_local = False
     if tracker == "auto" and p2_worker.track_state() != "off":
         tracker = LOCAL_SAM31  # the warm tracker is running: use it rather than the paid API (TICKET-117)
+        auto_local = True
     if tracker == "auto":
         tracker = API_TRACKER if api_tracker_allowed(lk, clone, state) else None
     if tracker:
         # TICKET-067: at the pin a named tracker never falls back (`trackers.select`) and api-sam31 loads no torch and
         # no local model: it uploads a video to the Meta API, so it needs no GPU admission (parts-harness.md "GPU").
         admit = acquire_lock and tracker != API_TRACKER
-        named = _execute(
-            [*sub, "--tracker", tracker], backend, work_p, _tracker_log(tracker), lk, clone, admit, gpu_lock_kwargs
-        )
+        try:
+            named = _execute(
+                [*sub, "--tracker", tracker], backend, work_p, _tracker_log(tracker), lk, clone, admit,
+                {**(gpu_lock_kwargs or {}), "timeout_s": track_gpu_wait_s()} if auto_local else gpu_lock_kwargs,
+            )
+        except TimeoutError:
+            if not auto_local:
+                raise
+            # TICKET-191: no GPU admission for local-sam31 in time (other apps hold the card): never park the people
+            # step for the 30 minute default; api-sam31 needs no local GPU, else the free local-open.
+            tracker = API_TRACKER if api_tracker_allowed(lk, clone, state) else LOCAL_TRACKER
+            applog.anomaly("p2_track_gpu_busy", job_dir=work_p, waited_s=track_gpu_wait_s(),
+                           free_mib=gpu_lock.free_gpu_memory_mib(), routed=tracker)
+            try:
+                named = _execute(
+                    [*sub, "--tracker", tracker], backend, work_p, _tracker_log(tracker), lk, clone,
+                    acquire_lock and tracker != API_TRACKER,
+                    {"min_free_mib": LOCAL_OPEN_MIN_FREE_MIB, "timeout_s": track_gpu_wait_s(), **(gpu_lock_kwargs or {})}
+                    if tracker == LOCAL_TRACKER else gpu_lock_kwargs,
+                )
+            except TimeoutError:
+                applog.anomaly("p2_track_gpu_busy_final", job_dir=work_p, waited_s=2 * track_gpu_wait_s(),
+                               free_mib=gpu_lock.free_gpu_memory_mib(),
+                               detail="no GPU admission for local-sam31 or local-open; the job fails with a busy message")
+                raise TimeoutError("the GPU is busy, try again in a few minutes") from None
         named_dir = Path(named.get("out_dir") or out_dir)
         if named["exit"] == 0 and (named_dir / "tracks.json").is_file():
             return (named, named_dir / "tracks.json")

@@ -29,6 +29,22 @@ def _private_gpu_lock(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pyt
     monkeypatch.setenv("SIMON7_NARRATION", "off")  # TICKET-146: no test calls the paid transcription API unless it opts in
 
 
+@pytest.fixture(autouse=True)
+def _fake_free_gpu_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TICKET-191: tests never read the host card's real free memory (a full card failed fallback tests). The reading
+    is `SIMON7_TEST_FREE_MIB` (default 40000); a test of the reader itself calls `free_gpu_memory_mib.__wrapped__`."""
+    import functools
+    import os
+
+    from part7 import gpu_lock
+
+    @functools.wraps(gpu_lock.free_gpu_memory_mib)
+    def fake() -> int | None:
+        return int(os.environ.get("SIMON7_TEST_FREE_MIB", "40000"))
+
+    monkeypatch.setattr(gpu_lock, "free_gpu_memory_mib", fake)
+
+
 @pytest.fixture()
 def state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Provide an isolated temporary state root for tests."""

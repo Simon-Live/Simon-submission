@@ -11,10 +11,13 @@ import { summaryOf, TEXT as SUMMARY_TEXT } from "./model/result-summary.js";
 import { currentKind, kindForMode } from "./model/kind.js";
 import { renderResultSummary, REVEAL_MS } from "./views/result-summary.js";
 import { voiceSlot, secondOpinionSlot, historySection, keepTakeSlot, mountLaneModules, mountExport } from "./views/result-slots.js";
-import { hasJobFiles, mountModelsUsed, mountSkeleton, mountMesh, showStage } from "./result-wiring.js";
+import { hasJobFiles, mountModelsUsed, mountSkeleton, mountMesh, showStage, armSlide } from "./result-wiring.js";
+import { withoutRepeatedFiller } from "./model/filler.js";
+import { revealLedger } from "./model/reveal.js";
 
-// results whose reveal has played in this page's life: it plays once per result (result-redesign-additions.md R4)
-const revealed = new Set();
+// results whose reveal has played: once per result per browser session (result-intent.md R4, TICKET-139)
+const sessionStore = () => { try { return window.sessionStorage; } catch { return null; } };
+const revealed = revealLedger(sessionStore());
 
 // How long the result waits for the follower video to say it loads before showing the rest without it.
 export const SETTLE_TIMEOUT_MS = 4000;
@@ -318,7 +321,9 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
     }
     root.append(box);
   }
-  const shown = withScore(analysis);
+  // result-intent.md R3: the lines on screen say a short filler clause once; downloads and other modules keep Part 5's words
+  const display = withoutRepeatedFiller(analysis);
+  const shown = withScore(display);
   const real = hasScore(analysis);
   // brand summary on top (model/result-summary.js -> views/result-summary.js); the old score panel stays hidden below
   const summarySlot = el("div", { class: "rs-slot" });
@@ -343,8 +348,8 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   };
   // R4: the ring counts up once per result; a repaint for the routine's name while it runs carries it on, never restarts it
   const revealKey = `${job || "fixture"}/${pid || ""}`;
-  const revealStart = revealed.has(revealKey) ? null : performance.now();
-  revealed.add(revealKey);
+  const revealStart = revealed.seen(revealKey) ? null : performance.now();
+  revealed.mark(revealKey);
   const revealing = () => revealStart !== null && performance.now() - revealStart < REVEAL_MS;
   let summary = null;
   const meshStage = el("div", { class: "rs-mesh-stage" });
@@ -392,12 +397,12 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   zone.append(stage, body);
   root.append(zone);
 
-  const moments = momentsToReview(analysis);
-  const worst = worstMoment(analysis);
+  const moments = momentsToReview(display);
+  const worst = worstMoment(display);
   let timeline = null;
   const momentsHolder = el("div", { class: "sr-moments-holder" });
   body.append(momentsHolder);
-  renderInsights(body, analysis, getView, () => timeline);
+  renderInsights(body, display, getView, () => timeline);
   timeline = renderTimeline(body, shown, getView, flaggedWindows(moments));
   const mine = takeLabels(record);
   if (mine) body.append(mine);
@@ -427,7 +432,7 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
     }
   }
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
-  renderFaults(body, analysis, getView);
+  renderFaults(body, display, getView);
   fillSlot(makeSlot(body, "near-misses-slot"), () => import("./near-misses.js").then((m) => m.mountNearMisses), ctx, cleanups); // TICKET-100
   body.append(secondOpinionSlot());   // contract C2: one section after the coaching rows
   body.append(historySection(), keepTakeSlot());   // R6: "Your takes over time" and "Keep this take", empty unless signed in
@@ -449,6 +454,9 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   // contracts C2 and C2b: the other session's voice, second opinion and narration modules (missing ones stay silent)
   mountLaneModules(root, { jobId: job || "fixture", analysis, video: coach ? coach.video : null,
     seek: (t) => getView() && view.jump(t), entryId: (record && record.entry_id) || null });
+
+  // R4: after the ring counts up, the trainer and you slide together in the 3D view (first view in this session only)
+  cleanups.push(armSlide(compare, { startedAt: revealStart, delayMs: REVEAL_MS }));
 
   let live = true;
   if (hasJobFiles(job, pid)) {

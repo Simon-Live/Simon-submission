@@ -253,7 +253,7 @@ def _find_people(
             if pose.is_file():
                 shutil.copyfile(pose, ctx.work / "pose3d_all.json")  # a later job reuses it (see `pose_for`)
     except TimeoutError:
-        raise JobFailed("track", "the GPU is busy, try again later") from None
+        raise JobFailed("track", "the GPU is busy, try again in a few minutes") from None
     except RuntimeError:
         raise JobFailed("track", "the people finder is not available") from None
     steps.append(step)

@@ -46,6 +46,32 @@ export function entryInKind(entry, kind, labels = {}) {
   return kindOfEntry(entry) === kind;
 }
 
+const KIND_BOUND_ROUTE = /^#?\/?(watch\/[^/]+|follow\/[^/]+(\/c\/[^/]+)?|record)\/?$/;
+
+/**
+ * Where a change of kind sends the person: "#/" (the library of that kind) from a watch, follow or record page, else
+ * null (stay). The kind of the movement on those pages is not known without a fetch, so they always leave; a result,
+ * a job, the catalog and every other route are left alone. Query strings on the hash are ignored.
+ */
+export function routeAfterKindChange(hash) {
+  const path = String(hash || "").split("?")[0];
+  return KIND_BOUND_ROUTE.test(path) ? "#/" : null;
+}
+
+const TAKE_ROUTE = /^#?\/?(follow\/[^/]+(\/c\/[^/]+)?|record)\/?$/;
+
+/**
+ * Where a tap on the mode bar sends the person (TICKET-193): null when the kind did not change, and null on a record or
+ * follow page that records or holds an unsubmitted take (the kind changes in place; the take flow reads it at submit);
+ * else what `routeAfterKindChange` says.
+ */
+export function routeForKindTap(hash, { changed, holdsTake }) {
+  if (!changed) return null;
+  const path = String(hash || "").split("?")[0];
+  if (holdsTake && TAKE_ROUTE.test(path)) return null;
+  return routeAfterKindChange(hash);
+}
+
 /** The kind a stored practice mode stands for (fitness -> exercise), or null for an unknown or missing mode. */
 export function kindForMode(mode) {
   return KINDS.find((k) => KIND_MODE[k] === mode) || null;

@@ -43,6 +43,9 @@ export function challengeUrl(id, loc = globalThis.location) {
 }
 
 /** A sponsor link is shown only when it is https (the server enforces it; this keeps the page safe on its own). */
+/** Drop absent parts (null, undefined, false) so DOM append never prints them as the text "null" (TICKET-195). */
+export const compact = (parts) => parts.filter((p) => p != null && p !== false);
+
 export const safeHttps = (url) => typeof url === "string" && /^https:\/\/[^\s/]+/i.test(url) && !/[\s<>"]/.test(url);
 
 /** A name for the board: trimmed, white space collapsed, cut to 24 characters. */

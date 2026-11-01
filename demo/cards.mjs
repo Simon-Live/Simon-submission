@@ -59,9 +59,12 @@ const cards = {
     <p style="margin-top:34px">Tap a moment to jump there. Tap Hear this line to listen to the cue.</p></div>`,
   mesh: `<div class="abs" style="left:110px;top:250px;width:540px"><h2 style="font-size:50px">SAM 3D Body: full body meshes, trainer and you</h2>
     <p style="margin-top:30px;font-size:30px">The faulty limb turns red at the time Simon measured it.</p>
-    <p style="margin-top:24px;font-size:26px;color:${AMBER}">A demo page on two stock clips. In the app, a result shows this view when its job has meshes.</p></div>`,
+    <p style="margin-top:24px;font-size:26px;color:${AMBER}">Recorded in the app, on a new stock-clip take (job ${data.fresh_job}).</p></div>`,
+  opinion: `<div class="abs" style="left:110px;top:280px;width:1000px"><h2>A second opinion from Muse Spark.</h2>
+    <p style="margin-top:30px">It watched both videos and says whether it agrees with each measured fault, and what else it noticed. It does not change your score.</p>
+    <p style="margin-top:24px;font-size:28px;color:${AMBER}">On a new stock-clip take (job ${data.fresh_job}).</p></div>`,
   share: `<div class="abs" style="left:110px;top:300px;width:1000px"><h2>Share a clip.</h2>
-    <p style="margin-top:30px">And see which Meta model made each step: SAM 3.1, SAM 3D Body and Muse Spark, with the time each took.</p></div>`,
+    <p style="margin-top:30px">On a new stock-clip take (job ${data.fresh_job}): which Meta model made each step, and the time each took.</p></div>`,
   compare: `<div class="abs" style="left:110px;top:300px;width:1000px"><h2>Your copy, over the teacher's.</h2>
     <p style="margin-top:30px"><b style="color:${INK}">White</b> is the teacher. <b style="color:${GREEN}">Lime</b> is you.</p></div>`,
   shape: `<div class="abs" style="left:110px;top:300px;width:1000px"><h2>Shape or timing?</h2>

@@ -105,6 +105,8 @@ export function renderResultSummary(root, m, on = {}, before = null) {
   let worstCard = null, figures = null;
   el.append(h("div", { class: "rs-head" }, ringEl,
     h("div", { class: "rs-headline" }, h("p", { class: "rs-eyebrow", text: m.eyebrow }), h("h2", { class: "rs-title", text: m.headline }))));
+  // result-intent.md R2: how 100 becomes the score, so the points next to each miss never read as a sum error
+  if (m.sum) el.append(h("p", { class: "rs-sum", "data-testid": "score-sum", "data-adds": String(m.sum.adds), "data-capped": String(m.sum.capped), text: m.sum.text }));
   if (m.stats.length) el.append(h("div", { class: "rs-stats", "data-layout": m.statsLayout }, ...m.stats.map((x) =>
     h("div", { class: "rs-stat", "data-testid": `summary-stat-${x.key}` }, h("span", { class: "rs-stat-label", text: x.label }), h("span", { class: "rs-stat-value", text: x.value })))));
 

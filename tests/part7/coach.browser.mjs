@@ -25,9 +25,11 @@ const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 // only the deliberately missing video (case novideo) and a module a case blocks on purpose may 404
 const EXPECTED_404 = /missing\.webm/;
 
-async function open(kase, { noWebgl = false, hangVideo = false, lateVideoMs = 0, block = null } = {}) {
+async function open(kase, { noWebgl = false, hangVideo = false, lateVideoMs = 0, block = null, analysisBody = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true });
   const page = await ctx.newPage();
+  // another take's analysis in place of the harness's (result-intent.md AC-I1)
+  if (analysisBody) await page.route("**/fixtures/input/analysis-insights.json", (r) => r.fulfill({ status: 200, contentType: "application/json", body: analysisBody }));
   page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_404.test(m.location().url + m.text()) && !isResultScreen404(m.location().url) && !(block && m.location().url.endsWith(block))) errors.push(`${kase}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
   if (block) await page.route(`**/web/${block}`, (r) => r.fulfill({ status: 404, body: "" })); // a lazy slot module that is missing
@@ -45,6 +47,17 @@ async function open(kase, { noWebgl = false, hangVideo = false, lateVideoMs = 0,
   return page;
 }
 const tid = (p, id) => p.getByTestId(id);
+/** result-intent.md AC-I1 negative: no mark covers another, so the centre of every mark hits that mark. */
+async function noMarkCovered(p) {
+  const marks = p.locator('[data-testid^="moment-marker-"]');
+  const boxes = await marks.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
+  for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i].left >= boxes[i - 1].right - 0.5, `mark ${i} does not overlap mark ${i - 1}`);
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i];
+    const hit = await p.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-testid^="moment-marker-"]')?.dataset.testid, [b.left + b.width / 2, b.top + b.height / 2]);
+    assert.equal(hit, `moment-marker-${i}`, `the centre of mark ${i} hits mark ${i}`);
+  }
+}
 const clockT = (p) => p.getByTestId("clock").getAttribute("data-t").then(Number);
 const videoT = (p) => p.getByTestId("result-video").evaluate((v) => v.currentTime);
 const videoPaused = (p) => p.getByTestId("result-video").evaluate((v) => v.paused);
@@ -116,8 +129,11 @@ try {
   assert.equal(await tid(p, "timeline-0").getAttribute("data-review"), null);
   assert.equal(await p.locator('.sr-tl-bar[data-review="true"]').count(), flagged.length);
   const nMoments = await p.locator('[data-testid^="moment-marker-"]').count();
-  assert.ok(nMoments >= flagged.length, "a mark for every flagged window");
-  assert.equal(await p.locator('[data-testid^="moment-"][data-kind]').count(), nMoments, "the list repeats the marks");
+  const counts = await p.locator('[data-testid^="moment-marker-"]').evaluateAll((els) => els.map((e) => Number(e.dataset.count)));
+  const nListed = await p.locator('[data-testid^="moment-"][data-kind]').count();
+  assert.ok(nListed >= flagged.length, "a moment for every flagged window");
+  assert.equal(counts.reduce((a, b) => a + b, 0), nListed, "every listed moment sits in exactly one mark (close ones share a mark)");
+  await noMarkCovered(p);
   const first = tid(p, "moment-0");
   const at0 = Number(await first.getAttribute("data-at"));
   assert.equal((await first.textContent()).startsWith(`At ${at0.toFixed(1)} s:`), true);
@@ -130,7 +146,35 @@ try {
   const head = await tid(p, "moments-playhead").evaluate((e) => parseFloat(e.style.left));
   near(head, (atLast / 12.8) * 100, 6, "the playhead sits at the tapped moment on the strip");
   await p.screenshot({ path: path.join(SHOTS, "21-coach-moments.png"), fullPage: true });
-  ok(`moments to review: ${nMoments} marks (windows 15+ points under ${ins.score.value}, biggest misses); a tap moves video and 3D`);
+  ok(`moments to review: ${nListed} moments in ${nMoments} marks that do not overlap (windows 15+ points under ${ins.score.value}, biggest misses); a tap moves video and 3D`);
+
+  // ---- result-intent.md AC-I1: a real take with two misses at 0.9 s gets one mark that names both -----------------
+  {
+    const real = fs.readFileSync(path.join(here, "fixtures/history/5277380db1e1/analysis.json"), "utf8");
+    const r = await open("ok", { analysisBody: real });
+    await r.locator('[data-testid="moments-strip"]').scrollIntoViewIfNeeded();
+    assert.equal(await r.locator('[data-testid^="moment-"][data-kind]').count(), 2, "two moments listed");
+    assert.equal(await r.locator('[data-testid^="moment-marker-"]').count(), 1, "one mark for both (negative: no stacked second mark)");
+    const mark = tid(r, "moment-marker-0");
+    assert.equal(await mark.getAttribute("data-count"), "2");
+    assert.equal(await mark.getAttribute("data-ats"), "0.9 0.9");
+    assert.match(await mark.getAttribute("aria-label"), /^2 moments\. At 0\.9 s: Keep your chest up, costs 22\.0 points\. At 0\.9 s: Keep your chest up, costs 21\.5 points$/);
+    assert.equal((await mark.locator(".sr-mark-count").textContent()), "2");
+    await noMarkCovered(r);
+    await mark.click();
+    assert.equal(await mark.getAttribute("aria-pressed"), "true");
+    await settledAt(r, 0.9, "merged mark");
+    // the filler is said once on this result (AC-I3): the second 0.9 s line drops "nice effort."
+    const lines = [];
+    for (const i of [0, 1]) {
+      await tid(r, `timeline-${i}`).click();
+      lines.push(await r.locator(".sr-tl-miss-text").first().textContent());
+    }
+    assert.deepEqual(lines, ["You are leaning forward more than the example at 0.9 s, nice effort.", "You are leaning forward more than the example at 0.9 s."]);
+    await r.screenshot({ path: path.join(SHOTS, "21b-coach-merged-mark.png") });
+    await r.context().close();
+    ok("AC-I1 two misses at 0.9 s share one mark that names both and plays from the first; the filler shows once");
+  }
 
   // ---- replay worst moment -------------------------------------------------------------------------------
   const btn = tid(p, "replay-worst");

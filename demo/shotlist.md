@@ -34,3 +34,7 @@ Shots 3, 4, 5, 8, 9, 10 and 11 are UI captures, and the card colours of shot 9 f
 ## Release 12 cut (final)
 
 Total 2:33. Shots 3 to 5 and 8 to 11 are recorded from the release 12 UI (dark theme). Changes from the first cut: shot 8 shows the score ring, 9 the 3D compare with a white teacher and a lime you, 10 Reference vs You, "What to work on next" and a "Hear this line" tap, 11 the shape and timing breakdown and the replay, and the new shot 11b the export button until its clip is ready and the Meta models card (VO: "A clip to share is one tap away, and a card shows which Meta models made each step."). Shot 13's voice-over ends "The footage is one real, cleared take plus stock clips." Shot 7b stays the labelled demo page.
+
+## Release 17 cut
+
+Total 2:44. Shot 7b is the in-app SAM 3D Body mesh view (fresh job `4a946eb885b3`), new shot 11c is Muse Spark's second opinion (agrees and disagrees badges, "also noticed"), and shot 11b is the export and the Meta models card from the same fresh job. VO for 11c: "Muse Spark also watches both videos. It says whether it agrees with each fault, and what else it noticed." The reveal and shots 8 to 11 stay on the cleared 77 C take. Every fresh-job card carries its job id.

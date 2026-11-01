@@ -1,5 +1,5 @@
 {
- "total_s": 153.37,
+ "total_s": 164.37,
  "scenes": [
   {
    "id": "s01-hook",
@@ -74,60 +74,75 @@
    "vo_s": 4.36
   },
   {
-   "id": "s11b-share",
+   "id": "s11c-opinion",
    "start": 116.35,
+   "D": 11,
+   "vo_s": 7.52
+  },
+  {
+   "id": "s11b-share",
+   "start": 127.35,
    "D": 12,
    "vo_s": 5.28
   },
   {
    "id": "s12-close",
-   "start": 128.35,
+   "start": 139.35,
    "D": 10,
    "vo_s": 5.28
   },
   {
    "id": "s13-end",
-   "start": 138.35,
+   "start": 149.35,
    "D": 15,
    "vo_s": 13.04
   }
  ],
  "marks": {
   "catalog": {
-   "list": 3.115,
-   "filter": 8.824,
-   "end": 10.387
+   "list": 3.068,
+   "filter": 8.62,
+   "end": 10.133
   },
   "watch": {
-   "video": 3.916,
-   "figure": 7.09,
-   "rotated": 11.883,
-   "side": 13.517,
-   "end": 16.132
+   "video": 3.849,
+   "figure": 6.989,
+   "rotated": 10.045,
+   "side": 11.583,
+   "end": 14.182
   },
   "follow": {
-   "take": 4.209,
-   "ready": 8.113,
-   "end": 8.113
+   "take": 4.146,
+   "ready": 7.878,
+   "end": 7.878
   },
   "result": {
-   "score": 1.739,
-   "worst": 7.698,
-   "next": 14.634,
-   "export_click": 25.841,
-   "export_ready": 27.169,
-   "models": 34.714,
-   "breakdown": 43.68,
-   "replay": 46.197,
-   "compare": 54.581,
-   "rotated": 57.688,
-   "fault": 62.28,
-   "hear": 62.297,
-   "end": 65.798
+   "score": 0.583,
+   "worst": 6.515,
+   "next": 13.55,
+   "export_click": 16.148,
+   "export_ready": 21.036,
+   "models": 26.963,
+   "breakdown": 36.897,
+   "replay": 40.03,
+   "compare": 46.848,
+   "rotated": 49.621,
+   "fault": 54.831,
+   "hear": 54.845,
+   "end": 58.346
   },
-  "mesh": {
-   "start": 0.39,
-   "end": 10.435
+  "fresh": {
+   "score": 0.78,
+   "mesh": 6.593,
+   "meshrot": 12.228,
+   "export_click": 14.337,
+   "export_ready": 284.845,
+   "models": 289.499,
+   "modelsend": 293.177,
+   "badge": 295.649,
+   "second": 303.723,
+   "tap": 305.25,
+   "end": 305.25
   }
  }
 }

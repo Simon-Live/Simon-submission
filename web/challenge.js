@@ -2,7 +2,7 @@
 import { getEntry, entryFileUrl } from "./api.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import {
-  rankEntries, strongestText, timeLeft, challengeUrl, safeHttps, takeUrl, listChallenges, getChallenge, ChallengeError,
+  rankEntries, compact, strongestText, timeLeft, challengeUrl, safeHttps, takeUrl, listChallenges, getChallenge, ChallengeError,
   ensureChallengeStyles, KIND_LABELS,
 } from "./challenge-core.js";
 import { shareLink } from "./share-card.js";
@@ -71,7 +71,7 @@ export function mountChallenge(root, id) {
     const thumb = entry && entry.video_uri
       ? h("video", { class: "ch-thumb", muted: true, playsinline: true, preload: "metadata", "aria-hidden": "true", "data-testid": "challenge-thumb", src: `${entryFileUrl(entry.id || ch.entry_id, entry.video_uri)}#t=0.1` })
       : null;
-    clear(screen).append(
+    clear(screen).append(...compact([
       h("p", { class: "crumb" }, h("a", { href: `#/watch/${encodeURIComponent(ch.entry_id)}`, text: "Back to the movement" })),
       sponsorBanner(ch.sponsor),
       h("h1", { "data-testid": "challenge-title", text: ch.title }),
@@ -82,7 +82,7 @@ export function mountChallenge(root, id) {
       h("h2", { text: "Leaderboard" }),
       rows.length
         ? h("ol", { class: "ch-board", "data-testid": "leaderboard", "aria-label": "Leaderboard" }, rows.map(boardRow))
-        : h("p", { class: "hint", "data-testid": "board-empty", text: ch.ended ? "Nobody posted a score." : "No scores yet. Be the first." }));
+        : h("p", { class: "hint", "data-testid": "board-empty", text: ch.ended ? "Nobody posted a score." : "No scores yet. Be the first." })]));
   }
 
   (async () => {
