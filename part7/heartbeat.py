@@ -29,6 +29,12 @@ def _num(value: float | int | None, digits: int = 1) -> str:
     return "na" if value is None else f"{value:.{digits}f}"
 
 
+def _tracker_note() -> str:
+    """` p2_tracker=<state>` while the warm SAM 3.1 tracker pool runs (TICKET-117), else nothing."""
+    state = p2_worker.track_state()
+    return "" if state == "off" else f" p2_tracker={state}"
+
+
 class Heartbeat:
     """Logs the server's vital signs every `interval` seconds until `stop()`; `tick()` is one beat."""
 
@@ -80,7 +86,7 @@ class Heartbeat:
         r = self._readings()
         applog.log(f"heartbeat queued={r['queued']} running={r['running']} oldest_running_s={_num(r['oldest_running_s'])} "
                    f"load1={_num(r['load1'], 2)} gpu_free_mib={_num(r['gpu_free_mib'], 0)} "
-                   f"disk_free_gb={_num(r['disk_free_gb'])} p2_worker={p2_worker.state()}")
+                   f"disk_free_gb={_num(r['disk_free_gb'])} p2_worker={p2_worker.state()}{_tracker_note()}")
         now = self.clock()
         limit = applog.env_float("SIMON7_BACKLOG_QUEUED", BACKLOG_QUEUED)
         if r["queued"] > limit:

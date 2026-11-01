@@ -423,3 +423,13 @@ def test_failed_gate_exits_one_not_two(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setattr(check7.AppClient, "health", lambda self: {})
     monkeypatch.setattr(check7, "run_check", lambda *a, **k: {"part": 7, "pass": False, "gates": {}})
     assert check7.cli_check() == 1
+
+
+def test_the_verdict_and_the_exit_code_follow_every_gate_including_the_degraded_cap() -> None:
+    """TICKET-117: `part7 check` already exits 1 when `pass` is false (AC-K13, test above). The documented gate list has
+    no exempt gate: `quality_degraded_major_capped` false makes `pass` false, so a run with only it red exits 1."""
+    gates = {"entry_ok": True, "followers_matched": "3/3", "ok_status_both_paths": 3, "faults_compared": 9,
+             "score_equal": True, "quality_degraded_major_capped": True}
+    assert check7.passes(gates) is True
+    assert check7.passes({**gates, "quality_degraded_major_capped": False}) is False
+    assert check7.passes({**gates, "score_equal": False}) is False

@@ -16,6 +16,7 @@ import subprocess
 from typing import Any
 
 from part7 import applog, config, crop, media, modules, quality, runner, stagelog
+from part7 import track_resample
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
 
@@ -280,6 +281,11 @@ def pose_for(
     Returns `(step, pose3d.json, note)`; a note names the fallback (people.md "Part 2 follow-up").
     """
     tracks = (sel.people_work or work) / "tracks.json"
+    if tracks.is_file() and p2_pose.TRACK_FPS != p2_pose.FPS:  # people tracked at a lower rate (#62)
+        tracks = track_resample.write_at_rate(
+            tracks, work / f"tracks_{p2_pose.FPS}fps.json", p2_pose.TRACK_FPS, p2_pose.FPS,
+            media.probe(video)["duration_s"], frame_times(sel.people_work or work) or None)
+        applog.log(f"people tracks at {p2_pose.TRACK_FPS} fps resampled to {p2_pose.FPS} fps for the 3D run", applog.job_id_of(work), work)
     if tracks.is_file() and p2_pose.capabilities(lk, state)["ids"]:
         step, pose = p2_pose.run(video, work, backend=backend, lock=lk, state=state, tracks=tracks, ids=ids)
         return (step, pose, None)

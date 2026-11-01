@@ -862,5 +862,6 @@ def cli_serve(
         beat.stop()
         app.queue.close()
         p2_worker.stop_pool()
+        p2_worker.stop_track_pool()  # the warm SAM 3.1 tracker, when it ran (TICKET-117)
         child.stop()
     return 0

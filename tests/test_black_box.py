@@ -6,6 +6,8 @@ import ast
 from pathlib import Path
 import re
 
+import pytest
+
 from part7 import config
 
 FORBIDDEN_IMPORT_RE = re.compile(
@@ -22,6 +24,13 @@ FORBIDDEN_MODULES = {
     "keyframe_finder",
     "simon_anim",
 }
+# Dynamic imports of a part by name: importlib.import_module("part2.x"), __import__("part2"), import_module('part3').
+DYNAMIC_IMPORT_RE = re.compile(
+    r"""(?:import_module|__import__)\s*\(\s*[rbuf]*["'](?:part[1-6]|keyframe_finder|simon_anim)\b"""
+)
+# ADR-0002 "Amendment: the warm tracker bridge": the only file that may reach a part by name. Off by default, off on
+# staging; remove this entry when Part 2 ships a documented warm track entry.
+DYNAMIC_IMPORT_ALLOWLIST = {"part7/trackwarm/track_worker.py"}
 FORBIDDEN_ENV_VARS =("SAM3D_REPO", "SAM3D_CKPT")
 
 
@@ -52,6 +61,37 @@ def test_no_other_part_imported_in_part7() -> None:
                 if top in FORBIDDEN_MODULES:
                     hits.append(f"{path.relative_to(config.REPO_ROOT)}:{node.lineno} from {node.module}")
     assert not hits, f"Forbidden cross-part imports found: {hits}"
+
+
+def test_no_dynamic_part_imports_in_part7() -> None:
+    hits: list[str] = []
+    for path in _iter_part7_py_files():
+        rel = str(path.relative_to(config.REPO_ROOT))
+        if rel in DYNAMIC_IMPORT_ALLOWLIST:
+            continue
+        for m in DYNAMIC_IMPORT_RE.finditer(path.read_text(encoding="utf-8")):
+            hits.append(f"{rel}: {m.group(0)}")
+    assert not hits, f"Dynamic cross-part imports found: {hits}"
+
+
+def test_dynamic_import_pattern_catches_strings() -> None:
+    for text in ('importlib.import_module("part2.trackers")', "__import__('part3')", "import_module('keyframe_finder.x')"):
+        assert DYNAMIC_IMPORT_RE.search(text), text
+    assert not DYNAMIC_IMPORT_RE.search('importlib.import_module("part7.config")')
+
+
+def test_allowlisted_bridge_is_the_only_dynamic_importer_and_documented() -> None:
+    users = [p for p in _iter_part7_py_files()
+             if DYNAMIC_IMPORT_RE.search(p.read_text(encoding="utf-8"))]
+    assert {str(p.relative_to(config.REPO_ROOT)) for p in users} <= DYNAMIC_IMPORT_ALLOWLIST
+
+
+def test_the_bridge_is_recorded_in_adr_0002() -> None:
+    adr_path = config.REPO_ROOT / "docs/adr/ADR-0002-black-box-by-process-and-pins.md"
+    if not adr_path.is_file():
+        pytest.skip("the published tree carries no firm ADRs (docs/adr is not published); checked in the workspace")
+    adr = adr_path.read_text(encoding="utf-8")
+    assert "warm tracker bridge" in adr and "Exit condition" in adr
 
 
 def test_no_sam3d_env_vars_set_in_part7() -> None:
