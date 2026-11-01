@@ -186,7 +186,11 @@ Top level:
 - `status` (optional, 1.1.0): `{code, text}`. From `1.4.0` `code` is always `ok`: a take is always analysed
   (ADR-0012) and what used to be a refusal is a `warnings` entry. Only a document written before 1.4.0 can carry
   `different_movement`, `not_enough_visible` or `moving_part_out_of_frame` (then `faults: []` and `score: null`);
-  read `status` before `faults`, and a file with no `status` is a 1.0 file: read it as `ok`.
+  read `status` before `faults`, and a file with no `status` is a 1.0 file: read it as `ok`. No schema change: the
+  `text` of a take with no warning is "Compared with the expected movement."; of a take with one warning it is
+  "Compared with the expected movement, with a warning that caps the grade at F."; of a take with more than one it is
+  "Compared with the expected movement, with 2 warnings that cap the grade at F." (the number of warnings in place of
+  2). The code stays `ok`; `warnings[].text` still says what each warning is.
 - `faults`: sorted by \(|magnitude|\) descending. An empty list means no faults were found:
   a correct take still gets a file.
 - `warnings` and `match` (1.4.0): present only when the take earned a warning, see "Always analysed" below.
@@ -195,7 +199,8 @@ Top level:
 - `phrasing` (optional, 1.1.0): who phrased `faults[].coaching`: `requested` and `backend` (`template`,
   `local-llm` or `muse-spark`), `model`, `fallback_reason`, `selected_by` (`flag` for an explicit backend, `live`
   for the live default, `default` for the template) and, per fault, `faults[k] = {backend, model, fallback_reason}`
-  (`model` is null for the template). Phrasing changes `coaching` only: never `text`, `cue`, a scored field or the score.
+  (`model` is null for the template). Phrasing changes `coaching` only, and through it the `why` of an insight that
+  repeats a live English line (below): never `text`, `cue`, a scored field or the score.
 - `diagnostics` (optional): pipeline internals (alignment residual and the measures timing was
   taken from). Part 7 may ignore it; it is not part of the follower-facing contract.
   `part5 analyse` (#10) also writes `follower_span` (first and last matched follower frame) and
@@ -467,8 +472,13 @@ rewrites them. Foot rotation and ankle twist have no cue: the 17 joints end at t
 
 An insight's `why` that points at a fault (a `faults[]` entry with the same `measure`, `side` and `direction`)
 is that fault's `text_timed` in sentence case, time included: "Right foot too far right at 1.9 s", followed by
-" (3 of 8 reps)" or " (2 times)" when the cue missed more than once. A miss no fault matches keeps the plain
-words ("Left knee not bent enough (3 of 8 reps)"); a tempo item says "You took 80% of the trainer's time".
+" (3 of 8 reps)" or " (2 times)" when the cue missed more than once. When that fault's `phrasing.faults[i]` has a
+backend other than `template`, no `fallback_reason` and `lang` `en` (or none), the `why` repeats the line shown
+instead: the fault's `coaching` before its first ";", any closing run of "." "!" and "?" dropped, which must pass the timed word
+test again (otherwise the `text_timed` form stays), with the time number replaced by the insight's own `at_s` and
+the first letter capitalised: "Your right foot drifts too far to the right at 1.7 s (3 of 8 reps)". A miss no fault
+matches keeps the plain words ("Left knee not bent enough (3 of 8 reps)"); a tempo item says "You took 80% of the
+trainer's time". The same document always gives the same insights.
 
 Timed words (`text_timed` without its time) differ from `text` for lateral measures ("too far right", not "too
 far out") and for an arm held low (`upper_arm_forward`, `less`: "left arm too low"). A thigh that is not lifted

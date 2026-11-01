@@ -53,14 +53,14 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 ## Compatibility table (in `CONTRACT.md`, printed by `part5 contract`)
 | Producer | File | `format` | Part 5 role | Verdict | Fix | Checked against |
 |---|---|---|---|---|---|---|
-| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input (exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with "run Part 3 --view part5" | Part 2 2e06d58 |
+| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input (exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with "run Part 3 --view part5" | Part 2 5076cfd |
 | Part 2 foot points | `pose3d.json` with `extra_joints` | `part2.pose3d/2026-10-28` (Part 2 CONTRACT.md "Extra joints (optional)") | optional feet side input (`--expected-feet`, `--follower-feet`) | works with an option | pass the trainer's and the follower's own Part 2 `pose3d.json` beside the Part 3 `skeleton.json` (Part 3 does not carry `extra_joints`); a file without them is accepted and the foot measures are hidden, with the reason in `diagnostics.feet`; `doctor` accepts it with a note | Part 2 e8ac336 |
 | Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works |  | Part 3 fd96379 |
 | Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works |  | Part 3 fd96379 |
 | Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` | Part 3 fd96379 |
-| Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 dc3d9f2 |
-| Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
-| Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 fc3249a |
+| Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 7036622 |
+| Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 ced3f3d |
+| Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 ced3f3d |
 | Part 5 | `analysis.json` | `simon.analysis.v1` | output for Part 7 | works | Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `"low"`; the 1.2.0 to 1.10.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, `profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`, `score.fault_cap`) are all optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and `phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level `second_opinion` (Muse Spark's view of the take, label it as the model's opinion; the score never reads it), `score.uncapped` (the value and grade before a cap lowered them, present only when one did) and the optional top-level `source` (the producing part; absent means part5) with the warning code `no_person` (written only by Part 7's own analysis, never by Part 5); 1.10.0 (ADR-0018) allows the score to be `simon.score.v2` (read `score.version`; a v1 score can still be written inside 1.10.0) and adds, under v2 only, `score.fault_cap` (the integer 89, present when the take reports a fault: such a take scores at most 89, a B; it is not a warning, `score.capped_by` still names the low-match cap at 59 F only) and widens `score.uncapped` to the value and grade before every cap, the fault cap and the warning cap; a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its `profile` | Part 5 (this repo) |
 | Part 7 own analysis for a take with no person | `analysis.json` with `source: "part7"` | `simon.analysis.v1` (`schema_version` 1.4.0, as Part 7 writes it today) with `source` and the warning `no_person` (schema 1.9.0) | none | works | Part 7 writes it when Part 2 finds nobody in the take: `source` `part7`, the warning `no_person`, `faults: []`, `expected` and `follower` with their real `path`, a score of 0 (F) and no `match`, because nothing was compared; `part5 doctor <file> --for part7` accepts it and notes that nothing was looked at; Part 5 never writes `no_person` or `source` | Part 5 TICKET-048 (the document Part 7 described, moalborati/simon#61) |
 | Part 5 `analyse --replay <replay.json>` | `replay.json` | `simon.replay.v1` | output for Part 7 | works | optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>` | Part 5 (this repo) |
@@ -71,8 +71,12 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 | Part 5 | `part5 analyse` exit code | 0 analysis written (with or without warnings), 1 unreadable or invalid input file or write error, 2 usage; 3 is no longer used (ADR-0012) | for Part 7 | works with a mapping | Part 7 at 90aa473 expects the family codes 0 written, 1 not writable, 2 input or option breaks the contract (Part 3 CONTRACT.md, row for Part 7): 0 is "written" (read `warnings`), 1 and 2 are failures; 3 is no longer produced | Part 7 90aa473 (as Part 3 CONTRACT.md records it) |
 | Part 5 | `labels.json` | none | evaluation | works |  | Part 5 (this repo) |
 
-The last column is the producer commit each row was checked against (from `contracts/sources.lock.json` and the
-neighbour check; never typed from memory).
+The last column is the producer commit each row was checked against: the `main` heads of Parts 2, 3, 4 and 6 that the
+neighbour check recorded in its run 2 of 2026-11-01 (`progress/neighbour-check-20261101.json`, `NEIGHBOUR_COMMITS` in
+`part5/contract.py`; never typed from memory). One row is the exception: Part 2's foot points name `e8ac336`
+(`PART2_FEET_COMMIT`), the Part 2 commit that introduced `extra_joints`, because that format is what the feet reader was
+built and tested against; the run 2 doctor steps re-read Part 2's files at its head. `contracts/sources.lock.json` still
+records where the copied schemas and fixtures of Parts 3 and 4 came from.
 
 ## API / Interface Contract
 ```
@@ -235,14 +239,16 @@ it exits 2 with a plain message naming the missing upstream path, never a traceb
 - MUST NOT edit a copied schema by hand; `make contracts-sync` refreshes them.
 
 ## Non-Requirements
-- Building Part 7. Analysing Part 2's `pose3d.json` (`doctor` names it and points to Part 3; it never
-  validates its fields).
+- Building Part 7. Analysing Part 2's `pose3d.json` as a take (`doctor` names it, points to Part 3 for the body
+  and, since TICKET-040, accepts it as the optional feet side input with the feet file summary, AC-C11).
 
 ## Assumptions
 ASM-005 (Part 7 reads `status` first) and ASM-012 (the Part 6 hand-off shape), `docs/assumptions/`.
 
 ## Delivery Verification Plan
 - `make check-5-contract` 0, `make test-contract` 0, `make test` 0.
+- `tests/test_contract_cli.py` (the CLI, the check, the table) and `tests/test_contract_schemas.py` (the schemas against
+  the loaders; split from it to stay under 800 lines) 0.
 - `tests/test_contract_part7_history.py` and `tests/test_student_words.py` 0 (AC-C15, AC-C16); `python3 scripts/make_student_words.py --check` 0.
 - `python -m part5 contract` and `doctor` frames recorded as uc-integration-contract evidence.
 - The neighbour check (`neighbour-check.md`) runs `doctor` on Parts 3 and 4's current files.
@@ -256,6 +262,13 @@ Kept: a format string change would break every v1 reader for fields they may ign
 version tells a careful reader what to expect.
 
 ## Amendments
+- 2026-11-01 (TICKET-057): no schema change. `status.text` of a take with a warning names the cap ("Compared with the
+  expected movement, with a warning that caps the grade at F.", or "with 2 warnings that cap the grade at F." for
+  more than one, the number in place of 2) while `status.code` stays `ok`; a take with no warning keeps "Compared with
+  the expected movement." byte for byte. An insight's `why` that points at a fault whose line a live English model wrote
+  and the word test passed repeats that line's observation clause at the insight's time (ADR-0014, Amendment 2). The
+  "Checked against" cells are the run 2 neighbour heads (Part 2 5076cfd, Part 3 fd96379, Part 4 7036622, Part 6
+  ced3f3d); `CONTRACT.md` carries the same sentences and cells.
 - 2026-10-31 (TICKET-042, `docs/design/specs/profiles.md`): the analysis schema is `1.7.0` (`profile`, always written, optional
   in the schema) and the metrics schema `1.3.0` (`profiles_sha256`); the table has a row "Part 5 `analyse --profile`" and
   the analysis row names `profile`; `part5 doctor --for part7` notes the profile ("scores compare within one profile",

@@ -1,7 +1,7 @@
 """The page's pure logic, run in Node against the real payload (docs/specs/viewer.md, AC-V01 to AC-V04).
 
-`web/joints.js` (fallback mapping, jump target, highlight window) and `Playback` in `web/viewer.js`
-have no DOM, so Node imports them directly. The producer's own mapping is the reference
+`web/joints.js` (fallback mapping, jump target, highlight window) and `Playback`, `groundFrame`, `groundClip`
+and `boundsOf` in `web/viewer.js` (AC-V22) have no DOM, so Node imports them directly. The producer's own mapping is the reference
 (`part5.joints_map.fault_joints`, ADR-0006: the two tables are tested against each other).
 """
 import json
@@ -302,3 +302,110 @@ def test_AC_V21_the_result_names_a_mode_other_than_fitness(analysis, note):
 def test_AC_V21_no_mode_sentence_has_an_em_dash_an_en_dash_or_a_spaced_hyphen():
     notes = [mode_page("j.profileNote(payload)", {"profile": name}) for name in ("dance", "rehab")]
     assert not [n for n in notes if any(mark in n for mark in (chr(0x2014), chr(0x2013), " - "))]
+
+
+# ----------------------------------------------------------------------------- AC-V22: each skeleton stands on the floor
+
+ONE_MM = 0.001
+GROUND_SCRIPT = (f'import {{ FLOOR_Y, groundClip, groundFrame, boundsOf }} from "{VIEWER_URL}";\n')
+
+
+def stand(joints):
+    """A 17 joint frame from {index: [x, y, z]}; every other joint is masked (null)."""
+    return [joints.get(i) for i in range(17)]
+
+
+def test_AC_V22_the_lowest_joint_of_a_frame_is_put_on_the_floor_and_x_and_z_are_left_alone():
+    frame = stand({0: [0.01, 0.52, 0.03], 11: [-0.1, 0.0, 0.0], 12: [0.1, 0.0, 0.0], 15: [-0.12, -0.62, 0.05],
+                   16: [0.13, -0.58, -0.04]})
+    out = run_node(GROUND_SCRIPT + "console.log(JSON.stringify({ floor: FLOOR_Y, frame: groundFrame(payload) }));", frame)
+    grounded = out["frame"]
+    assert grounded[15][1] == pytest.approx(out["floor"], abs=ONE_MM)      # the lowest joint stands on the floor
+    assert [round(j[1] - out["floor"], 6) for j in grounded if j] == [1.14, 0.62, 0.62, 0.0, 0.04]
+    assert [j[0::2] for j in grounded if j] == [j[0::2] for j in frame if j]  # x and z untouched (hip midpoint stays at 0)
+    assert [j is None for j in grounded] == [j is None for j in frame]        # a masked joint stays masked
+
+
+def test_AC_V22_the_lowest_of_all_joints_decides_so_a_lying_pose_lies_on_the_floor():
+    lying = stand({0: [0.0, -0.05, 0.9], 11: [-0.1, 0.0, 0.0], 12: [0.1, 0.0, 0.0], 15: [-0.1, 0.02, -0.8],
+                   16: [0.1, 0.03, -0.8], 9: [-0.3, -0.31, 0.2]})                  # the left wrist is the lowest joint
+    out = run_node(GROUND_SCRIPT + "console.log(JSON.stringify(groundFrame(payload)));", lying)
+    assert min(j[1] for j in out if j) == pytest.approx(0.0, abs=ONE_MM)
+    assert out[9][1] == pytest.approx(0.0, abs=ONE_MM) and out[15][1] > 0.3     # not the ankles
+
+
+def test_AC_V22_the_body_does_not_jump_when_the_feet_trade_places():
+    left_lower = stand({11: [-0.1, 0.0, 0.0], 12: [0.1, 0.0, 0.0], 15: [-0.1, -0.800, 0.0], 16: [0.1, -0.795, 0.0]})
+    right_lower = stand({11: [-0.1, 0.0, 0.0], 12: [0.1, 0.0, 0.0], 15: [-0.1, -0.795, 0.0], 16: [0.1, -0.800, 0.0]})
+    out = run_node(GROUND_SCRIPT + "console.log(JSON.stringify(payload.map(groundFrame)));", [left_lower, right_lower])
+    hips = [frame[11][1] for frame in out]
+    assert abs(hips[0] - hips[1]) < 0.01 and min(hips) == pytest.approx(0.8, abs=0.01)
+
+
+def test_AC_V22_a_frame_with_no_joint_to_stand_on_is_returned_as_it_is():
+    script = GROUND_SCRIPT + ("const none = Array(17).fill(null); const nan = Array(17).fill([0, NaN, 0]);\n"
+                              "console.log(JSON.stringify({ none: groundFrame(none), nan: groundFrame(nan).map((j) => Number.isNaN(j[1])),"
+                              " empty: groundFrame([]), clip: groundClip([]) }));")
+    out = run_node(script, None)
+    assert out["none"] == [None] * 17 and out["empty"] == [] and out["clip"] == []
+    assert out["nan"] == [True] * 17            # a joint with no usable height decides nothing and is not moved
+
+
+def real_replays():
+    """Replays of a squat with a foot fault, a shallow squat and a yoga class against the squat (a different pose set)."""
+    shallow = next(t["id"] for t in api._samples_listing()["followers"]
+                   if t["set"] == "exercise" and t["angle"] == "front" and t["light"] == "good"
+                   and t["faults"] and t["faults"][0]["type"] == "knees_shallow")
+    foot = next(t["id"] for t in api._samples_listing()["followers"]
+                if t["set"] == "exercise" and t["faults"] and t["faults"][0]["type"] == "foot_out")
+    pairs = [("exercise", foot), ("exercise", shallow), ("part3-squat", "part2-class")]
+    return [analysed(expected, follower)["replay"] for expected, follower in pairs]
+
+
+def test_AC_V22_in_every_frame_each_skeletons_lowest_joint_is_within_1_mm_of_the_floor_and_the_hip_stays_centred():
+    replays = real_replays()
+    script = GROUND_SCRIPT + (
+        "const lowest = (frame) => Math.min(...frame.filter(Boolean).map((j) => j[1]));\n"
+        "const hipOff = (frame) => (frame[11] && frame[12]) ? Math.max(Math.abs(frame[11][0] + frame[12][0]),"
+        " Math.abs(frame[11][2] + frame[12][2])) / 2 : 0;\n"
+        "const out = payload.map((replay) => { const clips = { expected: groundClip(replay.expected), follower: groundClip(replay.follower) };\n"
+        "  const frames = [...clips.expected, ...clips.follower];\n"
+        "  const raw = [...replay.expected, ...replay.follower];\n"
+        "  return { floor: FLOOR_Y, frames: frames.length, lowest: frames.map(lowest), hipOff: frames.map(hipOff),\n"
+        "    wasOff: raw.map(lowest), bounds: boundsOf(clips), topY: Math.max(...frames.flat().filter(Boolean).map((j) => j[1])) }; });\n"
+        "console.log(JSON.stringify(out));")
+    out = run_node(script, replays)
+    for replay, got in zip(replays, out):
+        assert got["frames"] == len(replay["expected"]) + len(replay["follower"]) > 150
+        assert all(abs(y - got["floor"]) <= ONE_MM for y in got["lowest"]), "every frame stands on the floor"
+        assert max(got["hipOff"]) <= ONE_MM, "the hip midpoint stays at x = z = 0"
+        assert max(got["wasOff"]) - min(got["wasOff"]) > 0.1, "the replay itself lifts the feet, which is what this fixes"
+        # the camera target and the distance come from the grounded positions, not the hip-anchored ones
+        assert got["bounds"]["centre"][1] == pytest.approx((got["floor"] + got["topY"]) / 2, abs=ONE_MM)
+
+
+def test_AC_V22_the_camera_stands_where_the_bounding_sphere_fits_whole_from_every_preset():
+    """The distance is radius over the sine of half the field of view, so the sphere's edge meets the view's edge and no
+    joint is outside the view cone, however near the camera it is (the tangent left the nearer foot 0.4 px out, N4)."""
+    script = GROUND_SCRIPT.replace("boundsOf }", "boundsOf, fitDistance, FOV_DEG }") + (
+        "const half = (FOV_DEG / 2) * Math.PI / 180;\n"
+        "const sphere = [0.5, 0.86, 1.4].map((r) => Math.asin(r / fitDistance(r)) - half);\n"
+        "const dirs = [[0, 0, 1], [1, 0, 0], [0, Math.cos(0.02), Math.sin(0.02)]];\n"
+        "const worst = payload.map((replay) => { const clips = { expected: groundClip(replay.expected), follower: groundClip(replay.follower) };\n"
+        "  const { centre, radius } = boundsOf(clips); const d = fitDistance(radius);\n"
+        "  return Math.max(...dirs.flatMap((dir) => { const cam = centre.map((c, i) => c + dir[i] * d);\n"
+        "    const axis = centre.map((c, i) => c - cam[i]); const norm = (v) => Math.hypot(...v);\n"
+        "    return [...clips.expected, ...clips.follower].flat().filter(Boolean).map((j) => { const v = j.map((x, i) => x - cam[i]);\n"
+        "      return Math.acos(v.reduce((s, x, i) => s + x * axis[i], 0) / (norm(v) * norm(axis))); }); })) - half; });\n"
+        "console.log(JSON.stringify({ sphere, worst }));")
+    out = run_node(script, real_replays())
+    assert all(abs(gap) < 1e-9 for gap in out["sphere"])                  # the sphere's edge is the view's edge
+    assert all(gap <= 1e-9 for gap in out["worst"]), out["worst"]         # no joint of any replay is outside the view cone
+
+
+def test_AC_V22_the_page_draws_the_grounded_clips_and_puts_the_grid_at_the_floor():
+    source = (ROOT / "web/viewer.js").read_text()
+    assert "clips.expected[frame]" in source and "clips.follower[followerFrame]" in source
+    assert "replay.expected[frame]" not in source and "replay.follower[followerFrame]" not in source
+    assert "boundsOf(clips)" in source and "boundsOf(next)" not in source
+    assert "grid.position.set(0, FLOOR_Y - GRID_DROP, 0)" in source

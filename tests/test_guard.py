@@ -22,6 +22,11 @@ SCHEMA = json.loads((ROOT / "contracts/analysis.schema.json").read_text())
 # The plain-words warning text of a low match, locked here word for word (ADR-0012).
 REFUSAL_TEXT = ("This take doesn't closely match the trainer's movement, so the grade is capped at F. "
                 "Check that you picked the right movement and that the whole movement is in the take.")
+# The status text of an analysed take, locked word for word (ADR-0012 note of 2026-11-01, AC-W07): a take with no warning
+# keeps the first; a warned one says how many warnings cap the grade at F.
+OK_TEXT = "Compared with the expected movement."
+ONE_WARNING_TEXT = "Compared with the expected movement, with a warning that caps the grade at F."
+TWO_WARNINGS_TEXT = "Compared with the expected movement, with 2 warnings that cap the grade at F."
 
 
 def clip_path(name):
@@ -133,7 +138,9 @@ def test_ac005_every_seed_5_take_is_accepted_against_its_own_expected_clip():
     for t in LABELS["takes"]:
         res = seed5_run(t, t["expected"])
         assert res.guard.ok, (t["take_id"], res.guard.stats)
-        assert res.analysis["status"] == {"code": "ok", "text": "Compared with the expected movement."}
+        # OK_TEXT is the text of a take with no warning only (AC-W07); none of the tuning takes is warned
+        assert not res.analysis.get("warnings"), t["take_id"]
+        assert res.analysis["status"] == {"code": "ok", "text": OK_TEXT}
         residuals.append(res.guard.stats["residual"])
         corrs.append(res.guard.stats["timing_corr"])
     assert max(residuals) < limits["max_residual"] and min(corrs) > limits["min_timing_corr"]
@@ -158,6 +165,63 @@ def test_ac004_every_take_of_the_other_movement_is_a_low_match_graded_f():
         residuals.append(res.guard.stats["residual"])
         corrs.append(res.guard.stats["timing_corr"])
     assert min(residuals) > limits["max_residual"] or max(corrs) < limits["min_timing_corr"]
+
+
+def head_only_follower():
+    """A ref to an exercise take with everything but the head marked outside the image: `not_enough_visible` and
+    `no_usable_measures`, two warnings (the take cannot be aligned)."""
+    from part5.io import JOINTS
+    path = next((ROOT / "fixtures/input/followers/exercise").glob("exercise_45_good_00*/skeleton.json"))
+    doc = json.loads(path.read_text())
+    seen = ("nose", "left_eye", "right_eye")
+    for frame in doc.get("frames") or doc["keyframes"]:
+        frame["conf"] = {j: (1.0 if j in seen else 0.3) for j in JOINTS}
+    return {"path": str(path), "doc": doc}
+
+
+def blind_follower(tmp_path):
+    doc = json.loads(clip_path("exercise").read_text())
+    for f in doc["frames"]:
+        f["conf"] = {j: 0.0 for j in f["joints"]}
+        f["joints"] = {j: None for j in f["joints"]}
+    path = tmp_path / "blind.json"
+    path.write_text(json.dumps(doc))
+    return str(path)
+
+
+def test_ac_w07_a_take_with_one_warning_says_the_warning_caps_the_grade_at_f():
+    take = next(t for t in LABELS["takes"] if t["set"] == "dance")
+    a = seed5_run(take, "fixtures/input/expected/exercise/animation.json").analysis   # a low match, an aligned take
+    assert [w["code"] for w in a["warnings"]] == ["low_match"]
+    assert a["status"] == {"code": "ok", "text": ONE_WARNING_TEXT}
+    assert not list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(a))
+
+
+def test_ac_w07_a_take_that_cannot_be_aligned_gets_the_same_text(tmp_path):
+    a = run(str(clip_path("exercise")), blind_follower(tmp_path)).analysis   # _unaligned: no_usable_measures only
+    assert [w["code"] for w in a["warnings"]] == ["no_usable_measures"]
+    assert a["status"] == {"code": "ok", "text": ONE_WARNING_TEXT}
+
+
+def test_ac_w07_a_take_with_more_warnings_says_how_many():
+    a = run(str(clip_path("exercise")), head_only_follower()).analysis
+    assert [w["code"] for w in a["warnings"]] == ["not_enough_visible", "no_usable_measures"]
+    assert a["status"] == {"code": "ok", "text": TWO_WARNINGS_TEXT}
+    assert not list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(a))
+
+
+def test_ac_w07_the_count_in_the_text_is_the_number_of_warnings():
+    from part5.pipeline import _status_text
+    assert _status_text([]) == OK_TEXT
+    assert _status_text([{"code": "a"}]) == ONE_WARNING_TEXT
+    assert _status_text([{"code": c} for c in "abc"]) == "Compared with the expected movement, with 3 warnings that cap the grade at F."
+
+
+def test_ac_w07_a_take_with_no_warning_keeps_its_text_byte_for_byte():
+    take = LABELS["takes"][0]
+    a = seed5_run(take, take["expected"]).analysis
+    assert "warnings" not in a and a["status"] == {"code": "ok", "text": OK_TEXT}
+    assert json.dumps(a["status"]) == '{"code": "ok", "text": "Compared with the expected movement."}'
 
 
 def test_the_limits_sit_in_the_gap_between_the_matched_and_the_other_movement_populations():

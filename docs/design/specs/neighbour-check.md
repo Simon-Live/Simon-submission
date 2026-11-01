@@ -8,11 +8,16 @@ Master spec: `part5-fault-analysis.md`. Companion: `integration-contract.md`. Ti
 Use case: uc-integration-contract. Milestone: M1.
 Revised 2026-10-31 for ADR-0012 (always analyse): a take that is not the example's movement is no longer refused
 with exit 3, it is analysed with a `low_match` warning and graded F, so the mismatch rows expect `warned`.
+Revised 2026-11-01 for TICKET-040 (ADR-0015): `part5 doctor` accepts a Part 2 `pose3d.json` as the optional feet
+side input (exit 0, a feet file summary), so the doctor step on Part 2's own file expects exit 0 and that summary, not
+the rejection (exit 1) it expected before. The first run after the change (run 1 of 2026-11-01) recorded the 8
+doctor steps red against the old expectation; that record stays as measured.
 
 ## Overview
 A firm-only script that clones the current upstream `main` of Parts 2, 3 and 4 into a temporary
-directory and runs the real chain on their shared files: Part 2's committed `pose3d.json` outputs go
-through Part 3 `run --view part5`, then `python -m part5 doctor --for part5`, then `python -m part5
+directory and runs the real chain on their shared files: Part 2's committed `pose3d.json` outputs are checked by
+`python -m part5 doctor --for part5` (accepted as the feet side input), go through Part 3 `run --view part5`, then
+`python -m part5 doctor --for part5` again on Part 3's output, then `python -m part5
 analyse` against Part 4's expected clips and `part3-squat`. Part 6's `CONTRACT.md` is read to confirm the
 Follow hand-off shape `{v, id, files: {keyframes, skeleton, animation, video}}`. Every step's exit code
 goes into `progress/neighbour-check-<date>.json`. A red step is reported, never hidden.
@@ -31,7 +36,14 @@ As the team at stitching time, I see whether today's Parts 2, 3 and 4 files go t
 1. Clone `moalborati/simon-part-2-images-to-3d`, `moalborati/simon-part-3-skeleton-consistency` and
    `moalborati/simon-part-4-animate-keyframes`, and read `moalborati/simon-part-6-recording-catalog` `CONTRACT.md`
    (shallow `git clone`; names confirmed with `gh repo list the team` on 2026-10-28). Record each commit.
-2. For each committed Part 2 `pose3d.json` (single, class, dance): Part 3 `python3 -m part3 run --in ...
+2. For each committed Part 2 `pose3d.json` (single, class, dance, `scored/single` and every `stock/<clip>`), two steps.
+   First `python -m part5 doctor <pose3d.json> --for part5`. Since TICKET-040 the doctor accepts the file as the optional
+   feet side input (ADR-0015; `part5/doctor.py` `_for_part5_pose3d`, `integration-contract.md` AC-C11), so the step
+   passes only on exit 0 and an output that holds the kind line `part2.pose3d (Part 2); accepted for part5`, one note
+   with the feet file summary (`feet side input for --expected-feet or --follower-feet: foot points in N of M frames,
+   people ids [...]`, or `no foot points (no extra_joints in any frame ...)`) and the validator line `validator:
+   part5.feet.file_summary`. That summary note is kept in the step's note. Exit 1 (the outcome before TICKET-040,
+   "run Part 3 --view part5") is red, and so is exit 0 without those lines. Then Part 3 `python3 -m part3 run --in ...
    --out <tmp> --view part5` in its clone.
 3. `python -m part5 doctor <out> --for part5` on each.
 4. `python -m part5 analyse` on every pair in the table below; each step passes when its outcome is the
@@ -42,6 +54,15 @@ As the team at stitching time, I see whether today's Parts 2, 3 and 4 files go t
    the reason, never as a pass.
 6. `doctor` on Part 4's `animation.json` files and Part 3's `--view part4` output (expected clip role).
 7. Hand-off shape in Part 6's `CONTRACT.md` matches `integration-contract.md`; mismatch is a red step.
+
+### Expected outcome per doctor step (`python -m part5 doctor <F> --for part5`)
+| File F | Expected | Why |
+|---|---|---|
+| each committed Part 2 `pose3d.json` (step 2) | exit 0 and the feet file summary in the output | the optional feet side input (ADR-0015); it is not a clip, and the note says to run Part 3 `--view part5` for the body |
+| Part 3 `--view part5` output of each of them (step 3) | exit 0 | a follower clip Part 5 reads |
+| Part 4 `animation.json` files, Part 3's golden follower and golden `--view part4` output, the live `--view part4` run (step 6) | exit 0 | expected or follower clips |
+| Part 3's native `skeleton.native.json` (step 6) | exit 1 | rejected with "rerun Part 3 with --view part5" |
+| the event detail and the framed message built from Part 6's `CONTRACT.md` (step 7) | exit 1 | named as the hand-off and rejected with the fix |
 
 ### Expected outcome per pair (`analyse --expected <E> --follower <F>`)
 | Follower F | Expected E | Expected outcome | Why |
@@ -69,6 +90,13 @@ step met its expectation, 1 when any step is red, 3 on a named blocker (network,
 `mktemp -d`, removed by a trap with `find -delete` on that exact prefix (never `rm -rf` on a variable);
 `--keep` leaves it and prints the path.
 
+Records and the newest one. The script writes the file of the current UTC date and overwrites it, so a second run on
+one date keeps the first by renaming it to `progress/neighbour-check-<YYYYMMDD>-run<N>.json` before the rerun (as
+`neighbour-check-20261101-run1.json` is). The newest record is the file whose name sorts last in the C locale
+(`ls progress/neighbour-check-*.json | LC_ALL=C sort | tail -n 1`): the date is the sort key, and on one date the
+unsuffixed `<YYYYMMDD>.json` (the latest run of the day) sorts after every `-run<N>` copy, because `-` sorts before
+`.`. The QA recipe `neighbour-check-record` and `tests/neighbour/test_neighbour_check.py` read the newest record by that rule.
+
 ## Acceptance Criteria
 ### AC-N01: chain recorded
 Given a run, the JSON lists every step with its command and exit code and each repo's commit.
@@ -83,6 +111,11 @@ from the file: an exit 0 with no warning, or a grade above F, is red, and so is 
 Given no network, exit 3 with `blocker` naming the failed clone.
 ### AC-N05: never published
 Given `scripts/simon-publish.sh --dry-run`, `scripts/neighbour-check.sh` is not listed.
+### AC-N06: Part 2's pose3d.json is accepted as the feet side input
+Given each committed Part 2 `pose3d.json`, the doctor step passes only when `part5 doctor <file> --for part5` exits 0
+and its output holds the kind line, the feet file summary note and the validator line `part5.feet.file_summary`; the
+summary is kept in the step's note. Exit 1 (the rejection of before TICKET-040) is red, and so is exit 0 without
+one of those lines (the step then records exit 4 and names the missing line).
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |
@@ -118,6 +151,13 @@ ASM-001 (neighbour file shapes). The repo names were listed with `gh repo list t
 Kept: a setup failure is reported as red with the message, which is what stitching day needs to know.
 ### Concern 2: expectations hard-coded per step
 Kept: the expectations are the use cases (a warning and grade F for a different movement), not tuned numbers.
+### Concern 3: an expectation changed after a red run
+The doctor step on Part 2's `pose3d.json` expected exit 1 until 2026-11-01. Run 1 of that day recorded 8 red steps
+(`progress/neighbour-check-20261101-run1.json`, kept as measured). The cause is the expectation, not a neighbour:
+`part5 doctor` has read that file as the feet side input since TICKET-040 (`part5/doctor.py` `_for_part5_pose3d`,
+`integration-contract.md` row "Part 2 pose3d.json" and AC-C11, `foot-keypoints.md` AC-FOOT-15, `tests/test_doctor.py`
+`test_ac_c11_part2_pose3d_is_named_accepted_as_a_feet_input_and_not_a_clip`). The expectation now follows that
+documented behaviour and also checks the feet summary in the output, so a doctor that exits 0 for the wrong reason is red.
 
 ## Deviations from PRD
 None.

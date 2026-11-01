@@ -14,6 +14,8 @@ is marked and cannot be downloaded); the recipes name the files their drives sav
 Mode select of 2026-10-31 (lane profiles-web, TICKET-042, ADR-0016): the API takes an optional `profile`, `api/samples`
 lists the modes, and verify and a recipe drive the page's "Mode" select (`viewer.md` AC-V21, `profiles.md` AC-PROF-15).
 Delivery fixes of 2026-10-31 (lane delivery-fixes): the API analyses a labelled sample with its foot files (AC-S10).
+Walkthrough notes of 2026-11-01 (lane qa-notes-web, TICKET-057): the picker words every label in the analysis's timed words
+(AC-S10, WR9), the walkthrough files and their review frames are named, with one key-moment frame per step (WR5, WR1, WR6).
 Milestones: S0 (target 2026-10-29), M3 (target 2026-11-01). Use cases: uc-analyse-take, uc-correct-take,
 uc-wrong-movement, uc-real-takes.
 
@@ -88,7 +90,8 @@ As a follower, I pick or upload the expected movement and my take and see each f
   `python3` with numpy importable, decided at TICKET-008 and recorded), `down.sh`, `health.sh` (only
   `STAGING_PORT`, default base path, exit 0 when `api/health` answers), `verify.sh [<base-url>]`,
   `verify.mjs` (with the modules it imports, each under 800 lines: `verify-kit.mjs` for the helpers every drive shares,
-  `verify-modes.mjs` for the Mode select, `verify-wording.mjs` for the wording select), `walkthrough.mjs`, `DEMO.md`
+  `verify-modes.mjs` for the Mode select, `verify-wording.mjs` for the wording select and the picker's label words),
+  `walkthrough.mjs`, `walkthrough-frames.sh` (the key-moment frames of the recording, "QA recipes and video"), `DEMO.md`
   (visitor sections only under "For visitors").
 - No secret is committed or copied into the staging tree; the only key the server may read is the
   operator key file above, from its firm location.
@@ -124,17 +127,40 @@ checks run on a stubbed listing and a stubbed answer that echoes the mode asked 
 delivery fixes add (AC-S10) a foot-fault take (Take 09, the right foot turned out) analysed with Template wording: the
 page shows a foot rotation fault line and not "No faults found", and the answer carries `diagnostics.feet` with
 repo-relative sources; Take 11 (the left ankle roll), whose picker label and shown ankle line name the same roll
-direction; and (AC-V10) at 390 px every visible tab, button, select, file picker and the scrubber is at
-least 44 px tall. The exit code is the verdict.
+direction; Take 03 (the right foot planted too far out), whose picker label says "too far right" like the row the page
+then shows and never "too far out" (AC-S10 for every measure); and (AC-V10) at 390 px every visible tab, button, select,
+file picker and the scrubber is at least 44 px tall, the visible "Choose File" button of each file picker included, and
+the preview's field name "Why the grade is limited" is one line. The exit code is the verdict.
 
 ## QA recipes and video
 - Recipes with the `qa-recipe` skill (ADR-0020), one per use case driven on staging: each edge driven by
   hand through the real UI, two independent witnesses, a negative assertion (for example a warned take is
   never called a correct take; a correct take shows no fault rows).
-- `demo/staging-walkthrough.mp4` recorded through the staging gateway address, under 90 s and
-  under 15 MB, H.264: pick, Analyse (score, timed lines), replay, tap a fault, upload, a different movement
-  warned and graded F, preview at phone width. The recording chooses Template before each Analyse (AC-V19),
-  so it makes no live call.
+- The walkthrough is two videos in `demos/videos/`, `staging-walkthrough-desktop.mp4` (1100x800) and
+  `staging-walkthrough-phone.mp4` (390x844), H.264, each converted from its own recording and never joined
+  (`staging/walkthrough.mjs` records each browser page as its own video). Both are gitignored (`.gitignore`, `*.mp4`);
+  what is committed is `demos/videos/frames-desktop/`, `demos/videos/frames-phone/` and `demos/videos/orchestrator-review.md`,
+  the review the orchestrator writes before any reviewer runs (what was recorded, when, from which commit, and what each
+  frame shows). They are recorded through the firm gateway at the staging gateway address, by
+  `staging.sh exec simon-part-5 -- env P5_DRIVE=walkthrough bash staging/verify.sh` (the login reaches the
+  browser as HTTP credentials and is never printed), so the page they show is the one the gateway serves. Limits, per
+  file and together: each file under 90 s and under 15 MB, and the two together under 90 s and under 15 MB
+  (`walkthrough.mjs` refuses a recording over 88 s, so a joined video would also stay under 90 s); no still stretch of
+  5 s in either (`ffmpeg freezedetect n=-60dB:d=5` finds none, so a hold is never lengthened to give a frame more time).
+  The steps, in order: pick, Analyse (score, timed lines), replay, tap a fault, upload, a different movement warned and
+  graded F, the real takes, and on the phone the preview at phone width. The recording chooses Template before each
+  Analyse (AC-V19), so it makes no live call.
+- Review frames, read from the videos. The sampled frames (`frame-NNNN.png`, one every 4 s of the desktop video and one
+  every 3 s of the phone video) stay as they were. After recording, one settled key-moment frame per step is added
+  (TICKET-057, walkthrough review R1 and R6): `key-NN-<step>.png` in the segment's frames folder, `NN` counting the steps
+  of that video, `<step>` one of `pick`, `score` (the score line, "Score: 84 out of 100, grade B"), `replay` (with the
+  timed fault line), `tap-fault`, `upload`, `warned` and `real-takes` on desktop and `preview` on the phone.
+  `walkthrough.mjs` writes `walkthrough-key-moments.txt` next to the videos, one `<segment> <step> <seconds>` line per
+  step, each taken at the end of a hold the drive already makes, so recording adds no pause and the length stays as it
+  was. `staging/walkthrough-frames.sh <key-moments.txt> <desktop video> <phone video> [<frames-root>]` then reads each
+  frame 0.4 s before its instant, inside the hold (exit 0 every frame written, 1 a frame could not be read, 2 a bad
+  argument or line; `<frames-root>` defaults to `demos/videos`). The orchestrator records and commits them; this step
+  is the one command that turns a recording into the frames.
 
 ## Acceptance Criteria
 ### AC-S01: S0 live
@@ -181,7 +207,7 @@ direction and side, without a quality word, and `faults[].type` and `side` are t
 roll) reads "Take 11: Left ankle rolling out" and its analysed fault line reads "left ankle rolling out slightly", so the
 two point the same way; before this criterion the picker said "rolled in" over a result that said "rolling out", because
 the label file keeps its old wording on purpose (`foot-keypoints.md`, "The ankle label ids read the old way round").
-Every other label keeps its own `text`. Every generated take's picker label starts "Take NN:" with the take's own number,
+Every generated take's picker label starts "Take NN:" with the take's own number,
 the digits after the light field of its id (`part5/api.py` `_take_number`); the 45 degree takes were all numbered "Take 45"
 because the first digit group of their id is the angle, and front and side labels keep their numbers. Tests
 (`tests/test_api.py`):
@@ -189,10 +215,45 @@ because the first digit group of their id is the angle, and front and side label
 `test_front_and_side_labels_keep_the_number_they_had`,
 `test_every_foot_take_is_worded_in_the_picker_and_the_listing_as_the_analysis_words_it`,
 `test_the_ankle_label_ids_and_the_label_file_keep_their_old_words_and_only_the_page_changes`,
-`test_a_take_with_no_foot_fault_keeps_the_words_of_its_label`,
 `test_take_11_picker_label_and_its_analysed_fault_line_point_the_same_way`; `staging/verify.mjs` (`driveFootLabel`, called
 by `driveFootFault`) picks Take 11 and checks the option's roll word, the listed fault's and the ankle line the page then
 shows.
+
+The picker words every label, not only the foot ones (walkthrough review R9, TICKET-057). Given `GET api/samples`, the
+picker `label` and the listed `faults[].text` of every generated take and every Part 3 kit take are the analysis's timed
+words for the label's own measure, direction and side, without the time and without a quality word:
+`words.phrase_timed(measure, direction, side)`,
+the line `faults[].text_timed` carries before its " at N s", at the plain size because a label does not know the measured
+size. `lateral` is derived from the label's side and direction as the analysis derives it (`lateral_for`, inside
+`phrase_timed`), so Take 03 reads "Take 03: Right foot too far right", not "too far out", over a result that says "right
+foot too far right at 1.9 s". `faults[].type` and `side` stay the label's own. The kit's labels name their measures in
+Part 3's own vocabulary, which `evaluate.canonical_label` (the matching rule, unchanged) does not know, so a kit type is
+worded through `real.KIT_TYPE_MAP`, the map the real-take report already matches the kit by, with the label's side:
+`feet_wide` reads "Feet too far apart" (it was "Feet too wide"), `elbows_out` "Elbows wider than the example" (it was
+"Elbows too far out"), `shallow_squat` "Knees not bent enough" (it was "Knees not bent enough at the bottom") and
+`knee_caving` "Left knee caving in" (it was "Left knee caves in at the bottom"), for the front, 45 degree and side kit takes
+alike; the kit's labels file keeps its own words. Only a label of a type neither map knows, or with no direction or a side
+its measure does not take, keeps its own `text`. Label ids, the label files and every fixture byte are unchanged, and so is
+every `analysis.json`. Property: for every seed 5 good light take and every kit take whose analysis reports its labelled
+fault on the label's own side, the picker words equal that fault's `text_timed` with " at N s" removed and with the size
+word removed (`slightly`, `much`, `not quite`, `nowhere near`; those are the measured size, which only the analysis knows),
+in sentence case; on the other takes (a label that names both sides where the analysis reports one) the picker still says
+the analysis's words for the label's own side. Checked on 2026-11-01 over all 156 generated takes and the 15 kit takes
+against the analysis of each: 115 of the 126 labelled faults that the analysis reports read the same, the other 11 are
+labels naming both sides over a result that names one (plural against singular, same direction), and 30 are not reported
+at all, so there is nothing to compare. Tests
+(`tests/test_api_picker_words.py`):
+`test_every_generated_label_is_worded_as_the_analysis_words_it_timed_and_the_label_files_are_unchanged`,
+`test_take_03_is_listed_as_too_far_right_and_never_as_too_far_out_while_its_result_says_too_far_right`,
+`test_for_every_good_light_take_whose_analysis_reports_its_labelled_fault_the_picker_words_are_its_timed_words`,
+`test_a_correct_take_keeps_its_words_and_a_label_the_analysis_has_no_words_for_keeps_its_own_text`,
+`test_the_size_words_are_the_ones_the_analysis_uses`; in `tests/test_api.py`
+`test_the_kit_takes_are_listed_with_the_kit_labels_and_no_invented_light`; and, in `tests/test_words.py`,
+`test_phrase_timed_is_what_describe_timed_says_at_every_size` and
+`test_phrase_timed_derives_the_lateral_from_the_side_and_direction_as_the_analysis_does`; `staging/verify.mjs`
+(`driveLateralLabel` in `verify-wording.mjs`) picks Take 03 and checks that "too far out" is absent from its label while the
+row the page then shows says "too far right at N.N s". Negative assertion: no picker label or listed fault of Take 03 reads
+"too far out".
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |
@@ -251,6 +312,12 @@ Kept: it lets the browser render without parsing uploads twice and keeps the ali
 - 2026-10-31 (delivery review N1): `part5/api.py` words a foot take's picker label and its listed `faults[].text` in the
   analysis vocabulary (AC-S10), so Take 11 no longer says "rolled in" over a result that says "rolling out". The label
   file keeps its words; `api/samples` still lists the label's own `type` and `side`.
+
+- 2026-11-01 (walkthrough review R9, lane qa-notes-web, TICKET-057): AC-S10 extends from the foot takes to every measure.
+  `part5/api.py` words each picker label and each listed `faults[].text` in the analysis's timed words without the time
+  (`words.phrase_timed`, the timed vocabulary `describe_timed` already used), so Take 03 reads "Right foot too far right"
+  and no longer "too far out" over a result that says "too far right". Label ids, label files and fixture bytes are
+  unchanged; so is every `analysis.json`. The log line of 2026-10-31 above stays true for the foot takes.
 
 ## Deviations from PRD
 None.

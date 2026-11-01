@@ -224,6 +224,12 @@ LANDMARKS = {
 TIME = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s?(?:seconds?|secs?|s)\b")
 _LATERAL = re.compile(r"\b(?:too far (?:to the )?|to the |toward the )(left|right)\b")
 _OPPOSITE = {"more": "less", "less": "more"}
+# A negation within three words before a lateral phrase turns it round ("is not too far to the right", "isn't",
+# "aren't", "no longer", "never"), as `_neg` does for the other direction words. The three words are those of the
+# same clause.
+_NEGATION = re.compile(r"\b(?:not|never|no longer|\w+n't)\b")
+_CLAUSE_END = re.compile(r"[.;:!?]")
+NEGATION_REACH_WORDS = 3
 
 # A fault line reports a fault: it carries no praise (ADR-0008 Amendments, R2). Live Muse Spark wrote
 # "Your knees are not bent enough at 1.4 s, nice effort." because the prompt once offered the phrase. The prompt
@@ -276,12 +282,21 @@ def _timed_body(fault, text):
     return f"adds another body part ({extra[0]})" if extra else None
 
 
+def _negated(text, start):
+    """True when a negation sits within `NEGATION_REACH_WORDS` words before `start`, in the same clause of `text`."""
+    clause = _CLAUSE_END.split(text[:start])[-1]
+    return bool(_NEGATION.search(" ".join(re.findall(r"[\w']+", clause)[-NEGATION_REACH_WORDS:])))
+
+
 def _timed_direction(fault, text):
-    """`too far <lateral>` counts as the fault's direction; the other side's word as the opposite."""
+    """`too far <lateral>` counts as the fault's direction; the other side's word as the opposite. A negation within
+    three words before either ("is not too far to the right") counts as the opposite: a negated phrase never carries
+    the fault's direction, so that line fails for a fault that is far right."""
     lateral, hits = fault.get("lateral"), set()
     if lateral:
-        for word in _LATERAL.findall(text):
-            hits.add(fault["direction"] if word == lateral else _OPPOSITE[fault["direction"]])
+        for found in _LATERAL.finditer(text):
+            same = found.group(1) == lateral and not _negated(text, found.start())
+            hits.add(fault["direction"] if same else _OPPOSITE[fault["direction"]])
         text = _LATERAL.sub(" ", text)
     return _direction(fault, text, hits)
 

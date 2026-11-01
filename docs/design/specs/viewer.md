@@ -6,7 +6,8 @@ Request Type: new-feature
 Risk Level: medium
 Master spec: `part5-fault-analysis.md`. ADR: ADR-0006 (viewer and joint mapping). Companion: `staging.md`.
 Tickets: TICKET-007 (S0 page), TICKET-019 (per-fault joints), TICKET-021 (replay, `make demo`),
-TICKET-022 (upload, phrasing switch, real-takes list), TICKET-023 (result preview).
+TICKET-022 (upload, phrasing switch, real-takes list), TICKET-023 (result preview), TICKET-057 (grounded replay, phone file
+button and preview field names).
 Staging page follow-up (lane stage-j1, 2026-10-31): the page follows ADR-0012 (always analyse), J1
 (`journey-followup.md`, ADR-0007 to ADR-0009: timed line and score) and ADR-0014 (insights). Delivery review
 residual R1 (2026-10-31): the wording select starts on the server's live default (AC-V19, ADR-0008).
@@ -14,6 +15,8 @@ Staging QA fixes (lane fix-ux, 2026-10-31): the wording hint follows the current
 that no longer matches the choice is marked and loses its download (AC-V20).
 Mode select (lane profiles-web, 2026-10-31, TICKET-042, ADR-0016): the "Mode" select, the mode line in the result and
 the mode as part of the stale-result choice (AC-V21); `profiles.md` AC-PROF-15 is the same behaviour seen from the field.
+Walkthrough notes (lane qa-notes-web, 2026-11-01, TICKET-057): each skeleton of the replay stands on the floor grid
+(AC-V22), the visible "Choose File" button and the preview's field names are sized for the phone (AC-V10).
 Upstream: #16 (isolated demo). Milestone: M3.
 
 ## Overview
@@ -31,8 +34,8 @@ it is never copied from another part's repo.
 ## Why This Is Wrong (Dissent-First)
 1. Highlighting `elbow` or `spine` needs a mapping the viewer can get wrong. Answer: the producer writes
    canonical `faults[].joints` (TICKET-019); the viewer's table is a fallback for 1.0 files only.
-2. Two skeletons overlaid at hip centre can hide a small fault. Answer: the ghost is translucent, the
-   highlighted joint is enlarged and coloured, and Front, Side and Top views are one tap away.
+2. Two skeletons aligned at the hip centre across the floor, each standing on it, can hide a small fault. Answer: the
+   ghost is translucent, the highlighted joint is enlarged and coloured, and Front, Side and Top views are one tap away.
 3. A preview screen invites being mistaken for Part 7. Answer: its heading says what it is.
 4. A grade next to a list of faults for the wrong movement looks like a verdict on the person. Answer: the
    warning panel sits right under the status line and above the faults, the grade note says why it is limited
@@ -47,7 +50,7 @@ As a follower, I see my take replayed over the expected one and tap a fault to s
 | `index.html` | page shell, import map for `vendor/three/` |
 | `app.js` | state, pickers, the Mode select (only when `api/samples` lists modes, AC-V21), Analyse, fault list, download (offered only while the result matches the choice, AC-V20), screens |
 | `api.js` | calls to `api/*` relative to the base path; `analyseBody`, the pure builder of the analysis request (it adds `profile` only when the page offered a mode, AC-V21) |
-| `viewer.js` | three.js scene: follower, ghost, bones, highlight, playback, camera presets |
+| `viewer.js` | three.js scene: follower, ghost, bones, highlight, playback, camera presets; and as pure functions the Node tests run, `Playback` (the clock), `groundFrame` and `groundClip` (a skeleton stood on the floor, AC-V22), `boundsOf`, `fitDistance`, `FOV_DEG` and `FLOOR_Y` |
 | `joints.js` | bones list, the fallback joint mapping, `sizeSentence` (the fault's size in words, shared by the fault list and the preview) and the sentences about a result, as pure functions the Compare tab, the preview and the Node tests share: `faultLine`, `isLowConfidence`, `noticesOf`, `faultsOf`, `scoreSentence`, `cappedNote`, `resultSentence`, `insightItems`, `insightSentence`, and for the wording and the stale result `defaultWording`, `wordingHint`, `isStale`, `STALE_SENTENCE`, and for the mode `profilesOffered`, `defaultProfile`, `profileLabel`, `profileNote` |
 | `preview.js` | result preview screen |
 | `style.css`, `icon.svg` | look and icon |
@@ -57,7 +60,9 @@ As a follower, I see my take replayed over the expected one and tap a fault to s
 `{fps, expected: [frame][17][x,y,z], follower: [frame][17][x,y,z], exp_to_fol: [follower frame index per
 expected frame]}`. The timeline runs on expected frames; at expected frame i the follower shows
 `follower[exp_to_fol[i]]`. A fault's jump target is the expected frame whose `exp_to_fol` value first reaches
-`follower_frames[0]`; its highlight lasts until `follower_frames[1]`.
+`follower_frames[0]`; its highlight lasts until `follower_frames[1]`. The payload anchors every frame of both clips at the
+hip midpoint (`coordinate_frame.origin`), which lifts the feet off the floor whenever the hips drop; the page draws each
+skeleton stood on the floor instead (AC-V22) and leaves the payload, `replay.json` and `simon.replay.v1` as they are.
 
 ## Fallback joint mapping (only when `faults[].joints` is absent)
 | `joint` with `side` | Highlight |
@@ -124,7 +129,15 @@ Given 390 px width, the preview screen fits without horizontal scroll and its he
 preview of its published result contract. At that width (`@media (max-width: 40rem)` in `web/style.css`) every tab,
 button, select, file picker and the scrubber is at least 44 px tall to tap, and each checkbox row and the download link
 the same; wider screens keep their sizes (delivery review R8: the tabs were 42 px, the Speed select 34 px, Play 40 px,
-the scrubber 16 px). Checked by `staging/verify.mjs` (the phone drive) and `tests/staging/test_web_files.py`.
+the scrubber 16 px). The visible native "Choose File" button inside each file picker is sized too: the input's own box was
+44 px while the button drew 24 px (walkthrough review R3), so the phone query also sets `min-height: 44px` on
+`input[type="file"]::file-selector-button` and, as its own rule, on `::-webkit-file-upload-button`. Measured in Chromium
+on 2026-11-01: the button is 24 px at 390 px before the rule and 44 px after it, and 24 px at 1100 px as before. Each name in
+the preview's field list takes the whole row at phone width (`.field-row dt`, flex basis 100%), so "Why the grade is
+limited" (222 px) is one line on the 316 px row and no longer breaks after "is" (walkthrough review R10); the preview's
+heading "Part 5's preview of its published result contract" is 496 px on one line, so it wraps as any heading that long
+does, and the wide layout keeps its 11rem name column. Checked by `staging/verify.mjs` (the phone drive reads the used
+height of `::file-selector-button` and the lines of that field name) and `tests/staging/test_web_files.py`.
 ### AC-V11: `make demo`
 Given `make demo`, the page loads on `http://127.0.0.1:8735/` with the fixtures and the replay works,
 while `scripts/dev.sh` may hold 8725.
@@ -235,6 +248,29 @@ so the page's own part is proven before the API carries the field. The recipe `c
 Negative assertion: an untouched page must not send or show a mode other than fitness and must show no mode line; a page
 for a server that lists no modes must have no Mode select and must send no `profile`; after Rehab, an Analyse with Fitness
 must not still show "Scored with rehab coaching rules."
+### AC-V22: each skeleton of the replay stands on the floor
+Given a replay, in every frame the follower and the ghost are each drawn with their lowest joint on the floor plane, at
+`FLOOR_Y` in `web/viewer.js` (0), to within 1 mm, and each keeps its hip midpoint at x = z = 0. The lowest of all the
+joints decides, not the ankles, so a pose that lies down lies on the floor and the drawing does not jump when the feet
+trade places; each skeleton is grounded on its own, frame by frame, by the same amount for every joint of that frame
+(`groundFrame`, `groundClip`; a masked joint is passed through and decides nothing, and a frame with no joint to stand on
+is drawn as it is). The grid stays at the floor, one ghost joint radius under `FLOOR_Y` so the lowest ball rests on it,
+and the bounds and the camera target come from the grounded positions (`boundsOf`). The payload, `replay.json` and
+`simon.replay.v1` do not change: the page grounds what it draws. The camera stands at the distance at which the bounding
+sphere just fits the vertical view, `fitDistance(radius)` = radius over the sine of half the field of view (`FIT` 1, was
+0.95 times the tangent form): with every frame on the floor the nearer foot in the Side view drew 4 px under the canvas at
+0.95, and the tangent form with `FIT` 1 still let a 45 degree take's nearer foot 0.4 px out; with the sine the sphere meets
+the view's edge and the lowest joint, ball included, ends 12 px or more inside the 434 px stage in the Side view
+(measured over six replays).
+Verified by `tests/test_web_logic.py` (the function in Node: the lowest joint at the floor and x and z untouched, a lying
+pose, the feet trading places, masked and empty frames; and three real replays, a squat with a foot fault, a shallow squat
+and a yoga class against the squat, where in every frame of both skeletons the lowest joint is within 1 mm of the floor,
+the hip midpoint stays at x = z = 0 and the camera target comes from the grounded bounds; that the sphere's edge is the
+view's edge and no joint of those replays is outside the view cone from Front, Side or Top; and that the page draws the
+grounded clips and puts the grid at the floor) and the recipe `compare/play-replay` (the bottom of the squat, Front and
+Side).
+Negative assertion: no frame of either skeleton has a joint below the floor plane or its lowest joint above it, and at
+the bottom of a squat neither skeleton's feet are drawn above the grid.
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |
@@ -246,6 +282,10 @@ must not still show "Scored with rehab coaching rules."
 - Masked joints (NaN) in a frame: not drawn in that frame.
 - Warnings and no faults (`no_usable_measures`): the panel and the grade F show; the list of faults stays hidden.
 - A fault with one frame: highlight lasts one frame and the scrubber still jumps.
+- A frame in which both feet are in the air (a jump) is drawn standing: the replay has no root height, so the page cannot
+  tell a jump from a squat that lifted the feet, and it stands every frame on the floor (AC-V22). Recall trigger: an
+  airborne fixture, or a replay version that carries root height. Until then a jump reads as a skeleton that stays on
+  the floor.
 
 ## Non-Functional Requirements Checklist
 | Category | Requirement | Metric | AC |
@@ -262,6 +302,8 @@ must not still show "Scored with rehab coaching rules."
 
 ## Non-Requirements
 - Editing clips, recording takes, accounts.
+- Showing a jump as a jump: a frame with both feet in the air is drawn standing (Edge Cases, AC-V22). Recall trigger:
+  an airborne fixture, or a replay version with root height.
 
 ## Assumptions
 ASM-010 (WebGL availability in the verify browser, `docs/assumptions/ASM-010.yaml`).

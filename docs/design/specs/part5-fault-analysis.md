@@ -236,8 +236,10 @@ Every new `analysis.json` is `1.5.0` and says what to do, not only what was wron
   ranked by their share of the score; a tempo item is kept last when `score.tempo.cue` is set. Without a
   timeline, one per distinct fault cue in fault order, `points` null. A `why` that points at a reported fault
   reuses that fault's timed words (`text_timed`, sentence case: "Right foot too far right at 1.9 s", then
-  " (3 of 8 reps)" or " (2 times)" when the cue missed more than once); a miss no reported fault matches and a
-  tempo item keep the plain-words templates (ADR-0014, amendment of 2026-10-31).
+  " (3 of 8 reps)" or " (2 times)" when the cue missed more than once), or, when the fault's line was written by
+  a live English model and passed the word test, the observation clause of that line at the insight's time; a miss
+  no reported fault matches and a tempo item keep the plain-words templates (ADR-0014, amendments of 2026-10-31 and
+  2026-11-01).
 - Template text only; no phrasing backend rewrites a cue. A cue for foot rotation or an ankle roll exists only when
   the pair has foot points, read from Part 2's pose3d.json (ADR-0015, `foot-keypoints.md`); the 17 joints end at the
   ankle, so without them there is none.
@@ -258,7 +260,16 @@ ACs (tests/test_cues.py):
   (same measure, side and direction) has a `why` that is that fault's `text_timed` in sentence case, time
   included ("Right foot too far right at 1.9 s"; the advice clause a centre phrase may end on is left to the
   cue; " (3 of 8 reps)" or " (2 times)" follows when the cue missed more than once), so the fault row and the
-  insight use the same words. A miss with no reported fault and a tempo item keep their plain-words `why`.
+  insight use the same words. Where that fault's `phrasing.faults[i]` has a backend other than `template`, a null
+  `fallback_reason` and `lang` `en` or absent, the `why` repeats the live line instead: its `coaching` before the
+  first ";", any closing run of "." "!" and "?" dropped, kept only if it passes `template.line_problem(fault, clause,
+  timed=True)` (else the `text_timed` form), with the one time number (the fault's `at_s` to 0.1) replaced by the
+  insight's `at_s` to 0.1 with its unit as written, the first letter capitalised and the same count appended: "At
+  1.4 s, your knees are not bent enough." is "At 1.4 s, your knees are not bent enough (2 of 2 reps)"; "Your right
+  foot drifts too far to the right at 1.9 s; keep it under your hip", first missed at 1.7 s in 3 of 8 reps, is
+  "Your right foot drifts too far to the right at 1.7 s (3 of 8 reps)". A template, fallback or translated line
+  (`lang` not `en`), a miss with no reported fault and a tempo item keep today's `why`. The same document always
+  gives the same insights.
 - AC-CUE-08: one miss in 60 s and ten in 600 s give scores within 3 points and the same insight points within 0.5.
 - AC-CUE-09: `validate_analysis` and the schema reject a cue over 6 words, a wrong kind, a broken insight; a
   document without cues still validates; `part5 doctor --for part7` notes a document written before 1.5.0.

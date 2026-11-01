@@ -45,6 +45,15 @@ Every warned document validates against the current schema.
 Only `AlignmentError` (`part5.align`) turns into `low_match` when a pair cannot be aligned. Any other `ValueError`
 from the alignment is a defect and surfaces; catching it as a low match would grade an internal bug F.
 
+## Note (2026-11-01): `status.text` names the cap
+A take analysed with a warning carried the same `status.text` as a clean one, "Compared with the expected movement.",
+so a reader that showed the status line alone said nothing of the warning that capped the grade at F. The text now
+says it: with one warning, "Compared with the expected movement, with a warning that caps the grade at F."; with more
+than one, "Compared with the expected movement, with 2 warnings that cap the grade at F." (the number of warnings in
+place of 2). `status.code` stays `ok`, `warnings[].text` still say what each warning is, and a take with no warning
+keeps "Compared with the expected movement." byte for byte. The choice is made once, in `pipeline._finish`, so a
+take that could not be aligned (`_unaligned`) gets it too. The text is still a non-empty string: no schema change.
+
 ## Acceptance Criteria
 - AC-W01: a readable pair is analysed: `status.code` `ok`, exit 0, whatever the match (`tests/test_cli.py`,
   `tests/test_reps.py`, `tests/test_visibility.py`).
@@ -58,3 +67,6 @@ from the alignment is a defect and surfaces; catching it as a low match would gr
   (`tests/test_review_fixes.py`).
 - AC-W06: a take that could not be aligned reports the limits of the rules the caller passed, not the defaults
   (`tests/test_review_fixes.py`).
+- AC-W07: `status.text` is "Compared with the expected movement." on a take with no warning, names the one warning
+  that caps the grade at F, or the number of warnings, on a warned take (an aligned one and one that could not be
+  aligned), and `status.code` is `ok` in every case (`tests/test_guard.py`).

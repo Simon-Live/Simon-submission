@@ -184,7 +184,10 @@ Validator (`part5.phrasing.template.line_problem(fault, line, timed=True)`), all
 - the body part is one the measure allows (today's `NAMES`), plus only these landmarks: `foot_out`: hip, shoulder;
   `knee_valgus`: foot, hip; `thigh_out`: foot; `upper_arm_out`: trunk; `forearm_out`: elbow; no other body part;
 - the direction's meaning: today's rules, plus `(too far |to the |toward the )<lateral>` counting as the fault's
-  direction when `lateral` is set, and the other side's word counting as the wrong direction;
+  direction when `lateral` is set, and the other side's word counting as the wrong direction; a negation ("not",
+  "never", "no longer", "isn't" and any other "...n't") within three words before the phrase, in the same clause,
+  makes it count as the wrong direction too ("Your right foot is not too far to the right" fails for a foot that is
+  far right; TICKET-057 delta review N2);
 - no praise (AC-P09, 2026-10-31): none of `PRAISE_PHRASES` ("nice effort", "great job", "well done", "good job", "nice
   work" and the rest of the list), word-bounded and in any case, the words joined by spaces or hyphens, zero-width
   characters ignored; the reason is `adds praise`. The untimed test holds a line to the same check.

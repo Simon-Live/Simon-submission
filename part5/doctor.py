@@ -395,7 +395,8 @@ def _near_miss_notes(r, doc):
                        f"({len(info['items'])} listed, the largest first): differences that came past a threshold "
                        "and were not reported; for debugging, not for the follower")
     else:
-        r.notes.append("no near misses (diagnostics.near_misses is empty): no difference came past a threshold")
+        r.notes.append("no near misses (diagnostics.near_misses is empty): no difference that came past a threshold "
+                       "went unreported")
 
 
 def _profile_notes(r, doc):
@@ -451,10 +452,14 @@ def _feet_notes(r, doc):
     info = (doc.get("diagnostics") or {}).get("feet")
     if not isinstance(info, dict):
         return
-    foot_faults = [f for f in doc.get("faults", []) if f.get("body_part") == "feet"]
+    faults = doc.get("faults", [])
+    foot_faults = [f for f in faults if f.get("body_part") == "feet"]   # the foot measures only (the contract table)
     if info.get("compared"):
-        r.notes.append(f"foot measures compared ({', '.join(info['compared'])}); {len(foot_faults)} foot "
-                       f"fault{'s' if len(foot_faults) != 1 else ''} (body_part feet, joint an ankle)")
+        line = (f"foot measures compared ({', '.join(info['compared'])}); {len(foot_faults)} "
+                f"fault{'s' if len(foot_faults) != 1 else ''} from them (body_part feet)")
+        if any(f.get("measure") == "foot_out" for f in faults):   # joint an ankle, body part legs: not a foot measure
+            line += "; foot_out is where the ankle sits (body_part legs) and is not counted here"
+        r.notes.append(line)
     else:
         r.notes.append(f"foot measures hidden (diagnostics.feet): {info.get('hidden_reason')}")
 

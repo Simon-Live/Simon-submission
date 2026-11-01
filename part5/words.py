@@ -93,16 +93,24 @@ LATERAL_NOUNS = {"foot_out": "foot", "thigh_out": "knee", "upper_arm_out": "arm"
 LOW_PHRASES = {"upper_arm_forward": ("{side} arm {q}too low", "arms {q}too low")}
 
 
-def describe_timed(fault, qualify=True):
-    """The timed words for a `detect.Fault`: "too far right" and, for an arm, "too low" where `describe`
-    says "out" or "not raised far enough". Everything else is the plain line, thigh_forward included
-    ("right thigh not raised enough"; size: "not quite", "not", "nowhere near", as in `describe`)."""
-    size = band(fault.magnitude_deg, fault.threshold_deg) if qualify else "plain"
+def phrase_timed(measure, direction, side, size="plain"):
+    """The timed words for a measure, direction and side at one size band: "too far right" and, for an arm, "too low"
+    where `phrase` says "out" or "not raised far enough". `lateral` comes from `lateral_for`, as in the analysis's
+    `lateral` field. Everything else is the plain line, thigh_forward included ("right thigh not raised enough"; size:
+    "not quite", "not", "nowhere near", as in `describe`). `size` "plain" has no quality word: what a label, which
+    does not know the measured size, can say. Raises what `phrase` raises for a measure, direction or side it has no
+    words for."""
     q = QUALIFIERS[size][0]
-    lateral = lateral_for(fault.measure, fault.direction, fault.side)
-    if fault.measure in LATERAL_NOUNS and lateral:
-        return f"{fault.side} {LATERAL_NOUNS[fault.measure]} {q}too far {lateral}"
-    if fault.measure in LOW_PHRASES and fault.direction == "less" and fault.side in ("left", "right", "both"):
-        one, both = LOW_PHRASES[fault.measure]
-        return (both if fault.side == "both" else one).format(side=fault.side, q=q)
-    return phrase(fault.measure, fault.direction, fault.side, size)
+    lateral = lateral_for(measure, direction, side)
+    if measure in LATERAL_NOUNS and lateral:
+        return f"{side} {LATERAL_NOUNS[measure]} {q}too far {lateral}"
+    if measure in LOW_PHRASES and direction == "less" and side in ("left", "right", "both"):
+        one, both = LOW_PHRASES[measure]
+        return (both if side == "both" else one).format(side=side, q=q)
+    return phrase(measure, direction, side, size)
+
+
+def describe_timed(fault, qualify=True):
+    """The timed words for a `detect.Fault` (`phrase_timed` at the size its magnitude and threshold give)."""
+    size = band(fault.magnitude_deg, fault.threshold_deg) if qualify else "plain"
+    return phrase_timed(fault.measure, fault.direction, fault.side, size)

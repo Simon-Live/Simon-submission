@@ -21,6 +21,9 @@ LOW_MATCH, NO_USABLE_MEASURES = "low_match", "no_usable_measures"   # warning co
 MOVING_PART_OUT_OF_FRAME = "moving_part_out_of_frame"   # ADR-0011: the part the example moves is not in frame
 NOT_ENOUGH_VISIBLE = "not_enough_visible"   # ADR-0011: too little of the body in frame to compare
 OK_TEXT = "Compared with the expected movement."
+# status.text of a take that was compared with a warning (ADR-0012 note): status.code stays "ok", the text names the cap.
+OK_ONE_WARNING_TEXT = "Compared with the expected movement, with a warning that caps the grade at F."
+OK_MANY_WARNINGS_TEXT = "Compared with the expected movement, with {n} warnings that cap the grade at F."
 REFUSAL_TEXT = ("This take doesn't closely match the trainer's movement, so the grade is capped at F. "
                 "Check that you picked the right movement and that the whole movement is in the take.")
 NO_USABLE_TEXT = ("Nothing in this take could be compared with the example, so the grade is F. "

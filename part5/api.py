@@ -35,11 +35,12 @@ from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 
 from . import __version__, contract, profiles, words
-from .evaluate import canonical_label
+from .evaluate import LABEL_TYPE_TO_MEASURE, canonical_label
 from .io import InputError
 from .phrasing import BACKENDS, TEMPLATE, select_backend
 from .phrasing.muse_spark import NAME as MUSE_SPARK
 from .pipeline import MAX_FRAMES, AnalysisError, run
+from .real import KIT_TYPE_MAP
 from .score_report import feet_diagnostics, feet_kwargs, score_block
 from .replay import build_replay
 
@@ -55,8 +56,6 @@ MAX_BODY_BYTES = 2 * MAX_UPLOAD_BYTES + 64 * 1024
 ANALYSIS_TIMEOUT_S = 60.0
 MAX_MESSAGE_CHARS = 400
 SIDES = ("expected", "follower")
-# The label measures (through `evaluate.LABEL_TYPE_TO_MEASURE`) whose fault the page words as the analysis does (ADR-0015).
-FOOT_WORDED = frozenset({"foot_rotation", "ankle_inversion"})
 # Muse Spark is a paid live model: one request at a time per client, at most 6 a minute (staging.md).
 MUSE_PER_MINUTE = 6
 MUSE_WINDOW_S = 60.0
@@ -117,16 +116,34 @@ def _sentence(text):
     return text[:1].upper() + text[1:]
 
 
+def _label_key(fault):
+    """(measure, side, direction) of a label in the analysis's vocabulary. A Part 3 kit type (`real.KIT_TYPE_MAP`, the map
+    the real-take report matches the kit by) takes its measure and direction from that map and its side from the label;
+    every other label goes through `evaluate.canonical_label`, which drives matching and is not changed here."""
+    kit = KIT_TYPE_MAP.get(fault.get("type"))
+    if kit and fault.get("type") not in LABEL_TYPE_TO_MEASURE:
+        return kit[0], fault.get("side"), kit[1]
+    return canonical_label(fault)
+
+
 def _fault_text(fault):
-    """The words the page shows for a label's fault. A foot fault (ADR-0015) is worded as the analysis words that measure,
-    direction and side (`words.phrase`, no quality word), because the label file keeps its old wording on purpose
-    ("ankle rolled in" for the planted roll that now reads "rolling out", docs/specs/foot-keypoints.md "The ankle label
-    ids read the old way round") and a picker that says "rolled in" over a result that says "rolling out" points the
-    wrong way (AC-S10). Every other label keeps its own `text`. Label ids and fixture bytes are unchanged."""
-    measure, side, direction = canonical_label(fault)
-    if measure in FOOT_WORDED:
-        return words.phrase(measure, direction, side)
-    return fault["text"]
+    """The words the page shows for a label's fault: the analysis's timed words (`words.phrase_timed`, the line
+    `text_timed` carries without its " at N s"), at the plain size because a label does not know the measured size, so
+    no quality word. `lateral` follows from the label's side and direction as the analysis derives it (`lateral_for`).
+    The label file keeps its own wording on purpose ("right foot too far out" for a planted foot that the analysis calls
+    "too far right"; "ankle rolled in" for the roll that now reads "rolling out", docs/specs/foot-keypoints.md "The ankle
+    label ids read the old way round"), and a picker that says "too far out" or "rolled in" over a result that says "too
+    far right" or "rolling out" points the wrong way (AC-S10, which covered the foot takes and now covers every measure).
+    The Part 3 kit's labels are worded through `real.KIT_TYPE_MAP` ("feet too wide" reads "feet too far apart", as the
+    analysis says it). A label with no measure, direction or side the analysis has words for keeps its own `text`. Label
+    ids, label files and fixture bytes are unchanged."""
+    measure, side, direction = _label_key(fault)
+    if direction not in ("more", "less"):
+        return fault["text"]
+    try:
+        return words.phrase_timed(measure, direction, side)
+    except (KeyError, ValueError):   # no words for this measure, direction or side
+        return fault["text"]
 
 
 def _take_number(take):
@@ -192,7 +209,7 @@ def _kit_follower_samples(root):
     base = Path(KIT_LABELS).parent.parent  # the labels name each file from the kit folder, one level up
     for take in labels["takes"]:
         rel = (base / take["follower"]).as_posix()
-        what = take["faults"][0]["text"] if take["faults"] else "correct take"
+        what = _fault_text(take["faults"][0]) if take["faults"] else "correct take"
         yield Sample(
             id=take["take_id"], path=_inside_fixtures(root, rel), rel=rel, ids={"take_id": take["take_id"]},
             listing={"id": take["take_id"], "set": KIT_SET, "movement": take["movement"],

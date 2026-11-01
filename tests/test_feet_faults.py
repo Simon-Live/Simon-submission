@@ -15,7 +15,7 @@ from part5.measures import MEASURES
 from part5.output import GENERIC_MEASURES, OutputError, validate_analysis
 from part5.phrasing.template import line_problem
 from part5.pipeline import analyse, run
-from part5.score_report import score_block
+from part5.score_report import feet_kwargs, score_block
 from part5.words import PHRASES, describe, describe_timed, phrase
 from test_feet import (EXPECTED, FOUR, FRAME_S, LABELS_SCHEMA, NO_FEET, ROOT, SCHEMA, TAKE, WITH_FEET, analyse_with,  # noqa: F401
                        foot_faults, load, plain, side_doc, write)  # noqa: F401  (plain is a fixture)
@@ -314,7 +314,24 @@ def test_ac_foot_15_part5_doctor_notes_the_feet_for_part7(tmp_path, capsys, foot
     assert doctor.run_doctor(type("A", (), {"file": str(path), "consumer": "part7", "json": False})()) == 0
     out = capsys.readouterr().out
     assert "accepted for part7" in out and "foot measures compared (left_foot_rotation" in out
-    assert "1 foot fault (body_part feet, joint an ankle)" in out
+    # TICKET-057 P3: the count is of the faults from the foot measures, and a document without foot_out says no more
+    assert "; 1 fault from them (body_part feet)\n" in out and "foot_out" not in out
+
+
+def test_ticket_057_p3_doctor_explains_foot_out_beside_a_count_of_zero_foot_measure_faults(tmp_path, capsys):
+    """One foot_out fault on right_ankle (body_part legs) with the foot measures compared: it is not a foot-measure
+    fault, so the count stays 0 (the rule in contract.py is unchanged) and the note says why."""
+    labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
+    take = next(t for t in labels["takes"] if t["take_id"].startswith("exercise_front_good_03_foot_out-right"))
+    a = run(str(ROOT / take["expected"]), str(ROOT / take["follower"]), score=score_block, **feet_kwargs(take)).analysis
+    assert [(f["measure"], f["body_part"], f["joint"]) for f in a["faults"]] == [("foot_out", "legs", "right_ankle")]
+    assert a["diagnostics"]["feet"]["compared"] == FOUR
+    path = write(tmp_path, a, "analysis.json")
+    assert doctor.run_doctor(type("A", (), {"file": str(path), "consumer": "part7", "json": False})()) == 0
+    notes = [n.strip() for n in capsys.readouterr().out.splitlines() if "foot measures compared" in n]
+    assert notes == ["note: foot measures compared (left_foot_rotation, right_foot_rotation, left_ankle_inversion, "
+                     "right_ankle_inversion); 0 faults from them (body_part feet); foot_out is where the ankle sits "
+                     "(body_part legs) and is not counted here"]
 
 
 def test_ac_foot_15_part5_doctor_says_why_the_feet_were_hidden(tmp_path, capsys):

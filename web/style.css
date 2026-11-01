@@ -238,6 +238,13 @@ dl.fields { margin: 0.5rem 0 0; }
    rows and the text links). Wider screens keep the sizes above. */
 @media (max-width: 40rem) {
   button, select, input[type="file"] { min-height: 44px; }
+  /* The input is 44 px, but the native "Choose File" button inside it drew 24 px (walkthrough review R3), so the
+     button is sized too. One rule per spelling: a browser that does not know one drops only that rule. */
+  input[type="file"]::file-selector-button { min-height: 44px; }
+  input[type="file"]::-webkit-file-upload-button { min-height: 44px; }
+  /* The field names of the preview take the whole row: at 11rem "Why the grade is limited" (222 px) broke after "is"
+     on a 316 px row, with the description already on its own line below (walkthrough review R10). */
+  .field-row dt { flex: 1 1 100%; }
   label.check { min-height: 44px; }
   input[type="checkbox"] { width: 1.25rem; height: 1.25rem; }
   .scrub input { min-height: 44px; }

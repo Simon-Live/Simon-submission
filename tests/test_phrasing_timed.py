@@ -59,6 +59,41 @@ def test_these_lines_fail_with_the_reason_named(line, reason):
     assert problem(RIGHT_FOOT, line) == reason
 
 
+@pytest.mark.parametrize("plain,negated", [
+    ("Your right foot is too far to the right at 1.9 s.", "Your right foot is not too far to the right at 1.9 s."),
+    ("Your right foot is too far right at 1.9 s", "Your right foot isn't too far right at 1.9 s"),
+    ("Your right foot is too far right at 1.9 s", "Your right foot is no longer too far right at 1.9 s"),
+    ("Your right foot is too far to the right at 1.9 s", "Your right foot is never too far to the right at 1.9 s"),
+    ("Your right feet are too far to the right at 1.9 s", "Your right feet aren't too far to the right at 1.9 s"),
+    ("Your right foot is toward the right at 1.9 s", "Your right foot is not toward the right at 1.9 s"),
+    ("Your right foot sits too far to the right at 1.9 s", "Your right foot is not at all too far to the right at 1.9 s"),
+    ("Right foot too far right at 1.9 s, keep it in", "Right foot not too far right at 1.9 s, keep it in"),
+])
+def test_a_negation_within_three_words_before_the_lateral_phrase_reverses_the_direction(plain, negated):
+    """N2 of the TICKET-057 delta review: "is not too far to the right" was read as "too far to the right"."""
+    assert problem(RIGHT_FOOT, plain) is None
+    assert problem(RIGHT_FOOT, negated) == "wrong direction"
+
+
+def test_a_negated_phrase_never_carries_the_direction_of_the_fault_whichever_side_it_names():
+    assert problem(RIGHT_FOOT, "Your right foot is too far to the left at 1.9 s") == "wrong direction"   # as before
+    assert problem(RIGHT_FOOT, "Your right foot is not too far to the left at 1.9 s") == "wrong direction"
+    inward = timed("foot_out", "right", "less", "left")   # a foot too far in is too far left: the other fault
+    assert problem(inward, "Your right foot is too far to the left at 1.9 s") is None
+    assert problem(inward, "Your right foot is not too far to the left at 1.9 s") == "wrong direction"
+    assert problem(inward, "Your right foot is not too far to the right at 1.9 s") == "wrong direction"
+
+
+@pytest.mark.parametrize("line", [
+    "It is not true that your right foot is too far to the right at 1.9 s",   # the negation is four words back
+    "Not bad. Your right foot drifts too far to the right at 1.9 s",           # another clause
+    "Your right foot, not a small one, drifts too far to the right at 1.9 s",  # the negation is four words back
+    "Your right foot is not wrong: it drifts too far to the right at 1.9 s",   # another clause
+])
+def test_a_negation_out_of_reach_or_in_another_clause_leaves_the_direction_alone(line):
+    assert problem(RIGHT_FOOT, line) is None
+
+
 def test_161_characters_fail_and_160_pass():
     base = "Your right foot drifts too far to the right at 1.9 s;"
     assert problem(RIGHT_FOOT, base + " a" * 53) is None and len(base + " a" * 53) == 159

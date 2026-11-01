@@ -24,7 +24,7 @@ from .phrasing import BACKENDS, phrase
 from .repwise import RepRun, TooManyPairs, compare, rep_entries, reference_entry
 from .reps import segment
 from .guard import (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NO_USABLE_TEXT, NOT_ENOUGH_VISIBLE, OK,
-                    OK_TEXT, REFUSAL_TEXT)
+                    OK_MANY_WARNINGS_TEXT, OK_ONE_WARNING_TEXT, OK_TEXT, REFUSAL_TEXT)
 from .visibility import (NOT_ENOUGH_TEXT, clip_usable, hide_unseen, load_conf, measures_of, moving_check,
                          moving_text, resolve, usable_from_conf)
 
@@ -249,11 +249,19 @@ def _warning_list(notes):
     return [{"code": c, "text": notes[c]} for c in WARNING_ORDER if c in notes]
 
 
+def _status_text(warnings):
+    """`status.text` of an analysed take (ADR-0012 note): `OK_TEXT` with no warning, else the text that names how many
+    warnings cap the grade at F. `status.code` is `ok` either way."""
+    if not warnings:
+        return OK_TEXT
+    return OK_ONE_WARNING_TEXT if len(warnings) == 1 else OK_MANY_WARNINGS_TEXT.format(n=len(warnings))
+
+
 def _finish(ctx, result, faults, times, diagnostics, stats, low, rules):
     """Build, phrase and score the document of a take; a take with any warning is capped at F (score_block)."""
     warnings = _warning_list(ctx.notes)
     analysis = build_analysis(ctx.exp_ref, ctx.fol_ref, faults, diagnostics=diagnostics,
-                              status={"code": OK, "text": OK_TEXT}, times=times,
+                              status={"code": OK, "text": _status_text(warnings)}, times=times,
                               warnings=warnings or None, match=_match(stats, low, rules) if warnings else None,
                               profile=ctx.profile)
     analysis = _phrased(analysis, *ctx.phrasing)
@@ -296,13 +304,15 @@ def _fault_times(fault, exp, fol, fol_positions, alignment, to_original):
 
 def _phrased(analysis, backend, client, live=False, selected_by=None, lang=None):
     """Canonical joints and the coaching line per fault, and the `phrasing` record (ADR-0005,
-    ADR-0006). Scored fields never depend on the backend or the language: only `coaching` and `phrasing` do."""
+    ADR-0006). Scored fields never depend on the backend or the language: only `coaching`, `phrasing` and the `why` of
+    an insight that repeats a validated live English line (ADR-0014, Amendment 2) do, so the insights are made again."""
     for f in analysis["faults"]:
         f["joints"] = fault_joints(f)
     lines, record = phrase(analysis["faults"], backend, client=client, live=live, selected_by=selected_by, lang=lang)
     for f, line in zip(analysis["faults"], lines):
         f["coaching"] = line
     analysis["phrasing"] = record
+    analysis["insights"] = insights_of(analysis)
     return validate_analysis(analysis, source="<built analysis>")
 
 

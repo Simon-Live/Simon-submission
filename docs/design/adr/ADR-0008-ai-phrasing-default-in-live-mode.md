@@ -34,7 +34,8 @@ the default backend is `muse-spark`, and an explicit `--phrasing` always wins. `
   ` seconds`, and no other number; the measured side, with any other left or right equal to `lateral`; the measured
   body part plus a short landmark list per measure (`foot_out`: hip, shoulder; `knee_valgus`: foot, hip;
   `thigh_out`: foot; `upper_arm_out`: trunk; `forearm_out`: elbow); the direction's meaning, with "too far
-  <lateral>" counting as the direction.
+  <lateral>" counting as the direction (unless a negation sits within three words before it, in the same clause:
+  "is not too far to the right" counts as the wrong direction, TICKET-057).
 - Any failure falls back to the timed template (`text_timed`) for that fault, with `backend`, `model` and
   `fallback_reason` per fault. The template backend also writes `coaching = text_timed`.
 - Limits: per-client 6 requests a minute on the server (unchanged), 30 model calls a minute per process, 20 s of

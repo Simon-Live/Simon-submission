@@ -496,7 +496,11 @@ def test_doctor_for_part7_notes_how_many_near_misses_a_document_lists(tmp_path):
     empty = copy.deepcopy(doc)
     empty["diagnostics"]["near_misses"] = {"total": 0, "omitted": 0, "items": []}
     write_analysis(path, empty)
-    assert any("no near misses" in n for n in doctor.inspect_file(path, "part7").notes)
+    notes = doctor.inspect_file(path, "part7").notes
+    assert any("no near misses" in n for n in notes)
+    # TICKET-057 P2: an empty list says that nothing past a threshold was left out, not that nothing differed
+    assert ("no near misses (diagnostics.near_misses is empty): no difference that came past a threshold "
+            "went unreported") in notes
     del empty["diagnostics"]["near_misses"]
     write_analysis(path, empty)
     assert not any("near miss" in n for n in doctor.inspect_file(path, "part7").notes)

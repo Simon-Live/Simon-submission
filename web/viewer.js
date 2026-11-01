@@ -1,18 +1,33 @@
 // The 3D replay (ADR-0006): the follower's skeleton over a translucent ghost of the expected clip,
 // time-matched through the alignment, with play, pause, scrub, speed, Front, Side, Top and orbit.
 //
-// Two layers. `Playback` is the clock and the highlight rule, with no DOM and no three.js, so Node
-// can run it. `mountViewer` binds it to the page and draws with the vendored three.js. When WebGL
-// is missing the controls, the readouts and the fault list keep working and a note replaces the
-// canvas. The page exposes what it shows as attributes on the viewer element (`data-frame`,
+// Two layers. `Playback` is the clock and the highlight rule, and `groundFrame` stands a skeleton on the floor
+// (AC-V22); neither has a DOM or three.js, so Node can run them. `mountViewer` binds them to the page and draws
+// with the vendored three.js. When WebGL is missing the controls, the readouts and the fault list keep working and
+// a note replaces the canvas. The page exposes what it shows as attributes on the viewer element (`data-frame`,
 // `data-follower-frame`, `data-highlighted`, `data-playing`, `data-view`, `data-camera`).
 import { boneIndexPairs, clampFrame, highlightedAt, jointLabel, jumpTarget } from "./joints.js";
 
 export const SPEEDS = [0.25, 0.5, 1, 2];
 const NO_WEBGL = "3D view unavailable in this browser";
 const COLOURS = { follower: 0x4cc9f0, ghost: 0xdfe6ee, highlight: 0xff7a1a, floor: 0x44505f };
-const FOV_DEG = 38;
-const FIT = 0.95; // how far back to stand, as a share of the distance that fits the bounding sphere
+const GHOST_JOINT_RADIUS = 0.024;
+const FOLLOWER_JOINT_RADIUS = 0.022;
+// The floor plane in drawn coordinates (viewer.md AC-V22): a skeleton's lowest joint rests at this height. The grid
+// is drawn one ghost joint radius under it, so the lowest ball rests on the grid and does not hover over it.
+export const FLOOR_Y = 0;
+const GRID_DROP = GHOST_JOINT_RADIUS;
+export const FOV_DEG = 38;
+// How far back to stand, as a share of the distance at which the bounding sphere just fits the view: radius over the sine
+// of half the field of view (the tangent would let the sphere's near side past the edge). 1, not 0.95: with every frame
+// stood on the floor (AC-V22) the nearer foot in the Side view drew 4 px under the canvas at 0.95 with the tangent
+// (screen row 438 of 434), and the sphere's own distance leaves the lowest joint 12 px or more inside the stage.
+const FIT = 1;
+
+// Where to stand to see a sphere of this radius whole: the sphere's edge meets the edge of the vertical view.
+export function fitDistance(radius) {
+  return (radius / Math.sin((FOV_DEG / 2) * (Math.PI / 180))) * FIT;
+}
 const POLE_TILT = 0.02; // the Top view sits a hair off the pole so "up" on screen stays defined
 const STEP = 1;
 const BIG_STEP = 10;
@@ -115,11 +130,29 @@ async function loadThree() {
   }
 }
 
-// The box all positions of both clips fit in: where to look and how far back to stand.
-function boundsOf(replay) {
+// AC-V22: one frame of a skeleton stood on the floor. The replay anchors every frame at the hip midpoint, so a
+// squat lifts the feet off the grid; here the frame moves up or down, by the same amount for every joint, until its
+// lowest joint (of all of them, so a lying pose lies on the floor and the frame does not jump when the feet trade
+// places) is at FLOOR_Y. x and z are left alone, so the hip midpoint stays at x = z = 0. A joint with no position
+// (masked) is passed through and does not decide the lowest. A frame with no joint to stand on is returned as it is.
+// Known limit: a frame with both feet in the air is drawn standing, because the replay has no root height.
+export function groundFrame(frame) {
+  const known = (joint) => Boolean(joint) && Number.isFinite(joint[1]);
+  const lowest = Math.min(...frame.filter(known).map((joint) => joint[1]));
+  if (!Number.isFinite(lowest)) return frame;
+  return frame.map((joint) => (known(joint) ? [joint[0], joint[1] - lowest + FLOOR_Y, joint[2]] : joint));
+}
+
+// Every frame of one skeleton's clip stood on the floor (the follower and the ghost are each grounded on their own).
+export function groundClip(frames) {
+  return frames.map(groundFrame);
+}
+
+// The box all positions of both (grounded) clips fit in: where to look and how far back to stand.
+export function boundsOf(clips) {
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
-  for (const clip of [replay.expected, replay.follower]) {
+  for (const clip of [clips.expected, clips.follower]) {
     for (const frame of clip) {
       for (const joint of frame) {
         if (!joint) continue;
@@ -130,10 +163,10 @@ function boundsOf(replay) {
       }
     }
   }
-  if (!Number.isFinite(min[0])) return { centre: [0, 0, 0], radius: 1, floor: -1 };
+  if (!Number.isFinite(min[0])) return { centre: [0, 0, 0], radius: 1 };
   const centre = min.map((lo, axis) => (lo + max[axis]) / 2);
   const radius = Math.max(0.5, Math.hypot(...max.map((hi, axis) => (hi - min[axis]) / 2)));
-  return { centre, radius, floor: min[1] };
+  return { centre, radius };
 }
 
 // One drawn skeleton: a ball per joint, a rod per bone, and a halo that shows around a lit joint.
@@ -208,7 +241,7 @@ function buildStage({ THREE, OrbitControls }, canvas, onCamera) {
 
   const target = new THREE.Vector3();
   let distance = 3;
-  let replay = null;
+  let clips = null; // the replay's two skeletons, each frame stood on the floor (AC-V22)
   let names = [];
   let grid = null;
   let ghost = null;
@@ -229,20 +262,20 @@ function buildStage({ THREE, OrbitControls }, canvas, onCamera) {
 
   function setReplay(next) {
     clear();
-    replay = next;
+    clips = { expected: groundClip(next.expected), follower: groundClip(next.follower) };
     names = next.joints;
     const bones = next.bones && next.bones.length ? next.bones : boneIndexPairs(names);
-    const { centre, radius, floor } = boundsOf(next);
+    const { centre, radius } = boundsOf(clips);
     target.set(...centre);
-    distance = (radius / Math.tan((FOV_DEG / 2) * (Math.PI / 180))) * FIT;
+    distance = fitDistance(radius);
     controls.minDistance = radius * 0.8;
     controls.maxDistance = radius * 9;
     grid = new THREE.GridHelper(3, 12, COLOURS.floor, COLOURS.floor);
-    grid.position.set(0, floor - 0.04, 0);
+    grid.position.set(0, FLOOR_Y - GRID_DROP, 0);
     ghost = makeRig(THREE, { count: names.length, bones, colour: COLOURS.ghost, opacity: 0.4,
-      jointRadius: 0.024, boneRadius: 0.009 });
+      jointRadius: GHOST_JOINT_RADIUS, boneRadius: 0.009 });
     follower = makeRig(THREE, { count: names.length, bones, colour: COLOURS.follower, opacity: 1,
-      jointRadius: 0.022, boneRadius: 0.012 });
+      jointRadius: FOLLOWER_JOINT_RADIUS, boneRadius: 0.012 });
     scene.add(grid, ghost.group, follower.group);
   }
 
@@ -264,8 +297,8 @@ function buildStage({ THREE, OrbitControls }, canvas, onCamera) {
 
   function draw({ frame, followerFrame, highlighted }, showGhost) {
     ghost.group.visible = showGhost;
-    poseRig(THREE, ghost, names, replay.expected[frame]);
-    poseRig(THREE, follower, names, replay.follower[followerFrame] ?? [], new Set(highlighted));
+    poseRig(THREE, ghost, names, clips.expected[frame]);
+    poseRig(THREE, follower, names, clips.follower[followerFrame] ?? [], new Set(highlighted));
     renderer.render(scene, camera);
   }
 

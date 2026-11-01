@@ -52,8 +52,10 @@ advice belongs in Part 5's output.
   is added last and always kept, so the fault items take at most 4 places (except a slow take under rehab, whose
   "Slower is fine" is a reassurance and no item; ADR-0016, Amendment 2). Without a timeline (a producer
   that does not score): one item per distinct fault cue in the order of `faults`, `points` null.
-- **Deterministic.** Cues and `why` are template text. No phrasing backend rewrites them: a live backend
-  phrases `coaching` only (ADR-0005), so the cue keeps its meaning whatever the backend.
+- **Deterministic.** The same document always gives the same insights. Cues and `why` are template text. No phrasing
+  backend rewrites a cue: a live backend phrases `coaching` only (ADR-0005), so the cue keeps its meaning whatever the
+  backend. A `why` repeats a validated live line only where Amendment 2 says so, and then it repeats a line the
+  document already holds.
 - **Version.** Every new document is `1.5.0`, since every document now carries `insights`. The schema file
   is `1.5.0`. The earlier groups (`1.2.0` time fields, `1.3.0` rep fields, `1.4.0` warnings) stay optional
   and are told apart by their fields. A document without cues validates and reads as before.
@@ -82,7 +84,7 @@ plane against the shin, since the triangle named here is rigid. A cue may now na
 ## Assumptions
 - None new. The tempo bounds (0.85, 1.15) come from the dispatch of 2026-10-31 and are not calibrated.
 
-## Amendment (2026-10-31): an insight uses its fault's timed words
+## Amendment 1 (2026-10-31): an insight uses its fault's timed words
 Context: the delivery review put a fault row and its insight side by side. The row said "Right foot too far right
 at 1.9 s" (`text_timed`, ADR-0009) and the insight said "Right foot too far out at 1.9 s" (the plain `text`
 vocabulary): two words for one fault on one screen. The same review found that the timed words for a thigh that
@@ -107,3 +109,33 @@ Decision (operator, 2026-10-31):
 
 Consequences: `why` is still template text and deterministic. The schema is unchanged (`why` stays a non-empty
 string), the goldens are rebuilt, and `make check-5` is unchanged (it reads faults, not their words).
+
+## Amendment 2 (2026-11-01): an insight repeats a live line's observation clause
+Context: a live English line is what the fault row shows, so an insight that pointed at the same fault in the
+template's timed words ("Right foot too far right at 1.9 s") read as a second wording of one fault on one screen.
+
+Decision (stakeholder-proxy, 2026-11-01, TICKET-057):
+- Scope: an insight that points at a reported fault F (same `measure`, `side` and `direction`, as in Amendment 1)
+  where F's `phrasing.faults[i]` has a backend other than `template`, a null `fallback_reason`, and `lang` `en` or
+  absent. Its `why` is then built from F's `coaching`:
+  1. Keep only the text before the first ";".
+  2. Drop any closing run of ".", "!" and "?" ("...", "?!" and "?" too, so no mark is left before the count; the
+     review of 2026-11-01 found "at 1.7 s.. (2 times)" and "?" before the count under the first wording, "one closing
+     '.' or '!'").
+  3. Run `template.line_problem(F, clause, timed=True)`. If it fails, the `why` is the template form of Amendment 1.
+  4. Replace the one time number, F's `at_s` to 0.1, with the insight's `at_s` to 0.1, keeping the unit as written.
+  5. Capitalise the first letter and append " (n of m reps)" or " (n times)" exactly as before.
+- Examples: "At 1.4 s, your knees are not bent enough." gives "At 1.4 s, your knees are not bent enough (2 of 2 reps)".
+  "Your right foot drifts too far to the right at 1.9 s; keep it under your hip", with the first miss at 1.7 s in 3
+  of 8 reps, gives "Your right foot drifts too far to the right at 1.7 s (3 of 8 reps)".
+- A template line, a line that fell back and a translated line (`lang` other than `en`) keep the `why` of Amendment 1;
+  so do a miss no reported fault matches and a tempo item. The cue, `kind`, `at_s`, `window`, `points`, the order and
+  the cap of 5 are unchanged.
+- **Deterministic.** The same document always gives the same insights, because the `why` is a function of the
+  document: the faults, the `phrasing` record and the timeline. A `why` that points at a live line repeats a line
+  that already passed the word test, cut and tested again, so it adds no word the validator has not seen.
+
+Consequences: the schema is unchanged (`why` stays a non-empty string). The goldens, `make check-5` and every
+template-phrased document are byte-identical, because the template backend never meets the scope above.
+`pipeline._phrased` makes the insights again after the lines are written, so a document phrased by a live model keeps
+the rule whether or not it is scored.

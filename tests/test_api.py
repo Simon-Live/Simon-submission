@@ -68,6 +68,12 @@ def test_contract_serves_what_part5_contract_json_prints():
 
 
 KIT = json.loads((ROOT / "fixtures/input/contract/part3/followers/labels.json").read_text())
+# What the picker says for each Part 3 kit label, spelled out: the analysis's timed words for the measure and direction
+# `real.KIT_TYPE_MAP` gives the kit type, on the label's own side (AC-S10). The kit's own words are "feet too wide",
+# "elbows too far out", "knees not bent enough at the bottom" and "left knee caves in at the bottom".
+KIT_ANALYSIS_WORDS = {("feet_wide", "both"): "feet too far apart", ("elbows_out", "both"): "elbows wider than the example",
+                      ("shallow_squat", "both"): "knees not bent enough", ("knee_caving", "left"): "left knee caving in",
+                      ("knee_caving", "right"): "right knee caving in"}
 MISMATCH = json.loads((ROOT / "fixtures/input/mismatch/manifest.json").read_text())
 REAL_IDS = ["part2-class", "part2-dance", "part2-single", "part2-stretch"]
 
@@ -93,8 +99,9 @@ def test_the_kit_takes_are_listed_with_the_kit_labels_and_no_invented_light():
         listed = followers[take["take_id"]]
         assert (listed["set"], listed["angle"], listed["light"], listed["source"]) == (
             "part3-squat", take["angle"], None, "kit")
-        assert [f["text"] for f in listed["faults"]] == [f["text"] for f in take["faults"]]
-        what = take["faults"][0]["text"] if take["faults"] else "correct take"
+        want = [KIT_ANALYSIS_WORDS[(f["type"], f["side"])] for f in take["faults"]]   # every kit label, AC-S10
+        assert [f["text"] for f in listed["faults"]] == want
+        what = want[0] if want else "correct take"
         assert listed["label"] == what[:1].upper() + what[1:]
 
 
@@ -310,17 +317,6 @@ def test_the_ankle_label_ids_and_the_label_file_keep_their_old_words_and_only_th
         assert followers[take["take_id"]]["id"] == take["take_id"]
         assert followers[take["take_id"]]["faults"][0]["type"] == take["faults"][0]["type"]
         assert "rolled" not in followers[take["take_id"]]["label"]
-
-
-def test_a_take_with_no_foot_fault_keeps_the_words_of_its_label():
-    followers = listed_followers()
-    others = [t for t in LABELS["takes"] if t not in FOOT_LABELLED]
-    assert len(others) + len(FOOT_LABELLED) == len(LABELS["takes"]) and others
-    for take in others:
-        listed = followers[take["take_id"]]
-        assert [f["text"] for f in listed["faults"]] == [f["text"] for f in take["faults"]], take["take_id"]
-        what = "; ".join(f["text"] for f in take["faults"]) or "correct take"
-        assert listed["label"].endswith(f": {sentence(what)}"), take["take_id"]
 
 
 def test_every_generated_take_label_starts_with_the_takes_own_number_the_45_degree_ones_included():
