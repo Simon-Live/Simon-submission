@@ -74,7 +74,7 @@ export function renderResultSummary(root, m, on = {}, before = null) {
 
   if (m.worst) {
     const card = h("div", { class: "rs-card rs-worst", "data-tone": m.worst.tone });
-    const play = h("button", { type: "button", class: "rs-play", "aria-label": `Play ${m.worst.title}`, "data-testid": "summary-worst-play", onclick: () => on.seek && on.seek(m.worst.at) }, "▶");
+    const play = h("button", { type: "button", class: "rs-play", "aria-label": `Play ${m.worst.title}`, "data-testid": "summary-worst-play", onclick: () => (on.playWorst ? on.playWorst(m.worst.at) : on.seek && on.seek(m.worst.at)) }, "▶");
     card.append(h("div", { class: "rs-card-head" }, h("h3", { text: m.worst.title }), play));
     if (m.worst.poses) card.append(figPair(m.worst.poses, m.worst.offJoints, m.worst.refLabel, m.worst.youLabel));
     el.append(card);
@@ -93,7 +93,7 @@ export function renderResultSummary(root, m, on = {}, before = null) {
     const openDetail = (mark, btn) => {
       track.querySelectorAll(".rs-drift-mark").forEach((b) => b.setAttribute("aria-expanded", String(b === btn)));
       detail.replaceChildren(driftCard(mark.detail, m.note, m.noteTitle));
-      on.seek && on.seek(mark.at);
+      (on.seekInPlace || on.seek || (() => {}))(mark.at);
     };
     const track = h("div", { class: "rs-drift-track", role: "group", "aria-label": `${m.drift.marks.length} moments to focus on` },
       ...m.drift.marks.map((x) => {

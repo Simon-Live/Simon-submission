@@ -312,7 +312,14 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   let summaryModel = null;
   try { summaryModel = replay ? normalizeReplay(replay) : null; } catch { summaryModel = null; }
   const summaryOpts = { kind: kindForMode(record && record.mode) || currentKind(), model: summaryModel, retryHref: recordAgainHref(record) };
-  const summaryOn = { seek: (t) => getView() && view.jump(t), replay: () => zone.scrollIntoView({ behavior: "smooth", block: "start" }) };
+  // the video and 3D view sit below the summary: taps scroll there first, so what plays is on screen
+  const toStage = () => zone.scrollIntoView({ behavior: "smooth", block: "start" });
+  const summaryOn = {
+    seek: (t) => { if (!getView()) return; toStage(); view.jump(t); },            // a rep bar: play that rep from its lead-in
+    seekInPlace: (t) => getView() && view.seek(t),                               // a drift mark: its card opens here
+    playWorst: (t) => { if (!getView()) return; toStage(); if (coach && coach.replayWorst) coach.replayWorst(); else view.jump(t); },
+    replay: toStage,
+  };
   const paintSummary = (entryName = "") => {
     summarySlot.replaceChildren();
     renderResultSummary(summarySlot, summaryOf(shown, { ...summaryOpts, entryName }), summaryOn);
