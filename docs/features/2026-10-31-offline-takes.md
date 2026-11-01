@@ -61,3 +61,12 @@ second upload or job, or uses a second daily analysis.
 - `api/people` carries no key (it is not one of the four routes), so a lost people-job response can start a second
   people job; it costs one extra person check and no analysis.
 - A take sent in the background does not update a practice-ladder step's pending mark.
+
+## Requires the team's attention
+- **`make check-7` has not run for this change.** It needs an NVIDIA GPU; on the dev Mac it stops with
+  `check-7: nvidia-smi found no GPU`. The change does not touch Parts 1 to 6 or their shared files, but the check should
+  be run once on the GPU host before release.
+- **`Idempotency-Key` is new server behaviour.** Deploy the server with this change before the web app is relied on to
+  retry; an older server ignores the header and a retry after a lost response could then make a second job.
+- Known issues from the video-quality lane still apply (`tests/test_parts.py::test_p4_and_p5_adapters`, the
+  `modules/part-5` pin, `feature_checks.unit.test.mjs`).
