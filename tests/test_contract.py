@@ -268,7 +268,8 @@ class AnimationSchemaIsClosedTest(unittest.TestCase):
     def test_breaks(self):
         breaks = {
             "extra top-level field": _set(["extra"], 1),
-            "extra frame field": _set(["frames", 0, "conf"], 1.0),
+            "extra frame field": _set(["frames", 0, "confidence"], 1.0),
+            "conf that is not a map": _set(["frames", 0, "conf"], 1.0),
             "missing joint": _drop(["frames", 3, "joints", "left_ankle"]),
             "interpolated as text": _set(["frames", 1, "interpolated"], "true"),
             "fps 60": _set(["fps"], 60),
@@ -371,6 +372,134 @@ class Part3ViewEndToEndTest(unittest.TestCase):
         self.assertEqual(animation["frame_count"], len(shipped["frames"]))
         keys = {int(frame["index"]) for frame in keyframes["keyframes"]}
         self.assertEqual({f["index"] for f in shipped["frames"] if not f["interpolated"]}, keys)
+
+
+UNSEEN = ("left_knee", "right_knee", "left_ankle", "right_ankle")
+
+
+class VisibilityTest(unittest.TestCase):
+    """Part 3's conf 0.3 (joint never seen) reaches animation.json as optional frames[].conf and unseen_joints."""
+
+    def setUp(self):
+        base = ROOT / "fixtures" / "input" / "exercise"
+        self.keyframes = _load(base / "keyframes.json")
+        self.plain = _load(base / "skeleton.json")
+        self.skeleton = copy.deepcopy(self.plain)
+        for key in self.skeleton["keyframes"]:
+            key["conf"] = {name: (0.3 if name in UNSEEN else 1.0) for name in contract.CANONICAL_JOINTS}
+        self.keys = [int(k["index"]) for k in self.skeleton["keyframes"]]
+
+    def _build(self, skeleton):
+        return json.loads(json.dumps(build_animation(skeleton, self.keyframes, set_name="exercise")))
+
+    def test_unseen_knees_and_ankles_are_not_silently_dropped(self):
+        animation = self._build(self.skeleton)
+        self.assertEqual(animation["unseen_joints"], list(UNSEEN))
+        for frame in animation["frames"]:
+            for name in contract.CANONICAL_JOINTS:
+                self.assertEqual(frame["conf"][name], 0.3 if name in UNSEEN else 1.0)
+
+    def test_filled_frames_take_the_minimum_of_the_two_neighbouring_keys(self):
+        skeleton = copy.deepcopy(self.skeleton)
+        skeleton["keyframes"][2]["conf"]["left_wrist"] = 0.3  # one key unseen
+        skeleton["keyframes"][3]["conf"]["left_wrist"] = 0.8
+        skeleton["keyframes"][3]["conf"]["nose"] = 0.6
+        animation = self._build(skeleton)
+        k2, k3 = self.keys[2], self.keys[3]
+        by_index = {f["index"]: f for f in animation["frames"]}
+        self.assertEqual(by_index[k2]["conf"]["left_wrist"], 0.3)
+        self.assertEqual(by_index[k3]["conf"]["left_wrist"], 0.8)
+        for index in range(k2 + 1, k3):
+            self.assertTrue(by_index[index]["interpolated"])
+            self.assertEqual(by_index[index]["conf"]["left_wrist"], 0.3)
+            self.assertEqual(by_index[index]["conf"]["nose"], 0.6)
+        self.assertNotIn("left_wrist", animation["unseen_joints"])
+
+    def test_frames_outside_the_keys_hold_the_nearest_key(self):
+        skeleton = copy.deepcopy(self.skeleton)
+        skeleton["keyframes"][0]["conf"]["nose"] = 0.5
+        skeleton["keyframes"][-1]["conf"]["nose"] = 0.7
+        animation = self._build(skeleton)
+        self.assertEqual(animation["frames"][0]["conf"]["nose"], 0.5)
+        self.assertEqual(animation["frames"][-1]["conf"]["nose"], 0.7)
+
+    def test_a_joint_unseen_at_some_keys_only_is_not_listed(self):
+        skeleton = copy.deepcopy(self.skeleton)
+        skeleton["keyframes"][4]["conf"]["left_knee"] = 1.0
+        self.assertEqual(self._build(skeleton)["unseen_joints"], ["right_knee", "left_ankle", "right_ankle"])
+
+    def test_conf_on_the_joint_object_is_read_when_there_is_no_conf_map(self):
+        skeleton = copy.deepcopy(self.plain)
+        for key in skeleton["keyframes"]:
+            key["joints"]["left_ankle"]["conf"] = 0.3
+        animation = self._build(skeleton)
+        self.assertEqual(animation["unseen_joints"], ["left_ankle"])
+        self.assertEqual(animation["frames"][5]["conf"]["left_ankle"], 0.3)
+        self.assertEqual(animation["frames"][5]["conf"]["nose"], 1.0)
+
+    def test_output_is_valid_animation_v1_and_part5_can_read_its_conf(self):
+        animation = self._build(self.skeleton)
+        self.assertEqual(contract.validate(animation, _published("animation")), [])
+        if jsonschema is not None:
+            jsonschema.validate(animation, _published("animation"), cls=jsonschema.Draft202012Validator)
+        # Part 5 (part5/io.py parse_clip): conf is a joint -> number in 0..1 map on a frame; extra top-level keys are allowed.
+        for frame in animation["frames"]:
+            self.assertEqual(set(frame["conf"]), set(animation["joints"]))
+            self.assertTrue(all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in frame["conf"].values()))
+
+    def test_positions_do_not_depend_on_conf(self):
+        with_conf = self._build(self.skeleton)
+        without = self._build(self.plain)
+        for a, b in zip(with_conf["frames"], without["frames"]):
+            self.assertEqual(a["joints"], b["joints"])
+            self.assertEqual(a["interpolated"], b["interpolated"])
+
+    def test_full_confidence_everywhere_is_the_same_as_no_conf(self):
+        skeleton = copy.deepcopy(self.plain)  # synthetic fixtures carry {x, y, z, conf: 1.0}
+        self.assertEqual(skeleton["keyframes"][0]["joints"]["nose"]["conf"], 1.0)
+        for key in skeleton["keyframes"]:
+            key["conf"] = {name: 1.0 for name in contract.CANONICAL_JOINTS}
+        animation = self._build(skeleton)
+        self.assertEqual(animation, self._build(self.plain))
+        self.assertNotIn("unseen_joints", animation)
+
+    def test_input_without_conf_writes_no_conf_fields(self):
+        for key in self.plain["keyframes"]:
+            key["joints"] = {n: [p["x"], p["y"], p["z"]] for n, p in key["joints"].items()}
+        animation = self._build(self.plain)
+        self.assertNotIn("unseen_joints", animation)
+        self.assertTrue(all("conf" not in frame for frame in animation["frames"]))
+        self.assertEqual(contract.validate(animation, _published("animation")), [])
+
+    def test_a_conf_outside_0_to_1_is_refused(self):
+        for bad in (1.5, -0.1, "high"):
+            with self.subTest(bad=bad):
+                skeleton = copy.deepcopy(self.skeleton)
+                skeleton["keyframes"][1]["conf"]["nose"] = bad
+                with self.assertRaisesRegex(ValueError, "skeleton.json"):
+                    build_animation(skeleton, self.keyframes)
+
+    def test_animation_schema_rejects_malformed_visibility(self):
+        animation = self._build(self.skeleton)
+        breaks = {
+            "conf above 1": _set(["frames", 2, "conf", "nose"], 1.5),
+            "conf missing a joint": _drop(["frames", 2, "conf", "nose"]),
+            "unknown joint in conf": _set(["frames", 2, "conf", "tail"], 1.0),
+            "unseen_joints with a stranger": _set(["unseen_joints"], ["tail"]),
+        }
+        for name, apply in breaks.items():
+            with self.subTest(name):
+                doc = copy.deepcopy(animation)
+                apply(doc)
+                self.assertNotEqual(contract.validate(doc, _published("animation")), [])
+                if jsonschema is not None:
+                    self.assertFalse(jsonschema.Draft202012Validator(_published("animation")).is_valid(doc))
+
+    def test_shipped_part3_clip_marks_the_ankle_part3_never_saw(self):
+        shipped = _load(ROOT / "fixtures" / "output" / "part3-squat" / "animation.json")
+        self.assertEqual(shipped["unseen_joints"], ["right_ankle"])
+        self.assertEqual(shipped["frames"][0]["conf"]["right_ankle"], 0.3)
+        self.assertEqual(shipped["frames"][0]["conf"]["left_ankle"], 1.0)
 
 
 if __name__ == "__main__":

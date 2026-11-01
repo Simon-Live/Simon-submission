@@ -119,6 +119,25 @@ The standing squat, frame 0, is a key. The next tick is filled in:
 
 Each frame also has a `joints` object. Values are metres `[x, y, z]`. On squat frame 0 the nose is `[0.0, 0.675416, 0.042881]`: centered, 0.675 m above the hips, 0.043 m forward. The other sixteen joints use the same shape.
 
+## Joints the camera never saw (optional)
+
+Part 3 writes conf 0.3 for a joint that was outside the image. Part 4 still computes a position for
+it from the rest rig, so the file also says which joints were not measured. Two optional fields carry
+that, and nothing else in the file changes:
+
+```json
+{ "unseen_joints": ["right_ankle"],
+  "frames": [ { "index": 1, "interpolated": true, "joints": { "...": "..." },
+                "conf": { "nose": 1.0, "...": 1.0, "left_ankle": 1.0, "right_ankle": 0.3 } } ] }
+```
+
+- `frames[].conf` maps all 17 joints to a number in 0..1, the shape Part 5 already reads from follower files.
+- A key frame carries its key's values. A filled frame carries the minimum of the two keys on either side, so a joint unseen at one end of a gap stays unseen across it. Frames outside the first and last key hold the nearest key.
+- `unseen_joints` lists the joints at or below 0.3 at every key, in canonical order.
+- The values come from `keyframes[].conf` in `skeleton.json`, else from the `conf` of a `{x, y, z, conf}` joint. When every joint is 1.0 at every key, or the input has no conf, neither field is written and `animation.json` is unchanged. A reader treats a missing `conf` as seen.
+
+`part3-squat` shows it: its right ankle is 0.3 at every key, so `unseen_joints` is `["right_ankle"]`.
+
 ## Edge cases
 
 A new clip runs when both files sit in one directory, each meets its schema in `contracts/`, `fps` is 30, `frame_count` is `round(duration_s × 30) + 1`, and the key indices in `keyframes.json` and `skeleton.json` are the same strictly increasing list. Each key index lies inside the clip, and its `t` matches `index / 30` within a microsecond. `rest_offsets_m` must include every joint of the standard rig, with that joint's parent unchanged. When `skeleton.json` includes a `joints` list, it must be the canonical 17 in the order above. The shipped clips meet this. The short ones place a key every 10 frames. The 30 s clip and the one-minute clip space keys unevenly, from 7 to 16 frames apart, and repeat that pattern on every 3 s squat. The 30 s clip uses the larger body.

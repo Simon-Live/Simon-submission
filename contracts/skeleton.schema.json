@@ -422,6 +422,97 @@
           "name": {
             "type": "string"
           },
+          "conf": {
+            "type": "object",
+            "properties": {
+              "nose": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_eye": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_eye": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_ear": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_ear": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_shoulder": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_shoulder": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_elbow": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_elbow": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_wrist": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_wrist": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_hip": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_hip": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_knee": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_knee": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_ankle": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_ankle": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "description": "Optional. Per joint confidence 0..1 (Part 3 writes 0.3 for a joint the camera never saw). Carried into animation.json; a joint missing here is 1.0."
+          },
           "joints": {
             "type": "object",
             "required": [

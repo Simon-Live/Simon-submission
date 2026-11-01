@@ -312,6 +312,57 @@ def _require_key_time(index: int, t: float, fps: int, source: str) -> None:
         raise ValueError(f"{source} frame {index} has t={t}, expected {expected:.6f}")
 
 
+# Part 3's mark for a joint outside the image; Part 5 reads the same value as "unseen".
+UNSEEN_CONF = 0.3
+
+
+def _key_confidences(skeleton: dict) -> list[dict[str, float]] | None:
+    """Per-key {joint: conf} in key-index order, or None when every joint at every key is fully seen.
+
+    A key's value comes from `keyframes[].conf` (joint -> number), else the `conf` of a
+    `{x, y, z, conf}` joint, else 1.0. Full confidence everywhere (or none given) is the
+    same as no data: the output then gets no `conf` and no `unseen_joints`, and the file is
+    what it was before those fields existed.
+    """
+    found = False
+    rows: list[dict[str, float]] = []
+    for frame in sorted(skeleton["keyframes"], key=lambda f: int(f["index"])):
+        explicit = frame.get("conf")
+        explicit = explicit if isinstance(explicit, dict) else {}
+        row: dict[str, float] = {}
+        for name in CANONICAL_JOINTS:
+            raw = explicit.get(name)
+            if raw is None and isinstance(frame["joints"].get(name), dict):
+                raw = frame["joints"][name].get("conf")
+            if raw is None:
+                row[name] = 1.0
+                continue
+            if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not 0.0 <= raw <= 1.0:
+                raise ValueError(f"skeleton.json frame {frame['index']} conf for {name} must be a number in 0..1")
+            row[name] = float(raw)
+            found = found or row[name] != 1.0
+        rows.append(row)
+    return rows if found else None
+
+
+def _conf_at(times: Sequence[float], keys: list[dict[str, float]], t: float) -> dict[str, float]:
+    """Confidences at time t: a key's own, else the minimum of the two keys around t.
+
+    Minimum, so a joint unseen at either end of a gap stays unseen across it. Before the
+    first key and after the last, the nearest key's values.
+    """
+    exact = _segment(times, t)
+    if exact is not None:
+        return dict(keys[exact])
+    lo = _left_key(times, t)
+    return {name: min(keys[lo][name], keys[lo + 1][name]) for name in CANONICAL_JOINTS}
+
+
+def _unseen_joints(keys: list[dict[str, float]]) -> list[str]:
+    """Joints at or below UNSEEN_CONF at every key, in canonical order."""
+    return [name for name in CANONICAL_JOINTS if all(row[name] <= UNSEEN_CONF for row in keys)]
+
+
 def build_animation(skeleton: dict, keyframes_doc: dict, set_name: str | None = None) -> dict:
     """30 fps animation.json document from a keyframe skeleton.
 
@@ -335,23 +386,25 @@ def build_animation(skeleton: dict, keyframes_doc: dict, set_name: str | None = 
     indices, times, series = _keyframe_quats(skeleton, rest_offsets)
     curves = _prepare_curves(indices, times, series)
     key_set = set(key_idx)
+    key_conf = _key_confidences(skeleton)
     frames = []
     for index in range(frame_count):
         t = index / fps
         local = _eval_curves(times, curves, t)
         positions = forward_kinematics(local, rest_offsets)
-        frames.append(
-            {
-                "index": index,
-                "t": t,
-                "interpolated": index not in key_set,
-                "joints": {
-                    name: [positions[name][0], positions[name][1], positions[name][2]]
-                    for name in CANONICAL_JOINTS
-                },
-            }
-        )
-    return {
+        frame = {
+            "index": index,
+            "t": t,
+            "interpolated": index not in key_set,
+            "joints": {
+                name: [positions[name][0], positions[name][1], positions[name][2]]
+                for name in CANONICAL_JOINTS
+            },
+        }
+        if key_conf is not None:
+            frame["conf"] = _conf_at(times, key_conf, t)
+        frames.append(frame)
+    animation = {
         "format": contract.ANIMATION_FORMAT,
         "producer": contract.ANIMATION_PRODUCER,
         "fps": fps,
@@ -362,5 +415,8 @@ def build_animation(skeleton: dict, keyframes_doc: dict, set_name: str | None = 
         "coordinate_frame": COORDINATE_FRAME,
         "joints": list(CANONICAL_JOINTS),
         "bones": length_bones_with_rest(rest_offsets),
-        "frames": frames,
     }
+    if key_conf is not None:
+        animation["unseen_joints"] = _unseen_joints(key_conf)
+    animation["frames"] = frames
+    return animation

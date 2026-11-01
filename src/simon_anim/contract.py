@@ -57,6 +57,8 @@ _QUAT = {
     "maxItems": 4,
     "description": "Local rotation (x, y, z, w). Normalized on read; a norm under 1e-8 is rejected.",
 }
+_CONF_VALUE = {"type": "number", "minimum": 0, "maximum": 1}
+_CONF_PROPERTIES = {name: _CONF_VALUE for name in CANONICAL_JOINTS}
 _JOINT_POSITION = {
     "anyOf": [
         {"$ref": "#/$defs/vec3"},
@@ -197,6 +199,14 @@ def skeleton_schema() -> dict:
                             "index": {"type": "integer", "minimum": 0},
                             "t": {"type": "number", "minimum": 0},
                             "name": {"type": "string"},
+                            "conf": {
+                                "type": "object",
+                                "properties": _CONF_PROPERTIES,
+                                "description": (
+                                    "Optional. Per joint confidence 0..1 (Part 3 writes 0.3 for a joint the "
+                                    "camera never saw). Carried into animation.json; a joint missing here is 1.0."
+                                ),
+                            },
                             "joints": {
                                 "type": "object",
                                 "required": list(CANONICAL_JOINTS),
@@ -224,7 +234,8 @@ def animation_schema() -> dict:
         "animation.json written by Part 4",
         "simon.animation.v1 exactly as Part 4 writes it: one frame per 30 fps tick, joints in metres "
         "in the hip-centred body frame. Every object is closed. producer joined v1 as a required "
-        "constant (A-P4-06); any other new field means a new format.",
+        "constant (A-P4-06). unseen_joints and frames[].conf joined v1 as optional fields; a reader "
+        "that ignores them is unaffected. Any other new field means a new format.",
         "output",
         "Part 4",
         ["Part 5", "Part 6"],
@@ -235,6 +246,8 @@ def animation_schema() -> dict:
         "interpolated is false exactly on the key indices of keyframes.json",
         "every bone in bones keeps length_m within 1 mm on every frame",
         "the hip midpoint stays within 1 mm of the origin",
+        "frames[].conf, when present, is on key frames the key's own values and on filled frames the "
+        "minimum of the two neighbouring keys; unseen_joints is present exactly when conf is",
     ]
     schema["$defs"] = {"vec3": _VEC3}
     schema.update(
@@ -289,6 +302,14 @@ def animation_schema() -> dict:
                         },
                     },
                 },
+                "unseen_joints": {
+                    "type": "array",
+                    "items": {"enum": list(CANONICAL_JOINTS)},
+                    "description": (
+                        "Optional. Joints at or below conf 0.3 at every key frame, in canonical order; their "
+                        "positions are not measured. Present, possibly empty, exactly when frames carry conf."
+                    ),
+                },
                 "frames": {
                     "type": "array",
                     "minItems": 1,
@@ -308,6 +329,18 @@ def animation_schema() -> dict:
                                 "additionalProperties": False,
                                 "required": list(CANONICAL_JOINTS),
                                 "properties": {name: {"$ref": "#/$defs/vec3"} for name in CANONICAL_JOINTS},
+                            },
+                            "conf": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": list(CANONICAL_JOINTS),
+                                "properties": _CONF_PROPERTIES,
+                                "description": (
+                                    "Optional. Confidence 0..1 per joint, same shape as the follower files Part 5 "
+                                    "reads. 0.3 marks a joint the camera never saw. A key frame carries its key's "
+                                    "values; a filled frame the minimum of the two neighbouring keys. Absent when "
+                                    "the input carries no confidence."
+                                ),
                             },
                         },
                     },
@@ -380,6 +413,8 @@ def _check(value: Any, schema: dict, root: dict, path: str, errors: list[str]) -
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if "minimum" in schema and value < schema["minimum"]:
             errors.append(f"{path}: must be at least {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            errors.append(f"{path}: must be at most {schema['maximum']}")
         if "exclusiveMinimum" in schema and value <= schema["exclusiveMinimum"]:
             errors.append(f"{path}: must be more than {schema['exclusiveMinimum']}")
     if isinstance(value, list):
@@ -403,7 +438,7 @@ def _check(value: Any, schema: dict, root: dict, path: str, errors: list[str]) -
 
 
 _KEYWORDS = {
-    "$ref", "anyOf", "const", "enum", "type", "minimum", "exclusiveMinimum", "minItems", "maxItems",
+    "$ref", "anyOf", "const", "enum", "type", "minimum", "maximum", "exclusiveMinimum", "minItems", "maxItems",
     "items", "required", "properties", "additionalProperties",
 }
 
