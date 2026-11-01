@@ -47,11 +47,12 @@
   /* depth (brand design 2026-11-01): lime is the only pop colour; pink lives in the back layer as smoke and halftone
      dots, and every grey card carries a faint halftone dot field that fades into its grey, so no surface is flat */
   --color-pink: var(--palette-pink);
-  --color-pink-smoke: rgb(255 45 149 / 42%);
-  --color-pink-smoke-soft: rgb(255 45 149 / 20%);
+  --color-pink-smoke: rgb(255 158 205 / 20%);
+  --color-pink-smoke-soft: rgb(255 158 205 / 10%);
   --color-pink-dot: rgb(255 45 149 / 60%);
   --color-lime-dot: rgb(198 243 90 / 45%);
   --color-card-dot: rgb(255 255 255 / 6%);
+  --color-card-sheen: rgb(255 255 255 / 4%);
   --mask-on: var(--palette-pure-black);
   --halftone-card-size: 6px;
   --halftone-back-size: 11px;
@@ -61,7 +62,10 @@
   --card-fade-raised: linear-gradient(140deg, transparent 0%, transparent 15%, var(--color-raised) 75%);
   /* the backgrounds to use for a grey card: the halftone, faded toward the bottom right, over the grey */
   --card-fill: var(--card-fade), var(--halftone-card), var(--color-surface);
-  --card-fill-raised: var(--card-fade-raised), var(--halftone-card), var(--color-raised);
+  /* inner cards (raised) carry no dots, only a soft sheen: halftone shows depth, so it never sits on halftone; the
+     outer card has the dots and what sits inside it is smooth (team review 2026-11-01) */
+  --card-sheen: linear-gradient(160deg, var(--color-card-sheen) 0%, transparent 60%);
+  --card-fill-raised: var(--card-sheen), var(--color-raised);
   /* the page's back layer: chalk-powder bursts (generated images, pink on black, screen-blended so the black drops
      out) over soft pink smoke, under the halftone fields drawn by base.css; img/ is beside this file */
   --powder-a: url("img/powder-a.jpg");
