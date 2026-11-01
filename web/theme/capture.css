@@ -1,0 +1,45 @@
+/* Capture (Record and Follow), design "Challenge capture": the reference on top, your camera below, each labelled;
+   a Recording pill and timer; a ring record button between round tools; a steady-phone tip. Tokens only. */
+.capture[data-chrome] .ref-row { display: flex; flex-direction: column; gap: var(--space-3); }
+.capture[data-chrome] .ref { order: -1; width: 100%; border-radius: var(--radius-lg); }
+.capture[data-chrome] .ref-stage { aspect-ratio: 4 / 3; }
+.capture[data-chrome] .cam { aspect-ratio: 4 / 3; }
+.capture[data-chrome] .ref-bar { background: transparent; padding: var(--space-2) 0 0; }
+
+.cap-pill { position: absolute; z-index: 2; display: inline-flex; align-items: center; padding: 4px 12px; border-radius: var(--radius-pill);
+  border: 1.5px solid var(--color-accent); background: var(--color-scrim); color: var(--color-accent);
+  font: var(--weight-bold) var(--text-xs)/1.4 var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; pointer-events: none; }
+.cap-pill-top { top: var(--space-3); left: var(--space-3); }
+
+.cap-ref-meta { position: absolute; inset: auto 0 0 0; z-index: 2; display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--space-3); padding: var(--space-6) var(--space-4) var(--space-4);
+  background: linear-gradient(to top, var(--color-scrim), transparent); }
+.cap-ref-title { margin: 0; font: var(--weight-bold) var(--text-lg)/1.2 var(--font-sans); color: var(--color-on-media); }
+.cap-ref-sub { margin: 2px 0 0; font-size: var(--text-sm); color: var(--color-text-muted); }
+.cap-watch { display: inline-flex; align-items: center; min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-text-muted); color: var(--color-on-media); text-decoration: none; font-weight: var(--weight-semibold); white-space: nowrap; }
+
+/* controls: Recording pill and timer on one line, then the ring between the round tools */
+.cap-controls { display: grid !important; grid-template-columns: 1fr auto; align-items: center; row-gap: var(--space-4); margin-top: var(--space-4); }
+.cap-controls > .row { grid-column: 1 / -1; justify-content: center; align-items: center; gap: var(--space-6); }
+.cap-controls .timer { font: var(--weight-bold) var(--text-md)/1 var(--font-mono); color: var(--color-text); }
+.cap-rec-pill { justify-self: start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: var(--radius-pill);
+  border: 1.5px solid var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); font-weight: var(--weight-semibold);
+  visibility: hidden; }
+.cap-rec-pill::before { content: ""; width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--color-accent); }
+.capture:has(.cam[data-state="recording"]) .cap-rec-pill { visibility: visible; }
+
+/* the record button is a ring; Stop is the ring with a square inside */
+body .cap-controls [data-testid="cam-start"]:not([hidden]), body .cap-controls [data-testid="cam-stop"]:not([hidden]) {
+  display: grid; place-items: center; width: 84px; height: 84px; min-height: 0; padding: 0; border-radius: var(--radius-pill);
+  border: 8px solid var(--color-accent); background: transparent; color: transparent; font-size: 0; }
+body .cap-controls [data-testid="cam-start"]:not([hidden]):hover { background: var(--color-accent-soft); filter: none; }
+body .cap-controls [data-testid="cam-start"]:disabled { opacity: 0.4; }
+body .cap-controls [data-testid="cam-stop"]::after { content: ""; width: 26px; height: 26px; border-radius: 6px; background: var(--color-bad); }
+/* Upload a video: a round tool beside the ring */
+body .cap-controls label.btn.secondary { display: grid; place-items: center; width: 56px; height: 56px; min-height: 0; padding: 0;
+  border-radius: var(--radius-pill); background: var(--color-raised); border-color: var(--color-line); font-size: 0; }
+body .cap-controls label.btn.secondary::before { content: "↑"; font-size: var(--text-lg); color: var(--color-text); }
+
+.cap-tip { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-4) 0 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.cap-tip::before { content: ""; flex: none; width: 12px; height: 20px; border: 2px solid var(--color-text-muted); border-radius: 3px; }

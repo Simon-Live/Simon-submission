@@ -31,6 +31,8 @@ const BEAT_LOW = 0.85;
 const BEAT_HIGH = 1.15;
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+/** Part 5 writes misses as fragments ("left arm too far right at 4.6 s"); shown alone they start with a capital. */
+const sentence = (t) => (typeof t === "string" && t ? t.charAt(0).toUpperCase() + t.slice(1) : null);
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s) % 60).padStart(2, "0")}`;
 
 /** Part 5's compared timeline windows, in order. */
@@ -90,9 +92,19 @@ export function driftOf(analysis) {
   if (!(end > 0)) return null;
   const marks = windows.flatMap((w) => (w.misses || []).map((m) => {
     const span = Array.isArray(m.t_s) && m.t_s.length === 2 ? m.t_s : [num(m.at_s) ?? w.t_s[0], (num(m.at_s) ?? w.t_s[0]) + 0.5];
-    return { at: span[0], start: span[0] / end, width: Math.max(0.02, (span[1] - span[0]) / end), text: m.text };
+    return { at: span[0], start: span[0] / end, width: Math.max(0.02, (span[1] - span[0]) / end), text: m.text, joint: m.joint || null };
   }));
   return { duration: end, marks };
+}
+
+const withDetails = (drift, model) => drift && { ...drift, marks: drift.marks.map((x) => ({ ...x, detail: driftDetailOf(x, model) })) };
+
+/** The card a tapped drift mark opens: both bodies at that moment and the miss in words (Part 5's text). */
+export function driftDetailOf(mark, model) {
+  if (!mark) return null;
+  const words = typeof mark.text === "string" && mark.text ? mark.text.charAt(0).toUpperCase() + mark.text.slice(1) : null;
+  return { title: `Drift at ${clock(mark.at)}`, badge: TEXT.needsFocus, at: mark.at, you: words, youLabel: TEXT.you,
+    poses: posesAt(model, mark.at), offJoints: mark.joint ? [mark.joint] : [], refLabel: TEXT.trainer };
 }
 
 /**
@@ -140,6 +152,7 @@ export function summaryOf(analysis, { kind = "exercise", model = null, entryName
     const offJoints = w ? (w.misses || []).map((m) => m.joint).filter(Boolean) : [];
     worstCard = { title: where, at: worst.at, poses: posesAt(model, worst.at), offJoints,
       refLabel: kind === "dance" ? TEXT.trainer : TEXT.reference, youLabel: TEXT.you };
+    worstCard.tone = kind === "dance" ? "dance" : "exercise"; // exercise: reference in the accent, you in the alert color
   }
   const insight = ((analysis && analysis.insights) || []).find((x) => x && x.cue);
   const firstMiss = windows.flatMap((w) => w.misses || []).find((m) => m && m.text);
@@ -149,11 +162,12 @@ export function summaryOf(analysis, { kind = "exercise", model = null, entryName
     eyebrow: TEXT.eyebrow,
     headline: HEADLINE[k][grade] || HEADLINE[k].F,
     stats: hideEmpty(statsOf(analysis, kind)),
+    statsLayout: kind === "dance" ? "inline" : "stack",
     worst: worstCard,
     bars: kind === "dance" ? [] : barsOf(analysis),
     barsTitle: reps ? TEXT.formPerRep : TEXT.formPerPart,
-    drift: kind === "dance" ? driftOf(analysis) : null,
-    note: insight ? insight.cue : firstMiss ? firstMiss.text : null,
+    drift: kind === "dance" ? withDetails(driftOf(analysis), model) : null,
+    note: sentence(insight ? insight.cue : firstMiss ? firstMiss.text : null),
     noteTitle: TEXT.note,
     driftTitle: TEXT.drifted,
     driftLegend: TEXT.needsFocus,

@@ -43,6 +43,23 @@ function figure(pose, points, cls, off = []) {
   return svg;
 }
 
+/** Trainer (or reference) and you side by side in one card, the joint that is off ringed. */
+function figPair(poses, off, refLabel, youLabel) {
+  return h("div", { class: "rs-figs" },
+    h("figure", {}, figure(poses, poses.reference, "rs-fig-ref"), h("figcaption", { text: refLabel })),
+    h("figure", { class: "rs-fig-you-wrap" }, figure(poses, poses.you, "rs-fig-you", off), h("figcaption", { text: youLabel })));
+}
+
+/** The card a drift mark opens: "Drift at 0:07", Needs focus, both bodies, the miss in words, the note. */
+function driftCard(d, note, noteTitle) {
+  const card = h("section", { class: "rs-card rs-drift-detail", "data-testid": "summary-drift-detail", "aria-live": "polite" },
+    h("div", { class: "rs-card-head" }, h("h3", { text: d.title }), h("span", { class: "rs-pill", text: d.badge })));
+  if (d.poses) card.append(figPair(d.poses, d.offJoints, d.refLabel, d.youLabel));
+  if (d.you) card.append(h("dl", { class: "rs-rows" }, h("dt", { text: d.youLabel }), h("dd", { text: d.you })));
+  if (note) card.append(h("div", { class: "rs-card rs-note rs-note-inner" }, h("p", { class: "rs-note-title", text: noteTitle }), h("p", { class: "rs-note-text", text: note })));
+  return card;
+}
+
 /**
  * Mount the summary into `root` (before `before` when given). Returns {el, destroy()}.
  * @param on {replay(), seek(atSeconds)}
@@ -52,18 +69,14 @@ export function renderResultSummary(root, m, on = {}, before = null) {
   const el = h("section", { class: "rs", "data-kind": m.kind, "data-testid": "result-summary", "aria-label": "Session summary" });
   el.append(h("div", { class: "rs-head" }, ring(m.ring),
     h("div", { class: "rs-headline" }, h("p", { class: "rs-eyebrow", text: m.eyebrow }), h("h2", { class: "rs-title", text: m.headline }))));
-  if (m.stats.length) el.append(h("div", { class: "rs-stats" }, ...m.stats.map((x) =>
+  if (m.stats.length) el.append(h("div", { class: "rs-stats", "data-layout": m.statsLayout }, ...m.stats.map((x) =>
     h("div", { class: "rs-stat", "data-testid": `summary-stat-${x.key}` }, h("span", { class: "rs-stat-label", text: x.label }), h("span", { class: "rs-stat-value", text: x.value })))));
 
   if (m.worst) {
-    const card = h("div", { class: "rs-card rs-worst" });
+    const card = h("div", { class: "rs-card rs-worst", "data-tone": m.worst.tone });
     const play = h("button", { type: "button", class: "rs-play", "aria-label": `Play ${m.worst.title}`, "data-testid": "summary-worst-play", onclick: () => on.seek && on.seek(m.worst.at) }, "▶");
     card.append(h("div", { class: "rs-card-head" }, h("h3", { text: m.worst.title }), play));
-    if (m.worst.poses) {
-      card.append(h("div", { class: "rs-figs" },
-        h("figure", {}, figure(m.worst.poses, m.worst.poses.reference, "rs-fig-ref"), h("figcaption", { text: m.worst.refLabel })),
-        h("figure", { class: "rs-fig-you-wrap" }, figure(m.worst.poses, m.worst.poses.you, "rs-fig-you", m.worst.offJoints), h("figcaption", { text: m.worst.youLabel }))));
-    }
+    if (m.worst.poses) card.append(figPair(m.worst.poses, m.worst.offJoints, m.worst.refLabel, m.worst.youLabel));
     el.append(card);
   }
 
@@ -76,11 +89,21 @@ export function renderResultSummary(root, m, on = {}, before = null) {
   }
 
   if (m.drift) {
-    const track = h("div", { class: "rs-drift-track", role: "img", "aria-label": `${m.drift.marks.length} moments to focus on` },
-      ...m.drift.marks.map((x) => h("button", { type: "button", class: "rs-drift-mark", title: x.text || "", "aria-label": x.text || "Moment",
-        style: `left:${(x.start * 100).toFixed(2)}%;width:${(x.width * 100).toFixed(2)}%`, onclick: () => on.seek && on.seek(x.at) })));
+    const detail = h("div", { class: "rs-drift-detail-slot" });
+    const openDetail = (mark, btn) => {
+      track.querySelectorAll(".rs-drift-mark").forEach((b) => b.setAttribute("aria-expanded", String(b === btn)));
+      detail.replaceChildren(driftCard(mark.detail, m.note, m.noteTitle));
+      on.seek && on.seek(mark.at);
+    };
+    const track = h("div", { class: "rs-drift-track", role: "group", "aria-label": `${m.drift.marks.length} moments to focus on` },
+      ...m.drift.marks.map((x) => {
+        const btn = h("button", { type: "button", class: "rs-drift-mark", title: x.text || "", "aria-label": x.text || "Moment", "aria-expanded": "false",
+          "data-testid": "summary-drift-mark", style: `left:${(x.start * 100).toFixed(2)}%;width:${(x.width * 100).toFixed(2)}%` });
+        btn.addEventListener("click", () => openDetail(x, btn));
+        return btn;
+      }));
     el.append(h("div", { class: "rs-drift" },
-      h("div", { class: "rs-drift-head" }, h("h3", { text: m.driftTitle }), h("span", { class: "rs-legend", text: m.driftLegend })), track));
+      h("div", { class: "rs-drift-head" }, h("h3", { text: m.driftTitle }), h("span", { class: "rs-legend", text: m.driftLegend })), track, detail));
   }
 
   if (m.note) {

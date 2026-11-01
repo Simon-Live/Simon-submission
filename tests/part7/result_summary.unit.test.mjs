@@ -30,6 +30,11 @@ test("dance: shape from Part 5's lost points, timing in words, a drift track, no
   assert.equal(m.bars.length, 0);
   assert.ok(m.drift && m.drift.marks.length > 0 && m.drift.marks.every((x) => x.start >= 0 && x.start <= 1));
   assert.match(m.worst.title, /^Rep \d of 8$/); // reps basis: the rep, even for dance
+  assert.equal(m.worst.tone, "dance");
+  const d = m.drift.marks[0].detail;
+  assert.match(d.title, /^Drift at \d:\d\d$/);
+  assert.equal(d.badge, "Needs focus");
+  assert.ok(d.you && d.you[0] === d.you[0].toUpperCase());
 });
 
 test("wording only: tempo bands and the shape sum", () => {

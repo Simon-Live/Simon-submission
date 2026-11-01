@@ -12,6 +12,9 @@ import { mountReference } from "./reference.js";
 import { h } from "./ui.js";
 import { loadChoice, MODES } from "./modes.js";
 import { createProgress } from "./progress.js";
+import { captureChromeOf } from "./model/capture-chrome.js";
+import { decorateCapture } from "./views/capture-chrome.js";
+import { currentKind } from "./model/kind.js";
 
 export const NAME_ERROR = "Give the movement a name.";
 export const TAKE_ERROR = "Record a video or upload one first.";
@@ -161,6 +164,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
 
   labels = mountLabels(labelBox);
   capture = mountCapture(capBox, limits, { reference, countdownDefault });
+  decorateCapture(capBox, captureChromeOf({ kind: currentKind(), entry: trainer ? null : entry })); // brand chrome (views/capture-chrome.js)
   capture.onChange(onTake);
 
   submit.addEventListener("click", async () => {
