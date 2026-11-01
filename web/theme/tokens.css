@@ -70,11 +70,10 @@
      out) over soft pink smoke, under the halftone fields drawn by base.css; img/ is beside this file */
   --powder-a: url("img/powder-a.jpg");
   --powder-b: url("img/powder-b.jpg");
-  --backdrop: var(--powder-a) right -26vw top -16vh / min(70vw, 1050px) auto no-repeat,
-              var(--powder-b) left -28vw bottom -20vh / min(62vw, 950px) auto no-repeat,
-              radial-gradient(ellipse 62% 50% at 90% 6%, var(--color-pink-smoke) 0%, transparent 72%),
-              radial-gradient(ellipse 55% 45% at 4% 98%, var(--color-pink-smoke) 0%, transparent 72%),
-              radial-gradient(ellipse 35% 30% at 50% 55%, var(--color-pink-smoke-soft) 0%, transparent 75%),
+  --backdrop: var(--powder-a) right -16vw top -18vh / min(52vw, 780px) auto no-repeat,
+              var(--powder-b) left -20vw bottom -20vh / min(46vw, 700px) auto no-repeat,
+              radial-gradient(ellipse 34% 30% at 100% 0%, var(--color-pink-smoke) 0%, transparent 72%),
+              radial-gradient(ellipse 30% 28% at 0% 100%, var(--color-pink-smoke) 0%, transparent 72%),
               var(--color-bg);
 
   /* semantic: overlays on top of video or the page */
