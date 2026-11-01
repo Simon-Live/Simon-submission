@@ -312,12 +312,18 @@ export async function mountResult(root, { analysis, replay, record = null, job =
   let summaryModel = null;
   try { summaryModel = replay ? normalizeReplay(replay) : null; } catch { summaryModel = null; }
   const summaryOpts = { kind: kindForMode(record && record.mode) || currentKind(), model: summaryModel, retryHref: recordAgainHref(record) };
-  // the video and 3D view sit below the summary: taps scroll there first, so what plays is on screen
-  const toStage = () => zone.scrollIntoView({ behavior: "smooth", block: "start" });
+  // the video and 3D view sit below the summary: taps scroll to whichever exists, then play the moment there
+  const LEAD_S = 2; // the same lead-in the coaching rows use (coaching.js)
+  const stageEl = () => (coach && coach.el) || (compare && compare.el) || zone;
+  const toStage = () => stageEl().scrollIntoView({ behavior: "smooth", block: "center" });
+  const playFrom = (t) => {
+    if (coach) return view.jump(t);                                              // video + 3D: the lead-in span
+    if (compare) { compare.seek(Math.max(0, Number(t) - LEAD_S)); compare.play(); } // 3D only: play from the lead-in
+  };
   const summaryOn = {
-    seek: (t) => { if (!getView()) return; toStage(); view.jump(t); },            // a rep bar: play that rep from its lead-in
+    seek: (t) => { if (!getView()) return; toStage(); playFrom(t); },           // a rep bar: play that rep
     seekInPlace: (t) => getView() && view.seek(t),                               // a drift mark: its card opens here
-    playWorst: (t) => { if (!getView()) return; toStage(); if (coach && coach.replayWorst) coach.replayWorst(); else view.jump(t); },
+    playWorst: (t) => { if (!getView()) return; toStage(); if (coach && coach.replayWorst) coach.replayWorst(); else playFrom(t); },
     replay: toStage,
   };
   const paintSummary = (entryName = "") => {
