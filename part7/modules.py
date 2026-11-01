@@ -44,6 +44,12 @@ def _git(cwd: Path, *args: str) -> str | None:
     return out if run.returncode == 0 and out else None
 
 
+def head_sha(path: Path) -> str | None:
+    """`git rev-parse HEAD` of the checkout at `path`, read fresh each call (None when unreadable)."""
+    found = _git(path, "rev-parse", "HEAD")
+    return found.lower() if _is_sha(found) else None
+
+
 def _is_sha(text: str | None) -> bool:
     return text is not None and len(text) == 40 and all(c in "0123456789abcdef" for c in text.lower())
 

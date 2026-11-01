@@ -157,7 +157,7 @@ All read from the environment (`part7/config.py`, `part7/quota.py`, `part7/serve
 | `SIMON7_P2_TRACK_FPS` | `SIMON7_P2_FPS` | the people step's tracking rate; when it differs from `SIMON7_P2_FPS`, Part 7 resamples the tracks to the 3D rate (`part7/track_resample.py`) |
 | `SIMON7_P2_TRACKER` | unset | a Part 2 tracker name (`local-sam31`, `local-open`, `bytetrack`, `api-sam31`) used in place of "auto" for `part2 track` |
 | `SIMON7_P2_TRACK_WORKER` | unset (off) | `1` keeps SAM 3.1 (`local-sam31`) loaded in its own process for the people step: "Warm SAM 3.1 tracker" below (TICKET-117) |
-| `SIMON7_P2_TRACK_WORKER_IDLE_S` | 600 | seconds without a tracking call before the tracker worker frees its GPU memory; `0` loads it at boot and never frees it |
+| `SIMON7_P2_TRACK_WORKER_IDLE_S` | 0 | seconds without a tracking call before the tracker worker frees its GPU memory; `0` loads it at boot and never frees it |
 | `SIMON7_PART1_TIMEOUT_S` | 150 | seconds the trainer job waits for Part 1; past it, the job falls back to keyframes every 10 frames instead of failing |
 | `SIMON7_LIMITS` | off | `on` enforces the daily caps (`SIMON7_DAILY_GPU` default 40 jobs, `SIMON7_DAILY_TRAINER` default 10) and the per-visitor caps (10 GPU and 3 trainer jobs a day). Jobs are counted either way under `<state>/quota/`. |
 | `SIMON7_STATE_DIR` | `~/.local/state/simon-part-7` | root for `videos/`, `dev/`, `check/` |
@@ -332,22 +332,35 @@ busy and a second `run` falling back to in-process after the 5 s wait, GPU use p
 (8.1 GB spare); the in-process run took 139 s while the warm one took 49 s. A concurrent in-process `track` needs 12 GiB
 free for admission and finds about 20 GB with the worker resident. Default: on.
 
-## Warm SAM 3.1 tracker (TICKET-117)
+## Warm SAM 3.1 tracker (TICKET-117, TICKET-128)
 
-`SIMON7_P2_TRACK_WORKER=1` (off by default) starts `part7/trackwarm/track_worker.py` beside the 3D worker, under
-`<state>/p2-tracker`. It runs in Part 2's GPU venv, loads `facebook/sam3.1` once and serves `part2 track ... --tracker
-local-sam31` over a unix socket, each call in-process through Part 2's own CLI (so `tracks.json` and its provenance
-are Part 2's). Every call runs on the thread that built the model: SAM 3.1 enters bfloat16 autocast when built, and
-autocast is per thread. Ported from the client team's `deploy/serverless/sam31_warm.py` (53e3d6e, 6100157).
+`SIMON7_P2_TRACK_WORKER=1` (staging/env.sh sets it; unset means off) starts Part 2's own warm track worker, `part2
+serve-worker --mode track --socket <path>`, beside the 3D worker, under `<state>/p2-tracker`, with the same launcher,
+log, pidfile, reaping, drain and load-scaled start deadline. It runs in Part 2's GPU venv, builds SAM 3.1 once and
+serves `part2 track --worker <path> --tracker local-sam31`; the files equal the cold run's apart from
+`provenance.created_utc` (Part 2 CONTRACT.md "Warm track worker", pin a8f91ac). TICKET-117's own bridge
+(`part7/trackwarm/track_worker.py`, a patch of `part2.trackers.local_sam31`) was deleted in TICKET-128 once Part 2
+shipped this entry.
 
+- GPU lock: Part 2's worker takes the host GPU lock for each call. Part 7's admission releases it before the call body
+  (`concurrent` admission, the way the 3D `--worker` path works), so the two never wait for each other; Part 7 still
+  decides admission on 12288 MiB free (`TRACK_MIN_FREE_MIB`).
+- Part 2's failure contract: exit 1 from `track --worker` means run the cold `part2 track` (fresh out folder,
+  `ANOMALY p2_tracker_unhealthy`); exit 4 and 2 are answers. A worker that stopped and removed its socket is restarted
+  at the next lease (retried after 5 min when the restart fails). Part 7 records the pin sha the worker started with
+  and restarts it at the next lease when the Part 2 checkout moved (`p2_tracker_restart` log line); that call runs
+  per-call.
 - Opt-in. With the worker running, the people step's "auto" tracker is `local-sam31` (the paid API is skipped);
   `SIMON7_P2_TRACKER` still wins. A failed `local-sam31` then retries `local-open` by name.
-- A call is admitted by Part 7's GPU lock first and leases the worker after (as the 3D worker does). A busy worker
-  is waited for 5 s (`SIMON7_P2_LEASE_WAIT_S`), then the call runs per-call as before. A worker that is down, did not
+- A call is admitted first and leases the worker after (as the 3D worker does). A busy tracker worker
+  is waited for up to the call timeout (a cold local-sam31 run beside the loaded worker could run out of GPU memory);
+  the 3D worker is still waited for 5 s (`SIMON7_P2_LEASE_WAIT_S`), then that call runs in-process. A worker that is down, did not
   start or drops a request (`ANOMALY p2_tracker_unhealthy`) sends the call to the per-call tracker; one background
   restart follows, retried after 5 min.
-- Memory: about 3 GB stays resident after a call (the model plus Part 2's cache after it empties it); a call peaks
-  well above that (see TICKET-117 for the figures), exactly as a per-call run does. The log line `p2_tracker resident:`
+- Memory: about 5.1 GiB stays resident after a call; a call reserves about 26 GiB at its peak (TICKET-128, TICKET-125),
+  exactly as a per-call run does. The cold repeat of a failed or timed-out warm call stops the tracker worker first and
+  needs 26624 MiB free; a timed-out call also stops the worker (it keeps running the call and holds Part 2's GPU lock).
+  Both start the worker again at the next people step. The pool needs `part2 serve-worker --mode` in the pin. The log line `p2_tracker resident:`
   gives the card's use after the load. `SIMON7_P2_TRACK_WORKER_IDLE_S=N` frees the model after N idle seconds and
   loads it again on the next call (`p2_tracker_released` log line); the default 0 keeps it loaded.
 - The heartbeat line gains `p2_tracker=released|starting|idle|busy|down` while the pool runs. `part7 serve` stops it

@@ -514,6 +514,19 @@ def _deferred(exc: staging_live.Deferred) -> int:
     return EXIT_MISSING
 
 
+CHECK_TRACK_WORKER_ENV = "SIMON7_CHECK7_TRACK_WORKER"  # "1": the app under test runs Part 2's warm tracker (`make check-7 TRACK_WORKER=1`)
+
+
+def app_env(environ: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment of the app under test. The warm tracker is ON only when `SIMON7_CHECK7_TRACK_WORKER=1`: a
+    `SIMON7_P2_TRACK_WORKER=1` exported for staging does not leak in, so check-7 stays the cold-tracker baseline by
+    default (TICKET-129). The direct path never runs a warm worker (it is the comparison)."""
+    env = {**(os.environ if environ is None else environ), "SIMON7_PHRASING": PHRASING, "SIMON7_CLIP_MAX_SIDE": "0"}
+    warm = env.get(CHECK_TRACK_WORKER_ENV, "").strip().lower() in ("1", "on", "yes", "true")
+    env["SIMON7_P2_TRACK_WORKER"] = "1" if warm else "0"
+    return env
+
+
 def cli_check() -> int:
     """Entry point of `part7 check`: one JSON on stdout, logs on stderr, exit 0 only on pass."""
     staging = staging_live.Gate(log=log)
@@ -535,7 +548,7 @@ def cli_check() -> int:
     (run_dir / "app").mkdir(parents=True, exist_ok=True)
     port = _free_port()
     # TICKET-067: the direct path reads the test clip as is, so the app keeps its size (`inputs_identical`).
-    env = {**os.environ, "SIMON7_PHRASING": PHRASING, "SIMON7_CLIP_MAX_SIDE": "0"}
+    env = app_env()
     proc = subprocess.Popen(
         [sys.executable, "-m", "part7", "serve", "--port", str(port), "--state", str(run_dir / "app")],
         cwd=str(config.REPO_ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

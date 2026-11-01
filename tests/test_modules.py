@@ -107,3 +107,27 @@ def test_short_map_feeds_the_build_stamp(fake_parts: dict[str, Path]) -> None:
     short = modules.short_map()
     assert set(short) == set(modules.PART_IDS)
     assert short["2"] == _git(fake_parts["2"], "rev-parse", "HEAD")[:9]
+
+
+def test_head_sha_reads_the_checkout_fresh_each_call(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    first = _commit(repo, "one")
+    assert modules.head_sha(repo) == first and len(first) == 40
+    second = _commit(repo, "two")
+    assert modules.head_sha(repo) == second != first  # not cached: a pin that moved is seen at once
+
+
+def test_head_sha_is_none_when_the_path_is_not_a_checkout_or_is_missing(tmp_path: Path) -> None:
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert modules.head_sha(plain) is None
+    assert modules.head_sha(tmp_path / "missing") is None
+
+
+def test_head_sha_is_none_for_an_unborn_branch(tmp_path: Path) -> None:
+    repo = tmp_path / "empty"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    assert modules.head_sha(repo) is None

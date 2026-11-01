@@ -280,6 +280,30 @@ def _wait_memory(min_free_mib: int, mem_check: Callable[[], int | None], poll_s:
         waits.add("memory", since)
 
 
+def wait_free(lock_path: Path | str | None = None, timeout_s: float = 30.0, poll_s: float = 0.1) -> bool:
+    """True once no process holds the GPU file lock (taken and dropped at once); False when `timeout_s` passes first.
+
+    Used after a worker was killed (TICKET-129): a child that inherited the lock's descriptor keeps it held, and the
+    next GPU call should not start before it is free.
+    """
+    lpath = Path(lock_path) if lock_path is not None else config.gpu_lock_path()
+    lpath.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + max(0.0, timeout_s)
+    fd = os.open(str(lpath), os.O_CREAT | os.O_RDWR, 0o666)
+    try:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                return True
+            except OSError:
+                if time.monotonic() >= deadline:
+                    return False
+                time.sleep(poll_s)
+    finally:
+        os.close(fd)
+
+
 @contextlib.contextmanager
 def acquire(
     lock_path: Path | str | None = None,

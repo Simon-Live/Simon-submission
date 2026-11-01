@@ -6,10 +6,11 @@ request at a time, so a call that cannot lease it within `LEASE_WAIT_S` runs in-
 behind it. An unhealthy worker logs `ANOMALY p2_worker_unhealthy`, is restarted once in the background (the
 calls meanwhile run in-process) and, if that restart fails, is left down for `RETRY_DOWN_S`.
 
-The same `Pool` also runs the warm SAM 3.1 tracker (TICKET-117, `part7/trackwarm/track_worker.py`) as a second,
-independent pool (`start_track_pool`). It differs in two ways, both opt-in on `Pool`: it starts on the first call
-and not at boot (`on_demand`), and it gives the GPU memory back after `idle_release_s` without a call
-(`ANOMALY`-free: `p2_tracker_released` is a log line), so a quiet host holds only the 3D worker.
+The same `Pool` also runs Part 2's warm track worker (`part2 serve-worker --mode track`, TICKET-128; TICKET-117
+began it) as a second, independent pool (`start_track_pool`). It differs in three ways, all opt-in on `Pool`: it may
+start on the first call and not at boot (`on_demand`), it may give the GPU memory back after `idle_release_s`
+without a call (`p2_tracker_released` is a log line), and it restarts at the next lease when the Part 2 pin it
+started with is no longer the pin on disk (`version`), because Part 2 asks for a restart on every update.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ import time
 from pathlib import Path
 from typing import Callable, Iterator
 
-from part7 import applog
+from part7 import applog, gpu_lock
 
 START_WAIT_S = 180.0  # a worker loads its model before it listens (on an idle host)
 START_LOAD_SCALE_MAX = 4.0  # a busy host (load1 per CPU above 1) stretches the start deadline by that factor, at most this
@@ -34,6 +35,9 @@ HEALTH_TIMEOUT_S = 2.0
 LEASE_WAIT_S = 5.0  # env SIMON7_P2_LEASE_WAIT_S: the longest a call waits for the busy worker, then it runs in-process
 SOCK_PATH_MAX = 96  # AF_UNIX paths are limited to 107 bytes
 RETRY_DOWN_S = 300.0  # a worker whose restart failed is tried again no sooner than this
+KILL_GRACE_S = 10.0  # a killed worker gets this long to end after SIGTERM before SIGKILL
+LOCK_FREE_WAIT_S = 30.0  # after a kill, the longest to wait for the GPU file lock to be free
+TRACK_MARKER = b"--mode\x00track"  # /proc/<pid>/cmdline of `part2 serve-worker --mode track`: NUL-separated arguments
 
 Launcher = Callable[[list[str], Path, "Path | None", "dict[str, str] | None"], "subprocess.Popen[bytes]"]
 
@@ -86,6 +90,19 @@ def healthy(sock_path: Path) -> bool:
         return False
 
 
+def _is_tracker(cmd: bytes) -> bool:
+    """True when a /proc cmdline is a `serve-worker --mode track` (the warm tracker, not the 3D worker)."""
+    return TRACK_MARKER in cmd or b"--mode=track" in cmd
+
+
+def _marker_matches(cmd: bytes, marker: bytes) -> bool:
+    """True when `cmd` is the kind of worker `marker` names. The tracker marker is `--mode` then `track`; the 3D
+    marker `serve-worker` never matches a tracker, so a stale pidfile of one pool cannot kill the other's worker."""
+    if marker == TRACK_MARKER:
+        return _is_tracker(cmd) and b"serve-worker" in cmd
+    return marker in cmd and not _is_tracker(cmd)
+
+
 def _reap_orphan(pidfile: Path, marker: bytes = b"serve-worker") -> None:
     """Stop a `serve-worker` a killed server left behind (its pid is in `pidfile`); it still holds GPU memory."""
     try:
@@ -93,7 +110,7 @@ def _reap_orphan(pidfile: Path, marker: bytes = b"serve-worker") -> None:
         cmd = Path(f"/proc/{pid}/cmdline").read_bytes()
     except (OSError, ValueError):
         return
-    if pid > 1 and marker in cmd:
+    if pid > 1 and _marker_matches(cmd, marker):
         try:
             os.killpg(os.getpgid(pid), signal.SIGTERM)  # the worker leads its own session (`_launch`)
         except OSError:
@@ -109,8 +126,10 @@ class _Slot:
         self.starting = False  # being (re)started
         self.down_until = 0.0  # monotonic time before which a failed worker is not restarted
         self.why = ""  # why the last start was abandoned
-        self.released = False  # stopped on purpose (idle or not yet needed); the next lease starts it
+        self.released = False  # stopped on purpose (idle, timed out or not yet needed); the next lease starts it
+        self.restart = False  # the leased call timed out: stop the worker when the lease ends (`Pool.mark_restart`)
         self.last_used = time.monotonic()
+        self.version: "str | None" = None  # the pin the running worker started with (Pool `version`)
 
 
 class Pool:
@@ -122,9 +141,10 @@ class Pool:
         cwd: Path | None = None, env: dict[str, str] | None = None, lease_wait_s: float | None = None,
         label: str = "p2_worker", folder: str = "p2-workers", marker: bytes = b"serve-worker",
         on_demand: bool = False, idle_release_s: float = 0.0, on_started: Callable[[], None] | None = None,
-        load1: Callable[[], float] = _load1,
+        load1: Callable[[], float] = _load1, version: Callable[[], "str | None"] | None = None,
+        gpu_lock_path: Path | None = None,
     ) -> None:
-        self._load1 = load1
+        self._load1, self._version, self._gpu_lock_path = load1, version, gpu_lock_path
         self.label, self._marker, self._on_demand = label, marker, on_demand
         self._idle_release_s, self._on_started = idle_release_s, on_started
         root = Path(state_dir) / folder
@@ -147,6 +167,7 @@ class Pool:
         if self._closed:
             slot.why = "the pool was stopped"
             return False
+        slot.version = self._version() if self._version else None  # read before launch: the worker loads this pin
         proc = slot.proc = self._launcher(self._argv_for(slot.sock), slot.log, self._cwd, self._env)
         if self._closed:  # stop() ran while the process launched: it never saw this one, so end it here
             self._kill(slot)
@@ -175,6 +196,87 @@ class Pool:
                 self._kill(slot)
                 return False
             time.sleep(0.2)
+
+    def _kill_group(self, slot: _Slot) -> None:
+        """End the worker of `slot` and its process group, returning only when the process is gone (TICKET-129).
+
+        The worker leads its own session (`_launch`), so the group is its own; the pid is checked against the
+        worker's command line first. A process that cannot be verified is ended with `_kill` alone.
+        """
+        proc = slot.proc
+        pid = getattr(proc, "pid", None)
+        if proc is None or not isinstance(pid, int) or pid <= 1 or proc.poll() is not None or not self._ours(pid):
+            self._kill(slot)
+            return
+        slot.proc = None
+        try:
+            pgid = os.getpgid(pid)
+            os.killpg(pgid, signal.SIGTERM) if pgid == pid else os.kill(pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=KILL_GRACE_S)
+            except subprocess.TimeoutExpired:
+                os.killpg(pgid, signal.SIGKILL) if pgid == pid else os.kill(pid, signal.SIGKILL)
+                proc.wait(timeout=KILL_GRACE_S)
+            if pgid == pid:
+                os.killpg(pgid, signal.SIGKILL)  # children the leader left behind (ESRCH when none)
+        except OSError:
+            pass
+
+    def _ours(self, pid: int) -> bool:
+        try:
+            return _marker_matches(Path(f"/proc/{pid}/cmdline").read_bytes(), self._marker)
+        except OSError:
+            return False
+
+    def _stop_hard(self, slot: _Slot) -> None:
+        """Stop the worker, drop its files and wait until the GPU file lock is free; the next lease starts it again.
+
+        Callable only for a slot nobody else holds (leased by this caller). The GPU memory and any lock the worker
+        held go back to the host before the caller runs a cold call.
+        """
+        self._kill_group(slot)
+        slot.sock.unlink(missing_ok=True)
+        slot.pidfile.unlink(missing_ok=True)
+        if not gpu_lock.wait_free(self._gpu_lock_path, LOCK_FREE_WAIT_S):
+            applog.anomaly(f"{self.label}_unhealthy", "the GPU lock is still held after the worker was stopped",
+                           slot=slot.index)
+        with self._lock:
+            slot.released, slot.restart = True, False
+
+    def mark_restart(self, sock: Path) -> None:
+        """The call leased on `sock` timed out: the worker still runs it and holds the GPU lock, so it is stopped
+        when the lease ends (before the caller's next step) and started again at the next lease."""
+        with self._lock:
+            for slot in self._slots:
+                if slot.sock == sock and slot.busy:
+                    slot.restart = True
+
+    def holds_model(self) -> bool:
+        """True when a worker process runs or is starting (its model is, or is about to be, in GPU memory)."""
+        with self._lock:
+            return any(s.starting or (s.proc is not None and s.proc.poll() is None) for s in self._slots)
+
+    def release_all(self, wait_s: float) -> bool:
+        """Stop every worker so a cold call has the GPU memory; a lease starts it again. Waits up to `wait_s` for a
+        slot that is leased or starting; False when one stayed (its model stays loaded)."""
+        deadline = time.monotonic() + max(0.0, wait_s)
+        done = True
+        for slot in self._slots:
+            with self._lock:
+                while (slot.busy or slot.starting) and not self._closed and time.monotonic() < deadline:
+                    self._lock.wait(max(0.01, deadline - time.monotonic()))
+                if slot.busy or slot.starting or self._closed:
+                    done = done and not (slot.busy or slot.starting)
+                    continue
+                slot.busy = True
+            try:
+                self._stop_hard(slot)
+                applog.log(f"{self.label}_released: stopped before a cold call, the model's GPU memory is freed")
+            finally:
+                with self._lock:
+                    slot.busy = False
+                    self._lock.notify_all()
+        return done
 
     @staticmethod
     def _kill(slot: _Slot) -> None:
@@ -268,8 +370,13 @@ class Pool:
         try:
             if slot is None:
                 yield None
-            elif slot.released and self._on_demand:
-                self._start_async_blocking(slot)  # the first call after boot or an idle release pays the model load
+            elif self._pin_changed(slot):
+                applog.log(f"{self.label}_restart: the Part 2 pin changed ({slot.version} to {self._version()}); "
+                           "the worker restarts and this call runs per-call")
+                self._start_async(slot)
+                yield None
+            elif slot.released:
+                self._start_async_blocking(slot)  # the first call after boot, an idle release or a stop pays the load
                 yield slot.sock if self._ok(slot) else None
             elif self._ok(slot):
                 yield slot.sock
@@ -280,9 +387,18 @@ class Pool:
                 yield None
         finally:
             if slot is not None:
+                if slot.restart:
+                    self._stop_hard(slot)  # a timed-out call: gone, and the GPU lock free, before the caller goes on
                 with self._lock:
                     slot.busy, slot.last_used = False, time.monotonic()
                     self._lock.notify_all()
+
+    def _pin_changed(self, slot: _Slot) -> bool:
+        """True when a running worker started with a pin that is no longer the one on disk (unknown reads never restart)."""
+        if self._version is None or slot.released or slot.proc is None or slot.version is None:
+            return False
+        now = self._version()
+        return now is not None and now != slot.version
 
     def _start_async_blocking(self, slot: _Slot) -> None:
         """Start the leased `slot` here and wait for it (no other call can lease it: it is busy)."""
@@ -354,13 +470,29 @@ def track_state() -> str:
 
 
 @contextlib.contextmanager
-def track_lease() -> Iterator[Path | None]:
-    """The warm tracker pool's `lease`, or None when no pool runs."""
+def track_lease(wait_s: float | None = None) -> Iterator[Path | None]:
+    """The warm tracker pool's `lease` (waiting at most `wait_s` for a busy worker), or None when no pool runs."""
     if _TRACK_POOL is None:
         yield None
     else:
-        with _TRACK_POOL.lease() as sock:
+        with _TRACK_POOL.lease(wait_s) as sock:
             yield sock
+
+
+def track_mark_restart(sock: Path) -> None:
+    """The warm call on `sock` timed out: stop that worker when its lease ends (see `Pool.mark_restart`)."""
+    if _TRACK_POOL is not None:
+        _TRACK_POOL.mark_restart(sock)
+
+
+def track_holds_model() -> bool:
+    """True when the warm tracker pool has a worker running or starting."""
+    return _TRACK_POOL is not None and _TRACK_POOL.holds_model()
+
+
+def stop_track_worker(wait_s: float) -> bool:
+    """Stop the warm tracker's worker process (the pool stays; the next lease starts it). False when it stayed up."""
+    return _TRACK_POOL is None or _TRACK_POOL.release_all(wait_s)
 
 
 def state() -> str:

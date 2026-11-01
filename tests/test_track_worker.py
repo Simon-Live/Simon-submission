@@ -1,13 +1,14 @@
-"""TICKET-117: the warm SAM 3.1 tracker (lifecycle, thread affinity, fallback, idle release, drain) and the fps settings."""
+"""TICKET-117/128: the warm SAM 3.1 tracker as Part 2's `serve-worker --mode track` (lifecycle, pin restart, fallback,
+GPU lock, idle release, drain) and the fps settings."""
 
 from __future__ import annotations
 
+import fcntl
 import importlib
-import importlib.util
-import io
 import json
 import logging
-import tempfile
+import sys
+import textwrap
 import threading
 import time
 from pathlib import Path
@@ -15,109 +16,10 @@ from typing import Any
 
 import pytest
 
-from part7 import heartbeat, p2_worker, runner
+from part7 import gpu_lock, heartbeat, p2_worker, runner
 from part7.parts import p2_pose
 from tests.test_chain import _ok_step
 from tests.test_perf import _Proc, _p2_env, _video
-
-SCRIPT = Path(p2_pose.TRACK_SCRIPT)
-
-
-def _script() -> Any:
-    spec = importlib.util.spec_from_file_location("track_worker_under_test", SCRIPT)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-@pytest.fixture
-def sock_path() -> Path:
-    d = Path(tempfile.mkdtemp(prefix="s7tw-"))
-    return d / "t.sock"
-
-
-# ----- the worker process (fake Part 2 CLI) ------------------------------------------------------
-class _Served:
-    """`serve()` on a thread of its own with a fake Part 2 `main`; records the thread each call ran on."""
-
-    def __init__(self, sock: Path) -> None:
-        self.mod = _script()
-        self.sock, self.threads, self.calls, self.built_on = sock, [], [], []
-
-        def loader() -> None:
-            self.built_on.append(threading.get_ident())  # "the model" is built on the serving thread
-
-        def main(argv: list[str]) -> int:
-            self.threads.append(threading.get_ident())
-            self.calls.append(argv)
-            print("tracking " + argv[-1])
-            if "boom" in argv:
-                raise RuntimeError("model blew up")
-            if "exit" in argv:
-                raise SystemExit(3)
-            return 0
-
-        self.thread = threading.Thread(target=self.mod.serve, args=(str(sock), main, loader), daemon=True)
-        self.thread.start()
-        deadline = time.monotonic() + 5
-        while not sock.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert sock.exists()
-
-    def call(self, *argv: str) -> tuple[int, str]:
-        out = io.StringIO()
-        return self.mod.call(str(self.sock), list(argv), out), out.getvalue()
-
-
-def test_every_call_runs_on_the_thread_that_built_the_model(sock_path: Path) -> None:
-    """bfloat16 autocast is per thread (6100157): a call on another thread meets the model in float32."""
-    w = _Served(sock_path)
-    results = [w.call("track", "--input", f"clip{i}") for i in range(3)]
-    assert [r[0] for r in results] == [0, 0, 0]
-    assert len(set(w.threads)) == 1 and w.threads[0] == w.built_on[0] == w.thread.ident
-    assert "tracking clip1" in results[1][1]  # the call's log reaches the caller
-
-
-def test_exit_codes_failures_and_the_allowed_subcommand(sock_path: Path) -> None:
-    w = _Served(sock_path)
-    code, out = w.call("track", "boom")
-    assert code == 1 and "model blew up" in out  # the traceback is in the call's log
-    assert w.call("track", "exit")[0] == 3  # Part 2's own exits
-    assert w.call("run", "--mode", "single")[0] == 2 and len(w.calls) == 2  # only `track` is served
-    assert w.call("track", "ok")[0] == 0  # one failed call does not stop the worker
-
-
-def test_a_health_probe_does_not_run_a_call(sock_path: Path) -> None:
-    w = _Served(sock_path)
-    assert p2_worker.healthy(sock_path) and w.calls == []
-    assert w.call("track", "x")[0] == 0
-
-
-def test_call_reports_lost_when_no_worker_answers(sock_path: Path) -> None:
-    mod = _script()
-    out = io.StringIO()
-    assert mod.call(str(sock_path), ["track"], out) == 1
-    assert mod.LOST in out.getvalue() and mod.LOST == p2_pose.TRACK_LOST
-
-
-def test_call_reports_lost_when_the_worker_drops_the_connection(sock_path: Path) -> None:
-    import socket
-
-    mod = _script()
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    srv.bind(str(sock_path))
-    srv.listen(1)
-
-    def drop() -> None:
-        conn, _ = srv.accept()
-        conn.makefile("rb").readline()
-        conn.close()
-
-    threading.Thread(target=drop, daemon=True).start()
-    out = io.StringIO()
-    assert mod.call(str(sock_path), ["track"], out) == 1 and mod.LOST in out.getvalue()
-    srv.close()
-
 
 # ----- the pool: on demand, idle release, drain --------------------------------------------------
 def _tpool(tmp_path: Path, idle_s: float = 0.0, start_ok: bool = True, **kw: Any) -> tuple[p2_worker.Pool, list[_Proc]]:
@@ -131,9 +33,9 @@ def _tpool(tmp_path: Path, idle_s: float = 0.0, start_ok: bool = True, **kw: Any
         return procs[-1]
 
     pool = p2_worker.Pool(
-        tmp_path, 1, lambda sock: ["track_worker.py", "serve", "--socket", str(sock)], launcher=launcher,
+        tmp_path, 1, lambda sock: ["part2", "serve-worker", "--mode", "track", "--socket", str(sock)], launcher=launcher,
         health=lambda sock: str(sock) in up, start_wait_s=0.5, lease_wait_s=0.0, label="p2_tracker",
-        folder="p2-tracker", marker=b"track_worker.py", on_demand=True, idle_release_s=idle_s, **kw,
+        folder="p2-tracker", on_demand=True, idle_release_s=idle_s, **kw,
     )
     return pool, procs
 
@@ -224,22 +126,14 @@ def test_the_run_worker_pool_is_unchanged(tmp_path: Path) -> None:
 
 
 # ----- Part 7's use of it ------------------------------------------------------------------------
-def _track_env(tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch, script_exit: int = 0,
-               lost: bool = False) -> tuple[Any, list[list[str]], p2_worker.Pool]:
-    lk, ran = _p2_env(state_dir, monkeypatch, {"--tracker", "api-sam31", "local-sam31"})
+def _track_env(tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch, script_exit: int = 0) -> tuple[Any, list[list[str]], p2_worker.Pool]:
+    lk, ran = _p2_env(state_dir, monkeypatch, {"--tracker", "api-sam31", "local-sam31", "--worker"})
     out = tmp_path / "w" / "part2_track"
     out.mkdir(parents=True, exist_ok=True)
 
     def fake_run(part: Any, argv: list[str], **kw: Any) -> runner.Step:
         ran.append([str(a) for a in argv])
-        warm = "call" in argv and str(SCRIPT) in argv
-        if warm:
-            log = Path(kw["log_path"])
-            log.parent.mkdir(parents=True, exist_ok=True)
-            log.write_text(p2_pose.TRACK_LOST if lost else "tracked\n", encoding="utf-8")
-            code = 1 if lost else script_exit
-        else:
-            code = 0
+        code = script_exit if "--worker" in argv else 0
         if code == 0:
             target = Path(argv[argv.index("--out") + 1]) if "--out" in argv else out
             target.mkdir(parents=True, exist_ok=True)
@@ -260,9 +154,9 @@ def test_a_local_sam31_track_goes_to_the_warm_worker(tmp_path: Path, state_dir: 
         p2_worker.stop_track_pool()
     assert step["exit"] == 0 and len(ran) == 1
     argv = ran[0]
-    assert argv[1] == str(SCRIPT) and argv[2] == "call" and argv[argv.index("--") + 1] == "track"
-    assert "--tracker" in argv and argv[argv.index("--tracker") + 1] == "local-sam31"
-    assert argv[argv.index("--socket") + 1].endswith("w0.sock")
+    assert argv[argv.index("part2") + 1] == "track"  # `python -m part2 track ... --worker <sock>`
+    assert argv[argv.index("--tracker") + 1] == "local-sam31"
+    assert argv[argv.index("--worker") + 1].endswith("w0.sock")
 
 
 def test_an_auto_tracker_is_local_sam31_while_the_warm_worker_runs(
@@ -277,10 +171,10 @@ def test_an_auto_tracker_is_local_sam31_while_the_warm_worker_runs(
     assert ran[0][ran[0].index("--tracker") + 1] == "local-sam31"
 
 
-def test_a_dropped_request_repeats_per_call_with_an_anomaly(
+def test_exit_1_from_the_worker_repeats_cold_in_a_fresh_out_dir_with_an_anomaly(
     tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    lk, ran, _ = _track_env(tmp_path, state_dir, monkeypatch, lost=True)
+    lk, ran, _ = _track_env(tmp_path, state_dir, monkeypatch, script_exit=1)
     try:
         with caplog.at_level(logging.WARNING, logger="part7"):
             step, tracks = p2_pose.track(
@@ -288,16 +182,77 @@ def test_a_dropped_request_repeats_per_call_with_an_anomaly(
     finally:
         p2_worker.stop_track_pool()
     assert step["exit"] == 0 and tracks.is_file()
-    assert str(SCRIPT) in ran[0] and str(SCRIPT) not in ran[1]  # the second run is the ordinary per-call tracker
+    assert "--worker" in ran[0] and "--worker" not in ran[1]  # the second run is the cold `part2 track`
     assert ran[1][ran[1].index("--tracker") + 1] == "local-sam31"
+    assert ran[1][ran[1].index("--out") + 1] != ran[0][ran[0].index("--out") + 1]
     assert any("ANOMALY p2_tracker_unhealthy" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize("code", [4, 2])
+def test_exit_4_and_2_from_the_worker_are_answers_not_failures(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, code: int
+) -> None:
+    lk, ran, _ = _track_env(tmp_path, state_dir, monkeypatch, script_exit=code)
+    try:
+        with caplog.at_level(logging.WARNING, logger="part7"):
+            step = p2_pose._execute_warm_track(
+                ["track", "--input", "x", "--out", str(tmp_path / "o"), "--tracker", "local-sam31"], "gpu",
+                tmp_path / "w", "t.log", lk, lk.path("2"), False, None)
+    finally:
+        p2_worker.stop_track_pool()
+    assert step["exit"] == code and len(ran) == 1  # no cold repeat
+    assert not any("p2_tracker_unhealthy" in r.getMessage() for r in caplog.records)
+
+
+def test_the_warm_call_and_a_worker_taking_the_host_gpu_lock_do_not_deadlock(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Part 2's worker takes the host GPU lock per call (CONTRACT.md); Part 7 must not hold it across the call."""
+    lk, _, _ = _track_env(tmp_path, state_dir, monkeypatch)
+    lock_path = tmp_path / "gpu.lock"
+    took: list[bool] = []
+
+    def worker_like_run(part: Any, argv: list[str], **kw: Any) -> runner.Step:
+        with lock_path.open("a+") as fd:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # the worker's own flock: fails if Part 7 still holds it
+                got = gpu_lock._THREAD_LOCK.acquire(blocking=False)  # nor may Part 7 keep its in-process lock
+                if got:
+                    gpu_lock._THREAD_LOCK.release()
+                took.append(got)
+            except BlockingIOError:
+                took.append(False)
+        return {**_ok_step(2), "exit": 0}
+
+    monkeypatch.setattr(runner, "run", worker_like_run)
+    done = threading.Thread(target=lambda: p2_pose._execute_warm_track(
+        ["track", "--input", "x", "--out", str(tmp_path / "o"), "--tracker", "local-sam31"], "gpu", tmp_path / "w",
+        "t.log", lk, lk.path("2"), True,
+        {"memory_fn": lambda: 20000, "timeout_s": 5, "lock_path": lock_path}), daemon=True)
+    done.start()
+    done.join(10)
+    p2_worker.stop_track_pool()
+    assert not done.is_alive() and took == [True]
+
+
+def test_admission_refuses_a_warm_call_below_12288_mib_free(
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lk, ran, _ = _track_env(tmp_path, state_dir, monkeypatch)
+    with pytest.raises(TimeoutError):
+        p2_pose._execute_warm_track(
+            ["track", "--input", "x", "--out", str(tmp_path / "o"), "--tracker", "local-sam31"], "gpu", tmp_path / "w",
+            "t.log", lk, lk.path("2"), True,
+            {"memory_fn": lambda: 12287, "timeout_s": 0.3, "poll_s": 0.05, "lock_path": tmp_path / "gpu.lock"})
+    p2_worker.stop_track_pool()
+    assert ran == []
 
 
 def test_no_pool_means_the_per_call_tracker(tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     lk, ran, _ = _track_env(tmp_path, state_dir, monkeypatch)
     p2_worker.stop_track_pool()
     p2_pose.track(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False, tracker="local-sam31")
-    assert str(SCRIPT) not in ran[0] and ran[0][ran[0].index("--tracker") + 1] == "local-sam31"
+    assert "--worker" not in ran[0] and ran[0][ran[0].index("--tracker") + 1] == "local-sam31"
 
 
 def test_an_unreachable_worker_runs_per_call(tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -307,7 +262,7 @@ def test_an_unreachable_worker_runs_per_call(tmp_path: Path, state_dir: Path, mo
         p2_pose.track(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False, tracker="local-sam31")
     finally:
         p2_worker.stop_track_pool()
-    assert [str(SCRIPT) in a for a in ran] == [False]
+    assert ["--worker" in a for a in ran] == [False]
 
 
 def test_failed_local_sam31_retries_local_open_only_with_the_worker_on(
@@ -330,7 +285,7 @@ def test_failed_local_sam31_retries_local_open_only_with_the_worker_on(
 def test_start_track_worker_needs_the_opt_in_the_gpu_venv_and_the_pin(
     tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    lk, _ = _p2_env(state_dir, monkeypatch, {"--tracker", "local-sam31"})
+    lk, _ = _p2_env(state_dir, monkeypatch, {"--tracker", "local-sam31", "--worker"})
     venv = tmp_path / "venv"
     (venv / "bin").mkdir(parents=True)
     (venv / "bin" / "python").write_text("", encoding="utf-8")
@@ -341,12 +296,17 @@ def test_start_track_worker_needs_the_opt_in_the_gpu_venv_and_the_pin(
     assert p2_pose.start_track_worker(state_dir, lk, backend="cpu") is False
     monkeypatch.setattr(p2_pose.probe, "help_text", lambda *a, **k: "--tracker api-sam31")  # the pin lacks local-sam31
     assert p2_pose.start_track_worker(state_dir, lk) is False
-    monkeypatch.setattr(p2_pose.probe, "help_text", lambda *a, **k: "track --tracker local-sam31")
+    monkeypatch.setattr(p2_pose.probe, "help_text", lambda *a, **k: "track --tracker local-sam31")  # no --worker
+    assert p2_pose.start_track_worker(state_dir, lk) is False
+    monkeypatch.setattr(p2_pose.probe, "help_text", lambda *a, **k: "track --tracker local-sam31 --worker --mode")
+    p2_pose.probe.clear_cache()  # the earlier answers (no --mode) are cached per command
     monkeypatch.setattr(p2_worker.Pool, "start", lambda self: None)  # no process in a unit test
     try:
         assert p2_pose.start_track_worker(state_dir, lk) is True
         pool = p2_worker._TRACK_POOL
-        assert pool is not None and pool._on_demand is False and pool._idle_release_s == 0  # default: loads at boot, stays
+        assert pool is not None and pool._version is not None
+        assert pool._argv_for(Path("/s.sock"))[-6:] == ["part2", "serve-worker", "--mode", "track", "--socket", "/s.sock"]
+        assert pool._on_demand is False and pool._idle_release_s == 0  # default: loads at boot, stays
         monkeypatch.setenv(p2_pose.TRACK_IDLE_ENV, "600")
         assert p2_pose.start_track_worker(state_dir, lk) is True
         pool = p2_worker._TRACK_POOL
@@ -510,43 +470,29 @@ def test_a_warm_track_admission_checks_free_memory(tmp_path: Path, state_dir: Pa
 
 
 def test_a_timed_out_warm_call_repeats_per_call_in_a_fresh_out_dir(
-    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, state_dir: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """The runner's timeout step has exit None (not 1): only `timed_out` sends the call to the cold retry (B1)."""
     lk, ran, _ = _track_env(tmp_path, state_dir, monkeypatch)
     real = runner.run
 
     def timing_out(part: Any, argv: list[str], **kw: Any) -> runner.Step:
         step = real(part, argv, **kw)
-        return runner.Step({**step, "exit": 1, "timed_out": True}) if str(SCRIPT) in [str(a) for a in argv] else step
+        return runner.Step({**step, "exit": None, "timed_out": True}) if "--worker" in argv else step
 
     monkeypatch.setattr(runner, "run", timing_out)
     try:
-        step, tracks = p2_pose.track(
-            _video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False, tracker="local-sam31")
+        with caplog.at_level(logging.WARNING, logger="part7"):
+            step, tracks = p2_pose.track(
+                _video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False, tracker="local-sam31")
     finally:
         p2_worker.stop_track_pool()
+    assert any("ANOMALY p2_tracker_unhealthy" in r.getMessage() for r in caplog.records)
+    assert step["exit"] == 0 and len(ran) == 2
     first_out = ran[0][ran[0].index("--out") + 1]
     second_out = ran[1][ran[1].index("--out") + 1]
-    assert str(SCRIPT) not in ran[1] and second_out != first_out
+    assert "--worker" not in ran[1] and second_out != first_out
     assert tracks.parent == Path(second_out) and tracks.is_file()
-
-
-def test_the_worker_drops_a_request_whose_client_left(sock_path: Path) -> None:
-    import socket
-
-    mod = _script()
-    ran: list[Any] = []
-    a, b = socket.socketpair()
-    b.sendall(b'{"argv": ["track"], "log": "/nonexistent/x.log"}\n')
-    b.close()  # the client timed out and disconnected while the request waited
-    mod.handle(a, lambda argv: ran.append(argv) or 0)
-    assert ran == []
-    c, d = socket.socketpair()
-    log = sock_path.parent / "live.log"
-    d.sendall(json.dumps({"argv": ["track"], "log": str(log)}).encode() + b"\n")
-    mod.handle(c, lambda argv: ran.append(argv) or 0)  # a client still connected is served
-    assert ran == [["track"]]
-    d.close()
 
 
 def test_start_reaps_an_orphan_in_both_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -596,3 +542,124 @@ def test_bad_fps_settings_are_logged_and_default(monkeypatch: pytest.MonkeyPatch
         monkeypatch.delenv("SIMON7_P2_FPS")
         monkeypatch.delenv("SIMON7_P2_TRACK_FPS")
         importlib.reload(p2_pose)
+
+
+# ----- lifecycle with a fake `part2 serve-worker --mode track` (a real process, the real launcher) ----------------
+FAKE_WORKER = textwrap.dedent('''
+    import json, os, socket, sys
+    args = sys.argv[1:]
+    assert args[:3] == ["serve-worker", "--mode", "track"], args
+    path = args[args.index("--socket") + 1]
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(path)
+    srv.listen(4)
+    print(f"part2 worker (track: local-sam31) listening on {path}", flush=True)
+    while True:
+        conn, _ = srv.accept()
+        line = conn.makefile("rb").readline()
+        if line:
+            conn.sendall(b'{"keepalive": true}\\n{"exit": 0}\\n')
+        conn.close()
+''')
+
+
+def _fake_pool(tmp_path: Path, version: Any = None) -> p2_worker.Pool:
+    script = tmp_path / "fake_part2.py"
+    script.write_text(FAKE_WORKER, encoding="utf-8")
+    return p2_worker.Pool(
+        tmp_path, 1, lambda sock: [sys.executable, str(script), "serve-worker", "--mode", "track", "--socket", str(sock)],
+        start_wait_s=20.0, lease_wait_s=0.0, label="p2_tracker", folder="p2-tracker", version=version)
+
+
+def _call(sock: Path) -> dict[str, Any]:
+    import socket
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+        c.connect(str(sock))
+        c.sendall(b'{"argv": ["track"], "cwd": "/", "env": {}}\n')
+        return json.loads(c.makefile("rb").readlines()[-1])
+
+
+def _settle(pool: p2_worker.Pool) -> None:
+    deadline = time.monotonic() + 20
+    while pool.state() == "starting" and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+
+def test_a_fake_track_worker_starts_serves_a_call_and_drains(tmp_path: Path) -> None:
+    pool = _fake_pool(tmp_path)
+    pool.start()
+    _settle(pool)
+    try:
+        assert pool.state() == "idle"
+        proc = pool._slots[0].proc
+        with pool.lease() as sock:
+            assert sock is not None and _call(sock) == {"exit": 0}
+        assert "listening on" in (tmp_path / "p2-tracker" / "w0.log").read_text(encoding="utf-8")
+    finally:
+        pool.stop()
+    assert proc is not None and proc.poll() is not None and pool.state() == "off"
+    assert not list((tmp_path / "p2-tracker").glob("*.sock")) and not list((tmp_path / "p2-tracker").glob("*.pid"))
+
+
+def test_a_worker_that_removed_its_socket_is_restarted_on_the_next_lease(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    pool = _fake_pool(tmp_path)
+    pool.start()
+    _settle(pool)
+    try:
+        first = pool._slots[0].proc
+        assert first is not None
+        first.kill()
+        first.wait()
+        pool._slots[0].sock.unlink(missing_ok=True)  # a worker that stopped on a model failure removes its socket
+        with caplog.at_level(logging.WARNING, logger="part7"):
+            with pool.lease() as sock:
+                assert sock is None  # this call runs cold
+        assert any("ANOMALY p2_tracker_unhealthy" in r.getMessage() for r in caplog.records)
+        _settle(pool)
+        with pool.lease() as sock:
+            assert sock is not None and _call(sock) == {"exit": 0}
+        assert pool._slots[0].proc is not first
+    finally:
+        pool.stop()
+
+
+def test_a_changed_part2_pin_restarts_the_worker_at_the_next_lease(tmp_path: Path) -> None:
+    pin = ["a" * 40]
+    pool = _fake_pool(tmp_path, version=lambda: pin[0])
+    pool.start()
+    _settle(pool)
+    try:
+        first = pool._slots[0].proc
+        with pool.lease() as sock:
+            assert sock is not None  # same pin: the same warm worker
+        assert pool._slots[0].proc is first
+        pin[0] = "b" * 40  # Part 2 was updated on disk
+        with pool.lease() as sock:
+            assert sock is None  # this call runs cold while the worker restarts
+        _settle(pool)
+        with pool.lease() as sock:
+            assert sock is not None and _call(sock) == {"exit": 0}
+        assert pool._slots[0].proc is not first and first is not None and first.poll() is not None
+        assert pool._slots[0].version == "b" * 40
+        with pool.lease() as sock:
+            assert sock is not None  # and it is not restarted again
+    finally:
+        pool.stop()
+
+
+def test_an_unreadable_pin_never_restarts_the_worker(tmp_path: Path) -> None:
+    pin: list[str | None] = ["a" * 40]
+    pool = _fake_pool(tmp_path, version=lambda: pin[0])
+    pool.start()
+    _settle(pool)
+    try:
+        first = pool._slots[0].proc
+        pin[0] = None
+        with pool.lease() as sock:
+            assert sock is not None
+        assert pool._slots[0].proc is first
+    finally:
+        pool.stop()
