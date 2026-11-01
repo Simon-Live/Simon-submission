@@ -47,8 +47,8 @@
   /* depth (brand design 2026-11-01): lime is the only pop colour; pink lives in the back layer as smoke and halftone
      dots, and every grey card carries a faint halftone dot field that fades into its grey, so no surface is flat */
   --color-pink: var(--palette-pink);
-  --color-pink-smoke: rgb(255 158 205 / 20%);
-  --color-pink-smoke-soft: rgb(255 158 205 / 10%);
+  --color-pink-smoke: rgb(255 45 149 / 24%);
+  --color-pink-smoke-soft: rgb(255 45 149 / 11%);
   --color-pink-dot: rgb(255 45 149 / 60%);
   --color-lime-dot: rgb(198 243 90 / 45%);
   --color-card-dot: rgb(255 255 255 / 6%);
