@@ -198,19 +198,44 @@ def scored_by(root: Path, mode) -> Path:
     return out
 
 
+def scored_closure(mode) -> list[str]:
+    """The code files part2.outputs.run_mode stamps for `mode`, recomputed from the tree."""
+    return stamp.code_closure(ROOT, [*stamp.BASE_MODULES, *mode.modules, *stamp.entry_modules(mode.backend, **stamp_args(mode))])
+
+
 def test_every_scored_mode_lists_the_shared_output_steps_and_its_closure_has_them():
     assert [m.name for m in outputs.MODES if "part2.output_steps" not in m.modules] == []
     for m in outputs.MODES:
-        files = stamp.code_closure(ROOT, [*stamp.BASE_MODULES, *m.modules,
-                                          *stamp.entry_modules(m.backend, **stamp_args(m))])
+        files = scored_closure(m)
         assert "part2/output_steps.py" in files, m.name
         assert "part2/cli.py" not in files, m.name  # a help-text edit stales nothing
+        assert "part2/mesh3d.py" not in files, m.name  # TICKET-048: it writes only the optional mesh pair, no scored file
+
+
+def test_mesh3d_is_not_output_code_though_the_import_walk_reaches_it_through_the_doctor():
+    """canonical -> contract -> doctor -> mesh3d: the walk passes through NOT_OUTPUT_CODE, so mesh3d.py must be listed
+    there or every scored stamp would hash it and an edit to it would stale all six modes."""
+    assert "part2/mesh3d.py" in stamp.NOT_OUTPUT_CODE
+    walked = stamp.code_closure(ROOT, ["part2.doctor"])  # a module outside the set that reaches mesh3d the same way
+    assert "part2/mesh3d.py" not in walked and "part2/canonical.py" in walked
+
+
+def test_no_module_joins_a_scored_closure_only_through_a_not_output_module(monkeypatch):
+    """The walk follows imports of NOT_OUTPUT_CODE modules (doctor.py imports mesh3d.py, contract.py imports doctor.py).
+    Prune that traversal and every scored closure must stay the same: a module that is in a closure only because
+    a validation module imports it would stale every stamp when edited (TICKET-048 B1)."""
+    full = {m.name: scored_closure(m) for m in outputs.MODES}
+    real_imports = stamp._imports
+    monkeypatch.setattr(stamp, "_imports", lambda path, root: set() if stamp.rel(path, root) in stamp.NOT_OUTPUT_CODE
+                        else real_imports(path, root))
+    for m in outputs.MODES:
+        assert scored_closure(m) == full[m.name], m.name
 
 
 def test_an_edit_to_the_shared_output_steps_stales_every_mode_that_lists_them(tmp_path):
     root = make_root(tmp_path, modes=())
     dirs = {m.name: scored_by(root, m) for m in outputs.MODES}
-    assert set(dirs) == {"single", "class", "class-local-open", "cpu-single", "coco-single"}
+    assert set(dirs) == {"single", "class", "class-local-open", "cpu-single", "cpu-sam3db-single", "coco-single"}
     assert all(stamp.check(d, root) is None for d in dirs.values())
     assert all("part2/output_steps.py" in stamp.load(d)["code_files"] for d in dirs.values())
     touch(root / "part2" / "cli.py")

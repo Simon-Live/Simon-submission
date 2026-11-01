@@ -190,18 +190,35 @@ def test_rays_have_unit_depth_and_invert_projection():
     np.testing.assert_allclose(project(r * 3.0, K), uv)
 
 
+def test_facing_is_public_and_costs_a_nose_behind_the_body_front():
+    """bones_prior calls fixed_bones.facing, so it is public (TICKET-046 R12): max(0, -cos) of the nose against the
+    ears' midpoint along the body's front, 0 where the nose or both ears are not confident."""
+    assert not hasattr(fb, "_facing")
+    front = np.array([[[0.0, 0.0, 1.0]]])  # (n, configurations, 3)
+    pos = np.zeros((1, 1, 17, 3))
+    valid = np.ones((1, 17), bool)
+    for z, want in ((0.1, 0.0), (-0.1, 1.0)):  # the nose in front of the ears, then behind them
+        pos[0, 0, J["nose"]] = [0.0, 0.0, z]
+        np.testing.assert_allclose(fb.facing(pos, front, valid), [[want]])
+    valid[0, [J["left_ear"], J["right_ear"]]] = False
+    np.testing.assert_allclose(fb.facing(pos, front, valid), [[0.0]])
+    valid[0, J["left_ear"]], valid[0, J["nose"]] = True, False
+    np.testing.assert_allclose(fb.facing(pos, front, valid), [[0.0]])
+
+
 def test_registry_names_get_and_unknown():
-    assert lifters.names() == ["fixed-bones", "motionbert"]
-    assert lifters.get("fixed-bones").name == "fixed-bones"
+    assert lifters.names() == ["bones-prior", "fixed-bones", "motionbert"]
+    assert lifters.get("fixed-bones").name == "fixed-bones" and lifters.get("bones-prior").name == "bones-prior"
     with pytest.raises(lifters.UnknownLifter) as e:
         lifters.get("x")
-    assert str(e.value) == 'unknown lifter "x"; choose fixed-bones or motionbert'
+    assert str(e.value) == 'unknown lifter "x"; choose bones-prior or fixed-bones or motionbert'
+    assert e.value.known == ["bones-prior", "fixed-bones", "motionbert"]
 
 
 def test_resolve_precedence_flag_then_env_then_default():
     assert lifters.resolve("motionbert", env={"PART2_LIFTER": "fixed-bones"}) == "motionbert"
     assert lifters.resolve(None, env={"PART2_LIFTER": "motionbert"}) == "motionbert"
-    assert lifters.resolve(None, env={}) == lifters.DEFAULT
+    assert lifters.resolve(None, env={}) == lifters.DEFAULT == "bones-prior"  # AC-B10, measured 2026-10-31
     with pytest.raises(lifters.UnknownLifter, match='"nope"'):
         lifters.resolve(None, env={"PART2_LIFTER": "nope"})
 

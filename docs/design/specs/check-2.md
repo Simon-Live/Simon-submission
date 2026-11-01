@@ -1,6 +1,6 @@
 # Spec: `make check-2` on committed reproducible outputs, the CPU 3D bar and the one-person ladder
 
-> Copy of `docs/specs/check-2.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/check-2.md` from the maintainers' working repo at `f43deee`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -9,7 +9,8 @@ use case uc-done-check, stakeholder-proxy decisions 2, 3 and 4 (2026-10-28).
 Request Type: feature-mod
 Risk Level: medium
 Tickets: TICKET-016 (3D bar), TICKET-018 (stamps, `make outputs`, scored outputs), TICKET-019 (baseline),
-TICKET-020 and TICKET-021 (ladder), TICKET-022 (M3 close-out), TICKET-037 (COCO one-person set).
+TICKET-020 and TICKET-021 (ladder), TICKET-022 (M3 close-out), TICKET-037 (COCO one-person set), TICKET-044 (the CPU
+mode the 3D bar scores, and the committed `cpu-sam3db-single` set).
 ADRs: ADR-0004 (ladder, gold read-only), ADR-0006 (reproducible outputs and stamps), ADR-0002 (backends),
 ADR-0003 (tracker order).
 
@@ -63,12 +64,21 @@ DoD passes, on which outputs, made by which backend and tracker.
 - `make outputs [BACKEND=gpu] [TRACKER=<name>]` (`part2 outputs`) regenerates every mode on this host straight
   into the scored dir; with no `TRACKER` the class mode walks the `scored` order (`api-sam31`, then
   `local-open`, ADR-0003) and `class-local-open` always runs `local-open`; `make outputs BACKEND=cpu` writes `fixtures/output/scored/cpu-single/`.
+- Two CPU dirs sit in the scored dir beside the gated modes, and `make check-2` gates neither: `cpu-single` (backend
+  `cpu`, RTMPose-x with the default lifter `bones-prior`) and `cpu-sam3db-single` (backend `cpu-sam3db`, SAM 3D Body on
+  the CPU device, unrefined, no lifter; `make outputs BACKEND=cpu-sam3db` writes it, TICKET-044). The CPU 3D bar below
+  scores either.
 - Stamp `part2.stamp/2`:
   `{schema, mode, backend, tracker, lifter, refine: [rung names], models: [{name, source, weights_sha256}],
   env_profile, env_lock_sha256, code_sha256, frames_sha256, created_utc, host_gpu}`.
   `code_sha256` covers only the files the mode, backend, tracker, lifter and rungs import (listed per
   registry entry), plus `part2/frames.py`, `joints.py`, `canonical.py`, and `part2/output_steps.py` (every mode
-  lists it in `modules`, AC-K15). `env_lock_sha256` hashes the lock
+  lists it in `modules`, AC-K15). `stamp.NOT_OUTPUT_CODE` names the modules that validate, document or read keys
+  (`schema`, `contract`, `doctor`, `keys`, `provenance`, the package `__init__`) and `part2/mesh3d.py`, which writes only
+  the optional mesh pair of `part2 run --mesh` (TICKET-048); they are left out of `code_files` even when a covered
+  file reaches them. The import walk still passes through them (`canonical.py` imports `contract.py`, which reaches
+  `doctor.py`, which reads a `mesh3d.json`), so a module only they import would join every stamp: that is why `mesh3d.py`
+  is named, and a test recomputes every mode's closure to hold it out (AC-K15). `env_lock_sha256` hashes the lock
   of the recorded profile only (`envs/gpu-cu128/constraints.txt`, `envs/cpu/requirements.txt` or the
   team's `k8s/constraints-gpu.txt`), so a change to another profile never stales this mode.
 - Freshness: the check recomputes `code_sha256`, `frames_sha256` and `env_lock_sha256` from the stamp's
@@ -85,6 +95,38 @@ frame, both hip-centred):
 Printed as block `cpu_backend_3d` in the check-2 JSON; not part of the top-level `pass` (README DoD).
 `make check-2-cpu` exits 0 only when this block passes. Missing `cpu-single` gives
 `{"pass": false, "status": "no cpu outputs; run make outputs BACKEND=cpu"}`.
+
+### Which CPU dir the block scores (TICKET-044)
+The block scores `cpu-single` unless a CPU mode is named. The name is, in order: the flag
+(`python -m part2.check --block cpu_backend_3d --cpu-mode NAME`), the environment `PART2_CPU_MODE`, then the default
+`cpu-single`; `make check-2-cpu CPU_MODE=NAME` sets the environment variable. `NAME` is a dir of the scored dir, where
+the reference `single` is, never a path: a name with a path separator, or `.` or `..`, fails the block with exit 1 and
+the status `error: ValueError: PART2_CPU_MODE or --cpu-mode names a mode dir of the scored dir, not the path "<x>"`.
+`--cpu-mode` goes with `--block cpu_backend_3d` only; with any other block, or none, it is an argument error (exit 2).
+The reference is always `single`; the eval, the stamp checks and the exit codes are the same for every name (a named
+dir with no `pose3d.json` gives `no cpu outputs; run make outputs BACKEND=<b>` and exit 2, where `<b>` is the backend
+that makes the mode asked for: `cpu-sam3db` for `cpu-sam3db-single`, `cpu` for `cpu-single` and any other name).
+`PART2_CPU_MODE` also picks the dir of the block printed inside the full `make check-2` report; the top-level `pass`
+never reads that block.
+
+The block scores a CPU backend's output only. A named dir that exists is refused, with exit 1 and `pass: false`, when
+it is the reference `single` (by name) or when its `stamp.json` names a backend other than `cpu` and `cpu-sam3db`; the
+`status` is one line naming the dir and its backend, and the eval does not run (`make check-2-cpu CPU_MODE=single`
+used to score the reference against itself and pass with a mean of 0.0). A dir whose stamp is missing or v1 names no
+backend, so the stamp check reports it as it does for any mode.
+
+Speed block: when the scored CPU file's `provenance.timing` carries `seconds_per_frame` (the `cpu-sam3db` backend
+writes `timing: {load_s, seconds, frames, seconds_per_frame, threads, warm}`; a file made before `warm` was added has
+the first five), the block adds `seconds_per_frame` and the whole `timing` object, whatever keys it has, beside the
+bar. A file without it, such as `cpu-single`, adds neither key and its block is unchanged.
+
+The two committed CPU sets, each against the refined `single` (the GPU reference is refined with `focal` then
+`kp2d-fit`; both CPU runs are unrefined), 111 of 111 frames:
+
+| Command | Dir | Backend and lifter | `mean_m` | `bone_cv_mean` | Bar | Exit | Speed keys |
+|---|---|---|---|---|---|---|---|
+| `make check-2-cpu` | `cpu-single` | `cpu`, `bones-prior` | 0.145 | 0.016 | fails the 0.10 m limit | 1 from `python -m part2.check`, 2 through make | none |
+| `make check-2-cpu CPU_MODE=cpu-sam3db-single` | `cpu-sam3db-single` | `cpu-sam3db`, no lifter | 0.0363 | 0.0408 | passes | 0 | `seconds_per_frame` 31.74 on 8 threads (2026-10-31 run) and 46.95 under host load (committed set, 2026-11-01), `load_s` 23.7 (2026-10-31) and 23.4 (2026-11-01) |
 
 ## Gold set is the test set (ADR-0004, setup review B2)
 The 20 labelled frames of `labels_2d.json`, the COCO set (`fixtures/input/coco/labels_2d.json`) and the class
@@ -249,24 +291,28 @@ the hip-centred canonical pose moves 0.036 m on average (p95 0.081 m), COCO 0.02
 ```
 Values above are placeholders for the shape; real numbers come from the run. Top-level `pass` is
 `one_person.pass and one_person_coco.pass and multi_person.pass`.
+In `cpu_backend_3d`, `lifter` is the lifter that made the scored CPU dir (`bones-prior` for the committed `cpu-single`,
+`null` for `cpu-sam3db-single`) and `cpu` names that dir; the optional `seconds_per_frame` and `timing` follow
+"Which CPU dir the block scores".
 
 ## Files
 | File | Role |
 |---|---|
-| `part2/check.py` | modified: scored dir, stamp v2, `cpu_backend_3d` block, `outputs` names |
+| `part2/check.py` | modified: scored dir, stamp v2, `cpu_backend_3d` block, `outputs` names; TICKET-044: `--cpu-mode` and `PART2_CPU_MODE` pick the CPU dir, the block reports `seconds_per_frame` and `timing` when the file has them and refuses a dir that is not a CPU backend's output |
 | `part2/stamp.py` | stamp v2 write, read, freshness |
 | `part2/outputs.py` | `part2 outputs` driver; takes the host GPU lock through `output_steps.gpu_locked` and measures `part2_commit` once per run (AC-K16) |
 | `part2/output_steps.py` | the steps `part2 run`, `part2 stock` and `make outputs` share to write a run's outputs: pose3d extras and provenance, the refine rungs, the tracks stamp, the GPU lock (`gpu_locked`, the one copy of the rule "gpu backend means the host lock, else nothing" that `part2 run`, `part2 stock` and `make outputs` all use). Moved out of `part2/cli.py` (review residual R19) so a stamp can hash it; every mode in `outputs.py` lists it in `modules` |
-| `part2/eval_3d.py` | the 3D bar |
+| `part2/eval_3d.py` | the 3D bar; `no_cpu(backend)`: the `no cpu outputs` status for the mode asked for (AC-K17) |
 | `part2/coco_set.py` | COCO fetch, licence filter, selection rule, keypoint mapping to the canonical 17 (TICKET-037) |
 | `part2/eval_coco.py` | scores `coco-single` with the unchanged `eval_reproj` rules, each image its own clip (TICKET-037) |
 | `fixtures/input/coco/` | selected images, `labels_2d.json`, `SOURCE.md` (per-image licence and URL), `SELECTION.md` (the rule) |
 | `part2/refine/__init__.py`, `kp2d_fit.py`, `temporal.py`, `focal.py` | ladder rungs |
 | `part2/refine/ensemble.py` | rung 4: not built, rung 4 not needed |
 | `part2/hashing.py` | shared sha256 of a file (stamps, weights digests, cache checks; TICKET-030) |
-| `Makefile` | `outputs`, `check-2` (SCORED), `check-2-cpu` |
-| `fixtures/output/scored/{single,class,cpu-single}/` | committed outputs and stamps |
+| `Makefile` | `outputs`, `check-2` (SCORED), `check-2-cpu` (`CPU_MODE`, TICKET-044) |
+| `fixtures/output/scored/{single,class,cpu-single,cpu-sam3db-single}/` | committed outputs and stamps |
 | `tests/test_check.py`, `tests/test_stamp.py`, `tests/test_outputs.py`, `tests/test_output_steps.py`, `tests/test_provenance.py`, `tests/test_eval_3d.py`, `tests/test_refine.py` | tests |
+| `tests/test_cpu_sam3db.py` | TICKET-044: the CPU mode selection and the speed block (AC-K17), beside the backend's own tests |
 | `tests/test_gold_isolation.py` | no import of the evals and no label path under `part2/refine/` or `part2/trackers/` |
 | `tests/test_coco_set.py`, `tests/test_eval_coco.py` | licence filter, selection rule, mapping and scorer on hand-made data |
 | `fixtures/output/scored/{coco-single,class-local-open}/` | committed outputs and stamps |
@@ -291,6 +337,17 @@ upstream `7e11a7f` versions except comments (test compares sha256 of the label f
 ### AC-K07: CPU 3D bar
 `eval_3d` on hand-made pairs returns the expected distance and CV; `cpu_backend_3d` is printed and does
 not change top-level `pass`; `make check-2-cpu` exits by it.
+### AC-K17: the 3D bar scores a named CPU dir
+Without `CPU_MODE`, `PART2_CPU_MODE` or `--cpu-mode` the block scores `cpu-single` and, for a file with no
+`provenance.timing`, adds no speed key. With a name (the flag wins over the environment) it scores that dir of the
+scored dir against `single`; the block then carries `seconds_per_frame` and `timing` when the file has them; a missing
+dir exits 2 with the `make outputs` command for that mode, a stale one fails with its stamp status, a name with a
+separator or dots fails with exit 1, so does the reference `single` or a dir whose stamp names a backend other than
+`cpu` and `cpu-sam3db` (one status line with the dir and the backend), and `--cpu-mode` with another block is an
+argument error. `make check-2-cpu CPU_MODE=NAME` passes the name through as
+`PART2_CPU_MODE`; without it the command carries no such variable. Test:
+`tests/test_cpu_sam3db.py` (the default block, the environment and flag with the speed keys, the missing, stale and
+path cases, the reference and a gpu dir refused, the missing-dir hint per mode, and `make -n check-2-cpu`); it is AC-B25 of `backends-gpu-cpu.md` seen from the check.
 ### AC-K08: `make outputs` reproduces
 Running `make outputs` twice on this host with no code change gives stamps with identical
 `code_sha256`, `frames_sha256` and `env_lock_sha256`, and joints within 1.5 mm (GPU nondeterminism bound,
@@ -318,8 +375,10 @@ No scored dir and no `SCORED`: each mode fails with "missing output ...; run mak
 `part2 run`, `part2 stock` and `make outputs` build the `pose3d.json` extras and provenance, run the refine rungs and
 stamp `tracks.json` through `part2/output_steps.py`. Every mode in `outputs.MODES` lists `part2.output_steps` in
 `modules`, so its `code_files` hash that file, and an edit to it makes `stamp.check` report the mode stale with the
-file named in `changed_files`. `part2/cli.py` itself is not hashed (a help-text edit stales nothing). Tests:
-`tests/test_stamp.py` (an edit stales every mode that lists it; every mode lists it).
+file named in `changed_files`. `part2/cli.py` itself is not hashed (a help-text edit stales nothing), and neither is
+`part2/mesh3d.py` (an edit to the mesh writer stales nothing: it makes no scored file). Tests:
+`tests/test_stamp.py` (an edit stales every mode that lists it; every mode lists it; no mode's closure holds `cli.py` or
+`mesh3d.py`; pruning the walk at `NOT_OUTPUT_CODE` changes no mode's closure).
 ### AC-K16: One commit measure per run
 `make outputs` takes `provenance.part2_commit()` (HEAD, plus `+dirty` when a tracked file differs) once, before the
 first mode writes anything, and passes it to every mode: every `pose3d.json` and every `tracks.json` of the run
@@ -347,6 +406,11 @@ commit), `tests/test_cpu_rtm.py` and `tests/test_provenance.py` (the shared rule
 | Stamp v1 | mode fails | `stamp v1 from HPC; run make outputs` | AC-K04 |
 | Eval crashes | mode fails, JSON still printed | `error: <Type>: <msg>` | AC-K01 |
 | `make outputs BACKEND=gpu` without CUDA | exit 1 | `outputs: backend gpu needs CUDA (make setup-gpu)` | AC-K08 |
+| `CPU_MODE`, `PART2_CPU_MODE` or `--cpu-mode` names a path | block fails, exit 1 | `error: ValueError: PART2_CPU_MODE or --cpu-mode names a mode dir of the scored dir, not the path "<x>"` | AC-K17 |
+| `CPU_MODE`, `PART2_CPU_MODE` or `--cpu-mode` names the reference `single` | block fails, exit 1 | `<dir> is the GPU reference (backend <b>), not a CPU mode dir; choose a dir made by cpu or cpu-sam3db` | AC-K17 |
+| `CPU_MODE`, `PART2_CPU_MODE` or `--cpu-mode` names a dir whose stamp backend is not `cpu` or `cpu-sam3db` | block fails, exit 1 | `<dir> was made by backend <b>, not a CPU backend; choose a dir made by cpu or cpu-sam3db` | AC-K17 |
+| the named CPU dir has no `pose3d.json` | block fails, exit 2 | `no cpu outputs; run make outputs BACKEND=<cpu or cpu-sam3db>` | AC-K17 |
+| `--cpu-mode` without `--block cpu_backend_3d` | exit 2 | `python -m part2.check: error: --cpu-mode goes with --block cpu_backend_3d` | AC-K17 |
 
 ## Edge Cases
 - A labelled frame where the person is not detected: scored as failed (unchanged eval).
@@ -404,6 +468,7 @@ lists keep it narrow. Resolution: ACCEPTED_RISK.
 | Review residual R19 (output helpers outside every stamp) | AC-K15 | R19 |
 | Review residual R14 (a run's own outputs read as a dirty tree) | AC-K16 | R14 |
 | Decision 2 CPU 3D bar | AC-K07 | TICKET-016 |
+| TICKET-044 CPU mode selection and speed block | AC-K17 | TICKET-044 |
 | Decision 3 ladder | AC-K09, K11, K12 | TICKET-017, 019, 020, 021, 022 |
 | Operator ruling on #337 (COCO set) | AC-K13 | TICKET-037 |
 | Operator ruling 2026-10-28 (class tracker) | AC-K14 | TICKET-018 |

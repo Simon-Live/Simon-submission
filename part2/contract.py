@@ -1,6 +1,7 @@
 """Downstream contract (CONTRACT.md): the schemas Part 2 publishes and the copy of Part 3's own.
 
-    contracts/<kind>.schema.json      Part 2's promise for pose3d, tracks, camera and frames
+    contracts/<kind>.schema.json      Part 2's promise for pose3d, tracks, camera and frames, and for the optional
+                                      mesh3d.json header (`part2 run --mesh`, TICKET-048; its bin: part2.mesh3d)
     contracts/compatibility.json      which consumer reads which file, and with what option
     contracts/consumers/part3-pose3d.schema.json   Part 3's consumer schema, copied byte for byte;
         the sidecar part3-pose3d.schema.source.json names the repo, path, commit and sha256 it came from.
@@ -28,6 +29,8 @@ from part2.schema import ContractError, check_finite, is_number
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "contracts"
 KINDS = ("pose3d", "tracks", "camera", "frames")
+OPTIONAL_KINDS = ("mesh3d",)  # written only on request; validated with its bin by part2.mesh3d.validate
+PUBLISHED = KINDS + OPTIONAL_KINDS
 PART3_LABEL = "contracts/consumers/part3-pose3d.schema.json"
 PART3_SCHEMA = ROOT / PART3_LABEL
 PART3_SOURCE = ROOT / "contracts" / "consumers" / "part3-pose3d.schema.source.json"
@@ -47,8 +50,8 @@ def load_schema(path=PART3_SCHEMA) -> dict:
 
 
 def schema_path(kind: str) -> Path:
-    if kind not in KINDS:
-        raise ContractError(kind, f"no schema; schemas: {', '.join(KINDS)}")
+    if kind not in PUBLISHED:
+        raise ContractError(kind, f"no schema; schemas: {', '.join(PUBLISHED)}")
     return CONTRACTS / f"{kind}.schema.json"
 
 
@@ -64,7 +67,7 @@ def version(kind: str) -> str:
 
 def schema_rows() -> list[dict]:
     return [{"name": k, "version": version(k), "direction": own_schema(k)["x-direction"],
-             "file": f"contracts/{k}.schema.json"} for k in KINDS]
+             "file": f"contracts/{k}.schema.json"} for k in PUBLISHED]
 
 
 def compatibility() -> list[dict]:
@@ -258,8 +261,8 @@ def sync(check_only: bool = False, fetcher=fetch) -> int:
 def command(as_json: bool = False, schema: str | None = None) -> int:
     """python -m part2 contract [--json] [--schema NAME]; returns the exit code."""
     if schema is not None:
-        if schema not in KINDS:
-            print(f"contract: no schema '{schema}'; schemas: {', '.join(KINDS)}", file=sys.stderr)
+        if schema not in PUBLISHED:
+            print(f"contract: no schema '{schema}'; schemas: {', '.join(PUBLISHED)}", file=sys.stderr)
             return 2
         raw = schema_path(schema).read_bytes()
         sys.stdout.flush()
@@ -293,7 +296,7 @@ def committed_files(root: Path = ROOT) -> list[tuple[Path, str]]:
 def contract_problems() -> list[tuple[str, str]]:
     """(file, problem) for the published contract files themselves."""
     problems = []
-    for kind in KINDS:
+    for kind in PUBLISHED:
         s = own_schema(kind)
         ok = (s.get("$schema") == DRAFT and s.get("$id", "").endswith(f"/{kind}.schema.json") and s.get("title")
               and re.fullmatch(rf"part2\.{kind}/\d{{4}}-\d{{2}}-\d{{2}}", s.get("x-simon-version", "")))
@@ -337,7 +340,7 @@ def check_outputs(root: Path = ROOT) -> dict:
         error = _file_problem(path, kind)
         if error:
             failures.append({"file": str(path.relative_to(root)) if path.is_relative_to(root) else str(path), "error": error})
-    checked = len(files) + len(KINDS) + 2
+    checked = len(files) + len(PUBLISHED) + 2
     return {"files": checked, "valid": checked - len(failures), "failures": failures, "pass": bool(files) and not failures}
 
 

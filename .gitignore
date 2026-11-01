@@ -9,3 +9,7 @@ out/
 .venv/
 .pytest_cache/
 !demos/*.mp4
+# the SAM 3D Body mesh pair of `part2 run --mesh` is never committed or published (docs/specs/mesh3d.md, AC-M15);
+# these come after the !fixtures negation above so that they win under fixtures/ too
+mesh3d.json
+mesh3d.bin

@@ -2,7 +2,7 @@
 
 Spec: docs/specs/stock-takes.md (AC-T01 to AC-T07, error rows, edge cases). ADR-0005 (licences), ADR-0006.
 
-    part2 stock [--clip pexels-5034562|pexels-5034577|pexels-8837221|pexels-5034562-0to7s] [--backend gpu|cpu]
+    part2 stock [--clip pexels-5034562|pexels-5034577|pexels-8837221|pexels-5034562-0to7s] [--backend gpu|cpu|cpu-sam3db]
 
 A take is a whole clip (`pexels-<id>`) or a cut of one listed in CUTS (`pexels-<id>-<start>to<end>s`, seconds).
 Per take: download DOWNLOAD_URL into the cache (PART2_STOCK_DIR, else ~/.cache/simon-part-2/stock; a cut reuses

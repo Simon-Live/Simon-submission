@@ -1,6 +1,6 @@
 # Spec: Part 2 tracker registry (SAM 3.1 first, open local fallback, named trackers fail closed)
 
-> Copy of `docs/specs/tracker-registry.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/tracker-registry.md` from the maintainers' working repo at `f43deee`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -8,7 +8,8 @@ Linked PRD: none. Requirements source: locked decision 1 (stakeholder-proxy 2026
 README "Frontier model" (SAM 3.1 for multi-person tracking). Parent spec: `docs/design/specs/part2-images-to-3d.md`.
 Request Type: new-feature
 Risk Level: medium (keys handled by code; the scored multi-person result depends on the tracker)
-Tickets: TICKET-017 (registry, `api-sam31`, open trackers), TICKET-038 (`local-sam31` and the parity check).
+Tickets: TICKET-017 (registry, `api-sam31`, open trackers), TICKET-038 (`local-sam31` and the parity check), TICKET-047
+(`NoPerson` is a `NoPersonFound`, exit 4).
 ADRs: ADR-0003 (tracker registry), ADR-0005 (licences), ADR-0006 (reproducible outputs), ADR-0007 (takeover etiquette).
 
 ## Overview
@@ -67,7 +68,7 @@ t, skipped = trackers.resolve("scored")  # or "bulk": walks the order; skipped =
 confidence}]}]}`, ids stable integers from 0 in order of first appearance, built by `track.build_tracks` and checked
 by `schema.validate_tracks`. Optional top-level `provenance`: `{tracker, models: [{name, source, weights_sha256,
 licence}], mask_source: "sam"|"box", detector, reprompt_every_s, part2_commit, created_utc, fallback_from?,
-fallback_reason?: "no_key"|"budget"|"no_parity"|"no_env", spend_usd?}`. `part2_commit` is
+fallback_reason?: "no_key"|"budget"|"no_parity"|"no_env"|"credential_refused", spend_usd?}`. `part2_commit` is
 `provenance.part2_commit()`, the one rule every writer uses: HEAD, plus `+dirty` when a tracked file differs,
 `unknown` without git. Under `make outputs` the run's one measure replaces it (check-2.md AC-K16).
 
@@ -91,6 +92,24 @@ committed parity pass (`no_parity`), or packages a step needs that are not insta
 explicitly still fails closed). Any other failure of a step (API error, CUDA error) fails the run with its
 error; it is never turned into a fallback. Provenance names the tracker that ran plus `fallback_from` and
 `fallback_reason` of the first skipped step.
+
+The one failure that moves the `bulk` order on is a refused Meta key (HTTP 401 or 403, `CredentialRefused`
+from `api-sam31`), requested by Part 7 (moalborati/simon#61). A refusal is not in `SKIP_REASONS`: it fails the run, and
+the caller does the move. `CredentialRefused` carries the name of the tracker that refused as `.tracker` (message
+unchanged, TICKET-046), and the caller reads that, not the wording. The caller is `part2/cli.py` (`_run_tracker`), for
+`part2 run --mode multi` and `part2 track` alike, so the warm worker and the staging job worker get it too:
+- Only when no tracker is named (no `--tracker`, no `PART2_TRACKER`) and the order is `bulk` (the default of both
+  commands). A named `api-sam31` and the `scored` order still fail closed (AC-R11).
+- On the refusal, one stderr line names it and the next tracker (`part2: tracker api-sam31: the key was
+  refused; tracking with local-open instead`), and the next tracker of the bulk order that can run here runs, judged
+  by the rules of `resolve` (key, budget, packages; `local-sam31` precedes `api-sam31` in the order, so its parity
+  pass never comes up). `api-sam31` is not tried again in that run; the next
+  run tries it again, so a rotated key works without a restart of the worker.
+- That tracker's `tracks.json` (and the `pose3d.json` of a multi run) says `fallback_from: "api-sam31"` and
+  `fallback_reason: "credential_refused"`, which replaces an earlier skip of the same walk (a refusal is what an
+  operator must act on). `tracks.json` keeps its shape; `provenance` takes extra keys.
+- With no tracker left that can run, the run exits 1 with the refusal message, as before.
+- A failure of the tracker that then runs, and a refusal by `local-sam31` (the Hugging Face token), still fail the run.
 
 ### Budget (`api-sam31`)
 - Run: `META_BUDGET_USD=25` on the default ledger `~/.simon/meta_spend.jsonl` (whatever it already holds counts).
@@ -127,18 +146,21 @@ tracker outputs and never reads `gt_tracks.json`. The result, both commits and t
 ## Files
 | File | Role |
 |---|---|
-| `part2/trackers/__init__.py` | registry: `get`, `names`, `resolve`, `UnknownTracker`, flag and env resolution, the two orders |
+| `part2/trackers/__init__.py` | registry: `get`, `names`, `resolve`, `UnknownTracker`, flag and env resolution, the two orders. TICKET-047: `NoPerson` subclasses `backends.NoPersonFound` as well as `TrackerError`, so `part2 run` and `part2 track` exit 4 for it (AC-R12) |
 | `part2/trackers/parity.py` | label-free comparison of two `tracks.json` files (id count, per-id coverage) |
 | `fixtures/output/parity/sam31.json` | committed parity result read by `resolve("bulk")` |
 | `part2/keys.py` | presence check and the single read path (shared; named so the publish denylist accepts it) |
 | `part2/trackers/local_open.py` | SAM 2.1 plus detector, re-prompting |
 | `part2/trackers/bytetrack.py` | ByteTrack association over detector boxes |
-| `part2/trackers/api_sam31.py` | adapter over `part2/track.py` API path |
+| `part2/trackers/api_sam31.py` | adapter over `part2/track.py` API path; TICKET-047: `detect` raises `NoPerson` when the client returns no person in any frame, after `spend_usd` is set (AC-R12) |
 | `part2/trackers/local_sam31.py` | gated SAM 3.1 weights adapter; the predictor runs in a child process (`python -m part2.trackers.local_sam31`) because SAM 3.1 turns on bf16 autocast for its whole process, which broke SAM 3D Body in the same run (fixed 2026-10-29); the token is read in the parent and never reaches the child |
 | `part2/track.py` (modified) | `track(frames_dir, out_path, tracker=None)` resolves through the registry; `build_tracks`, `mask_to_rle` unchanged |
-| `part2/cli.py` (modified) | `--tracker` |
+| `part2/cli.py` (modified) | TICKET-047: `NoPersonFound` ends the command with exit 4 and the unchanged `part2: <message>` line, before the generic `RuntimeError` handler (AC-R12); `--tracker`; `_run_tracker` moves the `bulk` order on from a refused Meta key, recognised by `CredentialRefused.tracker == "api-sam31"` (AC-R11); its printed fallback note is `provenance.fallback_note` |
+| `part2/provenance.py` (modified) | `fallback_note(provenance)`: the one-line wording of a fallback, `trackers.describe_fallback` plus `credential_refused` ("SAM 3.1 credential refused; tracked with <tracker>"), and the `CREDENTIAL_REFUSED` reason it names; read by `part2/cli.py` and by `part2/jobs.py` (the run app's job `notice`), so the two never differ. Not in any scored stamp |
 | `envs/gpu-cu128/requirements.txt` (modified at TICKET-017) | SAM 2.1 package pin |
-| `tests/test_trackers.py`, `tests/test_keys.py`, `tests/test_tracker_parity.py` | tests; models faked |
+| `tests/test_trackers.py`, `tests/test_trackers_api.py`, `tests/test_keys.py`, `tests/test_tracker_parity.py` | tests; models faked; `CredentialRefused.tracker` is set. `tests/test_trackers_api.py` (split from `test_trackers.py` at the 800-line limit, which keeps the fixtures) holds the api-sam31 shape and no-person tests, AC-R08 (order and fallback) and AC-R09 (spend caps) |
+| `tests/test_cli_track.py`, `tests/test_worker_cli_integration.py` | AC-R12 (exit 4 for no person, in process and through the worker); AC-R11: the bulk order after a refused key, in process and through the warm worker (the `bulk` move-on, a named tracker, the `scored` order and no usable tracker left, each through the worker too); trackers faked |
+| `tests/test_provenance.py`, `tests/test_jobs.py` | the fallback wording for every reason including `credential_refused`; the run app's job notice for a refused key |
 
 ## Acceptance Criteria
 ### AC-R01: registry and precedence
@@ -168,7 +190,30 @@ STATUS.md.
 ### AC-R08: order and fallback
 With no tracker named: an empty key dir gives `local-open` with `fallback_from: "api-sam31"`,
 `fallback_reason: "no_key"`; an exhausted fake budget gives `fallback_reason: "budget"`; `bulk` without a committed
-parity pass skips `local-sam31` with `no_parity`. An API error on a present key fails the run (no fallback). Test.
+parity pass skips `local-sam31` with `no_parity`. An API error on a present key fails the run (no fallback), except
+a refused key in the `bulk` order (AC-R11). Test.
+### AC-R11: a refused Meta key moves the bulk order on
+With no tracker named and the `bulk` order (the default of `part2 run --mode multi` and `part2 track`), a fake
+`api-sam31` client that answers HTTP 401 makes the run use the fake `local-open`: exit 0, one stderr line naming the
+refusal and `local-open`, `tracks.json` (and `pose3d.json` in a multi run) with `provenance.tracker: "local-open"`,
+`fallback_from: "api-sam31"` and `fallback_reason: "credential_refused"`, and the files valid against their schemas.
+Unchanged: `--tracker api-sam31` and `PART2_TRACKER=api-sam31` exit 1 with `part2: tracker api-sam31: the key
+was refused`, as does `--tracker-order scored`; with no further tracker that can run, exit 1 with that message and
+nothing written; a failure of the tracker that then runs fails the run; a refusal by `local-sam31` fails the run.
+The same holds through `--worker`: the move-on, the named tracker, `--tracker-order scored` (exit 1, no fallback) and
+no tracker left (exit 1) each have a test through the worker. The run app's job `notice` for a run that moved on
+says `SAM 3.1 credential refused; tracked with <tracker>` (`provenance.fallback_note`, the CLI's wording; `fallback`
+carries `{from: "api-sam31", reason: "credential_refused"}`). Test (`tests/test_cli_track.py`,
+`tests/test_worker_cli_integration.py`, `tests/test_jobs.py`, `tests/test_provenance.py`).
+### AC-R12: no person found is exit 4
+A tracker that finds nobody (`local-open` and `local-sam31` in frame 0 or any re-prompt, `bytetrack` and `api-sam31` in
+every frame) raises `trackers.NoPerson`, which is a `backends.NoPersonFound` and still a `TrackerError`. `part2 track`
+and `part2 run --mode multi` print `part2: no person found to track` as before and exit 4, not 1; no `tracks.json` is
+written. This also holds when the tracker is the fallback of AC-R11 and through `--worker`. Any other tracker failure
+stays exit 1. `api-sam31` raises it after the call, once `spend_usd` is set, because the API charged for the call
+whatever it found; the emptiness rule is the one of the other trackers (no frame holds a person), so a client that
+returns one person in one frame returns normally, and a frame with nobody in a clip that has someone is not an error.
+Test (`tests/test_trackers.py`, `tests/test_trackers_api.py`, `tests/test_cli_track.py`, `tests/test_worker_cli_integration.py`).
 ### AC-R09: spend caps
 A fake staging ledger at $9.80 and a job estimate of $0.30 runs `local-open` and the job result names the cap; a
 job whose reservations pass $0.50 stops calling the API. The run's ledger total appears in STATUS.md at each
@@ -194,9 +239,10 @@ and does not duplicate person 1.
 | key missing | exit 1, no call | `part2: tracker <name> needs the key file <file> (or <ENV>); use --tracker local-open` | AC-R02 |
 | budget reached, tracker named | exit 1 | `part2: tracker api-sam31: the spend cap of $<limit> is reached (ledger <file>)` | AC-R09 |
 | key absent, budget reached or no parity, no tracker named | next step of the order runs | provenance `fallback_reason` | AC-R08 |
-| key rejected (401/403) | exit 1 | `part2: tracker <name>: the key was refused` | AC-R03 |
+| key rejected (401/403) | exit 1 | `part2: tracker <name>: the credential was refused` | AC-R03 |
+| `api-sam31` key rejected (401/403), no tracker named, `bulk` order | next tracker that can run, with one stderr line; exit 1 with the line above when none can | `part2: tracker api-sam31: the credential was refused; tracking with <next> instead`; provenance `fallback_reason: "credential_refused"` | AC-R11 |
 | gated weights not granted | exit 1 | `part2: tracker local-sam31: access to facebook/sam3.1 is not granted for this token` | AC-R02 |
-| no person in frame 0 or any re-prompt | exit 1 | `part2: no person found to track` | AC-R04 |
+| no person in frame 0 or any re-prompt, or in any frame for `bytetrack` and `api-sam31` | exit 4 (TICKET-047), no `tracks.json` | `part2: no person found to track` | AC-R12 |
 | GPU lock held | wait up to 10 min, then exit 1 | `part2: another GPU job is running` | AC-R04 |
 
 ## Edge Cases
@@ -262,12 +308,16 @@ library loggers to WARNING and AC-R03 captures all output. Resolution: ADDRESSED
 ## Requirements Traceability
 | Requirement Source | Spec AC | Test | Status |
 |---|---|---|---|
-| Decision 1 registry | AC-R01 | `tests/test_trackers.py` | pending |
-| Decision 1 fail closed, keys never printed | AC-R02, AC-R03 | `tests/test_keys.py` | pending |
-| Decision 1 provenance | AC-R05 | `tests/test_trackers.py` | pending |
-| README multi-person DoD | AC-R06 | `make check-2` | pending |
-| Operator rulings 2026-10-28 (order, budget) | AC-R08, AC-R09 | `tests/test_trackers.py` | pending |
-| Operator ruling 2026-10-28 (parity) | AC-R10 | `tests/test_tracker_parity.py` | pending |
+| Decision 1 registry | AC-R01 | `tests/test_trackers.py` (`test_names_and_unknown_tracker` names the four choices, `test_flag_beats_env_beats_order`, `test_unknown_env_name_is_refused`, `test_unknown_purpose_is_refused`), `tests/test_cli_track.py` (`test_track_unknown_tracker_exits_2`: exit 2 naming the tracker) | done |
+| Decision 1 fail closed, keys never printed | AC-R02, AC-R03 | `tests/test_trackers.py` (AC-R02: `test_api_sam31_named_without_key_fails_closed`, `test_local_sam31_named_without_key_fails_closed`, `test_cli_env_named_tracker_without_key_exits_1`; AC-R03: `test_api_key_never_appears_in_output_logs_files_or_errors`, `test_api_key_is_set_only_during_the_call`, `test_hf_token_is_handed_to_the_client_and_never_shown`), `tests/test_keys.py` (`test_value_never_logged_printed_or_kept`) | done |
+| Decision 1 same shape for every tracker | AC-R04 | `check_shape` (`validate_tracks`, frames matching `frames.json`, ids from 0 in order of first appearance) runs in `tests/test_trackers.py` (`test_local_open_shape_provenance_and_late_entrant`, `test_bytetrack_shape_box_masks_and_low_score_rescue`, `test_local_sam31_shape_and_provenance`) and `tests/test_trackers_api.py` (`test_api_sam31_shape_and_provenance`); the JSON Schema `contracts/tracks.schema.json` is checked on `api-sam31` output by `tests/test_cli_track.py` (`test_track_writes_frames_and_tracks_only`) and on `local-open` output by `test_a_refused_credential_moves_the_bulk_order_on_to_local_open`, and at write time by `output_steps.stamp_tracks` | done for `validate_tracks`; missing: a test that checks `bytetrack` or `local-sam31` output against `contracts/tracks.schema.json` directly |
+| Decision 1 provenance | AC-R05 | `tests/test_trackers.py` (`test_local_open_shape_provenance_and_late_entrant`, `test_bytetrack_shape_box_masks_and_low_score_rescue`, `test_local_sam31_shape_and_provenance`, `test_file_without_provenance_still_validates`), `tests/test_trackers_api.py` (`test_api_sam31_shape_and_provenance`) | done |
+| README multi-person DoD | AC-R06 | `make check-2` on the committed `class` and `class-local-open` sets (exit 0 at `d111947`, ladder rows 174 and 175); the block's logic in `tests/test_check.py` (`test_scored_outputs_pass_and_name_what_made_them`, `test_local_open_is_reported_beside_and_never_gated`) and `tests/test_eval_tracks.py` | done |
+| Decision 1 `local-open` re-prompting | AC-R07 | `tests/test_trackers.py` (`test_local_open_shape_provenance_and_late_entrant`, `test_reprompt_frames_every_2_s`) | done |
+| Operator rulings 2026-10-28 (order, budget) | AC-R08, AC-R09 | `tests/test_trackers_api.py` (AC-R08: `test_scored_order_without_key_falls_back_to_local_open`, `test_bulk_order_skips_a_step_whose_packages_are_missing`, `test_exhausted_budget_falls_back_and_a_named_tracker_exits`, `test_bulk_without_parity_skips_local_sam31`, `test_bulk_with_a_committed_parity_pass_runs_local_sam31`, `test_api_error_with_a_present_key_fails_the_run`, `test_last_step_unavailable_fails_with_its_reason`; AC-R09: `test_staging_cap_moves_the_job_to_local_open`, `test_job_cap_stops_api_calls`, `test_budgets_record_into_every_ledger`); the ledger total in STATUS.md is the inspection half of AC-R09 | done |
+| Part 7 request moalborati/simon#61 (a refused key must not fail a bulk run) | AC-R11 | `tests/test_cli_track.py`, `tests/test_worker_cli_integration.py` | done |
+| Part 7 request moalborati/simon#61 (TICKET-103: tell "found nobody" from a failure) | AC-R12 | `tests/test_trackers.py` (`test_no_person_is_the_no_person_found_of_the_backends_and_still_a_tracker_error`, `test_local_open_no_person_anywhere`, `test_local_sam31_child_with_nobody_found_raises_no_person`), `tests/test_trackers_api.py` (`test_api_sam31_that_finds_nobody_raises_no_person_and_keeps_the_spend`, `test_api_sam31_with_one_person_in_one_frame_still_returns`), `tests/test_cli_track.py` (`test_a_tracker_that_finds_nobody_exits_4_with_the_unchanged_line`, `test_the_api_tracker_that_finds_nobody_exits_4_with_the_unchanged_line`, `test_a_failure_of_the_fallback_tracker_is_not_swallowed`, `test_every_other_runtime_error_still_exits_1`), `tests/test_worker_cli_integration.py` (`test_no_person_found_is_exit_4_through_the_worker_with_its_unchanged_line`) and, for `bytetrack`, `tests/test_trackers.py` (`test_bytetrack_with_nobody_in_any_frame_raises_no_person`) | done |
+| Operator ruling 2026-10-28 (parity) | AC-R10 | `tests/test_tracker_parity.py` (`test_identical_files_pass`, `test_ids_are_matched_by_mask_not_by_number`, `test_coverage_within_one_point_passes_and_beyond_fails`, `test_different_id_counts_fail`, `test_same_count_but_different_people_fail`, `test_different_frames_fail`, `test_cli_exit_codes_and_out_file`), `tests/test_gold_isolation.py` (`test_guarded_code_is_isolated_from_gold` lists `parity.py`); the real run is `progress/sam31-parity.md` and `fixtures/output/parity/sam31.json` | done |
 
 ## Delivery Verification Plan
 `make test` exit 0; `make outputs` with the `scored` order and `make check-2`, the multi_person block naming

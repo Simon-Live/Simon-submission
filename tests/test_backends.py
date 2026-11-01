@@ -33,14 +33,14 @@ def clean_env(monkeypatch):
 # --- registry and precedence (AC-B01) ---
 
 def test_names():
-    assert backends.names() == ["cpu", "gpu"]
+    assert backends.names() == ["cpu", "cpu-sam3db", "gpu"]
 
 
 def test_unknown_name_names_the_choices():
     with pytest.raises(backends.UnknownBackend) as e:
         backends.get("x")
-    assert str(e.value) == 'unknown backend "x"; choose gpu or cpu'
-    assert e.value.known == ["gpu", "cpu"]
+    assert str(e.value) == 'unknown backend "x"; choose gpu or cpu or cpu-sam3db'
+    assert e.value.known == ["gpu", "cpu", "cpu-sam3db"]
 
 
 def test_flag_wins_over_env(monkeypatch):
@@ -63,7 +63,7 @@ def test_default_follows_cuda(monkeypatch, cuda, expected):
 
 def test_unknown_env_value_is_refused(monkeypatch):
     monkeypatch.setenv("PART2_BACKEND", "tpu")
-    with pytest.raises(backends.UnknownBackend, match='"tpu"; choose gpu or cpu'):
+    with pytest.raises(backends.UnknownBackend, match='"tpu"; choose gpu or cpu or cpu-sam3db'):
         backends.resolve(None)
 
 
@@ -85,7 +85,7 @@ def test_registered_backend_without_its_module_refuses(monkeypatch):
 
 def test_cli_unknown_exits_2(capsys):
     assert backends.main(["x"]) == 2
-    assert capsys.readouterr().err.strip() == 'part2: unknown backend "x"; choose gpu or cpu'
+    assert capsys.readouterr().err.strip() == 'part2: unknown backend "x"; choose gpu or cpu or cpu-sam3db'
 
 
 def test_cli_gpu_without_profile_refuses_plainly(monkeypatch, tmp_path, capsys):
@@ -100,7 +100,7 @@ def test_cli_gpu_without_profile_refuses_plainly(monkeypatch, tmp_path, capsys):
 
 def test_module_entry_point_runs_without_torch(tmp_path):
     r = subprocess.run([sys.executable, "-m", "part2.backends", "nope"], cwd=ROOT, capture_output=True, text=True)
-    assert r.returncode == 2 and "choose gpu or cpu" in r.stderr and "Traceback" not in r.stderr
+    assert r.returncode == 2 and "choose gpu or cpu or cpu-sam3db" in r.stderr and "Traceback" not in r.stderr
 
 
 def test_importing_the_backends_does_not_import_torch():
@@ -263,8 +263,17 @@ def test_output_shape_converts_to_valid_pose3d(gpu, tmp_path):
 def test_no_person_in_any_frame_is_an_error(gpu, tmp_path):
     b, calls = gpu
     calls["doc"] = body3d_doc(n_frames=3, people=False)
-    with pytest.raises(RuntimeError, match="^no person found in 3 frames$"):
+    with pytest.raises(backends.NoPersonFound, match="^no person found in 3 frames$") as e:  # TICKET-047: exit 4
         b.estimate(tmp_path, tmp_path / "body3d.json")
+    assert e.value.exit_code == 4 and isinstance(e.value, RuntimeError)
+
+
+def test_no_person_found_is_a_plain_backends_attribute_and_loads_no_torch():
+    """TICKET-047: the one exception type sits in the torch-free package module, with the exit code of CONTRACT.md."""
+    code = ("import sys; from part2.backends import NoPersonFound, BackendUnavailable; "
+            "assert NoPersonFound.exit_code == 4 and not issubclass(NoPersonFound, BackendUnavailable); "
+            "assert 'torch' not in sys.modules")
+    assert subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent).returncode == 0
 
 
 def test_out_of_memory_removes_output_and_says_what_to_do(monkeypatch, gpu, tmp_path):

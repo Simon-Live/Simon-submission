@@ -134,7 +134,7 @@ def test_one_person_mode_follows_the_previous_box(tmp_path):
 
 def test_no_person_in_any_frame_is_an_error(tmp_path):
     frames = _frames(tmp_path, 2)
-    with pytest.raises(RuntimeError, match="^no person found in 2 frames$"):
+    with pytest.raises(backends.NoPersonFound, match="^no person found in 2 frames$"):  # TICKET-047: exit 4
         cpu_rtm.Backend("fixed-bones").estimate(frames, tmp_path / "b.json", model2d=Fake2D(2, [[], []]))
     assert not (tmp_path / "b.json").exists()
 
@@ -151,7 +151,7 @@ def test_missing_cpu_extras_refuse_with_the_spec_message(tmp_path, monkeypatch):
 def test_unknown_lifter_is_refused(tmp_path):
     from part2.lifters import UnknownLifter
 
-    with pytest.raises(UnknownLifter, match='"x"; choose fixed-bones or motionbert'):
+    with pytest.raises(UnknownLifter, match='"x"; choose bones-prior or fixed-bones or motionbert'):
         cpu_rtm.Backend("x").estimate(_frames(tmp_path, 1), tmp_path / "b.json", model2d=Fake2D(1))
 
 

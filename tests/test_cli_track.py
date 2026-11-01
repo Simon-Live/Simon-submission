@@ -7,7 +7,11 @@ _bad_option_exits_2; P03 test_track_runs_no_3d; P04 test_run_with_tracks_never_c
 those_people; P05 test_run_ids_list_keeps_both_people, test_3d_is_asked_for_the_listed_boxes_only; P06 test_unknown_id_*;
 P07 test_tracks_for_a_longer_input_exit_1, test_tracks_with_frames_the_input_lacks_exit_1; P08 test_ids_without_multi_*,
 test_tracks_with_single_exits_2, test_tracks_with_a_tracker_option_exits_2, test_ids_alone_track_then_filter; P09
-test_a_bad_tracks_file_is_an_input_error_naming_the_file.
+test_a_bad_tracks_file_is_an_input_error_naming_the_file; tracker-registry AC-R11 (the bulk order after a refused Meta
+credential) test_a_refused_credential_*, test_an_explicit_bulk_order_*, test_a_named_*, test_the_scored_order_*,
+test_no_usable_tracker_*, test_a_failure_of_the_fallback_*, test_a_refused_hf_token_*; TICKET-047 (no person found is
+exit 4, every other RuntimeError exit 1; CONTRACT.md "Exit codes"): test_run_single_with_nobody_*, test_run_multi_*,
+test_a_tracker_that_finds_nobody_*, test_the_api_tracker_that_finds_nobody_*, test_every_other_runtime_error_*.
 
 The GPU parts are fakes (the `gpu` fixture of test_cli: a fake SAM 3.1 API client with people 0 and 1, and a
 `body3d.estimate` that writes one person per given box); the writers and contract checks are the real code."""
@@ -16,7 +20,7 @@ import json
 import pytest
 from test_cli import _fake_estimate, _image_dir, _load, gpu  # noqa: F401  (gpu is a fixture)
 
-from part2 import backends, body3d, cli, contract, frames, track, worker
+from part2 import backends, body3d, cli, contract, frames, track, trackers, worker
 
 
 def _run(tmp_path, *extra, mode="multi", src=None, name="out"):
@@ -333,3 +337,241 @@ def test_serve_worker_returns_0_when_it_is_stopped(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "serve", lambda path, backend: seen.append((path, backend)))
     assert cli.main(_serve_args(tmp_path, "--backend", "cpu")) == 0
     assert seen == [(str(tmp_path / "w.sock"), "cpu")]
+
+
+# ---- the bulk order after a refused Meta credential (docs/specs/tracker-registry.md, AC-R11) ---------------
+
+REFUSAL = "part2: tracker api-sam31: the credential was refused"
+MOVED_ON = f"{REFUSAL}; tracking with local-open instead\n"
+
+
+def refuse_the_api_credential(monkeypatch, local_ok=(True, "")):
+    """The Meta API answers HTTP 401 (through the real trackers.call_with_key, so it becomes CredentialRefused) and
+    local-open is a fake that finds people 7 and 8. Returns the calls made: {"api": n, "local-open": n}."""
+    calls = {"api": 0, "local-open": 0}
+
+    def refuse(frames_dir, recs, **_):
+        calls["api"] += 1
+        raise RuntimeError("Meta API POST /files: HTTP 401: unauthorized")
+
+    class FakeLocalOpen(trackers.Tracker):
+        name = "local-open"
+
+        def __init__(self, **_):
+            pass
+
+        def available(self, n_frames=None):
+            return local_ok
+
+        def detect(self, frames_dir, recs):
+            calls["local-open"] += 1
+            return {r["frame"]: [{"id": i, "bbox": [0, 0, 2, 2], "mask": [[0, 1], [1, 1]], "confidence": 0.8}
+                                 for i in (7, 8)] for r in recs}
+
+    monkeypatch.setattr(track, "load_sam31_tracker", lambda: refuse)
+    monkeypatch.setitem(trackers._REGISTRY, "local-open", FakeLocalOpen)
+    return calls
+
+
+def _fallback_of(prov):
+    return (prov["tracker"], prov["fallback_from"], prov["fallback_reason"])
+
+
+@pytest.mark.parametrize("command", ["track", "run"])
+def test_a_refused_credential_moves_the_bulk_order_on_to_local_open(gpu, tmp_path, monkeypatch, capsys, command):
+    calls = refuse_the_api_credential(monkeypatch)
+    code, out = _track(tmp_path) if command == "track" else _run(tmp_path)
+    cap = capsys.readouterr()
+    assert code == 0 and cap.err == MOVED_ON  # one plain line naming the refusal and the next tracker
+    assert "SAM 3.1 credential refused; tracked with local-open" in cap.out and "Traceback" not in cap.err
+    assert calls == {"api": 1, "local-open": 1}
+    doc = _load(out / "tracks.json")
+    contract.validate(doc, "tracks")
+    assert _fallback_of(doc["provenance"]) == ("local-open", "api-sam31", "credential_refused")
+    assert {p["id"] for f in doc["frames"] for p in f["people"]} == {0, 1}
+    if command == "run":  # the 3D stage ran on the fallback's people, and its provenance says the same
+        pose = _load(out / "pose3d.json")
+        contract.validate(pose, "pose3d")
+        assert _fallback_of(pose["provenance"]) == ("local-open", "api-sam31", "credential_refused")
+
+
+def test_an_explicit_bulk_order_moves_on_like_the_default(gpu, tmp_path, monkeypatch, capsys):
+    refuse_the_api_credential(monkeypatch)
+    code, out = _track(tmp_path, "--tracker-order", "bulk")
+    assert code == 0 and capsys.readouterr().err == MOVED_ON
+    assert _load(out / "tracks.json")["provenance"]["fallback_reason"] == "credential_refused"
+
+
+def test_a_refused_credential_is_tried_again_by_the_next_run_in_the_same_process(gpu, tmp_path, monkeypatch):
+    """Nothing is remembered between runs (a warm worker serves many): a rotated key works without a restart."""
+    calls = refuse_the_api_credential(monkeypatch)
+    assert _track(tmp_path, name="one")[0] == 0 and _track(tmp_path, name="two")[0] == 0
+    assert calls == {"api": 2, "local-open": 2}
+
+
+@pytest.mark.parametrize("how", ["--tracker", "PART2_TRACKER"])
+@pytest.mark.parametrize("command", ["track", "run"])
+def test_a_named_api_tracker_still_fails_closed_on_a_refusal(gpu, tmp_path, monkeypatch, capsys, command, how):
+    calls = refuse_the_api_credential(monkeypatch)
+    extra = ["--tracker", "api-sam31"] if how == "--tracker" else []
+    if how == "PART2_TRACKER":
+        monkeypatch.setenv("PART2_TRACKER", "api-sam31")
+    code, out = _track(tmp_path, *extra) if command == "track" else _run(tmp_path, *extra)
+    assert code == 1 and capsys.readouterr().err == REFUSAL + "\n"
+    assert calls == {"api": 1, "local-open": 0}
+    assert not (out / "tracks.json").exists() and not (out / "pose3d.json").exists()
+
+
+@pytest.mark.parametrize("command", ["track", "run"])
+def test_the_scored_order_never_falls_back(gpu, tmp_path, monkeypatch, capsys, command):
+    calls = refuse_the_api_credential(monkeypatch)
+    code, out = (_track if command == "track" else _run)(tmp_path, "--tracker-order", "scored")
+    assert code == 1 and capsys.readouterr().err == REFUSAL + "\n"
+    assert calls == {"api": 1, "local-open": 0} and not (out / "tracks.json").exists()
+
+
+@pytest.mark.parametrize("local_ok", [(False, "missing sam2, rtmlib"), (False, "no_key")], ids=["not installed", "no key"])
+def test_no_usable_tracker_after_the_refusal_exits_1_with_the_refusal(gpu, tmp_path, monkeypatch, capsys, local_ok):
+    calls = refuse_the_api_credential(monkeypatch, local_ok=local_ok)
+    code, out = _run(tmp_path)
+    assert code == 1 and capsys.readouterr().err == REFUSAL + "\n"  # the existing message, no "tracking with" line
+    assert calls == {"api": 1, "local-open": 0}
+    assert not (out / "tracks.json").exists() and not (out / "pose3d.json").exists()
+
+
+def test_a_failure_of_the_fallback_tracker_is_not_swallowed(gpu, tmp_path, monkeypatch, capsys):
+    refuse_the_api_credential(monkeypatch)
+
+    def no_person(self, frames_dir, recs):
+        raise trackers.NoPerson()
+
+    monkeypatch.setattr(trackers._REGISTRY["local-open"], "detect", no_person)
+    code, out = _track(tmp_path)
+    assert code == 4 and capsys.readouterr().err == MOVED_ON + "part2: no person found to track\n"  # TICKET-047: 4, not 1
+    assert not (out / "tracks.json").exists()
+
+
+def test_a_refused_hf_token_is_not_a_move_on(gpu, tmp_path, monkeypatch, capsys):
+    """Only the Meta credential moves the order on: a refusal by local-sam31 still ends the run."""
+    calls = refuse_the_api_credential(monkeypatch)
+
+    class RefusedLocalSam31(trackers.Tracker):
+        name = "local-sam31"
+
+        def __init__(self, **_):
+            pass
+
+        def available(self, n_frames=None):
+            return True, ""
+
+        def detect(self, frames_dir, recs):
+            raise trackers.CredentialRefused(self.name)
+
+    monkeypatch.setattr(trackers, "parity_passed", lambda: True)
+    monkeypatch.setitem(trackers._REGISTRY, "local-sam31", RefusedLocalSam31)
+    code, out = _track(tmp_path)
+    assert code == 1 and capsys.readouterr().err == "part2: tracker local-sam31: the credential was refused\n"
+    assert calls == {"api": 0, "local-open": 0} and not (out / "tracks.json").exists()
+
+
+class _Refusal(trackers.CredentialRefused):
+    """A refusal whose wording is not the registry's: only its `tracker` attribute says who refused."""
+
+    def __init__(self, tracker, words):
+        super().__init__(tracker)
+        self.args = (words,)
+
+
+def test_a_refusal_is_recognised_by_its_tracker_attribute_not_by_its_wording(gpu, tmp_path, monkeypatch, capsys):
+    """R10: the bulk order moves on when api-sam31 refused, however the message reads."""
+    calls = refuse_the_api_credential(monkeypatch)
+
+    def refuse(*a, **k):
+        raise _Refusal("api-sam31", "the Meta key was turned down")
+
+    monkeypatch.setattr(track, "track", refuse)
+    code, out = _track(tmp_path)
+    assert code == 0 and capsys.readouterr().err == "part2: the Meta key was turned down; tracking with local-open instead\n"
+    assert calls["local-open"] == 1 and _load(out / "tracks.json")["provenance"]["fallback_reason"] == "credential_refused"
+
+
+def test_another_trackers_refusal_that_reads_like_the_api_one_is_not_a_move_on(gpu, tmp_path, monkeypatch, capsys):
+    calls = refuse_the_api_credential(monkeypatch)
+
+    def refuse(*a, **k):
+        raise _Refusal("local-sam31", REFUSAL[len("part2: "):])  # the api-sam31 wording, from another tracker
+
+    monkeypatch.setattr(track, "track", refuse)
+    code, out = _track(tmp_path)
+    assert code == 1 and capsys.readouterr().err == REFUSAL + "\n"
+    assert calls == {"api": 0, "local-open": 0} and not (out / "tracks.json").exists()
+
+
+# ---- no person found: exit 4, the message unchanged (TICKET-047, CONTRACT.md "Exit codes") -------------------------
+
+NO_PERSON_FRAMES = "part2: no person found in 2 frames\n"
+NO_PERSON_TRACK = "part2: no person found to track\n"
+
+
+def backend_finds_nobody(monkeypatch):
+    def estimate(frames_dir, out_path, boxes=None, estimator=None):
+        raise backends.NoPersonFound("no person found in 2 frames")
+
+    monkeypatch.setattr(body3d, "estimate", estimate)
+
+
+def tracker_finds_nobody(monkeypatch):
+    def track_nobody(*args, **kwargs):
+        raise trackers.NoPerson()
+
+    monkeypatch.setattr(track, "track", track_nobody)
+
+
+def test_run_single_with_nobody_exits_4_with_the_unchanged_line_and_writes_nothing(gpu, tmp_path, monkeypatch, capsys):
+    backend_finds_nobody(monkeypatch)
+    code, out = _run(tmp_path, mode="single")
+    assert code == 4 and capsys.readouterr().err == NO_PERSON_FRAMES
+    assert not (out / "pose3d.json").exists() and not (out / "camera.json").exists()
+
+
+def test_run_multi_whose_3d_backend_finds_nobody_exits_4_with_the_unchanged_line(gpu, tmp_path, monkeypatch, capsys):
+    backend_finds_nobody(monkeypatch)
+    code, out = _run(tmp_path, mode="multi")
+    assert code == 4 and capsys.readouterr().err == NO_PERSON_FRAMES
+    assert not (out / "pose3d.json").exists()
+
+
+@pytest.mark.parametrize("command", ["track", "run"])
+def test_a_tracker_that_finds_nobody_exits_4_with_the_unchanged_line(gpu, tmp_path, monkeypatch, capsys, command):
+    tracker_finds_nobody(monkeypatch)
+    code, out = _track(tmp_path) if command == "track" else _run(tmp_path)
+    assert code == 4 and capsys.readouterr().err == NO_PERSON_TRACK
+    assert not (out / "tracks.json").exists() and not (out / "pose3d.json").exists()
+
+
+@pytest.mark.parametrize("tracker_args", [("--tracker", "api-sam31"), ()], ids=["named", "bulk order"])
+@pytest.mark.parametrize("command", ["track", "run"])
+def test_the_api_tracker_that_finds_nobody_exits_4_with_the_unchanged_line(gpu, tmp_path, monkeypatch, capsys, command,
+                                                                          tracker_args):
+    """The Meta API answers with no person in any frame (the fake client of the gpu fixture replaced): exit 4, not a
+    written empty tracks.json. In the bulk order it is not a skip reason, so no other tracker runs."""
+    monkeypatch.setattr(track, "load_sam31_tracker", lambda: lambda frames_dir, recs, **_: {})
+    code, out = (_track if command == "track" else _run)(tmp_path, *tracker_args)
+    assert code == 4 and capsys.readouterr().err == NO_PERSON_TRACK
+    assert not (out / "tracks.json").exists() and not (out / "pose3d.json").exists()
+
+
+@pytest.mark.parametrize("error", [
+    RuntimeError("boom"),
+    RuntimeError("no person found in 2 frames"),  # the same words from a plain RuntimeError: the type says it, not the text
+    backends.BackendUnavailable("the gpu backend needs CUDA and the gpu-cu128 profile (make setup-gpu); use --backend cpu"),
+    trackers.TrackerError("another GPU job is running"),
+], ids=["runtime error", "same words, plain runtime error", "backend unavailable", "tracker error"])
+def test_every_other_runtime_error_still_exits_1(gpu, tmp_path, monkeypatch, capsys, error):
+    def estimate(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(body3d, "estimate", estimate)
+    code, out = _run(tmp_path, mode="single")
+    assert code == 1 and capsys.readouterr().err == f"part2: {error}\n"
+    assert not (out / "pose3d.json").exists()

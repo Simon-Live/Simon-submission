@@ -384,7 +384,7 @@ def test_contract_command_through_the_cli(capsys):
     assert cli.main(["contract", "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == contract.contract_json()
     assert cli.main(["contract", "--schema", "nope"]) == 2
-    assert "contract: no schema 'nope'; schemas: pose3d, tracks, camera, frames" in capsys.readouterr().err
+    assert "contract: no schema 'nope'; schemas: pose3d, tracks, camera, frames, mesh3d" in capsys.readouterr().err
 
 
 def test_doctor_command_through_the_cli(capsys):

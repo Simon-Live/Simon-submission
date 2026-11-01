@@ -1,6 +1,6 @@
 # Spec: Part 2 web app (browse committed outputs, then upload a video, class clip or photo and run the real pipeline)
 
-> Copy of `docs/specs/run-app.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/run-app.md` from the maintainers' working repo at `f43deee`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -64,7 +64,7 @@ original, so that I can judge Part 2's output and download the files Parts 3 to 
 | `GET api/capabilities` | 200 `{backends: [{name, available, reason}], trackers: [{name, available, reason}], limits}` (presence checks only, never a key). Backend order: local `gpu`, then `cpu`. Tracker "Automatic" (the bulk order: `local-sam31` once parity passes, else `api-sam31` within the staging cap, else `local-open`) is the default; `local-open` and `bytetrack` can be chosen by name. Naming `api-sam31` or `local-sam31` in `POST api/jobs` is 400: a visitor never names a paid or key-gated tracker, the order decides (operator ruling 2026-10-28) |
 | `POST api/jobs` | multipart: `file`, `mode` (`single`|`class`), optional `backend`, `tracker`, `sample` (a sample id instead of a file). 202 `{id, state}`; 400 plain error; 413 too large; 415 not a video or image; 422 too long or no frames; 429 queue full; 503 no backend available |
 | `GET api/jobs` | 200 the visitor-visible queue `[{id, state, position, mode, created}]` |
-| `GET api/jobs/<id>` | 200 `{id, state, mode, backend, tracker, fallback: {from, reason} or null, notice, progress: {stage, done, total}, position, error, files: [...]}`; `notice` is the plain line shown when a cap or a missing key moved the job to a later tracker; 404 unknown |
+| `GET api/jobs/<id>` | 200 `{id, state, mode, backend, tracker, fallback: {from, reason} or null, notice, progress: {stage, done, total}, position, error, files: [...]}`; `notice` is the plain line shown when a cap, a missing key or a refused Meta key moved the job to a later tracker (for a refused key: `SAM 3.1 credential refused; tracked with <tracker>`, the wording of `part2 run`, from `part2.provenance.fallback_note`; a reason with no wording still gives `tracked with <tracker>`); 404 unknown |
 | `POST api/jobs/<id>/cancel` | 200 `{state: "cancelled"}`; 409 already finished; 404 unknown |
 | `GET api/jobs/<id>/files/<name>` | `pose3d.json`, `tracks.json`, `camera.json` as `application/json` with `Content-Disposition: attachment`; `frames/<n>.jpg`; 404 otherwise |
 | anything else | 404 JSON `{"error": "not found", "code": "not_found"}`; wrong method 405 |
@@ -164,7 +164,7 @@ the `errors` check on the app port.
 |---|---|
 | `part2/server.py` | HTTP server, route table, limits, headers; `python -m part2.server` |
 | `part2/runapi.py` | pure request logic: outputs index, sample table, multipart parsing, sniffing, limits, job creation, error mapping |
-| `part2/jobs.py` | queue, worker, states, progress parsing, timeout, cancel, cleanup |
+| `part2/jobs.py` | queue, worker, states, progress parsing, timeout, cancel, cleanup; `classify(stderr, returncode)` reads exit 4 (`backends.NoPersonFound.exit_code`) as "No person was found in this file." and keeps the text pattern `no person found` for a run that only left the line; the job `notice` is `part2.provenance.fallback_note` of the run's `pose3d.json` provenance |
 | `part2/gpu_guard.py` | free-memory query and the GPU lock helper |
 | `part2/cli.py` (modified) | `progress` lines on stdout when `PART2_PROGRESS=1` |
 | `web/index.html`, `web/browse.js` | browse page |
@@ -228,7 +228,7 @@ A job dir older than 24 h is removed at start and by the sweeper; nothing is wri
 | body over cap | 413 | "The file is too large. Videos can be up to 200 MB and photos up to 20 MB." | AC-A07 |
 | not a video or image | 415 | "This file is not a video or photo the app can read." | AC-A07 |
 | video too long | 422 | "Videos can be at most 60 seconds long." | AC-A07 |
-| no person found | job `failed` | "No person was found in this file." | AC-A04 |
+| no person found | job `failed`; the run ended with exit 4, or only left the line `no person found` (TICKET-047) | "No person was found in this file." | AC-A04 |
 | queue full | 429 | "The queue is full. Try again in a few minutes." | AC-A07 |
 | GPU busy past the wait | job `failed` | "The GPU is busy with other work; try again later." | AC-A08 |
 | timeout | job `failed` | "The job took longer than 20 minutes and was stopped." | AC-A08 |

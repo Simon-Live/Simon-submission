@@ -11,8 +11,14 @@ Scores the committed outputs under the scored dir (`fixtures/output/scored/`, or
   cpu_backend_3d           scored/cpu-single vs scored/single (part2.eval_3d); gates only `make check-2-cpu`
 Top-level `pass` = one_person and one_person_coco and multi_person. Each mode's stamp (part2.stamp) must be
 v2 and fresh; a mode that is missing, stale or crashes fails with the reason and the JSON is still printed.
+cpu_backend_3d scores another CPU mode dir of the scored dir when --cpu-mode or PART2_CPU_MODE names one (TICKET-044:
+`cpu-sam3db-single`, `make check-2-cpu CPU_MODE=...`), and reports seconds_per_frame when that file's
+provenance.timing carries it (the cpu-sam3db variant writes it; cpu-single carries none, so its block is unchanged).
+It scores a CPU backend's output only: the reference `single`, or a dir whose stamp names a backend other than cpu
+and cpu-sam3db, is refused with one line (exit 1), and a missing dir names the `make outputs BACKEND=` that makes it.
 
     python -m part2.check [--scored DIR] [--block NAME]   # NAME cpu_backend_3d: exit 0 pass, 1 fail, 2 missing
+    python -m part2.check --block cpu_backend_3d --cpu-mode cpu-sam3db-single
     python -m part2.check fingerprint <mode> | stamp <mode> <fp>   # v1 interface of k8s/ and hpc/ scripts
 """
 import argparse
@@ -28,6 +34,10 @@ from part2 import stamp
 ROOT = Path(__file__).resolve().parent.parent
 SCORED_ENV = "PART2_SCORED_DIR"
 DEFAULT_SCORED = "fixtures/output/scored"
+CPU_ENV = "PART2_CPU_MODE"
+DEFAULT_CPU = "cpu-single"
+CPU_BACKENDS = ("cpu", "cpu-sam3db")  # the stamp backends the 3D bar accepts as a CPU mode dir
+REFERENCE_MODE = "single"  # the GPU reference every CPU dir is scored against, never a CPU mode itself
 GATED = ("one_person", "one_person_coco", "multi_person")
 SCORED_TRACKER = "api-sam31"
 OPEN_TRACKER = "local-open"
@@ -117,14 +127,58 @@ def check_class_local_open(root: Path = ROOT, scored: Path | None = None) -> dic
     return _check_tracks(root, (scored or scored_dir(root)) / "class-local-open", OPEN_TRACKER, gated=False)
 
 
-def check_cpu_3d(root: Path = ROOT, scored: Path | None = None) -> dict:
-    """`cpu_backend_3d`: the CPU backend's 3D bar against the GPU reference; never in the top-level pass."""
+def cpu_mode(flag=None) -> str:
+    """The CPU mode dir the bar scores: the flag, then PART2_CPU_MODE, then cpu-single. It names a dir of the
+    scored dir (where the reference `single` is), never a path: ValueError for one with a separator or dots."""
+    name = flag or os.environ.get(CPU_ENV) or DEFAULT_CPU
+    if Path(name).name != name or name in (".", ".."):
+        raise ValueError(f'{CPU_ENV} or --cpu-mode names a mode dir of the scored dir, not the path "{name}"')
+    return name
+
+
+def making_backend(mode: str) -> str:
+    """The `make outputs BACKEND=` value that writes the CPU mode dir `mode` (cpu-sam3db for cpu-sam3db-single); `cpu`
+    for any other name, a GPU mode's included."""
+    from part2 import outputs  # outputs imports this module, so it is read here and not at the top
+
+    return next((m.backend for m in outputs.MODES if m.name == mode and m.backend in CPU_BACKENDS), "cpu")
+
+
+def not_a_cpu_dir(cpu: Path, root: Path) -> str | None:
+    """The one-line refusal when the dir named as the CPU mode is not a CPU backend's output: the GPU reference
+    `single` by name, or any dir whose stamp names a backend other than cpu and cpu-sam3db. A dir with no readable
+    backend (no stamp, a v1 stamp) is left to stamp.check, which says what is wrong with it."""
+    where, backend = stamp.rel(cpu, root), (stamp.load(cpu) or {}).get("backend")
+    choose = " or ".join(CPU_BACKENDS)
+    if cpu.name == REFERENCE_MODE:
+        return f"{where} is the GPU reference (backend {backend}), not a CPU mode dir; choose a dir made by {choose}"
+    if backend is not None and backend not in CPU_BACKENDS:
+        return f"{where} was made by backend {backend}, not a CPU backend; choose a dir made by {choose}"
+    return None
+
+
+def cpu_speed(pose3d_path: Path) -> dict:
+    """{"seconds_per_frame", "timing"} from the CPU file's provenance.timing (the cpu-sam3db variant writes it,
+    TICKET-044), else {}: a file without it (cpu-single) keeps the block as it was."""
+    timing = (json.loads(pose3d_path.read_text()).get("provenance") or {}).get("timing") or {}
+    if timing.get("seconds_per_frame") is None:
+        return {}
+    return {"seconds_per_frame": timing["seconds_per_frame"], "timing": timing}
+
+
+def check_cpu_3d(root: Path = ROOT, scored: Path | None = None, mode: str | None = None) -> dict:
+    """`cpu_backend_3d`: the CPU backend's 3D bar against the GPU reference; never in the top-level pass. `mode`
+    (else PART2_CPU_MODE, else cpu-single) picks the CPU dir of the scored dir (cpu_mode)."""
     from part2 import eval_3d
 
     scored = scored or scored_dir(root)
-    cpu, ref = scored / "cpu-single", scored / "single"
+    cpu, ref = scored / cpu_mode(mode), scored / "single"
     if not (cpu / "pose3d.json").is_file():
-        return {"pass": False, "status": eval_3d.NO_CPU, "reference": stamp.rel(ref, root)}
+        return {"pass": False, "status": eval_3d.no_cpu(making_backend(cpu.name)), "cpu": stamp.rel(cpu, root),
+                "reference": stamp.rel(ref, root)}
+    refused = not_a_cpu_dir(cpu, root)
+    if refused:
+        return {"pass": False, "status": refused, "cpu": stamp.rel(cpu, root), "reference": stamp.rel(ref, root)}
     if not (ref / "pose3d.json").is_file():
         return {"pass": False, "status": eval_3d.NO_REF, "reference": stamp.rel(ref, root)}
     problems = {d: stamp.check(d, root) for d in (cpu, ref)}
@@ -133,7 +187,7 @@ def check_cpu_3d(root: Path = ROOT, scored: Path | None = None) -> dict:
         return {"pass": False, "status": bad["status"], **_changed(bad), "reference": stamp.rel(ref, root),
                 "outputs": stamp.describe(cpu, root, problems[cpu])}
     block = eval_3d.block(cpu / "pose3d.json", ref / "pose3d.json")
-    return {**block, "cpu": stamp.rel(cpu, root), "reference": stamp.rel(ref, root),
+    return {**block, **cpu_speed(cpu / "pose3d.json"), "cpu": stamp.rel(cpu, root), "reference": stamp.rel(ref, root),
             "outputs": stamp.describe(cpu, root)}
 
 
@@ -149,10 +203,10 @@ def run(root: Path = ROOT, scored=None) -> dict:
     return report
 
 
-def _safe(fn, root, scored) -> dict:
+def _safe(fn, root, scored, **kw) -> dict:
     """An eval that crashes is a failed check with the reason, never a traceback instead of JSON."""
     try:
-        return fn(root, scored)
+        return fn(root, scored, **kw)
     except Exception as e:  # noqa: BLE001
         return {"pass": False, "status": f"error: {type(e).__name__}: {e}"}
 
@@ -202,9 +256,14 @@ def main(argv=None, root: Path = ROOT) -> int:
     ap = argparse.ArgumentParser(prog="python -m part2.check", description="Part 2 done-check (make check-2).")
     ap.add_argument("--scored", help=f"scored dir (default: {SCORED_ENV}, else {DEFAULT_SCORED})")
     ap.add_argument("--block", choices=sorted(BLOCKS), help="print one block and exit by it")
+    ap.add_argument("--cpu-mode", help=f"with --block cpu_backend_3d: the CPU mode dir of the scored dir "
+                    f"(default: {CPU_ENV}, else {DEFAULT_CPU})")
     a = ap.parse_args(argv)
+    if a.cpu_mode and a.block != "cpu_backend_3d":
+        ap.error("--cpu-mode goes with --block cpu_backend_3d")
     if a.block:
-        result = _safe(BLOCKS[a.block], Path(root), scored_dir(root, a.scored))
+        kw = {"mode": a.cpu_mode} if a.cpu_mode else {}
+        result = _safe(BLOCKS[a.block], Path(root), scored_dir(root, a.scored), **kw)
         print(json.dumps(result, indent=2))
         return block_exit(a.block, result)
     report = run(root, a.scored)

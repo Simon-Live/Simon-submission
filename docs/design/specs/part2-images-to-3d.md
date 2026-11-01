@@ -1,6 +1,6 @@
 # Spec: Part 2, images to 3D (video or photo in, `pose3d.json` and `tracks.json` out)
 
-> Copy of `docs/specs/part2-images-to-3d.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/part2-images-to-3d.md` from the maintainers' working repo at `f43deee`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -8,7 +8,8 @@ Linked PRD: none. Scope source: this repo's `README.md` (Part 2 of moalborati/si
 and the hub registry `engagements/simon-part-2.yaml` (milestones S0, M1 to M5, six use cases).
 Request Type: new-feature (takeover of an in-flight part)
 Risk Level: medium
-Tickets: TICKET-001 to TICKET-035 (this spec is the master index; detail specs below own their ACs).
+Tickets: TICKET-001 to TICKET-035, TICKET-044 (the CPU 3D bar work), TICKET-046 (its registry entries) and TICKET-047 (exit 4, no person found); this spec is the master index and
+the detail specs below own their ACs.
 ADRs: ADR-0001 (workspace and publish), ADR-0002 (backends and profiles), ADR-0003 (tracker registry),
 ADR-0004 (one-person ladder, gold read-only), ADR-0005 (licences), ADR-0006 (reproducible outputs and
 stamps), ADR-0007 (takeover and upstream etiquette).
@@ -66,13 +67,16 @@ movement can be normalised, animated, compared and catalogued.
 | `pose3d_person_<id>.json` | same shape, one person | multi |
 | `camera.json` | per-frame `R`, `t`, `K` sidecar to project joints back onto the frames | both |
 | `tracks.json` | `{frames: [{frame, people: [{id, bbox, mask_rle, confidence}]}], provenance?}` | multi |
+| `mesh3d.json` + `mesh3d.bin` | header and payload of the decimated SAM 3D Body mesh per person per frame, in the pose3d frame (`mesh3d.md`) | optional, `run --mesh` on `gpu` or `cpu-sam3db`; never committed |
 | `stamp.json` | `part2.stamp/2` (ADR-0006, `check-2.md`) | `make outputs` only |
 
 ## Backends and trackers (summary; detail in `backends-gpu-cpu.md` and `tracker-registry.md`)
 | Registry | Name | What runs | Needs |
 |---|---|---|---|
 | backend | `gpu` (default when CUDA is available) | SAM 3D Body (DINOv3) + MoGe-2 FOV, person boxes from ViTDet or the tracker's detector | GPU profile `envs/gpu-cu128/` on this host, or the team profile on HPC or k3s |
-| backend | `cpu` | rtmlib RTMPose-x 2D (ONNX Runtime CPU) then a lifter | `envs/cpu/` |
+| backend | `cpu` | rtmlib RTMPose-x 2D (ONNX Runtime CPU) then a lifter; 3D approximate (it misses the CPU 3D bar) | `envs/cpu/` |
+| backend | `cpu-sam3db` (by name only, TICKET-044) | the `gpu` backend's SAM 3D Body (same weights, ViTDet boxes, MoGe-2 field of view) on the CPU device; no lifter; writes `extra_joints`; meets the CPU 3D bar (0.0363 m, bone CV 0.0408) | the `envs/gpu-cu128/` venv and no GPU; 31.74 s per frame on 8 threads plus 23.7 s model load (the 2026-10-31 run); 46.95 s per frame plus 23.4 s model load under host load (the committed set, regenerated 2026-11-01) |
+| lifter (cpu only) | `bones-prior` (B2, TICKET-044; the default) | the `fixed-bones` lift with a depth-sign and joint-limit prior, numpy only | nothing extra |
 | lifter (cpu only) | `fixed-bones` (B) | constant per-person bone lengths fitted over the clip, per-frame depth solved | nothing extra |
 | lifter (cpu only) | `motionbert` (C) | MotionBERT temporal lifter on the RTMPose 2D sequence | its weights (ASM-012) |
 | tracker | `api-sam31` (first in the scored order) | the team's `part2/track.py` through the Meta API | key file `MODEL_API_KEY` (verified 2026-10-28) and budget |
@@ -82,27 +86,34 @@ movement can be normalised, animated, compared and catalogued.
 
 Selection: flag, then environment (`PART2_BACKEND`, `PART2_TRACKER`, `PART2_LIFTER`), then the default (for
 trackers, the order in `tracker-registry.md`: scored `api-sam31`, `local-open`; bulk `local-sam31` after parity,
-`api-sam31` within its cap, `local-open`).
+`api-sam31` within its cap, `local-open`). The default backend is `gpu` when CUDA is available, else `cpu`;
+`cpu-sam3db` is chosen by name only. The default lifter is `bones-prior`: none of the three lifters passes the CPU 3D
+bar (mean joint distance 0.145 m, 0.2656 m and 0.2914 m for `bones-prior`, `fixed-bones` and `motionbert`), so the
+lowest wins (`backends-gpu-cpu.md` AC-B10). Both are registered in the registry files themselves,
+`part2/backends/__init__.py` (`cpu-sam3db`) and `part2/lifters/__init__.py` (`bones-prior`, which is also `DEFAULT`).
 Every output records what ran in the optional `provenance` block.
 
 ## Command line
 ```
 part2 frames --input <video|dir|photo> --out <dir> [--fps N]
 part2 run --mode single|multi --input <video|dir|photo> --out <dir> [--fps N]
-          [--backend gpu|cpu] [--tracker api-sam31|local-sam31|local-open|bytetrack]
-          [--lifter fixed-bones|motionbert] [--mirrored] [--smooth]
+          [--backend gpu|cpu|cpu-sam3db] [--tracker api-sam31|local-sam31|local-open|bytetrack]
+          [--lifter bones-prior|fixed-bones|motionbert] [--mirrored] [--smooth]
           [--refine RUNGS]           # single only; focal,kp2d-fit is what the scored outputs use
+          [--mesh [--mesh-vertices N]]   # also write mesh3d.json + mesh3d.bin; gpu or cpu-sam3db, not cpu (mesh3d.md)
 part2 check                                  # make check-2: metrics JSON, exit 0 only if the DoD passes
+python -m part2.check --block cpu_backend_3d [--cpu-mode NAME]   # make check-2-cpu [CPU_MODE=NAME]; check-2.md
 part2 eval-reproj --pose3d P --camera C --labels L [--rule every_frame|mean] [--per-frame]
 part2 annotate joints|ids --frames D --out F [...]          # unchanged (team tool)
 part2 demo viewer|overlay --run D [...]                     # unchanged (team tool)
-part2 outputs [--backend gpu|cpu] [--tracker NAME] [--mode single|class|all]   # make outputs
+part2 outputs [--backend gpu|cpu|cpu-sam3db] [--tracker NAME] [--mode single|class|all]   # make outputs
 part2 stock [--clip pexels-<id>]                            # make stock-outputs
 python -m part2 contract [--json] [--schema <name>]
 python -m part2 doctor <file> [--for part3|part5|part6]
 ```
 Make targets: `setup`, `setup-gpu`, `setup-cpu`, `test`, `run-single`, `run-multi`, `check-2`,
-`check-2-cpu`, `check-2-contract`, `contract-sync`, `contract-check`, `outputs`, `stock-outputs`, and
+`check-2-cpu` (`CPU_MODE=cpu-sam3db-single` scores the `cpu-sam3db` run instead of `cpu-single`),
+`check-2-contract`, `contract-sync`, `contract-check`, `outputs`, `stock-outputs`, and
 the team's `gpu-*` and `hpc-*` targets unchanged.
 
 ## Files (source and tests this spec covers; the master index)
@@ -116,9 +127,12 @@ A new file under `part2/` or `web/` must be named here (or in a detail spec) bef
 | `part2/backends/__init__.py` | backend registry, selection order | TICKET-012 | backends-gpu-cpu |
 | `part2/backends/gpu_sam3db.py` | SAM 3D Body backend (wraps `body3d.py`) | TICKET-012 | backends-gpu-cpu |
 | `part2/backends/cpu_rtm.py` | RTMPose-x 2D plus person detector on CPU | TICKET-013 | backends-gpu-cpu |
-| `part2/lifters/__init__.py` | lifter registry | TICKET-014 | backends-gpu-cpu |
+| `part2/mesh3d.py` | `run --mesh`: decimate the SAM 3D Body (MHR) mesh once, collect every person-frame in the pose3d frame, write `mesh3d.json` + `mesh3d.bin`, read and check the pair (`part2 doctor`). `body3d.py`, `backends/gpu_sam3db.py`, `backends/cpu_sam3db.py`, `cli.py`, `doctor.py` and `contract.py` carry the `mesh` argument, the flags, the doctor kind and the fifth schema | TICKET-048 | mesh3d |
+| `part2/lifters/__init__.py` | lifter registry; registers `bones-prior` and names it the default | TICKET-014, TICKET-046 | backends-gpu-cpu |
 | `part2/lifters/fixed_bones.py` | lifter B | TICKET-014 | backends-gpu-cpu |
 | `part2/lifters/motionbert.py` | lifter C, H36M-17 to COCO-17 mapping | TICKET-015 | backends-gpu-cpu |
+| `part2/lifters/bones_prior.py` | lifter B2 `bones-prior`: the `fixed-bones` lift with a depth-sign and joint-limit prior | TICKET-044 | backends-gpu-cpu |
+| `part2/backends/cpu_sam3db.py` | backend `cpu-sam3db`: SAM 3D Body on the CPU device | TICKET-044 | backends-gpu-cpu |
 | `part2/eval_3d.py` | 3D bar: mean distance to the GPU reference, bone CV | TICKET-016 | check-2 |
 | `part2/trackers/__init__.py` | tracker registry, selection order | TICKET-017 | tracker-registry |
 | `part2/keys.py` | reads operator key files (`MODEL_API_KEY`, `HF_TOKEN`), never prints them | TICKET-017 | tracker-registry |
@@ -147,7 +161,7 @@ A new file under `part2/` or `web/` must be named here (or in a detail spec) bef
 | `web/viewer.js` | canvas 3D renderer extracted from the `part2/demo.py` viewer | TICKET-003 | run-app |
 | `web/run.html`, `web/run.js`, `web/overlay.js` | run page, class overlay | TICKET-025 | run-app |
 | `web/style.css`, `web/icon.svg` | shared style and icon | TICKET-003 | run-app |
-| `contracts/{pose3d,tracks,camera,frames}.schema.json`, `contracts/compatibility.json`, `contracts/consumers/part3-pose3d.schema.json` (+ `.source.json`), `CONTRACT.md` | contract (data) | TICKET-006 | integration-contract |
+| `contracts/{pose3d,tracks,camera,frames}.schema.json` (TICKET-048 adds the fifth, `contracts/mesh3d.schema.json`), `contracts/compatibility.json`, `contracts/consumers/part3-pose3d.schema.json` (+ `.source.json`), `CONTRACT.md` | contract (data) | TICKET-006 | integration-contract |
 | `envs/gpu-cu128/{requirements.txt,constraints.txt,setup.sh}`, `envs/cpu/requirements.txt` | dependency profiles | TICKET-011, 013 | backends-gpu-cpu |
 | `fixtures/output/scored/<mode>/`, `fixtures/output/stock/pexels-<id>/` | committed outputs (data) | TICKET-018, 028 | check-2, stock-takes |
 | modified: `part2/cli.py`, `check.py`, `schema.py`, `canonical.py`, `body3d.py`, `track.py`, `multi3d.py`, `demo.py`, `annotate.html` (page title only), `frames.py` (docstring only), `Makefile`, `README.md`, `pyproject.toml`, `uv.lock`, `.gitignore`, `fixtures/output/README.md`, `demos/README.md` | | per ticket | |
@@ -196,6 +210,29 @@ the maintainers' staging verify exits 0 for S0 and again for M4 (`staging.md`).
 ### AC-010: Publish
 Upstream receives only allowlisted paths through `scripts/simon-publish.sh` (`simon-publish.md`).
 
+### AC-011: No person found is exit 4
+Given a clip, or a tracker or 3D backend, in which no frame has a person
+When `part2 run` (single or multi) or `part2 track` ends for that reason
+Then it prints the same line as before (`part2: no person found in <n> frames`, or `part2: no person found to track`
+from a tracker), writes no `pose3d.json`, `camera.json` or (`track`) `tracks.json`, and exits 4 (the intermediate `body3d.json` of the two SAM 3D Body backends can remain). Every other failure
+stays exit 1. The code is `backends.NoPersonFound.exit_code`; the three backends and the tracker error
+(`trackers.NoPerson`, a subclass) raise that one type, and `cli.main` maps it before the generic `RuntimeError`
+handler. The warm worker's client exits 4 too (the worker returns `cli.main`'s code). The run app classifies a job
+that ends 4 as "No person was found in this file." and keeps the text match for a run that only left the line.
+`CONTRACT.md` "Exit codes (`run` and `track`)" states it for consumers (Part 7, moalborati/simon#61). Every tracker
+raises it, `api-sam31` included. Not covered: `part2 stock` (a batch; a take with nobody is a failed take in its
+summary and the batch exits 1).
+Test: `tests/test_cli_track.py`, `tests/test_worker_cli_integration.py`, `tests/test_jobs.py`, the raise-site tests of
+`tests/test_backends.py`, `tests/test_cpu_rtm.py`, `tests/test_cpu_sam3db.py` and `tests/test_trackers.py`.
+
+### AC-012: The mesh is optional, and nothing of it is committed
+`part2 run --mesh` also writes `mesh3d.json` + `mesh3d.bin` beside `pose3d.json` on the `gpu` and `cpu-sam3db`
+backends; `--backend cpu` with `--mesh`, or `--mesh` with any `--refine` other than `none`, is exit 2 and removes
+nothing; no person found with `--mesh` is exit 4 with no mesh written; people found but no mesh vertex kept is exit 1
+with `pose3d.json` kept; the flags work through the warm worker. Without `--mesh` no output changes. The pair is not
+committed or published, and `part2/mesh3d.py` is in no scored stamp. Spec and tests: `mesh3d.md` (AC-M01 to AC-M18),
+`tests/test_mesh3d.py`, `tests/test_worker_cli_integration.py`.
+
 ### Rule-Based ACs
 - AC-NFR-001: no file under `part2/` imports torch at module import time; `make test` runs without
   torch. Verification: test (import every module in a torch-free venv).
@@ -207,11 +244,15 @@ Upstream receives only allowlisted paths through `scripts/simon-publish.sh` (`si
 ## Error Cases
 | Condition | Behavior | Message Format | AC Reference |
 |---|---|---|---|
-| Unknown backend, tracker or lifter | exit 2 | `part2: unknown backend 'x'; choose gpu or cpu` | AC-002 |
+| Unknown backend | exit 2 | `part2: unknown backend "x"; choose gpu or cpu or cpu-sam3db` (`cpu-sam3db` is listed but never the default) | AC-002 |
+| Unknown lifter | exit 2 | `part2: unknown lifter "x"; choose bones-prior or fixed-bones or motionbert` (every name in the lifter registry) | AC-002 |
+| Unknown tracker | exit 2 | `part2: unknown tracker "x"; choose local-open, bytetrack, api-sam31 or local-sam31` | AC-002 |
 | `gpu` chosen, no CUDA or no GPU profile | exit 1 | `part2: backend gpu needs CUDA and the GPU profile (make setup-gpu); use --backend cpu` | AC-002 |
 | Tracker key missing | exit 1 | `part2: tracker api-sam31 needs the key file MODEL_API_KEY (or the MODEL_API_KEY variable); use --tracker local-open` | AC-002 |
 | Unreadable video or photo | exit 1 | `part2: cannot decode <file>` | AC-003 |
-| No person found in any frame | exit 1, nothing written | `part2: no person found in <n> frames` | AC-005 |
+| `--mesh` with `--backend cpu`, `--mesh-vertices` below 100 (0 included) or without `--mesh`, `--mesh` with `--refine` | exit 2 | `part2: --mesh needs SAM 3D Body (--backend gpu or cpu-sam3db)`, `part2: --mesh-vertices must be at least 100`, `part2: --mesh-vertices applies to --mesh only`, `part2: --mesh cannot be combined with --refine (the mesh comes from the unrefined run)` | AC-012 |
+| `--mesh`, people found, no mesh vertex kept | exit 1, `pose3d.json` kept, no mesh written | `part2: --mesh found no mesh vertices; no mesh3d pair written` | AC-012 |
+| No person found in any frame | exit 4, no `pose3d.json` or `camera.json` written (nor a mesh with `--mesh`) | `part2: no person found in <n> frames`, or `part2: no person found to track` from a tracker | AC-011 |
 | Output would break the contract | exit 1, file not written | `part2: output breaks the contract at <path>: <rule>` | AC-005 |
 
 ## Edge Cases
@@ -229,7 +270,7 @@ Upstream receives only allowlisted paths through `scripts/simon-publish.sh` (`si
 | Meta spend | run $25 (`META_BUDGET_USD`, default ledger), recorded in STATUS each milestone; staging ledger `~/.simon/meta_spend_staging.jsonl`, $10 total, $0.50 per job, then the next tracker with a note in the job result | Operator ruling 2026-10-28. |
 | One-person scored sets | seated clip (20 frames, unchanged) and COCO val2017 human-annotated keypoints (20 or more images, any angle); the gate needs every set green | Operator ruling on #337 (2026-10-28). |
 | Research-only training data | RTMPose and MotionBERT accepted with the caveat | Operator ruling on #336 (2026-10-28), ADR-0005. |
-| Default lifter | set by the TICKET-016 measurement and written into `backends-gpu-cpu.md` | Decision 2: measured, not guessed. |
+| Default lifter | `bones-prior` (TICKET-044, 2026-10-31), `DEFAULT` in `part2/lifters/__init__.py` since TICKET-046; TICKET-016 had set `fixed-bones`. None of the three passes the CPU 3D bar, so the lowest mean joint distance wins (0.145 m against 0.2656 m and 0.2914 m); the figures are in `backends-gpu-cpu.md` | Decision 2: measured, not guessed. |
 | CLI fps | native rate unless `--fps`; staging 10 fps | Keeps the team CLI behaviour. |
 | `t_ms` | milliseconds from the first decoded frame (`pts[k] - pts[0]`), plus optional `t0_pts_ms` | Keeps `frames.py`; posted on #18. |
 | `mirrored` | optional boolean, written only with `--mirrored` | Part 3 ADR-0005 reads absent as not mirrored. |
@@ -320,6 +361,8 @@ Resolution: ACCEPTED_RISK.
 | Registry M1 stitch-ready (Part 3 accepts every output; Part 5 meets the expected outcome per pair) | AC-007, neighbour-check AC-N01..N06 | TICKET-006 to 010, 028 | pending |
 | Registry M2 backends | AC-002, backends and tracker specs | TICKET-011 to 018, 038 | pending |
 | Registry uc-stock-takes-for-part5 | AC-009, stock-takes AC-T01..T06 | TICKET-028 | pending |
+| Part 7 request moalborati/simon#61 (TICKET-103: tell "found nobody" from a failure) | AC-011 | TICKET-047 | pending |
+| Part 7 request TICKET-143 (the SAM 3D Body mesh for the mesh view) | AC-012, mesh3d AC-M01..M15 | TICKET-048 | pending |
 | Upstream protocol | AC-010, simon-publish AC-P1..P11 | TICKET-001, 002, 010, 022, 032 | pending |
 
 ## Test Scenarios (maps 1:1 to acceptance criteria)
@@ -332,6 +375,10 @@ Resolution: ACCEPTED_RISK.
 - AC-007 → `tests/test_contract.py`, `tests/test_doctor.py`
 - AC-NFR-001 → `tests/test_imports.py::test_no_torch_at_import`
 - AC-NFR-002 → `tests/test_trackers.py::test_key_never_printed`
+- AC-011 → `tests/test_cli_track.py::test_run_single_with_nobody_exits_4_with_the_unchanged_line_and_writes_nothing`,
+  `tests/test_worker_cli_integration.py::test_no_person_found_is_exit_4_through_the_worker_with_its_unchanged_line`
+- AC-012 → `tests/test_mesh3d.py` (the cases of `mesh3d.md` "Test Scenarios"),
+  `tests/test_worker_cli_integration.py::test_mesh_reaches_the_worker_and_writes_the_pair_the_in_process_run_writes`
 
 ## Deviations from PRD
 | PRD item | Deviation | Reason |

@@ -13,6 +13,8 @@ from each consumer's published CONTRACT.md, not imported:
 Exit 0 when the named consumer (Part 3 without --for) accepts, with or without an option; 1 when
 it would reject; 2 when the file is not JSON or of no known kind. A pose3d file whose people carry the
 optional `extra_joints` (foot points, TICKET-043) gets one more line naming them; no verdict changes.
+A mesh3d.json (`part2 run --mesh`, TICKET-048) is checked with its mesh3d.bin: exit 0 when both are valid, 1 when
+not or when a consumer is named (no consumer has verified mesh3d.json yet).
 """
 import json
 import sys
@@ -80,6 +82,10 @@ def diagnose(path, consumer=None) -> dict:
     if consumer is not None and consumer not in CONSUMERS:
         raise DoctorError(f"doctor: unknown consumer '{consumer}'; choose part3, part5 or part6")
     doc = read_json(path)
+    from part2 import mesh3d
+
+    if mesh3d.is_mesh3d(doc):  # TICKET-048: checked before detect(), whose frames-with-people rule says pose3d
+        return mesh3d.diagnose(path, doc, consumer)
     kind, how = detect(doc, path)
     asked = [consumer] if consumer else list(CONSUMERS)
     findings = [RULES[c](doc, kind) for c in asked]

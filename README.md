@@ -64,7 +64,7 @@ make run-single INPUT=clip.mp4     # also run-multi; writes out/<clip>/
 
 ## Backends
 
-`part2 run --backend gpu|cpu` picks the 3D backend. The flag wins over `PART2_BACKEND`. With neither, the backend is `gpu` when CUDA is available in the running interpreter, else `cpu`. `make run-single` runs in the uv venv, which has no CUDA build of torch, so there it uses `cpu`. Both backends write the same files.
+`part2 run --backend gpu|cpu|cpu-sam3db` picks the 3D backend. The flag wins over `PART2_BACKEND`. With neither, the backend is `gpu` when CUDA is available in the running interpreter, else `cpu`; `cpu-sam3db` is chosen by name only. `make run-single` runs in the uv venv, which has no CUDA build of torch, so there it uses `cpu`. All three write the same files; `gpu` and `cpu-sam3db` also write the foot points (`extra_joints`), `cpu` does not.
 
 ```
 make setup-gpu     # venv ~/.local/state/simon-part-2/venvs/gpu-cu128 (torch 2.8.0+cu128); weights checked against k8s/infer_one.py
@@ -72,24 +72,31 @@ make smoke-gpu     # one fixture frame on the GPU: device, CUDA capability, peak
 make setup-cpu     # CPU extras into the uv venv (envs/cpu/requirements.txt)
 
 ~/.local/state/simon-part-2/venvs/gpu-cu128/bin/part2 run --mode single --input clip.mp4 --out out/clip
-uv run part2 run --mode single --input clip.mp4 --out out/clip --backend cpu [--lifter fixed-bones|motionbert]
+uv run part2 run --mode single --input clip.mp4 --out out/clip --backend cpu [--lifter bones-prior|fixed-bones|motionbert]
+CUDA_VISIBLE_DEVICES= ~/.local/state/simon-part-2/venvs/gpu-cu128/bin/part2 run --mode single --input clip.mp4 --out out/clip --backend cpu-sam3db
+# optional: also write the decimated SAM 3D Body mesh (mesh3d.json + mesh3d.bin, CONTRACT.md); gpu or cpu-sam3db, not cpu, and not with --refine
+~/.local/state/simon-part-2/venvs/gpu-cu128/bin/part2 run --mode single --input clip.mp4 --out out/clip --mesh [--mesh-vertices 2500]
 ```
 
 | Backend | What runs | Needs |
 |---|---|---|
 | `gpu` | SAM 3D Body (weights from the `jetjodh/sam-3d-body-dinov3` mirror), ViTDet person boxes, MoGe-2 field of view | CUDA and the gpu-cu128 profile; built and measured on an RTX 5090 (compute capability 12.0) |
-| `cpu` | RTMPose-x 2D through rtmlib on ONNX Runtime, then a lifter: `fixed-bones` (default) or `motionbert` (`--lifter`, `PART2_LIFTER`) | any CPU |
+| `cpu` | RTMPose-x 2D through rtmlib on ONNX Runtime, then a lifter: `bones-prior` (default), `fixed-bones` or `motionbert` (`--lifter`, `PART2_LIFTER`) | any CPU |
+| `cpu-sam3db` | the `gpu` backend's SAM 3D Body (same weights, ViTDet boxes and MoGe-2 field of view) on the CPU device; writes the foot points | the gpu-cu128 profile and no GPU (run it with `CUDA_VISIBLE_DEVICES=`); 31.74 s per frame on 8 threads plus 23.7 s model load (2026-10-31), 46.95 s per frame plus 23.4 s under host load (the committed set, 2026-11-01) |
 
 The team's torch 2.5.1 profile for the k3s pod and HPC (`k8s/`, `hpc/`) is separate and unchanged. One GPU inference runs at a time on a host: `make outputs` and the app share the lock `~/.local/state/simon-part-2/gpu.lock`.
 
-**The CPU backend's 3D is approximate.** Its 3D bar sits outside the definition of done: on the one-person fixture, the mean joint distance to the GPU output must be at most 0.10 m and the mean bone-length CV at most 0.05. Measured over the fixture's 111 frames:
+**The `cpu` backend's 3D is approximate.** Its 3D bar sits outside the definition of done: on the one-person fixture, the mean joint distance to the GPU output must be at most 0.10 m and the mean bone-length CV at most 0.05. Measured over the fixture's 111 frames, each lifter against the reference named in its row:
 
-| Lifter | Mean distance | p95 distance | Bone CV mean | Bone CV max | Bar |
-|---|---|---|---|---|---|
-| `fixed-bones` (default) | 0.2682 m | 0.8112 m | 0.0117 | 0.0571 | fail |
-| `motionbert` | 0.2914 m | 0.5987 m | 0.1400 | 0.4028 | fail |
+| Lifter | Mean distance | p95 distance | Bone CV mean | Bone CV max | Bar | Measured against |
+|---|---|---|---|---|---|---|
+| `bones-prior` (default) | 0.1451 m | 0.3788 m | 0.016 | 0.1117 | fail | the refined `single` (focal, kp2d-fit), the set committed on 2026-11-01 |
+| `fixed-bones` | 0.2656 m | 0.7993 m | 0.0117 | 0.0571 | fail | the refined `single` of 2026-10-31 |
+| `motionbert` | 0.2914 m | 0.5987 m | 0.1400 | 0.4028 | fail | the gpu `single` of 2026-10-29 |
 
-Neither lifter passes, so the default is the one with the lower mean distance. The GPU output is itself a model output, not ground truth. The CPU backend's 2D reprojection error on the labelled frames of the one-person fixture is mean 3.956% and max 5.721% of body height, with one frame over 5%. `make check-2-cpu` prints the 3D block alone and exits 0 on a pass, 1 on a fail and 2 when an output is missing.
+None of the three passes, so the default is the one with the lowest mean distance, `bones-prior` (the `fixed-bones` lift with a depth-sign and joint-limit prior; about 2 s per frame). The choice rests on the 2026-10-31 measurement. The rows do not share one reference set: the last column names the set each was measured against, and only the `bones-prior` row is against the set committed on 2026-11-01. `--lifter` or `PART2_LIFTER` still picks another. The GPU output is itself a model output, not ground truth. The `cpu` backend's 2D reprojection error (RTMPose-x) on the labelled frames of the one-person fixture, for the `cpu-single` set committed on 2026-11-01, is mean 3.955% and max 5.725% (at frame 98) of body height, with 1 of 20 frames over 5%. `make check-2-cpu` prints the 3D block alone and exits 0 on a pass, 1 on a fail and 2 when an output is missing.
+
+**`cpu-sam3db` meets the 3D bar.** The same measurement on the same fixture gives a mean joint distance of 0.0363 m (p95 0.0807 m) and a bone CV mean of 0.0408 (max 0.0981) over 111 of 111 frames, at 31.74 s per frame on 8 threads plus 23.7 s model load in the 2026-10-31 run (the invocation is under Reproducible outputs), and at 46.95 s per frame plus 23.4 s model load under host load for the committed set, regenerated 2026-11-01. The reference is the refined `single` (focal, kp2d-fit), a refined model output; the `cpu-sam3db` run is unrefined. At those speeds it is chosen by name only: the default without CUDA stays `cpu`, `--backend cpu` stays RTMPose-x, the run app offers `gpu` and `cpu`, and `cpu` stays labelled 3D approximate. `make check-2-cpu CPU_MODE=cpu-sam3db-single` scores it; plain `make check-2-cpu` still scores `cpu-single`.
 
 ## Trackers
 
@@ -109,7 +116,7 @@ With no tracker named, `part2 run` walks an order (`--tracker-order scored|bulk`
 | `scored` | `api-sam31`, then `local-open` | `make outputs` and the done-check |
 | `bulk` | `local-sam31` once its parity pass is committed (`fixtures/output/parity/sam31.json`), then `api-sam31` within its cap, then `local-open` | `part2 run` with no tracker named, the staging app |
 
-A step is skipped only when its key file is missing (`no_key`), its budget is spent (`budget`), the parity pass is absent (`no_parity`) or its packages are not installed (`no_env`). Any other error fails the run.
+A step is skipped only when its key file is missing (`no_key`), its budget is spent (`budget`), the parity pass is absent (`no_parity`) or its packages are not installed (`no_env`). In the `bulk` order with no tracker named, a credential the Meta API refuses (HTTP 401 or 403) also moves the run on to the next tracker, and `tracks.json` provenance records `fallback_reason: credential_refused`. Any other error fails the run.
 
 Keys are read from files at the moment of the call, never printed, logged or stored: `MODEL_API_KEY` and `HF_TOKEN` in `~/.config/firm/operator-keys/` (override the directory with `PART2_KEY_DIR`), each file mode 600. An environment variable of the same name is the second channel; the file wins when both exist.
 
@@ -121,10 +128,13 @@ Spend caps for `api-sam31`: `META_BUDGET_USD` caps the ledger `~/.simon/meta_spe
 
 ```
 make outputs                  # gpu: single, class, class-local-open, coco-single (TRACKER=, MODES=, SCORED= optional)
-make outputs BACKEND=cpu      # cpu-single (LIFTER= optional)
+make outputs BACKEND=cpu      # cpu-single (LIFTER= optional; bones-prior without it)
+make outputs BACKEND=cpu-sam3db  # cpu-sam3db-single (about an hour on a quiet host, one and a half hours under load on 2026-11-01; with the 8 threads and 8 cores below)
 make check-2                  # scores fixtures/output/scored/; SCORED=out scores out/<mode>/ instead
-make check-2-cpu              # the CPU 3D block alone
+make check-2-cpu              # the CPU 3D block alone (cpu-single; CPU_MODE=cpu-sam3db-single scores that dir instead)
 ```
+
+The `cpu-sam3db` figures (31.74 s per frame and about an hour on a quiet host for the 111 frames in the 2026-10-31 run; 46.95 s per frame and one and a half hours under host load for the committed set, regenerated 2026-11-01) were measured with this invocation: `OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8 taskset -c 0-7 nice -n 19 make outputs BACKEND=cpu-sam3db`. Nothing in Part 2 sets the thread count and torch takes every core it sees, so "8 threads" holds only with those three variables. Pinning the cores with `taskset` without limiting the threads made the first run thrash.
 
 `coco-single` reads its images from a local cache; `uv run python -m part2.coco_set images` downloads them and checks each sha256. Each scored dir holds a `stamp.json` (`part2.stamp/2`) that names the backend, tracker, lifter, refinement rungs and models with their weight digests, and the sha256 of the code the run imported, of the input frames, of the environment lock and of each output file. `make check-2` fails a dir whose code, frames or lock changed since it was made, or whose files were edited, and says which. Two GPU runs of the same code on one host differed by at most 1.273 mm per joint (mean 0.057 mm). The dirs and their files: `fixtures/output/README.md`.
 
@@ -132,15 +142,16 @@ Results on the committed outputs (the gpu dirs were made on an RTX 5090):
 
 | Block | Outputs | Result |
 |---|---|---|
-| `one_person` | `single`: gpu, refinement `focal` then `kp2d-fit` | 0 of 20 labelled frames over 5% of body height (mean 3.839%, p95 4.816%, max 4.877% at frame 29): pass |
-| `one_person_coco` | `coco-single`: gpu, one photo run per COCO val2017 image, same refinement | 0 of 20 images over (mean 2.018%, p95 4.092%, max 4.904% on image 229553): pass |
-| `multi_person` | `class`: `api-sam31` | 7 people, each covered on all labelled frames, no ID swap, each with a pose3d stream: pass |
+| `one_person` | `single`: gpu, refinement `focal` then `kp2d-fit` | 0 of 20 labelled frames over 5% of body height (mean 3.839%, p95 4.816%, max 4.884% at frame 29): pass |
+| `one_person_coco` | `coco-single`: gpu, one photo run per COCO val2017 image, same refinement | 0 of 20 images over (mean 2.019%, p95 4.092%, max 4.903% on image 229553): pass |
+| `multi_person` | `class`: `api-sam31` | 7 people, each covered on all labelled frames, no ID swap, each with a pose3d stream; the committed tracks also hold an eighth id that matches no gold person: pass |
 | `multi_person_local_open` (never gated) | `class-local-open`: `local-open` | min coverage 0.111, mean 0.873: fail |
-| `cpu_backend_3d` (outside the definition of done) | `cpu-single`: `fixed-bones`, against the refined `single` | 0.2656 m, bone CV 0.0117: fail |
+| `cpu_backend_3d` (outside the definition of done) | `cpu-single`: `bones-prior` (the default lifter), against the refined `single` | 0.145 m, bone CV 0.016: fail |
+| `cpu_backend_3d` with `CPU_MODE=cpu-sam3db-single` (outside the definition of done) | `cpu-sam3db-single`: SAM 3D Body on the CPU, unrefined, against the refined `single` | 0.0363 m, bone CV 0.0408: meets the 3D bar (31.74 s per frame on 8 threads on 2026-10-31; 46.95 s per frame under host load on 2026-11-01) |
 
 `single` and `coco-single` are refined: `make outputs` runs them with `focal` then `kp2d-fit`, `part2 run --mode single --backend gpu --refine focal,kp2d-fit` does the same for one input, and a plain `part2 run` is the unrefined pipeline.
 
-The top-level `pass` needs `one_person`, `one_person_coco` and `multi_person`; on these outputs `make check-2` exits 0 (recorded at `ac242c9`, outputs `f642222`).
+The top-level `pass` needs `one_person`, `one_person_coco` and `multi_person`; on these outputs `make check-2` exits 0 (latest rescore at `d111947`, on the outputs regenerated at `e3cf9d8`; first scored at `8514449`).
 
 Without refinement, SAM 3D Body on this host had 3 seated frames and 1 COCO image over the line (max 5.294% and 5.213%), close to the team's HPC record (3 of 20 over, max 5.29%). Two refinement steps in `part2/refine/` bring both sets under it: `focal` re-runs SAM 3D Body at 0.7 to 2.0 times MoGe-2's focal length and keeps the run that agrees best with RTMPose-x 2D keypoints, then `kp2d-fit` fits each frame to those keypoints while keeping the bone lengths fixed per person. Their parameters were fixed from label-free measures (agreement with RTMPose on unlabelled frames and the dance clip, smoothness, bone length stability) before each scoring, and every scoring is counted. The margins are thin. Thresholds, labels, the body-height rule and the every-frame rule stay as written above.
 
@@ -185,6 +196,7 @@ the team wrote on #46 that non-commercial licences are excluded, because the res
 | Model or data | Used for | Licence, as read | Source |
 |---|---|---|---|
 | SAM 3D Body (`jetjodh/sam-3d-body-dinov3` mirror at `1f026b2`: `model.ckpt`, `assets/mhr_model.pt`) | `gpu` backend 3D | SAM License (last updated November 19, 2025): use, copy, modify and distribute, with no non-commercial term; redistribution only under the same licence with a copy of it; no activity subject to ITAR and no end use barred by trade controls (military or warfare, nuclear, espionage, guns or illegal weapons). Outputs appear only in the warranty disclaimer and the litigation clause. | mirror `LICENSE`, identical to `facebookresearch/sam-3d-body` `LICENSE`; Hugging Face card metadata `license: other`, `sam-license` |
+| MHR, Momentum Human Rig (`assets/mhr_model.pt` of the same mirror; upstream `facebookresearch/MHR`) | the body mesh `part2 run --mesh` writes (mesh3d.json + mesh3d.bin, TICKET-048) | The file Part 2 loads is the mirror's `assets/mhr_model.pt`, listed in the row above, so that copy comes under the mirror's SAM License. MHR upstream is Apache-2.0. The faces and vertex positions `--mesh` writes derive from both, so the pair's `licence` field names both. Apache-2.0 also requires its licence text and MHR's notice to go with any redistribution of the faces. Part 2 commits and publishes no mesh output, asset or face list. | mirror `LICENSE` (the SAM License, above); `facebookresearch/MHR` `LICENSE` and `README.md` (read 2026-10-31) |
 | SAM 2.1 hiera-large (`facebook/sam2.1-hiera-large`) | `local-open` tracker | Apache-2.0 | Hugging Face card metadata `license: apache-2.0`; `facebookresearch/sam2` `LICENSE` |
 | SAM 3 and SAM 3.1 weights (`facebook/sam3`; `facebook/sam3.1` at `daa6319`, `sam3.1_multiplex.pt`) | `local-sam31` tracker | Gated with manual approval; card metadata `license: other`; the access form asks the user to accept "the terms of the license". The weights' own `LICENSE` was not read. The SAM 3 code that loads them, which also carries the SAM 3.1 code, is under the SAM License of November 19, 2025: the SAM 3D Body text without its patent clause. | Hugging Face API for both repos; their `LICENSE` files: HTTP 401 without a token; `facebookresearch/sam3` `LICENSE` and `README.md` |
 | SAM 3.1 on the Meta Model API (`sam-3.1`) | `api-sam31` tracker | Meta Model API Terms of Service (last updated October 9, 2026): the user owns Inputs and Outputs (4.1); the services are meant for commercial use (1); SAM 3.1 is a Standard Model (Model Designation and Geographic Use Policy, last updated October 12, 2026), and Meta does not use content sent to Standard Services to train its models (5.1); no access for third parties, API key included, other than end users through your own product (10); Outputs may not train a competing model (10); access is for a limited period (15.1). | `dev.meta.ai/legal/terms-of-service` (reached from `llama.developer.meta.com/legal/terms-of-service`); `dev.meta.ai/legal/geographic-use-policy` |

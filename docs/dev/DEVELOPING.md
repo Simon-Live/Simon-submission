@@ -36,14 +36,35 @@ Then add the profile you need.
 
 ```
 make setup-cpu      # uv sync, then envs/cpu/requirements.txt into .venv (torch 2.15.0+cpu, rtmlib, onnxruntime)
-uv run part2 run --mode single --input clip.mp4 --out out/clip --backend cpu [--lifter fixed-bones|motionbert]
+uv run part2 run --mode single --input clip.mp4 --out out/clip --backend cpu [--lifter bones-prior|fixed-bones|motionbert]
 ```
 
-The CPU backend runs RTMPose-x 2D through rtmlib on ONNX Runtime, then a lifter. Its 3D is approximate and
-fails its own bar (see Known issues). The rtmlib models download into `$TORCH_HOME`, else
+The CPU backend runs RTMPose-x 2D through rtmlib on ONNX Runtime, then a lifter: `bones-prior` by default (the
+lowest mean joint distance of the three; none passes), `fixed-bones` or `motionbert`. Its 3D is approximate and
+fails its own bar with all three lifters (see Known issues). The default is `DEFAULT` in
+`part2/lifters/__init__.py`, with the measurements beside it, and `bones-prior` is in that file's registry like the
+other two. The rtmlib models download into `$TORCH_HOME`, else
 `$XDG_CACHE_HOME/rtmlib`, else `~/.cache/rtmlib`. MotionBERT weights download from `walterzhu/MotionBERT` at a
 pinned revision with no login, are checked against pinned SHA-256 digests and live under `~/.cache`
 (`MOTIONBERT_DIR` overrides).
+
+The backend `cpu-sam3db` is the `gpu` backend's SAM 3D Body run on the CPU device. It meets the 3D bar (mean joint
+distance 0.0363 m, bone CV 0.0408; the reference is the refined `single`, the `cpu-sam3db` run is unrefined) at
+31.74 s per frame on 8 threads plus 23.7 s model load (the 2026-10-31 run), and 46.95 s per frame plus 23.4 s model load under host load (the committed set, regenerated 2026-11-01), so it is chosen by name only: the default without CUDA stays
+`cpu`. It needs the gpu-cu128 profile and its python, no GPU (`CUDA_VISIBLE_DEVICES=`), and writes the foot points.
+`make outputs BACKEND=cpu-sam3db` makes `cpu-sam3db-single`; `make check-2-cpu CPU_MODE=cpu-sam3db-single` scores it.
+
+The 31.74 s per frame (2026-10-31) and the 46.95 s per frame (2026-11-01, under host load) were measured with the threads limited and the cores pinned, and nothing in Part 2 sets either:
+torch takes every core it sees. The invocation that gives the figures (about an hour on a quiet host, one and a half hours under load on 2026-11-01, for the 111 frames):
+
+```
+OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8 taskset -c 0-7 nice -n 19 make outputs BACKEND=cpu-sam3db
+```
+
+Pinning the cores with `taskset` without limiting the threads made the first run thrash, so use the two together.
+`provenance.timing.threads` in the run's `pose3d.json` records the thread count torch used. `timing.load_s` is the
+model load that run paid for; a request served from an already loaded model (the second request of a warm worker, or
+any request after the worker's preload) says `load_s` 0.0 and `warm` true.
 
 ### GPU profile gpu-cu128 (local GPU)
 
@@ -139,7 +160,7 @@ All commands run as `uv run part2 ...` in the base venv or as `<gpu venv>/bin/pa
 
 ```
 part2 frames --input clip.mp4 --out out/clip/frames [--fps 30]
-part2 run --mode single --input clip.mp4 --out out/clip [--fps 10] [--backend gpu|cpu] [--mirrored]
+part2 run --mode single --input clip.mp4 --out out/clip [--fps 10] [--backend gpu|cpu|cpu-sam3db] [--mirrored]
 part2 run --mode single --input clip.mp4 --out out/clip --backend gpu --refine focal,kp2d-fit
 part2 run --mode multi --input class.mp4 --out out/class [--tracker NAME] [--tracker-order scored|bulk]
 part2 track --input class.mp4 --out out/pick --fps 10 [--tracker NAME]
@@ -156,8 +177,8 @@ part2 check
 
 | Option or variable | Effect |
 |---|---|
-| `--backend`, `PART2_BACKEND` | `gpu` or `cpu`; the flag wins. With neither: `gpu` when the interpreter sees CUDA, else `cpu`. `make run-single` runs in `.venv`, which has no CUDA torch, so it uses `cpu`. |
-| `--lifter`, `PART2_LIFTER` | cpu backend only: `fixed-bones` (default) or `motionbert`. |
+| `--backend`, `PART2_BACKEND` | `gpu`, `cpu` or `cpu-sam3db`; the flag wins. With neither: `gpu` when the interpreter sees CUDA, else `cpu`; `cpu-sam3db` only by name. `make run-single` runs in `.venv`, which has no CUDA torch, so it uses `cpu`. |
+| `--lifter`, `PART2_LIFTER` | cpu backend only: `bones-prior` (default), `fixed-bones` or `motionbert`. |
 | `--tracker`, `PART2_TRACKER` | multi mode and `track`: `api-sam31`, `local-sam31`, `local-open`, `bytetrack`. A named tracker never falls back; without its key it exits 1 and names the key and `--tracker local-open`. |
 | `--tracker-order` | with no tracker named: `bulk` (default) or `scored` (below). |
 | `--refine` | single mode: comma-separated rungs from `part2/refine/`; `focal,kp2d-fit` makes the scored outputs; default `none`. |
@@ -201,7 +222,8 @@ A worker that dies mid-request gives the client exit 1, never a silent re-run. R
 | `make smoke-gpu` | one frame on the GPU |
 | `make run-single INPUT=clip.mp4`, `run-multi` | `part2 run` into `out/<clip>/` |
 | `make outputs [BACKEND=gpu] [TRACKER=] [MODES=] [REFINE=] [SCORED=out]` | remakes the scored outputs with a stamp each (GPU host) |
-| `make outputs BACKEND=cpu [LIFTER=]` | remakes `cpu-single` |
+| `make outputs BACKEND=cpu [LIFTER=]` | remakes `cpu-single` (lifter `bones-prior` unless `LIFTER=` names another) |
+| `make outputs BACKEND=cpu-sam3db` | remakes `cpu-sam3db-single` (about an hour on a quiet host, one and a half hours under load on 2026-11-01; with 8 threads on 8 pinned cores; the invocation is in section 2) |
 | `make stock-outputs [CLIP=pexels-5034562]` | the stock takes for Part 5 |
 | `make check-2`, `check-2-contract`, `check-2-cpu` | the done-checks (below) |
 | `make contract-check`, `contract-sync` | compare or refresh the copy of Part 3's schema (needs a `gh` login with access to Part 3) |
@@ -217,7 +239,7 @@ exists, else the current interpreter; job files go under `PART2_JOBS_DIR`.
 |---|---|---|---|
 | `make check-2` | the definition of done: `one_person` (20 labelled frames, each within 5% of body height), `one_person_coco` (20 COCO images, same rule) and `multi_person` (every person covered on at least 95% of labelled frames, at most one ID swap per minute, each with a pose3d stream). Each scored dir must carry a fresh `part2.stamp/2`. `multi_person_local_open` and `cpu_backend_3d` are reported and never gated. | nothing (scores `fixtures/output/scored/`); `SCORED=out` scores `out/<mode>/` | 0 only when the top-level `pass` is true |
 | `make check-2-contract` | every committed output against its schema in `contracts/`, Part 3's consumer schema in `contracts/consumers/` and `doctor --for part3` | nothing | 0 when every file passes |
-| `make check-2-cpu` | the CPU backend's 3D bar alone: mean joint distance to the GPU output at most 0.10 m, mean bone-length CV at most 0.05 | nothing | 0 pass, 1 fail, 2 an output missing; through make, a non-zero code shows as `Error <n>` and make exits 2 |
+| `make check-2-cpu` | the CPU backend's 3D bar alone: mean joint distance to the GPU output at most 0.10 m, mean bone-length CV at most 0.05; scores `cpu-single`, or `cpu-sam3db-single` with `CPU_MODE=cpu-sam3db-single` | nothing | 0 pass, 1 fail, 2 an output missing; through make, a non-zero code shows as `Error <n>` and make exits 2 |
 | `make contract-check` | Part 3's published schema still equals the copy | `gh` access to Part 3 | 0 same, 1 changed |
 
 All three local checks print a metrics JSON. On a fresh clone of this commit, `make check-2` and
@@ -271,10 +293,21 @@ an output: those files do not change a number. Any other `part2` module the run 
 make test                         # uv run pytest -q: tests/test_*.py
 uv run pytest -q tests/test_worker.py tests/test_cli_track.py     # one area
 uv run pytest -rs                 # shows each skip and its reason
+# the real-torch tests of tests/test_cpu_sam3db.py, which `make test` skips (the base venv has no torch):
+CUDA_VISIBLE_DEVICES= PYTHONPATH=.:$HOME/.local/state/simon-part-2/pytest-only \
+    ~/.local/state/simon-part-2/venvs/gpu-cu128/bin/python -m pytest -q tests/test_cpu_sam3db.py
 ```
 
-On a fresh clone at this commit, with `ffmpeg` installed: 1355 passed and 1 skipped (the MotionBERT test, which
-needs `make setup-cpu` and its cached weights), in about 60 s. The tests need no GPU, key or network:
+The last command runs the file on the CPU in the gpu-cu128 venv, where torch is installed (AC-B21 of
+`docs/specs/backends-gpu-cpu.md`). That venv has no pytest, so install it once on a path of its own with
+`uv pip install --target ~/.local/state/simon-part-2/pytest-only pytest`; `PYTHONPATH` adds it and the repo root.
+`CUDA_VISIBLE_DEVICES=` hides the GPU: the test that the mode ends when the block raises skips while a GPU is visible,
+because a redirected CUDA move and a real one would look alike.
+
+On the development host at this commit, with `ffmpeg` installed: 1793 passed and 5 skipped, in about 140 s. The
+skips are the MotionBERT test (needs `make setup-cpu` and its cached weights), the two real-torch tests of
+`tests/test_cpu_sam3db.py` (need torch, see the command above), the staging-script test that needs port 7122 free and
+the one that needs Playwright and its Chromium. The tests need no GPU, key or network:
 GPU, tracker and API paths run against fakes (`PART2_NVIDIA_SMI` points the GPU guard at a fake `nvidia-smi`,
 `PART2_KEY_DIR` at a temp dir). Areas: CLI and `track` (`test_cli.py`, `test_cli_track.py`), the worker
 (`test_worker.py`), backends, lifters and refine, trackers and parity, keys, stamps and the check, the contract
@@ -299,11 +332,13 @@ then runs Part 3 on `<dir>/pose3d.json`. It can add `--worker <socket>` to each 
 
 ## 9. Known issues and limits
 
-- The CPU backend's 3D fails its bar with both lifters (mean distance 0.27 to 0.29 m against 0.10 m). Use
-  it for a quick look, not for scoring.
+- The `cpu` backend's 3D fails its bar with all three lifters (mean distance 0.145 m for `bones-prior`, 0.2656 m
+  for `fixed-bones`, 0.2914 m for `motionbert`, against 0.10 m; each against its own reference, see `README.md`).
+  Use it for a quick look, not for scoring. `cpu-sam3db` meets the bar (0.0363 m, bone CV 0.0408, reference refined
+  and the CPU run unrefined) at 31.74 s per frame on 8 threads on 2026-10-31, and 46.95 s per frame under host load on 2026-11-01 (limited and pinned as in section 2), so it is chosen by name only.
 - `local-open` misses people (min coverage 0.111 on the class clip) and is never gated.
 - `local-sam31` passed parity with `api-sam31` but is not scored on the labels.
-- The one-person margins are thin: the max error on the scored sets is 4.877% and 4.904% against a 5% line.
+- The one-person margins are thin: the max error on the committed scored sets is 4.884% (one person) and 4.903% (COCO) against a 5% line.
 - `conf` is not calibrated: 1.0 inside the image, 0.3 outside.
 - Up is the camera's up, so a tilted camera tilts every pose; Part 3 takes up from the body.
 - Two GPU runs of the same code differ by up to about 1.3 mm per joint, so remade outputs need a new stamp,

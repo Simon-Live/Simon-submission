@@ -10,8 +10,10 @@ Spec: docs/specs/check-2.md ("Scored outputs and stamps", AC-K03, AC-K04, AC-K08
 Code files are the import closure (part2 modules only, by AST, nothing imported) of the registry entries
 the run used: the mode's own modules, the backend, lifter, tracker and refine rungs, plus BASE_MODULES. Modules
 in NOT_OUTPUT_CODE validate, document or read keys and never change a number in an output, so editing them
-stales nothing. The env lock is the lock file of the profile the run's interpreter belongs to, so a change to
-another profile's lock never stales this mode. Freshness is recomputed from the stamp's own file names.
+stales nothing. The import walk still passes through them (code_closure drops them from its result only), which is
+why part2/mesh3d.py is named there as well. The env lock is the lock file of the profile the run's interpreter
+belongs to, so a change to another profile's lock never stales this mode. Freshness is recomputed from the stamp's
+own file names.
 """
 import ast
 import hashlib
@@ -26,8 +28,11 @@ from part2 import hashing
 SCHEMA = "part2.stamp/2"
 NAME = "stamp.json"
 BASE_MODULES = ("part2.frames", "part2.joints", "part2.canonical")
+# part2/mesh3d.py writes only the optional mesh pair of `part2 run --mesh` (TICKET-048), never a scored file, and no
+# scored path imports it. The walk reaches it through contract.py -> doctor.py (the doctor reads a mesh3d.json), so it
+# is listed here: otherwise every scored stamp would hash it and an edit to it would stale all six modes.
 NOT_OUTPUT_CODE = frozenset({"part2/__init__.py", "part2/schema.py", "part2/contract.py", "part2/doctor.py",
-                             "part2/keys.py", "part2/provenance.py"})
+                             "part2/keys.py", "part2/provenance.py", "part2/mesh3d.py"})
 ENV_LOCKS = {"gpu-cu128": "envs/gpu-cu128/constraints.txt", "cpu": "envs/cpu/requirements.txt",
              "team-gpu": "k8s/constraints-gpu.txt"}
 ENV_PROFILE_ENV = "PART2_ENV_PROFILE"

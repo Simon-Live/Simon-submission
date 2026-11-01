@@ -34,6 +34,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from part2 import gpu_guard
+from part2.backends import NoPersonFound
 
 ROOT = Path(__file__).resolve().parent.parent
 STATES = ("queued", "waiting-gpu", "running", "done", "failed", "cancelled")
@@ -49,8 +50,9 @@ GPU_PYTHON = "~/.local/state/simon-part-2/venvs/gpu-cu128/bin/python"
 STAGING_LEDGER = "~/.simon/meta_spend_staging.jsonl"
 KEY_VARS = ("MODEL_API_KEY", "HF_TOKEN")       # never handed to a run; it reads the key files itself
 GPU_TRACKERS = (None, "local-open")            # Automatic runs local-sam31 or local-open: GPU, the tracker locks
-# The CPU backend missed the 3D bar with both lifters (part2/lifters/__init__.py DEFAULT note, AC-B10), so
-# its results are labelled "3D approximate". Set True once TICKET-016 records a pass.
+# The CPU backend missed the 3D bar with all three lifters (bones-prior, the default, at 0.145 m mean distance;
+# fixed-bones 0.2656 m; motionbert 0.2914 m; limit 0.10 m, AC-B10), so its results are labelled "3D approximate".
+# Set True once TICKET-016 records a pass.
 CPU_3D_BAR_PASSED = False
 
 MESSAGES = {
@@ -62,7 +64,9 @@ MESSAGES = {
     "start": "The job could not be started on this server.",
     "failed": "The run stopped with an error. Try another file, or try again later.",
 }
-# Run errors that have a plain message of their own; anything else gets MESSAGES["failed"].
+# Run errors that have a plain message of their own, found in the stderr text; anything else gets MESSAGES["failed"].
+# "No person found" is found by the run's exit code first (NoPersonFound.exit_code, CONTRACT.md); its pattern stays
+# for a run that only left the line (a part2 from before the code, a different command behind PART2_JOB_PYTHON).
 ERROR_PATTERNS = (
     (re.compile(r"no person found", re.I), "no_person"),
     (re.compile(r"another GPU job is running"), "gpu_busy"),
@@ -182,7 +186,10 @@ class Progress:
         return True
 
 
-def classify(stderr_tail: str) -> str:
+def classify(stderr_tail: str, returncode: int | None = None) -> str:
+    """The visitor's message for a failed run: by its exit code when the code says what happened, else by its stderr."""
+    if returncode == NoPersonFound.exit_code:
+        return MESSAGES["no_person"]
     for pattern, key in ERROR_PATTERNS:
         if pattern.search(stderr_tail):
             return MESSAGES[key]
@@ -490,7 +497,7 @@ class JobQueue:
             elif proc.returncode == 0:
                 self._collect(job)
             else:
-                self._finish(job, "failed", classify(tail(err_log)))
+                self._finish(job, "failed", classify(tail(err_log), proc.returncode))
 
     def _watch(self, job: Job, proc: subprocess.Popen) -> str:
         deadline = time.monotonic() + self.settings.timeout_s
@@ -609,11 +616,13 @@ class JobQueue:
 
 
 def fallback_notice(prov: dict) -> str | None:
-    """The plain line for a job that ran a later tracker (part2.trackers.describe_fallback)."""
-    from part2 import trackers
+    """The plain line for a job that ran a later tracker: part2.provenance.fallback_note, the wording the CLI prints
+    (a spend cap, no key, no parity pass, not installed, a refused Meta credential). A reason it does not know still
+    names the tracker that ran."""
+    from part2 import provenance
 
     try:
-        return trackers.describe_fallback(prov)
+        return provenance.fallback_note(prov)
     except KeyError:
         return f"tracked with {prov.get('tracker')}"
 

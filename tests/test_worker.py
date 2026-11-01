@@ -86,7 +86,8 @@ def start_worker(tmp_path, monkeypatch):
 
     yield start
     for path, t in started:
-        if t.is_alive():
+        # a test that already stopped its worker leaves the thread finishing after it removed the socket
+        if t.is_alive() and path.exists():
             _raw(path, _request(STOP))
         t.join(10)
         assert not t.is_alive()

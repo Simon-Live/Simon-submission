@@ -9,6 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 from test_cli import _image_dir, _load, gpu  # noqa: F401  (gpu is a fixture)
+from test_cli_track import (MOVED_ON, NO_PERSON_FRAMES, NO_PERSON_TRACK, REFUSAL, backend_finds_nobody,
+                            refuse_the_api_credential, tracker_finds_nobody)
+from test_mesh3d import _Cpu, _Gpu, sam3db  # noqa: F401  (sam3db is a fixture)
 from test_worker import start_worker  # noqa: F401  (a fixture)
 
 from part2 import cli, track, worker
@@ -177,3 +180,137 @@ def test_an_unknown_id_through_a_worker_is_exit_1_naming_it_and_the_worker_keeps
     assert len(live.served) == 2 and not out.exists()  # the worker refused it before any frame was ingested
     assert part2_main(_on(live, _run_cmd(src, tmp_path / "good", "--tracks", str(tracks), "--ids", "1"))) == 0
     assert len(live.served) == 3
+
+
+# ---- 6. a refused Meta credential through the worker (tracker-registry AC-R11) ---------------------
+
+@pytest.mark.parametrize("command", ["track", "run"])
+def test_a_refused_credential_moves_the_bulk_order_on_inside_the_worker_too(live, src, tmp_path, monkeypatch, capsys,
+                                                                          command):
+    calls = refuse_the_api_credential(monkeypatch)
+    out = tmp_path / "warm"
+    argv = _track_cmd(src, out) if command == "track" else _run_cmd(src, out)
+    assert part2_main(_on(live, argv)) == 0
+    assert live.served == [argv]  # the worker ran it
+    assert capsys.readouterr().err == MOVED_ON  # its stderr line reached the client
+    assert calls == {"api": 1, "local-open": 1}
+    prov = _load(out / "tracks.json")["provenance"]
+    assert (prov["tracker"], prov["fallback_from"], prov["fallback_reason"]) == ("local-open", "api-sam31",
+                                                                                 "credential_refused")
+
+
+def test_a_named_tracker_still_exits_1_on_a_refusal_inside_the_worker(live, src, tmp_path, monkeypatch, capsys):
+    calls = refuse_the_api_credential(monkeypatch)
+    assert part2_main(_on(live, _track_cmd(src, tmp_path / "x", "--tracker", "api-sam31"))) == 1
+    assert capsys.readouterr().err == REFUSAL + "\n" and calls == {"api": 1, "local-open": 0}
+
+
+@pytest.mark.parametrize("command", ["track", "run"])
+def test_the_scored_order_still_fails_closed_on_a_refusal_inside_the_worker(live, src, tmp_path, monkeypatch, capsys,
+                                                                          command):
+    calls = refuse_the_api_credential(monkeypatch)
+    out = tmp_path / "scored"
+    argv = (_track_cmd if command == "track" else _run_cmd)(src, out, "--tracker-order", "scored")
+    assert part2_main(_on(live, argv)) == 1
+    assert live.served == [argv]  # the worker ran it, and it was the worker's job that exited 1
+    assert capsys.readouterr().err == REFUSAL + "\n"  # the refusal alone, no "tracking with" line
+    assert calls == {"api": 1, "local-open": 0}  # local-open was never tried
+    assert not (out / "tracks.json").exists() and not (out / "pose3d.json").exists()
+
+
+@pytest.mark.parametrize("local_ok", [(False, "missing sam2, rtmlib"), (False, "no_key")], ids=["not installed", "no key"])
+@pytest.mark.parametrize("command", ["track", "run"])
+def test_no_usable_tracker_after_the_refusal_exits_1_inside_the_worker(live, src, tmp_path, monkeypatch, capsys,
+                                                                     command, local_ok):
+    calls = refuse_the_api_credential(monkeypatch, local_ok=local_ok)
+    out = tmp_path / "none-left"
+    argv = _track_cmd(src, out) if command == "track" else _run_cmd(src, out)
+    assert part2_main(_on(live, argv)) == 1
+    assert live.served == [argv]
+    assert capsys.readouterr().err == REFUSAL + "\n"  # the existing message, no "tracking with" line
+    assert calls == {"api": 1, "local-open": 0}
+    assert not (out / "tracks.json").exists() and not (out / "pose3d.json").exists()
+    assert part2_main(_on(live, _track_cmd(src, tmp_path / "again"))) == 1  # the worker is still serving
+    assert len(live.served) == 2
+
+
+# ---- 7. no person found through the worker: exit 4 (TICKET-047, CONTRACT.md "Exit codes") ----------------------
+
+@pytest.mark.parametrize("command", ["track", "run-multi", "run-single"])
+def test_no_person_found_is_exit_4_through_the_worker_with_its_unchanged_line(live, src, tmp_path, monkeypatch, capsys,
+                                                                            command):
+    out = tmp_path / "nobody"
+    with monkeypatch.context() as nobody:  # only these two patches end before the follow-up request
+        if command == "run-single":
+            backend_finds_nobody(nobody)
+            argv, line = ["run", "--mode", "single", "--input", str(src), "--out", str(out), "--fps", "10"], NO_PERSON_FRAMES
+        else:
+            tracker_finds_nobody(nobody)
+            argv, line = (_track_cmd if command == "track" else _run_cmd)(src, out), NO_PERSON_TRACK
+        assert part2_main(_on(live, argv)) == 4
+        assert live.served == [argv]  # the worker ran it, and it was the worker's job that ended with 4
+        assert capsys.readouterr().err == line  # the line reached the client unchanged
+        assert not (out / "tracks.json").exists() and not (out / "pose3d.json").exists()
+    assert part2_main(_on(live, _track_cmd(src, tmp_path / "again"))) == 0  # the worker is still serving
+    assert len(live.served) == 2
+
+
+# ---- 8. --mesh through the worker (TICKET-048, docs/specs/mesh3d.md AC-M13) -----------------------------------------
+# The `live` fixture's fakes stop at body3d.estimate; `sam3db` of tests/test_mesh3d.py puts the real estimate and
+# the real gpu and cpu-sam3db Backend.estimate methods (over a fake SAM 3D Body) in place of them, after `live`.
+
+def _single_cmd(src, out, *extra):
+    return ["run", "--mode", "single", "--input", str(src), "--out", str(out), "--fps", "10", *extra]
+
+
+@pytest.fixture
+def live_mesh(live, sam3db):
+    """`live` with the SAM 3D Body stand-ins of test_mesh3d (set up after it); .use(backend) swaps the backend."""
+    live.use = sam3db
+    return live
+
+
+def test_mesh_reaches_the_worker_and_writes_the_pair_the_in_process_run_writes(live_mesh, src, tmp_path, capsys):
+    flags = ["--mesh", "--mesh-vertices", "400"]
+    assert part2_main(_single_cmd(src, tmp_path / "local", *flags)) == 0  # no --worker: in this process
+    assert live_mesh.served == []
+    capsys.readouterr()
+    warm = tmp_path / "warm"
+    argv = _single_cmd(src, warm, *flags)
+    assert part2_main(_on(live_mesh, argv)) == 0
+    assert live_mesh.served == [argv]  # the worker ran it with --mesh and --mesh-vertices in its argv
+    assert "mesh (" in capsys.readouterr().out  # the worker's line reached this stdout
+    assert (warm / "mesh3d.json").is_file() and (warm / "mesh3d.bin").is_file() and (warm / "pose3d.json").is_file()
+    assert _load(warm / "mesh3d.json") == _load(tmp_path / "local" / "mesh3d.json")
+    assert (warm / "mesh3d.bin").read_bytes() == (tmp_path / "local" / "mesh3d.bin").read_bytes()
+    assert part2_main(["doctor", str(warm / "mesh3d.json")]) == 0
+
+
+def test_a_worker_run_without_mesh_removes_a_stale_pair_and_writes_none(live_mesh, src, tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "mesh3d.json").write_text("{}")
+    (out / "mesh3d.bin").write_bytes(b"x")
+    assert part2_main(_on(live_mesh, _single_cmd(src, out))) == 0
+    assert not (out / "mesh3d.json").exists() and not (out / "mesh3d.bin").exists() and (out / "pose3d.json").is_file()
+
+
+def test_mesh_on_the_cpu_backend_is_exit_2_through_the_worker_and_it_keeps_serving(live_mesh, src, tmp_path, capsys):
+    live_mesh.use(_Cpu())  # the refusal is by the backend's name, as for the registry's cpu backend
+    out = tmp_path / "x"
+    argv = _single_cmd(src, out, "--backend", "cpu", "--mesh")
+    assert part2_main(_on(live_mesh, argv)) == 2
+    assert "--mesh needs SAM 3D Body" in capsys.readouterr().err
+    assert live_mesh.served == [argv] and not out.exists()  # the worker's job ended with 2, before any frame
+    assert part2_main(_on(live_mesh, _track_cmd(src, tmp_path / "after"))) == 0
+    assert len(live_mesh.served) == 2
+
+
+def test_no_person_found_with_mesh_is_exit_4_through_the_worker_and_writes_no_mesh(live_mesh, src, tmp_path, capsys):
+    live_mesh.use(_Gpu(people=0))  # the real gpu Backend.estimate over a SAM 3D Body that finds nobody
+    out = tmp_path / "nobody"
+    argv = _single_cmd(src, out, "--mesh")
+    assert part2_main(_on(live_mesh, argv)) == 4
+    assert live_mesh.served == [argv]
+    assert capsys.readouterr().err == NO_PERSON_FRAMES  # the unchanged line, "2 frames" for this input
+    assert not (out / "mesh3d.json").exists() and not (out / "mesh3d.bin").exists() and not (out / "pose3d.json").exists()

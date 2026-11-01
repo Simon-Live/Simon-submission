@@ -1,7 +1,7 @@
 """Warm worker: models loaded once, `run` and `track` served over a Unix socket (CONTRACT.md, "Warm worker").
 
-    part2 serve-worker --socket PATH [--backend gpu|cpu]     # serves until Ctrl-C
-    part2 run --worker PATH ...                              # client: uses the worker when it is up, else in-process
+    part2 serve-worker --socket PATH [--backend gpu|cpu|cpu-sam3db]   # serves until Ctrl-C
+    part2 run --worker PATH ...                                       # client: uses the worker when it is up, else in-process
 
 Protocol: newline-delimited JSON over an AF_UNIX stream socket, one request per connection.
   request  {"argv": ["run", "--mode", "single", ...], "cwd": "/abs/dir", "env": {"PART2_PROGRESS": "1"}}

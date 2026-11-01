@@ -43,6 +43,20 @@ def validate(prov) -> None:
     contract.check_schema(prov, schema["$defs"]["provenance"], schema, "provenance")
 
 
+CREDENTIAL_REFUSED = "credential_refused"  # fallback_reason when the bulk order moved on from a refused credential
+
+
+def fallback_note(prov: dict) -> str | None:
+    """The plain line for a block that says a later tracker ran, else None: trackers.describe_fallback, which does not
+    know CREDENTIAL_REFUSED (the reason `part2 track` and `part2 run` write in part2/cli.py, and the run app's job
+    notice reads). KeyError for a reason neither knows. The one wording, so the CLI and the run app never differ."""
+    from part2 import trackers
+
+    if prov.get("fallback_reason") == CREDENTIAL_REFUSED:
+        return f"SAM 3.1 credential refused; tracked with {prov['tracker']}"
+    return trackers.describe_fallback(prov)
+
+
 def part2_commit() -> str:
     """HEAD of the Part 2 checkout, with +dirty when tracked files differ; unknown without git."""
     try:

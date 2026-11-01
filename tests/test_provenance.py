@@ -182,3 +182,27 @@ def test_a_malformed_block_stops_the_write_and_leaves_no_file(tmp_path):
         write_pose_streams(body, tmp_path, extras={"provenance": {**_block(), "backend": 5}})
     assert list(tmp_path.glob("*.json")) == []
     assert body == before  # the input document was not changed
+
+
+# ---- the fallback line shared by `part2 track|run` and the run app's job notice ----------------------------
+
+@pytest.mark.parametrize("reason,line", [
+    ("budget", "SAM 3.1 spend cap reached; tracked with local-open"),
+    ("no_key", "no key for SAM 3.1; tracked with local-open"),
+    ("no_parity", "local SAM 3.1 has no parity pass; tracked with local-open"),
+    ("no_env", "local SAM 3.1 is not installed here; tracked with local-open"),
+    (provenance.CREDENTIAL_REFUSED, "SAM 3.1 credential refused; tracked with local-open"),
+])
+def test_fallback_note_words_every_reason_and_names_the_tracker_that_ran(reason, line):
+    prov = {"tracker": "local-open", "fallback_from": "api-sam31", "fallback_reason": reason}
+    assert provenance.fallback_note(prov) == line
+    if reason != provenance.CREDENTIAL_REFUSED:  # the registry's own reasons keep the registry's wording
+        assert provenance.fallback_note(prov) == trackers.describe_fallback(prov)
+
+
+def test_fallback_note_is_none_without_a_reason_and_raises_for_an_unknown_one():
+    assert provenance.CREDENTIAL_REFUSED == "credential_refused"
+    assert provenance.fallback_note({"tracker": "api-sam31"}) is None
+    assert provenance.fallback_note({"tracker": "api-sam31", "fallback_reason": None}) is None
+    with pytest.raises(KeyError):
+        provenance.fallback_note({"tracker": "local-open", "fallback_reason": "not_a_known_reason"})

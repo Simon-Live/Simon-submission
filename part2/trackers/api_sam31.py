@@ -13,7 +13,7 @@ Budgets, every one of which must accept the reservation (part2.meta_api.Budget g
 import contextlib
 import os
 
-from part2.trackers import BudgetReached, Tracker, call_with_key
+from part2.trackers import BudgetReached, NoPerson, Tracker, call_with_key
 
 KEY = "MODEL_API_KEY"
 RUN_BUDGET_USD = 25.0
@@ -125,5 +125,7 @@ class ApiSam31(Tracker):
                     raise BudgetReached(self.name, refused.limit, refused.ledger) from None
 
         detections = call_with_key(self.name, KEY, call)
-        self.spend_usd = est
+        self.spend_usd = est  # the API charged for the call whatever it found, so the spend stays recorded
+        if not any(detections.values()):  # the rule of local-open and bytetrack: no frame holds a person
+            raise NoPerson()
         return detections

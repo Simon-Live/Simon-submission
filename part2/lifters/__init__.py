@@ -2,7 +2,7 @@
 
 Spec: docs/specs/backends-gpu-cpu.md ("Lifter B", "Lifter C"); ADR-0002.
 
-    l = lifters.get("fixed-bones")                  # or "motionbert"; unknown names raise UnknownLifter
+    l = lifters.get("bones-prior")                  # or "fixed-bones", "motionbert"; unknown names raise UnknownLifter
     kp3d = l.lift(kp2d, conf, K, image_size, fps)   # (n, 17, 2) px, (n, 17) -> (n, 17, 3) m, OpenCV camera
     kp3d, info = l.lift_info(...)                   # same, plus counts for provenance (clipped, fallbacks)
 
@@ -17,12 +17,13 @@ import numpy as np
 from part2.joints import BONES, CANONICAL
 
 ENV = "PART2_LIFTER"
-# Set by measurement (TICKET-016, AC-B10): the 3D bar on fixtures/input/single against the local gpu output
-# fixtures/output/scored/single (2026-10-29), neither lifter passes, so the lower mean_m wins: fixed-bones
-# mean_m 0.2682, bone_cv_mean 0.0117; motionbert mean_m 0.2914, bone_cv_mean 0.1400. The CPU backend is
-# "3D approximate".
-DEFAULT = "fixed-bones"
-_REGISTRY = {"fixed-bones": ("part2.lifters.fixed_bones", "FixedBones"),
+# Set by measurement (AC-B10; TICKET-016 first, TICKET-044 with bones-prior, measured 2026-10-31): the 3D bar is
+# 0.10 m and none of the three lifters passes it, so the lowest mean joint distance wins. bones-prior mean_m
+# 0.145, bone_cv_mean 0.016; fixed-bones mean_m 0.2656, bone_cv_mean 0.0117; motionbert mean_m 0.2914,
+# bone_cv_mean 0.140. The CPU backend is "3D approximate". An explicit --lifter or PART2_LIFTER still wins.
+DEFAULT = "bones-prior"
+_REGISTRY = {"bones-prior": ("part2.lifters.bones_prior", "BonesPrior"),
+             "fixed-bones": ("part2.lifters.fixed_bones", "FixedBones"),
              "motionbert": ("part2.lifters.motionbert", "MotionBert")}
 
 J = {name: i for i, name in enumerate(CANONICAL)}

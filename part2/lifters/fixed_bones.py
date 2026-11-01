@@ -259,10 +259,10 @@ def unary(pos, lengths, valid) -> np.ndarray:
     cost += W_ANGLE * back
     width = lengths[SEG[("left_shoulder", "right_shoulder")]]
     cost += W_WIDTH * np.abs(np.linalg.norm(P("left_shoulder") - P("right_shoulder"), axis=-1) - width) / width
-    return cost + W_FACE * _facing(pos, front, valid)
+    return cost + W_FACE * facing(pos, front, valid)
 
 
-def _facing(pos, front, valid) -> np.ndarray:
+def facing(pos, front, valid) -> np.ndarray:
     """max(0, -cos) between the nose direction (nose minus confident ears) and the body's front."""
     ears = np.stack([valid[:, J["left_ear"]], valid[:, J["right_ear"]]], axis=1).astype(float)
     have = valid[:, J["nose"]] & (ears.sum(1) > 0)

@@ -50,27 +50,31 @@ it was extrapolated outside the frame. It is not a calibrated probability.
 
 ## `scored/`: the outputs `make check-2` scores
 
-Made on this host by `make outputs` (2026-10-29; the gpu dirs on its RTX 5090), each dir with a `stamp.json` (`part2.stamp/2`).
+Made on this host by `make outputs` (2026-11-01; the gpu dirs on its RTX 5090), each dir with a `stamp.json` (`part2.stamp/2`).
 
 | Dir | Files | Backend | Tracker | Frames | People | Scored as |
 |---|---|---|---|---|---|---|
 | `single/` | `pose3d.json`, `camera.json` | gpu (SAM 3D Body, ViTDet boxes), refined `focal` then `kp2d-fit` | none | 111 | 1 | `one_person` |
-| `class/` | `tracks.json`, `pose3d.json`, `camera.json` | gpu | `api-sam31` (the scored order) | 89 | 7 | `multi_person` |
+| `class/` | `tracks.json`, `pose3d.json`, `camera.json` | gpu | `api-sam31` (the scored order) | 89 | 8 track ids: 0 to 6 on all 89 frames, 7 on 81 of the 89 (from frame 8), a small box that matches no gold person; `make check-2` matched all 7 gold people (coverage 1.0, 0 swaps), scored as returned | `multi_person` |
 | `class-local-open/` | same as `class/` | gpu | `local-open` | 89 | 7 | `multi_person_local_open`, never gated |
-| `cpu-single/` | `pose3d.json`, `camera.json` | cpu (RTMPose-x, lifter `fixed-bones`) | none | 111 | 1 | `cpu_backend_3d` against `single/` |
+| `cpu-single/` | `pose3d.json`, `camera.json` | cpu (RTMPose-x, lifter `bones-prior`, the default) | none | 111 | 1 | `cpu_backend_3d` against `single/` |
+| `cpu-sam3db-single/` | `pose3d.json`, `camera.json` | cpu-sam3db (SAM 3D Body on the CPU device, unrefined; made 2026-11-01 at 46.95 s per frame on 8 threads under host load; the 2026-10-31 run took 31.74 s per frame) | none | 111 | 1 | `cpu_backend_3d` against `single/`, with `make check-2-cpu CPU_MODE=cpu-sam3db-single` |
 | `coco-single/` | `<image id>/pose3d.json`, `<image id>/camera.json` | gpu, refined `focal` then `kp2d-fit` | none | one photo per image, 20 images | 1 per image | `one_person_coco` |
 
 `stamp.json` names the backend, tracker, lifter, refine rungs and models with their weight digests, and holds
 the sha256 of the code the run imported, of the input frames, of the environment lock and of each output file.
 `make check-2` fails a dir whose code, frames or lock changed since it was made, or whose files were edited,
-and says which. The CPU backend misses the 3D bar (mean joint distance 0.2682 m against the 0.10 m limit), so
-its 3D is approximate.
+and says which. The `cpu` backend misses the 3D bar with every lifter (mean joint distance 0.145 m for
+`bones-prior`, the default lifter, which `cpu-single/` holds; 0.2656 m for `fixed-bones`; 0.2914 m for `motionbert`;
+against the 0.10 m limit), so its 3D is approximate. `cpu-sam3db-single/` meets the bar (0.0363 m, bone CV 0.0408);
+the reference `single/` is refined and this CPU run is unrefined.
 
 ```
 make outputs                  # single, class, class-local-open, coco-single on the GPU; single and coco-single refined with focal,kp2d-fit (REFINE=none for unrefined; TRACKER=, MODES=, SCORED= optional)
-make outputs BACKEND=cpu      # cpu-single (LIFTER= optional)
+make outputs BACKEND=cpu      # cpu-single (LIFTER= optional; bones-prior without it)
+make outputs BACKEND=cpu-sam3db  # cpu-sam3db-single
 make check-2                  # scores scored/; SCORED=out scores out/<mode>/ instead
-make check-2-cpu              # the cpu_backend_3d block alone
+make check-2-cpu              # the cpu_backend_3d block alone (cpu-single; CPU_MODE=cpu-sam3db-single scores that dir)
 ```
 
 `coco-single/` reads the COCO images from a local cache: `uv run python -m part2.coco_set images` downloads

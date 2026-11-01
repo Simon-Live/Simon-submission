@@ -1,4 +1,5 @@
-"""Downstream contract (CONTRACT.md): the four published schemas, the Part 3 consumer copy, the
+"""Downstream contract (CONTRACT.md): the five published schemas (four kinds of file every run writes, plus the
+optional mesh3d header of TICKET-048), the Part 3 consumer copy, the
 `contract` command, NaN and infinity, backward compatibility and `make check-2-contract`."""
 import copy
 import hashlib
@@ -147,7 +148,7 @@ def test_a_document_of_the_wrong_shape_is_a_contract_error(doc, message):
 
 
 def test_unknown_kind_names_the_choices():
-    with pytest.raises(contract.ContractError, match="pose3d, tracks, camera, frames"):
+    with pytest.raises(contract.ContractError, match="pose3d, tracks, camera, frames, mesh3d"):
         contract.validate({}, "skeleton")
 
 
@@ -350,15 +351,15 @@ def test_writers_never_emit_nan_or_infinity(tmp_path):
 
 # --- AC-C03: the contract command ---------------------------------------------------------------
 
-def test_contract_json_function_holds_four_schemas_and_the_table():
+def test_contract_json_function_holds_five_schemas_and_the_table():
     doc = contract.contract_json()
-    assert [r["name"] for r in doc["schemas"]] == ["pose3d", "tracks", "camera", "frames"]
+    assert [r["name"] for r in doc["schemas"]] == ["pose3d", "tracks", "camera", "frames", "mesh3d"]  # mesh3d: TICKET-048
     assert all(set(r) == {"name", "version", "direction", "file"} and (ROOT / r["file"]).is_file() for r in doc["schemas"])
-    assert [r["version"] for r in doc["schemas"]] == [f"part2.{k}/2026-10-28" for k in contract.KINDS]
+    assert [r["version"] for r in doc["schemas"]] == [f"part2.{k}/2026-10-28" for k in contract.KINDS] + ["part2.mesh3d/2026-10-31"]
     assert doc["compatibility"] == json.loads((ROOT / "contracts" / "compatibility.json").read_text())
 
 
-def test_contract_command_prints_four_schema_rows_and_every_table_row(capsys):
+def test_contract_command_prints_five_schema_rows_and_every_table_row(capsys):
     assert contract.command() == 0
     out = capsys.readouterr().out
     for r in contract.schema_rows():
@@ -376,7 +377,7 @@ def _part2(*args):
     return subprocess.run([sys.executable, "-m", "part2", *args], cwd=ROOT, capture_output=True)
 
 
-@pytest.mark.parametrize("kind", contract.KINDS)
+@pytest.mark.parametrize("kind", contract.PUBLISHED)
 def test_schema_flag_prints_the_file_byte_for_byte(kind):
     r = _part2("contract", "--schema", kind)
     assert r.returncode == 0 and r.stdout == (ROOT / "contracts" / f"{kind}.schema.json").read_bytes()
@@ -385,7 +386,7 @@ def test_schema_flag_prints_the_file_byte_for_byte(kind):
 def test_unknown_schema_exits_2_naming_the_choices():
     r = _part2("contract", "--schema", "skeleton")
     assert r.returncode == 2 and r.stdout == b""
-    assert r.stderr.decode().strip() == "contract: no schema 'skeleton'; schemas: pose3d, tracks, camera, frames"
+    assert r.stderr.decode().strip() == "contract: no schema 'skeleton'; schemas: pose3d, tracks, camera, frames, mesh3d"
 
 
 def test_python_m_part2_contract_json_matches_the_function():
@@ -527,7 +528,7 @@ def test_no_schema_adds_a_required_field(kind):
 def test_check_outputs_passes_on_the_committed_files():
     report = contract.check_outputs()
     assert report["failures"] == [] and report["pass"] is True
-    assert report["files"] == report["valid"] == len(COMMITTED) + len(contract.KINDS) + 2
+    assert report["files"] == report["valid"] == len(COMMITTED) + len(contract.PUBLISHED) + 2
 
 
 def test_check_outputs_names_every_failing_file(tmp_path):

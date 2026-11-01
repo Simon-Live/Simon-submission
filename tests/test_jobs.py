@@ -45,9 +45,10 @@ FAKE_RUN = textwrap.dedent(r'''
         json.dump({"K": [[1000, 0, 640], [0, 1000, 360], [0, 0, 1]], "image_size": [1280, 720], "frames": [
             {"frame": f, "people": [{"id": i, "R": eye, "t": [0, 0, 3]} for i in ids]} for f in range(n)]},
             open(os.path.join(out, "camera.json"), "w"))
-        if tracks:
-            json.dump({"frames": [{"frame": f, "people": [{"id": i, "bbox": [0, 0, 1, 1], "confidence": 1.0}
-                                                         for i in ids]} for f in range(n)]},
+        if tracks:  # tracks.json says the same fallback as pose3d.json, as part2 run writes it
+            doc = {"frames": [{"frame": f, "people": [{"id": i, "bbox": [0, 0, 1, 1], "confidence": 1.0}
+                                                     for i in ids]} for f in range(n)]}
+            json.dump({**doc, **({} if prov is None else {"provenance": prov})},
                       open(os.path.join(out, "tracks.json"), "w"))
 
     if behaviour == "ok":
@@ -58,6 +59,12 @@ FAKE_RUN = textwrap.dedent(r'''
     elif behaviour == "class-fallback":
         write(ids=(0, 1, 2), tracks=True, prov={"backend": "gpu", "tracker": "local-open", "lifter": None,
               "fallback_from": "api-sam31", "fallback_reason": "budget"})
+    elif behaviour == "class-refused":  # the bulk order moved on from a refused Meta credential (AC-R11)
+        write(ids=(0, 1, 2), tracks=True, prov={"backend": "gpu", "tracker": "local-open", "lifter": None,
+              "fallback_from": "api-sam31", "fallback_reason": "credential_refused"})
+    elif behaviour == "class-new-reason":  # a reason no wording knows yet
+        write(ids=(0, 1, 2), tracks=True, prov={"backend": "gpu", "tracker": "bytetrack", "lifter": None,
+              "fallback_from": "api-sam31", "fallback_reason": "not_a_known_reason"})
     elif behaviour == "legacy":
         say("30 frames -> /somewhere/frames"); time.sleep(0.3)
         say("camera-space 3D (gpu) -> /somewhere/body3d.json"); time.sleep(0.3)
@@ -67,8 +74,14 @@ FAKE_RUN = textwrap.dedent(r'''
         write()
     elif behaviour == "no-output":
         say("progress frames 1 1")
-    elif behaviour == "noperson":
+    elif behaviour == "noperson":  # a run from before exit code 4: only the line says it
         sys.stderr.write("part2: no person found in 3 frames (/home/someone/job/out/frames)\n"); sys.exit(1)
+    elif behaviour == "noperson-exit-4":  # part2 run now: the code and the unchanged line
+        sys.stderr.write("part2: no person found in 3 frames\n"); sys.exit(4)
+    elif behaviour == "exit-4-no-line":  # the code alone says it
+        sys.stderr.write("something this server has no pattern for\n"); sys.exit(4)
+    elif behaviour == "exit-3":  # any other code is a failure
+        sys.stderr.write("something this server has no pattern for\n"); sys.exit(3)
     elif behaviour == "crash":
         sys.stderr.write("Traceback (most recent call last):\n  File \"/home/x/part2/cli.py\"\nKeyError: 'x'\n"); sys.exit(1)
     elif behaviour == "oom":
@@ -214,6 +227,27 @@ def test_a_fallback_is_named_with_the_plain_notice(make_queue):
     assert pub["files"] == ["pose3d.json", "tracks.json", "camera.json"]
 
 
+def test_a_refused_meta_credential_is_named_in_the_notice_with_the_tracker_that_ran(make_queue):
+    """The job notice reads the CLI's wording (provenance.fallback_note): it used to print only "tracked with
+    local-open" for credential_refused, without the reason."""
+    q = make_queue()
+    job = submit(q, "class-refused", mode="class")
+    pub = wait_for(q, job)
+    tracks_prov = json.loads((job.dir / "out" / "tracks.json").read_text())["provenance"]
+    assert tracks_prov["fallback_reason"] == "credential_refused"  # the file the run wrote says it too
+    assert pub["state"] == "done" and pub["tracker"] == "local-open"
+    assert pub["fallback"] == {"from": "api-sam31", "reason": "credential_refused"}
+    assert pub["notice"] == "SAM 3.1 credential refused; tracked with local-open"
+    assert "credential" in pub["notice"] and "refused" in pub["notice"] and "local-open" in pub["notice"]
+
+
+def test_a_reason_with_no_wording_still_names_the_tracker_that_ran(make_queue):
+    q = make_queue()
+    pub = wait_for(q, submit(q, "class-new-reason", mode="class"))
+    assert pub["fallback"] == {"from": "api-sam31", "reason": "not_a_known_reason"}
+    assert pub["notice"] == "tracked with bytetrack"
+
+
 def test_a_class_job_shows_automatic_until_it_has_run(make_queue):
     q = make_queue(start=False)
     job = submit(q, "ok", mode="class")
@@ -231,6 +265,9 @@ def test_a_run_without_provenance_falls_back_to_the_requested_backend(make_queue
 
 @pytest.mark.parametrize("behaviour,message", [
     ("noperson", "No person was found in this file."),
+    ("noperson-exit-4", "No person was found in this file."),
+    ("exit-4-no-line", "No person was found in this file."),
+    ("exit-3", "The run stopped with an error. Try another file, or try again later."),
     ("crash", "The run stopped with an error. Try another file, or try again later."),
     ("oom", "The GPU ran out of memory on this file. Try a shorter clip or the CPU backend."),
     ("no-output", "The run stopped with an error. Try another file, or try again later."),
@@ -511,6 +548,17 @@ def test_classify_maps_errors_to_plain_messages():
     assert jobs.classify("RuntimeError: CUDA out of memory") == jobs.MESSAGES["out_of_memory"]
     assert jobs.classify("anything else at /home/x") == jobs.MESSAGES["failed"]
     assert all("/" not in m and "Error" not in m for m in jobs.MESSAGES.values())
+
+
+def test_classify_reads_exit_code_4_as_no_person_whatever_the_text_and_no_other_code_does():
+    """TICKET-047: part2 run exits 4 when it found nobody (CONTRACT.md); the line is the fallback, not the only way."""
+    no_person = jobs.MESSAGES["no_person"]
+    assert jobs.classify("", 4) == no_person and jobs.classify("anything else at /home/x", 4) == no_person
+    assert jobs.classify("part2: no person found in 3 frames", 1) == no_person          # a run from before the code
+    assert jobs.classify("part2: another GPU job is running", 1) == jobs.MESSAGES["gpu_busy"]
+    assert jobs.classify("anything else at /home/x", 1) == jobs.MESSAGES["failed"]
+    assert jobs.classify("anything else at /home/x", 3) == jobs.MESSAGES["failed"]
+    assert jobs.classify("anything else at /home/x", None) == jobs.MESSAGES["failed"]
 
 
 def test_tail_reads_the_end_of_a_file(tmp_path):

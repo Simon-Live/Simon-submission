@@ -2,13 +2,19 @@
 
     part2 frames --input clip.mp4 --out out/clip/frames [--fps 30]
     part2 run --mode single|multi --input clip.mp4 --out out/clip [--fps 30] [--mirrored]
-              [--backend gpu|cpu] [--lifter fixed-bones|motionbert] [--tracker NAME] [--tracker-order scored|bulk]
+              [--backend gpu|cpu|cpu-sam3db] [--lifter bones-prior|fixed-bones|motionbert] [--tracker NAME]
+              [--tracker-order scored|bulk]
               [--refine RUNGS]   (single: the ladder's rungs, part2.refine; focal,kp2d-fit is what make outputs uses)
+              [--mesh [--mesh-vertices N]]   (also mesh3d.json + mesh3d.bin; gpu or cpu-sam3db; not with --refine)
     part2 run --mode multi ... [--tracks tracks.json] [--ids ID,ID]   (reuse tracks; 3D only for the listed ids)
     part2 track --input clip.mp4 --out out/clip [--fps 10] [--tracker NAME] [--tracker-order scored|bulk]
     part2 contract [--json] [--schema NAME]      (also: python -m part2 contract)
-    part2 doctor FILE [--for part3|part5|part6] [--json]
-    part2 stock [--clip pexels-<id>[-<start>to<end>s]] [--backend gpu|cpu]   (make stock-outputs)
+    part2 doctor FILE [--for part3|part5|part6] [--json]   (FILE: pose3d, tracks, camera, frames or mesh3d json)
+    part2 stock [--clip pexels-<id>[-<start>to<end>s]] [--backend gpu|cpu|cpu-sam3db]   (make stock-outputs)
+
+Exit codes of `run` and `track`: 0 written, 1 failed, 2 bad option, 4 no person found in any frame (the message is
+unchanged; CONTRACT.md "Exit codes"). The warm worker returns the same code to its client. `run --mesh` that found
+people but no mesh vertices keeps pose3d.json, writes no mesh pair and exits 1 (docs/specs/mesh3d.md, AC-M16).
 
 With the gpu backend, `part2 run` holds the host GPU lock (part2.gpu_guard) around each 3D estimate and refine
 re-run; a SAM tracker takes the same lock itself while it tracks, so the two are never nested (AC-B-NFR-03).
@@ -19,7 +25,7 @@ import os
 import sys
 from pathlib import Path
 
-from part2 import backends, canonical, contract, frames, output_steps
+from part2 import backends, canonical, contract, frames, output_steps, provenance
 from part2.schema import ContractError, write_json
 
 
@@ -91,11 +97,57 @@ def _check_same_frames(path: Path, doc: dict, recs: list[dict]) -> None:
         raise ValueError(f"--tracks {path} has an entry for frame {min(have - want)} that this input lacks ({sizes}; {hint})")
 
 
+API_TRACKER = "api-sam31"
+
+
+def _bulk_order_unnamed(args) -> bool:
+    """True when the order picks the tracker and it is `bulk`: no --tracker, no PART2_TRACKER, and no --tracker-order
+    or --tracker-order bulk (track.track's default). A named tracker and the `scored` order fail closed."""
+    from part2 import trackers
+
+    named = args.tracker or os.environ.get(trackers.ENV, "").strip()
+    return not named and args.tracker_order in (None, "bulk")
+
+
+def _next_bulk_tracker(after: str, n_frames: int):
+    """The first tracker of the bulk order after `after` that can run here (None when there is none): a step needs its
+    key, budget and packages. `after` is api-sam31, which follows local-sam31 in the order, so local-sam31 and its
+    parity pass (trackers.resolve) never come up here."""
+    from part2 import trackers
+
+    order = trackers.ORDERS["bulk"]
+    for name in order[order.index(after) + 1:]:
+        tracker = trackers.get(name)
+        if tracker.available(n_frames)[0]:
+            return tracker
+    return None
+
+
+def _run_tracker(args, recs) -> dict:
+    """track.track, except that the bulk order moves on from a refused Meta credential (HTTP 401 or 403).
+    A refusal is not a skip reason of the registry (it fails the run), so the caller does the move: one stderr line,
+    the next usable tracker of the order runs (api-sam31 is not tried again in this run), and its tracks.json says
+    fallback_from api-sam31, fallback_reason credential_refused. A named tracker and the scored order still raise
+    the refusal, and so does a bulk order with nothing left to run (docs/specs/tracker-registry.md, AC-R11)."""
+    from part2 import track, trackers
+
+    frames_dir, tracks_path = args.out / "frames", args.out / "tracks.json"
+    order = {} if args.tracker_order is None else {"purpose": args.tracker_order}  # absent: track.track's default
+    try:
+        return track.track(frames_dir, tracks_path, tracker=args.tracker, **order)
+    except trackers.CredentialRefused as refusal:
+        if not (_bulk_order_unnamed(args) and refusal.tracker == API_TRACKER):
+            raise
+        tracker = _next_bulk_tracker(API_TRACKER, len(recs))
+        if tracker is None:
+            raise
+        print(f"part2: {refusal}; tracking with {tracker.name} instead", file=sys.stderr)
+        return tracker.track(frames_dir, tracks_path, skipped=[(API_TRACKER, provenance.CREDENTIAL_REFUSED)])
+
+
 def _track_stage(args, recs, meta, backend_name, reuse: dict | None = None) -> dict:
     """Track the frames (or reuse the --tracks document `reuse`), write out/tracks.json and return the document.
     Raises trackers.UnknownTracker for a bad tracker name."""
-    from part2 import track, trackers
-
     tracks_path = args.out / "tracks.json"
     if reuse is not None:  # reuse: no tracker runs, ids are kept as given (TICKET-041)
         _check_same_frames(args.tracks, reuse, recs)
@@ -103,10 +155,9 @@ def _track_stage(args, recs, meta, backend_name, reuse: dict | None = None) -> d
         print(f"{len(_tracked_ids(reuse))} tracked people reused from {args.tracks} (no tracking run)")
         return reuse
     _progress("track", 0, len(recs))
-    order = {} if args.tracker_order is None else {"purpose": args.tracker_order}  # absent: track.track's default
-    doc = track.track(args.out / "frames", tracks_path, tracker=args.tracker, **order)
+    doc = _run_tracker(args, recs)
     output_steps.stamp_tracks(tracks_path, doc, output_steps.tracks_extras(meta, doc, backend_name))
-    note = trackers.describe_fallback(doc["provenance"])
+    note = provenance.fallback_note(doc["provenance"])
     print(f"{len(_tracked_ids(doc))} tracked people -> {tracks_path} "
           f"(tracker {doc['provenance'].get('tracker')}{'; ' + note if note else ''})")
     return doc
@@ -168,13 +219,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--smooth", action="store_true", help="One-Euro smoothing of 3D joints over time")
     p_run.add_argument("--mirrored", action="store_true",
                        help="the saved video is a mirror image of the scene (front camera): writes mirrored: true")
-    p_run.add_argument("--backend", help="gpu or cpu (default: PART2_BACKEND, else gpu when CUDA is available, else cpu)")
-    p_run.add_argument("--lifter", help="cpu backend: fixed-bones or motionbert (default: PART2_LIFTER, else fixed-bones)")
+    p_run.add_argument("--backend", help="gpu, cpu (RTMPose-x, 3D approximate) or cpu-sam3db (SAM 3D Body on the CPU, "
+                       "gpu-cu128 profile, meets the 3D bar at 31.74 to 46.95 s per frame on 8 threads in two runs; chosen by name only) "
+                       "(default: PART2_BACKEND, else gpu when CUDA is available, else cpu)")
+    p_run.add_argument("--lifter", help="cpu backend: bones-prior, fixed-bones or motionbert (default: PART2_LIFTER, else "
+                       "bones-prior, the lowest mean joint distance of the three, none passes the 3D bar)")
     p_run.add_argument("--refine", default="none",
                        help="single: comma-separated ladder rungs (part2.refine) run on the 3D before the canonical "
                        "frame; focal,kp2d-fit gives the scored outputs (make outputs); default none")
     p_run.add_argument("--worker", type=Path, help="socket of a running `part2 serve-worker`; used when it is up, "
                        "else this process runs the job itself")
+    p_run.add_argument("--mesh", action="store_true",
+                       help="also write mesh3d.json + mesh3d.bin, the decimated SAM 3D Body mesh per person per frame "
+                            "(gpu or cpu-sam3db backend; not with --refine; docs/specs/mesh3d.md)")
+    p_run.add_argument("--mesh-vertices", type=int, default=None,
+                       help="--mesh: about this many vertices per body (default 2500)")
     p_run.add_argument("--tracks", type=Path, help="multi: reuse this tracks.json (no tracking run, ids unchanged)")
     p_run.add_argument("--ids", help="multi: comma-separated person ids; 3D runs for these people only")
 
@@ -184,7 +243,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_sw = sub.add_parser("serve-worker", help="keep the models loaded and serve run and track requests on a socket")
     p_sw.add_argument("--socket", required=True, type=Path, help="Unix socket path to listen on")
-    p_sw.add_argument("--backend", help="gpu or cpu (default as for run)")
+    p_sw.add_argument("--backend", help="gpu, cpu or cpu-sam3db (default as for run)")
 
     p_ev = sub.add_parser("eval-reproj", help="one-person metric: reprojection error vs hand-clicked joints (#12)")
     p_ev.add_argument("--pose3d", required=True, type=Path)
@@ -197,10 +256,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_ct = sub.add_parser("contract", help="list the schemas Part 2 publishes and the compatibility table")
     p_ct.add_argument("--json", action="store_true", help='print {"schemas": [...], "compatibility": [...]}')
-    p_ct.add_argument("--schema", help="print one schema file verbatim: pose3d, tracks, camera or frames")
+    p_ct.add_argument("--schema", help="print one schema file verbatim: pose3d, tracks, camera, frames or mesh3d")
 
     p_dr = sub.add_parser("doctor", help="name a file's kind and say what each consumer would reject and the fix")
-    p_dr.add_argument("file", type=Path, help="a pose3d.json, tracks.json, camera.json or frames.json")
+    p_dr.add_argument("file", type=Path, help="a pose3d.json, tracks.json, camera.json, frames.json or mesh3d.json "
+                      "(its mesh3d.bin is checked with it)")
     p_dr.add_argument("--for", dest="consumer", help="part3 (default), part5 or part6")
     p_dr.add_argument("--json", action="store_true")
 
@@ -229,6 +289,53 @@ def _build_parser() -> argparse.ArgumentParser:
     p_st.add_argument("--backend", choices=list(backends.CHOICES), help="default: PART2_BACKEND, else gpu when CUDA is available")
 
     return parser
+
+
+MESH_REFINE_REFUSAL = "--mesh cannot be combined with --refine (the mesh comes from the unrefined run)"
+MESH_EMPTY = "--mesh found no mesh vertices; no mesh3d pair written"
+
+
+def _mesh_collector(args, backend_name: str, rungs: list) -> dict:
+    """{"mesh": Collector} for backend.estimate when --mesh is set, else {} (the call is then unchanged). Every refusal
+    is a ValueError raised before anything is removed or written; the collector is built (and its vertex count
+    checked) here for that reason."""
+    from part2 import mesh3d
+
+    if args.mesh_vertices is not None and not args.mesh:
+        raise ValueError("--mesh-vertices applies to --mesh only")
+    if not args.mesh:
+        return {}
+    if backend_name not in mesh3d.BACKENDS:
+        raise ValueError(mesh3d.REFUSAL)
+    if rungs:  # the focal rung re-runs the model without the collector, so the mesh would be from another run
+        raise ValueError(MESH_REFINE_REFUSAL)
+    return {"mesh": mesh3d.Collector(mesh3d.DEFAULT_TARGET if args.mesh_vertices is None else args.mesh_vertices)}
+
+
+def _clear_mesh(out: Path) -> None:
+    """Remove a mesh pair an earlier run left in --out, so it is never read as this run's (TICKET-048). Called once
+    the backend, lifter, --refine and --mesh options and the --tracks file (with --ids) have been accepted, and before
+    frames.ingest reads --input. A failure after that point can follow the removal: an --input that cannot be read
+    exits 1, and an unknown --tracker name, which the tracker stage checks once the frames are ingested, exits 2."""
+    from part2 import mesh3d
+
+    for name in (mesh3d.JSON_NAME, mesh3d.BIN_NAME):
+        (out / name).unlink(missing_ok=True)
+
+
+def _write_mesh(mesh: dict, out: Path) -> bool:
+    """Write the pair the collector holds. False (one stderr line, nothing written) when --mesh was given and the run
+    found people but no mesh vertices: every person had hips that give no canonical frame."""
+    if not mesh:
+        return True
+    written = mesh["mesh"].write(out)
+    if written is None:
+        print(f"part2: {MESH_EMPTY}", file=sys.stderr)
+        return False
+    c = mesh["mesh"]
+    print(f"mesh ({c.plan.count} of {c.source_vertex_count} vertices, {len(c.blocks)} person-frames) -> "
+          f"{written[0]} + {written[1]}")
+    return True
 
 
 def _serve_worker(args) -> int:
@@ -322,12 +429,14 @@ def main(argv: list[str] | None = None) -> int:
             rungs = [] if args.refine.strip() in ("", "none") else refine.resolve(args.refine)
             if rungs and args.mode != "single":
                 raise ValueError("--refine applies to --mode single only")
+            mesh = _mesh_collector(args, backend.name, rungs)
         except (backends.UnknownBackend, lifters.UnknownLifter, ValueError) as e:
             print(f"part2: {e}", file=sys.stderr)
             return 2
         if backend.name == "cpu":
             backend.lifter = lifter
         reuse = _given_tracks(args.tracks, ids)  # before the ingest: a bad file or an unknown id costs nothing
+        _clear_mesh(args.out)
         recs = frames.ingest(args.input, args.out / "frames", args.fps)
         _progress("frames", len(recs), len(recs))
         print(f"{len(recs)} frames -> {args.out / 'frames'}")
@@ -335,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.mode == "single":
             _progress("pose", 0, len(recs))
             with output_steps.gpu_locked(backend):
-                doc = backend.estimate(args.out / "frames", args.out / "body3d.json")
+                doc = backend.estimate(args.out / "frames", args.out / "body3d.json", **mesh)
             if rungs:
                 output_steps.refine(rungs, doc, args.out / "frames", args.out, backend, model2d=refine.load_2d(rungs))
                 print(f"refined by {', '.join(rungs)} (unrefined kept as {args.out / 'body3d-unrefined.json'})")
@@ -344,6 +453,8 @@ def main(argv: list[str] | None = None) -> int:
             pose_path, cam_path = canonical.write(args.out / "body3d.json", args.out, smooth=args.smooth,
                                                   extras=output_steps.pose_extras(meta, args.mirrored, backend, refine=rungs))
             print(f"{pose_path} + {cam_path}")
+            if not _write_mesh(mesh, args.out):
+                return 1
             _progress("write", 1, 1)
             return 0
         if args.mode == "multi":
@@ -357,17 +468,22 @@ def main(argv: list[str] | None = None) -> int:
             boxes = _pick_boxes(doc, ids)
             _progress("pose", 0, len(recs))
             with output_steps.gpu_locked(backend):  # after tracking: a SAM tracker took and dropped the same lock itself
-                b3d = backend.estimate(args.out / "frames", args.out / "body3d.json", boxes=boxes)
+                b3d = backend.estimate(args.out / "frames", args.out / "body3d.json", boxes=boxes, **mesh)
             _progress("write", 0, 1)
             res = multi3d.write_pose_streams(b3d, args.out, smooth=args.smooth,
                                              extras=output_steps.pose_extras(meta, args.mirrored, backend, doc.get("provenance")))
             print(f"pose3d for people {res['people']} -> {args.out / 'pose3d.json'} "
                   f"(+ pose3d_person_<id>.json each)")
+            if not _write_mesh(mesh, args.out):
+                return 1
             _progress("write", 1, 1)
             return 0
     except ContractError as e:
         print(f"part2: output breaks the contract at {e.path}: {e.msg}", file=sys.stderr)
         return 1
+    except backends.NoPersonFound as e:  # before RuntimeError, which it is: nobody found is exit 4, not a failure
+        print(f"part2: {e}", file=sys.stderr)
+        return e.exit_code
     except (OSError, ValueError, RuntimeError) as e:
         print(f"part2: {e}", file=sys.stderr)
         return 1

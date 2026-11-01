@@ -24,7 +24,7 @@ import numpy as np
 
 from part2 import frames as frames_mod
 from part2 import lifters, provenance
-from part2.backends import REFUSAL, BackendUnavailable
+from part2.backends import REFUSAL, BackendUnavailable, NoPersonFound
 from part2.body3d import choose_subject, project
 from part2.hashing import sha256_file
 from part2.joints import CANONICAL
@@ -168,7 +168,7 @@ def detect_2d(frames_dir, recs, model2d, boxes=None) -> dict:
                                "kp2d": np.asarray(k, float).reshape(17, 2), "conf": np.asarray(s, float).reshape(17)})
         out.append({"frame": r["frame"], "t_ms": r["t_ms"], "people": people})
     if size is None or not any(f["people"] for f in out):
-        raise RuntimeError(f"no person found in {len(recs)} frames")
+        raise NoPersonFound(f"no person found in {len(recs)} frames")
     return {"image_size": size, "K": long_side_K(*size), "frames": out}
 
 
@@ -278,7 +278,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m part2.backends.cpu_rtm")
     ap.add_argument("frames_dir", type=Path)
     ap.add_argument("out_dir", type=Path)
-    ap.add_argument("--lifters", default=",".join(lifters.names()))
+    ap.add_argument("--lifters", default=",".join(lifters.names()),
+                    help="comma-separated lifters to run, from the registry (default: %(default)s)")
     ap.add_argument("--reuse-2d", action="store_true", help="read OUT/rtmpose2d.json instead of running RTMPose")
     a = ap.parse_args(argv)
     names = [lifters.resolve(n) for n in a.lifters.split(",")]

@@ -13,13 +13,19 @@ from pathlib import Path
 
 from part2 import body3d
 from part2 import frames as frames_mod
-from part2.backends import REFUSAL, BackendUnavailable
+from part2.backends import REFUSAL, BackendUnavailable, NoPersonFound
 
 STATE = Path.home() / ".local" / "state" / "simon-part-2"
 PROFILE = STATE / "venvs" / "gpu-cu128" / "part2-profile.json"
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "input" / "single" / "frames"
 OUT_OF_MEMORY = "the GPU ran out of memory; free memory or use --backend cpu"
 WEIGHT_FILES = ("model.ckpt", "assets/mhr_model.pt")
+
+
+def mesh_kwargs(mesh) -> dict:
+    """{} without a mesh collector, else {"mesh": mesh}: body3d.estimate is then called exactly as it was before
+    `part2 run --mesh` existed (TICKET-048). Shared by this backend and cpu_sam3db, which both run SAM 3D Body."""
+    return {} if mesh is None else {"mesh": mesh}
 
 
 def _torch():
@@ -33,6 +39,7 @@ def _torch():
 
 class Backend:
     name = "gpu"
+    needs_cuda = True  # install_problem also asks torch for a CUDA device; cpu_sam3db.Backend turns it off
 
     def __init__(self, device="cuda", profile_path=None):
         self.device = device
@@ -54,21 +61,30 @@ class Backend:
                 "detector_path": str(Path(vitdet).parent) if vitdet else "",
                 "fov_path": prof.get("moge_path") or ""}
 
-    def available(self):
-        """(ok, reason): profile, torch, CUDA, source and weight files checked; no model loaded."""
+    def install_problem(self):
+        """(torch, None) when the profile, torch, the SAM 3D Body source and both weight files are in place, else
+        (None, the reason). With `needs_cuda`, torch must also see a CUDA device (checked right after torch, so the
+        reason is the first problem in that order). The one list of checks the gpu and cpu-sam3db backends share."""
         if not self.profile():
-            return False, f"no gpu-cu128 profile at {self.profile_path} (make setup-gpu)"
+            return None, f"no gpu-cu128 profile at {self.profile_path} (make setup-gpu)"
         torch = _torch()
         if torch is None:
-            return False, "torch is not installed in this interpreter; run part2 with the gpu-cu128 venv python"
-        if not torch.cuda.is_available():
-            return False, "torch sees no CUDA device"
+            return None, "torch is not installed in this interpreter; run part2 with the gpu-cu128 venv python"
+        if self.needs_cuda and not torch.cuda.is_available():
+            return None, "torch sees no CUDA device"
         p = self.paths()
         if not (Path(p["repo"]) / "sam_3d_body").is_dir():
-            return False, f"no SAM 3D Body source at {p['repo']}"
+            return None, f"no SAM 3D Body source at {p['repo']}"
         missing = [f for f in WEIGHT_FILES if not (Path(p["ckpt"]) / f).is_file()]
         if missing:
-            return False, f"no {missing[0]} in {p['ckpt']}"
+            return None, f"no {missing[0]} in {p['ckpt']}"
+        return torch, None
+
+    def available(self):
+        """(ok, reason): profile, torch, CUDA, source and weight files checked; no model loaded."""
+        torch, problem = self.install_problem()
+        if torch is None:
+            return False, problem
         major, minor = torch.cuda.get_device_capability(0)
         return True, f"{torch.cuda.get_device_name(0)}, capability {major}.{minor}, torch {torch.__version__}"
 
@@ -91,16 +107,17 @@ class Backend:
                 raise RuntimeError(OUT_OF_MEMORY) from None
         return self._estimator
 
-    def estimate(self, frames_dir, out_path, boxes=None) -> dict:
-        """Write body3d.json (body3d.py shape plus provenance) for every frame in frames_dir and return it."""
+    def estimate(self, frames_dir, out_path, boxes=None, mesh=None) -> dict:
+        """Write body3d.json (body3d.py shape plus provenance) for every frame in frames_dir and return it.
+        mesh: a part2.mesh3d.Collector that body3d.estimate fills (`part2 run --mesh`); None leaves the call as it was."""
         estimator = self.load()
         try:
-            doc = body3d.estimate(frames_dir, out_path, boxes=boxes, estimator=estimator)
+            doc = body3d.estimate(frames_dir, out_path, boxes=boxes, estimator=estimator, **mesh_kwargs(mesh))
         except _torch().cuda.OutOfMemoryError:
             Path(out_path).unlink(missing_ok=True)  # never leave a file that looks like this run's output
             raise RuntimeError(OUT_OF_MEMORY) from None
         if not any(f["people"] for f in doc["frames"]):
-            raise RuntimeError(f"no person found in {len(doc['frames'])} frames")
+            raise NoPersonFound(f"no person found in {len(doc['frames'])} frames")
         doc["provenance"] = self.provenance()
         Path(out_path).write_text(json.dumps(doc))
         return doc

@@ -330,7 +330,8 @@ def test_an_unreadable_or_odd_manifest_is_named_and_exits_2(tmp_path, monkeypatc
 
 
 def make_n(*args, env=None):
-    base = {k: v for k, v in os.environ.items() if k != check.SCORED_ENV}
+    # MAKELEVEL and MAKEFLAGS from a parent make (`make test`) would add make[1] directory lines to the output
+    base = {k: v for k, v in os.environ.items() if k not in (check.SCORED_ENV, "MAKELEVEL", "MAKEFLAGS", "MFLAGS")}
     r = subprocess.run(["make", "-n", "check-feet", *args], cwd=ROOT, capture_output=True, text=True,
                        env={**base, **(env or {})})
     assert r.returncode == 0, r.stderr

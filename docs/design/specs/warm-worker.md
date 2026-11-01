@@ -1,13 +1,13 @@
 # Spec: warm worker (`part2 serve-worker`, `part2 run --worker`)
 
-> Copy of `docs/specs/warm-worker.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/warm-worker.md` from the maintainers' working repo at `f43deee`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-30 (review fixes 2026-10-31; second review batch F1, 2026-10-31; third batch G1, 2026-10-31; fourth
 batch H, the wait for a turn, 2026-10-31)
 Request Type: feature-mod
 Risk Level: low
-Tickets: TICKET-042.
+Tickets: TICKET-042, TICKET-047 (exit 4 through the worker).
 Requirements source: performance request 2026-10-30 (Part 7 jobs spend about 35 s per job loading models).
 
 ## Overview
@@ -27,7 +27,9 @@ SAM 3.1 tracker runs in a child process each time.
 ## Acceptance criteria
 - AC-W01: the worker serves the CLI's argv, so the files written are those of `part2 <argv>`. The job runs in the
   client's working directory.
-- AC-W02: stdout and stderr stream to the client as written; the final message carries the exit code.
+- AC-W02: stdout and stderr stream to the client as written; the final message carries the exit code. Any integer
+  the CLI returns travels as it is, so exit 4 (no person found, `CONTRACT.md` "Exit codes") reaches the client as 4
+  with the line `part2: no person found in <n> frames` or `... to track` (TICKET-047).
 - AC-W03: no worker at the path means the client runs in-process. That is any `OSError` on connect: a missing
   socket, connection refused, permission denied, a parent that is not a directory, a path too long for a Unix
   socket. A connection lost mid-request, including a line cut short or a reset, is exit 1 and is never re-run
@@ -128,6 +130,7 @@ Where the OS has no `SO_PEERCRED` the check is skipped. `serve` creates the sock
 | argv carries `--worker` or an abbreviation | exit 2 | `part2: argv must not carry --worker ...` | AC-W11 |
 | request not well formed | exit 2, job not run | `part2: argv must be a list of strings` (or the matching reason) | AC-W07 |
 | job raises | exit 1; traceback on the worker's stderr | `part2: RuntimeError: boom` (one line to the client) | AC-W04 |
+| job finds no person | the CLI's own exit 4 reaches the client; no traceback, the worker keeps serving | `part2: no person found in <n> frames` or `part2: no person found to track` | AC-W02 |
 | job argparse error | the exit code argparse chose (2) | argparse's own text, streamed | AC-W02 |
 | client gone mid-job | job ends at its next write; logged on the worker's stderr; next request served | none to the client | AC-W07 |
 | `serve` path exists and is not a socket | `WorkerError`, nothing touched | `PATH exists and is not a socket; not replacing it` | AC-W09 |
@@ -238,7 +241,7 @@ AC-W06), numbers in the commit message.
 | AC | Tests in tests/test_worker.py |
 |---|---|
 | AC-W01 | `test_forward_streams_output_and_exit_code`, `test_job_runs_in_the_request_cwd_and_the_worker_cwd_is_restored` |
-| AC-W02 | `test_forward_streams_output_and_exit_code` |
+| AC-W02 | `test_forward_streams_output_and_exit_code`; in tests/test_worker_cli_integration.py `test_no_person_found_is_exit_4_through_the_worker_with_its_unchanged_line` (track, run multi, run single) |
 | AC-W03 | `test_no_worker_returns_none` and `test_cli_without_a_worker_says_so_and_runs_in_process` (each for a missing socket, connection refused, permission denied, a parent that is a file, a path too long), `test_cli_with_a_worker_returns_its_exit_code`, `test_connection_lost_after_a_stream_line_is_exit_1_and_not_none`, `test_connection_lost_is_not_rerun_in_process_by_the_cli`, `test_a_line_cut_short_is_exit_1_not_a_traceback`, `test_a_reset_connection_is_exit_1_not_a_traceback` |
 | AC-W04 | `test_the_second_job_starts_only_after_the_first_has_finished`, `test_exception_in_job_is_exit_1_not_a_dead_worker`, `test_job_traceback_is_printed_on_the_workers_stderr` |
 | AC-W05 | `test_refuses_other_commands`, `test_only_part2_environment_crosses_the_socket` |

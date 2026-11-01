@@ -3,12 +3,14 @@
 Spec: docs/specs/check-2.md ("Scored outputs and stamps", AC-K08, error "backend gpu without CUDA"). ADR-0006,
 ADR-0003 (tracker order), ADR-0002 (backends).
 
-    python -m part2.outputs [--backend gpu|cpu] [--tracker NAME] [--lifter NAME] [--modes a,b] [--scored DIR]
-                            [--refine RUNGS]
+    python -m part2.outputs [--backend gpu|cpu|cpu-sam3db] [--tracker NAME] [--lifter NAME] [--modes a,b]
+                            [--scored DIR] [--refine RUNGS]
 
 MODES lists every scored mode: its dir name, the backend that makes it, its frames, how it runs and which
 tracker it uses. `--backend gpu` (default) runs the gpu modes (`single`, `class` by the scored tracker order,
-`class-local-open` always by local-open); `--backend cpu` runs `cpu-single`. A new mode is one more Mode entry
+`class-local-open` always by local-open); `--backend cpu` runs `cpu-single`; `--backend cpu-sam3db` runs
+`cpu-sam3db-single` (TICKET-044 B1: SAM 3D Body on the CPU device, scored by `make check-2-cpu CPU_MODE=...` only,
+run with CUDA_VISIBLE_DEVICES=). A new mode is one more Mode entry
 (TICKET-037 adds `coco-single` with its own runner). Each mode runs in a scratch dir under out/, then its output
 files replace scored/<mode>/ and stamp.json is written last, with the hashes taken before inference started.
 GPU inference runs under the host GPU lock (`output_steps.gpu_locked`). The commit and dirty state of the
@@ -17,8 +19,8 @@ pose3d.json and tracks.json provenance carries that value (review residuals R14,
 the backend cannot run here, 2 for an unknown name.
 
 `--refine kp2d-fit[,...]` (one-person ladder, ADR-0004) runs those part2.refine rungs on each one-person mode's
-body3d.json before the canonical frame (single, coco-single, cpu-single; any other mode with it exits 2); the
-stamp names the rungs and adds their code and models, pose3d.json's provenance.refine lists them.
+body3d.json before the canonical frame (single, coco-single, cpu-single, cpu-sam3db-single; any other mode with it
+exits 2); the stamp names the rungs and adds their code and models, pose3d.json's provenance.refine lists them.
 """
 import argparse
 import json
@@ -146,6 +148,10 @@ MODES = [
     Mode("class", "gpu", "fixtures/input/class/frames", run_multi, tracker="scored", modules=MULTI),
     Mode("class-local-open", "gpu", "fixtures/input/class/frames", run_multi, tracker="local-open", modules=MULTI),
     Mode("cpu-single", "cpu", "fixtures/input/single/frames", run_single, modules=STEPS, one_person=True),
+    # TICKET-044 B1 (ADR-0002 amendment 2026-10-31): the CPU variant on the bar fixture, no rung by default (as
+    # cpu-single); committed under fixtures/output/scored/ (f76f19d) but never part of make check-2's gated blocks.
+    Mode("cpu-sam3db-single", "cpu-sam3db", "fixtures/input/single/frames", run_single, modules=STEPS,
+         one_person=True),
     Mode("coco-single", "gpu", "fixtures/input/coco/images", run_coco, modules=("part2.coco_set", *STEPS),
          one_person=True, refine=CHOSEN_RUNGS),
 ]
@@ -235,16 +241,19 @@ def backend_for(name: str, lifter: str | None):
         ok, why = b.available(lifter)
         return (b, None) if ok else (None, f"outputs: {backends.REFUSAL['cpu']} ({why})")
     ok, why = b.available()
-    return (b, None) if ok else (None, f"{NO_CUDA}\noutputs: {why}")
+    head = NO_CUDA if name == "gpu" else f"outputs: {backends.REFUSAL[name]}"
+    return (b, None) if ok else (None, f"{head}\noutputs: {why}")
 
 
 def main(argv=None, root: Path = ROOT) -> int:
     from part2 import backends, lifters, provenance, refine, trackers
 
     ap = argparse.ArgumentParser(prog="python -m part2.outputs", description="Regenerate the scored outputs.")
-    ap.add_argument("--backend", default="gpu", help="gpu (single, class, class-local-open) or cpu (cpu-single)")
+    ap.add_argument("--backend", default="gpu", help="gpu (single, class, class-local-open), cpu (cpu-single, RTMPose-x, "
+                    "3D approximate) or cpu-sam3db (cpu-sam3db-single, SAM 3D Body on the CPU, meets the 3D bar)")
     ap.add_argument("--tracker", help="class mode only: a registry name instead of the scored order")
-    ap.add_argument("--lifter", help="cpu backend: fixed-bones or motionbert (default: PART2_LIFTER, else DEFAULT)")
+    ap.add_argument("--lifter", help="cpu backend: bones-prior, fixed-bones or motionbert (default: PART2_LIFTER, else "
+                    "bones-prior)")
     ap.add_argument("--modes", help="comma-separated subset of the backend's modes")
     ap.add_argument("--scored", help=f"output root (default: {SCORED_ENV}, else {DEFAULT_SCORED})")
     ap.add_argument("--refine", default="", help="one-person modes: comma-separated ladder rungs (part2.refine); "

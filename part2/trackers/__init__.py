@@ -20,6 +20,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from part2 import provenance
+from part2.backends import NoPersonFound
 from part2.schema import write_json
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,7 +61,11 @@ class CredentialMissing(TrackerError):
 
 
 class CredentialRefused(TrackerError):
+    """The tracker's credential was refused (HTTP 401 or 403). `tracker` is its name, so a caller tells which one
+    refused by the attribute, not by the text of the message."""
+
     def __init__(self, tracker: str):
+        self.tracker = tracker
         super().__init__(f"tracker {tracker}: the credential was refused")
 
 
@@ -74,7 +79,11 @@ class GpuBusy(TrackerError):
         super().__init__("another GPU job is running")
 
 
-class NoPerson(TrackerError):
+class NoPerson(TrackerError, NoPersonFound):
+    """The tracker that ran found nobody (local-open, bytetrack, local-sam31 and api-sam31 all raise it). Both bases
+    are RuntimeError, so `except TrackerError` still catches it. As a NoPersonFound it ends `part2 run` and
+    `part2 track` with exit 4 for every tracker, and the unchanged `part2: no person found to track` line (TICKET-047)."""
+
     def __init__(self):
         super().__init__("no person found to track")
 

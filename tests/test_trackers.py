@@ -1,4 +1,5 @@
-"""Tracker registry (docs/specs/tracker-registry.md): AC-R01 to AC-R09 with fake models and a fake key dir."""
+"""Tracker registry (docs/specs/tracker-registry.md): AC-R01 to AC-R07 with fake models and a fake key dir, and the
+fixtures and helpers of tests/test_trackers_api.py (api-sam31 shape, AC-R08 order and fallback, AC-R09 spend caps)."""
 import itertools
 import json
 import logging
@@ -12,9 +13,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from part2 import keys, meta_api, track, trackers
+from part2 import backends, keys, meta_api, track, trackers
 from part2.schema import validate_tracks
-from part2.trackers import api_sam31, bytetrack, local_open, local_sam31
+from part2.trackers import bytetrack, local_open, local_sam31
 from part2.trackers.local_open import box_iou
 
 FAKE = "FAKE-KEY-DO-NOT-PRINT-123"
@@ -212,8 +213,15 @@ def test_api_refused_credential(env, monkeypatch, tmp_path):
 
     monkeypatch.setattr(track, "load_sam31_tracker", lambda: refused)
     d, _ = make_frames(tmp_path)
-    with pytest.raises(trackers.CredentialRefused, match=r"^tracker api-sam31: the credential was refused$"):
+    with pytest.raises(trackers.CredentialRefused, match=r"^tracker api-sam31: the credential was refused$") as e:
         track.track(d, tmp_path / "t.json", tracker="api-sam31")
+    assert e.value.tracker == "api-sam31"  # callers tell which tracker refused by this, not by the wording
+
+
+def test_a_credential_refusal_carries_the_tracker_name_and_keeps_its_message():
+    e = trackers.CredentialRefused("local-sam31")
+    assert e.tracker == "local-sam31" and str(e) == "tracker local-sam31: the credential was refused"
+    assert isinstance(e, trackers.TrackerError)
 
 
 def test_hf_token_is_handed_to_the_client_and_never_shown(env, monkeypatch, tmp_path, capfd, caplog):
@@ -267,19 +275,6 @@ def check_shape(doc, recs):
                 order.append(p["id"])
     assert order == list(range(len(order)))
     assert {"tracker", "models", "mask_source", "detector", "part2_commit", "created_utc"} <= set(doc["provenance"])
-
-
-def test_api_sam31_shape_and_provenance(env, monkeypatch, tmp_path):
-    put_key(env.keys, "MODEL_API_KEY")
-    monkeypatch.setattr(track, "load_sam31_tracker", lambda: api_client([]))
-    d, recs = make_frames(tmp_path, start=10)
-    doc = track.track(d, tmp_path / "t.json", tracker="api-sam31")
-    check_shape(doc, recs)
-    assert [p["id"] for f in doc["frames"] for p in f["people"]] == [0, 1, 0, 1]  # 5 -> 0, 2 -> 1
-    prov = doc["provenance"]
-    assert prov["tracker"] == "api-sam31" and prov["models"][0]["name"] == "sam-3.1"
-    assert prov["mask_source"] == "sam" and prov["spend_usd"] == round(meta_api.sam_video_cost(4), 4)
-    assert json.loads((tmp_path / "t.json").read_text()) == doc
 
 
 def two_people(n, enter_b=0, gone_a=()):
@@ -365,6 +360,14 @@ def test_local_open_one_frame_ids_by_area(env, tmp_path):
     assert [p["id"] for p in people] == [0, 1] and people[0]["bbox"] == [10.0, 2.0, 20.0, 20.0]
 
 
+def test_no_person_is_the_no_person_found_of_the_backends_and_still_a_tracker_error():
+    """TICKET-047: the CLI maps backends.NoPersonFound to exit 4, so the tracker's error must be one; the old
+    `except TrackerError` and `except NoPerson` clauses keep catching it."""
+    e = trackers.NoPerson()
+    assert isinstance(e, backends.NoPersonFound) and isinstance(e, trackers.TrackerError) and isinstance(e, RuntimeError)
+    assert e.exit_code == 4 and str(e) == "no person found to track"
+
+
 def test_local_open_no_person_anywhere(env, tmp_path):
     d, _ = make_frames(tmp_path, n=12)
     t = local_open.LocalOpen(**local_open_fakes({i: {} for i in range(12)}))
@@ -410,6 +413,19 @@ def test_bytetrack_shape_box_masks_and_low_score_rescue(env, tmp_path):
     assert prov["params"]["track_buffer_frames"] == 30 and prov["params"]["match_thresh"] == 0.8
     p = doc["frames"][0]["people"][0]
     assert sum(track.rle_counts(p["mask_rle"])[1::2]) == 10 * 18  # filled box
+
+
+@pytest.mark.parametrize("dets", [
+    {i: np.zeros((0, 5)) for i in range(12)},                       # the detector finds no one in any frame
+    {i: np.array([[2 + i, 2, 12 + i, 20, 0.3]]) for i in range(12)},  # a person only below the new-track score
+], ids=["no detection", "only low scores"])
+def test_bytetrack_with_nobody_in_any_frame_raises_no_person(env, tmp_path, dets):
+    """AC-R12 (TICKET-047): ByteTrack raises NoPerson when no frame holds a tracked person; no tracks.json is written."""
+    d, _ = make_frames(tmp_path, n=12)
+    with pytest.raises(trackers.NoPerson, match="^no person found to track$") as e:
+        _byte(dets).track(d, tmp_path / "t.json")
+    assert isinstance(e.value, backends.NoPersonFound) and e.value.exit_code == 4
+    assert not (tmp_path / "t.json").exists()
 
 
 class _Img:
@@ -656,130 +672,6 @@ def test_file_without_provenance_still_validates(env, monkeypatch, tmp_path):
     doc = track.track(d, tmp_path / "t.json", tracker="api-sam31")
     doc.pop("provenance")
     validate_tracks(doc)
-
-
-# --- AC-R08: order and fallback ---------------------------------------------------------------------
-
-def test_scored_order_without_key_falls_back_to_local_open(env, monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setitem(trackers._REGISTRY, "local-open", fake_tracker("local-open", calls))
-    monkeypatch.setattr(track, "load_sam31_tracker", lambda: _no_network)
-    d, _ = make_frames(tmp_path)
-    prov = track.track(d, tmp_path / "t.json", purpose="scored")["provenance"]
-    assert (prov["tracker"], prov["fallback_from"], prov["fallback_reason"]) == ("local-open", "api-sam31", "no_key")
-    assert trackers.describe_fallback(prov) == "no key for SAM 3.1; tracked with local-open"
-
-
-def test_bulk_order_skips_a_step_whose_packages_are_missing(env, monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setattr(trackers, "parity_passed", lambda: True)
-    monkeypatch.setitem(trackers._REGISTRY, "local-sam31",
-                        fake_tracker("local-sam31", calls, ok=(False, "missing sam3, torch")))
-    monkeypatch.setitem(trackers._REGISTRY, "api-sam31", fake_tracker("api-sam31", calls))
-    t, skipped = trackers.resolve("bulk")
-    assert (t.name, skipped) == ("api-sam31", [("local-sam31", "no_env")])
-    with pytest.raises(Exception):
-        trackers.select("local-sam31")
-    assert trackers.describe_fallback({"tracker": "api-sam31", "fallback_reason": "no_env"}) == \
-        "local SAM 3.1 is not installed here; tracked with api-sam31"
-
-
-def test_exhausted_budget_falls_back_and_a_named_tracker_exits(env, monkeypatch, tmp_path):
-    put_key(env.keys, "MODEL_API_KEY")
-    ledger_line(os.environ["META_SPEND_LEDGER"], 24.995)
-    calls = []
-    monkeypatch.setitem(trackers._REGISTRY, "local-open", fake_tracker("local-open", calls))
-    monkeypatch.setattr(track, "load_sam31_tracker", lambda: _no_network)
-    d, _ = make_frames(tmp_path)
-    prov = track.track(d, tmp_path / "t.json", purpose="scored")["provenance"]
-    assert (prov["tracker"], prov["fallback_reason"]) == ("local-open", "budget")
-    with pytest.raises(trackers.BudgetReached) as e:
-        track.track(d, tmp_path / "u.json", tracker="api-sam31")
-    assert str(e.value) == (f"tracker api-sam31: the spend cap of $25.00 is reached "
-                            f"(ledger {os.environ['META_SPEND_LEDGER']})")
-
-
-def test_bulk_without_parity_skips_local_sam31(env, monkeypatch, tmp_path):
-    put_key(env.keys, "MODEL_API_KEY")
-    put_key(env.keys, "HF_TOKEN")
-    seen = []
-    monkeypatch.setattr(track, "load_sam31_tracker", lambda: api_client(seen))
-    d, _ = make_frames(tmp_path)
-    prov = track.track(d, tmp_path / "t.json")["provenance"]
-    assert (prov["tracker"], prov["fallback_from"], prov["fallback_reason"]) == ("api-sam31", "local-sam31",
-                                                                                  "no_parity")
-
-
-def test_bulk_with_a_committed_parity_pass_runs_local_sam31(env, monkeypatch, tmp_path):
-    put_key(env.keys, "HF_TOKEN")
-    record = tmp_path / "sam31.json"
-    record.write_text(json.dumps({"pass": True}))
-    monkeypatch.setattr(trackers, "PARITY_FILE", record)
-    calls = []
-    monkeypatch.setitem(trackers._REGISTRY, "local-sam31", fake_tracker("local-sam31", calls))
-    t, skipped = trackers.resolve("bulk")
-    assert t.name == "local-sam31" and skipped == []
-    record.write_text(json.dumps({"pass": False}))
-    assert not trackers.parity_passed()
-
-
-def test_api_error_with_a_present_key_fails_the_run(env, monkeypatch, tmp_path):
-    put_key(env.keys, "MODEL_API_KEY")
-    calls = []
-    monkeypatch.setitem(trackers._REGISTRY, "local-open", fake_tracker("local-open", calls))
-
-    def down(frames_dir, recs, budget=None):
-        raise RuntimeError("Meta API POST /responses: HTTP 503: unavailable")
-
-    monkeypatch.setattr(track, "load_sam31_tracker", lambda: down)
-    d, _ = make_frames(tmp_path)
-    with pytest.raises(trackers.TrackerError, match="HTTP 503"):
-        track.track(d, tmp_path / "t.json", purpose="scored")
-    assert calls == []
-
-
-def test_last_step_unavailable_fails_with_its_reason(env, monkeypatch, tmp_path):
-    monkeypatch.setitem(trackers._REGISTRY, "local-open",
-                        fake_tracker("local-open", [], ok=(False, "missing sam2")))
-    with pytest.raises(trackers.TrackerError, match="tracker local-open needs sam2"):
-        trackers.resolve("scored")
-
-
-# --- AC-R09: spend caps -----------------------------------------------------------------------------
-
-def test_staging_cap_moves_the_job_to_local_open(env, monkeypatch, tmp_path):
-    put_key(env.keys, "MODEL_API_KEY")
-    staging = tmp_path / "meta_spend_staging.jsonl"
-    ledger_line(staging, 9.80)
-    monkeypatch.setenv("META_SPEND_LEDGER", str(staging))
-    monkeypatch.setenv("META_BUDGET_USD", "10")
-    monkeypatch.setenv("PART2_JOB_LEDGER", str(tmp_path / "job" / "spend.jsonl"))
-    monkeypatch.setitem(trackers._REGISTRY, "local-open", fake_tracker("local-open", []))
-    t, skipped = trackers.resolve("bulk", n_frames=1500)  # $0.30
-    assert t.name == "local-open" and ("api-sam31", "budget") in skipped
-    d, _ = make_frames(tmp_path)
-    doc = t.track(d, tmp_path / "t.json", skipped=[s for s in skipped if s[0] == "api-sam31"])
-    assert trackers.describe_fallback(doc["provenance"]) == "SAM 3.1 spend cap reached; tracked with local-open"
-
-
-def test_job_cap_stops_api_calls(env, monkeypatch, tmp_path):
-    put_key(env.keys, "MODEL_API_KEY")
-    job = tmp_path / "job" / "spend.jsonl"
-    ledger_line(job, 0.45)
-    monkeypatch.setenv("PART2_JOB_LEDGER", str(job))
-    assert api_sam31.ApiSam31().available(500) == (False, "budget")  # $0.10 more passes $0.50
-    assert api_sam31.ApiSam31().available(100)[0]
-    with pytest.raises(meta_api.BudgetExceeded):
-        list(meta_api.respond("sam-3.1", [], est_cost_usd=0.10, budget=api_sam31.budgets()))
-
-
-def test_budgets_record_into_every_ledger(env, monkeypatch, tmp_path):
-    job = tmp_path / "job.jsonl"
-    monkeypatch.setenv("PART2_JOB_LEDGER", str(job))
-    guard = api_sam31.budgets()
-    assert [b.limit for b in guard.budgets] == [25.0, 0.5]
-    guard.record(0.02, "t", "sam-3.1")
-    assert guard.spent() == pytest.approx(0.02) and guard.budgets[1].spent() == pytest.approx(0.02)
 
 
 # --- rule-based and helpers -------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Spec: Part 2 integration contract, `contract` and `doctor`, writer rules
 
-> Copy of `docs/specs/integration-contract.md` from the maintainers' working repo at `e846ede`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
+> Copy of `docs/specs/integration-contract.md` from the maintainers' working repo at `f43deee`, published here because the working specs and ADRs stay local. Paths under `STATUS.md`, `progress/`, `tasks/`, `goals/`, `qa/`, `staging/`, `comms/` and `scripts/` name maintainer records and tools that are not in this repository. `<key dir>` is the key directory of `part2/keys.py` (`PART2_KEY_DIR`).
 
 Status: Accepted
 Date: 2026-10-28
@@ -9,7 +9,8 @@ uc-integration-contract; stakeholder-proxy decisions 6 and 9 (2026-10-28).
 Request Type: feature-mod
 Risk Level: medium
 Tickets: TICKET-006 (contract), TICKET-007 (doctor), TICKET-008 (writer rules), TICKET-010 (publish and threads),
-TICKET-043 (foot points in `extra_joints`, Part 5 request IECB iem-20261031T055936Z-simon-part-5-a82c).
+TICKET-043 (foot points in `extra_joints`, Part 5 request IECB iem-20261031T055936Z-simon-part-5-a82c),
+TICKET-048 (the fifth schema, `mesh3d`; spec `mesh3d.md`).
 ADRs: ADR-0001, ADR-0006, ADR-0007. Master spec: `part2-images-to-3d.md`.
 Base: PR #47 (branch `contract/part3-pose3d`, commits e049c30 and 29e3e8b): `CONTRACT.md`,
 `contracts/pose3d.schema.json` (Part 3's consumer schema copied byte for byte),
@@ -51,6 +52,7 @@ stitching day finds format problems before runtime.
 | `contracts/tracks.schema.json` | `tracks` | `part2.tracks/2026-10-28` | Part 2 |
 | `contracts/camera.schema.json` | `camera` | `part2.camera/2026-10-28` | Part 2 |
 | `contracts/frames.schema.json` | `frames` | `part2.frames/2026-10-28` | Part 2 |
+| `contracts/mesh3d.schema.json` | `mesh3d` | `part2.mesh3d/2026-10-31` | Part 2, optional (`part2 run --mesh`, TICKET-048): the header of `mesh3d.json`; its `mesh3d.bin` is checked by `part2 doctor` |
 | `contracts/consumers/part3-pose3d.schema.json` + `.source.json` | Part 3's consumer schema, byte copy | Part 3 main commit in the sidecar | moved from PR #47's `contracts/pose3d.schema.json` |
 | `contracts/compatibility.json` | the table | n/a | Part 2 |
 | `CONTRACT.md` | the page: shapes, frame, units, joints, version policy, table, how to check, how to ask | n/a | Part 2 |
@@ -131,7 +133,7 @@ their names and the foot points go in a new optional per-person object beside th
 | `part2/doctor.py` | `doctor` |
 | `part2/provenance.py` | build and check `provenance` |
 | `part2/schema.py`, `part2/frames.py`, `part2/canonical.py`, `part2/multi3d.py`, `part2/cli.py` | modified for the writer rules |
-| `contracts/*.schema.json`, `contracts/compatibility.json`, `contracts/consumers/*`, `CONTRACT.md` | data |
+| `contracts/*.schema.json` (five since TICKET-048), `contracts/compatibility.json`, `contracts/consumers/*`, `CONTRACT.md` | data |
 | `Makefile` | `check-2-contract`; `contract-sync` and `contract-check` retargeted |
 | `tests/test_contract.py`, `tests/test_doctor.py`, `tests/test_provenance.py`, `tests/test_schema.py` | tests |
 | `part2/foot_check.py` | TICKET-043: the measured, ungated foot-point check (`python -m part2.foot_check`, `make check-feet`): coverage and segment-length consistency of `extra_joints`, reported apart from the README gate |
@@ -141,14 +143,20 @@ their names and the foot points go in a new optional per-person object beside th
 
 ## Acceptance Criteria
 ### AC-C01: Schemas
-Each of the four schemas is draft 2020-12 with `$id`, `title` and `x-simon-version`; every committed
-`fixtures/output/**` file of that kind validates; a mutated copy per rule (missing field, wrong type,
-NaN) fails with the path named.
+Each of the five schemas (`pose3d`, `tracks`, `camera`, `frames`, and `mesh3d` of TICKET-048) is draft 2020-12 with
+`$id`, `title` and `x-simon-version`; every committed `fixtures/output/**` file of the first four kinds validates (a
+`mesh3d.json` is never committed, `mesh3d.md` AC-M15); a mutated copy per rule (missing field, wrong type, NaN) fails
+with the path named.
 ### AC-C02: Part 3 consumer copy
 Every committed `pose3d*.json` passes `validate_part3` against `contracts/consumers/part3-pose3d.schema.json`.
 ### AC-C03: `contract` command
-`python -m part2 contract` prints four schema rows and every table row; `--json` parses and holds the
-same rows as `contracts/compatibility.json`; `--schema pose3d` prints the file byte for byte.
+`python -m part2 contract` prints five schema rows (`mesh3d` last, `part2.mesh3d/2026-10-31`) and every table row;
+`--json` parses and holds the same rows as `contracts/compatibility.json`; `--schema pose3d` (or any of the five)
+prints the file byte for byte. The contract page and `GET api/contract` list the same five, and the staging `contract`
+check downloads every `contracts/*.schema.json` it finds, so the fifth is covered without a literal count there.
+`contracts/compatibility.json` has no `mesh3d` row: its rows name `pose3d.json` and `tracks.json` and there is none
+for `camera.json` or `frames.json`, so a row for one optional file would break the pattern; `doctor` says that no
+consumer reads `mesh3d.json` (`mesh3d.md` AC-M07).
 ### AC-C04: `doctor` verdicts
 For each committed output and for crafted files (several people, no `t_ms`, NaN `conf`, a skeleton.json,
 a non-JSON file) `doctor` prints the kind, the version, one verdict per consumer and exits 0, 1 or 2 as
@@ -233,7 +241,7 @@ the flag, then `PART2_SCORED_DIR`, then `fixtures/output/scored`. Files named wi
 | File is not JSON | doctor exit 2 | `<file>: not JSON (line <n>)` | AC-C04 |
 | Unknown kind | doctor exit 2 | `<file>: not a Part 2 file (no frames list)` | AC-C04 |
 | Unknown `--for` | exit 2 | `doctor: unknown consumer 'x'; choose part3, part5 or part6` | AC-C04 |
-| Schema name unknown | contract exit 2 | `contract: no schema 'x'; schemas: pose3d, tracks, camera, frames` | AC-C03 |
+| Schema name unknown | contract exit 2 | `contract: no schema 'x'; schemas: pose3d, tracks, camera, frames, mesh3d` | AC-C03 |
 | Contract break | validate raises | `<path>: <rule>` | AC-C01, C07 |
 | Unknown name inside `extra_joints` | validate raises | `pose3d.frames[i].people[k].extra_joints: unexpected key(s) [...]` (`contract`) or `unknown name(s) [...]` (`schema`) | AC-C13 |
 | Null, non-number or out-of-range entry in `extra_joints` | validate raises | `pose3d.frames[i].people[k].extra_joints.<name>[.<key>]: <rule>` | AC-C13 |

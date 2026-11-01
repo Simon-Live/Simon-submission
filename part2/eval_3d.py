@@ -34,10 +34,16 @@ MAX_BONE_CV = 0.05
 PERSON = 0
 CPU_DEFAULT = ROOT / "fixtures" / "output" / "scored" / "cpu-single" / "pose3d.json"
 REF_DEFAULT = ROOT / "fixtures" / "output" / "scored" / "single" / "pose3d.json"
-NO_CPU = "no cpu outputs; run make outputs BACKEND=cpu"
+NO_CPU_PREFIX = "no cpu outputs; run make outputs BACKEND="
+NO_CPU = NO_CPU_PREFIX + "cpu"  # the cpu-single hint, and what a --cpu path with no file reports
 NO_REF = "no gpu reference; run make outputs BACKEND=gpu"
 # The names docs/specs/check-2.md gives the bar's numbers in the cpu_backend_3d block, beside AC-B09's.
 SPEC_NAMES = {"mean_joint_distance_m": "mean_m", "bone_length_cv_mean": "bone_cv_mean", "bone_length_cv_max": "bone_cv_max"}
+
+
+def no_cpu(backend: str = "cpu") -> str:
+    """The `no cpu outputs` status naming the `make outputs` backend that makes the CPU dir asked for."""
+    return NO_CPU_PREFIX + backend
 
 
 def joints_by_frame(pose3d: dict, person=PERSON) -> dict:
@@ -101,7 +107,8 @@ def block(cpu_path=CPU_DEFAULT, ref_path=REF_DEFAULT, lifter: str | None = None)
 
 def exit_code(result: dict) -> int:
     """0 pass, 1 fail, 2 an input file missing (make check-2-cpu)."""
-    if result.get("status") in (NO_CPU, NO_REF):
+    status = result.get("status") or ""
+    if status == NO_REF or status.startswith(NO_CPU_PREFIX):
         return 2
     return 0 if result.get("pass") is True else 1
 

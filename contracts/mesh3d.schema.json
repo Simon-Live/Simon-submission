@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-2-images-to-3d/contracts/mesh3d.schema.json",
+  "title": "Part 2 mesh3d.json: header of the SAM 3D Body mesh sequence (payload in mesh3d.bin)",
+  "description": "Optional output of `part2 run --mesh`. Vertices are int16 at vertices.unit_m metres in the pose3d canonical frame of each person and frame. Spec: docs/specs/mesh3d.md.",
+  "x-simon-version": "part2.mesh3d/2026-10-31",
+  "x-direction": "output",
+  "type": "object",
+  "required": ["format", "frame_of_reference", "model", "licence", "bin", "bin_bytes", "bin_sha256",
+               "source_vertex_count", "vertex_count", "face_count", "faces", "vertices", "vertex_joint", "clipped", "frames"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"type": "string", "pattern": "^part2\\.mesh3d/2026-10-31$"},
+    "frame_of_reference": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "licence": {"type": "string", "minLength": 1},
+    "bin": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+\\.bin$"},
+    "bin_bytes": {"type": "integer", "minimum": 0},
+    "bin_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_vertex_count": {"type": "integer", "minimum": 3},
+    "vertex_count": {"type": "integer", "minimum": 3, "maximum": 4294967295},
+    "face_count": {"type": "integer", "minimum": 1},
+    "faces": {
+      "type": "object", "required": ["offset", "dtype"], "additionalProperties": false,
+      "properties": {"offset": {"type": "integer", "minimum": 0, "maximum": 0},
+                     "dtype": {"type": "string", "pattern": "^uint(16|32)$"}}
+    },
+    "vertices": {
+      "type": "object", "required": ["dtype", "unit_m"], "additionalProperties": false,
+      "properties": {"dtype": {"type": "string", "pattern": "^int16$"},
+                     "unit_m": {"type": "number", "exclusiveMinimum": 0}}
+    },
+    "vertex_joint": {
+      "type": "object", "required": ["offset", "names"], "additionalProperties": false,
+      "properties": {"offset": {"type": "integer", "minimum": 0},
+                     "names": {"type": "array", "minItems": 1, "maxItems": 255, "items": {"type": "string", "minLength": 1}}}
+    },
+    "clipped": {"type": "integer", "minimum": 0},
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["frame", "t_ms", "people"], "additionalProperties": false,
+        "properties": {
+          "frame": {"type": "integer", "minimum": 0},
+          "t_ms": {"type": "number", "minimum": 0},
+          "people": {
+            "type": "array",
+            "items": {
+              "type": "object", "required": ["id", "offset"], "additionalProperties": false,
+              "properties": {"id": {"anyOf": [{"type": "integer"}, {"type": "string", "minLength": 1}]},
+                             "offset": {"type": "integer", "minimum": 0}}
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,7 +1,8 @@
-"""3D backend registry: `--backend gpu|cpu`, environment PART2_BACKEND, default by CUDA.
+"""3D backend registry: `--backend gpu|cpu|cpu-sam3db`, environment PART2_BACKEND, default by CUDA.
 
     from part2 import backends
     name = backends.resolve(flag)        # flag, then PART2_BACKEND, then gpu if CUDA is available, else cpu
+                                         # (cpu-sam3db is chosen by name only, never by default)
     b = backends.get(name)               # unknown name raises UnknownBackend(name, known)
     ok, reason = b.available()           # imports and device checked, nothing loaded
     doc = b.estimate(frames_dir, out_path, boxes=None)   # writes body3d.json, the part2/body3d.py shape
@@ -10,7 +11,8 @@
     python -m part2.backends gpu --smoke   # one fixture frame: device, capability, peak memory, seconds
 
 Each backend module exposes `Backend`, a class with `name`, `available()`, `estimate()` and `provenance()`.
-`estimate` raises BackendUnavailable (str is the refusal line; exit 1) when the backend cannot run here.
+`estimate` raises BackendUnavailable (str is the refusal line; exit 1) when the backend cannot run here, and
+NoPersonFound (str is `no person found in <n> frames`; exit 4, CONTRACT.md) when no frame has a person.
 Nothing in this package imports torch at import time. Spec: docs/specs/backends-gpu-cpu.md. ADR-0002.
 """
 import argparse
@@ -22,11 +24,13 @@ import sys
 from pathlib import Path
 
 ENV = "PART2_BACKEND"
-CHOICES = ("gpu", "cpu")  # message order of the spec
-_MODULES = {"cpu": "part2.backends.cpu_rtm", "gpu": "part2.backends.gpu_sam3db"}
+CHOICES = ("gpu", "cpu", "cpu-sam3db")  # message order of the spec
+_MODULES = {"cpu": "part2.backends.cpu_rtm", "cpu-sam3db": "part2.backends.cpu_sam3db",
+            "gpu": "part2.backends.gpu_sam3db"}
 REFUSAL = {
     "gpu": "the gpu backend needs CUDA and the gpu-cu128 profile (make setup-gpu); use --backend cpu",
     "cpu": "the cpu backend needs make setup-cpu",
+    "cpu-sam3db": "the cpu-sam3db backend needs the gpu-cu128 profile and its venv python (make setup-gpu)",
 }
 
 
@@ -38,6 +42,15 @@ class UnknownBackend(ValueError):
 
 class BackendUnavailable(RuntimeError):
     """The backend cannot run in this interpreter; str() is the user-facing refusal (exit 1)."""
+
+
+class NoPersonFound(RuntimeError):
+    """The run worked and found nobody: no person in any frame. str() is the user-facing line, printed after
+    "part2: "; `part2 run` and `part2 track` exit with `exit_code`, not 1, so that a consumer tells this from a
+    failure. The one type for every backend and tracker (part2.trackers.NoPerson is a subclass). It lives in this
+    package module, which imports no torch and no other part2 module, so every raise site imports it without a cycle."""
+
+    exit_code = 4
 
 
 def names() -> list:
@@ -66,6 +79,7 @@ def resolve(flag=None) -> str:
 
 
 def default() -> str:
+    """gpu when CUDA is available, else cpu; never cpu-sam3db, which is chosen by name only (AC-B20)."""
     return "gpu" if cuda_available() else "cpu"
 
 

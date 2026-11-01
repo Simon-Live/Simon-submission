@@ -98,6 +98,15 @@ def test_missing_cpu_status_matches_check_2_spec():
     assert eval_3d.NO_CPU == "no cpu outputs; run make outputs BACKEND=cpu"
 
 
+def test_missing_cpu_status_names_the_backend_that_makes_the_dir_and_still_exits_2():
+    assert eval_3d.no_cpu() == eval_3d.NO_CPU and eval_3d.no_cpu("cpu") == eval_3d.NO_CPU
+    assert eval_3d.no_cpu("cpu-sam3db") == "no cpu outputs; run make outputs BACKEND=cpu-sam3db"
+    for status in (eval_3d.NO_CPU, eval_3d.no_cpu("cpu-sam3db"), eval_3d.NO_REF):
+        assert eval_3d.exit_code({"pass": False, "status": status}) == 2
+    assert eval_3d.exit_code({"pass": False, "status": "fixtures/output/scored/x is stale"}) == 1
+    assert eval_3d.exit_code({"pass": False}) == 1 and eval_3d.exit_code({"pass": True}) == 0
+
+
 def test_viewer_html_works_as_the_reference(tmp_path):
     doc = _pose3d(skeleton(3))
     data = {"id": 0, "joints": CANONICAL, "frames": [

@@ -44,9 +44,11 @@ make test               # includes tests/test_contract.py, tests/test_doctor.py 
 | `tracks.json` | `tracks` | `part2.tracks/2026-10-28` | `contracts/tracks.schema.json` |
 | `camera.json` | `camera` | `part2.camera/2026-10-28` | `contracts/camera.schema.json` |
 | `frames/frames.json` | `frames` | `part2.frames/2026-10-28` | `contracts/frames.schema.json` |
+| `mesh3d.json` + `mesh3d.bin` (optional, `--mesh`) | `mesh3d` | `part2.mesh3d/2026-10-31` | `contracts/mesh3d.schema.json` (the header; the bin is checked by `part2 doctor`) |
 
-The schemas are draft 2020-12. The version is the `x-simon-version` key of each schema.
-`contracts/compatibility.json` holds the table below. `contracts/consumers/part3-pose3d.schema.json` is
+There are five schemas: the first four are for files Part 2 writes without being asked, and `mesh3d` is the header of the
+optional mesh pair. They are draft 2020-12. The version is the `x-simon-version` key of each schema.
+`contracts/compatibility.json` holds the table below, with no row for `mesh3d.json`: no consumer has verified it yet (Part 7's mesh view, its TICKET-143, asked for it), and a row cites a consumer's evidence, so the row is added with that evidence. `contracts/consumers/part3-pose3d.schema.json` is
 Part 3's own consumer schema, copied byte for byte, with `part3-pose3d.schema.source.json` next to it
 naming the repo, path, commit and sha256 it came from. It used to be `contracts/pose3d.schema.json`;
 that path now holds Part 2's own schema.
@@ -100,15 +102,15 @@ and a file without it is valid.
 | Key | Meaning |
 |---|---|
 | `contract_version` | The `x-simon-version` of this file's schema. |
-| `backend` | The 3D backend that ran, for example `gpu`. |
+| `backend` | The 3D backend that ran, for example `gpu`. It may be `cpu-sam3db` (SAM 3D Body on the CPU device), which writes `extra_joints` and a `null` `lifter`. |
 | `tracker` | The tracker that ran, for example `api-sam31`; `null` in one-person mode, where none runs. |
-| `lifter` | The 2D to 3D lifter of the cpu backend; `null` otherwise. |
+| `lifter` | The 2D to 3D lifter of the `cpu` backend (`bones-prior`, `fixed-bones` or `motionbert`); `null` otherwise, as for `gpu` and `cpu-sam3db`. |
 | `refine` | The refinement rungs applied, in order. |
 | `models` | `[{name, source, weights_sha256}]`. `weights_sha256` is `null` for a hosted model or a file that was not hashed. |
 | `part2_commit` | The git commit of Part 2 that wrote the file, with `+dirty` when tracked files differed; `unknown` without git. |
 | `created_utc` | `YYYY-MM-DDTHH:MM:SSZ`. |
 | `licence_notes` | A list of notes that apply to the models used. |
-| `extra_joints` | The names of the foot points the file holds (see "Extra joints (optional)"), in writing order. Absent when the file holds none, as in every cpu backend output. |
+| `extra_joints` | The names of the foot points the file holds (see "Extra joints (optional)"), in writing order. Absent when the file holds none, as in every `cpu` backend output; the `cpu-sam3db` backend writes the points. |
 
 `part2 run` writes the backend `gpu` (SAM 3D Body through `part2/body3d.py`) and, in multi mode, the
 tracker `api-sam31` (SAM 3.1 through the Meta Model API and `part2/track.py`). Other keys may appear and
@@ -157,7 +159,7 @@ A person may carry `extra_joints` beside `joints`: the heel, big toe and small t
 |---|---|
 | Names | `left_big_toe`, `left_small_toe`, `left_heel`, `right_big_toe`, `right_small_toe`, `right_heel`, written in this order. Any may be left out; no other name is allowed. Left and right are the subject's. |
 | Each point | The shape of a joint: `x, y, z` finite numbers in metres in the same canonical frame as `joints` (rounded to 0.1 mm), `conf` in [0, 1] by the same rule (1.0 inside the image, 0.3 placed outside it). Never null. |
-| Who writes it | The gpu backend (SAM 3D Body gives these points), for every person it writes. The cpu backend writes none: RTMPose-x gives 17 points. `provenance.extra_joints` names the points a file holds. |
+| Who writes it | The gpu backend and the cpu-sam3db backend (SAM 3D Body gives these points), for every person they write. The `cpu` backend writes none: RTMPose-x gives 17 points. `provenance.extra_joints` names the points a file holds. |
 | Mirrored file | With `"mirrored": true`, `extra_joints` carry the same labels as `joints`. Part 3 does not touch `extra_joints`, so a reader that mirrors the joints must also swap the `left_` and `right_` names of the feet and negate x. |
 | Refinement | The refine rungs keep the points with the refined skeleton: when a rung moves the ankles, each foot point moves with its own ankle by the same displacement; the `focal` rung takes the points of the camera it chooses. |
 | `joints` | Unchanged: exactly the 17, so a reader that knows only `joints` reads the same file as before. |
@@ -199,6 +201,41 @@ in `part2/schema.py`.
 
 The sidecar that projects joints back onto the frames: `p_cam = R @ p_canonical + t`, then project with `K`.
 The camera frame is OpenCV (x right, y down, z forward), in metres. Parts 3, 4 and 5 do not need it.
+
+## `mesh3d.json` + `mesh3d.bin` (optional, `part2 run --mesh`)
+
+The SAM 3D Body body mesh (MHR) of every person in every frame, decimated once per run to about `--mesh-vertices`
+vertices (default 2500). Written only with `--mesh` on the `gpu` or `cpu-sam3db` backend, after `pose3d.json`, in
+the same directory; a run without `--mesh` removes a pair left there by an earlier run. Schema of the header:
+`contracts/mesh3d.schema.json`, version `part2.mesh3d/2026-10-31`. Spec: `docs/specs/mesh3d.md`.
+
+| Rule | Promise |
+|---|---|
+| Frame | Each person-frame is in the pose3d canonical frame of that person and frame (origin hip midpoint, x the subject's left, y up, z forward, metres), from the model's own 17 joints. `--refine` is refused with `--mesh`, because the focal rung re-runs the model without the mesh, so a mesh would come from a different run than `pose3d.json`. `--smooth` moves the pose3d joints over time and the mesh is not smoothed; that offset is not measured. Measured without either (TICKET-048, 15 frames of `fixtures/input/single`, unrefined): each of the 17 joints lay a mean 2.4 cm (median 2.0, largest 9.1) from its nearest mesh vertex. That shows the joints and the mesh share one frame; it is not an accuracy claim. |
+| Mirrored | `--mirrored` flips nothing: it writes `"mirrored": true` in `pose3d.json` and the joints stay unmirrored, and the mesh stays in the same unmirrored frame (a run with and without `--mirrored` writes the same `mesh3d.json` and `mesh3d.bin`). A reader that mirrors the joints (Part 3 `--flip auto`) must mirror the mesh the same way: negate the x of every vertex, swap the `left_` and `right_` names in `vertex_joint.names`, and reverse the winding of each face (swap two of its indices) so back-face culling still works. |
+| Header | `frames[]` lists every frame with the `frame` and `t_ms` of `pose3d.json`; each person has an `id` and an `offset` into the bin. `vertex_count`, `face_count`, `faces.dtype` (`uint16` or `uint32`), `vertices.unit_m` (0.0001), `bin_bytes`, `bin_sha256`, `licence`. |
+| Bin | Faces (`face_count` x 3, little-endian) at offset 0; then `vertex_count` uint8 labels at `vertex_joint.offset`, each the index in `vertex_joint.names` (the 17 joints) of the vertex's nearest joint on the first person-frame, for tinting a limb; each part zero-padded to 4 bytes; then one `vertex_count` x 3 little-endian int16 block per person-frame. Metres = value x `unit_m`. |
+| Size | 6 bytes per vertex per person-frame: 15 KB at 2500 vertices, 150 KB per second at 10 fps for one person, plus the faces once. |
+| Licence | The pair derives from two licensed sources, and the header's `licence` field names both. SAM 3D Body and the MHR model file Part 2 loads (`assets/mhr_model.pt` from the SAM 3D Body mirror) come under the mirror's SAM License; MHR upstream (`facebookresearch/MHR`) is Apache-2.0 (ADR-0005). A copy of the SAM License goes with any redistribution. Apache-2.0 also requires its licence text and MHR's notice to go with any redistribution of the mesh faces, which derive from MHR. Part 2 commits and publishes no mesh output, asset or face list. |
+
+Backends and exit codes. `--mesh` works on the `gpu` and `cpu-sam3db` backends and gives the same pair on both (the
+vertices are part of the same SAM 3D Body output). With `--backend cpu` it exits 2 (`part2: --mesh needs SAM 3D Body
+(--backend gpu or cpu-sam3db)`), as does `--mesh-vertices` below 100 (0 and negative numbers included) or given
+without `--mesh`, and `--mesh` with any `--refine` other than `none` (`part2: --mesh cannot be combined with --refine
+(the mesh comes from the unrefined run)`). A command refused before `--input` is opened removes nothing, so a pair
+already in `--out` stays: every exit 2 from the options and the `--refine` and `--mesh` checks, and the exit 1 of a
+`--tracks` file that cannot be read, is not a valid tracks file or lacks an `--ids` entry. The old pair is removed just
+before the input is read, so a failure from that point on can follow the removal: exit 1 for an `--input` that cannot be
+read, an `--fps` of 0 or less or a `--tracks` file made for other frames, exit 2 for an unknown `--tracker` in
+`--mode multi`. The `pose3d.json` of the earlier run is then left without a mesh pair, never with a mismatched one. When no
+person is found the run exits 4 as without `--mesh` and writes no `mesh3d.json` or `mesh3d.bin`. When people are found
+but none gives a mesh (every person's hips give no canonical frame), `pose3d.json` is written, no pair is, and the run
+exits 1 with `part2: --mesh found no mesh vertices; no mesh3d pair written`. Through the warm worker
+(`run --worker`) `--mesh` is an argument of the served `run` like any other.
+
+`python -m part2 doctor mesh3d.json` checks the header against its schema and the bin (size, sha256, offsets, face
+indices): exit 0 when valid, 1 when not, with the same `schema: breaks ...` line and the same `--json` fields as for
+`pose3d.json`, for any malformed header. Parts 3, 5 and 6 do not read it; `--for` any of them exits 1 and says so.
 
 ## `frames/frames.json`
 
@@ -244,12 +281,26 @@ part2 run --mode single --input <take.webm|take.mp4|take.mov> --out <dir> --fps 
 | `--input` | the file as recorded: WebM from a browser (VP8 or VP9), MP4 or MOV from a phone; a rotate tag is applied, so frames come out upright |
 | `--out <dir>` | required; `frames/`, `pose3d.json` and `camera.json` are written there |
 | `--fps 10` | the rate the web app also uses (60 s gives at most 601 frames) |
-| `--backend gpu` | the GPU backend; `cpu` is the slower choice on a host without CUDA |
+| `--backend gpu` | the GPU backend; `cpu` is the slower choice on a host without CUDA and its 3D is approximate (it misses the 3D bar). `cpu-sam3db` runs the same SAM 3D Body on the CPU and meets the 3D bar (mean joint distance 0.0363 m, bone CV 0.0408, against the refined gpu output while the CPU run is unrefined), at 31.74 s per frame on 8 threads plus 23.7 s model load (the 2026-10-31 run); 46.95 s per frame plus 23.4 s model load under host load (the committed set, regenerated 2026-11-01) |
 | `--mirrored` | only for a front-camera recording saved as a mirror image; writes `mirrored: true`, which Part 3 `--flip auto` reads |
 
 Then Part 7 runs Part 3 on `<dir>/pose3d.json` with `--view part5` for Part 5. The command line reads a WebM
 that carries no duration (a MediaRecorder file). The run app's upload check does too
 (`docs/specs/journey-followup.md`).
+
+### Exit codes (`run` and `track`)
+
+| Code | Meaning | stderr |
+|---|---|---|
+| 0 | written | |
+| 1 | failed: an unreadable input, a backend or tracker that cannot run here (no CUDA, a missing or refused key), the GPU busy, out of memory, an output that breaks the contract, any other error, `--mesh` that found people but no mesh vertices (`pose3d.json` is kept) | `part2: <reason>` |
+| 2 | usage error: an option argparse refuses, an unknown backend, lifter or tracker, or options the command does not take together (`--tracks` with `--mode single`, `--mesh` with `--backend cpu` or with `--refine`) | argparse's text, or `part2: <reason>` |
+| 4 | no person found in any frame; no `pose3d.json` or `camera.json` is written (nor `mesh3d.json` with `--mesh`), and `track` writes no `tracks.json` | `part2: no person found in <n> frames` (the 3D backend, `run`), or `part2: no person found to track` (the tracker, `track` and `run --mode multi`) |
+
+Code 4 means Part 2 ran and found nobody, which is a different case from a failure. The message text is the one
+Part 2 has always printed, so a consumer may rely on the code, on the message, or on both; an earlier Part 2 exited 1
+with the same message. A frame with nobody in it is not this case: the run goes on with `people: []` for that frame
+and exits 0. Through the warm worker the client exits with the same code (see "Warm worker").
 
 ### Several people in one take (`track`, then `run --tracks --ids`)
 
@@ -262,12 +313,14 @@ part2 run --mode multi --input <take> --out <dir2> --fps 10 --backend gpu --trac
 
 | Command | Result |
 |---|---|
-| `part2 track` | `frames/` and `tracks.json` only, no 3D. The tracker order is the one of `run --mode multi` (`--tracker`, `--tracker-order`). Exit 0 written, 1 input error, 2 bad option (unknown tracker). |
+| `part2 track` | `frames/` and `tracks.json` only, no 3D. The tracker order is the one of `run --mode multi` (`--tracker`, `--tracker-order`). Exit 0 written, 1 input error, 2 bad option (unknown tracker), 4 no person found ("Exit codes", above). |
 | `run --tracks <tracks.json>` | uses that file as it is: no tracker runs and the ids stay as they are. Pass the same `--input` and `--fps` that made it; a frame the file lacks is exit 1. `--tracker` or `--tracker-order` together with `--tracks` is exit 2: the file already fixed the tracker. |
 | `run --ids <id,...>` | 3D runs for the listed people only. `pose3d.json` holds those people, plus `pose3d_person_<id>.json` each. An id that `tracks.json` lacks is exit 1 and the message names it. |
 
 `--tracks` and `--ids` apply to `--mode multi` only (exit 2 with `--mode single`). `--ids` without `--tracks`
 tracks first, then filters. The files keep their versions; nothing new is written into them.
+
+With no tracker named, `part2 track` and `part2 run --mode multi` walk the `bulk` order, and when the Meta API refuses the credential (HTTP 401 or 403) they move on to the next tracker that can run (`local-open`) with one stderr line instead of exiting 1, writing the `provenance` keys a skipped step writes (`fallback_from: "api-sam31"`, `fallback_reason: "credential_refused"`); a named `--tracker api-sam31` and `--tracker-order scored` still exit 1 with `the credential was refused`.
 
 ### Warm worker (`serve-worker`, `run --worker`)
 
@@ -305,7 +358,7 @@ Protocol, for a client that does not call the CLI: a Unix stream socket, one req
 | worker to client | `{"stream": "stdout" or "stderr", "data": "<text>"}` as the job prints (the `progress <stage> <done> <total>` lines arrive here), zero or more; `data` is always a string |
 | worker to client, first | `{"keepalive": true}` at once when the worker takes the request, before anything runs. Requests are served one at a time, so a request queued behind a job hears nothing until its turn; this first line says the turn has come. A client with its own timeout should wait for it as long as it is willing to queue (the CLI client: 3600 s), and use a short limit only after it |
 | worker to client, while a job runs | `{"keepalive": true}` every 30 s (`worker.KEEPALIVE_S`), whatever the job prints; it carries nothing to print and a client ignores it, but it counts as a sign of life for the idle limit. A 3D stage prints nothing for minutes, so a client that has its own timeout should restart it on any line, this one included |
-| worker to client, last | `{"exit": <n>}` with `<n>` an integer, the exit code `part2 <argv>` would give (0 written, 1 input or contract error, 2 bad option); the CLI client treats any other value as exit 1 with one message line. The worker also answers exit 2, with one stderr line and without running anything, for a command other than `run` or `track`, an argv that still carries `--worker` (or an abbreviation of it), and a request that is not a JSON object with `argv` a list of strings, `cwd` an existing absolute directory and `env` a map of strings to strings |
+| worker to client, last | `{"exit": <n>}` with `<n>` an integer, the exit code `part2 <argv>` would give (0 written, 1 input or contract error, 2 bad option, 4 no person found); the CLI client treats any other value as exit 1 with one message line. The worker also answers exit 2, with one stderr line and without running anything, for a command other than `run` or `track`, an argv that still carries `--worker` (or an abbreviation of it), and a request that is not a JSON object with `argv` a list of strings, `cwd` an existing absolute directory and `env` a map of strings to strings |
 
 Concurrency: one request at a time per worker. A second client connects and waits in the socket queue (8 deep)
 until the first finishes. The worker accepts one connection at a time, so a queued client hears nothing until its

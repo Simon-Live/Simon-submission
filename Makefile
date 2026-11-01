@@ -20,7 +20,7 @@ setup-gpu:
 smoke-gpu:
 	$(GPU_PY) -m part2.backends gpu --smoke
 
-# CPU profile (RTMPose-x through rtmlib on ONNX Runtime CPU, lifters fixed-bones and motionbert). The PyTorch CPU
+# CPU profile (RTMPose-x through rtmlib on ONNX Runtime CPU, lifters bones-prior, fixed-bones and motionbert). The PyTorch CPU
 # index also carries older tqdm builds, hence the index strategy; every pin in envs/cpu/requirements.txt is exact.
 setup-cpu:
 	uv sync
@@ -28,14 +28,19 @@ setup-cpu:
 
 # The CPU backend's 3D bar (mean joint distance to the GPU reference, bone length CV); outside the README DoD.
 # Prints the cpu_backend_3d block of check-2 (same scored dir, same stamp checks); exit 0 pass, 1 fail, 2 missing.
+# CPU_MODE=cpu-sam3db-single scores that CPU mode dir of the scored dir instead of cpu-single (TICKET-044 B1; the
+# block then also reports seconds_per_frame from its provenance.timing).
+CPU_MODE ?=
+
 check-2-cpu:
-	@$(SCORED_ENV)uv run --quiet python -m part2.check --block cpu_backend_3d
+	@$(SCORED_ENV)$(if $(CPU_MODE),PART2_CPU_MODE=$(CPU_MODE) )uv run --quiet python -m part2.check --block cpu_backend_3d
 
 # Regenerate the scored outputs on this host with a part2.stamp/2 each (docs/specs/check-2.md, ADR-0006):
 #   make outputs [BACKEND=gpu] [TRACKER=name] [MODES=single,class] [SCORED=out]   single, class, class-local-open
 #   make outputs BACKEND=gpu MODES=single,coco-single REFINE=kp2d-fit         one-person ladder rungs (part2.refine); default for single and coco-single: focal,kp2d-fit (the ladder's choice); REFINE=none for unrefined
 #   make outputs BACKEND=cpu [LIFTER=name]                                       cpu-single
-# Runs in the gpu-cu128 venv when it exists (the cpu backend with no GPU visible), else in the uv venv.
+#   make outputs BACKEND=cpu-sam3db [SCORED=out/j3-b1]                           cpu-sam3db-single (TICKET-044 B1)
+# Runs in the gpu-cu128 venv when it exists (cpu and cpu-sam3db with no GPU visible), else in the uv venv.
 BACKEND ?= gpu
 TRACKER ?=
 LIFTER ?=
@@ -46,7 +51,7 @@ SCORED_ENV = $(if $(SCORED),PART2_SCORED_DIR=$(SCORED) )
 OUTPUTS_PY ?= $(if $(wildcard $(GPU_PY)),$(GPU_PY),uv run --quiet python)
 
 outputs:
-	$(if $(filter cpu,$(BACKEND)),CUDA_VISIBLE_DEVICES= )PYTHONPATH=$(CURDIR) $(OUTPUTS_PY) -m part2.outputs --backend $(BACKEND) $(if $(TRACKER),--tracker $(TRACKER)) $(if $(LIFTER),--lifter $(LIFTER)) $(if $(MODES),--modes $(MODES)) $(if $(SCORED),--scored $(SCORED)) $(if $(REFINE),--refine $(REFINE))
+	$(if $(filter cpu cpu-sam3db,$(BACKEND)),CUDA_VISIBLE_DEVICES= )PYTHONPATH=$(CURDIR) $(OUTPUTS_PY) -m part2.outputs --backend $(BACKEND) $(if $(TRACKER),--tracker $(TRACKER)) $(if $(LIFTER),--lifter $(LIFTER)) $(if $(MODES),--modes $(MODES)) $(if $(SCORED),--scored $(SCORED)) $(if $(REFINE),--refine $(REFINE))
 
 # Stock follower takes for Part 5 (docs/specs/stock-takes.md): download each Pexels clip into ~/.cache, frames at
 # 10 fps, the one-person run, then fixtures/output/stock/<take>/{pose3d.json, camera.json, SOURCE.md}. A take is a

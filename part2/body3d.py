@@ -58,8 +58,10 @@ def load_estimator(device="cuda", repo=None, ckpt_dir=None, detector_path="", fo
         os.chdir(cwd)
 
 
-def estimate(frames_dir, out_path, boxes=None, estimator=None) -> dict:
+def estimate(frames_dir, out_path, boxes=None, estimator=None, mesh=None) -> dict:
     """Run SAM 3D Body on every frame and write body3d.json.
+
+    mesh: a part2.mesh3d.Collector that also receives every person's MHR vertices (`part2 run --mesh`, TICKET-048).
 
     boxes: {frame: {id: [x, y, w, h]}} to run on given people (multi-person, from tracks.json).
     Without it, one person per frame becomes id 0 (one-person mode, see choose_subject).
@@ -93,11 +95,18 @@ def estimate(frames_dir, out_path, boxes=None, estimator=None) -> dict:
             else:
                 xyxy, ids = np.zeros((0, 4), np.float32), []
         people = []
+        if mesh is not None:
+            mesh.frame(r["frame"], r["t_ms"])
         if len(ids):
             outs = est.process_one_image(str(images[r["frame"]]), bboxes=xyxy, cam_int=cam_int)
             if len(outs) != len(ids):
                 raise RuntimeError(f"frame {r['frame']}: {len(ids)} boxes in, {len(outs)} people out")
             people = [_person(pid, o, K) for pid, o in zip(ids, outs)]
+            if mesh is not None:
+                for p, o in zip(people, outs):
+                    cam_t = np.asarray(o["pred_cam_t"])
+                    mesh.add(p["id"], np.asarray(o["pred_vertices"]) + cam_t, est.faces,
+                             (np.asarray(o["pred_keypoints_3d"]) + cam_t)[MHR70_INDEX])
         out_frames.append({"frame": r["frame"], "t_ms": r["t_ms"], "people": people})
 
     result = {"model": "sam-3d-body-dinov3", "camera_frame": "opencv", "K": np.round(K, 3).tolist(),
