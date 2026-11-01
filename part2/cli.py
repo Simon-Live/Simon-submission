@@ -1,6 +1,7 @@
 """part2 command line.
 
     part2 frames --input clip.mp4 --out out/clip/frames [--fps 30]
+    part2 frame-times --input clip.mp4 [--fps 5] [--out frames.json]   (the sampled times only: what run keeps)
     part2 run --mode single|multi --input clip.mp4 --out out/clip [--fps 30] [--mirrored]
               [--backend gpu|cpu|cpu-sam3db] [--lifter bones-prior|fixed-bones|motionbert] [--tracker NAME]
               [--tracker-order scored|bulk]
@@ -232,6 +233,13 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("frames", help="extract numbered frames + frames.json from a video or image dir",
                    parents=[_input_parent("output frames directory")])
 
+    p_ft = sub.add_parser("frame-times", help="print or write the frames.json that run samples for a video and fps",
+                          description="The frames.json document `run` and `track` use for this video and --fps: the "
+                          "same ffprobe timestamps and sampling rule, without writing images.")
+    p_ft.add_argument("--input", required=True, type=Path, help="video file")
+    p_ft.add_argument("--fps", type=float, help="sample rate (default: every decoded frame)")
+    p_ft.add_argument("--out", type=Path, help="write the document here (default: print it)")
+
     p_run = sub.add_parser("run", help="full pipeline: frames -> pose3d.json (+ tracks.json in multi mode)",
                            parents=[_tracking_parent("output directory", multi_only=True)])
     p_run.add_argument("--mode", required=True, choices=["single", "multi"], help="one-person or class recording")
@@ -427,6 +435,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "serve-worker":
             return _serve_worker(args)
+        if args.command == "frame-times":
+            from part2 import frame_times
+
+            return frame_times.command(args.input, args.fps, args.out)
         if args.command == "frames":
             recs = frames.ingest(args.input, args.out, args.fps)
             print(f"{len(recs)} frames -> {args.out}")

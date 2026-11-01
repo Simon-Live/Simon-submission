@@ -56,6 +56,8 @@ make run-single INPUT=clip.mp4     # also run-multi; writes out/<clip>/
 
 `part2 frames` writes numbered frames plus `frames.json` (`frame`, `t_ms`, `file`); those `frame`/`t_ms` values are the ones in `pose3d.json` and `tracks.json`. GPU inference runs on the k3s cluster: see `k8s/README.md`. Tasks and progress: issues #2–#16, checklist #17, team chat #18.
 
+`part2 frame-times --input clip.mp4 [--fps 5] [--out frames.json]` prints (or writes) the `frames.json` that `part2 run` and `part2 track` use for that video and fps, without writing images: the same ffprobe `best_effort_timestamp_time` source, the same nearest-per-step rule and the same schema, so a caller that resamples to the 3D rate reads it and never copies the rule. In Python: `part2.frame_times.frame_times(path, fps)` returns that document and `part2.frame_times.sample_times(pts, fps)` the kept indices.
+
 ## Develop and debug
 
 - `docs/dev/DEVELOPING.md`: setup from a fresh clone (CPU and GPU profiles, weights, keys), the commands, the

@@ -247,6 +247,28 @@ Written by `part2 frames` next to the images. `frame` and `t_ms` are the values 
 `pose3d.json` and `tracks.json`. `frame` strictly increases but is not always contiguous: an image
 directory's own numbering is kept. `source` and `t0_pts_ms` are optional.
 
+### Sampled times without images: `part2 frame-times`
+
+```
+part2 frame-times --input <video> [--fps N] [--out frames.json]
+```
+
+| Argument | Meaning |
+|---|---|
+| `--input` | required; a video file (an image directory is refused: it keeps its own `frames.json`) |
+| `--fps N` | the sample rate, more than 0; without it every decoded frame is listed |
+| `--out` | write the document there (parent directories are created) and print `<n> frames -> <path>`; without it the document is printed |
+
+Output: the `frames.json` document above (`source`, `t0_pts_ms`, `frames[]` with `frame`, `t_ms`, `file`), validated by
+`contracts/frames.schema.json`. Guarantee: for the same video and `--fps` it is identical to the `frames.json` that
+`part2 run` and `part2 track` write into `frames/`, byte for byte when written with `--out`: the same ffprobe
+`best_effort_timestamp_time` timestamps (so variable frame rate works), the same nearest-per-step rule (the source frame
+nearest `t0 + n / fps`, deduplicated), the same `t_ms` (milliseconds from the first decoded frame) and `t0_pts_ms`. No
+image is written. `file` names the image `run` would write for that record. Exit 0 written or printed, 1 input error
+(missing file, directory, not a video, `--fps` of 0 or less), 2 bad option. Python: `part2.frame_times.frame_times(path,
+fps)` returns the document, `part2.frame_times.sample_times(pts, fps)` returns the kept indices into a timestamp list
+in seconds. Part 7 resamples its 3 fps people step onto these times; do not copy the rule.
+
 ## Compatibility table
 
 The same rows are in `contracts/compatibility.json` and are printed by `python -m part2 contract`.
