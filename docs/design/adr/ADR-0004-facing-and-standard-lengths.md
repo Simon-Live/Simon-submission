@@ -52,6 +52,23 @@ Amendment (stitching, 2026-10-28, ASM-019): with fewer than 5 standing frames th
 input's +y (Part 2's world up for a level camera), recorded as `up_source: input_up`. The all-frames
 mean stood a real cat-cow clip upright. `PART3_UP_FALLBACK=all_frames` restores the old fallback.
 
+Amendment 2 (TICKET-040, 2026-11-02): floor work only. Straight knees do not make a standing body: on an
+incline push-up or a plank the standing test passes with the body leaning or lying, and the up tilts. On REHAB24-6
+mocap (read locally) 89 of 107 push-up repetitions had a standing-frame up with a 37.75 degree median tilt from
+vertical. A guard on the angle to the input's +y separates them, but the input's +y is the camera's up, and the operator
+ruled that the recording angle and the phone tilt must not be a factor. A first build applied the guard to every clip
+(0e5a8a1); review showed a standing person under a phone tilted more than 30 degrees then kept the tilt, so it was
+reverted (3e5db13). The decision: the guard applies only when the caller marks the exercise as floor work
+(`--floor-work`, `process(floor_work=True)`; the catalogue marks it, TICKET-313 in Part 7). Then a standing-frame up
+more than 30 degrees from the input's +y gives way to the input's +y, recorded as `up_source: input_up_floor_work`, and
+the output says `frame.floor_work: true`. This is a narrow exception to the ruling, not a way of meeting it: it applies
+only to clips marked as floor work, where the body gives no usable up, the same reasoning as the ASM-019 fallback.
+Limit: a marked floor-work clip filmed by a tilted phone keeps that tilt. Without the mark the output is unchanged,
+so an unmarked standing take never depends on the camera. Decided by stakeholder-proxy (confidence medium, 2026-11-02)
+on the operator's recorded guidance; it is not an operator ruling, and a later operator ruling overrides it. The
+long-term fix is a gravity vector from the phone (TICKET-041), which replaces both.
+Reversal: drop the flag; nothing else reads it.
+
 ## Dissent (MANDATORY)
 Forcing one body changes positions of the hands and feet relative to a tall or short person's real
 reach; Part 5 compares angles and directions, which the retarget keeps.

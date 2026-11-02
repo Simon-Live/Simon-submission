@@ -100,6 +100,7 @@ The `part4` view keeps the native frames and adds Part 4's keyframe block: Part 
 | `--keyframes-out` | path | Also writes the `simon.keyframes.v1` file of the `part4` view. |
 | `--fps` | 1 to 240 | Resamples onto a uniform grid; each frame keeps the source clock and names the two input frames it came from. |
 | `--input-fps` | number | The frame rate of an input without `t_ms`. |
+| `--floor-work` | | The exercise is floor work: a straight-knee body leaning more than 30 degrees from the input's up uses the input's up (`up_source: input_up_floor_work`). |
 | `--person` | id | Keeps this person instead of the one in the most frames. |
 | `--all-people` | | Writes `person-<id>/skeleton.json` for every person into the `--out` folder, plus `people.json`. |
 

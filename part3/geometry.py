@@ -15,6 +15,10 @@ UP_FALLBACK_ENV = "PART3_UP_FALLBACK"   # "all_frames" restores the pre-stitchin
 # under about 0.11); its up then comes from frames with a gap of at most TWO_FOOTED_GAP.
 RAISED_FOOT_GAP = 0.20
 TWO_FOOTED_GAP = 0.05
+# TICKET-040 (ADR-0004 amendment 2): only for a clip marked floor work, a standing-frame up further than this from the
+# input's +y is taken as a lying or leaning body (a plank, an incline push-up) and the input's +y is used instead.
+FLOOR_WORK_GUARD_DEG = 30.0
+INPUT_UP = (0.0, 1.0, 0.0)   # Part 2's +y, the camera's up for a level camera
 
 
 def normalize(v, axis=-1):
@@ -51,17 +55,21 @@ def knee_angles(J):
     return np.stack([left, right], axis=-1)
 
 
-def body_up(J):
+def body_up(J, floor_work=False):
     """Clip body up (spec step 5 item 1) from frames J (n, 17, 3).
 
-    Returns (unit up vector, "standing_frames", "two_footed_frames", "input_up" or "all_frames").
+    Returns (unit up vector, source); source is "standing_frames", "two_footed_frames",
+    "input_up_floor_work", "input_up" or "all_frames".
     Standing = both knees above 160 degrees; the standing-frame up is their mean feet-to-shoulders line.
     TICKET-038: two-footed frames are standing frames whose ankles are level along the frame's own trunk
     (gap at most TWO_FOOTED_GAP of leg length). When at least 5 exist and at least 5 standing frames have
     one ankle clearly higher along the up of those two-footed frames (gap above RAISED_FOOT_GAP: a straight
     leg raised, as in leg abduction), up is the two-footed frames' mean ("two_footed_frames"). Any other
     clip, including a side bend on a wide stance (both feet stay level along that up), is computed exactly
-    as before. With fewer than 5 standing frames the
+    as before. TICKET-040: with `floor_work` (the catalogue marks the exercise as floor work), a
+    standing-frame up more than FLOOR_WORK_GUARD_DEG from the input's +y is a lying or leaning body, so
+    the input's +y is used and the source is "input_up_floor_work"; without it nothing changes, and the
+    camera's tilt never matters for a standing take. With fewer than 5 standing frames the
     input's +y (Part 2's world up) is used (ASM-019); PART3_UP_FALLBACK=all_frames uses the mean over
     every frame instead.
     """
@@ -71,19 +79,27 @@ def body_up(J):
     knees = knee_angles(J)
     standing = np.all(knees > STANDING_KNEE_DEG, axis=-1)
     if int(standing.sum()) >= MIN_STANDING_FRAMES:
-        up = normalize(vec[standing].mean(axis=0))
-        trunk = point(J, NECK) - point(J, ROOT)
-        upright = standing & (np.linalg.norm(trunk, axis=-1) > HIP_EPS_M)
-        both = upright & (ankle_gap(J, trunk, standing) <= TWO_FOOTED_GAP)
-        if int(both.sum()) >= MIN_STANDING_FRAMES:
-            two_up = normalize(vec[both].mean(axis=0))
-            raised = upright & (ankle_gap(J, two_up, standing) > RAISED_FOOT_GAP)
-            if int(raised.sum()) >= MIN_STANDING_FRAMES:
-                return two_up, "two_footed_frames"
-        return up, "standing_frames"
+        up, source = _standing_up(J, vec, standing)
+        if floor_work and angle_between(up, INPUT_UP) > FLOOR_WORK_GUARD_DEG:
+            return np.array(INPUT_UP), "input_up_floor_work"
+        return up, source
     if os.environ.get(UP_FALLBACK_ENV, "input_up") == "all_frames":
         return normalize(vec.mean(axis=0)), "all_frames"
-    return np.array([0.0, 1.0, 0.0]), "input_up"
+    return np.array(INPUT_UP), "input_up"
+
+
+def _standing_up(J, vec, standing):
+    """(up, source) from the standing frames: the two-footed rule of TICKET-038, else their mean."""
+    up = normalize(vec[standing].mean(axis=0))
+    trunk = point(J, NECK) - point(J, ROOT)
+    upright = standing & (np.linalg.norm(trunk, axis=-1) > HIP_EPS_M)
+    both = upright & (ankle_gap(J, trunk, standing) <= TWO_FOOTED_GAP)
+    if int(both.sum()) >= MIN_STANDING_FRAMES:
+        two_up = normalize(vec[both].mean(axis=0))
+        raised = upright & (ankle_gap(J, two_up, standing) > RAISED_FOOT_GAP)
+        if int(raised.sum()) >= MIN_STANDING_FRAMES:
+            return two_up, "two_footed_frames"
+    return up, "standing_frames"
 
 
 def ankle_gap(J, along, frames=None):

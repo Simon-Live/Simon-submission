@@ -55,9 +55,13 @@
           "enum": [
             "standing_frames",
             "two_footed_frames",
+            "input_up_floor_work",
             "input_up",
             "all_frames"
           ]
+        },
+        "floor_work": {
+          "const": true
         }
       },
       "required": [

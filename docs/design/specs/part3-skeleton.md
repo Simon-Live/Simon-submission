@@ -130,6 +130,11 @@ Part 2 frames use the camera's up. Part 3 replaces it with an up taken from the 
    `up_source` says `two_footed_frames`. A raised straight leg moves the ankle midpoint sideways and tilts
    the line; on REHAB24-6 clip PM_005 (leg abduction, whole clip) the tilt from vertical drops from 6.25
    to 2.74 degrees. Any other clip, a side bend on a wide stance included, is computed exactly as before.
+   Floor work (TICKET-040, ADR-0004 amendment 2): only when the caller marks the exercise as floor work
+   (`--floor-work`), a standing-frame `up` more than 30 degrees from the input's +y is a leaning or lying body (an
+   incline push-up, a plank); the input's +y is used and `up_source` says `input_up_floor_work`. Without the mark
+   nothing changes, so the camera's tilt never matters for an unmarked take. Limit: a marked floor-work clip
+   filmed by a tilted phone keeps that tilt (the phone's gravity, TICKET-041, removes it).
 2. **Per-frame axes.** y = `up`; x = left hip minus right hip with its `up` component removed;
    z = x cross y (anterior); origin at the hip midpoint. Every frame is re-expressed in these axes.
 3. **True up for AC-006.** `truth.json` `up_in_input` is the up this same rule gives on the clean truth

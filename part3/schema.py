@@ -17,7 +17,7 @@ from part3.mirror import FLIP_VALUES
 SCHEMA_ID = "simon.skeleton/1"
 UNITS = {"length": "m", "angle": "deg", "time": "ms"}
 FRAME_BLOCK = {"origin": "hip_midpoint", "x": "subject_left", "y": "body_up", "z": "anterior"}
-UP_SOURCES = ("standing_frames", "two_footed_frames", "input_up", "all_frames")
+UP_SOURCES = ("standing_frames", "two_footed_frames", "input_up_floor_work", "input_up", "all_frames")
 MIRROR_REASONS = ("flag on", "flag off", "auto: input mirrored true", "auto: input mirrored false",
                   "auto: no mirrored key in input")
 FEW_FRAMES_BELOW = 5
@@ -253,6 +253,8 @@ def _check_header(doc, p):
         _expect_equal(block.get(key), expected, f"{p}.frame.{key}")
     if block.get("up_source") not in UP_SOURCES:
         _fail(f"{p}.frame.up_source", f"expected one of {', '.join(UP_SOURCES)}")
+    if "floor_work" in block and block["floor_work"] is not True:
+        _fail(f"{p}.frame.floor_work", "expected true when present (the floor-work hint, TICKET-040)")
     _expect_equal(doc.get("joints"), list(JOINTS), f"{p}.joints")
     bones = [{"name": n, "from": a, "to": b} for n, a, b in BONES]
     if doc.get("bones") != bones:

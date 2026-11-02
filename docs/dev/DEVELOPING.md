@@ -96,6 +96,7 @@ python3 -m pytest "tests/part3/test_server.py::test_health_answers_and_everythin
 - **`rig.fit` in a `part4` file** is how far the snapped key pose sits from the native frame (on the Part 2 squat, under 5 mm). It is a report, not an error.
 - **Odd facing on floor work.** A clip with fewer than 5 standing frames takes "up" from the input and records `frame.up_source: input_up`. Try `PART3_UP_FALLBACK=all_frames` to compare.
 - **Up on a one-legged exercise.** When a straight leg is raised (leg abduction), up comes from the frames with both feet down and `frame.up_source` says `two_footed_frames` (TICKET-038).
+- **Up on a plank or push-up.** Straight knees pass the standing test while the body lies or leans. Run with `--floor-work` for floor exercises: a standing-frame up more than 30 degrees from the input's up then uses the input's up and records `frame.up_source: input_up_floor_work` (TICKET-040).
 - **Left and right swapped for the whole clip.** The recording is mirrored (selfie mode). Use `--flip on`, or set `"mirrored": true` in the input; the output explains the decision under `mirror`.
 - **Unexpected bone lengths.** Read `body.profile`, `body.selected_by` and `body.reason`: a `PART3_BODY`, `PART3_STATURE` or `./part3.toml` you forgot may have chosen them. `--view part4` defaults to `part4-rig`.
 - **`make demo` says the port is busy.** Something holds 8733; `make demo-stop` stops a demo this checkout started (pid in `.demo.pid`, log in `out/demo.log`).

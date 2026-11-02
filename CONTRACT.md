@@ -78,7 +78,7 @@ The same rows are in `contracts/compatibility.json` and in the output of `python
 
 - Origin: the hip midpoint of each frame. Positions are metres. Angles are degrees.
 - `x` is the subject's own left, `y` is up, `z` is `x` cross `y` and points to the front of the body (anterior).
-- Native `skeleton.json` names `y` as `body_up`: Part 3 takes up from the body (feet to shoulders over standing frames). On a one-legged exercise (a straight leg raised to the side) it uses only the frames with both feet down and says `up_source: two_footed_frames`. A clip with fewer than 5 standing frames, such as floor work or a seated stretch, uses Part 2's own `y` (world up for a level camera) and says `up_source: input_up`; `PART3_UP_FALLBACK=all_frames` uses the mean feet-to-shoulders line over every frame instead. The `part4` and `part5` views name it `world_up` in `coordinate_frame`, which is what Part 4 and Part 5 expect. The numbers are the same.
+- Native `skeleton.json` names `y` as `body_up`: Part 3 takes up from the body (feet to shoulders over standing frames). On a one-legged exercise (a straight leg raised to the side) it uses only the frames with both feet down and says `up_source: two_footed_frames`. With `--floor-work`, a straight-knee body leaning more than 30 degrees from Part 2's `y` (a plank or an incline push-up) uses Part 2's `y` and says `up_source: input_up_floor_work`. A clip with fewer than 5 standing frames, such as floor work or a seated stretch, uses Part 2's own `y` (world up for a level camera) and says `up_source: input_up`; `PART3_UP_FALLBACK=all_frames` uses the mean feet-to-shoulders line over every frame instead. The `part4` and `part5` views name it `world_up` in `coordinate_frame`, which is what Part 4 and Part 5 expect. The numbers are the same.
 - Times: `t_ms` in the native file is milliseconds on the input clock. `t` in the views is seconds.
 - Left and right are the subject's, not the viewer's.
 
@@ -117,7 +117,7 @@ In this order: `nose`, `left_eye`, `right_eye`, `left_ear`, `right_ear`, `left_s
 python3 -m part3 run --in <pose3d.json> --out <path> [--flip auto|on|off]
     [--body simon-standard|part4-rig|measured|file:<path>] [--stature <m>] [--config <part3.toml>]
     [--view native|part4|part5] [--keyframes <keyframes.json>|every:<n>] [--keyframes-densify every:<n>|off] [--keyframes-person <id>]
-    [--keyframes-out <path>] [--fps <n>] [--input-fps <n>] [--person <id> | --all-people]
+    [--keyframes-out <path>] [--fps <n>] [--input-fps <n>] [--floor-work] [--person <id> | --all-people]
 python3 -m part3 contract [--json] [--schema <name>]
 python3 -m part3 doctor <file> [--for part3|part4|part5] [--json]
 ```
@@ -137,6 +137,7 @@ python3 -m part3 doctor <file> [--for part3|part4|part5] [--json]
 | `--keyframes-out` | Writes the `simon.keyframes.v1` file Part 4 reads beside `skeleton.json`. It must name a different file from `--out`. | not written |
 | `--fps` | Resamples to a uniform grid, 1 to 240 frames per second, keeping the source clock. | no resampling |
 | `--input-fps` | Frame rate for a file whose frames carry no `t_ms`. A top-level `fps` in the file does the same. | none |
+| `--floor-work` | The exercise is floor work (plank, push-up). Only then, a straight-knee body leaning more than 30 degrees from the input's `y` uses the input's `y` as up and says `up_source: input_up_floor_work`. The output then says `frame.floor_work: true`. Unmarked takes never depend on the camera's tilt, so the guarantee holds as long as only floor exercises are marked. | off |
 | `--person` | Keeps the person with this id. An absent id exits 2 and lists the ids present. | the id seen in most frames |
 | `--all-people` | Writes `<out>/person-<slug>/skeleton.json` for every id and `<out>/people.json`. The slug is the id, or `p<k>` by position when the id has characters other than letters, digits, `_` and `-`. Excludes `--person`. | off |
 

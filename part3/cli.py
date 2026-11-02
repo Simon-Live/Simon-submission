@@ -110,9 +110,10 @@ class Job:
     selection: profiles.Selection
     fps: object
     max_frames: object = None
+    floor_work: bool = False
 
 
-def _job(doc, flip, sha256, body, stature, fps, input_fps, env, config, max_frames=None):
+def _job(doc, flip, sha256, body, stature, fps, input_fps, env, config, max_frames=None, floor_work=False):
     if flip not in mirror.FLIP_VALUES:
         raise ValueError(f"flip must be one of {', '.join(mirror.FLIP_VALUES)} (got {flip!r})")
     fps = None if fps is None else resample.check_fps(fps)
@@ -123,7 +124,7 @@ def _job(doc, flip, sha256, body, stature, fps, input_fps, env, config, max_fram
     if fps is not None and adapted["frames"]:  # before any work: the grid grows with the time span, not the upload
         resample.check_grid([frame["t_ms"] for frame in adapted["frames"]], fps, max_frames)
     digest = sha256 or hashlib.sha256(json.dumps(doc, ensure_ascii=False).encode()).hexdigest()
-    return Job(adapted, names, digest, flip, selection, fps, max_frames)
+    return Job(adapted, names, digest, flip, selection, fps, max_frames, bool(floor_work))
 
 
 def _frames_for(job, indices, rebuilt, conf, repaired, lengths):
@@ -147,7 +148,7 @@ def _single(job, requested=None, trace=None):
     if applied:
         J, conf = mirror.apply(J, conf)
     J, conf, repaired = flips.repair(J, conf)
-    framed, valid, up, up_source = facing.body_frame(J)
+    framed, valid, up, up_source = facing.body_frame(J, job.floor_work)
     if trace is not None:
         trace["up_in_input"] = [float(v) for v in up]
         trace["up_source"] = up_source
@@ -166,7 +167,7 @@ def _single(job, requested=None, trace=None):
     skeleton = {
         "schema": schema.SCHEMA_ID,
         "units": dict(schema.UNITS),
-        "frame": {**schema.FRAME_BLOCK, "up_source": up_source},
+        "frame": {**schema.FRAME_BLOCK, "up_source": up_source, **({"floor_work": True} if job.floor_work else {})},
         "joints": list(JOINTS),
         "bones": _bone_block(),
         "standard": {"stature_m": body.stature_m, "sources": body.sources},
@@ -183,7 +184,7 @@ def _single(job, requested=None, trace=None):
 
 
 def process(doc, flip="auto", sha256=None, trace=None, *, body=None, stature=None, person=None,
-            fps=None, input_fps=None, env=None, config=None, max_frames=None):
+            fps=None, input_fps=None, env=None, config=None, max_frames=None, floor_work=False):
     """A pose3d dict in, a skeleton.json dict out (no file I/O).
 
     `sha256` is the hex SHA-256 recorded in `input.sha256`. A caller that read the input from a file
@@ -197,6 +198,8 @@ def process(doc, flip="auto", sha256=None, trace=None, *, body=None, stature=Non
     and `input_fps` gives the frame rate when the input has no `t_ms`. `env` (None: `os.environ`) and
     `config` (None: discover `PART3_CONFIG` and `./part3.toml`; False: no file; a path: that file) feed
     the profile channels. `max_frames` caps the frames `fps` may write (None: `resample.MAX_FRAMES`).
+    `floor_work` marks the exercise as floor work (TICKET-040, ADR-0004 amendment 2): only then may a
+    leaning or lying straight-knee body fall back to the input's +y (`up_source: input_up_floor_work`).
     `doc` is never modified.
 
     Raises ContractError for an invalid input or option, an empty clip and a clip without a person; its subclass
@@ -205,14 +208,14 @@ def process(doc, flip="auto", sha256=None, trace=None, *, body=None, stature=Non
     auto, on or off. When `trace` is a dict it receives `up_in_input` (the clip body up in the label-repaired input
     coordinates) and `up_source`.
     """
-    job = _job(doc, flip, sha256, body, stature, fps, input_fps, env, config, max_frames)
+    job = _job(doc, flip, sha256, body, stature, fps, input_fps, env, config, max_frames, floor_work)
     skeleton = _single(job, person, trace)
     schema.validate_skeleton(skeleton)
     return skeleton
 
 
 def process_all(doc, flip="auto", sha256=None, trace=None, *, body=None, stature=None, person=None,
-                fps=None, input_fps=None, env=None, config=None, max_frames=None):
+                fps=None, input_fps=None, env=None, config=None, max_frames=None, floor_work=False):
     """[(id, skeleton)] for every person id of `doc`, in first-seen id order.
 
     An id whose frames all fail the hip check comes back as (id, {"skipped": reason}). The other
@@ -221,7 +224,7 @@ def process_all(doc, flip="auto", sha256=None, trace=None, *, body=None, stature
     """
     if person is not None:
         raise ContractError("--person", "cannot be combined with --all-people")
-    job = _job(doc, flip, sha256, body, stature, fps, input_fps, env, config, max_frames)
+    job = _job(doc, flip, sha256, body, stature, fps, input_fps, env, config, max_frames, floor_work)
     results = []
     for pid in person_step.ids(job.doc["frames"]):
         scratch = {}
@@ -260,6 +263,9 @@ def _parser():
     run.add_argument("--keyframes-person", help="the person of a Part 1 keyframes file (default: the first)")
     run.add_argument("--keyframes-out", help="also write the simon.keyframes.v1 file here (--view part4)")
     run.add_argument("--fps", help="resample onto a uniform grid of this many frames per second (1 to 240)")
+    run.add_argument("--floor-work", action="store_true",
+                     help="the exercise is floor work (plank, push-up): a straight-knee body leaning more than "
+                          "30 degrees from the input's +y uses the input's +y as up (up_source input_up_floor_work)")
     run.add_argument("--input-fps", help="frame rate of an input without t_ms")
     who = run.add_mutually_exclusive_group()
     who.add_argument("--person", help="keep this person id instead of the one in the most frames")
@@ -304,7 +310,7 @@ def _render_one(args):
 
 def _process_options(args, digest, selection):
     return {"flip": args.flip, "sha256": digest, "body": selection, "fps": args.fps,
-            "input_fps": args.input_fps}
+            "input_fps": args.input_fps, "floor_work": args.floor_work}
 
 
 def _documents(doc, digest, args, selection):
