@@ -67,3 +67,13 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 main#app { position: relative; }
 main#app::before { content: ""; position: absolute; top: 0; bottom: 0; left: -64px; right: -64px; z-index: -1; pointer-events: none;
   background: linear-gradient(90deg, transparent 0, var(--color-content-veil) 64px, var(--color-content-veil) calc(100% - 64px), transparent 100%); }
+
+/* phone header: the dog badge carries the brand, so the word hides; nothing wraps */
+@media (max-width: 520px) {
+  .brand .logo-head { height: 28px; }
+  .brand .brand-word { display: none; }
+  .bar-nav a { white-space: nowrap; }
+  .bar { column-gap: var(--space-1); padding-left: var(--space-2); padding-right: var(--space-2); }
+  .kind-switch button { padding-left: var(--space-2); padding-right: var(--space-2); font-size: var(--text-xs); }
+  .bar-nav { gap: var(--space-2); font-size: var(--text-sm); }
+}

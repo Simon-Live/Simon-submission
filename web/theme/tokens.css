@@ -53,7 +53,8 @@
   --color-lime-dot: rgb(198 243 90 / 45%);
   --color-card-dot: rgb(255 255 255 / 6%);
   --color-card-sheen: rgb(255 255 255 / 4%);
-  --color-content-veil: rgb(10 10 10 / 78%);   /* behind the content column, so text on the page reads over the chalk */
+  --color-content-veil: rgb(10 10 10 / 78%);
+  --color-content-veil-phone: rgb(10 10 10 / 38%);   /* on a phone the column is the whole screen: a lighter veil */   /* behind the content column, so text on the page reads over the chalk */
   --mask-on: var(--palette-pure-black);
   --halftone-card-size: 6px;
   --halftone-back-size: 11px;
@@ -157,4 +158,17 @@
   --font: var(--font-sans);
   --mono: var(--font-mono);
   --tap: var(--tap-target);
+}
+
+/* phone widths (brand design 2026-11-01): the content column is the whole screen, so the bursts are sized to the
+   viewport and placed to show beside and behind the cards */
+@media (max-width: 720px) {
+  :root {
+    --backdrop: var(--powder-a) right -45vw top -6vh / 150vw auto no-repeat,
+                var(--powder-b) left -55vw top 48vh / 150vw auto no-repeat,
+                radial-gradient(ellipse 70% 40% at 100% 4%, var(--color-pink-smoke) 0%, transparent 75%),
+                radial-gradient(ellipse 70% 40% at 0% 70%, var(--color-pink-smoke) 0%, transparent 75%),
+                var(--color-bg);
+    --color-content-veil: var(--color-content-veil-phone);
+  }
 }
