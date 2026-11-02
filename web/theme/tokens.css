@@ -107,6 +107,7 @@
   --space-3: 12px;
   --space-4: 16px;
   --space-6: 24px;
+  --page-width: max(960px, 60vw);   /* the content column: 60% of a wide screen, never narrower than 960 px */
   --tap-target: 44px;
   --button-height: 48px;
   --target-min: 44px;
