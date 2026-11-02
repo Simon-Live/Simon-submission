@@ -71,7 +71,7 @@ def render(skeleton, keyframes=None, keyframes_person=None, max_frames=None, key
                         GAP_PAGE_TEXT)
     if timeline.densify:  # a filler dropped for a missing person is not an added key
         timeline.densify["added"] = sum(1 for index, _ in kept if index not in named_ticks)
-    _check_long_way(keys)
+    _check_long_way(keys, offsets)
     out = copy.deepcopy(skeleton)
     out.update({
         "format": FORMAT,
@@ -111,9 +111,9 @@ def keyframes_doc(rendered):
     }
 
 
-def _check_long_way(keys):
+def _check_long_way(keys, offsets=None):
     """Raise LongWayError for the earliest key step Part 4 would reject (spec "Self-check", review B2)."""
-    steps = rig.long_way(keys)
+    steps = rig.long_way(keys, offsets)
     if steps:
         step = min(steps, key=lambda s: s["from_index"])
         raise LongWayError("--view part4", f"Part 4 would reject this clip: {step['joint']} turns {step['deg']} "

@@ -17,7 +17,7 @@ from part3.mirror import FLIP_VALUES
 SCHEMA_ID = "simon.skeleton/1"
 UNITS = {"length": "m", "angle": "deg", "time": "ms"}
 FRAME_BLOCK = {"origin": "hip_midpoint", "x": "subject_left", "y": "body_up", "z": "anterior"}
-UP_SOURCES = ("standing_frames", "two_footed_frames", "input_up_floor_work", "input_up", "all_frames")
+UP_SOURCES = ("gravity", "standing_frames", "two_footed_frames", "input_up_floor_work", "input_up", "all_frames")
 MIRROR_REASONS = ("flag on", "flag off", "auto: input mirrored true", "auto: input mirrored false",
                   "auto: no mirrored key in input")
 FEW_FRAMES_BELOW = 5
@@ -245,6 +245,23 @@ def _expect_lengths(value, path):
             _fail(f"{path}.{name}", "expected a positive finite number")
 
 
+def _check_gravity_record(block, p):
+    """`frame.gravity` / `frame.gravity_ignored` (TICKET-041): up_source gravity holds exactly when gravity is recorded."""
+    used, ignored = block.get("gravity"), block.get("gravity_ignored")
+    if (block.get("up_source") == "gravity") != (used is not None):
+        _fail(f"{p}.frame.gravity", "expected exactly when up_source is gravity")
+    if used is not None:
+        _expect_object(used, f"{p}.frame.gravity")
+        for key in ("frames_used", "frames_total"):
+            if not is_int(used.get(key)) or used[key] < 1:
+                _fail(f"{p}.frame.gravity.{key}", "expected an integer of at least 1")
+        for key in ("spread_deg", "body_rule_angle_deg", "body_rule_max_deg"):
+            if (key in used or key != "body_rule_max_deg") and (not _is_number(used.get(key)) or used[key] < 0):
+                _fail(f"{p}.frame.gravity.{key}", "expected a number of at least 0")
+    if ignored is not None and (not isinstance(ignored, str) or not ignored or used is not None):
+        _fail(f"{p}.frame.gravity_ignored", "expected a reason string, and not together with gravity")
+
+
 def _check_header(doc, p):
     _expect_equal(doc.get("schema"), SCHEMA_ID, f"{p}.schema")
     _expect_equal(doc.get("units"), UNITS, f"{p}.units")
@@ -255,6 +272,7 @@ def _check_header(doc, p):
         _fail(f"{p}.frame.up_source", f"expected one of {', '.join(UP_SOURCES)}")
     if "floor_work" in block and block["floor_work"] is not True:
         _fail(f"{p}.frame.floor_work", "expected true when present (the floor-work hint, TICKET-040)")
+    _check_gravity_record(block, p)
     _expect_equal(doc.get("joints"), list(JOINTS), f"{p}.joints")
     bones = [{"name": n, "from": a, "to": b} for n, a, b in BONES]
     if doc.get("bones") != bones:

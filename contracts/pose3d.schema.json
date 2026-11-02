@@ -24,6 +24,10 @@
       "type": "boolean",
       "description": "Optional hint: the saved video is mirrored (true) or known not to be (false)."
     },
+    "gravity": {
+      "type": "object",
+      "description": "Optional (Part 2 TICKET-055): the phone's up for the take in OpenCV camera axes. Part 3 reads the per-person `up`, not this block."
+    },
     "fps": {
       "type": "number",
       "exclusiveMinimum": 0,
@@ -148,6 +152,9 @@
         },
         "joints": {
           "$ref": "#/$defs/joints"
+        },
+        "up": {
+          "description": "Optional (Part 2 TICKET-055): the phone's vertical in this person's canonical axes of this frame, three numbers of unit length. Part 3 uses each frame's own value (up_source gravity); a value that is not three finite unit-length numbers is skipped, and the frame takes the nearest valid one. If fewer than half the frames are valid the gravity is ignored (frame.gravity_ignored)."
         }
       },
       "required": [

@@ -515,11 +515,11 @@ def _fk_findings(keys, rest):
     return found
 
 
-def _long_way_findings(keys):
+def _long_way_findings(keys, rest=None):
     """Part 4's rule: no joint turns over 180 degrees between neighbouring keys in rotation-vector space."""
     return [Finding(f"{step['joint']} turns {step['deg']} degrees between keys {step['from_index']} and "
                     f"{step['to_index']} (Part 4 allows {rig.MAX_ROTVEC_STEP_DEG:.0f})", FIX_LONG_WAY)
-            for step in rig.long_way(keys)]
+            for step in rig.long_way(keys, rest)]
 
 
 def _first_difference(theirs, ours):
@@ -574,7 +574,7 @@ def part4_skeleton_findings(doc):
     if not found:  # the rules below need readable keys, rotations and rest offsets
         with np.errstate(over="ignore", invalid="ignore"):  # a quaternion near 1e308 overflows its norm: a finding, not a warning
             found += _fk_findings(keys, doc["rest_offsets_m"])
-            found += _long_way_findings(keys)
+            found += _long_way_findings(keys, doc["rest_offsets_m"])
     return found
 
 

@@ -118,22 +118,77 @@ def rotation_vector(q):
     return np.zeros(3) if s < 1e-8 or angle < 1e-8 else q[:3] * (angle / s)
 
 
-def long_way(keyframes):
+def rotation_vector_unwrapped(q):
+    """Axis times angle in radians of (x, y, z, w) as given, the angle 0 to 360 degrees (Part 4's `_rotvec_unwrapped`).
+
+    A negative w is kept, so a key already put in the previous key's hemisphere stays next to that key's vector
+    when the joint turns through 180 degrees (an arm lifted just past overhead).
+    """
+    q = _unit(q)
+    s = float(np.linalg.norm(q[:3]))
+    return np.zeros(3) if s < 1e-12 else q[:3] * (2.0 * np.arctan2(s, q[3]) / s)
+
+
+def quat_mul(a, b):
+    """Hamilton product a * b of two (x, y, z, w) quaternions."""
+    x1, y1, z1, w1 = a
+    x2, y2, z2, w2 = b
+    return np.array([w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2, w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                     w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2, w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2])
+
+
+def _free_rotations(offsets):
+    """({joint: unit direction of its only child's offset, when that child is a leaf}, {joints with no child}).
+
+    Part 4's `_free_rotations`: elbows, knees and eyes lose their twist about the bone to the leaf; wrists, ankles
+    and ears hold the identity.
+    """
+    twist_axes, leaves = {}, set()
+    for joint in ROTATED:
+        kids = CHILDREN[joint]
+        if not kids:
+            leaves.add(joint)
+        elif len(kids) == 1 and not CHILDREN[kids[0]]:
+            offset = np.asarray(offsets[kids[0]]["offset"], dtype=float)
+            if np.linalg.norm(offset) > 1e-9:
+                twist_axes[joint] = offset / np.linalg.norm(offset)
+    return twist_axes, leaves
+
+
+def drop_twist(q, reference, axis):
+    """`q` turned about `axis` (in q's own frame) to sit as close to `reference` as it can (Part 4's `_drop_twist`)."""
+    d = quat_mul(np.array([-reference[0], -reference[1], -reference[2], reference[3]]), q)
+    half = np.arctan2(-float(np.dot(d[:3], axis)), d[3])
+    return quat_mul(q, np.array([*(axis * np.sin(half)), np.cos(half)]))
+
+
+def long_way(keyframes, offsets=None):
     """Steps Part 4 rejects: [{joint, from_index, to_index, deg}] over every rotated joint, in key order.
 
-    Part 4 aligns each key's quaternion to the hemisphere of the previous key (the first to identity),
-    turns it into a rotation vector with the angle in 0 to 180 degrees, and rejects any step between
-    neighbouring keys longer than 180 degrees in that space. `keyframes` is a list of dicts with
-    `index` and `local_rotations`.
+    Part 4 (`interpolate._keyframe_quats`, `_prepare_curves`, pinned 7036622) first sets childless joints to the
+    identity and takes the twist about the leaf bone out of elbows, knees and eyes against the previous key, then
+    aligns each key's quaternion to the hemisphere of the previous key (the first to identity), turns it into a
+    rotation vector keeping that sign (angle 0 to 360 degrees, so a joint passing 180 degrees stays next to its
+    previous key), and rejects any step between neighbouring keys longer than 180 degrees in that space
+    (TICKET-042, TICKET-043). `keyframes` is a list of dicts with `index` and `local_rotations`; `offsets` are
+    the rest offsets of the file (`rest_offsets` shape), the standard body's when not given.
     """
+    if offsets is None:
+        offsets = rest_offsets(standard.bone_lengths())
+    twist_axes, leaves = _free_rotations(offsets)
+    identity = np.array([0.0, 0.0, 0.0, 1.0])
     steps = []
     for joint in ROTATED:
-        previous_q, previous_v, previous_index = np.array([0.0, 0.0, 0.0, 1.0]), None, None
+        previous_q, previous_v, previous_index = identity, None, None
         for key in keyframes:
             q = _unit(key["local_rotations"][joint])
+            if joint in leaves:
+                q = identity
+            elif joint in twist_axes:
+                q = drop_twist(q, previous_q, twist_axes[joint])
             if float(np.dot(q, previous_q)) < 0.0:
                 q = -q
-            v = rotation_vector(q)
+            v = rotation_vector_unwrapped(q)
             if previous_v is not None:
                 deg = float(np.degrees(np.linalg.norm(v - previous_v)))
                 if deg > MAX_ROTVEC_STEP_DEG:
@@ -329,8 +384,10 @@ def _arc_rotvecs(rest, goals):
 
 def _steps(rotvecs, previous):
     """Part 4's step (radians) from `previous` to each rotation vector; without one, the angle from
-    rest. Part 4 aligns hemispheres and then takes the angle in 0 to 180 degrees, so the step is the
-    distance between the w >= 0 rotation vectors (`long_way`)."""
+    rest. This is the w >= 0 measure (angle 0 to 180 degrees), NOT the sign-keeping measure `long_way` uses
+    since TICKET-042: it only ranks twist candidates, and moving it to the unwrapped measure (candidates
+    aligned to the previous key's hemisphere) changes twist choices and the part4 view's output (4 view tests
+    and their sweep fixtures change), so it stays as it is. Follow-up if the two should agree (TICKET-043 R2)."""
     if previous is None:
         return np.linalg.norm(rotvecs, axis=1)
     return np.linalg.norm(rotvecs - rotation_vector(previous), axis=1)

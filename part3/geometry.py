@@ -55,10 +55,10 @@ def knee_angles(J):
     return np.stack([left, right], axis=-1)
 
 
-def body_up(J, floor_work=False):
+def body_up(J, floor_work=False, gravity_up=None):
     """Clip body up (spec step 5 item 1) from frames J (n, 17, 3).
 
-    Returns (unit up vector, source); source is "standing_frames", "two_footed_frames",
+    Returns (unit up vector, source); source is "gravity", "standing_frames", "two_footed_frames",
     "input_up_floor_work", "input_up" or "all_frames".
     Standing = both knees above 160 degrees; the standing-frame up is their mean feet-to-shoulders line.
     TICKET-038: two-footed frames are standing frames whose ankles are level along the frame's own trunk
@@ -71,8 +71,12 @@ def body_up(J, floor_work=False):
     the input's +y is used and the source is "input_up_floor_work"; without it nothing changes, and the
     camera's tilt never matters for a standing take. With fewer than 5 standing frames the
     input's +y (Part 2's world up) is used (ASM-019); PART3_UP_FALLBACK=all_frames uses the mean over
-    every frame instead.
+    every frame instead. TICKET-041: a `gravity_up` (the summary of the phone's vertical, part3/gravity.py) is returned as the
+    clip's up and the rules above are skipped; the source is "gravity". Frames take their own gravity in
+    facing.body_frame.
     """
+    if gravity_up is not None:
+        return np.asarray(gravity_up, dtype=float), "gravity"
     J = np.asarray(J, dtype=float)
     ankle_mid = 0.5 * (point(J, "left_ankle") + point(J, "right_ankle"))
     vec = point(J, NECK) - ankle_mid

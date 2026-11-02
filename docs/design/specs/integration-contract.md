@@ -270,7 +270,7 @@ elbow bent behind the head from flipping its axis between neighbouring keys (Par
 long-way rule at every `every:<n>` without it).
 Quaternions are written with `w >= 0`, 6 decimals; key joints are the FK result, 6 decimals.
 Self-check (review B2): after the keys are built the view applies Part 4's long-way rule (`rig.long_way`: each key's
-quaternion aligned to the previous key's hemisphere, as a rotation vector with the angle in 0 to 180 degrees; a step
+quaternion aligned to the previous key's hemisphere, as a rotation vector keeping that sign, the angle 0 to 360 degrees so a joint passing 180 degrees stays next to its previous key (TICKET-042, Part 4's `_rotvec_unwrapped`); a step
 over 180 degrees between neighbouring keys is rejected). Any such step exits 2 and writes nothing: `--view part4: Part 4
 would reject this clip: <joint> turns <deg> degrees between keys <a> and <b> (Part 4 allows 180); add keys between them
 (a smaller every:<n>) or use another view` (a `LongWayError`, a `ViewError` whose path is `--view part4`; the

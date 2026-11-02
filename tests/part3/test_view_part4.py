@@ -384,8 +384,8 @@ def overhead_skeleton():
 @pytest.mark.parametrize("every", ["every:10", "every:3", "every:1"])
 def test_b2_an_arm_swept_overhead_renders_and_meets_part4s_long_way_rule(overhead_skeleton, every):
     out = part4.render(overhead_skeleton, keyframes=every)
-    assert rig.long_way(out["keyframes"]) == []
-    assert p4.long_way_steps(out["keyframes"]) == []
+    assert rig.long_way(out["keyframes"], out["rest_offsets_m"]) == []
+    assert p4.long_way_steps(out["keyframes"], out["rest_offsets_m"]) == []
     assert p4.violations(out, part4.keyframes_doc(out)) == []
     assert out["rig"]["fit"]["max_m"] < 0.01  # the sweep is also followed within 1 cm
 
@@ -461,12 +461,12 @@ def test_b2_a_forearm_spun_past_180_degrees_about_the_upper_arm_is_taken_by_the_
     """Twist continuity (ASM-020): the shoulder turns about the upper arm, so the elbow keeps its axis
     and Part 4's rule holds; before stitching this clip was refused (left_elbow, keys 0 and 30)."""
     out = part4.render(spun_forearm_clip(skeleton, 190.0), keyframes=TICKS_0_AND_30)
-    assert rig.long_way(out["keyframes"]) == [] and p4.violations(out, part4.keyframes_doc(out)) == []
+    assert rig.long_way(out["keyframes"], out["rest_offsets_m"]) == [] and p4.violations(out, part4.keyframes_doc(out)) == []
 
 
 def test_b2_a_small_spin_of_the_same_forearm_is_not_over_the_limit(skeleton):
     out = part4.render(spun_forearm_clip(skeleton, 20.0), keyframes=TICKS_0_AND_30)
-    assert rig.long_way(out["keyframes"]) == [] and p4.violations(out, part4.keyframes_doc(out)) == []
+    assert rig.long_way(out["keyframes"], out["rest_offsets_m"]) == [] and p4.violations(out, part4.keyframes_doc(out)) == []
 
 
 @pytest.mark.parametrize("build", ["across"])
@@ -477,13 +477,13 @@ def test_b2_the_independent_part4_rules_flag_the_step_the_view_refuses(skeleton,
     else:
         clip, keys, joint, span = (cli.process(take1_with_arms(across_the_body), **CLEAN), "every:10",
                                    "left_shoulder", (110, 120))
-    monkeypatch.setattr(part4, "_check_long_way", lambda keys: None)
+    monkeypatch.setattr(part4, "_check_long_way", lambda keys, offsets=None: None)
     out = part4.render(clip, keyframes=keys)
-    found = [step for step in p4.long_way_steps(out["keyframes"]) if step[0] == joint]
+    found = [step for step in p4.long_way_steps(out["keyframes"], out["rest_offsets_m"]) if step[0] == joint]
     assert [(a, b) for _, a, b, _ in found] == [span]
     assert any(v.startswith(f"{joint} takes the long way between keys {span[0]} and {span[1]}")
                for v in p4.violations(out, part4.keyframes_doc(out)))
-    ours = [s for s in rig.long_way(out["keyframes"]) if s["joint"] == joint]
+    ours = [s for s in rig.long_way(out["keyframes"], out["rest_offsets_m"]) if s["joint"] == joint]
     assert [(s["from_index"], s["to_index"]) for s in ours] == [span]
     assert found[0][3] == pytest.approx(ours[0]["deg"], abs=0.1)
 

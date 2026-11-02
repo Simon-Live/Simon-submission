@@ -222,21 +222,30 @@ def test_consumer_report_is_a_dict_of_named_verdicts():
 # --- review B2: Part 4's long-way rule ---------------------------------------------------------
 
 def _shoulder_flip():
-    """Keys 10 and 20 turn the left shoulder 170 degrees about +z and then 170 degrees about -z: 340 apart."""
+    """Keys 10 and 20 turn the left shoulder 170 degrees about +x and then 170 degrees about +z: 240 apart.
+
+    (170 about +z then 170 about -z is 20 degrees apart through 180: Part 4 follows it, TICKET-042.)"""
     view = contractkit.with_rotation(contractkit.part4_view(), 1, "left_shoulder",
-                                     contractkit.axis_angle([0, 0, 1], 170))
-    return contractkit.with_rotation(view, 2, "left_shoulder", contractkit.axis_angle([0, 0, 1], -170))
+                                     contractkit.axis_angle([1, 0, 0], 170))
+    return contractkit.with_rotation(view, 2, "left_shoulder", contractkit.axis_angle([0, 0, 1], 170))
 
 
 def test_a_shoulder_that_flips_through_180_degrees_between_keys_is_rejected_naming_joint_and_keys(check):
     code, out, _ = check(_shoulder_flip(), "--for", "part4")
     assert code == 1
-    assert "Part 4 would reject: left_shoulder turns 340.0 degrees between keys 10 and 20 (Part 4 allows 180)" in out
+    assert "Part 4 would reject: left_shoulder turns 240.4 degrees between keys 10 and 20 (Part 4 allows 180)" in out
     assert f"fix: {rig.LONG_WAY_FIX}" in out
     assert "fix: add keys between them (a smaller every:<n>) or use another view" in out
     assert "Part 4 accepts" not in out
     assert check(_shoulder_flip())[0] == 0  # the file is valid; only Part 4 rejects it
     assert check(contractkit.part4_view(), "--for", "part4")[0] == 0
+
+
+def test_ticket_042_a_shoulder_passing_180_degrees_is_accepted(check):
+    view = contractkit.with_rotation(contractkit.part4_view(), 1, "left_shoulder",
+                                     contractkit.axis_angle([0, 0, 1], 170))
+    view = contractkit.with_rotation(view, 2, "left_shoulder", contractkit.axis_angle([0, 0, 1], -170))
+    assert check(view, "--for", "part4")[0] == 0
 
 
 def test_the_long_way_rule_reads_the_quaternion_not_its_sign(check):
@@ -280,7 +289,7 @@ def test_part4s_own_skeleton_gets_the_beside_and_long_way_rules_too(check):
     code, out, _ = check(contractkit.part4_authored(), "--for", "part4", beside=False)
     assert code == 1 and "keyframes.json: not found beside this file" in out and "Part 4 accepts" not in out
     code, out, _ = check(contractkit.part4_authored(_shoulder_flip()), "--for", "part4")
-    assert code == 1 and "left_shoulder turns 340.0 degrees between keys 10 and 20" in out
+    assert code == 1 and "left_shoulder turns 240.4 degrees between keys 10 and 20" in out
 
 
 def part4_fix(check, doc, **options):

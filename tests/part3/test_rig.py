@@ -423,9 +423,12 @@ def _keys(poses, offsets, continuity):
 def test_twist_continuity_keeps_a_folded_elbow_under_part4s_180_degree_step():
     offsets = rig.rest_offsets(standard_lengths())
     poses = [_bent_arm_pose(s, offsets) for s in (0, 80, 160, 80, 0)]
-    assert rig.long_way(_keys(poses, offsets, continuity=False)) != []
+    # Part 4 takes the twist about the leaf bone out itself (TICKET-043), so even keys fitted without continuity
+    # pass the guard; the old w >= 0 measure refused them. The continuity keys pass too.
+    plain = _keys(poses, offsets, continuity=False)
+    assert rig.long_way(plain, offsets) == [] == p4.long_way_steps(plain, offsets)
     keys = _keys(poses, offsets, continuity=True)
-    assert rig.long_way(keys) == []
+    assert rig.long_way(keys, offsets) == []
     for pose, key in zip(poses, keys):
         assert max_gap(key["fk"], pose) < 1e-9
 

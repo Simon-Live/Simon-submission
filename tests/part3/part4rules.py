@@ -59,8 +59,11 @@ def forward_kinematics(local_rotations, rest_offsets):
 
 
 def _rotation_vector(q):
-    """Axis times angle (radians) of a unit quaternion (x, y, z, w) taken with w >= 0: angle 0 to 180 degrees."""
-    x, y, z, w = q if q[3] >= 0 else tuple(-c for c in q)
+    """Axis times angle (radians) of a unit quaternion (x, y, z, w) as given: angle 0 to 360 degrees.
+
+    Part 4's `_rotvec_unwrapped` keeps a negative w, so a key put in the previous key's hemisphere stays next to it.
+    """
+    x, y, z, w = q
     sine = math.sqrt(x * x + y * y + z * z)
     if sine < 1e-12:
         return (0.0, 0.0, 0.0)
@@ -68,18 +71,51 @@ def _rotation_vector(q):
     return (x / sine * angle, y / sine * angle, z / sine * angle)
 
 
-def long_way_steps(keys):
+def _free_rotations(rest_offsets):
+    """Part 4's `_free_rotations`: ({joint: offset of its only child, when that child is a leaf}, {childless joints})."""
+    kids = {joint: [c for c in FK_ORDER if rest_offsets[c]["parent"] == joint] for joint in ROTATED}
+    axes, leaves = {}, set()
+    for joint in ROTATED:
+        if not kids[joint]:
+            leaves.add(joint)
+        elif len(kids[joint]) == 1 and not kids[kids[joint][0]]:
+            offset = rest_offsets[kids[joint][0]]["offset"]
+            if math.sqrt(sum(c * c for c in offset)) > 1e-9:
+                axes[joint] = offset
+    return axes, leaves
+
+
+def drop_twist(q, reference, axis):
+    """Part 4's `_drop_twist`: q turned about `axis` (in q's own frame) to sit as close to `reference` as it can."""
+    n = math.sqrt(sum(c * c for c in axis))
+    u = tuple(c / n for c in axis)
+    d = q_mul((-reference[0], -reference[1], -reference[2], reference[3]), q)
+    half = math.atan2(-sum(a * b for a, b in zip(d[:3], u)), d[3])
+    s = math.sin(half)
+    return q_mul(q, (u[0] * s, u[1] * s, u[2] * s, math.cos(half)))
+
+
+def long_way_steps(keys, rest_offsets=None):
     """[(joint, from index, to index, degrees)] for every step over 180 degrees between neighbouring keys.
 
-    Written from Part 4's README (its own code, not `part3.rig.long_way`): each key's quaternion is flipped
-    into the hemisphere of the previous key's (the first against identity), turned into a rotation vector,
-    and the distance between neighbouring rotation vectors is the step.
+    Written from Part 4's README and `interpolate._keyframe_quats` (its own code, not `part3.rig.long_way`):
+    childless joints hold the identity, elbows, knees and eyes lose their twist about the leaf bone against the
+    previous key, each key's quaternion is flipped into the hemisphere of the previous key's (the first against
+    identity), turned into a rotation vector, and the distance between neighbouring rotation vectors is the step.
+    `rest_offsets` default to the standard body's.
     """
+    if rest_offsets is None:
+        rest_offsets = standard_rest_offsets()
+    axes, leaves = _free_rotations(rest_offsets)
     found = []
     for joint in ROTATED:
         before, vector, at = (0.0, 0.0, 0.0, 1.0), None, None
         for key in keys:
             q = q_unit(key["local_rotations"][joint])
+            if joint in leaves:
+                q = (0.0, 0.0, 0.0, 1.0)
+            elif joint in axes:
+                q = q_unit(drop_twist(q, before, axes[joint]))
             if sum(a * b for a, b in zip(q, before)) < 0:
                 q = tuple(-c for c in q)
             now = _rotation_vector(q)
@@ -89,6 +125,12 @@ def long_way_steps(keys):
                     found.append((joint, at, key["index"], degrees))
             before, vector, at = q, now, key["index"]
     return found
+
+
+def standard_rest_offsets():
+    """The standard body's rest offsets, from Part 3's rig (only the offsets' directions matter to the twist rule)."""
+    from part3 import rig, standard
+    return rig.rest_offsets(standard.bone_lengths())
 
 
 def _joint_xyz(value):
@@ -117,7 +159,7 @@ def violations(skeleton, companion=None):
     found += _key_violations(keys, count, skeleton.get("rest_offsets_m", {}))
     if all(joint in key["local_rotations"] for key in keys for joint in ROTATED):  # else already reported as missing
         found += [f"{joint} takes the long way between keys {a} and {b} ({degrees:.1f} degrees)"
-                  for joint, a, b, degrees in long_way_steps(keys)]
+                  for joint, a, b, degrees in long_way_steps(keys, skeleton.get("rest_offsets_m"))]
     if companion is not None:
         found += _companion_violations(companion, keys, timeline)
     return found

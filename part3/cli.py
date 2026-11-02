@@ -16,7 +16,7 @@ import sys
 
 import numpy as np
 
-from part3 import adapters, bones, facing, flips, io, mirror, people, profiles, resample, schema, standard
+from part3 import adapters, bones, facing, flips, gravity, io, mirror, people, profiles, resample, schema, standard
 from part3 import person as person_step
 from part3 import keyframes, temporal, views
 from part3.joints import BONES, GROUP_ORDER, JOINTS
@@ -148,7 +148,14 @@ def _single(job, requested=None, trace=None):
     if applied:
         J, conf = mirror.apply(J, conf)
     J, conf, repaired = flips.repair(J, conf)
-    framed, valid, up, up_source = facing.body_frame(J, job.floor_work)
+    raw = gravity.collect(doc, indices, chosen)
+    held, gravity_block = (None, {}) if raw is None else gravity.resolve(raw, J, applied, job.floor_work)
+    framed, valid, up, up_source = facing.body_frame(J, job.floor_work, held)
+    if held is not None and not valid.all() and valid.any():   # the record counts the frames that survive
+        held, gravity_block = gravity.resolve([r for r, ok in zip(raw, valid) if ok], J[valid], applied,
+                                              job.floor_work)
+        if held is None:   # the survivors refuse it: frame again by the body rules, and say why
+            framed, valid, up, up_source = facing.body_frame(J, job.floor_work)
     if trace is not None:
         trace["up_in_input"] = [float(v) for v in up]
         trace["up_source"] = up_source
@@ -167,7 +174,8 @@ def _single(job, requested=None, trace=None):
     skeleton = {
         "schema": schema.SCHEMA_ID,
         "units": dict(schema.UNITS),
-        "frame": {**schema.FRAME_BLOCK, "up_source": up_source, **({"floor_work": True} if job.floor_work else {})},
+        "frame": {**schema.FRAME_BLOCK, "up_source": up_source, **({"floor_work": True} if job.floor_work else {}),
+                  **gravity_block},
         "joints": list(JOINTS),
         "bones": _bone_block(),
         "standard": {"stature_m": body.stature_m, "sources": body.sources},
