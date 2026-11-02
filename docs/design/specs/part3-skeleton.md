@@ -123,6 +123,13 @@ Part 2 frames use the camera's up. Part 3 replaces it with an up taken from the 
    ankle-to-shoulder vector over all frames, stood Part 2's cat-cow class clip upright (spine 86
    degrees from vertical in the input, 13 in the output). `PART3_UP_FALLBACK=all_frames` restores
    it, and `up_source` then says `all_frames`.
+   One-legged exercises (TICKET-038): two-footed frames are standing frames whose ankles are level along
+   the frame's own trunk line (height gap at most 0.05 of the median hip-to-ankle length). When at least
+   5 exist and at least 5 standing frames have one ankle more than 0.20 higher along the two-footed
+   frames' up (a straight leg raised, as in leg abduction), `up` is the two-footed frames' mean and
+   `up_source` says `two_footed_frames`. A raised straight leg moves the ankle midpoint sideways and tilts
+   the line; on REHAB24-6 clip PM_005 (leg abduction, whole clip) the tilt from vertical drops from 6.25
+   to 2.74 degrees. Any other clip, a side bend on a wide stance included, is computed exactly as before.
 2. **Per-frame axes.** y = `up`; x = left hip minus right hip with its `up` component removed;
    z = x cross y (anterior); origin at the hip midpoint. Every frame is re-expressed in these axes.
 3. **True up for AC-006.** `truth.json` `up_in_input` is the up this same rule gives on the clean truth

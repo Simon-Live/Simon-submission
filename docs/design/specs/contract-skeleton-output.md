@@ -33,7 +33,7 @@ Zeros are placeholders for shape only; real values come from `part3/standard_bod
 | Field | Rule |
 |---|---|
 | `schema` | exactly `simon.skeleton/1`; a breaking change bumps the number |
-| `frame.up_source` | `standing_frames`, `input_up` (fewer than 5 standing frames: the input's +y, Part 2's world up) or `all_frames` (the same case with `PART3_UP_FALLBACK=all_frames`); spec step 5 |
+| `frame.up_source` | `standing_frames`, `two_footed_frames` (a one-legged clip: up from the frames with both feet down, TICKET-038), `input_up` (fewer than 5 standing frames: the input's +y, Part 2's world up) or `all_frames` (the same case with `PART3_UP_FALLBACK=all_frames`); spec step 5 |
 | `joints` | the 17 canonical names in canonical order |
 | `bones` | exactly the 18 bones in the table below, in that order; `root` and `neck` are virtual midpoints |
 | `bone_lengths_m` | the one standard reference body, identical in every `skeleton.json` |

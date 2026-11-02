@@ -10,6 +10,11 @@ HIP_EPS_M = 1e-6
 STANDING_KNEE_DEG = 160.0
 MIN_STANDING_FRAMES = 5
 UP_FALLBACK_ENV = "PART3_UP_FALLBACK"   # "all_frames" restores the pre-stitching fallback (ASM-019)
+# TICKET-038: ankle height gap along the trunk, as a share of leg length. A clip counts as one-legged when at least
+# MIN_STANDING_FRAMES straight-knee frames have a gap above RAISED_FOOT_GAP (Part 2 noise on two-footed squats stays
+# under about 0.11); its up then comes from frames with a gap of at most TWO_FOOTED_GAP.
+RAISED_FOOT_GAP = 0.20
+TWO_FOOTED_GAP = 0.05
 
 
 def normalize(v, axis=-1):
@@ -49,9 +54,16 @@ def knee_angles(J):
 def body_up(J):
     """Clip body up (spec step 5 item 1) from frames J (n, 17, 3).
 
-    Returns (unit up vector, "standing_frames", "input_up" or "all_frames"). Standing = both knees
-    above 160 degrees. With fewer than 5 standing frames the input's +y (Part 2's world up) is used
-    (ASM-019); PART3_UP_FALLBACK=all_frames uses the mean over every frame instead.
+    Returns (unit up vector, "standing_frames", "two_footed_frames", "input_up" or "all_frames").
+    Standing = both knees above 160 degrees; the standing-frame up is their mean feet-to-shoulders line.
+    TICKET-038: two-footed frames are standing frames whose ankles are level along the frame's own trunk
+    (gap at most TWO_FOOTED_GAP of leg length). When at least 5 exist and at least 5 standing frames have
+    one ankle clearly higher along the up of those two-footed frames (gap above RAISED_FOOT_GAP: a straight
+    leg raised, as in leg abduction), up is the two-footed frames' mean ("two_footed_frames"). Any other
+    clip, including a side bend on a wide stance (both feet stay level along that up), is computed exactly
+    as before. With fewer than 5 standing frames the
+    input's +y (Part 2's world up) is used (ASM-019); PART3_UP_FALLBACK=all_frames uses the mean over
+    every frame instead.
     """
     J = np.asarray(J, dtype=float)
     ankle_mid = 0.5 * (point(J, "left_ankle") + point(J, "right_ankle"))
@@ -59,10 +71,39 @@ def body_up(J):
     knees = knee_angles(J)
     standing = np.all(knees > STANDING_KNEE_DEG, axis=-1)
     if int(standing.sum()) >= MIN_STANDING_FRAMES:
-        return normalize(vec[standing].mean(axis=0)), "standing_frames"
+        up = normalize(vec[standing].mean(axis=0))
+        trunk = point(J, NECK) - point(J, ROOT)
+        upright = standing & (np.linalg.norm(trunk, axis=-1) > HIP_EPS_M)
+        both = upright & (ankle_gap(J, trunk, standing) <= TWO_FOOTED_GAP)
+        if int(both.sum()) >= MIN_STANDING_FRAMES:
+            two_up = normalize(vec[both].mean(axis=0))
+            raised = upright & (ankle_gap(J, two_up, standing) > RAISED_FOOT_GAP)
+            if int(raised.sum()) >= MIN_STANDING_FRAMES:
+                return two_up, "two_footed_frames"
+        return up, "standing_frames"
     if os.environ.get(UP_FALLBACK_ENV, "input_up") == "all_frames":
         return normalize(vec.mean(axis=0)), "all_frames"
     return np.array([0.0, 1.0, 0.0]), "input_up"
+
+
+def ankle_gap(J, along, frames=None):
+    """(n,) ankle height gap of each frame along `along`, as a share of the median hip-to-ankle length.
+
+    `along` is one direction (3,) or one per frame (n, 3); it is normalised here, and a zero direction gives
+    a zero gap. The leg length is the median over `frames` (a boolean mask; all frames when None), ignoring
+    NaN. All zeros when that length is not positive (TICKET-038).
+    """
+    J = np.asarray(J, dtype=float)
+    left, right = point(J, "left_ankle"), point(J, "right_ankle")
+    sel = np.ones(J.shape[0], dtype=bool) if frames is None else np.asarray(frames, dtype=bool)
+    legs = np.concatenate([np.linalg.norm(point(J, "left_hip") - left, axis=-1)[sel],
+                           np.linalg.norm(point(J, "right_hip") - right, axis=-1)[sel]])
+    legs = legs[np.isfinite(legs)]
+    leg = float(np.median(legs)) if legs.size else 0.0
+    if not leg > HIP_EPS_M:
+        return np.zeros(J.shape[0])
+    direction = normalize(np.broadcast_to(np.asarray(along, dtype=float), left.shape))
+    return np.abs(np.sum((left - right) * direction, axis=-1)) / leg
 
 
 def pelvis_frame(J, up):

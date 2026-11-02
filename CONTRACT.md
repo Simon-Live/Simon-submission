@@ -78,7 +78,7 @@ The same rows are in `contracts/compatibility.json` and in the output of `python
 
 - Origin: the hip midpoint of each frame. Positions are metres. Angles are degrees.
 - `x` is the subject's own left, `y` is up, `z` is `x` cross `y` and points to the front of the body (anterior).
-- Native `skeleton.json` names `y` as `body_up`: Part 3 takes up from the body (feet to shoulders over standing frames). A clip with fewer than 5 standing frames, such as floor work or a seated stretch, uses Part 2's own `y` (world up for a level camera) and says `up_source: input_up`; `PART3_UP_FALLBACK=all_frames` uses the mean feet-to-shoulders line over every frame instead. The `part4` and `part5` views name it `world_up` in `coordinate_frame`, which is what Part 4 and Part 5 expect. The numbers are the same.
+- Native `skeleton.json` names `y` as `body_up`: Part 3 takes up from the body (feet to shoulders over standing frames). On a one-legged exercise (a straight leg raised to the side) it uses only the frames with both feet down and says `up_source: two_footed_frames`. A clip with fewer than 5 standing frames, such as floor work or a seated stretch, uses Part 2's own `y` (world up for a level camera) and says `up_source: input_up`; `PART3_UP_FALLBACK=all_frames` uses the mean feet-to-shoulders line over every frame instead. The `part4` and `part5` views name it `world_up` in `coordinate_frame`, which is what Part 4 and Part 5 expect. The numbers are the same.
 - Times: `t_ms` in the native file is milliseconds on the input clock. `t` in the views is seconds.
 - Left and right are the subject's, not the viewer's.
 
