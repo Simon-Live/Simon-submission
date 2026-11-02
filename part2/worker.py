@@ -348,7 +348,10 @@ def _run_job(chan, main, req: dict) -> int:
 def _job_context(cwd: str, env: dict):
     """The request's cwd and PART2_* environment for the duration of the job: the worker's own PART2_* variables
     are hidden, and everything is put back afterwards."""
+    from part2 import staging_yield
+
     prev_cwd, saved = os.getcwd(), _part2_only(os.environ)
+    staging_yield.reset_budget()  # TICKET-056: the yield budget is one request's, not the warm worker's lifetime
     try:
         _set_part2_environ(env)
         os.chdir(cwd)
