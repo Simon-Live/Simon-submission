@@ -20,7 +20,7 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 
 /* header: the Exercise / Dance switch in the middle, quiet links at the sides */
 .bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: var(--color-header-glass);
-  border-bottom: 1px solid var(--color-line); backdrop-filter: blur(var(--header-blur)); }
+  border-bottom: 2px solid var(--color-pink); backdrop-filter: blur(var(--header-blur)); }   /* the bright pink divider */
 /* explicit cells: styles.css gives these flex orders that would otherwise reshuffle the grid */
 .brand { grid-area: 1 / 1; justify-self: start; font-weight: var(--weight-black); letter-spacing: -0.02em; color: var(--color-accent); }
 #kind-switch { grid-area: 1 / 2; }
@@ -64,7 +64,10 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 .logo-sign .logo-stop-off { stop-color: var(--palette-pure-white); stop-opacity: 0; }
 .splash-mark .logo-sign { width: min(64vw, 280px); height: auto; }
 .brand { display: inline-flex; align-items: center; gap: var(--space-2); text-decoration: none; }
-.brand .logo-bar { height: 60px; width: auto; }
+/* the dog sits in the header and the sign hangs below it, over the pink divider (sketch 2026-11-01): the mark is
+   taller than the bar and its lower part overflows downward without making the bar taller */
+header.bar .brand { position: relative; z-index: 3; align-self: start; align-items: flex-start; height: var(--brand-in-bar); }
+.brand .logo-bar { height: var(--brand-mark); width: auto; margin-top: 6px; pointer-events: auto; }
 .brand .brand-word { display: none; }   /* the word is on the sign */
 .splash-tag { color: var(--color-text); font-size: var(--text-md); }
 @media (prefers-reduced-motion: reduce) { .splash { transition: none; } }
@@ -77,7 +80,9 @@ main#app::before { content: ""; position: absolute; top: 0; bottom: 0; left: -64
 
 /* phone header: the dog badge carries the brand, so the word hides; nothing wraps */
 @media (max-width: 520px) {
-  .brand .logo-bar { height: 44px; }
+  header.bar .brand { height: var(--brand-in-bar-phone); }
+  main#app { padding-top: calc(var(--brand-mark-phone) - var(--brand-in-bar-phone) + var(--space-4)); }   /* the content clears the hanging sign */
+  .brand .logo-bar { height: var(--brand-mark-phone); margin-top: 4px; }
   .brand .brand-word { display: none; }
   .bar-nav a { white-space: nowrap; }
   .bar { column-gap: var(--space-1); padding-left: var(--space-2); padding-right: var(--space-2); }

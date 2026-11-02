@@ -108,6 +108,10 @@
   --space-4: 16px;
   --space-6: 24px;
   --page-width: max(960px, 60vw);   /* the content column: 60% of a wide screen, never narrower than 960 px */
+  --brand-mark: 112px;         /* the dog-and-sign mark in the header: the dog in the bar, the sign hanging below it */
+  --brand-in-bar: 56px;        /* how much of the mark sits inside the bar */
+  --brand-mark-phone: 80px;
+  --brand-in-bar-phone: 44px;
   --tap-target: 44px;
   --button-height: 48px;
   --target-min: 44px;
