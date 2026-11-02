@@ -191,6 +191,7 @@ def rig_textured(glb: bytes, skin, fit_body, height_m: float, commit: str, backe
     except MeshError as e:
         raise Image3dError(1, f"the generated model cannot be used: {e}") from None
     colours, why = coloured.colors, "no attempt"
+    autorig.TRACE.clear()
     for yaw in YAWS_DEG:
         try:
             rigged = autorig.rig(_yawed(mesh, yaw), skin, _with_colours(fit_body, colours), commit)
@@ -201,6 +202,7 @@ def rig_textured(glb: bytes, skin, fit_body, height_m: float, commit: str, backe
         else:
             avatar = dict(rigged.avatar, turned_before_fit_deg=yaw, up_axis=info["up"])
             return image3d_glb.add_texture(rigged.glb, tex, notice(backend), len(mesh.vertices)), {**avatar, "texture": _texture_doc(tex)}
+    why = f"{why} (fits tried, in order: {autorig.TRACE})"
     raise Image3dError(3, f"nothing humanoid could be rigged from this picture: {why}")
 
 

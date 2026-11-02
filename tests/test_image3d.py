@@ -308,3 +308,13 @@ def test_the_notice_and_licence_name_the_backend_that_ran(tmp_path, picture):
 def test_an_unknown_backend_is_exit_2(tmp_path, picture, capsys):
     assert image3d.command(tmp_path / "o", picture, None, "bogus", FakeGenerator(), fake_sam_parts()) == 2
     assert "--backend" in capsys.readouterr().err
+
+
+def test_a_refusal_for_the_facing_names_every_fit_tried(tmp_path, picture, capsys):
+    from autorig_helpers import fake_fit_body
+
+    fit = fake_fit_body(hip_sign=(-1, 1))  # the hips always read the wrong way round
+    code, _ = run(tmp_path, picture, parts=parts_with(fit))
+    err = capsys.readouterr().err
+    assert code == 3 and "cannot tell which way the figure faces" in err and "fits tried" in err
+    assert err.count("'faces_forward': False") == 2 * len(image3d.YAWS_DEG) and "fit_error_share" in err

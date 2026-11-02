@@ -217,6 +217,15 @@ def canonical_map(parents) -> dict:
 
 # ---- the rig ----------------------------------------------------------------------------------------
 
+TRACE: list[dict] = []   # one row per fit `rig` made (fit error as a share of height, hips x, facing): why a refusal refused
+
+
+def _trace_row(mesh: Mesh, err: float, body: Fit) -> dict:
+    height = float(np.ptp(mesh.vertices[:, 1]))
+    return {"fit_error_share": round(err / height, 3), "left_hip_x": round(float(body.keypoints[LEFT_HIP, 0]), 3),
+            "right_hip_x": round(float(body.keypoints[RIGHT_HIP, 0]), 3), "faces_forward": faces_forward(body.keypoints)}
+
+
 def faces_forward(keypoints_mesh: np.ndarray) -> bool:
     """True when the fitted body's left hip is on +x of its right hip: the subject faces +Z, as the front view assumes."""
     return bool(keypoints_mesh[LEFT_HIP, 0] > keypoints_mesh[RIGHT_HIP, 0])
@@ -230,6 +239,7 @@ def rig(mesh: Mesh, skin: Skin, fit_body, part2_commit: str = "unknown") -> Rigg
         fit, cam = fit_body(mesh)
         placed, err = align(fit, cam.to_cam(mesh.vertices))
         body = Fit(*(cam.to_mesh(a) for a in (placed.vertices, placed.joints, placed.keypoints)))
+        TRACE.append(_trace_row(mesh, err, body))
         if faces_forward(body.keypoints):
             break
         if attempt == 1:
@@ -241,13 +251,34 @@ def rig(mesh: Mesh, skin: Skin, fit_body, part2_commit: str = "unknown") -> Rigg
                        f"{err / height:.0%} of its height away")
     mapping = canonical_map(skin.parents)
     idx, w = transfer_weights(mesh.vertices, body.vertices, skin)
+    from part2 import (  # joints in depth, limb-split weights, stretch (AC-20 to AC-22)
+        autorig_joints,
+        autorig_pose,
+        autorig_weights,
+    )
+    stretch = {"before": autorig_pose.pose_stretch(mesh.vertices, mesh.faces, body.joints, skin.parents, idx, w, mapping)}
+    joints, centred = autorig_joints.centre_in_depth(mesh.vertices, body.joints, skin.parents, mapping)
+    idx, w = autorig_weights.refine(mesh.vertices, mesh.faces, joints, skin.parents, mapping, idx, w)
+    stretch["after"] = autorig_pose.pose_stretch(mesh.vertices, mesh.faces, joints, skin.parents, idx, w, mapping)
+    faces, cut = autorig_weights.cut_bridges(mesh.vertices, mesh.faces, joints, skin.parents, mapping, idx, w)
+    stretch["cut"] = autorig_pose.pose_stretch(mesh.vertices, faces, joints, skin.parents, idx, w, mapping)
+    mesh = Mesh(mesh.vertices, faces, mesh.colors)  # without the triangles that bridge two limbs and would stretch
+    body = Fit(body.vertices, joints, body.keypoints)  # the skeleton the GLB gets: centred in depth
     glb = autorig_glb.build(mesh, body.joints, skin.parents, joint_names(mapping), idx, w,
                             {"copyright": NOTICE, "licence": LICENCE})
     avatar = {"schema": "simon.avatar.v1", "kind": "autorig", "inputs": 1,
               "height_m": round(float(np.ptp(mesh.vertices[:, 1])), 3), "joints": JOINTS, "mapped": mapping,
               "licence": LICENCE, "part2_commit": part2_commit, "skinning": "nearest-body-vertices",
               "fit_error_m": round(err, 4), "turned_to_face_forward": turned}
+    avatar.update({"skinning_refined": "limb-split+smoothed", "joints_centred_in_depth": centred, "bridging_triangles_cut": cut,
+                   "stretch": _rounded(stretch)})
     return Rigged(glb, avatar)
+
+
+def _rounded(stretch: dict) -> dict:
+    """The stretch report with its numbers to two decimals (before the limb split, after it, per test pose)."""
+    return {k: {pose: {m: round(v, 2) if isinstance(v, float) else v for m, v in d.items()} for pose, d in per.items()}
+            for k, per in stretch.items()}
 
 
 # ---- SAM 3D Body ------------------------------------------------------------------------------------
