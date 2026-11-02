@@ -1,0 +1,969 @@
+{
+ "challenges": [
+  {
+   "id": "gangnam",
+   "name": "Gangnam Style",
+   "reference": {
+    "clip": "gangnam-f-rG7tfkKmgIk",
+    "url": "https://www.youtube.com/watch?v=rG7tfkKmgIk",
+    "start_s": 0,
+    "clip_s": 10.9,
+    "source_s": 11,
+    "entry": "test-gangnam-trio-lead-71d13b0f",
+    "status": "done",
+    "error": null
+   },
+   "takes": [
+    {
+     "clip": "gangnam-f-iQbARbIkGcw",
+     "url": "https://www.youtube.com/watch?v=iQbARbIkGcw",
+     "start_s": 0,
+     "clip_s": 36.6,
+     "source_s": 37,
+     "person": "0",
+     "job": "4e94f46a3a92",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 49.1,
+      "grade": "E",
+      "points": 11661,
+      "max_points": 23760,
+      "easy_percent": 61.2,
+      "hard_percent": 39.0
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "gangnam-f-cKNVlH7mgbY",
+     "url": "https://www.youtube.com/watch?v=cKNVlH7mgbY",
+     "start_s": 0,
+     "clip_s": 10.1,
+     "source_s": 10,
+     "person": "0",
+     "job": "d13364abc002",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 41.9,
+      "grade": "F",
+      "points": 5428,
+      "max_points": 12960,
+      "easy_percent": 55.2,
+      "hard_percent": 31.3
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "gangnam-f-cKNVlH7mgbY",
+     "url": "https://www.youtube.com/watch?v=cKNVlH7mgbY",
+     "start_s": 0,
+     "clip_s": 10.1,
+     "source_s": 10,
+     "person": "1",
+     "job": "58ef4f4a853f",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 50.9,
+      "grade": "E",
+      "points": 6601,
+      "max_points": 12960,
+      "easy_percent": 63.6,
+      "hard_percent": 40.4
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "gangnam-f-Z2LAmr7jJ-U",
+     "url": "https://www.youtube.com/watch?v=Z2LAmr7jJ-U",
+     "start_s": 0,
+     "clip_s": 43.4,
+     "source_s": 43,
+     "person": "2",
+     "job": "812f7d4cd0cc",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 47.9,
+      "grade": "E",
+      "points": 11371,
+      "max_points": 23760,
+      "easy_percent": 61.1,
+      "hard_percent": 37.3
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "gangnam-f-Z2LAmr7jJ-U",
+     "url": "https://www.youtube.com/watch?v=Z2LAmr7jJ-U",
+     "start_s": 0,
+     "clip_s": 43.4,
+     "source_s": 43,
+     "person": "8",
+     "job": "94b91da30668",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 48.3,
+      "grade": "E",
+      "points": 11471,
+      "max_points": 23760,
+      "easy_percent": 60.7,
+      "hard_percent": 38.3
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "gangnam-f-Z2LAmr7jJ-U",
+     "url": "https://www.youtube.com/watch?v=Z2LAmr7jJ-U",
+     "start_s": 0,
+     "clip_s": 43.4,
+     "source_s": 43,
+     "person": "1",
+     "job": "a06c04e708bc",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 47.0,
+      "grade": "E",
+      "points": 11173,
+      "max_points": 23760,
+      "easy_percent": 60.0,
+      "hard_percent": 36.7
+     },
+     "analysis_version": "1.13.0"
+    }
+   ],
+   "groups": [
+    {
+     "clip": "gangnam-f-rG7tfkKmgIk",
+     "url": "https://www.youtube.com/watch?v=rG7tfkKmgIk",
+     "start_s": 0,
+     "clip_s": 10.9,
+     "source_s": 11,
+     "job": "32491741b7a4",
+     "status": "done",
+     "error": null,
+     "trainer": "2",
+     "people": [
+      {
+       "person": "0",
+       "score": 62,
+       "grade": "D",
+       "credit": {
+        "percent": 86.8,
+        "grade": "A",
+        "points": 20629,
+        "max_points": 23760
+       }
+      },
+      {
+       "person": "1",
+       "score": 67,
+       "grade": "D",
+       "credit": {
+        "percent": 85.9,
+        "grade": "A",
+        "points": 20402,
+        "max_points": 23760
+       }
+      }
+     ]
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "jerusalema",
+   "name": "Jerusalema",
+   "reference": {
+    "clip": "jerusalema2-ref-tzPsJkr3L1Y",
+    "url": "https://www.youtube.com/watch?v=tzPsJkr3L1Y&t=33s",
+    "start_s": 33,
+    "clip_s": 60.0,
+    "source_s": 127,
+    "entry": "test-jerusalema2-reference-159cedc4",
+    "status": "done",
+    "error": null
+   },
+   "takes": [
+    {
+     "clip": "jerusalema-f-3kmvBr54B3M",
+     "url": "https://www.youtube.com/watch?v=3kmvBr54B3M",
+     "start_s": 0,
+     "clip_s": 15.1,
+     "source_s": 15,
+     "person": "0",
+     "job": "a09823ae2c7e",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": null,
+     "analysis_version": "1.13.0"
+    }
+   ],
+   "groups": [],
+   "notes": []
+  },
+  {
+   "id": "macarena",
+   "name": "Macarena",
+   "reference": {
+    "clip": "macarena2-ref-rVBHH5DwYFA",
+    "url": "https://www.youtube.com/watch?v=rVBHH5DwYFA&t=58s",
+    "start_s": 58,
+    "clip_s": 60.0,
+    "source_s": 175,
+    "entry": "test-macarena2-reference-8d44bd5b",
+    "status": "done",
+    "error": null
+   },
+   "takes": [
+    {
+     "clip": "macarena-f-2VhlvwU-0g8",
+     "url": "https://www.youtube.com/watch?v=2VhlvwU-0g8",
+     "start_s": 0,
+     "clip_s": 21.7,
+     "source_s": 22,
+     "person": "12",
+     "job": "f99cf90f1049",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": null,
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "macarena-f-2VhlvwU-0g8",
+     "url": "https://www.youtube.com/watch?v=2VhlvwU-0g8",
+     "start_s": 0,
+     "clip_s": 21.7,
+     "source_s": 22,
+     "person": "3",
+     "job": "c0d5ee0e5a13",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": null,
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "macarena-f-2VhlvwU-0g8",
+     "url": "https://www.youtube.com/watch?v=2VhlvwU-0g8",
+     "start_s": 0,
+     "clip_s": 21.7,
+     "source_s": 22,
+     "person": "6",
+     "job": "762fdd6659bf",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": null,
+     "analysis_version": "1.13.0"
+    }
+   ],
+   "groups": [],
+   "notes": []
+  },
+  {
+   "id": "chachaslide",
+   "name": "Cha Cha Slide",
+   "reference": {
+    "clip": "chachaslide-ref-I1gMUbEAUFw",
+    "url": "https://www.youtube.com/watch?v=I1gMUbEAUFw&t=80s",
+    "start_s": 80,
+    "clip_s": 60.0,
+    "source_s": 220,
+    "entry": null,
+    "status": "failed",
+    "error": "failed:skeleton: the skeleton step failed",
+    "follow": null,
+    "watch": null
+   },
+   "takes": [],
+   "groups": [],
+   "notes": []
+  },
+  {
+   "id": "free",
+   "name": "Free group clips (same-clip challenges)",
+   "reference": null,
+   "takes": [],
+   "groups": [
+    {
+     "clip": "free-group-commons-adowa",
+     "url": "",
+     "start_s": 0,
+     "clip_s": null,
+     "source_s": 0,
+     "job": "9e0ed5baba13",
+     "status": "done",
+     "error": null,
+     "trainer": "11",
+     "people": [
+      {
+       "person": "3",
+       "score": 49,
+       "grade": "F",
+       "credit": {
+        "percent": 79.0,
+        "grade": "B",
+        "points": 20736,
+        "max_points": 26253
+       }
+      },
+      {
+       "person": "4",
+       "score": 0,
+       "grade": "F",
+       "credit": {
+        "percent": 36.3,
+        "grade": "F",
+        "points": 8900,
+        "max_points": 24550
+       }
+      },
+      {
+       "person": "9",
+       "score": 0,
+       "grade": "F",
+       "credit": {
+        "percent": 33.9,
+        "grade": "F",
+        "points": 8895,
+        "max_points": 26253
+       }
+      }
+     ]
+    },
+    {
+     "clip": "free-group-mixkit-51298",
+     "url": "",
+     "start_s": 0,
+     "clip_s": null,
+     "source_s": 0,
+     "job": "85dd74d2f6df",
+     "status": "done",
+     "error": null,
+     "trainer": "4",
+     "people": [
+      {
+       "person": "0",
+       "score": 17,
+       "grade": "F",
+       "credit": {
+        "percent": 54.6,
+        "grade": "E",
+        "points": 13648,
+        "max_points": 25000
+       }
+      },
+      {
+       "person": "1",
+       "score": 18,
+       "grade": "F",
+       "credit": {
+        "percent": 53.0,
+        "grade": "E",
+        "points": 12375,
+        "max_points": 23357
+       }
+      },
+      {
+       "person": "3",
+       "score": 11,
+       "grade": "F",
+       "credit": {
+        "percent": 46.3,
+        "grade": "E",
+        "points": 11569,
+        "max_points": 25000
+       }
+      }
+     ]
+    },
+    {
+     "clip": "free-group-mixkit-51303",
+     "url": "",
+     "start_s": 0,
+     "clip_s": null,
+     "source_s": 0,
+     "job": "5023c217264a",
+     "status": "done",
+     "error": null,
+     "trainer": "2",
+     "people": [
+      {
+       "person": "0",
+       "score": 56,
+       "grade": "F",
+       "credit": {
+        "percent": 52.7,
+        "grade": "E",
+        "points": 4636,
+        "max_points": 8797
+       }
+      },
+      {
+       "person": "1",
+       "score": 49,
+       "grade": "F",
+       "credit": {
+        "percent": 54.3,
+        "grade": "E",
+        "points": 4780,
+        "max_points": 8797
+       }
+      }
+     ]
+    },
+    {
+     "clip": "free-group-pexels-7975426",
+     "url": "",
+     "start_s": 0,
+     "clip_s": null,
+     "source_s": 0,
+     "job": "9f3596f66b89",
+     "status": "failed",
+     "error": "failed:skeleton: the skeleton step failed",
+     "trainer": "1",
+     "people": []
+    },
+    {
+     "clip": "free-group-pexels-8956007",
+     "url": "",
+     "start_s": 0,
+     "clip_s": null,
+     "source_s": 0,
+     "job": "f961c818d88b",
+     "status": "done",
+     "error": null,
+     "trainer": "3",
+     "people": [
+      {
+       "person": "0",
+       "score": 55,
+       "grade": "F",
+       "credit": {
+        "percent": 58.7,
+        "grade": "D",
+        "points": 20053,
+        "max_points": 34173
+       }
+      },
+      {
+       "person": "1",
+       "score": 59,
+       "grade": "F",
+       "credit": {
+        "percent": 53.7,
+        "grade": "E",
+        "points": 5143,
+        "max_points": 9587
+       }
+      },
+      {
+       "person": "4",
+       "score": 15,
+       "grade": "F",
+       "credit": {
+        "percent": 47.8,
+        "grade": "E",
+        "points": 11019,
+        "max_points": 23050
+       }
+      }
+     ]
+    },
+    {
+     "clip": "free-group-pexels-9480537",
+     "url": "",
+     "start_s": 0,
+     "clip_s": null,
+     "source_s": 0,
+     "job": "573930c08f4d",
+     "status": "done",
+     "error": null,
+     "trainer": "0",
+     "people": [
+      {
+       "person": "1",
+       "score": 59,
+       "grade": "F",
+       "credit": {
+        "percent": 71.6,
+        "grade": "C",
+        "points": 43755,
+        "max_points": 61087
+       }
+      },
+      {
+       "person": "2",
+       "score": 53,
+       "grade": "F",
+       "credit": {
+        "percent": 64.2,
+        "grade": "D",
+        "points": 39207,
+        "max_points": 61087
+       }
+      },
+      {
+       "person": "3",
+       "score": 16,
+       "grade": "F",
+       "credit": {
+        "percent": 48.9,
+        "grade": "E",
+        "points": 29875,
+        "max_points": 61087
+       }
+      }
+     ]
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "renegade",
+   "name": "Renegade",
+   "reference": {
+    "clip": "renegade-ref-c3ysGlRC220",
+    "url": "https://www.youtube.com/watch?v=c3ysGlRC220&t=61s",
+    "start_s": 62,
+    "clip_s": 60.0,
+    "source_s": 183,
+    "entry": "test-renegade-reference-eaf3a0bf",
+    "status": "done",
+    "error": null
+   },
+   "takes": [
+    {
+     "clip": "renegade-f-3MvjnpK3Jrw",
+     "url": "https://www.youtube.com/watch?v=3MvjnpK3Jrw&t=144s",
+     "start_s": 144,
+     "clip_s": 60.0,
+     "source_s": 349,
+     "person": "0",
+     "job": "88d1e86b74fc",
+     "status": "done",
+     "score": 38,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 53.1,
+      "grade": "E",
+      "points": 42511,
+      "max_points": 80123,
+      "easy_percent": 65.5,
+      "hard_percent": 42.1
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "renegade-f-Fh9dPkmKMOk",
+     "url": "https://www.youtube.com/watch?v=Fh9dPkmKMOk&t=154s",
+     "start_s": 154,
+     "clip_s": 60.0,
+     "source_s": 368,
+     "person": "0",
+     "job": "402b8614a913",
+     "status": "done",
+     "score": 30,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 48.7,
+      "grade": "E",
+      "points": 34970,
+      "max_points": 71817,
+      "easy_percent": 61.3,
+      "hard_percent": 38.3
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "renegade-f-Fh9dPkmKMOk",
+     "url": "https://www.youtube.com/watch?v=Fh9dPkmKMOk&t=154s",
+     "start_s": 154,
+     "clip_s": 60.0,
+     "source_s": 368,
+     "person": "6",
+     "job": "c5a5b8de37be",
+     "status": "done",
+     "score": 34,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 54.8,
+      "grade": "E",
+      "points": 52157,
+      "max_points": 95253,
+      "easy_percent": 66.9,
+      "hard_percent": 43.7
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "renegade-f-Fh9dPkmKMOk",
+     "url": "https://www.youtube.com/watch?v=Fh9dPkmKMOk&t=154s",
+     "start_s": 154,
+     "clip_s": 60.0,
+     "source_s": 368,
+     "person": "5",
+     "job": "593b38ab5b9f",
+     "status": "done",
+     "score": 11,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 53.6,
+      "grade": "E",
+      "points": 51097,
+      "max_points": 95340,
+      "easy_percent": 65.4,
+      "hard_percent": 43.1
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "renegade-f-Th9f7_KxMf4",
+     "url": "https://www.youtube.com/watch?v=Th9f7_KxMf4&t=378s",
+     "start_s": 378,
+     "clip_s": 60.0,
+     "source_s": 817,
+     "person": "0",
+     "job": "99cf5d121e76",
+     "status": "done",
+     "score": 27,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 56.2,
+      "grade": "D",
+      "points": 53946,
+      "max_points": 96000,
+      "easy_percent": 68.3,
+      "hard_percent": 45.5
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "renegade-f-Yr20DDoelxs",
+     "url": "https://www.youtube.com/watch?v=Yr20DDoelxs&t=317s",
+     "start_s": 318,
+     "clip_s": 60.0,
+     "source_s": 695,
+     "person": "1",
+     "job": "ce3c5c33abdd",
+     "status": "done",
+     "score": 24,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 55.5,
+      "grade": "D",
+      "points": 53285,
+      "max_points": 96000,
+      "easy_percent": 68.3,
+      "hard_percent": 44.3
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "renegade-f-Yr20DDoelxs",
+     "url": "https://www.youtube.com/watch?v=Yr20DDoelxs&t=317s",
+     "start_s": 318,
+     "clip_s": 60.0,
+     "source_s": 695,
+     "person": "0",
+     "job": "9e628e1238f6",
+     "status": "done",
+     "score": 15,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 54.2,
+      "grade": "E",
+      "points": 52051,
+      "max_points": 96000,
+      "easy_percent": 67.0,
+      "hard_percent": 42.9
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "renegade-f-rdff8hycRo8",
+     "url": "https://www.youtube.com/watch?v=rdff8hycRo8",
+     "start_s": 0,
+     "clip_s": 31.4,
+     "source_s": 31,
+     "person": "0",
+     "job": "0b9c3fe51653",
+     "status": "done",
+     "score": 36,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 35.1,
+      "grade": "F",
+      "points": 14332,
+      "max_points": 40853,
+      "easy_percent": 47.2,
+      "hard_percent": 25.9
+     },
+     "analysis_version": "1.13.0"
+    }
+   ],
+   "groups": [],
+   "notes": []
+  },
+  {
+   "id": "savagelove",
+   "name": "Savage Love",
+   "reference": {
+    "clip": "savagelove-ref-X894hM2XYL4",
+    "url": "https://www.youtube.com/watch?v=X894hM2XYL4&t=154s",
+    "start_s": 154,
+    "clip_s": 60.0,
+    "source_s": 368,
+    "entry": "test-savagelove-reference-abb419a7",
+    "status": "done",
+    "error": null
+   },
+   "takes": [
+    {
+     "clip": "savagelove-f--cMZLGCJg6k",
+     "url": "https://www.youtube.com/watch?v=-cMZLGCJg6k&t=53s",
+     "start_s": 54,
+     "clip_s": 60.0,
+     "source_s": 167,
+     "person": "2",
+     "job": "0e604bba079f",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 49.4,
+      "grade": "E",
+      "points": 65166,
+      "max_points": 131927,
+      "easy_percent": 62.5,
+      "hard_percent": 38.8
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "savagelove-f--cMZLGCJg6k",
+     "url": "https://www.youtube.com/watch?v=-cMZLGCJg6k&t=53s",
+     "start_s": 54,
+     "clip_s": 60.0,
+     "source_s": 167,
+     "person": "1",
+     "job": "1950988270de",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 50.2,
+      "grade": "E",
+      "points": 66167,
+      "max_points": 131927,
+      "easy_percent": 63.1,
+      "hard_percent": 39.4
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "savagelove-f--cMZLGCJg6k",
+     "url": "https://www.youtube.com/watch?v=-cMZLGCJg6k&t=53s",
+     "start_s": 54,
+     "clip_s": 60.0,
+     "source_s": 167,
+     "person": "0",
+     "job": "979c7a03353c",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 49.7,
+      "grade": "E",
+      "points": 65587,
+      "max_points": 131927,
+      "easy_percent": 62.6,
+      "hard_percent": 39.1
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "savagelove-f-BMr35ekxBOM",
+     "url": "https://www.youtube.com/watch?v=BMr35ekxBOM",
+     "start_s": 0,
+     "clip_s": 13.7,
+     "source_s": 14,
+     "person": "0",
+     "job": "a846714665c5",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": null,
+     "analysis_version": "1.13.0"
+    }
+   ],
+   "groups": [],
+   "notes": [
+    "savagelove-f-M25hVdBVWqY: no clear person found"
+   ]
+  },
+  {
+   "id": "sayso",
+   "name": "Say So",
+   "reference": {
+    "clip": "sayso-ref-gyThg03OIp8",
+    "url": "https://www.youtube.com/watch?v=gyThg03OIp8&t=311s",
+    "start_s": 312,
+    "clip_s": 60.0,
+    "source_s": 683,
+    "entry": "test-sayso-reference-ba550114",
+    "status": "done",
+    "error": null
+   },
+   "takes": [
+    {
+     "clip": "sayso-f-0nSJCZyDv0c",
+     "url": "https://www.youtube.com/watch?v=0nSJCZyDv0c",
+     "start_s": 0,
+     "clip_s": 30.7,
+     "source_s": 31,
+     "person": "1",
+     "job": "ea134031decf",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 47.1,
+      "grade": "E",
+      "points": 62159,
+      "max_points": 132000,
+      "easy_percent": 59.0,
+      "hard_percent": 37.2
+     },
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "sayso-f-Rtbv52U6t7w",
+     "url": "https://www.youtube.com/watch?v=Rtbv52U6t7w",
+     "start_s": 0,
+     "clip_s": 11.2,
+     "source_s": 11,
+     "person": "0",
+     "job": "8e1311bb29da",
+     "status": "done",
+     "score": 0,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": null,
+     "analysis_version": "1.13.0"
+    },
+    {
+     "clip": "sayso-f-r_cI5KKmJbQ",
+     "url": "https://www.youtube.com/watch?v=r_cI5KKmJbQ&t=246s",
+     "start_s": 246,
+     "clip_s": 60.0,
+     "source_s": 552,
+     "person": "0",
+     "job": "67cbe189ceff",
+     "status": "done",
+     "score": 8,
+     "grade": "F",
+     "warnings": [
+      "low_match"
+     ],
+     "credit": {
+      "percent": 54.8,
+      "grade": "E",
+      "points": 72331,
+      "max_points": 132000,
+      "easy_percent": 66.4,
+      "hard_percent": 44.2
+     },
+     "analysis_version": "1.13.0"
+    }
+   ],
+   "groups": [],
+   "notes": []
+  }
+ ],
+ "scored_with": "Part 5 03137b9 (analysis 1.13.0, simon.credit.v1 with the S to F grades), re-analysed 2026-11-02",
+ "clips": "YouTube links only. The clips are copyrighted and were used for internal testing; no video, frame or image is kept here."
+}
