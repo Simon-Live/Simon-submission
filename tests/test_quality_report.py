@@ -44,8 +44,10 @@ def test_the_dropout_copies_take_their_lights_level(report):
 def test_every_slice_counts_add_up_and_reasons_are_codes(report):
     for entry in report["sets"]["seed 5"]["slices"].values():
         assert entry["ok"] + entry["degraded"] + entry["major"] == entry["takes"]
-        assert set(entry["reasons"]) <= {"position_jitter"}   # the clean seed 5 takes carry no conf
-        assert entry["position_jitter_mm"]["min"] <= entry["position_jitter_mm"]["median"] <= entry["position_jitter_mm"]["max"]
+        # the clean seed 5 takes carry no conf; from 1.14.0 a take turned 5 degrees or more reads heading_offset (TICKET-086)
+        assert set(entry["reasons"]) <= {"position_jitter", "heading_offset"}
+        for name in ("position_jitter_mm", "heading_offset_deg"):
+            assert entry[name]["min"] <= entry[name]["median"] <= entry[name]["max"], name
 
 
 def test_the_report_names_the_limits_and_the_file_they_came_from(report):

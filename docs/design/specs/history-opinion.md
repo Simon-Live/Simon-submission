@@ -166,7 +166,8 @@ people. The guard enforces each rule; the prompt only asks.
 ## Language
 For a listed language other than English the model returns the English `text` and the same sentence as `line` in that
 language. The English `text` goes through the guard below. The `line` must pass `phrasing.lang.check_translated` with
-no time (one line, at most 200 characters, no digit, no praise phrase of the listed languages or English). A passing
+no time (one line, at most 200 characters, no digit, no praise phrase of the listed languages or English, then no
+control character, link or banned word: `opinion.guard.unsafe_problem`, N2 of the 1.14.0 recheck). A passing
 line becomes the observation's `text` (`lang` is that language, `text_en` the English twin); a failing or missing one
 leaves the English `text` with `lang` `en` and counts under `translation_fallbacks`. That a translation says the same
 as its twin is ASM-014. An unlisted tag is English.
@@ -216,8 +217,9 @@ as its twin is ASM-014. An unlisted tag is English.
   opinion.
 - AC-HO-09 (language): a listed language other than English asks for `line`; a passing line is shown with its twin; a
   failing one falls back to English and is counted; an unlisted tag is English with `lang_requested`. A line passes
-  when `check_translated` accepts it and it has no control character, no link and no word this product never uses
-  (`opinion.guard.unsafe_problem`, the same checks the English text gets); its English twin is checked as above.
+  when `check_translated` accepts it, which includes no control character, no link and no word this product never
+  uses (`opinion.guard.unsafe_problem`, the same checks the English text gets; `check_translated` runs it itself
+  since N2 of the 1.14.0 recheck); its English twin is checked as above.
 - AC-HO-10 (exit codes): `0` for ok, fallback and skipped documents; `1` for input and output problems; `2` for usage
   errors, as in the command section.
 - AC-HO-11 (route): `POST api/history-opinion` takes `{"analyses": [{"take_id": "...", "analysis": {...}}, ...],
@@ -245,6 +247,7 @@ as its twin is ASM-014. An unlisted tag is English.
 | Key file unreadable or empty | `fallback`, `key file unreadable` or `key file is empty` |
 | HTTP error, timeout | `fallback`, `HTTP <code> on responses` or `timeout on responses` (count: `on count`) |
 | Answer not JSON, no `observations` list, body not an object | `fallback`, `unreadable answer`, usage kept |
+| An `output` item, message `content` or content part of the wrong shape (`[5]`, `"content": 5`, `["text"]`; N1 of the 1.14.0 recheck, TICKET-081) | `fallback`, `unreadable answer` |
 | The same, with the API's own count showing the whole output allowance used | `fallback`, `answer cut off at the output limit`, usage kept |
 | Over the ceiling or the cap | `fallback`, `estimated $x over the per-call limit of $y` or `spend cap reached` |
 | A limit variable that is not an amount of USD from 0 up | `fallback` before the call, `<variable> is not an amount of USD from 0 up` |

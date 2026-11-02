@@ -1,19 +1,21 @@
 {
   "format": "simon.part5.quality-thresholds.v1",
-  "version": "1.0.0",
-  "_comment": "The limits of the quality block (ADR-0021, docs/specs/quality.md). Kept apart from part5/rules.json on purpose: rules_sha256, the detection hash and the score params_sha256 do not read this file. A signal at or above 'degraded' makes the take degraded; at or above 'major' it makes it major (score_cap 59, reported only). Compared on the signal as the document rounds it.",
+  "version": "1.1.0",
+  "_comment": "The limits of the quality block (ADR-0021, docs/specs/quality.md). Kept apart from part5/rules.json on purpose: rules_sha256, the detection hash and the score params_sha256 do not read this file. A signal at or above 'degraded' makes the take degraded; at or above 'major' it makes it major (score_cap 59, reported only). A 'major' of null means the signal never makes a take major: heading_offset_deg is degraded only (TICKET-086). Compared on the signal as the document rounds it.",
   "signals": {
     "unseen_joint_share": {"degraded": 0.1, "major": 0.2},
     "missing_joint_share": {"degraded": 0.1, "major": 0.2},
     "missing_frame_share": {"degraded": 0.1, "major": 0.2},
     "hidden_measure_share": {"degraded": 0.25, "major": 0.5},
-    "position_jitter_mm": {"degraded": 21.0, "major": 42.0}
+    "position_jitter_mm": {"degraded": 21.0, "major": 42.0},
+    "heading_offset_deg": {"degraded": 5.0, "major": null}
   },
   "basis": {
     "position_jitter_mm": "Fitted on seed 5 (fixtures/input/followers, the 156 clean takes): the median over the 17 joints of the jitter of each joint's step series. Good light reads 10.4 to 17.4 (front 10.4 to 13.2, 45 degrees 12.7 to 15.5, side 13.7 to 17.4) and low light 25.1 to 40.2 (front 25.1 to 30.1, 45 degrees 29.3 to 34.5, side 31.2 to 40.2). 21.0 sits in the gap, 3.6 above the highest good-light take and 4.1 below the lowest low-light take. 'major' is twice that; no seed 5 take reaches it, so it is untested there. Part 3's real skeletons are smooth (the committed real lateral raise reads 0.2, Part 7's dark take 0.4), so on a real file this signal says little.",
     "unseen_joint_share": "Not fitted: seed 5's clean followers carry no conf. The share is over the joints the example itself sees (spec, 'The example's visibility'), so a limb is 2 of 17 joints (0.12, 'degraded' from 0.10) and a fifth of the readings is 'major' (0.20, where ADR-0011 stops using a joint). A move of 'major' to 0.3 after the real lateral raise read major was withdrawn: no limit is tuned off a take outside seed 5.",
     "missing_joint_share": "Not fitted: the same limb and fifth. The dropout copies of seed 5 lose at most 2 percent of the readings.",
     "missing_frame_share": "Not fitted: ADR-0011 stops using a measure whose joints are seen in under 80 percent of the frames, so a fifth of the frames lost is 'major' and half of that is 'degraded'. No seed 5 take has a frame with half its joints gone.",
-    "hidden_measure_share": "Not fitted: seed 5 hides none. A quarter of the 22 full-body measures hidden is 'degraded' and half is 'major'; fewer than 3 usable is already the not_enough_visible warning."
+    "hidden_measure_share": "Not fitted: seed 5 hides none. A quarter of the 22 full-body measures hidden is 'degraded' and half is 'major'; fewer than 3 usable is already the not_enough_visible warning.",
+    "heading_offset_deg": "Set from TICKET-082's seed 5 bench (docs/evaluation.md, the invariance table on the 54 good-light takes): a follower turned 5 degrees moved 18 of 54 scores by up to 10 points and no correct take, 15 degrees moved 43 by up to 34 and gave 8 of the 12 correct takes a fault, 45 degrees took 41 to 85 points off all 54. 'degraded' is 5.0, where the score starts to move (agreed with Part 7, TICKET-086). There is no 'major' (null): Part 7 chose degraded only, because a heading offset is the camera's angle and not the follower's form, so it never brings the cap of 59. A 'major' of 15.0, where a correct take starts to gain a fault, was proposed and withdrawn before 1.14.0 shipped. Read on seed 5 after they were set: the 78 good-light clean takes read 0.6 to 2.9 (all ok), the 78 low-light takes 1.5 to 7.4; each example against itself reads 0.0; a yaw planted on the 54 bench takes reads back 2.0 to 7.1 at 5 degrees, 11.5 to 17.1 at 15 and 41.5 to 47.3 at 45, within 3.5 degrees of it (the takes' own heading noise)."
   }
 }

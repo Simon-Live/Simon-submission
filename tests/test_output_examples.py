@@ -65,7 +65,7 @@ def test_ac_nfr_j02_a_second_run_writes_the_same_bytes(rebuilt, tmp_path):
 def test_r11_a_golden_analysis_carries_what_a_real_run_carries(name):
     doc = json.loads((OUT / name).read_text())
     score = doc["score"]
-    assert doc["schema_version"] == "1.13.0" and doc["status"]["code"] == "ok"
+    assert doc["schema_version"] == "1.14.0" and doc["status"]["code"] == "ok"
     assert score["version"] == SHIPPED and 0 <= score["value"] <= 100 and score["grade"] in "ABCDF"
     assert score["basis"] in ("windows", "reps") and score["timeline"] and score["tempo"] is not None
     assert all("tempo" in w for w in score["timeline"] if w["compared"])
@@ -95,7 +95,7 @@ def test_r11_the_correct_take_golden_is_an_a_with_no_faults():
 def test_the_golden_replay_is_the_replay_of_the_double_fault_golden_take():
     replay = json.loads((OUT / "replay.example.json").read_text())
     analysis = json.loads((OUT / contract.REPLAY_SOURCE).read_text())
-    assert replay["format"] == "simon.replay.v1" and replay["schema_version"] == "1.0.0"
+    assert replay["format"] == "simon.replay.v1" and replay["schema_version"] == "1.1.0"
     assert len(replay["expected"]) == len(replay["expected_t"]) == len(replay["exp_to_fol"])
     assert len(replay["follower"]) == len(replay["follower_t"])
     follower = json.loads((ROOT / analysis["follower"]["path"]).read_text())

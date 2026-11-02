@@ -17,6 +17,12 @@ shape of its position, and after phrasing a model line that repeats a non-fact p
 to its template line (`variety.repeats`). The record carries `lang` (and `lang_requested` when the tag was not
 listed as given) and, per fault, the line shown (`text`) and its language (`lang`).
 
+Cues (TICKET-080, docs/specs/language-cues.md): for a listed language other than English `phrase_cues` asks the same
+backend, in one more batched call once the insights are final, to write every cue and "why" of the document in that
+language. Each is held to `lang.check_cue` and keeps its English text, with the reason, when it fails. The English fields
+do not change: the result is the additive record `phrasing.cues[]` ({path, text, lang, backend, model, fallback_reason})
+and `phrasing.native_review` (false until a native reader has checked the language, `lang.NATIVE_REVIEWED`).
+
 `select_backend` is the one place that decides the default: `muse-spark` in live mode, `template`
 otherwise, and an explicit choice always wins.
 
@@ -28,8 +34,9 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from ..cues import cue_fields
 from . import lang as languages
-from . import local_llm, muse_spark, template, variety
+from . import local_llm, muse_spark, prompt, template, variety
 from .lang import EN
 from .local_llm import BackendError
 
@@ -41,6 +48,8 @@ BUDGET_SPENT = "time budget spent"
 CONCURRENCY_ENV, CONCURRENCY = "PART5_PHRASING_CONCURRENCY", 4  # live calls in flight at once
 REPEATS = "repeats a phrase of another line"
 ENGLISH_ONLY = "template lines are English only"
+CUES_TIMEOUT_S = 20.0   # the cue call's own timeout, on top of the fault lines' budget (the API allows an analysis 60 s)
+NO_TRANSLATION = "no translation returned"
 
 
 def select_backend(explicit=None, live=False):
@@ -164,6 +173,67 @@ def _with(record, selected_by):
     if selected_by:
         record["selected_by"] = selected_by
     return record
+
+
+def _kept(field, reason):
+    """The `phrasing.cues[]` entry of a field that keeps its English text, with the `reason` it does."""
+    return {"path": field.path, "text": field.text, "lang": EN, "backend": TEMPLATE, "model": None,
+            "fallback_reason": reason}
+
+
+def _translated(module, fields, language, timeout_s, client):
+    """The entries for `fields` from one batched call to `module`. A failed call or an unreadable answer keeps every
+    field in English with the reason (`rate limited` plain, as for a fault); otherwise each distinct English text is
+    held to `lang.check_cue` on its own, and a text shared by several paths is written to each."""
+    texts = list(dict.fromkeys((f.role, f.text) for f in fields))
+    try:
+        reply = module.complete(prompt.cue_messages(texts, language), timeout_s=timeout_s, client=client)
+        found = languages.read_items(reply, len(texts))
+    except BackendError as error:
+        reason = error.reason if error.reason == "rate limited" else f"{module.NAME}: {error.reason}"
+        return [_kept(f, reason) for f in fields]
+    except ValueError as error:   # `lang.read_items`: not the JSON asked for
+        return [_kept(f, f"{module.NAME}: {error}") for f in fields]
+    verdict = {}   # (role, English text) -> (the model's text, None) or (None, why it was not taken)
+    for number, (role, source) in enumerate(texts):
+        said = found.get(number)
+        problem = NO_TRANSLATION if said is None else languages.check_cue(role, source, said, language)
+        verdict[(role, source)] = (None, f"{module.NAME}: {problem}") if problem else (said, None)
+    out = []
+    for f in fields:
+        said, reason = verdict[(f.role, f.text)]
+        out.append(_kept(f, reason) if reason else
+                   {"path": f.path, "text": said, "lang": language, "backend": module.NAME, "model": module.model(),
+                    "fallback_reason": None})
+    return out
+
+
+def phrase_cues(analysis, backend=TEMPLATE, *, timeout_s=CUES_TIMEOUT_S, client=None, live=False, lang=None):
+    """`analysis` with `phrasing.cues` and `phrasing.native_review` set, for a listed language other than English; an
+    English request (or an unlisted tag) returns it untouched.
+
+    Call it last, when the insights are final: one entry for each field of `cues.cue_fields(analysis)`. A backend that
+    cannot run (the template, no key, live calls off) makes no call and keeps every field in English with its reason; a
+    document with no cue field makes none either (`cues` is `[]`). Takes the options of `phrase`; raises ValueError for an
+    unknown backend."""
+    if backend not in BACKENDS:
+        raise ValueError(f"unknown phrasing backend {backend!r}; use one of {', '.join(BACKENDS)}")
+    language, _ = languages.resolve(lang)
+    if language == EN:
+        return analysis
+    module = BACKENDS[backend]
+    fields = cue_fields(analysis)
+    reason = None if backend == TEMPLATE else module.unavailable(live)
+    if backend == TEMPLATE or reason:
+        entries = [_kept(f, reason or ENGLISH_ONLY) for f in fields]
+    elif not fields:
+        entries = []
+    else:
+        timeout_s = local_llm.call_timeout(timeout_s) if backend == local_llm.NAME else timeout_s
+        entries = _translated(module, fields, language, timeout_s, client)
+    analysis["phrasing"]["cues"] = entries
+    analysis["phrasing"]["native_review"] = languages.native_review(language)
+    return analysis
 
 
 def phrase_fault(fault, backend=muse_spark.NAME, **options):

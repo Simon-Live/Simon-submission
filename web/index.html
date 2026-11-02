@@ -117,6 +117,18 @@
               <button type="button" id="view-top" data-testid="view-top" aria-pressed="false">Top</button>
             </div>
             <p id="highlight-readout" class="highlight-readout" data-testid="highlight-readout" role="status"></p>
+            <form id="ask-form" class="ask" data-testid="ask-form" aria-labelledby="ask-heading">
+              <h3 id="ask-heading">Ask this take</h3>
+              <p class="hint" id="ask-hint">Ask about this take in your own words. Muse Wonder reads only this take's measurements, and the replay moves to the moment it answers about.</p>
+              <label for="ask-question">Your question</label>
+              <div class="ask-row">
+                <input type="text" id="ask-question" data-testid="ask-question" maxlength="500" aria-describedby="ask-hint" placeholder="What should I work on first, and when does it happen?">
+                <button type="submit" id="ask" data-testid="ask">Ask</button>
+              </div>
+              <p id="ask-status" class="hint" role="status" data-testid="ask-status"></p>
+              <p id="ask-answer" class="ask-answer" data-testid="ask-answer" hidden></p>
+              <p id="ask-source" class="hint" data-testid="ask-source" hidden></p>
+            </form>
           </section>
 
           <div class="fault-column">

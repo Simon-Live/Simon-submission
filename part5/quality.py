@@ -2,12 +2,18 @@
 
     shown_joints(*confs)                     the joints the example itself sees (its conf, `--expected-visibility`), ADR-0011's path
     read_signals(clip, shown)                the five raw readings of a follower file, and the joint that is worst for three
+    heading_offset_deg(expected, follower)   the sixth (1.14.0, TICKET-086): the heading left between the paired frames
+    with_heading(readings, value)            the readings with that sixth signal set
     assess(readings, warning_codes)          the `simon.quality.v1` block: level, reasons, signals, score_cap
     load_thresholds()                        the limits in `part5/quality.json`
 
 Everything is read from what Part 5 already reads in the follower's file, before smoothing: the joint `conf` and Part 2's 0.3
 unseen mark (ADR-0011), null joints and filled frames, the measures ADR-0011 hides, and the frame-to-frame jitter of the
 positions as `feet.jitter` measures it (ADR-0015 Amendment 4). A reading that cannot be made is `None`, never 0.
+
+The heading offset is the one signal that reads both clips: after alignment, the median over the aligned frames of the angle
+about the vertical between the example's and the follower's body heading (the hip and shoulder lines in the horizontal plane).
+Part 3 turns a clip to face forward before Part 5 sees it; this is the heading it leaves, which moves the score (TICKET-082).
 
 A follower is not held to a body part the example does not show: `unseen_joint_share` counts only the joints the example sees in
 at least half of its frames. An example whose visibility is unknown (no `conf` anywhere) counts every joint; the follower's own
@@ -45,7 +51,12 @@ SHOWN_SHARE = 0.5
 # The signal behind each reason that reads one, in the order the reasons are listed (after the warning reasons).
 SIGNAL_REASONS = (("joints_unseen", "unseen_joint_share"), ("joints_missing", "missing_joint_share"),
                   ("frames_missing", "missing_frame_share"), ("measures_hidden", "hidden_measure_share"),
-                  ("position_jitter", "position_jitter_mm"))
+                  ("position_jitter", "position_jitter_mm"), ("heading_offset", "heading_offset_deg"))
+# TICKET-086: the lines whose direction in the horizontal plane is the body's heading, left minus right, and the shortest
+# such line, in metres, that still has a direction (a line seen end on has none).
+HEADING_LINES = (("left_hip", "right_hip"), ("left_shoulder", "right_shoulder"))
+MIN_LINE_M = 0.01
+DEG_DECIMALS = 1
 # What each warning reason says; they repeat a warning the take already carries, so they carry no number.
 WARNING_WORDS = {
     "not_enough_visible": "Too little of the body was in view to compare this take with the example.",
@@ -68,9 +79,13 @@ class Readings:
 # ---------------------------------------------------------------------------------------------- the limits
 @lru_cache(maxsize=None)
 def load_thresholds(path=THRESHOLDS_PATH):
-    """`{signal: (degraded, major)}` from the thresholds file; a `QualityError` naming the file when it breaks its format."""
+    """`{signal: (degraded, major)}` from the thresholds file, `major` None for a signal that is degraded only (a `major` written
+    as null: `heading_offset_deg`, TICKET-086); a `QualityError` naming the file when it breaks its format."""
     def fail(why):
         raise QualityError(f"{path}: {why}")
+
+    def number(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
 
     try:
         doc = json.loads(Path(path).read_text())
@@ -85,9 +100,11 @@ def load_thresholds(path=THRESHOLDS_PATH):
     for name in QUALITY_SIGNALS:
         pair = signals[name]
         low, high = (pair.get("degraded"), pair.get("major")) if isinstance(pair, dict) else (None, None)
-        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 for v in (low, high)) or low >= high:
-            fail(f"signals.{name} must have numbers 0 < degraded < major, got {pair!r}")
-        limits[name] = (float(low), float(high))
+        # TICKET-086: `major` must be written; null (degraded only) is the one value that is not a number above `degraded`.
+        if not (isinstance(pair, dict) and "major" in pair and number(low) and (high is None or (number(high) and low < high))):
+            fail(f"signals.{name} must have numbers 0 < degraded < major, or major null for a signal that is degraded only, "
+                 f"got {pair!r}")
+        limits[name] = (float(low), None if high is None else float(high))
     return limits
 
 
@@ -171,9 +188,38 @@ def read_signals(clip, shown=None):
     missing, missing_joint = _missing(clip)
     shake, shake_joint = _jitter(clip)
     signals = {"unseen_joint_share": unseen, "missing_joint_share": missing, "missing_frame_share": _lost_frames(clip),
-               "hidden_measure_share": _hidden_measures(clip), "position_jitter_mm": shake}
+               "hidden_measure_share": _hidden_measures(clip), "position_jitter_mm": shake,
+               "heading_offset_deg": None}   # read after alignment (`with_heading`); the file alone cannot say it
     worst = {"unseen_joint_share": unseen_joint, "missing_joint_share": missing_joint, "position_jitter_mm": shake_joint}
     return Readings(signals, {name: joint for name, joint in worst.items() if joint})
+
+
+# ---------------------------------------------------------------------------------------------- the heading (TICKET-086)
+def headings(positions):
+    """(F,) degrees: the body's heading about the vertical in each frame of (F, 17, 3) positions. Each of `HEADING_LINES`, taken
+    in the horizontal plane (x the subject's left, z forward; y is up) and made unit length, is added; the heading is the
+    direction of the sum. NaN where neither line can be read (a joint is NaN, or the line is under `MIN_LINE_M` long)."""
+    p = np.asarray(positions, dtype=float)
+    total = np.zeros((len(p), 2))
+    for left, right in HEADING_LINES:
+        flat = (p[:, JOINTS.index(left)] - p[:, JOINTS.index(right)])[:, [0, 2]]
+        length = np.linalg.norm(flat, axis=1)
+        ok = np.isfinite(length) & (length >= MIN_LINE_M)
+        total[ok] += flat[ok] / length[ok, None]
+    return np.where(np.linalg.norm(total, axis=1) > 0, np.degrees(np.arctan2(total[:, 1], total[:, 0])), np.nan)
+
+
+def heading_offset_deg(expected, follower):
+    """The median over paired frames of the angle (0 to 180 degrees) between the heading of `expected[i]` and of `follower[i]`,
+    both (K, 17, 3) and paired frame by frame by the alignment; None when no pair can be read."""
+    gap = np.abs((headings(follower) - headings(expected) + 180.0) % 360.0 - 180.0)
+    gap = gap[np.isfinite(gap)]
+    return round(float(np.median(gap)), DEG_DECIMALS) if gap.size else None
+
+
+def with_heading(readings, value):
+    """`readings` with `heading_offset_deg` set to `value` (None when the take could not be aligned)."""
+    return Readings(dict(readings.signals, heading_offset_deg=value), readings.worst)
 
 
 # ---------------------------------------------------------------------------------------------- the words
@@ -197,17 +243,20 @@ def _near(code, value, joint):
     if code == "measures_hidden":
         return (f"{round(value * len(MEASURES))} of {len(MEASURES)} measures were left out because their joints "
                 "were not seen in enough of the take.")
+    if code == "heading_offset":
+        return f"The body was turned about {value:.0f} degrees from the way the example faces."
     where = f", most at the {_joint_name(joint)}" if joint else ""
     return f"Joint positions shook by about {value:.0f} mm from one frame to the next{where}."
 
 
 # ---------------------------------------------------------------------------------------------- the block
 def _reached(value, limits):
-    """(level, limit) of the highest limit `value` is at or above, or None when it is below both or not measured."""
+    """(level, limit) of the highest limit `value` is at or above, or None when it is below both or not measured. A `major` of
+    None (a signal that is degraded only, TICKET-086) is never reached."""
     if value is None:
         return None
     degraded, major = limits
-    if value >= major:
+    if major is not None and value >= major:
         return MAJOR, major
     return (DEGRADED, degraded) if value >= degraded else None
 

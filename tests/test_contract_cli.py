@@ -37,9 +37,9 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.13.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.14.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
-                                          ("metrics", "1.5.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
+                                          ("metrics", "1.5.0"), ("replay", "1.1.0"), ("input-feet", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
     schema = json.loads((ROOT / "contracts" / f"{name}.schema.json").read_text())
     assert schema["$id"] == f"{BASE}{name}.schema.json"
@@ -69,7 +69,9 @@ def test_ac_c02_every_committed_fixture_validates_and_loads(summary):
 
 
 def test_ac_c03_golden_outputs_rebuild_byte_for_byte(summary):
-    goldens = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "fixtures/output").glob("*.json"))
+    # ask.example.json came from a live call (TICKET-081): it is checked (`check_ask`), never rebuilt
+    goldens = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "fixtures/output").glob("*.json")
+                     if p.name != "ask.example.json")
     shipped = by_version(3, 4, 5) + (1 if (ROOT / "fixtures/output/analysis.quality-major.example.json").is_file() else 0)   # TICKET-079: the quality sample
     assert len(goldens) == shipped and summary["rebuilt_identical"] == goldens   # the ceiling sample is the fourth, the double-capped one (v3) the fifth
     assert "fixtures/output/replay.example.json" in goldens
@@ -343,6 +345,24 @@ def test_contract_md_carries_the_generated_table_and_schema_list():
         assert f"`contracts/{s['name']}.schema.json`" in text and f"`{s['version']}`" in text
 
 
+SPEC = ROOT / "docs/specs/integration-contract.md"
+
+
+@pytest.mark.skipif(not SPEC.is_file(), reason="docs/specs is a workspace directory, not in a published tree")
+def test_the_specs_copy_of_the_table_is_the_printed_one_and_its_schema_list_has_the_printed_versions():
+    """TICKET-088 F1: the spec's compatibility table had fallen two rows behind `part5 contract` (the quality row and the
+    1.14.0 `--expected-visibility` row). Its rows are now the printed rows, line for line, and its schema list names each
+    printed version."""
+    text = SPEC.read_text()
+    rows = contract.table_markdown(contract.table_rows()).splitlines()[2:]
+    section = text[text.index("## Compatibility table"):text.index("## API / Interface Contract")]
+    assert [line for line in section.splitlines() if line.startswith("| ") and not line.startswith("| Producer")] == rows
+    assert len(rows) == 19 and "the 1.2.0 to 1.14.0 fields" in section
+    listing = text[text.index("## Schemas (`contracts/`, published)"):text.index("## Compatibility table")]
+    for s in contract.schema_entries():
+        assert f"| `{s['name']}` | `contracts/{s['name']}.schema.json` | `{s['version']}`" in listing, s["name"]
+
+
 def test_docs_schemas_points_at_the_schemas():
     text = (ROOT / "docs/schemas.md").read_text()
     assert "contracts/analysis.schema.json" in text and "part5 contract" in text
@@ -362,7 +382,7 @@ def test_ac_c02_contract_json_lists_the_replay_schema_and_the_new_rows(capsys):
     assert cli.main(["contract", "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
     replay = next(s for s in doc["schemas"] if s["name"] == "replay")
-    assert replay["version"] == "1.0.0" and replay["file"] == "contracts/replay.schema.json"
+    assert replay["version"] == "1.1.0" and replay["file"] == "contracts/replay.schema.json"
     assert replay["schema"]["$id"] == replay["id"] and replay["title"] == "Part 5 replay.json (simon.replay.v1)"
     rows = {r["file"]: r for r in doc["table"]}
     assert rows["`replay.json`"]["format"] == "`simon.replay.v1`" and rows["`replay.json`"]["verdict"] == "works"
@@ -516,7 +536,7 @@ def test_the_table_and_contract_md_carry_the_profile_row_and_the_analysis_row_na
     assert row["verdict"] == "works with an option" and row["part5_role"] == "option for Part 7"
     assert "probe `part5 analyse --help` for `--profile`" in row["fix"] and "omitted means `fitness`" in row["fix"]
     analysis = next(r for r in rows if r["file"] == "`analysis.json`")
-    assert "1.2.0 to 1.13.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
+    assert "1.2.0 to 1.14.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
     text = (ROOT / "CONTRACT.md").read_text()
     assert contract.table_markdown([row]).splitlines()[-1] in text
     assert "[--profile {dance,rehab,fitness}]" in text

@@ -13,17 +13,28 @@ never stops the analysis.
 `history_run(series, ...)` is the second entry point (TICKET-072, docs/specs/history-opinion.md): one text-only call
 over a series of analyses (`series_from_files`, `series_from_request`), returning a `simon.history_opinion.v1`
 document of grounded observations. It shares the client, the spend guard and the ledger (`meta_api.call`).
+
+Ask this take (TICKET-081, docs/specs/ask-this-take.md, ADR-0022) is `part5/ask/`: the agent (`ask.agent.ask_run` and the
+readers of what a caller sends) and the take and its tools (`ask.tools`), moved there in the 1.14.0 round. Its validator
+(`guard.check_answer`, `guard.measured_facts`), its prompt and its spend path stay in this package, and so does its event
+stream, `sse` and `ask_events`, at the end of this module: the write gate refused `part5/ask/stream.py`, which no spec on
+main named.
 """
 import json
+import logging
+import queue
 import tempfile
+import threading
 from pathlib import Path
 
+from ..mask import validate_mask_block
 from ..phrasing import lang as phrasing_lang
 from . import guard, meta_api, prompt
 from .meta_api import BACKEND, MODEL, OpinionError
 from .prompt import ContractError, HistoryError, UsageError   # re-exported: the CLI and the API catch them
 
 BOTH_CLIPS = "both clips are needed"
+MASK_UNREADABLE = "body mask does not pass its check"
 HISTORY_FORMAT = "simon.history_opinion.v1"
 HISTORY_PURPOSE = "history_opinion"   # the ledger's `purpose`: the feature that made the call
 # The API route's timeout for its one HTTP call, below `api.ANALYSIS_TIMEOUT_S`. It bounds the call, not the route: the
@@ -71,8 +82,23 @@ def _ask(client, faults, clips, duration_s):
             client.delete(file_id)
 
 
+def _not_scored(analysis):
+    """`guard.masked_parts` of the analysis's body mask (`body_mask`, ADR-0023), `{}` with none. The block must pass the
+    analysis's own check (`mask.validate_mask_block`), else OpinionError(MASK_UNREADABLE): then no fault names a measure
+    the mask drops, so nothing it leaves out reaches the request (N3 of the 1.14.0 recheck, TICKET-084)."""
+    if analysis.get("body_mask") is None:
+        return {}
+
+    def refuse(message):
+        raise OpinionError(MASK_UNREADABLE)
+
+    validate_mask_block(analysis, refuse)
+    return guard.masked_parts(analysis["body_mask"])
+
+
 def run(analysis, follower_clip, expected_video, follower_video, *, live=False, client=None):
-    """The `second_opinion` block for `analysis` (the faults it holds) on the two videos; never raises for a call."""
+    """The `second_opinion` block for `analysis` (the faults it holds) on the two videos; never raises for a call. A
+    note that names a body part the analysis's body mask leaves not scored is rejected (`_not_scored`)."""
     if not (expected_video and follower_video):
         return _block("skipped", BOTH_CLIPS)
     reason = meta_api.unavailable(live)
@@ -84,9 +110,10 @@ def run(analysis, follower_clip, expected_video, follower_video, *, live=False, 
     duration_s = _duration(follower_clip, follower_video)
     usage = None
     try:
+        masked = _not_scored(analysis)   # before any upload: a block that fails its check sends nothing
         client = client or meta_api.HttpClient(meta_api.read_key())
         text, usage = _ask(client, analysis["faults"], (expected_video, follower_video), duration_s)
-        found = guard.read_answer(text, len(analysis["faults"]), duration_s, guard.supported(follower_clip))
+        found = guard.read_answer(text, len(analysis["faults"]), duration_s, guard.supported(follower_clip), masked)
     except OpinionError as error:
         return _block("fallback", error.reason)
     except OSError:   # a clip or the temp directory that cannot be read or written: the analysis is still written
@@ -107,19 +134,22 @@ def attach(result, expected_video, follower_video, *, live=False, client=None):
 
 
 # ---- the history opinion (TICKET-072, docs/specs/history-opinion.md) ----------------------------------------------
-def _read_analysis(path):
-    """The parsed JSON of the analysis file `path`; HistoryError naming the file when it cannot be had."""
+def _read_json(path, error=HistoryError, limit=None, parse=json.loads):
+    """The JSON of the file `path` read with `parse`; `error` naming the file when it cannot be had (an analysis of
+    the history opinion by default, at most `prompt.MAX_FILE_BYTES`; Ask this take reads its two files with its own
+    limit and `strict_json`)."""
+    limit = prompt.MAX_FILE_BYTES if limit is None else limit
     try:
         size = Path(path).stat().st_size
-        text = Path(path).read_text() if size <= prompt.MAX_FILE_BYTES else None
+        text = Path(path).read_text() if size <= limit else None
     except (OSError, ValueError):
-        raise HistoryError(f"{path}: cannot be read") from None
+        raise error(f"{path}: cannot be read") from None
     if text is None:
-        raise HistoryError(f"{path}: larger than {prompt.MAX_FILE_BYTES // 2**20} MiB")
+        raise error(f"{path}: larger than {limit // 2**20} MiB")
     try:
-        return json.loads(text)
+        return parse(text)
     except (ValueError, RecursionError):
-        raise HistoryError(f"{path}: not JSON") from None
+        raise error(f"{path}: not JSON") from None
 
 
 def series_from_files(paths, take_ids=None):
@@ -131,7 +161,7 @@ def series_from_files(paths, take_ids=None):
         raise HistoryError(f"{len(paths)} analyses, the limit is {prompt.MAX_TAKES}")
     ids = list(take_ids) if take_ids else [prompt.take_id_from(p) for p in paths]
     prompt.check_ids(ids, len(paths))   # the ids are checked before any file is read
-    return prompt.build_series([_read_analysis(p) for p in paths], ids, labels=[str(p) for p in paths])
+    return prompt.build_series([_read_json(p) for p in paths], ids, labels=[str(p) for p in paths])
 
 
 def series_from_request(request):
@@ -209,3 +239,39 @@ def history_run(series, *, lang=None, max_observations=prompt.HISTORY_DEFAULT_N,
     except (ValueError, RecursionError, OverflowError):   # OverflowError: an integer too large for a float
         return document("fallback", _unreadable(usage), usage)
     return document("ok", usage=usage, found=found)
+
+
+# ---- Ask this take's event stream (TICKET-081, docs/specs/ask-this-take.md "Streaming", ADR-0022) -------------------
+# The rest of Ask this take is `part5/ask/` (see the module docstring for why the stream is still here).
+STREAM_FAILED = {"error": {"field": "server", "message": "The server hit a problem while answering. Try again."}}
+ask_log = logging.getLogger("part5.ask")   # the same logger as `ask.agent`'s
+
+
+def sse(event, data):
+    """One text/event-stream event: its name, then its data as one line of JSON."""
+    return f"event: {event}\ndata: {json.dumps(data, allow_nan=False, separators=(',', ':'))}\n\n".encode()
+
+
+def _drain(events):
+    while (item := events.get()) is not None:
+        yield sse(*item)
+
+
+def ask_events(run):
+    """The events of `run(on_event)` as an iterator of text/event-stream bytes, as they happen: `run` works on its own
+    thread, started here and not at the first read, and the document it returns is the last event (`answer`); a
+    failure after the stream began is an `error` event. `run` releases what it holds itself (the route's rate limit
+    slot), so a stream dropped before or while it is read still ends the exchange and frees the slot."""
+    events = queue.Queue()
+
+    def work():
+        try:
+            events.put(("answer", run(lambda kind, data: events.put((kind, data)))))
+        except Exception:   # the trace goes to the server log, never to the visitor
+            ask_log.exception("ask: the exchange failed after the stream started")
+            events.put(("error", STREAM_FAILED))
+        finally:
+            events.put(None)
+
+    threading.Thread(target=work, name="part5-ask", daemon=True).start()
+    return _drain(events)

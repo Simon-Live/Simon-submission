@@ -13,6 +13,9 @@ invented legs, and a comparison that counts them measures the estimator, not the
 - The take is compared on the measures usable in both clips; fewer than `MIN_USABLE_MEASURES` refuses it
   as `not_enough_visible`.
 A pair whose full-body measures are all usable (conf 1.0 or none) is compared exactly as before.
+
+What a follower declares not scored (ADR-0023, docs/specs/body-mask.md) is `part5/mask.py`, which reads `ALL_JOINTS` from
+here: the declared mask hides measures after alignment, this module hides what the camera did not see before it.
 """
 from dataclasses import dataclass, replace
 
@@ -98,9 +101,13 @@ def _conf_of_doc(doc, source):
     return np.array(rows) if seen else None
 
 
-def load_conf(path):
-    """(F, 17) conf of the trainer's own skeleton (`--expected-visibility`), or None when it carries no `conf`."""
-    return _conf_of_doc(read_json(path), str(path))
+def load_conf(source):
+    """(F, 17) conf of the trainer's own skeleton (`--expected-visibility`), or None when it carries no `conf`. `source` is a
+    path, or a `{path, doc}` ref holding the document in memory (the API's `expected_visibility`, TICKET-087), whose `path`
+    names it in an error."""
+    if isinstance(source, dict):
+        return _conf_of_doc(source["doc"], str(source["path"]))
+    return _conf_of_doc(read_json(source), str(source))
 
 
 @dataclass

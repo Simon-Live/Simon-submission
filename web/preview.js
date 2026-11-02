@@ -2,15 +2,16 @@
 // on a phone. It is Part 5's preview of its own result contract, not a Part 7 build, and the
 // section's heading says so. It reads `status` before `faults` (ASM-005) and only fields the
 // contract defines (contracts/analysis.schema.json). It says what the Compare tab says (AC-V18):
-// the score, the warnings and the same line for each fault (joints.js).
+// the score, the warnings, the same line for each fault and, with no fault, the status line's own sentence (joints.js).
 import {
-  LOW_CONFIDENCE_NOTE, NO_FAULTS_SENTENCE, cappedNote, faultJoints, faultLine, faultsOf, isLowConfidence, isOldRefusal,
-  jointLabel, noticesOf, scoreSentence, sizeSentence,
+  LOW_CONFIDENCE_NOTE, cappedNote, faultJoints, faultLine, faultsOf, isLowConfidence, isOldRefusal, jointLabel, noticesOf,
+  resultSentence, scoreSentence, sizeSentence,
 } from "./joints.js";
 
 // What the screen reads, field by field, so the contract is visible next to its use.
 export const FIELDS_READ = [
   ["Status line", "status.text"],
+  ["Whether the take was seen well enough", "quality.level"],
   ["Score and grade", "score.value and score.grade"],
   ["Why the grade is limited", "score.capped_by"],
   ["Warnings", "warnings[].text"],
@@ -34,6 +35,15 @@ export function make(tag, className, text) {
   return node;
 }
 
+// An element that shows text from `phrasing` (the fault's line, a cue or a reason a model wrote in the follower's language,
+// TICKET-080): `dir="auto"` takes the direction from the text itself, so Arabic reads right to left and a number inside it
+// keeps its digits in order, while English stays left to right. The page's own words never use it.
+export function phrased(tag, className, text) {
+  const node = make(tag, className, text);
+  node.setAttribute("dir", "auto");
+  return node;
+}
+
 const sentence = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
 function frames(range) {
@@ -44,7 +54,7 @@ function frames(range) {
 function card(fault) {
   const item = make("li", "phone-card");
   item.dataset.testid = "preview-fault";
-  item.append(make("p", "phone-coach", sentence(faultLine(fault))));
+  item.append(phrased("p", "phone-coach", sentence(faultLine(fault))));
   if (isLowConfidence(fault)) item.append(make("p", "phone-meta", LOW_CONFIDENCE_NOTE));
   item.append(make("p", "phone-meta", `${sentence(fault.body_part || "body")}: ${sizeSentence(fault)}`));
   const joints = faultJoints(fault).map(jointLabel).join(", ");
@@ -78,7 +88,8 @@ function body(analysis) {
   if (isOldRefusal(analysis)) return [...nodes, make("p", "phone-meta", OLD_REFUSAL_NOTE)];
   const faults = faultsOf(analysis);
   if (faults.length === 0) {
-    return [...nodes, make("p", "phone-meta", noticesOf(analysis).length ? NO_FAULTS_LISTED : NO_FAULTS_SENTENCE)];
+    // TICKET-088: the Compare tab's status line (`resultSentence`), so a major take reads the same words here as there.
+    return [...nodes, make("p", "phone-meta", noticesOf(analysis).length ? NO_FAULTS_LISTED : resultSentence(analysis))];
   }
   const list = make("ol", "phone-cards");
   list.append(...faults.map(card));

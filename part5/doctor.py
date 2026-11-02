@@ -340,8 +340,20 @@ def _for_part7(r, doc):
     _profile_notes(r, doc)
     _near_miss_notes(r, doc)
     _language_notes(r, doc)
+    _cue_language_notes(r, doc)
     _second_opinion_notes(r, doc)
     _source_notes(r, doc)
+    _mask_notes(r, doc)
+
+
+def _mask_notes(r, doc):
+    """1.14.0 (ADR-0023): the follower declared limb chains that are not scored; validate_analysis has checked the block."""
+    block = doc.get("body_mask")
+    if not isinstance(block, dict):
+        return
+    off = ", ".join(block["not_scored_chains"]) or "none"
+    r.notes.append(f"body mask {', '.join(block['declared'])} (body_mask): not scored {off}; show \"{block['text']}\" "
+                   "beside the score and dim those limbs; the score compares only with takes under the same mask")
 
 
 def _source_notes(r, doc):
@@ -369,6 +381,27 @@ def _language_notes(r, doc):
     asked = f" ({record['lang_requested']} was asked)" if record.get("lang_requested") else ""
     rest = f"; some lines are in {', '.join(others)} (their fallback)" if others else ""
     r.notes.append(f"lines in {record['lang']}{asked}{rest}: show phrasing.faults[i].text")
+
+
+def _cue_language_notes(r, doc):
+    """1.14.0 (TICKET-080): the cues and reasons in the follower's language, who wrote them, and whether a native reader has
+    checked them. The English `cue`, `why` and `tempo.cue` fields do not change; `phrasing.cues[i].text` is the one to show."""
+    record = doc.get("phrasing") or {}
+    cues = record.get("cues")
+    if not isinstance(cues, list):
+        return
+    review = {True: "a native reader has checked them", False: "no native reader has checked them "
+              "(phrasing.native_review is false): say the text has not been reviewed by a native reader"}.get(
+        record.get("native_review"), "")
+    if not cues:
+        r.notes.append("phrasing.cues is empty: the take has no cue or reason to write in " + str(record.get("lang")))
+        return
+    wrote = [c for c in cues if c.get("backend") != "template"]
+    kept = [c for c in cues if c.get("backend") == "template"]
+    who = ", ".join(sorted({c["model"] for c in wrote if c.get("model")})) or "the model"
+    why = f" (the first reason: {kept[0].get('fallback_reason') or 'none given'})" if kept else ""
+    r.notes.append(f"cues in {record.get('lang')}: {len(wrote)} of {len(cues)} written by {who}, {len(kept)} kept in "
+                   f"English{why}; show phrasing.cues[i].text at its path" + (f"; {review}" if review else ""))
 
 
 def _second_opinion_notes(r, doc):

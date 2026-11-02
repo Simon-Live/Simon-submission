@@ -8,6 +8,9 @@ words; the guardrail enforces each of those, the prompt only asks.
 The history opinion (TICKET-072, docs/specs/history-opinion.md) lives in the second half of this module: the
 allowlist and the facts read from a series of analyses (`READS`, `load_allowlist`, `facts_of`, `build_series`) and its text-only
 request (`history_request`). `guard.read_history_answer` reads the answer and `opinion.history_run` makes the call.
+
+Ask this take (TICKET-081, docs/specs/ask-this-take.md) is the last part: muse-wonder-1.0 and its rates, the
+instructions, the five tool declarations (`ask_tools`) and one turn's Responses body (`ask_opening`, `ask_request`).
 """
 import json
 import math
@@ -373,3 +376,100 @@ def history_request(series, language, limit):
     content = [{"type": "input_text", "text": part} for part in (text, facts, history_question(language, limit))]
     return {"model": MODEL, "max_output_tokens": HISTORY_MAX_OUTPUT_TOKENS, "reasoning": {"effort": "low"},
             "input": [{"type": "message", "role": "user", "content": content}]}
+
+
+# ---- Ask this take (TICKET-081, docs/specs/ask-this-take.md "The agent loop", ADR-0022) ------------------------------
+ASK_MODEL = "muse-wonder-1.0"
+# USD per million tokens, Model API pay-as-you-go Standard mode (https://dev.meta.ai/docs/pricing-rate-limits, checked
+# 2026-11-02 by the orchestrator); `meta_api.call` prices and records every ask turn at these.
+ASK_RATES = {"input": 4.00, "cached": 0.20, "output": 20.00}
+# Raised whenever the instructions or the tool declarations change. "ask-2" names a trial of lane/fix114b that was taken
+# back (docs/meta-api-spend.md), so the last-turn message of N4 of the 1.14.0 recheck is "ask-3", and the message of the
+# turn before it, which asks for the seek and the spotlight (TICKET-081, lane/askseek), is "ask-4".
+ASK_PROMPT_VERSION = "ask-4"
+# A tool turn writes a few short calls and an answer is at most 80 words; the rest is room for the model's reasoning,
+# which is billed as output. The worst case is 3000 x $20 per million = $0.06 on top of the input.
+ASK_MAX_OUTPUT_TOKENS = 3000
+MAX_QUESTION_CHARS = 500
+ASK_INSTRUCTIONS = (
+    "You answer one question about one recorded take of a movement. A skeleton measurement compared the take with a "
+    "teacher's example. Use the tools to read this take's measurements; they read only this take.\n"
+    "Rules: every number you write must be copied, as digits, from a tool result in this conversation; when no tool "
+    "gave you a number, write none. Times are seconds on the take's own clock. Answer in at most 80 words of plain "
+    "English about what was measured, in one paragraph. When a moment of the take answers the question, call seek "
+    "with that time, and call spotlight with the limb or joint it is about. Answer only about this take; for any other "
+    "question, say that you can only answer about this take. No praise. Never mention health, pain, injury, medicine "
+    "or therapy."
+)
+# N4 of the 1.14.0 recheck (TICKET-081): the model asked for tools on the last turn, which is sent without them, and the
+# exchange ended in the measured facts. The last turn now says so plainly, after the tool results.
+ASK_LAST_TURN = (
+    "No more tools are available: this is the last turn, and a tool call now cannot be answered. Answer the question "
+    "now, in text, from the tool results you already have, following the rules above."
+)
+# TICKET-081, lane/askseek: with no tool left on the last turn (N4), the two live answers had read all the way and moved
+# the page's replay nowhere. The turn before it says so, so the model calls seek and spotlight in that turn, beside any
+# read it still needs, for the moment and the limb it will answer about.
+ASK_SEEK_TURN = (
+    "This is the last turn with tools: the next turn has none. In this turn, call seek with the time of the moment you "
+    "will answer about and spotlight with the limb or joint it is about, together with any reads you still need. "
+    "You need not repeat a seek or a spotlight you already made for that moment."
+)
+
+
+def _tool(name, description, properties=None, required=()):
+    """One function declaration as the Responses API reads it: the fields at the top level, not under `function`."""
+    return {"type": "function", "name": name, "description": description,
+            "parameters": {"type": "object", "properties": properties or {}, "required": list(required),
+                           "additionalProperties": False}}
+
+
+def ask_tools(joints, limbs):
+    """The five tool declarations; `joints` are the joints with a measure and `limbs` every name `spotlight` takes."""
+    def seconds(what):
+        return {"type": "number", "description": f"{what}, in seconds on the take's own clock"}
+
+    joint = {"type": "string", "enum": list(joints), "description": "a joint of the take that has a measure"}
+    return [
+        _tool("get_faults", "The differences the measurement found in this take: what differed, the side, the size in "
+              "degrees, the time, the take's first and last time, and any warning."),
+        _tool("get_joint_angle", "The take's measures at one joint, in degrees, between two times: the smallest, the "
+              "largest, the mean, and when the smallest and the largest happen.",
+              {"joint": joint, "t0": seconds("the start"), "t1": seconds("the end, not before t0")},
+              ("joint", "t0", "t1")),
+        _tool("compare_with_teacher", "The take's measures at one joint at one time against the example's at the "
+              "moment the alignment matches with it, and the difference (the take's minus the example's, in degrees).",
+              {"joint": joint, "t": seconds("the time")}, ("joint", "t")),
+        _tool("seek", "Move the player to a time of the take.", {"t": seconds("the time")}, ("t",)),
+        _tool("spotlight", "Highlight a limb or a joint in the player at a time.",
+              {"limb": {"type": "string", "enum": list(limbs)}, "t": seconds("the time")}, ("limb", "t")),
+    ]
+
+
+def ask_opening(question, start_s, end_s, joints, limbs):
+    """The first turn's input: one user message, the stable instructions first and the question last."""
+    take = (f"The take runs from {start_s:.2f} s to {end_s:.2f} s. Joints with a measure: {', '.join(joints)}. "
+            f"Limbs for spotlight: {', '.join(limbs)}.")
+    content = [{"type": "input_text", "text": part} for part in (ASK_INSTRUCTIONS, take, f"Question: {question}")]
+    return [{"type": "message", "role": "user", "content": content}]
+
+
+def _user_message(text):
+    return {"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}
+
+
+def ask_request(items, tools=None, previous_id=None, *, last=False, seek=False):
+    """One turn's Responses body: `items` as the input, `tools` when the model may still call one, and the previous
+    turn's id when `items` are the results of its calls. The last allowed turn (`last`) has no tools and ends with one
+    user message, `ASK_LAST_TURN`. The turn before it (`seek`) keeps its tools and ends with `ASK_SEEK_TURN`; the last
+    turn wins when both are asked for."""
+    if last:
+        tools, items = None, [*items, _user_message(ASK_LAST_TURN)]
+    elif seek:
+        items = [*items, _user_message(ASK_SEEK_TURN)]
+    body = {"model": ASK_MODEL, "max_output_tokens": ASK_MAX_OUTPUT_TOKENS, "input": items}
+    if tools:
+        body["tools"] = tools
+    if previous_id:
+        body["previous_response_id"] = previous_id
+    return body

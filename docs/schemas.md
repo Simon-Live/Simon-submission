@@ -90,7 +90,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.13.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.14.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -103,7 +103,7 @@ takes by `make output-examples` through the same pipeline and score hook `part5 
 `capped_by`; a dance take analysed without its foot files, so the arm fault it reports is not the foot fault its name
 mentions), `fixtures/output/analysis.double-capped.example.json` (present while the rules ship v3: a real
 take that reports two faults and hits the ceiling of 79, value 79 C, `fault_cap` 79, `uncapped` 82 B, no `capped_by`) and
-`fixtures/output/replay.example.json` (the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.13.0):
+`fixtures/output/replay.example.json` (the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.14.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
 Part 7 must read first. `simon.score.v2` failed held-out score seed 59 (docs/thresholds.md) and ADR-0018's fallback shipped
 `simon.score.v1`; `simon.score.v3` then held all five targets on score seed 61 (docs/thresholds-score-v3.md) and ships, so the
@@ -128,11 +128,12 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.11.0` | `score.version` `simon.score.v3`; `score.fault_cap` is the ceiling in force, 89 or 79 (TICKET-060, ADR-0019, `docs/specs/score-v3.md`) | every new document is `1.11.0`; read `score.version` (the rules in this tree ship `simon.score.v3`: it held all five targets on score seed 61, docs/thresholds-score-v3.md; `make score-fallback` remains the reversal recipe and puts `simon.score.v1` back); under v3 `fault_cap` is 89 for a take that reports one fault and 79 for a take whose `faults` list holds two or more entries, written whether or not it lowered the value; `uncapped` and `capped_by` mean what they meant in `1.10.0` |
 | `1.12.0` | `faults[].rep_sizes`; `score.per_rep[].rep` and `.tempo_ratio`; `diagnostics.near_misses.items[].margin_deg` (TICKET-071, `docs/specs/history-per-rep.md`) | every new document is `1.12.0`; `rep_sizes`, `rep` and `tempo_ratio` only on a take compared one repetition at a time, `margin_deg` on every near miss; they exist for comparing takes with each other, and no fault, score or insight reads them |
 | `1.13.0` | `score.credit` (`simon.credit.v1`, the DDR-style credit display, ADR-0020) | every new document is `1.13.0`; `score.credit` is always written, null when nothing was compared |
+| `1.14.0` | `body_mask`, the limb chains the follower declared not scored (TICKET-084, ADR-0023, `docs/specs/body-mask.md`); `phrasing.cues[]` and `phrasing.native_review` (TICKET-080, `docs/specs/language-cues.md`) | every new document is `1.14.0`; `body_mask` only when a mask was declared (`--mask`, API field `mask`), below; `phrasing.cues[]` and `phrasing.native_review` only for a request in a listed language other than English, see "Cues in the follower's language" below; `quality.signals.heading_offset_deg` and the reason `heading_offset` in every quality block (TICKET-086, below); a document with neither a mask nor another language differs from `1.13.0` in `schema_version` and the heading signal of `quality` (with its reason past 5 degrees) only |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.13.0",
+  "schema_version": "1.14.0",
   "profile": "fitness",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
@@ -206,7 +207,9 @@ Top level:
   `local-llm` or `muse-spark`), `model`, `fallback_reason`, `selected_by` (`flag` for an explicit backend, `live`
   for the live default, `default` for the template) and, per fault, `faults[k] = {backend, model, fallback_reason}`
   (`model` is null for the template). Phrasing changes `coaching` only, and through it the `why` of an insight that
-  repeats a live English line (below): never `text`, `cue`, a scored field or the score.
+  repeats a live English line (below): never `text`, `cue`, a scored field or the score. From 1.9.0 `lang` (and
+  `lang_requested`), and per fault `text` and `lang`. From 1.14.0, for a listed language other than English,
+  `cues[]` and `native_review` (below).
 - `diagnostics` (optional): pipeline internals (alignment residual and the measures timing was
   taken from). Part 7 may ignore it; it is not part of the follower-facing contract.
   `part5 analyse` (#10) also writes `follower_span` (first and last matched follower frame) and
@@ -402,6 +405,32 @@ means no fault was reported. `score.value` compares only within one `score.versi
 keeps the frozen v1 and v2 blocks as `score.v1` and `score.v2`, and `params_sha256` is the hash of the whole block.
 `fixtures/output/analysis.double-capped.example.json` is a sample of a take that reports two faults and hits the 79 ceiling.
 
+## Cues in the follower's language (`phrasing.cues`, `phrasing.native_review`, from 1.14.0)
+
+Spec: `docs/specs/language-cues.md`. For a request in a listed language other than English (`--lang es`, `ar`, `hi` and the
+rest of `part5/phrasing/lang.py`), Muse Spark already writes each fault line in it (`faults[].coaching`,
+`phrasing.faults[].text`). The cues and reasons around those lines are English templates: `faults[].cue`, each
+`score.timeline[].misses[].cue`, `score.timeline[].tempo.cue`, `score.tempo.cue`, `insights[].cue` and `insights[].why`.
+They stay exactly as they are, so no reader breaks. In one more batched model call, after the insights are final, the
+same backend writes them again in the language, and the result is the additive record:
+
+- `phrasing.cues[]`: one entry per cue or reason of the document, in document order. `path` names the field
+  (`faults[0].cue`, `score.timeline[2].misses[0].cue`, `score.timeline[2].tempo.cue`, `score.tempo.cue`, `insights[1].cue`,
+  `insights[1].why`), `text` is what to show there, `lang` its language, `backend` and `model` who wrote it, and
+  `fallback_reason` is null or why the English text is shown. An entry the model wrote has the requested `lang`, the backend
+  `muse-spark` (or `local-llm`) and its model. An entry whose text failed its word test (a digit in a cue; a reason whose
+  numbers differ from the English; a second or English time phrase; praise; over the length; more than a line; not in the
+  language's script, or a copy of the English; missing from the answer), or whose backend could not run (the template, no
+  key, live calls off), or whose call failed, keeps the field's English text with `lang` `en`, `backend` `template`,
+  `model` null and the reason. The same English text on several paths is asked once and written to each. `[]` when the
+  document has no cue or reason.
+- `phrasing.native_review`: `false` for every listed language but English today. It says no native reader has checked
+  the language, so a viewer shows "not reviewed by a native reader". It is `true` only for a language in
+  `lang.NATIVE_REVIEWED` (empty).
+
+An English request (no `lang`, `en`, or a tag Part 5 does not list) has neither key. Neither the score, the faults, the
+insights nor any scored field reads them. Show `cues[].text` at its `path`, and the English field when there is no entry.
+
 ## Score credit (`score.credit`, `simon.credit.v1`, from 1.13.0)
 
 A DDR-style display beside the score (ADR-0020), additive: `value`, `grade`, `components`, the ceilings and `capped_by` are
@@ -437,7 +466,32 @@ and it ignores warnings and caps, so a take capped to F can show a credit grade 
 - `null`: nothing was compared (the take could not be aligned, or no window was compared), or no measure could be counted.
 - Points grow with the take's length and the measures seen; compare `percent` across takes, within one profile.
 
-## Replay: `replay.json` (`simon.replay.v1`, schema 1.0.0)
+## Body mask (`body_mask`, from 1.14.0)
+
+Written only when the follower declared limb chains that are not scored (ADR-0023, `docs/specs/body-mask.md`):
+`part5 analyse --mask seated` or `--mask left_arm,right_leg`, or the `mask` field of `POST api/analyse`. The chains are
+`left_arm` and `right_arm` (from the shoulder: elbow and wrist masked), `left_forearm` and `right_forearm` (from the elbow:
+the wrist) and `left_leg` and `right_leg` (from the hip: knee, ankle and a feet file's heel and toes); `seated` is both legs
+and `full_body` masks nothing. Every measure that reads a masked joint is NaN on every frame of both clips for detection
+and the score, after alignment, so no fault, miss, insight or near miss names it, and the score is taken on the remaining
+measures: the faults term sums the remaining faults, the similarity term's `mean_z` is the mean over the remaining
+measures' frames, and the credit counts only them. The four centre measures are never masked. Compare a masked score only
+with takes under the same mask. A `both` fault whose one side is masked is reported on the other side, sized on it alone.
+Designed for and tested on seated and masked takes from the fixtures, not with wheelchair users or amputees.
+
+```json
+"body_mask": {"declared": ["seated"], "source": "cli",
+              "scored_chains": ["left_arm", "right_arm", "left_forearm", "right_forearm"],
+              "not_scored_chains": ["left_leg", "right_leg"],
+              "masked_joints": ["left_knee", "right_knee", "left_ankle", "right_ankle"],
+              "not_scored_measures": ["left_knee_flexion", "left_thigh_out", "left_thigh_forward", "left_foot_out",
+                                      "right_knee_flexion", "right_thigh_out", "right_thigh_forward", "right_foot_out",
+                                      "left_knee_valgus", "right_knee_valgus", "left_foot_rotation",
+                                      "right_foot_rotation", "left_ankle_inversion", "right_ankle_inversion"],
+              "text": "Legs not scored, by your setting."}
+```
+
+## Replay: `replay.json` (`simon.replay.v1`, schema 1.1.0)
 
 `part5 analyse ... --replay <replay.json>` also writes both normalised skeletons, matched frame for frame, for a 3D
 replay (`contracts/replay.schema.json`; `python -m part5 doctor replay.json` checks it). Keys: `format`
@@ -450,6 +504,21 @@ input file, strictly increasing), `exp_to_fol` (the follower file's frame shown 
 follower frame. A take compared one repetition at a time repeats the expected reference once per follower rep and
 adds `reps: [{expected_frames, follower_frames, ok}]`. A take that could not be aligned plays on a straight-line
 stand-in alignment.
+
+From 1.1.0 (TICKET-085) every replay says where the alignment path ends. The alignment is open-ended
+(`part5/align.py`): a follower who idles before the routine or goes on after it has those frames skipped, not
+forced onto the first or last expected pose. `aligned_until_s` is `follower_t[max(exp_to_fol)]`, the follower time
+where the path ends, and `aligned_until_expected_frame` is the last expected frame shown with that follower frame
+(an index into `expected` and `expected_t`). The follower frames after `aligned_until_s` are the tail: never compared
+and never scored. A reader that maps follower frames back to expected ones would pair every tail frame with
+`aligned_until_expected_frame` and so repeat that frame's error; leave out the follower frames whose `follower_t` is
+after `aligned_until_s` instead. Without a tail `aligned_until_s` equals `follower_t[-1]`. The fields are reported
+only: the alignment, detection and the score are unchanged. A 1.0.0 replay has neither and still validates. The golden
+`fixtures/output/replay.example.json` has no tail (its 76 follower frames end at 2.5 s):
+
+```json
+"aligned_until_s": 2.5, "aligned_until_expected_frame": 90
+```
 
 ## Evaluation metrics (`simon.part5.metrics.v1`)
 
@@ -543,6 +612,7 @@ reasoning; the thresholds are in `part5/quality.json`, not in `part5/rules.json`
 | `frames_missing` | frames flagged `interpolated` or with at most half the joints usable | `missing_frame_share` | share, 0 to 1 |
 | `measures_hidden` | full-body measures the follower's own `conf` hides under ADR-0011 | `hidden_measure_share` | share of the 22, 0 to 1 |
 | `position_jitter` | frame-to-frame jitter of the joint positions | `position_jitter_mm` | millimetres per frame |
+| `heading_offset` | from `1.14.0` (TICKET-086): the follower faced another way than the example, past 5 degrees; `degraded` only, never `major` (TICKET-086) | `heading_offset_deg` | degrees, 0 to 180 |
 
 `low_match` is never a reason: a take of another movement is not a take the camera saw badly. `words` is one plain sentence made
 from the measured numbers; it names no cause (light, a hand over the lens), because no part gives Part 5 a light reading.
@@ -552,14 +622,21 @@ reads them), over the readings of those joints, and is `null` when the example s
 animations today) has unknown visibility and counts every joint, so a follower filmed from the waist up against such a trainer still
 reads its legs as unseen. `position_jitter_mm` is
 `feet.jitter` (the median absolute change between consecutive frames) of the step series of each joint and axis, the three axes
-joined as a norm and the median taken over the joints, so it depends on the file's frame rate.
+joined as a norm and the median taken over the joints, so it depends on the file's frame rate. `heading_offset_deg`
+(from `1.14.0`, TICKET-086) is the one signal read after alignment, from both clips: in each aligned frame pair (example
+frame `i` and follower frame `exp_to_fol[i]`, every aligned rep of a take compared rep by rep) the body's heading is the
+direction of its hip and shoulder lines in the horizontal plane, and the signal is the median over the pairs of the angle
+between the two headings. It is `null` when the take could not be aligned or no pair has a line to read, and a `1.13.0`
+block has no such key. Part 3 turns each clip to face forward; this is what it leaves, which TICKET-082 found moves the
+score (`docs/evaluation.md`).
 
 ```json
 "quality": {"version": "simon.quality.v1", "level": "major",
             "reasons": [{"code": "joints_unseen", "words": "41 percent of the joint readings were outside the picture, most often the nose.", "value": 0.4118, "threshold": 0.2, "joint": "nose"},
-                        {"code": "position_jitter", "words": "Joint positions shook by about 27 mm from one frame to the next, most at the left knee.", "value": 26.7, "threshold": 21.0, "joint": "left_knee"}],
+                        {"code": "position_jitter", "words": "Joint positions shook by about 27 mm from one frame to the next, most at the left knee.", "value": 26.7, "threshold": 21.0, "joint": "left_knee"},
+                        {"code": "heading_offset", "words": "The body was turned about 6 degrees from the way the example faces.", "value": 5.8, "threshold": 5.0}],
             "signals": {"unseen_joint_share": 0.4118, "missing_joint_share": 0.0, "missing_frame_share": 0.0,
-                        "hidden_measure_share": 0.2273, "position_jitter_mm": 26.7},
+                        "hidden_measure_share": 0.2273, "position_jitter_mm": 26.7, "heading_offset_deg": 5.8},
             "score_cap": 59}
 ```
 

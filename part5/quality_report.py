@@ -81,13 +81,19 @@ def dropout_copies(seed, directory):
 
 
 # ---------------------------------------------------------------------------------------------- the counts
+def _reading_range(blocks, name):
+    """`{min, median, max}` of one signal over `blocks`, None when no block has a reading of it."""
+    values = [b["signals"].get(name) for b in blocks if b["signals"].get(name) is not None]
+    return {"min": min(values), "median": round(statistics.median(values), 1), "max": max(values)} if values else None
+
+
 def slice_entry(blocks):
-    """Counts of each level, how often each reason fired, and the jitter reading's range, for `blocks`."""
+    """Counts of each level, how often each reason fired, and the ranges of the jitter and the heading offset (TICKET-086)."""
     levels = Counter(b["level"] for b in blocks)
     reasons = Counter(r["code"] for b in blocks for r in b["reasons"])
-    jitter = [b["signals"]["position_jitter_mm"] for b in blocks if b["signals"]["position_jitter_mm"] is not None]
     return {"takes": len(blocks), **{level: levels.get(level, 0) for level in QUALITY_LEVELS}, "reasons": dict(sorted(reasons.items())),
-            "position_jitter_mm": {"min": min(jitter), "median": round(statistics.median(jitter), 1), "max": max(jitter)} if jitter else None}
+            "position_jitter_mm": _reading_range(blocks, "position_jitter_mm"),
+            "heading_offset_deg": _reading_range(blocks, "heading_offset_deg")}
 
 
 def sliced(rows):
@@ -166,8 +172,10 @@ def _line(name, e):
     reasons = ", ".join(f"{code} {n}" for code, n in e["reasons"].items()) or "none"
     jitter = e["position_jitter_mm"]
     shake = f"jitter {jitter['min']}..{jitter['max']} (median {jitter['median']})" if jitter else "jitter not measured"
+    heading = e.get("heading_offset_deg")
+    turn = f"heading {heading['min']}..{heading['max']} (median {heading['median']})" if heading else "heading not measured"
     return (f"  {name:<22} takes {e['takes']:3d}  ok {e['ok']:3d}  degraded {e['degraded']:3d}  major {e['major']:3d}  "
-            f"{shake}; reasons: {reasons}")
+            f"{shake}; {turn}; reasons: {reasons}")
 
 
 def _block_lines(label, block):

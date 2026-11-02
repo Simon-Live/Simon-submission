@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.13.0",
+  "schema_version": "1.14.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/dance/animation.json",
@@ -89,7 +89,8 @@
       "missing_joint_share": 0.0,
       "missing_frame_share": 0.0,
       "hidden_measure_share": null,
-      "position_jitter_mm": 14.9
+      "position_jitter_mm": 14.9,
+      "heading_offset_deg": 1.0
     },
     "score_cap": null
   },

@@ -1,0 +1,187 @@
+{
+  "format": "simon.ask.v1",
+  "schema_version": "1.0.0",
+  "question": "Why is my right foot flagged, and when is it furthest out?",
+  "answer": "Your right foot is flagged because the right ankle was measured too far out from under the hip, beyond the 6.0 degrees threshold, with the take at 13.9 degrees compared with 0.0 degrees for the teacher example. It was furthest out at 2.77 s, when that 13.9 degrees value was the maximum measured during the take.",
+  "source": "model",
+  "model": "muse-wonder-1.0",
+  "live": true,
+  "validated": true,
+  "replaced_numbers": [],
+  "fallback_reason": null,
+  "take_sha256": "21bd52140417224c761bf91128b96140e18611e7d7e0e5b89b68a34326fd7fd0",
+  "tool_calls": [
+    {
+      "name": "get_faults",
+      "arguments": {},
+      "ok": true,
+      "result": {
+        "count": 1,
+        "faults": [
+          {
+            "index": 0,
+            "measure": "foot_out",
+            "measure_kind": "direction",
+            "joint": "right_ankle",
+            "joints": [
+              "right_ankle"
+            ],
+            "body_part": "legs",
+            "side": "right",
+            "direction": "more",
+            "magnitude_deg": 9.8,
+            "peak_deg": 13.5,
+            "threshold_deg": 6.0,
+            "unit": "degrees",
+            "at_s": 1.9,
+            "follower_t_s": [
+              1.933,
+              2.967
+            ],
+            "text": "right foot too far out",
+            "text_timed": "right foot too far right at 1.9 s",
+            "cue": "Step your right foot in",
+            "lateral": "right",
+            "lateral_m": 0.09
+          }
+        ],
+        "take": {
+          "start_s": 0.0,
+          "end_s": 3.433333
+        },
+        "warnings": []
+      }
+    },
+    {
+      "name": "get_joint_angle",
+      "arguments": {
+        "joint": "right_ankle",
+        "t0": 0.0,
+        "t1": 3.433333
+      },
+      "ok": true,
+      "result": {
+        "joint": "right_ankle",
+        "t0": 0.0,
+        "t1": 3.433333,
+        "frames": 104,
+        "measures": [
+          {
+            "measure": "foot_out",
+            "side": "right",
+            "means": "foot out from under the hip (hip\u2192ankle, frontal)",
+            "unit": "degrees",
+            "seen_frames": 104,
+            "min": -0.9,
+            "max": 13.9,
+            "mean": 6.6,
+            "min_at_s": 3.17,
+            "max_at_s": 2.77
+          }
+        ]
+      }
+    },
+    {
+      "name": "compare_with_teacher",
+      "arguments": {
+        "joint": "right_ankle",
+        "t": 1.9
+      },
+      "ok": true,
+      "result": {
+        "joint": "right_ankle",
+        "t": 1.9,
+        "take_t_s": 1.9,
+        "example_t_s": 1.63,
+        "measures": [
+          {
+            "measure": "foot_out",
+            "side": "right",
+            "means": "foot out from under the hip (hip\u2192ankle, frontal)",
+            "unit": "degrees",
+            "take_deg": 6.5,
+            "example_deg": 0.0,
+            "difference_deg": 6.5
+          }
+        ]
+      }
+    },
+    {
+      "name": "seek",
+      "arguments": {
+        "t": 2.77
+      },
+      "ok": true,
+      "result": {
+        "type": "seek",
+        "t": 2.77,
+        "limb": null
+      }
+    },
+    {
+      "name": "spotlight",
+      "arguments": {
+        "limb": "right_ankle",
+        "t": 2.77
+      },
+      "ok": true,
+      "result": {
+        "type": "spotlight",
+        "t": 2.77,
+        "limb": "right_ankle",
+        "joints": [
+          "right_ankle"
+        ]
+      }
+    },
+    {
+      "name": "compare_with_teacher",
+      "arguments": {
+        "joint": "right_ankle",
+        "t": 2.77
+      },
+      "ok": true,
+      "result": {
+        "joint": "right_ankle",
+        "t": 2.77,
+        "take_t_s": 2.77,
+        "example_t_s": 2.43,
+        "measures": [
+          {
+            "measure": "foot_out",
+            "side": "right",
+            "means": "foot out from under the hip (hip\u2192ankle, frontal)",
+            "unit": "degrees",
+            "take_deg": 13.9,
+            "example_deg": 0.0,
+            "difference_deg": 13.9
+          }
+        ]
+      }
+    }
+  ],
+  "ui_actions": [
+    {
+      "type": "seek",
+      "t": 2.77,
+      "limb": null
+    },
+    {
+      "type": "spotlight",
+      "t": 2.77,
+      "limb": "right_ankle",
+      "joints": [
+        "right_ankle"
+      ]
+    }
+  ],
+  "spend": {
+    "usd": 0.100634,
+    "ledger_purpose": "ask",
+    "calls": 4,
+    "input_tokens": 7300,
+    "output_tokens": 3859,
+    "cached_tokens": 1512,
+    "estimated": false
+  }
+}

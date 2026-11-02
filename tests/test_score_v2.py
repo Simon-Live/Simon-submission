@@ -389,7 +389,7 @@ def test_the_committed_sample_for_part_7_is_that_take():
     """One fault reported, so the ceiling in force is 89 under v2 and under v3 alike (a v3 take with two faults has 79)."""
     sample = json.loads((ROOT / "fixtures/output/analysis.fault-capped.example.json").read_text())
     s = sample["score"]
-    assert sample["schema_version"] == "1.13.0" and len(sample["faults"]) == 1
+    assert sample["schema_version"] == "1.14.0" and len(sample["faults"]) == 1
     assert (s["version"], s["value"], s["grade"], s["fault_cap"]) == (SHIPPED, 89, "B", 89)
     assert s["uncapped"] == {"value": 94, "grade": "A"} and "capped_by" not in s and "warnings" not in sample
 

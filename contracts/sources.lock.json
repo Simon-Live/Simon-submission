@@ -13,12 +13,12 @@
     },
     "contracts/part3/skeleton-part4.schema.json": {
       "from": "contracts/skeleton-part4.schema.json",
-      "sha256": "5f2e930f71ce49b971094c46442df1d1076667c8f577cc81e3c7bd6798b095a3",
+      "sha256": "bbbee2dc779ed992ba5474a512ddbd0f8f00f7ea669106ab6673d8016ca87a87",
       "upstream": "part3"
     },
     "contracts/part3/skeleton.schema.json": {
       "from": "contracts/skeleton.schema.json",
-      "sha256": "0ed471d14f6e34b1b1fb7c68bc5e9a46a3923de2579f9c2c7c562ea4a7f3a427",
+      "sha256": "9f1f3687544cddd3632ada6eee68879cb27085bdcabe441cca8e0c84df46dd1c",
       "upstream": "part3"
     },
     "contracts/part4/animation.schema.json": {
@@ -125,7 +125,7 @@
   "format": "simon.part5.contract_lock.v1",
   "upstreams": {
     "part3": {
-      "commit": "fd96379ed19493ecc8fe5ae44eafe51a111f42dd",
+      "commit": "9f37c3847a582b341dc4818769cde4519bd6476a",
       "repo": "moalborati/simon-part-3-skeleton-consistency"
     },
     "part4": {

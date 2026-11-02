@@ -40,6 +40,7 @@ from .align import Alignment, AlignmentError, align
 from .detect import FITNESS, REPS, as_both, detect_full, on_file, overlaps_side, reports
 from .feet import resampled_series
 from .guard import DIFFERENT_MOVEMENT, OK, OK_TEXT, REFUSAL_TEXT, GuardResult, check_movement
+from .mask import hide_masked
 from .visibility import measures_of
 from .output import fault_to_dict
 from .persistence import FLOOR_KEYS
@@ -150,11 +151,14 @@ def _foot_rep(foot, a, b, n):
     return resampled_series(foot, lambda stack: _resample_rep(stack, a, b, n))
 
 
-def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None, fitness=None, foot=None, ref_start=0, fps=None):
+def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None, fitness=None, foot=None, ref_start=0, fps=None,
+             mask=None):
     """Align, guard and detect one follower rep against the reference. `fitness`, the fitness rules of a profile's
     effective `rules`, makes the rep also detect with those. `foot` is the rep's follower foot series (ADR-0015); the
     reference's are already in `ref_m`, and a foot measure is compared when both carry it. `ref_start` is the expected
-    file's frame the reference starts at; `fps` is the example's frame rate (the persistence floor is a duration)."""
+    file's frame the reference starts at; `fps` is the example's frame rate (the persistence floor is a duration).
+    `mask` (ADR-0023) is the declared body mask: the rep is aligned and guarded on the whole body and detected on the
+    masked series, which `measures` keeps for `continue_reported`."""
     try:
         alignment = align(ref.positions, pos, None if vis is None else vis.align_usable)
     except AlignmentError:  # the rep cannot be aligned at all: it does not pass; any other error is a bug
@@ -162,13 +166,14 @@ def _one_rep(index, pos, orig, span, ref, ref_m, rules, vis=None, fitness=None, 
     fol_m = {**measures_of(pos, vis), **(foot or {})}
     guard = check_movement(alignment, ref_m, fol_m, rules)
     ok = bool(guard.ok and guard.stats["span_share"] >= MIN_REP_SPAN_SHARE)
+    ref_d, fol_d = hide_masked(mask, ref_m), hide_masked(mask, fol_m)
     faults, fitness_faults, candidates = [], [], []
     if ok:
-        faults, candidates = _detected(ref_m, fol_m, alignment, rules, orig, candidates=True, fps=fps)
+        faults, candidates = _detected(ref_d, fol_d, alignment, rules, orig, candidates=True, fps=fps)
         if fitness is not None:
-            fitness_faults = _detected(ref_m, fol_m, alignment, fitness, orig, fps=fps)[0]
+            fitness_faults = _detected(ref_d, fol_d, alignment, fitness, orig, fps=fps)[0]
     return RepResult(index, span, ok, guard, alignment, ref, pos, orig, faults, fitness_faults=fitness_faults,
-                     candidates=candidates, ref_start=ref_start, measures=(ref_m, fol_m) if ok else None)
+                     candidates=candidates, ref_start=ref_start, measures=(ref_d, fol_d) if ok else None)
 
 
 def without_floor(rules):
@@ -406,7 +411,7 @@ def _pairs(expected_spans, follower_reps, follower_frames):
 
 
 def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times, vis=None, max_cells=None,
-            expected_segmentation=None, foot_exp=None, foot_fol=None):
+            expected_segmentation=None, foot_exp=None, foot_fol=None, mask=None):
     """The repetition-by-repetition comparison, or `None` when neither clip has more than one rep.
 
     `fol_positions` is the follower on the expected clip's clock and `to_original` maps its frames to the
@@ -418,7 +423,7 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
     joints so a foot measure is compared rep by rep too.
     `max_cells` bounds the frame pairs all the alignments together need (`_pairs`); `TooManyPairs` before any is
     aligned. The faults returned are placed on the expected file's frames (`_on_expected_file`); the per-rep ones stay
-    local."""
+    local. `mask` (ADR-0023) is the declared body mask each rep is detected under; segmentation reads the whole body."""
     fol_m = measures_of(fol_positions, vis)
     es = expected_segmentation or segment(exp_m, fps)
     fs = segment(fol_m, fps, prefer=(es.measure, es.bound) if es.bound else None)
@@ -443,7 +448,7 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
             orig = np.asarray(to_original)[idx]
             foot = _foot_rep(foot_fol, a, b, ref.n_frames)
         reps.append(_one_rep(k, pos, orig, (int(orig[0]), int(orig[-1])), ref, ref_m, rules, vis,
-                             fitness if under_profile else None, foot, es.spans[j][0], fps))
+                             fitness if under_profile else None, foot, es.spans[j][0], fps, mask=mask))
     guard = _verdict(reps)
     kept = aggregate_faults(reps) if guard.ok else []
     if under_profile:   # a profile never reports a take-level fault that fitness does not (the fitness path is untouched)

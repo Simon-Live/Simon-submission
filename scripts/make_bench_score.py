@@ -10,8 +10,8 @@ Runs, on the seed 5 takes only and through Part 5's own pipeline (no GPU, no oth
   of the exercise and dance sets, correct and faulted.
 Writes `metrics.json` (`simon.part5.bench-score.v1`: sha, command, exit code and every row) and `dose-response.svg` under
 `--out`, and a copy of the chart at `--chart-copy` (the committed one) with the two summaries beside it,
-`first_fire.summary.json` and `invariance.summary.json`: the figures of the tables of docs/evaluation.md, which
-tests/test_evaluation_doc.py holds the doc to (AC-SV09). They carry the score they were made with and no commit sha, so a
+`first_fire.summary.json` and `invariance.summary.json`: the figures of the tables and the prose of docs/evaluation.md,
+which tests/test_evaluation_doc.py holds the doc to (AC-SV09, TICKET-088 N2). They carry the score they were made with and no commit sha, so a
 run on a later commit rewrites them byte for byte unless a figure moved. Failures are reported as found: a claim a
 transform misses is a finding in `metrics.json` and on stdout, never a failed run.
 
@@ -64,11 +64,8 @@ def dose_findings(rows, summary):
     """Sentences for what the dose-response shows that a reader should not have to find: a score that rises with the error,
     a matching fault that never fires or stops firing, and a second fault that appears."""
     out = []
-    series = {}
-    for r in sv.measured(rows):
-        series.setdefault((r["joint"], r["take_id"]), []).append((r["planted_deg"], r["value"]))
-    for (joint, take_id), points in series.items():
-        for d0, v0, d1, v1 in sv.rises(sorted(points)):
+    for (joint, take_id), steps in _series(rows).items():
+        for d0, v0, d1, v1 in sv.rises([(r["planted_deg"], r["value"]) for r in steps]):
             out.append(f"dose-response {joint} {take_id}: the score rises from {v0} at {d0} degrees to {v1} at {d1} degrees")
     for joint, s in summary.items():
         if s["never"]:
@@ -77,14 +74,99 @@ def dose_findings(rows, summary):
         if s["stable"] < s["takes"] - s["never"]:
             out.append(f"dose-response {joint}: the matching fault stops firing at a larger step in "
                        f"{s['takes'] - s['never'] - s['stable']} of {s['takes']} takes")
+    for e in second_faults(rows):
+        out.append(f"dose-response {e['joint']}: a second fault, {e['measure']} {e['side']} {e['direction']}, appears in "
+                   f"{e['takes']} takes, from {e['from_deg']:g} degrees")
+    return out
+
+
+def second_faults(rows):
+    """`[{joint, measure, side, direction, takes, from_deg}]`: each fault other than the matching one that a planted joint
+    brings, in how many takes, and the smallest angle it appears at in any of them."""
     extra = {}
     for r in sv.measured(rows):
         for measure, side, direction, _ in r["extra_faults"]:
             seen = extra.setdefault((r["joint"], measure, side, direction), {})
             seen[r["take_id"]] = min(r["planted_deg"], seen.get(r["take_id"], r["planted_deg"]))
-    for (joint, measure, side, direction), seen in extra.items():
-        out.append(f"dose-response {joint}: a second fault, {measure} {side} {direction}, appears in {len(seen)} takes, "
-                   f"from {min(seen.values()):g} degrees")
+    return [{"joint": joint, "measure": measure, "side": side, "direction": direction, "takes": len(seen),
+             "from_deg": min(seen.values())} for (joint, measure, side, direction), seen in extra.items()]
+
+
+def _series(rows):
+    """`{(joint, take_id): [row]}` of the measured dose rows, each series in growing angle."""
+    out = {}
+    for r in sv.measured(rows):
+        out.setdefault((r["joint"], r["take_id"]), []).append(r)
+    return {key: sorted(series, key=lambda r: r["planted_deg"]) for key, series in out.items()}
+
+
+def dose_figures(rows):
+    """The figures the prose of section 1 of docs/evaluation.md states (TICKET-088 N2): the rows, the series that never rise,
+    the rows without the matching fault (their values and other faults) and with it (their range and grades), the drop on
+    the step a take first fires, the cost of each later step (apart: the steps where a second fault appears), the second
+    faults, and per joint the largest gap between the realised change of its measure and the planted degrees."""
+    ok = sv.measured(rows)
+    without, fired = [r for r in ok if not r["matching"]], [r for r in ok if r["matching"]]
+    series = _series(rows)
+    drops, costs, costs_second = [], [], []
+    for steps in series.values():
+        for a, b in zip(steps, steps[1:]):
+            if b["matching"] and not a["matching"]:
+                drops.append(a["value"] - b["value"])
+            elif a["matching"] and b["matching"]:
+                second = len(b["extra_faults"]) > len(a["extra_faults"])
+                (costs_second if second else costs).append(a["value"] - b["value"])
+    letters = [g for _, g in score.BANDS]
+    return {
+        "rows": len(rows), "series": len(series),
+        "series_never_rising": sum(not sv.rises([(r["planted_deg"], r["value"]) for r in s]) for s in series.values()),
+        "without_matching": {"rows": len(without), "values": sorted({r["value"] for r in without}),
+                             "other_faults": sum(r["n_faults"] for r in without)},
+        "with_matching": {"rows": len(fired), "min": min((r["value"] for r in fired), default=None),
+                          "max": max((r["value"] for r in fired), default=None),
+                          "grades": sorted({r["grade"] for r in fired}, key=letters.index)},
+        "first_fire_drop": {"min": min(drops, default=None), "max": max(drops, default=None)},
+        "later_step_cost": {"max": max(costs, default=None), "max_where_a_second_fault_appears": max(costs_second, default=None)},
+        "second_faults": second_faults(rows),
+        "realised_gap_deg": {joint: round(max((abs(r["realised_deg"] - r["planted_deg"]) for r in ok if r["joint"] == joint),
+                                              default=0.0), 2) for joint in sv.PLANTED},
+    }
+
+
+def _fault_list(faults):
+    """A fault set as sorted `[measure, side, direction]` lists, for JSON."""
+    return sorted([list(f) for f in faults])
+
+
+def invariance_figures(rows, summary):
+    """Per row group of `summary`, in its order, the figures the prose of section 2 of docs/evaluation.md states beyond the
+    table (TICKET-088 N2): the correct takes (how many ran, how many changed value, how many gained a fault), each set's
+    takes and how many of them changed value, and, when exactly one take changed value or its fault set, that take and
+    what changed."""
+    out = []
+    for e in summary:
+        transform = sv.TRANSFORMS[e["transform"]]
+        mine = [r for r in rows if (r["transform"], r["group"]) == (e["transform"], e["group"])]
+        ran = [r for r in mine if r["refused"] is None and "error" not in r]
+
+        def expected(r):
+            return sv.mirrored_set(sv.fault_set(r["base"])) if transform.mirrors else sv.fault_set(r["base"])
+
+        correct = [r for r in ran if r["correct"]]
+        entry = {"transform": e["transform"], "group": e["group"],
+                 "correct": {"takes": len(correct), "value_changed": sum(bool(r["delta"]) for r in correct),
+                             "gained_a_fault": sum(bool(sv.fault_set(r["variant"]) - expected(r)) for r in correct)},
+                 "by_set": {name: {"takes": sum(r["set"] == name for r in mine),
+                                   "value_changed": sum(r["set"] == name and bool(r["delta"]) for r in ran)}
+                            for name in sv.SETS}}
+        moved, changed = [r for r in ran if r["delta"]], [r for r in ran if not r["fault_set_equal"]]
+        if len(moved) == 1:
+            entry["only_value_change"] = {"take_id": moved[0]["take_id"], "from": moved[0]["base"]["value"],
+                                          "to": moved[0]["variant"]["value"]}
+        if len(changed) == 1:
+            entry["only_fault_set_change"] = {"take_id": changed[0]["take_id"], "from": _fault_list(expected(changed[0])),
+                                              "to": _fault_list(sv.fault_set(changed[0]["variant"]))}
+        out.append(entry)
     return out
 
 
@@ -141,15 +223,17 @@ def score_at(rows):
             for joint, by_deg in cells.items()}
 
 
-def summaries(dose, dose_takes, fires, summary_fires, summary):
+def summaries(dose, dose_takes, fires, summary_fires, inv, summary):
     """`{file name: document}`: the two summaries written beside the chart copy, the figures of docs/evaluation.md's tables
-    (AC-SV09). `first_fire.summary.json` holds `dose_response.first_fire` (its summary, and per take) and the score cells;
-    `invariance.summary.json` holds `invariance.summary`. No sha, so they change only when a figure does."""
+    and prose (AC-SV09). `first_fire.summary.json` holds `dose_response.first_fire` (its summary, and per take), the score
+    cells and the figures of section 1's prose (`dose_figures`); `invariance.summary.json` holds `invariance.summary` and the
+    figures of section 2's prose (`invariance_figures`). No sha, so they change only when a figure does."""
     head = {"format": SUMMARY_FORMAT, "command": COMMAND, "seed": sv.SEED, "score": score_of()}
     return {FIRST_FIRE_SUMMARY: {**head, "of": "dose_response.first_fire", "grid_deg": sv.GRID,
                                  "takes": [t["take_id"] for t in dose_takes], "summary": summary_fires, "per_take": fires,
-                                 "score_at": score_at(dose)},
-            INVARIANCE_SUMMARY: {**head, "of": "invariance.summary", "summary": summary}}
+                                 "score_at": score_at(dose), "figures": dose_figures(dose)},
+            INVARIANCE_SUMMARY: {**head, "of": "invariance.summary", "summary": summary,
+                                 "figures": invariance_figures(inv, summary)}}
 
 
 def print_summary(curves, summary_fires, summary, findings):
@@ -204,7 +288,7 @@ def main(argv=None):
         copy = Path(args.chart_copy)
         copy.parent.mkdir(parents=True, exist_ok=True)
         copy.write_text(svg)
-        for name, doc in summaries(dose, dose_takes, fires, summary_fires, summary).items():
+        for name, doc in summaries(dose, dose_takes, fires, summary_fires, inv, summary).items():
             (copy.parent / name).write_text(json.dumps(doc, indent=1) + "\n")
             written.append(shown(copy.parent / name))
     print_summary(curves, summary_fires, summary, findings)

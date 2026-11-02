@@ -20,15 +20,17 @@ from .lateral import lateral_m
 from .normalise import normalise
 from .output import build_analysis, validate_analysis
 from . import profiles
-from .phrasing import BACKENDS, phrase
+from .phrasing import BACKENDS, phrase, phrase_cues
+from .phrasing.lang import EN, resolve as resolve_lang
 from .quality import assess as assess_quality   # ADR-0021: the block is reported only
-from .quality import read_signals, shown_joints
+from .quality import heading_offset_deg, read_signals, shown_joints, with_heading
 from .repwise import RepRun, TooManyPairs, compare, rep_entries, reference_entry
 from .reps import segment
 from .guard import (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NO_USABLE_TEXT, NOT_ENOUGH_VISIBLE, OK,
                     OK_MANY_WARNINGS_TEXT, OK_ONE_WARNING_TEXT, OK_TEXT, REFUSAL_TEXT)
-from .visibility import (NOT_ENOUGH_TEXT, clip_usable, hide_unseen, load_conf, measures_of, moving_check,
-                         moving_text, resolve, usable_from_conf)
+from .mask import hide_masked
+from .visibility import (NOT_ENOUGH_TEXT, clip_usable, hide_unseen, load_conf, measures_of, moving_check, moving_text,
+                         resolve, usable_from_conf)
 
 # On the dummy takes the matched span always covers ≥76% of the follower clip. Much less than
 # that usually means a follower slower than ½x, which aligns to a subsegment (see align.dtw).
@@ -82,6 +84,7 @@ class PipelineResult:
     rules: dict | None = None   # the effective rules the take was detected and scored with (ADR-0016)
     profile: str = profiles.IDENTITY
     foot_expected: dict = field(default_factory=dict)
+    mask: object = None   # ADR-0023: the declared `mask.BodyMask` the take was detected and scored under, or None
 
 
 def analyse(expected, follower, rules=None, *, expected_feet=None, follower_feet=None,
@@ -99,7 +102,7 @@ def analyse(expected, follower, rules=None, *, expected_feet=None, follower_feet
 
 def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=None, score=None,
         live=False, selected_by=None, expected_visibility=None, expected_feet=None, follower_feet=None,
-        expected_feet_person=0, follower_feet_person=0, profile=None, lang=None):
+        expected_feet_person=0, follower_feet_person=0, profile=None, lang=None, mask=None):
     """`analyse` keeping the clips and the alignment (`PipelineResult`).
 
     A ref may carry the parsed JSON under `doc` (an upload held in memory): the clip is parsed
@@ -110,7 +113,8 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     (ADR-0012). Absent, no `score` key.
 
     `expected_visibility` (ADR-0011) is the trainer's own skeleton or pose3d file, whose `conf` says which
-    measures the example shows; without it an expected clip that carries no `conf` takes the follower's.
+    measures the example shows; without it an expected clip that carries no `conf` takes the follower's. It may be a
+    `{path, doc}` ref like the clips (the API's field, TICKET-087).
 
     `expected_feet` and `follower_feet` (ADR-0015, docs/specs/foot-keypoints.md) are paths to Part 2 `pose3d.json`
     files that carry the heel and toe points (`extra_joints`) of each clip's person (`*_feet_person`, matched to
@@ -124,6 +128,10 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     `lang` (TICKET-046) is the follower's BCP 47 tag for the phrased lines; None means English. It changes only
     `coaching` and `phrasing`. Any other profile detects and scores with `profiles.effective_rules(rules, profile)`
     (kept on the result as `rules`), and the document names the profile. An unknown name is a `profiles.ProfileError`.
+
+    `mask` (ADR-0023, docs/specs/body-mask.md) is a declared `mask.BodyMask`: detection and the score read every
+    measure of a masked joint as NaN, alignment, the guard and segmentation the whole body, and the document carries
+    `body_mask`. None, the default, is the analysis as it was.
     """
     if phrasing not in PHRASING_BACKENDS:
         raise AnalysisError(f"phrasing must be one of {list(PHRASING_BACKENDS)}, got {phrasing!r}")
@@ -156,7 +164,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
             notes[MOVING_PART_OUT_OF_FRAME] = moving_text(moving_info["moving_measures"])
     usable = vis.align_usable   # None: the full-body choice; fewer than 3 measures are still used
     ctx = _Context(exp_ref, fol_ref, exp, fol, vis, moving_info, notes,
-                   (phrasing, phrasing_client, live, selected_by, lang), score, feet, rules, profile, readings)
+                   (phrasing, phrasing_client, live, selected_by, lang), score, feet, rules, profile, mask, readings)
     if usable is not None and not usable:   # nothing the camera sees can carry timing
         return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT, rules)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
@@ -182,7 +190,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     try:
         rep_run = None if guard is not None and guard.ok and exp_reps.reps < 2 else \
             compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times, vis, max_cells=MAX_CELLS,
-                    expected_segmentation=exp_reps, foot_exp=exp_f, foot_fol=fol_f)
+                    expected_segmentation=exp_reps, foot_exp=exp_f, foot_fol=fol_f, mask=mask)
     except TooManyPairs as e:   # reps x reference frames^2 is bounded like the whole pair
         raise _too_many_pairs(fol_ref, e.follower_frames, e.expected_frames) from None
     accepted = rep_run is not None and rep_run.guard.ok
@@ -195,7 +203,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     else:
         # persistence is judged in each of the example's reps (ADR-0017); an example of one rep is one rep
         spans = exp_reps.partition(exp.n_frames) if exp_reps.reps > 1 else None
-        found = detect_full({**exp_m, **exp_f}, {**fol_m, **fol_f}, alignment, rules, rep_spans=spans, fps=fps)
+        # ADR-0023: detection reads the declared mask's measures as NaN; the alignment above read the whole body
+        found = detect_full(hide_masked(mask, {**exp_m, **exp_f}), hide_masked(mask, {**fol_m, **fol_f}), alignment, rules,
+                            rep_spans=spans, fps=fps)
         faults = [replace(f, follower_frames=tuple(int(to_original[j]) for j in f.follower_frames))
                   for f in found.faults]
         span = tuple(int(to_original[j]) for j in alignment.follower_span)
@@ -210,7 +220,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
         diagnostics["feet"] = feet.diagnostics()   # ADR-0017: compared rep by rep too, it is no longer hidden in rep mode
     result = PipelineResult(None, alignment, exp, fol, fol_positions, np.asarray(to_original), guard,
                             reps=rep_run.reps if accepted else None, rep_run=rep_run if accepted else None, vis=vis,
-                            rules=rules, profile=profile, foot_expected=exp_f)
+                            rules=rules, profile=profile, foot_expected=exp_f, mask=mask)
     return _finish(ctx, result, faults, times, diagnostics, guard.stats, not guard.ok, rules)
 
 
@@ -229,6 +239,7 @@ class _Context:
     feet: object = None   # the `feet.FootPair`, None when no feet file was given
     rules: dict | None = None   # the effective rules (ADR-0016): the caller's rules, relaxed when a profile is named
     profile: str = profiles.IDENTITY
+    mask: object = None   # the declared `mask.BodyMask` (ADR-0023), None without one
     readings: object = None   # the follower file's quality signals (`quality.Readings`, ADR-0021), None when not read
 
 
@@ -264,19 +275,38 @@ def _status_text(warnings):
     return OK_ONE_WARNING_TEXT if len(warnings) == 1 else OK_MANY_WARNINGS_TEXT.format(n=len(warnings))
 
 
+def _heading_offset(result):
+    """`quality.signals.heading_offset_deg` (TICKET-086) over the take's aligned frames: example frame `i` with the follower
+    frame `exp_to_fol[i]` of the whole take or, compared rep by rep, of every rep that was aligned. None for a take that could
+    not be aligned, whose straight-line stand-in pairs nothing."""
+    if result.guard is None:
+        return None
+    runs = [(r.expected.positions, r.follower_positions, r.alignment.exp_to_fol) for r in result.reps
+            if r.alignment is not None] if result.reps else \
+        [(result.expected.positions, result.follower_positions, result.alignment.exp_to_fol)]
+    if not runs:
+        return None
+    return heading_offset_deg(np.concatenate([e for e, _, _ in runs]),
+                              np.concatenate([f[np.asarray(m, dtype=int)] for _, f, m in runs]))
+
+
 def _quality_block(ctx):
-    """The `quality` block of the take (ADR-0021): the follower file's readings and the warnings the take carries. It is
-    reported only; `build_analysis` writes it and nothing after it reads it. None when the readings were not taken."""
+    """The `quality` block of the take (ADR-0021): the follower file's readings, with the heading `_finish` adds once the take is
+    aligned (TICKET-086), and the warnings the take carries. It is reported only; `build_analysis` writes it and nothing after it
+    reads it. None when the readings were not taken."""
     return None if ctx.readings is None else assess_quality(ctx.readings, ctx.notes)
 
 
 def _finish(ctx, result, faults, times, diagnostics, stats, low, rules):
     """Build, phrase and score the document of a take; a take with any warning is capped at F (score_block)."""
+    if ctx.readings is not None:   # TICKET-086: the heading is read over the aligned frames, so only now
+        ctx.readings = with_heading(ctx.readings, _heading_offset(result))
     warnings = _warning_list(ctx.notes)
     analysis = build_analysis(ctx.exp_ref, ctx.fol_ref, faults, diagnostics=diagnostics,
                               status={"code": OK, "text": _status_text(warnings)}, times=times,
                               warnings=warnings or None, match=_match(stats, low, rules) if warnings else None,
-                              profile=ctx.profile, quality=_quality_block(ctx))
+                              profile=ctx.profile, quality=_quality_block(ctx),
+                              body_mask=None if ctx.mask is None else ctx.mask.block())
     analysis = _phrased(analysis, *ctx.phrasing)
     result.analysis = analysis
     if ctx.score is not None:
@@ -284,6 +314,7 @@ def _finish(ctx, result, faults, times, diagnostics, stats, low, rules):
         scored = dict(analysis, score=block)
         scored["insights"] = insights_of(scored)   # ranked by the timeline's points (ADR-0014)
         result.analysis = validate_analysis(scored, source="<built analysis>")
+    result.analysis = _cued(result.analysis, *ctx.phrasing)
     return result
 
 
@@ -299,7 +330,7 @@ def _unaligned(ctx, code, text, rules):
         diagnostics["feet"] = ctx.feet.hidden(UNALIGNED_REASON).diagnostics()
     n_fol = ctx.fol.n_frames
     result = PipelineResult(None, diagonal_alignment(ctx.exp.n_frames, n_fol), ctx.exp, ctx.fol, ctx.fol.positions,
-                            np.arange(n_fol), None, vis=ctx.vis, rules=rules, profile=ctx.profile)
+                            np.arange(n_fol), None, vis=ctx.vis, rules=rules, profile=ctx.profile, mask=ctx.mask)
     return _finish(ctx, result, [], [], diagnostics, None, True, rules)
 
 
@@ -327,6 +358,16 @@ def _phrased(analysis, backend, client, live=False, selected_by=None, lang=None)
     analysis["phrasing"] = record
     analysis["insights"] = insights_of(analysis)
     return validate_analysis(analysis, source="<built analysis>")
+
+
+def _cued(analysis, backend, client, live=False, selected_by=None, lang=None):
+    """The cues and reasons in the follower's language, last because they read the final insights (TICKET-080, 1.14.0):
+    `phrasing.cues` and `phrasing.native_review` for a language other than English. An English document is untouched.
+    Nothing else changes: the English cue fields stay, and no scored field reads the record."""
+    if resolve_lang(lang)[0] == EN:
+        return analysis
+    return validate_analysis(phrase_cues(analysis, backend, client=client, live=live, lang=lang),
+                             source="<built analysis>")
 
 
 def clip_fps(clip):

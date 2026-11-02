@@ -412,6 +412,18 @@ def test_the_validator_refuses_a_credit_letter_off_the_scale_or_off_its_percent_
         validate_analysis(_golden_with_credit({**credit, **breaks}))
 
 
+def test_the_schema_says_what_part_5s_validator_adds_on_the_credit_grade_and_grades():
+    """TICKET-088 N1: a schema-only reader learns the checks the validator adds above the schema's types and enums: grades
+    falling, letters in the scale's order with none twice, and the grade the letter its percent reaches on grades."""
+    credit = json.loads((ROOT / "contracts/analysis.schema.json").read_text())["properties"]["score"]["properties"]["credit"]
+    grade, grades = credit["properties"]["grade"]["description"], credit["properties"]["grades"]["description"]
+    assert "Part 5's validator also checks" in grade and "Part 5's validator also checks" in grades
+    assert "grade is the letter percent reaches on this document's grades" in grade
+    assert "each percent is below the one before" in grades and "the list is not empty" in grades
+    assert "the letters run in the scale's order S, A, B, C, D, E, F" in grades and "no letter appears twice" in grades
+    assert "never by the alphabet" in grades and "F to S" not in grades
+
+
 def test_the_validator_reads_the_letter_on_the_documents_own_grades_and_accepts_every_golden():
     credit = json.loads(GOLDENS[0].read_text())["score"]["credit"]
     own = [[95, "S"], [60, "B"], [30, "F"]]   # another scale, well formed: 66.1 is a B on it

@@ -9,7 +9,7 @@ from part5 import cli
 ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE = json.loads((ROOT / "fixtures/output/analysis.example.json").read_text())
 SIGNALS = {"unseen_joint_share": None, "missing_joint_share": 0.0, "missing_frame_share": 0.0, "hidden_measure_share": None,
-           "position_jitter_mm": 12.3}
+           "position_jitter_mm": 12.3, "heading_offset_deg": 1.2}   # the last from 1.14.0 (TICKET-086)
 WORDS = "Joint positions shook by about 50 mm from one frame to the next, most at the left wrist."
 REASON = {"code": "position_jitter", "words": WORDS, "value": 50.0, "threshold": 42.0, "joint": "left_wrist"}
 BLOCKS = {

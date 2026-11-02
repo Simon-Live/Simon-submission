@@ -14,8 +14,16 @@ the follower toward the example. Sides are the subject's own left and right, as 
 part is placed or how it is aligned, `tempo` for speed. Foot rotation and the ankle roll are cues only when the
 pair has foot points (ADR-0015: Part 2's heel and toe points, read from its pose3d.json); the 17 COCO joints end at
 the ankle, so without them nothing measures a foot (ADR-0014).
+
+    cue_fields(doc) -> [CueField(path, role, text)]
+
+`cue_fields` lists every cue and "why" of an analysis document, in document order, for the model that writes them in the
+follower's language (TICKET-080, docs/specs/language-cues.md); the document check reads the same list back.
 """
+from dataclasses import dataclass
+
 MAX_WORDS = 6
+ROLE_CUE, ROLE_REASON = "cue", "reason"   # an instruction of a few words, and what was seen and when
 KINDS = ("position", "range", "tempo")
 
 # Tempo (ADR-0014): ratio = follower time / example time for the same stretch of movement.
@@ -99,3 +107,76 @@ def tempo_block(ratio, overrides=None):
     """A window's `tempo`: `{ratio, cue}` (ratio rounded to 0.01, both null when unmeasured)."""
     r = None if ratio is None else round(float(ratio), 2)
     return {"ratio": r, "cue": tempo_cue(r, overrides)}
+
+
+@dataclass(frozen=True)
+class CueField:
+    """One cue or reason of a document: where it is (`faults[0].cue`), its role and its English text."""
+    path: str
+    role: str
+    text: str
+
+
+def cue_fields(doc):
+    """Every cue and reason of the analysis `doc`, in document order: each fault's `cue`, then for each timeline window
+    its misses' `cue`s and its `tempo.cue`, then `score.tempo.cue`, then each insight's `cue` and `why`. A field that is
+    absent, null or not text is no field."""
+    out = []
+
+    def add(path, text, role):
+        if isinstance(text, str) and text:
+            out.append(CueField(path, role, text))
+
+    def entries(value):   # (index, item) of each object in a list, so a path keeps the item's own index
+        return [(i, e) for i, e in enumerate(value) if isinstance(e, dict)] if isinstance(value, list) else []
+
+    def block(value):
+        return value if isinstance(value, dict) else {}
+
+    for i, fault in entries(doc.get("faults")):
+        add(f"faults[{i}].cue", fault.get("cue"), ROLE_CUE)
+    score = block(doc.get("score"))
+    for k, window in entries(score.get("timeline")):
+        for j, miss in entries(window.get("misses")):
+            add(f"score.timeline[{k}].misses[{j}].cue", miss.get("cue"), ROLE_CUE)
+        add(f"score.timeline[{k}].tempo.cue", block(window.get("tempo")).get("cue"), ROLE_CUE)
+    add("score.tempo.cue", block(score.get("tempo")).get("cue"), ROLE_CUE)
+    for i, insight in entries(doc.get("insights")):
+        add(f"insights[{i}].cue", insight.get("cue"), ROLE_CUE)
+        add(f"insights[{i}].why", insight.get("why"), ROLE_REASON)
+    return out
+
+
+def validate_cues(record, doc, fail):
+    """The 1.14.0 `phrasing.cues` and `phrasing.native_review` (TICKET-080): both optional. Each cue entry names a field of the
+    document that holds text (`path`), the `text` to show in the entry's `lang`, and who wrote it (`backend`, `model`,
+    `fallback_reason`). An entry written by the template keeps the field's own English text, whatever the reason.
+    `output.validate_analysis` runs it with its `fail`; it sits beside `cue_fields`, which it reads, since the merge of
+    lane/v114 took `part5/output.py` past 800 lines (the 1.14.0 round, behaviour unchanged). An entry's `backend` must be
+    one Part 5 has (`phrasing.BACKENDS`), as AC-LC-06 says (R10 of the 1.14.0 review)."""
+    from .phrasing import BACKENDS   # imported at the call: part5.phrasing imports this module
+    if "native_review" in record and not isinstance(record["native_review"], bool):
+        fail(f"phrasing.native_review must be true or false, got {record['native_review']!r}")
+    if "cues" not in record:
+        return
+    entries = record["cues"]
+    if not isinstance(entries, list):
+        fail(f"phrasing.cues must be a list, got {entries!r}")
+    english = {f.path: f.text for f in cue_fields(doc)}
+    for i, entry in enumerate(entries):
+        where = f"phrasing.cues[{i}]"
+        if not isinstance(entry, dict):
+            fail(f"{where} must be an object")
+        field = english.get(entry.get("path")) if isinstance(entry.get("path"), str) else None
+        if field is None:
+            fail(f"{where}.path must name a cue or reason of this document, got {entry.get('path')!r}")
+        for key in ("text", "lang", "backend"):
+            if not (isinstance(entry.get(key), str) and entry[key]):
+                fail(f"{where}.{key} must be a non-empty string, got {entry.get(key)!r}")
+        if entry["backend"] not in BACKENDS:
+            fail(f"{where}.backend must be one of {sorted(BACKENDS)}, got {entry['backend']!r}")
+        for key in ("model", "fallback_reason"):
+            if entry.get(key) is not None and not isinstance(entry[key], str):
+                fail(f"{where}.{key} must be a string or null, got {entry[key]!r}")
+        if entry["backend"] == "template" and entry["text"] != field:
+            fail(f"{where}.text must equal {entry['path']} when the template wrote it, got {entry['text']!r}")

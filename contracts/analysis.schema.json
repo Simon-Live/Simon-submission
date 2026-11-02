@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/analysis.schema.json",
   "title": "Part 5 analysis.json (simon.analysis.v1)",
-  "version": "1.13.0",
-  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score; 1.3.0: faults[].reps, diagnostics.guard.reps, diagnostics.expected_reference and score.per_rep, for a take compared one repetition at a time). A document without them keeps schema_version 1.2.0. A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed. 1.4.0 (ADR-0012): a take is always analysed. status.code is ok for every analysis; what used to be a refusal is an entry in the top-level warnings ([{code, text}]: low_match, moving_part_out_of_frame, not_enough_visible, no_usable_measures), with match ({quality ok|low, residual, timing_corr, limits}); on a low match each fault has confidence \"low\"; score is never null, is capped at 59 (grade F) when any warning is present, and then names the codes in score.capped_by. A document without warnings keeps its earlier schema_version. 1.5.0 (ADR-0014): every new document is 1.5.0 and carries cues: faults[].cue and cue_kind (position or range), the same on each score.timeline[].misses[] with its direction, score.timeline[].tempo and score.tempo ({ratio, cue}: follower seconds per example second, a cue below 0.85 or above 1.15), and the top-level insights (at most 5, ranked by the points they cost the score). 1.6.0 (ADR-0015): every new document is 1.6.0 and may carry the foot measures: faults with measure foot_rotation or ankle_inversion (body_part feet, joint an ankle, cue and words like any fault) and diagnostics.feet, written only when a feet file (Part 2 pose3d.json with extra_joints) was given for either clip. A document without them is exactly what 1.5.0 was apart from schema_version. 1.7.0 (ADR-0016): every new document is 1.7.0 and carries profile, the analysis profile that produced it (a non-empty string; the names are data in part5/profiles.json, today dance, rehab and fitness, fitness being the default and the unchanged analysis). A score is read within its profile. Under the dance profile only, score.components and each window's components carry tempo (points the take's pace cost) and the tempo insight's points equal it. A document before 1.7.0 has no profile and is read as fitness. The earlier field groups stay optional and are told apart by their fields. 1.8.0 (TICKET-043): every new document is 1.8.0 and may carry diagnostics.near_misses, the candidate faults detection considered and dropped: {total, omitted, items}, the items the largest first and at most 10, each a measure, side and direction with a frame past its threshold that failed persistence (reason persistence, with shortfall_frames) or was explained by a kept fault (reason explained_by); a take compared rep by rep adds the reasons reps and fitness. It is present whenever the take was compared (also with total 0) and absent when it could not be aligned. It changes no fault or score, is for people debugging a take and is not shown to the follower. 1.9.0 (TICKET-045, TICKET-046, docs/specs/second-opinion.md): every new document is 1.9.0. phrasing carries lang (the language of the fault lines, a listed BCP 47 primary subtag, en by default) and lang_requested when the request named a tag that is not listed as given; each phrasing.faults[] entry carries text (the line shown, equal to the fault's coaching) and lang (the line's own language: en for a line that fell back to the template). The optional top-level second_opinion is written when clips were given: Muse Spark's view of the take, labelled model_opinion and never read by the score, faults or insights; status ok, fallback (reason says why) or skipped (not attempted), per-fault verdicts {fault_index, agrees, note} and at most 2 observations {at_s, text, label}. The same 1.9.0 also carries score.uncapped ({value, grade}, Part 7 TICKET-155: the value and grade before the warning cap, present only when the cap lowered the value) and TICKET-048: the optional top-level source (the producing part; absent means part5) and the warnings code no_person, written only by Part 7's own analysis when Part 2 finds nobody in the take (schema_version 1.4.0 or later, source part7, faults [], score 0 F, no match). 1.10.0 (TICKET-047, ADR-0018): every new document is 1.10.0. score.version may be simon.score.v2, in which a miss costs less on a measure the trainer moves little in its window (never below a floor) and a take whose faults list is not empty is capped at 89: score.fault_cap (the integer 89, present only when the take reports a fault) says so, and score.uncapped is the value and grade before every cap, the fault cap and the warning cap. score.capped_by is unchanged: it names the warning codes of the low-match cap at 59 and never the fault cap. A 1.9.0 document and every earlier one still validates. 1.11.0 (TICKET-060, ADR-0019): every new document is 1.11.0. score.version may be simon.score.v3, which keeps the weight and the cap of v2 for a take that reports one fault and caps a take whose faults list holds two or more entries at 79: score.fault_cap is the ceiling in force (89 or 79; read it, never assume 89), and score.uncapped and score.capped_by mean what they meant in 1.10.0. A 1.10.0 document and every earlier one still validates. Correction (TICKET-073): the rehab profile has written the tempo cue \"Slower is fine\" for a ratio above 1.15 since 1.7.0 (ADR-0016), and the cue enums of score.tempo and score.timeline[].tempo omitted it; they now list it. The schema_version does not change: the documents did not change, only the schema's list of what they may say. 1.12.0 (TICKET-071, docs/specs/history-per-rep.md): every new document is 1.12.0 and adds three fields for comparing takes with each other. A fault of a take compared rep by rep carries rep_sizes, one {rep, magnitude_deg, side, body_part} for each rep in reps: the fault's size in that rep, signed like magnitude_deg, and the side that rep found it on (both when it found both sides). Each score.per_rep entry carries rep (the follower rep's index, which is the position of its window in score.timeline) and tempo_ratio (that window's tempo.ratio, follower seconds per example second, null where the rep could not be timed and null for every rep of a low match). Each diagnostics.near_misses item carries margin_deg, abs(magnitude_deg) minus threshold_deg to 0.1 degree: positive when the candidate went past the threshold by that much, 0 when it sat on it, negative when it stayed short of it. Detection lists only candidates with a frame past the threshold, so today margin_deg is 0 or more. A fault, the score and the insights read none of the three. A 1.11.0 document and every earlier one still validates. 1.13.0 (ADR-0020): every new document is 1.13.0 and its score carries credit (simon.credit.v1), a DDR-style display beside the score: every measure seen in at least half of a compared window's frames earns, on each frame it is measured, 1.0, 0.6 or 0.2 when the follower is within 0.5, 1 or 2 detection thresholds of the example (times the level's tolerance), else 0. percent is the credit earned over the credit possible, points count 100 per measure per second, at the levels easy, normal and hard, and per_window has one entry per compared window of score.timeline. score.credit is null when nothing was compared. Additive: value, grade, components, the caps and every other field are unchanged, the warning cap does not apply to credit, and nothing reads it back. A 1.12.0 document and every earlier one still validates.",
+  "version": "1.14.0",
+  "description": "Part 5's output for Part 7. The fields of 1.0 plus the optional additions of 1.1.0 and 1.2.0 (schema_version, status, phrasing, faults[].joints, runs, coaching, diagnostics.guard; 1.2.0: faults[].follower_t_s, at_s, follower_runs, lateral, lateral_m, text_timed and the top-level score; 1.3.0: faults[].reps, diagnostics.guard.reps, diagnostics.expected_reference and score.per_rep, for a take compared one repetition at a time). A document without them keeps schema_version 1.2.0. A 1.0 document validates. Read status before faults: a refused take has status.code different_movement and faults []. Extra fields are allowed. 1.4.0 (ADR-0012): a take is always analysed. status.code is ok for every analysis; what used to be a refusal is an entry in the top-level warnings ([{code, text}]: low_match, moving_part_out_of_frame, not_enough_visible, no_usable_measures), with match ({quality ok|low, residual, timing_corr, limits}); on a low match each fault has confidence \"low\"; score is never null, is capped at 59 (grade F) when any warning is present, and then names the codes in score.capped_by. A document without warnings keeps its earlier schema_version. 1.5.0 (ADR-0014): every new document is 1.5.0 and carries cues: faults[].cue and cue_kind (position or range), the same on each score.timeline[].misses[] with its direction, score.timeline[].tempo and score.tempo ({ratio, cue}: follower seconds per example second, a cue below 0.85 or above 1.15), and the top-level insights (at most 5, ranked by the points they cost the score). 1.6.0 (ADR-0015): every new document is 1.6.0 and may carry the foot measures: faults with measure foot_rotation or ankle_inversion (body_part feet, joint an ankle, cue and words like any fault) and diagnostics.feet, written only when a feet file (Part 2 pose3d.json with extra_joints) was given for either clip. A document without them is exactly what 1.5.0 was apart from schema_version. 1.7.0 (ADR-0016): every new document is 1.7.0 and carries profile, the analysis profile that produced it (a non-empty string; the names are data in part5/profiles.json, today dance, rehab and fitness, fitness being the default and the unchanged analysis). A score is read within its profile. Under the dance profile only, score.components and each window's components carry tempo (points the take's pace cost) and the tempo insight's points equal it. A document before 1.7.0 has no profile and is read as fitness. The earlier field groups stay optional and are told apart by their fields. 1.8.0 (TICKET-043): every new document is 1.8.0 and may carry diagnostics.near_misses, the candidate faults detection considered and dropped: {total, omitted, items}, the items the largest first and at most 10, each a measure, side and direction with a frame past its threshold that failed persistence (reason persistence, with shortfall_frames) or was explained by a kept fault (reason explained_by); a take compared rep by rep adds the reasons reps and fitness. It is present whenever the take was compared (also with total 0) and absent when it could not be aligned. It changes no fault or score, is for people debugging a take and is not shown to the follower. 1.9.0 (TICKET-045, TICKET-046, docs/specs/second-opinion.md): every new document is 1.9.0. phrasing carries lang (the language of the fault lines, a listed BCP 47 primary subtag, en by default) and lang_requested when the request named a tag that is not listed as given; each phrasing.faults[] entry carries text (the line shown, equal to the fault's coaching) and lang (the line's own language: en for a line that fell back to the template). The optional top-level second_opinion is written when clips were given: Muse Spark's view of the take, labelled model_opinion and never read by the score, faults or insights; status ok, fallback (reason says why) or skipped (not attempted), per-fault verdicts {fault_index, agrees, note} and at most 2 observations {at_s, text, label}. The same 1.9.0 also carries score.uncapped ({value, grade}, Part 7 TICKET-155: the value and grade before the warning cap, present only when the cap lowered the value) and TICKET-048: the optional top-level source (the producing part; absent means part5) and the warnings code no_person, written only by Part 7's own analysis when Part 2 finds nobody in the take (schema_version 1.4.0 or later, source part7, faults [], score 0 F, no match). 1.10.0 (TICKET-047, ADR-0018): every new document is 1.10.0. score.version may be simon.score.v2, in which a miss costs less on a measure the trainer moves little in its window (never below a floor) and a take whose faults list is not empty is capped at 89: score.fault_cap (the integer 89, present only when the take reports a fault) says so, and score.uncapped is the value and grade before every cap, the fault cap and the warning cap. score.capped_by is unchanged: it names the warning codes of the low-match cap at 59 and never the fault cap. A 1.9.0 document and every earlier one still validates. 1.11.0 (TICKET-060, ADR-0019): every new document is 1.11.0. score.version may be simon.score.v3, which keeps the weight and the cap of v2 for a take that reports one fault and caps a take whose faults list holds two or more entries at 79: score.fault_cap is the ceiling in force (89 or 79; read it, never assume 89), and score.uncapped and score.capped_by mean what they meant in 1.10.0. A 1.10.0 document and every earlier one still validates. Correction (TICKET-073): the rehab profile has written the tempo cue \"Slower is fine\" for a ratio above 1.15 since 1.7.0 (ADR-0016), and the cue enums of score.tempo and score.timeline[].tempo omitted it; they now list it. The schema_version does not change: the documents did not change, only the schema's list of what they may say. 1.12.0 (TICKET-071, docs/specs/history-per-rep.md): every new document is 1.12.0 and adds three fields for comparing takes with each other. A fault of a take compared rep by rep carries rep_sizes, one {rep, magnitude_deg, side, body_part} for each rep in reps: the fault's size in that rep, signed like magnitude_deg, and the side that rep found it on (both when it found both sides). Each score.per_rep entry carries rep (the follower rep's index, which is the position of its window in score.timeline) and tempo_ratio (that window's tempo.ratio, follower seconds per example second, null where the rep could not be timed and null for every rep of a low match). Each diagnostics.near_misses item carries margin_deg, abs(magnitude_deg) minus threshold_deg to 0.1 degree: positive when the candidate went past the threshold by that much, 0 when it sat on it, negative when it stayed short of it. Detection lists only candidates with a frame past the threshold, so today margin_deg is 0 or more. A fault, the score and the insights read none of the three. A 1.11.0 document and every earlier one still validates. 1.13.0 (ADR-0020): every new document is 1.13.0 and its score carries credit (simon.credit.v1), a DDR-style display beside the score: every measure seen in at least half of a compared window's frames earns, on each frame it is measured, 1.0, 0.6 or 0.2 when the follower is within 0.5, 1 or 2 detection thresholds of the example (times the level's tolerance), else 0. percent is the credit earned over the credit possible, points count 100 per measure per second, at the levels easy, normal and hard, and per_window has one entry per compared window of score.timeline. score.credit is null when nothing was compared. Additive: value, grade, components, the caps and every other field are unchanged, the warning cap does not apply to credit, and nothing reads it back. A 1.12.0 document and every earlier one still validates. 1.14.0 (TICKET-084, ADR-0023; TICKET-080, docs/specs/language-cues.md): every new document is 1.14.0. It carries body_mask when the follower declared limb chains that are not scored (part5 analyse --mask, the mask field of POST api/analyse): every measure that reads a masked joint is dropped from detection and the score after alignment, so no fault, miss, insight or near miss names it and the score is taken on the remaining measures. For a request in a listed language other than English, phrasing carries cues (one {path, text, lang, backend, model, fallback_reason} for each cue and reason of the document, written by the model in that language in one batched call, or the field's English text with the reason it was not taken) and native_review (false until a native reader has checked the language); the English cue fields, coaching, the score and the insights are unchanged by them. A document without body_mask, phrasing.cues and phrasing.native_review is what 1.13.0 was apart from schema_version and quality.signals.heading_offset_deg (with its reason past 5 degrees). The quality block gains signals.heading_offset_deg and the reason heading_offset (TICKET-086), the heading left between the example and the follower over the aligned frames, reported only like the rest of the block. A 1.13.0 document and every earlier one still validates.",
   "type": "object",
   "required": [
     "format",
@@ -28,6 +28,48 @@
       "type": "string",
       "minLength": 1,
       "description": "1.7.0 (ADR-0016): the analysis profile that produced this document, one of the names in part5/profiles.json (dance, rehab, fitness). Always present from 1.7.0; a document without it is read as fitness. Scores compare within one profile."
+    },
+    "body_mask": {
+      "type": "object",
+      "description": "1.14.0 (TICKET-084, ADR-0023): the limb chains the follower declared not scored: seated (both legs), or not using an arm from the shoulder, a forearm from the elbow or a leg from the hip. Written only when a mask was declared; absent means the whole body was scored. Every measure that reads a masked joint is dropped on every frame of both clips from detection and the score, after alignment (timing and the guard read the whole body): no fault, timeline miss, insight or near miss names it, and the score is taken on the remaining measures, so it compares only with takes under the same mask. Show text beside the score and dim the not scored chains. Designed for and tested on seated and masked takes from the fixtures, not with wheelchair users or amputees.",
+      "required": ["declared", "source", "scored_chains", "not_scored_chains", "masked_joints", "not_scored_measures", "text"],
+      "properties": {
+        "declared": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"enum": ["seated", "full_body", "left_arm", "right_arm", "left_forearm", "right_forearm", "left_leg", "right_leg"]},
+          "description": "The presets and chains as declared, each once, in the order given. full_body masks nothing and stands alone."
+        },
+        "source": {
+          "enum": ["cli", "api"],
+          "description": "Where the mask came from: part5 analyse --mask, or the mask field of POST api/analyse."
+        },
+        "scored_chains": {
+          "type": "array",
+          "items": {"enum": ["left_arm", "right_arm", "left_forearm", "right_forearm", "left_leg", "right_leg"]},
+          "description": "The chains with at least one measure scored, in the order left_arm, right_arm, left_forearm, right_forearm, left_leg, right_leg; an arm whose forearm alone is masked is here. With not_scored_chains it lists every chain once."
+        },
+        "not_scored_chains": {
+          "type": "array",
+          "items": {"enum": ["left_arm", "right_arm", "left_forearm", "right_forearm", "left_leg", "right_leg"]},
+          "description": "The chains whose every measure is dropped, in the same order; a masked arm lists its forearm too."
+        },
+        "masked_joints": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "The canonical joints masked (left_elbow, left_wrist and so on), the subject's own sides; a leg also masks the heel and toes of a feet file, which are not listed. Dim the bones that end at these joints."
+        },
+        "not_scored_measures": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "The sided body and foot measures dropped (left_elbow_flexion, right_foot_rotation and so on): no fault, miss, insight or near miss of the document names one."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The plain words to show: \"Legs not scored, by your setting.\", \"Left arm and right leg not scored, by your setting.\"; \"Whole body scored, by your setting.\" for full_body."
+        }
+      }
     },
     "expected": {
       "$ref": "#/$defs/clip_ref"
@@ -133,6 +175,47 @@
           "type": "string",
           "minLength": 1,
           "description": "1.9.0: the tag the request named when it differs from lang (a region tag, or a language Part 5 does not list)."
+        },
+        "cues": {
+          "type": "array",
+          "description": "1.14.0 (TICKET-080, docs/specs/language-cues.md): written only when lang is a listed language other than en. One entry for each cue and reason of the document, in document order: faults[].cue, each timeline window's misses[].cue and tempo.cue, score.tempo.cue, then each insight's cue and why. The English fields themselves do not change; text is what to show in the follower's language. An entry the model wrote has the model's text, lang the requested language, backend and model of the writer and fallback_reason null. An entry that failed its word test, or whose backend could not run, keeps the field's English text with lang en, backend template, model null and the reason. [] when the document has none.",
+          "items": {
+            "type": "object",
+            "required": ["path", "text", "lang", "backend", "model", "fallback_reason"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^[a-z_]+(\\.[a-z_]+|\\[[0-9]+\\])*$",
+                "description": "1.14.0: the field this entry is about, such as faults[0].cue, score.timeline[2].misses[0].cue, score.timeline[2].tempo.cue, score.tempo.cue, insights[1].cue or insights[1].why."
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "description": "1.14.0: the cue or reason to show, in lang."
+              },
+              "lang": {
+                "type": "string",
+                "minLength": 1,
+                "description": "1.14.0: the language of text: the requested language, or en for a fallback."
+              },
+              "backend": {
+                "enum": ["template", "local-llm", "muse-spark"],
+                "description": "1.14.0: who wrote text; template for a fallback."
+              },
+              "model": {
+                "type": ["string", "null"],
+                "description": "1.14.0: the model that wrote text, null for a fallback."
+              },
+              "fallback_reason": {
+                "type": ["string", "null"],
+                "description": "1.14.0: null when the model wrote text, else why the English text is shown (never a key or the model's text)."
+              }
+            }
+          }
+        },
+        "native_review": {
+          "type": "boolean",
+          "description": "1.14.0 (TICKET-080): written when lang is a listed language other than en. false until a native reader has checked the language (none has), so a viewer can say the text has not been reviewed by a native reader."
         }
       }
     },
@@ -677,7 +760,7 @@
                 "E",
                 "F"
               ],
-              "description": "Informational: the letter for percent on the credit's own scale, grades (S to F; not the score's bands). It is not score.grade, it sets no cap and no gate, and it ignores warnings and caps, so a take capped to F can carry a credit grade of B."
+              "description": "Informational: the letter for percent on the credit's own scale, grades (S to F; not the score's bands). It is not score.grade, it sets no cap and no gate, and it ignores warnings and caps, so a take capped to F can carry a credit grade of B. Part 5's validator also checks what this schema cannot: grade is the letter percent reaches on this document's grades (the first entry whose percent at least it reaches, else the last entry's letter), so a grade that does not match its percent is refused."
             },
             "points": {
               "type": "integer",
@@ -759,7 +842,7 @@
             },
             "grades": {
               "type": "array",
-              "description": "The credit's letter grades: [percent at least, grade], highest first (F to S, ADR-0020).",
+              "description": "The credit's letter grades: [percent at least, grade], highest first (Part 5 writes S 95 down to F 30, ADR-0020). Part 5's validator also checks what this schema cannot: the list is not empty, each percent is below the one before (the marks fall), and the letters run in the scale's order S, A, B, C, D, E, F, each later than the one before, so no letter appears twice. Rank the letters by that order, never by the alphabet.",
               "items": {
                 "type": "array",
                 "prefixItems": [
@@ -1112,7 +1195,7 @@
         },
         "reasons": {
           "type": "array",
-          "description": "Empty for ok. In a fixed order: the three warning reasons, then joints_unseen, joints_missing, frames_missing, measures_hidden, position_jitter. Each signal gives at most one reason, at the higher limit it reached.",
+          "description": "Empty for ok. In a fixed order: the three warning reasons, then joints_unseen, joints_missing, frames_missing, measures_hidden, position_jitter, heading_offset (1.14.0). Each signal gives at most one reason, at the higher limit it reached.",
           "items": {
             "type": "object",
             "required": [
@@ -1131,9 +1214,10 @@
                   "joints_missing",
                   "frames_missing",
                   "measures_hidden",
-                  "position_jitter"
+                  "position_jitter",
+                  "heading_offset"
                 ],
-                "description": "The first three repeat the warning of the same code and carry no number. joints_unseen, joints_missing, frames_missing and measures_hidden read the share signals of the same names, position_jitter reads position_jitter_mm."
+                "description": "The first three repeat the warning of the same code and carry no number. joints_unseen, joints_missing, frames_missing and measures_hidden read the share signals of the same names, position_jitter reads position_jitter_mm, heading_offset (1.14.0, TICKET-086) reads heading_offset_deg."
               },
               "words": {
                 "type": "string",
@@ -1184,7 +1268,7 @@
         },
         "signals": {
           "type": "object",
-          "description": "The raw readings from the follower's file as Part 5 loads it, before smoothing. null when a reading cannot be made; never 0 in its place (0 is a measured zero).",
+          "description": "The raw readings from the follower's file as Part 5 loads it, before smoothing, and from 1.14.0 heading_offset_deg, read after alignment. null when a reading cannot be made; never 0 in its place (0 is a measured zero). heading_offset_deg is written in every document from 1.14.0 and is absent before it.",
           "required": [
             "unseen_joint_share",
             "missing_joint_share",
@@ -1236,6 +1320,15 @@
               ],
               "minimum": 0,
               "description": "Frame-to-frame jitter of the joint positions in millimetres per frame: per joint and axis, feet.jitter (the median absolute change between consecutive frames) of the step series, so a steady movement is not jitter; the three axes joined as a norm; the median over the joints. It depends on the file's frame rate. Null when no joint has enough frames."
+            },
+            "heading_offset_deg": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 180,
+              "description": "1.14.0 (TICKET-086): the heading left between the example and the follower after Part 3's facing step, in degrees. In each aligned frame pair (example frame i and the follower frame exp_to_fol[i]; every aligned rep of a take compared rep by rep) the body's heading is the direction, in the horizontal plane, of the hip line and the shoulder line (left minus right, each made unit length and added); the signal is the median over the pairs of the angle between the two headings, 0 to 180. Null when the take could not be aligned or no pair has a hip or shoulder line to read. TICKET-082 measured that a turned follower moves the score (5 degrees moved 18 of 54 seed 5 scores by up to 10 points, 15 degrees moved 43 by up to 34): a take past the degraded limit was filmed from another angle than the example, so treat its score as rough."
             }
           }
         },

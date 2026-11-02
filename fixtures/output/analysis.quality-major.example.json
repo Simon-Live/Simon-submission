@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.13.0",
+  "schema_version": "1.14.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
@@ -33,6 +33,12 @@
         "value": 26.7,
         "threshold": 21.0,
         "joint": "left_knee"
+      },
+      {
+        "code": "heading_offset",
+        "words": "The body was turned about 6 degrees from the way the example faces.",
+        "value": 5.8,
+        "threshold": 5.0
       }
     ],
     "signals": {
@@ -40,7 +46,8 @@
       "missing_joint_share": 0.0,
       "missing_frame_share": 0.0,
       "hidden_measure_share": 0.2273,
-      "position_jitter_mm": 26.7
+      "position_jitter_mm": 26.7,
+      "heading_offset_deg": 5.8
     },
     "score_cap": 59
   },

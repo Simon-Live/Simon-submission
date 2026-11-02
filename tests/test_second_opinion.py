@@ -15,9 +15,11 @@ import pytest
 
 from part5 import cli, opinion
 from part5.io import JOINTS
+from part5.mask import parse_mask
 from part5.opinion import guard, meta_api, prompt
 from part5.opinion.meta_api import OpinionError
 from part5.output import OutputError, validate_analysis
+from part5.phrasing.template import GROUP_RX
 from part5.pipeline import run
 from part5.score_report import score_block
 
@@ -403,6 +405,142 @@ def test_ticket_054_r10_an_array_or_string_answer_falls_back_and_is_recorded_at_
     [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
     assert line["estimated"] is True and line["usd"] > 0   # the call was answered, so it may have been billed
     assert sorted(fake.deleted) == ["file-1", "file-2"]
+
+
+# ---- N1 of the 1.14.0 recheck (TICKET-081): an item, a content or a part of the wrong shape is unreadable ----------
+def unreadable_outputs(text):
+    """`output` lists the readers must call an unreadable answer, by name. Most hold a well-formed part with `text`, so
+    the reply is refused for its shape and not for want of an answer. `{"type": "message", "content": 5}` raised a
+    TypeError out of the ask loop, the second opinion and the history opinion (N1)."""
+    good = {"type": "output_text", "text": text}
+
+    def message(content):
+        return {"type": "message", "content": content}
+
+    return {"an item is a number": [message([good]), 5], "an item is text": ["a message"],
+            "content is a number": [message(5)], "content is text": [message(text)],
+            "content is an object": [message(good)], "content is null": [message(None)],
+            "content is missing": [{"type": "message"}], "a part is a number": [message([good, 5])],
+            "a part is text": [message([text])], "a part is a list": [message([[good]])]}
+
+
+UNREADABLE_SHAPES = list(unreadable_outputs(""))
+
+
+@pytest.mark.parametrize("shape", UNREADABLE_SHAPES)
+def test_n1_the_readers_call_a_reply_of_the_wrong_shape_unreadable(shape):
+    output = unreadable_outputs("{}")[shape]
+    with pytest.raises(OpinionError, match="unreadable answer"):
+        meta_api.output_text({"output": output})
+    if any(not isinstance(item, dict) for item in output):   # a function call beside a broken item is not run
+        with pytest.raises(OpinionError, match="unreadable answer"):
+            meta_api.function_calls({"output": [{"type": "function_call", "name": "seek", "call_id": "c1"}, *output]})
+
+
+def test_n1_well_formed_replies_still_read():
+    refusal = {"type": "refusal", "refusal": "No."}
+    assert meta_api.output_text({"output": [{"type": "message", "content": [refusal, {"text": "{}"}]}]}) == "{}"
+    assert meta_api.output_text({"output": [{"type": "message", "content": []}], "output_text": "plain"}) == "plain"
+    assert meta_api.output_text({"output": [{"type": "reasoning", "content": 5}]}) == ""   # not a message: not read
+    assert meta_api.function_calls({"output": [{"type": "message", "content": 5}]}) == []   # the text is read later
+
+
+@pytest.mark.parametrize("shape", UNREADABLE_SHAPES)
+def test_n1_a_reply_of_the_wrong_shape_falls_back_and_the_call_is_recorded(take, meta, shape):
+    good = json.dumps({"verdicts": all_verdicts(len(take.analysis["faults"]), True), "observations": []})
+    fake = Fake({"output": unreadable_outputs(good)[shape], "usage": {"input_tokens": 9000, "output_tokens": 400}})
+    doc = attach(take, meta, fake)
+    block = doc["second_opinion"]
+    assert (block["status"], block["reason"], block["verdicts"]) == ("fallback", "unreadable answer", [])
+    assert doc["faults"] == take.analysis["faults"] and sorted(fake.deleted) == ["file-1", "file-2"]
+    assert [json.loads(x)["http_status"] for x in meta.ledger.read_text().splitlines()] == [200]
+
+
+# ---- N3 of the 1.14.0 recheck (TICKET-084): the second opinion respects the body mask (ADR-0023) ------------------
+LEGS = {"left", "right"}
+
+
+@pytest.fixture
+def seated_take():
+    return run(str(EXPECTED), str(FOLLOWER), score=score_block, mask=parse_mask("seated"))
+
+
+@pytest.mark.parametrize("names, parts", [
+    ("seated", {"hip": LEGS, "thigh": LEGS, "knee": LEGS, "foot": LEGS}),
+    ("left_leg", {"hip": {"left"}, "thigh": {"left"}, "knee": {"left"}, "foot": {"left"}}),
+    ("right_arm", {"arm": {"right"}, "elbow": {"right"}, "hand": {"right"}}),   # the shoulder: shoulder_tilt
+    ("left_forearm", {"hand": {"left"}}),   # the upper arm and the elbow still have upper_arm_out
+    ("full_body", {}),
+])
+def test_n3_the_parts_a_mask_leaves_not_scored(names, parts):
+    assert guard.masked_parts(parse_mask(names).block()) == parts
+    assert guard.masked_parts(None) == {}
+
+
+def test_n3_a_seated_request_holds_no_measure_joint_or_part_the_mask_drops(take, seated_take, meta):
+    block = seated_take.analysis["body_mask"]
+    fake = Fake(answer())
+    attach(seated_take, meta, fake)
+    sent = json.dumps(fake.bodies[0]).lower()
+    listed = json.loads(fake.bodies[0]["input"][0]["content"][5]["text"].split("(JSON): ", 1)[1])
+    generic = {m.split("_", 1)[1] if m.split("_", 1)[0] in LEGS else m for m in block["not_scored_measures"]}
+    assert listed and not {f["measure"] for f in listed} & generic
+    assert not any(joint in sent for joint in block["masked_joints"])
+    assert not any(GROUP_RX[group].search(sent) for group in guard.masked_parts(block))
+    unmasked = Fake(answer())
+    attach(take, meta, unmasked)   # the same take without the mask sends its feet fault
+    assert GROUP_RX["foot"].search(json.dumps(unmasked.bodies[0]).lower())
+
+
+def masked_answer():
+    verdicts = [{"fault_index": 0, "agrees": True, "note": "The elbows bend more than the recording."},
+                {"fault_index": 1, "agrees": True, "note": "The arms rise forward while the knees stay bent."},
+                {"fault_index": 2, "agrees": False, "note": "The legs stay still and the left arm looks level."},
+                {"fault_index": 3, "agrees": True, "note": "The right hand stays close to the left hand."}]
+    observations = [{"at_s": 1.0, "text": "The hips shift back in the chair."},
+                    {"at_s": 1.5, "text": "The shoulders stay level through the take."},
+                    {"at_s": 2.0, "text": "The feet stay flat on the floor."}]
+    return answer(verdicts, observations)
+
+
+def test_n3_on_a_seated_take_a_note_on_a_masked_part_is_rejected_and_the_rest_kept(take, seated_take, meta):
+    block = attach(seated_take, meta, Fake(masked_answer()))["second_opinion"]
+    assert block["status"] == "ok" and [v["fault_index"] for v in block["verdicts"]] == [0, 3]
+    assert [o["text"] for o in block["observations"]] == ["The shoulders stay level through the take."]
+    reason = "names a body part not scored in this take ({})".format
+    assert block["rejected"] == [{"kind": "verdict", "index": 1, "reason": reason("knee")},
+                                 {"kind": "verdict", "index": 2, "reason": reason("thigh")},
+                                 {"kind": "observation", "index": 0, "reason": reason("hip")},
+                                 {"kind": "observation", "index": 2, "reason": reason("foot")}]
+    unmasked = attach(take, meta, Fake(masked_answer()))["second_opinion"]   # the camera shows them all
+    assert [v["fault_index"] for v in unmasked["verdicts"]] == [0, 1, 2, 3] and len(unmasked["observations"]) == 2
+
+
+@pytest.mark.parametrize("text, part", [
+    ("The right foot steps out to the right.", None), ("The left hand drifts right.", None),
+    ("The left shoulder drops a little.", None), ("The person looks down at the floor.", None),
+    ("The left foot stays planted.", "foot"), ("Both feet stay planted.", "foot"), ("Left and right knees bend.", "knee"),
+    ("The right knee and the left hip move together.", "hip"), ("The legs stay still.", "thigh"),
+    ("The left calf tightens.", "foot"),
+])
+def test_n3_one_masked_leg_refuses_that_leg_and_both_legs_but_not_the_other(text, part):
+    masked = guard.masked_parts(parse_mask("left_leg").block())
+    shows = {group: {"left", "right"} for group in ("shoulder", "arm", "elbow", "hand", "hip", "thigh", "knee", "foot")}
+    shows.update(head={"any"}, trunk={"any"})
+    found = guard.text_problem(text, 5.0, shows, masked)
+    assert found == (part and f"names a body part not scored in this take ({part})")
+    assert guard.text_problem(text, 5.0, shows) is None   # without the mask each one is shown
+
+
+@pytest.mark.parametrize("change", [
+    lambda a: dict(a, body_mask=dict(a["body_mask"], not_scored_chains=[])),
+    lambda a: dict(a, faults=[*a["faults"], dict(a["faults"][0], measure="foot_out", side="both")]),
+], ids=["block", "fault on a masked measure"])
+def test_n3_a_body_mask_that_fails_its_check_sends_nothing(seated_take, meta, change):
+    fake = Fake(answer())
+    block = opinion.run(change(seated_take.analysis), seated_take.follower, *meta.clips, live=True, client=fake)
+    assert (block["status"], block["reason"]) == ("fallback", opinion.MASK_UNREADABLE)
+    assert fake.uploaded == [] and fake.bodies == [] and not meta.ledger.exists()
 
 
 # ---- AC-SC-01: the document ----------------------------------------------------------------------------------------

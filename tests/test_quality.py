@@ -249,9 +249,9 @@ def still_pose_clip(n, conf):
 
 # ---------------------------------------------------------------------------------------------- AC-Q03 and AC-Q04: reasons and level
 LIMITS = {"unseen_joint_share": (0.1, 0.2), "missing_joint_share": (0.1, 0.2), "missing_frame_share": (0.1, 0.2),
-          "hidden_measure_share": (0.25, 0.5), "position_jitter_mm": (21.0, 42.0)}
+          "hidden_measure_share": (0.25, 0.5), "position_jitter_mm": (21.0, 42.0), "heading_offset_deg": (5.0, None)}   # the heading is degraded only (TICKET-086)
 CLEAN = {"unseen_joint_share": None, "missing_joint_share": 0.0, "missing_frame_share": 0.0, "hidden_measure_share": None,
-         "position_jitter_mm": 12.0}
+         "position_jitter_mm": 12.0, "heading_offset_deg": 1.0}
 
 
 def block(worst=None, warnings=(), **signals):
@@ -281,7 +281,7 @@ def test_the_major_limit_makes_a_major_take_capped_at_the_warning_cap_and_report
     ("unseen_joint_share", 0, "degraded"), ("unseen_joint_share", 1, "major"), ("missing_joint_share", 0, "degraded"),
     ("missing_joint_share", 1, "major"), ("missing_frame_share", 0, "degraded"), ("missing_frame_share", 1, "major"),
     ("hidden_measure_share", 0, "degraded"), ("hidden_measure_share", 1, "major"), ("position_jitter_mm", 0, "degraded"),
-    ("position_jitter_mm", 1, "major")])
+    ("position_jitter_mm", 1, "major"), ("heading_offset_deg", 0, "degraded")])
 def test_a_signal_exactly_at_a_limit_reaches_it_and_one_hair_under_does_not(signal, limit_index, level):
     limit = LIMITS[signal][limit_index]
     at = block(**{signal: limit})
@@ -292,9 +292,10 @@ def test_a_signal_exactly_at_a_limit_reaches_it_and_one_hair_under_does_not(sign
 
 @pytest.mark.parametrize("signal,code", [
     ("unseen_joint_share", "joints_unseen"), ("missing_joint_share", "joints_missing"), ("missing_frame_share", "frames_missing"),
-    ("hidden_measure_share", "measures_hidden"), ("position_jitter_mm", "position_jitter")])
+    ("hidden_measure_share", "measures_hidden"), ("position_jitter_mm", "position_jitter"),
+    ("heading_offset_deg", "heading_offset")])
 def test_each_signal_has_its_reason_code(signal, code):
-    got = block(**{signal: LIMITS[signal][1]})
+    got = block(**{signal: max(limit for limit in LIMITS[signal] if limit is not None)})
     assert [r["code"] for r in got["reasons"]] == [code]
 
 
@@ -369,11 +370,31 @@ def test_the_block_is_a_copy_of_the_readings_and_does_not_share_them():
 
 
 # ---------------------------------------------------------------------------------------------- the thresholds file
-def test_the_thresholds_file_holds_the_five_signals_with_increasing_limits():
+def test_the_thresholds_file_holds_the_six_signals_with_increasing_limits_and_one_degraded_only():
     limits = quality.load_thresholds()
     assert tuple(limits) == output.QUALITY_SIGNALS
-    assert all(0 < low < high for low, high in limits.values())
-    assert limits["position_jitter_mm"] == (21.0, 42.0)
+    assert all(0 < low < high for name, (low, high) in limits.items() if name != "heading_offset_deg")
+    assert limits["position_jitter_mm"] == (21.0, 42.0) and limits["heading_offset_deg"] == (5.0, None)   # TICKET-086
+
+
+@pytest.mark.parametrize("value", [5.0, 15.0, 45.0, 180.0])
+def test_a_degraded_only_signal_never_makes_a_take_major_however_far_past_its_limit(value):
+    """TICKET-086: Part 7 chose degraded only for the heading offset (the camera's angle, not the follower's form), so no
+    reading of it alone brings the cap of 59; another signal past its major limit still makes the take major."""
+    got = block(heading_offset_deg=value)
+    assert got["level"] == "degraded" and got["score_cap"] is None
+    assert got["reasons"] == [{"code": "heading_offset", "words": f"The body was turned about {value:.0f} degrees from the "
+                               "way the example faces.", "value": value, "threshold": 5.0}]
+    both = block({"position_jitter_mm": "nose"}, heading_offset_deg=value, position_jitter_mm=50.0)
+    assert both["level"] == "major" and [r["code"] for r in both["reasons"]] == ["position_jitter", "heading_offset"]
+
+
+def test_the_loader_reads_a_null_major_as_degraded_only_for_any_signal(tmp_path):
+    path = write_thresholds(tmp_path, lambda d: d["signals"]["position_jitter_mm"].update(major=None))
+    limits = quality.load_thresholds(path)
+    assert limits["position_jitter_mm"] == (21.0, None) and limits["heading_offset_deg"] == (5.0, None)
+    got = quality.assess(quality.Readings({**CLEAN, "position_jitter_mm": 99.0}), (), limits)
+    assert got["level"] == "degraded" and got["reasons"][0]["threshold"] == 21.0
 
 
 def test_the_thresholds_are_their_own_file_and_rules_json_does_not_hold_them():
@@ -406,7 +427,11 @@ def write_thresholds(tmp_path, mutate):
     ("a limit that is zero", lambda d: d["signals"]["missing_joint_share"].update(degraded=0), "0 < degraded < major"),
     ("a limit that is text", lambda d: d["signals"]["missing_joint_share"].update(major="1"), "0 < degraded < major"),
     ("a limit that is a boolean", lambda d: d["signals"]["missing_joint_share"].update(major=True), "0 < degraded < major"),
-    ("a pair that is not an object", lambda d: d["signals"].update(missing_joint_share=[0.1, 0.2]), "0 < degraded < major")])
+    ("a pair that is not an object", lambda d: d["signals"].update(missing_joint_share=[0.1, 0.2]), "0 < degraded < major"),
+    # TICKET-086: a null major is written, never left out, and a degraded-only signal still needs its degraded limit
+    ("a major left out", lambda d: d["signals"]["heading_offset_deg"].pop("major"), "or major null"),
+    ("a null major with no degraded", lambda d: d["signals"]["heading_offset_deg"].update(degraded=None), "or major null"),
+    ("a null major with a zero degraded", lambda d: d["signals"]["heading_offset_deg"].update(degraded=0), "or major null")])
 def test_a_thresholds_file_that_breaks_its_format_is_refused_naming_the_file(tmp_path, name, mutate, message):
     path = write_thresholds(tmp_path, mutate)
     with pytest.raises(quality.QualityError, match=message) as e:

@@ -7,16 +7,24 @@ does not see). `read_answer` parses the model's JSON and keeps only the verdicts
 `template.GROUPS` words and the `EXTRA_PARTS` words, such as "back" and "shins"), times inside the clip, no other
 number (`template.NUMBER`, and `QUANTITY` words such as "twice" and "half" as an amount), no praise and none of
 `BANNED`. "back" is the trunk only as a noun, and "face" after a body-part noun is a verb that names no head. Each
-dropped item is listed with its reason.
+dropped item is listed with its reason. On a take with a declared body mask, `masked_parts` lists the body parts it
+leaves not scored, and a note that names one is dropped too (N3 of the 1.14.0 recheck, TICKET-084).
 
 `read_history_answer` is the same guard for the history opinion (TICKET-072, docs/specs/history-opinion.md): an
 observation is kept only when it cites one fault of one take of the series (take, second, measure, side and body
 part), and its sentence passes `text_problem` with no time allowed and only the cited fault's body part and side.
+
+`check_answer` and `measured_facts` guard Ask this take (TICKET-081, docs/specs/ask-this-take.md "The validator",
+ADR-0022): every number in an answer must be a number of a successful tool result of the same exchange, within its
+rounding, and the answer must pass `shown_problem` (`unsafe_problem` and the praise test); otherwise `measured_facts`
+writes the answer from the tool results, so each of its numbers is one of theirs.
 """
 import re
 import unicodedata
 
 from ..io import JOINTS
+from ..mask import mask_of_names
+from ..measures import ALL_SPECS, SIDES
 from ..phrasing.lang import EN, check_translated, json_object
 from ..phrasing.template import GROUP_RX, NAMES, NUMBER, SIDE_WORDS, TIME, praise, without_face_verbs
 from .prompt import MAX_NOTE, MAX_OBSERVATIONS, _number   # `_number`: None for nan, inf and an integer too big
@@ -79,6 +87,39 @@ def supported(clip):
     return out
 
 
+def masked_parts(block):
+    """`{group: sides}` of the body parts a declared body mask (`body_mask`, ADR-0023) leaves not scored: a side of a
+    `template.GROUPS` part when the mask (`mask.mask_of_names`) drops every measure that names it (`template.NAMES`: the
+    measures of that side and the side-less ones), as `BodyMask.not_scored_chains` reads a chain. A seated take's legs,
+    knees, feet and hips; a masked arm's arm, elbow and hand, but not its shoulder, which `shoulder_tilt` still scores.
+    Empty with no block. N3 of the 1.14.0 recheck (TICKET-084): the second opinion refuses a note that names one."""
+    if not isinstance(block, dict):
+        return {}
+    dropped = mask_of_names(block["declared"], block["source"]).measures
+    out = {}
+    for side in SIDES:
+        for group in GROUP_RX:
+            named = {name for measure, groups in NAMES.items() if group in groups
+                     for name in (f"{side}_{measure}", measure) if name in ALL_SPECS}
+            if named and named <= dropped:
+                out.setdefault(group, set()).add(side)
+    return out
+
+
+def _not_scored(parts, masked):
+    """The reason the lower-case sentence `parts` names a body part `masked` (`masked_parts`) leaves not scored: a
+    mention with a masked side among the three words before it, or with no side word there (it speaks of every side);
+    else None. Three words, so "left and right knees" is read as both sides; a direction word there ("drifts right,
+    the left hand") can refuse a note it need not, never let one through."""
+    for group, rx in BODY_PARTS:
+        off = masked.get(group)
+        for found in (rx.finditer(parts) if off else ()):
+            said = set(SIDE_WORDS.findall(" ".join(re.findall(r"\w+", parts[:found.start()])[-3:])))
+            if not said or said & off:
+                return f"names a body part not scored in this take ({group})"
+    return None
+
+
 def unsafe_problem(text):
     """The reason `text` may not be shown in any language (a control character, a link, a word this product does not
     use), else None. A translated line is held to it too; the word list is English, so it catches a banned word that
@@ -93,8 +134,9 @@ def unsafe_problem(text):
     return None
 
 
-def text_problem(text, duration_s, shows):
-    """None when `text` may be shown, else the short reason it may not."""
+def text_problem(text, duration_s, shows, masked=None):
+    """None when `text` may be shown, else the short reason it may not. `masked` (`masked_parts`) is what a declared
+    body mask leaves not scored; a body part named there is refused even when the clip shows it."""
     if not isinstance(text, str) or not text.strip():
         return "empty"
     if "\n" in text or "\r" in text:
@@ -115,6 +157,9 @@ def text_problem(text, duration_s, shows):
         return "adds a number"
     sides = set(SIDE_WORDS.findall(lowered))
     parts = without_face_verbs(lowered)   # "the feet face out" names no head
+    not_scored = _not_scored(parts, masked) if masked else None
+    if not_scored:
+        return not_scored
     for group, rx in BODY_PARTS:
         if not rx.search(parts):
             continue
@@ -126,7 +171,7 @@ def text_problem(text, duration_s, shows):
     return None
 
 
-def _verdicts(items, n_faults, duration_s, shows, rejected):
+def _verdicts(items, n_faults, duration_s, shows, rejected, masked):
     kept, seen = [], set()
     for i, item in enumerate(items if isinstance(items, list) else []):
         item = item if isinstance(item, dict) else {}
@@ -138,7 +183,7 @@ def _verdicts(items, n_faults, duration_s, shows, rejected):
         elif not isinstance(agrees, bool):
             problem = "agrees is not true or false"
         else:
-            problem = text_problem(note, duration_s, shows)
+            problem = text_problem(note, duration_s, shows, masked)
         if problem:
             rejected.append({"kind": "verdict", "index": i, "reason": problem})
             continue
@@ -147,7 +192,7 @@ def _verdicts(items, n_faults, duration_s, shows, rejected):
     return sorted(kept, key=lambda v: v["fault_index"])
 
 
-def _observations(items, duration_s, shows, rejected):
+def _observations(items, duration_s, shows, rejected, masked):
     kept = []
     for i, item in enumerate(items if isinstance(items, list) else []):
         item = item if isinstance(item, dict) else {}
@@ -158,7 +203,7 @@ def _observations(items, duration_s, shows, rejected):
         elif len(kept) >= MAX_OBSERVATIONS:
             problem = f"more than {MAX_OBSERVATIONS} observations"
         else:
-            problem = text_problem(text, duration_s, shows)
+            problem = text_problem(text, duration_s, shows, masked)
         if problem:
             rejected.append({"kind": "observation", "index": i, "reason": problem})
             continue
@@ -166,12 +211,13 @@ def _observations(items, duration_s, shows, rejected):
     return kept
 
 
-def read_answer(text, n_faults, duration_s, shows):
-    """`{verdicts, observations, rejected}` from the model's answer; ValueError when it is not a JSON object."""
+def read_answer(text, n_faults, duration_s, shows, masked=None):
+    """`{verdicts, observations, rejected}` from the model's answer; ValueError when it is not a JSON object. A note
+    that names a body part `masked` (`masked_parts`) leaves not scored is rejected (N3 of the 1.14.0 recheck)."""
     doc = json_object(text)
     rejected = []
-    verdicts = _verdicts(doc.get("verdicts"), n_faults, duration_s, shows, rejected)
-    observations = _observations(doc.get("observations"), duration_s, shows, rejected)
+    verdicts = _verdicts(doc.get("verdicts"), n_faults, duration_s, shows, rejected, masked)
+    observations = _observations(doc.get("observations"), duration_s, shows, rejected, masked)
     return {"verdicts": verdicts, "observations": observations, "rejected": rejected}
 
 
@@ -272,8 +318,8 @@ def _order_problem(text, take_id, series):
 def _sentence(item, fault, series, language):
     """`(fields, None, fell_back)` with `text`, `lang` (and `text_en` for a translation) for the observation, or
     `(None, reason, False)`. The English `text` always goes through `text_problem` and `_order_problem`; for another
-    language the `line` must pass `check_translated` and `unsafe_problem` too, else the observation keeps its English
-    text (`fell_back`)."""
+    language the `line` must pass `check_translated` too (which runs `unsafe_problem`), else the observation keeps its
+    English text (`fell_back`)."""
     english = item.get("text")
     problem = text_problem(english, NO_TIME, _cited_shows(fault)) or _order_problem(english, item["take"], series)
     if problem:
@@ -283,7 +329,7 @@ def _sentence(item, fault, series, language):
         return {"text": english, "lang": EN}, None, False
     line = item.get("line")
     line = line.strip() if isinstance(line, str) else None
-    if line is not None and check_translated({}, line, False) is None and unsafe_problem(line) is None:
+    if line is not None and check_translated({}, line, False) is None:
         return {"text": line, "lang": language, "text_en": english}, None, False
     return {"text": english, "lang": EN}, None, True
 
@@ -326,3 +372,170 @@ def read_history_answer(text, series, language, limit):
         fallbacks += fell_back
     return {"observations": kept, "dropped": {"count": sum(reasons.values()), "reasons": reasons},
             "translation_fallbacks": fallbacks}
+
+
+# ---- Ask this take's validator (TICKET-081, docs/specs/ask-this-take.md "The validator", ADR-0022) ------------------
+# The number words `template.NUMBER` counts as a number in a student line ("one" is not one of them: "the left one").
+NUMBER_WORDS = {"zero": 0, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+                "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+                "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+                "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100, "thousand": 1000}
+_DIGITS = re.compile(r"\d+(?:\.\d+)?")
+_NUMBER_WORD = re.compile(r"\b(" + "|".join(NUMBER_WORDS) + r")\b")
+MAX_ANSWER_CHARS = 1200
+NUMBER_NOT_FOUND = "a number in the answer is not in any tool result"
+NO_ANSWER = "no answer"
+# R2 of the 1.14.0 review: an answer may not count in words, since no tool returns a count so written. `QUANTITY` is the
+# second opinion's list (twice, half as an amount, dozens); `COUNT_WORDS` adds what no student line needed: an ordinal or
+# a fraction past "second" ("the fifth rep", "a third", "a quarter") and the plural of a number word ("hundreds of
+# frames"). "first" and "second" are left out: "at first", "a second".
+COUNT_WORDS = re.compile(r"\b(?:third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|"
+                         r"(?:thir|four|fif|six|seven|eigh|nine)teenth|(?:twen|thir|for|fif|six|seven|eigh|nine)tieth|"
+                         r"hundredth|thousandth|thirds|fourths|fifths|quarters?|tens|hundreds|thousands|millions?)\b")
+COUNT_IN_WORDS = "a count in words is not in any tool result"
+
+
+def answer_numbers(text):
+    """`[(as written, value, decimals)]` of the numbers in `text`, in reading order: its digit runs (`12`, `9.8`) and
+    its number words. A sign is not part of a number: "9.8 degrees less" reads a tool's -9.8."""
+    found = [(m.start(), m.group(), float(m.group()), len(m.group().partition(".")[2])) for m in _DIGITS.finditer(text)]
+    found += [(m.start(), m.group(1), float(NUMBER_WORDS[m.group(1)]), 0)
+              for m in _NUMBER_WORD.finditer(text.lower())]
+    return [item[1:] for item in sorted(found)]
+
+
+def shown_problem(text):
+    """The reason the model's `text` may not be shown to a follower in Ask this take: `unsafe_problem` (a control
+    character such as a bidi override, a link, a word this product does not use) or praise; else None. The answer and
+    every string of a tool call's arguments are held to it (R1 of the 1.14.0 review)."""
+    return unsafe_problem(text) or praise(text.lower())
+
+
+def result_numbers(tool_calls):
+    """The absolute values of every number in the results of the successful calls of `tool_calls` (`ok` true), the
+    numbers inside their text included. An error result holds no measurement, so its numbers count for nothing: the
+    model cannot launder a number through a refused call (R1 of the 1.14.0 review)."""
+    out = []
+
+    def walk(value):
+        if isinstance(value, str):
+            out.extend(abs(v) for _, v, _ in answer_numbers(value))
+        elif isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif _number(value) is not None:   # a bool, None, nan or an integer too large for a float is not a number
+            out.append(abs(_number(value)))
+
+    for call in tool_calls:
+        if call.get("ok") is True:
+            walk(call.get("result"))
+    return out
+
+
+def _found(value, decimals, known):
+    """True when a number of `known` rounds to `value` at `decimals` places (half a unit of the last place each way)."""
+    slack = 0.5 * 10 ** -decimals + 1e-9
+    return any(abs(v - value) <= slack for v in known)
+
+
+def check_answer(text, tool_calls):
+    """`(answer, problem, not_found)` for the model's `text`: the answer with its runs of blanks and line breaks joined
+    to one space, the reason it may not be shown (None when it may) and the numbers no tool result of `tool_calls`
+    holds, as written. The numbers are checked before the count words, so an answer with both lists its numbers."""
+    answer = " ".join(text.split()) if isinstance(text, str) else ""
+    if not answer:
+        return answer, NO_ANSWER, []
+    if len(answer) > MAX_ANSWER_CHARS:
+        return answer, "answer too long", []
+    problem = shown_problem(answer)
+    if problem:
+        return answer, problem, []
+    known = result_numbers(tool_calls)
+    missing = [written for written, value, decimals in answer_numbers(answer) if not _found(value, decimals, known)]
+    if missing:
+        return answer, NUMBER_NOT_FOUND, missing
+    lowered = answer.lower()
+    return answer, COUNT_IN_WORDS if QUANTITY.search(lowered) or COUNT_WORDS.search(lowered) else None, []
+
+
+def _say(value):
+    """A tool's number as the measured facts write it: its own digits, no trailing zero, no sign."""
+    return ("%.6f" % abs(value)).rstrip("0").rstrip(".")
+
+
+def _capitalised(text):
+    return text[:1].upper() + text[1:]
+
+
+def _named(row):
+    """`left knee bend` for a measure row of `get_joint_angle` or `compare_with_teacher`."""
+    return f"{row['side']} {row['means']}" if row["side"] in ("left", "right") else row["means"]
+
+
+def _fault_facts(result):
+    count = result["count"]
+    if not count:
+        return ["The measurement found no difference from the example."]
+    lines = [f"The measurement found {count} difference{'s' if count != 1 else ''} from the example."]
+    for fault in result["faults"]:
+        words = fault.get("text_timed") or fault.get("text") or f"{fault.get('side', '')} {fault.get('measure', '')}"
+        size = _number(fault.get("magnitude_deg"))
+        how = f": {_say(size)} degrees {fault.get('direction')} than the example" if size is not None \
+            and fault.get("direction") in ("more", "less") else ""
+        lines.append(f"{_capitalised(words.strip())}{how}.")
+    return lines
+
+
+def _angle_facts(result):
+    span = f"from {_say(result['t0'])} s to {_say(result['t1'])} s"
+    return [f"{_capitalised(_named(row))} {span}: from {_say(row['min'])} to {_say(row['max'])} degrees, "
+            f"{_say(row['mean'])} on average." if row["min"] is not None
+            else f"{_capitalised(_named(row))} could not be measured {span}." for row in result["measures"]]
+
+
+def _compare_facts(result):
+    lines = []
+    for row in result["measures"]:
+        if row["take_deg"] is None or row["example_deg"] is None:
+            continue
+        diff = row["difference_deg"]
+        how = "the same as the example" if not diff else f"{_say(diff)} degrees {'more' if diff > 0 else 'less'}"
+        lines.append(f"At {_say(result['take_t_s'])} s, {_named(row)}: {_say(row['take_deg'])} degrees in the take and "
+                     f"{_say(row['example_deg'])} in the example at {_say(result['example_t_s'])} s, {how}.")
+    return lines
+
+
+FACTS = {"get_faults": _fault_facts, "get_joint_angle": _angle_facts, "compare_with_teacher": _compare_facts}
+# R13 of the 1.14.0 review: the facts are held to `answer.maxLength` of contracts/ask.schema.json. A take with many faults
+# and seven range and compare calls could pass it, so whole sentences are kept in order while they fit, then FACTS_CUT.
+MAX_FACTS_CHARS = 4000
+FACTS_CUT = "The rest of the measured facts are in the tool calls."
+
+
+def _held(lines, limit=MAX_FACTS_CHARS):
+    """`lines` joined by one space when that fits `limit`; else the longest run of whole lines from the first that fits
+    with FACTS_CUT after it."""
+    text = " ".join(lines)
+    if len(text) <= limit:
+        return text
+    kept, size = [], len(FACTS_CUT)
+    for line in lines:
+        if size + len(line) + 1 > limit:
+            break
+        kept.append(line)
+        size += len(line) + 1
+    return " ".join([*kept, FACTS_CUT])
+
+
+def measured_facts(tool_calls):
+    """The answer Part 5 writes from the results of `tool_calls` (each fact once, in call order), or None when no
+    result holds a fact (only UI actions or errors). Every number in it is a number of a result, and it is at most
+    MAX_FACTS_CHARS long, cut between whole sentences (`_held`)."""
+    lines = []
+    for call in tool_calls:
+        if call["ok"] and call["name"] in FACTS:
+            lines += FACTS[call["name"]](call["result"])
+    return _held(list(dict.fromkeys(lines))) or None

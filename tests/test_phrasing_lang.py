@@ -108,7 +108,7 @@ def test_ac_la_04_the_cli_writes_the_language_and_each_line_once(tmp_path, capsy
     assert cli.main(["analyse", "--expected", str(EXPECTED_PATH), "--follower", str(FOOT_PATH), "--out", str(out),
                      "--lang", "pt-BR"]) == 0
     doc = json.loads(out.read_text())
-    assert doc["schema_version"] == "1.13.0"
+    assert doc["schema_version"] == "1.14.0"
     assert doc["phrasing"]["lang"] == "pt" and doc["phrasing"]["lang_requested"] == "pt-BR"
     assert [e["text"] for e in doc["phrasing"]["faults"]] == [f["coaching"] for f in doc["faults"]]
     assert "second_opinion" not in doc   # no clip given: the document has no block
@@ -230,3 +230,49 @@ def test_review_r14_the_guard_and_the_pair_reader_use_that_one_reader():
 def test_review_r15_the_names_the_guard_uses_are_public():
     assert template.GROUP_RX and template.TIME.pattern and callable(template.praise)
     assert not any(hasattr(template, old) for old in ("_GROUP_RX", "_TIME", "_praise"))
+
+
+# ---- N2 of the 1.14.0 recheck (TICKET-080): a translated fault line is held to unsafe_problem, as a cue is ----------
+LINK, CONTROL, BANNED = ("translated line has a link", "translated line has a control character",
+                         "translated line uses a word this product does not use")
+BIDI = ("‪", "‫", "‬", "‭", "‮", "⁦", "⁧", "⁨", "⁩", "‎", "‏")
+WITH_LINK = "Tu pie derecho se va a la derecha a los 1,9 s, mira www.salud.com"
+WITH_OVERRIDE = "Tu pie derecho se va ‮a la derecha a los 1,9 s."
+WITH_COACH = "Tu pie derecho se va a la derecha a los 1,9 s, pregunta a tu coach."
+UNSAFE_LINES = [
+    (WITH_LINK, LINK), ("Tu pie derecho se va a la derecha a los 1,9 s: https://x.io/ayuda", LINK),
+    ("Tu pie derecho se va a la derecha a los 1,9 s, escribe a ayuda@salud.com", LINK),
+    *[(f"Tu pie derecho se va {mark}a la derecha a los 1,9 s.", CONTROL) for mark in BIDI],
+    *[(f"Tu pie derecho se va{c}a la derecha a los 1,9 s.", CONTROL) for c in ("\x00", "\x1b", "\t", "\x7f", "\x85")],
+    (WITH_COACH, BANNED), ("Tu pie derecho se va a la derecha a los 1,9 s, consulta a un doctor.", BANNED),
+    ("Tu pie derecho se va a la derecha a los 1,9 s; si hay pain, para.", BANNED),
+]
+
+
+@pytest.mark.parametrize("line,reason", UNSAFE_LINES, ids=repr)
+def test_n2_a_translated_line_with_a_link_a_control_character_or_a_banned_word_is_refused(line, reason):
+    from part5.opinion.guard import unsafe_problem
+    assert reason == f"translated line {unsafe_problem(line)}"   # the guard's own reason, as `check_cue` gives it
+    assert lang.check_translated(RIGHT_FOOT, line, timed=True) == reason
+    untimed = line.replace(" a los 1,9 s", "")   # an untimed fault's line says no time
+    assert untimed != line and lang.check_translated(RIGHT_FOOT, untimed, timed=False) == reason
+
+
+@pytest.mark.parametrize("line,reason", [(WITH_LINK, LINK), (WITH_OVERRIDE, CONTROL), (WITH_COACH, BANNED)], ids=repr)
+def test_n2_an_unsafe_translated_line_falls_back_to_the_template_line_with_its_reason(live, line, reason):  # noqa: F811
+    lines, record = phrasing.phrase([RIGHT_FOOT], "muse-spark", client=Client(pair(line=line)), lang="es")
+    assert lines == [RIGHT_FOOT["text_timed"]]
+    entry = record["faults"][0]
+    assert (entry["backend"], entry["lang"], entry["fallback_reason"]) == ("template", "en", f"muse-spark: {reason}")
+    assert record["fallback_reason"] == f"muse-spark: {reason}" and "Tu pie" not in json.dumps(record)
+
+
+def test_n2_a_safe_translated_line_still_passes_and_the_earlier_reasons_stand():
+    assert lang.check_translated(RIGHT_FOOT, SPANISH, timed=True) is None
+    assert lang.check_translated(RIGHT_FOOT, "Tu pie derecho se va a la derecha a los 1,9 s, mira el ejemplo.",
+                                 timed=True) is None
+    hidden = "Buen​trabajo, tu pie derecho se va a la derecha a los 1,9 s."   # B3: praise is read first
+    assert lang.check_translated(RIGHT_FOOT, hidden, timed=True) == "translated line adds praise"
+    assert lang.check_translated(RIGHT_FOOT, WITH_LINK.replace("1,9", "2,4"), timed=True) == \
+        "translated line has the wrong time"
+    assert lang.check_translated(RIGHT_FOOT, "Tu pie ‮derecho a 1 s", timed=False) == "translated line adds a number"

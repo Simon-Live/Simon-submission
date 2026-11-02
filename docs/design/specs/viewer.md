@@ -86,7 +86,7 @@ pointer and touch.
 Read from `analysis`; every field is optional, so a document from before 1.2.0 still renders.
 | Part of the page | Reads | Rule |
 |---|---|---|
-| Status line (`result-status`) | `faults`, `warnings` | "N faults found."; "No faults found. This take follows the example." only when there are no warnings; "No faults are listed. Read the warning first." when there are warnings and no faults |
+| Status line (`result-status`) | `faults`, `warnings`, `quality.level` | "N faults found."; "No faults found. This take follows the example." only when there are no warnings and `quality.level` is not `major`; "No faults found, but the take was not seen well enough to say it follows the example." when there are no faults, no warnings and `quality.level` is `major` (TICKET-088: beside the quality line "do not rely on the result" the page no longer says the take follows the example); "No faults are listed. Read the warning first." when there are warnings and no faults |
 | Score (`score`, `score-note`) | `score.value`, `score.grade`, `score.capped_by` | "Score: 84 out of 100, grade B"; when `capped_by` has codes, a line "The grade is limited to F because the take does not closely match the example." naming each code in plain words; nothing when `score` is absent or null |
 | Mode line (`profile-note`) | `profile` | "Scored with rehab coaching rules." when `profile` is a name other than `fitness`; hidden for `fitness` and for a document with no `profile` (written before 1.7.0, read as fitness) |
 | Warning panel (`warning-panel`) | `warnings[].text` | a group headed "Before you trust this result" listing each text; hidden when there are none |
@@ -177,7 +177,10 @@ right movement afterwards hides the panel. Verified by `staging/verify.mjs` and 
 ### AC-V18: the preview reads the same
 Given an analysis, the preview screen shows the status text, the score line, the warnings and one card per fault
 with the line of AC-V15; its field list names the fields it reads, `score`, `warnings` and `text_timed` among
-them. Verified by `staging/verify.mjs` (390 px) and `tests/staging/test_web_result.py`.
+them. With no fault and no warning it shows the sentence of the Compare tab's status line (`resultSentence` in `joints.js`,
+TICKET-088), so a take whose `quality.level` is `major` is not told there that it follows the example; the field list names
+`quality.level` for that. Verified by `staging/verify.mjs` (390 px), `tests/staging/test_web_result.py` and
+`tests/test_quality_web.py`.
 ### AC-V19: the select starts on the server's default wording
 Given `api/samples` with `phrasing` (the wordings the server offers) and `phrasing_default` (the wording the server
 uses for a request that names none, ADR-0008), when the page loads, then "Wording of the faults" is set to
@@ -301,7 +304,8 @@ the bottom of a squat neither skeleton's feet are drawn above the grid.
 ## Negative Requirements
 - MUST NOT load scripts from a CDN at run time. MUST NOT copy code from another part's `web/`.
 - MUST NOT present the preview as Part 7.
-- MUST NOT show "No faults found. This take follows the example." for an analysis that carries warnings.
+- MUST NOT show "No faults found. This take follows the example." for an analysis that carries warnings, or for one whose
+  `quality.level` is `major` (TICKET-088), on the Compare tab or in the preview.
 - MUST NOT call a graded take "refused": a poor match is warned and graded F, never withheld.
 
 ## Non-Requirements

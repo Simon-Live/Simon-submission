@@ -116,8 +116,19 @@ Concerns:
   exactly the take that lost the joints. Resolution: ACCEPTED_RISK (stakeholder-proxy, option (c)); reported with the real lateral
   raise's reading, never tuned.
 
+## Amendment 1 (2026-11-02, TICKET-086): the heading offset is degraded only
+Schema 1.14.0 adds a sixth signal, `heading_offset_deg`, the heading left between the example and the follower after Part 3's
+facing step, with the reason `heading_offset` past 5 degrees (TICKET-082's seed 5 bench: where a turned follower starts to move
+the score). The lane also proposed `major` from 15 degrees, where a correct take starts to gain a fault. Part 7
+(claude-template-09) chose degraded only: a heading offset is the camera's angle, not the follower's form, so it should never
+bring the cap of 59. `part5/quality.json` therefore writes its `major` as `null`, `load_thresholds` reads a `null` major as a
+signal that is degraded only (the key must still be written), and `_reached` never returns `major` for it. The other five
+signals keep both limits. No seed 5 or seed 73 take read `major` on the heading under the withdrawn limit, so no level moves;
+the score, detection and `part5/rules.json` are untouched, as for the rest of the block.
+
 ## Code Backlinks (updated as code is written)
 - `part5/output.py:68`, the quality vocabulary; `part5/output.py:519`, `_validate_quality` and its reason and signal checks
+- `part5/quality.py`, `load_thresholds` and `_reached`: a `major` of `null` is degraded only (Amendment 1, TICKET-086)
 - `part5/doctor.py:460`, `_quality_notes` (`--for part7`)
 - `web/joints.js:165`, `QUALITY_NOTES` and `qualityNote`; `web/app.js:242`, `showQualityNote`
 - `contracts/analysis.schema.json`, `$defs.quality`; `contracts/history-fields.json`, the `quality` entries

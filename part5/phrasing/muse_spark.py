@@ -1,7 +1,8 @@
 """The `muse-spark` backend: Muse Spark served by Baseten (ADR-0005).
 
 One POST per fault to Baseten's OpenAI-compatible chat completions endpoint, model exactly
-`meta-models/muse-spark-open-1026`. It is a reasoning model, so `max_tokens` stays well above 512:
+`meta-models/muse-spark-open-1026`. An analysis in a language other than English makes one more POST, `complete`, for its
+cues (TICKET-080), through the same key, rate limit and ledger. It is a reasoning model, so `max_tokens` stays well above 512:
 a short budget is spent on reasoning and comes back as empty content (the one live smoke on
 2026-10-29 spent 833 of 850 completion tokens on reasoning; the timed lines of the 2026-10-30
 review spent 1200 to 3200 at the default reasoning effort; `reasoning_effort: low` brings it to
@@ -33,12 +34,13 @@ except ImportError:   # not a POSIX host: no cross-process lock, the in-process 
     fcntl = None
 
 from .lang import EN
-from .local_llm import BackendError, chat_request, content, send, urllib_client
+from .local_llm import BackendError, chat_request, content, raw_request, send, urllib_client
 
 NAME = "muse-spark"
 URL = "https://inference.baseten.co/v1/chat/completions"
 MODEL = "meta-models/muse-spark-open-1026"
 MAX_TOKENS = 2048
+BATCH_MAX_TOKENS = 6000   # TICKET-080: one call carries every cue of an analysis (about 30 texts); most of it is reasoning
 # Review 2026-10-30: at the default effort a call took 6 to 12 s and often passed the 10 s timeout.
 OPTIONS = {"reasoning_effort": "low"}
 KEY_FILE = "~/.config/firm/operator-keys/BASETEN_API_KEY"
@@ -205,14 +207,12 @@ def last_usage():
     return json.loads(lines[-1]) if lines else None
 
 
-def line(fault, *, timeout_s, client, shape=0, language=EN):
-    """One reply for one fault from Muse Spark (a JSON pair for a language other than English); raises
-    BackendError on any failure."""
+def _post(build, client):
+    """The reply to the request `build(headers)` makes: the key is read, a rate-limit slot taken and the ledger opened
+    before the call, one ledger line written after it whether it succeeded or not; raises BackendError on any failure."""
     key = _read_key()
     _take_slot(time.monotonic())
-    request = chat_request(URL, MODEL, fault, headers={"Authorization": f"Bearer {key}"},
-                           max_tokens=MAX_TOKENS, timeout_s=timeout_s, options=OPTIONS, shape=shape,
-                           language=language)
+    request = build({"Authorization": f"Bearer {key}"})
     with _open_ledger() as ledger:
         outcome = send(client or urllib_client, request)
         with _ledger_lock:
@@ -220,3 +220,18 @@ def line(fault, *, timeout_s, client, shape=0, language=EN):
     if outcome.error:
         raise outcome.error
     return content(outcome.body)
+
+
+def line(fault, *, timeout_s, client, shape=0, language=EN):
+    """One reply for one fault from Muse Spark (a JSON pair for a language other than English); raises
+    BackendError on any failure."""
+    return _post(lambda headers: chat_request(URL, MODEL, fault, headers=headers, max_tokens=MAX_TOKENS,
+                                              timeout_s=timeout_s, options=OPTIONS, shape=shape, language=language),
+                 client)
+
+
+def complete(chat, *, timeout_s, client):
+    """One reply to the chat messages `chat` from Muse Spark (the cues of TICKET-080: a batch of texts, so the allowance
+    is BATCH_MAX_TOKENS); the same key, rate limit and ledger as `line`; raises BackendError on any failure."""
+    return _post(lambda headers: raw_request(URL, MODEL, chat, headers=headers, max_tokens=BATCH_MAX_TOKENS,
+                                             timeout_s=timeout_s, options=OPTIONS), client)

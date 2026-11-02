@@ -10,11 +10,16 @@ Endpoints, relative to the base path (docs/specs/staging.md):
                        server's default wording (`phrasing_default`, one of the offered; the page preselects it),
                        and the analysis profiles (`profiles`, in file order, and `profile_default`, ADR-0016;
                        both left out when part5/profiles.json will not load)
-    POST api/analyse   {expected, follower, phrasing, profile, lang} -> {analysis, replay}; `lang` (TICKET-046) is an
+    POST api/analyse   {expected, follower, phrasing, profile, lang, mask, expected_visibility} -> {analysis, replay};
+                       `lang` (TICKET-046) is an
                        optional BCP 47 tag for the fault lines (a string; an unlisted one falls back to English,
                        anything not a string is a 400); `profile` is optional and
                        omitted or null means fitness; a name that is not in part5/profiles.json is a 400. Two
-                       samples whose labels name foot side files are compared with them (`diagnostics.feet`, ADR-0015)
+                       samples whose labels name foot side files are compared with them (`diagnostics.feet`, ADR-0015).
+                       `mask` (ADR-0023) is optional: null or omitted is none, else `"seated"`, `"left_arm,right_leg"`
+                       or a list of names; a name Part 5 does not know is a 400. `expected_visibility` (TICKET-087)
+                       is optional: the trainer's own Part 3 skeleton or Part 2 pose3d document, as
+                       `--expected-visibility` reads it; one Part 5 cannot read is a 400 naming it
     GET  api/contract  what `part5 contract --json` prints (schemas, word lists, `history_fields` and the compatibility
                        table)
     GET  api/real-takes the real-take report (part5.real), built on first use and kept for the process
@@ -22,9 +27,15 @@ Endpoints, relative to the base path (docs/specs/staging.md):
                        document (TICKET-072, docs/specs/history-opinion.md): a Muse Spark second opinion over a
                        series of analyses, oldest first, with the same body limit as api/analyse; a request that will
                        make the paid call counts against the same per-client Muse Spark limit
+    POST api/ask       {question, analysis, replay, stream} -> a simon.ask.v1 document (TICKET-081,
+                       docs/specs/ask-this-take.md): one question about one take, answered by muse-wonder-1.0 with
+                       tools that read only that take, or by the measured facts; with `stream: true` a
+                       text/event-stream (`tool_call`, `ui_action`, then `answer`), the body an iterator of bytes; the
+                       same body limit, at most MAX_ASK_FRAMES replay frames, and a per-client limit: the Muse one when
+                       the paid call will be made, else its own (ASK_FREE_PER_MINUTE), its 429 naming `question`
 
 Errors are `{error: {field, message}}`: 400 names the field that broke, 404 an unknown sample,
-413 an upload over 16 MiB, 429 too many Muse Spark requests from one client, 503 an analysis over
+413 an upload over 16 MiB, 429 too many Muse Spark requests or questions from one client, 503 an analysis over
 60 s or a report that is not available. A 500 never carries a trace.
 """
 import collections
@@ -42,13 +53,16 @@ from pathlib import Path
 from . import __version__, contract, profiles, words
 from .evaluate import LABEL_TYPE_TO_MEASURE, canonical_label
 from .io import InputError
-from .opinion import HISTORY_TIMEOUT_S, ContractError, HistoryError, history_run, meta_api, series_from_request
+from .ask.agent import ASK_TIMEOUT_S, AskError, ask_request_from, ask_run
+from .opinion import (HISTORY_TIMEOUT_S, ContractError, HistoryError, ask_events, history_run, meta_api,
+                      series_from_request)
 from .phrasing import BACKENDS, TEMPLATE, select_backend
 from .phrasing.muse_spark import NAME as MUSE_SPARK
 from .pipeline import MAX_FRAMES, AnalysisError, run
 from .real import KIT_TYPE_MAP
 from .score_report import feet_diagnostics, feet_kwargs, score_block
 from .replay import build_replay
+from .mask import MaskError, mask_from_request
 
 ROOT = Path(__file__).resolve().parent.parent
 LABELS = "fixtures/input/followers/labels.json"
@@ -62,10 +76,20 @@ MAX_BODY_BYTES = 2 * MAX_UPLOAD_BYTES + 64 * 1024
 ANALYSIS_TIMEOUT_S = 60.0
 MAX_MESSAGE_CHARS = 400
 SIDES = ("expected", "follower")
+VISIBILITY_FIELD = "expected_visibility"   # the trainer's own visibility (TICKET-087), as `--expected-visibility`
 # Muse Spark is a paid live model: one request at a time per client, at most 6 a minute (staging.md).
 MUSE_PER_MINUTE = 6
 MUSE_WINDOW_S = 60.0
 MUSE_LIMIT_MESSAGE = "Too many Muse Spark requests. Wait a minute or pick template."
+# api/ask (TICKET-081, R6 and R12 of the 1.14.0 review). Its 429 names its own field and says what to do in the Ask box. A
+# request that makes no model call still parses a body of up to MAX_BODY_BYTES and runs the tools, so it counts against
+# its own per-client limit (one at a time, ASK_FREE_PER_MINUTE a minute); one that makes the call counts against the
+# Muse limit above. The replay's frames are capped as api/analyse caps an upload's: two clips of MAX_FRAMES, counted
+# together, since a replay compared rep by rep tiles the example's reps and its example side can pass MAX_FRAMES alone.
+ASK_FREE_PER_MINUTE = 30
+MAX_ASK_FRAMES = 2 * MAX_FRAMES
+ASK_LIMIT_FIELD = "question"
+ASK_LIMIT_MESSAGE = "Too many questions from this address. Wait a moment, then ask again."
 REAL_UNAVAILABLE = "The real-take report is not available on this server."
 LOCAL_CLIENT = "local"
 
@@ -344,8 +368,8 @@ def _upload_size(upload):
     return len(upload.encode("utf-8", "surrogatepass")) if isinstance(upload, str) else len(json.dumps(upload))
 
 
-def _upload_ref(side, upload, large_body):
-    field = f"{side}.upload"
+def _upload_doc(field, upload, large_body):
+    """An uploaded document (an object, or its JSON text) under the upload limits: its size, JSON and frame count."""
     if large_body and _upload_size(upload) > MAX_UPLOAD_BYTES:
         raise ApiError(413, field, too_large_message(field))
     if isinstance(upload, str):
@@ -356,7 +380,26 @@ def _upload_ref(side, upload, large_body):
     frames = upload.get("frames", upload.get("keyframes")) if isinstance(upload, dict) else None
     if isinstance(frames, list) and len(frames) > MAX_FRAMES:
         raise ApiError(400, field, f"{field}: {len(frames)} frames, the limit is {MAX_FRAMES}")
-    return {"path": field, "doc": upload}, field
+    return upload
+
+
+def _upload_ref(side, upload, large_body):
+    field = f"{side}.upload"
+    return {"path": field, "doc": _upload_doc(field, upload, large_body)}, field
+
+
+def _visibility_of(request, large_body):
+    """`expected_visibility` (TICKET-087): the trainer's own Part 3 skeleton or Part 2 pose3d document, whose `conf` says which
+    body parts the example shows (ADR-0011), read as `part5 analyse --expected-visibility` reads its file. Omitted or null is
+    none. It is an upload like the clips, under the same limits; the pipeline reads its `conf` and names this field when it
+    cannot."""
+    value = request.get(VISIBILITY_FIELD)
+    if value is None:
+        return None
+    doc = _upload_doc(VISIBILITY_FIELD, value, large_body)
+    if not isinstance(doc, dict):
+        raise ApiError(400, VISIBILITY_FIELD, f"{VISIBILITY_FIELD}: give the trainer's own skeleton or pose3d document")
+    return {"path": VISIBILITY_FIELD, "doc": doc}
 
 
 def _resolve(side, spec, large_body):
@@ -388,12 +431,14 @@ def _feet_of(request):
     return {**found[0].feet, **found[1].feet} if all(s is not None and s.feet for s in found) else {}
 
 
-def _analysis(expected, follower, phrasing, selected_by=None, profile=None, feet=None, lang=None):
+def _analysis(expected, follower, phrasing, selected_by=None, profile=None, feet=None, lang=None, mask=None,
+              expected_visibility=None):
     """The pipeline's answer and its replay. `feet` is `_feet_of(request)`; the files become `run` options through
-    `feet_kwargs` and the document names them from the repository root, never by this server's absolute path."""
+    `feet_kwargs` and the document names them from the repository root, never by this server's absolute path. `mask` is
+    `_mask_of(request)` (ADR-0023), `expected_visibility` is `_visibility_of(request)` (TICKET-087)."""
     names = feet or {}
     result = run(expected, follower, phrasing=phrasing, score=score_block, selected_by=selected_by, profile=profile,
-                 lang=lang, **feet_kwargs(names, ROOT))
+                 lang=lang, mask=mask, expected_visibility=expected_visibility, **feet_kwargs(names, ROOT))
     if "feet" in result.analysis.get("diagnostics", {}):
         result.analysis["diagnostics"]["feet"] = feet_diagnostics(result.analysis["diagnostics"]["feet"], names)
     return {"analysis": result.analysis, "replay": build_replay(result)}
@@ -412,6 +457,16 @@ def _profile_of(request):
         return profiles.require(value, doc)
     except profiles.ProfileError as e:
         raise ApiError(400, "profile", str(e)) from None
+
+
+def _mask_of(request):
+    """The body mask a request declares (ADR-0023, docs/specs/body-mask.md): omitted or null is none, a string reads as
+    `--mask` does (`"seated"`, `"left_arm,right_leg"`), a list names each preset or chain. Anything else is a 400 naming
+    the field, before any file is read."""
+    try:
+        return mask_from_request(request.get("mask"))
+    except MaskError as e:
+        raise ApiError(400, "mask", _plain(e)) from None
 
 
 def _in_worker(fn, *args):
@@ -465,14 +520,16 @@ class ClientLimit:
             if not starts and client not in self._running:
                 del self._starts[client]
 
-    def start(self, client):
+    def start(self, client, field="phrasing", message=MUSE_LIMIT_MESSAGE):
+        """Count a start for `client`; a 429 naming `field` with `message` when it is over the limit. The defaults are
+        the paid phrasing's; api/ask names its own (`ASK_LIMIT_FIELD`, `ASK_LIMIT_MESSAGE`)."""
         now = self.clock()
         with self._lock:
             self._prune(now)
             starts = self._starts.setdefault(client, collections.deque())
             if client in self._running or len(starts) >= self.per_minute:
                 wait = 5 if client in self._running else max(1, int(self.window_s - (now - starts[0]) + 0.999))
-                raise ApiError(429, "phrasing", MUSE_LIMIT_MESSAGE, {"Retry-After": str(wait)})
+                raise ApiError(429, field, message, {"Retry-After": str(wait)})
             starts.append(now)
             self._running.add(client)
 
@@ -490,6 +547,7 @@ class ClientLimit:
 
 
 _MUSE_LIMIT = ClientLimit()
+_ASK_FREE_LIMIT = ClientLimit(per_minute=ASK_FREE_PER_MINUTE)   # api/ask requests that make no model call (R12)
 
 
 def client_key(peer, forwarded_for=None):
@@ -512,12 +570,14 @@ def _analyse(body, client):
         raise ApiError(413, "upload", too_large_message("upload"))
     request = _read_request(body)
     profile = _profile_of(request)
+    mask = _mask_of(request)
     lang = request.get("lang")
     if lang is not None and not isinstance(lang, str):
         raise ApiError(400, "lang", "lang: must be a language tag such as es or pt-BR")
     large = len(body) > MAX_UPLOAD_BYTES
     expected, expected_field = _resolve("expected", request.get("expected"), large)
     follower, follower_field = _resolve("follower", request.get("follower"), large)
+    visibility = _visibility_of(request, large)
     phrasing, selected_by = select_backend(request.get("phrasing"), False)
     offered = offered_phrasing()
     # ADR-0008: live mode picks muse-spark by default. Without the key file it is not on offer, yet a request that
@@ -530,10 +590,10 @@ def _analyse(body, client):
     try:
         with limited:
             return _respond(200, _in_worker(_analysis, expected, follower, phrasing, selected_by, profile,
-                                            _feet_of(request), lang))
+                                            _feet_of(request), lang, mask, visibility))
     except (InputError, AnalysisError) as e:
         message = _plain(e)
-        fields = {expected["path"]: expected_field, follower["path"]: follower_field}
+        fields = {expected["path"]: expected_field, follower["path"]: follower_field, VISIBILITY_FIELD: VISIBILITY_FIELD}
         raise ApiError(400, _field_of(message, fields), message) from None
 
 
@@ -581,6 +641,41 @@ def _history_opinion(body, client):
         return _respond(200, history_run(series, lang=lang, max_observations=limit, timeout_s=HISTORY_TIMEOUT_S))
 
 
+# ----------------------------------------------------------------------------- ask this take
+
+EVENT_STREAM_HEADERS = {"Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store",
+                        "X-Content-Type-Options": "nosniff", "X-Accel-Buffering": "no"}
+
+
+def _ask(body, client):
+    """`POST api/ask` (TICKET-081, docs/specs/ask-this-take.md "The route"): the document, or its event stream. A
+    refused request is refused before any event and takes no slot; every other one takes a per-client slot, the Muse
+    limit's when the paid call can be made and the free limit's when it cannot (R12), released when the exchange ends,
+    on the exchange's own thread for a stream."""
+    if len(body) > MAX_BODY_BYTES:
+        raise ApiError(413, "upload", too_large_message("upload"))
+    try:
+        question, take, stream = ask_request_from(body)
+    except AskError as e:
+        raise ApiError(400, e.field, _plain(e)) from None
+    frames = len(take.replay["expected"]) + len(take.replay["follower"])
+    if frames > MAX_ASK_FRAMES:
+        raise ApiError(400, "replay", f"replay: {frames} frames in the example and the take together, the limit is "
+                                      f"{MAX_ASK_FRAMES}")
+    limit = _MUSE_LIMIT if meta_api.unavailable() is None else _ASK_FREE_LIMIT
+    limit.start(client, ASK_LIMIT_FIELD, ASK_LIMIT_MESSAGE)
+
+    def run(on_event=None):
+        try:
+            return ask_run(question, take, timeout_s=ASK_TIMEOUT_S, on_event=on_event)
+        finally:
+            limit.finish(client)
+
+    if stream:
+        return 200, dict(EVENT_STREAM_HEADERS), ask_events(run)
+    return _respond(200, run())
+
+
 # ----------------------------------------------------------------------------- routing
 
 def _health(body, client):
@@ -607,6 +702,7 @@ ROUTES = {
     "api/contract": ("GET", _contract),
     "api/real-takes": ("GET", _real_takes),
     "api/history-opinion": ("POST", _history_opinion),
+    "api/ask": ("POST", _ask),
 }
 
 
@@ -623,7 +719,8 @@ def _route(method, path, body, base_path, client):
 
 
 def handle(method, path, body, *, base_path, client=LOCAL_CLIENT):
-    """One request -> `(status, headers, body bytes)`. Never raises, never shows a trace.
+    """One request -> `(status, headers, body)`, the body bytes, or an iterator of bytes for an event stream
+    (`api/ask` with `stream: true`). Never raises, never shows a trace.
 
     `client` is the address the request counts against for rate limits (see `client_key`).
     """

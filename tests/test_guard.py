@@ -242,7 +242,7 @@ def test_ac011_a_low_match_analysis_is_written_and_validates(tmp_path):
     write_analysis(out, res.analysis)
     doc = json.loads(out.read_text())
     assert not list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(doc))
-    assert doc["schema_version"] == "1.13.0" and doc["status"]["code"] == "ok"
+    assert doc["schema_version"] == "1.14.0" and doc["status"]["code"] == "ok"
     assert doc["warnings"][0]["code"] == "low_match" and "diagnostics" in doc
 
 

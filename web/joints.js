@@ -120,6 +120,9 @@ const CAP_REASONS = {
 
 export const LOW_CONFIDENCE_NOTE = "Low confidence: this take is a poor match for the example.";
 export const NO_FAULTS_SENTENCE = "No faults found. This take follows the example.";
+// TICKET-088 (the 1.13.0 web validator): a take whose quality is major and that reports no fault was seen too badly to say it
+// follows the example, so the status line beside the quality note says that instead of NO_FAULTS_SENTENCE.
+export const NO_FAULTS_UNSEEN_SENTENCE = "No faults found, but the take was not seen well enough to say it follows the example.";
 
 // A document the movement guard refused before ADR-0012.
 export const isOldRefusal = (analysis) => Boolean(analysis.status && analysis.status.code !== "ok");
@@ -167,23 +170,58 @@ export const QUALITY_NOTES = {
   major: "Too much of this take was hard to see, so do not rely on the result.",
 };
 
-export function qualityNote(analysis) {
+// The quality level this page knows (a key of QUALITY_NOTES), or null for ok, no block and a level it does not know.
+function qualityLevel(analysis) {
   const level = analysis && analysis.quality && analysis.quality.level;
-  return typeof level === "string" && Object.hasOwn(QUALITY_NOTES, level) ? QUALITY_NOTES[level] : null;
+  return typeof level === "string" && Object.hasOwn(QUALITY_NOTES, level) ? level : null;
+}
+
+// TICKET-086: the heading offset is the camera's angle, not joints the camera could not see, so a take whose only reasons are
+// `heading_offset` gets a line about the angle instead (Part 7 shows the same advice); with any other reason beside it, the
+// line of its level stays.
+export const HEADING_NOTE = "Filmed from a different angle than the example, so treat the score as rough.";
+
+export function qualityNote(analysis) {
+  const level = qualityLevel(analysis);
+  if (level === null) return null;
+  const reasons = Array.isArray(analysis.quality.reasons) ? analysis.quality.reasons : [];
+  const angleOnly = reasons.length > 0 && reasons.every((reason) => reason && reason.code === "heading_offset");
+  return angleOnly ? HEADING_NOTE : QUALITY_NOTES[level];
 }
 
 export function resultSentence(analysis) {
   if (isOldRefusal(analysis)) return "No faults are listed.";
   const n = faultsOf(analysis).length;
-  if (n === 0) return noticesOf(analysis).length ? "No faults are listed. Read the warning first." : NO_FAULTS_SENTENCE;
-  return `${n} ${n === 1 ? "fault" : "faults"} found.`;
+  if (n > 0) return `${n} ${n === 1 ? "fault" : "faults"} found.`;
+  if (noticesOf(analysis).length) return "No faults are listed. Read the warning first.";
+  return qualityLevel(analysis) === "major" ? NO_FAULTS_UNSEEN_SENTENCE : NO_FAULTS_SENTENCE;
 }
 
-// The things to work on first: at most five `{cue, why}`, in the file's order (the file ranks them).
+// The text to show at a path of the document (`insights[0].cue`): the entry of `phrasing.cues` for it when the file has one
+// (1.14.0, TICKET-080: the cue or reason a model wrote in the follower's language, or the English text again when it fell
+// back), else the English `english` the field itself holds.
+export function cueText(analysis, path, english) {
+  const cues = analysis.phrasing && Array.isArray(analysis.phrasing.cues) ? analysis.phrasing.cues : [];
+  const entry = cues.find((cue) => cue && cue.path === path);
+  return entry && typeof entry.text === "string" && entry.text !== "" ? entry.text : english;
+}
+
+// The things to work on first: at most five `{cue, why}`, in the file's order (the file ranks them), each in the
+// follower's language when `phrasing.cues` has it.
 export function insightItems(analysis) {
   const items = Array.isArray(analysis.insights) ? analysis.insights : [];
-  return items.filter((item) => item && item.cue).slice(0, MAX_INSIGHTS).map((item) => ({ cue: item.cue, why: item.why || "" }));
+  return items.map((item, index) => ({ item, index })).filter(({ item }) => item && item.cue).slice(0, MAX_INSIGHTS)
+    .map(({ item, index }) => ({
+      cue: cueText(analysis, `insights[${index}].cue`, item.cue),
+      why: item.why ? cueText(analysis, `insights[${index}].why`, item.why) : "",
+    }));
 }
+
+// 1.14.0 (TICKET-080): a result in a language other than English whose text no native reader has checked says so. Null
+// otherwise, and for a document with no `phrasing.native_review` (English, or written before 1.14.0).
+export const NATIVE_REVIEW_SENTENCE = "Not reviewed by a native reader.";
+export const nativeReviewNote = (analysis) =>
+  analysis.phrasing && analysis.phrasing.native_review === false ? NATIVE_REVIEW_SENTENCE : null;
 
 // ------------------------------------------------------------------------------ the wording of the faults
 // AC-V19, ADR-0008: the select starts on the wording the server names as its own default (Muse Spark in
@@ -253,3 +291,52 @@ export const STALE_SENTENCE = "This result is for the previous choice. Press Ana
 
 // `shown` is the key of the choice the result on screen was made for, or null when no result is shown.
 export const isStale = (shown, now) => shown !== null && shown !== now;
+
+// ------------------------------------------------------------------------------ Ask this take (TICKET-081)
+// docs/specs/ask-this-take.md: the agent's `seek` and `spotlight` actions move this page's own replay, and the answer
+// says where it came from (CONTRACT.md "Ask this take", Part 7's duty 4, applied here the same way).
+
+// The follower frame nearest `t` seconds on the take's own clock (`replay.follower_t`).
+export function nearestFrame(times, t) {
+  let best = 0;
+  for (let i = 1; i < times.length; i += 1) if (Math.abs(times[i] - t) < Math.abs(times[best] - t)) best = i;
+  return best;
+}
+
+// A `seek` or `spotlight` action as the fault the replay already shows: a jump to the follower frame nearest `t`, with
+// the action's joints lit there (none for a seek). Null for an action the replay cannot place.
+export function askTarget(replay, action) {
+  if (!replay || !Array.isArray(replay.follower_t) || !replay.follower_t.length || typeof action?.t !== "number") {
+    return null;
+  }
+  const frame = nearestFrame(replay.follower_t, action.t);
+  const joints = Array.isArray(action.joints) ? action.joints.filter((name) => JOINTS.includes(name)) : [];
+  return { follower_frames: [frame, frame], joints };
+}
+
+const ASK_STEPS = {
+  get_faults: "Reading the differences the measurement found.",
+  get_joint_angle: "Reading how a joint moved over time.",
+  compare_with_teacher: "Comparing a joint with the example.",
+  seek: "Moving the replay to the moment.",
+  spotlight: "Lighting up the body part in the replay.",
+};
+
+// What the page says while a tool call runs.
+export const askStep = (call) => ASK_STEPS[call && call.name] ?? "Reading the take.";
+
+function askReason(doc) {
+  const numbers = Array.isArray(doc.replaced_numbers) ? doc.replaced_numbers : [];
+  if (numbers.length) return `the model's answer held numbers no measurement gave (${numbers.join(", ")})`;
+  const reason = typeof doc.fallback_reason === "string" ? doc.fallback_reason : "";
+  if (reason === "no key") return "this server has no key for the model";
+  if (reason.startsWith("live calls are off")) return "live calls are off on this server";
+  return reason || "the model did not answer";
+}
+
+// Where the answer came from, in one sentence: the model's own words, a saved answer of the model, or the measured facts.
+export function askSource(doc) {
+  if (doc.source === "model") return `Answer from Muse Wonder (${doc.model}). Every number in it matches one the tools returned for this take.`;
+  if (doc.source === "cache") return `Saved answer from Muse Wonder (${doc.model}), shown because ${askReason(doc)}.`;
+  return `The measured facts, shown because ${askReason(doc)}.`;
+}

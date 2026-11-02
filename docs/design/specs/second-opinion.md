@@ -112,6 +112,16 @@ template.
   "wrist", "foot", "side" and the like; "half" is a number as an amount ("by half", "half as much", "half a beat"), not
   as a stretch of the take ("the second half", "the other half"); "face" after a body-part noun is a verb ("your feet
   face out") and names no head, the same reading `template.line_problem` gives a fault line (AC-VA-05).
+  A take whose analysis declares a body mask (`body_mask`, ADR-0023, `docs/design/specs/body-mask.md`) is checked against
+  it too (N3 of the 1.14.0 recheck, TICKET-084), as Ask this take's tools are (R3 of the 1.14.0 review): a note that
+  names a body part the mask leaves not scored is rejected with `names a body part not scored in this take (<part>)`,
+  though the camera shows it. A part is not scored on a side when the mask (`mask.mask_of_names`) drops every measure
+  that names it (`template.NAMES`, that side's and the side-less ones; `guard.masked_parts`): a seated take's legs,
+  knees, feet and hips; a masked arm's arm, elbow and hand, not its shoulder (`shoulder_tilt` is still scored); a
+  masked forearm's hand. A mention is refused when one of the three words before it is a masked side, or when none
+  is a side word ("the legs", "both feet" speak of every side). The request holds no measure or joint the mask
+  drops: the block must pass the analysis's own check (`mask.validate_mask_block`, so no fault names one) before
+  any upload, else the block is `fallback`, `body mask does not pass its check`, and nothing is sent.
 - AC-SO-05: disputes never change the measured score, faults or insights (byte comparison).
 - AC-SO-06: no key, live off, one clip missing or unreadable, an upload or call failure, unreadable JSON, the per-call
   ceiling or the spend cap: the block says `skipped` or `fallback` with the reason, the analysis is written and the
@@ -163,6 +173,11 @@ template.
   and the third has no quoted English "Around" (`prompt.SHAPE_AROUND_OTHER`, TICKET-054 R9; "Around" is itself one of
   `ENGLISH_TIME_WORDS`, so a copied one is refused), and the fourth no quoted English "Compared with the recording,"
   (`prompt.SHAPE_COMPARED_OTHER`, TICKET-054). The second shape quotes nothing, and every English prompt is unchanged.
+  A translated line that passes all of this is then held to `opinion.guard.unsafe_problem`, as a translated cue is
+  (N2 of the 1.14.0 recheck, TICKET-080; the page shows the line with `dir=auto`): a control character (a bidi
+  override such as U+202E included), a link or a word this product does not use is refused with `translated line has
+  a control character`, `translated line has a link` or `translated line uses a word this product does not use`, and
+  the fault takes the AC-LA-03 fallback with that reason.
 - AC-LA-03: a fault that falls back gets its English template line and `phrasing.faults[i].lang` `"en"`; the template
   backend writes English and says so in the fault's reason when another language was asked.
 - AC-LA-04: `phrasing.lang` and every `phrasing.faults[i].text` and `.lang` are in every new document; `text` equals the
@@ -180,12 +195,13 @@ template.
 | Key file unreadable or empty | `fallback`, `key file unreadable` or `key file is empty` |
 | ffmpeg absent | the original file is uploaded when at most 50 MB, else `fallback`, `clip too large to send` |
 | HTTP error, timeout | `fallback`, `HTTP <code> on <step>` or `timeout on <step>` (step: `upload`, `count`, `responses`) |
-| Model answer not JSON, or a Responses or count body that is not a JSON object (an array, a string) | `fallback`, `unreadable answer` |
+| Model answer not JSON, or a Responses or count body that is not a JSON object (an array, a string), or a Responses `output` item, message `content` or content part of the wrong shape (`[5]`, `"content": 5`, `["text"]`; N1 of the 1.14.0 recheck, TICKET-081) | `fallback`, `unreadable answer` |
 | Over the ceiling or the cap | `fallback`, `estimated $x over the per-call limit of $y` or `spend cap reached` (the cap is checked before the upload too) |
 | A limit variable set to something that is not an amount of USD from 0 up | `fallback` before any upload, `<variable> is not an amount of USD from 0 up` (the variable's name, never its value) |
 | Ledger not writable, or held by another process for more than the longest call | `fallback`, `usage ledger not writable` or `usage ledger busy` |
 | Ledger there but not readable (no permission, not text, a directory), or a line whose `usd` is NaN, infinite, negative or too large for a float | `fallback` before any upload, `usage ledger not readable` |
 | Unknown language | English, `phrasing.lang_requested` holds the tag |
+| A `body_mask` block that fails the analysis's own check (`mask.validate_mask_block`), or a fault on a measure it drops (N3 of the 1.14.0 recheck) | `fallback` before any upload, `body mask does not pass its check` |
 
 ## Edge Cases
 - A take with no faults still gets observations (verdicts empty).
@@ -259,6 +275,7 @@ template.
 | `tests/test_second_opinion.py`, `tests/test_phrasing_variety.py`, `tests/test_phrasing_lang.py` (new) | the ACs | TICKET-045, TICKET-046 | yes |
 | tests asserting the schema version | `1.9.0` | TICKET-045 | yes |
 | `part5/phrasing/local_llm.py` (`grammar`, `extra_rules`), `part5/phrasing/template.py` (`_doubled_part`), `tests/test_phrasing_grammar.py`, `docs/dev/DEVELOPING.md` | the local grammar rules and the doubled body-part test (AC-VA-04, AC-VA-05; Part 7) | TICKET-045 | yes |
+| `part5/opinion/__init__.py`, `part5/opinion/guard.py`, `tests/test_second_opinion.py` | N3 of the 1.14.0 recheck: the body mask in the second opinion (`_not_scored`, `MASK_UNREADABLE`; `masked_parts`, the `masked` argument of `read_answer` and `text_problem`) | TICKET-084 | yes |
 
 ## Delivery Verification Plan
 - `uv run pytest -q tests/test_second_opinion.py tests/test_phrasing_variety.py tests/test_phrasing_lang.py` while
@@ -317,6 +334,7 @@ ledger. Resolution: ADDRESSED_IN_SPEC.
 | TICKET-145: cues in the follower's language | AC-LA-01 to 04 | `tests/test_phrasing_lang.py` | done |
 | TICKET-050 R16 live run: "At 0.0 s, tus codos ..." kept an English time phrase | AC-LA-02 | `tests/test_phrasing_time_phrase.py` | done |
 | Contract C1 | AC-SC-01 | `tests/test_second_opinion.py`, `make check-5-contract` | done |
+| N3 of the 1.14.0 recheck: the second opinion ignored `body_mask` | AC-SO-04 | `tests/test_second_opinion.py` (`test_n3_*`) | done |
 
 ## Deviations from PRD
 None. Contract C1 says the block is present with a status; this spec leaves it absent when no clip was given, so

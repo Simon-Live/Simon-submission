@@ -10,7 +10,7 @@ import math
 from types import SimpleNamespace
 
 import pytest
-from test_second_opinion import Fake
+from test_second_opinion import UNREADABLE_SHAPES, Fake, unreadable_outputs
 
 from part5 import opinion
 from part5.opinion import meta_api, prompt
@@ -139,7 +139,7 @@ def test_ac_ho_01_the_allowlist_is_read_from_the_history_contract_with_its_kind_
     kinds = {f.path: f.kind for f in fields}
     assert kinds["score.value"] == "score" and kinds["faults[].magnitude_deg"] == "number"
     assert kinds["faults[].at_s"] == "seconds" and kinds["faults[].measure"] == "id" and kinds["schema_version"] == "id"
-    assert prompt.allowlist_version() == f"history-fields-{CONTRACT['version']}" and CONTRACT["version"] == "1.2.0"
+    assert prompt.allowlist_version() == f"history-fields-{CONTRACT['version']}" and CONTRACT["version"] == "1.3.0"
 
 
 def test_ac_ho_01_no_path_the_opinion_reads_is_free_text_or_a_list_of_text_in_the_contract():
@@ -552,6 +552,16 @@ def test_ac_ho_07_a_body_that_is_not_an_object_is_unreadable(series, meta):
     doc = opinion.history_run(series, live=True, client=Fake(["not", "an", "object"]))
     assert (doc["status"], doc["reason"]) == ("fallback", "unreadable answer")
     assert ledger_lines(meta)[0]["estimated"] is True   # an answer that says what it cost is not known: the estimate
+
+
+@pytest.mark.parametrize("shape", UNREADABLE_SHAPES)
+def test_n1_a_reply_of_the_wrong_shape_is_unreadable_and_the_call_is_recorded(series, meta, shape):
+    """N1 of the 1.14.0 recheck (TICKET-081): a message whose `content` is not a list of objects raised TypeError."""
+    output = unreadable_outputs(json.dumps({"observations": [GOOD]}))[shape]
+    payload = {"output": output, "usage": {"input_tokens": 1800, "output_tokens": 200}}
+    doc = opinion.history_run(series, live=True, client=Fake(payload))
+    assert (doc["status"], doc["reason"], doc["observations"]) == ("fallback", "unreadable answer", [])
+    assert [line["http_status"] for line in ledger_lines(meta)] == [200]
 
 
 def test_ac_ho_07_an_answer_with_no_observations_is_ok(series, meta):

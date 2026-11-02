@@ -150,8 +150,15 @@ score at 0, 10, 20 and 30 degrees: mean, range and grades) and `docs/evaluation/
 (`invariance.summary`), both committed, with the score's version and params hash and no commit sha, so a later run
 rewrites them byte for byte unless a figure moved. Test: `tests/test_evaluation_doc.py` renders those tables from the
 summaries as the doc writes a figure and compares them cell by cell, both ways, and fails when the summaries are not of
-the shipped score or the committed take's first fires differ from the pipeline's (review B3 of 1.13.0). The section 3
-table holds the property list, whose figures are the parameters of `tests/test_score_properties.py`.
+the shipped score or the committed take's first fires differ from the pipeline's (review B3 of 1.13.0). The prose of
+sections 1 and 2 is held the same way (TICKET-088 N2): each summary also carries `figures`, the numbers the prose states
+beyond the tables (section 1: the rows with and without the matching fault, the drop at the first fire, the cost of a later
+step, the second fault, the realised gaps; section 2: per row group the correct takes that moved or gained a fault, each
+set's takes that moved, and the one take that moved or changed its fault set where there is one), and the test renders
+each sentence that states a measured figure from the summaries and finds it in the doc. The rule thresholds section 1 quotes
+are read from `part5/rules.json` and the 5 frames section 2 says the smoothing spans from `part5/normalise.py`'s `smooth`;
+the rest of the numbers in those sections define the bench (the grid, the transforms), not its results. The section 3 table holds the property list, whose figures are the parameters of
+`tests/test_score_properties.py`.
 ### AC-SV10: frozen surfaces
 `part5/rules.json`, `part5/detect.py`, `part5/profiles.json` and the score params are unchanged, and `make check-5`
 prints the same bytes on stdout as at the parent commit.

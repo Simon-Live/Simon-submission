@@ -33,7 +33,8 @@ def result():
 def test_payload_has_the_documented_keys_and_17_joints_per_frame(result):
     replay = build_replay(result)
     assert set(replay) == {"format", "schema_version", "fps", "expected", "follower", "exp_to_fol", "joints", "bones",
-                           "expected_t", "follower_t", "coordinate_frame"}
+                           "expected_t", "follower_t", "coordinate_frame",
+                           "aligned_until_s", "aligned_until_expected_frame"}   # 1.1.0 (TICKET-085)
     assert replay["fps"] == 30.0
     assert replay["joints"] == JOINTS
     assert len(replay["expected"]) == result.expected.n_frames

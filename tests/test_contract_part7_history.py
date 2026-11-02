@@ -31,7 +31,7 @@ REPLAY = json.loads((ROOT / "fixtures/output/replay.example.json").read_text())
 OLD_1_1_0 = json.loads((ROOT / "tests/fixtures/analysis-1.1.0.example.json").read_text())
 
 # Every analysis schema version from 1.5.0 (ADR-0014, the cues) to the schema's own.
-VERSIONS = ("1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0", "1.13.0")
+VERSIONS = ("1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0", "1.13.0", "1.14.0")
 
 FAULT = SCHEMA["$defs"]["fault"]["properties"]
 SCORE = SCHEMA["properties"]["score"]["properties"]
@@ -60,6 +60,12 @@ def as_version(doc, version):
     doc = copy.deepcopy(doc)
     doc["schema_version"] = version
     v = version_of(version)
+    if v < (1, 14, 0):   # body_mask (ADR-0023); phrasing.cues and .native_review, a language other than English (TICKET-080)
+        doc.pop("body_mask", None)
+        doc["phrasing"].pop("cues", None), doc["phrasing"].pop("native_review", None)
+        if "quality" in doc:   # the heading signal and its reason (TICKET-086)
+            doc["quality"]["signals"].pop("heading_offset_deg", None)
+            doc["quality"]["reasons"] = [r for r in doc["quality"]["reasons"] if r["code"] != "heading_offset"]
     if v < (1, 13, 0):   # score.credit, the DDR-style credit display (ADR-0020)
         doc["score"].pop("credit", None)
     if v < (1, 12, 0):   # faults[].rep_sizes, score.per_rep[].rep and .tempo_ratio, near_misses.items[].margin_deg (TICKET-071)

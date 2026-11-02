@@ -4,14 +4,22 @@
 asked for is kept so the document can say so. For a language other than English a model is asked for one JSON
 answer holding the English line and the translated line (`reply_instruction`, `read_pair`). The English line goes
 through the existing word test (`template.line_problem`); the translated line through `check_translated`, which
-holds what can be checked in any language: one line, the fault's time said once, no other number, no English time
-phrase before it (TICKET-052) and no praise.
+holds what can be checked in any language: one line, no control character, link or banned word
+(`opinion.guard.unsafe_problem`, N2 of the 1.14.0 recheck), the fault's time said once, no other number, no English
+time phrase before it (TICKET-052) and no praise.
 `json_object` is the one reader of a model's JSON answer (this module and `opinion.guard`).
+
+Cues and reasons (TICKET-080, docs/specs/language-cues.md): `check_cue` holds one translated cue or reason to the same
+kind of test, for any listed language: one line, a length limit, no control character, link or banned word
+(`opinion.guard.unsafe_problem`), no praise, no number a cue should not have (a reason keeps exactly the numbers of its English
+text), no English time phrase, written in the script of the language and not a copy of the English. `NATIVE_REVIEWED` lists
+the languages a native reader has checked; none yet.
 """
 import json
 import re
 import unicodedata
 
+from ..cues import ROLE_CUE
 from . import template
 
 EN = "en"
@@ -21,6 +29,15 @@ LANGUAGES = {
     "nl": "Dutch", "sv": "Swedish", "pl": "Polish", "tr": "Turkish", "ru": "Russian", "ar": "Arabic",
     "hi": "Hindi", "id": "Indonesian", "vi": "Vietnamese", "ja": "Japanese", "ko": "Korean", "zh": "Chinese",
 }
+# The languages a native reader has checked (TICKET-080, ASM-015). A language is added here only when a person signs it;
+# `phrasing.native_review` is true for these and false for every other language but English.
+NATIVE_REVIEWED = frozenset()
+# The scripts of the listed languages that do not write Latin letters, by the first word of a letter's Unicode name.
+SCRIPTS = {"ar": ("ARABIC",), "hi": ("DEVANAGARI",), "ru": ("CYRILLIC",), "ja": ("HIRAGANA", "KATAKANA", "CJK"),
+           "ko": ("HANGUL", "CJK"), "zh": ("CJK",)}
+MAX_CUE_CHARS, MAX_CUE_WORDS = 60, 10   # a cue is at most 6 English words; another language needs more room
+MIN_SCRIPT_SHARE = 0.5   # share of a text's letters that must be in the language's script
+_WORD = re.compile(r"[^\W\d_]{3,}")
 TAG = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*$")
 MAX_REQUESTED = 35     # characters kept of the tag asked for: BCP 47's practical maximum
 MAX_TRANSLATED = 200   # characters; a translation runs longer than the 160 an English line may take
@@ -136,7 +153,22 @@ def _english_time(line):
 
 
 def check_translated(fault, line, timed):
-    """None when the translated `line` holds what a line in any language must, else the short reason."""
+    """None when the translated `line` holds what a line in any language must, else the short reason. A line that
+    passes the checks of TICKET-046 and TICKET-052 (`_translated_problem`, whose reasons stand) is then held to
+    `opinion.guard.unsafe_problem` (no control character, a bidi override such as U+202E included, no link, none of the
+    words this product does not use), as a translated cue is: N2 of the 1.14.0 recheck (TICKET-080), since the page
+    shows the line with `dir=auto`."""
+    from ..opinion.guard import unsafe_problem   # imported at the call: opinion.guard imports this module
+    problem = _translated_problem(fault, line, timed)
+    if problem:
+        return problem
+    unsafe = unsafe_problem(line)
+    return f"translated line {unsafe}" if unsafe else None
+
+
+def _translated_problem(fault, line, timed):
+    """The reason `line` is not one line saying the fault's time once (when `timed`), with no other number, no English
+    time phrase and no praise; None when it is."""
     if "\n" in line or "\r" in line:
         return "translated line has more than one line"
     if not line or len(line) > MAX_TRANSLATED:
@@ -151,3 +183,77 @@ def check_translated(fault, line, timed):
     if round(float(numbers[0].replace(",", ".")), 1) != round(float(fault["at_s"]), 1):
         return "translated line has the wrong time"
     return "translated line keeps an English time phrase" if _english_time(line) else None
+
+
+def native_review(language):
+    """True when a native reader has checked `language` (`NATIVE_REVIEWED`); False for every other language."""
+    return language in NATIVE_REVIEWED
+
+
+def _numbers(text):
+    """The numbers of `text` as floats, sorted, a comma or a point as the decimal separator ("1,9" is 1.9)."""
+    return sorted(float(n.replace(",", ".")) for n in _NUMBER.findall(text))
+
+
+def _script_share(text, prefixes):
+    """The share of the letters of `text` whose Unicode name starts with one of `prefixes`; 0 when it has no letter."""
+    letters = [c for c in text if c.isalpha()]
+    inside = sum(unicodedata.name(c, "").startswith(prefixes) for c in letters)
+    return inside / len(letters) if letters else 0.0
+
+
+def _in_language(source, text, language):
+    """True when `text` reads as written in `language` and not as the English `source`: a language with its own script
+    has at least half its letters in it; a Latin-script language is not a copy of the English and does not share half or
+    more (and at least two) of its words of three letters or more with it."""
+    if language in SCRIPTS:
+        return _script_share(text, tuple(SCRIPTS[language])) >= MIN_SCRIPT_SHARE
+    if text.strip().casefold() == source.strip().casefold():
+        return False
+    source_words = set(_WORD.findall(source.casefold()))
+    shared = source_words & set(_WORD.findall(text.casefold()))
+    return not (len(shared) >= 2 and 2 * len(shared) >= len(source_words))
+
+
+def read_items(text, count):
+    """`{id: text}` from a model's answer to the batched cue request, for the ids below `count` it holds a text for
+    (the first text of an id wins); ValueError("unreadable answer") when it is not a JSON object with an `items` list."""
+    try:
+        listed = json_object(text).get("items")
+    except ValueError:
+        raise ValueError("unreadable answer") from None
+    if not isinstance(listed, list):
+        raise ValueError("unreadable answer")
+    found = {}
+    for entry in listed:
+        number, said = (entry.get("id"), entry.get("text")) if isinstance(entry, dict) else (None, None)
+        if isinstance(number, int) and not isinstance(number, bool) and 0 <= number < count \
+                and isinstance(said, str) and number not in found:
+            found[number] = said.strip().strip("\"'`").strip()
+    return found
+
+
+def check_cue(role, source, text, language):
+    """None when `text`, a model's translation of the English cue or reason `source` into `language`, holds what any
+    language must, else the short reason (docs/specs/language-cues.md). `role` is `cues.ROLE_CUE` or `cues.ROLE_REASON`.
+    A translation is held to `opinion.guard.unsafe_problem` (no control character, a bidi override included, no link,
+    none of the words this product does not use), as the history opinion's translations are (R7 of the 1.14.0 review)."""
+    from ..opinion.guard import unsafe_problem   # imported at the call: opinion.guard imports this module
+    if "\n" in text or "\r" in text:
+        return "translation has more than one line"
+    cue = role == ROLE_CUE
+    if not text.strip() or len(text) > (MAX_CUE_CHARS if cue else MAX_TRANSLATED) \
+            or (cue and len(text.split()) > MAX_CUE_WORDS):
+        return "translation is empty or too long"
+    unsafe = unsafe_problem(text)
+    if unsafe:
+        return f"translation {unsafe}"
+    if _praised(text):
+        return "translation adds praise"
+    if cue and any(c.isdigit() for c in text):
+        return "translation adds a number"
+    if not cue and _numbers(text) != _numbers(source):
+        return "translation changes the numbers"
+    if _english_time(text):
+        return "translation keeps an English time phrase"
+    return None if _in_language(source, text, language) else "translation is not in the language asked"

@@ -1,12 +1,12 @@
 // The page: pick or upload an example movement and a take, Analyse, read the faults, replay them in
 // 3D, switch the wording, read the real-take report and see the result preview.
-import { analyse, getRealTakes, getSamples } from "./api.js";
+import { analyse, ask, getRealTakes, getSamples } from "./api.js";
 import {
-  LOW_CONFIDENCE_NOTE, STALE_SENTENCE, WORDINGS, cappedNote, defaultProfile, defaultWording, faultLine, faultsOf, insightItems,
-  isLowConfidence, isStale, jointLabel, noticesOf, profileLabel, profileNote, profilesOffered, qualityNote, resultSentence,
-  scoreSentence, sizeSentence, wordingHint,
+  LOW_CONFIDENCE_NOTE, STALE_SENTENCE, WORDINGS, askSource, askStep, askTarget, cappedNote, defaultProfile, defaultWording,
+  faultLine, faultsOf, insightItems, isLowConfidence, isStale, jointLabel, nativeReviewNote, noticesOf, profileLabel,
+  profileNote, profilesOffered, qualityNote, resultSentence, scoreSentence, sizeSentence, wordingHint,
 } from "./joints.js";
-import { make, renderPreview } from "./preview.js";
+import { make, phrased, renderPreview } from "./preview.js";
 import { mountViewer } from "./viewer.js";
 
 const ANGLES = { front: "Front view", 45: "45 degree view", side: "Side view" };
@@ -34,13 +34,17 @@ const el = {
   note: { expected: $("upload-expected-note"), follower: $("upload-follower-note") },
   fileError: { expected: $("upload-expected-error"), follower: $("upload-follower-error") },
   clear: { expected: $("clear-upload-expected"), follower: $("clear-upload-follower") },
+  ask: { form: $("ask-form"), question: $("ask-question"), button: $("ask"), status: $("ask-status"),
+    answer: $("ask-answer"), source: $("ask-source") },
 };
 const viewer = mountViewer($("viewer"));
 let reading = Promise.resolve(); // a file the visitor just chose may still be being read
 // `shown` is the key of the choice the result on screen was made for (AC-V20); `wording` is the server's default wording;
 // `profiles` are the modes api/samples lists (none from a server that does not know modes, AC-V21).
+// `take` is the analysis and replay on screen, which Ask this take sends (TICKET-081).
 const state = { samples: { expected: [], followers: [], phrasing: ["template"] }, upload: { expected: null, follower: null },
-  faults: [], rows: [], real: "idle", downloadUrl: null, shown: null, busy: false, wording: "template", profiles: [] };
+  faults: [], rows: [], real: "idle", downloadUrl: null, shown: null, busy: false, wording: "template", profiles: [],
+  take: null, asking: false };
 
 // ------------------------------------------------------------------------------ tabs
 
@@ -211,7 +215,7 @@ function faultRow(fault, index) {
   button.dataset.testid = "fault-row";
   button.setAttribute("aria-pressed", "false");
   // The row's first line is the timed line (AC-V15), so its accessible name starts with it.
-  button.append(make("span", "fault-text", sentence(faultLine(fault))), make("span", "fault-detail", faultDetail(fault)));
+  button.append(phrased("span", "fault-text", sentence(faultLine(fault))), make("span", "fault-detail", faultDetail(fault)));
   if (isLowConfidence(fault)) button.append(make("span", "fault-confidence", LOW_CONFIDENCE_NOTE));
   button.append(make("span", "fault-mark", "Shown in the replay"));
   button.addEventListener("click", () => selectFault(index));
@@ -262,7 +266,7 @@ function showProfileNote(analysis) {
 
 // AC-V16: the things to work on first, in the order the file ranks them.
 function insightRow({ cue, why }) {
-  const item = make("li", "insight");
+  const item = phrased("li", "insight"); // the cue and the reason may be a model's text in another language (TICKET-080)
   item.dataset.testid = "insight";
   item.append(make("strong", "insight-cue", why ? `${cue}.` : cue));
   if (why) item.append(" ", make("span", "insight-why", why));
@@ -315,11 +319,55 @@ async function showResult({ analysis, replay }) {
     return row;
   }));
   el.faults.hidden = faults.length === 0;
-  el.phrasingStatus.textContent = phrasingSentence(analysis.phrasing);
+  el.phrasingStatus.textContent = [phrasingSentence(analysis.phrasing), nativeReviewNote(analysis)].filter(Boolean).join(" ");
   el.phrasingStatus.hidden = !analysis.phrasing;
   setDownload(analysis);
   renderPreview(el.previewScreen, el.previewFields, analysis);
+  state.take = { analysis, replay };
+  clearAnswer("");
   await viewer.load(replay, { faults: faults.length });
+}
+
+// ------------------------------------------------------------------------------ Ask this take (TICKET-081)
+// docs/specs/ask-this-take.md: the question goes to api/ask as a stream; each seek and spotlight moves this replay as it
+// arrives, and the answer is shown once it has passed the number check, with where it came from.
+
+function clearAnswer(status) {
+  el.ask.status.textContent = status;
+  el.ask.answer.hidden = el.ask.source.hidden = true;
+  el.ask.answer.textContent = el.ask.source.textContent = "";
+  delete el.ask.form.dataset.source;
+}
+
+function showAction(action) {
+  const target = state.take && askTarget(state.take.replay, action);
+  if (target) viewer.selectFault(target);
+}
+
+async function onAsk(event) {
+  event.preventDefault();
+  const question = el.ask.question.value.trim();
+  if (!state.take || state.asking) return;
+  if (!question) return clearAnswer("Type a question about this take first.");
+  clearAnswer("Asking about this take.");
+  state.asking = true;
+  el.ask.button.disabled = true;
+  try {
+    const doc = await ask(question, state.take.analysis, state.take.replay, (kind, data) => {
+      if (kind === "tool_call") el.ask.status.textContent = askStep(data);
+      if (kind === "ui_action") showAction(data);
+    });
+    clearAnswer("");
+    el.ask.answer.textContent = doc.answer;
+    el.ask.source.textContent = askSource(doc);
+    el.ask.answer.hidden = el.ask.source.hidden = false;
+    el.ask.form.dataset.source = doc.source;
+  } catch (error) {
+    clearAnswer(error.message);
+  } finally {
+    state.asking = false;
+    el.ask.button.disabled = false;
+  }
 }
 
 function setBusy(busy) {
@@ -451,6 +499,7 @@ async function start() {
   el.phrasing.addEventListener("change", onWordingChange);
   el.profile.addEventListener("change", refreshStale);
   el.form.addEventListener("submit", onSubmit);
+  el.ask.form.addEventListener("submit", onAsk);
   for (const side of SIDES) {
     el.file[side].addEventListener("change", () => { reading = onFile(side); });
     el.clear[side].addEventListener("click", () => clearUpload(side));

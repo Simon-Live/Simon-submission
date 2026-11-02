@@ -332,6 +332,7 @@ def test_ac_ho_11_only_post_is_answered(served):
 
 
 def test_ac_ho_11_the_other_routes_are_unchanged():
-    assert sorted(api.ROUTES) == ["api/analyse", "api/contract", "api/health", "api/history-opinion", "api/real-takes",
-                                  "api/samples"]
+    # api/ask is TICKET-081's (docs/specs/ask-this-take.md), added after this route
+    assert sorted(api.ROUTES) == ["api/analyse", "api/ask", "api/contract", "api/health", "api/history-opinion",
+                                  "api/real-takes", "api/samples"]
     assert api.ROUTES["api/history-opinion"][0] == "POST"

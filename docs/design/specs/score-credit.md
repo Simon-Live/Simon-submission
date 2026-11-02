@@ -286,3 +286,70 @@ Not applicable: no UI and no new endpoint. The staging page does not show the cr
 
 ### Ratchet Initialization Plan
 Not applicable: the floors in `progress/ratchets.json` must not drop.
+
+## Dissent Review
+Reviewed by: independent agents (opus, read-only) in four rounds: the review of the team's 7181813, NEEDS_WORK with B1 to B6
+(`progress/review-20261102-score-credit.md`); the delta review of Part 5's fixes at 9306ccc, NEEDS_WORK with N1; its
+recheck at fea1598, NEEDS_WORK with D1; and the second recheck at 16dbe16, APPROVED (all three in
+`progress/review-20261102-score-credit-delta.md`). Rulings: the stakeholder-proxy, STATUS.md Decisions 2026-11-02T02:38Z,
+and the team's grade scale as the team reported it, 05:02Z.
+Date: 2026-11-02
+
+### Concern 1: the credit carries a second letter
+Challenge: the 01:58Z ruling says reported only, yet the block writes its own `grade`, and a take slowed four times gets
+`low_match` and grade F beside a credit grade of B (first review B1; "Why This Is Wrong" 1).
+Impact if right: a reader sees two letters that disagree and cannot tell which one counts.
+Mitigation: ruling B1 (c) keeps the letter as the credit's own informational grade, which never sets `score.grade`; the
+owner's scale (8f135ee, S to F) gives it a scale of its own; a reader that shows both says which letter is which. The delta
+review found B1 fixed as ruled, with a test that replaces the credit block with None and with an all-F block and sees no
+other score field move.
+Resolution: ADDRESSED_IN_SPEC (AC-CR-06, AC-CR-11).
+
+### Concern 2: points on the follower's clock
+Challenge: as first written, points and `max_points` used the follower's time span, so the same routine got a different
+maximum on every take and a slow take earned more: at half speed 5525 of 5647 points became 9889 of 10120 (first review B2).
+Impact if right: the points view rewards a slow take.
+Mitigation: ruling B2 (a) counts points on the example's clock. The delta review then refused the claim written for it,
+that a slower follower never earns more points: through the pipeline a slower take earned more in 46 of 162 pairs, by at
+most 35 points (N1). It also found that equal `max_points` holds only within one comparison basis and with the same
+measures seen (N3). AC-CR-03 was reworded, the pipeline test covers the 27 exercise takes with bounds (a rise of at most
+2 percent, a move of at most 20 percent either way), and "Retimed takes" names the method behind each half-speed figure
+(R-b). The cause of the falls was reworded twice (R-a, R-a2): they are not the clock's, and they were not traced further.
+Resolution: REQUIRES_CHANGE, made in Part 5's commits on top of the team's and rechecked at fea1598 and 16dbe16 (AC-CR-03).
+
+### Concern 3: credit can rise as a fault grows
+Challenge: no test swept the fault size, and through the whole pipeline percent rises by 0.1 (normal) and 0.2 (hard) at
+trunk lean 25 to 30 degrees, because the take is aligned again at each size (first review B3; "Why This Is Wrong" 4).
+Impact if right: a worse take earns a slightly higher credit.
+Mitigation: ruling B3 (a). With the alignment held fixed the credit never rises, and fixed-alignment sweeps test that for
+each measure at three levels. The pipeline rises, the three trunk lean steps of AC-CR-08, are pinned in
+`tests/test_score_credit_sweep.py`, which checks points as well as percent since N8. The alignment path is not touched.
+Resolution: ACCEPTED_RISK (AC-CR-08; Compromises, "Percent can rise by tenths through the pipeline").
+
+### Concern 4: the half-window rule is Part 5's reading
+Challenge: a measure counts in a window only when it is finite in at least half the window's frames (`CREDIT_MIN_SEEN`),
+which #61 does not say, and the rule moves `max_points` (first review R6; "Why This Is Wrong" 3).
+Impact if right: the measures counted in a window, and so `max_points`, differ from what the owner intended.
+Mitigation: kept as the team wrote it and stated as Part 5's reading here and in the ADR. The delta review recorded R6 as fixed
+as documentation, with the owner's confirmation still open.
+Resolution: ACCEPTED_RISK (Compromises, "The half-window rule").
+
+### Concern 5: the credit is not calibrated
+Challenge: no held-out seed was scored, no target is set, `make check-5` does not read it, and the team's 41-take figures are
+theirs, not reproduced by Part 5 ("Why This Is Wrong" 2; first review B4 asked that they be cited as the team's).
+Impact if right: a reader takes the percent for a validated measure.
+Mitigation: ruled reported only, with no held-out seed; the credit sets no score grade, cap or gate (Overview, AC-CR-06),
+and the spec and ADR cite the 41-take figures as the team's (delta review B4).
+Resolution: ACCEPTED_RISK (Non-Requirements).
+
+### Pre-Mortem: It's 6 months from now and this feature was a disaster. Why?
+The reviews wrote these three; they rate no likelihood or impact.
+1. The points view rewarded slow dancing, and the credit grade said B on takes the score had capped at F (first review).
+   Mitigation: points on the example's clock (AC-CR-03); the credit grade informational and on its own scale (AC-CR-06,
+   AC-CR-11).
+2. Part 7 told users that a slower retake can never raise their points, and a user's slower retake scored 35 points higher
+   (delta review). Mitigation: AC-CR-03 now says a retimed take's points move in either direction, with the measured
+   figures under "Retimed takes".
+3. Someone narrowed `picked_takes` for the retimed floor, and the credit test's bounds no longer matched the measurement
+   the spec cites for them (recheck at fea1598, D1). Mitigation: the measurement script calls `retimed.picked_takes(labels,
+   sets)`, and `tests/test_retimed.py` pins that it has no copy of its own.

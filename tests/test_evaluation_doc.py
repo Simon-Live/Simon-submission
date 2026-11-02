@@ -9,12 +9,15 @@ figures are that file's parameters, not a bench output. The run itself is pinned
 committed take's first fires are recomputed (the rows that file caches) so a summary that no longer matches the pipeline
 fails too.
 """
+import inspect
 import json
 import re
 import sys
 from pathlib import Path
 
 import pytest
+
+from part5 import normalise
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -165,3 +168,122 @@ def test_the_bench_writes_both_summaries_beside_the_chart_copy_and_none_without_
     bare = tmp_path / "bare"
     assert bench.main(["--out", str(bare / "out"), "--chart-copy", ""]) == 0
     assert sorted(p.name for p in bare.rglob("*")) == ["dose-response.svg", "metrics.json", "out"]
+    assert first["figures"] == bench.dose_figures(m["dose_response"]["rows"])     # TICKET-088 N2: the prose figures
+    assert inv["figures"] == bench.invariance_figures(m["invariance"]["rows"], m["invariance"]["summary"])
+
+
+# ---------------------------------------------------------------------------------------------- the prose (TICKET-088 N2)
+WORDS = {6: "Six"}
+
+
+def prose(prefix):
+    """The text of the section whose heading starts with `prefix`, its tables left out, whitespace collapsed to one space."""
+    text = DOC.read_text()
+    start = text.index(f"\n## {prefix}")
+    end = text.find("\n## ", start + 1)
+    lines = [line for line in text[start:end if end >= 0 else None].splitlines() if not line.startswith("|")]
+    return " ".join(" ".join(lines).split())
+
+
+def points(n):
+    return f"{n} point" if n == 1 else f"{n} points"
+
+
+def test_section_1s_prose_figures_are_the_first_fire_summarys():
+    """TICKET-088 N2: the figures section 1 states in words (the 116 and 196 rows, the 11 to 15 point drop, the realised gaps
+    0.25 and 1.2, the second fault, the series) are read from `first_fire.summary.json`, so a later run that moves one fails
+    here as a table figure would."""
+    first = load(bench.FIRST_FIRE_SUMMARY)
+    f, takes, text = first["figures"], first["takes"], prose("1.")
+    assert f"{WORDS[len(takes)]} takes:" in text and f"{f['rows']} rows." in text and f["rows"] == len(takes) * len(sv.PLANTED) * len(sv.GRID)
+    assert f"An error of 0 to {sv.GRID[-1]:g} degrees ({len(sv.GRID)} steps of {sv.GRID[1]:g})" in text
+    assert f["series"] == len(takes) * len(sv.PLANTED) == f["series_never_rising"]
+    assert f"All {f['series']} series ({len(sv.PLANTED)} joints, {len(takes)} takes) are non-increasing" in text
+    assert all(s["never"] == 0 and s["stable"] == s["takes"] for s in first["summary"].values())
+    assert f"stays on at every larger step in all {f['series']} series" in text
+    without, fired = f["without_matching"], f["with_matching"]
+    assert without["values"] == [100] and without["other_faults"] == 0 and without["rows"] + fired["rows"] == f["rows"]
+    assert f"The {without['rows']} rows without the matching fault score exactly 100 and report no other fault" in text
+    assert f"The {fired['rows']} rows with it score {fired['min']} to {fired['max']}, none an A" in text and "A" not in fired["grades"]
+    drop, cost = f["first_fire_drop"], f["later_step_cost"]
+    assert f"its score drops by {drop['min']} to {drop['max']} points" in text
+    assert (f"each 2.5 degree step costs {cost['max']} points or fewer, except where the hip's second fault appears (up to "
+            f"{cost['max_where_a_second_fault_appears']} points)") in text
+    (second,) = f["second_faults"]
+    assert second["joint"] == "hip"
+    assert (f"The hip error brings a second fault: `{second['measure']}` {second['side']}, direction {second['direction']}, in "
+            f"{second['takes']} of {len(takes)} takes, from {second['from_deg']:g} degrees") in text
+    at_30 = {joint: first["score_at"][joint]["30"] for joint in sv.PLANTED}
+    widest = max(at_30, key=lambda joint: at_30[joint]["max"] - at_30[joint]["min"])
+    assert widest == "hip" and f"The hip's scores at 30 degrees range from {at_30['hip']['min']} to {at_30['hip']['max']}, the widest" in text
+    gap = f["realised_gap_deg"]
+    assert gap["hip"] == gap["trunk"]
+    assert (f"differs from the planted degrees by at most {gap['knee']:g} for the knee, {gap['hip']:g} for the hip and the trunk, "
+            f"and {gap['elbow']:g} for the elbow") in text
+
+
+def test_the_code_figures_the_prose_quotes_are_the_shipped_ones():
+    """The rule thresholds of section 1 are `part5/rules.json`'s; the 5 frames of section 2 is `normalise.smooth`'s window."""
+    rules = json.loads((ROOT / "part5/rules.json").read_text())["measures"]
+    assert ", ".join(f"`{m}` {rules[m]['threshold_deg']:g}" for m in ("elbow_flexion", "knee_flexion", "foot_out",
+                                                                       "trunk_lean_forward")) + " degrees" in prose("1.")
+    window = inspect.signature(normalise.smooth).parameters["window"].default
+    assert f"`part5/normalise.py` smooths over {window} frames whatever the clip's rate" in prose("2.")
+
+
+def test_section_2s_prose_figures_are_the_invariance_summarys():
+    """TICKET-088 N2: the counts the bullets of section 2 state (and the two takes they name) are read from
+    `invariance.summary.json`, its table rows and its `figures`."""
+    doc = load(bench.INVARIANCE_SUMMARY)
+    row = {(e["transform"], e["group"]): e for e in doc["summary"]}
+    fig = {(e["transform"], e["group"]): e for e in doc["figures"]}
+    assert list(fig) == list(row)
+    text = prose("2.")
+    every = row["fps_60", "all takes"]["takes"]
+    assert f"{every} takes (good light, clean, numbers 00 to 08 of the exercise and dance sets" in text
+    held = {key: e for key, e in row.items() if e["verdict"] == "exact"}
+    for key, words in ((("mirror_both", "all takes"), "the mirror of both clips"),
+                       (("mirror_follower", "symmetric example"), "the mirror of the follower against a left-right symmetric example"),
+                       (("translate_5mm", "all takes"), "a translation within 1 cm")):
+        assert f"{words} ({held[key]['takes']} of {held[key]['takes']})" in text, key
+    s08, s125 = held["scale_0.8", "all takes"], held["scale_1.25", "all takes"]
+    assert s08["takes"] == s125["takes"] and f"a uniform scale ({s08['takes']} of {s08['takes']} at 0.8 and at 1.25)" in text
+    far = row["translate_0.5m", "all takes"]
+    assert far["refused"] == far["takes"] and f"refused with an `InputError` in all {far['takes']}" in text
+
+    fps, fps_fig = row["fps_60", "all takes"], fig["fps_60", "all takes"]
+    change = fps_fig["only_fault_set_change"]
+    assert fps["fault_set_changed"] == 1 and change["take_id"].startswith("dance_")
+    assert {tuple(f) for f in change["from"]} ^ {tuple(f) for f in change["to"]} == {("upper_arm_out", "left", "more"),
+                                                                                        ("upper_arm_out", "both", "more")}
+    assert (f"A 60 frames per second follower moves {fps['value_changed']} of {fps['takes']} scores (largest "
+            f"{fps['max_abs_delta']} points, one fault set: dance take `{change['take_id']}` reports `upper_arm_out` on the left at "
+            "30 fps and on both sides at 60)") in text
+    correct = fps_fig["correct"]
+    assert correct["value_changed"] == 0 and f"The {fps['value_changed']} are faulted takes; the {correct['takes']} correct takes do not move" in text
+    slow = row["fps_24", "all takes"]
+    assert f"The 24 fps row, a non-integer ratio, moves {slow['value_changed']} takes by up to {slow['max_abs_delta']} points" in text
+
+    long_in, long_fig = row["trim_0.5s", "lead-in at least 15 frames"], fig["trim_0.5s", "lead-in at least 15 frames"]
+    only = long_fig["only_value_change"]
+    assert (f"A 0.5 s trim moves {long_in['value_changed']} of the {long_in['takes']} takes whose idle lead-in is at least 15 frames, "
+            f"by {points(long_in['max_abs_delta'])} (`{only['take_id']}`, {only['from']} to {only['to']})") in text
+    short = row["trim_0.5s", "lead-in under 15 frames"]
+    assert f"it moves {short['value_changed']} of {short['takes']} takes, up to {short['max_abs_delta']} points" in text
+    lead, sets = row["trim_lead_in", "all takes"], fig["trim_lead_in", "all takes"]["by_set"]
+    assert sets["exercise"]["value_changed"] == 0 and sets["dance"]["value_changed"] == lead["value_changed"]
+    assert (f"it moves {lead['value_changed']} of {lead['takes']} takes (all in the dance set, {sets['dance']['value_changed']} of "
+            f"{sets['dance']['takes']}; none in the exercise set, 0 of {sets['exercise']['takes']}), by up to "
+            f"{lead['max_abs_delta']} points, with {lead['fault_set_changed']} fault sets changed") in text
+
+    y5, y15, y45, both = (row[name, "all takes"] for name in ("yaw_5", "yaw_15", "yaw_45", "yaw_45_both"))
+    c5, c15 = fig["yaw_5", "all takes"]["correct"], fig["yaw_15", "all takes"]["correct"]
+    assert c5["value_changed"] == 0 and y45["value_changed"] == y45["takes"] and y45["max_delta"] < 0
+    assert (f"At 5 degrees {y5['value_changed']} of {y5['takes']} scores move (the {c5['takes']} correct takes do not); at 15 degrees "
+            f"{y15['value_changed']} of {y15['takes']} move and {c15['gained_a_fault']} of the {c15['takes']} correct takes gain a "
+            f"fault; at 45 degrees all {y45['takes']} lose between {-y45['max_delta']} and {-y45['min_delta']} points") in text
+    assert f"Turning the example too (`yaw_45_both`) still moves {both['value_changed']}" in text
+    mirror = row["mirror_follower", "asymmetric example"]
+    assert mirror["value_changed"] == mirror["takes"] and mirror["max_delta"] < 0
+    assert (f"({mirror['value_changed']} of {mirror['takes']} moved, {-mirror['max_delta']} to {-mirror['min_delta']} points lower)"
+            in text)

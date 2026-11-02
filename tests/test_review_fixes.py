@@ -108,15 +108,17 @@ def test_b5_the_view_measures_a_partial_pair_adds_never_reach_the_similarity(par
 def test_b5_a_rep_by_rep_take_passes_its_visibility_to_every_rep(monkeypatch):
     res = run(str(TRAINER), str(SLOW))   # partially visible (its knees and ankles are outside the image) and rep mode
     assert res.reps and not res.vis.full
-    seen, original = [], aligned_of
+    seen, masks, original = [], [], aligned_of
 
-    def spy(result, vis=None):
+    def spy(result, vis=None, mask=None):   # TICKET-084: each rep also gets the take's declared mask (None here)
         seen.append(vis)
-        return original(result, vis)
+        masks.append(mask)
+        return original(result, vis, mask)
 
     monkeypatch.setattr("part5.score_report.aligned_of", spy)
     score_block(res)
     assert len(seen) == sum(r.ok for r in res.reps) and all(v is res.vis for v in seen)
+    assert masks == [None] * len(seen)
 
 
 # --- R2: only the expected alignment failure is caught ----------------------------------------------------------

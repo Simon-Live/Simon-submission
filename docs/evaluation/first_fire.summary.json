@@ -311,5 +311,51 @@
     ]
    }
   }
+ },
+ "figures": {
+  "rows": 312,
+  "series": 24,
+  "series_never_rising": 24,
+  "without_matching": {
+   "rows": 116,
+   "values": [
+    100
+   ],
+   "other_faults": 0
+  },
+  "with_matching": {
+   "rows": 196,
+   "min": 64,
+   "max": 89,
+   "grades": [
+    "B",
+    "C",
+    "D"
+   ]
+  },
+  "first_fire_drop": {
+   "min": 11,
+   "max": 15
+  },
+  "later_step_cost": {
+   "max": 3,
+   "max_where_a_second_fault_appears": 12
+  },
+  "second_faults": [
+   {
+    "joint": "hip",
+    "measure": "knee_valgus",
+    "side": "left",
+    "direction": "less",
+    "takes": 4,
+    "from_deg": 25.0
+   }
+  ],
+  "realised_gap_deg": {
+   "knee": 0.25,
+   "hip": 0.0,
+   "elbow": 1.2,
+   "trunk": 0.0
+  }
  }
 }

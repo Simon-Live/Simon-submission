@@ -16,7 +16,7 @@ was tuned.
 import json
 
 from ..measures import ALL_SPECS
-from .lang import EN, reply_instruction
+from .lang import EN, name, reply_instruction
 from .template import LANDMARKS
 
 TIMED_KEYS = ("measure", "body_part", "joint", "side", "direction", "lateral",
@@ -91,3 +91,29 @@ def system_timed(shape=0, language=EN):
 def timed_messages(fault, shape=0, language=EN):
     return [{"role": "system", "content": system_timed(shape, language) + _measure_meaning(fault["measure"])},
             {"role": "user", "content": json.dumps(timed_record(fault), sort_keys=True)}]
+
+
+# The cues and reasons of an analysis in another language (TICKET-080, docs/specs/language-cues.md): one request carries
+# every distinct English text; the answer is held to `lang.check_cue`, item by item. Nothing about the person or the clip
+# is sent, only the template text of the cues.
+SYSTEM_CUES = (
+    "You translate short coaching texts for a person copying a movement into {language}. The user message is a JSON "
+    "list of items {{\"id\", \"kind\", \"text\"}}. A \"cue\" is an instruction of at most 6 words that says what to do. "
+    "A \"reason\" says what was seen and when.\n"
+    "Reply with only a JSON object {{\"items\": [{{\"id\": <the id>, \"text\": \"<the text in {language}>\"}}]}}, one "
+    "entry for every item, with the same ids.\n"
+    "- Say exactly what the English text says, in a calm, matter-of-fact tone. Add nothing: no praise, no "
+    "encouragement, no extra advice, no body part and no number the English does not have.\n"
+    "- \"left\" and \"right\" are the person's own sides. Keep each one as the English has it.\n"
+    "- A cue stays short, at most 8 words, with no digit. Write one line for every item.\n"
+    "- Keep every number of a reason exactly as the English writes it, in Western digits (0 to 9), so \"1.9 s\" "
+    "stays the same time. Write no other number.\n"
+    "- Write every word in {language}. Leave no English word in the text."
+)
+
+
+def cue_messages(texts, language):
+    """The chat of the batched cue request: `texts` is a list of `(role, English text)`, asked for with the ids 0, 1, ..."""
+    asked = [{"id": n, "kind": role, "text": text} for n, (role, text) in enumerate(texts)]
+    return [{"role": "system", "content": SYSTEM_CUES.format(language=name(language))},
+            {"role": "user", "content": json.dumps(asked, ensure_ascii=False)}]

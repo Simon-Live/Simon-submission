@@ -49,7 +49,7 @@ def test_the_file_lists_the_block_and_each_of_its_keys_from_1_13_0_and_no_other_
     # the quality block (TICKET-079, tests/test_quality_history.py) ships in 1.13.0 too, so its paths may be dated 1.13.0 as well
     assert {p for p, f in BY_PATH.items() if f["since"] == "1.13.0" and p != "quality" and not p.startswith("quality.")} == CREDIT_PATHS
     assert len(CREDIT_PATHS) == 12
-    assert HISTORY["version"] == "1.2.0" and HISTORY["analysis_schema_version"] == "1.13.0" == SCHEMA["version"]
+    assert HISTORY["version"] == "1.3.0" and HISTORY["analysis_schema_version"] == "1.14.0" == SCHEMA["version"]
 
 
 @pytest.mark.parametrize("path", sorted(CREDIT_PATHS - {"score.credit"}))

@@ -1,5 +1,6 @@
 """Command line entry point: `part5 analyse --expected … --follower … --out analysis.json`."""
 # `part5 history-opinion <analysis.json> ...` is the second command: a second opinion over a series of analyses.
+# `part5 ask <analysis.json> <replay.json> "<question>"` asks one question about one take (TICKET-081).
 import os
 import argparse
 import json
@@ -8,12 +9,14 @@ from pathlib import Path
 
 from . import contract, doctor, opinion, profiles
 from . import real
+from .ask import agent as ask_agent
 from .io import InputError
 from .output import OutputError, write_analysis
 from .replay import write_replay
 from .pipeline import PHRASING_BACKENDS, AnalysisError, run
 from .phrasing import select_backend
 from .score_report import score_block
+from .mask import CHAINS, MaskError, parse_mask
 
 
 def _profile_choices():
@@ -23,6 +26,15 @@ def _profile_choices():
         return profiles.names()
     except profiles.ProfileError:
         return None
+
+
+def _mask(text):
+    """The `--mask` value (ADR-0023): a `mask.BodyMask`, or an argparse error (exit 2, as for an unknown
+    `--profile`) carrying the `MaskError` that names the bad name."""
+    try:
+        return parse_mask(text)
+    except MaskError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
 
 
 def build_parser():
@@ -51,6 +63,10 @@ def build_parser():
                    help="who the take is judged for (default fitness, the analysis as it is): dance and rehab are "
                    "looser about where a body part sits, rehab says 'Slower is fine' about pace, dance charges the "
                    "pace in the score; the tolerances are set by hand (docs/specs/profiles.md)")
+    a.add_argument("--mask", type=_mask, default=None, metavar="NAMES",   # ADR-0023, docs/specs/body-mask.md
+                   help="limb chains not to score, for a body that is seated or does not use a limb: seated (the "
+                   f"legs), or a comma separated list of {', '.join(CHAINS)}; full_body scores everything. A masked "
+                   "chain gets no fault, cue or insight, and the analysis lists it in body_mask")
     a.add_argument("--lang", default=None, metavar="BCP47",
                    help="the follower's language for the fault lines, a BCP 47 tag such as es or pt-BR (default en); "
                    "a model writes them in live mode, an unlisted language falls back to English")
@@ -67,6 +83,7 @@ def build_parser():
     doctor.add_parser(sub)
     real.add_parser(sub)  # report-real (docs/specs/real-takes.md)
     add_history_parser(sub)
+    add_ask_parser(sub)
     return p
 
 
@@ -129,9 +146,65 @@ def run_history_opinion(args):
     return 0
 
 
+def add_ask_parser(sub):
+    """`part5 ask` (docs/specs/ask-this-take.md "The command"): one question about one analysed take."""
+    k = sub.add_parser("ask", help="ask one question about one analysed take: muse-wonder-1.0 answers with tools that "
+                       "read only that take, and every number in the answer comes from a tool (simon.ask.v1)")
+    k.add_argument("analysis", metavar="analysis.json", help="the take's analysis")
+    k.add_argument("replay", metavar="replay.json", help="the replay written with it (part5 analyse --replay)")
+    k.add_argument("question", help="the question, at most %d characters" % opinion.prompt.MAX_QUESTION_CHARS)
+    k.add_argument("--live", action="store_true", help="live mode, as for analyse (needs the Meta Model API key file)")
+    k.add_argument("--stream", action="store_true",
+                   help="print the events (text/event-stream: tool_call, ui_action, then answer) as they happen")
+    k.add_argument("--out", help="also write the document here")
+    k.set_defaults(run=run_ask)
+
+
+def _ask_summary(doc):
+    calls = len(doc["tool_calls"])
+    return (f"ask: {doc['source']}" + (f" ({doc['fallback_reason']})" if doc["fallback_reason"] else "")
+            + f", {calls} tool call{'s' if calls != 1 else ''}, ${doc['spend']['usd']:.4f}")
+
+
+def run_ask(args):
+    """Exit 0 when a document was produced (any source), 1 for an input or output problem, 2 for a wrong question.
+    Without --stream and --out the document is all of stdout; with --stream the events are."""
+    try:
+        question = ask_agent.ask_question(args.question)
+        take = ask_agent.ask_files(args.analysis, args.replay)
+    except ask_agent.AskUsageError as e:
+        print(f"part5 ask: {e}", file=sys.stderr)
+        return 2
+    except ask_agent.AskError as e:
+        print(f"part5 ask: {e}", file=sys.stderr)
+        return 1
+
+    def emit(kind, data):
+        sys.stdout.write(opinion.sse(kind, data).decode())
+        sys.stdout.flush()
+
+    doc = ask_agent.ask_run(question, take, live=args.live, on_event=emit if args.stream else None)
+    if args.stream:
+        emit("answer", doc)
+    if args.out:
+        try:
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.out).write_text(json.dumps(doc, indent=2, allow_nan=False) + "\n")
+        except OSError as e:
+            print(f"part5 ask: cannot write {args.out} ({e.strerror or e})", file=sys.stderr)
+            return 1
+    if args.stream or not args.out:
+        if not args.stream:
+            sys.stdout.write(json.dumps(doc, indent=2, allow_nan=False) + "\n")
+        print(_ask_summary(doc), file=sys.stderr)
+    else:
+        print(f"{args.out}: {_ask_summary(doc)}")
+    return 0
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    if args.command in ("contract", "doctor", "history-opinion"):
+    if args.command in ("contract", "doctor", "history-opinion", "ask"):
         return args.run(args)
     if args.command == "report-real":
         return args.run(args)
@@ -144,7 +217,8 @@ def main(argv=None):
                          expected_visibility=args.expected_visibility,
                          expected_feet=args.expected_feet, follower_feet=args.follower_feet,
                          expected_feet_person=args.expected_feet_person,
-                         follower_feet_person=args.follower_feet_person, profile=profile, lang=args.lang)
+                         follower_feet_person=args.follower_feet_person, profile=profile, lang=args.lang,
+                         mask=args.mask)
             result.analysis = opinion.attach(result, args.expected_video, args.follower_video, live=args.live)
             doc = write_analysis(args.out, result.analysis)
         except (InputError, AnalysisError, OutputError, profiles.ProfileError) as e:
@@ -163,6 +237,8 @@ def main(argv=None):
             print(f"part5 analyse: warning: {w}", file=sys.stderr)
         n = len(doc["faults"])
         print(f"{args.out}: {n} fault{'s' if n != 1 else ''}" + "".join(f"\n  - {f['text']}" for f in doc["faults"]))
+        if "body_mask" in doc:   # ADR-0023: only when a mask was declared
+            print(f"  {doc['body_mask']['text']}")
         for w in doc.get("warnings", []):   # ADR-0012: a take is always analysed; the warning says why it is graded F
             print(f"  ! {w['text']}")
         if "second_opinion" in doc:

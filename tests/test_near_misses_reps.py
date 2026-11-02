@@ -195,7 +195,7 @@ def test_the_real_rep_takes_list_valid_take_level_near_misses_that_agree_with_th
         first, _ = diag["expected_reference"]["frames"]
         last = load_clip(PAIRS[name][0]).n_frames - 1    # a later rep can sit in another example rep (ADR-0017)
         fault_keys = [(f["measure"], f["side"], f["direction"]) for f in a["faults"]]
-        assert a["schema_version"] == "1.13.0" and block["total"] == block["omitted"] + len(block["items"]), where
+        assert a["schema_version"] == "1.14.0" and block["total"] == block["omitted"] + len(block["items"]), where
         assert not list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(a)), where
         for item in block["items"]:
             assert not reports(fault_keys, (item["measure"], item["side"], item["direction"])), (where, item)

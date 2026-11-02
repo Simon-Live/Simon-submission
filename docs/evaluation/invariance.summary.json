@@ -232,5 +232,375 @@
    "fault_set_changed": 27,
    "verdict": "fault set changed"
   }
+ ],
+ "figures": [
+  {
+   "transform": "fps_60",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 3
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 4
+    }
+   },
+   "only_fault_set_change": {
+    "take_id": "dance_side_good_08_arms_wider-both+foot_out-left",
+    "from": [
+     [
+      "foot_out",
+      "left",
+      "more"
+     ],
+     [
+      "forearm_out",
+      "right",
+      "more"
+     ],
+     [
+      "upper_arm_out",
+      "left",
+      "more"
+     ]
+    ],
+    "to": [
+     [
+      "foot_out",
+      "left",
+      "more"
+     ],
+     [
+      "forearm_out",
+      "right",
+      "more"
+     ],
+     [
+      "upper_arm_out",
+      "both",
+      "more"
+     ]
+    ]
+   }
+  },
+  {
+   "transform": "fps_24",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 2
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 3
+    }
+   },
+   "only_fault_set_change": {
+    "take_id": "dance_side_good_04_knees_shallow-both",
+    "from": [
+     [
+      "knee_flexion",
+      "both",
+      "less"
+     ]
+    ],
+    "to": [
+     [
+      "knee_flexion",
+      "both",
+      "less"
+     ],
+     [
+      "upper_arm_out",
+      "right",
+      "more"
+     ]
+    ]
+   }
+  },
+  {
+   "transform": "mirror_follower",
+   "group": "symmetric example",
+   "correct": {
+    "takes": 6,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 0,
+     "value_changed": 0
+    }
+   }
+  },
+  {
+   "transform": "mirror_both",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 0
+    }
+   }
+  },
+  {
+   "transform": "trim_0.5s",
+   "group": "lead-in under 15 frames",
+   "correct": {
+    "takes": 12,
+    "value_changed": 2,
+    "gained_a_fault": 2
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 24,
+     "value_changed": 10
+    },
+    "dance": {
+     "takes": 26,
+     "value_changed": 11
+    }
+   }
+  },
+  {
+   "transform": "trim_lead_in",
+   "group": "all takes",
+   "correct": {
+    "takes": 9,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 24,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 23,
+     "value_changed": 7
+    }
+   }
+  },
+  {
+   "transform": "translate_5mm",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 0
+    }
+   }
+  },
+  {
+   "transform": "translate_0.5m",
+   "group": "all takes",
+   "correct": {
+    "takes": 0,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 0
+    }
+   }
+  },
+  {
+   "transform": "yaw_5",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 12
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 6
+    }
+   }
+  },
+  {
+   "transform": "yaw_15",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 8,
+    "gained_a_fault": 8
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 24
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 19
+    }
+   }
+  },
+  {
+   "transform": "yaw_45",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 12,
+    "gained_a_fault": 12
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 27
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 27
+    }
+   }
+  },
+  {
+   "transform": "yaw_45_both",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 18
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 18
+    }
+   }
+  },
+  {
+   "transform": "scale_0.8",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 0
+    }
+   }
+  },
+  {
+   "transform": "scale_1.25",
+   "group": "all takes",
+   "correct": {
+    "takes": 12,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 27,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 0
+    }
+   }
+  },
+  {
+   "transform": "trim_0.5s",
+   "group": "lead-in at least 15 frames",
+   "correct": {
+    "takes": 0,
+    "value_changed": 0,
+    "gained_a_fault": 0
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 3,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 1,
+     "value_changed": 1
+    }
+   },
+   "only_value_change": {
+    "take_id": "dance_front_good_05_elbow_bent-left",
+    "from": 88,
+    "to": 87
+   }
+  },
+  {
+   "transform": "mirror_follower",
+   "group": "asymmetric example",
+   "correct": {
+    "takes": 6,
+    "value_changed": 6,
+    "gained_a_fault": 6
+   },
+   "by_set": {
+    "exercise": {
+     "takes": 0,
+     "value_changed": 0
+    },
+    "dance": {
+     "takes": 27,
+     "value_changed": 27
+    }
+   }
+  }
  ]
 }

@@ -74,7 +74,9 @@ def test_every_low_light_take_of_seed_5_is_degraded_and_none_is_ok_or_major():
     assert len(takes) == 78
     levels = {t["take_id"]: (a := analyse(t))["quality"]["level"] for t in takes}
     assert set(levels.values()) == {"degraded"}, {k: v for k, v in levels.items() if v != "degraded"}
-    assert all([r["code"] for r in analyse(t)["quality"]["reasons"]] == ["position_jitter"] for t in takes[:6])
+    # position_jitter is the reason; from 1.14.0 a low-light take past 5 degrees also reads heading_offset (TICKET-086)
+    assert all([r["code"] for r in analyse(t)["quality"]["reasons"] if r["code"] != "heading_offset"] == ["position_jitter"]
+               for t in takes[:6])
 
 
 def test_a_good_light_take_reads_its_jitter_under_the_degraded_limit_with_a_margin():
@@ -168,11 +170,14 @@ def test_legs_out_of_frame_alone_carry_no_warning_and_the_score_is_left_alone():
 
 
 def test_a_low_match_take_is_not_a_quality_reason():
-    """A dance take against the squat is another movement: low_match, F, and a block that reads the file and not the match."""
+    """A dance take against the squat is another movement: low_match, F, and a block that reads the file and not the match.
+    From 1.14.0 the heading offset (TICKET-086) reads the aligned pair, so it is the one reason such a take may carry."""
     take = next(t for t in seed5("good") if t["take_id"].startswith("dance_front_good_00"))
     got = analyse(take, EXERCISE)
     assert [w["code"] for w in got["warnings"]] == ["low_match"] and got["match"]["quality"] == "low"
-    assert got["quality"]["level"] == "ok" and got["quality"]["reasons"] == [] and got["quality"]["score_cap"] is None
+    turned = got["quality"]["signals"]["heading_offset_deg"] >= 5.0
+    assert [r["code"] for r in got["quality"]["reasons"]] == (["heading_offset"] if turned else [])
+    assert got["quality"]["level"] == ("degraded" if turned else "ok") and got["quality"]["score_cap"] is None
     assert got["score"]["value"] <= 59   # capped by Part 5's warning, not by the block
 
 
@@ -184,7 +189,7 @@ def test_the_shipped_sample_is_major_with_a_reported_cap_of_59_and_a_score_it_le
     assert [r["code"] for r in block["reasons"]][0] == "joints_unseen"
     assert block["reasons"][0]["value"] >= block["reasons"][0]["threshold"] == 0.2
     assert doc["score"]["value"] > 59 and "warnings" not in doc and "capped_by" not in doc["score"]
-    assert doc["faults"] == [] and doc["schema_version"] == "1.13.0"
+    assert doc["faults"] == [] and doc["schema_version"] == "1.14.0"
     output.validate_analysis(doc)
 
 
@@ -209,7 +214,9 @@ def test_a_golden_differs_from_its_old_bytes_by_the_block_alone(name):
     assert "quality" in doc
     keys = list(doc)
     assert keys.index("faults") < keys.index("quality") < keys.index("diagnostics")
-    old = (json.dumps({k: v for k, v in doc.items() if k != "quality"}, indent=2, allow_nan=False) + "\n").encode()
+    assert doc["schema_version"] == "1.14.0"   # 1.14.0 (TICKET-080, TICKET-084) changed nothing else in these goldens
+    was = {k: ("1.13.0" if k == "schema_version" else v) for k, v in doc.items() if k != "quality"}
+    old = (json.dumps(was, indent=2, allow_nan=False) + "\n").encode()
     assert hashlib.sha256(old).hexdigest() == BEFORE[name]
 
 

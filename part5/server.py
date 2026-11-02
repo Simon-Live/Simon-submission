@@ -2,7 +2,8 @@
 
 Everything lives under the base path (`/` by default, `/simon-part-5/` on staging). Requests for
 `<base>api/...` go to `part5.api.handle`; every other address under the base is looked up in a
-table of the files under `web/` made at start, so no request value becomes a file path.
+table of the files under `web/` made at start, so no request value becomes a file path. An API answer whose body is
+an iterator (the event stream of `api/ask`, TICKET-081) is written chunk by chunk and ends when the connection closes.
 """
 import gzip
 import hashlib
@@ -79,7 +80,10 @@ class Handler(BaseHTTPRequestHandler):
         client = api.client_key(self.client_address[0], self.headers.get("X-Forwarded-For"))
         status, headers, payload = api.handle("GET" if method == "HEAD" else method, self.path, body,
                                               base_path=self.server.base_path, client=client)
-        self._send(status, headers, payload, head=method == "HEAD")
+        if isinstance(payload, bytes):
+            self._send(status, headers, payload, head=method == "HEAD")
+        else:   # an event stream (api/ask with stream true, TICKET-081)
+            self._stream(status, headers, payload)
 
     def _read_body(self):
         """The POST body, or None after answering 400, 411 or 413 (the body is then not read)."""
@@ -118,6 +122,21 @@ class Handler(BaseHTTPRequestHandler):
         """Answer without reading the request body, then close so the unread bytes are dropped."""
         self.close_connection = True
         self._send(status, {**headers, "Connection": "close"}, payload)
+
+    def _stream(self, status, headers, chunks):
+        """A body of unknown length (`text/event-stream`, docs/specs/ask-this-take.md "Streaming"): each chunk is
+        written and flushed as it comes, and closing the connection ends the body."""
+        self.close_connection = True
+        self.send_response(status)
+        for name, value in {**headers, "Connection": "close"}.items():
+            self.send_header(name, value)
+        self.end_headers()
+        try:
+            for chunk in chunks:
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except OSError:   # the page went away; the exchange finishes on its own thread and its spend is in the ledger
+            pass
 
     def _send(self, status, headers, payload, head=False):
         self.send_response(status)

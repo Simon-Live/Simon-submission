@@ -62,7 +62,7 @@ def test_part5_doctor_for_part7_accepts_the_no_person_document_and_says_what_it_
     pytest.param({"score": {"version": "simon.score.v1", "value": 0, "grade": "F", "capped_by": ["no_person"]}},
                  id="score-names-the-code"),
     pytest.param({"match": {"quality": "low", "residual": None, "timing_corr": None, "limits": {}}}, id="with-a-match"),
-    pytest.param({"profile": "fitness", "schema_version": "1.13.0"}, id="current-schema-version-with-its-profile"),
+    pytest.param({"profile": "fitness", "schema_version": "1.14.0"}, id="current-schema-version-with-its-profile"),
 ])
 def test_the_no_person_document_also_validates_in_these_shapes(change, tmp_path, capsys):
     doc = {**no_person_doc(), **change}
@@ -250,7 +250,7 @@ def test_a_two_fault_take_the_79_ceiling_lowered_has_uncapped_and_no_capped_by_a
     doc = json.loads(DOUBLE_CAPPED.read_text())
     assert schema_problems(doc) == []
     validate_analysis(doc)
-    assert len(doc["faults"]) == 2 and "capped_by" not in doc["score"] and "warnings" not in doc and doc["schema_version"] == "1.13.0"
+    assert len(doc["faults"]) == 2 and "capped_by" not in doc["score"] and "warnings" not in doc and doc["schema_version"] == "1.14.0"
     code, out = doctor_part7(DOUBLE_CAPPED, capsys)
     assert code == 0
     assert "note: score 79 out of 100, grade C; the take reports 2 faults, so its score is at most 79 (score.fault_cap, the ceiling in force)" in out

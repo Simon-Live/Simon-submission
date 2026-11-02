@@ -10,6 +10,7 @@ import pytest
 
 from part5 import cli, contract, doctor
 from part5.io import JOINTS
+from part5.replay import aligned_until
 from shipped_score import IS_CAPPED, IS_V3, capped_only
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -392,11 +393,14 @@ REPLAY = ROOT / "fixtures/output/replay.example.json"
 
 
 def small_replay(frames=4):
-    """The golden replay cut to `frames` expected frames and 3 follower frames (still a sound file)."""
+    """The golden replay cut to `frames` expected frames and 3 follower frames (still a sound file: the 1.1.0 fields
+    say where the cut `exp_to_fol` ends, TICKET-085)."""
     doc = json.loads(REPLAY.read_text())
     doc["expected"], doc["expected_t"] = doc["expected"][:frames], doc["expected_t"][:frames]
     doc["follower"], doc["follower_t"] = doc["follower"][:3], doc["follower_t"][:3]
     doc["exp_to_fol"] = [0, 1, 1, 2][:frames]
+    if doc["exp_to_fol"]:
+        doc.update(aligned_until(doc["exp_to_fol"], doc["follower_t"]))
     return doc
 
 
@@ -404,8 +408,8 @@ def small_replay(frames=4):
 def test_ac_r03_a_valid_replay_is_accepted_and_named(capsys, consumer):
     code, out, _ = run([REPLAY, "--for", consumer], capsys)
     first = out.splitlines()[0]
-    assert code == 0 and "simon.replay.v1 1.0.0" in first and first.endswith(f"accepted for {consumer}")
-    assert "contracts/replay.schema.json 1.0.0" in out and "part5.contract.replay_problems" in out
+    assert code == 0 and "simon.replay.v1 1.1.0" in first and first.endswith(f"accepted for {consumer}")
+    assert "contracts/replay.schema.json 1.1.0" in out and "part5.contract.replay_problems" in out
     assert "note: 91 expected frames and 76 follower frames" in out
 
 
@@ -418,7 +422,7 @@ def test_ac_r03_the_default_consumer_is_told_part5_only_writes_the_file(capsys):
 def test_ac_r03_json_mode_names_the_kind_and_version(capsys):
     code, out, _ = run([REPLAY, "--json"], capsys)
     doc = json.loads(out)
-    assert code == 0 and doc["kind"] == "replay" and doc["version"] == "1.0.0" and doc["problems"] == []
+    assert code == 0 and doc["kind"] == "replay" and doc["version"] == "1.1.0" and doc["problems"] == []
 
 
 def test_ac_r03_a_small_replay_is_accepted(tmp_path, capsys):
@@ -511,9 +515,9 @@ def warned_analysis(source=EXAMPLE):
 
 def test_part7_accepts_a_warned_1_6_0_analysis_and_notes_what_it_carries(tmp_path, capsys):
     doc = warned_analysis()
-    assert doc["schema_version"] == "1.13.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
+    assert doc["schema_version"] == "1.14.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
     code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
-    assert code == 0 and "simon.analysis.v1 1.13.0; accepted for part7" in out
+    assert code == 0 and "simon.analysis.v1 1.14.0; accepted for part7" in out
     assert "warning: low_match: This take doesn't closely match" in out and "warning: warning" not in out
     assert 'note: 2 of 2 faults have confidence "low" (a low match)' in out
     assert "note: score 59 out of 100, grade F, capped at F by low_match" in out

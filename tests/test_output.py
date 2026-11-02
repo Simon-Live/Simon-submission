@@ -77,7 +77,7 @@ def test_knee_valgus_fault_builds_validates_and_reads_in_plain_words():
 def test_fault_dict_lists_every_run_and_the_document_names_its_schema_version():
     d = doc([make_fault(runs=((19, 30), (35, 43)))])
     assert d["faults"][0]["runs"] == [[19, 30], [35, 43]]
-    assert d["schema_version"] == "1.13.0"
+    assert d["schema_version"] == "1.14.0"
     assert doc([make_fault()])["faults"][0]["runs"] == [[19, 43]]  # a single run is the fault's frames
     assert list(d)[:2] == ["format", "schema_version"]
 
@@ -159,3 +159,10 @@ def test_extra_fields_are_allowed_for_forward_compatibility():
     d["future_field"] = {"anything": 1}
     d["faults"][0]["future_field"] = 2
     assert validate_analysis(copy.deepcopy(d))["future_field"] == {"anything": 1}
+
+
+def test_no_part5_module_passes_800_lines():
+    """The engineering limit (and the body mask spec's AC-NFR-BM-02). The merge of lane/v114 with the 1.13.0 review fixes took
+    part5/output.py to 823 lines with every test green; the check of `phrasing.cues` moved beside `cue_fields` in part5/cues.py."""
+    sizes = {p.relative_to(ROOT).as_posix(): len(p.read_text().splitlines()) for p in (ROOT / "part5").rglob("*.py")}
+    assert sizes and {path: n for path, n in sizes.items() if n > 800} == {}

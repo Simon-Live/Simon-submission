@@ -33,6 +33,7 @@ from .insights import insights_of
 from .measures import FOOT_MEASURES
 from .output import fault_to_dict
 from .pipeline import _fault_times, run
+from .mask import hide_masked
 from .visibility import measures_of
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -85,14 +86,17 @@ def trainer_feet(result):
     return dict(getattr(result, "foot_expected", None) or {})
 
 
-def aligned_of(result, vis=None):
+def aligned_of(result, vis=None, mask=None):
     """The `aligned` input of `score.compute` from a `PipelineResult` or a `RepResult` (the shape part5/score.py
     documents). `vis` (the pair's `Visibility`, ADR-0011; a `PipelineResult` carries its own) leaves the measures
     the camera did not see as NaN, so they never reach the similarity term; a full-body pair is unchanged. The expected
-    side also holds the trainer's foot series (`trainer_feet`); the similarity term reads the body measures only."""
+    side also holds the trainer's foot series (`trainer_feet`); the similarity term reads the body measures only.
+    `mask` (ADR-0023; a `PipelineResult` carries its own) leaves the measures of a declared mask NaN the same way, so the
+    score is taken on the remaining measures."""
     vis = vis or getattr(result, "vis", None)
-    return {"expected": {**measures_of(result.expected.positions, vis), **trainer_feet(result)},
-            "follower": measures_of(result.follower_positions, vis),
+    mask = mask or getattr(result, "mask", None)
+    return {"expected": hide_masked(mask, {**measures_of(result.expected.positions, vis), **trainer_feet(result)}),
+            "follower": hide_masked(mask, measures_of(result.follower_positions, vis)),
             "exp_to_fol": result.alignment.exp_to_fol}
 
 
@@ -138,7 +142,7 @@ def _rep_timeline(result, rules):
             # the take's coaching line carries the first rep's time, so each rep says its own (text_timed)
             faults.append(fault_to_dict(f, _fault_times(f, r.expected, fol, r.follower_positions, r.alignment,
                                                         r.to_original)))
-        aligned = aligned_of(r, result.vis)
+        aligned = aligned_of(r, result.vis, getattr(result, "mask", None))
         window = score.timeline_window(span, {"status": {"code": "ok"}, "faults": faults}, aligned,
                                        np.arange(len(aligned["exp_to_fol"])), rules, p, tempo, ratio,
                                        frame_s=score.example_frame_s(r.expected.t))   # the credit counts the example's seconds

@@ -1,6 +1,8 @@
 """Part 5's published contract: seven JSON Schemas, the compatibility table, `part5 contract` and
 `make check-5-contract` (`python -m part5.contract --check`). Who sends what is in CONTRACT.md. Two published files are
 not schemas: the word lists (`contracts/student-words.json`) and the history allowlist (`contracts/history-fields.json`).
+`make check-5-contract` also checks the feature schemas (`FEATURE_SCHEMAS`: Ask this take's `contracts/ask.schema.json`,
+TICKET-081) and the cached answer `fixtures/output/ask.example.json`, which CONTRACT.md names in its own section.
 
 `contract_document()` is exactly what `part5 contract --json` prints; the staging API serves it at
 `api/contract`. `check()` proves the schemas, the committed fixtures and the golden outputs agree.
@@ -28,6 +30,9 @@ from .output import OutputError, load_analysis, write_analysis
 ROOT = Path(__file__).resolve().parent.parent
 # input-feet (ADR-0015) is last, so the order of the first six is what it was.
 SCHEMA_NAMES = ("analysis", "input-animation", "input-skeleton", "labels", "metrics", "replay", "input-feet")
+# Schemas of a feature's request and answer, checked like the seven above by `make check-5-contract` but named in their
+# own CONTRACT.md section rather than in its schema table: `ask` (TICKET-081, simon.ask.v1, "Ask this take").
+FEATURE_SCHEMAS = ("ask",)
 ID_BASE = "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/"
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 # Commits of the neighbours whose files the rows were checked against: the heads that scripts/neighbour-check.sh
@@ -67,10 +72,10 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.13.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
+     "the 1.2.0 to 1.14.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
      "`profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`, "
      "`score.fault_cap`, `faults[].rep_sizes`, `score.per_rep[].tempo_ratio`, `near_misses.items[].margin_deg`, "
-     "`score.credit`) are all "
+     "`score.credit`, `body_mask`, `phrasing.cues`, `phrasing.native_review`) are all "
      "optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near "
      "misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and "
      "`phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level "
@@ -94,6 +99,14 @@ TABLE_ROWS = (
      "when nothing was compared; its `grade` is informational, the credit percent's own letter on the credit's own scale "
      "`grades`, S 95, A 85, B 75, C 65, D 55, E 45, F 30, under 30 still F, never `score.grade`; `value`, `grade` and "
      "the caps are unchanged and the 59 warning cap does not apply to it); "
+     "1.14.0 (ADR-0023) adds `body_mask`, written only when the follower declared limb chains that are not scored "
+     "(`--mask`, API field `mask`): no fault, cue or insight names a masked chain, and the score compares only with takes "
+     "under the same mask; "
+     "1.14.0 (TICKET-080) adds, for a request in a listed language other than English, `phrasing.cues` (one `{path, text, "
+     "lang, backend, model, fallback_reason}` for each cue and reason of the document, written by the model in that "
+     "language in one batched call: show `text` in place of the English `cue`, `why` or `tempo.cue` at `path`, which "
+     "do not change; an entry that kept the English text says why in `fallback_reason`) and `phrasing.native_review` "
+     "(false until a native reader has checked the language: say the text has not been reviewed by a native reader); "
      "a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
      "reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its "
      "`profile`", "Part 5 (this repo)"),
@@ -111,7 +124,9 @@ TABLE_ROWS = (
      "reported only: `score.value`, `score.grade`, `score.capped_by` and `warnings` are unchanged by it, so Part 7 applies "
      "the cap; `part5 doctor <file> --for part7` notes it", "Part 5 (this repo)"),
     ("Part 5 `analyse --replay <replay.json>`", "`replay.json`", "`simon.replay.v1`", "output for Part 7", "works",
-     "optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>`",
+     "optional second file; `expected_t` and `follower_t` carry the times in seconds; from 1.1.0 "
+     "`aligned_until_s` is where the alignment path ends, and the follower frames after it were never compared: "
+     "leave them out; check it with `part5 doctor <replay.json>`",
      "Part 5 (this repo)"),
     ("Part 5 `analyse --live`", "live mode (`--live`, `serve --live`, `SIMON5_LIVE=1`, `META_LIVE=1`)",
      "`simon.analysis.v1` with `phrasing.selected_by` `live`", "option for Part 7", "works with an option",
@@ -121,8 +136,18 @@ TABLE_ROWS = (
      "`simon.analysis.v1` 1.9.0 with `phrasing.lang`", "option for Part 7", "works with an option",
      "pass the follower's BCP 47 tag; with `--live` Muse Spark writes each line in it and `phrasing.faults[i].text` "
      "holds it (`phrasing.faults[i].lang` says the line's language: `en` for a line that fell back); an unlisted tag "
-     "falls back to English and `phrasing.lang_requested` keeps it; probe `part5 analyse --help` for `--lang`",
+     "falls back to English and `phrasing.lang_requested` keeps it; from 1.14.0 the cues and reasons are written in it "
+     "too (`phrasing.cues`) and `phrasing.native_review` is false; probe `part5 analyse --help` for `--lang`",
      "Part 5 (this repo)"),
+    ("Part 5 `analyse --expected-visibility`",
+     "the trainer's own visibility (`--expected-visibility <file>`, API field `expected_visibility` from 1.14.0)",
+     "a Part 3 `skeleton.json` or Part 2 `pose3d.json` of the trainer, read for its `conf`", "option for Part 7",
+     "works with an option",
+     "pass it whenever the example carries no `conf` (a Part 4 animation): Part 5 reads which joints the trainer's camera "
+     "saw (ADR-0011), compares the measures both clips show, and holds `quality.signals.unseen_joint_share` to the joints "
+     "the trainer shows; without it the trainer's visibility is unknown, every joint counts and a waist-up follower reads "
+     "`major` on its legs; the follower's own `hidden_measure_share` still counts; the API field takes the document "
+     "itself, under the upload limits (TICKET-087)", "Part 5 (this repo)"),
     ("Part 5 `analyse --expected-video --follower-video`", "the two clips as video files, with `--live`",
      "`simon.analysis.v1` 1.9.0 with `second_opinion`", "option for Part 7", "works with an option",
      "pass the teacher's and the student's video with `--live`; the block is `ok`, `fallback` or `skipped` with a "
@@ -286,12 +311,42 @@ def _time_problems(doc):
     return out
 
 
+ALIGNED_UNTIL_KEYS = ("aligned_until_s", "aligned_until_expected_frame")
+
+
+def _aligned_until_problems(doc):
+    """1.1.0 (TICKET-085): where the alignment path ends, when the file says it, is what `exp_to_fol` and `follower_t`
+    give (`replay.aligned_until`). Run only on lists that passed the other checks."""
+    given = [key for key in ALIGNED_UNTIL_KEYS if key in doc]
+    if not given:
+        return []
+    if len(given) == 1:
+        missing = next(key for key in ALIGNED_UNTIL_KEYS if key not in doc)
+        return [(missing, "missing beside " + given[0], "write both, as part5 analyse --replay does")]
+    from .replay import aligned_until   # here: replay imports the pipeline, which imports output and so this module
+    if not (isinstance(doc.get("exp_to_fol"), list) and doc["exp_to_fol"] and isinstance(doc.get("follower_t"), list)
+            and all(_is_index(i) for i in doc["exp_to_fol"]) and all(_is_num(t) for t in doc["follower_t"])):
+        return []
+    want = aligned_until(doc["exp_to_fol"], doc["follower_t"])
+    out = []
+    if not (_is_num(doc["aligned_until_s"]) and abs(doc["aligned_until_s"] - want["aligned_until_s"]) <= 1e-6):
+        out.append(("aligned_until_s", f"is {doc['aligned_until_s']!r}, not the follower time where exp_to_fol ends "
+                    f"({want['aligned_until_s']})", "write follower_t at the largest exp_to_fol index"))
+    if doc["aligned_until_expected_frame"] != want["aligned_until_expected_frame"]:
+        out.append(("aligned_until_expected_frame", f"is {doc['aligned_until_expected_frame']!r}, not the last expected "
+                    f"frame shown with that follower frame ({want['aligned_until_expected_frame']})",
+                    "write the last index of exp_to_fol that holds its largest value"))
+    return out
+
+
 def replay_problems(doc):
     """What a schema cannot say about a `simon.replay.v1` document (journey-followup.md, AC-R03): the lengths of
     `expected`, `expected_t` and `exp_to_fol` agree, `follower` and `follower_t` agree, every `exp_to_fol` index
-    and bone index is in range and both `t` lists strictly increase. A list that is missing or has the wrong type
-    is the schema's to report. Returns [(field, what is wrong, fix)], empty when the file is sound."""
-    return _length_problems(doc) + _index_problems(doc) + _time_problems(doc)
+    and bone index is in range and both `t` lists strictly increase; from 1.1.0, `aligned_until_s` and
+    `aligned_until_expected_frame` are where `exp_to_fol` ends (TICKET-085). A list that is missing or has the wrong
+    type is the schema's to report. Returns [(field, what is wrong, fix)], empty when the file is sound."""
+    found = _length_problems(doc) + _index_problems(doc) + _time_problems(doc)
+    return found or _aligned_until_problems(doc)
 
 
 # ---------------------------------------------------------------- table and contract document
@@ -436,8 +491,8 @@ def check_schemas(root, fail):
     """(summary per schema, keys of the schemas that are not usable)."""
     import jsonschema
     out, unusable = [], set()
-    for key in list(SCHEMA_NAMES) + copied_keys(root):
-        ours = key in SCHEMA_NAMES
+    for key in list(SCHEMA_NAMES) + list(FEATURE_SCHEMAS) + copied_keys(root):
+        ours = key in SCHEMA_NAMES or key in FEATURE_SCHEMAS
         try:
             schema = load_schema(key, root)
             jsonschema.Draft202012Validator.check_schema(schema)
@@ -474,6 +529,8 @@ def classify(rel, doc):
         return ["metrics"], None
     if fmt == "simon.replay.v1":
         return ["replay"], "replay"
+    if fmt == "simon.ask.v1":
+        return ["ask"], "ask"
     if fmt == "simon.animation.v1":
         extra = ["part4/animation", "part3/animation-part5"] if from_part4 else \
             ["part3/animation-part5"] if from_part3 else []
@@ -586,6 +643,19 @@ class _Run:
             self.fail(f"{rel}: {field}: {what}")
         self.replays += 1
 
+    def check_ask(self, rel, doc):
+        """The cached Ask this take answer (TICKET-081): what the schema cannot say. Every number in its answer is in
+        its own tool results (`opinion.guard.check_answer`), and its UI actions are the results of its valid `seek`
+        and `spotlight` calls, in order. It came from a live call, so it is checked, never rebuilt."""
+        from .opinion import guard
+        calls = [c for c in doc.get("tool_calls") or [] if isinstance(c, dict)]
+        _, problem, missing = guard.check_answer(doc.get("answer"), calls)
+        if problem:
+            self.fail(f"{rel}: answer: {problem}" + (f" ({', '.join(missing)})" if missing else ""))
+        actions = [c.get("result") for c in calls if c.get("ok") and c.get("name") in ("seek", "spotlight")]
+        if actions != doc.get("ui_actions"):
+            self.fail(f"{rel}: ui_actions are not the results of its valid seek and spotlight calls")
+
     def fixture(self, path):
         rel = path.relative_to(self.root).as_posix()
         try:
@@ -602,9 +672,13 @@ class _Run:
         self.validate(rel, doc, keys)
         if how == "replay":
             self.check_replay(rel, doc)
+        elif how == "ask":
+            self.check_ask(rel, doc)
         elif how:
             self.load(rel, path, how)
-        golden = rel.startswith("fixtures/output/")
+        # A golden is a file directly in fixtures/output/. What lies below it, such as fixtures/output/lang/ (TICKET-080), is
+        # a recorded live output: validated and loaded like any analysis, but a model's text cannot be rebuilt.
+        golden = rel.startswith("fixtures/output/") and "/" not in rel[len("fixtures/output/"):]
         if how == "analysis" and golden and path.name.startswith("analysis"):
             self.rebuild(rel, path)
         if how == "replay" and golden:

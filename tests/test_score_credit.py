@@ -160,7 +160,7 @@ def test_the_warning_cap_does_not_apply_to_the_credit():
 def test_every_golden_carries_a_credit_aligned_with_its_compared_timeline(path):
     doc = json.loads(path.read_text())
     s, credit = doc["score"], doc["score"]["credit"]
-    assert doc["schema_version"] == "1.13.0" and not list(VALIDATOR.iter_errors(doc)) and validate_analysis(doc) is doc
+    assert doc["schema_version"] == "1.14.0" and not list(VALIDATOR.iter_errors(doc)) and validate_analysis(doc) is doc
     assert [w["t_s"] for w in credit["per_window"]] == [w["t_s"] for w in s["timeline"] if w["compared"]]
     assert credit["levels"]["normal"] == {k: credit[k] for k in ("percent", "points", "max_points")}
     assert credit["grade"] == score.credit_grade(credit["percent"])

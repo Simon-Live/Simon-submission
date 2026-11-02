@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = json.loads((ROOT / "fixtures/output/analysis.no-faults.example.json").read_text())
 SCHEMA_VALIDATOR = jsonschema.Draft202012Validator(json.loads((ROOT / "contracts/analysis.schema.json").read_text()))
 SIGNALS = {"unseen_joint_share": None, "missing_joint_share": 0.0, "missing_frame_share": 0.0, "hidden_measure_share": None,
-           "position_jitter_mm": 12.3}
+           "position_jitter_mm": 12.3, "heading_offset_deg": 1.2}   # the last from 1.14.0 (TICKET-086)
 OK = {"version": "simon.quality.v1", "level": "ok", "reasons": [], "signals": SIGNALS, "score_cap": None}
 JITTER = {"code": "position_jitter", "words": "Joint positions shook by about 50 mm from one frame to the next.",
           "value": 50.0, "threshold": 42.0, "joint": "left_wrist"}
@@ -137,5 +137,8 @@ def test_the_codes_are_the_schemas_codes_in_the_schemas_order():
     schema = json.loads((ROOT / "contracts/analysis.schema.json").read_text())
     block = schema["$defs"]["quality"]
     assert tuple(block["properties"]["reasons"]["items"]["properties"]["code"]["enum"]) == output.QUALITY_CODES
-    assert tuple(block["properties"]["signals"]["required"]) == output.QUALITY_SIGNALS
+    assert tuple(block["properties"]["signals"]["properties"]) == output.QUALITY_SIGNALS
+    # the schema requires the 1.13.0 signals; the validator requires heading_offset_deg from 1.14.0 (TICKET-086)
+    assert tuple(block["properties"]["signals"]["required"]) == tuple(s for s in output.QUALITY_SIGNALS
+                                                                      if s not in output.QUALITY_SIGNAL_SINCE)
     assert tuple(block["properties"]["level"]["enum"]) == output.QUALITY_LEVELS

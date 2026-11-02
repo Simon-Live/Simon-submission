@@ -17,7 +17,7 @@ from .io import JOINTS
 from .measures import ALL_SPECS, FOOT_MEASURES
 from .cues import KINDS as CUE_KINDS
 from .cues import MAX_WORDS as CUE_MAX_WORDS
-from .cues import cue_for
+from .cues import cue_for, validate_cues
 from . import profiles
 from .detect import EXPLAINED_BY, MAX_NEAR_MISSES, PERSISTENCE, REASONS, margin_deg
 from .insights import MAX_INSIGHTS, insights_of
@@ -25,6 +25,7 @@ from .lateral import lateral_for
 from .words import describe, describe_timed
 from .score import CREDIT_GRADES, VERSION_V1, VERSION_V2, VERSION_V3, WARNING_CAP, credit_grade, document_ceiling
 from .opinion.guard import validate_block as _validate_second_opinion
+from .mask import validate_mask_block
 
 FORMAT = "simon.analysis.v1"
 # 1.2.0 time fields (ADR-0009), 1.3.0 rep fields (ADR-0010), 1.4.0 warnings and match (ADR-0012). From 1.5.0
@@ -51,7 +52,10 @@ FORMAT = "simon.analysis.v1"
 # measure and frame by how close the follower stayed, at three levels, with one `per_window` entry per compared window of
 # `score.timeline`; null when nothing was compared. Additive: no other field of the score changes and nothing reads it
 # back. Every new document is 1.13.0.
-SCHEMA_VERSION = "1.13.0"
+# 1.14.0: `body_mask` for a declared mask (TICKET-084, ADR-0023); `phrasing.cues` and `phrasing.native_review` for a listed
+# language other than English, the English cue fields unchanged (TICKET-080, docs/specs/language-cues.md);
+# `quality.signals.heading_offset_deg` and the reason `heading_offset` (TICKET-086). Every new document is 1.14.0.
+SCHEMA_VERSION = "1.14.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 PROFILE_SINCE = (1, 7, 0)   # from this schema version on, `profile` is required
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
@@ -68,8 +72,12 @@ SOURCE_PART5 = "part5"   # what an absent `source` means
 QUALITY_VERSION = "simon.quality.v1"
 QUALITY_LEVELS = ("ok", "degraded", "major")
 QUALITY_WARNING_CODES = (NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES)   # a take with one is major; low_match is not a reason
-QUALITY_CODES = (*QUALITY_WARNING_CODES, "joints_unseen", "joints_missing", "frames_missing", "measures_hidden", "position_jitter")
-QUALITY_SIGNALS = ("unseen_joint_share", "missing_joint_share", "missing_frame_share", "hidden_measure_share", "position_jitter_mm")
+QUALITY_CODES = (*QUALITY_WARNING_CODES, "joints_unseen", "joints_missing", "frames_missing", "measures_hidden", "position_jitter",
+                 "heading_offset")
+QUALITY_SIGNALS = ("unseen_joint_share", "missing_joint_share", "missing_frame_share", "hidden_measure_share", "position_jitter_mm",
+                   "heading_offset_deg")
+QUALITY_SIGNAL_SINCE = {"heading_offset_deg": (1, 14, 0)}   # TICKET-086; a signal not listed is required from 1.13.0
+QUALITY_SIGNAL_TOP = {"position_jitter_mm": (None, "a number of at least 0"), "heading_offset_deg": (180, "a number from 0 to 180")}
 QUALITY_CAP = WARNING_CAP   # 59, the cap a warning puts on score.value; the block reports it when the level is major
 CREDIT_LETTERS = tuple(letter for _, letter in CREDIT_GRADES)   # S to F, best first: score.credit's own scale (ADR-0020)
 LOW_CONFIDENCE = "low"   # a fault's `confidence` on a low match (ADR-0012)
@@ -170,7 +178,7 @@ def _input_ref(ref, key):
 
 
 def build_analysis(expected, follower, faults, diagnostics=None, status=None, times=None, score=NO_SCORE,
-                   warnings=None, match=None, profile=profiles.IDENTITY, quality=None):
+                   warnings=None, match=None, profile=profiles.IDENTITY, quality=None, body_mask=None):
     """Assemble a validated analysis document.
 
     `expected`/`follower` identify the input clips: a path, or an object with at least
@@ -189,6 +197,8 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
     `fitness`, the default, is today's analysis.
     `quality` (1.13.0, ADR-0021) is the `simon.quality.v1` block (`part5.quality`), written after `match` and before
     `diagnostics`; left out when None (not assessed). It is reported only: nothing else in the document reads it.
+    `body_mask` (1.14.0, ADR-0023) is the declared mask's block (`mask.BodyMask.block`), written after `profile`;
+    None, the default, writes nothing.
     """
     times = times if times is not None else [None] * len(faults)
     try:
@@ -201,9 +211,11 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
             f["confidence"] = LOW_CONFIDENCE
     doc = {"format": FORMAT,
            "schema_version": SCHEMA_VERSION,
-           "profile": profile,
-           "expected": _input_ref(expected, "expected"),
-           "follower": _input_ref(follower, "follower")}
+           "profile": profile}
+    if body_mask is not None:
+        doc["body_mask"] = body_mask
+    doc["expected"] = _input_ref(expected, "expected")
+    doc["follower"] = _input_ref(follower, "follower")
     if status is not None:
         doc["status"] = dict(status)
     doc["faults"] = faults
@@ -282,9 +294,10 @@ def validate_analysis(doc, source="<analysis>"):
     if "warnings" in doc:
         _validate_warnings(doc["warnings"], doc.get("match"), fail)
     if "quality" in doc:
-        _validate_quality(doc["quality"], doc.get("warnings"), fail)
+        _validate_quality(doc["quality"], doc.get("warnings"), fail, doc.get("schema_version"))
     if "phrasing" in doc:
         _validate_phrasing(doc["phrasing"], faults, fail)
+        validate_cues(doc["phrasing"], doc, fail)   # 1.14.0 (TICKET-080), beside cue_fields in part5/cues.py
     if "second_opinion" in doc:
         _validate_second_opinion(doc["second_opinion"], len(faults), fail)
     if "score" in doc and doc["score"] is not None and not isinstance(doc["score"], dict):
@@ -295,6 +308,8 @@ def validate_analysis(doc, source="<analysis>"):
     _validate_credit(doc.get("score"), fail)
     if "insights" in doc:
         _validate_insights(doc["insights"], fail)
+    if "body_mask" in doc:   # 1.14.0 (ADR-0023): nothing in the document may name a measure the mask does not score
+        validate_mask_block(doc, fail)
     if isinstance(doc.get("score"), dict) and doc.get("status", {}).get("code") in REFUSED_CODES:
         fail("score must be null for a refused take")
     try:  # nothing anywhere (incl. diagnostics/extras) may make this invalid JSON downstream
@@ -539,7 +554,7 @@ def _validate_warnings(warnings, match, fail):
 
 # ADR-0021: the 1.13.0 `quality`, checked here because every block of the document is. The schema says the same (`$defs.quality`);
 # this keeps a document the schema was not run on (`part5 doctor` without jsonschema) from passing a block that contradicts itself.
-def _validate_quality(block, warnings, fail):
+def _validate_quality(block, warnings, fail, version=None):
     """The `quality` block (TICKET-079): version, a level that agrees with the reasons, well-formed reasons and signals, a
     `score_cap` of 59 exactly when the level is `major`, and, for a take that carries `not_enough_visible`,
     `moving_part_out_of_frame` or `no_usable_measures`, level `major` with that reason."""
@@ -556,7 +571,7 @@ def _validate_quality(block, warnings, fail):
         _validate_quality_reason(reason, f"quality.reasons[{i}]", fail)
     if (level == "ok") != (not reasons):
         fail(f"quality.level {level!r} does not agree with its {len(reasons)} reason(s): ok has none, degraded and major at least one")
-    _validate_quality_signals(block.get("signals"), fail)
+    _validate_quality_signals(block.get("signals"), fail, version)
     want = QUALITY_CAP if level == "major" else None
     if block.get("score_cap") != want or isinstance(block.get("score_cap"), bool):
         fail(f"quality.score_cap must be {want!r} for level {level!r}, got {block.get('score_cap')!r}")
@@ -580,16 +595,17 @@ def _validate_quality_reason(reason, where, fail):
         fail(f"{where}.joint must be a canonical joint name, got {reason['joint']!r}")
 
 
-def _validate_quality_signals(signals, fail):
-    """Each of `QUALITY_SIGNALS` is a number of at least 0 (a share is at most 1) or null; a reading that cannot be made is
-    null, which the schema and the producer keep apart from a measured 0.0."""
-    if not isinstance(signals, dict) or any(name not in signals for name in QUALITY_SIGNALS):
-        fail(f"quality.signals must be an object with {list(QUALITY_SIGNALS)}")
-    for name in QUALITY_SIGNALS:
-        value, top = signals[name], (None if name == "position_jitter_mm" else 1)
+def _validate_quality_signals(signals, fail, version=None):
+    """Each of `QUALITY_SIGNALS` is a number within `QUALITY_SIGNAL_TOP` (a share from 0 to 1) or null, never 0 in its place. One in
+    `QUALITY_SIGNAL_SINCE` is required from that schema version on (the current one when `version` is None), checked if present."""
+    at = tuple(map(int, version.split("."))) if isinstance(version, str) and SCHEMA_VERSION_RE.match(version) else (99,)
+    need = [name for name in QUALITY_SIGNALS if at >= QUALITY_SIGNAL_SINCE.get(name, (1, 13, 0))]
+    if not isinstance(signals, dict) or any(name not in signals for name in need):
+        fail(f"quality.signals must be an object with {need}")
+    for name in (n for n in QUALITY_SIGNALS if n in signals):
+        value, (top, kind) = signals[name], QUALITY_SIGNAL_TOP.get(name, (1, "a share from 0 to 1"))
         if value is not None and not (_is_number(value) and value >= 0 and (top is None or value <= top)):
-            fail(f"quality.signals.{name} must be {'a share from 0 to 1' if top else 'a number of at least 0'} or null, "
-                 f"got {value!r}")
+            fail(f"quality.signals.{name} must be {kind} or null, got {value!r}")
 
 
 def _validate_status(status, faults, fail):

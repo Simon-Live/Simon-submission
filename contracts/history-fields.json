@@ -1,7 +1,7 @@
 {
   "format": "simon.part5.history-fields.v1",
-  "version": "1.2.0",
-  "analysis_schema_version": "1.13.0",
+  "version": "1.3.0",
+  "analysis_schema_version": "1.14.0",
   "title": "Part 5 analysis.json: the fields a report across a person's takes should read",
   "purpose": "A versioned allowlist of the analysis.json fields Part 7's pattern finder and Ask read when they compare takes over time. Each entry says what the field means, its units, which way is worse (and, for a letter grade, the order of its letters), which side convention it uses, the schema version it first appears in, whether it is stable or additive, when it is written and what changed across versions. The machine-readable types and enums stay in contracts/analysis.schema.json; this file adds the meaning the schema does not carry. tests/test_contract_history_fields.py pins every path against the schema and every since against the committed examples.",
   "how_to_read": {
@@ -46,7 +46,7 @@
   },
   "compare_like_with_like": "Compare a score only with a score that has the same score.version and the same profile. Equal score.params_sha256 means identical scoring parameters; a different one under the same score.version means the parameters were retuned, so treat it as another scale. Compare fault sizes by dividing magnitude_deg by threshold_deg, within one profile, because each measure has its own threshold. Group faults by measure, side and direction, never by text or cue. Leave out of fault counts any document with a refusal status or with warnings, or count them apart.",
   "absent_means": {
-    "fault": "A measure, side and direction that is not in faults[] was either (1) compared and stayed within its threshold or did not last long enough to count, (2) compared, came past a threshold, and was dropped: it is then listed in diagnostics.near_misses, or (3) not compared at all. It is not compared when the camera did not see it (the sided measure is in diagnostics.visibility.excluded), when it is a foot measure and the foot measure is not in diagnostics.feet.compared (without a feet file there is no diagnostics.feet and no foot fault can exist), or when the take could not be aligned (no detection ran, so faults is empty and diagnostics.near_misses is absent). Under the dance and rehab profiles the thresholds are looser, so an absent fault there does not mean absent under fitness. With a low_match warning the measures were compared on a poor match, so an absent fault is weak evidence.",
+    "fault": "A measure, side and direction that is not in faults[] was either (1) compared and stayed within its threshold or did not last long enough to count, (2) compared, came past a threshold, and was dropped: it is then listed in diagnostics.near_misses, or (3) not compared at all. It is not compared when the camera did not see it (the sided measure is in diagnostics.visibility.excluded), when it is a foot measure and the foot measure is not in diagnostics.feet.compared (without a feet file there is no diagnostics.feet and no foot fault can exist), when the follower declared it not scored (1.14.0: the sided measure is in body_mask.not_scored_measures), or when the take could not be aligned (no detection ran, so faults is empty and diagnostics.near_misses is absent). Under the dance and rehab profiles the thresholds are looser, so an absent fault there does not mean absent under fitness. With a low_match warning the measures were compared on a poor match, so an absent fault is weak evidence.",
     "tempo": "A tempo whose ratio is null was not measured. It is never on time. It is null for every tempo of a take with match.quality low, score.per_rep[].tempo_ratio included (TICKET-063, ADR-0014 Amendment 4: the alignment covers only part of the take, so the time it spans says nothing about how fast the take was done) and for a stretch where the example side spans under 1 s. On time is a ratio from 0.85 to 1.15 with a null cue. A document written before TICKET-063 (2026-11-01) can still carry a number for a low match take, under the same schema_version, so treat tempo as not measured whenever match.quality is low. An absent score.tempo means the document is older than 1.5.0 or its take could not be aligned; an absent window tempo also means the window was not compared.",
     "measure": "The document has no list of the measures it compared. diagnostics.visibility says how many were usable and which were left out, and only when some were left out. A measure that appears in no field of the document is therefore neither flagged nor proven fine: it is fine only when status.code is ok (a refusal from before 1.4.0 has faults [] and no warnings, and nothing was compared), the take has no warnings, the measure is not in diagnostics.visibility.excluded and, for a foot measure, it is in diagnostics.feet.compared. Otherwise it was not measured.",
     "near_misses": "diagnostics.near_misses lists the candidates detection considered and dropped (a measure, side and direction with at least one frame past its threshold that was not reported). It is not a list of faults and never changes the score. total 0 with items [] means nothing came past a threshold. The field absent means the take could not be aligned or the document is older than 1.8.0. items holds at most 10, largest first, and omitted counts the rest.",
@@ -152,6 +152,102 @@
       "stability": "additive",
       "presence": "always",
       "notes": "A document without it (before 1.7.0) is fitness. The names are data in part5/profiles.json, so a new profile can appear. A score and a fault set are read within one profile: dance and rehab loosen the position tolerances, so for the same take they never report a fault fitness does not, and their grades are not comparable with fitness (ADR-0016)."
+    },
+    {
+      "path": "body_mask",
+      "meaning": "The limb chains the follower declared not scored: seated, or not using an arm, a forearm or a leg (ADR-0023).",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "stable",
+      "presence": "conditional",
+      "present_when": "The follower declared a mask (part5 analyse --mask, or the mask field of POST api/analyse).",
+      "notes": "Absent means the whole body was scored. A score and a fault set are read within one mask, as within one profile: the score is taken on the remaining measures, so never rank or average a masked take with an unmasked one or with another mask. An absent fault on a measure in not_scored_measures says nothing about that limb."
+    },
+    {
+      "path": "body_mask.declared",
+      "meaning": "The presets and chains as declared, each once, in the order given.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": "subject_own",
+      "since": "1.14.0",
+      "stability": "stable",
+      "presence": "conditional",
+      "present_when": "The follower declared a mask.",
+      "notes": "Presets: seated (both legs) and full_body (nothing masked, alone). Chains: left_arm, right_arm (from the shoulder), left_forearm, right_forearm (from the elbow), left_leg, right_leg (from the hip). Group takes by the chains the mask expands to, not by these words: seated and left_leg, right_leg are the same mask."
+    },
+    {
+      "path": "body_mask.source",
+      "meaning": "Where the mask came from: cli or api.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "stable",
+      "presence": "conditional",
+      "present_when": "The follower declared a mask.",
+      "notes": "It changes nothing in the analysis."
+    },
+    {
+      "path": "body_mask.scored_chains",
+      "meaning": "The chains with at least one measure scored.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": "subject_own",
+      "since": "1.14.0",
+      "stability": "stable",
+      "presence": "conditional",
+      "present_when": "The follower declared a mask.",
+      "notes": "With not_scored_chains it lists each of the six chains once. An arm whose forearm alone is masked is listed here, its upper arm still scored."
+    },
+    {
+      "path": "body_mask.not_scored_chains",
+      "meaning": "The chains whose every measure was dropped from detection and the score.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": "subject_own",
+      "since": "1.14.0",
+      "stability": "stable",
+      "presence": "conditional",
+      "present_when": "The follower declared a mask.",
+      "notes": "A masked arm lists its forearm too. Compare a chain across takes only where it is scored in each."
+    },
+    {
+      "path": "body_mask.masked_joints",
+      "meaning": "The canonical joints masked, the ones below the joint each chain hangs from.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": "subject_own",
+      "since": "1.14.0",
+      "stability": "stable",
+      "presence": "conditional",
+      "present_when": "The follower declared a mask.",
+      "notes": "The joints of faults[].joints. A leg also masks the heel and toes of a feet file, which are not canonical joints and are not listed."
+    },
+    {
+      "path": "body_mask.not_scored_measures",
+      "meaning": "The sided body and foot measures dropped (left_elbow_flexion, right_foot_rotation and so on).",
+      "units": "none",
+      "direction": "none",
+      "side_convention": "subject_own",
+      "since": "1.14.0",
+      "stability": "stable",
+      "presence": "conditional",
+      "present_when": "The follower declared a mask.",
+      "notes": "No fault, miss, insight or near miss of the document names one; part5.output.validate_analysis refuses a document where one does. Leave these measures out of a pattern across takes for this take."
+    },
+    {
+      "path": "body_mask.text",
+      "meaning": "The plain words to show beside the score, such as Legs not scored, by your setting.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "The follower declared a mask.",
+      "notes": "Template text that may be revised; read the chain lists, never this text, to tell masks apart."
     },
     {
       "path": "status",
@@ -285,7 +381,7 @@
     },
     {
       "path": "quality.reasons[].code",
-      "meaning": "Why: not_enough_visible, moving_part_out_of_frame, no_usable_measures, joints_unseen, joints_missing, frames_missing, measures_hidden or position_jitter.",
+      "meaning": "Why: not_enough_visible, moving_part_out_of_frame, no_usable_measures, joints_unseen, joints_missing, frames_missing, measures_hidden, position_jitter or, from 1.14.0, heading_offset (TICKET-086).",
       "units": "none",
       "direction": "none",
       "side_convention": null,
@@ -414,6 +510,18 @@
       "presence": "conditional",
       "present_when": "quality is present (every document Part 5 writes from 1.13.0).",
       "notes": "A signal is a raw reading of the follower's file, read before smoothing. null means it could not be made, never 0 (0.0 is a measured zero). It is reported only: it does not change score.value, score.grade, the faults or the warnings. It depends on the file's frame rate (per frame, not per second), so compare it between takes of one frame rate."
+    },
+    {
+      "path": "quality.signals.heading_offset_deg",
+      "meaning": "The heading left between the example and the follower after Part 3's facing step: the median over the aligned frame pairs of the angle, 0 to 180 degrees, between the two bodies' headings in the horizontal plane (the hip and shoulder lines, left minus right).",
+      "units": "degrees",
+      "direction": "higher_is_worse",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "quality is present in a document from 1.14.0 (every document Part 5 writes); a 1.13.0 quality block has no such key.",
+      "notes": "Read after alignment, unlike the other signals, which read the follower's file alone. null means it could not be made (the take could not be aligned, or no aligned pair had a hip or shoulder line), never 0 (0.0 is a measured zero). It is reported only: it does not change score.value, score.grade, the faults or the warnings. Past 5 degrees the block adds the reason heading_offset, degraded only (the heading alone never makes a take major, so it never brings the cap of 59; TICKET-086, Part 7's choice): the take was filmed from another angle than the example, and TICKET-082 measured that this moves the score, so treat such a score as rough and leave it out of a comparison across takes."
     },
     {
       "path": "quality.score_cap",
@@ -1277,6 +1385,102 @@
       "presence": "conditional",
       "present_when": "The document has an insight.",
       "notes": "Null for a tempo item outside the dance profile (under dance it equals score.components.tempo, ADR-0016) and for a take without a timeline."
+    },
+    {
+      "path": "phrasing.native_review",
+      "meaning": "false while no native reader has checked the language of the take's lines, cues and reasons (phrasing.lang): the text is a model's and has not been reviewed by a native reader.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "phrasing.lang is a listed language other than en (a request in en, or in a tag Part 5 does not list, has no native_review).",
+      "notes": "false for every language today (none has been signed off). Never a measure of the movement: a report across takes does not rank on it; a viewer shows it as a note. true would mean a person who reads the language has checked the text."
+    },
+    {
+      "path": "phrasing.cues[]",
+      "meaning": "One cue or reason of the document written in the follower's language: {path, text, lang, backend, model, fallback_reason}, in document order.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "phrasing.lang is a listed language other than en. [] when the document has no cue or reason.",
+      "notes": "Additive: the English fields it translates (faults[].cue, the misses' and tempo cues, insights[].cue and insights[].why) do not change, so compare takes on those, not on text. An entry whose backend is template kept the field's English text."
+    },
+    {
+      "path": "phrasing.cues[].path",
+      "meaning": "The field the entry is about: faults[0].cue, score.timeline[2].misses[0].cue, score.timeline[2].tempo.cue, score.tempo.cue, insights[1].cue or insights[1].why.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "The entry exists.",
+      "notes": "An index is a position in this document's own list; it is not stable across takes."
+    },
+    {
+      "path": "phrasing.cues[].text",
+      "meaning": "The cue or reason to show, in phrasing.cues[].lang.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "The entry exists.",
+      "notes": "Free text from a model, or the English template text when it fell back. Do not group takes by it; group by the English cue."
+    },
+    {
+      "path": "phrasing.cues[].lang",
+      "meaning": "The language of phrasing.cues[].text: the requested language, or en for an entry that kept the English text.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "The entry exists.",
+      "notes": "A BCP 47 primary subtag from the listed languages (part5/phrasing/lang.py)."
+    },
+    {
+      "path": "phrasing.cues[].backend",
+      "meaning": "Who wrote phrasing.cues[].text: muse-spark or local-llm, or template for an entry that kept the English text.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "The entry exists.",
+      "notes": "The provenance of the text: a template is never a translation. The value set may grow."
+    },
+    {
+      "path": "phrasing.cues[].model",
+      "meaning": "The model that wrote phrasing.cues[].text, null when the template kept the English text.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "The entry exists.",
+      "notes": "For example meta-models/muse-spark-open-1026."
+    },
+    {
+      "path": "phrasing.cues[].fallback_reason",
+      "meaning": "Why phrasing.cues[].text is the English text: null when the model's text is shown, else a short reason such as muse-spark: translation adds a number, rate limited or no key.",
+      "units": "none",
+      "direction": "none",
+      "side_convention": null,
+      "since": "1.14.0",
+      "stability": "additive",
+      "presence": "conditional",
+      "present_when": "The entry exists.",
+      "notes": "Never a key or the model's text."
     },
     {
       "path": "diagnostics.near_misses",

@@ -250,7 +250,7 @@ def test_a_score_on_a_refused_take_is_invalid(result):
 # ---- J-3 -----------------------------------------------------------------------------------
 def test_ac_r01_replay_has_the_new_keys_and_clocks(result):
     r = build_replay(result)
-    assert r["format"] == "simon.replay.v1" and r["schema_version"] == "1.0.0"
+    assert r["format"] == "simon.replay.v1" and r["schema_version"] == "1.1.0"
     assert r["expected_t"] == pytest.approx([float(x) for x in result.expected.t], abs=1e-6)
     assert r["follower_t"] == pytest.approx([float(x) for x in result.follower.t], abs=1e-6)
     assert len(r["expected_t"]) == len(r["expected"]) == len(r["exp_to_fol"])

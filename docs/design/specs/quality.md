@@ -80,7 +80,7 @@ number). `words` is one plain sentence in the reader's terms, made from the meas
 `low_match` is never a reason: a take of another movement is not a take the camera saw badly.
 
 ### Signals
-All five are read from the follower's file as Part 5 loads it, before smoothing. A value of 0.0 is a measured zero; a reading
+The first five are read from the follower's file as Part 5 loads it, before smoothing; the sixth (1.14.0) after alignment. A value of 0.0 is a measured zero; a reading
 that cannot be made is `null`.
 
 | Signal | Reading | Unit | `null` when |
@@ -89,6 +89,7 @@ that cannot be made is `null`.
 | `missing_joint_share` | share of the readings that are null or have `conf` below 0.3 | 0 to 1 | never |
 | `missing_frame_share` | share of the frames flagged `interpolated`, or with at most half of the 17 joints usable | 0 to 1 | never |
 | `hidden_measure_share` | share of the 22 full-body measures the follower's own `conf` makes unusable under ADR-0011 (a joint seen in under 80 percent of the frames) | 0 to 1 | the file carries no `conf` |
+| `heading_offset_deg` (1.14.0, TICKET-086) | read after alignment, from both clips: in each aligned frame pair (example frame `i`, follower frame `exp_to_fol[i]`; every aligned rep of a take compared rep by rep) the heading of each body is the direction of its hip and shoulder lines (left minus right) in the horizontal plane, each made unit length and added; the median over the pairs of the angle between the two headings | degrees, 0 to 180 | the take could not be aligned, or no pair has a hip or shoulder line to read |
 | `position_jitter_mm` | per joint and axis, `feet.jitter` of the step series (the median absolute change of the step between consecutive frames, so a steady movement is not jitter); the three axes joined as a norm; the median over the joints | millimetres per frame | no joint has `JITTER_MIN_PAIRS` pairs of numbers |
 
 ### The example's visibility (the rule the real lateral raise prompted)
@@ -112,7 +113,8 @@ The limitation, said plainly: a waist-up trainer with no `conf` (the committed l
 waist-up follower, so such a take can still read major on `unseen_joint_share`. That is reported, not tuned away.
 
 ### Level
-Each signal has two limits in `part5/quality.json`: `degraded` and `major`. A signal at or above a limit adds a reason (the
+Each signal has two limits in `part5/quality.json`: `degraded` and `major`, except `heading_offset_deg`, whose `major` is
+`null`: it is degraded only (TICKET-086, Part 7's choice). A signal at or above a limit adds a reason (the
 higher limit it reached) with its reading as `value` and the limit as `threshold`; the reasons of `position_jitter`,
 `joints_unseen` and `joints_missing` name the worst joint. A take that carries the warning `not_enough_visible`, `moving_part_out_of_frame` or
 `no_usable_measures` adds that reason at `major`, whatever the signals say. The level is the worst reason; `score_cap` is 59
@@ -126,6 +128,7 @@ and the score `params_sha256` do not change.
 | `missing_joint_share` | 0.10 | 0.20 | anchored: the same limb and fifth; the dropout copies of seed 5 lose at most 2 percent |
 | `missing_frame_share` | 0.10 | 0.20 | anchored on ADR-0011's rule that a joint seen in under 80 percent of the frames is not used |
 | `hidden_measure_share` | 0.25 | 0.50 | anchored: a quarter and a half of the 22 full-body measures; seed 5 hides none |
+| `heading_offset_deg` (`quality.json` 1.1.0) | 5.0 | none (`null`) | from TICKET-082's seed 5 bench (`docs/evaluation.md`): 5 degrees is where a turned follower starts to move the score (18 of 54 scores, up to 10 points, no correct take), agreed with Part 7. No `major`: Part 7 chose degraded only, because a heading offset is the camera's angle and not the follower's form, so it never brings the cap of 59 (TICKET-086). The lane's proposed `major` of 15, where a correct take starts to gain a fault (8 of 12; 43 of 54 scores move, up to 34 points), was withdrawn before 1.14.0 shipped. Read on seed 5 after they were set: good-light clean takes 0.6 to 2.9, low light 1.5 to 7.4, each example against itself 0.0, a planted yaw read back within 3.5 degrees at 5, 15 and 45 |
 | `position_jitter_mm` | 21.0 | 42.0 | fitted on seed 5: good light reads 10.4 to 17.4 and low light 25.1 to 40.2 in the 156 clean takes, 21.0 sits in the gap (3.6 above the one, 4.1 below the other); `major` is twice that and no seed 5 take reaches it |
 
 A reading is compared with a limit as the document shows it (rounded), and at or above a limit reaches it.
@@ -251,7 +254,10 @@ refuses a held-out seed it has used. Test: `tests/test_quality_report.py`.
 
 ### AC-Q13: the viewer line
 Given a result whose level is not `ok`, then the Compare page shows one line under the score, in plain words; given `ok` or no
-block, the line is not shown, and the words name no cause. Test: `tests/test_quality_web.py` (Node, on `web/joints.js`); QA
+block, the line is not shown, and the words name no cause Part 5 did not measure (never the light). Given a `major` result with no fault and no warning, the status
+line does not say the take follows the example ("No faults found, but the take was not seen well enough to say it follows the example.", TICKET-088). Given a result whose only reasons are `heading_offset`, the line is about the camera angle,
+not about joints that were hard to see: "Filmed from a different angle than the example, so treat the score as rough." (TICKET-086; Part 7 shows
+the same advice); given `heading_offset` beside any other reason, the line of the level stays. Test: `tests/test_quality_web.py` (Node, on `web/joints.js`); QA
 recipe `qa/recipes/compare/quality-line-on-degraded-take.md`.
 
 ### AC-Q14: the goldens
@@ -264,6 +270,22 @@ Given a follower with its legs at the unseen mark, then `unseen_joint_share` cou
 `conf`, or `--expected-visibility`); given two known confs, a joint must be shown by both; given an example that sees no joint,
 the signal is `null`; and the follower's own visibility is never borrowed for an unknown example. The pipeline reads the example's
 `conf` and `--expected-visibility` before the block is made. Tests: `tests/test_quality.py`, `tests/test_quality_pins.py`.
+
+### AC-Q16: the heading offset (1.14.0, TICKET-086)
+Given an example against itself, then `heading_offset_deg` is 0.0; given the follower turned about the vertical by 5, 15 or 45
+degrees, then it reads that angle back (exactly for an example against itself turned, within 3.5 degrees on the seed 5 bench
+takes); given a take that could not be aligned, it is `null`. At 5 degrees or more the block has the reason `heading_offset`
+and is at least `degraded`; the heading alone never makes it `major`, at 15, 45 or 180 degrees (TICKET-086, Part 7's choice), so its `score_cap` stays `null` unless another reason is `major`. Every clean good-light seed 5 take stays `ok` (AC-Q08). A `1.13.0` block without
+the key still validates; a `1.14.0` block must have it. Seed 73 is read once by `make report-quality` and reported. Tests:
+`tests/test_quality_heading.py`, `tests/test_quality_pins.py`, `tests/test_quality_history.py`.
+
+Result (`make report-quality`, one run after the limits were set; seed 73 read this once): seed 5 good light clean reads
+0.6 to 2.9 degrees (78 of 78 `ok`), good-light dropout copies 0.7 to 2.8, low light clean 1.5 to 7.4 (19 of 78 carry
+`heading_offset`, all already `degraded` by their jitter), low-light dropout copies 1.6 to 8.1 (6 of 52). Seed 73: good light
+clean 0.6 to 3.3 (78 of 78 `ok`), good-light dropout 0.6 to 2.7, low light clean 2.0 to 7.7 (12 of 78 carry the reason), low-light
+dropout 2.1 to 7.0 (6 of 52); the highest reading is 8.1, so no take of either seed reached the withdrawn limit of 15, and
+removing it moves no level of either seed. The committed real lateral raise reads 0.4 on both
+followers. Part 7's two takes are read as files alone, where the heading is `null`.
 
 ## Error Cases
 | Condition | Behavior | AC |
@@ -352,10 +374,14 @@ under `contracts/`. Trigger to revisit: Part 2 publishing it.
 | `scripts/make_output_examples.py`, `fixtures/output/analysis*.example.json` | the shipped major example and the regenerated goldens | TICKET-079 | yes |
 | `fixtures/input/real/part7-check-20261102T021153Z/` | Part 7's dark take and its clean twin, with PROVENANCE.md (no host path: the source is named as Part 7's check directory, run 20261102T021153Z) | TICKET-079 | yes (`fixtures/**` is published, and `tests/test_quality_report.py` reads the folder) |
 | `web/index.html`, `web/joints.js`, `web/app.js`, `web/style.css` | the quality line under the score | TICKET-079 | yes |
+| `web/joints.js`, `tests/test_quality_web.py` | `HEADING_NOTE`: the line for a take whose only reasons are `heading_offset` (AC-Q13) | TICKET-086 | yes |
 | `qa/recipes/compare/quality-line-on-degraded-take.md` | the QA recipe for the line | TICKET-079 | yes |
 | `tests/test_quality.py`, `tests/test_quality_validate.py`, `tests/test_quality_pins.py`, `tests/test_quality_history.py`, `tests/test_quality_doctor.py`, `tests/test_quality_web.py`, `tests/test_quality_report.py` | AC-Q01 to AC-Q14 | TICKET-079 | yes |
 | `tests/test_contract_history_fields.py`, `tests/test_contract_part7_history.py`, `tests/test_contract_cli.py`, `tests/test_output_examples.py` | `millimetres` among the units; `as_version` strips `quality` below 1.13.0; the golden tests expect the quality sample | TICKET-079 | yes |
 | `tests/test_score_credit_history.py` | one assertion: the quality paths may be dated 1.13.0 beside the credit ones (the set of that assertion only) | TICKET-079 | yes |
+| `part5/quality.py`, `part5/quality.json`, `part5/pipeline.py`, `part5/output.py` | `heading_offset_deg` and the reason `heading_offset`: `headings`, `heading_offset_deg`, `with_heading`; its limit (version 1.1.0: `degraded` 5.0, `major` null, which `load_thresholds` reads as degraded only and `_reached` never reaches); the pipeline reads it over the aligned pairs; the vocabulary and the validator (required from 1.14.0) | TICKET-086 | yes |
+| `contracts/analysis.schema.json`, `contracts/history-fields.json`, `CONTRACT.md`, `docs/schemas.md` | the signal (optional in the schema, written from 1.14.0), the code, the history entry dated 1.14.0, duty 12 | TICKET-086 | yes |
+| `tests/test_quality_heading.py`, `tests/test_quality_history.py`, `tests/test_quality_pins.py` | AC-Q16 | TICKET-086 | yes |
 
 ## Delivery Verification Plan
 - `uv run pytest -q tests/test_quality.py tests/test_quality_validate.py tests/test_quality_pins.py tests/test_quality_history.py

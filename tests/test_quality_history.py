@@ -20,12 +20,13 @@ CONTRACT_MD = (ROOT / "CONTRACT.md").read_text(encoding="utf-8")
 SCHEMAS_MD = (ROOT / "docs/schemas.md").read_text(encoding="utf-8")
 BLOCK_KEYS = ("version", "level", "reasons", "signals", "score_cap")
 SIGNALS = ("unseen_joint_share", "missing_joint_share", "missing_frame_share", "hidden_measure_share", "position_jitter_mm")
+HEADING = "heading_offset_deg"   # 1.14.0 (TICKET-086): in the schema's properties, not its required list; dated 1.14.0
 REASON_KEYS = ("code", "words", "value", "threshold", "joint")
 CODES = ("not_enough_visible", "moving_part_out_of_frame", "no_usable_measures", "joints_unseen", "joints_missing",
-         "frames_missing", "measures_hidden", "position_jitter")
+         "frames_missing", "measures_hidden", "position_jitter", "heading_offset")
 # Every path the history file lists for the block: the block, its keys, a reason and its keys, and each signal.
 QUALITY_PATHS = {"quality", *(f"quality.{k}" for k in BLOCK_KEYS), "quality.reasons[]",
-                 *(f"quality.reasons[].{k}" for k in REASON_KEYS), *(f"quality.signals.{s}" for s in SIGNALS)}
+                 *(f"quality.reasons[].{k}" for k in REASON_KEYS), *(f"quality.signals.{s}" for s in (*SIGNALS, HEADING))}
 VALIDATOR = jsonschema.Draft202012Validator(SCHEMA)
 GOOD = {"version": "simon.quality.v1", "level": "major", "score_cap": 59,
         "reasons": [{"code": "joints_unseen", "words": "29 percent of the joint readings were outside the picture.",
@@ -38,7 +39,7 @@ def test_the_schema_holds_exactly_the_block_keys_and_codes_pinned_here():
     """A new key, signal or code fails here until it is listed in the history file and added above."""
     block = schema_node("quality")
     assert set(block["properties"]) == set(BLOCK_KEYS) and block["required"] == list(BLOCK_KEYS)
-    assert set(schema_node("quality.signals")["properties"]) == set(SIGNALS)
+    assert set(schema_node("quality.signals")["properties"]) == {*SIGNALS, HEADING}
     assert schema_node("quality.signals")["required"] == list(SIGNALS)
     assert set(schema_node("quality.reasons[]")["properties"]) == set(REASON_KEYS)
     assert schema_node("quality.reasons[]")["required"] == ["code", "words", "value", "threshold"]
@@ -48,7 +49,7 @@ def test_the_schema_holds_exactly_the_block_keys_and_codes_pinned_here():
 def test_the_block_is_optional_in_the_schema():
     """Detect it by presence: the schema does not require it, and a document without it still validates."""
     assert "quality" not in SCHEMA["required"] and "quality" in SCHEMA["properties"]
-    assert SCHEMA["version"] == "1.13.0"   # no bump: it ships with score.credit
+    assert SCHEMA["version"] == "1.14.0"   # the block arrived in 1.13.0 with score.credit (no bump of its own)
 
 
 def test_low_match_is_not_a_reason_code():
@@ -58,11 +59,12 @@ def test_low_match_is_not_a_reason_code():
 def test_the_file_lists_every_quality_path_from_1_13_0_and_keeps_its_version():
     assert QUALITY_PATHS <= set(BY_PATH), sorted(QUALITY_PATHS.difference(BY_PATH))
     assert {p for p in BY_PATH if p == "quality" or p.startswith("quality.")} == QUALITY_PATHS
-    assert len(QUALITY_PATHS) == 17
-    assert {BY_PATH[p]["since"] for p in QUALITY_PATHS} == {"1.13.0"}
+    assert len(QUALITY_PATHS) == 18
+    assert {BY_PATH[p]["since"] for p in QUALITY_PATHS} - {BY_PATH[f"quality.signals.{HEADING}"]["since"]} == {"1.13.0"}
+    assert BY_PATH[f"quality.signals.{HEADING}"]["since"] == "1.14.0"
     others = {p for p, f in BY_PATH.items() if f["since"] == "1.13.0" and p not in QUALITY_PATHS}
     assert all(p.startswith("score.credit") for p in others), sorted(others)   # the other 1.13.0 addition is the credit
-    assert HISTORY["version"] == "1.2.0" and HISTORY["analysis_schema_version"] == "1.13.0" == SCHEMA["version"]
+    assert HISTORY["version"] == "1.3.0" and HISTORY["analysis_schema_version"] == "1.14.0" == SCHEMA["version"]
 
 
 @pytest.mark.parametrize("path", sorted(QUALITY_PATHS))
@@ -70,7 +72,7 @@ def test_a_quality_path_is_conditional_and_additive_and_says_when(path):
     entry = BY_PATH[path]
     assert entry["presence"] == "conditional" and entry["stability"] == "additive"
     assert entry["present_when"].strip()
-    assert entry["since"] == "1.13.0"
+    assert entry["since"] == ("1.14.0" if path == f"quality.signals.{HEADING}" else "1.13.0")
 
 
 def test_the_block_entry_says_absent_means_not_assessed_and_reported_only():
@@ -94,7 +96,7 @@ def test_the_code_entry_names_the_codes_of_the_schema_and_says_low_match_is_not_
 
 
 def test_a_signal_entry_says_null_means_not_measurable_and_never_zero():
-    for s in SIGNALS:
+    for s in (*SIGNALS, HEADING):
         assert "never 0" in BY_PATH[f"quality.signals.{s}"]["notes"], s
     assert BY_PATH["quality.signals.position_jitter_mm"]["units"] == "millimetres"
 

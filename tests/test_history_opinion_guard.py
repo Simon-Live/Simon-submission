@@ -298,8 +298,8 @@ def test_ac_ho_09_a_line_that_fails_falls_back_and_is_counted_not_dropped(series
     "El codo derecho se dobla mas, un caso de rehab, que en la grabacion.",
 ])
 def test_ac_ho_09_a_line_with_a_link_a_control_character_or_a_banned_word_falls_back_like_the_english_text(series, line):
-    assert check_translated({}, line, False) is None   # what check_translated alone lets through
-    assert guard.unsafe_problem(line) is not None
+    # check_translated let these through until N2 of the 1.14.0 recheck (TICKET-080); it now runs unsafe_problem itself
+    assert check_translated({}, line, False) == f"translated line {guard.unsafe_problem(line)}"
     found = read(series, [dict(GOOD, line=line)], "es")
     [obs] = found["observations"]
     assert (obs["text"], obs["lang"], "text_en" in obs) == (GOOD["text"], "en", False)

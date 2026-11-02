@@ -20,9 +20,11 @@ estimate with `estimated: true`: one that failed with no answer from the API (a 
 unreadable body), one the API answered with a 5xx status (a gateway may answer after the model ran) and one answered
 with a body that holds no token counts. A call the API refused with a status below 500 is recorded at $0.
 
-`call(client, body, purpose, **extra)` is that sequence for any Responses body (count, budget under the lock, send,
-record): the per-take opinion (purpose `second_opinion`, clips uploaded first) and the history opinion
-(`history_opinion`, text only, TICKET-072) both use it, so there is one place that spends.
+`call(client, body, purpose, rates=RATES, **extra)` is that sequence for any Responses body (count, budget under the
+lock, send, record): the per-take opinion (purpose `second_opinion`, clips uploaded first), the history opinion
+(`history_opinion`, text only, TICKET-072) and Ask this take (`ask`, muse-wonder-1.0 at its own `rates`, TICKET-081,
+docs/specs/ask-this-take.md) all use it, so there is one place that spends. The ledger line names `body["model"]`.
+`function_calls` and `response_id` read a tool-calling answer for the ask loop.
 """
 import json
 import math
@@ -97,11 +99,11 @@ def _env_usd(name, default):
     return value
 
 
-def price(input_tokens, output_tokens, cached_tokens=0):
-    """USD for one call at the list rates; cached input at the cache rate."""
+def price(input_tokens, output_tokens, cached_tokens=0, rates=RATES):
+    """USD for one call at the list `rates` (Muse Spark's unless given); cached input at the cache rate."""
     cached = min(int(cached_tokens), int(input_tokens))
-    return round(((int(input_tokens) - cached) * RATES["input"] + cached * RATES["cached"]
-                  + int(output_tokens) * RATES["output"]) / 1_000_000, 6)
+    return round(((int(input_tokens) - cached) * rates["input"] + cached * rates["cached"]
+                  + int(output_tokens) * rates["output"]) / 1_000_000, 6)
 
 
 def spent():
@@ -130,6 +132,11 @@ def spent():
     return total
 
 
+def call_ceiling():
+    """The per-call ceiling in USD (`PART5_META_CALL_MAX_USD`); OpinionError when it is set and is not an amount."""
+    return _env_usd(CALL_MAX_ENV, CALL_MAX_USD)
+
+
 def check_settings():
     """Raise OpinionError when either limit variable is set to something that is not an amount (see `_env_usd`), so a
     call is refused before anything is uploaded."""
@@ -147,7 +154,7 @@ def check_cap(estimate=0.0):
 
 def check_budget(estimate):
     """Raise OpinionError when a call estimated at `estimate` USD passes the per-call ceiling or the cap."""
-    ceiling = _env_usd(CALL_MAX_ENV, CALL_MAX_USD)
+    ceiling = call_ceiling()
     if estimate > ceiling:
         raise OpinionError(f"estimated ${estimate:.2f} over the per-call limit of ${ceiling:.2f}")
     check_cap(estimate)
@@ -175,24 +182,25 @@ def failed_usage(status, input_tokens, estimate, allowance=MAX_OUTPUT_TOKENS):
     return estimated_usage(input_tokens, estimate, allowance)
 
 
-def answered_usage(payload, input_tokens, estimate, allowance=MAX_OUTPUT_TOKENS):
-    """The usage to record for a call the API answered with `payload`: the body's own token counts, or, when it holds
-    no input and output counts, the pre-call `estimate` (an answer that does not say what it cost may have cost it)."""
+def answered_usage(payload, input_tokens, estimate, allowance=MAX_OUTPUT_TOKENS, rates=RATES):
+    """The usage to record for a call the API answered with `payload`: the body's own token counts priced at `rates`,
+    or, when it holds no input and output counts, the pre-call `estimate` (an answer that does not say what it cost
+    may have cost it)."""
     usage = payload.get("usage") if isinstance(payload, dict) else None
     if isinstance(usage, dict) and all(_count(usage.get(k)) is not None for k in ("input_tokens", "output_tokens")):
-        return read_usage(payload)
+        return read_usage(payload, rates)
     return estimated_usage(input_tokens, estimate, allowance)
 
 
-def ledger_line(status, usage, purpose=PURPOSE, **extra):
-    """One ledger line: no key, no text. `purpose` names the feature that made the call; `extra` adds fields such as
-    `prompt_version` (short identifiers, never text)."""
-    return {"time": utc_now(), "model": MODEL, "purpose": purpose, "http_status": status, **extra, **usage}
+def ledger_line(status, usage, purpose=PURPOSE, model=MODEL, **extra):
+    """One ledger line: no key, no text. `purpose` names the feature that made the call and `model` the model it
+    asked; `extra` adds fields such as `prompt_version` (short identifiers, never text)."""
+    return {"time": utc_now(), "model": model, "purpose": purpose, "http_status": status, **extra, **usage}
 
 
-def write_ledger(ledger, status, usage, purpose=PURPOSE, **extra):
+def write_ledger(ledger, status, usage, purpose=PURPOSE, model=MODEL, **extra):
     """Append one ledger line to the open `ledger`; OpinionError when it cannot be written."""
-    append_line(ledger, ledger_line(status, usage, purpose, **extra), OpinionError)
+    append_line(ledger, ledger_line(status, usage, purpose, model, **extra), OpinionError)
 
 
 def preflight():
@@ -202,7 +210,7 @@ def preflight():
     check_cap()
 
 
-def call(client, body, purpose=PURPOSE, **extra):
+def call(client, body, purpose=PURPOSE, rates=RATES, **extra):
     """Count `body`, check the budget under the locked ledger, send it and record the call: `(payload, usage)`.
 
     The ledger is opened and locked after the count and held until the call is recorded, so the budget check and the
@@ -211,20 +219,22 @@ def call(client, body, purpose=PURPOSE, **extra):
     carries `purpose` and `extra`. OpinionError for any failure, after the line is written when the call was made.
 
     The output allowance is the request's own `max_output_tokens` (MAX_OUTPUT_TOKENS when it names none), so the
-    estimate, the ceiling check and an estimated ledger line move with the allowance a feature asks for."""
+    estimate, the ceiling check and an estimated ledger line move with the allowance a feature asks for. The call is
+    priced at `rates` (Muse Spark's unless a feature names its model's) and its line names `body["model"]`."""
     counted = client.count(body)
     allowance = body.get("max_output_tokens") or MAX_OUTPUT_TOKENS
-    estimate = price(counted, allowance)
+    estimate = price(counted, allowance, rates=rates)
+    model = body.get("model") or MODEL
     with open_ledger() as ledger:
         check_budget(estimate)
         try:
             payload = client.respond(body)
         except OpinionError:
             status = getattr(client, "last_status", None)
-            write_ledger(ledger, status, failed_usage(status, counted, estimate, allowance), purpose, **extra)
+            write_ledger(ledger, status, failed_usage(status, counted, estimate, allowance), purpose, model, **extra)
             raise
-        usage = answered_usage(payload, counted, estimate, allowance)
-        write_ledger(ledger, getattr(client, "last_status", 200), usage, purpose, **extra)
+        usage = answered_usage(payload, counted, estimate, allowance, rates)
+        write_ledger(ledger, getattr(client, "last_status", 200), usage, purpose, model, **extra)
     return payload, usage
 
 
@@ -233,30 +243,78 @@ def _count(value):
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
-def read_usage(payload):
-    """`{input_tokens, output_tokens, cached_tokens, usd}` from a Responses body; a count it does not hold reads 0."""
+def read_usage(payload, rates=RATES):
+    """`{input_tokens, output_tokens, cached_tokens, usd}` from a Responses body at `rates`; a count it does not hold
+    reads 0."""
     usage = payload.get("usage") if isinstance(payload, dict) else None
     usage = usage if isinstance(usage, dict) else {}
     details = usage.get("input_tokens_details") if isinstance(usage.get("input_tokens_details"), dict) else {}
     tokens = {"input_tokens": _count(usage.get("input_tokens")) or 0,
               "output_tokens": _count(usage.get("output_tokens")) or 0,
               "cached_tokens": _count(details.get("cached_tokens")) or 0}
-    return {**tokens, "usd": price(tokens["input_tokens"], tokens["output_tokens"], tokens["cached_tokens"])}
+    return {**tokens, "usd": price(tokens["input_tokens"], tokens["output_tokens"], tokens["cached_tokens"], rates)}
+
+
+def _objects(value):
+    """`value` when it is a list of JSON objects, else OpinionError("unreadable answer")."""
+    if not isinstance(value, list) or not all(isinstance(entry, dict) for entry in value):
+        raise OpinionError("unreadable answer")
+    return value
+
+
+def _output_items(payload):
+    """The `output` items of a Responses body, [] when it has none. A body that is not a JSON object, or whose `output`
+    is not a list of objects, is an OpinionError("unreadable answer"): R5 of the 1.14.0 review, where `{"output": 5}`
+    raised a TypeError out of the ask loop after its ledger line was written, and N1 of its recheck (`[5]`)."""
+    if not isinstance(payload, dict):
+        raise OpinionError("unreadable answer")
+    items = payload.get("output")
+    return [] if items is None else _objects(items)
+
+
+def _message_parts(item):
+    """The `content` parts of a message item. A `content` that is not a list of objects (missing, null, `5`, `[5]`) is
+    an OpinionError("unreadable answer"): N1 of the 1.14.0 recheck, where `{"type": "message", "content": 5}` raised a
+    TypeError out of the ask loop, the second opinion and the history opinion alike."""
+    return _objects(item.get("content"))
 
 
 def output_text(payload):
     """The answer text of a Responses body: every `output_text` of every message, else `output_text`. A body that is
-    not a JSON object (an array, a string) is an OpinionError("unreadable answer")."""
-    if not isinstance(payload, dict):
-        raise OpinionError("unreadable answer")
+    not a JSON object (an array, a string), whose `output` is not a list of objects, or that has a message whose
+    `content` is not a list of objects, is an OpinionError("unreadable answer")."""
     chunks = []
-    for item in payload.get("output") or []:
-        if isinstance(item, dict) and item.get("type", "message") == "message":
-            for part in item.get("content") or []:
-                if isinstance(part, dict) and isinstance(part.get("text"), str):
+    for item in _output_items(payload):
+        if item.get("type", "message") == "message":
+            for part in _message_parts(item):
+                if isinstance(part.get("text"), str):
                     chunks.append(part["text"])
     text = "\n".join(chunks) or payload.get("output_text") or ""
     return text if isinstance(text, str) else ""
+
+
+def function_calls(payload):
+    """The tool calls of a Responses body, in order: `[{name, arguments, call_id}]` from its `function_call` output
+    items (`arguments` the JSON text as sent, `""` when it is not text). An item with no name or call id is skipped: it
+    cannot be answered. A body that is not an object, or whose `output` is not a list of objects, is an
+    OpinionError("unreadable answer")."""
+    calls = []
+    for item in _output_items(payload):
+        if item.get("type") == "function_call":
+            name, call_id, arguments = item.get("name"), item.get("call_id"), item.get("arguments")
+            if isinstance(name, str) and isinstance(call_id, str) and call_id:
+                calls.append({"name": name, "arguments": arguments if isinstance(arguments, str) else "",
+                              "call_id": call_id})
+    return calls
+
+
+def response_id(payload):
+    """The `id` of a Responses body, which a follow-up names as `previous_response_id`; OpinionError("answer has no
+    response id") when it has none."""
+    found = payload.get("id") if isinstance(payload, dict) else None
+    if not (isinstance(found, str) and found):
+        raise OpinionError("answer has no response id")
+    return found
 
 
 def clip_seconds(path):

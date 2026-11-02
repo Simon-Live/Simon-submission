@@ -41,6 +41,7 @@ _log = logging.getLogger(__name__)
 URL = "http://127.0.0.1:11434/v1/chat/completions"
 MODEL_ENV = "PART5_OLLAMA_MODEL"
 MAX_TOKENS = 2048   # Part 7 TICKET-147: a thinking local model needs room to reason before the line (was 256)
+BATCH_MAX_TOKENS = 6000   # TICKET-080: the allowance for one call that carries every cue of an analysis (about 30 texts)
 
 # The only fields of a fault a model is shown (ADR-0005): the measured record, not the template text.
 RECORD_KEYS = ("measure", "joint", "side", "direction", "magnitude_deg", "threshold_deg")
@@ -126,13 +127,19 @@ def messages(fault, shape=0, language=EN, extra_rules=""):
             {"role": "user", "content": json.dumps(fault_record(fault), sort_keys=True)}]
 
 
-def chat_request(url, model, fault, *, headers, max_tokens, timeout_s, options=None, shape=0, language=EN,
-                 extra_rules=""):
-    """A chat completions request for one fault, as a plain dict a client turns into an HTTP call."""
-    body = {"model": model, "max_tokens": max_tokens, "messages": messages(fault, shape, language, extra_rules)}
+def raw_request(url, model, chat, *, headers, max_tokens, timeout_s, options=None):
+    """A chat completions request for the chat messages `chat`, as a plain dict a client turns into an HTTP call."""
+    body = {"model": model, "max_tokens": max_tokens, "messages": chat}
     body.update(options or {})
     return {"url": url, "headers": {"Content-Type": "application/json", **headers},
             "body": body, "timeout_s": timeout_s}
+
+
+def chat_request(url, model, fault, *, headers, max_tokens, timeout_s, options=None, shape=0, language=EN,
+                 extra_rules=""):
+    """A chat completions request for one fault."""
+    return raw_request(url, model, messages(fault, shape, language, extra_rules), headers=headers,
+                       max_tokens=max_tokens, timeout_s=timeout_s, options=options)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -262,13 +269,25 @@ def request_options():
     return options
 
 
-def line(fault, *, timeout_s, client, shape=0, language=EN):
-    """One reply for one fault from the local model; raises BackendError on any failure."""
-    request = chat_request(URL, model(), fault, headers={}, max_tokens=max_tokens(), timeout_s=timeout_s,
-                           options=request_options(), shape=shape, language=language, extra_rules=grammar(fault))
+def _reply(request, client):
+    """The reply text of `request`; raises BackendError on any failure, or when the answer was cut off."""
     outcome = send(client or urllib_client, request)
     if outcome.error:
         raise outcome.error
     if _cut_off(outcome.body):
         raise BackendError(CUT_OFF)
     return content(outcome.body)
+
+
+def line(fault, *, timeout_s, client, shape=0, language=EN):
+    """One reply for one fault from the local model; raises BackendError on any failure."""
+    return _reply(chat_request(URL, model(), fault, headers={}, max_tokens=max_tokens(), timeout_s=timeout_s,
+                               options=request_options(), shape=shape, language=language,
+                               extra_rules=grammar(fault)), client)
+
+
+def complete(chat, *, timeout_s, client):
+    """One reply to the chat messages `chat` from the local model (the cues of TICKET-080: a batch of texts, so the
+    allowance is at least BATCH_MAX_TOKENS); raises BackendError on any failure."""
+    return _reply(raw_request(URL, model(), chat, headers={}, max_tokens=max(max_tokens(), BATCH_MAX_TOKENS),
+                              timeout_s=timeout_s, options=request_options()), client)

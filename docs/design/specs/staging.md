@@ -182,9 +182,12 @@ the preview's field name "Why the grade is limited" is one line. The exit code i
   drive's last mark. The script corrects for none of this. Half of a hold has to cover the largest lag measured, and the
   sign of the lag is not assumed, so the middle must be 0.4 s or more from each end of its hold. A shorter hold is
   refused with exit 1 before any frame is written, which makes 0.8 s the shortest hold accepted (0.79 s, which is 0.8 s
-  within mark rounding: the marks are written to 0.01 s). The shortest hold the drive makes is `replay`, at 0.8 s: at the largest desktop lag it
-  keeps 0.04 s before its end, as the old fixed offset did, and every other hold keeps more, because the margin grows
-  with the hold. That margin is on the drive's clock, so the script also compares each key frame with the video's own
+  within mark rounding: the marks are written to 0.01 s). That is the floor the script refuses below, not the hold the
+  drive needs. The rule for the drive's holds (TICKET-089) is that half a hold must cover the largest lead plus the settle
+  window: 0.36 s plus the 0.16 s the settle check reads past the key frame, so a hold of at least 1.04 s. The `replay` hold
+  is 1.1 s; at 0.8 s it was refused at a lead of 0.27 to 0.31 s. The `pick` hold, which was 1.0 s and so 0.02 s a side
+  short of the rule, is now 1.1 s too (it is the pause that ends the walkthrough's `choose` step), and every other hold,
+  desktop and phone, is longer than 1.04 s. The margin is on the drive's clock, so the script also compares each key frame with the video's own
   frames 0.12 s before and after it. A side counts as changed when the frames 0.12 s and 0.16 s from the key frame on
   that side both differ in more than 64 pixels, because the recorder writes a single glitched frame now and then and a
   change in the page lasts longer. The script removes the frame and exits 1 when either side counts as changed (a
@@ -378,6 +381,13 @@ Kept: it lets the browser render without parsing uploads twice and keeps the ali
   (AC-S10, `docs/design/specs/foot-keypoints.md` AC-FOOT-18), and `staging/verify.mjs` drives Take 09. The page's controls are
   at least 44 px tall at phone width (R8, `viewer.md` AC-V10).
 
+- 2026-11-02 (TICKET-087, lane/v114, analysis 1.14.0): `POST api/analyse` takes an optional `expected_visibility`: the
+  trainer's own Part 3 skeleton or Part 2 pose3d document (an object or its JSON text), read for its `conf` as
+  `part5 analyse --expected-visibility` reads its file (ADR-0011), so the comparison and `quality.signals.unseen_joint_share`
+  hold the follower to the joints the trainer shows. It is an upload under the same limits (413 over 16 MiB, 400 over
+  `MAX_FRAMES`); omitted or `null` is none; a document that is not an object, or whose `conf` cannot be read, is a 400
+  with field `expected_visibility`. Tests: `tests/test_api_expected_visibility.py`.
+
 - 2026-10-31 (delivery review N1): `part5/api.py` words a foot take's picker label and its listed `faults[].text` in the
   analysis vocabulary (AC-S10), so Take 11 no longer says "rolled in" over a result that says "rolling out". The label
   file keeps its words; `api/samples` still lists the label's own `type` and `side`.
@@ -420,6 +430,15 @@ Kept: it lets the browser render without parsing uploads twice and keeps the ali
   the wrong reason (the check failed closed, so no wrong frame could pass). A side now counts as changed only when the
   frames 0.12 s and 0.16 s from the key frame both differ by more than 64 pixels. The threshold is not loosened. All ten key
   frames of the d61b2f6 recording still pass and are byte identical.
+- 2026-11-02 (tenth walkthrough frame review R3, TICKET-089): the 0.8 s `replay` hold left about 0.24 s for the video's
+  lead once the settle window was counted, and the first recording of the 0bad274 round was refused there at a lead of 0.27
+  to 0.31 s. `staging/walkthrough.mjs` now holds the replay 1.1 s before `mark("replay")`, and this spec and the
+  `staging/walkthrough-frames.sh` comment state the rule instead of the old claim that 0.8 s kept 0.04 s at the largest lag:
+  half a hold must cover the largest lead plus the settle window, 2 x (0.36 + 0.16) = 1.04 s. `MARGIN_S` stays 0.4.
+- 2026-11-02 (lane small114, TICKET-089): the `pick` hold, 1.0 s, was the one hold the rule left 0.02 s a side short.
+  `choose` in `staging/walkthrough.mjs` now ends on a 1.1 s pause, so `pick` is 1.1 s. `choose` runs six times (four on
+  the desktop, two on the phone), so the recording grows by 0.6 s, from about 63.8 s to about 64.4 s, under the 88 s the
+  drive refuses above. No other hold was under 1.04 s.
 
 ## Deviations from PRD
 None.
