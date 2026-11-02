@@ -519,7 +519,9 @@ EXPECTED_REQUIRED = {  # the README shapes; a new required field breaks Part 3's
 
 @pytest.mark.parametrize("kind", contract.KINDS)
 def test_no_schema_adds_a_required_field(kind):
-    found = _required(contract.own_schema(kind)) - {("name", "source", "weights_sha256")}  # inside provenance only
+    inside_optional = {("name", "source", "weights_sha256"),  # inside provenance
+                       ("up_camera", "camera_frame", "source", "t_ms", "samples", "tilt_deg")}  # inside gravity (TICKET-055)
+    found = _required(contract.own_schema(kind)) - inside_optional
     assert found == EXPECTED_REQUIRED[kind]
 
 

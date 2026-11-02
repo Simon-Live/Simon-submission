@@ -30,7 +30,7 @@ import re
 import sys
 from pathlib import Path
 
-from part2 import backends, canonical, contract, frames, output_steps, provenance
+from part2 import backends, canonical, contract, frames, gravity, output_steps, provenance
 from part2.schema import ContractError, write_json
 
 
@@ -247,6 +247,8 @@ def _build_parser() -> argparse.ArgumentParser:
                            parents=[_tracking_parent("output directory", multi_only=True)])
     p_run.add_argument("--mode", required=True, choices=["single", "multi"], help="one-person or class recording")
     p_run.add_argument("--smooth", action="store_true", help="One-Euro smoothing of 3D joints over time")
+    p_run.add_argument("--gravity", type=Path, help="simon.gravity/1 file: the phone's measured up for this take; adds "
+                       "`gravity` and each person's `up` to pose3d.json (TICKET-055, docs/specs/gravity-up.md)")
     p_run.add_argument("--mirrored", action="store_true",
                        help="the saved video is a mirror image of the scene (front camera): writes mirrored: true")
     p_run.add_argument("--backend", help="gpu, cpu (RTMPose-x, 3D approximate) or cpu-sam3db (SAM 3D Body on the CPU, "
@@ -521,6 +523,7 @@ def main(argv: list[str] | None = None) -> int:
             if rungs and args.mode != "single":
                 raise ValueError("--refine applies to --mode single only")
             mesh = _mesh_collector(args, backend.name, rungs)
+            grav = gravity.load(args.gravity)  # TICKET-055: a bad file costs nothing
         except (backends.UnknownBackend, lifters.UnknownLifter, ValueError) as e:
             print(f"part2: {e}", file=sys.stderr)
             return 2
@@ -532,6 +535,11 @@ def main(argv: list[str] | None = None) -> int:
         _progress("frames", len(recs), len(recs))
         print(f"{len(recs)} frames -> {args.out / 'frames'}")
         meta = frames.load_meta(args.out / "frames")
+        try:
+            gravity.check_clip(grav, recs)  # TICKET-055: a window from a longer take is refused before the GPU work
+        except ContractError as e:
+            print(f"part2: {e.path}: {e.msg}", file=sys.stderr)
+            return 2
         if args.mode == "single":
             _progress("pose", 0, len(recs))
             with output_steps.gpu_locked(backend):
@@ -544,6 +552,7 @@ def main(argv: list[str] | None = None) -> int:
             pose_path, cam_path = canonical.write(args.out / "body3d.json", args.out, smooth=args.smooth,
                                                   extras=output_steps.pose_extras(meta, args.mirrored, backend, refine=rungs))
             print(f"{pose_path} + {cam_path}")
+            gravity.apply(args.out, grav)
             if not _write_mesh(mesh, args.out):
                 return 1
             _progress("write", 1, 1)
@@ -565,6 +574,7 @@ def main(argv: list[str] | None = None) -> int:
                                              extras=output_steps.pose_extras(meta, args.mirrored, backend, doc.get("provenance")))
             print(f"pose3d for people {res['people']} -> {args.out / 'pose3d.json'} "
                   f"(+ pose3d_person_<id>.json each)")
+            gravity.apply(args.out, grav, res["people"])
             if not _write_mesh(mesh, args.out):
                 return 1
             _progress("write", 1, 1)

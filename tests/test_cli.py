@@ -405,3 +405,62 @@ def test_run_help_lists_mirrored(capsys):
     with pytest.raises(SystemExit) as e:
         cli.main(["run", "--help"])
     assert e.value.code == 0 and "--mirrored" in capsys.readouterr().out
+
+
+# --- TICKET-055: --gravity through the pipeline ------------------------------------------------
+
+def _gravity_file(tmp_path, up=(0.0, -0.8, -0.6), **over):
+    doc = {"schema": "simon.gravity/1", "frame": "opencv", "up": list(up), "t_ms": [0, 100], "samples": 12,
+           "source": "devicemotion", **over}
+    path = tmp_path / "gravity.json"
+    path.write_text(json.dumps(doc))
+    return path
+
+
+def _assert_gravity(doc):
+    assert doc["gravity"]["up_camera"] == [0.0, -0.8, -0.6] and doc["gravity"]["tilt_deg"] == pytest.approx(36.87, abs=1e-3)
+    people = [p for f in doc["frames"] for p in f["people"]]
+    assert people and all(len(p["up"]) == 3 and abs(sum(v * v for v in p["up"]) - 1) < 1e-4 for p in people)
+
+
+def test_single_run_with_gravity_writes_gravity_and_up(gpu, tmp_path):
+    code, out = _run(tmp_path, "--gravity", str(_gravity_file(tmp_path)))
+    assert code == 0
+    pose = _load(out / "pose3d.json")
+    _assert_gravity(pose)
+    contract.validate(pose, "pose3d")
+
+
+def test_multi_run_with_gravity_writes_gravity_and_up_in_every_person_file(gpu, tmp_path):
+    code, out = _run(tmp_path, "--gravity", str(_gravity_file(tmp_path)), mode="multi")
+    assert code == 0
+    names = ["pose3d.json", "pose3d_person_0.json", "pose3d_person_1.json"]
+    assert sorted(p.name for p in out.glob("pose3d*.json")) == names
+    for name in names:
+        _assert_gravity(_load(out / name))
+
+
+def test_single_run_with_gravity_leaves_person_files_of_an_earlier_multi_run_alone(gpu, tmp_path):
+    code, out = _run(tmp_path, mode="multi", src=_image_dir(tmp_path))
+    assert code == 0
+    old = {p.name: p.read_bytes() for p in out.glob("pose3d_person_*.json")}
+    assert old
+    other = tmp_path / "other"
+    other.mkdir()
+    code, _ = _run(tmp_path, "--gravity", str(_gravity_file(tmp_path)), src=_image_dir(other))
+    assert code == 0
+    assert {p.name: p.read_bytes() for p in out.glob("pose3d_person_*.json")} == old
+    _assert_gravity(_load(out / "pose3d.json"))
+
+
+def test_run_without_gravity_writes_neither_field(gpu, tmp_path):
+    _, out = _run(tmp_path)
+    pose = _load(out / "pose3d.json")
+    assert "gravity" not in pose and all("up" not in p for f in pose["frames"] for p in f["people"])
+
+
+def test_run_refuses_a_gravity_window_from_a_longer_take(gpu, tmp_path, capsys):
+    code, out = _run(tmp_path, "--gravity", str(_gravity_file(tmp_path, t_ms=[0, 60000])))
+    assert code == 2
+    assert "gravity.t_ms" in capsys.readouterr().err
+    assert not (out / "pose3d.json").exists()

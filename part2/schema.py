@@ -25,6 +25,8 @@ def validate_pose3d(doc) -> None:
     {x, y, z, conf}}}]}], mirrored?, fps?, t0_pts_ms?, provenance?}"""
     frames = _list(doc, "frames", "pose3d")
     _optional(doc, "pose3d", ("mirrored", "fps", "t0_pts_ms", "provenance"))
+    if "gravity" in doc:  # TICKET-055: optional, from part2 run --gravity
+        _gravity(doc["gravity"], "pose3d.gravity")
     for i, f in enumerate(frames):
         at = f"pose3d.frames[{i}]"
         _int(f, "frame", at)
@@ -41,7 +43,56 @@ def validate_pose3d(doc) -> None:
                 if not set(extra) <= set(EXTRA):
                     raise ContractError(f"{pat}.extra_joints", f"unknown name(s) {sorted(set(extra) - set(EXTRA))}")
                 _points(extra, f"{pat}.extra_joints")
+            if "up" in p:  # TICKET-055: the true up in this person's canonical axes
+                _vector(p["up"], 3, f"{pat}.up")
     _increasing([f["frame"] for f in frames], "pose3d.frames[].frame")
+
+
+def _vector(v, n: int, at: str) -> None:
+    if not (isinstance(v, list) and len(v) == n and all(is_number(x) for x in v)):
+        raise ContractError(at, f"expected {n} finite numbers")
+
+
+MAX_SOURCE_LEN = 64
+UNIT_TOL = 1e-3  # up_camera is written rounded to 6 decimals; a unit vector stays within this of length 1
+TILT_TOL_DEG = 0.1  # tilt_deg (3 decimals) against the angle of the rounded up_camera, which is coarse near 0 and 180
+
+
+def check_gravity_fields(source, samples, t_ms, at: str) -> None:
+    """The three checks the gravity input (part2/gravity.py) and the gravity block of pose3d.json share."""
+    if not (isinstance(source, str) and 0 < len(source) <= MAX_SOURCE_LEN):
+        raise ContractError(f"{at}.source", f"expected a name of 1 to {MAX_SOURCE_LEN} characters")
+    if not (isinstance(samples, int) and not isinstance(samples, bool) and samples >= 1):
+        raise ContractError(f"{at}.samples", "expected an integer of at least 1")
+    if not (isinstance(t_ms, list) and len(t_ms) == 2 and all(is_number(v) for v in t_ms) and 0 <= t_ms[0] <= t_ms[1]):
+        raise ContractError(f"{at}.t_ms", "expected [start, end] in ms with 0 <= start <= end")
+
+
+def vector_length(v) -> float:
+    return math.sqrt(sum(float(x) ** 2 for x in v))
+
+
+def tilt_deg(up_camera) -> float:
+    """Angle in degrees between a camera-frame up and the level-camera up (-y)."""
+    return math.degrees(math.acos(max(-1.0, min(1.0, -float(up_camera[1]) / vector_length(up_camera)))))
+
+
+def _gravity(g, at: str) -> None:
+    """{up_camera: unit [3], camera_frame: "opencv", source, t_ms: [start, end], samples >= 1, tilt_deg in [0, 180]
+    that matches up_camera}."""
+    if not isinstance(g, dict):
+        raise ContractError(at, "expected an object")
+    _vector(g.get("up_camera"), 3, f"{at}.up_camera")
+    if abs(vector_length(g["up_camera"]) - 1) > UNIT_TOL:
+        raise ContractError(f"{at}.up_camera", f"expected a unit vector, length is {vector_length(g['up_camera'])}")
+    if g.get("camera_frame") != "opencv":
+        raise ContractError(f"{at}.camera_frame", "expected 'opencv'")
+    check_gravity_fields(g.get("source"), g.get("samples"), g.get("t_ms"), at)
+    _num(g, "tilt_deg", at)
+    if not 0 <= g["tilt_deg"] <= 180:
+        raise ContractError(f"{at}.tilt_deg", f"{g['tilt_deg']} not in [0, 180]")
+    if abs(g["tilt_deg"] - tilt_deg(g["up_camera"])) > TILT_TOL_DEG:
+        raise ContractError(f"{at}.tilt_deg", f"{g['tilt_deg']} does not match up_camera ({tilt_deg(g['up_camera']):.3f})")
 
 
 def _points(points: dict, at: str) -> None:

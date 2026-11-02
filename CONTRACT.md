@@ -171,6 +171,27 @@ the person-frames that carry any of the points. No verdict changes. `make check-
 the scored outputs (coverage, segment-length consistency per person, distance to the ankle); it is reported and
 never gated.
 
+### The phone's up (optional, `part2 run --gravity`)
+
+When the app measured gravity during the take, `part2 run --gravity <gravity.json>` adds two fields. Spec:
+`docs/specs/gravity-up.md`.
+
+```
+"gravity": {"up_camera": [x, y, z], "camera_frame": "opencv", "source": "devicemotion", "t_ms": [start, end],
+            "samples": n, "tilt_deg": d}
+...each person: {"id": 0, "joints": {...}, "up": [x, y, z]}
+```
+
+| Field | Promise |
+|---|---|
+| `gravity.up_camera` | Unit vector opposite to gravity in OpenCV axes of the saved image (x right, y down, z into the scene). A level phone is `[0, -1, 0]`. |
+| `gravity.tilt_deg` | Angle in degrees from `[0, -1, 0]`: the phone's pitch and roll together, in [0, 180]. |
+| `gravity.t_ms`, `samples`, `source` | The sample window in media time, the sample count (at least 1), the sensor path (1 to 64 characters). |
+| `up` per person | The same direction in that person's canonical axes of that frame, `R^T up_camera` with `R` from camera.json. Its y part is `cos(tilt_deg)`. Written on every person whenever `gravity` is written. |
+| Joints | Unchanged: still in the camera-up frame. Read `up` to correct for tilt. |
+| Absent | Without `--gravity` neither field is written and the file is byte-identical to before. |
+| Version | New optional fields, so `part2.pose3d/2026-10-28` stays. The `x-simon-minor` number is settled at merge, when several lanes add optional fields. |
+
 ### Several people
 
 Single mode writes one person, id 0. Multi-person mode writes `pose3d.json` with every tracked

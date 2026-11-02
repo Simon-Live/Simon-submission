@@ -36,6 +36,56 @@
     },
     "provenance": {
       "$ref": "#/$defs/provenance"
+    },
+    "gravity": {
+      "type": "object",
+      "description": "Optional (TICKET-055): the phone's measured up for this take, from `part2 run --gravity`. Absent when the take has no gravity input.",
+      "required": [
+        "up_camera",
+        "camera_frame",
+        "source",
+        "t_ms",
+        "samples",
+        "tilt_deg"
+      ],
+      "properties": {
+        "up_camera": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Unit up (opposite to gravity) in OpenCV axes of the saved image: x right, y down, z into the scene."
+        },
+        "camera_frame": {
+          "type": "string",
+          "pattern": "^opencv$"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^.{1,64}$"
+        },
+        "t_ms": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tilt_deg": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 180,
+          "description": "Angle between up_camera and the level-camera up (-y)."
+        }
+      }
     }
   },
   "$defs": {
@@ -188,6 +238,15 @@
         },
         "extra_joints": {
           "$ref": "#/$defs/extra_joints"
+        },
+        "up": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Optional (TICKET-055, only with a top-level gravity): the true up as a unit vector in this person's canonical axes of this frame."
         }
       }
     },
