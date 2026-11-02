@@ -605,7 +605,7 @@ ASM-001 to ASM-012 in `docs/assumptions/` (ASM-008: Part 4 main's expected clips
 | `docs/schemas.md`, `docs/thresholds.md`, `CONTRACT.md`, `README.md` | TICKET-009, TICKET-018, TICKET-027 | yes |
 | `scripts/dev.sh`, `scripts/neighbour-check.sh` | TICKET-006, TICKET-012 | no (firm) |
 | `scripts/import-stock-takes.sh` (Part 2 stock `pose3d.json` at its IECB commit through Part 3 `--view part5`, temp clones) | TICKET-026 | no (firm) |
-| `qa/recipes/*` (QA recipes, ADR-0020) | TICKET-024 | no (firm) |
+| `qa/recipes/*` (QA recipes, the firm's ADR-0020) | TICKET-024 | no (firm) |
 | `scripts/oneshot-launch.sh`, `scripts/oneshot-watch.sh`, `tests/test-oneshot-watch.sh` (`docs/design/specs/oneshot-watch.md`) | setup | no (firm) |
 | `part5/phrasing/smoke.py` (`make smoke-muse-spark`) | TICKET-020 | yes |
 | `staging/up.sh`, `down.sh`, `health.sh`, `env.sh`, `verify.sh`, `verify.mjs`, `walkthrough.mjs`, `DEMO.md` | TICKET-008, TICKET-024 | no (firm) |
@@ -629,7 +629,7 @@ ASM-001 to ASM-012 in `docs/assumptions/` (ASM-008: Part 4 main's expected clips
 ## Delivery Verification Plan
 - `make test` 0; `make check-5` 0 (held-out gate); `make check-5-contract` 0; `make report-real` 0.
 - `staging.sh up simon-part-5` 0 and `staging.sh verify simon-part-5` 0 (S0, M3).
-- QA recipes driven through the real UI with two witnesses and a negative assertion (ADR-0020).
+- QA recipes driven through the real UI with two witnesses and a negative assertion (the firm's ADR-0020, QA recipes).
 - `scripts/neighbour-check.sh` result recorded (red is reported).
 - One consolidated review, `/delivery-review` PASS, `scripts/check-delivery-ready.sh` 0,
   the maintainers' use-case check.

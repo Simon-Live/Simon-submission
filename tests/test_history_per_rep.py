@@ -46,9 +46,9 @@ def rejects(doc, fragment):
 
 # ---------------------------------------------------------------- the version
 def test_the_schema_and_every_new_document_are_1_12_0_and_the_description_names_it():
-    assert SCHEMA["version"] == "1.12.0" and "1.12.0 (TICKET-071" in SCHEMA["description"]
+    assert SCHEMA["version"] == "1.13.0" and "1.12.0 (TICKET-071" in SCHEMA["description"]
     assert "positive when the candidate went past the threshold" in SCHEMA["description"]
-    assert WHOLE["schema_version"] == "1.12.0" and schema_errors(WHOLE) == []
+    assert WHOLE["schema_version"] == "1.13.0" and schema_errors(WHOLE) == []
 
 
 def test_a_1_11_0_document_still_validates_with_none_of_the_new_fields(fast):
@@ -285,7 +285,7 @@ def test_every_seed_5_near_miss_of_every_profile_has_a_margin_of_zero_or_more(se
             for item in near_misses(doc):
                 seen += 1
                 assert item["margin_deg"] == margin_deg(item["magnitude_deg"], item["threshold_deg"]) >= 0, (profile, take_id)
-            assert doc["schema_version"] == "1.12.0" and validate_analysis(doc) is doc
+            assert doc["schema_version"] == "1.13.0" and validate_analysis(doc) is doc
     assert seen > 100
 
 

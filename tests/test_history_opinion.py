@@ -139,7 +139,7 @@ def test_ac_ho_01_the_allowlist_is_read_from_the_history_contract_with_its_kind_
     kinds = {f.path: f.kind for f in fields}
     assert kinds["score.value"] == "score" and kinds["faults[].magnitude_deg"] == "number"
     assert kinds["faults[].at_s"] == "seconds" and kinds["faults[].measure"] == "id" and kinds["schema_version"] == "id"
-    assert prompt.allowlist_version() == f"history-fields-{CONTRACT['version']}" and CONTRACT["version"] == "1.1.0"
+    assert prompt.allowlist_version() == f"history-fields-{CONTRACT['version']}" and CONTRACT["version"] == "1.2.0"
 
 
 def test_ac_ho_01_no_path_the_opinion_reads_is_free_text_or_a_list_of_text_in_the_contract():

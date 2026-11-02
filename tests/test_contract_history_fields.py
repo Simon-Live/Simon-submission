@@ -33,7 +33,8 @@ PART7_NO_PERSON = json.loads((ROOT / "fixtures/input/contract/part7/analysis.no-
 EARLY = ("1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0")   # before the versions test_contract_part7_history pins
 KNOWN_VERSIONS = EARLY + VERSIONS
 ENTRY_KEYS = {"path", "meaning", "units", "direction", "side_convention", "since", "stability", "presence", "notes"}
-UNITS = {"degrees", "metres", "seconds", "score points", "ratio", "fraction", "count", "index", "none"}
+LETTER_LISTS = {"score.credit.grades"}   # a list of letters: direction none, but an `order` like each letter field
+UNITS = {"degrees", "metres", "seconds", "score points", "ratio", "fraction", "count", "index", "millimetres", "none"}
 # The paths the ticket names; removing one from the file fails (TICKET-070 acceptance).
 REQUIRED = {
     *(f"faults[].{leaf}" for leaf in (
@@ -156,7 +157,9 @@ def test_the_eight_fields_of_1_12_0_are_listed_from_1_12_0_and_the_file_adds_no_
 @pytest.mark.parametrize("path", BY_PATH)
 def test_an_entry_has_the_keys_and_values_the_file_defines(path):
     entry, how = BY_PATH[path], HISTORY["how_to_read"]
-    assert set(entry) == ENTRY_KEYS | ({"present_when"} if entry["presence"] == "conditional" else set())
+    lettered = entry["direction"] == "later_letter_is_worse" or path in LETTER_LISTS   # review R3 of 1.13.0: `order`
+    assert set(entry) == ENTRY_KEYS | ({"present_when"} if entry["presence"] == "conditional" else set()) | (
+        {"order"} if lettered else set())
     assert entry["units"] in UNITS
     assert entry["direction"] in how["direction_values"]
     assert entry["stability"] in how["stability_values"] and entry["stability"] in ("stable", "additive")

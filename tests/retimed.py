@@ -51,13 +51,30 @@ def retime(src, dst, speed, fps):
     return n
 
 
-def picked_takes(labels=None):
-    """The 27 takes retimed: good light, clean, exercise, numbered 00 to 08. Refuses a set that is not seed 5."""
+def picked_takes(labels=None, sets=("exercise",)):
+    """The takes retimed: good light, clean, of `sets` (the exercise set: 27 takes), numbered 00 to 08. Refuses a set that is
+    not seed 5."""
     labels = labels or json.loads(LABELS.read_text())
     if labels.get("seed") != 5:
         raise ValueError(f"retimed takes are built from seed 5 only (got {labels.get('seed')})")
-    return [t for t in labels["takes"] if t["lighting"] == "good" and t["variant"] == "clean" and t["set"] == "exercise"
+    return [t for t in labels["takes"] if t["lighting"] == "good" and t["variant"] == "clean" and t["set"] in sets
             and int(t["take_id"].split("_")[3]) <= 8]
+
+
+def labelled_take(take_id, labels=None):
+    """The seed 5 `labels.json` entry of `take_id` (KeyError when there is none)."""
+    labels = labels or json.loads(LABELS.read_text())
+    for take in labels["takes"]:
+        if take["take_id"] == take_id:
+            return take
+    raise KeyError(f"labels.json has no take {take_id!r}")
+
+
+def retimed_inputs(take, dst, speed, fps=30):
+    """`(expected, follower)` as `part5.pipeline.run` takes them for a `labels.json` entry whose follower is written to `dst`
+    played `speed` times as fast at `fps`; the example is the take's own, untouched."""
+    retime(ROOT / take["follower"], dst, speed, fps)
+    return {"path": str(ROOT / take["expected"])}, {"path": str(dst), "take_id": take["take_id"]}
 
 
 def write_variants(out_dir, variants=None):

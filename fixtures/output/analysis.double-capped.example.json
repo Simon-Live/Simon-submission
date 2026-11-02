@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.12.0",
+  "schema_version": "1.13.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/real/lateral-raise/pexels-5319084/animation.json"
@@ -183,6 +183,33 @@
       "coaching": "right hand too far left at 7.1 s"
     }
   ],
+  "quality": {
+    "version": "simon.quality.v1",
+    "level": "major",
+    "reasons": [
+      {
+        "code": "joints_unseen",
+        "words": "24 percent of the joint readings were outside the picture, most often the left knee.",
+        "value": 0.2353,
+        "threshold": 0.2,
+        "joint": "left_knee"
+      },
+      {
+        "code": "measures_hidden",
+        "words": "10 of 22 measures were left out because their joints were not seen in enough of the take.",
+        "value": 0.4545,
+        "threshold": 0.25
+      }
+    ],
+    "signals": {
+      "unseen_joint_share": 0.2353,
+      "missing_joint_share": 0.0,
+      "missing_frame_share": 0.0,
+      "hidden_measure_share": 0.4545,
+      "position_jitter_mm": 0.2
+    },
+    "score_cap": 59
+  },
   "diagnostics": {
     "alignment_residual": 0.3843,
     "alignment_measures": [
@@ -1071,6 +1098,150 @@
     "tempo": {
       "ratio": 0.37,
       "cue": "Slow down to match the trainer"
+    },
+    "credit": {
+      "version": "simon.credit.v1",
+      "percent": 66.1,
+      "grade": "C",
+      "points": 21801,
+      "max_points": 32960,
+      "tolerance": "normal",
+      "levels": {
+        "easy": {
+          "percent": 79.7,
+          "points": 19692,
+          "max_points": 24720
+        },
+        "normal": {
+          "percent": 66.1,
+          "points": 21801,
+          "max_points": 32960
+        },
+        "hard": {
+          "percent": 52.1,
+          "points": 25734,
+          "max_points": 49440
+        }
+      },
+      "bands": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.6
+        ],
+        [
+          2.0,
+          0.2
+        ]
+      ],
+      "grades": [
+        [
+          95,
+          "S"
+        ],
+        [
+          85,
+          "A"
+        ],
+        [
+          75,
+          "B"
+        ],
+        [
+          65,
+          "C"
+        ],
+        [
+          55,
+          "D"
+        ],
+        [
+          45,
+          "E"
+        ],
+        [
+          30,
+          "F"
+        ]
+      ],
+      "points_per_measure_second": 100,
+      "per_window": [
+        {
+          "t_s": [
+            0.333,
+            1.633
+          ],
+          "percent": 71.2,
+          "points": 2933,
+          "max_points": 4120
+        },
+        {
+          "t_s": [
+            1.633,
+            2.867
+          ],
+          "percent": 69.8,
+          "points": 2875,
+          "max_points": 4120
+        },
+        {
+          "t_s": [
+            2.867,
+            4.133
+          ],
+          "percent": 69.9,
+          "points": 2881,
+          "max_points": 4120
+        },
+        {
+          "t_s": [
+            4.133,
+            5.4
+          ],
+          "percent": 67.8,
+          "points": 2793,
+          "max_points": 4120
+        },
+        {
+          "t_s": [
+            5.4,
+            6.667
+          ],
+          "percent": 63.8,
+          "points": 2628,
+          "max_points": 4120
+        },
+        {
+          "t_s": [
+            6.667,
+            7.867
+          ],
+          "percent": 66.1,
+          "points": 2721,
+          "max_points": 4120
+        },
+        {
+          "t_s": [
+            7.867,
+            9.1
+          ],
+          "percent": 62.0,
+          "points": 2553,
+          "max_points": 4120
+        },
+        {
+          "t_s": [
+            9.1,
+            10.467
+          ],
+          "percent": 58.6,
+          "points": 2415,
+          "max_points": 4120
+        }
+      ]
     },
     "fault_cap": 79,
     "uncapped": {

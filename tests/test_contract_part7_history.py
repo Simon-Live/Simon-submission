@@ -31,7 +31,7 @@ REPLAY = json.loads((ROOT / "fixtures/output/replay.example.json").read_text())
 OLD_1_1_0 = json.loads((ROOT / "tests/fixtures/analysis-1.1.0.example.json").read_text())
 
 # Every analysis schema version from 1.5.0 (ADR-0014, the cues) to the schema's own.
-VERSIONS = ("1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0")
+VERSIONS = ("1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0", "1.13.0")
 
 FAULT = SCHEMA["$defs"]["fault"]["properties"]
 SCORE = SCHEMA["properties"]["score"]["properties"]
@@ -60,6 +60,8 @@ def as_version(doc, version):
     doc = copy.deepcopy(doc)
     doc["schema_version"] = version
     v = version_of(version)
+    if v < (1, 13, 0):   # score.credit, the DDR-style credit display (ADR-0020)
+        doc["score"].pop("credit", None)
     if v < (1, 12, 0):   # faults[].rep_sizes, score.per_rep[].rep and .tempo_ratio, near_misses.items[].margin_deg (TICKET-071)
         for fault in doc["faults"]:
             fault.pop("rep_sizes", None)
@@ -87,6 +89,8 @@ def as_version(doc, version):
         doc.pop("profile", None)
     if v < (1, 6, 0):   # diagnostics.feet
         doc["diagnostics"].pop("feet", None)
+    if v < (1, 13, 0):   # quality, the reading of how well the camera saw the take (TICKET-079, ADR-0021)
+        doc.pop("quality", None)
     return doc
 
 

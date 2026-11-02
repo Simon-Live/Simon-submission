@@ -61,6 +61,15 @@ report-real:
 report-profiles:
 	@uv run python -m part5.profiles_report --json-out out/report-profiles/report.json
 
+# The quality block (docs/specs/quality.md, ADR-0021) per light, condition and angle on seed 5 (the committed takes and the
+# regenerated dropout copies) and on the held-out set on disk, and Part 7's dark take and its clean twin as a slice of their own.
+# Reported as measured: no target, never gated, and a retired held-out seed (29, 31, 37, 67, 71; 73 is the live gate seed) is
+# refused (exit 2). PART7_EXAMPLE=<path> adds the pipeline's block against the example Part 7 compared them with. Writes
+# out/report-quality/report.json.
+.PHONY: report-quality
+report-quality:
+	@uv run python -m part5.quality_report --json-out out/report-quality/report.json $(if $(PART7_EXAMPLE),--part7-example $(PART7_EXAMPLE))
+
 # Opt-in live call to Muse Spark through Baseten (one fixed fault record, needs the key file). Exit 0 only
 # when a valid line came back. Never part of test, check-5 or the publish check.
 .PHONY: smoke-muse-spark
@@ -106,3 +115,13 @@ score-fallback:
 # `python3 scripts/make_design_copies.py --check` exits 1 when a copy differs or a leak guard trips.
 design-copies:
 	@python3 scripts/make_design_copies.py
+
+# Scoring validity (docs/specs/scoring-validity.md, TICKET-082): planted joint-angle errors of 0 to 30 degrees through the
+# pipeline and the skeleton-level invariance table, on seed 5 only, GPU free. Writes out/bench-score/metrics.json (sha,
+# command, exit code, every row) and dose-response.svg, and the committed copy of the chart at docs/evaluation/dose-response.svg
+# with the figures of docs/evaluation.md's tables beside it (first_fire.summary.json, invariance.summary.json; AC-SV09).
+# Exit 0 when every row ran, 1 when a row could not, 2 for a usage error or an input that is not seed 5. A claim the numbers
+# miss is a finding in the metrics, not a failed run.
+.PHONY: bench-score
+bench-score:
+	@uv run python scripts/make_bench_score.py

@@ -102,13 +102,21 @@ def fresh_v1():
     return copy.deepcopy(TEST_V1)
 
 
-def aligned(still=True, n=N, nan=False):
+def aligned(still=True, n=N, nan=False, offset=None):
     """Every measure is zero in the follower (NaN with `nan`: nothing to measure); in the expected clip every measure is
-    still (range 0) or swings 100 degrees."""
+    still (range 0) or swings 100 degrees. `offset` maps a measure to how many degrees the follower sits off the example
+    in it, a number or one per frame; the measures it does not name stay 0."""
     swing = np.linspace(0.0, 100.0, n)
     exp = {m: (np.zeros(n) if still else swing.copy()) for m in MEASURES}
-    return {"expected": exp, "follower": {m: np.full(n, np.nan) if nan else np.zeros(n) for m in MEASURES},
-            "exp_to_fol": list(range(n))}
+    off = offset or {}
+    fol = {m: np.full(n, np.nan) if nan else np.zeros(n) + np.asarray(off.get(m, 0.0)) for m in MEASURES}
+    return {"expected": exp, "follower": fol, "exp_to_fol": list(range(n))}
+
+
+def degrees_off(offset, rules):
+    """`offset` (measure -> how many of its thresholds the follower sits off the example, a number or one per frame) as the
+    degrees `aligned(offset=)` takes, each measure's threshold read from `rules`."""
+    return {name: np.asarray(v) * score.threshold_of(name, rules) for name, v in (offset or {}).items()}
 
 
 def fault(measure="foot_out", side="left", mag=20.0, thr=10.0, runs=((0, 9),), cov=1.0):

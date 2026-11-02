@@ -280,7 +280,7 @@ def slow():
 def test_real_lateral_raise_followers_are_accepted_rep_by_rep(which, n_reps, request):
     a = request.getfixturevalue(which).analysis
     jsonschema.Draft202012Validator(SCHEMA).validate(a)
-    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.12.0"
+    assert a["status"]["code"] == "ok" and a["schema_version"] == "1.13.0"
     guard = a["diagnostics"]["guard"]
     assert len(guard["reps"]) == n_reps and all(r["ok"] for r in guard["reps"])
     for r in guard["reps"]:   # the frozen limits, the numbers of the diagnosis
@@ -494,7 +494,7 @@ def test_a_low_match_has_no_tempo_per_rep_or_for_the_take_and_an_ok_one_keeps_it
 # --- different movements are analysed with a low_match warning and grade F (ADR-0012) ---
 def low_match(a):
     return a["status"]["code"] == "ok" and [w["code"] for w in a["warnings"]] == ["low_match"] \
-        and a["match"]["quality"] == "low" and a["schema_version"] == "1.12.0"
+        and a["match"]["quality"] == "low" and a["schema_version"] == "1.13.0"
 
 
 @pytest.mark.parametrize("name", ["part2-dance", "part2-class", "part2-single", "part2-stretch"])
@@ -535,7 +535,7 @@ def test_ac_rep_4_the_squat_takes_are_compared_whole_and_the_dance_takes_rep_by_
     for take in SEED5["takes"]:
         r = run(str(ROOT / take["expected"]), {"path": str(ROOT / take["follower"]), "take_id": take["take_id"]})
         d = r.analysis["diagnostics"]
-        assert r.analysis["schema_version"] == "1.12.0" and "warnings" not in r.analysis, take["take_id"]
+        assert r.analysis["schema_version"] == "1.13.0" and "warnings" not in r.analysis, take["take_id"]
         if take["set"] == "exercise" or r.reps is None:
             assert r.reps is None and "reps" not in d["guard"] and "expected_reference" not in d, take["take_id"]
             assert all("reps" not in f for f in r.analysis["faults"])

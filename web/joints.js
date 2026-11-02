@@ -159,6 +159,19 @@ export function cappedNote(score) {
   return `The grade is limited to F because ${joined(codes.map(capReason))}.`;
 }
 
+// AC-Q13 (ADR-0021, docs/specs/quality.md): the one line under the score when `quality.level` is degraded or major. It says
+// what was measured and names no cause: Part 5 has no light reading, so it never says "low light". Null for ok, for a document
+// without the block (not assessed) and for a level this page does not know.
+export const QUALITY_NOTES = {
+  degraded: "Some joints were hard to see in this take, so treat the result with care.",
+  major: "Too much of this take was hard to see, so do not rely on the result.",
+};
+
+export function qualityNote(analysis) {
+  const level = analysis && analysis.quality && analysis.quality.level;
+  return typeof level === "string" && Object.hasOwn(QUALITY_NOTES, level) ? QUALITY_NOTES[level] : null;
+}
+
 export function resultSentence(analysis) {
   if (isOldRefusal(analysis)) return "No faults are listed.";
   const n = faultsOf(analysis).length;

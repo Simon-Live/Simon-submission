@@ -3,8 +3,8 @@
 import { analyse, getRealTakes, getSamples } from "./api.js";
 import {
   LOW_CONFIDENCE_NOTE, STALE_SENTENCE, WORDINGS, cappedNote, defaultProfile, defaultWording, faultLine, faultsOf, insightItems,
-  isLowConfidence, isStale, jointLabel, noticesOf, profileLabel, profileNote, profilesOffered, resultSentence, scoreSentence,
-  sizeSentence, wordingHint,
+  isLowConfidence, isStale, jointLabel, noticesOf, profileLabel, profileNote, profilesOffered, qualityNote, resultSentence,
+  scoreSentence, sizeSentence, wordingHint,
 } from "./joints.js";
 import { make, renderPreview } from "./preview.js";
 import { mountViewer } from "./viewer.js";
@@ -26,7 +26,7 @@ const el = {
   form: $("picker"), analyse: $("analyse"), error: $("form-error"), status: $("result-status"), result: $("result"),
   stale: $("result-stale"), faults: $("fault-list"), download: $("download"), phrasing: $("phrasing"), phrasingError: $("phrasing-error"),
   phrasingHint: $("phrasing-hint"), phrasingStatus: $("phrasing-status"), score: $("score"), scoreNote: $("score-note"),
-  profileField: $("profile-field"), profile: $("profile"), profileNote: $("profile-note"),
+  qualityNote: $("quality-note"), profileField: $("profile-field"), profile: $("profile"), profileNote: $("profile-note"),
   warnings: $("warning-panel"), warningList: $("warning-list"), insightsPanel: $("insights-panel"), insights: $("insights"),
   other: $("show-other-movements"), previewScreen: $("preview-screen"), previewFields: $("preview-fields"),
   picker: { expected: $("expected-picker"), follower: $("follower-picker") },
@@ -237,6 +237,15 @@ function showScore(score) {
   el.scoreNote.textContent = note ?? "";
 }
 
+// AC-Q13: one line under the score when the camera saw the take badly (quality degraded or major). Hidden for ok and for a
+// document without the block.
+function showQualityNote(analysis) {
+  const note = qualityNote(analysis);
+  el.qualityNote.hidden = note === null;
+  el.qualityNote.textContent = note ?? "";
+  el.qualityNote.dataset.level = note === null ? "" : analysis.quality.level;
+}
+
 // AC-V06: the analysis's warnings (or an older document's status text) above the faults.
 function showNotices(analysis) {
   const notices = noticesOf(analysis);
@@ -295,6 +304,7 @@ async function showResult({ analysis, replay }) {
   state.faults = faults;
   el.status.textContent = resultSentence(analysis);
   showScore(analysis.score);
+  showQualityNote(analysis);
   showProfileNote(analysis);
   showNotices(analysis);
   showInsights(analysis);

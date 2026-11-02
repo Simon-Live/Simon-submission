@@ -43,6 +43,9 @@ ADDED_BY_PROFILES = ("profile", "schema_version")
 # nothing. Both baselines were taken before it and are not regenerated, so their digests leave these keys out of the item
 # that carries them: a fault's `rep_sizes`, a near miss's `margin_deg` and a `score.per_rep` entry's `rep` and `tempo_ratio`.
 ADDED_TO_FAULT, ADDED_TO_NEAR_MISS, ADDED_TO_PER_REP = ("rep_sizes",), ("margin_deg",), ("rep", "tempo_ratio")
+# What the score gained after the baselines were taken, left out of the fitness digest's `score`: `uncapped` (1.9.0, Part 7
+# TICKET-155) and `credit` (1.13.0, ADR-0020, the credit display), each read by nothing. The baselines are not regenerated.
+ADDED_TO_SCORE = ("uncapped", "credit")
 
 
 def _without(item, keys):
@@ -82,13 +85,14 @@ def analysis_digest(analysis, root=ROOT):
     (`second_opinion`, `phrasing.lang`, `phrasing.lang_requested`, `phrasing.faults[].text` and `.lang`; TICKET-045,
     TICKET-046; `score.uncapped`, Part 7 TICKET-155), as canonical JSON with the checkout's path taken off every file
     path, so the value does not depend on where the repository lives. The 1.12.0 additions (`faults[].rep_sizes`,
-    `score.per_rep[].rep` and `.tempo_ratio`, and `margin_deg` inside the near misses already left out; TICKET-071) are
-    left out too."""
-    doc = {k: v for k, v in analysis.items() if k not in ADDED_BY_PROFILES and k != "second_opinion"}
+    `score.per_rep[].rep` and `.tempo_ratio`, and `margin_deg` inside the near misses already left out; TICKET-071) and the
+    1.13.0 `score.credit` (ADR-0020) are left out too."""
+    # ADR-0021: `quality` (1.13.0) is read from the follower file and reported only, so the baseline, taken before it, leaves it out.
+    doc = {k: v for k, v in analysis.items() if k not in ADDED_BY_PROFILES and k not in ("second_opinion", "quality")}
     if isinstance(doc.get("faults"), list):
         doc["faults"] = [_without(f, ADDED_TO_FAULT) for f in doc["faults"]]
     if isinstance(doc.get("score"), dict):
-        doc["score"] = {k: v for k, v in doc["score"].items() if k != "uncapped"}
+        doc["score"] = {k: v for k, v in doc["score"].items() if k not in ADDED_TO_SCORE}
         if isinstance(doc["score"].get("per_rep"), list):
             doc["score"]["per_rep"] = [_without(e, ADDED_TO_PER_REP) for e in doc["score"]["per_rep"]]
     if "diagnostics" in doc:

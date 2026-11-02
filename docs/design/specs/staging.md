@@ -138,7 +138,7 @@ file picker and the scrubber is at least 44 px tall, the visible "Choose File" b
 the preview's field name "Why the grade is limited" is one line. The exit code is the verdict.
 
 ## QA recipes and video
-- Recipes with the `qa-recipe` skill (ADR-0020), one per use case driven on staging: each edge driven by
+- Recipes with the `qa-recipe` skill (the firm's ADR-0020, QA recipes), one per use case driven on staging: each edge driven by
   hand through the real UI, two independent witnesses, a negative assertion (for example a warned take is
   never called a correct take; a correct take shows no fault rows).
 - The walkthrough is two videos in `demos/videos/`, `staging-walkthrough-desktop.mp4` (1100x800) and
@@ -189,7 +189,10 @@ the preview's field name "Why the grade is limited" is one line. The exit code i
   that side both differ in more than 64 pixels, because the recorder writes a single glitched frame now and then and a
   change in the page lasts longer. The script removes the frame and exits 1 when either side counts as changed (a
   pixel counts when a colour value moves by more than 32 of 255; 64 is twice the noise measured on the committed
-  videos, set before the check ran on a key frame, and `SETTLE_REPORT=1` prints each count). A key frame whose middle
+  videos, set before the check ran on a key frame, and `SETTLE_REPORT=1` prints each count). A key frame that is itself a
+  single glitched frame, because it differs from the frames 0.12 s either side while those two match each other, is
+  replaced by the frame 0.04 s before it when that frame matches them too and lies inside the hold, and the settle check
+  then runs on that frame, with the change said on stderr. A key frame whose middle
   falls past the end of its video is read from the last frame only when that
   frame comes after the hold's start and is within the loss measured at the end of a video, else the script exits 1
   (TICKET-065, TICKET-067). A moments file from before the start marks (`<segment> <step> <seconds>`) is refused with

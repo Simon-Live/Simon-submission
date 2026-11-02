@@ -1,6 +1,7 @@
 # Spec: Muse Spark history opinion over a series of analyses (TICKET-072)
 > Design copy of a working spec. Host paths and workspace tooling are neutralised; where this text and the code disagree, the code, `CONTRACT.md` and `docs/schemas.md` win. Index: `docs/design/README.md`.
-Status: Draft (branch `lane/history-opinion`, built after the 2026-11-01 candidate and not merged into it)
+Status: Accepted (merged in the follow-up at c143552 and published upstream in ec67dc1, 2026-11-02; the split into
+`part5/history_*.py` modules is open in TICKET-076)
 Date: 2026-11-01
 Linked PRD: none (the operator's long-context instruction on moalborati/simon#61, 21:03Z and 21:09Z; stakeholder-proxy
 ruling 2026-11-01T21:35Z; Part 7 ranks it third after TICKET-070 and TICKET-071)

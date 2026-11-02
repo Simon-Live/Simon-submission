@@ -90,7 +90,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.12.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.13.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -103,7 +103,7 @@ takes by `make output-examples` through the same pipeline and score hook `part5 
 `capped_by`; a dance take analysed without its foot files, so the arm fault it reports is not the foot fault its name
 mentions), `fixtures/output/analysis.double-capped.example.json` (present while the rules ship v3: a real
 take that reports two faults and hits the ceiling of 79, value 79 C, `fault_cap` 79, `uncapped` 82 B, no `capped_by`) and
-`fixtures/output/replay.example.json` (the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.12.0):
+`fixtures/output/replay.example.json` (the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.13.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
 Part 7 must read first. `simon.score.v2` failed held-out score seed 59 (docs/thresholds.md) and ADR-0018's fallback shipped
 `simon.score.v1`; `simon.score.v3` then held all five targets on score seed 61 (docs/thresholds-score-v3.md) and ships, so the
@@ -127,11 +127,12 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.10.0` | `score.fault_cap`; `score.version` `simon.score.v2`; the wider meaning of `score.uncapped` (TICKET-047, ADR-0018, `docs/specs/score-v2.md`) | every new document is `1.10.0`; its score is `simon.score.v1` (`simon.score.v2` failed held-out score seed 59 and ADR-0018's fallback shipped v1; read `score.version`); under v2 `fault_cap` (89) is written when the take reports a fault, and `uncapped` when the fault cap or the warning cap lowered the value; `capped_by` is unchanged |
 | `1.11.0` | `score.version` `simon.score.v3`; `score.fault_cap` is the ceiling in force, 89 or 79 (TICKET-060, ADR-0019, `docs/specs/score-v3.md`) | every new document is `1.11.0`; read `score.version` (the rules in this tree ship `simon.score.v3`: it held all five targets on score seed 61, docs/thresholds-score-v3.md; `make score-fallback` remains the reversal recipe and puts `simon.score.v1` back); under v3 `fault_cap` is 89 for a take that reports one fault and 79 for a take whose `faults` list holds two or more entries, written whether or not it lowered the value; `uncapped` and `capped_by` mean what they meant in `1.10.0` |
 | `1.12.0` | `faults[].rep_sizes`; `score.per_rep[].rep` and `.tempo_ratio`; `diagnostics.near_misses.items[].margin_deg` (TICKET-071, `docs/specs/history-per-rep.md`) | every new document is `1.12.0`; `rep_sizes`, `rep` and `tempo_ratio` only on a take compared one repetition at a time, `margin_deg` on every near miss; they exist for comparing takes with each other, and no fault, score or insight reads them |
+| `1.13.0` | `score.credit` (`simon.credit.v1`, the DDR-style credit display, ADR-0020) | every new document is `1.13.0`; `score.credit` is always written, null when nothing was compared |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.12.0",
+  "schema_version": "1.13.0",
   "profile": "fitness",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
@@ -401,6 +402,41 @@ means no fault was reported. `score.value` compares only within one `score.versi
 keeps the frozen v1 and v2 blocks as `score.v1` and `score.v2`, and `params_sha256` is the hash of the whole block.
 `fixtures/output/analysis.double-capped.example.json` is a sample of a take that reports two faults and hits the 79 ceiling.
 
+## Score credit (`score.credit`, `simon.credit.v1`, from 1.13.0)
+
+A DDR-style display beside the score (ADR-0020), additive: `value`, `grade`, `components`, the ceilings and `capped_by` are
+unchanged and never read it, and the 59 warning cap does not apply to it. In every compared window of `score.timeline`, each
+measure finite in at least half of the window's frames is judged on every frame it is finite: with `z = |follower -
+expected| / threshold_deg` of that measure (the profile's thresholds), `z / tolerance` at most 0.5 earns 1.0, at most 1
+earns 0.6, at most 2 earns 0.2, beyond that 0 (`bands`). A frame lasts what it does on the example's own clock (the example's first to last time
+over its frames less one, for a rep the rep's reference clip), so `points = credit * frame_s * 100 * multiplier` (100
+points per measure per second, `points_per_measure_second`) and `max_points` the same with every credit 1. The same
+routine has the same `max_points` however fast or slowly it was followed, within one comparison basis (the whole take, or rep by rep) and with the same measures seen. `percent` is `100 * points / max_points`, to 0.1, and `grade` is the percent's own letter on the
+credit's own scale, `grades` (`[percent at least, letter]`, highest first): S 95, A 85, B 75, C 65, D 55, E 45, F 30;
+under 30 is still F (the team's game scale, ADR-0020; the score's bands are not used here). It is informational: it is not `score.grade`, it sets no cap and no gate,
+and it ignores warnings and caps, so a take capped to F can show a credit grade of B. Only the 22 body measures of `part5.measures.MEASURES` earn credit; the foot measures (`foot_rotation`, `ankle_inversion`, from the optional foot files) are compared and can be reported as faults, but earn none.
+
+```json
+"credit": {"version": "simon.credit.v1", "percent": 87.5, "grade": "A", "points": 5841, "max_points": 6673,
+           "tolerance": "normal",
+           "levels": {"easy": {"percent": 92.2, "points": 4615, "max_points": 5005},
+                      "normal": {"percent": 87.5, "points": 5841, "max_points": 6673},
+                      "hard": {"percent": 81.2, "points": 8131, "max_points": 10010}},
+           "bands": [[0.5, 1.0], [1.0, 0.6], [2.0, 0.2]],
+           "grades": [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]],
+           "points_per_measure_second": 100,
+           "per_window": [{"t_s": [0.1, 2.5], "percent": 87.5, "points": 5841, "max_points": 6673}]}
+```
+
+- `levels`: `easy` (tolerance 1.5, points x0.75), `normal` (1.0, x1.0), `hard` (0.7, x1.5); the top-level `percent`,
+  `points` and `max_points` are those of the level `tolerance` names (`normal`).
+- `grades`: the credit's letters, `[percent at least, letter]` from S down to F; `grade` is the first one `percent`
+  reaches, and a percent under the last (30) is still F.
+- `per_window`: one entry per compared window of `score.timeline`, the same `t_s`, in the same order, at that level. A
+  window with no measure seen in half its frames has `percent` null and 0 points.
+- `null`: nothing was compared (the take could not be aligned, or no window was compared), or no measure could be counted.
+- Points grow with the take's length and the measures seen; compare `percent` across takes, within one profile.
+
 ## Replay: `replay.json` (`simon.replay.v1`, schema 1.0.0)
 
 `part5 analyse ... --replay <replay.json>` also writes both normalised skeletons, matched frame for frame, for a 3D
@@ -475,6 +511,62 @@ detection use the usable measures (with fewer than 3, any visible one); on a low
 `score.capped_by` lists the codes. `part5 analyse` exits 0 for every written analysis, 1 for an unreadable or
 invalid input file, and no longer uses 3. A document written before 1.4.0 can still carry a refusal
 (`status.code` other than `ok`, `faults: []`, `score: null`): show it as a refusal, never as "no faults".
+
+## Quality: `quality` (`simon.quality.v1`, from 1.13.0, TICKET-079)
+
+Every new document carries `quality`, one object that says how well the camera saw the follower's take. It is optional in
+the schema: detect it by presence, and read a document without it as **not assessed** (every document before `1.13.0`). It ships
+in `1.13.0` together with `score.credit`, so no schema version is added for it. It is **reported only**: `score.value`,
+`score.grade`, `score.fault_cap`, `score.uncapped`, `score.capped_by` and `warnings` are what they are without it, byte for
+byte, and it never adds a `warnings` entry. The cap it names is Part 7's to apply. `docs/specs/quality.md` and ADR-0021 give the
+reasoning; the thresholds are in `part5/quality.json`, not in `part5/rules.json`.
+
+| Key | Meaning |
+|---|---|
+| `version` | `simon.quality.v1` |
+| `level` | `ok`, `degraded` or `major`: the worst reason, `ok` when there is none |
+| `reasons` | `[{code, words, value, threshold}]`, empty for `ok`; a reason about one joint adds `joint` (a canonical joint name) |
+| `signals` | the raw readings below; `null` for a reading that cannot be made, never 0 in its place (0.0 is a measured zero) |
+| `score_cap` | 59 when `level` is `major` (the cap a warning puts on `score.value`, `part5.score.WARNING_CAP`), otherwise `null` |
+
+`reasons[].code` is one of a closed list. The first three repeat a warning the take already carries, are always `major`, and have
+`value` and `threshold` `null`; the others read a signal and carry its reading as `value` and the limit it reached as `threshold`
+(the higher limit when both were reached):
+
+| `code` | When | Signal | Unit |
+|---|---|---|---|
+| `not_enough_visible` | the take carries that warning | none | |
+| `moving_part_out_of_frame` | the take carries that warning | none | |
+| `no_usable_measures` | the take carries that warning | none | |
+| `joints_unseen` | joint readings at Part 2's 0.3 unseen mark | `unseen_joint_share` | share, 0 to 1 |
+| `joints_missing` | joint readings null or with `conf` under 0.3 | `missing_joint_share` | share, 0 to 1 |
+| `frames_missing` | frames flagged `interpolated` or with at most half the joints usable | `missing_frame_share` | share, 0 to 1 |
+| `measures_hidden` | full-body measures the follower's own `conf` hides under ADR-0011 | `hidden_measure_share` | share of the 22, 0 to 1 |
+| `position_jitter` | frame-to-frame jitter of the joint positions | `position_jitter_mm` | millimetres per frame |
+
+`low_match` is never a reason: a take of another movement is not a take the camera saw badly. `words` is one plain sentence made
+from the measured numbers; it names no cause (light, a hand over the lens), because no part gives Part 5 a light reading.
+`unseen_joint_share` and `hidden_measure_share` are `null` for a follower file that carries no `conf`. `unseen_joint_share` counts
+only the joints the example itself sees in at least half of its frames (its own `conf` or `--expected-visibility`, read as ADR-0011
+reads them), over the readings of those joints, and is `null` when the example sees none; an example with no `conf` anywhere (Part 4's
+animations today) has unknown visibility and counts every joint, so a follower filmed from the waist up against such a trainer still
+reads its legs as unseen. `position_jitter_mm` is
+`feet.jitter` (the median absolute change between consecutive frames) of the step series of each joint and axis, the three axes
+joined as a norm and the median taken over the joints, so it depends on the file's frame rate.
+
+```json
+"quality": {"version": "simon.quality.v1", "level": "major",
+            "reasons": [{"code": "joints_unseen", "words": "41 percent of the joint readings were outside the picture, most often the nose.", "value": 0.4118, "threshold": 0.2, "joint": "nose"},
+                        {"code": "position_jitter", "words": "Joint positions shook by about 27 mm from one frame to the next, most at the left knee.", "value": 26.7, "threshold": 21.0, "joint": "left_knee"}],
+            "signals": {"unseen_joint_share": 0.4118, "missing_joint_share": 0.0, "missing_frame_share": 0.0,
+                        "hidden_measure_share": 0.2273, "position_jitter_mm": 26.7},
+            "score_cap": 59}
+```
+
+This is `fixtures/output/analysis.quality-major.example.json`, made by the real pipeline from `fixtures/input/quality/exercise_front_dark_00`:
+the low-light correct squat of seed 5 with the face and both wrists at Part 2's unseen mark (`scripts/make_quality_sample.py`). Its
+`score.value` is 100 (A): the cap is reported and not applied, the take carries no warning, and the score is the one it had without
+the block. The block is written after `match` (and after `warnings` when there are some) and before `diagnostics`.
 
 ## Part 7's own analysis: `source` and `no_person` (1.9.0, TICKET-048)
 

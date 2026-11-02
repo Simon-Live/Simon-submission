@@ -23,7 +23,7 @@ from .detect import EXPLAINED_BY, MAX_NEAR_MISSES, PERSISTENCE, REASONS, margin_
 from .insights import MAX_INSIGHTS, insights_of
 from .lateral import lateral_for
 from .words import describe, describe_timed
-from .score import VERSION_V1, VERSION_V2, VERSION_V3, document_ceiling
+from .score import CREDIT_GRADES, VERSION_V1, VERSION_V2, VERSION_V3, WARNING_CAP, credit_grade, document_ceiling
 from .opinion.guard import validate_block as _validate_second_opinion
 
 FORMAT = "simon.analysis.v1"
@@ -47,7 +47,11 @@ FORMAT = "simon.analysis.v1"
 # size of a fault in each rep that found it, on a take compared rep by rep), `score.per_rep[].rep` and `.tempo_ratio` (the
 # rep's tempo, null where unmeasured) and `diagnostics.near_misses.items[].margin_deg` (the size past the threshold).
 # Nothing reads them back. Every new document is 1.12.0.
-SCHEMA_VERSION = "1.12.0"
+# 1.13.0 (ADR-0020) adds `score.credit` (`simon.credit.v1`, the DDR-style credit display): a percent and points earned per
+# measure and frame by how close the follower stayed, at three levels, with one `per_window` entry per compared window of
+# `score.timeline`; null when nothing was compared. Additive: no other field of the score changes and nothing reads it
+# back. Every new document is 1.13.0.
+SCHEMA_VERSION = "1.13.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 PROFILE_SINCE = (1, 7, 0)   # from this schema version on, `profile` is required
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
@@ -59,6 +63,15 @@ WARNING_CODES = (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NOT_ENOUGH_VISIBLE, NO_USA
 NO_PERSON = "no_person"
 READABLE_WARNING_CODES = (*WARNING_CODES, NO_PERSON)
 SOURCE_PART5 = "part5"   # what an absent `source` means
+# ADR-0021: the optional top-level `quality` (simon.quality.v1, TICKET-079), how well the camera saw the take. It is built in
+# part5/quality.py and validated here like every other block; it is reported only and no score field reads it.
+QUALITY_VERSION = "simon.quality.v1"
+QUALITY_LEVELS = ("ok", "degraded", "major")
+QUALITY_WARNING_CODES = (NOT_ENOUGH_VISIBLE, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES)   # a take with one is major; low_match is not a reason
+QUALITY_CODES = (*QUALITY_WARNING_CODES, "joints_unseen", "joints_missing", "frames_missing", "measures_hidden", "position_jitter")
+QUALITY_SIGNALS = ("unseen_joint_share", "missing_joint_share", "missing_frame_share", "hidden_measure_share", "position_jitter_mm")
+QUALITY_CAP = WARNING_CAP   # 59, the cap a warning puts on score.value; the block reports it when the level is major
+CREDIT_LETTERS = tuple(letter for _, letter in CREDIT_GRADES)   # S to F, best first: score.credit's own scale (ADR-0020)
 LOW_CONFIDENCE = "low"   # a fault's `confidence` on a low match (ADR-0012)
 UNIT = "degrees"
 SIDES = ("left", "right", "both", "center")
@@ -157,7 +170,7 @@ def _input_ref(ref, key):
 
 
 def build_analysis(expected, follower, faults, diagnostics=None, status=None, times=None, score=NO_SCORE,
-                   warnings=None, match=None, profile=profiles.IDENTITY):
+                   warnings=None, match=None, profile=profiles.IDENTITY, quality=None):
     """Assemble a validated analysis document.
 
     `expected`/`follower` identify the input clips: a path, or an object with at least
@@ -174,6 +187,8 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
     `confidence` is "low". Without warnings the document is exactly what it was.
     `profile` (1.7.0, ADR-0016) names the analysis profile and is written into every document, after `schema_version`;
     `fitness`, the default, is today's analysis.
+    `quality` (1.13.0, ADR-0021) is the `simon.quality.v1` block (`part5.quality`), written after `match` and before
+    `diagnostics`; left out when None (not assessed). It is reported only: nothing else in the document reads it.
     """
     times = times if times is not None else [None] * len(faults)
     try:
@@ -195,6 +210,8 @@ def build_analysis(expected, follower, faults, diagnostics=None, status=None, ti
     if warned:
         doc["warnings"] = [dict(w) for w in warnings]
         doc["match"] = match
+    if quality is not None:
+        doc["quality"] = quality
     if diagnostics is not None:
         doc["diagnostics"] = diagnostics
     if score is not NO_SCORE:
@@ -264,6 +281,8 @@ def validate_analysis(doc, source="<analysis>"):
         fail(f"source must be a non-empty string (the producing part; absent means {SOURCE_PART5}), got {doc['source']!r}")
     if "warnings" in doc:
         _validate_warnings(doc["warnings"], doc.get("match"), fail)
+    if "quality" in doc:
+        _validate_quality(doc["quality"], doc.get("warnings"), fail)
     if "phrasing" in doc:
         _validate_phrasing(doc["phrasing"], faults, fail)
     if "second_opinion" in doc:
@@ -272,6 +291,8 @@ def validate_analysis(doc, source="<analysis>"):
         fail("score must be an object or null")
     _validate_fault_cap(doc.get("score"), len(faults), fail)
     _validate_per_rep(doc, fail)
+    _check_credit_shape(doc.get("score"), fail)
+    _validate_credit(doc.get("score"), fail)
     if "insights" in doc:
         _validate_insights(doc["insights"], fail)
     if isinstance(doc.get("score"), dict) and doc.get("status", {}).get("code") in REFUSED_CODES:
@@ -326,6 +347,63 @@ def _validate_per_rep(doc, fail):
         if isinstance(tempo, dict) and "ratio" in tempo and tempo["ratio"] != ratio:
             fail(f"{where}.tempo_ratio must be the tempo.ratio of score.timeline[{e['rep']}] "
                  f"({tempo['ratio']!r}), got {ratio!r}")
+
+
+def _check_credit_shape(score, fail):
+    """The shape `_validate_credit` reads (ADR-0020): `score.credit` absent, null or an object, whose `levels` is an object of
+    objects and whose `per_window` is a list of objects. The schema says more; this keeps a document the schema was not run
+    on (`part5 doctor` without jsonschema) from raising an AttributeError, or from passing as a string, instead of failing."""
+    if not isinstance(score, dict) or score.get("credit") is None:
+        return
+    credit = score["credit"]
+    if not isinstance(credit, dict):
+        fail(f"score.credit must be an object or null, got {type(credit).__name__}")
+    levels, windows = credit.get("levels", {}), credit.get("per_window", [])
+    if not isinstance(levels, dict) or not all(isinstance(v, dict) for v in levels.values()):
+        fail("score.credit.levels must be an object whose values are objects")
+    if not isinstance(windows, list) or not all(isinstance(w, dict) for w in windows):
+        fail("score.credit.per_window must be a list of objects")
+    # review R8 of 1.13.0: the letters, which the schema alone checked, so `grade: "Z"` and `grades: "S"` passed without it
+    if "grades" in credit and not _is_credit_scale(credit["grades"]):
+        fail(f"score.credit.grades must be [percent at least, letter] pairs, the percents falling and the letters from "
+             f"{', '.join(CREDIT_LETTERS)} in that order, got {credit['grades']!r}")
+    if "grade" in credit and credit["grade"] not in CREDIT_LETTERS:
+        fail(f"score.credit.grade must be one of {', '.join(CREDIT_LETTERS)}, got {credit['grade']!r}")
+
+
+def _is_credit_scale(grades):
+    """`score.credit.grades` (ADR-0020): a non-empty list of [number, letter] pairs, each number below the one before and each
+    letter later in CREDIT_LETTERS than the one before (so no letter twice)."""
+    if not (isinstance(grades, list) and grades and all(isinstance(g, list) and len(g) == 2 and _is_number(g[0])
+                                                        and isinstance(g[1], str) and g[1] in CREDIT_LETTERS for g in grades)):
+        return False
+    marks, ranks = [g[0] for g in grades], [CREDIT_LETTERS.index(g[1]) for g in grades]
+    return all(a > b for a, b in zip(marks, marks[1:])) and all(a < b for a, b in zip(ranks, ranks[1:]))
+
+
+def _validate_credit(score, fail):
+    """The 1.13.0 `score.credit` (ADR-0020): absent (an earlier document), null (nothing compared) or a block whose
+    `per_window` has one entry per compared window of `score.timeline`, at the same `t_s`, in the same order, whose
+    points never pass its max points, and whose grade is the letter its percent reaches on its `grades` (the scale every
+    document carries when it has none). The schema checks the types and ranges; `_check_credit_shape` has run first."""
+    credit = score.get("credit") if isinstance(score, dict) else None
+    if not isinstance(credit, dict):
+        return
+    timeline = score.get("timeline") if isinstance(score.get("timeline"), list) else []
+    spans = [w.get("t_s") for w in timeline if isinstance(w, dict) and w.get("compared", True)]
+    windows = credit.get("per_window", [])
+    if [w.get("t_s") for w in windows] != spans:
+        fail(f"score.credit.per_window must have one entry per compared window of score.timeline, at its t_s "
+             f"({len(spans)} windows), got {len(windows)}")
+    for where, entry in [("score.credit", credit), *((f"score.credit.levels.{k}", v)
+                                                    for k, v in credit.get("levels", {}).items())]:
+        if _is_int(entry.get("points")) and _is_int(entry.get("max_points")) and entry["points"] > entry["max_points"]:
+            fail(f"{where}.points must be at most its max_points, got {entry['points']} > {entry['max_points']}")
+    if "grade" in credit and _is_number(credit.get("percent")):
+        letter = credit_grade(credit["percent"], credit.get("grades", CREDIT_GRADES))
+        if credit["grade"] != letter:
+            fail(f"score.credit.grade must be the letter score.credit.percent ({credit['percent']}) reaches on "
+                 f"score.credit.grades, {letter}, got {credit['grade']!r}")
 
 
 def _timeline_window(score, rep):
@@ -457,6 +535,61 @@ def _validate_warnings(warnings, match, fail):
             fail(f"match.{key} must be a number or null, got {match[key]!r}")
     if not isinstance(match.get("limits"), dict):
         fail("match.limits must be an object")
+
+
+# ADR-0021: the 1.13.0 `quality`, checked here because every block of the document is. The schema says the same (`$defs.quality`);
+# this keeps a document the schema was not run on (`part5 doctor` without jsonschema) from passing a block that contradicts itself.
+def _validate_quality(block, warnings, fail):
+    """The `quality` block (TICKET-079): version, a level that agrees with the reasons, well-formed reasons and signals, a
+    `score_cap` of 59 exactly when the level is `major`, and, for a take that carries `not_enough_visible`,
+    `moving_part_out_of_frame` or `no_usable_measures`, level `major` with that reason."""
+    if not isinstance(block, dict):
+        fail(f"quality must be an object, got {type(block).__name__}")
+    if block.get("version") != QUALITY_VERSION:
+        fail(f"quality.version must be {QUALITY_VERSION!r}, got {block.get('version')!r}")
+    level, reasons = block.get("level"), block.get("reasons")
+    if level not in QUALITY_LEVELS:
+        fail(f"quality.level must be one of {QUALITY_LEVELS}, got {level!r}")
+    if not isinstance(reasons, list):
+        fail("quality.reasons must be a list")
+    for i, reason in enumerate(reasons):
+        _validate_quality_reason(reason, f"quality.reasons[{i}]", fail)
+    if (level == "ok") != (not reasons):
+        fail(f"quality.level {level!r} does not agree with its {len(reasons)} reason(s): ok has none, degraded and major at least one")
+    _validate_quality_signals(block.get("signals"), fail)
+    want = QUALITY_CAP if level == "major" else None
+    if block.get("score_cap") != want or isinstance(block.get("score_cap"), bool):
+        fail(f"quality.score_cap must be {want!r} for level {level!r}, got {block.get('score_cap')!r}")
+    carried = {w["code"] for w in warnings if isinstance(w, dict) and w.get("code") in QUALITY_WARNING_CODES} \
+        if isinstance(warnings, list) else set()
+    if carried and (level != "major" or not carried <= {r["code"] for r in reasons}):
+        fail(f"a take with the warning {sorted(carried)} must be quality.level 'major' with that reason")
+
+
+def _validate_quality_reason(reason, where, fail):
+    if not isinstance(reason, dict):
+        fail(f"{where} must be an object")
+    if reason.get("code") not in QUALITY_CODES:
+        fail(f"{where}.code must be one of {QUALITY_CODES}, got {reason.get('code')!r}")
+    if not isinstance(reason.get("words"), str) or not reason["words"].strip():
+        fail(f"{where}.words must be a non-empty string")
+    for key in ("value", "threshold"):
+        if key not in reason or not (reason[key] is None or (_is_number(reason[key]) and reason[key] >= 0)):
+            fail(f"{where}.{key} must be a number of at least 0 or null, got {reason.get(key, '<missing>')!r}")
+    if "joint" in reason and reason["joint"] not in JOINTS:
+        fail(f"{where}.joint must be a canonical joint name, got {reason['joint']!r}")
+
+
+def _validate_quality_signals(signals, fail):
+    """Each of `QUALITY_SIGNALS` is a number of at least 0 (a share is at most 1) or null; a reading that cannot be made is
+    null, which the schema and the producer keep apart from a measured 0.0."""
+    if not isinstance(signals, dict) or any(name not in signals for name in QUALITY_SIGNALS):
+        fail(f"quality.signals must be an object with {list(QUALITY_SIGNALS)}")
+    for name in QUALITY_SIGNALS:
+        value, top = signals[name], (None if name == "position_jitter_mm" else 1)
+        if value is not None and not (_is_number(value) and value >= 0 and (top is None or value <= top)):
+            fail(f"quality.signals.{name} must be {'a share from 0 to 1' if top else 'a number of at least 0'} or null, "
+                 f"got {value!r}")
 
 
 def _validate_status(status, faults, fail):

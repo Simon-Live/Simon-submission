@@ -180,14 +180,20 @@ def fault_features(fault, n_frames, expected=None, rules=None):
     return out
 
 
-def mean_z(aligned, rules):
-    """Mean clipped |follower - expected| / threshold over every measure and expected frame; None when nothing is measurable."""
+def _z_rows(aligned, rules):
+    """One row per measure of MEASURES: |follower - expected| / threshold over the expected frames of `aligned`, NaN where the
+    measure is not seen. The score's `mean_z` and the credit's `credit_z` both read it."""
     idx = np.asarray(aligned["exp_to_fol"])
-    errs = []
+    rows = []
     for name in MEASURES:
         d = np.asarray(aligned["follower"][name])[idx] - np.asarray(aligned["expected"][name])
-        errs.append(np.abs(d) / threshold_of(name, rules))
-    e = np.vstack(errs)
+        rows.append(np.abs(d) / threshold_of(name, rules))
+    return rows
+
+
+def mean_z(aligned, rules):
+    """Mean clipped |follower - expected| / threshold over every measure and expected frame; None when nothing is measurable."""
+    e = np.vstack(_z_rows(aligned, rules))
     ok = np.isfinite(e)
     return float(np.mean(np.minimum(e[ok], CLIP_Z))) if ok.any() else None
 
@@ -398,12 +404,15 @@ def tempo_charge(ratio, tempo):
     return profiles.tempo_points(shown, tempo["weight"], tempo["cap"])
 
 
-def window_score(analysis, aligned, frames, rules, p, tempo_points=None):
+def window_score(analysis, aligned, frames, rules, p, tempo_points=None, frame_s=None):
     """`{value, components, misses}` of the expected `frames` (an index array) of a take, or None when
     nothing in them can be measured. The unrounded value is kept for the take's mean.
 
     `tempo_points` (ADR-0016) is the window's tempo charge from `tempo_charge`: None for a profile that charges no
-    tempo (no `components.tempo` key, the score as it always was), else points taken off the value."""
+    tempo (no `components.tempo` key, the score as it always was), else points taken off the value.
+
+    `frame_s` (ADR-0020) is the seconds one expected frame lasts on the example's own clock (`example_frame_s`); the window's
+    credit sums carry it, and are left out (the take then has no `score.credit`) when it is None."""
     if (analysis.get("status") or {}).get("code") not in ("ok", None):
         return None
     frames = np.asarray(frames)
@@ -429,16 +438,18 @@ def window_score(analysis, aligned, frames, rules, p, tempo_points=None):
     if tempo_points is not None:
         parts["tempo"] = float(round_half_up(tempo_points, 2))
     return {"raw": raw, "value": value, "grade": grade(value, p["bands"]), "components": parts,
-            "misses": sorted(misses, key=lambda m: (m["at_s"] is None, m["at_s"] or 0))}
+            "misses": sorted(misses, key=lambda m: (m["at_s"] is None, m["at_s"] or 0)),
+            "credit_raw": credit_sums(credit_z(sub, rules), frame_s)}
 
 
-def timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=True):
+def timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=True, frame_s=None):
     """One entry of a take's timeline: the `window_score` of the expected `frames` under `t_s` = `span`, charged
     what the profile's `tempo` block charges for the window's tempo `ratio` (follower over example time, None when
     unmeasured; ADR-0016) and, when `timed`, carrying that tempo block (ADR-0014). `{t_s, compared: False}` when
     nothing in the window can be scored. The windows of a take compared as a whole and of one compared rep by rep
-    are both made here."""
-    scored = window_score(analysis, aligned, frames, rules, p, tempo_charge(ratio, tempo)) if np.size(frames) else None
+    are both made here. `frame_s` is the example's seconds per frame, for the credit (`window_score`)."""
+    scored = (window_score(analysis, aligned, frames, rules, p, tempo_charge(ratio, tempo), frame_s)
+              if np.size(frames) else None)
     if not scored:
         return {"t_s": span, "compared": False}
     if timed:
@@ -457,13 +468,14 @@ def timeline_block(windows, basis, rules=None, tempo=NO_TEMPO, n_faults=0):
     cues = profiles.tempo_of(rules or {})["cues"]   # the profile's tempo words (ADR-0016); none for plain rules
     extra = {} if tempo is NO_TEMPO else {"tempo": tempo_block(tempo, cues)}
     if not scored:
-        block = dict(zero_block(rules), basis=basis, timeline=[_public(w) for w in windows], **extra)
+        block = dict(zero_block(rules), basis=basis, timeline=[_public(w) for w in windows], **extra, credit=None)
         return apply_fault_cap(block, n_faults, rules)   # value 0 under any ceiling; fault_cap iff the take reports a fault
     value = int(round_half_up(sum(w["raw"] for w in scored) / len(scored)))
     parts = {key: float(round_half_up(sum(w["components"][key] for w in scored) / len(scored), 2))
              for key in ("faults", "similarity", *(("tempo",) if "tempo" in scored[0]["components"] else ()))}
     block = {"version": p["version"], "value": value, "grade": grade(value, p["bands"]), "components": parts,
-             "params_sha256": params_sha256(p), "basis": basis, "timeline": [_public(w) for w in windows], **extra}
+             "params_sha256": params_sha256(p), "basis": basis, "timeline": [_public(w) for w in windows], **extra,
+             "credit": credit_block(scored)}
     return apply_fault_cap(block, n_faults, rules)
 
 
@@ -493,7 +505,7 @@ def tempo_ratio(analysis, follower_t, expected_t):
 
 
 def _public(window):
-    out = {k: v for k, v in window.items() if k != "raw"}
+    out = {k: v for k, v in window.items() if k not in ("raw", "credit_raw")}
     out["t_s"] = [round(float(window["t_s"][0]), 3), round(float(window["t_s"][1]), 3)]
     out.setdefault("compared", True)
     return out
@@ -503,17 +515,125 @@ def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW
     """The `score` block of a take compared as a whole: windows of about `window_s` on the follower's clock.
     `frame_times[i]` is the follower file time expected frame i was matched to. With `expected_times` (the
     example's own time per frame) each compared window and the take get their tempo (ADR-0014), unmeasured on a low
-    match (`tempo_ratio`)."""
+    match (`tempo_ratio`), and the credit has the seconds its points are counted in (`example_frame_s`, ADR-0020); without
+    them the take has no `score.credit`."""
     rules = rules or load_rules()
     p = params_of(rules)
     index, spans = windows_of(frame_times, window_s)
     fol_t = np.asarray(frame_times, dtype=float)
     exp_t = None if expected_times is None else np.asarray(expected_times, dtype=float)
     tempo = profiles.tempo_of(rules)   # ADR-0016: the profile's tempo words and, for dance, its charge
+    frame_s = None if exp_t is None else example_frame_s(exp_t)   # ADR-0020: the credit counts the example's seconds
     windows = []
     for k, span in enumerate(spans):
         frames = np.flatnonzero(index == k)
         ratio = tempo_ratio(analysis, fol_t[frames], exp_t[frames]) if exp_t is not None and frames.size else None
-        windows.append(timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=exp_t is not None))
+        windows.append(timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=exp_t is not None,
+                                       frame_s=frame_s))
     return timeline_block(windows, "windows", rules, NO_TEMPO if exp_t is None else tempo_ratio(analysis, fol_t, exp_t),
                           n_faults=reported_faults(analysis))
+
+
+# --- the credit display (ADR-0020, "DDR-style credit") ---
+# Additive beside the score: it never changes `value`, `grade`, a cap or any other field of the block. Each measure that is
+# seen in at least half of a compared window's frames earns, on every frame it is finite, a credit by how far the follower
+# is from the example in that measure's detection thresholds (z / tolerance <= 0.5: 1.0, <= 1.0: 0.6, <= 2.0: 0.2, else
+# 0). `percent` is the credit earned over the credit possible; `points` count 100 per measure per second of the window on
+# the EXAMPLE's clock (frames times `example_frame_s`), times the level's multiplier, so the same routine has the same
+# maximum however fast or slowly it was followed, within one comparison basis (the whole take, or rep by rep) and with the
+# same measures seen, and a longer routine has a higher one.
+CREDIT_VERSION = "simon.credit.v1"
+CREDIT_BANDS = [[0.5, 1.0], [1.0, 0.6], [2.0, 0.2]]   # [z / tolerance at most, credit]; beyond the last: 0 (a miss)
+# The credit's own letter grades, game style (team, 2026-11-02): F to S, [percent at least, grade]; under the
+# last (F at 30) is still F. Not the score's BANDS, which stay A to F for score.value and its caps.
+CREDIT_GRADES = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]]
+
+
+def credit_grade(percent, grades=CREDIT_GRADES):
+    """The credit's letter for `percent`: the first grade it reaches, else the lowest."""
+    return next((g for lo, g in grades if percent >= lo), grades[-1][1])
+CREDIT_LEVELS = {"easy": {"tolerance": 1.5, "multiplier": 0.75}, "normal": {"tolerance": 1.0, "multiplier": 1.0},
+                 "hard": {"tolerance": 0.7, "multiplier": 1.5}}
+CREDIT_LEVEL = "normal"           # the level the top-level percent, points and max_points are shown at
+POINTS_PER_MEASURE_SECOND = 100
+CREDIT_MIN_SEEN = 0.5             # a measure counts in a window when it is finite in at least this share of its frames
+
+
+def credit_z(sub, rules):
+    """(measures x frames) |follower - expected| / threshold of a window's `sub` (the `aligned` shape, cut to the window's
+    expected frames), one row per measure of MEASURES finite in at least CREDIT_MIN_SEEN of the frames; NaN where unseen."""
+    rows = [z for z in _z_rows(sub, rules) if z.size and np.isfinite(z).mean() >= CREDIT_MIN_SEEN]
+    return np.vstack(rows) if rows else np.zeros((0, np.asarray(sub["exp_to_fol"]).size))
+
+
+def credit_of(z, tolerance=1.0, bands=CREDIT_BANDS):
+    """Credit per entry of `z` at a level's `tolerance`: the first band whose edge z / tolerance is within, else 0; NaN
+    where z is not finite (not counted)."""
+    z = np.asarray(z, dtype=float)
+    c = np.zeros(z.shape)
+    for edge, value in reversed(bands):
+        c = np.where(z / tolerance <= edge, value, c)
+    return np.where(np.isfinite(z), c, np.nan)
+
+
+def example_frame_s(times):
+    """Seconds one frame lasts on the example's own clock: its first to its last time over its frames less one. None when
+    the clock has under two frames or no step, so there are no seconds to count."""
+    t = np.asarray(times, dtype=float)
+    if t.size < 2 or not np.isfinite(t[[0, -1]]).all():
+        return None
+    step = float(t[-1] - t[0]) / (t.size - 1)
+    return step if step > 0 else None
+
+
+def credit_sums(z, frame_s):
+    """`{frame_s, levels: {level: [credit earned, entries counted]}}` of one window's `credit_z`, or None without the
+    example's `frame_s` (`example_frame_s`): the window then cannot say how many seconds it was."""
+    if frame_s is None:
+        return None
+    z = np.asarray(z, dtype=float)
+    levels = {}
+    for name, level in CREDIT_LEVELS.items():
+        c = credit_of(z, level["tolerance"])
+        levels[name] = [float(np.nansum(c)), int(np.isfinite(c).sum())]
+    return {"frame_s": float(frame_s), "levels": levels}
+
+
+def credit_points(earned, counted, frame_s, multiplier):
+    """(points, max_points) unrounded: credit per entry turned into POINTS_PER_MEASURE_SECOND per measure per second by
+    the seconds one frame lasts on the example's clock (`frame_s`), times the level's `multiplier`."""
+    scale = frame_s * POINTS_PER_MEASURE_SECOND * multiplier
+    return earned * scale, counted * scale
+
+
+def _credit_entry(points, max_points):
+    return {"percent": float(round_half_up(100 * points / max_points, 1)) if max_points > 0 else None,
+            "points": int(round_half_up(points)), "max_points": int(round_half_up(max_points))}
+
+
+def credit_block(scored, grades=CREDIT_GRADES):
+    """`score.credit` of a take from its compared windows (each with `t_s` and `credit_raw`), or None when there is none,
+    when a window carries no credit (a window not made by `timeline_window`, or made without the example's clock) or when
+    no measure could be counted. The take's percent is its points over its max points; its grade is the percent's own
+    letter under `grades` (F to S), written with it, and is informational: never `score.grade`, no cap, no gate."""
+    if not scored or any(w.get("credit_raw") is None for w in scored):
+        return None
+    totals = {name: [0.0, 0.0] for name in CREDIT_LEVELS}
+    per_window = []
+    for w in scored:
+        raw = w["credit_raw"]
+        for name, level in CREDIT_LEVELS.items():
+            pts, poss = credit_points(*raw["levels"][name], raw["frame_s"], level["multiplier"])
+            totals[name][0] += pts
+            totals[name][1] += poss
+            if name == CREDIT_LEVEL:
+                per_window.append({"t_s": [round(float(w["t_s"][0]), 3), round(float(w["t_s"][1]), 3)],
+                                   **_credit_entry(pts, poss)})
+    if not totals[CREDIT_LEVEL][1] > 0:
+        return None
+    levels = {name: _credit_entry(*totals[name]) for name in CREDIT_LEVELS}
+    shown = levels[CREDIT_LEVEL]
+    return {"version": CREDIT_VERSION, "percent": shown["percent"], "grade": credit_grade(shown["percent"], grades),
+            "points": shown["points"], "max_points": shown["max_points"], "tolerance": CREDIT_LEVEL, "levels": levels,
+            "bands": [list(b) for b in CREDIT_BANDS], "grades": [list(g) for g in grades], "points_per_measure_second": POINTS_PER_MEASURE_SECOND,
+            "per_window": per_window}

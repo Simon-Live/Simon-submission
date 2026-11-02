@@ -35,8 +35,11 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`foot-keypoints-attempt-5.md`](specs/foot-keypoints-attempt-5.md): the record of attempt 5 split out of the foot spec: the ruling, the failure on seeds 37 and 67, the candidates, the jitter rule, its seed 5 evidence and its costs and known limits.
 - [`profiles.md`](specs/profiles.md): analysis profiles `dance`, `rehab` and `fitness`: the profiles file, the loosen-only rule, tempo, schema 1.7.0 and the seed 5 report (values set by hand).
 - [`near-misses.md`](specs/near-misses.md): `diagnostics.near_misses`, the candidate faults detection considered and dropped and why (schema 1.8.0); additive, nothing reads it.
+- [`quality.md`](specs/quality.md): `quality`, how well the camera saw the follower's take (schema 1.13.0): a level, reasons, five raw signals and a score cap of 59 that is reported and not applied; limits in their own file, targets written before they were set, and what seed 5, seed 73 and Part 7's dark take read.
 - [`history-per-rep.md`](specs/history-per-rep.md): for comparing takes with each other, schema 1.12.0: a fault's size in each rep that found it (`rep_sizes`), each rep's tempo ratio in `score.per_rep`, and the margin of a near miss past its threshold (`margin_deg`); additive, nothing reads them.
+- [`score-credit.md`](specs/score-credit.md): `score.credit`, the DDR-style credit display beside the score (schema 1.13.0): a percent and points earned per measure and frame by how close the follower stayed, counted on the example's clock, reported only; the grade of the credit is informational.
 - [`rep-persistence.md`](specs/rep-persistence.md): attempt 4: persistence judged in each rep of the example, rep by rep for an example of two or more reps (each follower rep against the example rep that matches it, foot measures included), a side lean that does not wrap, and the seed 5 record per part.
+- [`scoring-validity.md`](specs/scoring-validity.md): `make bench-score`: planted joint-angle errors of 0 to 30 degrees through the pipeline (score and first-fire angle per joint), the skeleton-level invariance table (frame rate, mirror, trim, translation, yaw, scale) and the score properties; the video-level invariances are Part 7's.
 
 ## Architecture decision records
 
@@ -59,5 +62,7 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`ADR-0017-second-held-out-series.md`](adr/ADR-0017-second-held-out-series.md): a second held-out series, seeds 67, 71 and 73, each scored once after a frozen commit; seed 37's red attempt stays on record.
 - [`ADR-0018-score-v2.md`](adr/ADR-0018-score-v2.md): score v2 (amends ADR-0007): a miss weighted by the trainer's range, a ceiling of 89 for a take that reports a fault, targets fixed before seed 59.
 - [`ADR-0019-score-v3.md`](adr/ADR-0019-score-v3.md): score v3 (amends ADR-0007 and ADR-0018): v2's weight and 89 ceiling, a ceiling of 79 for two or more reported faults, ADR-0018's five targets on seed 61.
+- [`ADR-0020-score-credit-ddr-display.md`](adr/ADR-0020-score-credit-ddr-display.md): score credit (DDR-style display, `score.credit`, analysis 1.13.0): additive beside the score, credit per measure and frame by how close the follower stayed, three levels, the warning cap not applied (a team decision).
+- [`ADR-0021-quality-block.md`](adr/ADR-0021-quality-block.md): the quality block (`quality`, analysis 1.13.0): reported only, the cap of 59 named and not applied, limits in their own file, vocabulary and validator in `output.py`.
 
 Related: `docs/schemas.md` (field reference), `docs/thresholds.md` (thresholds, guard limits and the held-out record).

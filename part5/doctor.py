@@ -335,6 +335,7 @@ def _for_part7(r, doc):
     _cue_notes(r, doc)
     _time_notes(r, doc)
     _score_notes(r, doc)
+    _quality_notes(r, doc)
     _feet_notes(r, doc)
     _profile_notes(r, doc)
     _near_miss_notes(r, doc)
@@ -454,6 +455,26 @@ def _score_notes(r, doc):
     if isinstance(windows, list):
         r.notes.append(f"score.timeline has {len(windows)} window{'s' if len(windows) != 1 else ''} "
                        f"(basis {score.get('basis', 'windows')}): show {'them' if len(windows) != 1 else 'it'} as a timeline")
+
+
+def _quality_notes(r, doc):
+    """1.13.0 (ADR-0021): `quality` says how well the camera saw the take. It is reported only: the score fields are what they
+    are without it, and for `major` Part 7 applies the cap of 59 itself. A document without the block was not assessed."""
+    quality = doc.get("quality")
+    if quality is None:
+        r.notes.append("no quality block: how well the camera saw the take was not assessed (read it as unknown, not as ok)")
+        return
+    level = quality["level"]
+    if level == "ok":
+        line = "quality ok: no signal reached a limit (quality is reported only)"
+    elif level == "degraded":
+        line = "quality degraded: show the reasons and treat the result with care (quality is reported only, no cap)"
+    else:
+        value = (doc.get("score") or {}).get("value")
+        line = (f"quality major: score_cap {quality['score_cap']} is reported and not applied "
+                f"(score.value is {value}); apply it yourself if your gate caps a badly seen take")
+    r.notes.append(line)
+    r.notes.extend(f"quality reason {reason['code']}: {reason['words']}" for reason in quality["reasons"])
 
 
 def _feet_notes(r, doc):

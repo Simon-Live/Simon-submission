@@ -37,7 +37,7 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.12.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.13.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
                                           ("metrics", "1.5.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
@@ -70,7 +70,8 @@ def test_ac_c02_every_committed_fixture_validates_and_loads(summary):
 
 def test_ac_c03_golden_outputs_rebuild_byte_for_byte(summary):
     goldens = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "fixtures/output").glob("*.json"))
-    assert len(goldens) == by_version(3, 4, 5) and summary["rebuilt_identical"] == goldens   # the ceiling sample is the fourth, the double-capped one (v3) the fifth
+    shipped = by_version(3, 4, 5) + (1 if (ROOT / "fixtures/output/analysis.quality-major.example.json").is_file() else 0)   # TICKET-079: the quality sample
+    assert len(goldens) == shipped and summary["rebuilt_identical"] == goldens   # the ceiling sample is the fourth, the double-capped one (v3) the fifth
     assert "fixtures/output/replay.example.json" in goldens
 
 
@@ -89,6 +90,8 @@ def mini_root(tmp_path_factory):
     shutil.copytree(ROOT / "fixtures/input/expected/exercise", root / "fixtures/input/expected/exercise")
     shutil.copytree(ROOT / "fixtures/input/expected/dance", root / "fixtures/input/expected/dance")   # the fault-capped golden's take
     shutil.copytree(ROOT / "fixtures/input/real/lateral-raise", root / "fixtures/input/real/lateral-raise")   # the double-capped golden's
+    if (ROOT / "fixtures/input/quality").is_dir():   # the quality-major golden's degraded take (TICKET-079)
+        shutil.copytree(ROOT / "fixtures/input/quality", root / "fixtures/input/quality")
     labels = json.loads((ROOT / "fixtures/input/followers/labels.json").read_text())
     for take in labels["takes"]:
         if take["take_id"].startswith(("exercise_front_good_08", "exercise_front_good_00", "dance_side_good_11")):
@@ -513,7 +516,7 @@ def test_the_table_and_contract_md_carry_the_profile_row_and_the_analysis_row_na
     assert row["verdict"] == "works with an option" and row["part5_role"] == "option for Part 7"
     assert "probe `part5 analyse --help` for `--profile`" in row["fix"] and "omitted means `fitness`" in row["fix"]
     analysis = next(r for r in rows if r["file"] == "`analysis.json`")
-    assert "1.2.0 to 1.12.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
+    assert "1.2.0 to 1.13.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
     text = (ROOT / "CONTRACT.md").read_text()
     assert contract.table_markdown([row]).splitlines()[-1] in text
     assert "[--profile {dance,rehab,fitness}]" in text

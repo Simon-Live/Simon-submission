@@ -105,8 +105,8 @@ def score_block(result, rules=None):
     `rules` defaults to the rules the take was analysed with (`result.rules`), so a profile's thresholds and tempo
     block reach the score (ADR-0016)."""
     rules = result.rules if rules is None else rules
-    if result.guard is None:   # not aligned: nothing to score
-        block = score.zero_block(rules)
+    if result.guard is None:   # not aligned: nothing to score, so no credit either (ADR-0020)
+        block = dict(score.zero_block(rules), credit=None)
     elif result.reps:
         block = _rep_timeline(result, rules)
     else:
@@ -140,7 +140,8 @@ def _rep_timeline(result, rules):
                                                         r.to_original)))
         aligned = aligned_of(r, result.vis)
         window = score.timeline_window(span, {"status": {"code": "ok"}, "faults": faults}, aligned,
-                                       np.arange(len(aligned["exp_to_fol"])), rules, p, tempo, ratio)
+                                       np.arange(len(aligned["exp_to_fol"])), rules, p, tempo, ratio,
+                                       frame_s=score.example_frame_s(r.expected.t))   # the credit counts the example's seconds
         if window.get("compared", True):
             ratios.append(ratio)
         windows.append(window)

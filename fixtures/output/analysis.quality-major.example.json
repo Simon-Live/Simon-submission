@@ -1,0 +1,393 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.13.0",
+  "profile": "fitness",
+  "expected": {
+    "path": "fixtures/input/expected/exercise/animation.json",
+    "set": "exercise",
+    "movement": "squat"
+  },
+  "follower": {
+    "path": "fixtures/input/quality/exercise_front_dark_00/skeleton.json",
+    "take_id": "exercise_front_dark_00"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [],
+  "quality": {
+    "version": "simon.quality.v1",
+    "level": "major",
+    "reasons": [
+      {
+        "code": "joints_unseen",
+        "words": "41 percent of the joint readings were outside the picture, most often the nose.",
+        "value": 0.4118,
+        "threshold": 0.2,
+        "joint": "nose"
+      },
+      {
+        "code": "position_jitter",
+        "words": "Joint positions shook by about 27 mm from one frame to the next, most at the left knee.",
+        "value": 26.7,
+        "threshold": 21.0,
+        "joint": "left_knee"
+      }
+    ],
+    "signals": {
+      "unseen_joint_share": 0.4118,
+      "missing_joint_share": 0.0,
+      "missing_frame_share": 0.0,
+      "hidden_measure_share": 0.2273,
+      "position_jitter_mm": 26.7
+    },
+    "score_cap": 59
+  },
+  "diagnostics": {
+    "alignment_residual": 0.3084,
+    "alignment_measures": [
+      "left_knee_flexion",
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward"
+    ],
+    "follower_span": [
+      15,
+      94
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.3084,
+      "timing_corr": 0.9806,
+      "span_share": 0.7767,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    },
+    "near_misses": {
+      "total": 6,
+      "omitted": 0,
+      "items": [
+        {
+          "measure": "upper_arm_forward",
+          "side": "left",
+          "joint": "left_shoulder",
+          "body_part": "arms",
+          "direction": "less",
+          "magnitude_deg": -19.2,
+          "peak_deg": -20.8,
+          "threshold_deg": 15.0,
+          "margin_deg": 4.2,
+          "expected_frames": [
+            23,
+            30
+          ],
+          "follower_frames": [
+            34,
+            41
+          ],
+          "frames_over": 8,
+          "counted_frames": 8,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 27
+        },
+        {
+          "measure": "upper_arm_forward",
+          "side": "left",
+          "joint": "left_shoulder",
+          "body_part": "arms",
+          "direction": "more",
+          "magnitude_deg": 16.5,
+          "peak_deg": 17.1,
+          "threshold_deg": 15.0,
+          "margin_deg": 1.5,
+          "expected_frames": [
+            71,
+            79
+          ],
+          "follower_frames": [
+            81,
+            88
+          ],
+          "frames_over": 9,
+          "counted_frames": 9,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 26
+        },
+        {
+          "measure": "thigh_forward",
+          "side": "left",
+          "joint": "left_hip",
+          "body_part": "legs",
+          "direction": "less",
+          "magnitude_deg": -15.2,
+          "peak_deg": -15.2,
+          "threshold_deg": 15.0,
+          "margin_deg": 0.2,
+          "expected_frames": [
+            3,
+            5
+          ],
+          "follower_frames": [
+            17,
+            19
+          ],
+          "frames_over": 3,
+          "counted_frames": 0,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 35
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "right",
+          "joint": "right_knee",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 13.8,
+          "peak_deg": 18.2,
+          "threshold_deg": 10.0,
+          "margin_deg": 3.8,
+          "expected_frames": [
+            86,
+            90
+          ],
+          "follower_frames": [
+            92,
+            94
+          ],
+          "frames_over": 5,
+          "counted_frames": 5,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 30
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "left",
+          "joint": "left_knee",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 12.9,
+          "peak_deg": 24.2,
+          "threshold_deg": 10.0,
+          "margin_deg": 2.9,
+          "expected_frames": [
+            57,
+            64
+          ],
+          "follower_frames": [
+            69,
+            74
+          ],
+          "frames_over": 21,
+          "counted_frames": 21,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 14
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "right",
+          "joint": "right_knee",
+          "body_part": "legs",
+          "direction": "less",
+          "magnitude_deg": -12.7,
+          "peak_deg": -14.2,
+          "threshold_deg": 10.0,
+          "margin_deg": 2.7,
+          "expected_frames": [
+            19,
+            25
+          ],
+          "follower_frames": [
+            31,
+            36
+          ],
+          "frames_over": 11,
+          "counted_frames": 11,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 24
+        }
+      ]
+    },
+    "visibility": {
+      "usable_measures": 18,
+      "excluded": [
+        "left_elbow_flexion",
+        "left_forearm_out",
+        "right_elbow_flexion",
+        "right_forearm_out",
+        "head_forward",
+        "head_roll",
+        "head_turn",
+        "head_pitch",
+        "neck_lean_side",
+        "neck_lean_forward",
+        "left_wrist_height",
+        "right_wrist_height",
+        "left_wrist_out",
+        "right_wrist_out"
+      ],
+      "rule": "a measure is used when all its joints are seen (conf is not the 0.3 unseen mark) in at least 80% of the clip's frames; the take is compared on the measures usable in both clips",
+      "moving_measures": [
+        "left_knee_flexion",
+        "left_thigh_forward",
+        "left_upper_arm_forward",
+        "right_knee_flexion",
+        "right_thigh_forward",
+        "right_upper_arm_forward",
+        "left_wrist_height",
+        "right_wrist_height"
+      ],
+      "moving_usable": [
+        "left_knee_flexion",
+        "left_thigh_forward",
+        "left_upper_arm_forward",
+        "right_knee_flexion",
+        "right_thigh_forward",
+        "right_upper_arm_forward"
+      ]
+    }
+  },
+  "insights": [],
+  "phrasing": {
+    "requested": "template",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "lang": "en",
+    "faults": [],
+    "selected_by": "default"
+  },
+  "score": {
+    "version": "simon.score.v3",
+    "value": 100,
+    "grade": "A",
+    "components": {
+      "faults": 0.0,
+      "similarity": 0.34
+    },
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.5,
+          3.133
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.34
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": 0.88,
+          "cue": null
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.88,
+      "cue": null
+    },
+    "credit": {
+      "version": "simon.credit.v1",
+      "percent": 90.6,
+      "grade": "A",
+      "points": 4672,
+      "max_points": 5157,
+      "tolerance": "normal",
+      "levels": {
+        "easy": {
+          "percent": 96.4,
+          "points": 3730,
+          "max_points": 3868
+        },
+        "normal": {
+          "percent": 90.6,
+          "points": 4672,
+          "max_points": 5157
+        },
+        "hard": {
+          "percent": 82.3,
+          "points": 6363,
+          "max_points": 7735
+        }
+      },
+      "bands": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.6
+        ],
+        [
+          2.0,
+          0.2
+        ]
+      ],
+      "grades": [
+        [
+          95,
+          "S"
+        ],
+        [
+          85,
+          "A"
+        ],
+        [
+          75,
+          "B"
+        ],
+        [
+          65,
+          "C"
+        ],
+        [
+          55,
+          "D"
+        ],
+        [
+          45,
+          "E"
+        ],
+        [
+          30,
+          "F"
+        ]
+      ],
+      "points_per_measure_second": 100,
+      "per_window": [
+        {
+          "t_s": [
+            0.5,
+            3.133
+          ],
+          "percent": 90.6,
+          "points": 4672,
+          "max_points": 5157
+        }
+      ]
+    }
+  }
+}

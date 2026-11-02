@@ -5,7 +5,8 @@ Date: 2026-10-28
 Request Type: new-feature
 Risk Level: medium
 ADR: `docs/design/adr/ADR-0001-workspace-and-publish-layout.md`. Tickets: TICKET-005, TICKET-030, TICKET-054.
-Tests: `tests/publish/test-simon-publish.sh`; `tests/test_publish_allowlist.py` (AC-P25, workspace only).
+Tests: `tests/publish/test-simon-publish.sh`; `tests/test_publish_allowlist.py` and `tests/test_publish_reads.py` (AC-P25,
+workspace only).
 
 ## Overview
 Copies the allowlisted part files from the committed tip of local `main` onto `upstream/main` of
@@ -56,7 +57,9 @@ number of teammate lines that comment covers, so an override cannot pass lines t
    upstream refuses them and refuses a missing key file, and a dry run says which are in force (AC-P24).
 8. A file the tests need but the allowlist leaves out is found only when a publish candidate fails to collect (it
    happened twice, `tests/retimed.py` and `tests/shipped_score.py`). Answer: a workspace-side test checks every
-   `tests/**/*.py` against the allowlist and collects the allowlisted tree (AC-P25).
+   `tests/**/*.py` against the allowlist and collects the allowlisted tree (AC-P25). A file a test reads at run time
+   is not found by collecting: in 1.13.0 one published test read `docs/adr/` and one loaded a firm script (review B1,
+   B2), so a scan of the published tests' path literals names such a read (AC-P25 (c)).
 
 ## User Story
 As the team, I publish part changes upstream without ever pushing a firm file.
@@ -257,7 +260,15 @@ the default upstream, which refuses it with exit 2 (AC-P24).
   (a) every `tests/**/*.py` outside `tests/publish/`, `tests/staging/`, `tests/neighbour/` and `tests/lib/` matches
   an allowlist line, so a file the published tests import cannot be left out, and (b) the tree the allowlist builds
   from `git ls-files` (copied to a temporary directory) collects: `pytest --collect-only -q` exits 0. The
-  denylist-refused directories are firm tool tests and stay out on purpose.
+  denylist-refused directories are firm tool tests and stay out on purpose. (c) `tests/test_publish_reads.py` reads
+  every published test file with `ast` and fails, naming the file, line and path, on a path literal built from the
+  repository root (`ROOT / ...`, `ROOT.joinpath`, `Path(...)`, `open(...)`, a `subprocess` argument, or a module
+  imported from a directory put on `sys.path`) that the published tree lacks: under the script's own
+  `DENY_PREFIXES`, `DENY_FILES` or `DENY_GLOBS` (with `DENY_EXCEPT`, read from `scripts/simon-publish.sh`), a
+  directory no published file lives in, or a workspace file the allowlist leaves out. A literal the same file checks
+  first (`.is_file()`, `.exists()`, `.is_dir()`, or `os.path` on it or on a name bound to it) passes. A copy of the
+  old lines of review B1 and B2 of 1.13.0 is named by it. The check of a guard is per file, not per test, so the
+  publish still runs the tests.
 
 ## Error Cases
 | Condition | Behavior | Message format | AC |
@@ -274,6 +285,7 @@ the default upstream, which refuses it with exit 2 (AC-P24).
 | A real publish to the default upstream with `SIMON_PUBLISH_FIRM_AUTHORS`, `_TEST_CMD`, `_CHECK_CMD` or a non-default `_KEY_FILE` set | exit 2, nothing fetched | `REFUSED: <names> set; these settings are for tests and a real publish to the default upstream (<URL>) refuses them (exit 2); unset them, or use --dry-run; nothing published` | AC-P24 |
 | A real publish to the default upstream when the operator key file is not a file | exit 2, nothing fetched | `REFUSED: the operator key file (<path>) is not a file, so nothing would scan the staged files for the key; a real publish to the default upstream needs it (exit 2); nothing published` (a dry run prints `WARNING: ...` and carries on) | AC-P24 |
 | `tests/**/*.py` outside the firm test directories matches no allowlist line, or the allowlisted tree does not collect | the workspace test fails | the path(s) or the pytest output | AC-P25 |
+| A published test reads or loads a path the published tree lacks, with no existence check | the workspace test fails | `<test file>:<line>: <path>`, one per read | AC-P25 |
 | `git merge-base` fails | exit 3 | `cannot compare upstream main with local main (git merge-base exit <n>)` | |
 | `--pull` merge conflict | exit 3, merge left in progress | `merge stopped on a conflict; resolve it on main` | AC-P21 |
 | `--pull` on a dirty tree or off main | exit 1 | `--pull needs a clean tree` / `--pull runs on main only` | AC-P21 |
@@ -348,6 +360,10 @@ both the allowlist check and the collection check fail.
 Key file rules (AC-P24, second TICKET-054 commit), 2026-11-01: `bash tests/publish/test-simon-publish.sh` exit 0
 (310 passed, 0 failed); against the script of the first commit it fails 17 checks (every `SIMON_PUBLISH_KEY_FILE`
 and missing-key-file case).
+Published-test reads (AC-P25 (c); review B1 and B2 of 1.13.0, TICKET-078), 2026-11-02: `uv run pytest -q
+tests/test_publish_reads.py tests/test_publish_allowlist.py` exit 0 (9 passed); run on main 9124048's copies of the two
+files, the scan names `tests/test_score_credit_history.py:108` (`docs/design/adr/ADR-0020-score-credit-ddr-display.md`) and
+`tests/test_retimed.py:19` (`scripts/score_credit_retime_noise.py`), and nothing in the fixed copies.
 
 ## Dissent Review
 ### Concern 1: an allowlist can drift from what the part needs

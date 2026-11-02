@@ -67,9 +67,10 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.12.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
+     "the 1.2.0 to 1.13.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
      "`profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`, "
-     "`score.fault_cap`, `faults[].rep_sizes`, `score.per_rep[].tempo_ratio`, `near_misses.items[].margin_deg`) are all "
+     "`score.fault_cap`, `faults[].rep_sizes`, `score.per_rep[].tempo_ratio`, `near_misses.items[].margin_deg`, "
+     "`score.credit`) are all "
      "optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near "
      "misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and "
      "`phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level "
@@ -88,6 +89,11 @@ TABLE_ROWS = (
      "a take compared rep by rep: `{rep, magnitude_deg, side, body_part}` for each rep in `reps`), `score.per_rep[].rep` and "
      "`.tempo_ratio` (that rep's tempo, null where unmeasured and on a low match) and "
      "`diagnostics.near_misses.items[].margin_deg` (degrees past the threshold, negative if short of it); "
+     "1.13.0 (ADR-0020) adds `score.credit` (`simon.credit.v1`, a DDR-style display beside the score: a percent and "
+     "points at the levels easy, normal and hard, one `per_window` entry per compared window of `score.timeline`, null "
+     "when nothing was compared; its `grade` is informational, the credit percent's own letter on the credit's own scale "
+     "`grades`, S 95, A 85, B 75, C 65, D 55, E 45, F 30, under 30 still F, never `score.grade`; `value`, `grade` and "
+     "the caps are unchanged and the 59 warning cap does not apply to it); "
      "a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
      "reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its "
      "`profile`", "Part 5 (this repo)"),
@@ -98,6 +104,12 @@ TABLE_ROWS = (
      "`faults: []`, `expected` and `follower` with their real `path`, a score of 0 (F) and no `match`, because "
      "nothing was compared; `part5 doctor <file> --for part7` accepts it and notes that nothing was looked at; "
      "Part 5 never writes `no_person` or `source`", "Part 5 TICKET-048 (the document Part 7 described, moalborati/simon#61)"),
+    ("Part 5 `analysis.json` `quality`", "the optional top-level `quality` block",   # ADR-0021
+     "`simon.analysis.v1` 1.13.0 with `simon.quality.v1`", "output for Part 7", "works",
+     "detect it by presence and read a document without it as not assessed; `level` is `ok`, `degraded` or `major`, "
+     "`reasons[].code` is a closed list, `signals` are `null` where unmeasurable and `score_cap` is 59 when `major`; it is "
+     "reported only: `score.value`, `score.grade`, `score.capped_by` and `warnings` are unchanged by it, so Part 7 applies "
+     "the cap; `part5 doctor <file> --for part7` notes it", "Part 5 (this repo)"),
     ("Part 5 `analyse --replay <replay.json>`", "`replay.json`", "`simon.replay.v1`", "output for Part 7", "works",
      "optional second file; `expected_t` and `follower_t` carry the times in seconds; check it with `part5 doctor <replay.json>`",
      "Part 5 (this repo)"),

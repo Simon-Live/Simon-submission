@@ -21,6 +21,8 @@ from .normalise import normalise
 from .output import build_analysis, validate_analysis
 from . import profiles
 from .phrasing import BACKENDS, phrase
+from .quality import assess as assess_quality   # ADR-0021: the block is reported only
+from .quality import read_signals, shown_joints
 from .repwise import RepRun, TooManyPairs, compare, rep_entries, reference_entry
 from .reps import segment
 from .guard import (LOW_MATCH, MOVING_PART_OUT_OF_FRAME, NO_USABLE_MEASURES, NO_USABLE_TEXT, NOT_ENOUGH_VISIBLE, OK,
@@ -129,7 +131,8 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     profile = profiles.IDENTITY if profile is None else profile
     exp_ref, fol_ref = _ref(expected, "expected"), _ref(follower, "follower")
     exp = normalise(_load(exp_ref))
-    fol = normalise(_load(fol_ref))
+    fol_file = _load(fol_ref)   # ADR-0021: the quality block reads the follower's file as loaded, before smoothing
+    fol = normalise(fol_file)
     exp_ref.pop("doc", None)
     fol_ref.pop("doc", None)
     # ADR-0015: the optional feet side files, each read on its own clip's clock; None when neither was given. A foot
@@ -138,6 +141,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
     feet = pair_of(load_side("expected", expected_feet, expected_feet_person, exp.t, limits),
                    load_side("follower", follower_feet, follower_feet_person, fol.t, limits))
     extra_conf = None if expected_visibility is None else load_conf(expected_visibility)
+    # ADR-0021, ADR-0011: the quality block holds the follower to the joints the example itself shows (its conf, or
+    # `--expected-visibility`); an example of unknown visibility counts every joint
+    readings = read_signals(fol_file, shown_joints(exp.conf, extra_conf))
     vis = resolve(clip_usable(exp), clip_usable(fol), usable_from_conf(extra_conf))
     notes = {}   # warning code -> text (ADR-0012): the take is analysed all the same, best effort
     moving_info = None
@@ -150,7 +156,7 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
             notes[MOVING_PART_OUT_OF_FRAME] = moving_text(moving_info["moving_measures"])
     usable = vis.align_usable   # None: the full-body choice; fewer than 3 measures are still used
     ctx = _Context(exp_ref, fol_ref, exp, fol, vis, moving_info, notes,
-                   (phrasing, phrasing_client, live, selected_by, lang), score, feet, rules, profile)
+                   (phrasing, phrasing_client, live, selected_by, lang), score, feet, rules, profile, readings)
     if usable is not None and not usable:   # nothing the camera sees can carry timing
         return _unaligned(ctx, NO_USABLE_MEASURES, NO_USABLE_TEXT, rules)
     # Alignment works in frames, so put the follower on the expected clip's clock first;
@@ -223,6 +229,7 @@ class _Context:
     feet: object = None   # the `feet.FootPair`, None when no feet file was given
     rules: dict | None = None   # the effective rules (ADR-0016): the caller's rules, relaxed when a profile is named
     profile: str = profiles.IDENTITY
+    readings: object = None   # the follower file's quality signals (`quality.Readings`, ADR-0021), None when not read
 
 
 def _foot_series(feet, fol_t, fps):
@@ -257,13 +264,19 @@ def _status_text(warnings):
     return OK_ONE_WARNING_TEXT if len(warnings) == 1 else OK_MANY_WARNINGS_TEXT.format(n=len(warnings))
 
 
+def _quality_block(ctx):
+    """The `quality` block of the take (ADR-0021): the follower file's readings and the warnings the take carries. It is
+    reported only; `build_analysis` writes it and nothing after it reads it. None when the readings were not taken."""
+    return None if ctx.readings is None else assess_quality(ctx.readings, ctx.notes)
+
+
 def _finish(ctx, result, faults, times, diagnostics, stats, low, rules):
     """Build, phrase and score the document of a take; a take with any warning is capped at F (score_block)."""
     warnings = _warning_list(ctx.notes)
     analysis = build_analysis(ctx.exp_ref, ctx.fol_ref, faults, diagnostics=diagnostics,
                               status={"code": OK, "text": _status_text(warnings)}, times=times,
                               warnings=warnings or None, match=_match(stats, low, rules) if warnings else None,
-                              profile=ctx.profile)
+                              profile=ctx.profile, quality=_quality_block(ctx))
     analysis = _phrased(analysis, *ctx.phrasing)
     result.analysis = analysis
     if ctx.score is not None:

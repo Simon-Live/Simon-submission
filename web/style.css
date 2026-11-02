@@ -128,7 +128,7 @@ button.link {
 /* "Score: N out of 100, grade G" balances over its lines, so at 390 px the grade letter never sits alone on the last one
    (sixth walkthrough frame review R2, TICKET-065). The string is unchanged. */
 .score { margin: 0 0 0.35rem; font-size: 1.25rem; font-weight: 700; text-wrap: balance; }
-#score-note, #profile-note { margin: 0 0 0.75rem; }
+#score-note, #quality-note, #profile-note { margin: 0 0 0.75rem; }
 
 /* A warning is not an error: amber, not the red of a fault. The colour is not the only cue; the heading says it. */
 .warning {

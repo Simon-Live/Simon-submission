@@ -476,7 +476,7 @@ def test_ac_foot_11_no_feet_file_changes_nothing_but_the_version(plain):
     again = run(str(EXPECTED), str(TAKE), score=score_block, expected_feet=None, follower_feet=None)
     assert again.analysis == plain.analysis
     assert "feet" not in plain.analysis["diagnostics"]
-    assert plain.analysis["schema_version"] == "1.12.0"
+    assert plain.analysis["schema_version"] == "1.13.0"
     assert foot_faults(plain.analysis) == []
 
 
@@ -495,7 +495,7 @@ def test_ac_foot_11_the_follower_alone_having_feet_hides_the_measures_with_the_r
     assert info["compared"] == [] and info["hidden_reason"] == "no expected feet file was given"
     assert info["expected"] == {"source": None, "person": 0, "frames_matched": 0, "usable": []}
     assert info["follower"]["usable"] == FOUR and info["follower"]["frames_matched"] > 0
-    assert foot_faults(a) == [] and a["schema_version"] == "1.12.0"
+    assert foot_faults(a) == [] and a["schema_version"] == "1.13.0"
 
 
 def test_ac_foot_11_a_file_without_extra_joints_is_not_an_error_and_says_why(tmp_path):

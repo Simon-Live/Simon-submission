@@ -8,6 +8,9 @@
   fixtures/output/analysis.double-capped.example.json a real take that reports two faults and hits the 79 ceiling of
                                                   simon.score.v3 (`score.fault_cap` 79, `score.uncapped` the value before
                                                   it, no `capped_by`; ADR-0019, a sample for Part 7)
+  fixtures/output/analysis.quality-major.example.json a degraded take (`quality.level` major, `quality.score_cap` 59, reported
+                                                  only: the score is not capped by it; ADR-0021, a sample for Part 7). Its
+                                                  input is fixtures/input/quality, written by scripts/make_quality_sample.py
   fixtures/output/replay.example.json             the replay (`simon.replay.v1`) of the double-fault take
 
 Every golden goes through `part5.contract.golden_run`: the score hook included, so a golden carries the score,
@@ -42,6 +45,8 @@ DOUBLE_SAMPLE = "analysis.double-capped.example.json"   # a simon.score.v3 sampl
 # windows is 82 before the 79 ceiling of simon.score.v3 (ADR-0019) lowers it
 REAL = "fixtures/input/real/lateral-raise"
 DOUBLE_TAKE = (f"{REAL}/pexels-5319084/animation.json", f"{REAL}/pexels-40297504/animation.json", "pexels-40297504")
+QUALITY_SAMPLE = "analysis.quality-major.example.json"   # ADR-0021: the squat's low-light take with its face and wrists at the unseen mark
+QUALITY_TAKE = ("fixtures/input/quality/exercise_front_dark_00/skeleton.json", "exercise_front_dark_00")
 REPLAY_FILE = "replay.example.json"
 
 
@@ -74,6 +79,9 @@ def main(out=OUT):
     if ships(VERSION_V3):   # no second ceiling to show under v1 or v2
         expected, follower, take_id = DOUBLE_TAKE
         write_golden(out, DOUBLE_SAMPLE, {"path": expected}, {"path": follower, "take_id": take_id})
+    follower, take_id = QUALITY_TAKE   # the quality block at its worst: the cap is reported and the score is left alone
+    write_golden(out, QUALITY_SAMPLE, {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise",
+                                       "movement": "squat"}, {"path": follower, "take_id": take_id})
 
 
 if __name__ == "__main__":
