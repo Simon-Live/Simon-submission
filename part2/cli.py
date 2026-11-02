@@ -11,6 +11,8 @@
     part2 track --input clip.mp4 --out out/clip [--fps 10] [--tracker NAME] [--tracker-order scored|bulk]
     part2 contract [--json] [--schema NAME]      (also: python -m part2 contract)
     part2 doctor FILE [--for part3|part5|part6] [--json]   (FILE: pose3d, tracks, camera, frames or mesh3d json)
+    part2 avatar --out DIR IMG [IMG...]   (1 to 4 photos of one person -> DIR/model.glb + DIR/avatar.json; exit 3 no person, 4 GPU busy)
+    part2 autorig --out DIR MESH [--height M] [--up y|z]   (unrigged mesh -> DIR/model.glb + avatar.json, docs/specs/autorig.md)
     part2 stock [--clip pexels-<id>[-<start>to<end>s]] [--backend gpu|cpu|cpu-sam3db]   (make stock-outputs)
 
 Exit codes of `run` and `track`: 0 written, 1 failed, 2 bad option, 4 no person found in any frame (the message is
@@ -311,12 +313,24 @@ def _build_parser() -> argparse.ArgumentParser:
     p_demo.add_argument("--out", type=Path)
     p_demo.add_argument("--embed", action="store_true", help="viewer: inline the frames so the .html shares on its own")
 
+    p_av = sub.add_parser("avatar", help="a rigged GLB of the person from 1 to 4 photos (SAM 3D Body + MHR)",
+                          description="Fits the body shape in each photo, writes DIR/model.glb (127-joint skinned humanoid) "
+                          "and DIR/avatar.json. Exit 0 written, 1 failed, 2 bad input, 3 no person found, 4 GPU busy.")
+    p_av.add_argument("--out", required=True, type=Path, help="output directory (model.glb and avatar.json)")
+    p_av.add_argument("images", nargs="+", type=Path, metavar="IMG", help="JPEG, PNG or WebP photo (1 to 4)")
+
     from part2 import stock
 
     p_st = sub.add_parser("stock", help="Pexels follower takes for Part 5 -> fixtures/output/stock/<take>/")
     p_st.add_argument("--clip", choices=list(stock.TAKES),
                       help="one take: a whole clip or a cut <clip>-<start>to<end>s (default: every take)")
     p_st.add_argument("--backend", choices=list(backends.CHOICES), help="default: PART2_BACKEND, else gpu when CUDA is available")
+
+    p_ar = sub.add_parser("autorig", help="rig an unrigged humanoid mesh (OBJ, or GLB without a skin): DIR/model.glb + avatar.json")
+    p_ar.add_argument("mesh", type=Path, help="an .obj or a .glb without a skin")
+    p_ar.add_argument("--out", required=True, type=Path, help="directory for model.glb and avatar.json")
+    p_ar.add_argument("--height", type=float, metavar="M", help="the person's height in metres (default: guessed from the unit)")
+    p_ar.add_argument("--up", choices=["y", "z"], help="the mesh's up axis (default: guessed)")
 
     return parser
 
@@ -396,10 +410,18 @@ def main(argv: list[str] | None = None) -> int:
         if code is not None:
             return code
         print(f"part2: no worker at {args.worker}; running in this process", file=sys.stderr)
+    if args.command == "avatar":
+        from part2 import avatar
+
+        return avatar.command(args.out, args.images)
     if args.command == "stock":
         from part2 import stock
 
         return stock.command(args.clip, args.backend)
+    if args.command == "autorig":
+        from part2 import autorig
+
+        return autorig.command(args.mesh, args.out, args.height, args.up)
     if args.command == "demo":
         from part2 import demo
 

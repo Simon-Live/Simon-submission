@@ -439,6 +439,48 @@ Failure. Every failure reaches the client as an exit code, so Part 7 runs the co
 Exit 4 (no person found) and exit 2 are answers, not failures: running the cold CLI again gives the same code. Restart
 the worker after a `git pull` of Part 2 or a new checkpoint. Spec: `docs/specs/warm-track.md`.
 
+## Rigged models: `part2 avatar` and `part2 autorig`
+
+Two commands make a rigged humanoid GLB for Simon's model picker. Both write the same two files and share one
+MHR joint table (`part2/mhr_export.py`). Neither touches `run`, `track` or any file of the take contract above.
+
+```
+part2 avatar  --out DIR IMG [IMG...]                   # 1 to 4 photos (JPEG, PNG, WebP) of one person
+part2 autorig --out DIR MESH [--height M] [--up y|z]   # one .obj, or one .glb without a skin
+```
+
+| Argument | Meaning |
+|---|---|
+| `--out DIR` | required; the directory for the two outputs, created if missing. An `--out` that is a file is exit 2 (`avatar`) |
+| `IMG` (`avatar`) | 1 to 4 photos, each up to 25 MB, checked by magic bytes. Order does not change the result |
+| `MESH` (`autorig`) | an OBJ or a GLB with no skin, 50 to 300000 triangles, up to 200 MB |
+| `--height M` (`autorig`) | the person's height in metres, 0.3 to 3; default: guessed from the mesh's unit |
+| `--up y\|z` (`autorig`) | the mesh's up axis; default: guessed |
+
+Outputs, written whole on exit 0. A stale `model.glb` or `avatar.json` in `DIR` is removed before the run, so a failed
+run leaves none that looks current.
+
+| File | Content |
+|---|---|
+| `model.glb` | glTF 2.0 binary: one skinned mesh, 127 joints, at most four joints per vertex, metres, Y up, facing +Z, soles on y = 0. The 22 bones Simon drives carry canonical names (`hips`, `spine`, `chest`, `upperChest`, `neck`, `head`, `leftShoulder` to `leftHand`, `rightShoulder` to `rightHand`, `leftUpperLeg` to `leftToes`, `rightUpperLeg` to `rightToes`); the rest are `mhr_<index>`. Every joint has an identity rotation at bind |
+| `avatar.json` | `{schema: "simon.avatar.v1", kind: "image" or "autorig", inputs, height_m, joints: 127, mapped: {<canonical>: <glTF node index>}, licence: "SAM License; MHR Apache-2.0 notice", part2_commit, skinning}`; `autorig` adds `fit_error_m`, `turned_to_face_forward`, `up_axis`, `unit_guess` |
+
+Exit codes of both commands; the message is one line on stderr, `part2: <reason>`:
+
+| Code | Meaning |
+|---|---|
+| 0 | `model.glb` and `avatar.json` written |
+| 1 | failed: the backend cannot run here (no CUDA, no weights) or any other error |
+| 2 | bad input: a missing, empty, oversized or unreadable file, the wrong count or type, a mesh that already has a skin or does not look like one standing person, a figure whose facing cannot be told |
+| 3 | no person found in the photo (`avatar`) or in the picture drawn of the mesh (`autorig`) |
+| 4 | the GPU is not available: the host GPU lock stays held past `PART2_AVATAR_GPU_WAIT_S` or `PART2_AUTORIG_GPU_WAIT_S` (default 30 s), free GPU memory is too low, or the model ran out of memory |
+
+Code 4 here means a busy GPU, unlike code 4 of `run` and `track` ("no person found", above); code 3 is the no-person
+case for these two commands. A caller waits and retries on 4. The photos and the picture drawn of a mesh are never
+kept. Consent, the age gate and who may see the result belong to the caller (Part 7 keeps generated models private to
+their owner). The model is made with SAM 3D Body and the MHR body model; `licence` and the GLB's `asset.copyright`
+carry the notice any copy needs (ADR-0005). Specs: `docs/specs/avatar.md`, `docs/specs/autorig.md`.
+
 ## Differences between Part 2's validators and Part 3's schema
 
 Part 3's side was read at Part 3 `6d339d5` (the commit in `contracts/consumers/part3-pose3d.schema.source.json`),
