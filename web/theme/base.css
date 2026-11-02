@@ -20,7 +20,7 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 
 /* header: the Exercise / Dance switch in the middle, quiet links at the sides */
 .bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: var(--color-header-glass);
-  border-bottom: 2px solid var(--color-pink); backdrop-filter: blur(var(--header-blur)); }   /* the bright pink divider */
+  border-bottom: 2px solid var(--color-pink); backdrop-filter: blur(var(--header-blur)); min-height: var(--bar-min-height); }   /* the bright pink divider */
 /* explicit cells: styles.css gives these flex orders that would otherwise reshuffle the grid */
 .brand { grid-area: 1 / 1; justify-self: start; font-weight: var(--weight-black); letter-spacing: -0.02em; color: var(--color-accent); }
 #kind-switch { grid-area: 1 / 2; }
@@ -91,6 +91,7 @@ main#app::before { content: ""; position: absolute; top: 0; bottom: 0; left: -64
 /* phone header: the dog badge carries the brand, so the word hides; nothing wraps */
 @media (max-width: 520px) {
   header.bar .brand { height: var(--brand-in-bar-phone); }
+  .bar { min-height: var(--bar-min-height-phone); }
   main#app { padding-top: calc(var(--brand-mark-phone) - var(--brand-in-bar-phone) + var(--space-4)); }   /* the content clears the hanging sign */
   .brand .logo-bar { height: var(--brand-mark-phone); margin-top: calc(var(--bar-divider-y-phone) - var(--brand-mark-phone) * var(--brand-corner)); }
   .brand .brand-word { display: none; }

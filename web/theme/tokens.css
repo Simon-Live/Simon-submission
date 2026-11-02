@@ -109,13 +109,15 @@
   --space-6: 24px;
   --page-width: max(960px, 60vw);   /* the content column: 60% of a wide screen, never narrower than 960 px */
   --brand-inset: 20px;         /* how far the header mark sits in from the left edge */
-  --brand-mark: 88px;          /* the dog-and-sign mark in the header: the dog in the bar, the sign hanging below it */
+  --brand-mark: 100px;         /* the dog-and-sign mark in the header: the dog in the bar, the sign hanging below it */
   --brand-in-bar: 56px;        /* how much of the mark sits inside the bar */
-  --brand-mark-phone: 80px;
+  --brand-mark-phone: 90px;
   --brand-in-bar-phone: 44px;
   --brand-corner: 0.6084;      /* where the sign's top-left corner is, as a share of the mark's height (logoBar's frame) */
-  --bar-divider-y: 57px;       /* the middle of the pink divider, from the top of the bar */
-  --bar-divider-y-phone: 55px;
+  --bar-divider-y: 63px;       /* the middle of the pink divider, from the top of the bar */
+  --bar-divider-y-phone: 57px;
+  --bar-min-height: 64px;      /* the bar is this tall (its 2 px divider included) so the bigger mark fits */
+  --bar-min-height-phone: 58px;
   --tap-target: 44px;
   --button-height: 48px;
   --target-min: 44px;
