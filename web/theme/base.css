@@ -67,7 +67,7 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 /* the dog sits in the header and the sign hangs below it, over the pink divider (sketch 2026-11-01): the mark is
    taller than the bar and its lower part overflows downward without making the bar taller */
 header.bar .brand { position: relative; z-index: 3; align-self: start; align-items: flex-start; height: var(--brand-in-bar); }
-.brand .logo-bar { height: var(--brand-mark); width: auto; margin-top: 6px; pointer-events: auto; }
+.brand .logo-bar { height: var(--brand-mark); width: auto; margin-top: calc(var(--bar-divider-y) - var(--brand-mark) * var(--brand-corner)); pointer-events: auto; }   /* the sign's top-left corner sits on the divider */
 .brand .brand-word { display: none; }   /* the word is on the sign */
 .splash-tag { color: var(--color-text); font-size: var(--text-md); }
 @media (prefers-reduced-motion: reduce) { .splash { transition: none; } }
@@ -82,7 +82,7 @@ main#app::before { content: ""; position: absolute; top: 0; bottom: 0; left: -64
 @media (max-width: 520px) {
   header.bar .brand { height: var(--brand-in-bar-phone); }
   main#app { padding-top: calc(var(--brand-mark-phone) - var(--brand-in-bar-phone) + var(--space-4)); }   /* the content clears the hanging sign */
-  .brand .logo-bar { height: var(--brand-mark-phone); margin-top: 4px; }
+  .brand .logo-bar { height: var(--brand-mark-phone); margin-top: calc(var(--bar-divider-y-phone) - var(--brand-mark-phone) * var(--brand-corner)); }
   .brand .brand-word { display: none; }
   .bar-nav a { white-space: nowrap; }
   .bar { column-gap: var(--space-1); padding-left: var(--space-2); padding-right: var(--space-2); }
