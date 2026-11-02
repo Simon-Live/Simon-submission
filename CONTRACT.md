@@ -207,7 +207,7 @@ The camera frame is OpenCV (x right, y down, z forward), in metres. Parts 3, 4 a
 The SAM 3D Body body mesh (MHR) of every person in every frame, decimated once per run to about `--mesh-vertices`
 vertices (default 2500). Written only with `--mesh` on the `gpu` or `cpu-sam3db` backend, after `pose3d.json`, in
 the same directory; a run without `--mesh` removes a pair left there by an earlier run. Schema of the header:
-`contracts/mesh3d.schema.json`, version `part2.mesh3d/2026-10-31`. Spec: `docs/specs/mesh3d.md`.
+`contracts/mesh3d.schema.json`, version `part2.mesh3d/2026-10-31`. Spec: `docs/specs/mesh3d.md`. With `--mesh-stream` the run also writes `mesh3d.stream/` (head.bin, chunk-NNNN.bin, stream.json) while the model runs; the pair is unchanged (AC-M19 to AC-M23).
 
 | Rule | Promise |
 |---|---|
@@ -480,6 +480,23 @@ case for these two commands. A caller waits and retries on 4. The photos and the
 kept. Consent, the age gate and who may see the result belong to the caller (Part 7 keeps generated models private to
 their owner). The model is made with SAM 3D Body and the MHR body model; `licence` and the GLB's `asset.copyright`
 carry the notice any copy needs (ADR-0005). Specs: `docs/specs/avatar.md`, `docs/specs/autorig.md`.
+
+## A textured, rigged model from one picture: `part2 image3d`
+
+```
+part2 image3d --out DIR IMG [--height M] [--backend auto|sam3do|trellis]   # one JPEG, PNG or WebP of a character
+```
+
+Writes `DIR/model.glb` and `DIR/avatar.json` like `avatar` and `autorig` (same 22 canonical bone names, 127 joints, metres,
+Y up, facing +Z), with two differences: the surface keeps its look as a texture image with UVs (`TEXCOORD_0`, base colour
+texture, no vertex colours), and `avatar.json` has `kind: "image3d"` plus `backend` (model, version, weights revision),
+`timings_s`, `peak_vram_gib`, `texture` and `height_assumed`. `--height` defaults to 1.7 m. An image-to-3D model makes
+the mesh (SAM 3D Objects first; TRELLIS only when SAM 3D Objects cannot run on the host or by `--backend trellis`), then
+`autorig`'s rigger rigs it. Exit codes: 0 written, 1 failed, 2 bad input, 3 nothing humanoid could be rigged (the line
+says so), 4 the GPU is not available (lock held past `PART2_IMAGE3D_GPU_WAIT_S`, free memory below the backend's need,
+or out of memory). **Part 7 must release Part 2's warm workers before calling it**, and wait and retry on 4: the memory
+each backend needs is in `docs/specs/image3d.md` ("Measured"). It runs minutes, not seconds, so call it detached.
+The picture is never kept; its rights are the caller's. Licences: ADR-0005.
 
 ## Differences between Part 2's validators and Part 3's schema
 

@@ -13,6 +13,7 @@
     part2 doctor FILE [--for part3|part5|part6] [--json]   (FILE: pose3d, tracks, camera, frames or mesh3d json)
     part2 avatar --out DIR IMG [IMG...]   (1 to 4 photos of one person -> DIR/model.glb + DIR/avatar.json; exit 3 no person, 4 GPU busy)
     part2 autorig --out DIR MESH [--height M] [--up y|z]   (unrigged mesh -> DIR/model.glb + avatar.json, docs/specs/autorig.md)
+    part2 image3d --out DIR IMG [--height M]   (a picture of a character -> textured, rigged DIR/model.glb + avatar.json; exit 3 nothing humanoid, 4 GPU busy)
     part2 stock [--clip pexels-<id>[-<start>to<end>s]] [--backend gpu|cpu|cpu-sam3db]   (make stock-outputs)
 
 Exit codes of `run` and `track`: 0 written, 1 failed, 2 bad option, 4 no person found in any frame (the message is
@@ -261,6 +262,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--mesh", action="store_true",
                        help="also write mesh3d.json + mesh3d.bin, the decimated SAM 3D Body mesh per person per frame "
                             "(gpu or cpu-sam3db backend; not with --refine; docs/specs/mesh3d.md)")
+    p_run.add_argument("--mesh-stream", action="store_true",
+                       help="--mesh: also write mesh3d.stream/ (chunks and a manifest) while the model runs; the "
+                            "finished pair is unchanged (docs/design/specs/mesh3d.md, AC-M19)")
     p_run.add_argument("--mesh-vertices", type=int, default=None,
                        help="--mesh: about this many vertices per body (default 2500)")
     p_run.add_argument("--tracks", type=Path, help="multi: reuse this tracks.json (no tracking run, ids unchanged)")
@@ -332,6 +336,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ar.add_argument("--height", type=float, metavar="M", help="the person's height in metres (default: guessed from the unit)")
     p_ar.add_argument("--up", choices=["y", "z"], help="the mesh's up axis (default: guessed)")
 
+    p_i3 = sub.add_parser("image3d", help="a textured, rigged GLB of the character in a picture (TRELLIS + SAM 3D Body + MHR)",
+                          description="Makes a textured mesh from the picture, rigs it, keeps the texture. Exit 0 written, "
+                          "1 failed, 2 bad input, 3 nothing humanoid could be rigged, 4 GPU busy.")
+    p_i3.add_argument("--out", required=True, type=Path, help="output directory (model.glb and avatar.json)")
+    p_i3.add_argument("image", type=Path, metavar="IMG", help="JPEG, PNG or WebP picture of one character")
+    p_i3.add_argument("--height", type=float, metavar="M", help="the character's height in metres (default: 1.7)")
+    p_i3.add_argument("--backend", choices=["auto", "sam3do", "trellis"], default="auto",
+                      help="auto: SAM 3D Objects, then TRELLIS when SAM 3D Objects cannot run here (default)")
+
     return parser
 
 
@@ -347,13 +360,18 @@ def _mesh_collector(args, backend_name: str, rungs: list) -> dict:
 
     if args.mesh_vertices is not None and not args.mesh:
         raise ValueError("--mesh-vertices applies to --mesh only")
+    if args.mesh_stream and not args.mesh:
+        raise ValueError("--mesh-stream applies to --mesh only")
     if not args.mesh:
         return {}
     if backend_name not in mesh3d.BACKENDS:
         raise ValueError(mesh3d.REFUSAL)
     if rungs:  # the focal rung re-runs the model without the collector, so the mesh would be from another run
         raise ValueError(MESH_REFINE_REFUSAL)
-    return {"mesh": mesh3d.Collector(mesh3d.DEFAULT_TARGET if args.mesh_vertices is None else args.mesh_vertices)}
+    from part2 import mesh_stream
+
+    stream = mesh_stream.MeshStream(args.out) if args.mesh_stream else None  # TICKET-284
+    return {"mesh": mesh3d.Collector(mesh3d.DEFAULT_TARGET if args.mesh_vertices is None else args.mesh_vertices, stream)}
 
 
 def _clear_mesh(out: Path) -> None:
@@ -365,6 +383,9 @@ def _clear_mesh(out: Path) -> None:
 
     for name in (mesh3d.JSON_NAME, mesh3d.BIN_NAME):
         (out / name).unlink(missing_ok=True)
+    from part2 import mesh_stream
+
+    mesh_stream.clear(out)
 
 
 def _write_mesh(mesh: dict, out: Path) -> bool:
@@ -422,6 +443,10 @@ def main(argv: list[str] | None = None) -> int:
         from part2 import autorig
 
         return autorig.command(args.mesh, args.out, args.height, args.up)
+    if args.command == "image3d":
+        from part2 import image3d
+
+        return image3d.command(args.out, args.image, args.height, args.backend)
     if args.command == "demo":
         from part2 import demo
 

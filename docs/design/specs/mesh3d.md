@@ -10,8 +10,8 @@ item 2). Part 2 ticket: TICKET-048, requested by simon-part-7 TICKET-143 and int
 Request Type: feature-mod
 Risk Level: routine (a new optional output behind a flag; no existing output changes)
 Files: `part2/mesh3d.py`, `part2/body3d.py`, `part2/backends/gpu_sam3db.py`, `part2/backends/cpu_sam3db.py`,
-`part2/cli.py`, `part2/doctor.py`, `part2/contract.py`, `part2/stamp.py` (the NOT_OUTPUT_CODE entry),
-`contracts/mesh3d.schema.json`, `tests/test_mesh3d.py`, `tests/test_stamp.py`, `tests/test_worker_cli_integration.py`.
+`part2/cli.py`, `part2/mesh_stream.py`, `part2/doctor.py`, `part2/contract.py`, `part2/stamp.py` (the NOT_OUTPUT_CODE entry),
+`contracts/mesh3d.schema.json`, `tests/test_mesh3d.py`, `tests/test_mesh_stream.py`, `tests/test_stamp.py`, `tests/test_worker_cli_integration.py`.
 ADRs: ADR-0002 (backends), ADR-0005 (licences: the SAM License row and the MHR row).
 
 ## Overview
@@ -237,6 +237,27 @@ Challenge: `--smooth` moves joints only. Mitigation: documented; Part 7 does not
 1. The file is too big for a phone. Likelihood L, Impact M, Mitigation: AC-NFR-M01 and `--mesh-vertices`.
 2. The mesh drifts from the skeleton. Likelihood L, Impact M, Mitigation: AC-M04 test.
 3. Licence objection. Likelihood L, Impact H, Mitigation: licence field in the header and ADR-0005 rows.
+
+## Streaming (TICKET-284, requested by simon-part-7 TICKET-284)
+`part2 run --mesh --mesh-stream` also writes `<out>/mesh3d.stream/` while SAM 3D Body runs, so a viewer can draw the
+body pose by pose before the run ends. `--mesh-stream` without `--mesh` is exit 2. The folder holds `head.bin` (faces,
+then vertex_joint labels, each padded to 4 bytes, written once with the first person), `chunk-NNNN.bin` (the int16
+blocks of the frames finished since the last chunk, in block order) and `stream.json` (format
+`part2.mesh3d-stream/2026-11-02`: `head` with vertex_count, face_count, faces and vertex_joint offsets and names;
+`chunks` [{file, first_block, blocks}]; `block_bytes`; `frames` [{frame, t_ms, people [{id, block}]}] for the frames
+finished so far; `frames_done`; `frames_total`; `done`). Every file is written under a dot name and renamed into place,
+and the manifest is renamed last, so a chunk the manifest lists always exists and no reader sees a partial file.
+Head bytes followed by the chunks in order are exactly `mesh3d.bin`. A person-frame with no usable hips has no block and
+is not listed. The finished pair is written first and then the manifest gets `done: true`; the pair, `body3d.json`
+and `camera.json` are byte-identical with and without the stream. A run clears an older stream in `<out>` at the same
+point it clears an older pair.
+
+- AC-M19: the pair, body3d.json and camera.json are byte-identical with and without `--mesh-stream`; a run without it writes no stream folder.
+- AC-M20: head + chunks equals mesh3d.bin; the manifest ends `done` with frames_done = frames_total. While the run is going, `frames_total` is null: the frame count is set at the end, so body3d.py (a stamped file) carries no streaming hook; the collector ends each frame when the next one starts.
+- AC-M21: after each frame the manifest lists only existing chunks and the frame count rises by one; `every=N` flushes in chunks, the first person-frame at once.
+- AC-M22: no stream folder before the first person; every file is replaced atomically (a concurrent reader never fails to parse).
+- AC-M23: an older stream is cleared by the next run; `--mesh-stream` alone is exit 2.
+Tests: tests/test_mesh_stream.py. Measured cost: see the TICKET-284 evidence in simon-part-7.
 
 ## Requirements Traceability
 | Requirement Source | Spec AC | Test | Status |

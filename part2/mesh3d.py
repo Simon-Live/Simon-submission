@@ -102,7 +102,7 @@ def apply(p: Plan, vertices) -> np.ndarray:
 class Collector:
     """Gathers person-frames during body3d.estimate; `write` produces the pair."""
 
-    def __init__(self, target: int = DEFAULT_TARGET):
+    def __init__(self, target: int = DEFAULT_TARGET, stream=None):
         if target < MIN_TARGET:
             raise ValueError(f"--mesh-vertices must be at least {MIN_TARGET}")
         self.target, self.plan, self.source_vertex_count = target, None, 0
@@ -110,9 +110,27 @@ class Collector:
         self.blocks: list[np.ndarray] = []
         self.clipped = 0
         self.vertex_joint = None
+        self.stream = stream  # a part2.mesh_stream.MeshStream, or None (TICKET-284)
+        self._open = False  # a frame was started and not yet ended for the stream
+
+    def expect(self, total: int) -> None:
+        """The number of frames the run will go through, for a stream's counter."""
+        if self.stream is not None:
+            self.stream.total = total
+
+    def end_frame(self) -> None:
+        """The current frame is complete (its people are all added): a stream flushes it.
+
+        Called by `frame` for the previous frame and by `write` for the last one, so body3d.estimate (a stamped
+        file) needs no change; an explicit call is harmless (a frame is ended at most once)."""
+        if self.stream is not None and self._open:
+            self._open = False
+            self.stream.end_frame(self)
 
     def frame(self, frame: int, t_ms: float) -> None:
+        self.end_frame()
         self.frames.append({"frame": frame, "t_ms": t_ms, "people": []})
+        self._open = True
 
     def add(self, pid, verts_cam, faces, joints_cam) -> bool:
         """One person of the current frame. False (and nothing kept) when the hips give no canonical frame."""
@@ -163,7 +181,11 @@ class Collector:
             bin_file.write(head)
             for b in self.blocks:
                 bin_file.write(b.tobytes())
-        return write_json(out_dir / JSON_NAME, header), out_dir / BIN_NAME
+        written = write_json(out_dir / JSON_NAME, header), out_dir / BIN_NAME
+        self.end_frame()
+        if self.stream is not None:
+            self.stream.finish(self)
+        return written
 
 
 def nearest_joint(verts: np.ndarray, joints: np.ndarray) -> np.ndarray:
