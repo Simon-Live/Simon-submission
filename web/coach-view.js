@@ -1,9 +1,12 @@
 // The coaching moments on the result screen (coaching-moments.md): the follower's video kept in step with the 3D
 // compare clock, "Replay worst moment" and "Moments to review". The numbers come from coaching.js, which only
-// selects and ranks Part 5's analysis.
+// selects and ranks Part 5's analysis. On a follow take the trainer's video plays beside it, at the matching part of the
+// trainer's movement (model/coach-trainer.js).
 import { el } from "./score.js";
 import { LEAD_IN_S, TAIL_S, REVIEW_GAP, momentLabel } from "./coaching.js";
 import { markerGroups, markShare } from "./model/marker-groups.js";
+import { TEXT as TRAINER_TEXT, alignmentOf, trainerStep } from "./model/coach-trainer.js";
+import { drawCoachTrainer } from "./views/coach-trainer.js";
 
 const DRIFT_S = 0.3;       // how far the video may stray from the clock while playing before it is put back
 const REST_S = 0.04;       // and while paused
@@ -46,9 +49,10 @@ function clockOf(video, compare) {
 /**
  * The stage: the follower's video, "Replay worst moment" and the marks strip, driven by one clock.
  * @param opts.compare 3D compare (its clock is the master) or null; opts.videoUrl; opts.worst; opts.moments
- * @returns {{el, video, seekTo, goTo, replayWorst, stopLoop, destroy}}
+ * @param opts.trainer {url, replay} for the trainer's video beside the follower's, or null (a group take, no entry video)
+ * @returns {{el, video, trainerVideo, seekTo, goTo, replayWorst, stopLoop, destroy}}
  */
-export function mountCoachStage(root, { compare, videoUrl, worst, moments, total = 0 }) {
+export function mountCoachStage(root, { compare, videoUrl, worst, moments, total = 0, trainer = null }) {
   const figure = el("section", { class: "sr-coach", "data-testid": "coach-stage", "data-state": "loading", "aria-label": "Your take" });
   const video = el("video", { class: "sr-video", "data-testid": "result-video", muted: true, playsinline: true, preload: "auto", "aria-label": "Your take on video" });
   video.muted = true;
@@ -56,6 +60,16 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
   const bar = el("div", { class: "sr-coach-bar" });
   figure.append(frame, bar);
   root.append(figure);
+  // the trainer's video, left of the follower's; it follows the same clock through the replay's frame matching
+  const pane = trainer && trainer.url ? drawCoachTrainer(figure, frame, TRAINER_TEXT, trainer.url) : null;
+  const tv = pane ? pane.video : null;
+  const align = pane ? alignmentOf(trainer.replay) : null;
+  let trainerOk = Boolean(pane);
+  if (pane) {
+    figure.setAttribute("data-trainer", "loading");
+    tv.addEventListener("loadedmetadata", () => { figure.setAttribute("data-trainer", "ready"); if (clock) syncTrainer(clock.time(), clock.isPlaying()); }, { once: true });
+    tv.addEventListener("error", () => { trainerOk = false; figure.setAttribute("data-trainer", "unavailable"); pane.unavailable(); }, { once: true });
+  }
 
   let clock = null;
   let span = null;
@@ -71,7 +85,17 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
       if (!video.paused) video.pause();
       if (Math.abs(video.currentTime - t) > REST_S) video.currentTime = t;
     }
+    syncTrainer(t, playing);
   };
+  function syncTrainer(t, playing) {
+    if (!trainerOk || !(tv.readyState >= 1)) return;
+    const step = trainerStep(t, playing, { t: tv.currentTime, paused: tv.paused, rate: tv.playbackRate },
+      align, { trainer: tv.duration, you: video.duration });
+    if (step.rate !== null) tv.playbackRate = step.rate;
+    if (step.seek !== null) tv.currentTime = step.seek;
+    if (step.play && tv.paused) tv.play().catch(() => {});
+    else if (!step.play && !tv.paused) tv.pause();
+  }
 
   // ----- the controls -----------------------------------------------------------------------------------
   const worstBtn = worst ? el("button", { type: "button", class: "sr-btn sr-worst", "data-testid": "replay-worst", "aria-pressed": "false",
@@ -174,12 +198,14 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
       if (ev.target.closest('[data-testid="play"]')) { clearSpan(); if (worstBtn) worstBtn.textContent = "Replay worst moment"; }
     }, true);
   }
-  frame.addEventListener("click", () => {
+  const tapToPlay = () => {
     if (!clock || figure.getAttribute("data-state") !== "ready" || video.hasAttribute("controls")) return;
     clearSpan();
     if (worstBtn) worstBtn.textContent = "Replay worst moment";
     if (clock.isPlaying()) clock.pause(); else clock.play();
-  });
+  };
+  frame.addEventListener("click", tapToPlay);
+  if (pane) pane.onTap(() => (video.hasAttribute("controls") ? (video.paused ? video.play().catch(() => {}) : video.pause()) : tapToPlay()));
 
   video.addEventListener("loadedmetadata", () => {
     setState("ready");
@@ -197,7 +223,7 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
   video.src = videoUrl;
 
   return {
-    el: figure, video, seekTo, goTo, replayWorst, stopLoop,
+    el: figure, video, trainerVideo: tv, seekTo, goTo, replayWorst, stopLoop,
     ready: () => figure.getAttribute("data-state") === "ready",
     unavailable: () => figure.getAttribute("data-state") === "unavailable",
     whenSettled: () => new Promise((resolve) => {
@@ -212,6 +238,7 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
       video.pause();
       video.removeAttribute("src");
       video.load();
+      if (pane) pane.destroy();
       figure.remove();
     },
   };

@@ -183,6 +183,17 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 /* R5 the stage: the video with the 3D compare right under it, short enough that both fit one phone screen */
 .simon-result .sr-stage-zone { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); scroll-margin-top: var(--header-height); }
 .simon-result .sr-stage-zone .sr-coach { position: relative; margin-bottom: 0; }
+/* the coach stage on a follow take: the trainer's video left of yours, the same height, each half the width (390 px fits) */
+.sr-coach-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); padding: var(--space-2) var(--space-2) 0; }
+.sr-coach-pair[data-single="true"] { grid-template-columns: 1fr; }
+.sr-coach-pane { margin: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.sr-coach-pair .sr-video-frame { border-radius: var(--radius-md); overflow: hidden; }
+.sr-coach-pair .sr-video { width: 100%; height: 28vh; max-height: none; object-fit: contain; }
+.sr-coach-label { font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; }
+.sr-coach-pane[data-who="you"] .sr-coach-label { color: var(--color-accent); }
+@media (min-width: 720px) { .sr-coach-pair .sr-video { height: 36vh; } }
+/* "Stop replaying": the pressed replay button takes the accent, not the old theme's amber */
+.simon-result .sr-worst[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
 .simon-result .sr-stage-zone .sr-stage { aspect-ratio: auto; height: 30vh; min-height: 200px; max-height: 420px; }
 
 /* R2 the skeleton over your video */

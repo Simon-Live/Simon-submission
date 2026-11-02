@@ -424,7 +424,9 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   const url = videoUrl === undefined ? videoUrlFor(job, pid) : videoUrl;
   if (url && (real || worst)) {
     const total = Math.max(compare ? compare.duration : 0, ...timelineEnd(shown));
-    coach = mountCoachStage(stageHolder, { compare, videoUrl: url, worst, moments, total });
+    // a follow take's stage shows the trainer's video too, kept on the matching part of the movement by the replay
+    const trainer = trainerVideoUrl ? { url: trainerVideoUrl, replay } : null;
+    coach = mountCoachStage(stageHolder, { compare, videoUrl: url, worst, moments, total, trainer });
     // a settle timeout only lets the rest of the screen render; the stage stays so a late video still works
     // and is destroyed only on a real load error
     if ((await settledOrTimeout(coach)) === "unavailable") {
