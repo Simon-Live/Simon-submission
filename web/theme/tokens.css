@@ -154,6 +154,8 @@
   --paw-r: min(46vw, 220px);     /* the radius of their walk around the mark */
   --paw-in: 0.25s;
   --paw-step: 70ms;              /* 12 prints within the 1.2 s splash */
+  /* a video camera, used as a mask (its fill is never seen): the header's Record button */
+  --icon-video: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='6' width='13' height='12' rx='2.5'/%3E%3Cpath d='M16.5 10.2 22 7v10l-5.5-3.2z'/%3E%3C/svg%3E");
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --grade-land: 0.4s;
 
