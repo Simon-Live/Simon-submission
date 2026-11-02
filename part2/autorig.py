@@ -260,7 +260,8 @@ def rig(mesh: Mesh, skin: Skin, fit_body, part2_commit: str = "unknown") -> Rigg
     joints, centred = autorig_joints.centre_in_depth(mesh.vertices, body.joints, skin.parents, mapping)
     idx, w = autorig_weights.refine(mesh.vertices, mesh.faces, joints, skin.parents, mapping, idx, w)
     stretch["after"] = autorig_pose.pose_stretch(mesh.vertices, mesh.faces, joints, skin.parents, idx, w, mapping)
-    faces, cut = autorig_weights.cut_bridges(mesh.vertices, mesh.faces, joints, skin.parents, mapping, idx, w)
+    shards: dict = {}
+    faces, cut = autorig_weights.cut_bridges(mesh.vertices, mesh.faces, joints, skin.parents, mapping, idx, w, shards)
     stretch["cut"] = autorig_pose.pose_stretch(mesh.vertices, faces, joints, skin.parents, idx, w, mapping)
     mesh = Mesh(mesh.vertices, faces, mesh.colors)  # without the triangles that bridge two limbs and would stretch
     body = Fit(body.vertices, joints, body.keypoints)  # the skeleton the GLB gets: centred in depth
@@ -271,7 +272,7 @@ def rig(mesh: Mesh, skin: Skin, fit_body, part2_commit: str = "unknown") -> Rigg
               "licence": LICENCE, "part2_commit": part2_commit, "skinning": "nearest-body-vertices",
               "fit_error_m": round(err, 4), "turned_to_face_forward": turned}
     avatar.update({"skinning_refined": "limb-split+smoothed", "joints_centred_in_depth": centred, "bridging_triangles_cut": cut,
-                   "stretch": _rounded(stretch)})
+                   **shards, "stretch": _rounded(stretch)})
     return Rigged(glb, avatar)
 
 

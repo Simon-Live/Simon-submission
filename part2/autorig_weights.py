@@ -14,6 +14,12 @@ takes those weights and does three things:
 3. The weights are smoothed over the surface graph, along edges inside a limb and between a limb and the torso, never
    between two limbs; the limit of step 2 is applied again after each step.
 
+An arm joins the body at the shoulder only. Where a generated mesh has a hand fused to a thigh or a forearm against the
+waist (a picture of someone standing with the arms down), the surface between them is contact, not a joint: no weight
+ramps across it, no vertex away from the shoulder keeps an arm's weight unless it is that arm's own, and an arm vertex
+never keeps a leg's or the other arm's weight (TICKET-058, AC-24). Without this the hands of a generated model stayed
+glued to the thighs: the ramp smeared the arm's weight over the thigh and the leg's over the hand.
+
 Spec: docs/specs/autorig.md (AC-20).
 """
 import numpy as np
@@ -26,8 +32,16 @@ SMOOTH_STEPS, SMOOTH_MIX = 4, 0.5
 RAMP_M = 0.08                # how wide the surface joining two limbs ramps from one limb's weights to the other's
 MIN_HOPS, MAX_HOPS = 4, 10   # the ramp in edges: RAMP_M over the median edge, kept between these
 CUT_STRETCH, CUT_MAX_SHARE = 6.0, 0.03   # cut_bridges: a bridging triangle edge stretched past 6x; at most 3 percent cut
+# Off since re-review round 4 (B1-r4, TICKET-058): every shard rule tried also matched part of a prop held in the hand
+# (a staff crossing the thigh lost 128 faces no contact touched). The cut keeps only the contact triangles; a small
+# piece of inner hand or thigh surface can stay with the hand. `contact_shards` is kept for a later, proven rule.
+DROP_SHARDS = False
+SHARD_M = 0.05               # cut_bridges: an arm piece cut loose at a contact whose middle lies this far off its arm's bones is a shard
+SHARD_SHARE = 0.5           # ... or when that arm held under half of the surface the piece was cut from
+SHOULDER_REACH = 0.6         # a vertex not of an arm may keep that arm's weight only this share of the upper arm's length from its joint
 BLEND_PER_HOP2 = 0.75        # smoothing steps per hop squared (diffusion spreads as the square root of the steps)
 TORSO, LEFT_LEG, RIGHT_LEG, LEFT_ARM, RIGHT_ARM = range(5)
+ARMS = {LEFT_ARM: "left", RIGHT_ARM: "right"}
 _ROOTS = {LEFT_LEG: "leftUpperLeg", RIGHT_LEG: "rightUpperLeg", LEFT_ARM: "leftUpperArm", RIGHT_ARM: "rightUpperArm"}
 
 
@@ -100,6 +114,40 @@ def allowed_joints(limb: np.ndarray, vertex_limb: np.ndarray, partner: np.ndarra
     return ok
 
 
+def arm_reach(vertices: np.ndarray, joints: np.ndarray, mapping: dict) -> np.ndarray:
+    """(n, 5) bool: column LEFT_ARM (RIGHT_ARM) is True for the vertices within SHOULDER_REACH of that upper arm's length
+    of its joint, the shoulder where the arm joins the torso; the other columns are True."""
+    near = np.ones((len(vertices), 5), dtype=bool)
+    for which, side in ARMS.items():
+        a, b = joints[mapping[f"{side}UpperArm"]], joints[mapping[f"{side}LowerArm"]]
+        near[:, which] = np.linalg.norm(vertices - a, axis=1) <= SHOULDER_REACH * np.linalg.norm(b - a)
+    return near
+
+
+def contact_edges(edges: np.ndarray, vertex_limb: np.ndarray, reach: np.ndarray) -> np.ndarray:
+    """(e,) bool: the edges that join an arm vertex to a vertex of another class away from that arm's shoulder (an end
+    outside its reach): a hand fused to a thigh, a forearm against the waist, one hand on the other. Edges between the
+    legs and the torso are not contact (AC-20 lets a web between the legs ramp)."""
+    out = np.zeros(len(edges), dtype=bool)
+    a, b = vertex_limb[edges[:, 0]], vertex_limb[edges[:, 1]]
+    for which in ARMS:
+        crosses = (a == which) != (b == which)
+        out |= crosses & ~(reach[edges[:, 0], which] & reach[edges[:, 1], which])
+    return out
+
+
+def arm_allowed(limb: np.ndarray, vertex_limb: np.ndarray, reach: np.ndarray) -> np.ndarray:
+    """(n, j) bool: the hard limit no smoothing step may cross. An arm's joints only on that arm's vertices and the
+    vertices near its shoulder; an arm vertex never on a leg's or the other arm's joints, and away from its shoulder not
+    on the torso's either (a hand by the hip that kept spine weight was dragged into a shard between hip and hand)."""
+    ok = np.ones((len(vertex_limb), len(limb)), dtype=bool)
+    for which in ARMS:
+        ok[np.ix_(~((vertex_limb == which) | reach[:, which]), limb == which)] = False
+        ok[np.ix_(vertex_limb == which, (limb != which) & (limb != TORSO))] = False
+        ok[np.ix_((vertex_limb == which) & ~reach[:, which], limb == TORSO)] = False
+    return ok
+
+
 def _dense(idx: np.ndarray, w: np.ndarray, columns: np.ndarray) -> np.ndarray:
     col_of = np.full(int(columns.max()) + 1, -1, dtype=np.int64)
     col_of[columns] = np.arange(len(columns))
@@ -143,7 +191,8 @@ def refine(vertices, faces, joints, parents, mapping: dict, idx, w, steps: int =
     vertex_limb, partner = vertex_limbs(idx, w, limb, dist)
     bone = bones[np.arange(len(vertices)), vertex_limb]
     columns = np.unique(np.concatenate([idx.ravel(), bone]))
-    allow = allowed_joints(limb, vertex_limb, partner)[:, columns]
+    hard = arm_allowed(limb, vertex_limb, arm_reach(vertices, joints, mapping))[:, columns]
+    allow = allowed_joints(limb, vertex_limb, partner)[:, columns] & hard
     mask = allow.astype(np.float32)
     dense = _dense(idx, w, columns) * mask
     empty = dense.sum(1) <= 1e-6
@@ -155,7 +204,8 @@ def refine(vertices, faces, joints, parents, mapping: dict, idx, w, steps: int =
         hops = int(np.clip(round(RAMP_M / max(median_edge, 1e-6)), MIN_HOPS, MAX_HOPS))
     if blend is None:
         blend = round(BLEND_PER_HOP2 * hops * hops)
-    same = (vertex_limb[edges[:, 0]] == vertex_limb[edges[:, 1]]) | (vertex_limb[edges] == TORSO).any(1)
+    contact = contact_edges(edges, vertex_limb, arm_reach(vertices, joints, mapping))
+    same = ((vertex_limb[edges[:, 0]] == vertex_limb[edges[:, 1]]) | (vertex_limb[edges] == TORSO).any(1)) & ~contact
     own = np.searchsorted(columns, bone)
 
     def run(count, use, mask):
@@ -166,20 +216,23 @@ def refine(vertices, faces, joints, parents, mapping: dict, idx, w, steps: int =
             dense[empty, own[empty]] = 1.0
 
     run(steps, same, mask)
-    differ = vertex_limb[edges[:, 0]] != vertex_limb[edges[:, 1]]
-    band = _near(edges, differ, len(vertices), hops)  # the surface where the limb changes (two limbs, a limb and the torso) ramps
-    run(blend, np.ones(len(edges), dtype=bool), np.where(band[:, None], np.float32(1), mask))
+    joined = edges[~contact]  # a contact is not where a limb changes: nothing ramps across it or reaches over it
+    differ = vertex_limb[joined[:, 0]] != vertex_limb[joined[:, 1]]
+    band = _near(joined, differ, len(vertices), hops)  # the surface where the limb changes (two limbs, a limb and the torso) ramps
+    run(blend, ~contact, np.where(band[:, None], hard.astype(np.float32), mask))
     order = np.argsort(-dense, axis=1, kind="stable")[:, :MAX_INFLUENCES]
     top = np.take_along_axis(dense, order, 1).astype(float)
     return columns[order], top / top.sum(1, keepdims=True)
 
 
-def cut_bridges(vertices, faces, joints, parents, mapping: dict, idx, w):
+def cut_bridges(vertices, faces, joints, parents, mapping: dict, idx, w, report: dict | None = None):
     """(faces without the bridging triangles, number cut). A bridge is a triangle that has two vertices of different limb
     classes (torso counts as one) and an edge stretched past CUT_STRETCH under either test pose: a sheet that a hand
-    resting on a hip, or one leg against the other, would drag along. Where a model touches itself that surface is mostly
+    resting on a hip, or one leg against the other, would drag along, and every triangle across an arm contact
+    (`contact_edges`) whatever the stretch. Where a model touches itself that surface is mostly
     hidden, so the cut leaves at most a small hole at the contact; nothing is cut when it would remove more than
-    CUT_MAX_SHARE of the triangles, and vertices are never removed, so UVs and weights keep their order."""
+    CUT_MAX_SHARE of the triangles, and vertices are never removed, so UVs and weights keep their order. `report`, when
+    given, gets "shard_faces": the faces `contact_shards` finds, dropped only when DROP_SHARDS (off: kept)."""
     from part2 import autorig_pose
 
     vertices, faces = np.asarray(vertices, dtype=float), np.asarray(faces)
@@ -195,6 +248,67 @@ def cut_bridges(vertices, faces, joints, parents, mapping: dict, idx, w):
             torn |= l1 > CUT_STRETCH * np.maximum(l0, 0.25 * np.median(l0))
     classes = vertex_limb[faces]
     torn &= (classes != classes[:, :1]).any(1)
+    reach = arm_reach(vertices, np.asarray(joints, dtype=float), mapping)
+    contact = np.zeros(len(faces), dtype=bool)
+    for a, b in ((0, 1), (1, 2), (2, 0)):
+        contact |= contact_edges(faces[:, [a, b]], vertex_limb, reach)
+    torn |= contact  # a hand fused to a thigh is cut whether or not the test poses stretch it (AC-24)
     if torn.sum() > CUT_MAX_SHARE * len(faces):
-        return faces, 0
+        torn = contact if contact.sum() <= CUT_MAX_SHARE * len(faces) else np.zeros(len(faces), dtype=bool)
+    shards = contact_shards(faces, torn, vertex_limb, reach, dist)
+    if report is not None:
+        report["shard_faces"], report["shards_dropped"] = int(shards.sum()), DROP_SHARDS
+    if DROP_SHARDS:
+        torn |= shards
+    if torn.sum() > CUT_MAX_SHARE * len(faces):
+        torn = contact if contact.sum() <= CUT_MAX_SHARE * len(faces) else np.zeros(len(faces), dtype=bool)
     return faces[~torn], int(torn.sum())
+
+
+def _components(faces: np.ndarray, n: int) -> np.ndarray:
+    """(n,) the connected piece of each vertex over `faces` (a vertex in no face is its own piece)."""
+    parent = np.arange(n)
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for a, b in np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]]]):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+    return np.array([find(i) for i in range(n)])
+
+
+def contact_shards(faces, torn, vertex_limb, reach, dist) -> np.ndarray:
+    """(m,) bool: the faces of the pieces left after the cut that are all one arm's vertices away from its shoulder, lie
+    more than SHARD_M (median) off that arm's bones, and were cut from a surface that either held that arm's own skin
+    (its vertices within SHARD_M of its bones) in another piece, or was mostly not that arm (under SHARD_SHARE of its
+    vertices): thigh or hip surface the contact gave to the hand, which would otherwise fly beside the hand as a shard
+    (AC-24). A piece that was never joined to anything, or was cut from a surface mostly of the arm (a staff, a sword or
+    a shield held in the hand, even one whose tip rests on a thigh), is kept; only its contact triangles go."""
+    out = np.zeros(len(faces), dtype=bool)
+    kept = faces[~torn]
+    if not len(kept) or not torn.any():
+        return out
+    n = len(vertex_limb)
+    before, after = _components(faces, n), _components(kept, n)
+    used = np.zeros(n, dtype=bool)
+    used[kept.ravel()] = True
+    drop = np.zeros(n, dtype=bool)
+    for p in np.unique(after[used]):
+        members = used & (after == p)
+        arms = np.unique(vertex_limb[members])
+        if len(arms) != 1 or arms[0] not in ARMS or reach[members, arms[0]].any():
+            continue
+        arm = arms[0]
+        if np.median(dist[members, arm]) <= SHARD_M:
+            continue
+        whole = before == before[members][0]
+        skin = whole & (vertex_limb == arm) & (dist[:, arm] <= SHARD_M) & ~members
+        if skin.any() or (vertex_limb[whole] == arm).mean() < SHARD_SHARE:
+            drop |= members
+    out[~torn] = drop[kept].all(1)
+    return out

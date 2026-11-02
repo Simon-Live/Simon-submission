@@ -13,6 +13,7 @@
     part2 doctor FILE [--for part3|part5|part6] [--json]   (FILE: pose3d, tracks, camera, frames or mesh3d json)
     part2 avatar --out DIR IMG [IMG...]   (1 to 4 photos of one person -> DIR/model.glb + DIR/avatar.json; exit 3 no person, 4 GPU busy)
     part2 autorig --out DIR MESH [--height M] [--up y|z]   (unrigged mesh -> DIR/model.glb + avatar.json, docs/specs/autorig.md)
+    part2 reskin IN.glb OUT.glb                         (redo the limb split of an autorig GLB, no GPU, AC-24)
     part2 image3d --out DIR IMG [--height M]   (a picture of a character -> textured, rigged DIR/model.glb + avatar.json; exit 3 nothing humanoid, 4 GPU busy)
     part2 stock [--clip pexels-<id>[-<start>to<end>s]] [--backend gpu|cpu|cpu-sam3db]   (make stock-outputs)
 
@@ -338,6 +339,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ar.add_argument("--height", type=float, metavar="M", help="the person's height in metres (default: guessed from the unit)")
     p_ar.add_argument("--up", choices=["y", "z"], help="the mesh's up axis (default: guessed)")
 
+    p_rs = sub.add_parser("reskin", help="redo the limb split of a GLB part2 autorig wrote, no GPU (docs/specs/autorig.md AC-24)")
+    p_rs.add_argument("glb", type=Path, help="model.glb written by part2 autorig or part2 image3d")
+    p_rs.add_argument("out", type=Path, help="where the new GLB goes (may be the same file)")
+
     p_i3 = sub.add_parser("image3d", help="a textured, rigged GLB of the character in a picture (TRELLIS + SAM 3D Body + MHR)",
                           description="Makes a textured mesh from the picture, rigs it, keeps the texture. Exit 0 written, "
                           "1 failed, 2 bad input, 3 nothing humanoid could be rigged, 4 GPU busy.")
@@ -449,6 +454,10 @@ def main(argv: list[str] | None = None) -> int:
         from part2 import autorig
 
         return autorig.command(args.mesh, args.out, args.height, args.up)
+    if args.command == "reskin":
+        from part2 import autorig_reskin
+
+        return autorig_reskin.command(args.glb, args.out)
     if args.command == "image3d":
         from part2 import image3d
 
