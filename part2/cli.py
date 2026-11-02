@@ -424,13 +424,17 @@ def _serve_worker(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    from part2 import staging_yield  # docs/specs/staging-yield.md
+
     if getattr(args, "worker", None) is not None:
+        staging_yield.mark_staging_for_worker()
         from part2 import worker
 
         code = worker.forward(str(args.worker), worker.strip_worker(list(sys.argv[1:] if argv is None else argv))[0])
         if code is not None:
             return code
         print(f"part2: no worker at {args.worker}; running in this process", file=sys.stderr)
+    staging_yield.gate(args.command)  # after the worker forward: the worker gates its own request
     if args.command == "avatar":
         from part2 import avatar
 
