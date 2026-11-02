@@ -6,7 +6,7 @@ import { takeSplash, SPLASH_TEXT, SPLASH_MS } from "./model/splash.js";
 import { takeHeld } from "./take-guard.js";
 import { renderKindSwitch } from "./views/kind-switch.js";
 import { renderSplash } from "./views/splash.js";
-import { logoHead } from "./views/logo.js";
+import { logoBar } from "./views/logo.js";
 
 /** Keep `--header-height` equal to the sticky header's real height (it is shorter without the ?debug=1 build line). */
 export function trackHeaderHeight(header, root = document.documentElement) {
@@ -36,5 +36,5 @@ export function mountShell({ switchHost, body = document.body }) {
   if (takeSplash()) renderSplash(body, SPLASH_TEXT, SPLASH_MS);
   trackHeaderHeight(document.querySelector("header.bar"));
   const brand = document.querySelector(".brand");
-  if (brand && !brand.querySelector(".logo-head")) brand.prepend(logoHead("logo-head"));
+  if (brand && !brand.querySelector(".logo-sign")) brand.prepend(logoBar());   // the dog holding the sign
 }

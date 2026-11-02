@@ -9,7 +9,10 @@ let seq = 0;
 /** The full mark (dog over the sign) as an SVG element. */
 export function logoSign(cls = "logo-sign") { return fromString(SIGN.replace("{cls}", cls).replaceAll("{id}", `logo-${++seq}`)); }
 
-/** The head alone, for the header and small places. */
+/** The full mark framed tight on the dog and the sign (the chalk's outer spill is cropped), for the app bar. */
+export function logoBar(cls = "logo-sign logo-bar") { const svg = logoSign(cls); svg.setAttribute("viewBox", "780 3260 8080 9690"); return svg; }
+
+/** The head alone, for small places. */
 export function logoHead(cls = "logo-head") { return fromString(HEAD.replace("{cls}", cls)); }
 
 function fromString(s) {
