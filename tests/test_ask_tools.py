@@ -124,6 +124,29 @@ def test_ac_ask_01_the_take_digest_depends_on_the_tool_data_only():
     assert agent.ask_take(other, copy.deepcopy(REPLAY)).sha256() != a.sha256()
 
 
+def test_ac_ask_01_canonical_makes_every_number_a_float_and_leaves_the_rest_alone():
+    got = tools.canonical({"a": [1, 2.5, -0.0, 0, True, False, None, "x"], "b": {"c": (3, [4])}})
+    assert got == {"a": [1.0, 2.5, 0.0, 0.0, True, False, None, "x"], "b": {"c": [3.0, [4.0]]}}
+    numbers = [*got["a"][:4], *got["b"]["c"][:1], *got["b"]["c"][1]]
+    assert all(type(n) is float for n in numbers) and str(got["a"][2]) == "0.0"   # -0.0 became the positive zero
+    assert got["a"][4] is True and got["a"][5] is False and got["a"][6] is None   # a bool is not turned into 1.0
+
+
+def test_ac_ask_01_the_digest_ignores_the_type_of_a_number_and_the_sign_of_zero_and_nothing_else():
+    """TICKET-100: the page's JSON.stringify writes `6` for `6.0` and `0` for `-0.0`; the digest is of the same take."""
+    def digest(analysis=ANALYSIS, **edits):
+        replay_doc = copy.deepcopy(REPLAY)
+        for key, value in edits.items():
+            replay_doc[key][0][0][0] = value
+        return agent.ask_take(copy.deepcopy(analysis), replay_doc).sha256()
+
+    assert digest(follower=-0.0) == digest(follower=0.0) == digest(follower=0)
+    assert digest(expected=3.0) == digest(expected=3) != digest(expected=3.5)
+    tiny = copy.deepcopy(ANALYSIS)
+    tiny["faults"][0]["magnitude_deg"] += 1e-9   # no rounding: the least change of a double is a change
+    assert digest(tiny) != digest()
+
+
 # ---- AC-ASK-02: every argument is checked ---------------------------------------------------------------------------
 @pytest.mark.parametrize("name, args, error", [
     ("get_joint_angle", {"joint": "elbow", "t0": 0, "t1": 1}, "joint must be a joint of the take"),

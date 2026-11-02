@@ -76,7 +76,7 @@ and `docs/specs/second-opinion.md`). No field that `make check-5` scores depends
 | Limit | Value | Where |
 |---|---|---|
 | Per-call ceiling | $0.50 (`PART5_META_CALL_MAX_USD`), on the counted input plus the full output allowance | `part5/opinion/meta_api.py` |
-| Output allowance | 8000 tokens for a history call (`HISTORY_MAX_OUTPUT_TOKENS`), 3000 for the per-take opinion; the estimate and an estimated ledger line use the request's own | `part5/opinion/prompt.py`, `part5/opinion/meta_api.py` |
+| Output allowance | 8000 tokens for a history call (`HISTORY_MAX_OUTPUT_TOKENS`) and for the per-take opinion (`SECOND_MAX_OUTPUT_TOKENS`, raised from 3000 by TICKET-102 after a live call used 3000 of 3000 and was cut off); 3000 is the default of a request that names none (`MAX_OUTPUT_TOKENS`); the estimate, the ceiling check and an estimated ledger line use the request's own | `part5/opinion/prompt.py`, `part5/opinion/meta_api.py` |
 | Spend cap on the ledger total | $5.00 (`PART5_META_SPEND_CAP_USD`) | `part5/opinion/meta_api.py` |
 | Takes, faults per take | 40 takes, 30 faults each | `part5/opinion/prompt.py` |
 | Route requests per client | 6 a minute, one at a time, as for Muse Spark phrasing; 50 s timeout on the call | `part5/api.py` |
@@ -162,3 +162,4 @@ answer gives as the furthest out. The answer passed the validator with no number
 true) and says no code name ("the right ankle was measured too far out from under the hip"). It is now
 `fixtures/output/ask.example.json`, copied byte for byte from the file `part5 ask --out` wrote, so R14 of the 1.14.0
 consolidated review (the code name `foot_out` in the cached answer) is closed with it. This was the only exchange of the lane.
+In 1.14.1 (TICKET-100) the file's `take_sha256` was recomputed for the canonical number form of `Take.sha256()` (every number a float, -0.0 as 0.0), through the product path from the same take, with no new call; no other byte changed.

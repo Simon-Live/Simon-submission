@@ -36,10 +36,11 @@ FEATURE_SCHEMAS = ("ask",)
 ID_BASE = "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/"
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 # Commits of the neighbours whose files the rows were checked against: the heads that scripts/neighbour-check.sh
-# recorded in its run 2 of 2026-11-01. They win over contracts/sources.lock.json, which says where the copied schemas
-# and fixtures of Parts 3 and 4 came from, not which head the rows were checked against.
-NEIGHBOUR_COMMITS = {"part2": "5076cfd", "part3": "fd96379", "part4": "7036622",
-                     "part6": "ced3f3d"}  # progress/neighbour-check-20261101-run2.json
+# recorded in its run against Part 3 72e120f on 2026-11-02 (TICKET-096). They win over contracts/sources.lock.json,
+# which says where the copied schemas and fixtures of Parts 3 and 4 came from, not which head the rows were checked
+# against; tests/neighbour/test_neighbour_check.py holds the lock, these and the record to one commit per part.
+NEIGHBOUR_COMMITS = {"part2": "92db37f", "part3": "72e120f", "part4": "7036622",
+                     "part6": "ced3f3d"}  # progress/neighbour-check-20261102.json
 # The Part 2 commit whose CONTRACT.md ("Extra joints (optional)") publishes the foot points the feet row was checked against.
 PART2_FEET_COMMIT = "e8ac336"
 TABLE_COLUMNS = ("Producer", "File", "format", "Part 5 role", "Verdict", "Fix", "Checked against")

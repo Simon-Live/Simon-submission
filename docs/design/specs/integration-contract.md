@@ -53,11 +53,11 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 ## Compatibility table (in `CONTRACT.md`, printed by `part5 contract`)
 | Producer | File | `format` | Part 5 role | Verdict | Fix | Checked against |
 |---|---|---|---|---|---|---|
-| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input (exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with "run Part 3 --view part5" | Part 2 5076cfd |
+| Part 2 | `pose3d.json` | `part2.pose3d/2026-10-28` (Part 3 CONTRACT.md) | none | rejected | as a clip it is rejected: run Part 3 `--view part5` on it; `doctor` accepts it as the optional feet side input (exit 0, with a note that it is not a clip) and exits 1 only when it is not that either, with "run Part 3 --view part5" | Part 2 92db37f |
 | Part 2 foot points | `pose3d.json` with `extra_joints` | `part2.pose3d/2026-10-28` (Part 2 CONTRACT.md "Extra joints (optional)") | optional feet side input (`--expected-feet`, `--follower-feet`) | works with an option | pass the trainer's and the follower's own Part 2 `pose3d.json` beside the Part 3 `skeleton.json` (Part 3 does not carry `extra_joints`); a file without them is accepted and the foot measures are hidden, with the reason in `diagnostics.feet`; `doctor` accepts it with a note | Part 2 e8ac336 |
-| Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works |  | Part 3 fd96379 |
-| Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works |  | Part 3 fd96379 |
-| Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` | Part 3 fd96379 |
+| Part 3 `run --view part5` | `skeleton.json` | `simon.animation.v1` | follower or expected | works |  | Part 3 72e120f |
+| Part 3 `run --view part4` | `skeleton.json` | `simon.skeleton.v1` | expected | works |  | Part 3 72e120f |
+| Part 3 native | `skeleton.json` | `simon.skeleton/1` (no `format`) | none | rejected | rerun Part 3 with `--view part5` | Part 3 72e120f |
 | Part 4 | `animation.json` | `simon.animation.v1` | expected | works |  | Part 4 7036622 |
 | Part 6 Follow hand-off (event detail) | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 ced3f3d |
 | Part 6 Follow hand-off (framed message, Part 6 CONTRACT.md "The hand-off to Part 7") | `{v: 1, id, name, category, link, manifest, files: {keyframes, skeleton, animation, video}}` with `type: "simon:follow"` | none | none | works with an option | download `files.animation` and pass it as `--expected`; Part 5 never fetches URLs | Part 6 ced3f3d |
@@ -74,13 +74,15 @@ them; `contracts/sources.json` and `sources.lock.json` record their commits.
 | Part 5 | `labels.json` | none | evaluation | works |  | Part 5 (this repo) |
 
 The last column is the producer commit each row was checked against: the `main` heads of Parts 2, 3, 4 and 6 that the
-neighbour check recorded in its run 2 of 2026-11-01 (`progress/neighbour-check-20261101-run2.json`, `NEIGHBOUR_COMMITS` in
-`part5/contract.py`; never typed from memory). One row is the exception: Part 2's foot points name `e8ac336`
-(`PART2_FEET_COMMIT`), the Part 2 commit that introduced `extra_joints`, because that format is what the feet reader was
-built and tested against; the run 2 doctor steps re-read Part 2's files at its head. Run 3 of that day
-(`progress/neighbour-check-20261101.json`, TICKET-058, which only made the step ids unique) found Part 2 at `a8f91ac`
-with the same 61 steps passing; the cells stay at the run 2 heads until the rows are checked against a newer one.
-`contracts/sources.lock.json` still records where the copied schemas and fixtures of Parts 3 and 4 came from.
+neighbour check recorded in its run of 2026-11-02 against Part 3 `72e120f` (`progress/neighbour-check-20261102.json`,
+61 steps passed; `NEIGHBOUR_COMMITS` in `part5/contract.py`; never typed from memory). One row is the exception: Part 2's
+foot points name `e8ac336` (`PART2_FEET_COMMIT`), the Part 2 commit that introduced `extra_joints`, because that format
+is what the feet reader was built and tested against; the doctor steps of that run re-read Part 2's files at its head,
+`92db37f`. Earlier runs found Part 2 elsewhere (run 2 of 2026-11-01 at `5076cfd`, run 3 at `a8f91ac`); the cells move
+only when the rows are checked against a newer record. `contracts/sources.lock.json` records where the copied schemas
+and fixtures of Parts 3 and 4 came from and, since the 2026-11-02 sync (TICKET-096), names the same Part 3 and Part 4
+commits as the cells; `tests/neighbour/test_neighbour_check.py` pins the lock, the cells, `CONTRACT.md` and the record
+to one commit per part.
 
 ## API / Interface Contract
 ```
@@ -291,6 +293,16 @@ Kept: a format string change would break every v1 reader for fields they may ign
 version tells a careful reader what to expect.
 
 ## Amendments
+- 2026-11-02 (TICKET-096): no Part 5 schema change. `make contracts-sync` took Part 3's schema copies to `72e120f`: the
+  `up_source` values `two_footed_frames` (since `9f37c38`), `input_up_floor_work` with the optional `frame.floor_work` (since
+  `73ed073`) and `gravity` with the optional `frame.gravity` and `frame.gravity_ignored` (since `72e120f`). The neighbour
+  check ran against it: 61 passed, 0 failed, 0 skipped (`progress/neighbour-check-20261102.json`; the earlier runs of that
+  day are `-run1`, against Part 3 `fd96379`, and `-run2`, against `73ed073`). The table's "Checked against" cells are
+  that record's heads (Part 2 `92db37f`, Part 3 `72e120f`, Part 4 `7036622`, Part 6 `ced3f3d`); `CONTRACT.md` carries the same cells,
+  the Part 3 rows of "Where the copies come from" and a paragraph on the up source with its limit (a floor clip filmed by
+  a tilted phone keeps the tilt in its angle measures unless the take carries the phone's gravity).
+  `tests/test_contract_part3_up_source.py` shows each value validates, loads, passes `doctor` and leaves `analyse`
+  unchanged.
 - 2026-11-01 (TICKET-057): no schema change. `status.text` of a take with a warning names the cap ("Compared with the
   expected movement, with a warning that caps the grade at F.", or "with 2 warnings that cap the grade at F." for
   more than one, the number in place of 2) while `status.code` stays `ok`; a take with no warning keeps "Compared with

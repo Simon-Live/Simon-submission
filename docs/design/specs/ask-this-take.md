@@ -106,13 +106,23 @@ So that I understand what was measured without reading the fault table
   answer was replaced for that reason; empty otherwise.
 - `fallback_reason`: null when `source` is `model`; otherwise why the model's answer is not shown: `no key`,
   `live calls are off (...)`, a call failure as the second opinion words it (`HTTP 429 on responses`,
-  `timeout on responses`, `estimated $0.62 over the per-call limit of $0.50`, `spend cap reached`, ...),
+  `timeout on responses`, `estimated $0.62 over the per-call limit of $0.50`, `spend cap reached`, ...; an HTTP
+  failure whose error body has a type and message adds them after a colon, `HTTP 400 on responses:
+  invalid_request_error: <message>`, scrubbed of the key, a masked key, a URL and a bearer token, with control and bidi
+  characters dropped, cut to 160 characters and left off when it fails `guard.unsafe_problem` or the status is 401 or
+  403, TICKET-099 and R4 of the 1.14.1 review),
   `a number in the answer is not in any tool result`, the word guard's reason, `no answer`, `answer too long`, or
-  `no answer within the turn limit`. It never holds the key or the model's text.
+  `no answer within the turn limit`. It never holds the key, and the model's answer is never put in it; the API's own
+  error text is the one third-party text a reason can hold, scrubbed as `meta_api._scrubbed` does, a heuristic that
+  is a hint for the operator, not a promise.
 - `take_sha256`: the SHA-256 of the take's tool data (the `get_faults` result and the replay's joints, frames, times
   and alignment, and, when a body mask leaves anything out, its masked joints and measures not scored, as canonical
-  JSON). Two requests about one take carry the same value; a take with no mask, or the `full_body` preset, keeps the
-  value it had before the 1.14.0 review's R3.
+  JSON). The numbers are canonical too (1.14.1, TICKET-100): every number is taken as a float and -0.0 as 0.0, so a
+  copy the page's JavaScript re-serialised (`6` for `6.0`, `0` for `-0.0`) and one Python wrote carry the same value;
+  floats are not rounded, since both sides write the shortest text that parses back to the same double. Two requests
+  about one take carry the same value. The 1.14.0 review's R3 added the mask's lists to the data only for a take whose mask
+  leaves something out, so a take with no mask, or the `full_body` preset, kept its digest through R3; the 1.14.1 number
+  form then changed every digest once (that take's too, and the cached example's with it), and no digest has changed since.
 - `tool_calls`: every tool call of the exchange in the order run: `name`, `arguments` (as parsed, or `{}` when they
   were not a JSON object), `ok` and `result` (the object the model was sent; `{"error": "..."}` when `ok` is false).
   A call Part 5 made itself for the measured facts (none of the model's results held a fact) carries `"by": "part5"`.
@@ -243,6 +253,9 @@ builds them for Part 5's page from the two samples (`docs/meta-api-spend.md` rec
 or a call fails, and the question (blanks joined, case folded) and `take_sha256` are the example's, the response is the
 example's `answer` with `source` `cache`, `model` `muse-wonder-1.0`, `validated` true (its numbers are checked again
 against its own tool results, and its arguments pass the word guard) and the `fallback_reason` of this request.
+The `take_sha256` match is on the canonical number form (every number a float, -0.0 as 0.0), so the files the page
+re-serialised and the ones Python wrote reach the same cached answer (TICKET-100); the example's digest was recomputed
+for that form in 1.14.1 from the same take, with no new call.
 
 One rule holds whether or not a call was made first (R4 of the 1.14.0 review), so the document, the stream and AC-ASK-08
 agree:

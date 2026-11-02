@@ -20,10 +20,16 @@ from functools import lru_cache
 from pathlib import Path
 
 from ..phrasing import lang as phrasing_lang
-from .meta_api import MAX_OUTPUT_TOKENS, MODEL
+from .meta_api import MODEL
 
 MAX_NOTE = 140
 MAX_OBSERVATIONS = 2
+# The output allowance of a per-take call (TICKET-102): the model reasons before it writes and the reasoning is counted
+# as output, so a live call on 7071 input tokens used all of 3000 and left a half-written JSON (job 23d13c0b27e7, the
+# same cut the history opinion had, and fixed the same way: `HISTORY_MAX_OUTPUT_TOKENS`). 8000 x USD 4.25 per million is
+# USD 0.034 on top of the input, well under the 0.50 per-call ceiling; the estimate, the cap check and an estimated
+# ledger line follow the request's own allowance (`meta_api.call`).
+SECOND_MAX_OUTPUT_TOKENS = 8000
 
 INSTRUCTIONS = (
     "You check a movement analysis. Clip 1 is a teacher's recording. Clip 2 is a student copying it. A skeleton "
@@ -67,7 +73,7 @@ def request(expected_id, follower_id, faults, duration_s):
         {"type": "input_text", "text": "Measured differences in clip 2 (JSON): "
          + json.dumps(fault_list(faults), sort_keys=True)},
     ]
-    return {"model": MODEL, "max_output_tokens": MAX_OUTPUT_TOKENS, "reasoning": {"effort": "low"},
+    return {"model": MODEL, "max_output_tokens": SECOND_MAX_OUTPUT_TOKENS, "reasoning": {"effort": "low"},
             "input": [{"type": "message", "role": "user", "content": content}]}
 
 

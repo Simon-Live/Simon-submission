@@ -6,6 +6,8 @@ through `api.handle` and once through the real server on the loopback.
 """
 import copy
 import json
+import shutil
+import subprocess
 import threading
 import time
 import urllib.request
@@ -468,3 +470,72 @@ def test_ac_ask_09_the_demo_question_on_take_03_gives_the_shipped_answer_with_no
     doc = valid(agent.ask_run(EXAMPLE["question"], agent.ask_take(*copy.deepcopy(take_03))))
     assert (doc["source"], doc["answer"], doc["ui_actions"]) == ("cache", EXAMPLE["answer"], EXAMPLE["ui_actions"])
     assert (doc["live"], doc["spend"]["usd"]) == (False, 0)
+
+
+# ---- TICKET-100: the page's own copy of the take reaches the cache ------------------------------------------------------
+def as_json_stringify(value):
+    """`value` as the page's JSON.stringify writes it: a float with no fraction as an integer (`6` for `6.0`), `-0.0` as
+    `0`. Every other number, text and null is written as it was."""
+    if isinstance(value, dict):
+        return {key: as_json_stringify(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [as_json_stringify(item) for item in value]
+    return int(value) if isinstance(value, float) and value.is_integer() else value
+
+
+def page_body(analysis, replay_doc):
+    return {"question": EXAMPLE["question"], "analysis": analysis, "replay": replay_doc, "stream": False}
+
+
+@pytest.fixture
+def offline(monkeypatch):
+    for name in ("META_LIVE", "SIMON5_LIVE"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_ticket_100_a_page_written_copy_of_take_03_digests_as_the_python_written_one(take_03):
+    analysis, replay_doc = take_03
+    page = (as_json_stringify(analysis), as_json_stringify(replay_doc))
+    assert json.dumps(page[0]) != json.dumps(analysis) and json.dumps(page[1]) != json.dumps(replay_doc)   # it differs
+    assert agent.ask_take(*copy.deepcopy(page)).sha256() == agent.ask_take(*copy.deepcopy(take_03)).sha256()
+    assert agent.ask_take(*copy.deepcopy(page)).sha256() == EXAMPLE["take_sha256"]
+
+
+def test_ticket_100_the_demo_question_posted_as_the_page_writes_it_gets_the_cached_answer(take_03, offline):
+    status, _, raw = post(page_body(*map(as_json_stringify, take_03)))
+    doc = valid(json.loads(raw))
+    assert status == 200 and (doc["source"], doc["answer"], doc["model"]) == ("cache", EXAMPLE["answer"], "muse-wonder-1.0")
+    assert (doc["live"], doc["spend"]["usd"], doc["take_sha256"]) == (False, 0, EXAMPLE["take_sha256"])
+    assert doc["ui_actions"] == EXAMPLE["ui_actions"]
+    assert doc["fallback_reason"] == meta_api.unavailable(False)   # "no key" or "live calls are off", by the key file
+
+
+def test_ticket_100_another_question_on_the_page_written_copy_still_gets_the_measured_facts(take_03, offline):
+    body = page_body(*map(as_json_stringify, take_03))
+    status, _, raw = post({**body, "question": "Is my left elbow too high?"})
+    assert status == 200 and valid(json.loads(raw))["source"] == "measured_facts"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_ticket_100_a_real_javascript_round_trip_of_take_03_reaches_the_cache(take_03, offline):
+    """The page's own serialiser: Node's JSON.parse then JSON.stringify over the Python-written files."""
+    script = "let s='';process.stdin.on('data',d=>{s+=d}).on('end',()=>process.stdout.write(JSON.stringify(JSON.parse(s))))"
+    sent = json.dumps(page_body(*take_03))
+    done = subprocess.run(["node", "-e", script], input=sent, capture_output=True, text=True, check=True, timeout=60)
+    assert done.stdout != sent and json.loads(done.stdout) == json.loads(sent)   # other text, the same values
+    status, _, raw = post(done.stdout.encode())
+    doc = valid(json.loads(raw))
+    assert status == 200 and (doc["source"], doc["take_sha256"]) == ("cache", EXAMPLE["take_sha256"])
+
+
+@pytest.mark.parametrize("field", ["magnitude_deg", "peak_deg", "threshold_deg", "at_s"])
+def test_r1_an_int_too_large_for_a_double_is_a_200_not_a_500(monkeypatch, field):
+    """R1 of the 1.14.1 review: `canonical` took `float()` of every number, which raises OverflowError for an int of 309
+    or more digits, so a 401-digit magnitude answered 500 where 8aac47e answered 200 measured_facts."""
+    monkeypatch.delenv("META_LIVE", raising=False)   # no model call can be made: the answer is the measured facts
+    analysis = copy.deepcopy(ANALYSIS)
+    analysis["faults"][0][field] = 10 ** 400
+    assert len(str(analysis["faults"][0][field])) == 401
+    status, _, body = post(request(analysis=analysis))
+    assert status == 200 and json.loads(body)["source"] == "measured_facts"
+    assert tools.canonical({"n": 10 ** 400, "m": 3}) == {"n": 10 ** 400, "m": 3.0}

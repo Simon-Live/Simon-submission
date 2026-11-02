@@ -152,17 +152,22 @@ def _english_time(line):
     return any(_ENGLISH_TIME.search(_unhidden(line, as_)) for as_ in ("", " "))
 
 
+def _unsafe(text):
+    """`opinion.guard.unsafe_problem(text)`, imported at the call: opinion.guard imports this module."""
+    from ..opinion.guard import unsafe_problem
+    return unsafe_problem(text)
+
+
 def check_translated(fault, line, timed):
     """None when the translated `line` holds what a line in any language must, else the short reason. A line that
     passes the checks of TICKET-046 and TICKET-052 (`_translated_problem`, whose reasons stand) is then held to
     `opinion.guard.unsafe_problem` (no control character, a bidi override such as U+202E included, no link, none of the
     words this product does not use), as a translated cue is: N2 of the 1.14.0 recheck (TICKET-080), since the page
     shows the line with `dir=auto`."""
-    from ..opinion.guard import unsafe_problem   # imported at the call: opinion.guard imports this module
     problem = _translated_problem(fault, line, timed)
     if problem:
         return problem
-    unsafe = unsafe_problem(line)
+    unsafe = _unsafe(line)
     return f"translated line {unsafe}" if unsafe else None
 
 
@@ -238,14 +243,13 @@ def check_cue(role, source, text, language):
     language must, else the short reason (docs/specs/language-cues.md). `role` is `cues.ROLE_CUE` or `cues.ROLE_REASON`.
     A translation is held to `opinion.guard.unsafe_problem` (no control character, a bidi override included, no link,
     none of the words this product does not use), as the history opinion's translations are (R7 of the 1.14.0 review)."""
-    from ..opinion.guard import unsafe_problem   # imported at the call: opinion.guard imports this module
     if "\n" in text or "\r" in text:
         return "translation has more than one line"
     cue = role == ROLE_CUE
     if not text.strip() or len(text) > (MAX_CUE_CHARS if cue else MAX_TRANSLATED) \
             or (cue and len(text.split()) > MAX_CUE_WORDS):
         return "translation is empty or too long"
-    unsafe = unsafe_problem(text)
+    unsafe = _unsafe(text)
     if unsafe:
         return f"translation {unsafe}"
     if _praised(text):

@@ -62,11 +62,62 @@
         },
         "up_source": {
           "enum": [
+            "gravity",
             "standing_frames",
             "two_footed_frames",
+            "input_up_floor_work",
             "input_up",
             "all_frames"
           ]
+        },
+        "floor_work": {
+          "const": true
+        },
+        "gravity": {
+          "type": "object",
+          "description": "Present when the input carried the phone's gravity (Part 2 pose3d `up`, TICKET-041) and it was used: up_source is then gravity. warning appears when gravity and a confident standing-frame estimate differ by more than 25 degrees (largest) on an exercise not marked as floor work, or the per-frame tilts differ by more than 5.",
+          "properties": {
+            "frames_used": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "frames_total": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "spread_deg": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Largest difference between a frame's tilt and the median tilt. Part 2 writes one up_camera per take, so this is 0 on its input; it only sees a producer whose per-frame values disagree."
+            },
+            "body_rule_source": {
+              "type": "string"
+            },
+            "body_rule_angle_deg": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Median over aligned frames (straight knees, trunk within 15 degrees of the leg line) of the angle between the feet-to-shoulders line and gravity; the summary to the body rule when no frame is aligned."
+            },
+            "warning": {
+              "type": "string"
+            },
+            "body_rule_max_deg": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Largest such angle over aligned frames; the only sign of a phone that moved during the take. Absent when no frame is aligned."
+            }
+          },
+          "required": [
+            "frames_used",
+            "frames_total",
+            "spread_deg",
+            "body_rule_source",
+            "body_rule_angle_deg"
+          ]
+        },
+        "gravity_ignored": {
+          "type": "string",
+          "description": "Present when the input carried gravity that was malformed and so not used; the reason."
         }
       },
       "required": [

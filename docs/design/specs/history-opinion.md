@@ -107,7 +107,8 @@ part5 history-opinion <analysis.json> [<analysis.json> ...] [--take-id ID ...] [
 - `status`: `ok` (the model answered and the answer was read; `observations` may be empty), `fallback` (a call was
   prepared or attempted and failed; `reason` says why; `observations` is empty), `skipped` (no call was attempted: no
   key, live mode off, or no take holds a fault with a second to cite; `reason` says why). `model` is null unless `ok`.
-- `reason` never holds the key or the model's text.
+- `reason` never holds the key, and the model's answer is never put in it; an HTTP failure's reason may carry the API's
+  own scrubbed error text (docs/design/specs/second-opinion.md AC-SO-06, `meta_api._scrubbed`).
 - `takes`: one row per take, in order. `faults_omitted` counts faults left out of the facts (over 30 in a take, or a
   fault row that did not have a valid measure, side, body part and direction).
 - `observations`: at most `--max-observations`, in the model's order (most useful first). `at_s` is the cited fault's
@@ -201,6 +202,10 @@ as its twin is ASM-014. An unlisted tag is English.
   sentence that speaks of earlier takes (`earlier`, `previous` or `prior` before `take`) is refused for the first take
   (`speaks of earlier takes but the cited take is the first`), and one that speaks of later takes (`later`, `next` or
   `following`) for the last (`speaks of later takes but the cited take is the last`); a series of one take is both.
+  Advice about the follower's own next take ("in your next take", a possessive before `next take`) is not a claim
+  about another take of the series and passes on the last take too (TICKET-076 R9). The possessive excuses `next take`
+  only: "your later takes" and "your following takes" are claims about other takes and are refused on the last take
+  (R2 of the 1.14.1 review).
 - AC-HO-06 (no invented numbers): every number in an observation is in the input: `at_s`, `evidence.direction` and
   `evidence.magnitude_deg` are the cited fault's, and `text` has none. A model that returns a different `at_s` or a
   `magnitude_deg` of its own changes nothing in the kept values.

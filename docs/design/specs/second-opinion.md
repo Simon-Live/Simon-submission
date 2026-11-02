@@ -119,20 +119,50 @@ template.
   that names it (`template.NAMES`, that side's and the side-less ones; `guard.masked_parts`): a seated take's legs,
   knees, feet and hips; a masked arm's arm, elbow and hand, not its shoulder (`shoulder_tilt` is still scored); a
   masked forearm's hand. A mention is refused when one of the three words before it is a masked side, or when none
-  is a side word ("the legs", "both feet" speak of every side). The request holds no measure or joint the mask
+  is a side word ("the legs", "both feet" speak of every side). A side word that no body-part noun takes is read too
+  (TICKET-098): "the right foot stays planted while the left lifts" is refused when the part named earlier (the foot) is
+  not scored on that side, and "your left side stays quiet" when every part on that side is not scored (a side with one
+  part scored is not refused: under `left_leg` the left shoulder and arm are scored); "to the left" and "towards the
+  right" are directions and are not read as a side. The rule is lexical, and that is its limit: it reads the words of
+  `template.GROUPS` and `guard.EXTRA_PARTS` (the lower body, lower limbs, lap and femur are the thigh group, the
+  kneecap, patella and tibia the knee, footwork the foot, the pelvic and tailbone the hip; "lower body" and "lower
+  limbs" are read through a hyphen or any run of spaces, R3 of the 1.14.1 review), so a paraphrase with none
+  of them ("the lower half", "your stance", "the seat takes the weight") passes. A bare side word is a limit of its own
+  (the 1.14.1 review's note on `_bare_side`): "The left lifts." with no part named earlier in the sentence and none
+  within three words after the side word passes under `left_leg`, since a side word with no noun is refused only when
+  every part on that side is not scored; the side's meaning there ("the left" foot, or the left arm) is not known.
+  The request holds no measure or joint the mask
   drops: the block must pass the analysis's own check (`mask.validate_mask_block`, so no fault names one) before
   any upload, else the block is `fallback`, `body mask does not pass its check`, and nothing is sent.
 - AC-SO-05: disputes never change the measured score, faults or insights (byte comparison).
 - AC-SO-06: no key, live off, one clip missing or unreadable, an upload or call failure, unreadable JSON, the per-call
   ceiling or the spend cap: the block says `skipped` or `fallback` with the reason, the analysis is written and the
-  CLI exits 0. A reason never holds the key or the model's text.
+  CLI exits 0. A reason never holds the key, and the model's answer is never put in it (a reason is made of the
+  guards' fixed words, the status line and, below, the API's own error text). An HTTP failure's reason (`HTTP 400 on
+  responses`) carries after a colon the API's own error type and message when its body has them (TICKET-099), scrubbed
+  (`meta_api._scrubbed`, R4 of the 1.14.1 review): one line of at most 160 characters, with the key, a masked key (a
+  word with a run of asterisks), a Bearer token or Authorization header, a URL and any long quoted run taken out and
+  every control and bidi character dropped; the whole detail is left off when the line fails `guard.unsafe_problem`
+  (the check every shown text is held to: a banned word, a link) and always on HTTP 401 and 403, where an API echoes a
+  key back. The scrub is a heuristic over a third party's words, so the detail is a hint for the operator, not a promise
+  that no secret-shaped text can pass. A body that is not JSON or holds no error text leaves the status line alone.
+  An answer that cannot be read is `answer cut off at the output limit` (`opinion.CUT_OFF`) when the API's own count
+  says the model used the whole output allowance of the request (`output_tokens` at or over `max_output_tokens`, 8000
+  for this call; an estimated usage, which is the allowance written by Part 5, is not the API's count), else
+  `unreadable answer` (TICKET-102: a live call on 7071 input tokens used 3000 of 3000 and left half a JSON). The
+  history opinion and Ask this take decide it by the one helper `opinion.unreadable_reason(usage, allowance)`. The
+  call is not retried: a retry would double the spend of a cut call.
 - AC-SO-07: every attempted call appends one ledger line (model, UTC time, tokens, USD; never the key or text); the
   ledger is opened and locked (flock) before the call, after the spend cap is checked once for the total before any
   upload and again, with the call's estimate, under the lock; so a spend that cannot be recorded is not made and two
   processes cannot both pass the cap. A call whose cost is not known is recorded at its pre-call estimate (the counted
   input and the full output allowance) with `estimated: true`: one that fails with no answer from the API (timeout,
   connection error, unreadable body), one the API answered with a 5xx status (a gateway may answer after the model ran)
-  and one answered with HTTP 200 and a body that holds no input and output token counts (TICKET-050). A call the API
+  and one answered with HTTP 200 and a body that holds no input and output token counts (TICKET-050). The output
+  allowance is the request's own `max_output_tokens`, 8000 for the per-take opinion (`prompt.SECOND_MAX_OUTPUT_TOKENS`,
+  as the history opinion's, TICKET-102), so the estimate (USD 0.03525 on 1000 input tokens), the per-call ceiling check
+  and an estimated ledger line follow it; the worst case, 8000 tokens at the output rate, is USD 0.034 on top of the
+  input. A call the API
   refused with a status below 500 (such as 429) is recorded at $0. Two things refuse the call, as a fallback block
   before anything is uploaded (TICKET-050): `PART5_META_SPEND_CAP_USD` or `PART5_META_CALL_MAX_USD` set to something that
   is not a finite amount of USD from 0 up (a limit that cannot be read must not run as another one; unset or blank is
@@ -276,6 +306,8 @@ template.
 | tests asserting the schema version | `1.9.0` | TICKET-045 | yes |
 | `part5/phrasing/local_llm.py` (`grammar`, `extra_rules`), `part5/phrasing/template.py` (`_doubled_part`), `tests/test_phrasing_grammar.py`, `docs/dev/DEVELOPING.md` | the local grammar rules and the doubled body-part test (AC-VA-04, AC-VA-05; Part 7) | TICKET-045 | yes |
 | `part5/opinion/__init__.py`, `part5/opinion/guard.py`, `tests/test_second_opinion.py` | N3 of the 1.14.0 recheck: the body mask in the second opinion (`_not_scored`, `MASK_UNREADABLE`; `masked_parts`, the `masked` argument of `read_answer` and `text_problem`) | TICKET-084 | yes |
+| `part5/opinion/guard.py` (`EXTRA_PARTS`, `_bare_side`), `part5/phrasing/lang.py` (`_unsafe`), `tests/test_second_opinion_mask_words.py` (new) | the 1.14.0 delta review's residual 1: more body words and a bare side word under a body mask, the rule's lexical limit written in AC-SO-04; the one lazy import of `unsafe_problem` | TICKET-098 | yes |
+| `part5/opinion/__init__.py` (`unreadable_reason`), `part5/opinion/prompt.py` (`SECOND_MAX_OUTPUT_TOKENS`), `part5/opinion/meta_api.py` (`_scrubbed`, `_api_detail`), `part5/opinion/guard.py` (`_LATER`, `EXTRA_PARTS`), `part5/ask/tools.py` (`canonical`), `part5/ask/agent.py`, `tests/test_second_opinion_cut_off.py` (new) | the 1.14.1 review's residuals R1 to R4 and TICKET-102: the per-take cut-off reason and allowance, the scrubbed API detail, the possessive and the lower-body words | TICKET-102 | yes |
 
 ## Delivery Verification Plan
 - `uv run pytest -q tests/test_second_opinion.py tests/test_phrasing_variety.py tests/test_phrasing_lang.py` while
@@ -335,6 +367,7 @@ ledger. Resolution: ADDRESSED_IN_SPEC.
 | TICKET-050 R16 live run: "At 0.0 s, tus codos ..." kept an English time phrase | AC-LA-02 | `tests/test_phrasing_time_phrase.py` | done |
 | Contract C1 | AC-SC-01 | `tests/test_second_opinion.py`, `make check-5-contract` | done |
 | N3 of the 1.14.0 recheck: the second opinion ignored `body_mask` | AC-SO-04 | `tests/test_second_opinion.py` (`test_n3_*`) | done |
+| 1.14.0 delta review, residual 1: the masked-part rule was a short word list (TICKET-098) | AC-SO-04 | `tests/test_second_opinion_mask_words.py` | done |
 
 ## Deviations from PRD
 None. Contract C1 says the block is present with a status; this spec leaves it absent when no clip was given, so

@@ -229,6 +229,39 @@ def test_ac_ho_05_earlier_takes_are_not_claimed_of_the_first_take_nor_later_take
     assert (dropped == {reason: 1} and kept == []) if reason else (dropped == {} and len(kept) == 1)
 
 
+ADVICE = "Keep the right elbow closer to the recording in your next take."
+
+
+@pytest.mark.parametrize("take,at_s,text,reason", [
+    ("take_03", 1.1, ADVICE, None),
+    ("take_03", 1.1, "Try bending the right elbow less on their next take.", None),
+    ("take_03", 1.1, "The right elbow bends more than the recording; aim for less in your next takes.", None),
+    ("take_03", 1.1, "Keep the right elbow closer in the next take.", LAST_REASON),
+    ("take_03", 1.1, "The right elbow bends more than the recording in the later takes.", LAST_REASON),
+    ("take_03", 1.1, "Keep the right elbow closer in your next take, as it does in the following takes.", LAST_REASON),
+    ("take_03", 1.1, "The right elbow bends more than the recording in other next takes.", LAST_REASON),
+    # R2 of the 1.14.1 review: the possessive excused "next take" only, not "later takes" or "following takes"
+    ("take_03", 1.1, "Your later takes show the right elbow closing in.", LAST_REASON),
+    ("take_03", 1.1, "Your following takes show the right elbow closing in.", LAST_REASON),
+    ("take_03", 1.1, "In their later take the right elbow bends more than the recording.", LAST_REASON),
+    ("take_03", 1.1, "His following take shows the right elbow closing in.", LAST_REASON),
+    ("take_03", 1.1, "Keep the right elbow closer in your next take.", None),
+    ("take_02", 0.9, "Your later takes show the right elbow closing in.", None),
+    ("take_01", 0.7, ADVICE, None),
+    ("take_02", 0.9, ADVICE, None),
+])
+def test_tl_076_r9_advice_about_the_next_take_passes_and_a_claim_about_another_take_is_dropped_and_counted(
+        elbows, take, at_s, text, reason):
+    kept, dropped = reasons(elbows, elbow(take, at_s, text))
+    assert (dropped == {reason: 1} and kept == []) if reason else (dropped == {} and len(kept) == 1)
+
+
+def test_tl_076_r9_advice_about_the_next_take_passes_for_a_series_of_one_take_too():
+    one = prompt.build_series([analysis([fault(at_s=0.7)])], ["take_01"])
+    assert len(reasons(one, elbow("take_01", 0.7, ADVICE))[0]) == 1
+    assert reasons(one, elbow("take_01", 0.7, LATER)) == ([], {LAST_REASON: 1})
+
+
 def test_ac_ho_05_a_series_of_one_take_has_no_earlier_and_no_later_take():
     one = prompt.build_series([analysis([fault(at_s=0.7)])], ["take_01"])
     for text, reason in ((EARLIER, FIRST_REASON), (LATER, LAST_REASON)):

@@ -338,13 +338,14 @@ def test_ac_ho_03_the_request_is_text_only_and_holds_no_path_name_or_key(series,
     assert fake.uploaded == [] and fake.deleted == []
 
 
-def test_ac_ho_03_the_history_output_allowance_is_pinned_and_the_per_take_one_is_not_moved(series):
+def test_ac_ho_03_the_history_output_allowance_is_pinned_and_the_per_take_one_follows_it(series):
     """TICKET-072 live smoke: 3000 output tokens were all used before any JSON was written. A history call asks for
     8000 (twice the reasoning seen plus a reply of 10 observations: see prompt.HISTORY_MAX_OUTPUT_TOKENS); the per-take
-    opinion keeps 3000, and 8000 at the output rate stays far under the per-call ceiling."""
+    opinion asks for 8000 too since TICKET-102 (the same cut on a live per-take call), the default for a request that
+    names none stays 3000, and 8000 at the output rate stays far under the per-call ceiling."""
     assert prompt.HISTORY_MAX_OUTPUT_TOKENS == 8000 and meta_api.MAX_OUTPUT_TOKENS == 3000
     assert prompt.history_request(series, "en", 5)["max_output_tokens"] == 8000
-    assert prompt.request("exp-id", "fol-id", [], 4.0)["max_output_tokens"] == 3000
+    assert prompt.request("exp-id", "fol-id", [], 4.0)["max_output_tokens"] == prompt.SECOND_MAX_OUTPUT_TOKENS == 8000
     assert meta_api.price(0, prompt.HISTORY_MAX_OUTPUT_TOKENS) == 0.034 < meta_api.CALL_MAX_USD / 10
 
 

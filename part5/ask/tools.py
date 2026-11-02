@@ -77,6 +77,25 @@ def _names(block, key):
     return frozenset(n for n in listed if isinstance(n, str)) if isinstance(listed, list) else frozenset()
 
 
+def canonical(value):
+    """`value` with every number (not a bool) a float and -0.0 as 0.0: the form a digest is taken of (TICKET-100). A
+    browser writes `6` where Python wrote `6.0` and `0` for `-0.0` (JSON.stringify), so a number's type and sign of zero
+    are not the take's. No rounding is needed: a float is written shortest-repr on both sides, so it parses back to the
+    same double and the digest of a page-written copy equals that of a Python-written one. Bools, strings and None are
+    unchanged, and so is an int too large for a double (`float` raises OverflowError from 309 digits; the request then
+    answers 200 measured_facts, not 500)."""
+    if isinstance(value, dict):
+        return {key: canonical(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [canonical(item) for item in value]
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return float(value) or 0.0   # 0.0 and -0.0 are both false, so both give the positive zero
+        except OverflowError:
+            return value   # an int of 309 or more digits has no double; it stays as written (json.dumps writes it as is)
+    return value
+
+
 class Take:
     """One analysed take: its analysis and the replay written with it (both checked first, `agent.ask_take`). The
     measures of both skeletons are computed once, on first use, from the replay's frames. `masked_joints` and
@@ -119,12 +138,13 @@ class Take:
 
     def sha256(self):
         """The SHA-256 of the take's tool data: the `get_faults` result and the replay's joints, frames, times and
-        alignment, as canonical JSON. Two requests about one take carry the same value."""
+        alignment, as canonical JSON with every number a float (`canonical`). Two requests about one take carry the
+        same value, whether the files were written by Python or re-serialised by the page's JavaScript."""
         keys = ("joints", "expected", "follower", "expected_t", "follower_t", "exp_to_fol")
         data = {"faults": get_faults(self, {}), "replay": {key: self.replay[key] for key in keys}}
         if self.masked_joints or self.not_scored:   # the tools refuse these; a take with no mask keeps its digest
             data["not_scored"] = {"joints": sorted(self.masked_joints), "measures": sorted(self.not_scored)}
-        text = json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        text = json.dumps(canonical(data), sort_keys=True, separators=(",", ":"), allow_nan=False)
         return hashlib.sha256(text.encode()).hexdigest()
 
 

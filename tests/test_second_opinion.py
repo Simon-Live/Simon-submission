@@ -261,7 +261,7 @@ def test_ac_so_06_a_missing_clip_falls_back(take, meta):
     (Fake(OpinionError("timeout on responses")), "timeout on responses"),
     (Fake({"output": [{"type": "message", "content": [{"type": "output_text", "text": "I agree with all."}]}]}),
      "unreadable answer"),
-    (Fake(answer(), count=500_000), "estimated $0.64 over the per-call limit of $0.50"),
+    (Fake(answer(), count=500_000), "estimated $0.66 over the per-call limit of $0.50"),
 ])
 def test_ac_so_06_a_failed_call_falls_back_with_a_plain_reason(take, meta, fake, reason):
     doc = attach(take, meta, fake)

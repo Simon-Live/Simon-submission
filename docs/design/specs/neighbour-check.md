@@ -100,7 +100,9 @@ step met its expectation, 1 when any step is red, 3 on a named blocker (network,
 
 Records and the newest one. The script writes the file of the current UTC date and overwrites it, so a second run on
 one date keeps the first by renaming it to `progress/neighbour-check-<YYYYMMDD>-run<N>.json` before the rerun (as
-`neighbour-check-20261101-run1.json` and `-run2.json` are; the unsuffixed 2026-11-01 file is run 3). The newest record is the file whose name sorts last in the C locale
+`neighbour-check-20261101-run1.json` and `-run2.json` are; the unsuffixed 2026-11-01 file is run 3). On 2026-11-02 the earlier runs of the day are `neighbour-check-20261102-run1.json` (Part 3 `fd96379`) and `-run2.json`
+(Part 3 `73ed073`); the run against Part 3 `72e120f` (TICKET-096: 61 passed, 0 failed, 0 skipped) is the unsuffixed
+file, the one `part5/contract.py` `NEIGHBOUR_COMMITS` cites. The newest record is the file whose name sorts last in the C locale
 (`ls progress/neighbour-check-*.json | LC_ALL=C sort | tail -n 1`): the date is the sort key, and on one date the
 unsuffixed `<YYYYMMDD>.json` (the latest run of the day) sorts after every `-run<N>` copy, because `-` sorts before
 `.`. The QA recipe `neighbour-check-record` and `tests/neighbour/test_neighbour_check.py` read the newest record by that rule.

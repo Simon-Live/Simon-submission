@@ -7,6 +7,10 @@ Muse Spark 1.3 on `https://api.meta.ai/v1`: clips go up through the Files API, t
 The key is the file `~/.config/firm/operator-keys/MODEL_API_KEY` (`PART5_META_KEY_FILE` for tests). It is read at
 the call, stripped, and used for the `Authorization` header and nothing else: never printed, logged, written or put in
 a reason. Live calls need the key file AND live mode (the phrasing switches, `muse_spark.live_on`).
+An HTTP failure's reason (`HTTP 400 on responses`) carries after a colon the API's own error type and message when its
+body has them (TICKET-099): one line of 160 characters at most, with the key, a Bearer token or Authorization header, a
+URL, a masked key and any long quoted run taken out and control and bidi characters dropped, and the whole detail left
+off when the line fails `guard.unsafe_problem` (a banned word, a link) or the status is 401 or 403 (`_scrubbed`).
 
 Spend: the total cap is checked before anything is uploaded; the input is then counted, and the call is refused when
 its estimate (the counted input plus the full output allowance at Part 1's list rates) passes `PART5_META_CALL_MAX_USD`
@@ -29,11 +33,13 @@ docs/specs/ask-this-take.md) all use it, so there is one place that spends. The 
 import json
 import math
 import os
+import re
 import shutil
 import socket
 import subprocess
 import urllib.error
 import urllib.request
+import unicodedata
 import uuid
 from pathlib import Path
 
@@ -48,13 +54,22 @@ USAGE_FILE, USAGE_ENV = "~/.simon/meta_usage.jsonl", "PART5_META_USAGE_FILE"
 CAP_ENV, CAP_USD = "PART5_META_SPEND_CAP_USD", 5.0
 CALL_MAX_ENV, CALL_MAX_USD = "PART5_META_CALL_MAX_USD", 0.50
 RATES = {"input": 1.25, "cached": 0.15, "output": 4.25}   # USD per million tokens, Part 1's spend.py list rates
-MAX_OUTPUT_TOKENS = 3000   # the per-take opinion's output allowance, and the default for a request that names none
+MAX_OUTPUT_TOKENS = 3000   # the default allowance for a request that names none (every feature names its own: prompt.py)
 TIMEOUT_S = 300
 LOCK_WAIT_S = TIMEOUT_S + 30   # another process's call may hold the ledger for as long as one call can take
 CLIP_MAX_S, CLIP_FPS, CLIP_WIDTH = 60, 8, 480   # what is sent: the first minute, 8 frames a second, 480 px wide
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 UPLOAD_NAME = "clip.mp4"   # the name in the multipart header: a fixed one, so a path's characters never reach it
 CLIP_UNREADABLE = "clip not readable"
+# TICKET-099: the API's own error type and message ride on an HTTP failure's reason. 160 characters, so "HTTP 400 on
+# responses: " and the detail fit the 200 of the Ask document's `fallback_reason`; the body is read to 8 KB at most.
+ERROR_DETAIL_CHARS, ERROR_BODY_BYTES = 160, 8192
+NO_DETAIL_STATUSES = (401, 403)   # an authentication answer may echo the key (masked, so no replace finds it): no detail
+# What the detail never keeps: a Bearer token or an Authorization header, a URL (with a scheme, `www.` or a host and a
+# path), a long run with a digit in it (an id or a key) and a long quoted run (a request echoed back, which may hold
+# a model's text), and any word with a run of asterisks in it (a masked key: `mk_live_********ghij`).
+_UNSAFE = re.compile(r"(?i)\bbearer\s+\S+|\bauthorization\b[^\n]*|\b[a-z][a-z0-9+.-]*://\S+|\bwww\.\S+"
+                     r"|\b[\w-]+(?:\.[\w-]+)+/\S*|\b(?=[\w-]*\d)[\w-]{24,}\b|\"[^\"]{40,}\"|'[^']{40,}'|\S*\*{3,}\S*")
 PURPOSE = "second_opinion"   # the ledger's `purpose` of a per-take call; another feature names its own (`call`)
 
 
@@ -352,6 +367,40 @@ def prepare(path, out_dir):
     return path
 
 
+def _scrubbed(text, key):
+    """`text` as one line, the key and anything `_UNSAFE` matches replaced by `[removed]`, control and bidi characters
+    taken out, cut to ERROR_DETAIL_CHARS; "" when the line fails `guard.unsafe_problem`, the check every shown text is
+    held to (a banned word, a link, a control character), so the detail is dropped whole, not trimmed. A heuristic
+    (R4 of the 1.14.1 review): the API's words are a third party's, so the reason holds them as a hint, not a promise."""
+    from .guard import unsafe_problem   # lazy: guard imports prompt, which imports this module
+    if key:
+        text = text.replace(key, "[removed]")
+    line = " ".join(_UNSAFE.sub("[removed]", text).split())
+    line = "".join(c for c in line if unicodedata.category(c) not in ("Cc", "Cf"))
+    line = line if len(line) <= ERROR_DETAIL_CHARS else line[:ERROR_DETAIL_CHARS - 3] + "..."
+    return "" if unsafe_problem(line) else line
+
+
+def _api_detail(exc, key):
+    """`": <type>: <message>"` from the JSON error body of an HTTPError, scrubbed (`_scrubbed`); "" for any other
+    failure, a body that is not JSON or one with no error text, and for a 401 or 403 whatever the body says (an
+    authentication answer is where a key is echoed back, masked or not: R4). The key, headers and URLs never reach it."""
+    if not isinstance(exc, urllib.error.HTTPError) or exc.code in NO_DETAIL_STATUSES:
+        return ""
+    try:
+        body = json.loads(exc.read(ERROR_BODY_BYTES))
+    except Exception:  # a closed or unreadable body, not JSON: the status line alone
+        return ""
+    error = body.get("error", body) if isinstance(body, dict) else None
+    error = {"message": error} if isinstance(error, str) else error
+    if not isinstance(error, dict):
+        return ""
+    kind = error.get("type") if isinstance(error.get("type"), str) else error.get("code")
+    parts = [part for part in (kind, error.get("message")) if isinstance(part, str) and part.strip()]
+    text = _scrubbed(": ".join(parts), key)
+    return f": {text}" if text else ""
+
+
 def _failure(exc, step):
     if isinstance(exc, urllib.error.HTTPError):
         return f"HTTP {exc.code} on {step}"
@@ -382,7 +431,7 @@ class HttpClient:
                 return json.loads(body) if body.strip() else {}
         except Exception as exc:  # any failure becomes a reason, never a traceback or the server's text
             self.last_status = getattr(exc, "code", None)
-            raise OpinionError(_failure(exc, step or path)) from None
+            raise OpinionError(_failure(exc, step or path) + _api_detail(exc, self._key)) from None
 
     def _json(self, path, body, step):
         return self._call("POST", path, json.dumps(body).encode(), "application/json", step)

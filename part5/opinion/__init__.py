@@ -119,7 +119,7 @@ def run(analysis, follower_clip, expected_video, follower_video, *, live=False, 
     except OSError:   # a clip or the temp directory that cannot be read or written: the analysis is still written
         return _block("fallback", "clip could not be prepared")
     except ValueError:
-        return _block("fallback", "unreadable answer", usage)
+        return _block("fallback", unreadable_reason(usage, prompt.SECOND_MAX_OUTPUT_TOKENS), usage)
     return _block("ok", usage=usage, **found)
 
 
@@ -206,13 +206,18 @@ def _history_ask(client, series, language, limit):
     return meta_api.output_text(payload), usage
 
 
-def _unreadable(usage):
+def unreadable_reason(usage, allowance):
     """The reason for an answer that could not be read: `answer cut off at the output limit` when the API's own count
-    says the model used the whole output allowance of a history call (the one live call of 2026-11-01 did, at the old
-    allowance of 3000: 3000 of 3000 tokens, no JSON), else `unreadable answer`. An estimated usage says nothing about
-    what the model wrote."""
-    cut = usage and not usage.get("estimated") and usage.get("output_tokens", 0) >= prompt.HISTORY_MAX_OUTPUT_TOKENS
+    says the model used the whole output `allowance` of the request (the live calls of 2026-11-01 and 2026-11-02 did,
+    at the old allowance of 3000: 3000 of 3000 tokens, no JSON), else `unreadable answer`. An estimated usage says
+    nothing about what the model wrote. One helper for the per-take and the history opinion (TICKET-102)."""
+    cut = usage and not usage.get("estimated") and usage.get("output_tokens", 0) >= allowance
     return CUT_OFF if cut else "unreadable answer"
+
+
+def _unreadable(usage):
+    """`unreadable_reason` at a history call's allowance."""
+    return unreadable_reason(usage, prompt.HISTORY_MAX_OUTPUT_TOKENS)
 
 
 def history_run(series, *, lang=None, max_observations=prompt.HISTORY_DEFAULT_N, live=False, client=None,

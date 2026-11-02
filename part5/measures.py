@@ -62,8 +62,49 @@ def _sagittal(seg):
 
 
 def _forward_from_down(seg):
-    """Raise of a hanging segment toward the front: 0 = straight down, 90 = pointing forward."""
+    """Raise of a hanging segment toward the front: 0 = straight down, 90 = pointing forward.
+
+    The raw `arctan2`: its branch cut lies at straight up (+-180). The measures that use it go through `_continuous`
+    so that a segment raised past vertical does not jump by 360 degrees (TICKET-094)."""
     return np.degrees(np.arctan2(seg[:, 2], -seg[:, 1]))
+
+
+# TICKET-094 (docs/specs/measure-branch-cuts.md): an `arctan2` angle jumps by 360 degrees where its branch cut falls, and
+# the cut of `_forward_from_down` and `_sagittal` falls on poses a body does reach (an arm raised overhead, a leg raised
+# to vertical, a trunk folded flat). `_continuous` makes each of those measures continuous in two steps:
+#  1. along the clip: a step of more than half a turn between two frames that have a value is a wrap, not a movement,
+#     and the frames after it are moved a whole turn back (np.unwrap's rule). Which side of the cut the arm crosses
+#     does not matter: a real clip lowers its arms from overhead through the back as often as through the front.
+#  2. across clips: the whole clip is then moved by whole turns until its MEDIAN lies in a fixed window of 360 degrees
+#     [low, low + 360), whose edges sit in the middle of the angles that body part cannot hold. Unwrapping alone would
+#     leave the branch to the first frame, so a follower and a reference that start on opposite sides of the cut would
+#     differ by a whole turn for the whole clip; the median of a clip is never on the edge unless the body holds the
+#     impossible pose, and it is the same rule for both clips.
+# A clip with no step of half a turn and a median inside the window comes back unchanged, bit for bit.
+# The low edge of each window, in degrees:
+WINDOW_LOW = {
+    "upper_arm_forward": -120.0,   # shoulder flexion against the trunk: about -60 (back) to 180 (overhead)
+    "thigh_forward": -125.0,       # thigh from straight down: about -90 (back) to 200 (raised past vertical)
+    "trunk_lean_forward": -125.0,  # spine from straight up: about -90 (leaning back) to 200 (folded flat, head down)
+    "head_forward": -180.0,        # head against the trunk: about -90 to 90 (the signed difference of two angles)
+}
+
+
+def _continuous(angle, name):
+    """The series `angle` (degrees, one value per frame) without the 360 degree jumps of its branch cut, and on the
+    branch of measure `name`'s window. NaN frames stay NaN; the steps are judged between the frames that have a value."""
+    angle = np.asarray(angle, float)
+    seen = np.flatnonzero(np.isfinite(angle))
+    if seen.size == 0:
+        return angle
+    value = angle[seen]
+    step = np.diff(value)
+    turns = np.concatenate(([0], np.cumsum(np.where(step > 180.0, -1, np.where(step < -180.0, 1, 0)))))
+    unwrapped = value + 360.0 * turns
+    turns = turns - int(np.floor((np.median(unwrapped) - WINDOW_LOW[name]) / 360.0))
+    out = angle.copy()
+    out[seen] = np.where(turns != 0, value + 360.0 * turns, value)   # untouched frames keep their exact bits
+    return out
 
 
 def _lateral(seg):
@@ -264,21 +305,22 @@ def compute(positions):
         out[f"{side}_upper_arm_out"] = _out_angle(el - sh, side)
         out[f"{side}_forearm_out"] = _out_angle(wr - el, side)
         out[f"{side}_thigh_out"] = _out_angle(kn - hp, side)
-        out[f"{side}_thigh_forward"] = _forward_from_down(kn - hp)
+        out[f"{side}_thigh_forward"] = _continuous(_forward_from_down(kn - hp), "thigh_forward")
         out[f"{side}_foot_out"] = _out_angle(an - hp, side)
         out[f"{side}_knee_valgus"] = _knee_valgus(hp, kn, an, side)
     spine = _mid(p, "left_shoulder", "right_shoulder") - _mid(p, "left_hip", "right_hip")
-    out["trunk_lean_forward"] = _sagittal(spine)
+    out["trunk_lean_forward"] = _continuous(_sagittal(spine), "trunk_lean_forward")
     for side in SIDES:
         # Shoulder flexion is relative to the trunk: arms that keep their angle to a leaning
         # trunk aren't "raised" or "lowered", the trunk lean is the fault.
         sh, el = p[:, J[f"{side}_shoulder"]], p[:, J[f"{side}_elbow"]]
-        out[f"{side}_upper_arm_forward"] = _forward_from_down(el - sh) + out["trunk_lean_forward"]
+        out[f"{side}_upper_arm_forward"] = _continuous(_forward_from_down(el - sh) + out["trunk_lean_forward"],
+                                                       "upper_arm_forward")
     out["trunk_lean_side"] = _sideways(spine)   # ADR-0017: bounded through a deep forward hinge
     sl = p[:, J["left_shoulder"]] - p[:, J["right_shoulder"]]
     out["shoulder_tilt"] = np.degrees(np.arctan2(sl[:, 1], np.hypot(sl[:, 0], sl[:, 2])))
     head = p[:, J["nose"]] - _mid(p, "left_shoulder", "right_shoulder")
-    out["head_forward"] = _sagittal(head) - out["trunk_lean_forward"]
+    out["head_forward"] = _continuous(_sagittal(head) - out["trunk_lean_forward"], "head_forward")
     return out
 
 

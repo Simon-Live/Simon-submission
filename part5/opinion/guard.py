@@ -8,7 +8,8 @@ does not see). `read_answer` parses the model's JSON and keeps only the verdicts
 number (`template.NUMBER`, and `QUANTITY` words such as "twice" and "half" as an amount), no praise and none of
 `BANNED`. "back" is the trunk only as a noun, and "face" after a body-part noun is a verb that names no head. Each
 dropped item is listed with its reason. On a take with a declared body mask, `masked_parts` lists the body parts it
-leaves not scored, and a note that names one is dropped too (N3 of the 1.14.0 recheck, TICKET-084).
+leaves not scored, and a note that names one is dropped too (N3 of the 1.14.0 recheck, TICKET-084), by its words and
+a bare side word ("the left lifts"): a paraphrase with no listed word passes (TICKET-098).
 
 `read_history_answer` is the same guard for the history opinion (TICKET-072, docs/specs/history-opinion.md): an
 observation is kept only when it cites one fault of one take of the series (take, second, measure, side and body
@@ -53,11 +54,16 @@ _LINK = re.compile(r"\b[a-z][a-z0-9+.\-]*://|\bwww\.|\bmailto:|\b[a-z0-9\-]+(?:\
 _BACK = (r"(?:^|(?<!to )(?<!toward )(?<!towards )\bthe\s+|\b(?:your|his|her|upper|lower|mid|middle)\s+)back\b"
          r"(?!\s+(?:and\s+forth|foot|feet|leg|legs|knee|knees|ankle|ankles|toe|toes|hip|hips|shoulder|shoulders|"
          r"wrist|wrists|side|sides|arm|arms|hand|hands|elbow|elbows|heel|heels|of|to|toward|towards|into|up|down)\b)")
+# The list is words, so a paraphrase with none of them passes (TICKET-098, AC-SO-04): "lower body" and "lower limbs"
+# are the thigh group (every leg part), the kneecap and the tibia the knee.
 EXTRA_PARTS = (
     ("trunk", re.compile(_BACK + r"|\b(?:ribs?|ribcage|abs|abdomen|belly|stomach|lats?)\b")),
-    ("hip", re.compile(r"\b(?:waist|waistline|glutes?|buttocks?|butt)\b")),
-    ("thigh", re.compile(r"\b(?:quads?|quadriceps|hamstrings?|groin)\b")),
-    ("foot", re.compile(r"\b(?:shins?|calf|calves|lower legs?|insteps?|soles?)\b")),
+    ("hip", re.compile(r"\b(?:waist|waistline|glutes?|buttocks?|butt|pelvic|sacrum|tailbone|coccyx|"
+                       r"sit(?:ting)? bones?)\b")),
+    ("thigh", re.compile(r"\b(?:quads?|quadriceps|hamstrings?|groin|lower[\s-]+body|"
+                         r"lower[\s-]+(?:limbs?|extremities)|laps?|femur|femurs|femora)\b")),
+    ("knee", re.compile(r"\b(?:kneecaps?|patellae?|patellas?|tibiae?|tibias?|fibulae?|fibulas?)\b")),
+    ("foot", re.compile(r"\b(?:shins?|calf|calves|lower legs?|insteps?|soles?|footwork)\b")),
     ("head", re.compile(r"\b(?:eyes?|eyebrows?|ears?|mouth|jaw|forehead|cheeks?|gaze)\b")),
     ("hand", re.compile(r"\b(?:fingers?|thumbs?|palms?|knuckles?)\b")),
     ("arm", re.compile(r"\b(?:biceps?|triceps?)\b")),
@@ -67,6 +73,7 @@ BODY_PARTS = (*GROUP_RX.items(), *EXTRA_PARTS)
 _SIDED = {"shoulder": ("shoulder",), "arm": ("elbow", "wrist"), "elbow": ("elbow",), "hand": ("wrist",),
           "hip": ("hip",), "thigh": ("hip", "knee"), "knee": ("knee",), "foot": ("ankle",)}
 _HEAD = ("nose", "left_eye", "right_eye", "left_ear", "right_ear")
+_DIRECTION = re.compile(r"\b(?:to|toward|towards)\s+(?:the\s+)?$")   # "to the left": a direction, not a part's side
 
 
 def supported(clip):
@@ -109,13 +116,34 @@ def masked_parts(block):
 def _not_scored(parts, masked):
     """The reason the lower-case sentence `parts` names a body part `masked` (`masked_parts`) leaves not scored: a
     mention with a masked side among the three words before it, or with no side word there (it speaks of every side);
-    else None. Three words, so "left and right knees" is read as both sides; a direction word there ("drifts right,
-    the left hand") can refuse a note it need not, never let one through."""
+    else a bare side word (`_bare_side`). None when it names none. Three words, so "left and right knees" is read as
+    both sides; a direction word there ("drifts right, the left hand") can refuse a note it need not, never let one
+    through."""
     for group, rx in BODY_PARTS:
         off = masked.get(group)
         for found in (rx.finditer(parts) if off else ()):
             said = set(SIDE_WORDS.findall(" ".join(re.findall(r"\w+", parts[:found.start()])[-3:])))
             if not said or said & off:
+                return f"names a body part not scored in this take ({group})"
+    return _bare_side(parts, masked)
+
+
+def _bare_side(parts, masked):
+    """The reason `parts` has a side word that no body-part noun takes ("the left lifts", "your left side stays
+    quiet") and means a part `masked` leaves not scored: its side is not scored on any part (`_SIDED`), or a part named
+    earlier in the sentence is not scored on that side (the noun the word leaves out, "the right foot stays while the
+    left lifts"). "To the left", "towards the right" are a direction and are left to the note's other words. Lexical,
+    like `_not_scored`: a paraphrase with no listed word passes."""
+    mentions = [(found.start(), group) for group, rx in BODY_PARTS for found in rx.finditer(parts)]
+    for found in SIDE_WORDS.finditer(parts):
+        side, bound = found.group(), any(
+            at >= found.end() and len(re.findall(r"\w+", parts[found.end():at])) < 3 for at, _ in mentions)
+        if bound or _DIRECTION.search(parts[:found.start()]):
+            continue
+        if all(side in masked.get(group, ()) for group in _SIDED):
+            return f"names a side not scored in this take ({side})"
+        for at, group in sorted(mentions):
+            if at < found.start() and side in masked.get(group, ()):
                 return f"names a body part not scored in this take ({group})"
     return None
 
@@ -299,14 +327,18 @@ def _cited_fault(item, series):
 
 
 # "The earlier takes" is false of the first take of a series and "the later takes" of the last (a series of one take is
-# both): the order is the one the caller gave, so the guard knows which take has nothing before or after it.
+# both): the order is the one the caller gave, so the guard knows which take has nothing before or after it. Only a claim
+# about another take is refused: "in your next take" (TICKET-076 R9) is advice about the take the follower makes next,
+# true of the last one too, so a possessive before "next take" lets it through; "the next take" stays a claim. The
+# possessive excuses "next take" only: "your later takes" and "your following takes" are claims about other takes (R2).
 _EARLIER = re.compile(r"\b(?:earlier|previous|prior)\s+takes?\b")
-_LATER = re.compile(r"\b(?:later|next|following)\s+takes?\b")
+_LATER = re.compile(r"\b(?:later|following)\s+takes?\b|"
+                    r"(?<!\byour )(?<!\btheir )(?<!\bhis )(?<!\bher )\bnext\s+takes?\b")
 
 
 def _order_problem(text, take_id, series):
     """The reason `text` may not be shown for `take_id`: it speaks of earlier takes though this is the first take of
-    `series`, or of later takes though it is the last; else None."""
+    `series`, or of later takes though it is the last (advice about "your next take" is not a claim); else None."""
     lowered = text.lower()
     if take_id == series.takes[0]["take"] and _EARLIER.search(lowered):
         return "speaks of earlier takes but the cited take is the first"

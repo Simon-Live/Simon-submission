@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ..io import JOINTS
 from ..mask import validate_mask_block
-from ..opinion import CUT_OFF, _read_json, guard, meta_api, prompt   # `_read_json`: the history opinion's file reader
+from ..opinion import CUT_OFF, _read_json, guard, meta_api, prompt, unreadable_reason   # `_read_json`: the history opinion's file reader
 from ..opinion.meta_api import OpinionError
 from ..replay import FORMAT as REPLAY_FORMAT
 from . import tools
@@ -304,8 +304,7 @@ def ask_run(question, take, *, live=False, client=None, timeout_s=meta_api.TIMEO
     if text is None:
         return _fallback(question, take, exchange, TURN_LIMIT)
     answer, problem, missing = guard.check_answer(text, exchange.tool_calls)
-    used_all = not usage.get("estimated") and usage["output_tokens"] >= prompt.ASK_MAX_OUTPUT_TOKENS
-    if problem == guard.NO_ANSWER and used_all:
+    if problem == guard.NO_ANSWER and unreadable_reason(usage, prompt.ASK_MAX_OUTPUT_TOKENS) == CUT_OFF:
         problem = CUT_OFF
     if problem:
         ask_log.warning("ask: the model's answer was replaced by the measured facts (%s)%s", problem,

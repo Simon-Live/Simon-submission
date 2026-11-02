@@ -43,6 +43,7 @@ Start with `docs/dev/DEVELOPING.md`.
 - [`language-cues.md`](specs/language-cues.md): the cues and reasons of an analysis in the follower's language (schema 1.14.0): one batched model call after the fault lines, a word test per item with the English text kept and the reason when it fails, `phrasing.cues[]` naming the backend and model of each, and `phrasing.native_review`, false until a native reader checks a language.
 - [`rep-persistence.md`](specs/rep-persistence.md): attempt 4: persistence judged in each rep of the example, rep by rep for an example of two or more reps (each follower rep against the example rep that matches it, foot measures included), a side lean that does not wrap, and the seed 5 record per part.
 - [`scoring-validity.md`](specs/scoring-validity.md): `make bench-score`: planted joint-angle errors of 0 to 30 degrees through the pipeline (score and first-fire angle per joint), the skeleton-level invariance table (frame rate, mirror, trim, translation, yaw, scale) and the score properties; the video-level invariances are Part 7's.
+- [`measure-branch-cuts.md`](specs/measure-branch-cuts.md): TICKET-094: the four measures read with `arctan2` (`upper_arm_forward`, `thigh_forward`, `trunk_lean_forward`, `head_forward`) do not jump a turn where their branch cut falls; closed along the clip and put on one branch by the clip's median; every other measure audited; no output change.
 
 ## Architecture decision records
 

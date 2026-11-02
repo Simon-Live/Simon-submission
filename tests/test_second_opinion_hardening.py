@@ -249,9 +249,9 @@ def test_review_r1_a_timeout_is_recorded_at_the_pre_call_estimate_and_counts_tow
     assert (block["status"], block["reason"]) == ("fallback", "timeout on responses")
     [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
     assert line["http_status"] is None and line["estimated"] is True
-    assert (line["input_tokens"], line["output_tokens"], line["usd"]) == (9000, 3000, 0.024)
-    assert meta_api.spent() == pytest.approx(0.024)
-    monkeypatch.setenv("PART5_META_SPEND_CAP_USD", "0.03")
+    assert (line["input_tokens"], line["output_tokens"], line["usd"]) == (9000, 8000, 0.04525)
+    assert meta_api.spent() == pytest.approx(0.04525)
+    monkeypatch.setenv("PART5_META_SPEND_CAP_USD", "0.06")
     again = Fake(answer())
     block = attach(take, meta, again)["second_opinion"]
     assert (block["status"], block["reason"]) == ("fallback", "spend cap reached") and again.bodies == []
@@ -301,9 +301,9 @@ def test_recheck_5_a_5xx_answer_is_recorded_at_the_estimate_and_counts_toward_th
     block = attach(take, meta, Gateway(OpinionError("HTTP 504 on responses"), count=9000))["second_opinion"]
     assert (block["status"], block["reason"]) == ("fallback", "HTTP 504 on responses")
     [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
-    assert line["http_status"] == 504 and line["estimated"] is True and line["usd"] == 0.024
-    assert (line["input_tokens"], line["output_tokens"]) == (9000, 3000) and meta_api.spent() == pytest.approx(0.024)
-    monkeypatch.setenv("PART5_META_SPEND_CAP_USD", "0.03")
+    assert line["http_status"] == 504 and line["estimated"] is True and line["usd"] == 0.04525
+    assert (line["input_tokens"], line["output_tokens"]) == (9000, 8000) and meta_api.spent() == pytest.approx(0.04525)
+    monkeypatch.setenv("PART5_META_SPEND_CAP_USD", "0.06")
     again = Fake(answer())
     block = attach(take, meta, again)["second_opinion"]
     assert (block["status"], block["reason"]) == ("fallback", "spend cap reached") and again.bodies == []
@@ -328,10 +328,10 @@ def test_recheck_5_an_answer_with_no_token_counts_is_recorded_at_the_estimate(ta
     fake = Fake(without(answer(all_verdicts(n, True)), *usage), count=9000)
     block = attach(take, meta, fake)["second_opinion"]
     assert block["status"] == "ok" and len(block["verdicts"]) == n
-    assert block["usage"] == {"input_tokens": 9000, "output_tokens": 3000, "cached_tokens": 0, "usd": 0.024, "estimated": True}
+    assert block["usage"] == {"input_tokens": 9000, "output_tokens": 8000, "cached_tokens": 0, "usd": 0.04525, "estimated": True}
     [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
-    assert line["http_status"] == 200 and line["estimated"] is True and line["usd"] == 0.024
-    assert meta_api.spent() == pytest.approx(0.024)
+    assert line["http_status"] == 200 and line["estimated"] is True and line["usd"] == 0.04525
+    assert meta_api.spent() == pytest.approx(0.04525)
 
 
 def test_recheck_5_an_answer_that_says_what_it_cost_is_recorded_as_it_says(take, meta):

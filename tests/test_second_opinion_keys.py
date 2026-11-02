@@ -153,7 +153,7 @@ def test_review_r1_through_the_http_client_a_call_with_no_answer_or_a_5xx_is_rec
     assert line["http_status"] == status
     if estimated:
         assert line["estimated"] is True
-        assert (line["input_tokens"], line["output_tokens"], line["usd"]) == (1000, 3000, 0.014)
+        assert (line["input_tokens"], line["output_tokens"], line["usd"]) == (1000, 8000, 0.03525)
     else:
         assert line["usd"] == 0.0 and "estimated" not in line
 
@@ -164,10 +164,10 @@ def test_recheck_5_through_the_http_client_an_answer_without_token_counts_is_rec
     call_opener(monkeypatch, FakeResponse(200, body))
     block = opinion.attach(take, *meta.clips, live=True)["second_opinion"]
     assert block["status"] == "fallback" and block["reason"] == "unreadable answer"
-    assert block["usage"]["estimated"] is True and block["usage"]["usd"] == 0.014
+    assert block["usage"]["estimated"] is True and block["usage"]["usd"] == 0.03525
     [line] = [json.loads(x) for x in meta.ledger.read_text().splitlines()]
-    assert (line["http_status"], line["estimated"], line["usd"]) == (200, True, 0.014)
-    assert meta_api.spent() == pytest.approx(0.014)
+    assert (line["http_status"], line["estimated"], line["usd"]) == (200, True, 0.03525)
+    assert meta_api.spent() == pytest.approx(0.03525)
 
 
 # ---- R2 and recheck 7: the amounts from the environment --------------------------------------------------------------
@@ -382,8 +382,8 @@ class Counting(Fake):
 
 
 def test_review_r17_two_runs_cannot_both_pass_the_cap(take, meta, monkeypatch):
-    """Each call is estimated at $0.024 and costs $0.01295; the cap of $0.03 holds the first only."""
-    monkeypatch.setenv(CAP_ENV, "0.03")
+    """Each call is estimated at $0.04525 and costs $0.01295; the cap of $0.05 holds the first only."""
+    monkeypatch.setenv(CAP_ENV, "0.05")
     first, second, done = Blocking(answer()), Counting(answer()), {}
 
     def run(name, fake):
