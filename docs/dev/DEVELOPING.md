@@ -168,7 +168,9 @@ judged in the rep: `docs/specs/rep-persistence.md`). Then:
   not be aligned) and `ok`; the top-level `residual` and `timing_corr` are medians over the reps;
 - `faults[].reps`: the 0-based reps a fault was found in; a fault counts when found in at least half of
   the accepted reps, and the take is accepted when a strict majority of reps pass;
-- `score.per_rep`: each accepted rep's `value` and `grade`.
+- `faults[].rep_sizes` (1.12.0): the fault's size in each of those reps, `{rep, magnitude_deg, side, body_part}`;
+- `score.per_rep`: each accepted rep's `value` and `grade`, and from 1.12.0 its `rep` and `tempo_ratio` (null where the
+  tempo is not measured, and for every rep of a low match).
 
 Worked example on the committed real takes (8 fast reps against a trainer's 3):
 

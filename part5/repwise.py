@@ -16,6 +16,8 @@ holds two or more, whatever the whole-clip guard says (`pipeline.run`):
   file's own frames (the reference rep's first frame added to the rep-local ones, `_on_expected_file`); a fault that
   some rep found on both sides is reported once, and the half rule is applied to each side over the reps that found it,
   alone or as part of `both`: on `both` when both sides pass, else on the side that does (`aggregate_faults`);
+- a reported fault also says how big it was in each rep that found it (`rep_sizes`, analysis 1.12.0): the occurrences
+  the aggregation already keeps, listed rep by rep with the side that rep found, and nothing else is read from them;
 - under a profile (ADR-0016) the reps are also detected with the profile's `fitness` rules (`profiles.fitness_rules`),
   that half rule is applied to those too, and only the take-level faults `fitness` also reports, covered in the sense
   of `profiles.covered_by`, are kept. Each rep's faults are covered by construction, but a fault seen on one side in
@@ -317,9 +319,23 @@ def across_reps(per_rep, reported, share=MIN_FAULT_SHARE):
     return out
 
 
-def _times(kept, fol, fault_times):
+def rep_sizes(fault, indices, occ, reps):
+    """`faults[].rep_sizes` (analysis 1.12.0, TICKET-071): the size of `fault` in each of the `indices` reps that found
+    it, as `{rep, magnitude_deg, side, body_part}` in rep order. The size is the rep's own occurrence (`occ`, the
+    one `aggregate_faults` sized the fault from, signed like `magnitude_deg`) and `side` is the side that rep found it
+    on. A fault reported on one side also counts the reps that found it as part of `both` (N1); those reps are not in
+    `occ`, so their size is the rep's own `both` fault (the two sides' mean, side `both`). `reps` are the take's reps."""
+    own = {r.index: f for r, f in occ}
+    both_sides = {r.index: f for r in reps if r.ok for f in r.faults
+                  if f.side == "both" and (f.measure, f.direction) == (fault.measure, fault.direction)}
+    sized = [own[i] if i in own else both_sides[i] for i in indices]
+    return [{"rep": i, "magnitude_deg": f.magnitude_deg, "side": f.side, "body_part": f.body_part}
+            for i, f in zip(indices, sized, strict=True)]
+
+
+def _times(kept, fol, fault_times, reps):
     """The time fields of each aggregated fault: the first occurrence's place on the follower's file
-    clock, the median lateral offset, and the reps it was found in."""
+    clock, the median lateral offset, the reps it was found in and its size in each of them (`rep_sizes`)."""
     out = []
     for fault, indices, occ in kept:
         per = [(fault_times(f, r.expected, fol, r.follower_positions, r.alignment, r.to_original)) for r, f in occ]
@@ -328,6 +344,7 @@ def _times(kept, fol, fault_times):
         if laterals:
             times["lateral_m"] = float(median(laterals))
         times["reps"] = indices
+        times["rep_sizes"] = rep_sizes(fault, indices, occ, reps)
         out.append(times)
     return out
 
@@ -446,4 +463,4 @@ def compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, fault_times
     near = across_reps(per_rep, list(kept_keys)) if guard.ok else []
     # a fault sits where its first occurrence was found, in the reference of the rep that found it
     return RepRun(guard, reps, [_on_expected_file(f, occ[0][0].ref_start, exp.n_frames) for f, _, occ in kept],
-                  _times(kept, fol, fault_times), es.spans[0], es, fs, near)
+                  _times(kept, fol, fault_times, reps), es.spans[0], es, fs, near)

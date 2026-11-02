@@ -8,15 +8,18 @@ does not see). `read_answer` parses the model's JSON and keeps only the verdicts
 number (`template.NUMBER`, and `QUANTITY` words such as "twice" and "half" as an amount), no praise and none of
 `BANNED`. "back" is the trunk only as a noun, and "face" after a body-part noun is a verb that names no head. Each
 dropped item is listed with its reason.
+
+`read_history_answer` is the same guard for the history opinion (TICKET-072, docs/specs/history-opinion.md): an
+observation is kept only when it cites one fault of one take of the series (take, second, measure, side and body
+part), and its sentence passes `text_problem` with no time allowed and only the cited fault's body part and side.
 """
-import math
 import re
 import unicodedata
 
 from ..io import JOINTS
-from ..phrasing.lang import json_object
-from ..phrasing.template import GROUP_RX, NUMBER, SIDE_WORDS, TIME, praise, without_face_verbs
-from .prompt import MAX_NOTE, MAX_OBSERVATIONS
+from ..phrasing.lang import EN, check_translated, json_object
+from ..phrasing.template import GROUP_RX, NAMES, NUMBER, SIDE_WORDS, TIME, praise, without_face_verbs
+from .prompt import MAX_NOTE, MAX_OBSERVATIONS, _number   # `_number`: None for nan, inf and an integer too big
 
 LABEL = "model_opinion"
 STATUSES = ("ok", "fallback", "skipped")
@@ -76,6 +79,20 @@ def supported(clip):
     return out
 
 
+def unsafe_problem(text):
+    """The reason `text` may not be shown in any language (a control character, a link, a word this product does not
+    use), else None. A translated line is held to it too; the word list is English, so it catches a banned word that
+    was left in the line untranslated."""
+    if any(unicodedata.category(c) in ("Cc", "Cf") for c in text):
+        return "has a control character"
+    lowered = text.lower()
+    if _LINK.search(lowered):
+        return "has a link"
+    if BANNED.search(lowered):
+        return "uses a word this product does not use"
+    return None
+
+
 def text_problem(text, duration_s, shows):
     """None when `text` may be shown, else the short reason it may not."""
     if not isinstance(text, str) or not text.strip():
@@ -84,13 +101,10 @@ def text_problem(text, duration_s, shows):
         return "more than one line"
     if len(text) > MAX_NOTE:
         return "too long"
-    if any(unicodedata.category(c) in ("Cc", "Cf") for c in text):   # CR and LF were refused above
-        return "has a control character"
+    unsafe = unsafe_problem(text)   # CR and LF were refused above
+    if unsafe:
+        return unsafe
     lowered = text.lower()
-    if _LINK.search(lowered):
-        return "has a link"
-    if BANNED.search(lowered):
-        return "uses a word this product does not use"
     if praise(lowered):
         return "adds praise"
     times = [float(t) for t in TIME.findall(lowered)]
@@ -138,8 +152,8 @@ def _observations(items, duration_s, shows, rejected):
     for i, item in enumerate(items if isinstance(items, list) else []):
         item = item if isinstance(item, dict) else {}
         at_s, text = item.get("at_s"), item.get("text")
-        number = isinstance(at_s, (int, float)) and not isinstance(at_s, bool) and math.isfinite(at_s)
-        if not number or not 0 <= at_s <= duration_s:
+        at = _number(at_s)   # a bool, a string, nan, inf or an integer too large for a float is None
+        if at is None or not 0 <= at <= duration_s:
             problem = "time outside the clip"
         elif len(kept) >= MAX_OBSERVATIONS:
             problem = f"more than {MAX_OBSERVATIONS} observations"
@@ -148,7 +162,7 @@ def _observations(items, duration_s, shows, rejected):
         if problem:
             rejected.append({"kind": "observation", "index": i, "reason": problem})
             continue
-        kept.append({"at_s": round(float(at_s), 1), "text": text.strip(), "label": LABEL})
+        kept.append({"at_s": round(at, 1), "text": text.strip(), "label": LABEL})
     return kept
 
 
@@ -188,3 +202,127 @@ def validate_block(block, n_faults, fail):
               and o.get("label") == LABEL)
         if not ok:
             fail(f"{where}.observations[] must be {{at_s, text of at most {MAX_NOTE}, label {LABEL!r}}}")
+
+
+# ---- the history opinion's guard (TICKET-072, docs/specs/history-opinion.md AC-HO-04 to AC-HO-06, AC-HO-09) --------
+NO_TIME = -1.0   # `text_problem` refuses every time in a sentence checked against a duration below 0
+# The body-part groups (`template.GROUPS`) a sentence may name for a fault whose measure `template.NAMES` does not list.
+PART_GROUPS = {"arms": ("arm", "elbow", "hand", "shoulder"), "legs": ("thigh", "knee", "hip", "foot"),
+               "torso": ("trunk", "shoulder", "hip"), "head": ("head",), "feet": ("foot",)}
+CITED = ("measure", "side", "body_part")
+
+
+def _worded(problem):
+    """`text_problem`'s reason, said for a fault of a series and not for a clip."""
+    return problem.replace("names a time outside the clip", "names a time").replace(
+        "the clip does not show", "the cited fault does not name")
+
+
+def _cited_shows(fault):
+    """The `shows` of `text_problem` for a sentence about `fault`: the groups its measure names, on its side."""
+    groups = NAMES.get(fault["measure"]) or PART_GROUPS.get(fault["body_part"], ())
+    sides = {fault["side"]} if fault["side"] in ("left", "right") else {"any"}
+    return {group: set(sides) for group in groups}
+
+
+def _seconds(value):
+    """`value` rounded to 0.1 s when it is a finite number (not a bool), else None; an integer too large for a float is
+    not a number here (`math.isfinite` would raise OverflowError on it)."""
+    number = _number(value)
+    return None if number is None else round(number, 1)
+
+
+def _cited_fault(item, series):
+    """`(fault row, None)` when `item` cites one fault of one take of `series`, else `(None, reason)`; the first
+    citation value that is not in the input names the reason."""
+    if not isinstance(item, dict):
+        return None, "not an object"
+    rows = series.faults.get(item["take"]) if isinstance(item.get("take"), str) else None
+    if rows is None:
+        return None, "take not in the input"
+    at_s = _seconds(item.get("at_s"))
+    if at_s is None or not any(row.get("at_s") == at_s for row in rows):
+        return None, "second not in the input"
+    for key, reason in zip(CITED, ("measure not in the input", "side not in the input", "body part not in the input")):
+        if not (isinstance(item.get(key), str) and any(row.get(key) == item[key] for row in rows)):
+            return None, reason
+    for row in rows:
+        if row.get("at_s") == at_s and all(row[key] == item[key] for key in CITED):
+            return row, None
+    return None, "values are not one fault of that take"
+
+
+# "The earlier takes" is false of the first take of a series and "the later takes" of the last (a series of one take is
+# both): the order is the one the caller gave, so the guard knows which take has nothing before or after it.
+_EARLIER = re.compile(r"\b(?:earlier|previous|prior)\s+takes?\b")
+_LATER = re.compile(r"\b(?:later|next|following)\s+takes?\b")
+
+
+def _order_problem(text, take_id, series):
+    """The reason `text` may not be shown for `take_id`: it speaks of earlier takes though this is the first take of
+    `series`, or of later takes though it is the last; else None."""
+    lowered = text.lower()
+    if take_id == series.takes[0]["take"] and _EARLIER.search(lowered):
+        return "speaks of earlier takes but the cited take is the first"
+    if take_id == series.takes[-1]["take"] and _LATER.search(lowered):
+        return "speaks of later takes but the cited take is the last"
+    return None
+
+
+def _sentence(item, fault, series, language):
+    """`(fields, None, fell_back)` with `text`, `lang` (and `text_en` for a translation) for the observation, or
+    `(None, reason, False)`. The English `text` always goes through `text_problem` and `_order_problem`; for another
+    language the `line` must pass `check_translated` and `unsafe_problem` too, else the observation keeps its English
+    text (`fell_back`)."""
+    english = item.get("text")
+    problem = text_problem(english, NO_TIME, _cited_shows(fault)) or _order_problem(english, item["take"], series)
+    if problem:
+        return None, _worded(problem), False
+    english = english.strip()
+    if language == EN:
+        return {"text": english, "lang": EN}, None, False
+    line = item.get("line")
+    line = line.strip() if isinstance(line, str) else None
+    if line is not None and check_translated({}, line, False) is None and unsafe_problem(line) is None:
+        return {"text": line, "lang": language, "text_en": english}, None, False
+    return {"text": english, "lang": EN}, None, True
+
+
+def _history_observation(item, series, language):
+    """`(observation, None, fell_back)` for a grounded item, else `(None, reason, False)`. Every value in the
+    observation but the sentence is copied from the cited fault, never from the model."""
+    fault, reason = _cited_fault(item, series)
+    if fault is None:
+        return None, reason, False
+    fields, reason, fell_back = _sentence(item, fault, series, language)
+    if fields is None:
+        return None, reason, False
+    evidence = {key: fault[key] for key in ("direction", "magnitude_deg") if key in fault}
+    return ({"take_id": item["take"], "at_s": fault["at_s"], **{key: fault[key] for key in CITED}, **fields,
+             "evidence": evidence, "label": LABEL}, None, fell_back)
+
+
+def read_history_answer(text, series, language, limit):
+    """`{observations, dropped, translation_fallbacks}` from the model's answer on `series`: at most `limit` grounded
+    observations in the model's order, and a count of what was dropped by reason. ValueError when the answer is not a
+    JSON object holding an `observations` list."""
+    items = json_object(text).get("observations")
+    if not isinstance(items, list):
+        raise ValueError("no observations list")
+    kept, reasons, fallbacks, seen = [], {}, 0, set()
+    for item in items:
+        obs, reason, fell_back = _history_observation(item, series, language)
+        if obs is not None:
+            cite = (obs["take_id"], obs["at_s"], *(obs[key] for key in CITED))
+            if cite in seen:
+                reason = "second observation for the same fault"
+            elif len(kept) >= limit:
+                reason = f"more than {limit} observations"
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+            continue
+        seen.add(cite)
+        kept.append(obs)
+        fallbacks += fell_back
+    return {"observations": kept, "dropped": {"count": sum(reasons.values()), "reasons": reasons},
+            "translation_fallbacks": fallbacks}

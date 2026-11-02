@@ -37,7 +37,7 @@ def summary():
 
 
 # ---------------------------------------------------------------- AC-C01
-@pytest.mark.parametrize("name,version", [("analysis", "1.11.0"), ("input-animation", "1.0.0"),
+@pytest.mark.parametrize("name,version", [("analysis", "1.12.0"), ("input-animation", "1.0.0"),
                                           ("input-skeleton", "1.0.0"), ("labels", "1.0.0"),
                                           ("metrics", "1.5.0"), ("replay", "1.0.0"), ("input-feet", "1.0.0")])
 def test_ac_c01_schema_is_published_with_id_and_version(name, version):
@@ -312,7 +312,8 @@ def test_commits_come_from_the_lock_file_and_the_neighbour_check():
     part3 = [r for r in rows if r["checked_against"].startswith("Part 3 ")]
     part4 = [r for r in rows if r["checked_against"].startswith("Part 4 ")]
     # The neighbour check's head wins over the lock file (which says where the copied files came from) and the lock
-    # fills a part the check does not name: Part 4's rows moved to the run 2 head 7036622, the lock stays at dc3d9f2.
+    # fills a part the check does not name. Part 4's rows moved to the run 2 head 7036622 and the lock moved to 7036622
+    # with the schema copy (TICKET-075); the expected clips stay pinned at dc3d9f2 in contracts/sources.json.
     heads = {**{p: u["commit"][:7] for p, u in lock.items()}, **contract.NEIGHBOUR_COMMITS}
     assert part3 and all(r["checked_against"] == f"Part 3 {heads['part3']}" for r in part3)
     assert part4 and all(r["checked_against"] == f"Part 4 {heads['part4']}" for r in part4)
@@ -512,7 +513,7 @@ def test_the_table_and_contract_md_carry_the_profile_row_and_the_analysis_row_na
     assert row["verdict"] == "works with an option" and row["part5_role"] == "option for Part 7"
     assert "probe `part5 analyse --help` for `--profile`" in row["fix"] and "omitted means `fitness`" in row["fix"]
     analysis = next(r for r in rows if r["file"] == "`analysis.json`")
-    assert "1.2.0 to 1.11.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
+    assert "1.2.0 to 1.12.0 fields" in analysis["fix"] and "`profile`" in analysis["fix"]
     text = (ROOT / "CONTRACT.md").read_text()
     assert contract.table_markdown([row]).splitlines()[-1] in text
     assert "[--profile {dance,rehab,fitness}]" in text

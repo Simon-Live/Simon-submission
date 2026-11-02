@@ -1,7 +1,10 @@
 """Command line entry point: `part5 analyse --expected … --follower … --out analysis.json`."""
+# `part5 history-opinion <analysis.json> ...` is the second command: a second opinion over a series of analyses.
 import os
 import argparse
+import json
 import sys
+from pathlib import Path
 
 from . import contract, doctor, opinion, profiles
 from . import real
@@ -63,12 +66,72 @@ def build_parser():
     contract.add_parser(sub)
     doctor.add_parser(sub)
     real.add_parser(sub)  # report-real (docs/specs/real-takes.md)
+    add_history_parser(sub)
     return p
+
+
+def _observation_limit(text):
+    """The `--max-observations` value: a whole number from 1 to `opinion.prompt.HISTORY_MAX_N`."""
+    most = opinion.prompt.HISTORY_MAX_N
+    if not (text.isascii() and text.isdigit() and 1 <= int(text) <= most):
+        raise argparse.ArgumentTypeError(f"must be a whole number from 1 to {most}")
+    return int(text)
+
+
+def add_history_parser(sub):
+    """`part5 history-opinion` (docs/specs/history-opinion.md): a Muse Spark second opinion over a series of analyses."""
+    h = sub.add_parser("history-opinion", help="a Muse Spark second opinion over a series of analysis.json files "
+                       "(oldest first): observations that each cite a take and a second; labelled model_opinion")
+    h.add_argument("analyses", nargs="+", metavar="analysis.json",
+                   help="the analyses of one person's takes, oldest first (at most %d)" % opinion.prompt.MAX_TAKES)
+    h.add_argument("--take-id", action="append", metavar="ID",
+                   help="the name of a take, given once per file in file order (default: the file name without "
+                   ".json, or the folder's name for a file called analysis.json)")
+    h.add_argument("--lang", default=None, metavar="BCP47",
+                   help="also write each sentence in this language, a BCP 47 tag such as es (default en)")
+    h.add_argument("--max-observations", type=_observation_limit, default=opinion.prompt.HISTORY_DEFAULT_N, metavar="N",
+                   help="the most observations to keep, 1 to %d (default %d)"
+                   % (opinion.prompt.HISTORY_MAX_N, opinion.prompt.HISTORY_DEFAULT_N))
+    h.add_argument("--live", action="store_true", help="live mode, as for analyse (needs the Meta Model API key file)")
+    h.add_argument("--out", help="where to write the document (default: print it to stdout)")
+    h.set_defaults(run=run_history_opinion)
+
+
+def _history_summary(doc):
+    n, dropped = len(doc["observations"]), doc["dropped"]["count"]
+    return (f"history opinion: {doc['status']}" + (f" ({doc['reason']})" if doc["reason"] else "")
+            + f", {n} observation{'s' if n != 1 else ''}" + (f", {dropped} dropped" if dropped else ""))
+
+
+def run_history_opinion(args):
+    """Exit 0 when a document was produced (any status), 1 for an input or output problem, 2 for wrong take ids."""
+    try:
+        series = opinion.series_from_files(args.analyses, args.take_id)
+    except opinion.UsageError as e:
+        print(f"part5 history-opinion: {e}", file=sys.stderr)
+        return 2
+    except opinion.HistoryError as e:
+        print(f"part5 history-opinion: {e}", file=sys.stderr)
+        return 1
+    doc = opinion.history_run(series, lang=args.lang, max_observations=args.max_observations, live=args.live)
+    text = json.dumps(doc, indent=2, allow_nan=False) + "\n"
+    if not args.out:
+        sys.stdout.write(text)   # the document is the only thing on stdout
+        print(_history_summary(doc), file=sys.stderr)
+        return 0
+    try:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(text)
+    except OSError as e:
+        print(f"part5 history-opinion: cannot write {args.out} ({e.strerror or e})", file=sys.stderr)
+        return 1
+    print(f"{args.out}: {_history_summary(doc)}")
+    return 0
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    if args.command in ("contract", "doctor"):
+    if args.command in ("contract", "doctor", "history-opinion"):
         return args.run(args)
     if args.command == "report-real":
         return args.run(args)

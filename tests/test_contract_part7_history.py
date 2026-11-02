@@ -31,7 +31,7 @@ REPLAY = json.loads((ROOT / "fixtures/output/replay.example.json").read_text())
 OLD_1_1_0 = json.loads((ROOT / "tests/fixtures/analysis-1.1.0.example.json").read_text())
 
 # Every analysis schema version from 1.5.0 (ADR-0014, the cues) to the schema's own.
-VERSIONS = ("1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0")
+VERSIONS = ("1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0")
 
 FAULT = SCHEMA["$defs"]["fault"]["properties"]
 SCORE = SCHEMA["properties"]["score"]["properties"]
@@ -60,6 +60,13 @@ def as_version(doc, version):
     doc = copy.deepcopy(doc)
     doc["schema_version"] = version
     v = version_of(version)
+    if v < (1, 12, 0):   # faults[].rep_sizes, score.per_rep[].rep and .tempo_ratio, near_misses.items[].margin_deg (TICKET-071)
+        for fault in doc["faults"]:
+            fault.pop("rep_sizes", None)
+        for entry in doc["score"].get("per_rep", []):
+            entry.pop("rep", None), entry.pop("tempo_ratio", None)
+        for item in doc["diagnostics"].get("near_misses", {}).get("items", []):
+            item.pop("margin_deg", None)
     if v < (1, 11, 0) and doc["score"]["version"] == "simon.score.v3":   # simon.score.v3 and a fault_cap of 79 (ADR-0019)
         doc["score"]["version"] = "simon.score.v2"
         if "fault_cap" in doc["score"]:
@@ -193,7 +200,7 @@ def test_a_1_9_0_score_of_v1_validates_and_carries_no_fault_cap():
 def test_1_11_0_fault_cap_is_the_ceiling_in_force_89_or_79_and_a_1_10_0_document_still_validates():
     cap = SCORE["fault_cap"]
     assert "79" in cap["description"] and "ceiling in force" in cap["description"] and "two or more" in cap["description"]
-    assert "1.11.0" in SCHEMA["description"] and "never assume 89" in SCHEMA["description"] and SCHEMA["version"] == "1.11.0"
+    assert "1.11.0" in SCHEMA["description"] and "never assume 89" in SCHEMA["description"] and SCHEMA["version"] == VERSIONS[-1]
     doc = as_version(GOLDENS["double-fault"], "1.10.0")   # what a 1.10.0 writer made of the same take: v2, ceiling 89
     assert doc["schema_version"] == "1.10.0" and problems(doc) == []
     if IS_CAPPED:
@@ -204,7 +211,7 @@ def test_1_11_0_fault_cap_is_the_ceiling_in_force_89_or_79_and_a_1_10_0_document
 def test_1_11_0_the_double_capped_sample_reports_two_faults_and_hits_the_79_ceiling_without_a_warning():
     doc = GOLDENS["double-capped"]
     score = doc["score"]
-    assert problems(doc) == [] and len(doc["faults"]) == 2 and "warnings" not in doc and doc["schema_version"] == "1.11.0"
+    assert problems(doc) == [] and len(doc["faults"]) == 2 and "warnings" not in doc and doc["schema_version"] == VERSIONS[-1]
     assert (score["version"], score["value"], score["grade"], score["fault_cap"]) == ("simon.score.v3", 79, "C", 79)
     assert score["uncapped"]["value"] > 79 and "capped_by" not in score
 

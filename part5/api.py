@@ -15,8 +15,13 @@ Endpoints, relative to the base path (docs/specs/staging.md):
                        anything not a string is a 400); `profile` is optional and
                        omitted or null means fitness; a name that is not in part5/profiles.json is a 400. Two
                        samples whose labels name foot side files are compared with them (`diagnostics.feet`, ADR-0015)
-    GET  api/contract  what `part5 contract --json` prints (schemas, word lists and compatibility table)
+    GET  api/contract  what `part5 contract --json` prints (schemas, word lists, `history_fields` and the compatibility
+                       table)
     GET  api/real-takes the real-take report (part5.real), built on first use and kept for the process
+    POST api/history-opinion {analyses: [{take_id, analysis}], lang, max_observations} -> a simon.history_opinion.v1
+                       document (TICKET-072, docs/specs/history-opinion.md): a Muse Spark second opinion over a
+                       series of analyses, oldest first, with the same body limit as api/analyse; a request that will
+                       make the paid call counts against the same per-client Muse Spark limit
 
 Errors are `{error: {field, message}}`: 400 names the field that broke, 404 an unknown sample,
 413 an upload over 16 MiB, 429 too many Muse Spark requests from one client, 503 an analysis over
@@ -37,6 +42,7 @@ from pathlib import Path
 from . import __version__, contract, profiles, words
 from .evaluate import LABEL_TYPE_TO_MEASURE, canonical_label
 from .io import InputError
+from .opinion import HISTORY_TIMEOUT_S, ContractError, HistoryError, history_run, meta_api, series_from_request
 from .phrasing import BACKENDS, TEMPLATE, select_backend
 from .phrasing.muse_spark import NAME as MUSE_SPARK
 from .pipeline import MAX_FRAMES, AnalysisError, run
@@ -554,6 +560,27 @@ def _real_takes(body, client):
         raise ApiError(503, "real-takes", REAL_UNAVAILABLE) from None
 
 
+# ----------------------------------------------------------------------------- history opinion
+
+def _history_opinion(body, client):
+    if len(body) > MAX_BODY_BYTES:
+        raise ApiError(413, "upload", too_large_message("upload"))
+    try:
+        request = json.loads(body)
+    except (ValueError, RecursionError):
+        raise ApiError(400, "body", "body: not JSON") from None
+    try:
+        series, lang, limit = series_from_request(request)
+    except ContractError:   # the server's own file, not the request: handle() logs it and answers 500
+        raise
+    except HistoryError as e:
+        raise ApiError(400, e.field, _plain(e)) from None
+    # The per-client limit guards the paid path; a request that cannot make the call does not count against it.
+    limited = _MUSE_LIMIT.slot(client) if meta_api.unavailable() is None else contextlib.nullcontext()
+    with limited:
+        return _respond(200, history_run(series, lang=lang, max_observations=limit, timeout_s=HISTORY_TIMEOUT_S))
+
+
 # ----------------------------------------------------------------------------- routing
 
 def _health(body, client):
@@ -579,6 +606,7 @@ ROUTES = {
     "api/analyse": ("POST", _analyse),
     "api/contract": ("GET", _contract),
     "api/real-takes": ("GET", _real_takes),
+    "api/history-opinion": ("POST", _history_opinion),
 }
 
 

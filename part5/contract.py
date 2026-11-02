@@ -67,9 +67,9 @@ TABLE_ROWS = (
      "Part 6 {part6}"),
     ("Part 5", "`analysis.json`", "`simon.analysis.v1`", "output for Part 7", "works",
      "Part 7 reads `warnings` and `score` (ADR-0012); each fault's `confidence` is a number or the literal `\"low\"`; "
-     "the 1.2.0 to 1.11.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
+     "the 1.2.0 to 1.12.0 fields (`at_s`, `text_timed`, `lateral`, `score`, `cue`, `insights`, `diagnostics.feet`, "
      "`profile`, `diagnostics.near_misses`, `phrasing.lang`, `phrasing.faults[].text`, `second_opinion`, "
-     "`score.fault_cap`) are all "
+     "`score.fault_cap`, `faults[].rep_sizes`, `score.per_rep[].tempo_ratio`, `near_misses.items[].margin_deg`) are all "
      "optional; 1.8.0 adds `diagnostics.near_misses` (the candidate faults detection considered and dropped: near "
      "misses additive, optional, for debugging, never shown to the follower); 1.9.0 adds `phrasing.lang` and "
      "`phrasing.faults[].text` and `.lang` (show `text`, the line in the follower's language) and the top-level "
@@ -84,6 +84,10 @@ TABLE_ROWS = (
      "value and grade before every cap, the fault cap and the warning cap; 1.11.0 (ADR-0019) allows the score to be "
      "`simon.score.v3`, under which `score.fault_cap` is the ceiling in force, 89 for a take that reports one fault and "
      "79 for a take that reports two or more (read it, never assume 89), and `capped_by` is still the low-match cap only; "
+     "1.12.0 (TICKET-071) adds, for patterns across takes and read by nothing in Part 5, `faults[].rep_sizes` (a fault of "
+     "a take compared rep by rep: `{rep, magnitude_deg, side, body_part}` for each rep in `reps`), `score.per_rep[].rep` and "
+     "`.tempo_ratio` (that rep's tempo, null where unmeasured and on a low match) and "
+     "`diagnostics.near_misses.items[].margin_deg` (degrees past the threshold, negative if short of it); "
      "a foot fault (measure `foot_rotation` or `ankle_inversion`, body part `feet`) needs a "
      "reader built on the 1.6.0 schema, whose `measure` and `body_part` enums list them; read a score within its "
      "`profile`", "Part 5 (this repo)"),

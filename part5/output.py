@@ -19,7 +19,7 @@ from .cues import KINDS as CUE_KINDS
 from .cues import MAX_WORDS as CUE_MAX_WORDS
 from .cues import cue_for
 from . import profiles
-from .detect import EXPLAINED_BY, MAX_NEAR_MISSES, PERSISTENCE, REASONS
+from .detect import EXPLAINED_BY, MAX_NEAR_MISSES, PERSISTENCE, REASONS, margin_deg
 from .insights import MAX_INSIGHTS, insights_of
 from .lateral import lateral_for
 from .words import describe, describe_timed
@@ -43,7 +43,11 @@ FORMAT = "simon.analysis.v1"
 # warning cap); `capped_by` stays the warning codes only. Every new document is 1.10.0.
 # 1.11.0 (TICKET-060, ADR-0019) adds `score.version` "simon.score.v3": `score.fault_cap` is the ceiling in force, 89 for a
 # take that reports one fault and 79 for two or more. Every new document is 1.11.0.
-SCHEMA_VERSION = "1.11.0"
+# 1.12.0 (TICKET-071, docs/specs/history-per-rep.md) adds, for the cross-take patterns of Part 7: `faults[].rep_sizes` (the
+# size of a fault in each rep that found it, on a take compared rep by rep), `score.per_rep[].rep` and `.tempo_ratio` (the
+# rep's tempo, null where unmeasured) and `diagnostics.near_misses.items[].margin_deg` (the size past the threshold).
+# Nothing reads them back. Every new document is 1.12.0.
+SCHEMA_VERSION = "1.12.0"
 SCHEMA_VERSION_RE = re.compile(r"^1\.[0-9]+\.[0-9]+$")
 PROFILE_SINCE = (1, 7, 0)   # from this schema version on, `profile` is required
 # Status codes of documents written before ADR-0012 (no faults, no score); a new analysis is always "ok".
@@ -138,6 +142,9 @@ def fault_to_dict(fault, times=None):
         d["text_timed"] = f"{describe_timed(fault)} at {d['at_s']:.1f} s"
         if times.get("reps") is not None:
             d["reps"] = [int(i) for i in times["reps"]]
+        if times.get("rep_sizes") is not None:   # 1.12.0: the size in each rep that found it (a take compared rep by rep)
+            d["rep_sizes"] = [{"rep": int(e["rep"]), "magnitude_deg": float(e["magnitude_deg"]), "side": e["side"],
+                               "body_part": e["body_part"]} for e in times["rep_sizes"]]
     return d
 
 
@@ -264,6 +271,7 @@ def validate_analysis(doc, source="<analysis>"):
     if "score" in doc and doc["score"] is not None and not isinstance(doc["score"], dict):
         fail("score must be an object or null")
     _validate_fault_cap(doc.get("score"), len(faults), fail)
+    _validate_per_rep(doc, fail)
     if "insights" in doc:
         _validate_insights(doc["insights"], fail)
     if isinstance(doc.get("score"), dict) and doc.get("status", {}).get("code") in REFUSED_CODES:
@@ -292,6 +300,38 @@ def _validate_fault_cap(score, n_faults, fail):
     elif score.get("fault_cap") != want:   # 89 and 79 are never equal to True or False, so a boolean fails here too
         fail(f"score.fault_cap must be {want} for a {score['version']} take that reports {n_faults} fault"
              f"{'s' if n_faults != 1 else ''}, got {score.get('fault_cap')!r}")
+
+
+def _validate_per_rep(doc, fail):
+    """The 1.12.0 `rep` and `tempo_ratio` of each `score.per_rep` entry (docs/specs/history-per-rep.md); a 1.3.0 entry
+    with a value and a grade only is as valid as it was. `rep` is the follower rep's index, so the entry joins
+    `faults[].rep_sizes[].rep` and `score.timeline[rep]`. `tempo_ratio` is that window's `tempo.ratio` (ADR-0014: made in
+    one place, `score.tempo_ratio`), a number or null where unmeasured. That it is null for every rep of a low match
+    (TICKET-063) is the producer's rule, as it is for the windows' `tempo`, which this validator does not check either."""
+    score = doc.get("score")
+    per_rep = score.get("per_rep") if isinstance(score, dict) else None
+    for i, e in enumerate(per_rep if isinstance(per_rep, list) else []):
+        where = f"score.per_rep[{i}]"
+        if not isinstance(e, dict):
+            continue
+        if "rep" in e and not (_is_int(e["rep"]) and e["rep"] >= 0):
+            fail(f"{where}.rep must be a rep index (an integer from 0), got {e['rep']!r}")
+        if "tempo_ratio" not in e:
+            continue
+        ratio = e["tempo_ratio"]
+        if not (ratio is None or (_is_number(ratio) and ratio >= 0)):
+            fail(f"{where}.tempo_ratio must be a number of at least 0 or null (unmeasured), got {ratio!r}")
+        window = _timeline_window(score, e.get("rep"))
+        tempo = window.get("tempo") if isinstance(window, dict) else None
+        if isinstance(tempo, dict) and "ratio" in tempo and tempo["ratio"] != ratio:
+            fail(f"{where}.tempo_ratio must be the tempo.ratio of score.timeline[{e['rep']}] "
+                 f"({tempo['ratio']!r}), got {ratio!r}")
+
+
+def _timeline_window(score, rep):
+    """`score.timeline[rep]` when the score has a timeline and `rep` is an index into it, else None."""
+    timeline = score.get("timeline")
+    return timeline[rep] if isinstance(timeline, list) and _is_int(rep) and 0 <= rep < len(timeline) else None
 
 
 def _validate_profile(doc, version, fail):
@@ -359,6 +399,10 @@ def _validate_near_miss(item, where, fail):
                  f"got {item.get(key)!r}")
     if not _is_number(item.get("threshold_deg")) or item["threshold_deg"] <= 0:
         fail(f"{where}.threshold_deg must be a positive number, got {item.get('threshold_deg')!r}")
+    if "margin_deg" in item and (not _is_number(item["margin_deg"])
+                                 or item["margin_deg"] != margin_deg(item["magnitude_deg"], item["threshold_deg"])):   # 1.12.0
+        fail(f"{where}.margin_deg must be abs(magnitude_deg) minus threshold_deg to one decimal, positive when past the "
+             f"threshold: {margin_deg(item['magnitude_deg'], item['threshold_deg'])!r}, got {item['margin_deg']!r}")
     for key in ("expected_frames", "follower_frames"):
         v = item.get(key)
         if not (isinstance(v, list) and len(v) == 2 and all(_is_int(x) for x in v) and 0 <= v[0] <= v[1]):
@@ -574,3 +618,28 @@ def _validate_times(f, where, fail):
         v = f["reps"]
         if not (isinstance(v, list) and v and all(_is_int(x) and x >= 0 for x in v)):
             fail(f"{where}.reps must be a non-empty list of rep indices (integers from 0), got {v!r}")
+    if "rep_sizes" in f:
+        _validate_rep_sizes(f, where, fail)
+
+
+def _validate_rep_sizes(f, where, fail):
+    """The optional 1.12.0 `rep_sizes` of a fault compared rep by rep (docs/specs/history-per-rep.md): one
+    `{rep, magnitude_deg, side, body_part}` per rep in `reps`, in rep order, signed like the fault's direction. The side
+    is the one that rep found the fault on (`both` when it found both), so it may differ from the fault's own side."""
+    sizes, reps = f["rep_sizes"], f.get("reps")
+    if not (isinstance(sizes, list) and sizes and all(isinstance(e, dict) for e in sizes)):
+        fail(f"{where}.rep_sizes must be a non-empty list of {{rep, magnitude_deg, side, body_part}}, got {sizes!r}")
+    if reps is None or [e.get("rep") for e in sizes] != reps:
+        fail(f"{where}.rep_sizes must hold one entry per rep in {where}.reps, in order, got reps "
+             f"{[e.get('rep') for e in sizes]!r} against {reps!r}")
+    for i, e in enumerate(sizes):
+        spot = f"{where}.rep_sizes[{i}]"
+        spec = _spec(f["measure"], e.get("side"))
+        if e.get("side") not in SIDES or spec is None:
+            fail(f"{spot}.side must be one of {SIDES} and go with measure {f['measure']!r}, got {e.get('side')!r}")
+        if e.get("body_part") != spec.body_part:
+            fail(f"{spot}.body_part must be {spec.body_part!r} for {f['measure']}, got {e.get('body_part')!r}")
+        size = e.get("magnitude_deg")
+        if not _is_number(size) or (size > 0) != (f["direction"] == "more") or size == 0:
+            fail(f"{spot}.magnitude_deg must be a nonzero number signed like the direction {f['direction']!r} "
+                 f"(more positive, less negative), got {size!r}")

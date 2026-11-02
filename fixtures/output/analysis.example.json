@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.11.0",
+  "schema_version": "1.12.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
@@ -162,6 +162,7 @@
           "magnitude_deg": 18.1,
           "peak_deg": 18.4,
           "threshold_deg": 17.0,
+          "margin_deg": 1.1,
           "expected_frames": [
             63,
             68
@@ -186,6 +187,7 @@
           "magnitude_deg": 17.2,
           "peak_deg": 17.2,
           "threshold_deg": 17.0,
+          "margin_deg": 0.2,
           "expected_frames": [
             15,
             17
@@ -210,6 +212,7 @@
           "magnitude_deg": 14.7,
           "peak_deg": 15.2,
           "threshold_deg": 10.0,
+          "margin_deg": 4.7,
           "expected_frames": [
             18,
             24

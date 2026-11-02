@@ -143,6 +143,17 @@ def test_ac_so_03_at_most_two_observations_inside_the_clip(take, meta):
     assert [r["reason"] for r in block["rejected"]] == ["time outside the clip"] * 3 + ["more than 2 observations"]
 
 
+def test_ac_so_03_a_second_too_large_for_a_float_is_rejected_and_does_not_stop_the_analysis(take, meta):
+    """An `at_s` of 400 digits made `math.isfinite` raise OverflowError, which `run` did not catch: the call had
+    already been recorded and the analysis stopped."""
+    observations = [{"at_s": 10 ** 400, "text": "Past the end."}, {"at_s": -(10 ** 400), "text": "Before the start."},
+                    {"at_s": 1.0, "text": "The pace is even."}]
+    block = attach(take, meta, Fake(answer([], observations)))["second_opinion"]
+    assert block["status"] == "ok" and [o["at_s"] for o in block["observations"]] == [1.0]
+    assert [r["reason"] for r in block["rejected"]] == ["time outside the clip"] * 2
+    assert len(meta.ledger.read_text().splitlines()) == 1
+
+
 # ---- AC-SO-04: the guardrail --------------------------------------------------------------------------------------
 def clip_showing(*joints, frames=10):
     mask = np.zeros((frames, len(JOINTS)), dtype=bool)

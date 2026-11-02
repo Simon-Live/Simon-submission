@@ -121,7 +121,7 @@ def _rep_timeline(result, rules):
     """One window per follower rep: an accepted rep is scored on every miss found in it (not only the ones
     the take reports), and on the faults the take reports that it shows at `min_fraction` of itself without the floor
     (`RepResult.continued`, ADR-0017); a rep that did not match the example is shown but not scored. `per_rep` stays
-    (1.3.0)."""
+    (1.3.0), and from 1.12.0 each entry also names its rep and carries that rep's tempo ratio."""
     rules = rules or load_rules()
     p = score.params_of(rules)
     tempo = profiles.tempo_of(rules)   # ADR-0016: the profile's tempo words and, for dance, its charge
@@ -148,6 +148,12 @@ def _rep_timeline(result, rules):
     block = score.timeline_block(windows, "reps", rules, float(np.median(timed)) if timed else None,
                                  n_faults=score.reported_faults(result.analysis))
     block["per_rep"] = [{"value": w["value"], "grade": w["grade"]} for w in block["timeline"] if w["compared"]]
+    # 1.12.0 (TICKET-071), beside the line above: each entry also names its rep (the timeline has one window per rep, so the
+    # window's position is the rep) and carries the window's own `tempo.ratio`: made once by `score.tempo_ratio`, null where
+    # unmeasured and on a low match (TICKET-063)
+    compared = [(i, w) for i, w in enumerate(block["timeline"]) if w["compared"]]
+    for entry, (i, w) in zip(block["per_rep"], compared, strict=True):
+        entry["rep"], entry["tempo_ratio"] = i, w["tempo"]["ratio"]
     return block
 
 

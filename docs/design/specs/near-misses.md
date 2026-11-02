@@ -100,6 +100,7 @@ The first test that fails names the reason, in the order detection runs them: pe
 | `explained_by` | `reason` `explained_by`: `{measure, side, direction}` of the kept fault that explains it, as that fault is reported (a cause merged to `both` reads `both`); the largest magnitude when several explain it |
 | `reps` | rep mode: the 0-based reps in which the candidate crossed the threshold |
 | `found_in_reps`, `needed_reps` | rep mode, `reason` `reps` or `fitness`: see below |
+| `margin_deg` | 1.12.0 (TICKET-071, `history-per-rep.md`): `abs(magnitude_deg)` minus `threshold_deg`, one decimal. Positive: the candidate went past the threshold by that many degrees before persistence (or the rep count) dropped it. 0: it sat on it. Negative: it stayed short of it. A candidate has a frame past its threshold, so the value written today is 0 or more; nothing reads it back |
 
 Example, the RDL take's trunk lean: `{"measure": "trunk_lean_forward", "side": "center", "direction": "less",
 "frames_over": 68, "counted_frames": 68, "needed_frames": 114, "min_run_frames": 4, "reason": "persistence",

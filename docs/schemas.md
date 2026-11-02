@@ -90,7 +90,7 @@ contract says Part 3 does not carry them, so Part 5 reads them from Part 2's own
 
 See `fixtures/input/followers/README.md`.
 
-## Output: `analysis.json` (`simon.analysis.v1`, schema 1.11.0)
+## Output: `analysis.json` (`simon.analysis.v1`, schema 1.12.0)
 
 Written by `part5 analyse` (#10) and shown to the follower by Part 7. Build and validate it
 through `part5.output` (`build_analysis`, `write_analysis`, `load_analysis`); validation raises
@@ -103,7 +103,7 @@ takes by `make output-examples` through the same pipeline and score hook `part5 
 `capped_by`; a dance take analysed without its foot files, so the arm fault it reports is not the foot fault its name
 mentions), `fixtures/output/analysis.double-capped.example.json` (present while the rules ship v3: a real
 take that reports two faults and hits the ceiling of 79, value 79 C, `fault_cap` 79, `uncapped` 82 B, no `capped_by`) and
-`fixtures/output/replay.example.json` (the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.11.0):
+`fixtures/output/replay.example.json` (the replay of the first). The machine-readable form is `contracts/analysis.schema.json` (version 1.12.0):
 it adds optional fields to this shape, so a 1.0 document validates against it, and `CONTRACT.md` names what
 Part 7 must read first. `simon.score.v2` failed held-out score seed 59 (docs/thresholds.md) and ADR-0018's fallback shipped
 `simon.score.v1`; `simon.score.v3` then held all five targets on score seed 61 (docs/thresholds-score-v3.md) and ships, so the
@@ -126,11 +126,12 @@ Every addition is optional and told apart by its fields; `schema_version` says w
 | `1.9.0` | `phrasing.lang`, `phrasing.lang_requested`, `phrasing.faults[].text` and `.lang`; top-level `second_opinion` (TICKET-045, TICKET-046, `docs/specs/second-opinion.md`); `score.uncapped` (Part 7 TICKET-155); the top-level `source` and the `no_person` warning code (TICKET-048) | every new document is `1.9.0` and carries the language fields; `second_opinion` is written only when both clips were given as videos (`--expected-video`, `--follower-video`), with `status` `ok`, `fallback` or `skipped`, and is never read by the score; `score.uncapped` only when a warning's cap lowered the value; `source` and `no_person` only in Part 7's own analysis of a take with no person (below), never by Part 5 |
 | `1.10.0` | `score.fault_cap`; `score.version` `simon.score.v2`; the wider meaning of `score.uncapped` (TICKET-047, ADR-0018, `docs/specs/score-v2.md`) | every new document is `1.10.0`; its score is `simon.score.v1` (`simon.score.v2` failed held-out score seed 59 and ADR-0018's fallback shipped v1; read `score.version`); under v2 `fault_cap` (89) is written when the take reports a fault, and `uncapped` when the fault cap or the warning cap lowered the value; `capped_by` is unchanged |
 | `1.11.0` | `score.version` `simon.score.v3`; `score.fault_cap` is the ceiling in force, 89 or 79 (TICKET-060, ADR-0019, `docs/specs/score-v3.md`) | every new document is `1.11.0`; read `score.version` (the rules in this tree ship `simon.score.v3`: it held all five targets on score seed 61, docs/thresholds-score-v3.md; `make score-fallback` remains the reversal recipe and puts `simon.score.v1` back); under v3 `fault_cap` is 89 for a take that reports one fault and 79 for a take whose `faults` list holds two or more entries, written whether or not it lowered the value; `uncapped` and `capped_by` mean what they meant in `1.10.0` |
+| `1.12.0` | `faults[].rep_sizes`; `score.per_rep[].rep` and `.tempo_ratio`; `diagnostics.near_misses.items[].margin_deg` (TICKET-071, `docs/specs/history-per-rep.md`) | every new document is `1.12.0`; `rep_sizes`, `rep` and `tempo_ratio` only on a take compared one repetition at a time, `margin_deg` on every near miss; they exist for comparing takes with each other, and no fault, score or insight reads them |
 
 ```json
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.11.0",
+  "schema_version": "1.12.0",
   "profile": "fitness",
   "expected": {"path": "fixtures/input/expected/exercise/animation.json", "set": "exercise", "movement": "squat"},
   "follower": {"path": "fixtures/input/followers/exercise/<take_id>/skeleton.json", "take_id": "<take_id>"},
@@ -153,7 +154,7 @@ Every addition is optional and told apart by its fields; `schema_version` says w
                   "near_misses": {"total": 1, "omitted": 0, "items": [
                     {"measure": "knee_flexion", "side": "left", "joint": "left_knee", "body_part": "legs",
                      "direction": "more", "magnitude_deg": 10.8, "peak_deg": 15.2, "threshold_deg": 9.0,
-                     "expected_frames": [18, 31], "follower_frames": [20, 29], "frames_over": 14,
+                     "margin_deg": 1.8, "expected_frames": [18, 31], "follower_frames": [20, 29], "frames_over": 14,
                      "counted_frames": 14, "needed_frames": 35, "min_run_frames": 4,
                      "reason": "persistence", "shortfall_frames": 21}]}},
   "insights": [{"cue": "Straighten your right arm more", "why": "Right elbow bent more than the example at 0.7 s",
@@ -236,7 +237,8 @@ Top level:
   is compared with the example's rep `k` when the follower has no more reps than the example, so a fault first found in a
   later rep lies in that example rep, and `faults[].expected_frames` are always frames of the expected file.
   A fault of such a take has `reps` (1.3.0): the 0-based follower repetitions it was found in, and its time fields are
-  those of the first; `score.per_rep` lists each accepted repetition's `value` and `grade`.
+  those of the first; `score.per_rep` lists each accepted repetition's `value` and `grade`. From 1.12.0 such a fault also
+  has `rep_sizes` (below) and each `per_rep` entry its `rep` and `tempo_ratio` (see "Score").
   `diagnostics.feet` (1.6.0, ADR-0015) is present only when a feet file was given for either clip:
   `{expected, follower, compared, hidden_reason}`. `expected` and `follower` are `{source, person, frames_matched, usable}`
   (`source` null when no file was given for that clip, `frames_matched` how many of the clip's frames took a frame of the file
@@ -252,7 +254,11 @@ Top level:
   absent only on a take that could not be aligned (no detection ran). Each item has `measure`, `side` (`left`,
   `right` or `center`, never `both`: sides are merged for faults only), `joint`, `body_part`, `direction`;
   `magnitude_deg` and `peak_deg`, sized like a fault (the signed median and the largest value over the runs that
-  count, or over every frame past the threshold when no run is long enough), `threshold_deg`; `expected_frames` and
+  count, or over every frame past the threshold when no run is long enough), `threshold_deg`; `margin_deg` (1.12.0,
+  TICKET-071): `abs(magnitude_deg)` minus `threshold_deg`, to 0.1 degree, positive when the candidate went past the
+  threshold by that many degrees before persistence (or the rep count) dropped it, 0 when it sat on it and negative
+  when it stayed short of it; detection lists a candidate only when a frame is past its threshold, so the value written
+  today is 0 or more, and the negative sign is defined so a reader never has to guess it; `expected_frames` and
   `follower_frames`, the longest run past the threshold (the follower file's own frames, like a fault's);
   `frames_over` (frames past the threshold), `counted_frames` (those in runs of at least `min_run_frames`),
   `needed_frames` (`max(min_frames_floor, round(min_fraction x clip frames))`, or `min_frames`) and `min_run_frames`;
@@ -324,6 +330,15 @@ Per fault:
 - `coaching` (optional, 1.1.0): the phrasing backend's line; for the template it equals `text_timed` from 1.2.0.
 - `cue` and `cue_kind` (1.5.0): what to do ("Bend your knees more"), at most 6 words; `range` or `position`.
 - `reps` (1.3.0): see `diagnostics.guard.reps` above.
+- `rep_sizes` (optional, 1.12.0, TICKET-071): on a fault of a take compared one repetition at a time, how big the fault
+  was in each rep that found it: one `{rep, magnitude_deg, side, body_part}` for each entry of `reps`, in the same order.
+  `rep` is the follower repetition (0-based, the index `reps` and `score.per_rep[].rep` use), `magnitude_deg` that rep's own
+  size, signed like the fault's (`more` positive, `less` negative), `side` the side that rep found it on and `body_part`
+  the fault's. The side can differ from the fault's own: a fault reported on `left` also counts a rep that found both
+  sides (that entry has side `both` and the two sides' mean), and a fault reported on `both` counts a rep that found
+  one side (a rep whose two sides did not merge gives its larger side). The fault's own `magnitude_deg` is the median of
+  the entries on its side (every entry for a fault on `both`). Absent on a take compared as a whole. For comparing takes with
+  each other; no fault, score or insight reads it.
 
 ## Score (`simon.score.v1`, `simon.score.v2` from 1.10.0 or `simon.score.v3` from 1.11.0: read `score.version`)
 
@@ -342,7 +357,12 @@ on each window; the three add up to `100 - value` within rounding), `params_sha2
   profile (ADR-0016): each compared window is charged `min(cap, weight * max(0, 0.85 - ratio, ratio - 1.15))` points
   (weight 40, cap 20), a run-time term outside the frozen `score` params, so `params_sha256` is the same in every profile.
   Under `rehab` the cue for a ratio above 1.15 reads "Slower is fine" instead of "Speed up to match the trainer".
-- `per_rep` (1.3.0): each accepted repetition's `value` and `grade`.
+- `per_rep` (1.3.0): each accepted repetition's `value` and `grade`. From 1.12.0 (TICKET-071) each entry also has `rep`,
+  the follower repetition it is for (0-based; `timeline[rep]` is its window, and a rep that did not match is left out of
+  `per_rep` while the others keep their own index), and `tempo_ratio`, that window's `tempo.ratio` (follower seconds per
+  example second): a number, or null where the rep could not be timed and for every rep of a take whose `match.quality`
+  is `low` (the timing was not measured, never on time; TICKET-063). The ratio is made in one place, `score.tempo_ratio`,
+  so it cannot differ from the window's.
 - `capped_by` (1.4.0): the warning codes that capped `value` at 59, present only with `warnings`.
 - `uncapped` (1.9.0, Part 7 TICKET-155): `{value, grade}` before the cap, written only when the cap lowered `value`
   (a one-fault take that scored 73 C and shows 59 F because of `low_match` keeps `uncapped: {value: 73, grade: "C"}`), so a

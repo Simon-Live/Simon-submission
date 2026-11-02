@@ -19,6 +19,10 @@ never the key or text. A call whose cost is not known may still have been billed
 estimate with `estimated: true`: one that failed with no answer from the API (a timeout, a connection error, an
 unreadable body), one the API answered with a 5xx status (a gateway may answer after the model ran) and one answered
 with a body that holds no token counts. A call the API refused with a status below 500 is recorded at $0.
+
+`call(client, body, purpose, **extra)` is that sequence for any Responses body (count, budget under the lock, send,
+record): the per-take opinion (purpose `second_opinion`, clips uploaded first) and the history opinion
+(`history_opinion`, text only, TICKET-072) both use it, so there is one place that spends.
 """
 import json
 import math
@@ -42,13 +46,14 @@ USAGE_FILE, USAGE_ENV = "~/.simon/meta_usage.jsonl", "PART5_META_USAGE_FILE"
 CAP_ENV, CAP_USD = "PART5_META_SPEND_CAP_USD", 5.0
 CALL_MAX_ENV, CALL_MAX_USD = "PART5_META_CALL_MAX_USD", 0.50
 RATES = {"input": 1.25, "cached": 0.15, "output": 4.25}   # USD per million tokens, Part 1's spend.py list rates
-MAX_OUTPUT_TOKENS = 3000
+MAX_OUTPUT_TOKENS = 3000   # the per-take opinion's output allowance, and the default for a request that names none
 TIMEOUT_S = 300
 LOCK_WAIT_S = TIMEOUT_S + 30   # another process's call may hold the ledger for as long as one call can take
 CLIP_MAX_S, CLIP_FPS, CLIP_WIDTH = 60, 8, 480   # what is sent: the first minute, 8 frames a second, 480 px wide
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 UPLOAD_NAME = "clip.mp4"   # the name in the multipart header: a fixed one, so a path's characters never reach it
 CLIP_UNREADABLE = "clip not readable"
+PURPOSE = "second_opinion"   # the ledger's `purpose` of a per-take call; another feature names its own (`call`)
 
 
 class OpinionError(Exception):
@@ -154,39 +159,73 @@ def open_ledger():
     return open_ledger_at(usage_path(), OpinionError, LOCK_WAIT_S)
 
 
-def estimated_usage(input_tokens, estimate):
+def estimated_usage(input_tokens, estimate, allowance=MAX_OUTPUT_TOKENS):
     """The usage to record when the spend is unknown and may have happened: the pre-call `estimate` for the counted
-    input and the full output allowance, marked `estimated`."""
-    return {"input_tokens": input_tokens, "output_tokens": MAX_OUTPUT_TOKENS, "cached_tokens": 0, "usd": estimate,
+    input and the full output `allowance` of the request, marked `estimated`."""
+    return {"input_tokens": input_tokens, "output_tokens": allowance, "cached_tokens": 0, "usd": estimate,
             "estimated": True}
 
 
-def failed_usage(status, input_tokens, estimate):
+def failed_usage(status, input_tokens, estimate, allowance=MAX_OUTPUT_TOKENS):
     """The usage to record for a failed call: $0 when the API refused it with a `status` below 500 (a 4xx, such as 429:
     the model did not run), else the pre-call `estimate`. No status means no answer reached us, and a 5xx may come from
     a gateway after the model ran, so in both the spend is unknown and may have happened."""
     if status is not None and status < 500:
         return read_usage({})
-    return estimated_usage(input_tokens, estimate)
+    return estimated_usage(input_tokens, estimate, allowance)
 
 
-def answered_usage(payload, input_tokens, estimate):
+def answered_usage(payload, input_tokens, estimate, allowance=MAX_OUTPUT_TOKENS):
     """The usage to record for a call the API answered with `payload`: the body's own token counts, or, when it holds
     no input and output counts, the pre-call `estimate` (an answer that does not say what it cost may have cost it)."""
     usage = payload.get("usage") if isinstance(payload, dict) else None
     if isinstance(usage, dict) and all(_count(usage.get(k)) is not None for k in ("input_tokens", "output_tokens")):
         return read_usage(payload)
-    return estimated_usage(input_tokens, estimate)
+    return estimated_usage(input_tokens, estimate, allowance)
 
 
-def ledger_line(status, usage):
-    """One ledger line: no key, no text."""
-    return {"time": utc_now(), "model": MODEL, "purpose": "second_opinion", "http_status": status, **usage}
+def ledger_line(status, usage, purpose=PURPOSE, **extra):
+    """One ledger line: no key, no text. `purpose` names the feature that made the call; `extra` adds fields such as
+    `prompt_version` (short identifiers, never text)."""
+    return {"time": utc_now(), "model": MODEL, "purpose": purpose, "http_status": status, **extra, **usage}
 
 
-def write_ledger(ledger, status, usage):
+def write_ledger(ledger, status, usage, purpose=PURPOSE, **extra):
     """Append one ledger line to the open `ledger`; OpinionError when it cannot be written."""
-    append_line(ledger, ledger_line(status, usage), OpinionError)
+    append_line(ledger, ledger_line(status, usage, purpose, **extra), OpinionError)
+
+
+def preflight():
+    """Refuse a call before anything is uploaded or sent: a limit variable that is not an amount (`check_settings`),
+    and a total that has already reached the cap (`check_cap`). OpinionError with the reason."""
+    check_settings()
+    check_cap()
+
+
+def call(client, body, purpose=PURPOSE, **extra):
+    """Count `body`, check the budget under the locked ledger, send it and record the call: `(payload, usage)`.
+
+    The ledger is opened and locked after the count and held until the call is recorded, so the budget check and the
+    call cannot be interleaved with another process's. A call whose cost is not known (no answer from the API, a 5xx,
+    an answer with no token counts) is recorded at its pre-call estimate (`failed_usage`, `answered_usage`); the line
+    carries `purpose` and `extra`. OpinionError for any failure, after the line is written when the call was made.
+
+    The output allowance is the request's own `max_output_tokens` (MAX_OUTPUT_TOKENS when it names none), so the
+    estimate, the ceiling check and an estimated ledger line move with the allowance a feature asks for."""
+    counted = client.count(body)
+    allowance = body.get("max_output_tokens") or MAX_OUTPUT_TOKENS
+    estimate = price(counted, allowance)
+    with open_ledger() as ledger:
+        check_budget(estimate)
+        try:
+            payload = client.respond(body)
+        except OpinionError:
+            status = getattr(client, "last_status", None)
+            write_ledger(ledger, status, failed_usage(status, counted, estimate, allowance), purpose, **extra)
+            raise
+        usage = answered_usage(payload, counted, estimate, allowance)
+        write_ledger(ledger, getattr(client, "last_status", 200), usage, purpose, **extra)
+    return payload, usage
 
 
 def _count(value):

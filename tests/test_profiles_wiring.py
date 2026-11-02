@@ -78,7 +78,7 @@ def test_every_entry_point_writes_profile(tmp_path):
         "golden_run": contract.golden_run({"path": take["expected"]}, {"path": take["follower"]}).analysis,
     }
     for where, doc in docs.items():
-        assert doc["profile"] == "fitness" and doc["schema_version"] == SCHEMA_VERSION == "1.11.0", where
+        assert doc["profile"] == "fitness" and doc["schema_version"] == SCHEMA_VERSION == "1.12.0", where
         assert list(doc)[:3] == ["format", "schema_version", "profile"], where
         jsonschema.Draft202012Validator(SCHEMA).validate(doc)
     named = pipeline.run(str(EXPECTED), str(FOLLOWER), profile="rehab", score=score_block)
@@ -119,7 +119,7 @@ def test_schema_accepts_older_documents():
     older = json.loads((ROOT / "tests/fixtures/analysis-1.1.0.example.json").read_text())
     validator.validate(older)
     validate_analysis(older)
-    assert SCHEMA["version"] == "1.11.0" and "profile" not in SCHEMA.get("required", [])
+    assert SCHEMA["version"] == "1.12.0" and "profile" not in SCHEMA.get("required", [])
 
 
 def test_validate_requires_profile_from_1_7_0():
@@ -149,7 +149,7 @@ def test_schema_rejects_a_bad_profile():
 def test_the_goldens_carry_the_profile():
     for name in ("analysis.example.json", "analysis.no-faults.example.json"):
         doc = json.loads((ROOT / "fixtures/output" / name).read_text())
-        assert doc["profile"] == "fitness" and doc["schema_version"] == "1.11.0"
+        assert doc["profile"] == "fitness" and doc["schema_version"] == "1.12.0"
 
 
 # --- AC-PROF-10: an unknown profile, the API field and api/samples ---

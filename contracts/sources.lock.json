@@ -23,7 +23,7 @@
     },
     "contracts/part4/animation.schema.json": {
       "from": "contracts/animation.schema.json",
-      "sha256": "eb48534a6cfd07a5d2bc912ed56cce26b5ee1a1752ee9f561a69777664ed6956",
+      "sha256": "e7aafc17ac692f5ce04c7f0408a921256039b4a23615724966c58276088b2df2",
       "upstream": "part4"
     },
     "fixtures/input/contract/part3/followers/labels.json": {
@@ -129,7 +129,7 @@
       "repo": "moalborati/simon-part-3-skeleton-consistency"
     },
     "part4": {
-      "commit": "dc3d9f2e70a0d3e95efb60bea1e5ab7fc307d284",
+      "commit": "7036622fb5d6ada8740f6eb45def267f72bad0d5",
       "repo": "moalborati/simon-part-4-animate-keyframes"
     }
   }

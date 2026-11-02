@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.11.0",
+  "schema_version": "1.12.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/dance/animation.json",
@@ -65,6 +65,14 @@
       "text_timed": "right arm too far left at 0.4 s",
       "reps": [
         0
+      ],
+      "rep_sizes": [
+        {
+          "rep": 0,
+          "magnitude_deg": -19.3,
+          "side": "right",
+          "body_part": "arms"
+        }
       ],
       "joints": [
         "right_shoulder"
@@ -148,6 +156,7 @@
           "magnitude_deg": 22.1,
           "peak_deg": 22.1,
           "threshold_deg": 20.0,
+          "margin_deg": 2.1,
           "expected_frames": [
             3,
             6
@@ -175,6 +184,7 @@
           "magnitude_deg": 18.7,
           "peak_deg": 19.0,
           "threshold_deg": 17.0,
+          "margin_deg": 1.7,
           "expected_frames": [
             0,
             4
@@ -203,6 +213,7 @@
           "magnitude_deg": 15.9,
           "peak_deg": 17.2,
           "threshold_deg": 11.0,
+          "margin_deg": 4.9,
           "expected_frames": [
             33,
             42
@@ -230,6 +241,7 @@
           "magnitude_deg": 11.0,
           "peak_deg": 11.0,
           "threshold_deg": 10.0,
+          "margin_deg": 1.0,
           "expected_frames": [
             70,
             72
@@ -357,11 +369,15 @@
     "per_rep": [
       {
         "value": 89,
-        "grade": "B"
+        "grade": "B",
+        "rep": 0,
+        "tempo_ratio": 1.05
       },
       {
         "value": 100,
-        "grade": "A"
+        "grade": "A",
+        "rep": 1,
+        "tempo_ratio": 0.8
       }
     ]
   }

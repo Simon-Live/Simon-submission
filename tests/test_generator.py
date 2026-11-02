@@ -416,10 +416,8 @@ def test_every_take_names_its_two_side_files(seed5_feet):
         assert keys.index("expected_feet") < keys.index("follower_feet") < keys.index("expected")  # additive in the file
 
 
-def test_foot_fault_labels_validate_against_the_labels_schema_once_it_knows_them(seed5_feet):
+def test_foot_fault_labels_validate_against_the_labels_schema(seed5_feet):
     schema = json.loads((ROOT / "contracts/labels.schema.json").read_text())
-    if "foot_turned_out" not in json.dumps(schema):
-        pytest.skip("contracts/labels.schema.json does not list the foot fault types yet (TICKET-040 core lane)")
     jsonschema.Draft202012Validator(schema).validate(seed5_feet[1])
 
 

@@ -39,6 +39,15 @@ BASELINE_FORMAT = "simon.profiles.baseline.v1"
 REPORT_FORMAT = "simon.part5.profiles.report.v1"
 # What a profile adds to a document; the fitness baseline is taken without them.
 ADDED_BY_PROFILES = ("profile", "schema_version")
+# What analysis 1.12.0 adds to a document (TICKET-071): derived from what detection and the score already found, and read by
+# nothing. Both baselines were taken before it and are not regenerated, so their digests leave these keys out of the item
+# that carries them: a fault's `rep_sizes`, a near miss's `margin_deg` and a `score.per_rep` entry's `rep` and `tempo_ratio`.
+ADDED_TO_FAULT, ADDED_TO_NEAR_MISS, ADDED_TO_PER_REP = ("rep_sizes",), ("margin_deg",), ("rep", "tempo_ratio")
+
+
+def _without(item, keys):
+    """`item`, a dict, without `keys`; anything else as it is."""
+    return {k: v for k, v in item.items() if k not in keys} if isinstance(item, dict) else item
 
 
 class ReportError(Exception):
@@ -72,10 +81,16 @@ def analysis_digest(analysis, root=ROOT):
     """sha256 of the analysis without `profile`, `schema_version`, `diagnostics.near_misses` and the 1.9.0 additions
     (`second_opinion`, `phrasing.lang`, `phrasing.lang_requested`, `phrasing.faults[].text` and `.lang`; TICKET-045,
     TICKET-046; `score.uncapped`, Part 7 TICKET-155), as canonical JSON with the checkout's path taken off every file
-    path, so the value does not depend on where the repository lives."""
+    path, so the value does not depend on where the repository lives. The 1.12.0 additions (`faults[].rep_sizes`,
+    `score.per_rep[].rep` and `.tempo_ratio`, and `margin_deg` inside the near misses already left out; TICKET-071) are
+    left out too."""
     doc = {k: v for k, v in analysis.items() if k not in ADDED_BY_PROFILES and k != "second_opinion"}
+    if isinstance(doc.get("faults"), list):
+        doc["faults"] = [_without(f, ADDED_TO_FAULT) for f in doc["faults"]]
     if isinstance(doc.get("score"), dict):
         doc["score"] = {k: v for k, v in doc["score"].items() if k != "uncapped"}
+        if isinstance(doc["score"].get("per_rep"), list):
+            doc["score"]["per_rep"] = [_without(e, ADDED_TO_PER_REP) for e in doc["score"]["per_rep"]]
     if "diagnostics" in doc:
         doc["diagnostics"] = {k: v for k, v in doc["diagnostics"].items() if k != "near_misses"}
     if isinstance(doc.get("phrasing"), dict):
@@ -95,11 +110,16 @@ DETECTION_BASELINE_FORMAT = "simon.part5.detection.baseline.v1"
 def detection_digest(analysis):
     """sha256 of what detection found in an analysis: `status`, the `warnings`, every fault and every near miss without its
     words (`WORDS`), as sorted compact JSON. It leaves out the score, the insights, the phrasing and the schema version, so a
-    change to the score cannot move it; a change to a fault, a near miss, a warning or the status does (TICKET-047, R7)."""
-    bare = lambda items: [{k: v for k, v in item.items() if k not in WORDS} for item in items]   # noqa: E731
+    change to the score cannot move it; a change to a fault, a near miss, a warning or the status does (TICKET-047, R7).
+    The 1.12.0 additions that derive from what detection found (a fault's `rep_sizes`, a near miss's `margin_deg`;
+    TICKET-071) are left out like the words: the baseline was taken before them."""
+    def bare(items, added):
+        return [{k: v for k, v in item.items() if k not in WORDS and k not in added} for item in items]
+
     near = (analysis.get("diagnostics") or {}).get("near_misses")
-    doc = {"status": analysis.get("status"), "warnings": analysis.get("warnings"), "faults": bare(analysis["faults"]),
-           "near_misses": None if near is None else {**near, "items": bare(near["items"])}}
+    doc = {"status": analysis.get("status"), "warnings": analysis.get("warnings"),
+           "faults": bare(analysis["faults"], ADDED_TO_FAULT),
+           "near_misses": None if near is None else {**near, "items": bare(near["items"], ADDED_TO_NEAR_MISS)}}
     return hashlib.sha256(json.dumps(doc, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 

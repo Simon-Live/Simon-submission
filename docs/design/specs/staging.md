@@ -185,7 +185,9 @@ the preview's field name "Why the grade is limited" is one line. The exit code i
   within mark rounding: the marks are written to 0.01 s). The shortest hold the drive makes is `replay`, at 0.8 s: at the largest desktop lag it
   keeps 0.04 s before its end, as the old fixed offset did, and every other hold keeps more, because the margin grows
   with the hold. That margin is on the drive's clock, so the script also compares each key frame with the video's own
-  frames 0.12 s before and after it, and removes the frame and exits 1 when either differs in more than 64 pixels (a
+  frames 0.12 s before and after it. A side counts as changed when the frames 0.12 s and 0.16 s from the key frame on
+  that side both differ in more than 64 pixels, because the recorder writes a single glitched frame now and then and a
+  change in the page lasts longer. The script removes the frame and exits 1 when either side counts as changed (a
   pixel counts when a colour value moves by more than 32 of 255; 64 is twice the noise measured on the committed
   videos, set before the check ran on a key frame, and `SETTLE_REPORT=1` prints each count). A key frame whose middle
   falls past the end of its video is read from the last frame only when that
@@ -409,6 +411,12 @@ Kept: it lets the browser render without parsing uploads twice and keeps the ali
   `staging/walkthrough-frames.sh` also checks the video itself: a key frame must match the frames either side of it. Its
   threshold was measured on those two videos and committed first; all ten key frames of that recording pass and are
   unchanged.
+- 2026-11-01 (closing batch delta review R1, TICKET-074): the settle check counted a side as changed on one frame. The
+  desktop recording holds 12 single frames that differ from both neighbours by more than 64 pixels (six recur every 5.12 s,
+  at 458 to 15922 pixels), which the threshold's measurement never sampled, so a key frame read beside one was refused with
+  the wrong reason (the check failed closed, so no wrong frame could pass). A side now counts as changed only when the
+  frames 0.12 s and 0.16 s from the key frame both differ by more than 64 pixels. The threshold is not loosened. All ten key
+  frames of the d61b2f6 recording still pass and are byte identical.
 
 ## Deviations from PRD
 None.

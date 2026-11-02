@@ -44,6 +44,12 @@ REQUIRED = {
         "timeline[].t_s", "timeline[].compared", "timeline[].value", "timeline[].misses[]", "timeline[].tempo")),
     "insights[]", "profile", "status", "warnings", "match", "diagnostics.near_misses", "schema_version",
 }
+# The eight fields analysis 1.12.0 adds (TICKET-071), listed from the version the schema introduces them in.
+ADDED_IN_1_12_0 = {
+    "faults[].rep_sizes", "faults[].rep_sizes[].rep", "faults[].rep_sizes[].magnitude_deg", "faults[].rep_sizes[].side",
+    "faults[].rep_sizes[].body_part", "score.per_rep[].rep", "score.per_rep[].tempo_ratio",
+    "diagnostics.near_misses.items[].margin_deg",
+}
 SIDE_FIELDS = ("faults[].side", "faults[].joint", "faults[].joints", "faults[].lateral", "score.timeline[].misses[].side",
                "diagnostics.near_misses.items[].side")
 
@@ -127,7 +133,7 @@ def test_the_file_is_the_versioned_allowlist_of_the_schema_it_describes():
         "a new analysis schema version needs its fields in contracts/history-fields.json and the file's version raised"
     assert HISTORY["analysis_schema_version"] == VERSIONS[-1]
     for key in ("how_to_read", "side_convention", "compare_like_with_like", "absent_means", "score_versions", "measures",
-                "detection_changes_without_a_version", "fields", "not_listed"):
+                "score_changes_without_a_version", "detection_changes_without_a_version", "fields", "not_listed"):
         assert HISTORY[key], key
 
 
@@ -135,6 +141,16 @@ def test_the_paths_are_unique_and_every_path_the_ticket_names_is_listed():
     paths = [f["path"] for f in FIELDS]
     assert len(paths) == len(set(paths))
     assert REQUIRED <= set(paths), sorted(REQUIRED.difference(paths))
+
+
+def test_the_eight_fields_of_1_12_0_are_listed_from_1_12_0_and_the_file_adds_no_other_path_of_that_version():
+    """TICKET-071: the schema's 1.12.0 fields are all here, dated 1.12.0, and nothing else claims that version. The schema
+    walk below proves each path exists, so a field the schema dropped or renamed fails there."""
+    assert ADDED_IN_1_12_0 <= set(BY_PATH), sorted(ADDED_IN_1_12_0.difference(BY_PATH))
+    assert {p for p, f in BY_PATH.items() if f["since"] == "1.12.0"} == ADDED_IN_1_12_0
+    assert len(ADDED_IN_1_12_0) == 8
+    assert BY_PATH["score.per_rep"]["since"] == "1.3.0" and BY_PATH["score.per_rep"]["stability"] == "additive"
+    assert "null" in BY_PATH["score.per_rep[].tempo_ratio"]["notes"] and "never on time" in BY_PATH["score.per_rep[].tempo_ratio"]["notes"]
 
 
 @pytest.mark.parametrize("path", BY_PATH)
@@ -333,11 +349,11 @@ def test_the_sign_of_a_fault_matches_its_direction_in_every_golden():
             assert fault["unit"] == "degrees" and fault["threshold_deg"] > 0
 
 
-
 def adr_exists(adr):
     """An ADR named by the file is in the workspace's docs/adr or in the published design copy, docs/design/adr (the publish
     tree carries only the copy, docs/specs/simon-publish.md)."""
     return any(list((ROOT / folder).glob(f"{adr}-*.md")) for folder in ("docs/adr", "docs/design/adr"))
+
 
 def test_the_score_versions_are_the_schemas_with_the_adrs_that_ruled_them():
     versions = HISTORY["score_versions"]["versions"]
@@ -383,6 +399,63 @@ def test_detection_changes_that_no_version_marks_are_listed_with_their_dates():
     assert "ADR-0015 Amendment 4" in changes[1]["what"] and "TICKET-063" in changes[2]["what"]
     for adr in ("ADR-0014", "ADR-0015", "ADR-0017"):
         assert adr_exists(adr), adr
+
+
+def paragraph(text, opening):
+    """The paragraph of `text` that starts with `opening` (the history section is written in bold-led paragraphs)."""
+    start = text.index(opening)
+    end = text.find("\n\n", start)
+    return text[start:end if end != -1 else len(text)]
+
+
+def history_section():
+    text = (ROOT / "CONTRACT.md").read_text()
+    return text[text.index("## History across takes"):text.index("## What Part 5 accepts")]
+
+
+def test_a_tempo_insights_points_equal_the_dance_components_tempo_and_are_null_under_the_other_profiles():
+    """TICKET-074 R2: part5/insights.py sets a tempo item's points to score.components.tempo, which only the dance profile
+    writes (ADR-0016), so "null for a tempo item" was wrong under dance."""
+    notes = BY_PATH["insights[].points"]["notes"]
+    assert "Null for a tempo item outside the dance profile" in notes and "score.components.tempo" in notes
+    assert "ADR-0016" in notes and "under dance it equals" in notes and "take without a timeline" in notes
+    assert "Null for a tempo item and" not in notes
+    assert "components.tempo arrived in 1.7.0 and only under dance" in BY_PATH["score.components"]["notes"]   # the claim's source
+
+
+def test_the_attempt_4_entry_says_the_schema_stayed_1_8_0_and_that_1_9_0_came_later_the_same_day():
+    """TICKET-074 R3: attempt 4 merged (a716ce1, 2026-10-31 18:57) while the schema was 1.8.0; 1.9.0 landed at 21:25."""
+    attempt_4 = HISTORY["detection_changes_without_a_version"][0]
+    assert attempt_4["when"] == "2026-10-31" and "Attempt 4" in attempt_4["what"]
+    assert "schema_version stayed 1.8.0" in attempt_4["marked_by"] and "1.9.0 came later the same day" in attempt_4["marked_by"]
+    assert "stayed 1.9.0" not in attempt_4["marked_by"] and "from 1.9.0 on has it" in attempt_4["marked_by"]
+
+
+def test_the_score_change_of_adr_0013_that_no_version_marked_is_listed_with_the_two_fields_it_introduced():
+    """TICKET-074 R4: a simon.score.v1 take became the mean of its windows on 2026-10-30 (05312b7) with no new score.version,
+    params_sha256 or schema_version, and score.basis and score.timeline were written under 1.4.0 until d3250dc made it 1.5.0."""
+    (change,) = HISTORY["score_changes_without_a_version"]
+    assert change["when"] == "2026-10-30" and adr_exists("ADR-0013")
+    for needle in ("ADR-0013", "05312b7", "simon.score.v1", "mean of its windows", "score.basis", "score.timeline", "77"):
+        assert needle in change["what"], needle
+    for needle in ("Nothing at the time", "score.version stayed simon.score.v1", "score.params_sha256 did not change",
+                   "schema_version was not changed", "1.2.0, 1.3.0 or 1.4.0 by the content", "d3250dc", "1.5.0"):
+        assert needle in change["marked_by"], needle
+    for path in ("score.basis", "score.timeline"):
+        assert BY_PATH[path]["since"] == "1.5.0" and "score_changes_without_a_version" in BY_PATH[path]["notes"]
+        assert "1.2.0, 1.3.0 or 1.4.0 document (by content) written after 05312b7" in BY_PATH[path]["notes"]
+    section = history_section()
+    assert "`score_changes_without_a_version`" in section and "ADR-0013" in paragraph(section, "**Score v1 to v3.**")
+
+
+def test_a_measure_is_fine_only_when_status_code_is_ok_in_the_file_and_in_contract_md():
+    """TICKET-074 R6: a refusal from before 1.4.0 has faults [] and no warnings, yet nothing was compared."""
+    measure = HISTORY["absent_means"]["measure"]
+    assert "fine only when status.code is ok" in measure and "before 1.4.0 has faults [] and no warnings" in measure
+    assert measure.index("status.code is ok") < measure.index("the take has no warnings")
+    absent = paragraph(history_section(), "**An absent measure.**")
+    assert "only when `status.code` is `ok`" in absent and "before `1.4.0`" in absent and "nothing was compared" in absent
+    assert absent.index("`status.code` is `ok`") < absent.index("the take has no `warnings`")
 
 
 def test_the_fields_left_out_are_named_with_the_reason_and_none_is_also_listed():

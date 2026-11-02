@@ -1,6 +1,6 @@
 {
   "format": "simon.analysis.v1",
-  "schema_version": "1.11.0",
+  "schema_version": "1.12.0",
   "profile": "fitness",
   "expected": {
     "path": "fixtures/input/expected/exercise/animation.json",
@@ -56,6 +56,7 @@
           "magnitude_deg": 12.9,
           "peak_deg": 13.3,
           "threshold_deg": 10.0,
+          "margin_deg": 2.9,
           "expected_frames": [
             0,
             4

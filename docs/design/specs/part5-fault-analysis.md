@@ -152,14 +152,16 @@ and the rep verdict that does not accept a take leaves the whole-clip comparison
   (`frame / (frames - 1)`, as for a whole-clip fault). A timeline miss carries times only, so nothing there is
   on a frame scale.
 - **Score**: ADR-0013: one window per follower rep, scored on that rep's own misses, the take the mean of the
-  reps that were compared; `score.basis` is `reps` and `score.per_rep` lists each rep's value and grade.
+  reps that were compared; `score.basis` is `reps` and `score.per_rep` lists each rep's value and grade (from 1.12.0 also
+  the rep's index and its tempo ratio, `docs/design/specs/history-per-rep.md`).
 - **Replay**: the expected rep tiled once per follower rep against the whole follower take; `exp_to_fol` maps each
   tiled frame to the follower file's frames; the optional `reps` list holds each rep's expected frames (frames of
   the tiled list), follower frames and verdict. `expected_t` starts at the reference's own time in the expected
   file (its first copy is the file's times); each further copy is one rep and one frame step later, so the list
   strictly increases.
 - **Document**: the rep fields (`faults[].reps`, `diagnostics.guard.reps`, `diagnostics.expected_reference`,
-  `score.per_rep`, 1.3.0) appear only on a take compared this way; a take compared as a whole has none of them.
+  `score.per_rep`, 1.3.0; `faults[].rep_sizes` and the rep fields of `score.per_rep`, 1.12.0) appear only on a take compared
+  this way; a take compared as a whole has none of them.
 
 ## Detection changes (#30)
 - Persistence: a fault counts when the frames of all runs past threshold in one direction, each run at
@@ -618,6 +620,7 @@ ASM-001 to ASM-012 in `docs/assumptions/` (ASM-008: Part 4 main's expected clips
 | `docs/design/specs/rep-persistence.md`, `tests/test_rep_persistence.py`, `scripts/attempt4_ablation.py` | TICKET-044 | yes |
 | `part5/opinion/`, `part5/phrasing/lang.py`, `part5/phrasing/variety.py`, `part5/phrasing/prompt.py`, `part5/phrasing/__init__.py`, `part5/cli.py`, `part5/api.py`, `part5/output.py`, `part5/doctor.py`, `part5/contract.py`, `contracts/analysis.schema.json` (1.9.0; `second-opinion.md` has the full list) | TICKET-045, TICKET-046 | yes |
 | `docs/design/specs/second-opinion.md`, `tests/test_second_opinion.py`, `tests/test_phrasing_variety.py`, `tests/test_phrasing_lang.py` | TICKET-045, TICKET-046 | yes |
+| `docs/design/specs/history-opinion.md`, `part5/opinion/prompt.py`, `part5/opinion/guard.py`, `part5/opinion/meta_api.py` (`call`, `preflight`), `part5/opinion/__init__.py`, `part5/cli.py`, `part5/api.py`, `tests/test_history_opinion.py`, `tests/test_history_opinion_guard.py`, `tests/test_history_opinion_cli.py` (`part5 history-opinion` and `POST api/history-opinion`: a Muse Spark second opinion over a series of analyses; built on `lane/history-opinion`, not in the candidate) | TICKET-072 | yes |
 | `part5/phrasing/local_llm.py` (`grammar`), `part5/phrasing/template.py` (`_doubled_part`, `parts_named`), `tests/test_phrasing_grammar.py` (the local backend's grammar rules, the doubled body-part test and "face" read as a verb after a body-part noun; `second-opinion.md` AC-VA-04, AC-VA-05) | Part 7 (Muse Glimmer) | yes |
 | `part5/score.py` (`score.uncapped`), `part5/profiles_report.py` (the digest leaves it out), `part5/output.py` (`source`, `no_person`, `READABLE_WARNING_CODES`), `part5/doctor.py`, `part5/contract.py`, `contracts/analysis.schema.json` (1.9.0), `fixtures/input/contract/part7/analysis.no-person.json` (`integration-contract.md` AC-C14) | TICKET-048, Part 7 TICKET-155 | yes |
 | `tests/test_part7_no_person.py`, `tests/test_score.py` (`score.uncapped`) | TICKET-048, Part 7 TICKET-155 | yes |

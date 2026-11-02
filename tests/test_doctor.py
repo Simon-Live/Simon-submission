@@ -511,9 +511,9 @@ def warned_analysis(source=EXAMPLE):
 
 def test_part7_accepts_a_warned_1_6_0_analysis_and_notes_what_it_carries(tmp_path, capsys):
     doc = warned_analysis()
-    assert doc["schema_version"] == "1.11.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
+    assert doc["schema_version"] == "1.12.0" and doc["score"]["tempo"] and doc["insights"] and doc["faults"][0]["cue"]
     code, out, _ = run([write(tmp_path, "analysis.json", doc), "--for", "part7"], capsys)
-    assert code == 0 and "simon.analysis.v1 1.11.0; accepted for part7" in out
+    assert code == 0 and "simon.analysis.v1 1.12.0; accepted for part7" in out
     assert "warning: low_match: This take doesn't closely match" in out and "warning: warning" not in out
     assert 'note: 2 of 2 faults have confidence "low" (a low match)' in out
     assert "note: score 59 out of 100, grade F, capped at F by low_match" in out

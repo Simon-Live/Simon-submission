@@ -260,7 +260,7 @@ def foot_analysis(tmp_path_factory):
 
 
 def test_ac_foot_15_the_document_validates_against_the_1_6_0_schema_and_the_loader(foot_analysis):
-    assert SCHEMA["version"] == "1.11.0" and foot_analysis["schema_version"] == "1.11.0"
+    assert SCHEMA["version"] == "1.12.0" and foot_analysis["schema_version"] == "1.12.0"
     jsonschema.Draft202012Validator(SCHEMA).validate(foot_analysis)
     validate_analysis(foot_analysis)
     assert foot_analysis["diagnostics"]["feet"]["compared"] == FOUR
@@ -395,7 +395,7 @@ def test_ac_foot_17_the_cli_takes_the_four_options_and_writes_the_foot_fault(tmp
     assert cli.main(cli_args(tmp_path)) == 0
     out = capsys.readouterr().out
     doc = json.loads((tmp_path / "analysis.json").read_text())
-    assert doc["schema_version"] == "1.11.0" and "left foot turned out" in out
+    assert doc["schema_version"] == "1.12.0" and "left foot turned out" in out
     assert [f["measure"] for f in foot_faults(doc)] == ["foot_rotation"]
     assert doc["diagnostics"]["feet"]["expected"]["source"].endswith("e.json")
 

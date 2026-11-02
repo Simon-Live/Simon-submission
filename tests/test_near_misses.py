@@ -362,7 +362,7 @@ def clean():
 
 def test_a_take_identical_to_the_example_says_nothing_came_close(clean):
     assert clean["faults"] == [] and clean["diagnostics"]["near_misses"] == {"total": 0, "omitted": 0, "items": []}
-    assert clean["schema_version"] == "1.11.0"
+    assert clean["schema_version"] == "1.12.0"
 
 
 def test_a_take_with_candidates_lists_them_in_the_file_frames_and_two_runs_write_the_same_bytes(tmp_path):
@@ -468,7 +468,7 @@ def test_a_malformed_near_miss_block_is_an_output_error_that_names_the_field(edi
 def test_the_schema_requires_what_the_reason_goes_with():
     doc = valid_doc()
     validator = jsonschema.Draft202012Validator(SCHEMA)
-    assert SCHEMA["version"] == "1.11.0" and not list(validator.iter_errors(doc))
+    assert SCHEMA["version"] == "1.12.0" and not list(validator.iter_errors(doc))
     item = first_item(doc)
     item["reason"] = "explained_by"
     assert any("explained_by" in e.message for e in validator.iter_errors(doc))
@@ -514,7 +514,7 @@ def test_every_seed_5_take_under_every_profile_has_a_valid_block_that_agrees_wit
         for take_id, a in per_take.items():
             block = a["diagnostics"]["near_misses"]
             fault_keys = [(f["measure"], f["side"], f["direction"]) for f in a["faults"]]
-            assert block["total"] == block["omitted"] + len(block["items"]) and a["schema_version"] == "1.11.0", (name, take_id)
+            assert block["total"] == block["omitted"] + len(block["items"]) and a["schema_version"] == "1.12.0", (name, take_id)
             for item in block["items"]:
                 assert not reports(fault_keys, (item["measure"], item["side"], item["direction"])), (name, take_id, item)
                 assert item["reason"] in ("persistence", "explained_by") and item["frames_over"] >= 1

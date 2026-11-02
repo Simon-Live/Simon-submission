@@ -426,15 +426,25 @@ def test_ac_foot_10_many_ids_are_listed_by_a_short_head_and_a_count(tmp_path):
     assert str(e.value).endswith("(ids present: [0, 1, 2, 3, 4, 5, 6, 7])")
 
 
+def message_without_path(error, path):
+    """The error text with the file's path replaced by `<file>`: a temp path is as long as the platform makes it
+    (on macOS it made this line 219 characters), and the length AC-FOOT-10 asks for is the message's own."""
+    text = str(error.value)
+    assert text.startswith(f"{path}: ")
+    return text.replace(str(path), "<file>")
+
+
 def test_ac_foot_10_a_long_text_id_and_a_huge_id_list_stay_one_short_line(tmp_path):
     path = people_with_ids(tmp_path, ["x" * 10_000, *range(100_000)])
     with pytest.raises(InputError) as e:
         load(path, person=-1)
-    assert len(str(e.value)) < 300 and str(e.value).endswith("[0, 1, 2, 3, 4, 5, 6, 7] and 99993 more (100001 in all))")
+    message = message_without_path(e, path)
+    assert len(message) < 160 and message.endswith("[0, 1, 2, 3, 4, 5, 6, 7] and 99993 more (100001 in all))")
     only_text = people_with_ids(tmp_path, ["y" * 10_000])
     with pytest.raises(InputError) as e:
         load(only_text, person=-1)
-    assert len(str(e.value)) < 200 and "'" + "y" * 36 + "..." in str(e.value)
+    message = message_without_path(e, only_text)
+    assert len(message) < 140 and "'" + "y" * 36 + "..." in message
 
 
 def test_ac_foot_09_a_file_nested_too_deeply_is_an_input_error_not_a_traceback(tmp_path):
@@ -466,7 +476,7 @@ def test_ac_foot_11_no_feet_file_changes_nothing_but_the_version(plain):
     again = run(str(EXPECTED), str(TAKE), score=score_block, expected_feet=None, follower_feet=None)
     assert again.analysis == plain.analysis
     assert "feet" not in plain.analysis["diagnostics"]
-    assert plain.analysis["schema_version"] == "1.11.0"
+    assert plain.analysis["schema_version"] == "1.12.0"
     assert foot_faults(plain.analysis) == []
 
 
@@ -485,7 +495,7 @@ def test_ac_foot_11_the_follower_alone_having_feet_hides_the_measures_with_the_r
     assert info["compared"] == [] and info["hidden_reason"] == "no expected feet file was given"
     assert info["expected"] == {"source": None, "person": 0, "frames_matched": 0, "usable": []}
     assert info["follower"]["usable"] == FOUR and info["follower"]["frames_matched"] > 0
-    assert foot_faults(a) == [] and a["schema_version"] == "1.11.0"
+    assert foot_faults(a) == [] and a["schema_version"] == "1.12.0"
 
 
 def test_ac_foot_11_a_file_without_extra_joints_is_not_an_error_and_says_why(tmp_path):

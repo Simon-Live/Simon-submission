@@ -484,7 +484,11 @@ def test_the_expected_clips_are_pinned_to_the_part_4_commit_in_sources():
     pinned = {p["to"]: p["commit"] for p in sources["pinned"]}
     commit = "dc3d9f2e70a0d3e95efb60bea1e5ab7fc307d284"
     assert pinned == {f"fixtures/input/expected/{s}/animation.json": commit for s in ("exercise", "dance", "part3-squat")}
-    assert json.loads((ROOT / "contracts/sources.lock.json").read_text())["upstreams"]["part4"]["commit"] == commit
+    # The lock's Part 4 commit is where the contract copies were last synced from (TICKET-075 moved it); the expected clips
+    # stay pinned at their own commit above, the one detection was tuned and held out on, so the two need not be equal and
+    # the next contracts-sync moves only the lock. Here it is only a full commit sha.
+    lock = json.loads((ROOT / "contracts/sources.lock.json").read_text())["upstreams"]["part4"]["commit"]
+    assert re.fullmatch(r"[0-9a-f]{40}", lock)
     assert commit in (ROOT / "fixtures/input/expected/SOURCE.md").read_text()
     assert calibrate.expected_commit() == commit
 

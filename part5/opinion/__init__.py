@@ -9,14 +9,29 @@ The block is added after the score and insights are built and nothing reads it b
 measured field (AC-SO-05). It is absent when no clip was given; `skipped` when no call was attempted (one clip
 missing, no key, live off); `fallback` when a call was prepared or made and failed (the reason says why). A failure
 never stops the analysis.
+
+`history_run(series, ...)` is the second entry point (TICKET-072, docs/specs/history-opinion.md): one text-only call
+over a series of analyses (`series_from_files`, `series_from_request`), returning a `simon.history_opinion.v1`
+document of grounded observations. It shares the client, the spend guard and the ledger (`meta_api.call`).
 """
+import json
 import tempfile
 from pathlib import Path
 
+from ..phrasing import lang as phrasing_lang
 from . import guard, meta_api, prompt
 from .meta_api import BACKEND, MODEL, OpinionError
+from .prompt import ContractError, HistoryError, UsageError   # re-exported: the CLI and the API catch them
 
 BOTH_CLIPS = "both clips are needed"
+HISTORY_FORMAT = "simon.history_opinion.v1"
+HISTORY_PURPOSE = "history_opinion"   # the ledger's `purpose`: the feature that made the call
+# The API route's timeout for its one HTTP call, below `api.ANALYSIS_TIMEOUT_S`. It bounds the call, not the route: the
+# route does not run under `api._run_with_timeout`, and a call that waits for the ledger lock can wait up to
+# `meta_api.LOCK_WAIT_S` (330 s) while another process's call holds it.
+HISTORY_TIMEOUT_S = 50
+NO_CITABLE = "no fault with a second to cite"
+CUT_OFF = "answer cut off at the output limit"
 
 
 def _block(status, reason=None, usage=None, **found):
@@ -37,32 +52,19 @@ def _duration(clip, follower_video):
 
 
 def _ask(client, faults, clips, duration_s):
-    """Check the total cap, upload both clips, count, ask; (answer text, usage). Files are deleted on every path.
+    """Check the limits and the total cap, upload both clips, count, ask; (answer text, usage). Files are deleted on
+    every path.
 
-    The ledger is opened and locked after the count and held until the call is recorded: the budget check and the
-    call happen under the lock, so two processes cannot both pass the cap. A call whose cost is not known (no answer
-    from the API, a 5xx, an answer with no token counts) is recorded at its pre-call estimate
-    (`meta_api.failed_usage`, `meta_api.answered_usage`)."""
+    `meta_api.call` counts, checks the budget under the locked ledger, sends and records the call: the budget check
+    and the call happen under the lock, so two processes cannot both pass the cap, and a call whose cost is not known
+    (no answer from the API, a 5xx, an answer with no token counts) is recorded at its pre-call estimate."""
     ids = []
     try:
-        meta_api.check_settings()   # a limit set to something that is not an amount refuses the call before any upload
-        meta_api.check_cap()   # nothing is uploaded when the total cap is already spent
+        meta_api.preflight()   # a bad limit or a spent cap refuses the call before any upload
         with tempfile.TemporaryDirectory(prefix="part5-opinion-") as tmp:
             for clip in clips:
                 ids.append(client.upload(meta_api.prepare(clip, tmp)))
-        body = prompt.request(ids[0], ids[1], faults, duration_s)
-        counted = client.count(body)
-        estimate = meta_api.price(counted, meta_api.MAX_OUTPUT_TOKENS)
-        with meta_api.open_ledger() as ledger:
-            meta_api.check_budget(estimate)
-            try:
-                payload = client.respond(body)
-            except OpinionError:
-                status = getattr(client, "last_status", None)
-                meta_api.write_ledger(ledger, status, meta_api.failed_usage(status, counted, estimate))
-                raise
-            usage = meta_api.answered_usage(payload, counted, estimate)
-            meta_api.write_ledger(ledger, getattr(client, "last_status", 200), usage)
+        payload, usage = meta_api.call(client, prompt.request(ids[0], ids[1], faults, duration_s))
         return meta_api.output_text(payload), usage
     finally:
         for file_id in ids:
@@ -102,3 +104,108 @@ def attach(result, expected_video, follower_video, *, live=False, client=None):
         return result.analysis
     block = run(result.analysis, result.follower, expected_video, follower_video, live=live, client=client)
     return validate_analysis(dict(result.analysis, second_opinion=block), source="<built analysis>")
+
+
+# ---- the history opinion (TICKET-072, docs/specs/history-opinion.md) ----------------------------------------------
+def _read_analysis(path):
+    """The parsed JSON of the analysis file `path`; HistoryError naming the file when it cannot be had."""
+    try:
+        size = Path(path).stat().st_size
+        text = Path(path).read_text() if size <= prompt.MAX_FILE_BYTES else None
+    except (OSError, ValueError):
+        raise HistoryError(f"{path}: cannot be read") from None
+    if text is None:
+        raise HistoryError(f"{path}: larger than {prompt.MAX_FILE_BYTES // 2**20} MiB")
+    try:
+        return json.loads(text)
+    except (ValueError, RecursionError):
+        raise HistoryError(f"{path}: not JSON") from None
+
+
+def series_from_files(paths, take_ids=None):
+    """The `prompt.Series` of the analysis files `paths`, oldest first. The take ids are `take_ids` (one per file) or
+    the file names (`prompt.take_id_from`). UsageError for take ids that are wrong, HistoryError for a file that cannot
+    be had, is not an analysis, or a series of more than `prompt.MAX_TAKES`."""
+    paths = list(paths)
+    if len(paths) > prompt.MAX_TAKES:
+        raise HistoryError(f"{len(paths)} analyses, the limit is {prompt.MAX_TAKES}")
+    ids = list(take_ids) if take_ids else [prompt.take_id_from(p) for p in paths]
+    prompt.check_ids(ids, len(paths))   # the ids are checked before any file is read
+    return prompt.build_series([_read_analysis(p) for p in paths], ids, labels=[str(p) for p in paths])
+
+
+def series_from_request(request):
+    """`(series, lang, limit)` from the parsed body of `POST api/history-opinion`:
+    `{"analyses": [{"take_id", "analysis"}], "lang", "max_observations"}`. HistoryError names the field at fault."""
+    if not isinstance(request, dict):
+        raise HistoryError("body: expected a JSON object with 'analyses'", "body")
+    entries = request.get("analyses")
+    if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
+        raise HistoryError("analyses: give a list of {take_id, analysis}")
+    lang = request.get("lang")
+    if lang is not None and not isinstance(lang, str):
+        raise HistoryError("lang: must be a language tag such as es or pt-BR", "lang")
+    limit = request.get("max_observations", prompt.HISTORY_DEFAULT_N)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= prompt.HISTORY_MAX_N:
+        raise HistoryError(f"max_observations: a whole number from 1 to {prompt.HISTORY_MAX_N}", "max_observations")
+    series = prompt.build_series([e.get("analysis") for e in entries], [e.get("take_id") for e in entries],
+                                 labels=[f"analyses[{i}].analysis" for i in range(len(entries))])
+    return series, lang, limit
+
+
+def _history_document(series, language, requested, status, reason=None, usage=None, found=None):
+    found = found or {}
+    doc = {"format": HISTORY_FORMAT, "label": guard.LABEL, "status": status, "reason": reason, "backend": BACKEND,
+           "model": MODEL if status == "ok" else None, "prompt_version": prompt.PROMPT_VERSION,
+           "allowlist_version": prompt.allowlist_version(), "lang": language, "takes": series.summary(),
+           "observations": found.get("observations", []),
+           "dropped": found.get("dropped", {"count": 0, "reasons": {}}),
+           "translation_fallbacks": found.get("translation_fallbacks", 0)}
+    if requested:
+        doc["lang_requested"] = requested
+    if usage:
+        doc["usage"] = usage
+    return doc
+
+
+def _history_ask(client, series, language, limit):
+    """Check the limits and the cap, ask, record the call; (answer text, usage)."""
+    meta_api.preflight()
+    payload, usage = meta_api.call(client, prompt.history_request(series, language, limit), HISTORY_PURPOSE,
+                                   prompt_version=prompt.PROMPT_VERSION)
+    return meta_api.output_text(payload), usage
+
+
+def _unreadable(usage):
+    """The reason for an answer that could not be read: `answer cut off at the output limit` when the API's own count
+    says the model used the whole output allowance of a history call (the one live call of 2026-11-01 did, at the old
+    allowance of 3000: 3000 of 3000 tokens, no JSON), else `unreadable answer`. An estimated usage says nothing about
+    what the model wrote."""
+    cut = usage and not usage.get("estimated") and usage.get("output_tokens", 0) >= prompt.HISTORY_MAX_OUTPUT_TOKENS
+    return CUT_OFF if cut else "unreadable answer"
+
+
+def history_run(series, *, lang=None, max_observations=prompt.HISTORY_DEFAULT_N, live=False, client=None,
+                timeout_s=meta_api.TIMEOUT_S):
+    """The `simon.history_opinion.v1` document for `series`; never raises for a call. `skipped` when no call was
+    attempted (no fault with a second, no key, live off), `fallback` when one was prepared or made and failed."""
+    language, requested = phrasing_lang.resolve(lang)
+
+    def document(status, reason=None, usage=None, found=None):
+        return _history_document(series, language, requested, status, reason, usage, found)
+
+    if not series.citable():
+        return document("skipped", NO_CITABLE)
+    reason = meta_api.unavailable(live)
+    if reason:
+        return document("skipped", reason)
+    usage = None
+    try:
+        client = client or meta_api.HttpClient(meta_api.read_key(), timeout_s)
+        text, usage = _history_ask(client, series, language, max_observations)
+        found = guard.read_history_answer(text, series, language, max_observations)
+    except OpinionError as error:
+        return document("fallback", error.reason)
+    except (ValueError, RecursionError, OverflowError):   # OverflowError: an integer too large for a float
+        return document("fallback", _unreadable(usage), usage)
+    return document("ok", usage=usage, found=found)

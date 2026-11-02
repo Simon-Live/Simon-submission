@@ -54,6 +54,16 @@ REPORTED, PERSISTENCE, EXPLAINED_BY, REPS, FITNESS = "reported", "persistence", 
 REASONS = (PERSISTENCE, EXPLAINED_BY, REPS, FITNESS)   # the outcomes of a near miss: every one but REPORTED
 
 
+def margin_deg(magnitude_deg, threshold_deg):
+    """`margin_deg` of a near miss (analysis 1.12.0): how far its size lies past its threshold, in degrees, one decimal.
+    The size is `abs(magnitude_deg)`, so the sign of the difference does not depend on the direction: positive when the
+    candidate went past the threshold by that much, 0 when it sat on it, negative when it stayed short of it. A candidate
+    has a frame past its threshold and its magnitude is the median of such frames, so the margin of every item detection
+    lists today is 0 or more; the negative sign is defined for a reader and a producer that may one day list a candidate
+    that stayed short. Never -0.0, which JSON would carry as a negative number."""
+    return round(abs(float(magnitude_deg)) - float(threshold_deg), 1) + 0.0
+
+
 def load_rules(path=RULES_PATH):
     return json.loads(Path(path).read_text())
 
@@ -95,7 +105,8 @@ class Candidate:
 
     Sized like a fault (`magnitude_deg`, `peak_deg`: over the counted runs, else over every frame past the threshold).
     The side is never "both": sides are merged for reported faults only. A near miss is a candidate that is not
-    reported; `to_dict` is its `diagnostics.near_misses.items` entry."""
+    reported; `to_dict` is its `diagnostics.near_misses.items` entry, which also carries `margin_deg` (`margin_deg()`: the
+    size past the threshold, a derived number that nothing reads back)."""
     measure: str
     side: str               # left / right / center
     joint: str
@@ -129,6 +140,7 @@ class Candidate:
         d = {"measure": self.measure, "side": self.side, "joint": self.joint, "body_part": self.body_part,
              "direction": self.direction, "magnitude_deg": float(self.magnitude_deg),
              "peak_deg": float(self.peak_deg), "threshold_deg": float(self.threshold_deg),
+             "margin_deg": margin_deg(self.magnitude_deg, self.threshold_deg),
              "expected_frames": [int(f) for f in self.expected_frames],
              "follower_frames": [int(f) for f in self.follower_frames],
              "frames_over": int(self.frames_over), "counted_frames": int(self.counted_frames),
