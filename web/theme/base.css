@@ -76,7 +76,7 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 .brand { display: inline-flex; align-items: center; gap: var(--space-2); text-decoration: none; }
 /* the dog sits in the header and the sign hangs below it, over the pink divider (sketch 2026-11-01): the mark is
    taller than the bar and its lower part overflows downward without making the bar taller */
-header.bar .brand { position: relative; z-index: 3; align-self: start; align-items: flex-start; height: var(--brand-in-bar); }
+header.bar .brand { position: relative; z-index: 3; align-self: start; align-items: flex-start; height: var(--brand-in-bar); margin-left: var(--brand-inset); }
 .brand .logo-bar { height: var(--brand-mark); width: auto; margin-top: calc(var(--bar-divider-y) - var(--brand-mark) * var(--brand-corner)); pointer-events: auto; }   /* the sign's top-left corner sits on the divider */
 .brand .brand-word { display: none; }   /* the word is on the sign */
 .splash-tag { color: var(--color-text); font-size: var(--text-md); }
