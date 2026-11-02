@@ -59,6 +59,14 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
 .logo-sign .logo-ink { fill: var(--logo-ink); }
 
 .splash-mark .logo-sign { width: min(64vw, 280px); height: auto; }
+/* paw prints walking around the mark in the bright pink (views/splash.js places them on a circle of --paw-r) */
+.splash-mark { position: relative; display: block; }
+.splash-paw { position: absolute; left: 50%; top: 50%; width: var(--paw-size); height: var(--paw-size); background: var(--color-pink);
+  -webkit-mask: var(--paw-mask) center / contain no-repeat; mask: var(--paw-mask) center / contain no-repeat; pointer-events: none;
+  transform: translate(-50%, -50%) translate(calc(var(--ux) * var(--paw-r)), calc(var(--uy) * var(--paw-r))) rotate(var(--r));
+  opacity: 0; animation: splash-paw-in var(--paw-in) ease-out forwards; animation-delay: calc(var(--i) * var(--paw-step)); }
+@keyframes splash-paw-in { from { opacity: 0; scale: 0.6; } to { opacity: 1; scale: 1; } }
+@media (prefers-reduced-motion: reduce) { .splash-paw { animation: none; opacity: 1; } }
 .brand { display: inline-flex; align-items: center; gap: var(--space-2); text-decoration: none; }
 /* the dog sits in the header and the sign hangs below it, over the pink divider (sketch 2026-11-01): the mark is
    taller than the bar and its lower part overflows downward without making the bar taller */

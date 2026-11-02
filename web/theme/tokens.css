@@ -150,6 +150,10 @@
 
   /* motion */
   --splash-fade: 0.45s;
+  --paw-size: 26px;              /* the splash's paw prints around the logo */
+  --paw-r: min(46vw, 220px);     /* the radius of their walk around the mark */
+  --paw-in: 0.25s;
+  --paw-step: 70ms;              /* 12 prints within the 1.2 s splash */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --grade-land: 0.4s;
 
