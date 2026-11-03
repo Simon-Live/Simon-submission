@@ -41,10 +41,16 @@ export function isWarningCapped(score) {
  * one score. Other takes are returned as they are.
  */
 export function withCapWinning(analysis) {
-  const score = analysis && analysis.score;
-  if (!isWarningCapped(score) || score.credit == null) return analysis;
-  const { credit: _beforeTheCap, ...capped } = score;
-  return { ...analysis, score: capped };
+  // Repo owner, 2 Nov (#61): every take is scored the new way and nothing is capped. A take with Part 5's credit
+  // keeps it whatever its warnings say; the warning banner still names the problem. Only a take without a credit
+  // (an analysis older than Part 5 1.13.0) shows score.value and its A to F grade.
+  return analysis;
+}
+
+/** A warning's words without the claim that the grade is capped, for a take whose credit is shown uncapped. */
+export function uncappedWords(text) {
+  if (typeof text !== "string") return text;
+  return text.replace(/,?\s*so the grade is capped at [A-F]\b/gi, "").replace(/[^.!?]*\bcapped\b[^.!?]*[.!?]\s*/gi, "").replace(/\s{2,}/g, " ").trim();
 }
 
 /**
@@ -97,7 +103,7 @@ export function shownScore(input, { light = null, display = null } = {}) {
   if (!analysis || typeof analysis !== "object" || !analysis.score || num(analysis.score.value) == null) return null;
   const score = withLight(withQualityCap(analysis), light).score;
   const warning = isWarningCapped(score) ? score.capped_by.filter((c) => typeof c === "string") : [];
-  const credit = warning.length ? null : creditDisplay({ score }, display);
+  const credit = creditDisplay({ score }, display);   // nothing capped: a credit is shown whatever the warnings (team, 2 Nov)
   if (credit) {
     const r = credit.ring;
     return { letter: r.grade, figures: r.mode === "percent" ? `${r.text}%` : r.text, caption: r.caption, unit: r.mode, value: score.value,

@@ -319,5 +319,5 @@ def test_deleting_a_trainer_take_through_the_route_removes_the_entry_credit(api:
     assert send(api, "api/me/source/entry/made-entry-1", GOOD, owner)[0] == 200
     store = auth.identity(api.app)
     assert len(store.fetch("SELECT * FROM source_credits")) == 1
-    assert api.request("POST", f"api/jobs/{made['id']}/delete", b"", {})[0] == 200
+    assert post(api, f"api/jobs/{made['id']}/delete", cookie=owner)[0] == 200  # the owner (TICKET-373)
     assert store.fetch("SELECT * FROM source_credits") == []

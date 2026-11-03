@@ -38,6 +38,7 @@ const tid = (page, id) => page.getByTestId(id);
 
 async function open(query, { signedIn = false, canAsk = true, asks = [] } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true, reducedMotion: "reduce", deviceScaleFactor: 2 });
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });   // "More" holds Ask this take
   const page = await ctx.newPage();
   // The harness answers few routes; an unrouted API path is a 404 the page handles (the browser logs it as a console error).
   // Anything else on the console, and every uncaught error, fails the run.
@@ -66,32 +67,23 @@ async function open(query, { signedIn = false, canAsk = true, asks = [] } = {}) 
 
 try {
   // ---- TICKET-266 AC-4, AC-5: Arabic at 412 px ----------------------------------------------------------------
+  // The lean result (team, 2026-11-02) draws no fault list: "What to work on" shows Part 5's insights, which are
+  // not translated, and the Arabic fault lines are spoken by the stage's voice switch. The language notes sit in "More".
   const ar = await open("&lang=ar");
-  const list = tid(ar, "fault-list");
-  assert.equal(await list.getAttribute("dir"), "rtl");
-  assert.equal(await list.getAttribute("lang"), "ar");
-  assert.equal(await list.evaluate((n) => getComputedStyle(n).direction), "rtl");
-  assert.equal(await tid(ar, "fault-0-at").evaluate((n) => getComputedStyle(n).direction), "ltr", "the time chip keeps left-to-right digits: numbers are not mirrored");
-  assert.match(await tid(ar, "fault-0-at").textContent(), /6\.2/);
-  assert.equal(await ar.locator("#sr-faults-h").evaluate((n) => getComputedStyle(n).direction), "ltr", "the English heading is not mirrored");
-  const row = await tid(ar, "fault-0").boundingBox();
-  const text = await ar.locator('[data-testid="fault-0"] .sr-fault-text').evaluate((n) => getComputedStyle(n).textAlign);
-  assert.ok(["start", "right"].includes(text), `Arabic text starts at the right edge (${text})`);
+  assert.equal(await tid(ar, "fault-list").count(), 0, "negative: no fault list");
+  assert.equal(await tid(ar, "insight-list").getAttribute("dir"), null, "the insights are not mirrored");
   assert.deepEqual(await ar.evaluate(() => ({ inner: innerWidth, scroll: document.documentElement.scrollWidth })), { inner: 412, scroll: 412 }, "no sideways scroll at 412 px");
-  assert.ok(row.x >= 0 && row.x + row.width <= 412, "the fault row sits inside the phone");
   assert.match(await tid(ar, "lang-note-0").textContent(), /not been reviewed by a native reader/);
   assert.match(await tid(ar, "lang-note-1").textContent(), /CC-BY-NC 4\.0/);
-  await tid(ar, "fault-list").screenshot({ path: path.join(SHOTS, "lang-ar-412.png") });
+  assert.ok(await tid(ar, "lang-note-0").isVisible(), "in More");
   await ar.context().close();
   const en = await open("");
-  assert.equal(await tid(en, "fault-list").getAttribute("dir"), null, "negative: English text sets no direction");
   assert.equal(await en.locator('[data-testid^="lang-note-"]').count(), 0, "negative: English shows no language notes");
   await en.context().close();
   const hi = await open("&lang=hi");
-  assert.equal(await tid(hi, "fault-list").getAttribute("dir"), "ltr");
   assert.match(await tid(hi, "lang-note-0").textContent(), /not been reviewed/);
   await hi.context().close();
-  ok("TICKET-266 AC-4, AC-5: Arabic reads right to left at 412 px with left-to-right numbers; Hindi and Arabic say not reviewed and the voice licence; English shows neither");
+  ok("TICKET-266 AC-4, AC-5: no sideways scroll at 412 px; Hindi and Arabic say not reviewed and the voice licence (in More); English shows neither");
 
   // ---- TICKET-266 AC-3: the browser language reaches the request, in a real page ------------------------------
   {

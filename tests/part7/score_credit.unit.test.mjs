@@ -64,14 +64,14 @@ test("points mode: the points with 'of' the most, the same grade", () => {
   assert.equal(m.ring.caption, `of ${groupDigits(credit.max_points)}`);
 });
 
-test("levels: Easy / Normal / Hard switch the numbers; the grade stays Part 5's", () => {
+test("levels: Lenient / Standard / Strict (Part 5 easy, normal, hard) switch the numbers; the grade stays Part 5's", () => {
   assert.deepEqual(levelsOf(spec), ["easy", "normal", "hard"]);
   assert.equal(creditRing(spec, { mode: "percent", level: "easy" }).text, "93");
   assert.equal(creditRing(spec, { mode: "points", level: "hard" }).text, "27,786");
   assert.equal(creditRing(spec, { mode: "points", level: "hard" }).caption, "of 35,530");
   assert.equal(creditRing(spec, { level: "hard" }).grade, "C");
   const sw = creditSwitch(spec, { level: "easy" });
-  assert.deepEqual(sw.levels.map((x) => [x.text, x.active]), [["Easy", true], ["Normal", false], ["Hard", false]]);
+  assert.deepEqual(sw.levels.map((x) => [x.text, x.active]), [["Lenient", true], ["Standard", false], ["Strict", false]]);
   // a credit with only its own tolerance: no level picker
   assert.deepEqual(creditSwitch({ ...spec, levels: undefined }, {}).levels, []);
 });
@@ -86,7 +86,7 @@ test("a saved choice is checked: unknown values fall back to points at the score
 test("the explanation is the bands in plain words, and the points rate", () => {
   assert.equal(creditExplanation(spec),
     "Every body part earns credit on every frame: full credit within half its tolerance, 60% within it, 20% within twice it."
-    + " Points: 100 per body part per second at Normal.");
+    + " Points: 100 per body part per second at Standard.");
   assert.equal(creditExplanation({ ...spec, bands: undefined, points_per_measure_second: undefined }), "Every body part earns credit on every frame.");
   const m = summaryOf(withCredit, {});
   assert.equal(m.sum.credit, true);
@@ -101,8 +101,8 @@ test("per window: the same unit as the switch, matched on the window's span", ()
   // another level without its own per_window: the scored level's windows, and the note says so
   const easy = windowCredit(spec, windows, { mode: "percent", level: "easy" });
   assert.equal(easy.values[0].text, "81%");
-  assert.match(easy.note, /at Normal/);
-  assert.doesNotMatch(windowCredit(spec, windows, {}).note, /at Normal/);
+  assert.match(easy.note, /at Standard/);
+  assert.doesNotMatch(windowCredit(spec, windows, {}).note, /at Standard/);
   // a level with its own per_window uses it
   const own = { ...spec, levels: { ...spec.levels, easy: { ...spec.levels.easy, per_window: [{ t_s: [0, 5.2], percent: 95, points: 3529, max_points: 3715 }] } } };
   assert.equal(windowCredit(own, windows, { mode: "percent", level: "easy" }).values[0].text, "95%");
@@ -135,8 +135,13 @@ test("the choice is saved in storage, and works without it", () => {
 });
 
 test("the credit's F to S grades: Part 5's scale when written, the letter follows the level on screen, else the old A to F", () => {
-  const scale = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]];
-  assert.deepEqual([100, 95, 90, 75, 65, 55, 48.8, 30, 12].map((p) => letterFor(p, scale)), ["S", "S", "A", "B", "C", "D", "E", "F", "F"]);
+  const scale = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [40, "E"], [0, "F"]];   // Part 5 1.14.3: F under 40
+  assert.deepEqual([100, 95, 90, 75, 65, 55, 48.8, 40, 39.9, 12].map((p) => letterFor(p, scale)), ["S", "S", "A", "B", "C", "D", "E", "E", "F", "F"]);
+  // a document written before 1.14.3 keeps its own marks (E 45, F 30): a 42 percent take is read on the scale it carries
+  const before = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]];
+  assert.equal(letterFor(42, before), "F");
+  assert.equal(letterFor(42, gradesOf({ ...spec, grades: scale })), "E", "the grades come from the analysis, not from a constant");
+  assert.deepEqual(gradesOf({ ...spec, grades: before }), before);
   const graded = { ...spec, grades: scale };
   assert.deepEqual(gradesOf(graded), scale);
   assert.equal(gradesOf(spec), SCORE_GRADES, "an analysis without credit.grades keeps the old bands");

@@ -164,6 +164,41 @@ try {
     ok("no ghost for this movement: the panel hides and nothing is drawn");
     await page.close();
   }
+  // the trainer's own Part 2 picture (AC-4, AC-5): a seated, chest-up trainer in a 640 x 480 frame, legs unseen (null)
+  {
+    const upper = { nose: [0.5, 0.25], left_eye: [0.52, 0.23], right_eye: [0.48, 0.23], left_ear: [0.54, 0.24], right_ear: [0.46, 0.24],
+      left_shoulder: [0.62, 0.4], right_shoulder: [0.38, 0.4], left_elbow: [0.72, 0.5], right_elbow: [0.28, 0.5], left_wrist: [0.7, 0.32], right_wrist: [0.3, 0.32] };
+    const seated = { ...GHOST, box: "image", source: "part2", image_size: [640, 480],
+      frames: Array.from({ length: 12 * 10 }, (_, i) => ({ t: i / 10, pts: JOINTS.map((n) => upper[n] || null) })) };
+    const { page, errors, consoleErrors } = await open({ width: 1440, height: 900 }, "", seated);
+    await page.locator('[data-testid="ghost"][data-ghost="ready"][data-box="image"]').waitFor({ state: "attached" });
+    await page.locator('[data-testid="ghost-canvas"][data-frame]').waitFor({ state: "attached" });
+    assert.equal(await page.getByTestId("ghost").getAttribute("data-scale"), "1", "starts at the trainer's own framing");
+    assert.equal(await page.getByTestId("ghost-larger").isDisabled(), false, "it can grow past the fitted frame");
+    const rows = await page.evaluate((a) => {
+      const c = document.querySelector('[data-testid="ghost-canvas"]');
+      const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+      let top = 0, bottom = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (!(d[i + 3] > 0 && d[i] > a.r && d[i + 1] > a.gMin && d[i + 1] < a.gMax && d[i + 2] < a.b)) continue;
+        if (Math.floor(i / 4 / c.width) < c.height * 0.6) top++; else bottom++;
+      }
+      return { top, bottom };
+    }, AMBER);
+    assert.ok(rows.top > 30, `the chest-up ghost is drawn in the top of the frame (${rows.top} px)`);
+    assert.equal(rows.bottom, 0, "negative: no guessed legs below the chest");
+    // the image range: Larger up to twice the fitted frame, Smaller down to half
+    for (let i = 0; i < 12; i++) if (!(await page.getByTestId("ghost-larger").isDisabled())) await page.getByTestId("ghost-larger").click();
+    assert.equal(await page.getByTestId("ghost").getAttribute("data-scale"), "2");
+    assert.equal(await page.getByTestId("ghost-larger").isDisabled(), true, "negative: no step past 2");
+    for (let i = 0; i < 20; i++) if (!(await page.getByTestId("ghost-smaller").isDisabled())) await page.getByTestId("ghost-smaller").click();
+    assert.equal(await page.getByTestId("ghost").getAttribute("data-scale"), "0.5");
+    assert.equal(await page.getByTestId("ghost-smaller").isDisabled(), true);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(consoleErrors, []);
+    ok("1440x900: the trainer's own picture starts at their framing, steps from 0.5 to 2 and draws no unseen legs");
+    await page.close();
+  }
   console.log(`${passed} ghost browser checks passed`);
 } finally {
   await browser.close();

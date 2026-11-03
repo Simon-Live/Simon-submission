@@ -41,14 +41,38 @@ def test_index_and_files_when_both_meshes_exist(api: Api) -> None:
     assert status == 200 and body == BIN and headers["content-type"] == "application/octet-stream"
 
 
-def test_index_is_null_without_meshes_and_files_404(api: Api) -> None:
-    # the follower has a mesh, the trainer job does not: the view needs both, so the index says none
+def test_mesh_index_names_the_followers_mesh_given_the_trainer_has_none(api: Api) -> None:
+    # TICKET-375 (staging take bea90704d96a): the trainer was recorded before Part 7 passed --mesh, the follower has a
+    # mesh. The index answers each person on their own, so Person shows the follower's body; the side-by-side mesh
+    # view still needs both URLs and checks that itself (result-wiring.js mountMesh).
     finished(api, "trainer", lambda d: None)
     jid = finished(api, "follow", lambda d: put_mesh(d / "work" / "follower" / "part2"))
-    assert api.json("GET", f"api/results/{jid}/mesh.json") == (200, {"trainer": None, "you": None})
+    assert api.json("GET", f"api/results/{jid}/mesh.json") == (200, {"trainer": None, "you": f"api/results/{jid}/mesh/you/mesh3d.json"})
     assert api.request("GET", f"api/results/{jid}/mesh/trainer/mesh3d.json")[0] == 404
-    # the follower's own file still answers: absent is 404, present is 200
     assert api.request("GET", f"api/results/{jid}/mesh/you/mesh3d.bin")[0] == 200
+
+
+def test_mesh_index_names_the_followers_mesh_given_no_trainer_job(api: Api) -> None:
+    # TICKET-375 (staging take 23d13c0b27e7): no done trainer job made the entry (an imported entry), the follower has a mesh
+    jid = finished(api, "follow", lambda d: put_mesh(d / "work" / "follower" / "part2"))
+    assert api.json("GET", f"api/results/{jid}/mesh.json") == (200, {"trainer": None, "you": f"api/results/{jid}/mesh/you/mesh3d.json"})
+
+
+def test_mesh_index_names_the_trainers_mesh_given_the_follower_has_none(api: Api) -> None:
+    finished(api, "trainer", lambda d: put_mesh(d / "work" / "trainer" / "part2"))
+    jid = finished(api, "follow", lambda d: (d / "work" / "follower" / "part2" / "mesh3d.json").parent.mkdir(parents=True))
+    assert api.json("GET", f"api/results/{jid}/mesh.json") == (200, {"trainer": f"api/results/{jid}/mesh/trainer/mesh3d.json", "you": None})
+
+
+def test_mesh_index_is_null_given_a_half_written_mesh(api: Api) -> None:
+    # a header without its bin (or the reverse) is no mesh: Person keeps the stick figure, nothing 404s from the page
+    finished(api, "trainer", lambda d: put_mesh(d / "work" / "trainer" / "part2"))
+    def half(d: Path) -> None:
+        put_mesh(d / "work" / "follower" / "part2")
+        (d / "work" / "follower" / "part2" / "mesh3d.bin").unlink()
+    jid = finished(api, "follow", half)
+    status, doc = api.json("GET", f"api/results/{jid}/mesh.json")
+    assert status == 200 and doc["you"] is None and doc["trainer"] == f"api/results/{jid}/mesh/trainer/mesh3d.json"
 
 
 def test_refuses_other_jobs_names_and_people(api: Api) -> None:

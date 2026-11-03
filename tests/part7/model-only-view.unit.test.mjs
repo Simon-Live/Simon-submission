@@ -22,6 +22,7 @@ El.prototype.getContext = () => new Proxy({ drawImage: (src) => draws.push(src),
 globalThis.requestAnimationFrame = () => 0;
 globalThis.cancelAnimationFrame = () => {};
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
+globalThis.MutationObserver = class { observe() {} disconnect() {} }; // capture.js mirrors its record button on the preview (record-overlay)
 globalThis.window = globalThis;
 globalThis.document.getElementById = () => null;
 

@@ -2,8 +2,10 @@
 
 A take is a finished follow, group or trainer job. Its folder holds the follower clip, the tracks and `analysis.json`, so the
 folder goes; so do the raw upload it came from (when the record names it), the people job that cut the clip, and any
-challenge board entry made from the take, and the saved Idempotency-Key answers that name it (idempotency.py). There are no accounts: the job id is the visitor's private key, as in
-challenges.md "Privacy", and it is the only authorisation (the result link contains it). A queued or running job is
+challenge board entry made from the take, and the saved Idempotency-Key answers that name it (idempotency.py). Who may
+delete (`refusal`, TICKET-373): a take made signed in only from its owner's session; a featured take (the operator-named
+hero, the Impact page's takes, whose ids every visitor sees) only by its signed-in owner; any other take by whoever
+holds its id, as in challenges.md "Privacy" (the result link contains it). A queued or running job is
 refused (409), because its worker still writes into the folder; so is a take whose export is being made (R3). A
 raw upload or people job that another queued or running job still uses is kept and named in `kept`; so is one that
 another finished job names (its models-used page reads the people job's tracks), unless the deleted take is a group
@@ -12,7 +14,8 @@ take and the other finished job is also a group take (a follow or trainer take f
 A trainer take (TICKET-111) holds the trainer's recording (which has sound), the job folder with the 3D meshes, and
 the movement it made in the catalog. The catalog entry is a copy made by Part 6 `import` (video without sound,
 keyframes, skeleton, animation) and names no Part 7 file, so by default it stays: only the files of the take go, and
-the spoken-cue transcripts (`narration.json`, made from the voice) leave the entry. The body `{"remove_entry": true}`
+the spoken-cue transcripts (`narration.json`, made from the voice) leave the entry, and the kept follow ghost made from
+the take's Part 2 files goes (`ghost.forget` after the queue forgets the take, named `ghost` in `removed`). The body `{"remove_entry": true}`
 removes the movement too (its folder and labels). The entry is kept, and named in `kept`, when it is a shipped
 sample or a challenge uses it. A follower's result of that movement then shows no 3D trainer.
 """
@@ -26,7 +29,9 @@ from pathlib import Path
 import shutil
 from typing import Any
 
+from part7 import identity, impact, judge_view, takes_on  # who may delete a take (TICKET-373)
 from part7 import applog, auth, challenges, my_reference, reference_approval, export_routes, history_store, jobs, labels, muse_fix, muse_fix_routes, narration, speech
+from part7 import ghost  # the kept follow ghost goes with its trainer take (follow-ghost.md AC-7)
 
 TAKE_KINDS = ("follow", "group", "trainer")
 MSG_NO_JOB = "This take was not found. It may already be deleted."
@@ -35,6 +40,11 @@ MSG_EXPORTING = "An export is being made. Delete this take when it has finished.
 MSG_SPEAKING = "A spoken cue is being made."
 MSG_DRAWING = "A picture of you is being made. Delete this take when it has finished."
 MSG_NOT_TAKE = "Only a take can be deleted here."
+MSG_NOT_OWNER = "This take belongs to a signed-in account. Sign in to that account to delete it."
+MSG_FEATURED = "This take is featured in the app and cannot be deleted here."
+MSG_OWNER_UNKNOWN = "Deleting is not available right now. Try again in a moment."
+MSG_CSRF = "This request came from another site."
+MSG_NO_CLAIM = "This take is featured in the app, so it cannot be added to an account."
 
 
 def _drop_upload(uploads: Path, upload_id: Any) -> bool:
@@ -45,11 +55,17 @@ def _drop_upload(uploads: Path, upload_id: Any) -> bool:
     return True
 
 
-def _entry_folder(app: Any, job: dict[str, Any]) -> tuple[str, Path] | None:
-    """`(entry id, folder)` of the catalog entry a trainer job made, or None when it has none on disk."""
+def _job_entry_id(job: dict[str, Any]) -> str | None:
+    """The catalog entry id a trainer job made, or None."""
     result = job.get("result")
     entry_id = job.get("entry_id") or (result.get("entry_id") if isinstance(result, dict) else None)
-    if not isinstance(entry_id, str) or not labels.ENTRY_ID_RE.match(entry_id):
+    return entry_id if isinstance(entry_id, str) and labels.ENTRY_ID_RE.match(entry_id) else None
+
+
+def _entry_folder(app: Any, job: dict[str, Any]) -> tuple[str, Path] | None:
+    """`(entry id, folder)` of the catalog entry a trainer job made, or None when it has none on disk."""
+    entry_id = _job_entry_id(job)
+    if entry_id is None:
         return None
     folder = Path(app.child.catalog_dir) / entry_id
     return (entry_id, folder) if folder.is_dir() and not folder.is_symlink() else None
@@ -148,6 +164,15 @@ def delete_take(app: Any, job_id: str, remove_entry: bool = False) -> tuple[int,
     if job.get("kind") == "trainer":
         _trainer_entry(app, job, remove_entry, removed, kept)
     app.queue.forget(job_id)
+    # TICKET-374 R-a: the kept ghost goes only after the queue has forgotten the take, so a
+    # concurrent ghost GET or sweep cannot re-save a copy from a take that is being deleted.
+    ghost_entry = _job_entry_id(job) if job.get("kind") == "trainer" else None
+    if ghost_entry is not None:
+        try:
+            if ghost.forget(app.state, ghost_entry, job_id):  # made from the take's own Part 2 files, so it leaves with them
+                removed.append("ghost")
+        except Exception as exc:
+            applog.log(f"delete: could not drop the kept ghost of {job_id}: {applog.cause(exc)}", level=logging.WARNING)
     for hook, what in ((history_store.drop_take, "history copy"), (my_reference.take_deleted, "own reference"), (reference_approval.take_deleted, "reference approval"),(lambda state, job: auth.forget_job(app, job), "ownership row")):
         try:  # the take is already gone: a fault in an opt-in store must not turn an anonymous delete into a 500
             hook(app.state, job_id)  # the student's history copy and any report citing it, then the ownership row
@@ -156,8 +181,68 @@ def delete_take(app: Any, job_id: str, remove_entry: bool = False) -> tuple[int,
     return 200, {"deleted": True, "removed": removed, **({"kept": kept} if kept else {})}
 
 
+def featured(app: Any) -> set[str]:
+    """Job ids every visitor is shown: every id the operator ever named hero (`judge_view.ever_named`) and every take the Impact page's persona file names, each
+    whether or not it qualifies today. Their ids are public, so holding one proves nothing, and neither does a claim
+    made with one (`auth_routes._claim` refuses them)."""
+    state = Path(app.state)
+    ids = {judge_view.configured_id(state)} | impact.named_job_ids(state)
+    ids.discard(None)
+    ever = judge_view.ever_named(state)  # every id ever named hero stays protected after the operator names another
+    return ids | ever if isinstance(ever, set) else ever
+
+
+def made_by(app: Any, job_id: str, user_id: str | None) -> bool:
+    """True when `user_id` made `job_id` signed in (ownership `via` "submit"); a claim, no user or a store fault is False."""
+    if not user_id:
+        return False
+    try:
+        return any(t["job_id"] == job_id and t["via"] == "submit" for t in auth.identity(app).takes_of(user_id))
+    except Exception as exc:  # noqa: BLE001  an unreadable store never hands over a featured take
+        applog.log(f"delete: could not read how {job_id} is owned: {applog.cause(exc)}", level=logging.WARNING)
+        return False
+
+
+def _session_user(h: Any) -> Any:
+    """The signed-in user id, None when nobody is, or `takes_on.UNKNOWN` when the session store cannot answer (unlike
+    `auth.current_user`, which reads a fault as anonymous)."""
+    sid = auth.sid_from(h)
+    if sid is None or not identity.db_path(h.app.state).is_file():
+        return None
+    try:
+        return auth.identity(h.app).session_user(sid)
+    except Exception as exc:  # noqa: BLE001
+        applog.log(f"delete: session lookup failed ({type(exc).__name__})", level=logging.WARNING)
+        return takes_on.UNKNOWN
+
+
+def refusal(h: Any, job_id: str) -> tuple[int, str] | None:
+    """`(status, message)` when this caller may not delete `job_id`, else None (TICKET-373).
+
+    A featured take: only the person who made it signed in (a claim never counts). A take made signed in or claimed:
+    only its owner's session. Any other take keeps the job id as its key (identity.md: delete by job id works signed
+    out), unless the store cannot say who owns it: then nobody, for now (503, fails closed). An unknown id is left to
+    `delete_take` (404)."""
+    if not jobs.JOB_ID_RE.match(job_id) or h.app.queue.get(job_id) is None:
+        return None
+    owner = takes_on.owner(h.app, job_id)
+    if owner is takes_on.UNKNOWN:
+        return 503, MSG_OWNER_UNKNOWN
+    user = _session_user(h) if owner is not None else None
+    if user is takes_on.UNKNOWN:
+        return 503, MSG_OWNER_UNKNOWN  # a failed session lookup is not a stranger's session (TICKET-374 R8)
+    if job_id in featured(h.app):
+        return None if user == owner and made_by(h.app, job_id, user) else (403, MSG_FEATURED)
+    return (403, MSG_NOT_OWNER) if owner is not None and user != owner else None
+
+
 def remove_for_account(app: Any, job_id: str) -> str:
-    """`auth_routes.TAKE_REMOVER`: "removed", "busy" or "gone" for one take of a deleted account."""
+    """`auth_routes.TAKE_REMOVER`: "removed", "busy" or "gone" for one take of a deleted account.
+
+    A featured take the account only claimed stays ("gone": not counted as removed); the account's ownership row goes
+    with the account."""
+    if job_id in featured(app) and not made_by(app, job_id, auth.job_owner(app, job_id)):
+        return "gone"
     status, _ = delete_take(app, job_id)
     return "removed" if status == 200 else "busy" if status == 409 else "gone"
 
@@ -170,12 +255,19 @@ def handle(h: Any, method: str, route: str) -> bool:
     if method != "POST":
         h._error(405, "Method not allowed.")
         return True
+    if not auth.origin_ok(h):  # the CSRF guard of the other state-changing routes (TICKET-374 R8)
+        h._error(403, MSG_CSRF)
+        return True
     remove_entry = False
     if int(h.headers.get("Content-Length") or 0) > 0:  # a follow or group delete sends no body
         doc = h._body_json()
         if doc is None:
             return True
         remove_entry = doc.get("remove_entry") is True
+    refused = refusal(h, parts[1])
+    if refused:
+        h._error(*refused)
+        return True
     status, body = delete_take(h.app, parts[1], remove_entry)
     if "error" in body:
         h._error(status, body["error"])

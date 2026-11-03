@@ -275,11 +275,13 @@ def doctor_parts(
         exe_path = Path(cmd[0])
         if exe_path.is_absolute() and not exe_path.exists():
             all_ok = False
+            # The interpreter is what is missing (a checkout where setup never ran), not the doctor command itself.
+            hint = " (setup has not run in this checkout: part7 setup-parts)" if ".venv" in exe_path.parts else ""
             results[part] = {
                 "ok": False,
                 "commit": sha12,
                 "step": None,
-                "error": f"part {part}: {label} not found at {sha12}",
+                "error": f"part {part}: {exe_path} not found at {sha12}{hint}",
             }
             continue
 

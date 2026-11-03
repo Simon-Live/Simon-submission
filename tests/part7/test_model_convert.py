@@ -600,6 +600,41 @@ def test_supervisor_without_image_reports_not_installed(state: Path, fake_docker
     assert result["reason"] == "no-image" and result["message"] == mc.UNAVAILABLE_MESSAGE
 
 
+def test_the_supervisor_exits_when_its_spool_is_gone(state: Path, fake_docker: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """TICKET-379 (AC22): a supervisor left by a test whose temp dir was removed stops instead of polling forever."""
+    s = sup.Supervisor(mc.spool_dir(state))
+    s.heartbeat()
+    shutil.rmtree(mc.spool_dir(state))
+    monkeypatch.setattr(sup, "POLL_S", 0.01)
+    s.loop(once=False)  # returns; before the fix it never did
+    assert not mc.spool_dir(state).exists()  # and it did not recreate the folder it was serving
+
+
+def test_one_missing_reading_or_an_oserror_does_not_stop_the_supervisor(state: Path, fake_docker: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """TICKET-379 (AC22): an EIO on the spool check is a failed turn, one missing reading is not enough, two in a row exit."""
+    s = sup.Supervisor(mc.spool_dir(state))
+    readings = [OSError(5, "Input/output error"), False, True, False, False]
+    calls: list[int] = []
+
+    real_is_dir = Path.is_dir
+
+    def fake_is_dir(self: Path) -> bool:
+        if self != s.spool:
+            return real_is_dir(self)
+        calls.append(1)
+        value = readings[len(calls) - 1]
+        if isinstance(value, OSError):
+            raise value
+        return value
+
+    monkeypatch.setattr(Path, "is_dir", fake_is_dir)
+    monkeypatch.setattr(s, "recover", lambda: None)
+    monkeypatch.setattr(s, "turn", lambda: False)
+    monkeypatch.setattr(sup, "POLL_S", 0.01)
+    s.loop(once=False)  # an OSError, a lone miss and a recovery are survived; the two misses in a row end it
+    assert len(calls) == len(readings)
+
+
 def test_supervisor_restart_fails_leftover_running(state: Path, fake_docker: Path) -> None:
     folder = _model(state, status="converting")
     s = sup.Supervisor(mc.spool_dir(state))

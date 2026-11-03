@@ -17,6 +17,8 @@ const row = (id, score, shown) => ({ id, label: `Dancer ${id}`, status_code: "ok
 const JOBS = {
   gcap: { id: "gcap", kind: "group", status: "done", result: { entry_id: "e1", trainer_id: 1, people: [row(2, 59, CAPPED), row(3, 59, CAPPED)] } },
   gmix: { id: "gmix", kind: "group", status: "done", result: { entry_id: "e1", trainer_id: 1, people: [row(2, 37, CREDIT), row(3, 59, CAPPED)] } },
+  // TICKET-372 nothing capped: a credit take keeps its warning codes with capped false (part7/shown_score.py shown())
+  gwarn: { id: "gwarn", kind: "group", status: "done", result: { entry_id: "e1", trainer_id: 1, people: [row(2, 37, { ...CREDIT, warning: ["low_match"] }), row(3, 37, { ...CREDIT, warning: ["low_match"] })] } },
 };
 
 const { server, port } = await serveRoot();
@@ -59,6 +61,14 @@ try {
   assert.equal(await tid(page, "group-cap-3").count(), 1);
   assert.deepEqual([await tid(page, "group-score-2").textContent(), await tid(page, "group-grade-2").textContent()], ["16,239", "C"]);
   ok("a mixed group: the cap line only on the capped row; the credit take shows its headline score");
+  await page.context().close();
+
+  page = await open("gwarn");
+  assert.equal(await tid(page, "group-cap-note").count(), 0, "negative: no page line on a warned credit group");
+  assert.equal(await tid(page, "group-cap-2").count() + await tid(page, "group-cap-3").count(), 0, "negative: no cap line on a credit row");
+  assert.deepEqual([await tid(page, "group-score-2").textContent(), await tid(page, "group-grade-2").textContent()], ["16,239", "C"]);
+  assert.doesNotMatch(await page.locator("body").innerText(), /graded F at most/i, "negative: no 'graded F at most' anywhere");
+  ok("a warned credit group: each credit letter and points, no 'graded F at most' (TICKET-372)");
   await page.context().close();
 } finally {
   await browser.close();

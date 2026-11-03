@@ -132,6 +132,16 @@ def has_mesh(lk: modules.Modules, clone: Path) -> bool:
     return probe.has_flag(2, [*base, "run"], clone, "--mesh", lk)
 
 
+def offers_in_source(clone: Path, flag: str) -> bool:
+    """True when the pinned Part 2's own CLI declares `flag` (`add_argument("--mesh"`), read from its source: the
+    serverless route runs Part 2 on Modal, so nothing is run locally to ask it."""
+    try:
+        text = (Path(clone) / "part2" / "cli.py").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return f'add_argument("{flag}"' in text or f"add_argument('{flag}'" in text
+
+
 def has_mesh_stream(lk: modules.Modules, clone: Path) -> bool:
     """True when the pinned `part2 run` offers `--mesh-stream` (mesh3d.stream/ while SAM 3D Body runs, TICKET-284)."""
     base = _command("cpu", [], clone)[0]
@@ -653,9 +663,13 @@ def run(
     # TICKET-143: ask for the mesh only when the pin offers it. Part 7 never passes --refine (Part 2 exits 2 with both)
     # and leaves --mesh-vertices at Part 2's default (it refuses less than 100). The warm worker gets the flag too:
     # `_launch` forwards the whole `sub`, and a worker started before a deploy is restarted by it (staging.sh up).
-    if first_route() != "modal" and has_mesh(lk, clone) and "--refine" not in sub:   # the serverless route probes nothing locally
+    # The serverless route asks for the mesh too (the Person model needs it; team, 3 Nov): it reads the flag from
+    # the pin's source instead of running Part 2 locally, and the Modal call returns the whole out folder. No
+    # --mesh-stream there: the stream's partial files only reach the page from a local run.
+    remote_route = first_route() == "modal"
+    if "--refine" not in sub and (offers_in_source(clone, "--mesh") if remote_route else has_mesh(lk, clone)):
         sub += ["--mesh"]
-        if has_mesh_stream(lk, clone):  # TICKET-284: the pending page draws the body while the model runs
+        if not remote_route and has_mesh_stream(lk, clone):  # TICKET-284: the pending page draws the body while the model runs
             sub += ["--mesh-stream"]
     step = _execute(sub, backend, work_p, "part2.log", lk, clone, acquire_lock, gpu_lock_kwargs)
     return (step, out_dir / "pose3d.json")

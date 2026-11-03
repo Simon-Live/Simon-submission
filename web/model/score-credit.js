@@ -11,7 +11,7 @@ export const TEXT = {
   modes: { percent: "%", points: "Points" },
   modeNames: { percent: "Percentage", points: "Points" },
   levelLabel: "Difficulty",
-  levels: { easy: "Easy", normal: "Normal", hard: "Hard" },
+  levels: { easy: "Lenient", normal: "Standard", hard: "Strict" },   // Part 5's easy, normal, hard (team, 2 Nov)
   ringPercent: "credit earned",
 };
 export const DEFAULT_DISPLAY = { mode: "points", level: null };   // points first (team, 2026-11-02); % one tap away   // level null: the tolerance Part 5 scored at
@@ -75,7 +75,7 @@ export function creditExplanation(credit) {
     : ".";
   let text = `Every body part earns credit on every frame${rule}`;
   const pps = num(credit && credit.points_per_measure_second);
-  if (pps != null) text += ` Points: ${groupDigits(pps)} per body part per second at Normal.`;
+  if (pps != null) text += ` Points: ${groupDigits(pps)} per body part per second at ${TEXT.levels.normal}.`;
   return text;
 }
 

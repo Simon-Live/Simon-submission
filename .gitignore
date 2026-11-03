@@ -7,6 +7,8 @@ dist/
 .env
 out/
 *.mp4
+# docs/specs/demo.md: the submission video is committed (TICKET-028)
+!demo/simon-end-to-end.mp4
 !fixtures/**/*.json
 # drive screenshots of drive_capture.mjs and drive_reference.mjs: rewritten on every run, compared by no test
 tests/part7/screens/capture/

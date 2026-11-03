@@ -1,4 +1,5 @@
-// The cap wins everywhere (docs/specs/share.md "Score and cap", docs/specs/score-consistency.md S5). Staging take
+// Nothing is capped when a credit block is there (docs/specs/share.md "Score and cap", one-letter.md L1, TICKET-372): a
+// warned take's result, preview and share show the same uncapped credit points and the warning. History: staging take
 // f530a6875dfb (333aefca5): the result's headline showed Part 5's uncapped credit, "10,413 of 22,000" and grade E, under
 // a warning that the grade is capped at F, and its share link showed "0 F" with no warning. The fixture is the low-match
 // hero (capped to 59 F, 100 A before the cap) carrying the credit block of analysis-credit.json (74.7%, C, 9,087 of
@@ -57,34 +58,33 @@ function viewer(snap) {
     warningBox: box, text: page.textContent.replace(NB, " ") };
 }
 
-test("a capped take's headline is the capped score and grade, never the credit before the cap", () => {
+// moalborati/simon#61 comment 6594742067: nothing is capped; a take with Part 5's credit shows it as Part 5 gave it, warned or not
+test("a warned take with a credit shows the credit as Part 5 gave it, and the warning", () => {
   const h = headline(capped);
-  assert.equal(h.score, "59");
-  assert.equal(h.grade, "F");
-  assert.equal(h.caption, "score out of 100");
-  assert.equal(h.label, "Score 59 out of 100, grade F");
-  // negative: neither the credit's figure, its scale nor its letter, nor the score before the cap, is in the headline
-  for (const loose of ["9,087", "12,160", "74.7", "75%"]) assert.ok(!h.text.includes(loose), `headline shows ${loose}`);
-  assert.notEqual(h.grade, "C");
-  assert.notEqual(h.grade, "A");
-  assert.ok(!/\b100\b/.test(`${h.score} ${h.label}`.replace("out of 100", "")), "the value before the cap is not the headline");
+  assert.equal(h.score, "9,087");
+  assert.equal(h.grade, "C");
+  assert.equal(h.caption, "of 12,160");
+  assert.equal(h.label, "Score 9,087 points of 12,160, grade C");
+  // negative: the headline is not the 0 to 100 score, its F, or any cap wording
+  assert.notEqual(h.grade, "F");
+  assert.ok(!/capped|score out of 100/i.test(h.text), "no cap wording in the headline");
 });
 
-test("a capped take's share shows the same score, grade and warning as its result", () => {
+test("a warned take's share shows the same credit and warning as its result", () => {
   const h = headline(capped);
   const v = viewer(snapshot(capped));
   assert.equal(v.score.children[0].textContent, h.score);
   assert.equal(v.caption.textContent.trim(), h.caption);
   assert.equal(v.grade.textContent, `, grade ${h.grade}`);
   assert.equal(v.score.getAttribute("aria-label"), h.label);
-  assert.equal(v.score.textContent, "59 score out of 100, grade F");
+  assert.equal(v.score.textContent, "9,087 of 12,160, grade C");
   const warned = resultWarnings(asShown(capped));
   assert.ok(v.warningBox, "the share carries the result's warning");
   assert.equal(v.warningBox.children[0].textContent, WARNING_TITLE);
   assert.equal(find(v.warningBox, "shared-warning-low_match").textContent, warned[0].text);
-  assert.match(warned[0].text, /capped at F/);
-  // negative: the uncapped credit, its letter and the value before the cap never reach the viewer
-  for (const loose of ["9,087", "12,160", "grade C", "grade A", " 100 "]) assert.ok(!v.text.includes(loose), `viewer shows ${loose}`);
+  assert.match(warned[0].text, /closely match the trainer/);
+  // negative: the viewer shows no F and no 0 to 100 score for a take that has a credit
+  for (const loose of ["grade F", "score out of 100"]) assert.ok(!v.text.includes(loose), `viewer shows ${loose}`);
 });
 
 test("the owner's preview draws the same snapshot the same way (one renderer)", () => {
@@ -93,16 +93,16 @@ test("the owner's preview draws the same snapshot the same way (one renderer)", 
   assert.equal(preview.text, viewer(snap).text);
 });
 
-test("Part 7's caps win in the share too: a too-dark take shows the light cap and its warning", async () => {
+test("a too-dark take keeps its credit in the share too, with the light warning", async () => {
   const { LIGHT_CAP, LIGHT_MAJOR_LABEL } = await import("../../web/light-result.js");
   const light = { level: "major" };
   const h = headline(credit, light);
   const v = viewer(snapshot(credit, light));
-  assert.equal(h.score, String(LIGHT_CAP));
-  assert.equal(h.grade, "F");
-  assert.equal(v.score.textContent, `${LIGHT_CAP} score out of 100, grade F`);
+  assert.equal(LIGHT_CAP, 59);
+  assert.equal(h.score, "9,087");
+  assert.equal(h.grade, "C");
+  assert.equal(v.score.textContent, "9,087 of 12,160, grade C");
   assert.equal(find(v.warningBox, "shared-warning-light_dark").textContent, LIGHT_MAJOR_LABEL);
-  assert.ok(!v.text.includes("9,087"));
 });
 
 test("an uncapped take is unchanged: the credit headline in points, and the share says the same", () => {
@@ -131,7 +131,7 @@ test("an old snapshot without the result block still renders as it always did", 
   assert.equal(odd.score.textContent, "0 F", "a malformed block falls back to the old fields");
 });
 
-test("the owner's points or % choice: the share shows the unit the result showed, and a capped take ignores it", () => {
+test("the owner's points or % choice: the share shows the unit the result showed, and a warned take keeps the credit in that unit", () => {
   const pct = { mode: "percent" };
   assert.deepEqual(shareModel.createBody({ kind: "take_result", itemRef: "j", scoreDisplay: { mode: "percent", level: "bogus" } }).score_display, pct);
   assert.equal("score_display" in shareModel.createBody({ kind: "history_report", itemRef: "e", scoreDisplay: pct }), false);
@@ -143,5 +143,17 @@ test("the owner's points or % choice: the share shows the unit the result showed
   assert.equal(v.score.textContent, `75% ${h.caption}, grade ${h.grade}`);
   assert.equal(v.score.getAttribute("aria-label"), h.label);
   const c = snapshot(capped);
-  assert.equal(viewer({ ...c, result: { ...c.result, display: pct } }).score.textContent, "59 score out of 100, grade F");
+  assert.equal(viewer({ ...c, result: { ...c.result, display: pct } }).score.textContent, "75% credit earned, grade C");
+});
+
+test("a stored % choice still shares points, the unit the lean result page shows (TICKET-372)", async () => {
+  const mem = new Map([["simon.scoreDisplay", JSON.stringify({ mode: "percent", level: "hard" })]]);
+  const before = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)) };
+  try {
+    const { shareHooks } = await import("../../web/share.js");
+    const body = shareModel.createBody({ kind: "take_result", itemRef: "j", scoreDisplay: shareHooks.scoreDisplay() });
+    assert.equal(body.score_display.mode, "points");
+    assert.equal(body.score_display.level, "hard");
+  } finally { globalThis.localStorage = before; }
 });

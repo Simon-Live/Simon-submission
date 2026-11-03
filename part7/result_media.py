@@ -2,7 +2,9 @@
 
 `handle(h, method, route)` answers `results/<job>/video.mp4` (follow job) and `results/<job>/<pid>/video.mp4`
 (group job) and returns True; any other route returns False. The clip is the one Part 5 scored, so its clock is the
-analysis `at_s` clock. Only finished jobs serve it; everything else is 404.
+analysis `at_s` clock. Only finished jobs serve it; everything else is 404. The route only reads: any method but GET
+and HEAD is 405 and touches no file (TICKET-373). A take goes only through `POST api/jobs/<id>/delete`, which checks who
+asks (delete_routes.py).
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ CHUNK = 256 * 1024
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 MSG_GONE = "This video is not available."
 UNSATISFIABLE = "unsatisfiable"
+MSG_METHOD = "Method not allowed."
 
 
 def clip_path(h: Any, job_id: str, pid: str | None) -> Path | None:
@@ -86,8 +89,11 @@ def serve_file(h: Any, path: Path) -> None:
 def handle(h: Any, method: str, route: str) -> bool:
     """Answer a follower-clip route (below `api/`); False when `route` is not one."""
     parts = route.split("/")
-    if method not in ("GET", "HEAD") or parts[0] != "results" or parts[-1] != NAME or len(parts) not in (3, 4):
+    if parts[0] != "results" or parts[-1] != NAME or len(parts) not in (3, 4):
         return False
+    if method not in ("GET", "HEAD"):  # a clip is never written or removed here, whoever asks
+        h._error(405, MSG_METHOD)
+        return True
     job = h.app.queue.get(parts[1]) if jobs.JOB_ID_RE.match(parts[1]) else None
     if model_only.view_only(job):  # the owner shows only the 3D model: 404 to everyone (model-default.md AC-MD12)
         h._error(404, model_only.MSG_VIEW_ONLY)

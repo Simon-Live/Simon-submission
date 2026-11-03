@@ -1,7 +1,7 @@
 // TICKET-121: an object URL is revoked only once its media element stopped fetching, and after detaching it.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { releaseMediaUrl } from "../../web/media-url.js";
+import { releaseMediaUrl, releaseSharedMediaUrl } from "../../web/media-url.js";
 
 function fakeEl(networkState, readyState = 0) {
   const log = [];
@@ -48,4 +48,20 @@ test("no URL or no element is a safe no-op or a plain revoke", () => {
   releaseMediaUrl(fakeEl(1), "", { revoke: (u) => revoked.push(u) });
   releaseMediaUrl(null, "blob:d", { revoke: (u) => revoked.push(u) });
   assert.deepEqual(revoked, ["blob:d"]);
+});
+
+test("a URL shared by two elements is revoked once, after both are detached", () => {
+  const a = fakeEl(1, 4);
+  const b = fakeEl(2, 1);
+  const revoked = [];
+  releaseSharedMediaUrl([a, null, b], "blob:e", { revoke: (u) => revoked.push(`${u}:${a.log.length}:${b.log.length}`), setTimer: () => {} });
+  assert.deepEqual(revoked, []);
+  b.handlers.loadeddata();
+  assert.deepEqual(revoked, ["blob:e:3:3"]);
+});
+
+test("a shared URL with no live element is revoked at once", () => {
+  const revoked = [];
+  releaseSharedMediaUrl([null], "blob:f", { revoke: (u) => revoked.push(u) });
+  assert.deepEqual(revoked, ["blob:f"]);
 });

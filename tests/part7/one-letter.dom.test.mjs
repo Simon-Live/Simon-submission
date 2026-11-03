@@ -152,9 +152,14 @@ test("the result's grade panel shows the headline's letter on the credit scale",
   assert.doesNotMatch(find(panel, "band-rule").textContent, /90 and above/);
   const hard = refreshScore(panel, { score: TRIGGER }, { mode: "points", level: "hard" });
   assert.equal(find(hard, "grade").textContent, "D");
-  const capped = renderScore(new El("div"), { score: CAPPED });
+  const warned = renderScore(new El("div"), { score: CAPPED });   // a credit with a warning: shown as Part 5 gave it, no cap line
+  assert.equal(find(warned, "grade").textContent, "C");
+  assert.equal(find(warned, "score").textContent, "16,239");
+  assert.equal(find(warned, "score-cap"), null);
+  const capped = renderScore(new El("div"), { score: VECTORS[11].analysis.score });   // no credit block: the A to F fallback, with its cap line
   assert.equal(find(capped, "grade").textContent, "F");
   assert.match(find(capped, "band-rule").textContent, /90 and above/);
+  assert.ok(find(capped, "score-cap"));
   const plain = renderScore(new El("div"), { score: { value: 82, grade: "B" } });
   assert.equal(find(plain, "grade").textContent, "B");
 });

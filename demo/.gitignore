@@ -1,3 +1,4 @@
 # Built outputs: kept out of git, see README "Files kept out of git".
-simon-end-to-end.mp4
+# simon-end-to-end.mp4 is committed since TICKET-028 (docs/specs/demo.md); demo/build.sh writes the same path,
+# so commit its output only on purpose.
 assets/music.mp3

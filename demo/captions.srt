@@ -1,139 +1,79 @@
 1
-00:00:00,250 --> 00:00:02,666
-Learn any movement
-from a single recording.
+00:00:00,330 --> 00:00:04,340
+Step 1. Open Simon on a phone: the catalog of movements.
 
 2
-00:00:06,250 --> 00:00:09,815
-You follow a video, and nobody
-tells you what your copy got wrong.
+00:00:04,340 --> 00:00:10,340
+Step 2. A trainer records a standing knee raise. The camera plays a Pexels stock clip.
 
 3
-00:00:13,250 --> 00:00:15,924
-One teacher records a movement once.
+00:00:17,620 --> 00:00:19,640
+The trainer trims the clip and saves it.
 
 4
-00:00:15,964 --> 00:00:18,487
-That recording is all Simon needs.
+00:00:19,640 --> 00:00:22,140
+Processing on the GPU: 22 s skipped
 
 5
-00:00:22,250 --> 00:00:27,408
-It becomes a 3D movement that anyone
-can open, and turn to any angle.
+00:00:22,140 --> 00:00:24,920
+The job runs Parts 1 to 4, then Part 6 adds the entry to the catalog.
 
 6
-00:00:33,250 --> 00:00:34,471
-Anyone can follow it.
+00:00:24,920 --> 00:00:27,420
+Processing on the GPU: 165 s skipped
 
 7
-00:00:34,511 --> 00:00:36,632
-They film their own copy on a phone.
+00:00:27,550 --> 00:00:30,910
+Step 3. A second visitor opens the new entry from the cloud.
 
 8
-00:00:42,250 --> 00:00:43,307
-Now the wait.
+00:00:30,910 --> 00:00:35,460
+The trainer's video plays for anyone signed in.
 
 9
-00:00:43,347 --> 00:00:47,524
-The analysis took
-3 minutes 27 seconds on the GPU.
+00:00:35,460 --> 00:00:40,230
+Drag to turn the 3D figure.
 
 10
-00:00:47,564 --> 00:00:49,211
-Here it is, sped up.
+00:00:40,230 --> 00:00:46,230
+Step 4. A follower picks the entry and records the same movement.
 
 11
-00:00:54,250 --> 00:00:57,360
-Under the hood, SAM 3.1 tracks the person.
+00:00:54,690 --> 00:00:56,700
+The follower trims the take and sends it for analysis.
 
 12
-00:00:57,400 --> 00:01:00,809
-Muse Spark finds the sections
-of the movement.
+00:00:56,700 --> 00:00:59,200
+Processing on the GPU: 30 s skipped
 
 13
-00:01:00,849 --> 00:01:04,784
-SAM 3D Body, built on DINOv3,
-lifts the pose into 3D.
+00:00:59,200 --> 00:01:01,790
+Step 5. Parts 2, 3 and 5 build the follower's skeleton and compare it.
 
 14
-00:01:04,824 --> 00:01:07,633
-Then Simon compares the two skeletons,
+00:01:01,790 --> 00:01:04,290
+Processing on the GPU: 131 s skipped
 
 15
-00:01:07,673 --> 00:01:11,608
-and Muse Spark puts the differences
-into plain words.
+00:01:05,920 --> 00:01:10,010
+Step 6. The trainer and the follower as 3D figures. Drag to turn them.
 
 16
-00:01:12,598 --> 00:01:16,319
-Here is SAM 3D Body
-at work on two stock clips.
+00:01:10,010 --> 00:01:13,800
+One button switches between overlay and side by side.
 
 17
-00:01:20,598 --> 00:01:21,580
-The result:
+00:01:13,800 --> 00:01:17,310
+Step 7. Each note says what to fix and the second it happens.
 
 18
-00:01:21,620 --> 00:01:23,718
-77 out of 100, grade C.
+00:01:17,310 --> 00:01:21,890
+Tap a note: the replay jumps to that moment.
 
 19
-00:01:27,598 --> 00:01:31,500
-The 3D view lays the copy
-over the teacher, so you can turn it
+00:01:21,890 --> 00:01:26,890
+Step 8. The take's points out of its maximum, and its letter grade.
 
 20
-00:01:31,540 --> 00:01:33,853
-and see exactly where the two differ.
-
-21
-00:01:39,598 --> 00:01:41,282
-And the cue is timed.
-
-22
-00:01:41,322 --> 00:01:44,155
-Keep your chest up, at 0.9 seconds.
-
-23
-00:01:47,598 --> 00:01:51,920
-Simon tells shape from timing,
-and replays your worst moment on a loop.
-
-24
-00:01:56,598 --> 00:01:59,162
-Muse Spark also watches both videos.
-
-25
-00:01:59,202 --> 00:02:04,081
-It says whether it agrees with each
-fault, and what else it noticed.
-
-26
-00:02:07,598 --> 00:02:12,834
-A clip to share is one tap away, and a card
-shows which Meta models made each step.
-
-27
-00:02:19,598 --> 00:02:21,246
-Dance, rehab or fitness:
-
-28
-00:02:21,286 --> 00:02:24,834
-one capability for any movement
-a teacher can show.
-
-29
-00:02:29,598 --> 00:02:34,787
-This is Simon, built on Meta's
-SAM 3.1, SAM 3D Body and Muse Spark.
-
-30
-00:02:34,827 --> 00:02:38,300
-The code was written
-in the hackathon window.
-
-31
-00:02:38,340 --> 00:02:42,593
-The footage is one real,
-cleared take plus stock clips.
+00:01:26,890 --> 00:01:31,890
+Clips: Pexels 6326808 (trainer) and 8026937 (follower). Pexels License. Author not stated on the page.

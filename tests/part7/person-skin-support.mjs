@@ -91,5 +91,11 @@ export function realFiles(dir = REAL_PART2, { shipped = false } = {}) {
   if (restDoc.status !== 0) throw new Error(restDoc.stderr);
   const arrayBuffer = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength);
   return { header, arrayBuffer, rest: JSON.parse(restDoc.stdout), pose3d: JSON.parse(fs.readFileSync(`${dir}/pose3d.json`, "utf8")),
-    replay: JSON.parse(fs.readFileSync(`${REAL_JOB}/work/follower/replay.json`, "utf8")) };
+    replay: readReplay() };
+}
+
+/** The real job's follower replay, or null when it is not on this machine: a staging take dir in WARP_DIRS needs none. */
+function readReplay() {
+  const file = `${REAL_JOB}/work/follower/replay.json`;
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null;
 }

@@ -131,3 +131,22 @@
   .st-chev { transition: none; }
   .st-pop { transform: translate(-50%, calc(var(--lane, 0) * 1.75em)); animation: st-pop-fade 0.8s linear forwards; }
 }
+
+/* the lean result (team, 2026-11-02): "What to work on" under the stage, the action row's own slots on a line
+   of their own under the buttons, and one collapsed "More" holding the rest */
+.simon-result .sr-work { margin: 0 0 var(--space-3); }
+.simon-result .sr-work:empty { display: none; }
+.sr-insights-all { margin-top: var(--space-2); }
+.st-act-extra > .sr-slot { flex: 1 1 100%; min-width: 0; }
+.st-actions .sr-reference { margin: 0; }
+.simon-result .st-more { margin-top: var(--space-2); }
+.st-more-body { display: grid; gap: var(--space-4); padding: 0 var(--space-3) var(--space-3); min-width: 0; }
+.st-more-body[hidden] { display: none; }
+.st-more-body > * { min-width: 0; max-width: 100%; }
+.sr-more-notes { display: grid; gap: var(--space-2); }
+.sr-more-notes:empty { display: none; }
+.sr-more-made { justify-self: start; }
+.st-actions .sr-reference-note, .st-actions .sr-reference-status { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.st-actions .sr-reference-status:empty { display: none; }
+.st-actions .sr-reference-actions:empty { display: none; }
+body .simon-result .sr-fault-item[hidden] { display: none; }

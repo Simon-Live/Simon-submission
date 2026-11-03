@@ -194,3 +194,32 @@ def test_resampled_tracks_cover_exactly_the_frames_part2_samples():
                                                "confidence": 0.9}]} for n in range(30)]}  # tracked at 3 fps
     out = track_resample.resample(doc, 3, 5, 10.0, None, times)
     assert [f["frame"] for f in out["frames"]] == list(range(51))
+
+
+def test_the_serverless_route_asks_for_the_mesh_when_the_pins_source_offers_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Person model needs mesh3d.json: on Modal, --mesh comes from the pinned Part 2's own CLI source, never from
+    running Part 2 locally, and --mesh-stream is not asked for (its partial files cannot reach the page)."""
+    monkeypatch.setenv(p2_pose.REMOTE_ENV, "modal")
+    calls: list[list[str]] = []
+    monkeypatch.setattr(runner, "run", lambda part, argv, **kw: calls.append(argv) or runner.Step(exit=0))
+    monkeypatch.setattr(p2_pose, "has_mesh", lambda *_: pytest.fail("Part 2 was probed locally"))
+    monkeypatch.setattr(p2_pose, "has_mesh_stream", lambda *_: pytest.fail("Part 2 was probed locally"))
+    clone = tmp_path / "mods" / "part-2"
+    (clone / "part2").mkdir(parents=True)
+    (clone / "part2" / "cli.py").write_text('p_run.add_argument("--mesh", action="store_true")\n', encoding="utf-8")
+    lk = modules.Modules(root=tmp_path / "mods", shas={"2": "0" * 40})
+    p2_pose.run(tmp_path / "clip.mp4", tmp_path, lock=lk, state=tmp_path)
+    sub = calls[0][calls[0].index("--") + 1:]
+    assert "--mesh" in sub and "--mesh-stream" not in sub
+    (clone / "part2" / "cli.py").write_text("# an old pin without the flag\n", encoding="utf-8")
+    calls.clear()
+    p2_pose.run(tmp_path / "clip.mp4", tmp_path, lock=lk, state=tmp_path)
+    assert "--mesh" not in calls[0][calls[0].index("--") + 1:]
+
+
+def test_offers_in_source_reads_the_pins_cli(tmp_path: Path) -> None:
+    (tmp_path / "part2").mkdir()
+    (tmp_path / "part2" / "cli.py").write_text('x.add_argument("--mesh", action="store_true")', encoding="utf-8")
+    assert p2_pose.offers_in_source(tmp_path, "--mesh") is True
+    assert p2_pose.offers_in_source(tmp_path, "--mesh-stream") is False
+    assert p2_pose.offers_in_source(tmp_path / "missing", "--mesh") is False

@@ -25,8 +25,9 @@ TRIGGER = VECTORS[0]["analysis"]["score"]
 CAPPED = VECTORS[4]["analysis"]["score"]
 CREDIT_SHOWN = {"letter": "C", "figures": "16,239", "caption": "of 22,367", "unit": "points", "capped": False, "warning": [],
                 "measure": 72.6}
-CAPPED_SHOWN = {"letter": "F", "figures": "37", "caption": "score out of 100", "unit": "score", "capped": True, "warning": ["low_match"],
-                "measure": 37}
+# team, 2 Nov (#61): nothing capped. A warned take with a credit shows the credit; the warning is still named
+CAPPED_SHOWN = {"letter": "C", "figures": "16,239", "caption": "of 22,367", "unit": "points", "capped": False, "warning": ["low_match"],
+                "measure": 72.6}
 
 
 def _analysis(score: dict[str, Any]) -> dict[str, Any]:
@@ -49,6 +50,20 @@ def _job(root: Path, job_id: str, score: dict[str, Any], *, entry: str = "squat-
 @pytest.mark.parametrize("case", VECTORS, ids=[c["name"] for c in VECTORS])
 def test_the_shared_vectors(case: dict[str, Any]) -> None:
     assert shown_score.shown(case["analysis"], case.get("light"), case.get("display")) == case["expect"]
+
+
+def test_the_credit_letter_comes_from_the_analysis_grades_not_a_constant() -> None:
+    """Part 5 1.14.3 moved E to 40 and F under 40; a document written before keeps its own marks (E 45, F 30)."""
+    new_scale = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [40, "E"], [0, "F"]]
+    old_scale = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]]
+
+    def letter(grades: Any, percent: float = 42.0) -> str:
+        credit = {"percent": percent, "points": percent * 10, "max_points": 1000, "tolerance": "normal", "grade": "F", "grades": grades}
+        score = {"value": 20, "grade": "F", "credit": credit}
+        return shown_score.shown({"score": score})["letter"]
+
+    assert letter(new_scale) == "E" and letter(old_scale) == "F"
+    assert letter(new_scale, 39.9) == "F" and letter(new_scale, 40.0) == "E"
 
 
 def test_public_is_the_row_block_and_none_stays_none() -> None:
@@ -88,7 +103,8 @@ def test_an_old_history_copy_without_light_gets_no_light_cap(tmp_path: Path) -> 
     path = tmp_path / "analysis.json"
     path.write_text(json.dumps(_analysis({**TRIGGER, "value": 75, "grade": "C"})), encoding="utf-8")
     assert shown_score.of_take({"analysis": path})["letter"] == "C"
-    assert shown_score.of_take({"analysis": path, "light": {"level": "major"}})["figures"] == "59"
+    dark = shown_score.of_take({"analysis": path, "light": {"level": "major"}})   # nothing capped (team, 2 Nov): the credit, the light named
+    assert dark["figures"] == "16,239" and dark["capped"] is False and dark["warning"] == ["quality_light_dark"]
 
 
 def test_me_list_score(tmp_path: Path) -> None:
@@ -142,18 +158,20 @@ def test_export_clip_burns_the_shown_score() -> None:
     assert (texts["score.txt"], texts["grade.txt"]) == ("16,239", "Grade C")
     assert (facts.score, facts.grade) == (37, "F")   # the job result's fields stay
     capped = export_clip.texts_for(export_clip.facts_from(job, _analysis(CAPPED)))
-    assert (capped["score.txt"], capped["grade.txt"]) == ("37", "Grade F")
+    assert (capped["score.txt"], capped["grade.txt"]) == ("16,239", "Grade C")   # nothing capped: the credit is burnt in
     old = export_clip.texts_for(export_clip.facts_from(job, {"faults": []}))
     assert (old["score.txt"], old["grade.txt"]) == ("37", "Grade F")   # no analysis score: the job result's, as before
 
 
-def test_judge_hero_carries_the_shown_score_and_is_picked_by_the_shown_measure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_judge_hero_carries_the_shown_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(judge_view.HERO_ENV, raising=False)
     monkeypatch.setattr(judge_view.mesh_files, "index", lambda root, job_id: {"follower": True, "trainer": True})
     _job(tmp_path, "aaaaaaaaaaaa", TRIGGER, light={"level": "ok"})
     _job(tmp_path, "bbbbbbbbbbbb", {"value": 50, "grade": "F"}, light={"level": "ok"})
+    assert judge_view.hero(tmp_path, tmp_path)["job_id"] is None   # TICKET-373: nothing is picked unless named
+    monkeypatch.setenv(judge_view.HERO_ENV, "aaaaaaaaaaaa")
     hero = judge_view.hero(tmp_path, tmp_path)
-    assert hero["job_id"] == "aaaaaaaaaaaa"   # one-letter.md L3: the shown measure, C at 72.6% above 50 F
+    assert hero["job_id"] == "aaaaaaaaaaaa" and hero["shown"] == CREDIT_SHOWN
     named = judge_view._candidate(tmp_path, "aaaaaaaaaaaa")
     assert named is not None and named["score"] == 37 and named["shown"] == CREDIT_SHOWN
 

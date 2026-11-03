@@ -59,7 +59,7 @@ test("the board list asks for the judge view only when told to", () => {
 });
 
 test("the hero line links the take and states the score; no take means no line", () => {
-  const card = heroCard({ job_id: "5277380db1e1", entry_id: "squat", score: 77.4, source: "best" });
+  const card = heroCard({ job_id: "5277380db1e1", entry_id: "squat", score: 77.4, source: "configured" }); // TICKET-373: the only source with a take
   assert.equal(card.href, "#/result/5277380db1e1");
   assert.match(card.text, /Scored 77 out of 100/);
   assert.equal(heroCard({ job_id: null, source: "none" }), null);

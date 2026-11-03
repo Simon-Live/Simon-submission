@@ -149,6 +149,30 @@ def test_trainer_delete_removes_the_files_and_keeps_the_movement(api: Api) -> No
     assert api.json("GET", "api/jobs/1a2b3c4d5e6f")[0] == 404
 
 
+def test_trainer_delete_removes_the_kept_follow_ghost(api: Api) -> None:
+    from part7 import ghost  # follow-ghost.md AC-7: the copy made from the take's Part 2 files leaves with the take
+
+    _trainer(api)
+    kept = ghost.kept_path(api.app.state, ENTRY)
+    kept.parent.mkdir(parents=True)
+    kept.write_text(json.dumps({"format": ghost.KEEP_FORMAT, "entry_id": ENTRY, "trainer_job": "1a2b3c4d5e6f", "ghost": {"box": "image", "frames": [{"t": 0, "pts": []}]}}))
+    status, body = _delete(api, "1a2b3c4d5e6f")
+    assert status == 200 and body == {"deleted": True, "removed": ["job", "upload", "narration", "ghost"]}
+    assert not kept.exists() and (api.app.child.catalog_dir / ENTRY / "manifest.json").is_file(), "the movement stays"
+
+
+def test_the_kept_ghost_goes_after_the_queue_forgets_the_take(api: Api, monkeypatch: Any) -> None:
+    from part7 import ghost  # TICKET-374 R-a: a ghost GET or sweep running meanwhile can still re-save a copy until then
+
+    _trainer(api)
+    order: list[str] = []
+    real_queue_forget, real_ghost_forget = api.app.queue.forget, ghost.forget
+    monkeypatch.setattr(api.app.queue, "forget", lambda job_id: (order.append("queue"), real_queue_forget(job_id))[1])
+    monkeypatch.setattr(ghost, "forget", lambda *a: (order.append("ghost"), real_ghost_forget(*a))[1])
+    assert _delete(api, "1a2b3c4d5e6f")[0] == 200
+    assert order == ["queue", "ghost"], order
+
+
 def test_trainer_delete_with_remove_entry_removes_the_movement_and_its_labels(api: Api) -> None:
     _, entry = _trainer(api)
     labels_file = api.app.state / "labels" / f"{ENTRY}.json"
@@ -180,7 +204,7 @@ def test_trainer_delete_refuses_a_running_job_and_a_bad_body(api: Api) -> None:
     folder, entry = _trainer(api, status="running")
     assert _error(api, "1a2b3c4d5e6f") == (409, delete_routes.MSG_BUSY)
     api.app.queue._jobs["1a2b3c4d5e6f"]["status"] = "done"
-    assert api.request("POST", "api/jobs/1a2b3c4d5e6f/delete", b"not json", {"Content-Type": "application/json"})[0] == 400
+    assert api.request("POST", "api/jobs/1a2b3c4d5e6f/delete", b"not json", {"Content-Type": "application/json", "Origin": f"http://127.0.0.1:{api.port}"})[0] == 400
     assert folder.is_dir() and entry.is_dir(), "negative: nothing was deleted"
 
 

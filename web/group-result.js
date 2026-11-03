@@ -33,7 +33,8 @@ export function boardRows(result) {
     const warned = analysed && (score === null || grade === null || (!!p.status_code && p.status_code !== "ok"));
     const faults = Array.isArray(p.faults) ? p.faults.length : num(p.faults) ?? 0;
     const shown = p.shown ? shownRow(p) : null;
-    const cappedBy = !refused && p.shown && Array.isArray(p.shown.warning) ? p.shown.warning : [];
+    // TICKET-372 nothing capped: a warned credit take has `warning` but `capped: false`, so only a capped take says F at most
+    const cappedBy = !refused && p.shown && p.shown.capped === true && Array.isArray(p.shown.warning) ? p.shown.warning : [];
     return {
       id: p.id,
       label: (p.label && String(p.label).trim()) || `Person ${p.id}`,
@@ -50,7 +51,7 @@ export function boardRows(result) {
 }
 
 /**
- * The page's line when every scored take was capped for the same reason (44's dance run: every person low_match), so the
+ * The page's line when every scored take was capped for the same reason (a group whose takes all lack a credit block), so the
  * page says once why every grade is F; "" otherwise. Words from score.js CAP_REASONS, said of all the takes.
  */
 export function groupCapNote(rows) {

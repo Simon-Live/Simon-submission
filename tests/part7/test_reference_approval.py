@@ -175,7 +175,7 @@ def test_deleting_the_approved_take_drops_the_waiting_suggestion(room: Room) -> 
     mark(room.api, room.ada, room.take())
     taken = room.take()
     room.approve(room.ask(taken))
-    assert room.api.request("POST", f"api/jobs/{taken}/delete", b"", {})[0] == 200
+    assert post(room.api, f"api/jobs/{taken}/delete", cookie=room.ada)[0] == 200  # the owner (TICKET-373)
     assert room.reference()["suggestion"] is None
 
 
@@ -278,7 +278,7 @@ def test_a_take_deleted_during_the_part5_check_is_refused_and_leaves_no_copy(roo
     rid = room.ask(job)
 
     def doctor(app: Any, data: bytes) -> bool:
-        assert room.api.request("POST", f"api/jobs/{job}/delete", b"", {})[0] == 200
+        assert post(room.api, f"api/jobs/{job}/delete", cookie=room.ada)[0] == 200  # the owner (TICKET-373)
         return True
 
     monkeypatch.setattr(my_reference_routes, "accepts", doctor)

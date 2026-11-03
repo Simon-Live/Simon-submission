@@ -1,5 +1,6 @@
 // Score pop-ups over the You pane (team, 2026-11-01): when the stage's clock reaches the end of a scored window
-// its value flies up in lime; at each miss Part 5's words for it fly up in pink (no points). Logic only: which pops
+// its value flies up in lime; at each miss the body part it names flies up in pink (no points; team, 2026-11-03:
+// one or two words, the full line stays in the coaching list). Logic only: which pops
 // a take has, their words, and which fire at a time (web/result-stage.js reads the clock, views/score-pops.js draws).
 // Every number is Part 5's (score.credit.per_window, score.timeline windows and misses, faults); this file only picks
 // and words them.
@@ -56,9 +57,28 @@ export function missWords(text, cue) {
 }
 
 /**
+ * The one or two words a miss pop shows (team, 2026-11-03): the body part Part 5's line or the cue names, with its
+ * side when the line puts one right before it ("left arm too far right" -> "Left arm"), else `shortCue`'s words
+ * ("Slow down"). "" for nothing usable.
+ */
+export function popWord(cue, text) {
+  for (const s of [text, cue]) {
+    if (typeof s !== "string" || !s.trim()) continue;
+    const low = s.toLowerCase();
+    const part = PARTS.find((p) => new RegExp(`\\b${p}\\b`).test(low));
+    if (!part) continue;
+    const side = low.match(new RegExp(`\\b(left|right)\\s+${part}\\b`));
+    const w = side ? `${side[1]} ${part}` : part;
+    return w[0].toUpperCase() + w.slice(1);
+  }
+  const w = shortCue(cue, text);
+  return w ? w[0].toUpperCase() + w.slice(1) : "";
+}
+
+/**
  * Every pop this take has, in time order: {id, at, kind: "window" | "miss", text, label}. Window pops sit at each
  * window's end with its credit in the viewer's unit (`display` = {mode, level}, model/score-credit.js), else the
- * window's own value; miss pops at each timeline miss's `at_s` in words ("Left arm much too low"), else, when no miss carries a time, at each
+ * window's own value; miss pops at each timeline miss's `at_s` naming its part ("Left arm", the full line as its label), else, when no miss carries a time, at each
  * fault's. One pop per moment and body part (the larger points).
  */
 export function popsOf(analysis, display = null) {
@@ -85,7 +105,7 @@ export function popsOf(analysis, display = null) {
     const key = `${at.toFixed(1)}|${word}`;
     const had = seen.get(key);
     if (had && had.lost >= lost) return;
-    const pop = { id: had ? had.pop.id : id, at, kind: "miss", text: said, label: said };
+    const pop = { id: had ? had.pop.id : id, at, kind: "miss", text: popWord(cue, text) || said, label: said };
     if (had) Object.assign(had.pop, pop); else out.push(pop);
     seen.set(key, { lost, pop: had ? had.pop : pop });
   };

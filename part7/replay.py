@@ -6,11 +6,12 @@ Part 5 module and fails closed when the module does not ship it (ADR-0007). The 
 
 from __future__ import annotations
 
+import bisect
 import json
 from pathlib import Path
 from typing import Any
 
-from part7 import modules
+from part7 import modules, skeleton2d
 
 SCHEMA_REL = Path("contracts") / "replay.schema.json"
 
@@ -121,3 +122,51 @@ def read_valid(
         return (None, ["replay: not valid JSON"])
     problems = validate(doc, lock, state)
     return (None, problems) if problems else (raw, [])
+
+
+def follower_unseen(doc: dict[str, Any], part2_dir: Path, person_id: str | None) -> list[list[int]] | None:
+    """Per follower frame of `doc`, the indices (in `doc["joints"]`) of the joints Part 2 marked unseen (conf at or
+    below `skeleton2d.UNSEEN_CONF`) in the nearest `pose3d.json` frame by time; None when it cannot be told (TICKET-376).
+    Part 5's replay drops the mark, so the 3D stick figure would draw those joints at guessed places. Both files count
+    seconds from the clip start (`follower_t[0]` and the first `t_ms` are both near 0); a frame where `person_id` is
+    absent marks nothing."""
+    pose = skeleton2d.load_json(part2_dir / "pose3d.json")
+    names, times = doc.get("joints"), doc.get("follower_t")
+    frames = [f for f in (pose.get("frames") if isinstance(pose, dict) else None) or []
+              if isinstance(f, dict) and isinstance(f.get("t_ms"), (int, float))]
+    count = len(doc.get("follower") or [])
+    if not frames or not isinstance(names, list) or not count:
+        return None
+    if not (isinstance(times, list) and len(times) == count):
+        fps = doc.get("fps")
+        times = [i / fps for i in range(count)] if isinstance(fps, (int, float)) and fps > 0 else None
+    if times is None:
+        return None
+    frames.sort(key=lambda f: f["t_ms"])
+    stamps = [f["t_ms"] / 1000.0 for f in frames]
+    marks = []
+    for f in frames:
+        who = skeleton2d.pick_person(f.get("people"), person_id, strict=person_id is not None)
+        joints = (who or {}).get("joints") or {}
+        marks.append([i for i, n in enumerate(names)
+                      if isinstance(joints.get(n), dict) and skeleton2d.is_unseen(joints[n].get("conf"))])
+    out = []
+    for t in times:
+        k = bisect.bisect_left(stamps, t)
+        if k > 0 and (k == len(stamps) or t - stamps[k - 1] <= stamps[k] - t):
+            k -= 1
+        out.append(list(marks[k]))
+    return out
+
+
+def with_follower_unseen(raw: bytes, part2_dir: Path, person_id: str | None) -> bytes:
+    """`raw` (a valid replay) with `follower_unseen` added, or `raw` itself when Part 2's folder cannot say."""
+    try:
+        doc = json.loads(raw)
+        marks = follower_unseen(doc, part2_dir, person_id)
+    except (ValueError, AttributeError, TypeError):
+        return raw
+    if marks is None or not any(marks):
+        return raw
+    doc["follower_unseen"] = marks
+    return json.dumps(doc, separators=(",", ":")).encode("utf-8")

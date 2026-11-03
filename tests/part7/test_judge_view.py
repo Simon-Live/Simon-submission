@@ -95,16 +95,21 @@ def test_an_unknown_default_profile_is_ignored(monkeypatch: pytest.MonkeyPatch) 
 
 
 # ----- AC-J5 hero ------------------------------------------------------------------------------------------
-def test_the_hero_falls_back_to_the_best_scoring_real_take_with_a_mesh(api: Api) -> None:
+NONE = {"job_id": None, "entry_id": None, "score": None, "source": "none"}
+
+
+def name_hero(monkeypatch: pytest.MonkeyPatch, job_id: str) -> dict[str, Any]:
+    monkeypatch.setenv(judge_view.HERO_ENV, job_id)
+    return judge_view.hero(Path("/nonexistent-state"), Path("/nonexistent-jobs"))
+
+
+def test_with_no_named_hero_no_take_is_offered(api: Api) -> None:
+    """TICKET-373: the old best-scoring pick handed visitors a stranger's job id, and the id is the key to the take."""
     finished(api, "trainer", REAL)
-    finished(api, "follow", REAL, score=70)
-    best = finished(api, "follow", REAL, score=88)
-    finished(api, "follow", REAL, score=95, mesh=False)  # higher, but no follower mesh
-    finished(api, "trainer", "verify-2026-11-02t00-53-32z-196f3040")
-    finished(api, "follow", "verify-2026-11-02t00-53-32z-196f3040", score=99)  # higher, but a test movement
-    status, doc = api.json("GET", "api/judge/hero")
-    assert status == 200
-    assert doc == {"job_id": best, "entry_id": REAL, "score": 88, "source": "best"}
+    unnamed = finished(api, "follow", REAL, score=88)  # qualifies: a real movement, a score and both meshes
+    status, _, raw = api.request("GET", "api/judge/hero")
+    assert status == 200 and json.loads(raw) == NONE
+    assert unnamed.encode() not in raw  # negative: the id of a take nobody named is never in the answer
 
 
 def test_a_configured_hero_wins_by_environment_then_by_file(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,43 +118,48 @@ def test_a_configured_hero_wins_by_environment_then_by_file(api: Api, monkeypatc
     other = finished(api, "follow", REAL, score=60)
     finished(api, "follow", REAL, score=90)
     (api.app.state / judge_view.HERO_FILE).write_text(json.dumps({"job_id": low}), encoding="utf-8")
-    assert api.json("GET", "api/judge/hero")[1]["job_id"] == low
+    assert api.json("GET", "api/judge/hero")[1] == {"job_id": low, "entry_id": REAL, "score": 50, "source": "configured"}
     monkeypatch.setenv(judge_view.HERO_ENV, other)
     _, doc = api.json("GET", "api/judge/hero")
     assert (doc["job_id"], doc["source"]) == (other, "configured")
+    assert judge_view.configured_id(api.app.state) == other
 
 
-def test_a_configured_hero_that_does_not_qualify_is_ignored(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_configured_hero_that_does_not_qualify_is_ignored_and_nothing_stands_in(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
     finished(api, "trainer", REAL)
-    good = finished(api, "follow", REAL, score=80)
+    finished(api, "follow", REAL, score=80)  # qualifies, but nobody named it
     nomesh = finished(api, "follow", REAL, score=99, mesh=False)
     monkeypatch.setenv(judge_view.HERO_ENV, nomesh)
-    assert api.json("GET", "api/judge/hero")[1]["job_id"] == good
+    assert api.json("GET", "api/judge/hero") == (200, NONE)
     monkeypatch.setenv(judge_view.HERO_ENV, "not-a-job")
-    assert api.json("GET", "api/judge/hero")[1]["job_id"] == good
+    assert api.json("GET", "api/judge/hero") == (200, NONE)
 
 
-def test_no_qualifying_take_answers_null(api: Api) -> None:
-    finished(api, "follow", REAL, score=80, mesh=False)
-    assert api.json("GET", "api/judge/hero") == (200, {"job_id": None, "entry_id": None, "score": None, "source": "none"})
+def test_a_named_test_movement_take_answers_null(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    finished(api, "trainer", "verify-2026-11-02t00-53-32z-196f3040")
+    test_take = finished(api, "follow", "verify-2026-11-02t00-53-32z-196f3040", score=99)
+    monkeypatch.setenv(judge_view.HERO_ENV, test_take)
+    assert api.json("GET", "api/judge/hero") == (200, NONE)
 
 
-def test_a_capped_or_warned_take_is_never_the_hero(api: Api) -> None:
+def test_a_capped_or_warned_take_is_never_the_hero(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
     """QA on staging 2026-11-02: the best take with meshes was a low-match take capped at 59 F; a judge saw it first."""
     finished(api, "trainer", REAL)
     ok = finished(api, "follow", REAL, score=70, analysis={"status": {"code": "ok"}, "score": {"value": 70}})
-    finished(api, "follow", REAL, score=95, analysis={"status": {"code": "ok"}, "warnings": [{"code": "low_match"}],
-                                                       "score": {"value": 59, "capped_by": ["low_match"]}})
-    finished(api, "follow", REAL, score=90, analysis={"status": {"code": "ok"}, "match": {"quality": "low"}})
-    status, doc = api.json("GET", "api/judge/hero")
-    assert status == 200 and doc["job_id"] == ok  # negative: neither warned take wins, though both score higher
+    capped = finished(api, "follow", REAL, score=95, analysis={"status": {"code": "ok"}, "warnings": [{"code": "low_match"}],
+                                                                "score": {"value": 59, "capped_by": ["low_match"]}})
+    low = finished(api, "follow", REAL, score=90, analysis={"status": {"code": "ok"}, "match": {"quality": "low"}})
+    for warned in (capped, low):
+        monkeypatch.setenv(judge_view.HERO_ENV, warned)
+        assert api.json("GET", "api/judge/hero") == (200, NONE)  # negative: named, scored higher, still not shown
+    monkeypatch.setenv(judge_view.HERO_ENV, ok)
+    assert api.json("GET", "api/judge/hero")[1]["job_id"] == ok
 
 
-def test_only_warned_takes_means_no_hero(api: Api) -> None:
-    finished(api, "trainer", REAL)
-    finished(api, "follow", REAL, score=59, analysis={"warnings": [{"code": "low_match"}], "score": {"capped_by": ["low_match"]}})
-    status, doc = api.json("GET", "api/judge/hero")
-    assert status == 200 and doc["job_id"] is None
+def test_no_named_take_and_no_file_means_no_hero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    assert judge_view.configured_id(tmp_path) is None
+    assert judge_view.hero(tmp_path, tmp_path) == NONE
+    assert name_hero(monkeypatch, "aaaaaaaaaaaa") == NONE  # named, but this server does not hold it
 
 
 # ----- TICKET-247: a dim or dark take is never the hero -----------------------------------------------------
@@ -176,7 +186,7 @@ def test_a_take_without_light_is_not_warned_by_it(tmp_path: Path) -> None:
     assert judge_view._warned(tmp_path, {"score": 80}) is False
 
 
-def test_the_best_scoring_dark_take_is_not_the_hero(api: Api) -> None:
+def test_a_named_dark_take_is_not_the_hero(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
     finished(api, "trainer", REAL)
     ok = finished(api, "follow", REAL, score=50)
 
@@ -186,4 +196,7 @@ def test_the_best_scoring_dark_take_is_not_the_hero(api: Api) -> None:
 
     rec = api.app.queue.submit("follow", dark_take, entry_id=REAL)
     assert api.app.queue.wait(rec["id"], 10)["status"] == "done"
+    monkeypatch.setenv(judge_view.HERO_ENV, rec["id"])
+    assert api.json("GET", "api/judge/hero") == (200, NONE)
+    monkeypatch.setenv(judge_view.HERO_ENV, ok)
     assert api.json("GET", "api/judge/hero")[1]["job_id"] == ok

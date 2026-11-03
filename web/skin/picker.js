@@ -3,10 +3,24 @@
 import { listModels, CREDIT_LICENCES } from "./catalog.js";
 import { openImportDialog } from "./import-dialog.js";
 import { ensureSkinStyles } from "./skin-css.js";
+import { joinNames } from "../model/models-used.js";
 
 export const KEY_PREFIX = "simon.model.";
 export const IMPORT = "import";
 export const MSG_CANNOT_SHOW = "This model could not be shown. The figure keeps its last look.";
+
+/** Who a figure is, inside a sentence: "you", "the trainer", "your reference" (my-reference.md), else its label. */
+const whoOf = (t) => {
+  const label = String(t.label || "");
+  return t.role === "you" ? "you" : label === "Trainer" ? "the trainer" : /^Your /.test(label) ? `y${label.slice(1)}` : label;
+};
+
+/** The line under the picker when Person has no body to show for figures `indices` of `tracks` (TICKET-375), else "". */
+export function noBodyNote(tracks, indices) {
+  const names = indices.map((i) => whoOf(tracks[i]));
+  if (!names.length) return "";
+  return `No 3D body for ${joinNames(names)} in this take, so Person shows the stick figure${names.length === 1 ? "" : "s"}.`;
+}
 
 /** Is `id` a choice the picker knows? "person" and "skeleton" always; "lib:<id>" and "up:<id>" when the entry exists. */
 export function entryFor(choiceId, entries) {
@@ -58,6 +72,7 @@ export function createChooser({ stage, tracks, job = null, entries = [], deps = 
   let list = entries;
   const chosen = tracks.map(() => "person");
   const shown = tracks.map(() => null);   // the entry whose skin is on the stage, for the credit line
+  const noBody = tracks.map(() => false); // Person was asked of a real take and came back with no body (TICKET-375)
   const seq = tracks.map(() => 0);
   const listeners = [];
   const changed = () => listeners.forEach((f) => f());
@@ -75,7 +90,7 @@ export function createChooser({ stage, tracks, job = null, entries = [], deps = 
       }
       let adapter = null;
       try { adapter = await d.loadPersonSkin(j, t.person === undefined ? t.role : t.person); } catch { adapter = null; }
-      return { adapter: adapter || null, entry: null };
+      return { adapter: adapter || null, entry: null, noBody: !adapter };
     }
     const entry = entryFor(choiceId, list);
     if (!entry) throw new Error("gone");
@@ -99,6 +114,7 @@ export function createChooser({ stage, tracks, job = null, entries = [], deps = 
     if (hasSkins) stage.setSkin(i, got.adapter);
     chosen[i] = choiceId;
     shown[i] = got.adapter ? got.entry : null;
+    noBody[i] = got.noBody === true;
     if (remember && d.storage) {
       try { d.storage.setItem(KEY_PREFIX + tracks[i].role, choiceId); } catch { /* private mode: the choice lasts this visit */ }
     }
@@ -113,6 +129,8 @@ export function createChooser({ stage, tracks, job = null, entries = [], deps = 
   return {
     choose, current: (i) => chosen[i],
     credits: () => shown.map(creditFor).filter((c, k, a) => c && a.indexOf(c) === k),
+    /** The figures showing Person as the stick figure because their take has no body to show. */
+    bodiless: () => noBody.flatMap((b, i) => (b ? [i] : [])),
     setEntries(next) { list = next; changed(); },
     entries: () => list,
     onChange(f) { listeners.push(f); },
@@ -162,6 +180,8 @@ export async function mountModelPicker(toolsEl, stage, { tracks, job = null, dep
   const wrap = h("div", { class: "msel", "data-testid": "model-picker" });
   const credit = h("p", { class: "msel-credit", "data-testid": "model-attribution", "aria-live": "polite" });
   const note = h("p", { class: "msel-note", role: "status", "data-testid": "model-choice-note" });
+  // always in the page (empty when no figure lacks a body), so a screen reader announces the text when it is set
+  const bodyNote = h("p", { class: "msel-note msel-live", role: "status", "data-testid": "model-body-note" });
   const selects = tracks.map((t, i) => {
     const id = `msel-${i}-${Math.random().toString(36).slice(2, 7)}`;
     const select = h("select", { id, class: "msel-select", "data-testid": `model-select-${i}` });
@@ -169,13 +189,15 @@ export async function mountModelPicker(toolsEl, stage, { tracks, job = null, dep
     wrap.append(h("div", { class: "msel-row" }, h("label", { for: id, text: `${t.label} model` }), select));
     return select;
   });
-  wrap.append(credit, note);
+  wrap.append(credit, bodyNote, note);
   toolsEl.append(wrap);
 
   const sync = () => {
     selects.forEach((s, i) => { s.value = chooser.current(i); });
     credit.textContent = chooser.credits().join(" ");
     credit.hidden = !credit.textContent;
+    const line = noBodyNote(tracks, chooser.bodiless());
+    if (bodyNote.textContent !== line) bodyNote.textContent = line;
     wrap.setAttribute("data-choices", selects.map((_, i) => chooser.current(i)).join(","));
   };
   chooser.onChange(sync);

@@ -29,7 +29,7 @@ async function open(kase, { noWebgl = false, hangVideo = false, lateVideoMs = 0,
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true });
   const page = await ctx.newPage();
   // the stage's "Rep breakdown" (score over time, form per rep) opens for these checks, as a viewer who left it open
-  await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); } catch { /* blocked */ } });
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });
   // another take's analysis in place of the harness's (result-intent.md AC-I1)
   if (analysisBody) await page.route("**/fixtures/input/analysis-insights.json", (r) => r.fulfill({ status: 200, contentType: "application/json", body: analysisBody }));
   page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_404.test(m.location().url + m.text()) && !isResultScreen404(m.location().url) && !(block && m.location().url.endsWith(block))) errors.push(`${kase}: ${m.text()}`); });
@@ -215,16 +215,17 @@ try {
   {
     const b = await open("ok");
     assert.equal(await tid(b, "breakdown-slot").count(), 1);
-    const order = await b.evaluate(() => [...document.querySelectorAll('[data-testid="score-panel"], [data-testid="breakdown-slot"], [data-testid="challenge-slot"], [data-testid="mode-slot"]')].map((e) => e.dataset.testid));
-    // the breakdown slot sits in the stage's "Rep breakdown" bar, above the rest of the screen
-    assert.deepEqual(order, ["breakdown-slot", "mode-slot", "score-panel", "challenge-slot"]);
+    const order = await b.evaluate(() => [...document.querySelectorAll('[data-testid="breakdown-slot"], [data-testid="challenge-slot"], [data-testid="result-more"], [data-testid="mode-slot"]')].map((e) => e.dataset.testid));
+    // the breakdown slot sits in the stage's "Rep breakdown" bar, the challenge box under the action row, the mode note in "More"
+    assert.deepEqual(order, ["breakdown-slot", "challenge-slot", "result-more", "mode-slot"]);
+    assert.equal(await b.getByTestId("score-panel").count(), 0, "negative: no old score panel");
     await b.waitForSelector('[data-testid="breakdown-slot"] [data-testid="breakdown"]');
     await b.context().close();
     const gone = await open("ok", { block: "breakdown.js" });
     assert.equal(await tid(gone, "breakdown-slot").evaluate((e) => e.childElementCount), 0, "a missing module leaves the slot empty");
     assert.ok(await tid(gone, "fault-list").count() + await tid(gone, "insights").count() > 0, "and the rest of the result still shows");
     await gone.context().close();
-    ok("mode, breakdown and challenge slots sit around the score panel and the breakdown fills its slot, and a missing module leaves it empty");
+    ok("breakdown, challenge and mode slots sit in order and the breakdown fills its slot, and a missing module leaves it empty");
   }
 
   // ---- B2: a tempo moment in the breakdown panel moves the real result's video and 3D clock ------------------------
@@ -286,17 +287,17 @@ try {
     const h = await open("golden", { hangVideo: true });
     assert.ok(Date.now() - t0 < 15000);
     assert.equal(await tid(h, "coach-stage").count(), 1, "N1: the stage stays up after the settle timeout");
-    assert.ok(await tid(h, "fault-list").isVisible(), "faults render");
+    assert.ok(await tid(h, "insights").isVisible(), "What to work on renders");
     assert.ok(await tid(h, "download-analysis").count() === 1, "downloads render");
     await h.waitForSelector('[data-testid="breakdown"]');
     await h.context().close();
-    ok("a video that never loads times out, the stage stays, and the faults, downloads and breakdown still render");
+    ok("a video that never loads times out, the stage stays, and What to work on, downloads and breakdown still render");
   }
 
   // ---- N1: a video that answers after the 4 s settle timeout still works ---------------------------------------
   {
     const l = await open("golden", { lateVideoMs: 5500 });
-    assert.ok(await tid(l, "fault-list").isVisible(), "faults rendered at the timeout");
+    assert.ok(await tid(l, "insights").isVisible(), "What to work on rendered at the timeout");
     assert.equal(await tid(l, "coach-stage").count(), 1, "stage present at the timeout");
     await l.waitForFunction(() => document.querySelector('[data-testid="coach-stage"]').getAttribute("data-state") === "ready", null, { timeout: 8000 });
     await l.context().close();
@@ -317,12 +318,13 @@ try {
     const g = await open("golden");
     const gold = JSON.parse(fs.readFileSync(path.join(here, "../../fixtures/input/analysis-1.5.0.json")));
     assert.equal(Number(await tid(g, "replay-worst").getAttribute("data-at")), gold.faults[0].at_s);
-    assert.equal(await g.locator('[data-cue-kind="range"]').count(), gold.faults.length * 2, "insights and faults carry their kind");
+    assert.equal(await g.locator('.sr-insight[data-cue-kind="range"]').count(), gold.insights.filter((x) => x.kind === "range").length, "insights carry their kind");
+    assert.equal(await g.getByTestId("fault-list").count(), 0, "negative: no second list of the same mistakes");
     assert.equal((await tid(g, "moment-chip-insight-0").textContent()).trim(), `At ${gold.insights[0].at_s.toFixed(1)} s:`);
-    await tid(g, "fault-1").click();
-    await settledAt(g, gold.faults[1].at_s, "fault tap");
+    await tid(g, "insight-1").click();
+    await settledAt(g, gold.insights[1].at_s, "cue tap");
     await g.context().close();
-    ok("without a timeline the worst moment is the fault with the most points; fault taps move video and 3D");
+    ok("without a timeline the worst moment is the fault with the most points; cue taps move video and 3D");
   }
 
   // ---- a flawless take has no weak moment --------------------------------------------------------------------

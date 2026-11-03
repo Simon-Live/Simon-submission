@@ -7,6 +7,10 @@
 export const CURATED = [
   "arm-wave", "hip-twist", "side-step", "shruti-floss", "part4-step-touch", "squat", "forward-lunge", "jumping-jack",
 ];
+// The submission view lists only curated entries that have a trainer video (judge-catalog.js), so the real recorded
+// movements join the list here; the fixture entries above have no video and stay out of that view (#61, 2026-11-03).
+CURATED.push("bodyweight-squat", "dance-expressions", "high-knees-class", "dumbbell-lateral-raise", "wall-push-up-home-programme",
+  "power-jump", "body-squat-side-view", "bodyweight-squat-mm-fit-real-people");
 /** Hidden for look, not for being a test run. */
 export const HIDDEN_IDS = ["arm-salute"];
 const TEST_NAME = /^(verify|check-7)\b/i;

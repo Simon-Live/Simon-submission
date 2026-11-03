@@ -42,6 +42,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, name), ful
 
 async function person(email) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true });
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });   // the lean result keeps "Ask the trainer" in "More"
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error" && !EXPECTED.test(m.text())) errors.push(`${email}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${email}: ${e.message}`));

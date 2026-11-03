@@ -6,7 +6,7 @@
 import { getGhost, clientLog } from "./api.js";
 import { isSubmission } from "./flags.js";
 import { h } from "./ui.js";
-import { usableGhost, ghostDuration, ghostClock, frameIndexAt, placeGhost, stepScale, SCALE } from "./model/ghost.js";
+import { usableGhost, ghostDuration, ghostClock, frameIndexAt, placeGhost, stepScale, scaleRange, SCALE } from "./model/ghost.js";
 import { mountGhostCanvas } from "./views/ghost.js";
 
 export const TEXT = {
@@ -30,6 +30,7 @@ export function mountGhost({ entry, reference = null, on = isSubmission(), load 
   let doc = null;
   let loading = null;
   let shown = Boolean(on);
+  let range = SCALE; // IMAGE_SCALE once the trainer's own picture loads (model/ghost.js scaleRange)
   let scale = SCALE.start;
   let stage = null, live = null, view = null;
   let running = false, raf = 0, startedAt = null;
@@ -55,8 +56,8 @@ export function mountGhost({ entry, reference = null, on = isSubmission(), load 
     sizeRow.hidden = !shown || !doc;
     for (const b of [smaller, larger, ready]) b.hidden = !outline;
     adjust.hidden = outline;
-    smaller.disabled = scale <= SCALE.min;
-    larger.disabled = scale >= SCALE.max;
+    smaller.disabled = scale <= range.min;
+    larger.disabled = scale >= range.max;
     el.dataset.scale = String(scale);
   };
 
@@ -86,7 +87,10 @@ export function mountGhost({ entry, reference = null, on = isSubmission(), load 
       if (destroyed) return;
       if (!usableGhost(got)) { el.hidden = true; el.dataset.ghost = "none"; return; }
       doc = got;
+      range = scaleRange(doc);
+      scale = range.start;
       el.dataset.ghost = "ready";
+      el.dataset.box = doc.box === "image" ? "image" : "body";
       el.dataset.frames = String(doc.frames.length);
       ensureView();
       paint();
@@ -105,8 +109,8 @@ export function mountGhost({ entry, reference = null, on = isSubmission(), load 
     ensureView();
     paint();
   });
-  smaller.addEventListener("click", () => { scale = stepScale(scale, -1); paint(); });
-  larger.addEventListener("click", () => { scale = stepScale(scale, 1); paint(); });
+  smaller.addEventListener("click", () => { scale = stepScale(scale, -1, range); paint(); });
+  larger.addEventListener("click", () => { scale = stepScale(scale, 1, range); paint(); });
   ready.addEventListener("click", () => { el.dataset.step = "set"; clientLog("info", "ghost_set", { scale }); paint(); });
   adjust.addEventListener("click", () => { el.dataset.step = "outline"; paint(); });
   paint();

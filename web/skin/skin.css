@@ -10,6 +10,8 @@
 .msel-credit { flex: 1 1 100%; margin: 0; font: 400 13px/1.4 var(--font-sans); color: var(--sr-muted); }
 .msel-note { margin: 0; font: 400 13px/1.4 var(--font-sans); color: var(--sr-muted); }
 .msel-note:empty { display: none; }
+/* a live line stays in the accessibility tree while empty (out of the layout), so its text is announced when set */
+.msel-live:empty { display: block; position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .msel-photo-hint { margin-top: 12px; }
 .msel-dialog.simon-viewer {
   max-width: min(480px, calc(100vw - 32px)); width: 100%; padding: 20px; border: 1px solid var(--sr-line); border-radius: 18px;

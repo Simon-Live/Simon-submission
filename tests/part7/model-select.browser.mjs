@@ -102,6 +102,7 @@ try {
       if (skinId !== "-,-") assert.equal(skinId.split(",")[1], "ual2-female");
     }
     ok("AC-P2 the follower chooses a library model, the trainer keeps Person, the choice is saved");
+    assert.equal(await page.getByTestId("model-body-note").textContent(), "", "negative: the harness result has no job, so no take to lack a body");
 
     await page.reload();
     await page.waitForFunction(() => window.__ready === true);
@@ -372,6 +373,30 @@ try {
     await page.context().close();
   }
 
+  // AC-P15 (TICKET-375): a real take (harness case orphan-present, job e700387c7a1c) whose person skin has no body (the
+  // stub resolves null): the line names who still shows Person, Skeleton or a model clears it for that figure
+  {
+    const { page } = await open("orphan-present");
+    await page.waitForFunction(() => document.querySelector("[data-testid=model-picker]")?.dataset.ready === "true", null, { timeout: 20000 });
+    const bodyNote = page.getByTestId("model-body-note");
+    assert.deepEqual((await log(page)).filter((l) => l.startsWith("person:")).sort(), ["person:e700387c7a1c:trainer", "person:e700387c7a1c:you"]);
+    assert.equal(await bodyNote.textContent(), "No 3D body for the trainer and you in this take, so Person shows the stick figures.");
+    await page.getByText("3D", { exact: true }).first().click();   // this case opens on the Videos view
+    assert.equal(await bodyNote.isVisible(), true);
+    assert.ok((await bodyNote.boundingBox()).width > 100, "the line is shown at its full width, not the empty live region's 1 px");
+    assert.equal(await bodyNote.getAttribute("role"), "status");
+    assert.deepEqual(await axe(page, "[data-testid=model-picker]"), [], "axe with the line shown");
+    await selectOf(page, 1).selectOption("lib:ual2-female");
+    await page.waitForFunction(() => document.querySelector("[data-testid=model-body-note]")?.textContent.includes("the trainer in"), null, { timeout: 2000 });
+    assert.equal(await bodyNote.textContent(), "No 3D body for the trainer in this take, so Person shows the stick figure.");
+    await selectOf(page, 0).selectOption("skeleton");
+    await page.waitForFunction(() => document.querySelector("[data-testid=model-body-note]")?.textContent === "", null, { timeout: 2000 });
+    assert.ok((await bodyNote.boundingBox()).width <= 1, "negative: nobody shows Person, no line on screen");
+    assert.equal(await bodyNote.getAttribute("role"), "status", "the empty live region stays in the page for the next announcement");
+    ok("AC-P15 Person with no body on a real take says who; a model or Skeleton clears it for that figure");
+    await page.context().close();
+  }
+
   // AC-P8: Watch (mountViewer, one figure, no job): the picker is there, Person is the stick figure, nothing is requested
   {
     const { page, bad } = await open("viewer");
@@ -439,6 +464,9 @@ try {
     assert.ok(seen.includes("person:g1:trainer"));
     assert.ok(!seen.some((l) => l.startsWith("person:") && l !== "person:g1:trainer"), "a group person has no mesh of their own: Person stays sticks");
     assert.deepEqual(bad, []);
+    // TICKET-375: the trainer row asks (group job, trainer) and the stub has no body: only the trainer is named; the people
+    // have no take of their own (job null), so Person is their stick figure by design and the line leaves them out
+    assert.equal(await multi.getByTestId("model-body-note").textContent(), "No 3D body for the trainer in this take, so Person shows the stick figure.");
     ok("AC-P11 multi-compare keeps a choice per person, keyed by person id");
     await page.context().close();
   }

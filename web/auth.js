@@ -19,7 +19,7 @@ const css = () => ensureCss("theme/auth.css", "data-auth-css");
 
 /** Who is signed in, from the server alone. */
 export async function fetchMe() {
-  const out = await call("GET", "api/auth/me");
+  const out = await call("GET", "api/auth/me", undefined, { expectStatus: [401, 404] }); // signed out is a normal answer, not an anomaly
   return meInfo(out.ok ? out.body : null);
 }
 

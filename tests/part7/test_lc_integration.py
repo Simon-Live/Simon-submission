@@ -94,7 +94,7 @@ def test_delete_take_drops_the_history_copy_and_the_ownership_row(api: Api, monk
     job_id = finished(api)
     assert post(api, "api/me/claims", {"job_id": job_id}, cookie=sid)[0] == 200
     assert [t["job_id"] for t in get(api, "api/me/takes", cookie=sid)[2]["takes"]] == [job_id]
-    assert api.json("POST", f"api/jobs/{job_id}/delete", {})[0] == 200
+    assert post(api, f"api/jobs/{job_id}/delete", {}, cookie=sid)[0] == 200  # a claimed take: its owner deletes it (TICKET-373)
     assert dropped == [job_id]
     assert get(api, "api/me/takes", cookie=sid)[2] == {"takes": []}
     assert identity.owner_of_job(api.app.state, job_id) is None

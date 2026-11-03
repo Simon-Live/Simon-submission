@@ -10,7 +10,7 @@ import { drawStage, drawBreakdownBar, drawActionRow } from "./views/result-stage
 import { drawPopLayer } from "./views/score-pops.js";
 
 export { TEXT as STAGE_TEXT };
-export const KEYS = Object.freeze({ view: "simon.stage.view", breakdown: "simon.stage.breakdown", captions: "simon.stage.captions" });
+export const KEYS = Object.freeze({ view: "simon.stage.view", breakdown: "simon.stage.breakdown", captions: "simon.stage.captions", more: "simon.result.more" });
 const TICK_MS = 100;
 
 const store = (storage) => { try { return storage || globalThis.localStorage || null; } catch { return null; } };

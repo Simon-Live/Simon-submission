@@ -69,6 +69,7 @@ MAX_GLB_BYTES = 120 * 1024 * 1024
 MAX_INPUT_BYTES = 400 * 1024 * 1024
 LOG_KEEP = 20_000
 POLL_S = 1.0
+MISSING_READINGS = 2  # consecutive "spool missing" readings before the supervisor exits (TICKET-379)
 IMAGE_CHECK_S = 60.0
 TIMEOUT_MESSAGE = "The model took too long to convert."
 FAILED_MESSAGE = ("Simon could not read this file with any of its converters. "
@@ -440,8 +441,19 @@ class Supervisor:
 
     def loop(self, once: bool) -> None:
         self.recover()
+        missing = 0
         while True:
             try:
+                # TICKET-379: the state was removed (a test's temp dir): nothing left to serve. The check is inside the
+                # try (an OSError such as EIO must not crash the real supervisor) and it takes two readings in a row.
+                if not self.spool.is_dir():
+                    missing += 1
+                    if missing >= MISSING_READINGS:
+                        print("supervisor: spool folder is gone, exiting", file=sys.stderr, flush=True)
+                        return
+                    time.sleep(POLL_S)
+                    continue
+                missing = 0
                 if self.turn():
                     continue
             except Exception as exc:  # noqa: BLE001  (a full disk or a vanished file must not stop the supervisor)

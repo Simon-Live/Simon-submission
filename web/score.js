@@ -144,9 +144,10 @@ function scorePanel(analysis, display) {
     gradeBtn.setAttribute("aria-expanded", String(open));
   });
   panel.append(top, barWrap);
-  const note = capNote(analysis.score);
+  const shownCredit = !!(analysis.score && analysis.score.credit);   // nothing capped when the credit is shown (team, 2 Nov)
+  const note = shownCredit ? null : capNote(analysis.score);
   if (note) panel.append(el("p", { class: "sr-score-cap", "data-testid": "score-cap", text: note }));
-  const cap = qualityCapText(analysis);
+  const cap = shownCredit ? null : qualityCapText(analysis);
   if (cap) panel.append(el("p", { class: "sr-quality-cap", "data-testid": "quality-cap", text: cap }));
   panel.append(rule);
   return panel;

@@ -11,6 +11,12 @@ export function loadScoreDisplay(storage) {
   } catch { return {}; }
 }
 
+/** What every surface shows and shares: the saved level, always in points (TICKET-372, team 2 Nov: points only).
+ * The result page and the share link both read this, so a stored {"mode":"percent"} can never reach a share again. */
+export function shownScoreDisplay(storage) {
+  return { ...loadScoreDisplay(storage), mode: "points" };
+}
+
 export function saveScoreDisplay(prefs, storage) {
   try { store(storage).setItem(KEY, JSON.stringify({ mode: prefs.mode, level: prefs.level })); } catch { /* storage may be blocked */ }
 }

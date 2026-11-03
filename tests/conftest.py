@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent / "part7"))  # the helpers of the s
 from part7 import server  # noqa: E402
 from support import Api, FakeChild, ffmpeg_video, make_lock  # noqa: E402
 import ci_skips  # noqa: E402
+from reclaim_plugin import _reap_session_processes, _reap_test_processes  # noqa: E402,F401  (TICKET-379: autouse, no test leaves a daemon)
 
 
 def pytest_configure(config: pytest.Config) -> None:

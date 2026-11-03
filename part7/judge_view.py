@@ -8,28 +8,34 @@ Nothing here deletes or edits data. Two things are decided:
   staging verify and the QA recipes still see their own boards.
 - `page_with_profile`: on the judge URL (`SIMON7_DEFAULT_PROFILE=submission`) the page opens in the submission profile
   unless the visitor asks for `?profile=default`.
-- `hero`: the finished take the home screen links to. An operator names it (`SIMON7_HERO_JOB`, or `hero.json` in the
-  state folder); otherwise the best-scoring finished take of a non-test movement that has both people's meshes.
+- `hero`: the finished take the home screen links to. Only a take an operator names (`SIMON7_HERO_JOB`, or `hero.json`
+  in the state folder) is ever offered, and only while it qualifies. Nothing is picked on the operator's behalf: a job
+  id is the key to its take (its clip, its result and its delete), so the route never hands out a take nobody chose
+  to show (TICKET-373; the old best-scoring pick gave visitors a stranger's job id).
 
 `GET api/judge/hero` answers `{job_id, entry_id, score, source}`, plus `shown` (part7/shown_score.py) when the take's
-analysis is there; `job_id` is null when no take qualifies.
+analysis is there; `job_id` is null when no take is named or the named take does not qualify.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Any
 
-from part7 import heading, history_store, job_lookup, jobs, light, mesh_files, my_reference, quality_cap, shown_score
+from part7 import applog, heading, history_store, job_lookup, jobs, light, mesh_files, my_reference, quality_cap, shown_score
 
 TEST_ID_RE = re.compile(r"^(verify|check-7|qa)-", re.IGNORECASE)
 PROFILE_ENV = "SIMON7_DEFAULT_PROFILE"
 PROFILE_META = b'<meta name="simon-default-profile" content="submission">'
 HERO_ENV = "SIMON7_HERO_JOB"
 HERO_FILE = "hero.json"
+EVER_FILE = "hero-ever.json"  # every job id that was ever named hero (TICKET-374 R1), in the state dir
 VIEW_JUDGE = "judge"
+NO_HERO = {"job_id": None, "entry_id": None, "score": None, "source": "none"}
 
 
 def is_test_id(entry_id: Any) -> bool:
@@ -61,13 +67,54 @@ def page_with_profile(html: bytes) -> bytes:
     return html.replace(b"</head>", PROFILE_META + b"\n</head>", 1)
 
 
-def _configured_id(state: Path) -> str | None:
+class _Everything:
+    """Stands in for the ever-named list when it exists but cannot be read: every id counts as once featured (fail closed)."""
+
+    def __contains__(self, _item: object) -> bool:
+        return True
+
+    def __iter__(self):
+        return iter(())
+
+
+def ever_named(state: Path) -> Any:
+    """The set of every job id ever named hero (read as configured), which stays protected after the hero changes.
+
+    A list that exists but cannot be read answers a set that contains everything: no take is then deletable by id."""
+    path = Path(state) / EVER_FILE
+    if not path.is_file():
+        return set()
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        return {str(i) for i in doc["job_ids"]} if isinstance(doc, dict) and isinstance(doc.get("job_ids"), list) else _Everything()
+    except (OSError, ValueError):
+        return _Everything()
+
+
+def _remember(state: Path, job_id: str) -> None:
+    """Add `job_id` to the ever-named list; an unreadable list is left as it is."""
+    known = ever_named(state)
+    if isinstance(known, _Everything) or job_id in known:
+        return
+    try:
+        history_store.write_json(Path(state) / EVER_FILE, {"job_ids": sorted(known | {job_id})})
+    except OSError as exc:  # the hero still answers; the next read tries again
+        applog.log(f"judge: could not record the hero {job_id}: {applog.cause(exc)}", level=logging.WARNING)
+
+
+def configured_id(state: Path) -> str | None:
+    """The operator-named hero job id (`SIMON7_HERO_JOB`, else `hero.json`), whether or not it qualifies; else None.
+
+    Each id read here is also kept in `ever_named`, so a take once named stays protected from a visitor's delete and
+    claim after the operator names another (and when `hero.json` later cannot be read)."""
     named = os.environ.get(HERO_ENV, "").strip()
-    if named:
-        return named
-    doc = job_lookup.read_json(state / HERO_FILE)
-    value = doc.get("job_id") if isinstance(doc, dict) else None
-    return value.strip() if isinstance(value, str) and value.strip() else None
+    if not named:
+        doc = job_lookup.read_json(Path(state) / HERO_FILE)
+        value = doc.get("job_id") if isinstance(doc, dict) else None
+        named = value.strip() if isinstance(value, str) and value.strip() else ""
+    if named and jobs.JOB_ID_RE.match(named):
+        _remember(Path(state), named)
+    return named or None
 
 
 def _candidate(jobs_root: Path, job_id: str) -> dict[str, Any] | None:
@@ -89,7 +136,7 @@ def _candidate(jobs_root: Path, job_id: str) -> dict[str, Any] | None:
         return None
     if _warned(jobs_root / job_id, result):  # a capped or warned take is never what a judge sees first
         return None
-    # one-letter.md: the hero line shows the result headline's score; the pick (`_best`) still sorts by `score`
+    # one-letter.md: the hero line shows the result headline's score
     shown = shown_score.of_path(jobs_root / job_id / "work" / "follower" / "analysis.json", result.get("light"))
     return {"job_id": job_id, "entry_id": entry_id, "score": score, **({"shown": shown} if shown else {})}
 
@@ -120,54 +167,14 @@ def _warned(folder: Path, result: dict[str, Any]) -> bool:
                 or (doc.get("status") or {}).get("code", "ok") != "ok")
 
 
-_MEASURES: dict[str, tuple[int, float]] = {}  # job folder -> (analysis mtime, shown measure): each analysis is read once
-
-
-def _measure(folder: Path, result: dict[str, Any], score: float) -> float:
-    """The take's shown measure (one-letter.md L3: the credit percent shown, else the capped score), else `score`."""
-    path = folder / "work" / "follower" / "analysis.json"
-    try:
-        stamp = path.stat().st_mtime_ns
-    except OSError:
-        return score
-    hit = _MEASURES.get(str(folder))
-    if hit and hit[0] == stamp:
-        return hit[1]
-    shown = shown_score.shown(job_lookup.read_json(path), result.get("light"))
-    measure = float(shown["measure"]) if shown else score
-    _MEASURES[str(folder)] = (stamp, measure)
-    return measure
-
-
-def _best(jobs_root: Path) -> dict[str, Any] | None:
-    scored: list[tuple[float, str]] = []
-    try:
-        folders = [p for p in jobs_root.iterdir() if p.is_dir()]
-    except OSError:
-        return None
-    for folder in folders:
-        record = job_lookup.read_json(folder / "job.json")
-        result = record.get("result") if isinstance(record, dict) else None
-        score = result.get("score") if isinstance(result, dict) else None
-        if isinstance(score, (int, float)) and not isinstance(score, bool):
-            scored.append((_measure(folder, result, float(score)), folder.name))
-    for _, job_id in sorted(scored, reverse=True):  # best shown measure first; the first one that qualifies wins
-        found = _candidate(jobs_root, job_id)
-        if found:
-            return found
-    return None
-
-
 def hero(state: Path, jobs_root: Path) -> dict[str, Any]:
-    """The take the judge view shows first. A named take that does not qualify is ignored, not trusted."""
-    named = _configured_id(state)
+    """The take the judge view shows first: the named take when it qualifies, else none. A named take that does not
+    qualify is ignored, not trusted, and no other take stands in for it."""
+    named = configured_id(state)
     found = _candidate(jobs_root, named) if named else None
     if found:
         return {**found, "source": "configured"}
-    found = _best(jobs_root)
-    if found:
-        return {**found, "source": "best"}
-    return {"job_id": None, "entry_id": None, "score": None, "source": "none"}
+    return dict(NO_HERO)
 
 
 def handle(h: Any, method: str, route: str) -> bool:

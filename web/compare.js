@@ -119,10 +119,17 @@ export function normalizeReplay(replay, trainerVisibility = null) {
   const times = expected.map((_, i) => (Array.isArray(et) && et.length === expected.length && Number.isFinite(et[i]) ? et[i] : i / fps));
   const seen = trainerUnseenByFrame(trainerVisibility, joints, times);
   exp.unseen = exp.unseen.map((u, i) => unionIndices(u, seen[i]));
+  // TICKET-376: Part 2's own unseen mark for the follower (the server adds it to replay.json); the stick figure hides those joints
+  const fu = replay.follower_unseen;
+  let followerHide = follower.map(() => []);
+  if (Array.isArray(fu) && fu.length === follower.length) {
+    followerHide = fu.map((u) => (Array.isArray(u) ? u.filter((j) => Number.isInteger(j) && j >= 0 && j < joints.length) : []));
+    fol.unseen = fol.unseen.map((u, i) => unionIndices(u, followerHide[i]));
+  }
   return {
     kind: "compare", fps, joints, bones: body.bones, droppedBones: body.dropped, duration, expToFol,
     expected: exp.frames, expectedUnseen: exp.unseen, expectedNever: exp.never,
-    follower: fol.frames, followerUnseen: fol.unseen, followerNever: fol.never,
+    follower: fol.frames, followerUnseen: fol.unseen, followerHide, followerNever: fol.never,
   };
 }
 
@@ -169,6 +176,11 @@ export function singleFromReplay(m) {
 /** Per-figure joint indices to dim for the frames `pickFrames` chose (multi-compare.js `dimsAt` takes a time). */
 export function dimsForPicked(model, picked) {
   return model.kind === "single" ? [model.unseen[picked.follower]] : [model.expectedUnseen[picked.expected], model.followerUnseen[picked.follower]];
+}
+
+/** Per-figure joint indices the stick figure does not draw (Part 2's unseen mark, TICKET-376); the trainer's are dimmed, not hidden. */
+export function hidesForPicked(model, picked) {
+  return model.kind === "single" ? [[]] : [[], model.followerHide[picked.follower]];
 }
 
 /** One console warning and one client log event (`body_dimmed`) for a view that dims or hides joints. The
@@ -314,7 +326,7 @@ export async function mountCompare(root, model, { testid = "compare", job = null
   const draw = () => {
     const picked = pickFrames(clock.t, model);
     const { follower, expected } = picked;
-    stage.setPoses(single ? [model.frames[follower]] : [model.expected[expected], model.follower[follower]], dimsForPicked(model, picked));
+    stage.setPoses(single ? [model.frames[follower]] : [model.expected[expected], model.follower[follower]], dimsForPicked(model, picked), hidesForPicked(model, picked));
   };
   logBody(testid, bodyReport(model));
   const onClock = (t, playing) => {

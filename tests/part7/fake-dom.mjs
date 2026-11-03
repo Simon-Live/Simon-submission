@@ -47,6 +47,9 @@ export function installDom() {
   const store = new Map();
   const head = new El("head");
   globalThis.Node = Node;
+  // idempotent and configurable: a test may redefine either one after this call
+  if (!("style" in El.prototype)) Object.defineProperty(El.prototype, "style", { configurable: true, get() { return (this._style ||= { setProperty() {} }); }, set(v) { this._style = v; } });
+  if (!("classList" in El.prototype)) Object.defineProperty(El.prototype, "classList", { configurable: true, get() { return (this._cl ||= { add() {}, remove() {}, toggle() {}, contains: () => false }); }, set(v) { this._cl = v; } });
   globalThis.document = {
     createElement: (t) => new El(t),
     createTextNode: (t) => new Text(t),

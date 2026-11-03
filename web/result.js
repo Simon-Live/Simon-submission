@@ -1,6 +1,7 @@
-// The result screen: the stage (videos, annotated video, 3D compare), score panel, timed fault list, downloads (journey.md steps 6 to 8,
-// TICKET-045, 046, 047). Part 7 shows Part 5's analysis as written and computes nothing.
-import { el, renderScore, refreshScore, hasScore } from "./score.js";
+// The result screen (journey.md steps 6 to 8, TICKET-045, 046, 047), lean layout (team, 2026-11-02): the warning,
+// the score bar, the stage, "What to work on" (the top 3 cues), one action row, then everything else in one collapsed
+// "More". Part 7 shows Part 5's analysis as written and computes nothing.
+import { el, hasScore } from "./score.js";
 import { renderTimeline, timelineOf, jointsFor } from "./timeline.js";
 import { mountCompare, mountViewer, normalizeReplay, ensureStyles, MSG_BAD_REPLAY } from "./compare.js";
 import { worstMoment, momentsToReview, flaggedWindows } from "./coaching.js";
@@ -12,16 +13,17 @@ import { getEntry } from "./api.js";
 import { mountReviewNote } from "./review-note.js";
 import { floorScoredLine } from "./floor-work.js";
 import { TEXT as SUMMARY_TEXT } from "./model/result-summary.js";
-import { summaryOf, insightsEmptyText, withCapWinning } from "./model/score-labels.js";   // one score: other figures labelled (Part 5 CONTRACT)
+import { summaryOf, insightsEmptyText, withCapWinning, uncappedWords } from "./model/score-labels.js";   // one score: other figures labelled (Part 5 CONTRACT)
 import { currentKind, kindForMode } from "./model/kind.js";
 import { renderResultSummary, REVEAL_MS } from "./views/result-summary.js";
-import { creditDisplay } from "./model/score-credit.js";
-import { loadScoreDisplay, saveScoreDisplay } from "./score-display.js";
+import { creditDisplay, creditOf } from "./model/score-credit.js";
+import { shownScoreDisplay, saveScoreDisplay } from "./score-display.js";
 import { voiceSlot, secondOpinionSlot, historySection, keepTakeSlot, correctedSlot, mountLaneModules, mountExport } from "./views/result-slots.js";
 import { hasJobFiles, hasModels, mountModelsUsed, mountSkeleton, mountMesh, showStage, armSlide } from "./result-wiring.js";
 import { stageSplit } from "./model/judge-take.js";
 import { renderStageSplit } from "./views/stage-split.js";
 import { withoutRepeatedFiller } from "./model/filler.js";
+import { faultLine } from "./model/fault-line.js";
 import { dirOf, notesFor } from "./model/lang.js";
 import { langOf } from "./model/voice.js";
 import { bylines } from "./model/attribution.js";
@@ -31,8 +33,8 @@ import { revealLedger } from "./model/reveal.js";
 import { isCinematic } from "./flags.js";
 import { hasFollowerVideo } from "./model/result-stage.js";
 import { mountOrphanNote, mountVideosNote, keepDeadLinksOff } from "./orphan-take.js";
-import { mountStage, STAGE_TEXT, sideHandle, soloHandle, coachHandle, compareHandle } from "./result-stage.js";
-import { drawSoloVideo } from "./views/result-stage.js";
+import { mountStage, STAGE_TEXT, KEYS as STAGE_KEYS, loadPref, savePref, sideHandle, soloHandle, coachHandle, compareHandle } from "./result-stage.js";
+import { drawSoloVideo, drawMoreBar, drawShowAll } from "./views/result-stage.js";
 import { mountTrainerOnlyVideo, ownVideoUrl, stampedModelOnly } from "./model-only-view.js";
 import { mountCompare as mountCompareFor } from "./compare.js";
 import { referenceLabel, visibilityFor } from "./model/my-reference.js";   // "Your reference" for a take compared with the student's own rep
@@ -80,7 +82,9 @@ export function resultWarnings(analysis) {
     if (out.some((w) => w.cause === issue.code || w.code === issue.code || w.code === `quality_${issue.code}`)) continue;
     add(issue.code.startsWith("quality_") ? issue.code : `quality_${issue.code}`, issue.text, issue.tip ? { tip: issue.tip } : {});
   }
-  return out;
+  // nothing capped (team, 2 Nov): a take whose credit is shown claims no cap, on every screen that draws these
+  if (!creditOf(analysis)) return out;
+  return out.map((w) => ({ ...w, text: uncappedWords(w.text) })).filter((w) => w.text);
 }
 
 /** Recording advice stays separate from movement coaching and score deductions. */
@@ -143,7 +147,6 @@ export function fallbackSummary(analysis) {
   return { count: reasons.length, total: faults.length, reasons: [...new Set(reasons)] };
 }
 
-const atLabel = (f) => `at ${Number(f.at_s).toFixed(1)} s`;
 
 /** Part 5's `insights` (schema 1.5.0, ADR-0014), or null when the analysis was written before them. */
 export function insightsOf(analysis) {
@@ -168,8 +171,12 @@ export function insightChip(x) {
   return { text: word, label: `${word} effect on your score` };
 }
 
-/** "What to work on": Part 5's ranked insights near the score. A tap seeks the 3D compare to the insight's
- * `at_s`, highlights its joints and opens its window on the score timeline. Older analyses show nothing. */
+/** How many cues "What to work on" shows before "Show all (N)". */
+export const TOP_CUES = 3;
+
+/** "What to work on": Part 5's ranked insights under the stage, the top TOP_CUES first and "Show all (N)" for the
+ * rest. A tap seeks the stage to the insight's `at_s`, highlights its joints and opens its window on the score
+ * timeline. Older analyses show nothing. */
 function renderInsights(root, analysis, getCompare, getTimeline) {
   const items = insightsOf(analysis);
   if (!items) return null;
@@ -180,7 +187,8 @@ function renderInsights(root, analysis, getCompare, getTimeline) {
     root.append(section);
     return section;
   }
-  const list = el("ol", { class: "sr-insight-list" });
+  const list = el("ol", { class: "sr-insight-list", "data-testid": "insight-list" });
+  const rest = [];
   items.forEach((x, i) => {
     const row = el("button", {
       type: "button", class: "sr-insight", "data-testid": `insight-${i}`, "data-kind": x.kind || false, "data-cue-kind": x.kind || false,
@@ -203,17 +211,26 @@ function renderInsights(root, analysis, getCompare, getTimeline) {
       if (x.at_s != null) cmp.jump(x.at_s);
       cmp.highlight(jointsFor(x, analysis));
     });
-    list.append(el("li", {}, row));
+    const li = el("li", {}, row);
+    if (i >= TOP_CUES) { li.hidden = true; rest.push(li); }
+    list.append(li);
   });
   section.append(list);
+  if (rest.length) {
+    const all = drawShowAll(STAGE_TEXT, items.length, (open) => { rest.forEach((li) => { li.hidden = !open; }); all.set(open); });
+    section.append(all.el);
+  }
   root.append(section);
   return section;
 }
 
-function renderFaults(root, analysis, getCompare) {
+/** "What to work on" for an analysis written before Part 5's insights: its faults as the cue rows, the top TOP_CUES
+ * first and "Show all (N)" for the rest. A tap seeks the stage to the fault and highlights its joints; a second tap
+ * clears. Each row keeps its voice slot (contract C2). Returns the section. */
+function renderFaultCues(root, analysis, getCompare) {
   const faults = analysis.faults || [];
-  const section = el("section", { class: "sr-faults", "aria-labelledby": "sr-faults-h" });
-  section.append(el("h2", { id: "sr-faults-h", text: "Mistakes you repeated" }));
+  const section = el("section", { class: "sr-insights sr-faults", "data-testid": "work-faults", "aria-labelledby": "sr-faults-h" });
+  section.append(el("h2", { id: "sr-faults-h", text: "What to work on" }));
   if (!faults.length) {
     // the take-level list keeps a fault only when most reps show it; single-rep misses are on the timeline
     const onTimeline = timelineOf(analysis).some((w) => (w.misses || []).length);
@@ -222,7 +239,7 @@ function renderFaults(root, analysis, getCompare) {
       : "No faults found in this take.";
     section.append(el("p", { class: "sr-empty", "data-testid": "no-faults", text }));
     root.append(section);
-    return;
+    return section;
   }
   const list = el("ol", { class: "sr-fault-list", "data-testid": "fault-list" });
   const lang = langOf(analysis); // TICKET-266: text written in another language carries its own lang and direction (Arabic reads right to left)
@@ -231,26 +248,20 @@ function renderFaults(root, analysis, getCompare) {
     list.setAttribute("dir", dirOf(lang));
     notesFor(lang).forEach((line, i) => section.append(el("p", { class: "sr-lang-note", "data-testid": `lang-note-${i}`, text: line })));
   }
+  const rest = [];
   const rows = faults.map((f, i) => {
     const row = el("button", {
-      type: "button",
-      class: "sr-fault",
-      "data-testid": `fault-${i}`,
-      "data-fault-index": i,
-      "data-at-s": f.at_s,
-      "data-joints": (f.joints || []).join(","),
-      "data-cue-kind": f.cue_kind || false,
-      "data-confidence": f.confidence || false,
-      "aria-pressed": "false",
+      type: "button", class: "sr-fault", "data-testid": `fault-${i}`, "data-fault-index": i, "data-at-s": f.at_s,
+      "data-joints": (f.joints || []).join(","), "data-cue-kind": f.cue_kind || false, "data-confidence": f.confidence || false, "aria-pressed": "false",
     });
-    const text = el("span", { class: "sr-fault-text", text: f.text_timed || f.text || f.coaching || "" });
+    const text = el("span", { class: "sr-fault-text", text: faultLine(analysis, i).text });   // TICKET-368: live line, else template
     if (f.cue) row.append(el("span", { class: "sr-cue", "data-testid": `fault-${i}-cue`, text: f.cue }));
-    const meta = el("span", { class: "sr-fault-meta" }, el("span", { class: "sr-chip", "data-testid": `fault-${i}-at`, text: atLabel(f) }));
+    const meta = el("span", { class: "sr-fault-meta" }, el("span", { class: "sr-chip", "data-testid": `fault-${i}-at`, text: `at ${Number(f.at_s).toFixed(1)} s` }));
     if (f.confidence === "low") meta.append(el("span", { class: "sr-chip sr-low", "data-testid": `fault-${i}-low`, text: "Low confidence" }));
-    for (const j of f.joints || []) meta.append(el("span", { class: "sr-joint", text: j.replace(/_/g, " ") }));
     row.append(text, meta);
-    // the li is the card (theme/results.css): the row, then the voice slot inside it after the chips (contract C2)
-    list.append(el("li", { class: "sr-fault-item" }, row, voiceSlot(i, f.at_s)));
+    const li = el("li", { class: "sr-fault-item" }, row, voiceSlot(i, f.at_s));
+    if (i >= TOP_CUES) { li.hidden = true; rest.push(li); }
+    list.append(li);
     return row;
   });
   list.addEventListener("click", (ev) => {
@@ -260,26 +271,30 @@ function renderFaults(root, analysis, getCompare) {
     const wasOn = row.getAttribute("aria-pressed") === "true";
     rows.forEach((r) => r.setAttribute("aria-pressed", "false"));
     const cmp = getCompare();
-    if (wasOn) {
-      cmp && cmp.highlight([]);
-      return;
-    }
+    if (wasOn) { if (cmp) cmp.highlight([]); return; }
     row.setAttribute("aria-pressed", "true");
-    if (cmp) {
-      cmp.jump(faults[i].at_s);
-      cmp.highlight(faults[i].joints || []);
-    }
-    // the jump brought the video and the 3D view into sight (result-redesign-additions.md R5); no scroll back to the row
+    if (cmp) { cmp.jump(faults[i].at_s); cmp.highlight(faults[i].joints || []); }
   });
   section.append(list);
+  if (rest.length) {
+    const all = drawShowAll(STAGE_TEXT, faults.length, (open) => { rest.forEach((li) => { li.hidden = !open; }); all.set(open); });
+    section.append(all.el);
+  }
   const fb = fallbackSummary(analysis);
   if (fb.count) {
-    section.append(el("p", {
-      class: "sr-fallback", "data-testid": "fallback-note", "data-fallback-count": fb.count,
-      text: `${fb.count} of ${fb.total} lines use the backup wording (${fb.reasons.join("; ")}).`,
-    }));
+    section.append(el("p", { class: "sr-fallback", "data-testid": "fallback-note", "data-fallback-count": fb.count,
+      text: `${fb.count} of ${fb.total} lines use the backup wording (${fb.reasons.join("; ")}).` }));
   }
   root.append(section);
+  return section;
+}
+
+/** The voice lines of Part 5's faults: one hidden slot per fault, so the stage's voice switch still speaks each line
+ * at its moment (contract C2) now that the fault list is no longer drawn. */
+function voiceLines(analysis) {
+  const faults = analysis.faults || [];
+  if (!faults.length) return null;
+  return el("div", { class: "sr-voice-lines", "data-testid": "voice-lines", hidden: true }, ...faults.map((f, i) => voiceSlot(i, f.at_s)));
 }
 
 function downloadLink(testid, label, filename, data, urls) {
@@ -322,7 +337,8 @@ const timelineEnd = (analysis) => timelineOf(analysis).map((w) => w.t_s[1]);
  * then the collapsed "Rep breakdown" bar and the action row; everything else follows unchanged.
  * @returns {{seek, highlight, compare, coach, destroy}}
  */
-export async function mountResult(root, { analysis, replay, trainerVisibility = null, record = null, job = null, pid = null, videoUrl, trainerVideoUrl = null, modelOnlyView = false } = {}) {
+export async function mountResult(root, { analysis, replay, trainerVisibility = null, record = null, job = null, pid = null, videoUrl, trainerVideoUrl = null } = {}) {
+  let modelOnlyView = (arguments[1] || {}).modelOnlyView === true; // TICKET-365, read on its own line so the signature above stays the client's
   ensureStyles();
   root.replaceChildren();
   root.classList.add("simon-result");
@@ -362,21 +378,23 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   if (warnings.length) {
     const box = el("section", { class: "sr-warning", role: "status", "data-testid": "warning", "data-codes": warnings.map((w) => w.code).join(",") });
     box.append(el("h2", { text: WARNING_TITLE }));
-    for (const w of warnings) {
-      box.append(el("p", { class: "sr-warning-text", "data-testid": `warning-${w.code}`, "data-cause": w.cause || false, text: w.text }));
+    for (const w of warnings) {   // resultWarnings already took the cap claim out of a credited take's words (TICKET-372)
+      const { text } = w;
+      if (text) box.append(el("p", { class: "sr-warning-text", "data-testid": `warning-${w.code}`, "data-cause": w.cause || false, text }));
       if (w.tip) box.append(el("p", { class: "sr-warning-tip", "data-testid": `warning-tip-${w.code}`, text: w.tip }));
     }
     root.append(box);
   }
   // result-intent.md R3: the lines on screen say a short filler clause once; downloads and other modules keep Part 5's words
   const display = withoutRepeatedFiller(analysis);
-  const shown = withCapWinning(withScore(display));   // the cap wins: a warned take shows score.value and its grade, never the credit (score-labels.js S5)
+  const shown = withCapWinning(withScore(display));   // nothing capped (TICKET-372): a take with a credit shows the credit whatever its warnings
   const real = hasScore(analysis);
-  // Part 5's credit score, when the analysis has one: the viewer's unit and level, saved between results
-  let scoreDisplay = loadScoreDisplay();
-  let scorePanel = null;   // web/score.js's grade panel, drawn below and again when the score switch changes
+  // Part 5's credit score, when the analysis has one: always points, the level the viewer's choice, saved between results
+  let scoreDisplay = shownScoreDisplay();   // the same call the share link makes (web/share.js), so the two cannot differ
 
-  // ----- the stage, the "Rep breakdown" bar and the action row (team's mockup, 2026-11-01) ----------------
+  // ----- the lean layout (team, 2026-11-02): warning, score bar, stage, "What to work on", the action row, "More"
+  const scoreTop = el("div", { class: "rs-slot rs-score-top", "data-testid": "score-top" });
+  root.append(scoreTop);   // after the warning
   stageCtl = mountStage(root, { analysis: shown, scoreDisplay: () => scoreDisplay });
   const { stage: stageView, breakdown, actions } = stageCtl;
   const stage = stageView.el;
@@ -388,20 +406,26 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   const breakdownSlot = el("div", { class: "sr-slot", "data-testid": "breakdown-slot" });   // filled once the coaching rows exist (below)
   const bdTimeline = el("div", { class: "st-bd-part" });
   breakdown.body.append(bdSwitch, bdBars, breakdownSlot, bdTimeline);
+  // "What to work on" sits between the stage and the action row
+  const work = el("div", { class: "sr-work" });
+  root.insertBefore(work, actions.el);
+  // the action row: Retry, Share, Challenge a friend, then the signed-in share and "Use as my reference" slots
+  const shareSlot = el("div", { class: "sr-slot", "data-testid": "share-slot" }); // TICKET-233: a signed-in person can share this result
+  const referenceSlot = el("div", { class: "sr-slot", "data-testid": "reference-slot" }); // ADR-0019: which reference this take was compared with, and "use as my reference"
+  actions.extra.append(shareSlot, referenceSlot);
+  const challengeSlot = makeSlot(root, "challenge-slot");   // the challenge box the action row's button opens, right under it
+  // everything else: one "More", closed unless this viewer left it open
+  const more = drawMoreBar(root, STAGE_TEXT);
+  more.setOpen(loadPref(STAGE_KEYS.more) === "open");
+  more.on("toggle", (open) => { more.setOpen(open); savePref(STAGE_KEYS.more, open ? "open" : "closed"); });
+  const body = more.body;
 
-  // brand summary below the actions (model/result-summary.js -> views/result-summary.js); its Retry, export slot,
-  // credit switch and per-rep bars are moved up into the action row and the breakdown on every paint
+  // brand summary (model/result-summary.js -> views/result-summary.js): its score bar goes to the top, its Retry to the
+  // action row, its switch and per-rep bars to the breakdown; the worst moment card stays, first in "More"
   const summarySlot = el("div", { class: "rs-slot" });
-  const by = bylines(record && record.attribution);   // who made this, from the job answer (docs/specs/attribution.md)
-  const byEl = authorLine([by.author, by.trainer], "result-author");
-  if (byEl) root.append(byEl);
-  mountOrphanNote(root, record);   // TICKET-331: the trainer deleted the movement; one plain note, and no link to it
-  cleanups.push(keepDeadLinksOff(root, record));
-  const floorEl = floorScoredLine(record && record.result);   // floor-work.md: Part 3 scored the take as floor work
-  if (floorEl) root.append(floorEl);
-  root.append(summarySlot);
-  const scoreTop = el("div", { class: "rs-slot rs-score-top", "data-testid": "score-top" });
-  root.prepend(scoreTop);
+  body.append(summarySlot);
+  const momentsHolder = el("div", { class: "sr-moments-holder" });
+  body.append(momentsHolder);
   root.dataset.summary = "true";
   let summaryModel = null;
   try { summaryModel = replay ? normalizeReplay(replay, trainerVisibility) : null; } catch { summaryModel = null; }
@@ -419,7 +443,7 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
     playWorst: (t) => { if (!getView()) return; toStage(); stageCtl.toDefault(); if (coach && coach.replayWorst) coach.replayWorst(); else playFrom(t); },
     replay: toStage,
     scoreDisplay: (pick) => {
-      scoreDisplay = { ...scoreDisplay, ...pick };
+      scoreDisplay = { ...scoreDisplay, ...pick, mode: "points" };
       saveScoreDisplay(scoreDisplay);
       const focused = document.activeElement && document.activeElement.getAttribute("data-testid");
       paintSummary(shownEntryName);
@@ -427,7 +451,6 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
       const credit = creditDisplay(shown, scoreDisplay);
       if (timeline) timeline.setCredit(credit && credit.windows);
       stageCtl.setGradeDisplay();
-      scorePanel = refreshScore(scorePanel, shown, scoreDisplay);   // one-letter.md: the grade panel follows the level on screen
     },
   };
   // the score bar fills from zero every time the result opens (team, 2026-11-02), after the splash when it is up;
@@ -466,7 +489,9 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
     shownEntryName = entryName;
     if (summary) summary.destroy();
     summarySlot.replaceChildren();
-    summary = renderResultSummary(summarySlot, summaryOf(shown, { ...summaryOpts, entryName, scoreDisplay }), { ...summaryOn, reveal: revealArg() });
+    // the lean page draws no "how your score adds up" line and no stats tiles (the score bar says the score)
+    const model = { ...summaryOf(shown, { ...summaryOpts, entryName, scoreDisplay }), sum: null, stats: [] };
+    summary = renderResultSummary(summarySlot, model, { ...summaryOn, reveal: revealArg() });
     if (hasJobFiles(job, pid)) cleanups.push(mountExport(summary.exportSlot, job));   // C2b: the export button, again in each new slot (real single-person jobs only)
     lift(summary);
     placeMesh();
@@ -485,46 +510,26 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   // R1: "How this was made" opens from the stage's "i" pill (real jobs only: the example result has no job files)
   const madeHolder = el("div", { class: "sr-slot hm-slot" });
   stageView.madeSlot.append(madeHolder);
-  if (record && record.entry_id) mountReviewNote(root, record.entry_id); // TICKET-204: the movement's video may not match
   const split = hasJobFiles(job, pid) ? stageSplit(record && record.timing) : null; // judge-take.md: the measured stage split
   if (split) keepMadePill(stageView); // the split lives in the "i" panel too, so the pill stays even with no models-used list
-  if (hasModels(job)) mountModelsUsed(madeHolder, job, undefined, pid).then((s) => stageView.setMade(!!s)).catch(() => {});
+  if (hasModels(job)) mountModelsUsed(madeHolder, job, undefined, pid, analysis).then((s) => stageView.setMade(!!s)).catch(() => {});
   if (split) madeHolder.after(renderStageSplit(el("div", { class: "sr-slot ss-slot" }), split).parentElement);
-  const modeSlot = makeSlot(root, "mode-slot");
-  fillSlot(modeSlot, () => import("./modes.js").then((m) => m.mountModeNote), ctx, cleanups);
-  fillSlot(makeSlot(root, "mirror-slot"), () => import("./mirrored-note.js").then((m) => m.mountMirroredNote), ctx, cleanups); // TICKET-310
-  fillSlot(makeSlot(root, "heading-slot"), () => import("./heading-note.js").then((m) => m.mountHeadingNote), ctx, cleanups); // TICKET-246: a rough score
-  scorePanel = renderScore(root, shown, scoreDisplay);   // one-letter.md: the headline's letter on its own scale
-  // the summary ring is now the score on screen; the old panel's number stays in the page under another id
-  root.querySelectorAll('.sr-score [data-testid="score"]').forEach((n) => n.setAttribute("data-testid", "score-detail"));
-  const challengeSlot = makeSlot(root, "challenge-slot");
+
   fillSlot(challengeSlot, () => import("./challenge-actions.js").then((m) => m.mountChallengeActions), ctx, cleanups);
   cleanups.push(wireActions(actions, challengeSlot, shown));
-  const shareSlot = makeSlot(root, "share-slot"); // TICKET-233: a signed-in person can share this result
   fillSlot(shareSlot, () => import("./share.js").then((m) => m.mountShareAction), ctx, cleanups);
-  const noteSlot = makeSlot(root, "note-slot"); // TICKET-237: a signed-in follower can ask the trainer for a note, and reads it here
-  fillSlot(noteSlot, () => import("./notes.js").then((m) => m.mountAskTrainer), ctx, cleanups);
-  const askSlot = makeSlot(root, "take-ask-slot"); // TICKET-269: the owner of a kept take can ask a cited question and the player moves
-  fillSlot(askSlot, () => import("./take-ask.js").then((m) => m.mountTakeAsk), ctx, cleanups);
-  const referenceSlot = makeSlot(root, "reference-slot"); // ADR-0019: which reference this take was compared with, and "use as my reference"
   fillSlot(referenceSlot, () => import("./my-reference.js").then((m) => m.mountMyReference), ctx, cleanups);
-
-  // the coaching rows below
-  const zone = el("div", { class: "sr-zone" });
-  const body = el("div", { class: "sr-zone-body" });
-  zone.append(body);
-  root.append(zone);
 
   const moments = momentsToReview(display);
   const worst = worstMoment(display);
   let timeline = null;
-  const momentsHolder = el("div", { class: "sr-moments-holder" });
-  body.append(momentsHolder);
-  renderInsights(body, display, getView, () => timeline);
+  if (insightsOf(display)) {
+    renderInsights(work, display, getView, () => timeline);
+    const voice = voiceLines(display);   // the stage's voice switch speaks Part 5's fault lines at their moments
+    if (voice) work.append(voice);
+  } else renderFaultCues(work, display, getView);   // an analysis from before insights: its faults are the cues
   const credit = creditDisplay(shown, scoreDisplay);
   timeline = renderTimeline(bdTimeline, shown, getView, flaggedWindows(moments), credit && credit.windows);
-  const mine = takeLabels(record);
-  if (mine) body.append(mine);
   if (replay || !warnings.length) {
     const slot = stageView.hosts["3d"];
     let model = null;
@@ -581,15 +586,40 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   if (!url && modelOnlyView && trainerVideoUrl) side = mountTrainerOnlyVideo(stageView.hosts.videos, trainerVideoUrl, stageCtl); // the trainer's video stays (AC-MD12)
   mountVideosNote(stageView.hosts.videos, record);   // TICKET-331: say the trainer's video is gone, not only show yours
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
-  renderFaults(body, display, getView);
-  fillSlot(makeSlot(body, "fix-it-slot"), () => import("./skin/corrected-replay.js").then((m) => m.mountFixIt), ctx, cleanups); // TICKET-265: "Fix it for me"
+
+  // the rest of "More", in the approved order (after the worst moment and the moments above)
+  body.append(secondOpinionSlot());   // contract C2: a second look at the take
   fillSlot(makeSlot(body, "near-misses-slot"), () => import("./near-misses.js").then((m) => m.mountNearMisses), ctx, cleanups); // TICKET-100
-  body.append(secondOpinionSlot());   // contract C2: one section after the coaching rows
+  fillSlot(makeSlot(body, "fix-it-slot"), () => import("./skin/corrected-replay.js").then((m) => m.mountFixIt), ctx, cleanups); // TICKET-265: "Fix it for me"
   body.append(correctedSlot());       // TICKET-280: the owner's corrected-pose image and blind referee; hidden until there is something to show
+  const noteSlot = makeSlot(body, "note-slot"); // TICKET-237: a signed-in follower can ask the trainer for a note, and reads it here
+  fillSlot(noteSlot, () => import("./notes.js").then((m) => m.mountAskTrainer), ctx, cleanups);
+  const askSlot = makeSlot(body, "take-ask-slot"); // TICKET-269: the owner of a kept take can ask a cited question and the player moves
+  fillSlot(askSlot, () => import("./take-ask.js").then((m) => m.mountTakeAsk), ctx, cleanups);
+  // the notes about this take: mirrored, heading, mode, floor work, the movement's video, a deleted movement, who made it
+  const notes = el("div", { class: "sr-more-notes", "data-testid": "more-notes" });
+  body.append(notes);
+  fillSlot(makeSlot(notes, "mirror-slot"), () => import("./mirrored-note.js").then((m) => m.mountMirroredNote), ctx, cleanups); // TICKET-310
+  fillSlot(makeSlot(notes, "heading-slot"), () => import("./heading-note.js").then((m) => m.mountHeadingNote), ctx, cleanups); // TICKET-246: a rough score
+  fillSlot(makeSlot(notes, "mode-slot"), () => import("./modes.js").then((m) => m.mountModeNote), ctx, cleanups);
+  const floorEl = floorScoredLine(record && record.result);   // floor-work.md: Part 3 scored the take as floor work
+  if (floorEl) notes.append(floorEl);
+  if (record && record.entry_id) mountReviewNote(notes, record.entry_id); // TICKET-204: the movement's video may not match
+  mountOrphanNote(notes, record);   // TICKET-331: the trainer deleted the movement; one plain note, and no link to it
+  cleanups.push(keepDeadLinksOff(root, record));
+  const by = bylines(record && record.attribution);   // who made this, from the job answer (docs/specs/attribution.md)
+  const byEl = authorLine([by.author, by.trainer], "result-author");
+  if (byEl) notes.append(byEl);
+  const mine = takeLabels(record);
+  if (mine) notes.append(mine);
+  // TICKET-266: the fault lines (spoken by the voice switch) are in another language: its notes (not reviewed, the voice's licence)
+  const lang = langOf(display);
+  if (insightsOf(display) && lang !== "en") notesFor(lang).forEach((line, i) => notes.append(el("p", { class: "sr-lang-note", "data-testid": `lang-note-${i}`, text: line })));
+  renderQualityTips(notes, analysis);
   if (job && job !== "fixture") body.append(mountSourceCredit("take", job, "result-source")); // TICKET-322: the take's source and licence, edited by its owner
   if (trainerVideoUrl && record && record.entry_id) body.append(mountSourceCredit("entry", record.entry_id, "result-entry-source", { edit: false, trainerClip: true })); // TICKET-322: the trainer's clip plays here, so its credit shows too
   body.append(historySection(), keepTakeSlot());   // R6: "Your takes over time" and "Keep this take", empty unless signed in
-  renderQualityTips(body, analysis);
+  body.append(madeLink(stageView));   // the models card lives in the stage's "How this was made"; this opens it
   fillSlot(breakdownSlot, () => import("./breakdown.js").then((m) => m.mountBreakdown), ctx, cleanups);
   if (warnings.length) {
     body.append(el("a", { class: "sr-btn", href: recordAgainHref(record), "data-testid": "record-again", text: "Record again" }));
@@ -667,8 +697,8 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   };
 }
 
-/** Share (the result's link: the share sheet, else copied) and Challenge a friend (the challenge box below, once it
- *  has mounted: brought into sight, the name field focused). Returns a stop function. */
+/** Share (the result's link: the share sheet, else copied) and Challenge a friend (the challenge box under the row, once
+ *  it has mounted: unfolded, brought into sight, the name field focused). Returns a stop function. */
 function wireActions(actions, challengeSlot, analysis) {
   actions.share.addEventListener("click", async () => {
     const grade = analysis.score && analysis.score.grade;
@@ -676,10 +706,18 @@ function wireActions(actions, challengeSlot, analysis) {
     const out = await shareLink({ url: location.href, text: grade ? `My Simon take: grade ${grade}` : "My Simon take" }).catch(() => null);
     actions.say(out && out.mode === "copy" && out.copied ? STAGE_TEXT.shared : "");
   });
-  const ready = () => { actions.challenge.hidden = !challengeSlot.querySelector('[data-testid="challenge-actions"]'); };
+  // the box stays folded under the row until the button is tapped, unless it holds a challenge to join or an ended one
+  let opened = false;
+  const ready = () => {
+    actions.challenge.hidden = !challengeSlot.querySelector('[data-testid="challenge-actions"]');
+    challengeSlot.hidden = !opened && !challengeSlot.querySelector('[data-testid="challenge-join"], [data-testid="challenge-ended-note"]');
+  };
+  ready();
   const obs = typeof MutationObserver === "function" ? new MutationObserver(ready) : null;
-  if (obs) obs.observe(challengeSlot, { childList: true });
+  if (obs) obs.observe(challengeSlot, { childList: true, subtree: true });
   actions.challenge.addEventListener("click", () => {
+    opened = true;
+    challengeSlot.hidden = false;
     const offer = challengeSlot.querySelector('[data-testid="challenge-offer"]');
     if (offer && !offer.hidden) offer.click();
     const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -688,6 +726,23 @@ function wireActions(actions, challengeSlot, analysis) {
     if (name && !name.closest("[hidden]")) name.focus({ preventScroll: true });
   });
   return () => { if (obs) obs.disconnect(); };
+}
+
+/** A button in "More" that opens the stage's "How this was made" (the models card) and brings it into sight; it
+ *  shows only while the stage's "i" pill does. */
+function madeLink(stageView) {
+  const pill = stageView.el.querySelector('[data-testid="stage-made"]');
+  const btn = el("button", { type: "button", class: "sr-btn sr-more-made", "data-testid": "more-made", text: STAGE_TEXT.openMade });
+  const sync = () => { btn.hidden = !pill || pill.hidden; };
+  sync();
+  if (pill && typeof MutationObserver === "function") new MutationObserver(sync).observe(pill, { attributes: true, attributeFilter: ["hidden"] });
+  btn.addEventListener("click", () => {
+    if (!pill) return;
+    if (pill.getAttribute("aria-expanded") !== "true") pill.click();
+    const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    stageView.el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  });
+  return btn;
 }
 
 /** The stage's "i" pill shown from now on, whatever a later `setMade` says (the panel holds our stage split). */

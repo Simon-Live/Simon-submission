@@ -102,3 +102,15 @@ def test_setup_all_only_runs_the_named_parts(state_dir: Path) -> None:
     res = setup_parts.setup_all(lock=lk, state=state_dir, commands=cmds, only=("3", "5"))
     assert res["ok"] is True
     assert sorted(res["parts"]) == ["3", "5"]
+
+
+def test_doctor_parts_names_a_missing_venv_not_a_missing_test(state_dir: Path) -> None:
+    """A checkout where setup never ran has no `.venv`: the error says so instead of blaming `schema_test`."""
+    lk = _make_stub_lock(state_dir)
+    doc_cmds = {str(n): [sys.executable, "-c", "pass"] for n in range(2, 7)}
+    res_doc = setup_parts.doctor_parts(lock=lk, state=state_dir, commands=doc_cmds)
+    err = res_doc["parts"]["1"]["error"]
+    assert res_doc["parts"]["1"]["ok"] is False
+    assert err == (f"part 1: {lk.path('1') / '.venv' / 'bin' / 'python'} not found at {lk.sha12('1')}"
+                   " (setup has not run in this checkout: part7 setup-parts)")
+    assert "schema_test not found" not in err

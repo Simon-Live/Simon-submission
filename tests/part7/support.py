@@ -195,7 +195,8 @@ class Api:
 
     def json(self, method: str, path: str, doc: Any = None, headers: dict[str, str] | None = None
              ) -> tuple[int, Any]:
-        hdr = {"Content-Type": "application/json", **(headers or {})}
+        hdr = {"Content-Type": "application/json", **({"Origin": f"http://127.0.0.1:{self.port}"} if method == "POST" and path.endswith("/delete") else {}),
+               **(headers or {})}  # a same-origin page sends its Origin on a delete (its CSRF guard)
         status, _, data = self.request(method, path, None if doc is None else json.dumps(doc).encode(), hdr)
         return status, json.loads(data or b"null")
 

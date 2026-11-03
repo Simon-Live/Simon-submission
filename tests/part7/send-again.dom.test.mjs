@@ -6,8 +6,6 @@ import assert from "node:assert/strict";
 import { installDom, El, find } from "./fake-dom.mjs";
 
 installDom();
-Object.defineProperty(El.prototype, "style", { get() { return (this._style ||= { setProperty() {} }); } });
-Object.defineProperty(El.prototype, "classList", { get() { return (this._cl ||= { add() {}, remove() {}, toggle() {}, contains: () => false }); } });
 globalThis.location = { hash: "" };
 globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), headers: { get: () => null } });
 const { mountSendAgain, findKept, SEND_AGAIN_TEXT } = await import("../../web/send-again.js");

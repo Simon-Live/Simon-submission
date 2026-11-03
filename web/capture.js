@@ -164,7 +164,19 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   const stop = h("button", { type: "button", class: "btn danger", "data-testid": "cam-stop", text: "Stop", hidden: true, onclick: () => stopRecording() });
   const input = h("input", { type: "file", accept: "video/*", class: "file-input", id: "file-input", "data-testid": "upload", onchange: () => pick(input.files && input.files[0]) });
   const upload = h("label", { class: "btn secondary", for: "file-input" }, "Upload a video");
+  // a small record button on the preview itself, like a video player's play button (team, 3 Nov). It presses
+  // Record or Stop below, so every rule about when a take can start stays in one place.
+  const camRec = h("button", { type: "button", class: "cam-rec", "data-testid": "cam-rec", "aria-label": "Record",
+    onclick: () => (stage.dataset.state === "recording" ? stop : start).click() });
+  const syncCamRec = () => {
+    const recording = stage.dataset.state === "recording";
+    camRec.setAttribute("aria-label", recording ? "Stop" : "Record");
+    camRec.disabled = recording ? stop.disabled : start.disabled;
+  };
 
+  stage.append(camRec);
+  new MutationObserver(syncCamRec).observe(stage, { attributes: true, attributeFilter: ["data-state"] });
+  new MutationObserver(syncCamRec).observe(start, { attributes: true, attributeFilter: ["disabled"] });
   const camRow = reference ? h("div", { class: "ref-row" }, stage) : null;
   if (reference) reference.dock(camRow, "live");
   if (liveCheck) liveCheck.attach(stage, live); // client 22d09a7: joints on the preview, a chip, the trainer comparison

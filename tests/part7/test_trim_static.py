@@ -42,11 +42,12 @@ def test_watch_and_catalog_use_labels():
 def test_trim_follows_spec():
     t = src("trim.js")
     assert "export function openTrimEditor" in t
-    for frag in ["createObjectURL", "revokeObjectURL", "95000000", "STEP_MS = 100", "MIN_MS = 1000", "MAX_MS = 60000",
+    for frag in ["createObjectURL", "releaseSharedMediaUrl([video, probe], url)", "95000000", "STEP_MS = 100", "MIN_MS = 1000", "MAX_MS = 60000",
                  "clamp(Math.round(durationMs / 3000), 8, 12)", "1e101", "pointerdown", "setPointerCapture",
                  "ArrowLeft", "ArrowRight", "aria-label"]:
         assert frag in t, frag
     assert "fetch(" not in t, "nothing is uploaded from the editor"
+    assert "URL.revokeObjectURL" in src("media-url.js"), "the shared release revokes the clip URL (recorder.md Object URL lifetime)"
 
 
 def test_handles_are_buttons_with_a_touch_target():

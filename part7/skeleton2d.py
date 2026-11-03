@@ -3,7 +3,9 @@
 Part 2's `pose3d.json` holds canonical joints in metres and `camera.json` the per frame pose that puts them back into
 the camera: `p_cam = R @ p + t`, then the intrinsics `K` (Part 2 `contracts/camera.schema.json`). Projecting them gives
 the joints where Part 2 saw them in the clip. Part 7 adds no measurement: it only re-expresses Part 2's numbers as
-shares of the image so the browser can draw them over the video at any size.
+shares of the image so the browser can draw them over the video at any size. The follow ghost (part7/ghost.py,
+docs/specs/follow-ghost.md) projects a trainer's Part 2 folder the same way, with `min_conf` 0.3 so a joint Part 2
+placed outside the image is null.
 """
 
 from __future__ import annotations
@@ -22,34 +24,47 @@ BONES = (
     (0, 1), (0, 2), (1, 3), (2, 4), (0, 5), (0, 6), (5, 6), (11, 12), (5, 11), (6, 12), (5, 7), (7, 9), (6, 8),
     (8, 10), (11, 13), (13, 15), (12, 14), (14, 16),
 )
+UNSEEN_CONF = 0.3  # Parts 2 and 3 give a joint placed outside the image conf 0.3 (Part 4 CONTRACT.md "Visibility")
 MIN_DEPTH_M = 0.05  # a joint this close to (or behind) the camera has no place on the image
 
 
-def _load(path: Path) -> Any:
+def is_unseen(conf: Any, threshold: float = UNSEEN_CONF) -> bool:
+    """True when `conf` is a number at or below `threshold` (the one at-or-below rule of every unseen check)."""
+    try:
+        return float(conf) <= threshold
+    except (TypeError, ValueError):
+        return False
+
+
+def load_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
 
-def _pick(people: list[Any], person_id: str | None) -> Any:
+def pick_person(people: list[Any], person_id: str | None, strict: bool = False) -> Any:
+    """The person `person_id` of a frame; without a match the first person, or None when `strict`."""
     if not isinstance(people, list) or not people:
         return None
     if person_id is not None:
         for p in people:
             if isinstance(p, dict) and str(p.get("id")) == str(person_id):
                 return p
+        if strict:
+            return None
     return people[0] if isinstance(people[0], dict) else None
 
 
 def project(joint: Any, rot: list[list[float]], trans: list[float], k: list[list[float]],
-            size: tuple[float, float]) -> list[float] | None:
-    """`[u, v]` as shares of the image for one canonical joint `{x, y, z, conf}`; None when unseen or behind."""
+            size: tuple[float, float], min_conf: float = 0.0) -> list[float] | None:
+    """`[u, v]` as shares of the image for one canonical joint `{x, y, z, conf}`; None when its conf is at or below
+    `min_conf` (unseen) or it is behind the camera."""
     if not isinstance(joint, dict):
         return None
     try:
         x, y, z = float(joint["x"]), float(joint["y"]), float(joint["z"])
-        if float(joint.get("conf", 1.0)) <= 0:
+        if is_unseen(joint.get("conf", 1.0), min_conf):
             return None
         cam = [rot[i][0] * x + rot[i][1] * y + rot[i][2] * z + trans[i] for i in range(3)]
         if cam[2] < MIN_DEPTH_M:
@@ -61,9 +76,12 @@ def project(joint: Any, rot: list[list[float]], trans: list[float], k: list[list
     return [round(u / size[0], 4), round(v / size[1], 4)]
 
 
-def build(part2_dir: Path, person_id: str | None = None) -> dict[str, Any] | None:
-    """The skeleton document of a follow job's `work/follower/part2` folder, or None when it cannot be made."""
-    pose, cam = _load(part2_dir / "pose3d.json"), _load(part2_dir / "camera.json")
+def build(part2_dir: Path, person_id: str | None = None, min_conf: float = 0.0,
+          strict: bool = False) -> dict[str, Any] | None:
+    """The skeleton document of a Part 2 folder (a follow job's `work/follower/part2`, a trainer job's
+    `work/trainer/part2`), or None when it cannot be made. A joint at or below `min_conf` is null. `strict`: a frame
+    without `person_id`, or without that person's place in `camera.json`, is empty instead of another person's."""
+    pose, cam = load_json(part2_dir / "pose3d.json"), load_json(part2_dir / "camera.json")
     if not isinstance(pose, dict) or not isinstance(cam, dict):
         return None
     try:
@@ -78,13 +96,13 @@ def build(part2_dir: Path, person_id: str | None = None) -> dict[str, Any] | Non
     for f in pose.get("frames") or []:
         if not isinstance(f, dict) or not isinstance(f.get("t_ms"), (int, float)):
             continue
-        who = _pick(f.get("people"), person_id)
-        place = _pick((cams.get(f.get("frame")) or {}).get("people"), str(who.get("id"))) if who else None
+        who = pick_person(f.get("people"), person_id, strict)
+        place = pick_person((cams.get(f.get("frame")) or {}).get("people"), str(who.get("id")), strict) if who else None
         if who is None or place is None:
             frames.append({"t": round(f["t_ms"] / 1000, 3), "pts": [None] * len(JOINTS)})
             continue
         joints = who.get("joints") or {}
-        pts = [project(joints.get(n), place.get("R"), place.get("t"), k, size) for n in JOINTS]
+        pts = [project(joints.get(n), place.get("R"), place.get("t"), k, size, min_conf) for n in JOINTS]
         frames.append({"t": round(f["t_ms"] / 1000, 3), "pts": pts})
     if not frames:
         return None

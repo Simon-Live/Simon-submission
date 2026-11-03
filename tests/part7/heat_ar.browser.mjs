@@ -37,6 +37,7 @@ async function open(label, { device = "desktop", width = 412, heat = true, glb =
   });
   // Safari answers a.relList.supports("ar"); Chromium does not, so the iPhone case says so
   if (device === "iphone") await ctx.addInitScript(() => { const s = DOMTokenList.prototype.supports; DOMTokenList.prototype.supports = function (t) { return t === "ar" ? true : s.call(this, t); }; });
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });   // the lean result keeps the worst moment card (and its 3D bodies) in "More"
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error" && !(sign === "fail" && /\/take-ar-url/.test(m.location().url)) && !isLaneModule404(m.location().url) && !isOptionalResult404(m.location().url) && !isPickerRequest404(m.location().url)) errors.push(`${label}: ${m.text()} ${m.location().url}`); });
   page.on("pageerror", (e) => errors.push(`${label}: ${e.message}`));

@@ -7,6 +7,7 @@ export const CAPTURE_TEXT = {
   camera: "Your camera",
   recording: "Recording",
   watch: "Watch",
+  pause: "Pause",
   original: "Original routine",
 };
 const TIP = {
@@ -27,5 +28,6 @@ export function captureChromeOf({ kind = "exercise", entry = null } = {}) {
     subtitle: len ? `${CAPTURE_TEXT.original} · ${len}` : entry ? CAPTURE_TEXT.original : null,
     watchHref: entry && entry.id ? `#/watch/${encodeURIComponent(entry.id)}` : null,
     watchLabel: CAPTURE_TEXT.watch,
+    pauseLabel: CAPTURE_TEXT.pause,
   };
 }

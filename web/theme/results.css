@@ -109,7 +109,7 @@ body .simon-result .sr-moment, body .simon-result .sr-worst[aria-pressed="true"]
 
 /* ----- result-redesign-additions.md ------------------------------------------------------------------------------- */
 /* R4 the reveal: the grade lands on the ring once the count-up ends (transform and opacity only: no layout shift) */
-@keyframes rs-grade-land { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes rs-grade-land { from { opacity: 0; transform: scale(1.8) rotate(-12deg); } to { opacity: 1; transform: none; } }
 
 /* R3 the 3D bodies in the worst moment's card, in place of the stick figures */
 .rs-mesh { display: grid; gap: var(--space-2); }
@@ -254,6 +254,7 @@ body .simon-result .sr-lang-note { margin: var(--space-1, 4px) 0; font-size: .87
 .rs-meter-mark-label { position: absolute; bottom: calc(100% + 4px); left: 50%; translate: -50% 0; font: var(--weight-semibold) var(--text-xs)/1 var(--font-sans);
   color: var(--color-text-muted); }
 .rs-meter-mark[data-reached="true"] { opacity: 1; background: var(--color-text); }
+.rs-meter-mark[data-start="true"] { background: transparent; }
 .rs-meter-mark[data-reached="true"] .rs-meter-mark-label { color: var(--color-text); }
 .rs-meter-score { flex: none; min-width: 6ch; display: grid; justify-items: end; gap: var(--space-1); padding: var(--space-1) var(--space-2);
   border: 0; border-radius: var(--radius-md); background: transparent; color: inherit; font: inherit; }

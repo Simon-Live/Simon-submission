@@ -351,7 +351,8 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     const liveCheck = mountLiveCheck({ entry: role === "follower" ? entry : null, reference });
     const ghost = role === "follower" && entry ? mountGhost({ entry, reference }) : null; // follow the ghost (TICKET-264)
     capture = mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group", liveCheck, ghost });
-    decorateCapture(capBox, captureChromeOf({ kind: currentKind(), entry: trainer ? null : entry })); // brand chrome (views/capture-chrome.js)
+    decorateCapture(capBox, captureChromeOf({ kind: currentKind(), entry: trainer ? null : entry }), // brand chrome (views/capture-chrome.js)
+      { watch: reference && reference.preview ? (on) => reference.preview(on) : null });   // Watch plays the reference in place
     capture.onChange(onTake);
     side = reference ? mountFollowSide(capBox) : null; // trainer and camera side by side (TICKET-291), after the chrome
   }

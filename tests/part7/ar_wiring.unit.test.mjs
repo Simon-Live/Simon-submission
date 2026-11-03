@@ -33,6 +33,18 @@ test("a job whose mesh.json names nobody mounts nothing and asks for no AR files
   assert.equal(asked, false);
 });
 
+test("mountMesh mounts nothing given mesh.json names only one person (TICKET-375: the view needs both)", async () => {
+  for (const one of [{ trainer: null, you: idx.you }, { trainer: idx.trainer, you: null }, { trainer: null, you: idx.you, heat: "api/results/j/heat.json" }]) {
+    let mounted = 0;
+    let asked = 0;
+    const out = await mountMesh({}, { job: "j", analysis: {}, loadIndex: async () => one, mount: async () => { mounted++; return {}; },
+      loadTakeAr: async () => { asked++; return null; } });
+    assert.equal(out, null, JSON.stringify(one));
+    assert.equal(mounted, 0);
+    assert.equal(asked, 0);
+  }
+});
+
 // ---- Heat's opening time and the idle tail come from the analysis and the replay ----------------------------
 
 const seen = async (analysis, replay) => {

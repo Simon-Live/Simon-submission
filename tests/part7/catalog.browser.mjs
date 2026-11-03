@@ -57,7 +57,7 @@ const server = http.createServer((req, res) => {
     if (p === "/api/client-log") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end('{"ok": true}'); }
     if (p === "/api/version") return json(res, { short: "abc123def", started_at: "2026-10-31T12:00:00Z", parts: {} });
     if (p === "/api/labels") return json(res, LABELS);
-    if (p === "/api/judge/hero") { judge.heroAsked += 1; return json(res, { job_id: "rj1", entry_id: "arm-wave", score: 81, source: "best" }); }
+    if (p === "/api/judge/hero") { judge.heroAsked += 1; return json(res, { job_id: "rj1", entry_id: "arm-wave", score: 81, source: "configured" }); }
     if (p === "/api/challenges" && judge.on) {
       judge.boardQueries.push(url.search);
       const rows = url.searchParams.get("view") === "judge" ? BOARDS.filter((b) => !b.entry_id.startsWith("verify-") && b.id !== "bWave") : BOARDS;
@@ -234,7 +234,7 @@ try {
   await page.getByTestId("delete-confirm").click();
   await page.getByTestId("delete-done").waitFor();
   assert.deepEqual(deletes.at(-1), ["POST", "tj1"]);
-  assert.equal(deleteBodies.at(-1), "", "the default asks only for the recording and its files");
+  assert.equal(deleteBodies.at(-1), "{}", "the default asks only for the recording and its files (an empty JSON object, no remove_entry)");
   assert.match(await page.getByTestId("delete-done").textContent(), /The movement stays in the catalog/);
   await page.goto(`${BASE}#/job/tj2`);
   await page.getByTestId("delete-take-btn").waitFor({ timeout: 20000 });

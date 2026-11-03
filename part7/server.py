@@ -542,6 +542,7 @@ class _Handler(BaseHTTPRequestHandler):
             raw, problems = replay.read_valid(path, self.app.lock, self.app.state)
             if raw is None:
                 return self._error(422, "The replay file does not match its contract.", problems=problems)
+            raw = replay.with_follower_unseen(raw, path.parent / "part2", (self.app.queue.get(job_id) or {}).get("person_id"))
         else:
             raw = path.read_bytes()
         if not model_only.kept(self.app.queue.get(job_id)):  # model-only-take.md: the web keys on video_kept === false
@@ -930,6 +931,10 @@ def _sweep(app: App) -> None:
         entry_check.sweep(app.state, app.child.catalog_dir, app.queue)  # saved videos still match their recordings
     except Exception as exc:  # the content check must not stop the job sweep
         applog.log(f"entry check: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
+    try:
+        ghost.sweep(app.state, app.child.catalog_dir, app.queue)  # the trainer's ghost outlives its job folder (follow-ghost.md)
+    except Exception as exc:  # the ghost copy must not stop the job sweep
+        applog.log(f"ghost: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
     try:
         history_store.sweep(app.state)
     except Exception as exc:  # a history fault must not stop the job sweep

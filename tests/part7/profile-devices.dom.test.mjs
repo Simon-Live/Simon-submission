@@ -8,7 +8,6 @@ import { installDom, El } from "./fake-dom.mjs";
 
 installDom();
 // the profile view sets classes; the fake DOM has no classList, and this test is about the requests, not the drawing
-Object.defineProperty(El.prototype, "classList", { get() { return { add() {}, remove() {}, toggle() {}, contains: () => false }; } });
 process.on("unhandledRejection", () => {}); // a drawing step the fake DOM cannot do is not what is under test
 const requests = [];
 let signedIn = false;

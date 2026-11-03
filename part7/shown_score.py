@@ -1,9 +1,10 @@
 """One take, one letter (docs/specs/one-letter.md): the score every server surface shows for a take.
 
 The result headline (web/model/score-labels.js `shownScore`) applies the result's caps in its order (Part 5's quality
-cap, part7/quality_cap.py; then Part 7's light cap, part7/light.py), then: a take a warning capped shows `score.value`
-and `score.grade`; an uncapped take with Part 5's credit block (`score.credit`, simon.credit.v1) shows the credit's
-letter and points; any other take shows `score.value` and `score.grade`. This module makes the same decision, held to
+cap, part7/quality_cap.py; then Part 7's light cap, part7/light.py), then: nothing is capped (TICKET-372, team
+2 Nov): a take with Part 5's credit block (`score.credit`, simon.credit.v1) shows the credit's letter and points
+whatever its warnings, with `capped: False` and the warning codes in `warning`; only a take without a credit shows
+`score.value` and `score.grade`, capped when it has a warning. This module makes the same decision, held to
 the browser's by tests/part7/fixtures/shown-score-vectors.json. Ranking never reads it: `value` is the capped
 `score.value` the boards and the hero pick sort by.
 """
@@ -139,10 +140,10 @@ def shown(analysis: Any, light: Any = None, display: Any = None) -> dict[str, An
     score = _capped(analysis, light)
     raw_caps = score.get("capped_by")
     warning = [c for c in raw_caps if isinstance(c, str)] if isinstance(raw_caps, list) and raw_caps else []
-    credit = None if warning else _credit_of(score)
+    credit = _credit_of(score)   # nothing capped: a credit is shown whatever the warnings (team, 2 Nov, #61)
     if credit is not None:
         out = _credit_shown(credit, display)
-        return {**out, "value": score["value"], "capped": False, "warning": [], "tone": tone_of(out["letter"])}
+        return {**out, "value": score["value"], "capped": False, "warning": warning, "tone": tone_of(out["letter"])}
     letter = score["grade"] if isinstance(score.get("grade"), str) else "F"
     return {"letter": letter, "figures": _js_text(score["value"]), "caption": CAPTION_CAPPED if warning else CAPTION_PLAIN, "unit": "score",
             "value": score["value"], "capped": bool(warning), "warning": warning, "tone": tone_of(letter), "measure": score["value"]}
