@@ -203,7 +203,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="meta">
     <span class="chip">Meta Global AI Developer Hackathon · <b>Indie track</b></span>
     <span class="chip">Due <b>Wed 4 Nov 2026, 9 PM ET</b></span>
-    <span class="chip">State as of <b>3 Nov 2026, 06:45 UTC</b></span>
+    <span class="chip">State as of <b>3 Nov 2026, 06:50 UTC</b></span>
     <span class="chip">Hub <b>moalborati/simon</b></span>
   </div>
 </header>
@@ -228,7 +228,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
         <ul>
           <li><s>Part 5 1.14.2</s> (#38, <code>2fca0d9</code>, live on staging): quality counts only the measures the trainer's clip shows, and the last second stops costing credit. The same seated recording went from quality major and 82.9% B to quality ok and 91.2% A (job <code>4a6d890a20f3</code>).</li>
           <li>Part 5 1.14.3: the new credit scale.</li>
-          <li>The Person model showing only the skeleton on staging.</li>
+          <li><s>The Person model showing only the skeleton</s> (fixed, staging <code>babb5324</code>).</li>
           <li>Track C's <code>share-uncapped</code>, <code>remote-mesh</code>, <code>record-overlay</code> and <code>results-lean</code> (approved by the team).</li>
         </ul>
         Release 23 publishes them together; after it, each fix publishes as it lands.</li>
@@ -1166,7 +1166,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>No licence on the client repo; a non-commercial voice</td><td>Medium: unclear reuse terms; the paid plans can't use the current voice</td><td>No LICENSE or notices until MoAlborati/claude-template#382 is decided; Meta MMS-TTS is CC BY-NC 4.0, so the paid plans need another voice</td><td>Mo</td><td><span class="status s-open">Open</span></td></tr>
       <tr><td>Another person's rep as the reference</td><td>High for the one-teacher-many-students claim</td><td>On video it separates correct from incorrect reps no better than chance; the student's own rep reaches AUC 0.70. "My reference" and teacher approval make the own rep the default; pose accuracy is the lever for the rest</td><td>Mo, Part 5</td><td><span class="status s-part">Mitigated</span></td></tr>
       <tr><td>Imported models with hands touching the thighs</td><td>Low: stretched skin at the hips in the replay</td><td>The fixed hand weights ship for new models (Part 2 <code>c273b19</code>); stored models (David, Iron Man) are repaired in release 22, with a backup and a restore command</td><td>Mo</td><td><span class="status s-part">Release 22</span></td></tr>
-      <tr><td>Person model shows only the skeleton (staging)</td><td>Medium: a 3D model the demo offers doesn't draw</td><td>Being reproduced on staging, with a failing test first. On the Modal route the cause was that the mesh was never asked for; that's fixed in <code>remote-mesh</code></td><td>Mo, the team</td><td><span class="status s-part">In progress</span></td></tr>
+      <tr><td>Person model showed only the skeleton (staging)</td><td>Medium: a 3D model the demo offers didn't draw</td><td>Fixed (TICKET-375, staging <code>babb5324</code>): meshes are named per person, so a trainer recorded before <code>--mesh</code> no longer hides the follower's body (19 of 302 staging takes); the picker says when the trainer has no body. Modal takes ask for the mesh (<code>remote-mesh</code>, ported as <code>add69b3c</code>)</td><td>Mo, the team</td><td><span class="status s-done">Fixed</span></td></tr>
       <tr><td>Bring-your-own Modal credentials</td><td>High if shipped as built: a user's Modal app could run code on the server</td><td>Held (TICKET-367) until the call is sandboxed or returns raw bytes only; the failsafe uses the server's own Modal setup</td><td>Mo</td><td><span class="status s-part">Held</span></td></tr>
       <tr><td>Staging GPU contention</td><td>Medium: takes wait behind research and model jobs</td><td>Jobs yield to a waiting take between clips: waiting fell from about 1,332 to 565 s per hour (−58%); research runs at night; tests run without the GPU</td><td>Mo</td><td><span class="status s-part">Mitigated</span></td></tr>
       <tr><td>Copyrighted dance clips</td><td>High if published</td><td>The YouTube challenge clips stay internal; only links and numbers are in the repo. The library takes only licensed clips (three Pexels routines found)</td><td>the team</td><td><span class="status s-done">Guarded</span></td></tr>
