@@ -3,7 +3,6 @@
 // Run: node --test tests/part7/fault_line.unit.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 
 // a tiny fake DOM, as tests/part7/models-used.dom.test.mjs, so the real card view renders in node
 class Node {
@@ -37,8 +36,16 @@ const analysisWith = (per) => ({
   faults: TEMPLATES.map((t, i) => ({ text: t.replace(/ at [\d.]+ s$/, ""), text_timed: t, coaching: per[i] ? per[i].text : t, at_s: i })),
   phrasing: { requested: "muse-spark", backend: "muse-spark", model: "meta-models/muse-spark-open-1026", fallback_reason: null, lang: "en", faults: per },
 });
-// the models document the server wrote for that take (demos/rubric/TICKET-339)
-const HERO_MODELS = JSON.parse(fs.readFileSync(new URL("../../demos/rubric/TICKET-339/hero-f7f06d0bc4f3-models.json", import.meta.url)));
+// the models document the server wrote for that take (demos/rubric/TICKET-339), inline: the publish leaves demos/ out,
+// so a test that read the file failed in CI. Only the rows and fields this test reads; the server said 4 of 4 live.
+const HERO_MODELS = Object.freeze({
+  job_seconds: 74.2,
+  models: [
+    { id: "sam31-tracking", model: "SAM 3.1", maker: "Meta", clip: "you", status: "live", seconds: 21.4, facts: { frames: 60 } },
+    { id: "spark-phrasing", model: "Muse Spark", maker: "Meta", clip: "you", status: "live", seconds: 6.1,
+      facts: { lines: 4, lines_live: 4 } },
+  ],
+});
 const sparkDetail = (doc, analysis) => modelsPanel(withLinesShown(doc, analysis)).items.find((i) => i.id === "spark-phrasing");
 
 const walk = (n, out = []) => { out.push(n); n.children.forEach((c) => walk(c, out)); return out; };
