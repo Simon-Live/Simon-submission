@@ -203,7 +203,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="meta">
     <span class="chip">Meta Global AI Developer Hackathon · <b>Indie track</b></span>
     <span class="chip">Due <b>Wed 4 Nov 2026, 9 PM ET</b></span>
-    <span class="chip">State as of <b>3 Nov 2026, 06:35 UTC</b></span>
+    <span class="chip">State as of <b>3 Nov 2026, 06:40 UTC</b></span>
     <span class="chip">Hub <b>moalborati/simon</b></span>
   </div>
 </header>
@@ -223,10 +223,10 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <p><b>Where it is at 06:35 UTC on 3 Nov.</b>
     <ul>
       <li><b>GitHub:</b> the client repo's <code>main</code> carries release 21 (<code>8e4b2c47</code>, releases 20 and 21 together, tests and check-7 green) and release 22 (<code>0715d204</code>: the serverless route and its failsafe, off; the repair of models with hands glued to the thighs; "Show only my 3D model"; model-import timings).</li>
-      <li><b>Staging:</b> runs <code>c409335e</code>: release 22 plus nothing capped, the follow-ghost fix and a security fix (TICKET-373: no one else's job id from the featured result; deleting a take needs its owner). It's being published to the branch <code>staging-sync-c409335e</code> so the team's local app can match it before release 23.</li>
+      <li><b>Staging:</b> runs <code>0fd57a6b</code>: release 22 plus nothing capped, the follow-ghost fix, a security fix (TICKET-373: no one else's job id from the featured result; deleting a take needs its owner) and Part 5 1.14.2. It's being published to the branch <code>staging-sync-0fd57a6b</code> so the team's local app can match it before release 23.</li>
       <li><b>Bug fixes in flight</b> (the freeze is for new features only):
         <ul>
-          <li>Part 5 1.14.2 (#38, published <code>2fca0d9</code>): quality counts only the measures the trainer's clip shows, and the last second stops costing credit.</li>
+          <li><s>Part 5 1.14.2</s> (#38, <code>2fca0d9</code>, live on staging): quality counts only the measures the trainer's clip shows, and the last second stops costing credit. The same seated recording went from quality major and 82.9% B to quality ok and 91.2% A (job <code>4a6d890a20f3</code>).</li>
           <li>Part 5 1.14.3: the new credit scale.</li>
           <li>The Person model showing only the skeleton on staging.</li>
           <li>Track C's <code>share-uncapped</code>, <code>remote-mesh</code>, <code>record-overlay</code> and <code>results-lean</code> (approved by the team).</li>
@@ -830,7 +830,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <p><b>What the credit score showed.</b> On real dance follows (<code>docs/research/dance-scoring-2026-11/</code>), the old score gave 16 of 25 single takes a 0. The 19 the credit could compare spread from 35% to 56%, mostly E. A group dancer following the leader in the same clip reached 86.8% (A). After the published Part 5 the operator's takes read, for example, 11,661 of 23,760 points (49.1%, E) and 20,056 of 21,560 (93.0%, A).</p>
   <p><b>Whose rep is the reference.</b> On physiotherapist-labelled rehab reps (REHAB24-6, pre-registered), a person's own correct rep separates their correct reps from incorrect ones at AUC 0.70 (0.65 to 0.86) on video, and the correct take scored higher for 6 of 6 people (median +12.6 points). Another person's correct rep does no better than chance on video (AUC 0.43 and 0.394). That is why "My reference" exists, and why a low score against someone else's rep is not by itself an error. The mistakes in that data were acted, and nobody got a cue between takes.</p>
   <p><b>Nothing capped (team, 2 Nov).</b> A warning (low match, poor video, measures left out) is shown in a banner but never lowers the score or the grade. The old cap of 59 still exists in <code>score.value</code>, which the app no longer shows on any take that has a credit; only analyses older than 1.13.0 fall back to the old 0 to 100 score with A to F.</p>
-  <p><b>Seated and upper-body routines (Part 5 1.14.2, #38).</b> A measure the trainer's own clip can't show is not "left out" of the take, so a seated, chest-up routine no longer reads quality "major". The first case was <code>b5acba462f16</code>: 99 A, 0 faults, all 10 moving measures compared, but 15 of 22 measures counted as hidden. The last second of a take, getting out of the pose, also stops costing credit; on that take it had cost 17%.</p>
+  <p><b>Seated and upper-body routines (Part 5 1.14.2, #38).</b> A measure the trainer's own clip can't show is not "left out" of the take, so a seated, chest-up routine no longer reads quality "major". The first case was <code>b5acba462f16</code>: 99 A, 0 faults, all 10 moving measures compared, but 15 of 22 measures counted as hidden. The last second of a take, getting out of the pose, also stops costing credit. Re-run on 1.14.2, the same recording reads quality ok and 3,191 of 3,500 points, 91.2%, A (was 82.9%, B).</p>
   <p><b>Quality.</b> Part 5's <code>quality</code> block marks a take ok, degraded or major (light, dropout, heading offset past 5°) and reports a cap of 59 when major. A dark video whose pose files carry full confidence still reads ok, because Part 5 sees no light signal in the skeleton.</p>
   <p><b>Different-length takes.</b> Part 5's time alignment accepts a follower between half and twice the trainer's speed, so a 15–22 s dance clip against a 60 s reference is not compared. A sliding search for the matching section of the reference is proposed and not built.</p>
   <p><b>Live check.</b> During the take, MediaPipe on the phone draws the joints, says whether the whole body is in view, and compares 8 joint angles with the trainer's animation, flagging joints more than 25° off. It is labelled approximate; the 3D score after the take is the one that counts.</p>
