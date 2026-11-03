@@ -65,12 +65,19 @@ test("a missing host element is a no-op", async () => {
   assert.equal(await mountFooter(null, async () => BUILD), false);
 });
 
-test("source and feedback are plain text; the only links are app pages", () => {
+test("source and feedback are plain text; the only links are app pages and the contact address", () => {
   const el = renderFooter(new El("footer"), BUILD);
   assert.equal(q(el, "footer-source").tag, "p");
   assert.equal(q(el, "footer-source").textContent, "Source: private repository (moalborati/simon-part-7-stitching-app)");
   assert.equal(q(el, "footer-feedback").tag, "p");
   assert.equal(q(el, "footer-link-source"), null);
   assert.equal(q(el, "footer-link-feedback"), null);
-  assert.deepEqual(el.querySelectorAll("[href]").map((a) => a.getAttribute("href")), ["#/me", "#/architecture", "api/notices"]);
+  const hrefs = el.querySelectorAll("[href]").map((a) => a.getAttribute("href"));
+  // simon.live's footer (2026-11-03): the brand's contact, then the app, company and legal columns
+  assert.deepEqual(hrefs, ["mailto:hello@simon.live", "#/", "#/record", "#/impact", "#/architecture", "#/about", "mailto:hello@simon.live",
+    "#/me", "privacy", "terms", "accessibility", "#/safety", "api/notices"]);
+  // the go-live pages (part7/legal_pages.py) are app paths too
+  const app = (x) => x.startsWith("#/") || x.startsWith("api/") || ["privacy", "terms", "accessibility"].includes(x);
+  assert.ok(hrefs.every((x) => app(x) || x === "mailto:hello@simon.live"), "negative: no outside link");
+  assert.equal(q(el, "footer-copyright").textContent, "© 2026 The Simon team");
 });

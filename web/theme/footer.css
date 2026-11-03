@@ -30,12 +30,34 @@
 .sf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
 .sf-status { margin: 0; }
 
-/* links: quiet, underlined, each a full tap target */
-.sf-links { display: flex; flex-wrap: wrap; column-gap: var(--space-4); }
-.sf-links a { display: inline-flex; align-items: center; min-height: var(--tap-target); color: var(--color-text-muted);
+/* the top: the brand on the left, the link columns on the right; stacked on a phone */
+.sf-top { display: grid; gap: var(--space-6); grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr); padding: var(--space-4) 0; }
+.sf-brand { display: grid; gap: var(--space-2); align-content: start; }
+.sf-logo { margin: 0; font: 400 var(--text-xl)/1 var(--font-display); color: var(--color-pink); }
+.sf-tagline { margin: 0; max-width: 34ch; }
+.sf-mail { justify-self: start; display: inline-flex; align-items: center; min-height: var(--tap-target); color: var(--color-accent);
   text-decoration: underline; text-underline-offset: 3px; }
-.sf-links a:hover { color: var(--color-text); }
+.sf-cols { display: grid; gap: var(--space-4); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sf-col-title { margin: 0 0 var(--space-1); color: var(--color-text); font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* links: quiet, each a full tap target, underlined on hover */
+.sf-links { list-style: none; margin: 0; padding: 0; display: grid; }
+.sf-links a { display: inline-flex; align-items: center; min-height: var(--tap-target); color: var(--color-text-muted);
+  text-decoration: none; }
+.sf-links a:hover, .sf-links a:focus-visible { color: var(--color-text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* the bottom: copyright, the build, the credits */
+.sf-bottom { display: grid; gap: var(--space-2); border-top: 1px solid var(--color-line); padding-top: var(--space-3); }
+.sf-copy { margin: 0; color: var(--color-text); }
 .sf-credit { margin: 0; font-size: var(--text-xs); }
+
+@media (max-width: 760px) {
+  .sf-top { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  .sf-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* the staging Feedback tab sits on the right edge (judge-ui.css): on a phone the footer keeps clear of it */
 @media (max-width: 600px) {

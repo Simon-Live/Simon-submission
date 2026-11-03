@@ -141,6 +141,14 @@ function mountRecapRoute(el, which, month) {
 }
 
 /** `#/impact` and `#/architecture`: the persona page and the diagrams, loaded on first use (impact-page.md). */
+/** A business page (web/legal.js), loaded on first use like the other static pages. */
+function mountLegalRoute(el, key) {
+  let stop = () => {};
+  let live = true;
+  import("./legal.js").then((m) => { if (live) stop = m.mountLegal(el, key); }).catch(() => {});
+  return () => { live = false; stop(); };
+}
+
 function mountLazy(el, file, name) {
   let stop = () => {};
   let live = true;
@@ -176,6 +184,7 @@ export const ROUTES = [
   [/^me\/([^/]+)$/, (el, m) => mountHistoryRoute(el, m[1])],
   [/^impact$/, (el) => mountLazy(el, "./impact.js", "mountImpact")], // who Simon is for: persona cards (impact-page.md)
   [/^architecture$/, (el) => mountLazy(el, "./architecture.js", "mountArchitecture")], // the three diagrams of docs/ARCHITECTURE.md
+  [/^(about|safety)$/, (el, m) => mountLegalRoute(el, m[1])], // About us and Health and safety (model/legal.js)
   [/^profile(?:\/.*)?$/, () => redirectToMe()], // the old profile address, and anything below it, opens the Me page
 ];
 
