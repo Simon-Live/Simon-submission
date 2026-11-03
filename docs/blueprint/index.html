@@ -203,7 +203,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="meta">
     <span class="chip">Meta Global AI Developer Hackathon · <b>Indie track</b></span>
     <span class="chip">Due <b>Wed 4 Nov 2026, 9 PM ET</b></span>
-    <span class="chip">State as of <b>3 Nov 2026, 06:40 UTC</b></span>
+    <span class="chip">State as of <b>3 Nov 2026, 06:45 UTC</b></span>
     <span class="chip">Hub <b>moalborati/simon</b></span>
   </div>
 </header>
@@ -223,7 +223,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <p><b>Where it is at 06:35 UTC on 3 Nov.</b>
     <ul>
       <li><b>GitHub:</b> the client repo's <code>main</code> carries release 21 (<code>8e4b2c47</code>, releases 20 and 21 together, tests and check-7 green) and release 22 (<code>0715d204</code>: the serverless route and its failsafe, off; the repair of models with hands glued to the thighs; "Show only my 3D model"; model-import timings).</li>
-      <li><b>Staging:</b> runs <code>0fd57a6b</code>: release 22 plus nothing capped, the follow-ghost fix, a security fix (TICKET-373: no one else's job id from the featured result; deleting a take needs its owner) and Part 5 1.14.2. It's being published to the branch <code>staging-sync-0fd57a6b</code> so the team's local app can match it before release 23.</li>
+      <li><b>Staging:</b> runs <code>0fd57a6b</code>: release 22 plus nothing capped, the follow-ghost fix, a security fix (TICKET-373, live and independently reviewed: no one else's job id from the featured result; deleting a take needs its owner; a signed-out delete of the hero gets 403. Still to come: a once-featured take stays protected, and the delete route gets the same-origin check) and Part 5 1.14.2. It's being published to the branch <code>staging-sync-0fd57a6b</code> so the team's local app can match it before release 23.</li>
       <li><b>Bug fixes in flight</b> (the freeze is for new features only):
         <ul>
           <li><s>Part 5 1.14.2</s> (#38, <code>2fca0d9</code>, live on staging): quality counts only the measures the trainer's clip shows, and the last second stops costing credit. The same seated recording went from quality major and 82.9% B to quality ok and 91.2% A (job <code>4a6d890a20f3</code>).</li>
