@@ -46,6 +46,7 @@ export const extraOf = (rec) => ({
   ...(rec && rec.model_only === true ? { model_only: true } : {}),
   ...(rec && rec.mirrored === true ? { mirrored: true } : {}), // TICKET-310: the person's word, an upload only
   ...(rec && rec.floor_work === true ? { floor_work: true } : {}),
+  ...(rec && rec.run_on ? { run_on: rec.run_on } : {}), // TICKET-364: the take's "Run on" choice
 });
 
 /** The request for a saved record: the same call the open take flow makes (role trainer | follow | group). */

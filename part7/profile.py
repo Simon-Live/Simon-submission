@@ -23,9 +23,11 @@ GOALS: dict[str, str] = {
     "match_trainer_timing": "Match the trainer's timing",
     "steady_practice": "Keep a steady practice",
 }
-FIELDS = ("public_name", "avatar", "modes", "goals", "show_name", "credit_me_as_trainer", "default_model_id")
+FIELDS = ("public_name", "avatar", "modes", "goals", "show_name", "credit_me_as_trainer", "default_model_id",
+          "model_only_view")
 BACKUP_NAME = "identity.db.pre-profiles"
 MODEL_BACKUP_NAME = "identity.db.pre-default-model"
+VIEW_BACKUP_NAME = "identity.db.pre-model-only-view"
 # The picker's choice id for "You" (web/skin/picker.js): person, skeleton, lib:<library id> or up:<upload id>.
 MODEL_CHOICE_RE = re.compile(r"^(?:person|skeleton|(?:lib|up):[A-Za-z0-9][A-Za-z0-9_.-]{0,63})$")
 
@@ -92,6 +94,17 @@ def migrate_default_model(conn: sqlite3.Connection, path: Path) -> bool:
     return True
 
 
+def migrate_model_only_view(conn: sqlite3.Connection, path: Path) -> bool:
+    """Add `profiles.model_only_view INTEGER NOT NULL DEFAULT 0` once ("Show only my 3D model", model-default.md
+    AC-MD10); True when it ran. Additive and idempotent, after `migrate_default_model`. Old rows read off. The database
+    is copied to `identity.db.pre-model-only-view` first when it holds accounts, and a failed copy raises with nothing changed."""
+    if any(r[1] == "model_only_view" for r in conn.execute("PRAGMA table_info(profiles)")):
+        return False
+    _backup(conn, path, VIEW_BACKUP_NAME, "model only view")
+    conn.execute("ALTER TABLE profiles ADD COLUMN model_only_view INTEGER NOT NULL DEFAULT 0")
+    return True
+
+
 def clean_name(raw: Any, email: str | None = None) -> str | None:
     """None for no name, else the cleaned name; `ProfileError` when it is not acceptable (never the email)."""
     if raw is None:
@@ -129,13 +142,15 @@ def clean_model(raw: Any) -> str | None:
 
 def defaults() -> dict[str, Any]:
     return {"public_name": None, "avatar": None, "modes": [], "goals": [], "show_name": False,
-            "credit_me_as_trainer": False, "default_model_id": None, "created_utc": None, "updated_utc": None}
+            "credit_me_as_trainer": False, "default_model_id": None, "model_only_view": False,
+            "created_utc": None, "updated_utc": None}
 
 
 def _row_doc(row: sqlite3.Row) -> dict[str, Any]:
     return {"public_name": row["public_name"], "avatar": row["avatar_key"], "modes": json.loads(row["modes"] or "[]"),
             "goals": json.loads(row["goals"] or "[]"), "show_name": bool(row["show_name"]),
             "credit_me_as_trainer": bool(row["credit_me_as_trainer"]), "default_model_id": row["default_model_id"],
+            "model_only_view": bool(row["model_only_view"]),
             "created_utc": row["created_utc"], "updated_utc": row["updated_utc"]}
 
 
@@ -170,7 +185,7 @@ def update(db: Any, user_id: str, patch: dict[str, Any]) -> dict[str, Any]:
         values["modes"] = json.dumps(_pick(patch["modes"], modes_mod.MODES, MSG_MODES))
     if "goals" in patch:
         values["goals"] = json.dumps(_pick(patch["goals"], tuple(GOALS), MSG_GOALS))
-    for key in ("show_name", "credit_me_as_trainer"):
+    for key in ("show_name", "credit_me_as_trainer", "model_only_view"):
         if key in patch:
             values[key] = _switch(patch[key])
     if "default_model_id" in patch:
@@ -187,7 +202,7 @@ def update(db: Any, user_id: str, patch: dict[str, Any]) -> dict[str, Any]:
 
 
 def delete(db: Any, user_id: str) -> bool:
-    """Remove the profile row (name, avatar, modes, goals, switches, default model). Takes are not touched."""
+    """Remove the profile row (name, avatar, modes, goals, switches, default model, model only view). Takes are not touched."""
     with db._lock:
         return db._db.execute("DELETE FROM profiles WHERE user_id = ?", (user_id,)).rowcount > 0
 

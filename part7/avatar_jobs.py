@@ -25,7 +25,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from part7 import config, gpu_lock, keys, model_store, p2_worker
+from part7 import config, gpu_lock, import_timings, keys, model_store, p2_worker
 
 log = logging.getLogger("part7")
 
@@ -66,6 +66,7 @@ STUCK_MESSAGE = "The server restarted while this model was being made. Try again
 MSG_QUEUE_FULL = "Too many models are being made right now. Try again in a few minutes."
 
 _SUBCOMMAND = {"image": "avatar", "autorig": "autorig"}
+_TIMING_STAGE = {"image": "avatar", "autorig": "autorig", "image3d": "image3d"}  # TICKET-363
 _SECRET_ENV = re.compile(r"KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL", re.IGNORECASE)
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
 
@@ -461,7 +462,11 @@ def _attempt(model_dir: Path, kind: str, files: list[Path], part2: Path, py: Pat
             made = "skeleton" if kind == "autorig" else "making"  # the skeleton for a mesh, else the model from pictures
             if not _set_status(model_dir, "converting", step=made):  # the status turns to working only when Part 2 starts
                 return 4, True
-            return _run_part2(argv, part2, _environment(part2, _scratch(model_dir, kind)), model_dir, TIMEOUT_S[kind]), False
+            began = import_timings.start()  # TICKET-363: Part 2's run only, the wait for the card left out
+            code = _run_part2(argv, part2, _environment(part2, _scratch(model_dir, kind)), model_dir, TIMEOUT_S[kind])
+            if code == 0:
+                import_timings.done(model_dir, _TIMING_STAGE.get(kind, "avatar"), began)
+            return code, False
     except TimeoutError:
         return 4, True
 

@@ -27,6 +27,7 @@ def test_hooks_are_wired_for_the_follower_only():
     assert 'trainer || resume ? null : mountReference(entry)' in flow
     # sound is asked for on a trainer take only (not a group take, nothing transcribes it): a follower take has no audio
     assert 'mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group", liveCheck, ghost })' in flow
+    assert "hideOwn" in flow  # a follower who chose to show only their 3D model never sees their own video (TICKET-365)
     assert 'role === "follower" && entry ? mountGhost({ entry, reference })' in flow  # the ghost follows the reference (TICKET-264)
     # the live check compares with the trainer on Follow only (client 22d09a7, TICKET-187)
     assert 'mountLiveCheck({ entry: role === "follower" ? entry : null, reference })' in flow

@@ -25,7 +25,7 @@ import uuid
 from part7 import (
     animation_format, applog, attribution, auth, auth_routes, buildinfo, challenge_routes, client_log, config, delete_routes, entry_check, export_data_routes, export_routes, heartbeat,
     health_probe, history_routes, history_store, idempotency, identity, jobs, judge_view, labels, media, mesh_files, mesh_stream_routes, model_import, model_only, models_used, modes, modules, muse_fix_routes, narration_routes,
-    devices_routes, my_reference, my_reference_routes, notes_routes, people, people_routes, private_mode, profile_routes, processor, proxy, quota, reference_approval_routes, refused_uploads, replay, result_media, resume, sections, selfheal, share_routes, speech_routes,
+    devices_routes, my_reference, my_reference_routes, notes_routes, people, people_routes, private_mode, profile_routes, processor, proxy, quota, reference_approval_routes, refused_uploads, replay, result_media, resume, run_on, sections, selfheal, share_routes, speech_routes,
     source_routes, progress_routes, teacher_routes,
     takes_on_routes,
     architecture, impact,
@@ -499,6 +499,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "part5": p5_analyse.known_capabilities(),
                 "movement": movement,
                 "fixture_result": _fixture_files()[0].is_file() and _fixture_files()[1].is_file(),
+                "serverless": run_on.modal_configured(),  # TICKET-364: presence of Modal config only, never a value
             },
         )
 
@@ -778,6 +779,9 @@ class _Handler(BaseHTTPRequestHandler):
         practice = self._practice(doc)  # mode and section (practice-and-modes.md); answers 400 itself
         if practice is None:
             return
+        run_choice, bad = run_on.parse(doc)  # TICKET-364: named apart from the reference `choice` below
+        if bad:
+            return self._error(400, bad)
         clip = self._clip_of(doc, raw)
         if clip is None:
             return
@@ -824,6 +828,7 @@ class _Handler(BaseHTTPRequestHandler):
         model_choice = model_only.requested(doc)  # "Use my 3D model instead of video" (model-only-take.md)
         if model_choice:
             record[model_only.FIELD] = False
+        model_only.stamp(self, record)  # "Show only my 3D model": the owner's choice travels with the take (model-default.md AC-MD12)
         drop_source = (model_only.source_dropper(self.app.queue, self.app.uploads, str(doc.get("upload_id")), record.get("people_job"))
                        if model_choice else None)
         fn = processor.follow_job(
@@ -833,6 +838,8 @@ class _Handler(BaseHTTPRequestHandler):
             video_kept=not model_choice, drop_source=drop_source, mirrored=mirrored,
             floor_work=labels.floor_work(self.app.state, entry_id),
         )
+        fn = run_on.bind(fn, run_choice)  # TICKET-364: the take's "Run on" choice is the job's first Part 2 route
+        record.update(run_on.record(run_choice))
         self._enqueue("follow", fn, entry_id=entry_id, _resume=resume.follow_spec(doc, person), **record)
 
     def _entry_mode(self, record: dict[str, Any], entry_id: str, manifest: dict[str, Any]) -> None:

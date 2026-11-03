@@ -27,6 +27,7 @@ async function build() {
       upload: (blob, opts) => api.uploadVideo(blob, { ...opts, onProgress: opts && opts.onProgress ? opts.onProgress : () => {} }),
       createPeopleJob: (uploadId, trim) => api.createPeopleJob(uploadId, trim),
       createPeopleJobMode: (uploadId, trim, mode) => api.createPeopleJob(uploadId, trim, mode),
+      createPeopleJobOn: (uploadId, trim, mode, runOn) => api.createPeopleJob(uploadId, trim, mode, runOn), // TICKET-364
       getJob: (id) => api.getJob(id),
       submitJob: (req, key) => api.submitJob(req, key),
       health: () => api.getHealth(),

@@ -22,7 +22,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 import zipfile
 
-from part7 import applog, auth, bone_map, glb_inspect, http_body, model_store as store, profile, quota
+from part7 import applog, auth, bone_map, glb_inspect, http_body, import_timings, model_store as store, profile, quota
 from part7 import person_check, picture_kind
 
 MAX_MODEL_BYTES = 100_000_000
@@ -338,6 +338,10 @@ def _finish(folder: Path, glb_path: Path, extra: dict[str, Any], report: glb_ins
         created_at=rec.get("created_at") or store.now(), generated=extra.get("avatar") if generated else None)
     if generated:
         manifest["generator_attribution"] = (extra.get("avatar") or {}).get("licence") or GENERATED_NOTICE
+    if rec.get("timings"):  # TICKET-363: seconds per stage, and the route when a stage ran on Modal
+        manifest["timings"] = rec["timings"]
+        if rec.get("route"):
+            manifest["route"] = rec["route"]
     record = import_record(folder)
     if record is not None:  # TICKET-341: every stage of a converted file (readers tried, merge, units, textures, rig)
         manifest["import"] = {k: record.get(k) for k in ("reader", "mode", "steps", "attempts")}
@@ -550,6 +554,7 @@ def _store_and_dispatch(h: Any, state: Path, owner: str, q: dict[str, Any], kind
         else:
             shutil.rmtree(folder, ignore_errors=True)
 
+    began = import_timings.start()
     try:
         if not _read_body(h, length, first, path):
             h.close_connection = True
@@ -565,6 +570,7 @@ def _store_and_dispatch(h: Any, state: Path, owner: str, q: dict[str, Any], kind
                                   **({"look": True} if q.get("look") else {}), **_consent_record(q), "format": "gltf-zip" if kind == "zip" else kind, "for": q["for"],
                                   "kind": "generated" if (image or kind == "obj") else "upload"})
     store.write_status(folder, bytes=total)
+    import_timings.done(folder, "upload", began)
     try:
         if kind == "glb":
             return _dispatch_glb(h, folder, mid, path, q)

@@ -56,6 +56,8 @@ def _inputs(h: Any, job_id: str) -> tuple[Path, Path, dict[str, Any] | None, exp
         raise Refused(409, MSG_NOT_DONE)
     if job.get("kind") != "follow":
         raise Refused(409, MSG_NOT_FOLLOW)
+    if model_only.view_only(job):  # the owner shows only the 3D model: no clip of them, to anyone (model-default.md AC-MD12)
+        raise Refused(404, model_only.MSG_VIEW_ONLY)
     if not model_only.kept(job):
         raise Refused(409, model_only.MSG_NO_VIDEO)
     job_dir = h.app.queue.job_dir(job_id)

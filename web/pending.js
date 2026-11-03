@@ -285,6 +285,7 @@ export function createPending(deps) {
    */
   async function begin({ source = "recording", blob, ...rest }) {
     const record = newRecord({ id: uuid(), now: now(), blob, ...rest });
+    if (rest.runOn) record.run_on = rest.runOn; // TICKET-364: the take's "Run on" choice, only when one was shown
     const skip = (reason, notice) => { log("info", "take_save_skipped", { reason }); return { record, saved: false, notice }; };
     if (source !== "recording") return skip("file", null);
     if (!store) return skip("no_storage", TEXT.memoryOnly);
@@ -447,9 +448,13 @@ export function createPending(deps) {
 
   // TICKET-198: the take's "Just me" / "Group" choice (the record's role) sets the server's people-tracking rate
   const withPeopleMode = (a, mode) => (a.createPeopleJobMode ? { ...a, createPeopleJob: (u, t) => a.createPeopleJobMode(u, t, mode) } : a);
+  // TICKET-364: a take with a "Run on" choice sends it too, through createPeopleJobOn (the lines above stay as they are)
+  const withRunOn = (a, rec) => (rec.run_on && a.createPeopleJobOn ? { ...a, createPeopleJobMode: (u, t, m) => a.createPeopleJobOn(u, t, m, rec.run_on) } : a);
+  const pendingDeps = deps;
   const peopleMode = (rec) => (rec.role === "group" ? "group" : "single");
 
   async function doPeople(rec) {
+    const deps = { ...pendingDeps, api: withRunOn(pendingDeps.api, rec) }; // TICKET-364: the take's "Run on" choice
     const api = withPeopleMode(deps.api, peopleMode(rec)); // the call below reads this one
     const made = await guard(rec, "people", () => api.createPeopleJob(rec.upload_id, rec.trim));
     await patch(rec, { people_job: typeof made.job === "object" ? made.job.id : made.job });

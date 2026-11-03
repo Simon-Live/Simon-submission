@@ -89,7 +89,7 @@ def _take_snapshot(h: Any, owner: str, job_id: Any, want_clip: bool) -> tuple[di
         raise LookupError(MSG_NO_ITEM)
     faults = [f["text"] for f in analysis.get("faults", []) if isinstance(f, dict) and isinstance(f.get("text"), str)][:FAULTS_MAX]
     clip = False
-    if want_clip and model_only.kept(job):  # a model-only take never carries a clip: the tick is ignored, not an error
+    if want_clip and model_only.kept(job) and not model_only.view_only(job):  # a model-only take never carries a clip: the tick is ignored, not an error
         entry = _entry_of_job(h.app.state, owner, job_id)
         take = next((t for t in history_store.takes(h.app.state, owner, entry) if t["job_id"] == job_id), None) if entry else None
         clip = bool(take and take["clip"] and not take["private"])

@@ -132,8 +132,8 @@ export function drawActionRow(root, text) {
 }
 
 /** The Videos view of a take without a trainer video (a group take): the follower's own clip, with its sound. */
-export function drawSoloVideo(root, url) {
-  const video = h("video", { class: "st-solo", src: url, controls: true, playsinline: true, preload: "auto", "data-testid": "stage-solo-video", "aria-label": "Your take on video" });
+export function drawSoloVideo(root, url, { label = "Your take on video", testid = "stage-solo-video" } = {}) {
+  const video = h("video", { class: "st-solo", src: url, controls: true, playsinline: true, preload: "auto", "data-testid": testid, "aria-label": label });
   root.append(video);
   return { el: video, video, destroy() { video.pause(); video.removeAttribute("src"); video.load(); video.remove(); } };
 }

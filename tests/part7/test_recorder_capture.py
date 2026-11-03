@@ -51,7 +51,7 @@ def test_prefs_storage_wrapped_in_try_catch():
 def test_record_and_follow_are_thin_wrappers_over_one_take_flow():
     r, f, t, a = src("record"), src("follow"), src("take-flow"), src("api")
     for s in (r, f):
-        assert "mountTakeFlow" in s and "mountCapture" not in s and "editTake" not in s and len(s.splitlines()) < (50 if s is r else 90)  # follow also hosts the mode picker and the practice ladder
+        assert "mountTakeFlow" in s and "mountCapture" not in s and "editTake" not in s and len(s.splitlines()) < (50 if s is r else 100)  # follow also hosts the mode picker, the practice ladder and the 3D-model-only read (TICKET-365)
     assert 'role: "trainer"' in r and 'role: "follower"' in f
     assert "editTake" in t and "capture.reset()" in t and "pending.front(rec" in t  # the upload and people job run in web/pending.js (offline takes)
     assert "openPeoplePicker" in t and "mountModeSwitch" in t and "mountLabels" in t and "labels.value()" in t

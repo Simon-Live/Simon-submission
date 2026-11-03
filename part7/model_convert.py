@@ -22,7 +22,7 @@ import threading
 import time
 from typing import Callable
 
-from part7 import applog, config, model_store
+from part7 import applog, config, import_timings, model_store
 
 SPOOL_DIRNAME = "models-spool"
 FORMATS = ("fbx", "blend", "gltf-zip")
@@ -51,6 +51,7 @@ _handler: DoneHandler | None = None
 _handlers: dict[str, DoneHandler] = {}
 _lock = threading.Lock()
 _pollers: dict[Path, threading.Thread] = {}
+_started: dict[str, float] = {}  # TICKET-363: import_timings start marks by model id
 _active: dict[str, Path] = {}  # TICKET-306: conversions this server submitted that have no result yet
 
 
@@ -125,6 +126,7 @@ def submit(model_dir: Path | str, src_path: Path | str, fmt: str, on_done: DoneH
     set_status(model_dir, "queued")
     with _lock:
         _active[job_id] = model_dir
+    _started[job_id] = import_timings.start()  # TICKET-363: submit to result, the queue wait included
     _write_json(spool / "queue" / f"{job_id}.json",
                 {"id": job_id, "model_dir": str(model_dir), "src": str(src), "fmt": fmt, "submitted_at": time.time()})
     _ensure_poller(spool)
@@ -187,8 +189,10 @@ def _finish(spool: Path, result: dict) -> None:
     handler = _handlers.pop(job_id, None) or _handler
     with _lock:
         _active.pop(job_id, None)
+    started = _started.pop(job_id, None)
     if model_dir is None:
         return
+    import_timings.done(model_dir, "conversion", started)
     ok, message = bool(result.get("ok")), str(result.get("message") or "")
     produced = model_dir / "out" / "model.glb"
     if ok and (produced.is_symlink() or not produced.is_file()):

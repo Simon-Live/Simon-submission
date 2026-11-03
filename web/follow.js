@@ -1,5 +1,6 @@
 // Follow (follower): the shared take flow with a mode picker and "Learn in sections". `#/follow/<id>`
 import { getConfig, getEntry, ApiError } from "./api.js";
+import { loadModelOnlyView } from "./model-only-view.js";
 import { mountTakeFlow } from "./take-flow.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading } from "./progress.js";
@@ -31,7 +32,8 @@ export function mountFollow(root, id, challengeId = null) {
   root.append(screen);
   showLoading(screen, "Loading movement");
 
-  Promise.all([getEntry(id), getConfig(), savedMode().catch(() => null), getEntryLabels(id).catch(() => null)]).then(([entry, cfg, saved, entryLabels]) => {
+  Promise.all([getEntry(id), getConfig(), savedMode().catch(() => null), getEntryLabels(id).catch(() => null),
+    loadModelOnlyView().catch(() => false)]).then(([entry, cfg, saved, entryLabels, modelOnlyView]) => {
     if (!alive) return;
     ensureStyles();
     const eid = entry.id || id;
@@ -72,7 +74,7 @@ export function mountFollow(root, id, challengeId = null) {
     practice = mountPractice(practiceBox, { entry: full, mode });
     mountFocus(focusBox, eid, () => alive).catch(() => {});
     stop = mountTakeFlow(box, {
-      role: "follower", entryId: eid, entry: full, limits: cfg.limits,
+      role: "follower", entryId: eid, entry: full, limits: cfg.limits, modelOnlyView, // "Show only my 3D model" (model-default.md AC-MD11)
       extra: () => ({ ...langExtra(cfg), ...(chosen ? { mode: chosen } : {}), ...(taking() ? { challenge_id: taking().id } : {}), ...practice.extra() }),
       onReference: (ref) => practice.attach(ref),
       countdownDefault: countdownFor(mode),

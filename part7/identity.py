@@ -166,6 +166,7 @@ class IdentityStore:
         from part7 import source_credit  # additive `source_credits` table (source-credit.md)
         source_credit.migrate(self._db)
         profile.migrate_default_model(self._db, path)  # additive `profiles.default_model_id`, backup copy first (profile.md)
+        profile.migrate_model_only_view(self._db, path)  # additive `profiles.model_only_view`, backup copy first (model-default.md)
         for suffix in ("-wal", "-shm"):  # SQLite creates these with the umask; keep them private too
             side = Path(str(path) + suffix)
             if side.exists():

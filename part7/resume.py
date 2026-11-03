@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from part7 import animation_format, applog, auth, labels, mirrored, model_only, my_reference, people, people_routes, private_mode, processor, sections
+from part7 import animation_format, applog, auth, labels, mirrored, model_only, my_reference, people, people_routes, private_mode, processor, run_on, sections
 
 SPEC_VERSION = 1
 PERSON_SPEC_VERSION = 2  # a spec about one person of a people job (TICKET-287)
@@ -67,7 +67,10 @@ def rebuild(app: Any, record: dict[str, Any]) -> Any:
     if record.get("kind") == "trainer":
         return _trainer(app, record, spec, raw, person)
     if record.get("kind") == "follow":
-        return _follow(app, record, raw, person)
+        fn = _follow(app, record, raw, person)
+        if fn is None:
+            return None
+        return run_on.bind(fn, run_on.resumed(record.get(run_on.FIELD), record["id"]))  # TICKET-364: checked again
     return None
 
 

@@ -21,7 +21,7 @@ AVATARS = ["fern", "ember", "tide", "moss", "dusk", "sun", "stone", "wave"]  # t
 MODES = ["dance", "rehab", "fitness"]
 GOALS = {"learn_the_moves": "Learn the moves", "match_trainer_timing": "Match the trainer's timing",
          "steady_practice": "Keep a steady practice"}
-KEYS = {"public_name", "avatar", "modes", "goals", "show_name", "credit_me_as_trainer", "default_model_id"}
+KEYS = {"public_name", "avatar", "modes", "goals", "show_name", "credit_me_as_trainer", "default_model_id", "model_only_view"}
 MODEL_RE = re.compile(r"^(?:person|skeleton|(?:lib|up):[A-Za-z0-9][A-Za-z0-9_.-]{0,63})$")  # as part7/profile.py
 PROFILES: dict[str, dict] = {}
 SEEDED_HISTORY = {"entries": [{"entry_id": "lateral-raise", "name": "Lateral raise", "takes": 3,
@@ -31,7 +31,7 @@ SEEDED_HISTORY = {"entries": [{"entry_id": "lateral-raise", "name": "Lateral rai
 
 def default() -> dict:
     return {"public_name": None, "avatar": None, "modes": [], "goals": [], "show_name": False, "credit_me_as_trainer": False,
-            "default_model_id": None, "created_utc": None, "updated_utc": None}
+            "default_model_id": None, "model_only_view": False, "created_utc": None, "updated_utc": None}
 
 
 def invalid(data: dict) -> str | None:

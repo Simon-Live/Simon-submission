@@ -100,6 +100,10 @@ def build_parser() -> argparse.ArgumentParser:
     from part7 import diagnose
 
     diagnose.add_parser(sub)
+    # part7 models-reskin [--staging|--state DIR] [--id ID] [--apply] (TICKET-333)
+    from part7 import model_reskin
+
+    model_reskin.add_parser(sub)
 
     # part7 selfheal-status [--staging|--state DIR] [--json]
     p_heal = sub.add_parser("selfheal-status", help="List the self-heal checks with their last run and last finding.")
@@ -202,6 +206,11 @@ def main(argv: list[str] | None = None) -> int:
         from part7 import labels_cli
 
         return labels_cli.main(args)
+
+    if args.command == "models-reskin":
+        from part7 import model_reskin
+
+        return model_reskin.cli(args)
 
     if args.command == "diagnose":
         from part7 import diagnose

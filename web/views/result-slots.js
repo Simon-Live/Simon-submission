@@ -55,7 +55,7 @@ export function mountLaneModules(rootEl, { jobId, analysis, video = null, seek, 
 export function mountExport(slot, jobId) {
   let stopButton = null;
   let stopped = false;
-  const modelOnly = slot && typeof slot.closest === "function" && slot.closest('[data-model-only="true"]'); // no video, so no export clip (model-only-take.md)
+  const modelOnly = slot && typeof slot.closest === "function" && (slot.closest('[data-model-only="true"]') || slot.closest('[data-model-only-view="true"]')); // no video of the person, so no export clip (model-only-take.md, model-default.md AC-MD12)
   if (slot && !modelOnly) quiet(import("../export.js").then((m) => m.mountExportButton(slot, jobId)).then((stop) => { stopButton = stop; if (stopped) stop(); }));
   return () => { stopped = true; if (stopButton) stopButton(); };
 }

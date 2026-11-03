@@ -33,6 +33,7 @@ import { hasFollowerVideo } from "./model/result-stage.js";
 import { mountOrphanNote, mountVideosNote, keepDeadLinksOff } from "./orphan-take.js";
 import { mountStage, STAGE_TEXT, sideHandle, soloHandle, coachHandle, compareHandle } from "./result-stage.js";
 import { drawSoloVideo } from "./views/result-stage.js";
+import { mountTrainerOnlyVideo, ownVideoUrl, stampedModelOnly } from "./model-only-view.js";
 import { mountCompare as mountCompareFor } from "./compare.js";
 import { referenceLabel, visibilityFor } from "./model/my-reference.js";   // "Your reference" for a take compared with the student's own rep
 
@@ -321,13 +322,15 @@ const timelineEnd = (analysis) => timelineOf(analysis).map((w) => w.t_s[1]);
  * then the collapsed "Rep breakdown" bar and the action row; everything else follows unchanged.
  * @returns {{seek, highlight, compare, coach, destroy}}
  */
-export async function mountResult(root, { analysis, replay, trainerVisibility = null, record = null, job = null, pid = null, videoUrl, trainerVideoUrl = null } = {}) {
+export async function mountResult(root, { analysis, replay, trainerVisibility = null, record = null, job = null, pid = null, videoUrl, trainerVideoUrl = null, modelOnlyView = false } = {}) {
   ensureStyles();
   root.replaceChildren();
   root.classList.add("simon-result");
   const urls = [];
   if (record && record.video_kept === false) root.setAttribute("data-model-only", "true"); // views/result-slots.js shows no export button for it
   if (record && record.video_kept === false) videoUrl = null; // a model-only take: no video exists, the 3D view is the stage (model-only-take.md)
+  modelOnlyView = modelOnlyView === true || stampedModelOnly(record); // the owner's choice, stamped on the take: every viewer
+  if (modelOnlyView) { root.setAttribute("data-model-only-view", "true"); videoUrl = ownVideoUrl(true, videoUrl); } // "Show only my 3D model" (model-default.md AC-MD12)
   let compare = null;
   let coach = null;
   if (!analysis) {
@@ -575,6 +578,7 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
       side.video.addEventListener("error", () => stageCtl.removeView("videos"), { once: true });
     }
   }
+  if (!url && modelOnlyView && trainerVideoUrl) side = mountTrainerOnlyVideo(stageView.hosts.videos, trainerVideoUrl, stageCtl); // the trainer's video stays (AC-MD12)
   mountVideosNote(stageView.hosts.videos, record);   // TICKET-331: say the trainer's video is gone, not only show yours
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
   renderFaults(body, display, getView);

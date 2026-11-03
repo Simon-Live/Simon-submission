@@ -99,7 +99,7 @@ function selectField(id, label, values, current, text, onchange) {
  * fn(take, {source, countdownUsed, manual}) when a take arrives; reset() returns to the preview.
  * `reference` (follower only, reference.js) is docked beside the preview, shown in the countdown, and plays from its end.
  */
-export function mountCapture(root, limits, { reference = null, countdownDefault = null, audio: audioOpt = false, liveCheck = null, ghost = null } = {}) {
+export function mountCapture(root, limits, { reference = null, countdownDefault = null, audio: audioOpt = false, liveCheck = null, ghost = null, hideOwn = null } = {}) {
   // `audio` is a boolean, or a function read at each use (the trainer's Group mode records no sound: nothing transcribes it)
   const wantAudio = () => (typeof audioOpt === "function" ? Boolean(audioOpt()) : Boolean(audioOpt));
   let stream = null;
@@ -143,7 +143,11 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   const badge = recBadge();
   const camText = h("p", { class: "cam-text", "data-testid": "camera-status", text: CAMERA_TEXT.idle });
   const camOpen = h("button", { type: "button", class: "btn primary", "data-testid": "cam-open", text: "Open camera", onclick: () => openPreview() });
-  const stage = h("div", { class: "cam", "data-state": "idle" }, live, playback, badge.el,
+  // "Show only my 3D model" (model-default.md AC-MD11): `hideOwn` is the stand-in element. The two own videos are then
+  // never inserted into the page, so they are never paused by a removal: the camera, the quality sampling, the live check
+  // and the no-picture check read the never-attached preview as before.
+  const stage = h("div", { class: "cam", "data-state": "idle", ...(hideOwn ? { "data-model-only-view": "true" } : {}) },
+    ...(hideOwn ? [hideOwn] : [live, playback]), badge.el,
     h("div", { class: "cam-empty" }, camText, camOpen));
   const opts = h("div", { class: "rc-opts" },
     selectField("countdown-select", "Countdown", COUNTDOWNS, prefs.countdown, countdownLabel, (v) => { prefs.countdown = v; savePrefs(prefs); }),
@@ -502,6 +506,8 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   return {
     getTake: () => take,
+    /** The camera preview element (in the page, or never inserted with `hideOwn`). */
+    preview: live,
     /** True while a countdown or a recording runs (the take does not exist yet). */
     isBusy: () => stage.dataset.state === "counting" || stage.dataset.state === "recording",
     /** A mode's countdown default; ignored once the person chose one themselves. */

@@ -11,7 +11,7 @@ import re
 import threading
 from typing import Any
 
-from part7 import group, jobs, labels, media, models_used_person, people, quota, replay
+from part7 import group, jobs, labels, media, model_only, models_used_person, people, quota, replay, run_on
 
 PID_RE = re.compile(r"^[0-9A-Za-z_-]{1,40}$")
 LABEL_MAX = 40
@@ -83,10 +83,15 @@ def _post_people(h: Any) -> None:
     clip = h._clip(doc, raw)  # one trim parser: the recorder's rules (recorder.md "Trim rules")
     if clip is None:
         return
+    run_choice, bad = run_on.parse(doc)  # TICKET-364: the take's "Run on" choice; absent keeps the env route
+    if bad:
+        return h._error(400, bad)
     mode = doc.get("mode") if doc.get("mode") in ("single", "group") else None  # TICKET-198: absent or unknown is group
-    fn = people.people_job(raw, trim=clip[0], lock=h.app.lock, backend=h.app.backend, mode=mode)
+    fn = run_on.bind(people.people_job(raw, trim=clip[0], lock=h.app.lock, backend=h.app.backend, mode=mode), run_choice)
     # upload_id: so deleting a group take can drop the raw upload (delete_routes.py)
-    h._enqueue("people", fn, quota_kind="follow", upload_id=str(doc.get("upload_id")))  # finding people uses the GPU: it counts as one GPU job
+    stamped: dict[str, Any] = {}
+    model_only.stamp(h, stamped)  # the owner's "Show only my 3D model" on the people job too (model-default.md AC-MD12)
+    h._enqueue("people", fn, quota_kind="follow", upload_id=str(doc.get("upload_id")), **stamped, **run_on.record(run_choice))  # finding people uses the GPU: it counts as one GPU job
 
 
 # ----- POST api/group -----------------------------------------------------------------------------------
@@ -164,7 +169,12 @@ def _post_group(h: Any) -> None:
         if previous and previous["status"] in GROUP_ACTIVE:
             return h._error(429, MSG_BUSY)
         # people_job and upload_id: so deleting the group take removes the cut video, tracks, crops and raw upload
-        record = {"people_job": req.get("people_job"), "upload_id": (app.queue.get(req.get("people_job") or "") or {}).get("upload_id")}
+        people_job = app.queue.get(req.get("people_job") or "") or {}
+        record: dict[str, Any] = {"people_job": req.get("people_job"), "upload_id": people_job.get("upload_id")}
+        if model_only.view_only(people_job):  # the owner's "Show only my 3D model" carries into the group take (AC-MD12)
+            record[model_only.VIEW_FIELD] = True
+        else:
+            model_only.stamp(h, record)
         job = _submit_group(h, fn, 1 + len(req["followers"]), **record, **({"mode": mode} if mode else {}))
         if job is not None and key:
             active[key] = job["id"]

@@ -234,8 +234,9 @@ export const createFollowJob = (upload_id, entry_id, trim, labels, person, more,
   postJSON("api/follow", { upload_id, entry_id, ...extras(trim, labels, person), ...(more || {}) }, key);
 /** POST api/people: finds everyone in the trimmed clip; the picker polls the job. `mode` is "single" (Just me) or
  * "group"; it sets the server's people-tracking rate (TICKET-198), and a request without it is treated as group. */
-export const createPeopleJob = (upload_id, trim, mode) =>
-  postJSON("api/people", { upload_id, ...(trim ? { trim } : {}), ...(mode ? { mode } : {}) });
+// TICKET-364: `run_on` ("local" | "serverless") is the take's "Run on" choice; absent keeps the server's route.
+export const createPeopleJob = (upload_id, trim, mode, run_on) =>
+  postJSON("api/people", { upload_id, ...(trim ? { trim } : {}), ...(mode ? { mode } : {}), ...(run_on ? { run_on } : {}) });
 /** POST api/group: {upload_id, trim, people_job, trainer_id, follower_ids, name, category, labels, save_entry}. */
 export const createGroupJob = (body, key) => postJSON("api/group", body, key);
 

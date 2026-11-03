@@ -6,6 +6,9 @@
 // Trainer: "Just me" or "Group" switch, required name and category, tags and notes.
 // Follower: optional tags and notes for the take. The picker is skipped when one person is in the clip.
 import { clientLog } from "./api.js";
+import { getConfig } from "./api.js"; // TICKET-364: api/config says whether serverless is set up
+import { mountCapture as mountCaptureWith } from "./capture.js"; // TICKET-365: wrapped in mountTakeFlow for `hideOwn`
+import { mountRunOn, offersRunOn } from "./run-on.js";
 import { buildSubmit, requestOf } from "./take-request.js";
 import { getPending } from "./pending-app.js";
 import { TEXT as PENDING_TEXT, failureText } from "./pending.js";
@@ -31,6 +34,7 @@ import { mountGhost } from "./ghost.js";
 import { isSubmission } from "./flags.js";
 import { autoStarts } from "./model/judge-take.js";
 import { mountFollowSide } from "./follow-side.js";
+import { standInLine } from "./model-only-view.js";
 
 export const NAME_ERROR = "Give the movement a name.";
 export const TAKE_ERROR = "Record a video or upload one first.";
@@ -53,6 +57,9 @@ const jobId = (job) => encodeURIComponent(typeof job === "object" ? job.id : job
  * Returns the cleanup function.
  */
 export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onReference, countdownDefault, resume = null, onDone = (id, kind) => { location.hash = kind === "group" ? `#/job/${id}` : `#/job/${id}`; } }) {
+  const modelOnlyView = (arguments[1] || {}).modelOnlyView === true; // TICKET-365, read on a new line (upstream signature kept)
+  // TICKET-365: the follow capture gets `hideOwn` through this local wrapper, so the upstream mountCapture line stays as it is
+  const mountCapture = (box, lim, opts) => mountCaptureWith(box, lim, { ...opts, hideOwn: modelOnlyView && !trainer ? standInLine() : null }); // the own videos are never inserted (AC-MD11)
   const trainer = role === "trainer";
   const reference = trainer || resume ? null : mountReference(entry);
   if (reference && onReference) onReference(reference);
@@ -73,10 +80,13 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
 
   const modeBox = h("div", { class: "take-mode", hidden: !trainer });
   const capBox = h("div", { class: "capture" });
+  const runOnBox = h("div", { class: "take-run-on", hidden: true }); // TICKET-364: takes only, when serverless is set up
+  let runOn = { value: () => null };
   const choiceBox = h("div", { class: "take-choice", hidden: trainer || !!resume });
   const captureStep = h("div", { class: "capture-step", hidden: !!resume }, modeBox, capBox);
   captureStep.append(choiceBox); // model-only take choice, beside the line above (teammate line kept exact)
   const modelOnly = trainer || resume ? null : mountModelOnlyChoice(choiceBox); // a follower take only (model-only-take.md)
+  captureStep.append(runOnBox); // TICKET-364: the "Run on" choice, after the model-only choice
   const editBox = h("div", { class: "editor", hidden: true });
   const notice = h("p", { class: "hint pending-notice", role: "status", "data-testid": "pending-notice", hidden: true });
   const pickBox = h("div", { class: "picker", hidden: true });
@@ -107,6 +117,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
   };
   paintSubmit();
   if (trainer && !resume) mountModeSwitch(modeBox, { mode, onChange: (m) => { mode = m; paintSubmit(); } });
+  if (!trainer && !resume) getConfig().then((c) => { if (alive) runOn = mountRunOn(runOnBox, { enabled: offersRunOn(c, role) }); });
 
   // ---- the saved take: panel, offline details, background send ----------------------------------------------------
   /** What the person typed so far, onto the record (so a reload or a background send uses it). */
@@ -255,6 +266,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     const begun = await pending.begin({
       source: info.source, blob: take, role: recRole(), entryId: trainer ? null : entryId, entryName: entry && entry.name ? entry.name : "",
       mode: ex.mode || null, section: ex.section || null, challengeId: ex.challenge_id || null, lang: ex.lang || null, trim,
+      runOn: runOn.value(),
     });
     if (!alive) return;
     rec = begun.record;

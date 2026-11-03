@@ -25,7 +25,7 @@ import tempfile
 import time
 from typing import Any, Iterator
 
-from part7 import applog, labels, modes
+from part7 import applog, labels, model_only, modes
 
 USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,40}$")  # C-ID
 JOB_ID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -294,7 +294,7 @@ def _copy(state: Path, user_id: str, job: dict[str, Any], job_dir: Path) -> bool
         shutil.copyfile(source, stage / ANALYSIS_NAME)
         duration = duration_of(job, job_dir, analysis)
         video_kept = job.get("video_kept") is not False  # a model-only take keeps no clip (model-only-take.md)
-        has_clip = video_kept and _make_clip(job_dir / "work" / "video.mp4", stage / CLIP_NAME)
+        has_clip = video_kept and not model_only.view_only(job) and _make_clip(job_dir / "work" / "video.mp4", stage / CLIP_NAME)
         meta = {
             "job_id": job_id, "entry_id": entry_id, "at": job.get("finished_at") or job.get("created_at"),
             "duration_s": duration[0], "duration_source": duration[1], "score": scored[0], "grade": scored[1], "private": is_private(job),

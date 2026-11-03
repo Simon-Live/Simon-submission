@@ -52,7 +52,7 @@ and 5. When the Meta Model API refuses Part 1, Part 3's every-10 keyframes stand
 | WEB | [web/api.js:53](../web/api.js#L53) | `request` |
 | P7 | [part7/server.py:75](../part7/server.py#L75) | `App` |
 | P1 | [part7/parts/p1_keyframes.py:70](../part7/parts/p1_keyframes.py#L70) | `run` |
-| P2 | [part7/parts/p2_pose.py:549](../part7/parts/p2_pose.py#L549) | `run` |
+| P2 | [part7/parts/p2_pose.py:622](../part7/parts/p2_pose.py#L622) | `run` |
 | P3 | [part7/parts/p3_skeleton.py:139](../part7/parts/p3_skeleton.py#L139) | `part4` |
 | P4 | [part7/parts/p4_animate.py:50](../part7/parts/p4_animate.py#L50) | `run` |
 | P5 | [part7/parts/p5_analyse.py:95](../part7/parts/p5_analyse.py#L95) | `run` |
@@ -100,12 +100,12 @@ sequenceDiagram
 | Node | Code | Symbol |
 |---|---|---|
 | WEB | [web/api.js:53](../web/api.js#L53) | `request` |
-| SRV | [part7/server.py:764](../part7/server.py#L764) | `_Handler._follow` |
+| SRV | [part7/server.py:765](../part7/server.py#L765) | `_Handler._follow` |
 | Q | [part7/jobs.py:447](../part7/jobs.py#L447) | `JobQueue.submit` |
 | JOB | [part7/chain.py:420](../part7/chain.py#L420) | `follower` |
 | LOCK | [part7/gpu_lock.py:423](../part7/gpu_lock.py#L423) | `acquire` |
 | W | [part7/p2_worker.py:644](../part7/p2_worker.py#L644) | `lease` |
-| P2 | [part7/parts/p2_pose.py:549](../part7/parts/p2_pose.py#L549) | `run` |
+| P2 | [part7/parts/p2_pose.py:622](../part7/parts/p2_pose.py#L622) | `run` |
 | P3 | [part7/parts/p3_skeleton.py:229](../part7/parts/p3_skeleton.py#L229) | `part5` |
 | P5 | [part7/parts/p5_analyse.py:95](../part7/parts/p5_analyse.py#L95) | `run` |
 
@@ -162,7 +162,7 @@ container (ADR-0017).
 | SRV | [part7/server.py:274](../part7/server.py#L274) | `_Handler._route` |
 | AUTH | [part7/auth.py:217](../part7/auth.py#L217) | `current_user` |
 | KEYS | [part7/keys.py:71](../part7/keys.py#L71) | `redactor` |
-| CONV | [part7/model_convert.py:105](../part7/model_convert.py#L105) | `submit` |
+| CONV | [part7/model_convert.py:106](../part7/model_convert.py#L106) | `submit` |
 | RUN | [part7/runner.py:127](../part7/runner.py#L127) | `run` |
 | SUP | [tools/model-converter/supervisor.py:231](../tools/model-converter/supervisor.py#L231) | `Supervisor` |
 | JAIL | [tools/model-converter/supervisor.py:109](../tools/model-converter/supervisor.py#L109) | `container_argv` |

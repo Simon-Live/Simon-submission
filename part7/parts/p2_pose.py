@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import json
 import logging
 import os
 import shutil
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +67,10 @@ TRACKER_ENV = "SIMON7_P2_TRACKER"  # a Part 2 tracker name (local-sam31, local-o
 RETRIED = ("api-sam31",)  # a failure is retried once with LOCAL_TRACKER by name
 REMOTE_RETRIED = ("api-sam31", "local-sam31")  # on the serverless route a failed local-sam31 also goes to LOCAL_TRACKER
 REMOTE_ENV = "SIMON7_PART2_REMOTE"  # "modal": run Part 2 on Modal instead of the local GPU (deploy/serverless/)
+# "on": a Part 2 call that fails on its route runs once more on the other one (local GPU <-> Modal), so either is the
+# other's failsafe (team, 2026-11-02). Off by default; the first route is still chosen by REMOTE_ENV.
+FALLBACK_ENV = "SIMON7_PART2_FALLBACK"
+FALLBACK_LOG = ".fallback.log"   # the second route's log sits beside the first: part2.log -> part2.fallback.log
 MODAL_REQ = "modal>=1.0,<2"
 LOCAL_SAM31 = "local-sam31"  # the tracker the warm tracker worker serves (TICKET-117)
 TRACK_WORKER_ENV = "SIMON7_P2_TRACK_WORKER"  # "1": Part 2's warm track worker for the people step (staging/env.sh sets 1; "0" turns it off)
@@ -268,10 +274,77 @@ def _start_run_worker(
     return True
 
 
+def remote() -> str | None:
+    """`modal` when SIMON7_PART2_REMOTE asks for the serverless route (deploy/serverless/README.md), else None."""
+    return "modal" if os.environ.get(REMOTE_ENV, "").strip().lower() == "modal" else None
+
+
+# TICKET-364 (AC-H12): a take's "Run on" choice, set for the job's thread by `run_on.bind`; it overrides REMOTE_ENV for
+# the first route of every Part 2 call of that job. None (no choice) keeps the env route.
+_JOB_ROUTE: contextvars.ContextVar[str | None] = contextvars.ContextVar("p2_job_route", default=None)
+
+
+def job_route() -> str | None:
+    """The current job's chosen first route (`modal` or `local`), or None when the job made no choice."""
+    return _JOB_ROUTE.get()
+
+
+@contextlib.contextmanager
+def job_route_set(route: str | None) -> Iterator[None]:
+    """Within the block, Part 2 calls on this thread try `route` first (None: the env route)."""
+    token = _JOB_ROUTE.set(route)
+    try:
+        yield
+    finally:
+        _JOB_ROUTE.reset(token)
+
+
+def first_route(route: str | None = None) -> str:
+    """The route a Part 2 call tries first: `route`, else the job's choice, else SIMON7_PART2_REMOTE, else local."""
+    return route or job_route() or ("modal" if remote() else "local")
+
+
+def fallback() -> bool:
+    """Whether a failed Part 2 call repeats on the other route (SIMON7_PART2_FALLBACK=on)."""
+    return os.environ.get(FALLBACK_ENV, "").strip().lower() in ("on", "1", "true", "yes")
+
+
+def _remote_command(sub: list[str], lk: modules.Modules) -> list[str]:
+    """`part2 <sub>` run on Modal through deploy/serverless/p2_client.py, at the commit `modules/part-2` is at."""
+    client = config.REPO_ROOT / "deploy" / "serverless" / "p2_client.py"
+    sha = lk.sha("2")
+    return ["uv", "run", "--no-project", "--with", MODAL_REQ, "python", str(client), "--sha", sha, "--", *sub]
+
+
 def _execute(
     sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
+    acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None, route: str | None = None,
+) -> runner.Step:
+    """Part 2 `sub` on the chosen route (`route`, else the job's "Run on" choice, else Modal with
+    SIMON7_PART2_REMOTE=modal, else the local GPU); with SIMON7_PART2_FALLBACK=on a failure there runs the same call
+    once on the other route, logged beside the first."""
+    first = first_route(route)
+    step = _on_route(first, sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
+    if step["exit"] == 0 or not fallback():
+        return step
+    other = "local" if first == "modal" else "modal"
+    applog.anomaly("p2_route_fallback", f"Part 2 failed on the {first} route; the same call runs on the {other} route",
+                   job_dir=work_p, exit=step["exit"], route=first, to=other, sub=sub[0])
+    again = _on_route(other, sub, backend, work_p, log_name.removesuffix(".log") + FALLBACK_LOG, lk, clone, acquire_lock,
+                      gpu_lock_kwargs)
+    again["route"] = other
+    return again
+
+
+def _on_route(
+    route: str, sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
     acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None,
 ) -> runner.Step:
+    if route == "modal":  # serverless route: no local GPU, no warm worker, no GPU lock; the runner still logs and times it
+        return runner.run(
+            2, _remote_command(sub, lk), cwd=clone, timeout_s=config.TIMEOUTS["2"],
+            log_path=work_p / "steps" / log_name, lock=lk,
+        )
     # TICKET-101: only `run` (the 3D step) may use the warm worker, and it is leased AFTER the GPU admission, so a
     # long flock wait never parks the worker as busy. An idle worker already holds the model in GPU memory, so its
     # admission needs only a turn (min_free_mib=0); otherwise the memory check applies. A worker that is busy after
@@ -580,7 +653,7 @@ def run(
     # TICKET-143: ask for the mesh only when the pin offers it. Part 7 never passes --refine (Part 2 exits 2 with both)
     # and leaves --mesh-vertices at Part 2's default (it refuses less than 100). The warm worker gets the flag too:
     # `_launch` forwards the whole `sub`, and a worker started before a deploy is restarted by it (staging.sh up).
-    if has_mesh(lk, clone) and "--refine" not in sub:
+    if first_route() != "modal" and has_mesh(lk, clone) and "--refine" not in sub:   # the serverless route probes nothing locally
         sub += ["--mesh"]
         if has_mesh_stream(lk, clone):  # TICKET-284: the pending page draws the body while the model runs
             sub += ["--mesh-stream"]

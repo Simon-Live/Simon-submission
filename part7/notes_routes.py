@@ -9,7 +9,7 @@ import logging
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from part7 import applog, auth, history_store, jobs, labels, notes, result_media, shown_score
+from part7 import applog, auth, history_store, jobs, labels, model_only, notes, result_media, shown_score
 from part7.auth_routes import _fail, _post_body, _reply, _user_or_401
 
 NO_STORE = {"Cache-Control": "no-store"}
@@ -36,6 +36,8 @@ def _analysis(h: Any, row: Any) -> Any:
 
 
 def _clip(h: Any, row: Any) -> Any:
+    if model_only.view_only(h.app.queue.get(row["job_id"])):  # "Show only my 3D model": no clip of the person (model-default.md AC-MD12)
+        return None
     path = result_media.clip_path(h, row["job_id"], None)
     if path is not None:
         return path

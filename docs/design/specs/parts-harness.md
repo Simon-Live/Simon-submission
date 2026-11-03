@@ -227,6 +227,14 @@ trainer, followers and mismatch clips by default.
   once with `every:5`; at a pin with Part 3's follow-up the trainer argv carries `--keyframes-densify
   every:10`.
 - AC-H9 No module in `part7/` imports a part package (test greps the source).
+- AC-H12 "Run on" per take (TICKET-364, `part7/run_on.py`): `api/config` carries `serverless`, true only when Modal
+  configuration is present (`SIMON7_PART2_REMOTE=modal`, `SIMON7_PART2_FALLBACK` on, both Modal token variables set,
+  or a Modal profile file present); it never opens a token file or returns a value. When true, the Follow take screen
+  shows "Run on" with "This machine" (default) and "Serverless"; when false nothing is shown and the route is
+  unchanged. `api/people` and `api/follow` store `run_on` in the job record, and that job's Part 2 calls try the
+  chosen route first (`p2_pose._execute`, overriding `SIMON7_PART2_REMOTE`); `SIMON7_PART2_FALLBACK` is unchanged and a
+  job without `run_on` keeps the env route. `serverless` when not set up, or an unknown value, is a 400. Model
+  import (`api/trainer`, `api/group`) offers no choice: the Modal route covers take steps only.
 
 ## Error Cases
 | Condition | Behavior | Message | AC |

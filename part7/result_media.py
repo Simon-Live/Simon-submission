@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from part7 import group, jobs
+from part7 import group, jobs, model_only
 
 NAME = "video.mp4"
 CHUNK = 256 * 1024
@@ -25,7 +25,7 @@ def clip_path(h: Any, job_id: str, pid: str | None) -> Path | None:
     if not jobs.JOB_ID_RE.match(job_id):
         return None
     job = h.app.queue.get(job_id)
-    if not job or job.get("status") != "done":
+    if not job or job.get("status") != "done" or model_only.view_only(job):  # a stamped take serves no clip, to any caller (model-default.md AC-MD12)
         return None
     job_dir = h.app.queue.job_dir(job_id)
     if pid is None:
@@ -88,6 +88,10 @@ def handle(h: Any, method: str, route: str) -> bool:
     parts = route.split("/")
     if method not in ("GET", "HEAD") or parts[0] != "results" or parts[-1] != NAME or len(parts) not in (3, 4):
         return False
+    job = h.app.queue.get(parts[1]) if jobs.JOB_ID_RE.match(parts[1]) else None
+    if model_only.view_only(job):  # the owner shows only the 3D model: 404 to everyone (model-default.md AC-MD12)
+        h._error(404, model_only.MSG_VIEW_ONLY)
+        return True
     path = clip_path(h, parts[1], parts[2] if len(parts) == 4 else None)
     if path is None:
         h._error(404, MSG_GONE)

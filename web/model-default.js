@@ -4,7 +4,7 @@
 // default when signed in, else the device default `simon.model.you`. Defaults are set on the Me page only.
 import { call } from "./me-api.js";
 import { meInfo } from "./model/auth.js";
-import { PROFILE_URL, TEXT, YOU_KEY, preferredChoice } from "./model/model-default.js";
+import { PROFILE_URL, TEXT, YOU_KEY, isChoiceId, preferredChoice } from "./model/model-default.js";
 import { renderDefaultHint } from "./views/my-model.js";
 
 const QUIET = { expectStatus: [401, 404] }; // signed out, or sign-in off: normal answers, not anomalies
@@ -12,7 +12,7 @@ const SIGNED_OUT = { signedIn: false, serverDefault: null };
 let lastServer = null; // the answer the last picker read, so the hint under it asks nothing more
 
 /**
- * The account's saved default: { signedIn, serverDefault }. Signed out, sign-in off or a failed call: not signed in.
+ * The account's saved default: { signedIn, serverDefault, modelOnlyView, profile }. Signed out, sign-in off or a failed call: not signed in.
  * Sign-in is asked first (`api/auth/me`, as fetchMe does) unless the caller already knows (`knownSignedIn`, the Me
  * page). Signed out, the profile is never requested, so no 401 reaches the console (the same rule as saved-mode.js).
  */
@@ -24,7 +24,9 @@ export async function loadServerDefault(callImpl = call, { knownSignedIn = false
     }
     const out = await callImpl("GET", PROFILE_URL, undefined, QUIET);
     if (!out.ok || !out.body || typeof out.body !== "object") return SIGNED_OUT;
-    return { signedIn: true, serverDefault: out.body.default_model_id ?? null };
+    const body = out.body;
+    // "Show only my 3D model" (AC-MD10): on only with a default model to show; `profile` is the raw answer for the Me page
+    return { signedIn: true, serverDefault: body.default_model_id ?? null, modelOnlyView: body.model_only_view === true && isChoiceId(body.default_model_id), profile: body };
   } catch {
     return SIGNED_OUT;
   }

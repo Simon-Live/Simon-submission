@@ -21,11 +21,42 @@ FIELD = "video_kept"
 MEDIA_SUFFIXES = frozenset({".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v", ".gif",
                             ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic"})
 MSG_NO_VIDEO = "This take was kept as a 3D model only, so it has no video."
+# "Show only my 3D model" (docs/specs/model-default.md AC-MD12): the owner's profile choice, stamped on the job at submit.
+# The video is kept (Part 2 needs it), but no route serves the person's camera clip for a stamped job, to anyone.
+VIEW_FIELD = "model_only_view"
+MSG_VIEW_ONLY = "This take shows only the 3D model."
 
 
 def kept(record: Any) -> bool:
     """False only for a record that says `video_kept: false`; a record without the field keeps its video."""
     return not (isinstance(record, dict) and record.get(FIELD) is False)
+
+
+def view_only(record: Any) -> bool:
+    """True only for a job stamped `model_only_view: true`; any other record is unchanged."""
+    return isinstance(record, dict) and record.get(VIEW_FIELD) is True
+
+
+def owner_view(store: Any, user_id: str | None) -> bool:
+    """True when the signed-in owner has "Show only my 3D model" on and a default model. Signed out: False."""
+    if not user_id:
+        return False
+    from part7 import profile  # here, so this module stays importable without the identity store
+    doc = profile.get_profile(store, user_id) or {}
+    return doc.get(VIEW_FIELD) is True and isinstance(doc.get("default_model_id"), str)
+
+
+def stamp(h: Any, record: dict[str, Any]) -> None:
+    """Add `model_only_view: true` to a new job record when the signed-in owner has the choice on (AC-MD12)."""
+    from part7 import auth
+    user_id = auth.current_user(h)
+    try:
+        on = owner_view(auth.identity(h.app), user_id) if user_id else False
+    except Exception as exc:  # noqa: BLE001  a profile read error never fails the take; it is sent unstamped
+        applog.log(f"model-only view: owner choice not read: {applog.cause(exc)}", level=logging.WARNING)
+        on = False
+    if on:
+        record[VIEW_FIELD] = True
 
 
 def requested(doc: Any) -> bool:

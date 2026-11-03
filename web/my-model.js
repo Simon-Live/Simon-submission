@@ -10,6 +10,7 @@ import {
   preferredChoice, selectedChoice,
 } from "./model/model-default.js";
 import { renderMyModel, renderMyModelLoading, renderMyModelUnavailable } from "./views/my-model.js";
+import { mountModelOnlySetting } from "./model-only-view.js";
 
 /** The catalog, the import dialog, the picker's choice ids and the preview. Rejects when this build has no web/skin/. */
 export async function loadSkin() {
@@ -96,7 +97,8 @@ export function mountMyModel(slot, { signedIn, load = loadSkin, callImpl = call,
     try { skin = await load(); } catch { skin = null; }
     if (!live) return;
     if (!usable(skin)) return renderMyModelUnavailable(slot, { t });
-    const [got, choice, making] = await Promise.all([entries(), chosen(), pending().catch(() => [])]);
+    const [got, choice, making, server] = await Promise.all([entries(), chosen(), pending().catch(() => []),
+      signedIn ? loadServerDefault(callImpl, { knownSignedIn: true }) : null]);
     if (!live) return;
     list = got;
     const options = modelOptions(list, skin.choiceIdOf);
@@ -104,6 +106,8 @@ export function mountMyModel(slot, { signedIn, load = loadSkin, callImpl = call,
     const view = renderMyModel(slot, { t, options, selected: selectedChoice(choice, options), signedIn, pending: making },
       { save, upload, remove, change: (value) => { current = value; showPreview(); },
         details: (value) => modelDetails(entryForChoice(value, list, skin.choiceIdOf), skin.licences) });
+    const card = signedIn && server && server.signedIn ? slot.querySelector('[data-testid="my-model"]') : null;
+    if (card) mountModelOnlySetting(card, { initial: server.profile, callImpl }); // "Show only my 3D model", next to the default (AC-MD10)
     if (typeof skin.mountPreview === "function") { preview = skin.mountPreview(view.previewSlot); showPreview(); }
     // a photo or mesh still being made: wait for each, then list it (the import dialog waits the same way)
     // each id is waited for once per visit, so a model the server keeps queued cannot start a reload loop

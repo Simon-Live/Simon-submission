@@ -108,6 +108,16 @@ def write_status(folder: Path, **fields: Any) -> dict[str, Any]:
     return rec
 
 
+def add_timing(folder: Path, stage: str, seconds: float) -> None:
+    """Add one stage's seconds under `timings` in status.json (a missing record is left alone)."""
+    with _LOCK:
+        rec = read_status(folder)
+        if rec is None:
+            return
+        rec["timings"] = {**(rec.get("timings") or {}), stage: seconds}
+        _write_json(folder / "status.json", rec)
+
+
 def write_meta(folder: Path, meta: dict[str, Any]) -> None:
     _write_json(folder / "meta.json", meta)
 

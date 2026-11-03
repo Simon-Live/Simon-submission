@@ -482,7 +482,8 @@ def gpu_visible() -> bool:
 
 def prerequisites(lock: modules.Modules, state: Path | None = None) -> str | None:
     """Return the stderr line naming what is missing, or None."""
-    if not gpu_visible():
+    # The serverless route (SIMON7_PART2_REMOTE=modal) runs Part 2 on Modal's GPU, so no local GPU is needed.
+    if not gpu_visible() and not p2_pose.remote():
         return "check-7: nvidia-smi found no GPU"
     for part in modules.PART_IDS:
         if not lock.path(part).is_dir():
