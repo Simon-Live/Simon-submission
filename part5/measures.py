@@ -81,6 +81,11 @@ def _forward_from_down(seg):
 #     differ by a whole turn for the whole clip; the median of a clip is never on the edge unless the body holds the
 #     impossible pose, and it is the same rule for both clips.
 # A clip with no step of half a turn and a median inside the window comes back unchanged, bit for bit.
+# 1.14.4: a series that then spans a whole turn or more is not a movement, since no joint turns that far. A tracking
+# glitch through an impossible pose (an arm flung 170 degrees behind the trunk for three frames) was closed as a wrap, and
+# the branch of the median moved every frame on the other side of it by a turn: a trainer's upper_arm_forward read up to
+# 462 degrees, its reps were lost and long follows were refused. Such a series is read frame by frame instead: each value
+# outside the window is brought into it by whole turns, so the glitch stays in its own frames.
 # The low edge of each window, in degrees:
 WINDOW_LOW = {
     "upper_arm_forward": -120.0,   # shoulder flexion against the trunk: about -60 (back) to 180 (overhead)
@@ -104,6 +109,10 @@ def _continuous(angle, name):
     turns = turns - int(np.floor((np.median(unwrapped) - WINDOW_LOW[name]) / 360.0))
     out = angle.copy()
     out[seen] = np.where(turns != 0, value + 360.0 * turns, value)   # untouched frames keep their exact bits
+    if np.ptp(out[seen]) >= 360.0:   # a whole turn or more: a glitch closed as a wrap, not a movement (1.14.4)
+        low = WINDOW_LOW[name]
+        out[seen] = np.where((value >= low) & (value < low + 360.0), value, (value - low) % 360.0 + low)
+        out[seen] = np.where(out[seen] >= low + 360.0, out[seen] - 360.0, out[seen])   # float edge: nextafter(low) folds to low + 360
     return out
 
 

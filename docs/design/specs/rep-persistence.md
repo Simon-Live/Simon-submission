@@ -117,7 +117,9 @@ measure, side and direction (`persistence.judge`):
   shorter than its second (42 to 102, 61 frames), and the follower's first rep starts mid-cycle too.
 - **Each follower rep is resampled to its reference's frame count**, aligned, guarded and detected with the frozen limits,
   as ADR-0010 says. The bound is the sum of the squares of the reference lengths (a lone segment: its frames times the
-  reference's); over `MAX_CELLS` the analysis stops before any alignment with the same plain error as before, naming
+  reference's); over `MAX_CELLS` the rep-by-rep comparison is dropped and the whole-clip comparison stands (AC-RP-16) when the whole pair fits
+  (`test_r4_reps_over_the_limit_keep_the_whole_clip_comparison_when_it_fits`); when it does not, the analysis stops before any
+  alignment with the same plain error as before, naming
   `ceil(pairs / widest reference)` follower frames against the widest reference.
 - **Foot measures.** `pipeline._foot_series` is computed before the comparison. `compare` gets the expected series and the
   follower's series on the expected clock, cuts the expected one with the reference and resamples the follower's with each

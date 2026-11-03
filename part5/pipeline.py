@@ -192,7 +192,9 @@ def run(expected, follower, rules=None, *, phrasing="template", phrasing_client=
             compare(exp, fol, exp_m, fol_positions, to_original, fps, rules, _fault_times, vis, max_cells=MAX_CELLS,
                     expected_segmentation=exp_reps, foot_exp=exp_f, foot_fol=fol_f, mask=mask)
     except TooManyPairs as e:   # reps x reference frames^2 is bounded like the whole pair
-        raise _too_many_pairs(fol_ref, e.follower_frames, e.expected_frames) from None
+        if guard is None:   # the whole pair could not be aligned either: nothing fits, refused
+            raise _too_many_pairs(fol_ref, e.follower_frames, e.expected_frames) from None
+        rep_run = None      # the whole-clip comparison fits, so the take keeps it rather than being refused (1.14.4)
     accepted = rep_run is not None and rep_run.guard.ok
     if guard is None and not accepted:   # cannot be aligned at all: analysed unaligned, never refused
         return _unaligned(ctx, LOW_MATCH, REFUSAL_TEXT, rules)

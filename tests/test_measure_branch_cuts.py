@@ -232,3 +232,48 @@ def test_limit_a_real_movement_over_half_a_turn_across_lost_frames_reads_as_a_wr
     assert np.all(head[:10] == -70.0) and np.all(head[30:] == -190.0)
     short = np.r_[np.full(10, -70.0), np.full(3, np.nan), np.full(10, 170.0)]   # a gap of any length, three frames too
     assert _continuous(short, "upper_arm_forward")[-1] - _continuous(short, "upper_arm_forward")[0] == -120.0
+
+
+# --- 1.14.4: a series that spans a whole turn is read frame by frame ---
+def trainer_glitch():
+    """The shape of a real trainer's upper_arm_forward (a 60 s dance take): an arm lowered in front, then for three frames
+    tracked flung behind the trunk through an impossible pose (-131, -168) and back in front (132), then on."""
+    before = np.r_[np.linspace(100.0, 10.0, 230), [74, 67, 57, 44, 30, 12, -7, -29, -49, -65, -76, -82, -86, -90, -93,
+                                                  -96, -102, -112, -131, -168]]
+    after = np.r_[[132, 87, 65, 54, 47, 42, 38, 34, 31, 28], 20 + 15 * np.sin(np.linspace(0, 60, 1540))]
+    return np.r_[before, after].astype(float)
+
+
+def test_1_14_4_a_glitch_closed_as_a_wrap_does_not_move_the_clip_by_a_turn():
+    raw = trainer_glitch()
+    got = _continuous(raw, "upper_arm_forward")
+    low = WINDOW_LOW["upper_arm_forward"]
+    assert np.ptp(got) < 360 and low <= got.min() and got.max() < low + 360
+    changed = np.flatnonzero(got != raw)
+    assert changed.tolist() == [248, 249]           # only the glitch frames outside the window: -131 and -168
+    assert np.array_equal(got[changed], raw[changed] + 360)
+
+
+def test_1_14_4_the_old_rule_read_that_clip_more_than_a_turn_wide():
+    """What 1.14.1 to 1.14.3 returned for it, so the check above is seen to bite: every frame before the glitch a turn up."""
+    raw = trainer_glitch()
+    step = np.diff(raw)
+    turns = np.concatenate(([0], np.cumsum(np.where(step > 180.0, -1, np.where(step < -180.0, 1, 0)))))
+    unwrapped = raw + 360.0 * turns
+    old = unwrapped - 360.0 * np.floor((np.median(unwrapped) - WINDOW_LOW["upper_arm_forward"]) / 360.0)
+    assert np.ptp(old) > 360 and old.max() > 450
+
+
+def test_1_14_4_a_series_within_a_turn_keeps_the_unwrap_along_the_clip():
+    """The rule only applies past a whole turn: an arm raised from 160 past overhead to 300 and on stays continuous."""
+    raw = np.r_[np.arange(160.0, 180.0), np.arange(-180.0, -60.0)]
+    got = _continuous(raw, "upper_arm_forward")
+    assert np.allclose(got, np.arange(160.0, 300.0)) and np.ptp(got) < 360
+
+
+def test_1_14_4_a_value_one_ulp_above_the_window_low_stays_inside_the_window():
+    """Float edge: (v - low) % 360 + low can round up to low + 360; the fold maps it back (review R1 on f5c8775)."""
+    low = WINDOW_LOW["upper_arm_forward"]
+    raw = np.r_[np.nextafter(low, -np.inf), np.arange(low + 1, low + 200, 20.0), np.arange(low + 200, low + 380, 20.0) - 360.0]
+    got = _continuous(raw, "upper_arm_forward")
+    assert low <= got.min() and got.max() < low + 360.0

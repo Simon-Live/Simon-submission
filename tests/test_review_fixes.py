@@ -234,10 +234,24 @@ def test_r4_no_limit_given_means_no_bound(fast_pair):
     assert compare_with(fast_pair, None).guard.ok
 
 
-def test_r4_the_pipeline_turns_it_into_the_plain_error_naming_the_follower(monkeypatch):
+def _whole_clip_unalignable(*a, **k):
+    raise AlignmentError("scripted: the whole pair cannot be aligned")
+
+
+def test_r4_reps_over_the_limit_keep_the_whole_clip_comparison_when_it_fits(monkeypatch):
+    """1.14.4: the reps' total over the limit no longer refuses a take whose whole pair was aligned; it is analysed on the
+    whole clip, as a rep verdict that does not accept the take is (AC-RP-16). Long dance follows were refused this way."""
     monkeypatch.setattr("part5.pipeline.MAX_CELLS", 50_000)
     # the whole pair (about 97,000 pairs) would trip the same limit first; here only the reps' total is under test
     monkeypatch.setattr("part5.pipeline._bounded_fps", lambda exp, exp_ref, fol, fol_ref: pipeline.clip_fps(exp))
+    res = run(str(TRAINER), {"path": "fast.upload", "doc": json.loads(FAST.read_text())})
+    assert res.reps is None and score_block(res)["basis"] == "windows"
+
+
+def test_r4_the_pipeline_turns_it_into_the_plain_error_naming_the_follower_when_nothing_fits(monkeypatch):
+    monkeypatch.setattr("part5.pipeline.MAX_CELLS", 50_000)
+    monkeypatch.setattr("part5.pipeline._bounded_fps", lambda exp, exp_ref, fol, fol_ref: pipeline.clip_fps(exp))
+    monkeypatch.setattr("part5.pipeline.align", _whole_clip_unalignable)
     with pytest.raises(AnalysisError, match=r"fast\.upload: 824 follower frames against 103 expected frames "
                                            r"are too long to compare together \(the limit is 50,000 frame pairs\)"):
         run(str(TRAINER), {"path": "fast.upload", "doc": json.loads(FAST.read_text())})
@@ -246,6 +260,7 @@ def test_r4_the_pipeline_turns_it_into_the_plain_error_naming_the_follower(monke
 def test_r4_the_cli_exits_1_with_the_plain_message(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr("part5.pipeline.MAX_CELLS", 50_000)
     monkeypatch.setattr("part5.pipeline._bounded_fps", lambda exp, exp_ref, fol, fol_ref: pipeline.clip_fps(exp))
+    monkeypatch.setattr("part5.pipeline.align", _whole_clip_unalignable)
     out = tmp_path / "a.json"
     code = cli.main(["analyse", "--expected", str(TRAINER), "--follower", str(FAST), "--out", str(out)])
     err = capsys.readouterr().err

@@ -23,7 +23,7 @@ def test_the_package_the_project_and_the_lock_name_one_release():
     assert part5.__version__ == project_version() and locked_versions() == [part5.__version__]
 
 
-def test_the_release_is_1_14_3_and_the_changelog_opens_with_it():
-    assert part5.__version__ == "1.14.3"
+def test_the_release_is_1_14_4_and_the_changelog_opens_with_it():
+    assert part5.__version__ == "1.14.4"
     changelog = (ROOT / "CHANGELOG.md").read_text()
     assert re.search(r"^## (\S+)", changelog, re.M).group(1) == part5.__version__

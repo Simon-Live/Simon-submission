@@ -45,6 +45,14 @@ every take the check reads is unchanged.
   447 committed clips but the two of `mismatch/part2-stretch`, so none of the rest shows it; `part5/measures.py` is not changed for it, and
   `test_limit_a_real_movement_over_half_a_turn_across_lost_frames_reads_as_a_wrap` pins today's reading so a change to it is
   decided, not made by accident.
+- **A series a whole turn wide is read frame by frame (1.14.4).** No joint turns 360 degrees, so a series whose unwrapped span
+  reaches a whole turn holds a tracking glitch that was closed as a wrap: a trainer's arm flung 170 degrees behind the trunk for
+  three frames moved the 250 frames before it by a turn (`upper_arm_forward` up to 462 degrees), its reps were lost (13 became
+  1), and 21 follower reps aligned against the whole 1,800-frame clip passed `MAX_CELLS`, so long dance follows were refused.
+  Such a series now has each value brought into the window by whole turns on its own, so the glitch stays in its own frames.
+  A series under a whole turn is unwrapped as before, bit for bit (the 447 committed clips included).
+- **A false wrap under a whole turn is not caught.** The whole-turn gate sees only a span of 360 degrees or more; a false wrap whose
+  unwrapped span stays under it (100 to 175, then -110 to -30, reads 100 to 330) is unwrapped as before.
 - **Poses estimated impossibly.** A median inside the unreachable arc of a measure (an upper arm held 120 degrees behind the
   body, say) is put on the other branch. No committed clip does that.
 

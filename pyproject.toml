@@ -1,6 +1,6 @@
 [project]
 name = "part5"
-version = "1.14.3"
+version = "1.14.4"
 description = "Simon Part 5: compare 3D animations and analyse faults"
 readme = "README.md"
 requires-python = ">=3.10"

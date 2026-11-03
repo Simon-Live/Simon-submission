@@ -458,10 +458,11 @@ for a fault found there), `phase` is `frame / (frames - 1)` of the whole expecte
 the replay's `expected_t` starts at the reference's own time and strictly increases. Verification:
 `tests/test_review_fixes.py`.
 ### AC-REP-7: rep mode is bounded
-Given reps whose frame pairs together are over 4,000,000 (the whole pair's bound), then the analysis stops before
-any alignment with `<follower>: N follower frames against M expected frames are too long to compare together (the
-limit is 4,000,000 frame pairs)` and the CLI exits 1; at exactly the limit it runs. Verification:
-`tests/test_review_fixes.py`.
+Given reps whose frame pairs together are over 4,000,000 (the whole pair's bound), then the rep-by-rep comparison is
+dropped and the whole-clip comparison stands (AC-RP-16) when the whole pair fits; only when the whole pair could not be
+aligned either does the analysis stop before any alignment with `<follower>: N follower frames against M expected frames
+are too long to compare together (the limit is 4,000,000 frame pairs)` and the CLI exits 1; at exactly the limit it runs.
+Verification: `tests/test_review_fixes.py`, `test_r4_reps_over_the_limit_keep_the_whole_clip_comparison_when_it_fits`.
 ### AC-ERR-1: only the expected alignment failure is caught
 Given an alignment that raises `AlignmentError`, then the take is a `low_match` with score 0 (whole clip) or the rep
 does not pass (rep mode); given any other `ValueError` from the alignment, then it surfaces to the caller.
@@ -525,7 +526,7 @@ warning naming the right arm. Verification: `tests/test_visibility.py`.
 | Under 50% measurable | exit 1 | unchanged | AC-001 |
 | Follower over 2x faster | analysed (rep by rep when either clip holds reps, else a `low_match` with score 0) | warning text | AC-ERR-1 |
 | Different movement | exit 0, analysis written with a `low_match` warning and grade F | warning text above | AC-004 |
-| Reps together over the frame-pair limit | exit 1, nothing written | `part5 analyse: <follower>: N follower frames against M expected frames are too long to compare together (the limit is 4,000,000 frame pairs)` | AC-REP-7 |
+| Reps together over the frame-pair limit, and the whole pair too long to align either | exit 1, nothing written | `part5 analyse: <follower>: N follower frames against M expected frames are too long to compare together (the limit is 4,000,000 frame pairs)` | AC-REP-7 |
 | `--expected-visibility` conf not a number | exit 1, nothing written | `part5 analyse: <file>: expected-visibility conf must be a number for each joint` | AC-ERR-2 |
 | Live default without the key file | analysed with the template, `fallback_reason: "no key"` per fault (API: 200, not 400) | `no key` | AC-010 |
 | Phrasing backend fails | template used, `fallback_reason` | `"<backend>: <reason>"` | AC-010 |
