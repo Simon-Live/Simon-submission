@@ -69,23 +69,35 @@ def _multipart(path):
     return boundary, b"".join(chunks)
 
 
-def upload_video(path):
+def upload_video(path, tries=None, wait_s=None, sleep=None):
+    """Upload `path` to Meta's files endpoint and return its id. A cut connection is tried again (TICKET-380: 2 of 49
+    cut logs were here); an upload costs nothing, so the same bound as SAM's stream keeps the wait short."""
+    tries = SAM_TRIES if tries is None else tries
+    wait_s = SAM_RETRY_WAIT_S if wait_s is None else wait_s
+    sleep = time.sleep if sleep is None else sleep
     boundary, payload = _multipart(path)
-    request = Request(
-        API + "/files",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key()}",
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=300) as response:
-            file_obj = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:2000]
-        raise RuntimeError(f"Meta API {exc.code} on /files: {detail}") from None
+    for attempt in range(1, tries + 1):
+        request = Request(
+            API + "/files",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {api_key()}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=300) as response:
+                file_obj = json.loads(response.read().decode("utf-8"))
+            break
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:2000]
+            raise RuntimeError(f"Meta API {exc.code} on /files: {detail}") from None
+        except _CUT as exc:
+            print(f"  upload cut ({type(exc).__name__}); {'trying again' if attempt < tries else 'giving up'}", flush=True)
+            if attempt == tries:
+                raise StreamCut(f"upload to /files cut ({type(exc).__name__})") from None
+            sleep(wait_s * attempt)
     if "id" not in file_obj:
         raise RuntimeError("File upload did not return an id.")
     return file_obj["id"]
