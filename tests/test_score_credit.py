@@ -187,22 +187,26 @@ def _example_step(path):
 
 def _reference(monkeypatch, expected, follower):
     """The formula restated: capture every compared window's per-frame z through a spy on `score.timeline_window`, then
-    credit, points and percent per level, unrounded, with a frame lasting what it does on the example's clock."""
+    credit, points and percent per level, unrounded, with a frame lasting what it does on the example's clock. The frames of the
+    take's last second that earn full credit (`credit_full`, ADR-0020 Amendment 1) are restated too."""
     captured, original = [], score.timeline_window
     step = _example_step(expected["path"])
 
-    def spy(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=True, frame_s=None):
-        out = original(span, analysis, aligned, frames, rules, p, tempo, ratio, timed, frame_s)
+    def spy(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=True, frame_s=None, credit_full=None):
+        out = original(span, analysis, aligned, frames, rules, p, tempo, ratio, timed, frame_s, credit_full)
         frames = np.asarray(frames)
         if out.get("compared", True) and np.size(frames):
             idx = np.asarray(aligned["exp_to_fol"])[frames]
-            zs = []
-            for name in MEASURES:
+            marks = np.zeros((len(MEASURES), len(frames)), bool) if credit_full is None else np.asarray(credit_full, bool)
+            zs, fulls = [], []
+            for name, mark in zip(MEASURES, marks):
                 d = np.asarray(aligned["follower"][name])[idx] - np.asarray(aligned["expected"][name])[frames]
                 z = np.abs(d) / score.threshold_of(name, rules)
                 if np.isfinite(z).mean() >= 0.5:
                     zs.append(z)
-            captured.append((span, np.vstack(zs) if zs else np.zeros((0, len(frames)))))
+                    fulls.append(mark)
+            empty = np.zeros((0, len(frames)))
+            captured.append((span, np.vstack(zs) if zs else empty, np.vstack(fulls) if fulls else empty.astype(bool)))
         return out
 
     monkeypatch.setattr(score, "timeline_window", spy)
@@ -210,10 +214,11 @@ def _reference(monkeypatch, expected, follower):
     rows = {}
     for diff, (tol, mult) in REF_DIFFICULTY.items():
         pts = poss = 0.0
-        for span, z in captured:
+        for span, z, full in captured:
             c = np.full(z.shape, 0.0)
             for edge, value in reversed(REF_BANDS):
                 c = np.where(z / tol <= edge, value, c)
+            c = np.where(full, 1.0, c)
             c = np.where(np.isfinite(z), c, np.nan)
             pts += np.nansum(c) * step * 100 * mult
             poss += np.isfinite(c).sum() * step * 100 * mult

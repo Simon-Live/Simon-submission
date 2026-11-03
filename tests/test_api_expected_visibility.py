@@ -68,12 +68,13 @@ def test_without_the_field_a_waist_up_follower_reads_major_on_legs_the_trainer_n
 
 
 def test_with_the_field_the_legs_are_excused_and_only_the_follower_s_own_hidden_measures_count(with_field):
-    """The joints_unseen reason goes and the take is no longer major. It reads degraded, not ok: hidden_measure_share reads the
-    follower's own conf (10 of 22 measures need its legs), which the trainer's visibility does not excuse (docs/specs/quality.md)."""
+    """The joints_unseen reason goes and the take is no longer major. Until 1.14.1 it read degraded on measures_hidden (10 of 22
+    measures need the legs); from 1.14.2 (TICKET-107) the share counts only the 12 measures the trainer shows, of which the
+    follower hid none, so the take reads ok (docs/specs/quality.md, AC-Q17)."""
     q = with_field["quality"]
     assert q["signals"]["unseen_joint_share"] == 0.0 and "joints_unseen" not in codes(with_field)
-    assert q["level"] == "degraded" and q["score_cap"] is None and codes(with_field) == ["measures_hidden"]
-    assert q["signals"]["hidden_measure_share"] == round(10 / 22, 4)
+    assert q["signals"]["hidden_measure_share"] == 0.0 and "measures_hidden" not in codes(with_field)
+    assert q["level"] == "ok" and codes(with_field) == [] and q["score_cap"] is None
 
 
 def test_the_field_has_the_effect_of_the_flag(with_field, visibility, tmp_path):
@@ -110,3 +111,16 @@ def test_a_document_over_the_upload_limit_is_a_413_naming_the_field(monkeypatch,
     monkeypatch.setattr(api, "MAX_UPLOAD_BYTES", 1024)
     status, body = post({"expected": {"sample": "exercise"}, "follower": {"sample": SAMPLE}, "expected_visibility": visibility})
     assert status == 413 and body["error"]["field"] == "expected_visibility"
+
+
+def test_with_the_field_the_slow_follower_still_reads_major_on_measures_the_trainer_shows(visibility):
+    """TICKET-107, review B3 of 1.14.2: pexels-8836968 hides measures the waist-up trainer shows, so with the trainer's visibility
+    it still reads major: 9 of the 12 measures the trainer shows (0.75), where 1.14.1 read 19 of 22 (0.8636)."""
+    slow = json.loads((RAISE / "pexels-8836968/animation.json").read_text())
+    status, body = post({"expected": {"upload": TRAINER}, "follower": {"upload": slow}, "expected_visibility": visibility})
+    assert status == 200
+    q = body["analysis"]["quality"]
+    assert q["level"] == "major" and q["score_cap"] == 59 and q["signals"]["hidden_measure_share"] == 0.75
+    reason = next(r for r in q["reasons"] if r["code"] == "measures_hidden")
+    assert reason["words"] == ("9 of the 12 measures the example shows were left out because their joints were not seen in "
+                               "enough of the take.")

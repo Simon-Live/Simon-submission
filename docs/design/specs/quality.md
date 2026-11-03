@@ -7,7 +7,8 @@ Linked CRD: none
 Request Type: new-feature
 Risk Level: low
 Master spec: `part5-fault-analysis.md`. ADRs: ADR-0021 (this change), ADR-0011 (compare only what the camera sees), ADR-0012
-(the warning cap of 59), ADR-0015 (the jitter measure). Ticket: TICKET-079. Companion specs: `integration-contract.md`,
+(the warning cap of 59), ADR-0015 (the jitter measure). Tickets: TICKET-079; TICKET-086 (the heading, 1.14.0); TICKET-107 (the
+hidden measures count only what the example shows, 1.14.2, ADR-0021 Amendment 2). Companion specs: `integration-contract.md`,
 `viewer.md`, `score-credit.md` (ships in the same schema version, 1.13.0).
 
 ## Overview
@@ -88,7 +89,7 @@ that cannot be made is `null`.
 | `unseen_joint_share` | share of the (frame, joint) readings of the joints the example sees (below) whose `conf` is the 0.3 unseen mark, counted as ADR-0011 counts it: a joint is unseen when its left/right counterpart is at 0.3 too (the nose when it is) | 0 to 1 | the file carries no `conf`, or the example sees no joint |
 | `missing_joint_share` | share of the readings that are null or have `conf` below 0.3 | 0 to 1 | never |
 | `missing_frame_share` | share of the frames flagged `interpolated`, or with at most half of the 17 joints usable | 0 to 1 | never |
-| `hidden_measure_share` | share of the 22 full-body measures the follower's own `conf` makes unusable under ADR-0011 (a joint seen in under 80 percent of the frames) | 0 to 1 | the file carries no `conf` |
+| `hidden_measure_share` | share of the full-body measures the example shows (below) that the follower's own `conf` makes unusable under ADR-0011 (a joint seen in under 80 percent of the frames); all 22 when the example's visibility is unknown (1.14.2, TICKET-107) | 0 to 1 | the file carries no `conf`, or the example shows no full-body measure |
 | `heading_offset_deg` (1.14.0, TICKET-086) | read after alignment, from both clips: in each aligned frame pair (example frame `i`, follower frame `exp_to_fol[i]`; every aligned rep of a take compared rep by rep) the heading of each body is the direction of its hip and shoulder lines (left minus right) in the horizontal plane, each made unit length and added; the median over the pairs of the angle between the two headings | degrees, 0 to 180 | the take could not be aligned, or no pair has a hip or shoulder line to read |
 | `position_jitter_mm` | per joint and axis, `feet.jitter` of the step series (the median absolute change of the step between consecutive frames, so a steady movement is not jitter); the three axes joined as a norm; the median over the joints | millimetres per frame | no joint has `JITTER_MIN_PAIRS` pairs of numbers |
 
@@ -106,11 +107,24 @@ every arm measure it compares was in view. The rule (stakeholder-proxy, option (
 - An example whose visibility is unknown, with no `conf` anywhere (Part 4's animations, and seed 5's examples), counts every
   joint. This fails closed: a take is not excused for a body part because the example says nothing. The follower's own set is never
   borrowed for it.
-- No limit moves for this. `missing_joint_share`, `missing_frame_share`, `hidden_measure_share` and the jitter do not read the
-  example.
+- `hidden_measure_share` (1.14.2, TICKET-107) counts only the full-body measures the example shows: a measure whose every joint
+  is one of the joints above. A measure the example cannot show is not applicable to the movement, so it is not left out of the
+  take. The share is the shown measures the follower's own `conf` makes unusable (ADR-0011), over the shown measures; it is `null`
+  when the example shows none. An example of unknown visibility shows every joint, so all 22 count, as before.
+- No limit moves for this. `missing_joint_share`, `missing_frame_share` and the jitter do not read the example.
 
 The limitation, said plainly: a waist-up trainer with no `conf` (the committed lateral raise trainer is one) does not excuse a
-waist-up follower, so such a take can still read major on `unseen_joint_share`. That is reported, not tuned away.
+waist-up follower, so such a take can still read major on `unseen_joint_share` and `hidden_measure_share`. That is reported, not
+tuned away.
+
+Why `hidden_measure_share` reads the example from 1.14.2 (TICKET-107, moalborati/simon-part-5-fault-analysis#38): staging take
+`b5acba462f16` is a seated, chest-up routine whose trainer file marks the hips, knees and ankles unseen (`unseen_joints`, and
+`frames[].conf` at 0.3). The follower was framed the same way. Every follower signal was clean (`unseen_joint_share` 0.0,
+`missing_joint_share` 0.0, jitter 0.2 mm), yet 15 of the 22 measures need those joints, so the share read 0.6818 and the take was
+`major` with `score_cap` 59. Under the rule above it reads 0.0 (0 of the 7 measures the example shows) and `ok`. Part 5 does
+not parse Part 4's `unseen_joints` list itself; it reads `frames[].conf`. Part 4's schema writes `unseen_joints` exactly when
+`conf` is present, for the joints at 0.3 on every key frame, so on a file that follows that schema the conf carries the same
+joints. A file with `unseen_joints` and no `conf` breaks Part 4's schema and is read as showing every joint.
 
 ### Level
 Each signal has two limits in `part5/quality.json`: `degraded` and `major`, except `heading_offset_deg`, whose `major` is
@@ -182,9 +196,12 @@ on `unseen_joint_share`, with no warning and the score left alone:
 
 This is the reported limitation of "The example's visibility", not something to tune. A trainer that carries its own `conf` (or
 `--expected-visibility`) excuses unseen joints only: it lowers `unseen_joint_share`, which `tests/test_quality_pins.py` shows
-with a waist-up example. `hidden_measure_share` does not read the example, so with the trainer's visibility (its legs at the
-unseen mark) `pexels-8836968` stays `major` on `measures_hidden` (0.8636, at or above 0.5) and `pexels-40297504` is `degraded`
-on it (0.4545, at or above 0.25), neither `ok` (review R2 of 1.13.0, measured with the pipeline).
+with a waist-up example. Until 1.14.1 `hidden_measure_share` did not read the example, so with the trainer's visibility (its legs at
+the unseen mark) `pexels-8836968` stayed `major` on `measures_hidden` (0.8636) and `pexels-40297504` was `degraded` on it (0.4545)
+(review R2 of 1.13.0, measured with the pipeline). From 1.14.2 (TICKET-107) the share counts only the measures that trainer shows
+(12 of the 22): with the trainer's visibility `pexels-40297504` reads 0.0 and `ok`, and `pexels-8836968`, which hides measures
+the trainer shows, still reads `major` on `measures_hidden` (0.75, 9 of the 12), both pinned in
+`tests/test_api_expected_visibility.py`. Without the trainer's visibility both read as before.
 
 Why T6 is not met, from the files: every joint of both takes has `conf` 1.0 in Part 3's skeleton and in Part 2's `pose3d.json`
 (joints and foot points), Part 3's positions are smooth (0.4 and 0.5 mm of jitter against 25 to 40 for planted low-light noise),
@@ -287,6 +304,21 @@ dropout 2.1 to 7.0 (6 of 52); the highest reading is 8.1, so no take of either s
 removing it moves no level of either seed. The committed real lateral raise reads 0.4 on both
 followers. Part 7's two takes are read as files alone, where the heading is `null`.
 
+### AC-Q17: only the measures the example shows (1.14.2, TICKET-107)
+Given an example that does not show some joints (its own `conf` at the 0.3 mark, Part 4's `unseen_joints` with it, or
+`--expected-visibility`), when the follower hides the same joints, then `hidden_measure_share` is 0.0, there is no
+`measures_hidden` reason, and a take with no other reason is `ok` with `score_cap` `null`: staging take `b5acba462f16`
+(`tests/fixtures/staging-b5acba462f16/`) reads `ok` where 1.14.1 read `major` (0.6818). Given a follower that hides joints the
+example shows, the share counts them as before: a full-body example against a follower with its hips, knees and ankles at the
+mark reads 15 of 22 (0.6818), `major`. The share is over the measures the example shows, and the words say that count ("3 of the 7
+measures the example shows were left out ..."); with all 22 shown (or visibility unknown) the words are those of 1.14.1. Given an
+example that shows no full-body measure, the share is `null`. Tests: `tests/test_quality_supported.py`, `tests/test_quality.py`,
+`tests/test_quality_pins.py`, `tests/test_api_expected_visibility.py`.
+
+Measured reach (`scripts/score_credit_before_after.py dump`, run on 1.14.1's tree and on this one, 2026-11-03): the 156 seed 5
+takes and the 23 committed real takes give byte-identical documents once the trees' paths are set aside, so neither TICKET-107
+nor TICKET-108 moves any of them; the goldens rebuild byte for byte (`make check-5-contract`).
+
 ## Error Cases
 | Condition | Behavior | AC |
 |---|---|---|
@@ -382,6 +414,11 @@ under `contracts/`. Trigger to revisit: Part 2 publishing it.
 | `part5/quality.py`, `part5/quality.json`, `part5/pipeline.py`, `part5/output.py` | `heading_offset_deg` and the reason `heading_offset`: `headings`, `heading_offset_deg`, `with_heading`; its limit (version 1.1.0: `degraded` 5.0, `major` null, which `load_thresholds` reads as degraded only and `_reached` never reaches); the pipeline reads it over the aligned pairs; the vocabulary and the validator (required from 1.14.0) | TICKET-086 | yes |
 | `contracts/analysis.schema.json`, `contracts/history-fields.json`, `CONTRACT.md`, `docs/schemas.md` | the signal (optional in the schema, written from 1.14.0), the code, the history entry dated 1.14.0, duty 12 | TICKET-086 | yes |
 | `tests/test_quality_heading.py`, `tests/test_quality_history.py`, `tests/test_quality_pins.py` | AC-Q16 | TICKET-086 | yes |
+| `part5/quality.py` | `hidden_measure_share` over the measures the example shows (`shown_measures`); the `measures_hidden` words name that count | TICKET-107 | yes |
+| `contracts/analysis.schema.json`, `contracts/history-fields.json`, `CONTRACT.md`, `part5/contract.py`, `docs/schemas.md` | the signal's description says it counts only the measures the example shows (no shape change; schema 1.14.0 kept) | TICKET-107 | yes |
+| `docs/design/adr/ADR-0021-quality-block.md` and the design copies | Amendment 2 | TICKET-107 | yes |
+| `tests/test_quality_supported.py`, `tests/fixtures/staging-b5acba462f16/` | AC-Q17, with staging take `b5acba462f16`'s `expected.json` and `follower.json` (skeletons only, no video or frame) | TICKET-107 | yes |
+| `tests/test_quality.py`, `tests/test_quality_pins.py`, `tests/test_api_expected_visibility.py` | the pins of 1.14.1's reading moved to AC-Q17's | TICKET-107 | yes |
 
 ## Delivery Verification Plan
 - `uv run pytest -q tests/test_quality.py tests/test_quality_validate.py tests/test_quality_pins.py tests/test_quality_history.py
@@ -447,6 +484,7 @@ Resolution: ADDRESSED_IN_SPEC.
 | ticket: contract, history, doctor | AC-Q10 | `tests/test_quality_history.py`, `tests/test_quality_doctor.py` | passing |
 | ticket: make report-quality | AC-Q12 | `tests/test_quality_report.py` | passing |
 | ticket: viewer line and recipe | AC-Q13 | `tests/test_quality_web.py`, the recipe | passing; the recipe is for the demo gate |
+| TICKET-107 (#38 item 1): count only the measures the trainer shows | AC-Q17 | `tests/test_quality_supported.py` | passing |
 
 ## Test Scenarios (maps 1:1 to acceptance criteria)
 - AC-Q01 → `tests/test_quality_validate.py`, `tests/test_quality_history.py`
@@ -456,6 +494,7 @@ Resolution: ADDRESSED_IN_SPEC.
 - AC-Q11 → `tests/test_quality_validate.py`
 - AC-Q12 → `tests/test_quality_report.py`
 - AC-Q13 → `tests/test_quality_web.py`
+- AC-Q17 → `tests/test_quality_supported.py`
 
 ## Deviations from PRD
 | PRD item | Deviation | Reason |

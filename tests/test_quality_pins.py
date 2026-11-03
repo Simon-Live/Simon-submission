@@ -232,9 +232,10 @@ def test_the_real_lateral_raise_reads_major_because_its_trainer_says_nothing_abo
     """The reported limitation (spec, "The example's visibility"). The committed real follower was filmed from the waist up: its legs
     are at the unseen mark, 4 of 17 joints. The trainer is a Part 4 animation with no `conf`, so its visibility is unknown, every
     joint counts, and 4 of 17 is past the major limit of 0.2. Nothing is tuned for it. A trainer that carried its own conf would
-    excuse unseen joints only, the legs here (the tests below): `hidden_measure_share` does not read the example, so with the
-    trainer's visibility this take reads `degraded` on measures_hidden (0.4545, at or above 0.25) and pexels-8836968 stays
-    `major` on it (0.8636, at or above 0.5), neither `ok` (review R2 of 1.13.0)."""
+    excuse its legs (the tests below). Until 1.14.1 `hidden_measure_share` did not read the example, so with the trainer's
+    visibility this take read `degraded` on measures_hidden (0.4545) and pexels-8836968 `major` (0.8636) (review R2 of 1.13.0).
+    From 1.14.2 (TICKET-107) the share counts only the measures the trainer shows: this take reads `ok` (0.0) and pexels-8836968,
+    which hides measures the trainer shows, stays `major` (9 of 12, 0.75), both pinned in tests/test_api_expected_visibility.py."""
     doc = json.loads((OUT / "analysis.double-capped.example.json").read_text())
     block = doc["quality"]
     assert not any("conf" in frame for frame in json.loads((ROOT / doc["expected"]["path"]).read_text())["frames"])

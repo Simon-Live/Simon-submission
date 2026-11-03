@@ -445,6 +445,12 @@ credit's own scale, `grades` (`[percent at least, letter]`, highest first): S 95
 under 30 is still F (the team's game scale, ADR-0020; the score's bands are not used here). It is informational: it is not `score.grade`, it sets no cap and no gate,
 and it ignores warnings and caps, so a take capped to F can show a credit grade of B. Only the 22 body measures of `part5.measures.MEASURES` earn credit; the foot measures (`foot_rotation`, `ankle_inversion`, from the optional foot files) are compared and can be reported as faults, but earn none.
 
+The take's last second (Part 5 1.14.2, TICKET-108, ADR-0020 Amendment 1): over the example's last second of the take (at most
+a third of the expected frames read; rep by rep, the last rep), when the follower holds still (every measure read has a robust
+range of at most half its threshold), each measure the example moves away in (its range at least one threshold) earns full
+credit on every counted entry of that second, so getting out of the pose at the end costs nothing. A pose both hold, a movement
+both make and a follower who moves anything there are scored as before, and `max_points` is unchanged.
+
 ```json
 "credit": {"version": "simon.credit.v1", "percent": 87.5, "grade": "A", "points": 5841, "max_points": 6673,
            "tolerance": "normal",
@@ -610,7 +616,7 @@ reasoning; the thresholds are in `part5/quality.json`, not in `part5/rules.json`
 | `joints_unseen` | joint readings at Part 2's 0.3 unseen mark | `unseen_joint_share` | share, 0 to 1 |
 | `joints_missing` | joint readings null or with `conf` under 0.3 | `missing_joint_share` | share, 0 to 1 |
 | `frames_missing` | frames flagged `interpolated` or with at most half the joints usable | `missing_frame_share` | share, 0 to 1 |
-| `measures_hidden` | full-body measures the follower's own `conf` hides under ADR-0011 | `hidden_measure_share` | share of the 22, 0 to 1 |
+| `measures_hidden` | full-body measures the example shows that the follower's own `conf` hides under ADR-0011 | `hidden_measure_share` | share of the measures the example shows (all 22 when its visibility is unknown), 0 to 1 |
 | `position_jitter` | frame-to-frame jitter of the joint positions | `position_jitter_mm` | millimetres per frame |
 | `heading_offset` | from `1.14.0` (TICKET-086): the follower faced another way than the example, past 5 degrees; `degraded` only, never `major` (TICKET-086) | `heading_offset_deg` | degrees, 0 to 180 |
 
@@ -620,7 +626,10 @@ from the measured numbers; it names no cause (light, a hand over the lens), beca
 only the joints the example itself sees in at least half of its frames (its own `conf` or `--expected-visibility`, read as ADR-0011
 reads them), over the readings of those joints, and is `null` when the example sees none; an example with no `conf` anywhere (Part 4's
 animations today) has unknown visibility and counts every joint, so a follower filmed from the waist up against such a trainer still
-reads its legs as unseen. `position_jitter_mm` is
+reads its legs as unseen. From Part 5 1.14.2 (TICKET-107) `hidden_measure_share` counts over the same joints: only the full-body
+measures whose every joint the example shows, so a measure the example cannot show is not left out of the take (the words then say
+"k of the m measures the example shows"); it is `null` when the example shows none, and all 22 count when its visibility is unknown.
+`position_jitter_mm` is
 `feet.jitter` (the median absolute change between consecutive frames) of the step series of each joint and axis, the three axes
 joined as a norm and the median taken over the joints, so it depends on the file's frame rate. `heading_offset_deg`
 (from `1.14.0`, TICKET-086) is the one signal read after alignment, from both clips: in each aligned frame pair (example

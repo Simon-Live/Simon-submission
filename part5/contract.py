@@ -145,10 +145,10 @@ TABLE_ROWS = (
      "a Part 3 `skeleton.json` or Part 2 `pose3d.json` of the trainer, read for its `conf`", "option for Part 7",
      "works with an option",
      "pass it whenever the example carries no `conf` (a Part 4 animation): Part 5 reads which joints the trainer's camera "
-     "saw (ADR-0011), compares the measures both clips show, and holds `quality.signals.unseen_joint_share` to the joints "
-     "the trainer shows; without it the trainer's visibility is unknown, every joint counts and a waist-up follower reads "
-     "`major` on its legs; the follower's own `hidden_measure_share` still counts; the API field takes the document "
-     "itself, under the upload limits (TICKET-087)", "Part 5 (this repo)"),
+     "saw (ADR-0011), compares the measures both clips show, and holds `quality.signals.unseen_joint_share` and, from "
+     "1.14.2, `hidden_measure_share` to the joints the trainer shows; without it the trainer's visibility is unknown, every "
+     "joint counts and a waist-up follower reads `major` on its legs; the API field takes the document itself, under the "
+     "upload limits (TICKET-087)", "Part 5 (this repo)"),
     ("Part 5 `analyse --expected-video --follower-video`", "the two clips as video files, with `--live`",
      "`simon.analysis.v1` 1.9.0 with `second_opinion`", "option for Part 7", "works with an option",
      "pass the teacher's and the student's video with `--live`; the block is `ok`, `fallback` or `skipped` with a "

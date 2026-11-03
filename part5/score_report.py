@@ -143,9 +143,12 @@ def _rep_timeline(result, rules):
             faults.append(fault_to_dict(f, _fault_times(f, r.expected, fol, r.follower_positions, r.alignment,
                                                         r.to_original)))
         aligned = aligned_of(r, result.vis, getattr(result, "mask", None))
+        frame_s = score.example_frame_s(r.expected.t)   # the credit counts the example's seconds
+        # ADR-0020 Amendment 1: the take's last second is the last rep's, read on that rep's window only
+        full = score.credit_tail(aligned, rules, frame_s) if r is result.reps[-1] else None
         window = score.timeline_window(span, {"status": {"code": "ok"}, "faults": faults}, aligned,
                                        np.arange(len(aligned["exp_to_fol"])), rules, p, tempo, ratio,
-                                       frame_s=score.example_frame_s(r.expected.t))   # the credit counts the example's seconds
+                                       frame_s=frame_s, credit_full=full)
         if window.get("compared", True):
             ratios.append(ratio)
         windows.append(window)

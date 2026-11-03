@@ -489,7 +489,7 @@
     },
     {
       "path": "quality.signals.hidden_measure_share",
-      "meaning": "Share of the 22 full-body measures the follower's own conf makes unusable under ADR-0011.",
+      "meaning": "Share of the full-body measures the example shows (all 22 when its visibility is unknown) that the follower's own conf makes unusable under ADR-0011.",
       "units": "fraction",
       "direction": "higher_is_worse",
       "side_convention": null,
@@ -497,7 +497,7 @@
       "stability": "additive",
       "presence": "conditional",
       "present_when": "quality is present (every document Part 5 writes from 1.13.0).",
-      "notes": "A signal is a raw reading of the follower's file, read before smoothing. null means it could not be made, never 0 (0.0 is a measured zero). It is reported only: it does not change score.value, score.grade, the faults or the warnings. null when the follower file carries no conf. It is the follower's own, not the pair's: diagnostics.visibility.excluded is the pair's."
+      "notes": "A signal is a raw reading of the follower's file, read before smoothing. null means it could not be made, never 0 (0.0 is a measured zero). It is reported only: it does not change score.value, score.grade, the faults or the warnings. null when the follower file carries no conf or the example shows no full-body measure. It reads the follower's own conf over the measures the example shows (from Part 5 1.14.2, TICKET-107; before that over all 22), not the pair's: diagnostics.visibility.excluded is the pair's."
     },
     {
       "path": "quality.signals.position_jitter_mm",
@@ -1227,7 +1227,7 @@
       "stability": "additive",
       "presence": "conditional",
       "present_when": "score.credit is not null (the take was compared).",
-      "notes": "100 * points / max_points, so each window weighs by its seconds and the measures counted in it. Reported only: it sets no grade, cap or gate, and score.value does not read it. The one credit number to compare across takes, within one profile."
+      "notes": "100 * points / max_points, so each window weighs by its seconds and the measures counted in it. Reported only: it sets no grade, cap or gate, and score.value does not read it. The one credit number to compare across takes, within one profile. From Part 5 1.14.2 (TICKET-108) the take's last second earns full credit, in each measure the example moves away in, when the follower holds still there."
     },
     {
       "path": "score.credit.points",

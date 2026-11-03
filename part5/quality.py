@@ -1,6 +1,7 @@
 """How well the camera saw the follower's take: the `quality` block of `analysis.json` (ADR-0021, docs/specs/quality.md).
 
     shown_joints(*confs)                     the joints the example itself sees (its conf, `--expected-visibility`), ADR-0011's path
+    shown_measures(shown)                    the full-body measures whose every joint the example shows (TICKET-107)
     read_signals(clip, shown)                the five raw readings of a follower file, and the joint that is worst for three
     heading_offset_deg(expected, follower)   the sixth (1.14.0, TICKET-086): the heading left between the paired frames
     with_heading(readings, value)            the readings with that sixth signal set
@@ -16,8 +17,10 @@ about the vertical between the example's and the follower's body heading (the hi
 Part 3 turns a clip to face forward before Part 5 sees it; this is the heading it leaves, which moves the score (TICKET-082).
 
 A follower is not held to a body part the example does not show: `unseen_joint_share` counts only the joints the example sees in
-at least half of its frames. An example whose visibility is unknown (no `conf` anywhere) counts every joint; the follower's own
-set is never borrowed for it (docs/specs/quality.md, "The example's visibility").
+at least half of its frames, and `hidden_measure_share` only the full-body measures whose every joint is one of them (1.14.2,
+TICKET-107: a measure the example cannot show is not applicable, so it is not left out of the take). An example whose visibility
+is unknown (no `conf` anywhere) counts every joint and all 22 measures; the follower's own set is never borrowed for it
+(docs/specs/quality.md, "The example's visibility").
 
 The block is reported only. It sets no cap, no grade and no gate; `score_cap` says 59 (`score.WARNING_CAP`) when the level is
 `major` and Part 7 applies it. The limits are in `part5/quality.json`, not in `part5/rules.json`, so `rules_sha256`, the detection
@@ -28,7 +31,7 @@ The vocabulary (codes, levels, the cap) and the validator are in `part5.output`,
 """
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -36,7 +39,7 @@ import numpy as np
 
 from .feet import jitter
 from .io import JOINTS
-from .measures import MEASURES
+from .measures import MEASURE_JOINTS, MEASURES
 from .output import QUALITY_CAP, QUALITY_SIGNALS, QUALITY_VERSION, QUALITY_WARNING_CODES
 from .visibility import seen_mask, usable_from_conf
 
@@ -46,6 +49,8 @@ OK, DEGRADED, MAJOR = "ok", "degraded", "major"
 SHARE_DECIMALS, MM_DECIMALS = 4, 1
 # A frame with at most this many of the 17 joints usable is lost, as a filled (`interpolated`) frame is.
 LOST_FRAME_JOINTS = len(JOINTS) // 2
+# The full-body measures `hidden_measure_share` counts when the example's visibility is unknown (all of them, TICKET-107).
+N_MEASURES = len(MEASURES)
 # The example shows a joint when it sees it (strict: a joint at 0.3 is never seen) in at least this share of its frames.
 SHOWN_SHARE = 0.5
 # The signal behind each reason that reads one, in the order the reasons are listed (after the warning reasons).
@@ -71,9 +76,11 @@ class QualityError(ValueError):
 
 @dataclass(frozen=True)
 class Readings:
-    """The five signals (`None` where a reading cannot be made) and, for the three that can name one, the worst joint."""
+    """The signals (`None` where a reading cannot be made), for the three that can name one the worst joint, and how many
+    full-body measures the example shows, the count `hidden_measure_share` is a share of (all of them by default)."""
     signals: dict
     worst: dict = field(default_factory=dict)
+    measures_shown: int = N_MEASURES
 
 
 # ---------------------------------------------------------------------------------------------- the limits
@@ -121,6 +128,13 @@ def shown_joints(*confs):
     return shown
 
 
+def shown_measures(shown):
+    """The full-body measures (`MEASURES`, in their order) whose every joint is in `shown` ((17,) bool, as `shown_joints`): the
+    measures the example can show, so the only ones a take can leave out (ADR-0021 Amendment 2, TICKET-107)."""
+    seen = {JOINTS[j] for j in np.flatnonzero(np.asarray(shown, bool))}
+    return [m for m in MEASURES if set(MEASURE_JOINTS[m]) <= seen]
+
+
 # ---------------------------------------------------------------------------------------------- the signals
 def _share(flags):
     """The share of True in a boolean array, to `SHARE_DECIMALS`."""
@@ -154,12 +168,13 @@ def _lost_frames(clip):
     return _share(clip.interpolated | (clip.mask.sum(axis=1) <= LOST_FRAME_JOINTS))
 
 
-def _hidden_measures(clip):
-    """The share of the full-body measures the follower's own `conf` makes unusable under ADR-0011; None without `conf`."""
+def _hidden_measures(clip, held):
+    """The share of the measures `held` (the ones the example shows) that the follower's own `conf` makes unusable under ADR-0011;
+    None without `conf` and when the example shows none of them (ADR-0021 Amendment 2: the rest are not applicable)."""
     usable = usable_from_conf(clip.conf)
-    if usable is None:
+    if usable is None or not held:
         return None
-    return round(sum(m not in usable for m in MEASURES) / len(MEASURES), SHARE_DECIMALS)
+    return round(sum(m not in usable for m in held) / len(held), SHARE_DECIMALS)
 
 
 def _joint_jitter_mm(series):
@@ -182,16 +197,18 @@ def _jitter(clip):
 
 def read_signals(clip, shown=None):
     """The `Readings` of a follower `io.Clip`, as the file was loaded (before smoothing). `shown` is `shown_joints(...)` of the
-    example, the joints `unseen_joint_share` counts; None counts every joint."""
+    example, the joints `unseen_joint_share` counts and the joints a measure needs for `hidden_measure_share` to count it; None
+    counts every joint."""
     shown = np.ones(len(JOINTS), bool) if shown is None else np.asarray(shown, bool)
+    held = shown_measures(shown)
     unseen, unseen_joint = _unseen(clip, shown)
     missing, missing_joint = _missing(clip)
     shake, shake_joint = _jitter(clip)
     signals = {"unseen_joint_share": unseen, "missing_joint_share": missing, "missing_frame_share": _lost_frames(clip),
-               "hidden_measure_share": _hidden_measures(clip), "position_jitter_mm": shake,
+               "hidden_measure_share": _hidden_measures(clip, held), "position_jitter_mm": shake,
                "heading_offset_deg": None}   # read after alignment (`with_heading`); the file alone cannot say it
     worst = {"unseen_joint_share": unseen_joint, "missing_joint_share": missing_joint, "position_jitter_mm": shake_joint}
-    return Readings(signals, {name: joint for name, joint in worst.items() if joint})
+    return Readings(signals, {name: joint for name, joint in worst.items() if joint}, len(held))
 
 
 # ---------------------------------------------------------------------------------------------- the heading (TICKET-086)
@@ -219,7 +236,7 @@ def heading_offset_deg(expected, follower):
 
 def with_heading(readings, value):
     """`readings` with `heading_offset_deg` set to `value` (None when the take could not be aligned)."""
-    return Readings(dict(readings.signals, heading_offset_deg=value), readings.worst)
+    return replace(readings, signals=dict(readings.signals, heading_offset_deg=value))
 
 
 # ---------------------------------------------------------------------------------------------- the words
@@ -231,8 +248,9 @@ def _joint_name(joint):
     return joint.replace("_", " ")
 
 
-def _near(code, value, joint):
-    """The sentence for a reason that reads a signal: the numbers and the joint, never a cause."""
+def _near(code, value, joint, shown=N_MEASURES):
+    """The sentence for a reason that reads a signal: the numbers and the joint, never a cause. `shown` is how many measures the
+    example shows, the count `hidden_measure_share` is a share of (TICKET-107)."""
     where = f", most often the {_joint_name(joint)}" if joint else ""
     if code == "joints_unseen":
         return f"{_percent(value)} of the joint readings were outside the picture{where}."
@@ -241,8 +259,10 @@ def _near(code, value, joint):
     if code == "frames_missing":
         return f"{_percent(value)} of the frames were filled in or had too few joints to use."
     if code == "measures_hidden":
-        return (f"{round(value * len(MEASURES))} of {len(MEASURES)} measures were left out because their joints "
-                "were not seen in enough of the take.")
+        of = f"{shown}" if shown == N_MEASURES else f"the {shown}"
+        which = "measures" if shown == N_MEASURES else "measures the example shows"
+        return (f"{round(value * shown)} of {of} {which} were left out because their joints were not seen in enough of "
+                "the take.")
     if code == "heading_offset":
         return f"The body was turned about {value:.0f} degrees from the way the example faces."
     where = f", most at the {_joint_name(joint)}" if joint else ""
@@ -271,7 +291,7 @@ def _signal_reasons(readings, thresholds):
             continue
         level, limit = hit
         joint = readings.worst.get(name)
-        reason = {"code": code, "words": _near(code, value, joint), "value": value, "threshold": limit}
+        reason = {"code": code, "words": _near(code, value, joint, readings.measures_shown), "value": value, "threshold": limit}
         out.append((level, dict(reason, joint=joint) if joint else reason))
     return out
 

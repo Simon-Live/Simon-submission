@@ -233,13 +233,19 @@ def test_an_example_that_shows_no_joint_makes_the_signal_null_not_zero():
     assert quality.read_signals(still_pose_clip(n, conf_of(n, LEGS)), nothing).signals["unseen_joint_share"] is None
 
 
-def test_only_the_unseen_share_reads_the_example_and_no_limit_moved():
+def test_only_the_unseen_and_hidden_measure_shares_read_the_example_and_no_limit_moved():
+    """From 1.14.2 (TICKET-107) `hidden_measure_share` reads the example too: it is a share of the measures the example shows."""
     n = 40
     follower = still_pose_clip(n, conf_of(n, ("left_wrist", "right_wrist")))
-    wide, narrow = quality.read_signals(follower), quality.read_signals(follower, quality.shown_joints(conf_of(n, LEGS)))
+    shown = quality.shown_joints(conf_of(n, LEGS))
+    wide, narrow = quality.read_signals(follower), quality.read_signals(follower, shown)
     for name in output.QUALITY_SIGNALS:
-        if name != "unseen_joint_share":
+        if name not in ("unseen_joint_share", "hidden_measure_share"):
             assert wide.signals[name] == narrow.signals[name], name
+    lost = [m for m in MEASURES if m not in usable_from_conf(conf_of(n, ("left_wrist", "right_wrist")))]
+    assert lost and set(lost) <= set(quality.shown_measures(shown))   # the wrists' measures are all ones the example shows
+    assert wide.signals["hidden_measure_share"] == round(len(lost) / 22, 4)
+    assert narrow.signals["hidden_measure_share"] == round(len(lost) / len(quality.shown_measures(shown)), 4)
     assert quality.load_thresholds()["unseen_joint_share"] == (0.1, 0.2) == quality.load_thresholds()["missing_joint_share"]
 
 

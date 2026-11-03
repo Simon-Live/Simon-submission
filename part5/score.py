@@ -54,6 +54,7 @@ from . import profiles
 from .cues import tempo_block
 from .detect import load_rules
 from .measures import MEASURES
+from .reps import robust_range
 
 VERSION_V1 = "simon.score.v1"
 VERSION_V2 = "simon.score.v2"
@@ -404,7 +405,7 @@ def tempo_charge(ratio, tempo):
     return profiles.tempo_points(shown, tempo["weight"], tempo["cap"])
 
 
-def window_score(analysis, aligned, frames, rules, p, tempo_points=None, frame_s=None):
+def window_score(analysis, aligned, frames, rules, p, tempo_points=None, frame_s=None, credit_full=None):
     """`{value, components, misses}` of the expected `frames` (an index array) of a take, or None when
     nothing in them can be measured. The unrounded value is kept for the take's mean.
 
@@ -412,7 +413,9 @@ def window_score(analysis, aligned, frames, rules, p, tempo_points=None, frame_s
     tempo (no `components.tempo` key, the score as it always was), else points taken off the value.
 
     `frame_s` (ADR-0020) is the seconds one expected frame lasts on the example's own clock (`example_frame_s`); the window's
-    credit sums carry it, and are left out (the take then has no `score.credit`) when it is None."""
+    credit sums carry it, and are left out (the take then has no `score.credit`) when it is None. `credit_full` (ADR-0020
+    Amendment 1) is None or (len(MEASURES), len(frames)) bool: True where an entry of the take's last second earns full credit
+    (`credit_tail`)."""
     if (analysis.get("status") or {}).get("code") not in ("ok", None):
         return None
     frames = np.asarray(frames)
@@ -439,16 +442,17 @@ def window_score(analysis, aligned, frames, rules, p, tempo_points=None, frame_s
         parts["tempo"] = float(round_half_up(tempo_points, 2))
     return {"raw": raw, "value": value, "grade": grade(value, p["bands"]), "components": parts,
             "misses": sorted(misses, key=lambda m: (m["at_s"] is None, m["at_s"] or 0)),
-            "credit_raw": credit_sums(credit_z(sub, rules), frame_s)}
+            "credit_raw": credit_sums(credit_z(sub, rules, credit_full), frame_s)}
 
 
-def timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=True, frame_s=None):
+def timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=True, frame_s=None, credit_full=None):
     """One entry of a take's timeline: the `window_score` of the expected `frames` under `t_s` = `span`, charged
     what the profile's `tempo` block charges for the window's tempo `ratio` (follower over example time, None when
     unmeasured; ADR-0016) and, when `timed`, carrying that tempo block (ADR-0014). `{t_s, compared: False}` when
     nothing in the window can be scored. The windows of a take compared as a whole and of one compared rep by rep
-    are both made here. `frame_s` is the example's seconds per frame, for the credit (`window_score`)."""
-    scored = (window_score(analysis, aligned, frames, rules, p, tempo_charge(ratio, tempo), frame_s)
+    are both made here. `frame_s` is the example's seconds per frame, for the credit (`window_score`), and `credit_full` the
+    entries of the take's last second that earn full credit (`credit_tail`, ADR-0020 Amendment 1), None for none."""
+    scored = (window_score(analysis, aligned, frames, rules, p, tempo_charge(ratio, tempo), frame_s, credit_full)
               if np.size(frames) else None)
     if not scored:
         return {"t_s": span, "compared": False}
@@ -524,12 +528,13 @@ def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW
     exp_t = None if expected_times is None else np.asarray(expected_times, dtype=float)
     tempo = profiles.tempo_of(rules)   # ADR-0016: the profile's tempo words and, for dance, its charge
     frame_s = None if exp_t is None else example_frame_s(exp_t)   # ADR-0020: the credit counts the example's seconds
+    full = credit_tail(aligned, rules, frame_s)   # ADR-0020 Amendment 1: read once, on the take's expected frames
     windows = []
     for k, span in enumerate(spans):
         frames = np.flatnonzero(index == k)
         ratio = tempo_ratio(analysis, fol_t[frames], exp_t[frames]) if exp_t is not None and frames.size else None
         windows.append(timeline_window(span, analysis, aligned, frames, rules, p, tempo, ratio, timed=exp_t is not None,
-                                       frame_s=frame_s))
+                                       frame_s=frame_s, credit_full=full[:, frames]))
     return timeline_block(windows, "windows", rules, NO_TEMPO if exp_t is None else tempo_ratio(analysis, fol_t, exp_t),
                           n_faults=reported_faults(analysis))
 
@@ -557,13 +562,58 @@ CREDIT_LEVELS = {"easy": {"tolerance": 1.5, "multiplier": 0.75}, "normal": {"tol
 CREDIT_LEVEL = "normal"           # the level the top-level percent, points and max_points are shown at
 POINTS_PER_MEASURE_SECOND = 100
 CREDIT_MIN_SEEN = 0.5             # a measure counts in a window when it is finite in at least this share of its frames
+# The take's last second (ADR-0020 Amendment 1, TICKET-108; docs/specs/score-credit.md "The take's last second"): when the
+# follower holds still there, each measure the example moves away in earns full credit there. Ranges are in detection thresholds.
+CREDIT_TAIL_S = 1.0               # the stretch read, at the end of the example's clock
+CREDIT_TAIL_SHARE = 3             # and never more than a third of the expected frames read
+CREDIT_HOLD = 0.5                 # the follower holds still when every measure's range there is at most this (the full-credit edge)
+CREDIT_LEAVE = 1.0                # and the example moves away in a measure whose range there is at least this (one threshold)
 
 
-def credit_z(sub, rules):
+def credit_z(sub, rules, full=None):
     """(measures x frames) |follower - expected| / threshold of a window's `sub` (the `aligned` shape, cut to the window's
-    expected frames), one row per measure of MEASURES finite in at least CREDIT_MIN_SEEN of the frames; NaN where unseen."""
-    rows = [z for z in _z_rows(sub, rules) if z.size and np.isfinite(z).mean() >= CREDIT_MIN_SEEN]
-    return np.vstack(rows) if rows else np.zeros((0, np.asarray(sub["exp_to_fol"]).size))
+    expected frames), one row per measure of MEASURES finite in at least CREDIT_MIN_SEEN of the frames; NaN where unseen.
+    `full` ((len(MEASURES), frames) bool, `credit_tail`) sets the finite entries it marks to 0, which earns full credit at every
+    level; the rows counted are chosen on z alone, so it never changes what is counted (ADR-0020 Amendment 1)."""
+    n = np.asarray(sub["exp_to_fol"]).size
+    marks = np.zeros((len(MEASURES), n), dtype=bool) if full is None else np.asarray(full, dtype=bool)
+    rows = [np.where(m & np.isfinite(z), 0.0, z) for z, m in zip(_z_rows(sub, rules), marks)
+            if z.size and np.isfinite(z).mean() >= CREDIT_MIN_SEEN]
+    return np.vstack(rows) if rows else np.zeros((0, n))
+
+
+def _tail_ranges(aligned, rules, tail):
+    """{measure: (example range, follower range)}, robust ranges in thresholds over the expected frames `tail` (the follower's:
+    the frames the alignment pairs with them), for each measure of MEASURES whose z is finite in at least CREDIT_MIN_SEEN of them."""
+    idx = np.asarray(aligned["exp_to_fol"])[tail]
+    out = {}
+    for name in MEASURES:
+        e = np.asarray(aligned["expected"][name], dtype=float)[tail]
+        f = np.asarray(aligned["follower"][name], dtype=float)[idx]
+        if (np.isfinite(e) & np.isfinite(f)).mean() >= CREDIT_MIN_SEEN:
+            out[name] = (robust_range(e) / threshold_of(name, rules), robust_range(f) / threshold_of(name, rules))
+    return out
+
+
+def credit_tail(aligned, rules, frame_s):
+    """(len(MEASURES), N) bool over the expected frames of `aligned` (a take, or one rep's window): True on the last CREDIT_TAIL_S
+    of the example's clock (at most a third of the N frames) for each measure the example moves away in there (its range at least
+    CREDIT_LEAVE thresholds), when the follower holds still there (every measure read at most CREDIT_HOLD). Those entries earn full
+    credit (`credit_z`): the example moving on after the follower has stopped costs nothing, while a pose both hold, a movement
+    both make and any measure the example holds are scored as before. A follower moving on after the example has stopped is left
+    to the alignment's open end (`aligned_until_s`). All False without the example's clock (`frame_s` None)."""
+    n = np.asarray(aligned["exp_to_fol"]).size
+    out = np.zeros((len(MEASURES), n), dtype=bool)
+    k = 0 if frame_s is None else min(round(CREDIT_TAIL_S / frame_s), n // CREDIT_TAIL_SHARE)
+    if k < 1:
+        return out
+    ranges = _tail_ranges(aligned, rules, np.arange(n - k, n))
+    if not ranges or max(fol for _, fol in ranges.values()) > CREDIT_HOLD:
+        return out
+    for i, name in enumerate(MEASURES):
+        if name in ranges and ranges[name][0] >= CREDIT_LEAVE:
+            out[i, n - k:] = True   # ADR-0020 Amendment 1: the follower still, the example moving away in this measure
+    return out
 
 
 def credit_of(z, tolerance=1.0, bands=CREDIT_BANDS):

@@ -121,6 +121,39 @@ the team's, whose commit is kept as it is.
   land elsewhere (`alignment.exp_to_fol` differs from the step before). Strict monotonicity through the pipeline would need
   the alignment path to change, which is not part of this work, so the rises are recorded as measured and not tuned away.
 
+## Amendment 1 (2026-11-03, TICKET-108): the take's last second
+Decision: from 1.14.2, when over the example's last second (at most a third of the expected frames read) the follower holds
+still (every measure read has a robust range of at most half its threshold), each measure in which the example moves away (its
+range at least one threshold) earns full credit on every counted entry of that second; the measures the example holds are scored
+as before. It is read once per take: on the take's expected frames when it is compared whole, on the last rep when it is compared
+rep by rep. `max_points`, every other entry, the score, the faults and the near misses are unchanged. The rule and its tests are
+in the spec, "The take's last second" and AC-CR-12. It makes AC-CR-08 false in that second (a follower who stops following the
+last move earns more than one who follows it badly); the spec names the exception and pins it.
+
+Why: staging take `b5acba462f16` (moalborati/simon-part-5-fault-analysis#38) read 82.9 (B) beside a score of 99 and no fault; 295
+of its 600 lost points fell in the last second, where the trainer bent both elbows again and the follower held still. The repo
+owner ruled the fix a bug fix to ship before the demo recording (moalborati/simon#61, 6595090557, 6595093083, 6595096742). With the
+rule it reads 91.3 (A).
+
+Options, all on the credit alone:
+1. Leave the tail out of the count (earned and possible). Rejected: `max_points` would then depend on how the follower ended,
+   where today it is the routine's own (the same routine has the same maximum); `b5acba462f16` would read 89.1.
+2. Do not count differences at the clip's edges that never reach a fault's duration (#38's third suggestion). Rejected: the
+   credit would read the faults (AC-CR-06 says it does not), and a held wrong pose in the last second, shorter than the 1.9 s a
+   fault needs there, would never cost, against #38's "a real sustained miss in its last second still loses credit".
+3. End the credit where the trainer's movement or last rep ends (#38's first two suggestions). Rejected: on `b5acba462f16` the
+   trainer moves until its last frame, and a one-rep example has no rep boundary to end on.
+4. The follower still and the example moving away, over the last second, with full credit for the measures the example moves
+   (chosen). Its first form also forgave the other direction (the follower moving while the example holds) and every measure of
+   the second; the review of 1.14.2 found that a nod then forgave an arm held wrong, so the forgiving is per measure and the
+   follower must be still in all of them. The other direction was dropped: the alignment's open end already leaves the follower's
+   frames after the routine uncompared (`aligned_until_s`).
+
+Cost and case against: a follower who forgets the routine's real last move is forgiven for up to one second, in the measures
+that move; the rule cannot tell that from stopping early, and it breaks AC-CR-08's "a bigger fault never earns more" there.
+Accepted, on the owner's ruling: one second at most, and a miss that both sides hold, makes while moving together or makes while
+moving anything at all, still costs.
+
 ## Reversal Cost
 Low: remove the block from `timeline_block` and the schema property; no other field reads it.
 
@@ -128,6 +161,9 @@ Low: remove the block from `timeline_block` and the schema property; no other fi
 - `part5/score.py`: `credit_z`, `credit_of`, `credit_sums`, `credit_points`, `credit_grade` (`CREDIT_GRADES`),
   `credit_block`; `window_score` (`credit_raw`),
   `timeline_block` (`credit`).
-- `part5/score_report.py`: `score_block` (null credit for a take that could not be aligned).
+- `part5/score_report.py`: `score_block` (null credit for a take that could not be aligned); `_rep_timeline` (the last rep's
+  tail, Amendment 1).
+- `part5/score.py`: `credit_tail`, `_tail_ranges`, `CREDIT_TAIL_S`, `CREDIT_TAIL_SHARE`, `CREDIT_HOLD`, `CREDIT_LEAVE`
+  (Amendment 1, TICKET-108).
 - `part5/output.py`: `_validate_credit`; `contracts/analysis.schema.json` `score.credit`.
 - `tests/test_score_credit.py`.

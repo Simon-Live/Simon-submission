@@ -126,9 +126,34 @@ signal that is degraded only (the key must still be written), and `_reached` nev
 signals keep both limits. No seed 5 or seed 73 take read `major` on the heading under the withdrawn limit, so no level moves;
 the score, detection and `part5/rules.json` are untouched, as for the rest of the block.
 
+## Amendment 2 (2026-11-03, TICKET-107): the hidden measures count only what the example shows
+Decision: from 1.14.2, `hidden_measure_share` is the share of the full-body measures the example shows (every joint of the
+measure among `shown_joints`, the set `unseen_joint_share` already counts) that the follower's own `conf` makes unusable. An
+example of unknown visibility shows every joint, so all 22 count, as before. The `measures_hidden` words give that count ("k of
+the m measures the example shows"). No limit moves, the schema shape and version stay 1.14.0, and the score and detection are
+untouched.
+
+Why: staging take `b5acba462f16` (moalborati/simon-part-5-fault-analysis#38, from moalborati/simon#61) is a seated routine filmed from
+the chest up, trainer and follower alike. The trainer's file marks its hips, knees and ankles unseen, the follower's signals were
+clean, and the take read `major` with `score_cap` 59 because 15 of 22 measures need those joints. A measure the trainer cannot
+show is not applicable to the movement, so it was never left out of the take. The team ruled the fix a bug fix to ship
+before the demo recording (moalborati/simon#61, 6595090557, 6595093083, 6595096742).
+
+Options: (1) count over the measures the example shows (chosen); (2) count over the measures the pair compares
+(`diagnostics.visibility.usable`), rejected because that set already drops what the follower hid, so a follower who hid a limb
+the trainer shows would read 0; (3) leave the signal and drop the reason for seated takes, rejected as a special case that a
+standing upper-body routine would miss.
+
+Cost and case against: the trainer's framing now decides what the follower is held to. A trainer whose camera cut off the legs
+of a routine that moves them excuses the follower's hidden legs too. Accepted: the comparison already drops those measures for
+the pair (ADR-0011), so the share is now closer to what was compared (it still counts a measure the follower hides and the
+example shows, as it should), and a follower who hides a joint the trainer shows still counts on it and on
+`unseen_joint_share`.
+
 ## Code Backlinks (updated as code is written)
 - `part5/output.py:68`, the quality vocabulary; `part5/output.py:519`, `_validate_quality` and its reason and signal checks
 - `part5/quality.py`, `load_thresholds` and `_reached`: a `major` of `null` is degraded only (Amendment 1, TICKET-086)
+- `part5/quality.py`, `shown_measures` and `_hidden_measures`: only the measures the example shows (Amendment 2, TICKET-107)
 - `part5/doctor.py:460`, `_quality_notes` (`--for part7`)
 - `web/joints.js:165`, `QUALITY_NOTES` and `qualityNote`; `web/app.js:242`, `showQualityNote`
 - `contracts/analysis.schema.json`, `$defs.quality`; `contracts/history-fields.json`, the `quality` entries

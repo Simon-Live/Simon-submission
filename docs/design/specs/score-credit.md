@@ -8,7 +8,7 @@ Linked CRD: none
 Request Type: new-feature
 Risk Level: low
 Master spec: `part5-fault-analysis.md` (the score). ADRs: Part 5's ADR-0020 (this change; not the firm's ADR-0020 on QA
-recipes), ADR-0013 (the windows), ADR-0012 (the warning cap), ADR-0019 (the score). Ticket: TICKET-078. Companion specs:
+recipes), ADR-0013 (the windows), ADR-0012 (the warning cap), ADR-0019 (the score). Tickets: TICKET-078; TICKET-108 (the take's last second, 1.14.2). Companion specs:
 `score-v3.md`, `integration-contract.md`.
 
 ## Overview
@@ -37,10 +37,16 @@ the team reported it on #61, issuecomment-6569445776), which Part 5 merged as it
    window's frames (`CREDIT_MIN_SEEN`, 0.5). #61 does not say this. It decides which measures are counted in a window, so
    it moves `max_points`. Answer: kept as the team wrote it, stated here as Part 5's reading, to confirm with the team.
 4. **Through the whole pipeline, credit can rise by tenths as a fault grows.** The take is aligned to the example again at
-   each size and a few frames land elsewhere. Answer: with the alignment held fixed it never rises; the pipeline rises are
-   measured and pinned (AC-CR-08), and the alignment path is not changed.
+   each size and a few frames land elsewhere. Answer: with the alignment held fixed it never rises (outside the take's last
+   second, item 6); the pipeline rises are measured and pinned (AC-CR-08), and the alignment path is not changed.
 5. **Points compare only between takes of one example.** They grow with the example's length and the measures seen.
    Answer: `percent` is the number to compare across takes, within one profile and one credit version.
+6. **The last second makes AC-CR-08 false there (1.14.2, TICKET-108).** With the alignment fixed, a follower who follows the
+   example's last move less and less loses credit until they hold still, and then earns that second in full: a bigger fault,
+   more credit. Any rule that forgives a follower for stopping does this (review B2 of 1.14.2). Answer: the exception is named
+   in AC-CR-08 and pinned. It stays in the last second, in the measures the example moved, and never earns more than those
+   entries' full credit; the team's ruling that the end of a take should not cost credit (#38, moalborati/simon#61) is the
+   reason it is accepted.
 
 ## User Story
 As Part 7, I want a percent and a points total for how closely a follower stayed with the example, frame by frame, so that
@@ -89,6 +95,42 @@ the result can show them beside the score and the viewer can choose which to see
   reported the ruling on moalborati/simon#61 (issuecomment-6569445776) and wrote it in 8f135ee. It is not the score's bands,
   which stay A to F for `score.value`, and it changes no other number of the block or of the score.
 - **Constants.** `CREDIT_*` in `part5/score.py`. They are not in `part5/rules.json`, whose `score` section stays frozen.
+- **The take's last second (1.14.2, TICKET-108, ADR-0020 Amendment 1).** See the next section.
+
+### The take's last second (1.14.2)
+At the end of a take one person often stops before the other. Until 1.14.1 the credit scored that second like any other.
+Staging take `b5acba462f16` (moalborati/simon-part-5-fault-analysis#38) lost 295 of its 600 lost points there, with no fault and a
+score of 99: the trainer bent both elbows again while the follower held still.
+
+The rule (`score.credit_tail`), read once per take: compared as a whole, on the take's expected frames; rep by rep, on the last
+rep, and only when that rep was compared (an earlier rep never takes its place):
+- **The tail** is the last `CREDIT_TAIL_S` (1.0 s) of the example's clock, `round(CREDIT_TAIL_S / frame_s)` expected frames,
+  and never more than a third of the expected frames read (`CREDIT_TAIL_SHARE`).
+- **The measures read** are those of `MEASURES` whose z is finite in at least half the tail's frames (`CREDIT_MIN_SEEN`).
+- **Movement** is, per measure, the robust range (`reps.robust_range`, p95 minus p5) over the tail in that measure's
+  thresholds: the example over the tail's frames, the follower over the frames the alignment pairs with them (`exp_to_fol`).
+- **The follower holds still** when every measure read has a range of at most `CREDIT_HOLD` (0.5, the edge of the full-credit
+  band). If not, nothing is forgiven.
+- **When it does**, each measure read whose example range is at least `CREDIT_LEAVE` (1.0, one threshold) earns full credit
+  (1.0 at every level) on every counted entry of the tail. The measures the example holds are scored as before.
+- Nothing else changes: the same entries are counted, so `max_points` stays the routine's own, and every other entry earns
+  what it did.
+
+So a pose both hold (the example holds it, so it is never forgiven), wrong form while both move (the follower is not still) and
+a follower who moves anything at all in the last second (review B1 of 1.14.2: a nod does not forgive an arm held wrong) are
+scored as before, and a follower who stops early loses credit for everything before the last second. The other direction, a
+follower who moves on after the example has stopped, is not this rule's: the alignment is open-ended, so the follower's frames
+after the routine are not compared at all (`aligned_until_s`, CONTRACT.md); a #38 suggestion to forgive it too was dropped to
+keep the exception to AC-CR-08 small. The rule cannot tell a forgotten last move from stopping early; it forgives at most one
+second of either, in the measures the example moved. It reads the two clips and the alignment only, never the reported faults
+(AC-CR-06 holds), and it does not read the match: on a low match the alignment can pair the example's last second with a few
+follower frames, so the follower holds by construction and that second is forgiven, as #38's first suggestion asked.
+
+On `b5acba462f16` the trainer bends both elbows again in its last second (about 122 to 45 degrees, 3.6 thresholds) while the
+follower holds (at most 0.16 of a threshold): the six elbow and arm measures it moves earn that second in full, `shoulder_tilt`
+(0.30) does not, and the credit reads 91.3 (A) where 1.14.1 read 82.9 (B), `max_points` 3500 in both. The other 305 lost points
+are the 0.6 band in the first bend and hold, where the follower's elbow and forearm angles sat between half a threshold and one
+threshold from the trainer's; they are credit working as designed and stay.
 
 ### Example (`fixtures/output/analysis.example.json`)
 `score.value` 75, grade C; `credit`: `version` `simon.credit.v1`, `percent` 87.5, `grade` A, `points` 5841, `max_points`
@@ -162,7 +204,11 @@ is identical beyond `score.credit` and `schema_version` (`scripts/score_credit_b
 `tests/test_score_credit_pins.py` (the constants are outside `rules.json`).
 
 ### AC-CR-08: credit as a fault grows
-Given the alignment held fixed, then no measure's growing fault raises the credit at any level, in any window. Given the
+Given the alignment held fixed, then no measure's growing fault raises the credit at any level, in any window, with one
+exception (1.14.2, TICKET-108, "Why This Is Wrong" 6): in the take's last second, a follower who follows the example's move
+less and less loses credit until they hold still, and from that step earns the entries of the measures the example moved in
+full. The rise is in the last second only, never above those entries' full credit, and every other entry is unchanged
+(`tests/test_score_credit_tail.py`). Given the
 whole pipeline on the score's sweep takes (foot out, arms wider and trunk lean on `random.Random(1234)`), then the credit
 falls from no fault to the largest fault at every level, foot out and arms wider never raise it, and trunk lean raises the
 percent at two steps only: 20 to 25 degrees at hard (92.7 to 92.8) and 25 to 30 degrees at normal (95.2 to 95.3) and hard
@@ -187,6 +233,25 @@ D, 45 E, 44.9 F, 30 F and under 30 still F; every golden carries `grades` as `[[
 each `grades` entry and refuses any other letter; the score's own bands stay A to F. Tests: `tests/test_score_credit.py`
 (the team), `tests/test_score_credit_pins.py`, `tests/test_score_credit_history.py`.
 
+### AC-CR-12: the take's last second (1.14.2, TICKET-108)
+Given the last second of a take where the follower holds still and the example moves away, then each measure the example moves
+earns full credit on every counted entry of that second at every level, the measures the example holds are scored as before,
+`max_points` and every other entry are unchanged, and `score.value`, the faults and the near misses are what they were (the same
+with the rule on and off): staging take `b5acba462f16` (`tests/fixtures/staging-b5acba462f16/`) reads 91.3 where 1.14.1 read
+82.9. Given a held wrong pose in the last second (both still), wrong form while both move, a follower who moves anything in the
+last second (a nod beside an arm held wrong), or a follower who moves on while the example holds, then that second costs credit
+as before. Given a follower who stops more than a second before the end while the example moves on, then only the last second
+is forgiven. Given a take compared rep by rep, then only the last rep reads the rule, and the committed lateral raise is
+unchanged by it. Given a take of under 3 s, then the tail is a third of it. Given a measure unseen in most of the tail, it is
+not read. Tests: `tests/test_score_credit_tail.py`.
+
+Measured reach (`scripts/score_credit_before_after.py dump`, run on 1.14.1's tree and on this one, 2026-11-03): the 156 seed 5
+takes and the 23 committed real takes give byte-identical documents once the trees' paths are set aside, so neither TICKET-107
+nor TICKET-108 moves any of them; the goldens rebuild byte for byte (`make check-5-contract`). A perfect copy of the regression
+trainer reads 100.0; the same copy with its left wrist moved 0.15 m over the last second reads 96.9, the same with and without the
+rule. Seed 5, the real takes and the goldens were measured under the first form of the rule (either side still); the form shipped
+forgives a subset of what that one did, so they stay unchanged under it (`make check-5-contract` rebuilds the goldens).
+
 ## Error Cases
 | Condition | Behavior | AC |
 |---|---|---|
@@ -204,6 +269,12 @@ each `grades` entry and refuses any other letter; the score's own bands stay A t
 - A profile with other thresholds (`dance`, `rehab`): z uses that profile's thresholds, so a percent is read within its
   profile.
 - A window where no measure is seen in half its frames: its `percent` is null in `per_window`.
+- The take's last second, the follower still and the example moving away: full credit there for the measures the example
+  moves (AC-CR-12). The first second is not read this way: #38 asked about the end of a take only.
+- A low match: the rule does not read the match, so a last second the alignment pairs with a few follower frames can be
+  forgiven (the follower holds by construction).
+- Nothing in a 1.14.2 document says the rule was applied: `schema_version`, `simon.credit.v1` and `params_sha256` are those of
+  1.14.1 (review R2 of 1.14.2). Trigger to revisit: the next schema version, which can echo the constants as `bands` is echoed.
 
 ## Non-Functional Requirements Checklist
 | Category | Requirement | Metric | AC |
@@ -234,6 +305,8 @@ under half of a window should count for it.
 - A display, the "Show score as" switch, or a hide rule for warned takes: Part 7.
 - A deduction for misses (the replay script the team's ADR describes had one; it is not shipped).
 - A held-out seed, a target, or a gate on the credit.
+- The same rule for the first second of a take (getting into the pose). Trigger to revisit: a take whose credit is lost in its
+  first second with no fault.
 
 ## Review (TICKET-078)
 The independent review of 7181813 asked for the changes below; each is a Part 5 commit on top of the team's, whose commit is
@@ -265,6 +338,10 @@ kept as it is. The stakeholder-proxy ruled them. They are also in ADR-0020, "Par
 | `tests/shipped_score.py` | `aligned(offset=)`, `degrees_off` (one helper for the credit tests, review N6) | TICKET-078 | yes |
 | `tests/retimed.py`, `tests/test_retimed.py` | `labelled_take`, `retimed_inputs` (one labels lookup plus retime for the credit tests, review N6), `picked_takes(labels, sets)` (the one pick of takes, also read by the retime noise script), and their test | TICKET-078 | yes |
 | `scripts/score_credit_before_after.py` | the before and after run of AC-CR-07 | TICKET-078 | no (firm) |
+| `part5/score.py` | the take's last second: `credit_tail` (one mark per measure and frame), `_tail_ranges`, `CREDIT_TAIL_S`, `CREDIT_TAIL_SHARE`, `CREDIT_HOLD`, `CREDIT_LEAVE`; `credit_z` and `window_score` take the marks; `compute_timeline` reads them on the take | TICKET-108 | yes |
+| `part5/score_report.py` | `_rep_timeline` reads the tail on the last rep's window | TICKET-108 | yes |
+| `docs/design/adr/ADR-0020-score-credit-ddr-display.md` and its design copy | Amendment 1 | TICKET-108 | yes |
+| `tests/test_score_credit_tail.py`, `tests/fixtures/staging-b5acba462f16/` | AC-CR-12 | TICKET-108 | yes |
 | `scripts/make_score_credit_retime_noise.py` | the retimed takes measurement of AC-CR-03 (`--mode retime`, the default, or `stretch`); named `scripts/score_credit_retime_noise.py` until review B2 of 1.13.0, renamed `make_*` so the published `tests/test_retimed.py` can load it | TICKET-078 | yes (`scripts/make_*.py`) |
 
 ## Delivery Verification Plan
@@ -341,6 +418,16 @@ Impact if right: a reader takes the percent for a validated measure.
 Mitigation: ruled reported only, with no held-out seed; the credit sets no score grade, cap or gate (Overview, AC-CR-06),
 and the spec and ADR cite the 41-take figures as the team's (delta review B4).
 Resolution: ACCEPTED_RISK (Non-Requirements).
+
+### Concern 6: the last second breaks AC-CR-08 there (review B2 of 1.14.2)
+Challenge: with the alignment fixed, a follower who stops following the example's last move earns more credit than one who
+follows it badly ("Why This Is Wrong" 6).
+Impact if right: a reader who trusts "a bigger fault never earns more" is wrong for one second of a take.
+Mitigation: the exception is written into AC-CR-08 and pinned with a fixed-alignment sweep: the rise stays in the last second,
+in the measures the example moved, and never exceeds those entries' full credit. The follower-moves branch was dropped so the
+exception covers one direction only.
+Resolution: ACCEPTED_RISK, on the team's ruling that getting out of the pose at the end of a take should not cost credit
+(moalborati/simon-part-5-fault-analysis#38, moalborati/simon#61) and the dispatch's delegation of the method to Part 5.
 
 ### Pre-Mortem: It's 6 months from now and this feature was a disaster. Why?
 The reviews wrote these three; they rate no likelihood or impact.
