@@ -4,8 +4,10 @@
 import { h } from "./ui.js";
 
 export const COUNTDOWNS = [0, 3, 5, 10];
-export const DURATIONS = [0, 5, 10, 15, 20, 30, 45, 60]; // 0 is Manual
+export const DURATIONS = [0, 5, 6, 10, 15, 20, 30, 45, 60]; // 0 is Manual; 6 s is the judge's Quick take (TICKET-260)
 export const DEFAULTS = { countdown: 5, duration: 15 };
+/** The Quick take: the default under ?profile=submission (judge-take.md). Part 2 still samples at --fps 10. */
+export const QUICK_TAKE = { countdown: 3, duration: 6 };
 export const RAW_LIMIT_S = 90;
 const KEY = "simon.capture.prefs";
 
@@ -13,14 +15,14 @@ export const countdownLabel = (s) => (s ? `${s} s` : "Off");
 export const durationLabel = (s) => (s ? `${s} s` : "Manual");
 
 /** Remembered selections; the defaults when storage is missing, blocked or holds junk. */
-export function loadPrefs(storage) {
+export function loadPrefs(storage, defaults = DEFAULTS) {
   let saved = {};
   try {
     saved = JSON.parse((storage || globalThis.localStorage).getItem(KEY) || "{}") || {};
   } catch { saved = {}; }
   return {
-    countdown: COUNTDOWNS.includes(saved.countdown) ? saved.countdown : DEFAULTS.countdown,
-    duration: DURATIONS.includes(saved.duration) ? saved.duration : DEFAULTS.duration,
+    countdown: COUNTDOWNS.includes(saved.countdown) ? saved.countdown : defaults.countdown,
+    duration: DURATIONS.includes(saved.duration) ? saved.duration : defaults.duration,
   };
 }
 

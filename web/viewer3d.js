@@ -16,6 +16,11 @@ const BONE_R = 0.02;
 const FACE_BONE_R = 0.008;
 const JOINT_R = 0.03;
 const DIM_OPACITY = 0.3;
+const FIT_MARGIN_PX = 12; // the framed figures keep this far from every edge of the stage, room for a take to move between checks
+const LEGEND_GAP_PX = 6; // and this far below the Trainer and You chips (result.css .sr-legend), when the stage has them
+const FIT_STEP = 1.06;
+const FIT_MAX = 4;
+const FIT_EVERY = 6; // renders between checks of the posed figures' box once it is placed
 export const VIEWS = {
   front: { azimuth: 0, elevation: 8 },
   side: { azimuth: 90, elevation: 8 },
@@ -37,7 +42,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
  * @param host element that receives the canvas
  * @param opts {joints: string[], bones: [i,j][], tracks: [{color, ghostInOverlay, label}]}
  */
-export function createStage(host, { joints, bones, tracks }) {
+export function createStage(host, { joints, bones, tracks, framing = true }) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   const canvas = renderer.domElement;
@@ -65,6 +70,13 @@ export function createStage(host, { joints, bones, tracks }) {
   const haloMat = new THREE.MeshBasicMaterial({ color: tokenHex("--3d-hot", FB["--3d-hot"]), transparent: true, opacity: 0.4, depthWrite: false });
   const hotMat = new THREE.MeshStandardMaterial({ color: tokenHex("--3d-hot", FB["--3d-hot"]), emissive: tokenHex("--3d-hot", FB.hotGlow), emissiveIntensity: 0.9, roughness: 0.4 });
 
+  // a lit joint and its halo stay visible over a skin (docs/specs/model-skin.md)
+  const haloOverMat = haloMat.clone();
+  haloOverMat.depthTest = false;
+  const hotOverMat = hotMat.clone();
+  hotOverMat.depthTest = false;
+  hotOverMat.transparent = true;
+
   const figures = tracks.map((t) => {
     const group = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: t.color, roughness: 0.55, metalness: 0.05, transparent: true, opacity: 1 });
@@ -90,10 +102,11 @@ export function createStage(host, { joints, bones, tracks }) {
       return h;
     });
     scene.add(group);
-    return { group, mat, dimMat, boneMeshes, jointMeshes, halos, pose: null, dim: new Set(), stats: null, offset: new THREE.Vector3(), pelvis: new THREE.Vector3() };
+    return { group, mat, dimMat, boneMeshes, jointMeshes, halos, pose: null, skin: null, dim: new Set(), stats: null, offset: new THREE.Vector3(), pelvis: new THREE.Vector3() };
   });
 
   const state = { azimuth: 24, elevation: 14, distance: 3.4, mode: tracks.length > 1 ? "side" : "single", highlight: new Set() };
+  const fit = { skinFit: 1, fitLocked: false, fitDue: true, renders: 0 }; // the skin back-off, see fitSkins
   const listeners = { camera: new Set(), render: new Set() };
   let queued = false;
   let disposed = false;
@@ -104,6 +117,15 @@ export function createStage(host, { joints, bones, tracks }) {
   const tmpDir = new THREE.Vector3();
 
   function placeCamera() {
+    if (state.free) { // a scripted camera (web/cinematic.js): position, target and field of view are given, not orbited
+      camera.position.set(...state.free.position);
+      camera.up.set(0, 1, 0);
+      camera.fov = state.free.fov;
+      camera.updateProjectionMatrix();
+      camera.lookAt(...state.free.target);
+      camera.updateMatrixWorld(true);
+      return;
+    }
     const a = state.azimuth * DEG;
     const e = state.elevation * DEG;
     camera.position.set(
@@ -111,6 +133,7 @@ export function createStage(host, { joints, bones, tracks }) {
       TARGET.y + state.distance * Math.sin(e),
       TARGET.z + state.distance * Math.cos(e) * Math.cos(a),
     );
+    if (fit.skinFit !== 1) camera.position.sub(TARGET).multiplyScalar(fit.skinFit).add(TARGET); // backed off for a taller skin
     camera.up.set(-Math.sin(e) * Math.sin(a), Math.cos(e), -Math.sin(e) * Math.cos(a));
     camera.lookAt(TARGET);
     camera.updateMatrixWorld(true);
@@ -121,7 +144,7 @@ export function createStage(host, { joints, bones, tracks }) {
     fig.group.visible = !!pose;
     if (!pose) { fig.stats = null; return; }
     const dim = fig.dim;
-    const stats = { joints: 0, dimmed: 0, bones: 0 };
+    const stats = { joints: 0, dimmed: 0, bones: 0, skin: null };
     let cx = 0, cy = 0, cz = 0;
     const hl = pose[hipL], hr = pose[hipR];
     if (hl && hr) { cx = (hl[0] + hr[0]) / 2; cy = (hl[1] + hr[1]) / 2; cz = (hl[2] + hr[2]) / 2; }
@@ -140,9 +163,11 @@ export function createStage(host, { joints, bones, tracks }) {
       if (dim.has(i)) stats.dimmed++;
       jm.position.set(p[0] + fig.offset.x, p[1] + fig.offset.y, p[2] + fig.offset.z);
       const lit = !!hot && hot.has(i);
-      jm.material = lit ? hotMat : dim.has(i) ? fig.dimMat : fig.mat;
+      jm.material = lit ? (fig.skin ? hotOverMat : hotMat) : dim.has(i) ? fig.dimMat : fig.mat;
       jm.scale.setScalar(lit ? jm.userData.r * 1.9 : jm.userData.r);
       halo.visible = lit;
+      halo.material = fig.skin ? haloOverMat : haloMat;
+      halo.renderOrder = jm.renderOrder = fig.skin ? 10 : 0;
       if (lit) { halo.position.copy(jm.position); halo.scale.setScalar(jm.userData.r * 4.2); }
     });
     bones.forEach(([a, b], k) => {
@@ -160,7 +185,37 @@ export function createStage(host, { joints, bones, tracks }) {
       m.scale.set(m.userData.r, len, m.userData.r);
       m.quaternion.setFromUnitVectors(UP, tmpDir.multiplyScalar(1 / len));
     });
+    if (fig.skin) drawSkin(fig, stats, pose, dim, hot);
     fig.stats = stats;
+  }
+
+  // The skin replaces the sticks; joints are still placed so jointScreen works (model-skin.md).
+  function drawSkin(fig, stats, pose, dim, hot) {
+    try {
+      fig.skin.setPose(pose, dim, joints);
+      fig.skin.object3d.position.copy(fig.pelvis);
+      const { kind, id, segErrDeg, footY } = fig.skin.stats();
+      stats.skin = { kind, id, segErrDeg, footY };
+    } catch (err) {
+      console.error("A model could not follow the take, so the skeleton is shown.", err);
+      setSkin(figures.indexOf(fig), null);
+      return;
+    }
+    fig.boneMeshes.forEach((m) => { m.visible = false; });
+    fig.jointMeshes.forEach((m, i) => { m.visible = m.visible && !!hot && hot.has(i); });
+  }
+
+  function setSkin(trackIdx, adapter) {
+    const fig = figures[trackIdx];
+    if (!fig) return;
+    if (fig.skin) { fig.skin.dispose(); fig.skin = null; }
+    if (adapter) {
+      fig.skin = adapter;
+      fig.group.add(adapter.object3d);
+    }
+    fit.fitDue = true;
+    applyMaterials();
+    invalidate();
   }
 
   function applyMaterials() {
@@ -172,13 +227,77 @@ export function createStage(host, { joints, bones, tracks }) {
       fig.mat.needsUpdate = true;
       fig.dimMat.opacity = fig.mat.opacity * DIM_OPACITY;
       fig.dimMat.needsUpdate = true;
+      if (fig.skin) fig.skin.setGhost(ghost);
     });
+  }
+
+  // The camera backs off until every figure shown (skins at their real bounding box, sticks at their joints) lies inside the
+  // stage with a margin and below the Trainer and You chips when the stage has them. It never moves once the viewer has
+  // zoomed by hand, and it starts again from the default distance on a new view, size or skin (docs/specs/model-skin.md).
+  // `framing: false` leaves the camera alone, for the test that proves the framing is what keeps them in.
+  const box = new THREE.Box3();
+  const corner = new THREE.Vector3();
+  function skinBox(fig) {
+    fig.group.updateMatrixWorld(true);
+    fig.skin.object3d.traverse((o) => { if (o.geometry) { o.geometry.boundingBox = null; if (o.isSkinnedMesh) o.boundingBox = null; } });
+    return box.setFromObject(fig.skin.object3d, false);
+  }
+  function stickBox(fig) {
+    box.makeEmpty();
+    fig.jointMeshes.forEach((m) => { if (m.visible) box.expandByPoint(m.position); });
+    return box.expandByScalar(JOINT_R);
+  }
+  /** The NDC box {x0, x1, y0, y1} of the figures shown at the current camera, `skins` of them drawn as skins; null with none. */
+  function projectedFigures() {
+    let r = null;
+    figures.forEach((fig) => {
+      const shown = fig.skin ? fig.skin.object3d.visible : fig.group.visible;
+      if (!shown || (fig.skin ? skinBox(fig) : stickBox(fig)).isEmpty()) return;
+      r = r || { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity, skins: 0 };
+      for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+        corner.set(x, y, z).project(camera);
+        r.x0 = Math.min(r.x0, corner.x); r.x1 = Math.max(r.x1, corner.x);
+        r.y0 = Math.min(r.y0, corner.y); r.y1 = Math.max(r.y1, corner.y);
+      }
+      if (fig.skin) r.skins++;
+    });
+    return r;
+  }
+  /** Px from the stage's top edge that the figures must stay below: the margin, or the chips' bottom plus a gap. */
+  function topClearPx() {
+    const legend = host.querySelector(".sr-legend");
+    const rect = legend && legend.getBoundingClientRect();
+    return rect && rect.height > 0 ? Math.max(FIT_MARGIN_PX, rect.bottom - host.getBoundingClientRect().top + LEGEND_GAP_PX) : FIT_MARGIN_PX;
+  }
+  function fitSkins() {
+    if (state.free) return; // the scripted camera is exact; no back-off
+    if (!framing || !figures.some((f) => f.skin)) { fit.skinFit = 1; fit.fitDue = true; return; }
+    fit.renders++;
+    if (fit.fitLocked || !(fit.fitDue || fit.renders % FIT_EVERY === 0)) return;
+    if (fit.fitDue) fit.skinFit = 1;
+    const w = Math.max(1, host.clientWidth), h = Math.max(1, host.clientHeight);
+    const [left, right, bottom, top] = [-1 + (2 * FIT_MARGIN_PX) / w, 1 - (2 * FIT_MARGIN_PX) / w, -1 + (2 * FIT_MARGIN_PX) / h, 1 - (2 * topClearPx()) / h];
+    let backed = false;
+    for (let i = 0; i < 24 && fit.skinFit < FIT_MAX; i++) {
+      placeCamera();
+      const r = projectedFigures();
+      if (!r) return;
+      fit.fitDue = false;
+      if (r.x0 >= left && r.x1 <= right && r.y0 >= bottom && r.y1 <= top) {
+        // one more step of room once it had to move, so a take that reaches out between two checks stays in shot
+        if (backed) fit.skinFit = Math.min(FIT_MAX, fit.skinFit * FIT_STEP);
+        return;
+      }
+      backed = true;
+      fit.skinFit = Math.min(FIT_MAX, fit.skinFit * FIT_STEP);
+    }
   }
 
   function render() {
     queued = false;
     if (disposed) return;
     figures.forEach((fig, i) => poseFigure(fig, i));
+    fitSkins();
     placeCamera();
     renderer.render(scene, camera);
     listeners.render.forEach((fn) => fn());
@@ -203,6 +322,7 @@ export function createStage(host, { joints, bones, tracks }) {
     // keep the figures in frame on a narrow canvas: widen the field when portrait
     camera.fov = w / h < 1 ? 36 / Math.max(0.62, w / h) : 36;
     camera.updateProjectionMatrix();
+    fit.fitDue = true;
     invalidate();
   }
   const ro = new ResizeObserver(resize);
@@ -227,11 +347,13 @@ export function createStage(host, { joints, bones, tracks }) {
     if (pointers.size === 1) {
       state.azimuth -= dx * 0.45;
       state.elevation = clamp(state.elevation + dy * 0.35, MIN_EL, MAX_EL);
+      fit.fitLocked = true; // a hand drag owns the camera: the back-off (distance only, model-skin.md AC16b) stops until setView
       emitCamera();
     } else if (pointers.size === 2 && pinchStart) {
       const [a, b] = [...pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
       state.distance = clamp(pinchStart.dist * (pinchStart.d / d), MIN_DIST, MAX_DIST);
+      fit.fitLocked = true;
       emitCamera();
     }
   };
@@ -243,6 +365,7 @@ export function createStage(host, { joints, bones, tracks }) {
   const onWheel = (ev) => {
     ev.preventDefault();
     state.distance = clamp(state.distance * Math.exp(ev.deltaY * 0.0015), MIN_DIST, MAX_DIST);
+    fit.fitLocked = true;
     emitCamera();
   };
   const onKey = (ev) => {
@@ -253,6 +376,7 @@ export function createStage(host, { joints, bones, tracks }) {
     ev.preventDefault();
     state.azimuth += m[0];
     state.elevation = clamp(state.elevation + m[1], MIN_EL, MAX_EL);
+    fit.fitLocked = true; // as for a drag
     emitCamera();
   };
   canvas.addEventListener("pointerdown", onDown);
@@ -295,11 +419,19 @@ export function createStage(host, { joints, bones, tracks }) {
       state.azimuth = v.azimuth;
       state.elevation = v.elevation;
       state.distance = 3.4;
+      fit.fitLocked = false;
+      fit.fitDue = true;
       emitCamera();
     },
     /** joint indices lit on the last track (the follower) */
     setHighlight(indices) {
       state.highlight = new Set(indices);
+      invalidate();
+    },
+    /** A scripted camera {position:[x,y,z], target:[x,y,z], fov} in the scene frame; null returns to the orbit camera. */
+    setFreeCamera(cam) {
+      state.free = cam ? { position: cam.position, target: cam.target, fov: cam.fov } : null;
+      if (!cam) { fit.fitDue = true; resize(); return; } // resize restores the orbit camera's field of view
       invalidate();
     },
     getCamera: () => ({ azimuth: state.azimuth, elevation: state.elevation, distance: state.distance }),
@@ -314,6 +446,18 @@ export function createStage(host, { joints, bones, tracks }) {
       const w = host.clientWidth, h = host.clientHeight;
       return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
     },
+    /** Draw a character (web/skin/character.js) in place of figure trackIdx's sticks; null brings the sticks back. */
+    setSkin,
+    /** CSS px box {left, top, right, bottom} of the figures shown (skins and sticks) in the canvas, or null with no skin in view. */
+    skinScreenBox() {
+      placeCamera();
+      const r = projectedFigures();
+      if (!r || !r.skins) return null;
+      const w = host.clientWidth, h = host.clientHeight;
+      return { left: (r.x0 * 0.5 + 0.5) * w, right: (r.x1 * 0.5 + 0.5) * w, top: (-r.y1 * 0.5 + 0.5) * h, bottom: (-r.y0 * 0.5 + 0.5) * h };
+    },
+    /** The renderer's live geometry and texture counts, for tests of dispose. */
+    gpuMemory: () => ({ geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),
     jointScreen(trackIdx, jointIdx) {
       const fig = figures[trackIdx];
       const m = fig && fig.jointMeshes[jointIdx];
@@ -324,6 +468,7 @@ export function createStage(host, { joints, bones, tracks }) {
     render,
     dispose() {
       disposed = true;
+      figures.forEach((fig) => { if (fig.skin) { fig.skin.dispose(); fig.skin = null; } });
       ro.disconnect();
       renderer.dispose();
       canvas.remove();

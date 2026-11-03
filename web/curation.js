@@ -19,7 +19,7 @@ const tagsOf = (labels, entry) => ((labels || {})[entry.id] || {}).tags || [];
 export function isTestEntry(entry, labels = {}) {
   if (entry.hidden === true || entry.test === true) return true;
   if (TEST_NAME.test(String(entry.name || "").trim())) return true;
-  if (/^(verify|check-7)-/.test(String(entry.id || ""))) return true;
+  if (/^(verify|check-7|qa)-/i.test(String(entry.id || ""))) return true;
   return tagsOf(labels, entry).some((t) => TEST_TAGS.includes(t));
 }
 

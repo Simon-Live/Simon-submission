@@ -12,6 +12,9 @@ from part7.parts import probe
 
 BODY = "simon-standard"  # the same body profile on both sides (journey.md "Commands")
 DENSIFY = "every:10"
+FLOOR_WORK = "--floor-work"  # Part 3 TICKET-040 v2: `run` only (`doctor` rejects it); off unless the entry is floor work
+NOTE_FLOOR_ON = "Part 3 floor work: on"
+NOTE_FLOOR_MISSING = "floor work requested, Part 3 pin lacks --floor-work"
 
 
 def _person_args(person: str | int | None) -> list[str]:
@@ -19,9 +22,42 @@ def _person_args(person: str | int | None) -> list[str]:
     return [] if person is None else ["--person", str(person)]
 
 
+def _mirror(pose3d: Path | str, work: Path, mirrored: bool, py_exe: str, clone: Path,
+            lk: modules.Modules) -> tuple[str, list[str]]:
+    """TICKET-310: the `--in` path and flip args for a take the person marked as a mirrored (selfie) video.
+
+    Part 3's `--flip on` when its `run --help` offers it; else a copy of the pose with Part 3's top-level
+    `mirrored: true` hint, which `--flip auto` (the default) reads (Part 3 ADR-0005). Not mirrored: unchanged.
+    """
+    pose = Path(pose3d).resolve()
+    if not mirrored:
+        return (str(pose), [])
+    if probe.has_flag(3, [py_exe, "-m", "part3", "run"], clone, "--flip", lk):
+        return (str(pose), ["--flip", "on"])
+    doc = json.loads(pose.read_text(encoding="utf-8"))
+    doc["mirrored"] = True
+    hinted = work / "pose3d.mirrored.json"
+    hinted.write_text(json.dumps(doc), encoding="utf-8")
+    return (str(hinted.resolve()), [])
+
+
 def _python_for(clone: Path) -> str:
     venv_py = clone / ".venv" / "bin" / "python"
     return str(venv_py) if venv_py.exists() else "python3"
+
+
+def floor_work_args(floor_work: bool, lk: modules.Modules | None = None) -> tuple[list[str], str | None]:
+    """`(extra run argv, job note)` for a take on an entry marked floor work; `([], None)` for any other entry.
+
+    The flag is passed only when the pinned Part 3 lists it, so an older Part 3 still runs (the note says it did not).
+    """
+    if not floor_work:
+        return [], None
+    lock = lk or modules.load()
+    clone = lock.path("3")
+    if probe.has_flag(3, [_python_for(clone), "-m", "part3", "run"], clone, FLOOR_WORK, lock):
+        return [FLOOR_WORK], NOTE_FLOOR_ON
+    return [], NOTE_FLOOR_MISSING
 
 
 @contextlib.contextmanager
@@ -107,6 +143,8 @@ def part4(
     lock: modules.Modules | None = None,
     state: Path | str | None = None,
     person: str | int | None = None,
+    mirrored: bool = False,
+    floor_args: list[str] | None = None,
 ) -> tuple[list[runner.Step], Path, Path, str | None]:
     """Run Part 3 `--view part4` and retry once with `every:5` on a 180-degree refusal (AC-H8)."""
     lk = lock or modules.load()
@@ -116,7 +154,6 @@ def part4(
 
     skel_path = work_p / "skeleton.json"
     kf_v1_path = work_p / "keyframes.v1.json"
-    pose_str = str(Path(pose3d).resolve())
     skel_str = str(skel_path.resolve())
     kf_out_str = str(kf_v1_path.resolve())
 
@@ -128,6 +165,7 @@ def part4(
         kf_arg = str(keyframes_or_every)
 
     py_exe = _python_for(clone)
+    pose_str, flip = _mirror(pose3d, work_p, mirrored, py_exe, clone, lk)
     densify: list[str] = []
     notes: list[str] = []
     if not kf_arg.startswith("every:"):
@@ -138,7 +176,8 @@ def part4(
             notes.append("Part 3 at this pin has no densify, key frames every:10")
     argv = [
         py_exe, "-m", "part3", "run", "--in", pose_str, "--out", skel_str, "--view", "part4",
-        "--keyframes", kf_arg, *densify, "--keyframes-out", kf_out_str, "--body", BODY, *_person_args(person),
+        "--keyframes", kf_arg, *densify, "--keyframes-out", kf_out_str, "--body", BODY, *_person_args(person), *flip,
+        *(floor_args or []),
     ]
     step1 = runner.run(
         3,
@@ -170,6 +209,8 @@ def part4(
             "--body",
             BODY,
             *_person_args(person),
+            *flip,
+            *(floor_args or []),
         ]
         step2 = runner.run(
             3,
@@ -191,6 +232,8 @@ def part5(
     lock: modules.Modules | None = None,
     state: Path | str | None = None,
     person: str | int | None = None,
+    mirrored: bool = False,
+    floor_args: list[str] | None = None,
 ) -> tuple[runner.Step, Path]:
     """Run Part 3 `--view part5 --fps 30` to produce a follower skeleton clip (`--person` picks one of several)."""
     lk = lock or modules.load()
@@ -199,6 +242,7 @@ def part5(
     work_p.mkdir(parents=True, exist_ok=True)
     follower_path = work_p / "follower.json"
     py_exe = _python_for(clone)
+    pose_str, flip = _mirror(pose3d, work_p, mirrored, py_exe, clone, lk)
 
     argv = [
         py_exe,
@@ -206,7 +250,7 @@ def part5(
         "part3",
         "run",
         "--in",
-        str(Path(pose3d).resolve()),
+        pose_str,
         "--out",
         str(follower_path.resolve()),
         "--view",
@@ -216,6 +260,8 @@ def part5(
         "--body",
         BODY,
         *_person_args(person),
+        *flip,
+        *(floor_args or []),
     ]
     step = runner.run(
         3,

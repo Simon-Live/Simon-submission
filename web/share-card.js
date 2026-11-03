@@ -10,6 +10,9 @@ const FONT = '"SF Pro Display", "Helvetica Neue", system-ui, sans-serif';
 const GRADE_TOKENS = { A: "--color-accent", B: "--color-accent", C: "--color-bad", D: "--color-bad", F: "--color-bad" };
 const GRADE_FALLBACK = { A: "#c6f35a", B: "#c6f35a", C: "#ff2d95", D: "#ff2d95", F: "#ff2d95" };
 const gradeColorOf = (g) => (GRADE_TOKENS[g] && tokenValue(GRADE_TOKENS[g])) || GRADE_FALLBACK[g];
+// one-letter.md: the credit's S and E letters, in their own map beside the one above (theme/tokens.css); A to F stay as they are
+const CREDIT_GRADE_TOKENS = { S: "--color-grade-s", E: "--color-grade-e" };
+for (const [g, token] of Object.entries(CREDIT_GRADE_TOKENS)) if (!(g in GRADE_TOKENS)) GRADE_TOKENS[g] = token;
 
 /** Wrap `text` to `maxWidth` using `measure(text)`; a word wider than the line is broken by characters; at most `maxLines`. */
 export function wrapText(measure, text, maxWidth, maxLines = 99) {
@@ -40,6 +43,13 @@ export function wrapText(measure, text, maxWidth, maxLines = 99) {
   return lines;
 }
 
+/** The score's font: 300 px, smaller (down to 120 px) until `text` fits `room` beside the grade pill. */
+function scoreFontFor(text, measure, room) {
+  let size = 300;
+  while (size > 120 && measure(`800 ${size}px ${FONT}`, text) > room) size -= 20;
+  return `800 ${size}px ${FONT}`;
+}
+
 /**
  * The drawing of a card as a list of operations `{type: "rect"|"text", ...}` in canvas pixels.
  * @param model {movement, score, grade, strongest, challenger, title, url, sponsor}
@@ -63,7 +73,7 @@ export function layoutCard(model, measure) {
   text(`${model.challenger || "Someone"} scored`, 44, 500, "#9aa7b8", { maxLines: 1 });
   y += 200;
   const scoreText = String(model.score);
-  const scoreFont = `800 300px ${FONT}`;
+  const scoreFont = scoreFontFor(scoreText, measure, inner - 200);   // one-letter.md: credit points ("16,239") are wider than a 0 to 100 score
   ops.push({ type: "text", text: scoreText, x: PAD, y, font: scoreFont, fill: "#ffffff", align: "left" });
   const scoreW = measure(scoreFont, scoreText);
   const gradeColor = gradeColorOf(String(model.grade || "").charAt(0)) || "#9aa7b8";

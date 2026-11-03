@@ -4,7 +4,8 @@
 `/responses/input_tokens` (blind to video, so clips are priced by their seconds), refuses a call that is dear or past the total cap, appends the ledger line under flock
 BEFORE the call, makes one Responses call and deletes every uploaded file on every path. The key comes from
 `keys.read_key`; it is used for the Authorization header and nothing else. Every failure is a `HistoryError` with a
-short reason that holds no key, no model text and no user id. Nothing here imports another Part.
+short reason that holds no key, no model text and no user id; an HTTP failure adds Meta's own error message, cut to
+`ERROR_CHARS` with keys, bearer tokens, data URLs and long base64 runs masked (TICKET-330). Nothing here imports another Part.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import socket
 import time
 from typing import Any, Callable
@@ -30,8 +32,9 @@ KEY_NAME = "MODEL_API_KEY"
 RATES = {"input": 1.25, "cached": 0.15, "output": 4.25}   # USD per million tokens
 MAX_OUTPUT_TOKENS = 4000
 TIMEOUT_S = 300.0
-CALL_MAX_ENV, CALL_MAX_USD = "SIMON7_HISTORY_CALL_MAX_USD", 0.50
-CAP_ENV, CAP_USD = "SIMON7_HISTORY_CAP_USD", 10.0
+# Both limits are off unless their env var holds a positive number (off by default during testing).
+CALL_MAX_ENV = "SIMON7_HISTORY_CALL_MAX_USD"
+CAP_ENV = "SIMON7_HISTORY_CAP_USD"
 EXPIRES_AFTER_S = 3600
 CACHE_KEY, CACHE_RETENTION = "simon-history", "in_memory"
 # Both accepted by the API (demos/rubric/HISTORY/spike.json). The guard parses JSON from the text either way.
@@ -53,12 +56,12 @@ def price(input_tokens: int, output_tokens: int, cached_tokens: int = 0) -> floa
                   + int(output_tokens) * RATES["output"]) / 1_000_000, 6)
 
 
-def _env_usd(name: str, default: float) -> float:
+def _env_usd(name: str) -> float | None:
     try:
         value = float(os.environ.get(name, ""))
     except ValueError:
-        return default
-    return value if value > 0 else default
+        return None
+    return value if value > 0 else None
 
 
 def ledger_path(state: Path | str | None = None) -> Path:
@@ -87,8 +90,57 @@ def spent_usd(ledger: Path) -> float:
     return total
 
 
-def _append(ledger: Path, row: dict[str, Any], limit: float | None = None) -> None:
-    """Append one line under an exclusive lock; with `limit`, refuse when the total would pass it."""
+def read_ledger(ledger: Path) -> list[dict[str, Any]]:
+    """Every readable ledger line; a line from before TICKET-206 has no `feature` and reads as "compare"."""
+    try:
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append({**row, "feature": row.get("feature") or DEFAULT_FEATURE})
+    return rows
+
+
+def spent_by_feature(ledger: Path) -> dict[str, float]:
+    """USD per feature, counted as `spent_usd` counts (a reserve stands at its estimate until its settle)."""
+    reserved: dict[str, tuple[str, float]] = {}
+    totals: dict[str, float] = {}
+    for row in read_ledger(ledger):
+        usd, call, feature = float(row.get("usd") or 0.0), str(row.get("call")), row["feature"]
+        if row.get("kind") == "settle":
+            held = reserved.pop(call, (feature, 0.0))[1]
+            totals[feature] = totals.get(feature, 0.0) + usd - held
+        elif row.get("kind") == "reserve":
+            reserved[call] = (feature, usd)
+            totals[feature] = totals.get(feature, 0.0) + usd
+    return {k: round(v, 6) for k, v in totals.items()}
+
+
+def feature_cap(feature: str, kind: str) -> float | None:
+    """The cap of one feature from `SIMON7_HISTORY_<FEATURE>_CAP_USD` (total) or `..._CALL_MAX_USD` (per call), or None.
+
+    Off unless the variable is set to a positive number (operator ruling: spend caps are off by default). The
+    global caps above are unchanged and still bound every feature."""
+    name = "".join(c if c.isalnum() else "_" for c in feature).upper()
+    suffix = {"total": "CAP_USD", "call": "CALL_MAX_USD"}[kind]
+    try:
+        value = float(os.environ.get(f"SIMON7_HISTORY_{name}_{suffix}", ""))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _append(ledger: Path, row: dict[str, Any], limit: float | None = None, reserve: bool = False) -> None:
+    """Append one line under an exclusive lock; with `limit`, refuse when the total would pass it.
+
+    A reserve line (`reserve`) also stops at its feature's own cap when `feature_cap` has one, with or without a
+    global cap (spend caps are off by default; a feature cap set on its own still binds)."""
     try:
         ledger.parent.mkdir(parents=True, exist_ok=True)
         with ledger.with_name(ledger.name + ".lock").open("a") as lock:
@@ -96,6 +148,9 @@ def _append(ledger: Path, row: dict[str, Any], limit: float | None = None) -> No
             try:
                 if limit is not None and spent_usd(ledger) + float(row["usd"]) > limit:
                     raise HistoryError("spend cap reached")
+                own = feature_cap(row["feature"], "total") if reserve else None
+                if own is not None and spent_by_feature(ledger).get(row["feature"], 0.0) + float(row["usd"]) > own:
+                    raise HistoryError(f"spend cap reached for {row['feature']}")
                 with ledger.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(row, sort_keys=True) + "\n")
             finally:
@@ -104,9 +159,12 @@ def _append(ledger: Path, row: dict[str, Any], limit: float | None = None) -> No
         raise HistoryError("spend ledger not writable") from None
 
 
-def _line(call: str, kind: str, usd: float, **fields: Any) -> dict[str, Any]:
-    """A ledger line: time, call id, model and numbers only. No user id, no text, no file name."""
-    return {"call": call, "kind": kind, "model": MODEL, "usd": round(usd, 6),
+DEFAULT_FEATURE = "compare"  # the one feature before TICKET-206; a ledger line without `feature` is read as this
+
+
+def _line(call: str, kind: str, usd: float, feature: str, prompt_version: str | None, **fields: Any) -> dict[str, Any]:
+    """A ledger line: time, call id, model, feature, prompt version and numbers only. No user id, no text, no file name."""
+    return {"call": call, "kind": kind, "model": MODEL, "usd": round(usd, 6), "feature": feature, "prompt_version": prompt_version,
             "when": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **fields}
 
 
@@ -141,18 +199,54 @@ def build_body(packed: dict[str, Any], file_ids: dict[int, str]) -> dict[str, An
             content.append({"type": "input_text", "text": item["text"]})
     body: dict[str, Any] = {"model": MODEL, "max_output_tokens": MAX_OUTPUT_TOKENS, "reasoning": {"effort": "low"},
                             "input": [{"type": "message", "role": "user", "content": content}],
-                            "prompt_cache_key": CACHE_KEY, "prompt_cache_retention": CACHE_RETENTION}
+                            "prompt_cache_key": packed.get("cache_key") or CACHE_KEY,  # TICKET-219: one key per user and movement (history_longpack)
+                            "prompt_cache_retention": CACHE_RETENTION}
     if STRICT_SCHEMA:
-        body["text"] = {"format": {"type": "json_schema", "name": history_prompt.SCHEMA_NAME,
+        body["text"] = {"format": {"type": "json_schema", "name": packed.get("schema_name") or history_prompt.SCHEMA_NAME,
                                    "schema": packed["schema"], "strict": True}}
     if STORE_FALSE_ACCEPTED:
         body["store"] = False
     return body
 
 
-def _failure(exc: Exception, step: str) -> str:
+ERROR_CHARS = 160   # most characters of Meta's error message kept in a failure reason (TICKET-330)
+_ERROR_BYTES = 4096
+_MASKS = (re.compile(r"data:[\w.+/-]+;base64,[A-Za-z0-9+/=_-]*"), re.compile(r"(?i)\bbearer\s+\S+"),
+          re.compile(r"(?i)\b(?:sk|pk|mk|rk|key|tok|token)[-_][A-Za-z0-9_-]{6,}"), re.compile(r"[A-Za-z0-9+/=_-]{32,}"))
+
+
+def mask_error(text: str, key: str | None = None) -> str:
+    """`text` with key values, bearer tokens, data URLs and long base64 runs masked, whitespace collapsed, cut short."""
+    out = text.replace(key, "<redacted>") if key else text
+    out = keys.redact(out)
+    for pattern in _MASKS:
+        out = pattern.sub("<masked>", out)
+    out = re.sub(r"\s+", " ", out).strip()
+    return out if len(out) <= ERROR_CHARS else out[:ERROR_CHARS - 3].rstrip() + "..."
+
+
+def _error_message(exc: urllib.error.HTTPError, key: str | None) -> str:
+    """Meta's `error.message` (or the raw body when it is not that JSON), masked and cut; "" when there is none."""
+    try:
+        raw = exc.read(_ERROR_BYTES) or b""
+    except Exception:  # a body that cannot be read leaves the status alone
+        return ""
+    text = raw.decode("utf-8", errors="replace")
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        doc = None
+    error = doc.get("error") if isinstance(doc, dict) else None
+    message = error.get("message") if isinstance(error, dict) else error if isinstance(error, str) else None
+    if message is None and isinstance(doc, dict) and isinstance(doc.get("message"), str):
+        message = doc["message"]
+    return mask_error(str(message) if message is not None else text, key)
+
+
+def _failure(exc: Exception, step: str, key: str | None = None) -> str:
     if isinstance(exc, urllib.error.HTTPError):
-        return f"HTTP {exc.code} on {step}"
+        message = _error_message(exc, key)
+        return f"HTTP {exc.code} on {step}" + (f": {message}" if message else "")
     reason = getattr(exc, "reason", None)
     if isinstance(exc, (TimeoutError, socket.timeout)) or isinstance(reason, (TimeoutError, socket.timeout)):
         return f"timeout on {step}"
@@ -182,8 +276,8 @@ class HttpClient:
             with self._opener.open(request, timeout=self._timeout_s) as response:
                 body = response.read()
                 return json.loads(body) if body.strip() else {}
-        except Exception as exc:  # any failure becomes a plain reason, never a traceback or the server's text
-            raise HistoryError(_failure(exc, step)) from None
+        except Exception as exc:  # any failure becomes a short reason: never a traceback, a key or a payload
+            raise HistoryError(_failure(exc, step, self._key)) from None
 
     def _json(self, path: str, body: dict[str, Any], step: str) -> Any:
         return self._call("POST", path, json.dumps(body).encode(), "application/json", step)
@@ -228,10 +322,10 @@ def _check_caps_before_upload(ledger: Path, packed: dict[str, Any]) -> None:
     if not isinstance(tokens, (int, float)) or tokens <= 0:
         return
     estimate = price(int(tokens), MAX_OUTPUT_TOKENS)
-    ceiling = _env_usd(CALL_MAX_ENV, CALL_MAX_USD)
-    if estimate > ceiling:
+    ceiling, cap = _env_usd(CALL_MAX_ENV), _env_usd(CAP_ENV)
+    if ceiling is not None and estimate > ceiling:
         raise HistoryError(f"estimated ${estimate:.2f} is over the per-call limit of ${ceiling:.2f}")
-    if spent_usd(ledger) + estimate > _env_usd(CAP_ENV, CAP_USD):
+    if cap is not None and spent_usd(ledger) + estimate > cap:
         raise HistoryError("spend cap reached")
 
 
@@ -270,18 +364,22 @@ def ask(packed: dict[str, Any], *, transport: Any = None, state: Path | str | No
         # The counter does not see video (spike.json): clips are priced here by their seconds.
         reserved_tokens = counted + math.ceil(float(packed.get("video_seconds") or 0) * VIDEO_TOKENS_PER_S)
         estimate = price(reserved_tokens, MAX_OUTPUT_TOKENS)
-        ceiling = _env_usd(CALL_MAX_ENV, CALL_MAX_USD)
-        if estimate > ceiling:
+        ceiling = _env_usd(CALL_MAX_ENV)
+        if ceiling is not None and estimate > ceiling:
             raise HistoryError(f"estimated ${estimate:.2f} is over the per-call limit of ${ceiling:.2f}")
+        own_call = feature_cap(str(packed.get("feature") or DEFAULT_FEATURE), "call")
+        if own_call is not None and estimate > own_call:
+            raise HistoryError(f"estimated ${estimate:.2f} is over the per-call limit of ${own_call:.2f} for this feature")
         call = uuid.uuid4().hex
         clips = int(packed.get("clips_sent") or 0)
-        _append(ledger, _line(call, "reserve", estimate, input_tokens=reserved_tokens, clips_sent=clips),
-                _env_usd(CAP_ENV, CAP_USD))
+        feature, version = str(packed.get("feature") or DEFAULT_FEATURE), packed.get("prompt_version")
+        _append(ledger, _line(call, "reserve", estimate, feature, version, input_tokens=reserved_tokens, clips_sent=clips),
+                _env_usd(CAP_ENV), reserve=True)  # off unless set (operator, 2026-11-01: all spend caps off by default)
         started = clock()
         payload = transport.respond(body)
         usage = read_usage(payload)
         usage.update(usd=price(usage["input_tokens"], usage["output_tokens"], usage["cached_tokens"]), clips_sent=clips)
-        _append(ledger, _line(call, "settle", usage["usd"], seconds=round(clock() - started, 1),
+        _append(ledger, _line(call, "settle", usage["usd"], feature, version, seconds=round(clock() - started, 1),
                               **{k: usage[k] for k in ("input_tokens", "cached_tokens", "output_tokens")},
                               clips_sent=clips))
         text = output_text(payload)

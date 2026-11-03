@@ -280,8 +280,11 @@ test("the consent toggle posts {video, version} and redraws", async () => {
   assert.equal(find(root, "history-consent").getAttribute("data-on"), "false");
   find(root, "history-consent-toggle").click();
   await settle();
-  assert.deepEqual(bodies.map(JSON.parse), [{ video: true, version: "video-v1" }]);
+  assert.deepEqual(bodies.map(JSON.parse), [{ video: true, version: "video-v2" }]);
   assert.equal(find(root, "history-consent").getAttribute("data-on"), "true");
+  const copy = find(root, "history-consent").textContent;
+  assert.match(copy, /at most 5/); // true for the reel (5) and for Compare (4 take clips)
+  assert.doesNotMatch(copy, /Up to 4/); // negative: the old, untrue-for-the-reel wording
 });
 
 test("signed out (401) the page says so and shows no takes", async () => {

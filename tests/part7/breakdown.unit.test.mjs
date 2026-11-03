@@ -12,7 +12,7 @@ class FakeEl {
   querySelector() { return this.kids.find((k) => k.attrs && k.attrs["data-testid"] === "kind-tag") || null; }
 }
 globalThis.document = { createElement: (t) => new FakeEl(t) };
-const { splitShape, tempoStatus, tempoWording, tempoMoments, verdictOf, tagRows, slowIsFine, BEAT_LOW, BEAT_HIGH, SHAPE_CLOSE } =
+const { splitShape, tempoStatus, tempoWording, tempoMoments, verdictOf, tagRows, slowIsFine, unscoredPaceLine, tempoIsScored, UNSCORED_PACE_LINE, BEAT_LOW, BEAT_HIGH, SHAPE_CLOSE } =
   await import("../../web/breakdown.js");
 
 const load = (f) => JSON.parse(fs.readFileSync(new URL(`./fixtures/input/${f}`, import.meta.url)));
@@ -61,9 +61,9 @@ test("tempo moments list only windows off the beat, each seekable at its start",
 
 test("verdict rules: shape, timing off, both good, ties, empty", () => {
   const pts = (position, range) => ({ position, range, total: position + range, basis: "points" });
-  assert.equal(verdictOf(pts(20, 10), 1).text, "Most of your lost points are shape: where a body part is");
-  assert.equal(verdictOf(pts(10, 20), 0.5).text, "Most of your lost points are shape: how far you move");
-  assert.equal(verdictOf(pts(10, 10), 1).text, "Most of your lost points are shape: both kinds equally");
+  assert.equal(verdictOf(pts(20, 10), 1).text, "Mostly shape: where a body part is");
+  assert.equal(verdictOf(pts(10, 20), 0.5).text, "Mostly shape: how far you move");
+  assert.equal(verdictOf(pts(10, 10), 1).text, "Mostly shape: both kinds equally");
   assert.equal(verdictOf(pts(1, 2), 0.5).text, "Your shape is close; the timing is off: rushing");
   assert.equal(verdictOf(pts(1, 2), 1.4).text, "Your shape is close; the timing is off: dragging");
   assert.equal(verdictOf(pts(SHAPE_CLOSE, 0), 1).kind, "both-good");
@@ -117,4 +117,19 @@ test("rehab slow: a tempo row gets no Timing tag", () => {
   const rows = ["position", "tempo"].map((k) => { const r = new FakeEl("button"); r.setAttribute("data-cue-kind", k); return r; });
   assert.equal(tagRows({ querySelectorAll: () => rows }, { slowFine: true }), 1);
   assert.deepEqual(rows.map((r) => r.kids.length), [1, 0]);
+});
+
+test("a shown pace says it is not scored, except under dance and rehab (fields from a real fitness take)", () => {
+  const fit = load("breakdown-fitness-slow.json");
+  assert.equal(fit.score.tempo.ratio, 2.35);
+  assert.equal(tempoIsScored(fit), false);
+  assert.equal(unscoredPaceLine(fit), UNSCORED_PACE_LINE);
+  assert.doesNotMatch(UNSCORED_PACE_LINE, DASH);
+  const dance = load("breakdown-dance-slow.json");
+  assert.equal(tempoIsScored(dance), true);
+  assert.equal(unscoredPaceLine(dance), null);
+  const rehab = { ...fit, profile: "rehab", score: { ...fit.score, tempo: { ratio: 1.4, cue: "Slower is fine" } } };
+  assert.equal(unscoredPaceLine(rehab), null);
+  assert.equal(unscoredPaceLine({ ...fit, score: { ...fit.score, tempo: { ratio: null, cue: null } } }), null);
+  assert.equal(unscoredPaceLine({}), null);
 });

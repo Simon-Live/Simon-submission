@@ -1,0 +1,2 @@
+Rigged Figure, (c) 2017 Cesium, Creative Commons Attribution 4.0 International, https://creativecommons.org/licenses/by/4.0/legalcode
+Source: Khronos glTF-Sample-Assets, Models/RiggedFigure. Used unchanged apart from the removal of the animation clip.

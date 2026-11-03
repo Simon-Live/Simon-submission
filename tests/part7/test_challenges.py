@@ -282,7 +282,8 @@ def test_ranking_across_entries_on_the_wire(api: Api) -> None:
         _add(api, made["id"], job_id=job, name=name)
     board = api.json("GET", f"api/challenges/{made['id']}")[1]["entries"]
     assert [(e["rank"], e["name"]) for e in board] == [(1, "High"), (2, "Mid"), (3, "Low")]
-    assert api.json("GET", "api/challenges")[1]["challenges"][0]["leader"] == {"name": "High", "score": 91}
+    leader = api.json("GET", "api/challenges")[1]["challenges"][0]["leader"]
+    assert {k: v for k, v in leader.items() if k != "shown"} == {"name": "High", "score": 91} and leader["shown"]["figures"] == "91"  # one-letter.md
 
 
 # ----- group submit -----------------------------------------------------------------------------------------

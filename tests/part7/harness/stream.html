@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<base href="/">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stream and corrected-card harness</title>
+<link rel="stylesheet" href="web/styles.css">
+<link rel="stylesheet" href="web/theme/tokens.css">
+<link rel="stylesheet" href="web/theme/base.css">
+<link rel="stylesheet" href="web/theme/screens.css">
+<link rel="stylesheet" href="web/theme/results.css">
+<link rel="stylesheet" href="web/theme/voice.css">
+<header class="bar"><a class="brand" href="#/"><span class="brand-word">simon</span></a></header>
+<main id="app" class="screen"></main>
+<script type="module">
+// ?mode=job&id=<job> mounts the job page; ?mode=card&id=<job> mounts the corrected-pose card under a stand-in result heading.
+// The fake server in tests/part7/mesh_stream.browser.mjs answers api/jobs/*.
+import { mountJob } from "/web/job.js";
+import { mountCorrectedCard } from "/web/corrected-card.js";
+const q = new URLSearchParams(location.search);
+const app = document.getElementById("app");
+if (q.get("mode") === "card") {
+  app.insertAdjacentHTML("beforeend", "<h2 data-testid='stand-in'>Result (stand-in)</h2>");
+  const section = document.createElement("section");
+  section.dataset.testid = "corrected-slot";
+  section.hidden = true;
+  app.append(section);
+  mountCorrectedCard(section, q.get("id"));
+} else mountJob(app, q.get("id"));
+</script>

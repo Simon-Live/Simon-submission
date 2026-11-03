@@ -1,7 +1,11 @@
 // Job: stage list, elapsed time, queue position, Try again. `#/job/<id>`. Survives a reload.
+import { hideStaticTimes } from "./job-eta.js";
 import { getJob, getConfig, ApiError } from "./api.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { createProgress, estimateText, TYPICAL_S } from "./progress.js";
+import { mountMeshStream } from "./mesh-stream.js";
+import { queueText, leftText, gpuText } from "./queue-eta.js";
+import { mountSendAgain } from "./send-again.js";
 
 export const STAGES = {
   trainer: ["upload", "keyframes", "pose", "skeleton", "animation", "catalog"],
@@ -56,14 +60,17 @@ export function mountJob(root, id) {
   const head = h("h1", { text: "Working on it" });
   const note = h("p", { class: "lede", "data-testid": "job-note" });
   const list = h("ol", { class: "stages", "data-testid": "stages" });
-  const prog = createProgress({ testid: "progress", label: "Overall progress", text: "Starting", elapsed: true });
+  const prog = createProgress({ testid: "progress", label: "Overall progress", text: "Starting", elapsed: true, walk: true });
   const detail = h("p", { class: "hint", "data-testid": "stage-detail" });
+  const gpu = h("p", { class: "hint", "data-testid": "gpu-note", hidden: true }); // TICKET-289: GPU wait or slower path
   const group = h("p", { class: "meta tnum", "data-testid": "group-progress", hidden: true });
-  const meta = h("p", { class: "meta tnum" }, h("span", { "data-testid": "queue", hidden: true }));
+  const meta = h("p", { class: "meta tnum" }, h("span", { "data-testid": "queue", hidden: true }),
+    h("span", { "data-testid": "eta-left", hidden: true }));
   const actions = h("div", { class: "row", "data-testid": "job-actions" });
-  const [queue] = meta.children;
+  const [queue, left] = meta.children;
   let deleteSlot = null;
-  root.append(h("section", { class: "screen" }, head, note, prog.el, detail, group, meta, list, actions));
+  let stopStream = null; // TICKET-284: the owner's live frames; the job answer names the stream only for its owner
+  root.append(h("section", { class: "screen" }, head, note, prog.el, detail, gpu, group, meta, list, actions));
 
   const tickClock = () => prog.setElapsed((Date.now() - startMs) / 1000);
   clock = setInterval(tickClock, 1000);
@@ -84,8 +91,14 @@ export function mountJob(root, id) {
     group.hidden = !job.progress;
     group.textContent = job.progress ? `Person ${job.progress}` : "";
     queue.hidden = !(job.status === "queued" && job.queue_position != null);
-    queue.textContent = queue.hidden ? "" : `Place in line: ${job.queue_position}. Your turn comes when the ones before finish.`;
+    queue.textContent = queue.hidden ? "" : queueText(job);
+    left.textContent = leftText(job); // TICKET-288: a rough wait from recent jobs, only when the server has one
+    left.hidden = !left.textContent;
+    hideStaticTimes({ detail, list, shown: Boolean(queue.textContent || left.textContent) }); // TICKET-316: one time on the page
+    gpu.textContent = gpuText(job);
+    gpu.hidden = !gpu.textContent;
     clear(actions);
+    if (job.mesh_stream && !stopStream && job.status === "running") stopStream = mountMeshStream(root, job.mesh_stream);
     if (job.status === "done") {
       stop();
       head.textContent = "Done";
@@ -105,6 +118,7 @@ export function mountJob(root, id) {
       note.textContent = job.note || "The job stopped. Try again with a new video.";
       const back = job.kind === "trainer" || job.kind === "group" ? "#/record" : `#/follow/${encodeURIComponent(job.entry_id || "")}`;
       actions.append(linkButton(back, "Try again", "retry", "primary"), linkButton("#/", "Back to movements", "back-home"));
+      mountSendAgain(actions, job.id || id); // TICKET-290: the recording this browser still keeps, sent again
       if (job.kind === "trainer") mountTrainerDelete(job.id || id);
     } else {
       head.textContent = job.status === "queued" ? "Waiting in line" : "Working on it";
@@ -125,6 +139,7 @@ export function mountJob(root, id) {
     clearTimeout(timer);
     clearInterval(clock);
     prog.stop();
+    if (stopStream) stopStream();
   }
 
   async function poll() {

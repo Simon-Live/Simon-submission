@@ -11,7 +11,7 @@ import re
 import threading
 from typing import Any
 
-from part7 import group, jobs, labels, media, people, quota, replay
+from part7 import group, jobs, labels, media, models_used_person, people, quota, replay
 
 PID_RE = re.compile(r"^[0-9A-Za-z_-]{1,40}$")
 LABEL_MAX = 40
@@ -32,12 +32,17 @@ _LOCK = threading.Lock()
 # ----- shared request pieces ----------------------------------------------------------------------
 def _people_result(h: Any, job_id: Any) -> tuple[dict[str, Any], Path] | None:
     """A finished people job's result and work folder, or None when it is not (or no longer) there."""
+    return people_result(h.app.queue, job_id)
+
+
+def people_result(queue: Any, job_id: Any) -> tuple[dict[str, Any], Path] | None:
+    """`_people_result` from the queue alone; `resume.py` uses it to rebuild a person's job after a restart."""
     if not isinstance(job_id, str) or not jobs.JOB_ID_RE.match(job_id):
         return None
-    job = h.app.queue.get(job_id)
+    job = queue.get(job_id)
     if not job or job.get("kind") != "people" or job.get("status") != "done" or not isinstance(job.get("result"), dict):
         return None
-    work = h.app.queue.job_dir(job_id) / "work"
+    work = queue.job_dir(job_id) / "work"
     return (job["result"], work) if (work / "clip.mp4").is_file() and (work / "tracks.json").is_file() else None
 
 
@@ -130,7 +135,8 @@ def _group_request(h: Any, doc: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(split, str):
         return h._error(400, split)
     return {"name": name, "category": category, "work": work, "trainer": trainer, "followers": followers,
-            "people_job": doc.get("people_job"), "labels": split[0], "entry_labels": split[1], "save_entry": doc.get("save_entry", True) is not False}
+            "people_job": doc.get("people_job"), "labels": split[0], "entry_labels": split[1], "save_entry": doc.get("save_entry", True) is not False,
+            "floor_work": doc.get("floor_work") is True}
 
 
 def _post_group(h: Any) -> None:
@@ -150,7 +156,7 @@ def _post_group(h: Any) -> None:
         people_work=req["work"], trainer_id=req["trainer"], follower_ids=req["followers"], name=req["name"],
         category=req["category"], catalog=app.child.catalog_dir, labels=req["labels"],
         entry_labels=req["entry_labels"], labels_state=app.state, save_entry=req["save_entry"],
-        lock=app.lock, backend=app.backend, phrasing=app.phrasing, mode=mode,
+        lock=app.lock, backend=app.backend, phrasing=app.phrasing, mode=mode, floor_work=req.get("floor_work") is True,
     )
     with _LOCK:
         active = app.__dict__.setdefault("group_jobs", {})
@@ -200,8 +206,11 @@ def _get_picture(h: Any, job_id: str, name: str) -> None:
 
 def _get_person_result(h: Any, job_id: str, pid: str, name: str) -> None:
     job = h.app.queue.get(job_id) if jobs.JOB_ID_RE.match(job_id) else None
-    if not job or job["kind"] != "group" or not PID_RE.match(pid) or name not in ("analysis.json", "replay.json"):
+    if not job or job["kind"] != "group" or not PID_RE.match(pid) or name not in ("analysis.json", "replay.json", "models.json"):
         return h._error(404, "Not found.")
+    if name == "models.json":  # the Meta models that ran for this person (group-results.md R2)
+        doc = models_used_person.collect(h.app.queue.job_dir(job_id).parent, job_id, pid)
+        return h._error(404, "This result is not available.") if doc is None else h._json(200, doc)
     path = group.person_dir(h.app.queue.job_dir(job_id), pid) / name
     if not path.is_file():
         return h._error(404, "This result is not available.")

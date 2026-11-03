@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import threading
+import uuid
 
 from part7 import applog, config, modules, private_mode, runner
 from part7.parts import probe
@@ -238,3 +240,15 @@ def doctor(
         log_path=work_p / "steps" / f"part5_doctor_{consumer}.log",
         lock=lk,
     )
+
+
+def accepts_expected(data: bytes, tmp_root: Path | str, lock: modules.Modules | None = None) -> bool:
+    """True when Part 5's doctor accepts `data` as an expected clip (a skeleton-only entry, or a student's own reference take).
+    One scratch folder under `tmp_root`, removed afterwards."""
+    scratch = Path(tmp_root) / uuid.uuid4().hex[:12]
+    scratch.mkdir(parents=True)
+    try:
+        (scratch / "expected.json").write_bytes(data)
+        return doctor(scratch / "expected.json", scratch, consumer="part5", lock=lock)["exit"] == 0
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)

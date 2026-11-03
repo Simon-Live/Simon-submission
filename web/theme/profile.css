@@ -1,0 +1,73 @@
+/* The profile and "My 3D model" sections of the Me page (#/me, views/profile.js, views/my-model.js) on the brand tokens. No literal colors. */
+
+.pf { display: grid; gap: var(--space-4); max-width: 520px; margin: 0 auto; }
+/* on a wide screen the profile uses the page column: title and intro on top, the form beside the cards that hold data */
+@media (min-width: 900px) {
+  .pf:has(> .pf-form) { max-width: none; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; column-gap: var(--space-6); }
+  .pf:has(> .pf-form) > * { grid-column: 1 / -1; }
+  .pf:has(> .pf-form) > .pf-form { grid-column: 1; grid-row: 4 / span 4; }
+  .pf:has(> .pf-form) > .pf-card, .pf:has(> .pf-form) > .pf-anchor { grid-column: 2; }
+}
+.pf-title { margin: 0; font: var(--weight-semibold) var(--text-lg)/1.2 var(--font-sans); }
+.pf-title:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.pf-who { display: flex; align-items: center; gap: var(--space-3); margin: 0; font: var(--weight-semibold) var(--text-md)/1.4 var(--font-sans); overflow-wrap: anywhere; }
+.pf-lead, .pf-hint { margin: 0; color: var(--color-text-muted); line-height: 1.45; }
+.pf-lead { font-size: var(--text-md); }
+.pf-hint { font-size: var(--text-sm); }
+.pf-points { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-2); }
+.pf-loading { margin: 0; padding: var(--space-6) 0; text-align: center; color: var(--color-text-muted); }
+
+.pf-form { display: grid; gap: var(--space-4); }
+.pf-field, .pf-group { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
+.pf-group { padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); }
+.pf-legend { padding: 0 var(--space-2); font: var(--weight-semibold) var(--text-md) var(--font-sans); }
+.pf-label { font: var(--weight-semibold) var(--text-sm)/1.3 var(--font-sans); }
+.pf-input { min-height: var(--button-height); padding: 0 var(--space-4); width: 100%; box-sizing: border-box; font: var(--text-md) var(--font-sans); }
+.pf-input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.pf-input[aria-invalid="true"] { border-color: var(--color-bad); }
+.pf-error { margin: 0; color: var(--color-bad); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
+.pf-error:empty { display: none; }
+
+.pf-picks { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.pf-pick { position: relative; display: grid; justify-items: center; gap: var(--space-1); min-width: var(--target-min); padding: var(--space-2); border-radius: var(--radius-md); cursor: pointer; }
+.pf-radio { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pf-pick:has(.pf-radio:checked) { background: var(--color-accent-soft); outline: 2px solid var(--color-accent); }
+.pf-pick:has(.pf-radio:focus-visible) { outline: 3px solid var(--color-text); outline-offset: 2px; }
+.pf-pick-text { font-size: var(--text-xs); color: var(--color-text-muted); }
+.pf-disc { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: var(--radius-pill);
+  font: var(--weight-semibold) var(--text-md) var(--font-sans); color: var(--color-on-accent); background: var(--color-accent); }
+.pf-disc[data-tone="1"] { background: var(--color-text); }
+.pf-disc[data-tone="2"] { background: var(--color-text-muted); }
+.pf-disc[data-tone="3"] { background: var(--color-raised); color: var(--color-accent); border: 1px solid var(--color-accent); }
+.pf-disc[data-tone="none"] { background: var(--color-raised); color: var(--color-text-muted); border: 1px dashed var(--color-line); }
+
+.pf-tick { display: flex; align-items: flex-start; gap: var(--space-3); min-height: var(--target-min); }
+.pf-check { flex: none; width: 24px; height: 24px; margin: 0; accent-color: var(--color-accent); }
+.pf-check:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.pf-tick-text { display: grid; gap: var(--space-1); font: var(--weight-semibold) var(--text-md)/1.4 var(--font-sans); cursor: pointer; }
+.pf-tick-text .pf-hint { font-weight: var(--weight-medium); }
+.pf-save { width: 100%; }
+
+.pf-note { margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); }
+.pf-note:empty { display: none; }
+.pf-note[data-tone="ok"] { color: var(--color-good); }
+.pf-note[data-tone="bad"] { color: var(--color-bad); }
+
+.pf-card { display: grid; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); }
+.pf-card h2 { margin: 0; font-size: var(--text-md); }
+.pf-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.pf-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-raised); }
+.pf-row-link { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--color-accent); font: var(--weight-semibold) var(--text-sm) var(--font-sans); }
+.pf-row-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.pf-row-line { color: var(--color-text-muted); font-size: var(--text-xs); }
+.pf-empty { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.pf-anchor[hidden], .pf-sure[hidden] { display: none; }
+.pf-select { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-line); border-radius: var(--radius-md); }
+.pf-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.pf-preview { display: grid; gap: var(--space-2); }
+.pf-preview h3 { margin: 0; }
+.pf-stage { position: relative; height: 320px; border-radius: var(--radius-md); background: var(--color-raised); overflow: hidden; touch-action: none; }
+.pf-stage[hidden] { display: none; }
+
+.pf-sure { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-bad-soft); }
+.pf-warn { margin: 0; color: var(--color-bad); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }

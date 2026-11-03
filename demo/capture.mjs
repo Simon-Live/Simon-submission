@@ -201,7 +201,7 @@ try {
     await sleep(500); m.at("export_ready"); await sleep(2400);
     await scrollTo(page, "models-used", 1600, 70); await sleep(600); m.at("models");
     await glide(page, 300, 2200); await sleep(1400); m.at("modelsend");
-    // The verdict badges sit on the "What to fix" cards; the "also noticed" list is the second-opinion slot below.
+    // The verdict badges sit on the "Mistakes you repeated" cards; the "also noticed" list is the second-opinion slot below.
     await scrollTo(page, "fault-0", 1800, 110).catch(() => {}); await sleep(600); m.at("badge");
     await sleep(3200);
     await scrollTo(page, "second-opinion-slot", 1800, 110); await sleep(3000); m.at("second");

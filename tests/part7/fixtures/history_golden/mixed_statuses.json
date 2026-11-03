@@ -1,0 +1,359 @@
+{
+ "answers": [
+  {
+   "focus": {
+    "cites": [
+     {
+      "at_s": 0.9,
+      "take": 3
+     }
+    ],
+    "cue": "Keep your chest up",
+    "measure": "trunk_lean_forward",
+    "side": "center",
+    "text": "Work on the forward lean at 0.9 s in take 3."
+   },
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 3
+     }
+    ],
+    "text": "Your score went from 60 in take 1 to 66 in take 3."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 0.9,
+       "take": 3
+      },
+      {
+       "at_s": 0.9,
+       "take": 1
+      }
+     ],
+     "kind": "persistent",
+     "measure": "trunk_lean_forward",
+     "side": "center",
+     "text": "The forward lean at 0.9 s is in take 3 and first showed in take 1."
+    },
+    {
+     "cites": [
+      {
+       "at_s": 2.0,
+       "take": 3
+      },
+      {
+       "at_s": 2.0,
+       "take": 2
+      }
+     ],
+     "kind": "persistent",
+     "measure": "knee_cave",
+     "side": "left",
+     "text": "The left knee cave at 2.0 s is in take 3 and first showed in take 2."
+    },
+    {
+     "cites": [
+      {
+       "at_s": 3.0,
+       "take": 1
+      },
+      {
+       "at_s": null,
+       "take": 3
+      }
+     ],
+     "kind": "fixed",
+     "measure": "hip_shift",
+     "side": "center",
+     "text": "The hip shift at 3.0 s in take 1 is not in take 3."
+    }
+   ]
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "focus": {
+   "cue": "Keep your chest up",
+   "measure": "trunk_lean_forward",
+   "side": "center"
+  },
+  "statuses": {
+   "hip_shift|center": "fixed",
+   "knee_cave|left": "persistent",
+   "trunk_lean_forward|center": "persistent"
+  }
+ },
+ "facts": {
+  "best": 3,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 3,
+  "measures": [
+   {
+    "first": {
+     "at_s": 0.9,
+     "magnitude": 21.4,
+     "size": 21.4,
+     "take": 1,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 0.9,
+     "magnitude": 21.4,
+     "size": 21.4,
+     "take": 3,
+     "unit": "deg"
+    },
+    "measure": "trunk_lean_forward",
+    "present_in": [
+     1,
+     2,
+     3
+    ],
+    "side": "center",
+    "status": "persistent"
+   },
+   {
+    "first": {
+     "at_s": 3.0,
+     "magnitude": 9.0,
+     "size": 9.0,
+     "take": 1,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 3.0,
+     "magnitude": 9.0,
+     "size": 9.0,
+     "take": 1,
+     "unit": "deg"
+    },
+    "measure": "hip_shift",
+    "present_in": [
+     1
+    ],
+    "side": "center",
+    "status": "fixed"
+   },
+   {
+    "first": {
+     "at_s": 2.0,
+     "magnitude": 12.0,
+     "size": 12.0,
+     "take": 2,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 2.0,
+     "magnitude": 12.0,
+     "size": 12.0,
+     "take": 3,
+     "unit": "deg"
+    },
+    "measure": "knee_cave",
+    "present_in": [
+     2,
+     3
+    ],
+    "side": "left",
+    "status": "persistent"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [
+     "Keep your chest up",
+     "Keep your hips level"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.4,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.4,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     },
+     {
+      "at_s": 3.0,
+      "body_part": "hip",
+      "cue": "Keep your hips level",
+      "joint": "hip",
+      "magnitude": 9.0,
+      "measure": "hip_shift",
+      "side": "center",
+      "size": 9.0,
+      "span": [
+       2.8,
+       3.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 60,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [
+     "Keep your chest up",
+     "Push your knees out"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.4,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.4,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     },
+     {
+      "at_s": 2.0,
+      "body_part": "knee",
+      "cue": "Push your knees out",
+      "joint": "knee",
+      "magnitude": 12.0,
+      "measure": "knee_cave",
+      "side": "left",
+      "size": 12.0,
+      "span": [
+       1.8,
+       2.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 64,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T11:00:00Z",
+    "cues": [
+     "Keep your chest up",
+     "Push your knees out"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.4,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.4,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     },
+     {
+      "at_s": 2.0,
+      "body_part": "knee",
+      "cue": "Push your knees out",
+      "joint": "knee",
+      "magnitude": 12.0,
+      "measure": "knee_cave",
+      "side": "left",
+      "size": 12.0,
+      "span": [
+       1.8,
+       2.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000003",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 66,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 3,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "mixed_statuses",
+ "note": "A persistent lean, a fixed hip shift and a left knee cave that is new in take 2 and persistent by take 3.",
+ "origin": "synthetic"
+}

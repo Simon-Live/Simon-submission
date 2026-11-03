@@ -1,7 +1,7 @@
 """`POST api/client-log`: the browser's own events in Part 7's log (app.md "Client log", TICKET-064).
 
 Body `{"level": "info"|"warn"|"error", "event": "<1..64 chars>", "detail": {...}, "page": "<string>"}`.
-Answers 204 when written, 400 for a bad body, 413 when the body or `detail` is over 4 KB, 429 past 60 events a
+Answers 200 `{"ok": true}` when written, 400 for a bad body, 413 when the body or `detail` is over 4 KB, 429 past 60 events a
 minute from one client. The line is `client <level> <event> page=<page> <detail json>`, redacted by `applog`.
 """
 
@@ -128,6 +128,10 @@ def handle(h: Any, limiter: RateLimit) -> None:
         applog.anomaly("client_error", **error_fields(parsed))
     else:
         applog.log(line(parsed), level=LEVELS[parsed["level"]])
-    h.send_response(204)
+    body = b'{"ok": true}'  # 200 with a body: Chromium logs a 204 fetch as net::ERR_ABORTED in the console
+    h.send_response(200)
     h.send_header("Cache-Control", "no-store")
+    h.send_header("Content-Type", "application/json")
+    h.send_header("Content-Length", str(len(body)))
     h.end_headers()
+    h.wfile.write(body)

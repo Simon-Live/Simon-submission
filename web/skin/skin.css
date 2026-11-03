@@ -1,0 +1,55 @@
+/* Model picker and import dialog (docs/specs/model-picker.md). Uses the result view's variables; no colours of its own. */
+.msel { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; flex: 1 1 100%; }
+.msel-row { display: inline-flex; align-items: center; gap: 8px; }
+.msel-row label { font: 500 13px/1 var(--font-sans); color: var(--sr-muted); }
+.msel-select, .msel-dialog input, .msel-dialog select {
+  min-height: 44px; padding: 0 10px; border: 1px solid var(--sr-line); border-radius: 12px;
+  background: var(--sr-raised); color: var(--sr-text); font: 500 15px/1 var(--font-sans); max-width: 100%;
+}
+.msel-select:focus-visible, .msel-dialog :focus-visible { outline: 2px solid var(--sr-text); outline-offset: 2px; }
+.msel-credit { flex: 1 1 100%; margin: 0; font: 400 13px/1.4 var(--font-sans); color: var(--sr-muted); }
+.msel-note { margin: 0; font: 400 13px/1.4 var(--font-sans); color: var(--sr-muted); }
+.msel-note:empty { display: none; }
+.msel-photo-hint { margin-top: 12px; }
+.msel-dialog.simon-viewer {
+  max-width: min(480px, calc(100vw - 32px)); width: 100%; padding: 20px; border: 1px solid var(--sr-line); border-radius: 18px;
+  background: var(--sr-surface); color: var(--sr-text); font-family: var(--font-sans);
+}
+.msel-dialog::backdrop { background: var(--sr-bg); opacity: 0.8; }
+/* every state fits the screen: the dialog scrolls inside and its buttons stay in view at the bottom (AC-P14) */
+.msel-dialog.simon-viewer { max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; }
+.msel-dialog .msel-actions {
+  position: sticky; bottom: -20px; z-index: 1; margin: 16px -20px -20px; padding: 12px 20px 20px;
+  background: var(--sr-surface); border-top: 1px solid var(--sr-line);
+}
+.msel-dialog .msel-actions .sr-btn {
+  min-height: 44px; min-width: 96px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--sr-line);
+  background: var(--sr-raised); color: var(--sr-text); font: 600 15px/1 var(--font-sans); cursor: pointer;
+}
+.msel-dialog .msel-actions .sr-btn:disabled { opacity: 0.55; cursor: progress; }
+.msel-dialog h2 { margin: 0 0 8px; font: 600 20px/1.2 var(--font-sans); }
+.msel-field { display: grid; gap: 6px; margin-top: 12px; }
+.msel-field label { font: 500 14px/1.2 var(--font-sans); }
+.msel-field small { color: var(--sr-muted); font-size: 12px; line-height: 1.4; }
+.msel-error { margin: 12px 0 0; color: var(--sr-text); font: 500 14px/1.4 var(--font-sans); border-inline-start: 3px solid var(--sr-f); padding-inline-start: 10px; }
+.msel-status { margin: 12px 0 0; font-size: 14px; color: var(--sr-muted); }
+.msel-actions { display: flex; gap: 10px; margin-top: 16px; }
+.msel-field[hidden], .msel-credit[hidden], .msel-error[hidden] { display: none; }
+.msel-picture { border: 0; padding: 0; margin-inline: 0; }
+.msel-picture legend { font: 500 14px/1.2 var(--font-sans); padding: 0; margin-bottom: 6px; }
+.msel-picture div { display: flex; gap: 8px; align-items: center; min-height: 44px; }
+.msel-picture[hidden] { display: none; }
+/* the native file button takes the dialog's own control look */
+.msel-dialog input[type="file"] { padding: 6px; font: 400 14px/1.2 var(--font-sans); color: var(--sr-muted); }
+.msel-dialog input[type="file"]::file-selector-button {
+  min-height: 32px; margin-inline-end: 10px; padding: 0 14px; border: 1px solid var(--sr-line); border-radius: 8px;
+  background: var(--sr-surface); color: var(--sr-text); font: 500 14px/1 var(--font-sans); cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.msel-dialog input[type="file"]::file-selector-button:hover { border-color: var(--sr-muted); }
+/* one primary action: Import is lime, Cancel stays quiet */
+.msel-dialog .msel-actions .msel-send { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+.msel-dialog .msel-actions .msel-send:disabled { opacity: 0.55; }
+.msel-dialog .msel-actions .sr-btn:not(.msel-send) { background: transparent; color: var(--sr-muted); }
+.msel-dialog .msel-actions .sr-btn:not(.msel-send):hover { color: var(--sr-text); border-color: var(--sr-muted); }
+.msel-dialog .msel-actions { justify-content: flex-end; }

@@ -1,0 +1,192 @@
+{
+ "answers": [
+  {
+   "focus": {
+    "cites": [
+     {
+      "at_s": 0.9,
+      "take": 2
+     }
+    ],
+    "cue": "Keep your chest up",
+    "measure": "trunk_lean_forward",
+    "side": "center",
+    "text": "Work on the forward lean at 0.9 s in take 2."
+   },
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 2
+     }
+    ],
+    "text": "Your score went from 90 in take 1 to 77 in take 2."
+   },
+   "teacher_link": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 2
+     }
+    ],
+    "cue_index": 0,
+    "text": "The teacher said \"Chest up and push your knees out\" in take 2."
+   },
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 0.9,
+       "take": 2
+      },
+      {
+       "at_s": null,
+       "take": 1
+      }
+     ],
+     "kind": "new",
+     "measure": "trunk_lean_forward",
+     "side": "center",
+     "text": "The forward lean at 0.9 s in take 2 was not in take 1."
+    }
+   ]
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "focus": {
+   "cue": "Keep your chest up",
+   "measure": "trunk_lean_forward",
+   "side": "center"
+  },
+  "statuses": {
+   "trunk_lean_forward|center": "new"
+  }
+ },
+ "facts": {
+  "best": 1,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 2,
+  "measures": [
+   {
+    "first": {
+     "at_s": 0.9,
+     "magnitude": 21.4,
+     "size": 21.4,
+     "take": 2,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 0.9,
+     "magnitude": 21.4,
+     "size": 21.4,
+     "take": 2,
+     "unit": "deg"
+    },
+    "measure": "trunk_lean_forward",
+    "present_in": [
+     2
+    ],
+    "side": "center",
+    "status": "new"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 90,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.4,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.4,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 77,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "teacher_link",
+ "narration": {
+  "cues": [
+   {
+    "end_s": 2.0,
+    "index": 0,
+    "start_s": 0.4,
+    "text": "Chest up and push your knees out"
+   },
+   {
+    "end_s": 5.5,
+    "index": 1,
+    "start_s": 4.0,
+    "text": "Slow on the way down"
+   }
+  ],
+  "format": "simon.narration.v1"
+ },
+ "note": "A new lean, the teacher's words quoted from the narration. A text-only run sends no clip, so no observation is expected.",
+ "origin": "synthetic"
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "simon.camera-path.v1",
+  "note": "Test sample in the shape of the lane/warm-paths contract; swap for docs/specs/camera-path-samples/ when it lands. take_time is per key, on the follower clock.",
+  "keys": [
+    {
+      "t": 0.0,
+      "position": [
+        0.0,
+        0.3,
+        3.4
+      ],
+      "target": [
+        0.0,
+        -0.06,
+        0.0
+      ],
+      "fov_deg": 36,
+      "ease": "ease_in_out",
+      "take_time": 0.0
+    },
+    {
+      "t": 0.05,
+      "position": [
+        2.4,
+        0.5,
+        2.4
+      ],
+      "target": [
+        0.0,
+        -0.06,
+        0.0
+      ],
+      "fov_deg": 36,
+      "ease": "linear"
+    },
+    {
+      "t": 0.1,
+      "position": [
+        3.4,
+        0.3,
+        0.0
+      ],
+      "target": [
+        0.0,
+        -0.06,
+        0.0
+      ],
+      "fov_deg": 30,
+      "take_time": 0.5
+    }
+  ]
+}

@@ -1,11 +1,17 @@
 // Watch: the trainer video, a single-figure 3D viewer, Part 6's entry page in a frame, Follow.
 // `#/watch/<id>`. The viewer module is the RESULT lane's `mountViewer` (loaded lazily, so a
 // missing module or WebGL never takes the video down).
-import { getEntry, getEntryFile, entryFileUrl, entryPageUrl, ApiError } from "./api.js";
+import { getEntry, getEntryFile, entryFileUrl, entryPageUrl, ApiError, clientLog } from "./api.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading, hideLoading } from "./progress.js";
-import { getEntryLabels, tagChips } from "./labels.js";
+import { getEntryLabels, getLabels, tagChips } from "./labels.js";
+import { mountFloorWorkEdit } from "./floor-work.js";
+import { EVENT as CLIENT_ERROR } from "./errors.js";
+import { mountReviewNote } from "./review-note.js";
 import { themeFrame } from "./theme-embed.js";
+import { mountEntryAuthor } from "./entry-author.js";
+import { mountSourceCredit } from "./source-credit.js"; // TICKET-322
+import { mountOwnerLink } from "./owner-link.js";
 
 export const NO_3D = "This movement has no 3D animation yet.";
 export const NO_WEBGL = "3D view is not available in this browser.";
@@ -52,6 +58,7 @@ export function mountWatch(root, id) {
     if (target) location.hash = `#/follow/${encodeURIComponent(target)}`;
   };
   window.addEventListener("message", onMessage);
+  let stopTakes = () => {};
 
   getEntry(id).then((entry) => {
     const eid = entry.id || id;
@@ -62,22 +69,28 @@ export function mountWatch(root, id) {
     const figure = h("div", { class: "figure" });
     const labelBox = h("div", { class: "labels" });
     const challengeBox = h("div", { class: "challenges", "data-testid": "watch-challenges" });
+    const takesBox = h("div", { class: "takes-on", "data-testid": "watch-takes" }); // your takes and shared ones (TICKET-327)
     const frame = h("iframe", { class: "frame", src: entryPageUrl(eid), title: `${entry.name} in the catalog`, loading: "lazy", "data-testid": "watch-frame" });
     themeFrame(frame); // brand theme inside Part 6's page (theme-embed.js)
     clear(screen).append(
       h("div", { class: "head" },
-        h("div", {}, h("h1", { text: entry.name || eid }), h("p", { class: "hint", text: entry.category || "" })),
+        h("div", {}, h("h1", { text: entry.name || eid }), h("p", { class: "hint", text: entry.category || "" }), mountEntryAuthor(eid, "watch-author"), mountSourceCredit("entry", eid, "watch-source")),
         linkButton(`#/follow/${encodeURIComponent(eid)}`, "Follow this movement", "follow", "primary"),
-        linkButton(`#/teacher/${encodeURIComponent(eid)}`, "Your followers", "watch-teacher")),
+        mountOwnerLink(eid)), // "Your followers": the owner only (TICKET-316)
       labelBox,
       challengeBox,
       video,
+      takesBox,
       h("h2", { text: "3D figure" }),
       figure,
       h("h2", { text: "Details" }),
       frame);
     mountLabelsView(labelBox, eid);
+    mountReviewNote(labelBox, eid); // TICKET-204
+    getLabels().then((all) => mountFloorWorkEdit(labelBox, eid, all)) // owner only (floor-work.md)
+      .catch((err) => clientLog("error", CLIENT_ERROR, { source: "floor_work_edit", message: String((err && err.message) || err).slice(0, 200), status: err && err.status }));
     import("./challenge.js").then((m) => m.mountChallengeList(challengeBox, eid)).catch(() => {});
+    import("./takes-on.js").then((m) => { stopTakes = m.mountTakesOn(takesBox, eid); }).catch(() => {});
     mountFigure(figure, { ...entry, id: eid });
   }).catch((err) => {
     const missing = err instanceof ApiError && err.status === 404;
@@ -86,5 +99,5 @@ export function mountWatch(root, id) {
       missing ? "It may have been removed. Pick another one from the list." : err.message,
       linkButton("#/", "Back to movements", "back-home")));
   });
-  return () => window.removeEventListener("message", onMessage);
+  return () => { window.removeEventListener("message", onMessage); stopTakes(); };
 }

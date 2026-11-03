@@ -13,9 +13,9 @@ DRAIN_MAX = 64 * 1024  # bytes read and dropped before a 413; larger bodies clos
 _CHUNK = 16 * 1024
 
 
-def drain_before_refusal(h: Any, length: int) -> None:
-    """Read and drop `length` body bytes when that is cheap; otherwise mark the connection to close."""
-    if 0 < length <= DRAIN_MAX:
+def drain_before_refusal(h: Any, length: int, limit: int = DRAIN_MAX) -> None:
+    """Read and drop `length` body bytes when that is within `limit`; otherwise mark the connection to close."""
+    if 0 < length <= limit:
         left = length
         while left > 0:
             got = h.rfile.read(min(_CHUNK, left))

@@ -145,14 +145,17 @@ def setup_all(
     state: Path | str | None = None,
     commands: dict[str, list[list[str]]] | None = None,
     only: tuple[str, ...] | None = None,
+    log_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Run each part's documented setup commands in its module, then its checks; a part whose setup ran for its current sha is skipped.
+
+    `log_dir` puts the step logs there instead of `<state>/logs/setup` (a module tree keeps its own, TICKET-329).
 
     `commands` replaces the setup commands of the parts it names and turns the default checks off
     (tests use it with stub commands). `only` limits the run to the parts it names. Each part's result carries `duration_s`, the sum of its steps.
     """
     lk = lock or modules.load()
-    log_dir = config.state_root(state) / "logs" / "setup"
+    log_dir = log_dir or config.state_root(state) / "logs" / "setup"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     results: dict[str, Any] = {}
@@ -326,10 +329,11 @@ def cli_setup_parts(
     lock: modules.Modules | None = None,
     state: Path | str | None = None,
     only: tuple[str, ...] | None = None,
+    log_dir: Path | None = None,
 ) -> int:
     """CLI entry point for `part7 setup-parts`."""
     try:
-        res = setup_all(lock=lock, state=state, only=only)
+        res = setup_all(lock=lock, state=state, only=only, log_dir=log_dir)
     except Exception as exc:
         print(f"setup-parts: {exc}", file=sys.stderr)
         return 1

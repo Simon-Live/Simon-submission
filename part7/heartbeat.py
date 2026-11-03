@@ -16,7 +16,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from part7 import applog, gpu_lock, p2_worker
+from part7 import applog, config, gpu_lock, p2_worker, selfheal
 
 INTERVAL_S = 60.0  # env SIMON7_HEARTBEAT_S
 BACKLOG_QUEUED = 2  # env SIMON7_BACKLOG_QUEUED: more waiting jobs than this ...
@@ -83,12 +83,22 @@ class Heartbeat:
             gpu = None
         return {**snap, "load1": load1, "gpu_free_mib": gpu, "disk_free_gb": disk}
 
+    def _gpu_starved(self) -> None:
+        """TICKET-305: hand the queue's GPU admission waits to the `gpu_starved` check. Never raises."""
+        try:
+            waits = getattr(self.queue, "gpu_waits", None)
+            selfheal.check_gpu_starved(waits() if waits else [], lambda: gpu_lock.holder_class(config.gpu_lock_path()))
+        except Exception as exc:
+            applog.log(f"heartbeat: gpu_starved check failed: {applog.cause(exc)}", level=logging.ERROR)
+
     def tick(self) -> dict[str, Any]:
         """Log one heartbeat and its anomalies; return the readings."""
         r = self._readings()
+        self._gpu_starved()
         applog.log(f"heartbeat queued={r['queued']} running={r['running']} oldest_running_s={_num(r['oldest_running_s'])} "
                    f"load1={_num(r['load1'], 2)} gpu_free_mib={_num(r['gpu_free_mib'], 0)} "
-                   f"disk_free_gb={_num(r['disk_free_gb'])} p2_worker={p2_worker.state()}{_tracker_note()}")
+                   f"disk_free_gb={_num(r['disk_free_gb'])} p2_worker={p2_worker.state()}{_tracker_note()} "
+                   f"selfheal={selfheal.heartbeat_text(self.state)}")
         now = self.clock()
         limit = applog.env_float("SIMON7_BACKLOG_QUEUED", BACKLOG_QUEUED)
         if r["queued"] > limit:

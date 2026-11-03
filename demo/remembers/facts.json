@@ -1,0 +1,23 @@
+{
+  "status": "pending-live",
+  "note": "Filled from TICKET-184's saved report (demos/rubric/HISTORY/report.json) once sign-in is live. A null slot stops capture.mjs. Never type a value in by hand.",
+  "report_source": "demos/rubric/HISTORY/report.json",
+  "entry_id": "body-squat-19b06562",
+  "movement": null,
+  "takes": [
+    { "take": 1, "job_id": "5277380db1e1", "label": "Cleared real take", "recorded_at": null, "score": null },
+    { "take": 2, "job_id": "cc7cd5469055", "label": null, "recorded_at": null, "score": null }
+  ],
+  "slots": {
+    "takes": null,
+    "dates": null,
+    "first_date": null,
+    "last_date": null,
+    "cite_take": null,
+    "cite_s": null,
+    "input_tokens": null,
+    "cached_tokens": null,
+    "clips": null,
+    "checked": null
+  }
+}

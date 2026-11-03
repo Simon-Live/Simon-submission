@@ -6,6 +6,9 @@ import { takeSplash, SPLASH_TEXT, SPLASH_MS } from "./model/splash.js";
 import { takeHeld } from "./take-guard.js";
 import { renderKindSwitch } from "./views/kind-switch.js";
 import { renderSplash } from "./views/splash.js";
+import { renderTestBanner } from "./views/test-banner.js";
+import { isTestServer, TEST_SERVER_TEXT, TEST_SERVER_EVENT, testServerDetail } from "./model/test-server.js";
+import { getHealth, clientLog } from "./api.js";
 import { logoBar } from "./views/logo.js";
 
 /** Keep `--header-height` equal to the sticky header's real height (it is shorter without the ?debug=1 build line). */
@@ -37,4 +40,15 @@ export function mountShell({ switchHost, body = document.body }) {
   trackHeaderHeight(document.querySelector("header.bar"));
   const brand = document.querySelector(".brand");
   if (brand && !brand.querySelector(".logo-sign")) brand.prepend(logoBar());   // the dog holding the sign
+}
+
+/** TICKET-204: ask api/health once; on the test stand-in show the banner for good and log it once. A failed ask shows nothing. */
+export async function mountTestServerBanner(header = document.querySelector("header.bar")) {
+  if (!header) return false;
+  let health;
+  try { health = await getHealth(); } catch { return false; }
+  if (!isTestServer(health)) return false;
+  renderTestBanner(header, TEST_SERVER_TEXT);
+  clientLog("error", TEST_SERVER_EVENT, testServerDetail(health));
+  return true;
 }

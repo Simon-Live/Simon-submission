@@ -26,7 +26,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from part7 import applog, config, modules, runner
+from part7 import applog, config, modules, runner, selfheal
 
 SCHEMA = "part7.parts-gate/1"
 EXIT_GREEN, EXIT_RED, EXIT_SKIPPED, EXIT_TIMEOUT = 0, 1, 3, 124
@@ -375,11 +375,14 @@ def gate(state: Path | str | None = None, repo: Path | None = None, deps: Deps |
 def cli_parts_gate(force: bool = False) -> int:
     """`part7 parts-gate [--force]`: one JSON line; exit 0 green or nothing moved, 1 red, 3 skipped."""
     applog.setup(config.state_root())
+    selfheal.configure(config.state_root())
     try:
         res = gate(force=force)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         print(f"parts-gate: {exc}", file=sys.stderr)
         return 2
+    if res.outcome in ("green", "unchanged"):
+        selfheal.record("parts_gate")  # ran clean; red and skipped already marked it through their ANOMALY lines
     print(json.dumps({"outcome": res.outcome, "reason": res.reason, "parts": _shas(res.parts),
                       "failed_step": res.failed_step, "log_dir": res.log_dir}))
     return res.exit_code()

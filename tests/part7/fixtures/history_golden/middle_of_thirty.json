@@ -1,0 +1,799 @@
+{
+ "answers": [
+  {
+   "focus": null,
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 30
+     }
+    ],
+    "text": "Your score went from 61 in take 1 to 62 in take 30."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 3.0,
+       "take": 15
+      },
+      {
+       "at_s": null,
+       "take": 30
+      }
+     ],
+     "kind": "fixed",
+     "measure": "hip_shift",
+     "side": "center",
+     "text": "The hip shift at 3.0 s in take 15 is not in the later takes."
+    }
+   ]
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "middle": {
+   "measure": "hip_shift",
+   "side": "center",
+   "take": 15
+  },
+  "statuses": {
+   "hip_shift|center": "fixed"
+  }
+ },
+ "facts": {
+  "best": 6,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 30,
+  "measures": [
+   {
+    "first": {
+     "at_s": 3.0,
+     "magnitude": 9.0,
+     "size": 9.0,
+     "take": 15,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 3.0,
+     "magnitude": 9.0,
+     "size": 9.0,
+     "take": 15,
+     "unit": "deg"
+    },
+    "measure": "hip_shift",
+    "present_in": [
+     15
+    ],
+    "side": "center",
+    "status": "fixed"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 61,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 62,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T11:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000003",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 63,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 3,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T12:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000004",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 64,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 4,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T13:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000005",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 65,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 5,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T14:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000006",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 66,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 6,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T15:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000007",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 60,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 7,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T16:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000008",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 61,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 8,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T17:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000009",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 62,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 9,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T18:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000010",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 63,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 10,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T19:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000011",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 64,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 11,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T20:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000012",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 65,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 12,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T09:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000013",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 66,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 13,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T10:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000014",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 60,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 14,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T11:00:00Z",
+    "cues": [
+     "Keep your hips level"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 3.0,
+      "body_part": "hip",
+      "cue": "Keep your hips level",
+      "joint": "hip",
+      "magnitude": 9.0,
+      "measure": "hip_shift",
+      "side": "center",
+      "size": 9.0,
+      "span": [
+       2.8,
+       3.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000015",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 61,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 15,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T12:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000016",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 62,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 16,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T13:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000017",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 63,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 17,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T14:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000018",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 64,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 18,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T15:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000019",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 65,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 19,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T16:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000020",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 66,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 20,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T17:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000021",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 60,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 21,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T18:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000022",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 61,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 22,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T19:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000023",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 62,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 23,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-02T20:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000024",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 63,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 24,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-03T09:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000025",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 64,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 25,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-03T10:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000026",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 65,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 26,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-03T11:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000027",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 66,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 27,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-03T12:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000028",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 60,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 28,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-03T13:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000029",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 61,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 29,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-03T14:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000030",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 62,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 30,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "middle_of_thirty",
+ "note": "Thirty takes; the hip shift shows only in take 15 (status fixed). A kept trend must cite take 15.",
+ "origin": "synthetic"
+}

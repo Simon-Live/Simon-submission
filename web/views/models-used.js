@@ -8,7 +8,7 @@ export const TEXT = {
   eyebrow: "Meta AI",
   title: "How this was made",
   none: "No Meta model ran live for this take.",
-  clip: { trainer: "The trainer's video", you: "Your video" },
+  clip: { trainer: "The trainer's video", you: "Your video", account: "Your account" },
 };
 
 function step(item) {
@@ -24,8 +24,8 @@ function step(item) {
 }
 
 /**
- * Draw the panel into `root` (appended). `panel` is `modelsPanel(doc)`: {items, total, madeWith}. Returns the section.
- * Rows are grouped by clip (the trainer's video, then yours) in the order the server lists them.
+ * Draw the panel into `root` (appended). `panel` is `modelsPanel(doc)`: {items, clips, total, madeWith}. Returns the section.
+ * Rows are grouped by clip, each group where its first row appears in the server's pipeline order (TICKET-300).
  */
 export function renderModelsUsed(root, panel) {
   const section = h("section", { class: "hm", "data-testid": "models-used", "aria-labelledby": "hm-title" });
@@ -33,7 +33,7 @@ export function renderModelsUsed(root, panel) {
     h("p", { class: "hm-eyebrow", text: TEXT.eyebrow }),
     h("h2", { id: "hm-title", class: "hm-title", text: TEXT.title }),
     h("p", { class: "hm-made", "data-testid": "models-made-with", text: panel.madeWith || TEXT.none })));
-  for (const clip of ["trainer", "you"]) {
+  for (const clip of (panel.clips || ["trainer", "you", "account"]).filter((c) => TEXT.clip[c])) {
     const items = panel.items.filter((x) => x.clip === clip);
     if (!items.length) continue;
     section.append(h("div", { class: "hm-group", "data-clip": clip },

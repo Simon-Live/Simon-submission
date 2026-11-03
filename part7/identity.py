@@ -104,6 +104,41 @@ def db_path(state: Path | str) -> Path:
     return Path(state) / "identity" / "identity.db"
 
 
+AUTHOR_STATES = ("owned", "unattributed")
+BACKUP_SUFFIX = ".pre-attribution"
+
+
+def migrate_attribution(db: sqlite3.Connection, path: Path | str) -> bool:
+    """Add `entries.author_state` once (docs/specs/attribution.md); True when it ran, False when already done.
+
+    Additive and fail closed: the database is copied to `<db>.pre-attribution` first and the migration refuses
+    (raises) when the copy fails. It writes only the new column: `owned` where the row names an existing user,
+    `unattributed` for every other row, so nobody is named by guess.
+    """
+    if any(r[1] == "author_state" for r in db.execute("PRAGMA table_info(entries)")):
+        return False
+    backup = Path(str(path) + BACKUP_SUFFIX)
+    try:
+        copy = sqlite3.connect(str(backup))
+        try:
+            db.backup(copy)
+        finally:
+            copy.close()
+        os.chmod(backup, 0o600)
+    except (OSError, sqlite3.Error) as exc:
+        raise RuntimeError(f"attribution migration refused: the database could not be copied ({type(exc).__name__})") from exc
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        db.execute("ALTER TABLE entries ADD COLUMN author_state TEXT NOT NULL DEFAULT 'unattributed'")
+        db.execute("UPDATE entries SET author_state = 'owned' WHERE user_id <> '' "
+                   "AND EXISTS (SELECT 1 FROM users WHERE users.user_id = entries.user_id)")
+        db.execute("COMMIT")
+    except BaseException:
+        db.execute("ROLLBACK")
+        raise
+    return True
+
+
 class IdentityStore:
     """Users, challenges, sessions, takes and entries behind one lock."""
 
@@ -121,12 +156,59 @@ class IdentityStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(_SCHEMA)
+        from part7 import profile  # additive `profiles` table, with a backup copy first (profile.md)
+        profile.migrate(self._db, path)
+        from part7 import devices  # additive `public_id` and `device` columns on `sessions`, with a backup copy first (devices.md)
+        devices.migrate(self._db, path)
+        migrate_attribution(self._db, path)
+        from part7 import notes  # additive `note_requests` table, with a backup copy first (notes.md)
+        notes.migrate(self._db, path)
+        from part7 import source_credit  # additive `source_credits` table (source-credit.md)
+        source_credit.migrate(self._db)
+        profile.migrate_default_model(self._db, path)  # additive `profiles.default_model_id`, backup copy first (profile.md)
         for suffix in ("-wal", "-shm"):  # SQLite creates these with the umask; keep them private too
             side = Path(str(path) + suffix)
             if side.exists():
                 os.chmod(side, 0o600)
 
     # ----- helpers --------------------------------------------------------------------------
+    # Public seam for part7/share.py (its table lives in this file but is its own).
+    def fetch(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:
+        return self._q(sql, args)
+
+    def write(self, sql: str, args: tuple = ()) -> int:
+        """Run one write under the store lock; returns the rows changed."""
+        with self._lock:
+            return self._db.execute(sql, args).rowcount
+
+    def has_table(self, name: str) -> bool:
+        return bool(self._q("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)))
+
+    def write_if_table(self, name: str, sql: str, args: tuple = ()) -> None:
+        with self._lock:
+            if self.has_table(name):
+                self._db.execute(sql, args)
+
+    def write_script(self, script: str) -> None:
+        """Run a script under the store lock; the script holds its own BEGIN and COMMIT (share.py's table rebuild)."""
+        with self._lock:
+            try:
+                self._db.executescript(script)
+            except BaseException:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
+
+    def backup_to(self, target: Path) -> None:
+        """A consistent copy of the database file (WAL included) at `target`; raises on any failure."""
+        with self._lock:
+            out = sqlite3.connect(str(target))
+            try:
+                self._db.backup(out)
+            finally:
+                out.close()
+        os.chmod(target, 0o600)
+
     def _q(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:
         with self._lock:
             return self._db.execute(sql, args).fetchall()
@@ -231,10 +313,12 @@ class IdentityStore:
             return self._user_for(norm, now) if used == 1 else None
 
     # ----- sessions -------------------------------------------------------------------------
-    def new_session(self, user_id: str) -> str:
+    def new_session(self, user_id: str, device: str | None = None) -> str:
+        from part7 import devices  # `device` is the coarse label of `devices.device_label`, never a raw User-Agent
         sid, now = secrets.token_urlsafe(32), self.clock()
-        self._q("INSERT INTO sessions (sid_hash, user_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-                (_sha(sid), user_id, now, now, now + SESSION_ABSOLUTE_S))
+        self._q("INSERT INTO sessions (sid_hash, user_id, created_at, last_seen_at, expires_at, public_id, device) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (_sha(sid), user_id, now, now, now + SESSION_ABSOLUTE_S, devices.new_public_id(), device or devices.UNKNOWN))
         return sid
 
     def session_user(self, sid: str) -> str | None:
@@ -290,8 +374,8 @@ class IdentityStore:
     def attach_entry(self, entry_id: str, user_id: str, trainer_job: str = "") -> None:
         """Record the owner of a catalog entry (first wins); a later call fills in the trainer job of the same owner."""
         with self._lock:
-            self._db.execute("INSERT OR IGNORE INTO entries (entry_id, user_id, trainer_job, created_at) VALUES (?, ?, ?, ?)",
-                             (entry_id, user_id, trainer_job, self.clock()))
+            self._db.execute("INSERT OR IGNORE INTO entries (entry_id, user_id, trainer_job, created_at, author_state) "
+                             "VALUES (?, ?, ?, ?, 'owned')", (entry_id, user_id, trainer_job, self.clock()))
             if trainer_job:
                 self._db.execute("UPDATE entries SET trainer_job = ? WHERE entry_id = ? AND user_id = ? AND trainer_job = ''",
                                  (trainer_job, entry_id, user_id))
@@ -304,6 +388,13 @@ class IdentityStore:
         row = self._one("SELECT user_id, only_me FROM entries WHERE entry_id = ?", (entry_id,))
         return (row["user_id"], bool(row["only_me"])) if row else None
 
+    def entry_author(self, entry_id: str) -> dict | None:
+        """The attribution facts of an entry: `user_id`, `author_state`, `only_me`; None when no row exists."""
+        row = self._one("SELECT user_id, author_state, only_me FROM entries WHERE entry_id = ?", (entry_id,))
+        if row is None:
+            return None
+        return {"user_id": row["user_id"], "author_state": row["author_state"], "only_me": bool(row["only_me"])}
+
     def takes_of(self, user_id: str) -> list[dict]:
         """The user's takes, newest first: job_id, kind, entry_id, people_job, via, created_at (UTC text), created_ts."""
         rows = self._q("SELECT * FROM takes WHERE user_id = ? ORDER BY created_at DESC, job_id", (user_id,))
@@ -313,7 +404,7 @@ class IdentityStore:
     def entries_of(self, user_id: str) -> list[dict]:
         rows = self._q("SELECT * FROM entries WHERE user_id = ? ORDER BY created_at DESC, entry_id", (user_id,))
         return [{"entry_id": r["entry_id"], "trainer_job": r["trainer_job"], "only_me": bool(r["only_me"]),
-                 "created_at": _iso(r["created_at"])} for r in rows]
+                 "author_state": r["author_state"], "created_at": _iso(r["created_at"])} for r in rows]
 
     def set_only_me(self, entry_id: str, user_id: str, value: bool) -> bool:
         with self._lock:
@@ -323,8 +414,16 @@ class IdentityStore:
     def forget_job(self, job_id: str) -> None:
         """Drop the ownership of a deleted take (and the entry row its trainer job made)."""
         with self._lock:
+            self.write_if_table("note_requests", "DELETE FROM note_requests WHERE job_id = ? OR entry_id IN "
+                                "(SELECT entry_id FROM entries WHERE trainer_job = ?)", (job_id, job_id))  # TICKET-237: no note outlives its take
+            self.write_if_table("shares", "DELETE FROM shares WHERE kind = 'progress_sheet' AND (owner_id, item_ref) IN "
+                                "(SELECT user_id, entry_id FROM takes WHERE job_id = ?)", (job_id,))  # TICKET-283: the sheet read this take
+            self.write_if_table("source_credits", "DELETE FROM source_credits WHERE (kind = 'take' AND subject_id = ?) OR (kind = 'entry' AND subject_id IN "
+                                "(SELECT entry_id FROM entries WHERE trainer_job = ?))", (job_id, job_id))  # TICKET-322: a credit goes with its subject
             self._db.execute("DELETE FROM takes WHERE job_id = ?", (job_id,))
             self._db.execute("DELETE FROM entries WHERE trainer_job = ?", (job_id,))
+            self.write_if_table("shares", "UPDATE shares SET revoked_utc = ? WHERE item_ref = ? AND revoked_utc IS NULL",
+                                (_iso(self.clock()), job_id))  # TICKET-233: a deleted take takes its share links with it
 
     def delete_user(self, user_id: str) -> None:
         """Remove the user, sessions, open challenges and ownership rows."""
@@ -332,8 +431,14 @@ class IdentityStore:
             row = self._one("SELECT email FROM users WHERE user_id = ?", (user_id,))
             self._db.execute("BEGIN IMMEDIATE")
             try:
-                for table in ("sessions", "takes", "entries"):
+                for table in ("sessions", "takes", "entries", "profiles"):
                     self._db.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+                if self.has_table("shares"):  # TICKET-233: deleting my data ends every share link
+                    self._db.execute("DELETE FROM shares WHERE owner_id = ?", (user_id,))
+                if self.has_table("source_credits"):  # TICKET-322: the person's credits go with their data
+                    self._db.execute("DELETE FROM source_credits WHERE owner_id = ?", (user_id,))
+                if self.has_table("note_requests"):  # TICKET-237: both sides' requests and notes go; the other side sees nothing
+                    self._db.execute("DELETE FROM note_requests WHERE follower_id = ? OR trainer_id = ?", (user_id, user_id))
                 if row is not None:
                     self._db.execute("DELETE FROM challenges WHERE email = ?", (row["email"],))
                 self._db.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
@@ -383,6 +488,22 @@ def owner_of_job(state: Path, job_id: str) -> str | None:
     """The user who owns `job_id`, or None (anonymous, unknown, or no identity store yet)."""
     row = _read_one(state, "SELECT user_id FROM takes WHERE job_id = ?", (job_id,))
     return row["user_id"] if row else None
+
+
+def follow_owners(state: Path, entry_id: str) -> dict[str, str]:
+    """`{job_id: user_id}` of the signed-in follow takes of one entry (empty with no store); for the class table only."""
+    path = db_path(state)
+    if not path.is_file():
+        return {}
+    try:
+        db = sqlite3.connect(str(path), timeout=10)
+        try:
+            rows = db.execute("SELECT job_id, user_id FROM takes WHERE entry_id = ? AND kind = 'follow'", (entry_id,)).fetchall()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return {}
+    return {str(job): str(user) for job, user in rows}
 
 
 def retention_opt_in(state: Path, user_id: str) -> bool:

@@ -246,7 +246,7 @@ def test_heartbeat_line_and_na_for_unreadable_values(caplog: pytest.LogCaptureFi
     assert first.startswith("heartbeat queued=1 running=2 oldest_running_s=33.0 load1=")
     assert " gpu_free_mib=14000 disk_free_gb=" in first and "gpu_free_mib=na" in second and "oldest_running_s=na" in second
     assert not _lines(caplog)
-    assert first.endswith(" p2_worker=off")  # no warm worker pool in this process (TICKET-099)
+    assert first.endswith(" p2_worker=off selfheal=ok")  # no warm worker pool in this process (TICKET-099)
 
 
 def test_heartbeat_reads_gpu_memory_at_call_time(caplog: pytest.LogCaptureFixture, tmp_path: Path,
@@ -264,7 +264,7 @@ def test_heartbeat_reports_the_warm_worker_state(caplog: pytest.LogCaptureFixtur
     monkeypatch.setattr(p2_worker, "state", lambda: "busy")
     with caplog.at_level(logging.INFO, logger="part7"):
         heartbeat.Heartbeat(FakeQueue(), tmp_path, gpu_free=lambda: 1).tick()
-    assert _lines(caplog, "heartbeat")[0].endswith(" p2_worker=busy")
+    assert _lines(caplog, "heartbeat")[0].endswith(" p2_worker=busy selfheal=ok")
 
 
 def test_queue_backlog_needs_more_than_two_queued_for_over_120_s(caplog: pytest.LogCaptureFixture, tmp_path: Path) -> None:
@@ -417,8 +417,8 @@ def _post(api: Api, doc: dict[str, Any]) -> int:
 def test_client_error_events_become_anomalies_with_the_page_and_cut_fields(api: Api, caplog: pytest.LogCaptureFixture) -> None:
     detail = {"source": "fetch", "message": "status 502", "path": "api/jobs/ab12", "status": 502, "junk": [1, 2], "line": True}
     with caplog.at_level(logging.INFO, logger="part7"):
-        assert _post(api, {"level": "error", "event": "client_error", "detail": detail, "page": "#/follow/e1"}) == 204
-        assert _post(api, {"level": "warn", "event": "camera_dark", "detail": {"a": 1}, "page": "#/record"}) == 204
+        assert _post(api, {"level": "error", "event": "client_error", "detail": detail, "page": "#/follow/e1"}) == 200  # e977821: 200 with a body, not 204
+        assert _post(api, {"level": "warn", "event": "camera_dark", "detail": {"a": 1}, "page": "#/record"}) == 200  # e977821: 200 with a body, not 204
     assert _lines(caplog) == ["ANOMALY client_error page=#/follow source=fetch status=502 path=api/jobs/ab12 detail=status 502"]
     assert _lines(caplog, "client warn camera_dark") == ['client warn camera_dark page=#/record {"a":1}']
 

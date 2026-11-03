@@ -15,6 +15,7 @@ started with is no longer the pin on disk (`version`), because Part 2 asks for a
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import os
 import socket
@@ -22,11 +23,12 @@ import signal
 import subprocess
 import tempfile
 import threading
+import statistics
 import time
 from pathlib import Path
 from typing import Callable, Iterator
 
-from part7 import applog, config, gpu_lock
+from part7 import applog, config, gpu_lock, selfheal
 
 START_WAIT_S = 180.0  # a worker loads its model before it listens (on an idle host)
 START_LOAD_SCALE_MAX = 4.0  # a busy host (load1 per CPU above 1) stretches the start deadline by that factor, at most this
@@ -40,6 +42,8 @@ SOCK_PATH_MAX = 96  # AF_UNIX paths are limited to 107 bytes
 RETRY_DOWN_S = 300.0  # a worker whose restart failed is tried again no sooner than this
 KILL_GRACE_S = 10.0  # a killed worker gets this long to end after SIGTERM before SIGKILL
 LOCK_FREE_WAIT_S = 30.0  # after a kill, the longest to wait for the GPU file lock to be free
+RESIDENT_RANGE_MIB = (3000, 4600)  # TICKET-320: a tracker load reading outside this is other work (fresh load 4038)
+RESIDENT_KEEP = 5  # the resident size is the median of the last this many accepted readings
 TRACK_MARKER = b"--mode\x00track"  # /proc/<pid>/cmdline of `part2 serve-worker --mode track`: NUL-separated arguments
 
 Launcher = Callable[[list[str], Path, "Path | None", "dict[str, str] | None"], "subprocess.Popen[bytes]"]
@@ -145,6 +149,9 @@ class _Slot:
         self.restart = False  # the leased call timed out: stop the worker when the lease ends (`Pool.mark_restart`)
         self.last_used = time.monotonic()
         self.version: "str | None" = None  # the pin the running worker started with (Pool `version`)
+        self.free_before: "int | None" = None  # TICKET-320: free GPU MiB just before this worker's launch
+        self.marks: "tuple[int, tuple[int, int]] | None" = None  # load and GPU admission marks at that reading
+        self.loading = False  # counted in `_LOADS` (any pool's worker loading now)
 
 
 class Pool:
@@ -158,8 +165,11 @@ class Pool:
         on_demand: bool = False, idle_release_s: float = 0.0, on_started: Callable[[], None] | None = None,
         load1: Callable[[], float] = _load1, version: Callable[[], "str | None"] | None = None,
         gpu_lock_path: Path | None = None,
+        measure_free: Callable[[], "int | None"] | None = None,
     ) -> None:
         self._load1, self._version, self._gpu_lock_path = load1, version, gpu_lock_path
+        self._measure_free = measure_free  # TICKET-320: free GPU MiB, read around each load (`resident_mib`)
+        self._readings: "collections.deque[int]" = collections.deque(maxlen=RESIDENT_KEEP)
         self.label, self._marker, self._on_demand = label, marker, on_demand
         self._idle_release_s, self._on_started = idle_release_s, on_started
         root = Path(state_dir) / folder
@@ -179,6 +189,9 @@ class Pool:
         self._kill(slot)
         _reap_orphan(slot.pidfile, self._marker)
         slot.sock.unlink(missing_ok=True)
+        _loads(slot, 1)
+        slot.free_before = self._measure_free() if self._measure_free else None  # the old worker is gone by now
+        slot.marks = (_load_events(), gpu_lock.activity())
         if self._closed:
             slot.why = "the pool was stopped"
             return False
@@ -285,6 +298,51 @@ class Pool:
         with self._lock:
             return any(s.starting or (s.proc is not None and s.proc.poll() is None) for s in self._slots)
 
+    def _measure_loaded(self, slot: _Slot) -> None:
+        """TICKET-320: the drop in free GPU memory across this load is a reading of the worker's resident size, taken
+        before the slot is lendable (no call can grow it yet). Kept only when the window was clean (this was the only
+        worker loading, in any pool, and no GPU admission of this process waited, ran or ended) and the drop is inside
+        `RESIDENT_RANGE_MIB`; both warm workers start in the same second at a server start, and that drop is both."""
+        before, marks, slot.free_before, slot.marks = slot.free_before, slot.marks, None, None
+        after = self._measure_free() if self._measure_free and before is not None else None
+        clean = (marks is not None and marks == (_load_events(), gpu_lock.activity())
+                 and marks[0][1] == 1 and marks[1][1] == 0)
+        if before is None or after is None:
+            return
+        low, high = RESIDENT_RANGE_MIB
+        drop = before - after
+        if not clean or not low <= drop <= high:
+            why = "another load or GPU call in the window" if not clean else f"outside {low} to {high} MiB"
+            applog.log(f"{self.label}: load reading {drop} MiB not used ({why}; free {before} to {after} MiB)")
+            return
+        with self._lock:
+            self._readings.append(drop)
+        applog.log(f"{self.label}: resident {drop} MiB measured at load (free {before} to {after} MiB)")
+
+    @property
+    def resident_mib(self) -> int | None:
+        """The median of the last `RESIDENT_KEEP` accepted load readings, else None (TICKET-320)."""
+        with self._lock:
+            kept = list(self._readings)
+        return int(statistics.median(kept)) if kept else None
+
+    def wait_ready(self, wait_s: float) -> bool:
+        """TICKET-320: True once a worker runs and nobody leases it (`lease` would lend it now). Waits at most `wait_s`
+        while a worker is leased or starting; False at once when none runs, is leased or starts, and when stopped."""
+        deadline = time.monotonic() + max(0.0, wait_s)
+        with self._lock:
+            while not self._closed:
+                if any(not s.busy and not s.starting and s.proc is not None and s.proc.poll() is None
+                       for s in self._slots):
+                    return True
+                if not any(s.busy or s.starting or (s.proc is not None and s.proc.poll() is None) for s in self._slots):
+                    return False
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return False
+                self._lock.wait(min(left, 1.0))
+        return False
+
     def release_all(self, wait_s: float) -> bool:
         """Stop every worker so a cold call has the GPU memory; a lease starts it again. Waits up to `wait_s` for a
         slot that is leased or starting; False when one stayed (its model stays loaded)."""
@@ -360,6 +418,9 @@ class Pool:
 
     def _start_slot(self, slot: _Slot) -> None:
         ok = self._spawn(slot)
+        if ok:
+            self._measure_loaded(slot)  # before the slot is lendable: no call grows it while `after` is read
+        _loads(slot, -1)
         with self._lock:
             slot.starting = False
             slot.down_until = 0.0 if ok else time.monotonic() + RETRY_DOWN_S
@@ -369,9 +430,17 @@ class Pool:
                            slot=slot.index, retry_in_s=RETRY_DOWN_S, why=slot.why or None)
         elif self._on_started is not None:
             self._on_started()
+        if ok:
+            selfheal.record("warm_worker")  # started or restarted clean
 
     def _ok(self, slot: _Slot) -> bool:
         return slot.proc is not None and slot.proc.poll() is None and self._health(slot.sock)
+
+    def life(self) -> int | None:
+        """Pid of the first slot's running worker process, or None when none runs (a restart gives a new pid)."""
+        with self._lock:
+            proc = self._slots[0].proc if self._slots else None
+        return getattr(proc, "pid", None) if proc is not None and proc.poll() is None else None
 
     def state(self) -> str:
         """`starting`, `busy` (leased), `idle`, or `down` (no healthy worker); read without waiting."""
@@ -461,6 +530,24 @@ class Pool:
 
 _POOL: Pool | None = None
 _TRACK_POOL: Pool | None = None
+_LOAD_LOCK = threading.Lock()
+_LOAD = {"active": 0, "events": 0}  # TICKET-320: workers loading now in any pool, and every load start and end
+
+
+def _loads(slot: _Slot, step: int) -> None:
+    """Count `slot`'s load in or out (once each way) across every pool."""
+    with _LOAD_LOCK:
+        if (step > 0) == slot.loading:
+            return
+        slot.loading = step > 0
+        _LOAD["active"] = max(0, _LOAD["active"] + step)
+        _LOAD["events"] += 1
+
+
+def _load_events() -> tuple[int, int]:
+    """`(events, active)`: equal readings with active 1 (this load) mean no other worker started or ended meanwhile."""
+    with _LOAD_LOCK:
+        return _LOAD["events"], _LOAD["active"]
 
 
 def start_pool(pool: Pool) -> None:
@@ -524,6 +611,30 @@ def stop_track_worker(wait_s: float) -> bool:
     return _TRACK_POOL is None or _TRACK_POOL.release_all(wait_s)
 
 
+def release_idle_workers() -> list[str]:
+    """Give the GPU memory of every idle warm worker back (the process pool and the tracker); a leased or starting
+    worker is never touched, so a running take keeps its model. Returns the labels released (the next lease restarts them)."""
+    out = []
+    for pool in (_POOL, _TRACK_POOL):
+        if pool is not None and pool.state() == "idle" and pool.release_all(0.0):
+            out.append(pool.label)
+    return out
+
+
+def own_warm_worker(pid: int | None) -> bool:
+    """True when `pid` is a warm worker this server started (or a child of one): a worker `release_idle_workers` is
+    stopping still holds the GPU lock and memory for a moment, and that is not another job (avatar_jobs._why_busy)."""
+    if not pid:
+        return False
+    me = os.getpid()
+    parent = gpu_lock._read_ppid_and_age(pid)[0]
+    for cand in (pid, parent):
+        if cand and gpu_lock._read_ppid_and_age(cand)[0] == me \
+                and any(pool is not None and pool._ours(cand) for pool in (_POOL, _TRACK_POOL)):
+            return True
+    return False
+
+
 def state() -> str:
     """The process pool's worker state for the heartbeat: `off` when no pool runs, else `Pool.state()`."""
     return "off" if _POOL is None else _POOL.state()
@@ -537,3 +648,28 @@ def lease() -> Iterator[Path | None]:
     else:
         with _POOL.lease() as sock:
             yield sock
+
+
+def worker_life() -> int | None:
+    """The pid of the process pool's running worker (one value per worker life, TICKET-260), else None."""
+    return None if _POOL is None else _POOL.life()
+
+
+def holds_model() -> bool:
+    """True when the process pool (the 3D pose worker) has a worker running or starting (TICKET-320)."""
+    return _POOL is not None and _POOL.holds_model()
+
+
+def wait_ready(wait_s: float) -> bool:
+    """The process pool's `Pool.wait_ready`: False at once when no pool runs."""
+    return _POOL is not None and _POOL.wait_ready(wait_s)
+
+
+def track_wait_ready(wait_s: float) -> bool:
+    """The warm tracker pool's `Pool.wait_ready`: False at once when no pool runs."""
+    return _TRACK_POOL is not None and _TRACK_POOL.wait_ready(wait_s)
+
+
+def track_resident_mib() -> int | None:
+    """The warm tracker's resident size measured at its loads (`Pool.resident_mib`), else None (TICKET-320)."""
+    return None if _TRACK_POOL is None else _TRACK_POOL.resident_mib

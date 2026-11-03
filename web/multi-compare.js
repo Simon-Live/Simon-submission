@@ -87,6 +87,16 @@ export async function mountMultiCompare(root, people) {
     return { el: wrap, stage: null, destroy() { wrap.remove(); } };
   }
   stage.setMode("overlay");
+  // model picker: the trainer row plus one row per person, keyed by person id (docs/specs/model-picker.md)
+  let picker = null;
+  let gone = false;
+  // role is the person id (the saved choice key). The mesh route answers per job (trainer, you), and a group's people
+  // share one job id, so a person has no mesh of their own to show: Person stays the stick figure for them.
+  const pickerTracks = [{ role: "trainer", label: "Trainer", person: "trainer", job: usable[0].job || null },
+    ...usable.map((u) => ({ role: u.id, label: u.label, person: "you", job: null }))];
+  const toolsHost = el("div", { class: "sr-tools pp-models" });
+  import("./skin/picker.js").then((m) => m.mountModelPicker(toolsHost, stage, { tracks: pickerTracks, job: null }))
+    .then((handle) => { if (gone) handle.destroy(); else picker = handle; }).catch(() => {});
   // one log line for the view: the trainer's ghost comes from the first person, so only theirs reports it
   const reports = usable.map((u, i) => [u.id, bodyReport(i === 0 ? u.model : { ...u.model, expectedUnseen: [], expectedNever: [] })])
     .filter(([, r]) => r).map(([id, r]) => `${id}: ${r}`);
@@ -106,7 +116,7 @@ export async function mountMultiCompare(root, people) {
     buttons.set(u.id, b);
     toggles.append(el("li", {}, b));
   });
-  wrap.append(el("div", { class: "sr-bar" }, playBtn, scrub, clockEl), toggles);
+  wrap.append(el("div", { class: "sr-bar" }, playBtn, scrub, clockEl), toggles, toolsHost);
   if (skipped.length) note(`${skipped.length} take${skipped.length === 1 ? " has" : "s have"} no 3D replay and ${skipped.length === 1 ? "is" : "are"} left out.`);
 
   const draw = () => stage.setPoses(posesAt(clock.t, models, hidden, ids), dimsAt(clock.t, models, hidden, ids));
@@ -143,6 +153,6 @@ export async function mountMultiCompare(root, people) {
     seek(s) { clock.seek(Number(s)); },
     play() { clock.play(); startLoop(); },
     pause() { clock.pause(); },
-    destroy() { if (raf) cancelAnimationFrame(raf); stage.dispose(); wrap.remove(); },
+    destroy() { if (raf) cancelAnimationFrame(raf); gone = true; if (picker) picker.destroy(); stage.dispose(); wrap.remove(); },
   };
 }

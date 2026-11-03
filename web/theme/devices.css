@@ -1,0 +1,12 @@
+/* The signed-in devices card on the profile page (views/devices.js). Beside theme/profile.css; no literal colors. */
+
+.dv[hidden] { display: none; }
+.dv-title:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.dv-row { align-items: center; }
+.dv-main { display: grid; gap: var(--space-1); min-width: 0; }
+.dv-name { font: var(--weight-bold) var(--text-sm) var(--font-sans); overflow-wrap: anywhere; }
+.dv-badge { justify-self: start; padding: 0 var(--space-2); border-radius: var(--radius-pill); background: var(--color-accent-soft); color: var(--color-text);
+  font: var(--weight-semibold) var(--text-xs)/1.6 var(--font-sans); }
+.dv-end, .dv-end-others { min-height: var(--target-min); }
+.dv-end-others { justify-self: start; }
+.dv-end:focus-visible, .dv-end-others:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }

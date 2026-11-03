@@ -139,7 +139,37 @@ def adopt_pins(repo: Path, mods: Path, state_file: Path, setup: Callable[[list[s
 
 def cli_parts_adopt(pins: bool, validated: bool) -> int:
     """`part7 parts-adopt --validated | --pins`."""
+    from part7 import module_trees
+
+    if module_trees.pointer_target() is not None:  # TICKET-329 R8: an in-place move would change the serving tree
+        print("parts-adopt: refused, the build runs on a module tree (module-trees/current); use `part7 parts-tree build`",
+              file=sys.stderr)
+        return 1
     mods = config.modules_dir()
     if validated:
         return adopt_validated(mods, parts_gate.gate_dir())
     return adopt_pins(config.REPO_ROOT, mods, config.state_root() / PINS_FILE)
+
+
+def validated_shas(gdir: Path) -> tuple[dict[str, str], str | None]:
+    """`({part: sha}, error)` of the last green gate result, for a per-build tree (TICKET-329); no module is touched."""
+    last = _read(gdir / "last.json")
+    shas = last.get("candidate_shas")
+    if last.get("outcome") != "green" or not isinstance(shas, dict) or not shas:
+        return {}, "last.json holds no green gate result; nothing adopted"
+    return {str(k): str(v) for k, v in shas.items()}, None
+
+
+def changed_pins(repo: Path, state_file: Path) -> tuple[dict[str, str], str | None]:
+    """The HEAD gitlinks that changed since the last run; the first run only records them (as `adopt_pins`)."""
+    pins = head_pins(repo)
+    seen = _read(state_file)
+    if not seen:
+        _write(state_file, pins)
+        return {}, None
+    return {p: s for p, s in pins.items() if seen.get(p) != s}, None
+
+
+def record_pins(repo: Path, state_file: Path) -> None:
+    """Remember the HEAD gitlinks once their tree is built."""
+    _write(state_file, {**_read(state_file), **head_pins(repo)})

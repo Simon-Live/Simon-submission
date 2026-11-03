@@ -26,13 +26,14 @@ from pathlib import Path
 import shutil
 from typing import Any
 
-from part7 import applog, auth, challenges, export_routes, history_store, jobs, labels, narration, speech
+from part7 import applog, auth, challenges, my_reference, reference_approval, export_routes, history_store, jobs, labels, muse_fix, muse_fix_routes, narration, speech
 
 TAKE_KINDS = ("follow", "group", "trainer")
 MSG_NO_JOB = "This take was not found. It may already be deleted."
 MSG_BUSY = "This take is still being analysed. Delete it when it has finished."
 MSG_EXPORTING = "An export is being made. Delete this take when it has finished."
 MSG_SPEAKING = "A spoken cue is being made."
+MSG_DRAWING = "A picture of you is being made. Delete this take when it has finished."
 MSG_NOT_TAKE = "Only a take can be deleted here."
 
 
@@ -72,6 +73,8 @@ def _drop_entry(app: Any, entry_id: str, folder: Path) -> bool:
         return False
     shutil.rmtree(doomed, ignore_errors=True)
     (Path(app.state) / "labels" / f"{entry_id}.json").unlink(missing_ok=True)
+    (Path(app.state) / "labels" / "review" / f"{entry_id}.json").unlink(missing_ok=True)
+    labels.set_floor_work(app.state, entry_id, False)
     return True
 
 
@@ -92,6 +95,7 @@ def _trainer_entry(app: Any, job: dict[str, Any], remove_entry: bool, removed: l
     transcript = folder / narration.FILE_NAME
     if transcript.is_file() and not transcript.is_symlink():  # the cues were made from the trainer's voice
         transcript.unlink(missing_ok=True)
+        shutil.rmtree(folder / narration.CLIPS_DIR, ignore_errors=True)  # the cut audio is the same voice
         removed.append("narration")
 
 
@@ -111,6 +115,8 @@ def delete_take(app: Any, job_id: str, remove_entry: bool = False) -> tuple[int,
         return 409, {"error": MSG_EXPORTING}
     if speech.active_in(app.queue.job_dir(job_id)):  # the synthesis thread writes into the job folder
         return 409, {"error": MSG_SPEAKING}
+    if muse_fix_routes.active(job_id):  # the worker writes into work/muse-fix of this job (TICKET-280)
+        return 409, {"error": MSG_DRAWING}
     removed, kept = ["job"], []
     upload_id, people_job = job.get("upload_id"), job.get("people_job")
     owner = job.get("kind") == "group"  # the group take owns its people job: a sibling's result does not keep it
@@ -135,12 +141,14 @@ def delete_take(app: Any, job_id: str, remove_entry: bool = False) -> tuple[int,
                 kept.append("people")
             elif app.queue.forget(people_job):
                 removed.append("people")
+    if muse_fix.delete(app.queue.job_dir(job_id)):  # the corrected-pose picture and referee records go with the take
+        removed.append("muse-fix")
     if challenges.remove_job(app.state, job_id):
         removed.append("board")
     if job.get("kind") == "trainer":
         _trainer_entry(app, job, remove_entry, removed, kept)
     app.queue.forget(job_id)
-    for hook, what in ((history_store.drop_take, "history copy"), (lambda state, job: auth.forget_job(app, job), "ownership row")):
+    for hook, what in ((history_store.drop_take, "history copy"), (my_reference.take_deleted, "own reference"), (reference_approval.take_deleted, "reference approval"),(lambda state, job: auth.forget_job(app, job), "ownership row")):
         try:  # the take is already gone: a fault in an opt-in store must not turn an anonymous delete into a 500
             hook(app.state, job_id)  # the student's history copy and any report citing it, then the ownership row
         except Exception as exc:

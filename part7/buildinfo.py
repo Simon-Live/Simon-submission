@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from part7 import modules
+from part7 import config, modules
 
 SHORT = 9
 UNKNOWN = "unknown"
@@ -35,11 +35,20 @@ def _parts() -> dict[str, str]:
         return {}
 
 
+def environment() -> str:
+    """`staging` on the staging server (SIMON7_STAGING=1 or its state folder), else `local` (version-footer.md, Data)."""
+    try:
+        return "staging" if config.is_staging_server() else "local"
+    except Exception:
+        return "local"
+
+
 def _utc(moment: datetime) -> str:
     return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def collect(root: Path, now: datetime | None = None, parts: dict[str, str] | None = None) -> dict[str, Any]:
+def collect(root: Path, now: datetime | None = None, parts: dict[str, str] | None = None,
+            env: str | None = None) -> dict[str, Any]:
     sha = _git(root, "rev-parse", "HEAD")
     committed = _git(root, "log", "-1", "--format=%cI", "HEAD") if sha else None
     subject = _git(root, "log", "-1", "--format=%s", "HEAD") if sha else None
@@ -55,9 +64,10 @@ def collect(root: Path, now: datetime | None = None, parts: dict[str, str] | Non
         "subject": subject or UNKNOWN,
         "started_at": _utc(now or datetime.now(timezone.utc)),
         "parts": parts if parts is not None else _parts(),
+        "environment": env or environment(),  # TICKET-326: the footer names it
     }
 
 
 def unknown() -> dict[str, Any]:
     return {"sha": UNKNOWN, "short": UNKNOWN, "committed_at": UNKNOWN, "subject": UNKNOWN,
-            "started_at": UNKNOWN, "parts": {}}
+            "started_at": UNKNOWN, "parts": {}, "environment": environment()}

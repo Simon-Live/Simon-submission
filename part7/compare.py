@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from part7 import quality_cap
 from part7.quality_constants import QUALITY_SCORE_CAP
 
 DEG_ABS: float = 2.0
@@ -129,6 +130,29 @@ def score_equal(app_analysis: dict[str, Any], direct_analysis: dict[str, Any]) -
     return app_v is None and direct_v is None
 
 
+# ADR-0018: Part 2's GPU pose is not deterministic, so check-7 passes when the two scores agree within one point.
+SCORE_DRIFT_MAX: float = 1.0
+SCORE_DRIFT_REASON = "Part 2 GPU pose is not deterministic (Part 2 lane, 2026-11-02)"
+
+
+def score_drift(app_analysis: dict[str, Any], direct_analysis: dict[str, Any]) -> float | None:
+    """Absolute difference of the two `score.value`s, or None when either is null or not a number."""
+    app_v, direct_v = score_value(app_analysis), score_value(direct_analysis)
+    numbers = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (app_v, direct_v))
+    return abs(float(app_v) - float(direct_v)) if numbers else None
+
+
+def score_within(app_analysis: dict[str, Any], direct_analysis: dict[str, Any]) -> bool:
+    """ADR-0018: `score_equal` with a drift of at most SCORE_DRIFT_MAX in place of identity on an ok take."""
+    app_st = status_code(app_analysis)
+    if app_st != status_code(direct_analysis):
+        return False
+    if app_st != "ok":
+        return score_value(app_analysis) is None and score_value(direct_analysis) is None
+    drift = score_drift(app_analysis, direct_analysis)
+    return drift is not None and drift <= SCORE_DRIFT_MAX + 1e-9
+
+
 def quality_codes(analysis: dict[str, Any], impact: str) -> list[str]:
     """Sorted unique reported codes. Signal level never determines an issue's impact here."""
     quality = analysis.get("quality") if isinstance(analysis, dict) else None
@@ -166,6 +190,44 @@ def quality_cap_equal(app_analysis: dict[str, Any], direct_analysis: dict[str, A
     """Both paths apply valid, identical quality caps; legacy analyses remain compatible."""
     return (quality_cap_valid(app_analysis) and quality_cap_valid(direct_analysis)
             and quality_capped_by(app_analysis) == quality_capped_by(direct_analysis))
+
+
+def quality_level(analysis: dict[str, Any]) -> str:
+    """Part 5 1.13.0 `quality.level` (`ok`, `degraded`, `major`); `not_assessed` for a document without the block."""
+    return quality_cap.level_of(analysis.get("quality") if isinstance(analysis, dict) else None)
+
+
+def quality_score_cap(analysis: dict[str, Any]) -> int | None:
+    """`quality.score_cap` of a `major` block (59), else None."""
+    return quality_cap.cap_of(analysis.get("quality") if isinstance(analysis, dict) else None)
+
+
+def shown_score(analysis: dict[str, Any]) -> Any:
+    """What Part 7 shows: `score.value`, lowered to `quality.score_cap` when Part 5 reports a major quality."""
+    value = score_value(analysis)
+    cap = quality_score_cap(analysis)
+    if cap is None or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return value
+    return min(value, cap)
+
+
+def quality_cap_valid_level(analysis: dict[str, Any]) -> bool:
+    """A major block promises the cap (59) and the shown score under it; any other level promises no cap."""
+    level = quality_level(analysis)
+    block = analysis.get("quality") if isinstance(analysis, dict) else None
+    cap = block.get("score_cap") if isinstance(block, dict) else None
+    if level != "major":
+        return cap is None
+    shown = shown_score(analysis)
+    return (cap == QUALITY_SCORE_CAP and isinstance(shown, (int, float)) and not isinstance(shown, bool)
+            and math.isfinite(shown) and 0 <= shown <= QUALITY_SCORE_CAP)
+
+
+def quality_cap_equal_level(app_analysis: dict[str, Any], direct_analysis: dict[str, Any]) -> bool:
+    """Both paths promise a valid cap, at the same level and the same `score_cap`."""
+    return (quality_cap_valid_level(app_analysis) and quality_cap_valid_level(direct_analysis)
+            and quality_level(app_analysis) == quality_level(direct_analysis)
+            and quality_score_cap(app_analysis) == quality_score_cap(direct_analysis))
 
 
 def text_timed_present(analysis: dict[str, Any]) -> bool:
@@ -305,6 +367,8 @@ def match(app_analysis: dict[str, Any], direct_analysis: dict[str, Any]) -> dict
         "warnings_equal": warning_codes(app_analysis) == warning_codes(direct_analysis),
         "quality_major_codes_equal": quality_codes(app_analysis, "major") == quality_codes(direct_analysis, "major"),
         "quality_cap_equal": quality_cap_equal(app_analysis, direct_analysis),
+        "quality_level_equal": quality_level(app_analysis) == quality_level(direct_analysis),
+        "quality_cap_equal_level": quality_cap_equal_level(app_analysis, direct_analysis),
         "faults_compared": faults_compared,
         "at_s_equal": all_at_s_equal,
         "app_status": app_st,

@@ -111,7 +111,7 @@ def test_answer_has_no_job_id_and_no_substring_derived_from_one(tmp_path: Path) 
     doc = teacher_stats.collect(tmp_path, ENTRY)
     text = json.dumps(doc)
     assert [t["n"] for t in doc["takes"]] == [1, 2, 3]  # the position, oldest first
-    assert all(set(t) == {"n", "at", "score", "grade", "top_cues"} for t in doc["takes"])
+    assert all(set(t) == {"n", "at", "score", "grade", "top_cues", "shown"} for t in doc["takes"])  # shown: one-letter.md
     for job_id in ids:
         derived = {job_id, job_id.upper(), "t" + job_id}
         for algo in ("sha256", "sha1", "md5", "sha512"):
@@ -171,7 +171,9 @@ def test_route_answers_takes_for_a_catalog_entry(api: Api) -> None:  # AC-T8
 
 def test_route_empty_entry_is_200_with_no_takes(api: Api) -> None:
     status, doc = api.json("GET", "api/teacher/skel-only")
-    assert (status, doc) == (200, {"entry": "skel-only", "takes": [], "cue_counts": []})
+    assert status == 200 and doc.pop("attribution")["author"] is None  # an entry made signed out is unattributed
+    assert doc.pop("class_table")["follower_count"] == 0  # class-table.md
+    assert doc == {"entry": "skel-only", "takes": [], "cue_counts": []}
 
 
 def test_route_unknown_or_malformed_entry_is_404_and_never_traverses(api: Api) -> None:  # AC-T9

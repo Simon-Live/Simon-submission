@@ -198,7 +198,7 @@ const cases = {
     await tid(page, "me-retention").tap();
     await page.waitForFunction(() => document.querySelector('[data-testid="me-consent-note"]').textContent === "Saved.");
     const state = await getJson("__test/auth");
-    assert.deepEqual(state.consent["sam@example.com"], { retention: true, version: "retention-90-v2" });
+    assert.deepEqual(state.consent["sam@example.com"], { retention: true, version: "retention-90-v3" });
     await page.evaluate(() => { location.hash = "#/me"; location.reload(); });
     await tid(page, "me-retention").waitFor();
     assert.equal(await tid(page, "me-retention").isChecked(), true, "the choice survives a reload (read from the server)");

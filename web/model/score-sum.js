@@ -1,8 +1,8 @@
-// "How your score adds up" (docs/specs/result-intent.md R2, the parked TICKET-138 intent): one line under the score
-// ring that says how 100 minus Part 5's own components becomes the score, so the points shown next to each miss never
-// read as a sum error. Logic only, no DOM. ADR-0006: every number is Part 5's (`score.components`, `score.uncapped`,
-// `score.fault_cap`, `score.capped_by`); Part 7 only subtracts them for display and prints the sum only when it lands
-// on Part 5's own number.
+// "How your score adds up" (docs/specs/result-intent.md R2): one line under the score that says how 100 minus Part 5's
+// own components becomes the score, what capped it, and why the points next to each miss do not add up to it.
+// Logic only, no DOM. ADR-0006: every number is Part 5's (`score.components`, `score.uncapped`, `score.fault_cap`,
+// `score.capped_by`). Figures are bounded (rubric audit): a component is printed only when each one is on the take's
+// 0 to 100 scale and together they land on the shown deduction; a raw per-window miss sum is never printed.
 import { CAP_REASONS } from "../score.js";
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -40,14 +40,21 @@ function capSentence(score, faultCount) {
   const faultIsLower = fault && faultLimit != null && value >= faultLimit;
   const warn = faultIsLower
     ? `A warning also applies (${reasons.join("; ")}), but the fault cap of ${faultLimit} is the lower limit.`
-    : `A warning then limited it to ${value}: ${reasons.join("; ")}.`;
+    : `A warning then limited the score to ${value}: ${reasons.join("; ")}.`;
   return fault ? `${fault} ${warn}` : warn;
+}
+
+/** "before the warning cap", "before the fault cap" or "before the caps": which cap the sum's last figure precedes. */
+function capLabel(score, faultCount) {
+  const warned = Array.isArray(score.capped_by) && score.capped_by.some((c) => typeof c === "string" && c);
+  const fault = !!faultCapSentence(score, faultCount);
+  return warned && fault ? "before the caps" : fault ? "before the fault cap" : "before the warning cap";
 }
 
 /**
  * The line, or null when the score carries no components. Returns `{text, adds, capped}`: `adds` is true when
- * 100 minus the components rounds to Part 5's value before any cap (`uncapped.value`, else `value`), and only then is
- * the sum written out; `capped` is true when a cap sentence follows. Accepts simon.score.v1 and later blocks.
+ * 100 minus the components rounds to Part 5's value before any cap (`uncapped.value`, else `value`), and is kept as
+ * `data-adds` only (no sum is written); `capped` is true when a cap sentence follows. Accepts simon.score.v1 and later blocks.
  * `faultCount` is the length of the analysis's fault list (the result screen passes it).
  */
 export function scoreSum(score, faultCount) {
@@ -59,12 +66,19 @@ export function scoreSum(score, faultCount) {
   const lost = used.reduce((s, [v]) => s + v, 0);
   const before = score.uncapped && num(score.uncapped.value) != null ? score.uncapped.value : score.value;
   const adds = Math.max(0, Math.min(100, Math.round(100 - lost))) === before;
-  const list = used.map(([v, why], i) => `${one(v)}${i ? "" : " points"} ${why}`).join(" and ");
+  // figures only on the 0 to 100 scale: each part at most 100, the parts summing to the deduction the sum shows
+  const bounded = adds && lost <= 100 && used.every(([v]) => v >= 0 && v <= 100);
   const unit = UNIT[score.basis] || "part";
   const per = Array.isArray(score.timeline) && score.timeline.filter((w) => w && w.compared !== false).length > 1;
-  const head = per ? `Each ${unit} started at 100 and lost, on average, ${list}` : `Your take started at 100 and lost ${list}`;
-  const sum = adds ? `: ${["100", ...used.map(([v]) => `${MINUS}${NBSP}${one(v)}`), `≈${NBSP}${before}`].join(NBSP)}.` : ".";
+  const whys = used.map(([, why]) => why.replace(/^for /, ""));
+  const list = bounded
+    ? `${per ? ", on average," : ""} ${used.map(([v, why], i) => `${one(v)}${i ? "" : " points"} ${why}`).join(" and ")}`
+    : ` points for ${whys.length > 1 ? `${whys.slice(0, -1).join(", ")} and ${whys[whys.length - 1]}` : whys[0]}`;
+  const head = `${per ? `Each ${unit}` : "Your take"} started at 100 and lost${list}`;
   const cap = capSentence(score, faultCount);
+  // the figure the sum lands on is the score only when nothing capped it; otherwise it says it is from before the cap
+  const lands = cap && before !== score.value ? ` ${capLabel(score, faultCount)}` : "";
+  const sum = bounded ? `: ${["100", ...used.map(([v]) => `${MINUS}${NBSP}${one(v)}`), `≈${NBSP}${before}`].join(NBSP)}${lands}.` : ".";
   const tail = per ? ` The points next to each miss count only in its own ${unit}, so together they add up to more.` : "";
   return { text: `${head}${sum}${cap ? ` ${cap}` : ""}${tail}`, adds, capped: !!cap };
 }

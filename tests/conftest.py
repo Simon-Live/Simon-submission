@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import sys
+import tempfile
 import threading
 from typing import Iterator
 
@@ -13,6 +15,26 @@ sys.path.insert(0, str(Path(__file__).parent / "part7"))  # the helpers of the s
 
 from part7 import server  # noqa: E402
 from support import Api, FakeChild, ffmpeg_video, make_lock  # noqa: E402
+import ci_skips  # noqa: E402
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    ci_skips.configure(config)
+    # TICKET-349: a process-wide private lock path, so a bare monkeypatch.undo() (which also undoes the per-test setenv
+    # below) falls back to this and never to the host's ~/.local/state/simon-part-2/gpu.lock
+    private = Path(tempfile.mkdtemp(prefix="simon7-gpu-")) / "gpu.lock"
+    os.environ["PART2_GPU_LOCK"] = str(private)
+    os.environ["SIMON7_GPU_LOCK_PATH"] = str(private)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """TICKET-244: tests that need the part checkouts, the GPU host or the staging host skip with a stated reason."""
+    ci_skips.setup(item)
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    ci_skips.terminal_summary(terminalreporter)
 
 
 @pytest.fixture(autouse=True)
@@ -22,10 +44,21 @@ def _part1_breaker_off(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _selfheal_clean() -> None:
+    """TICKET-204: the self-heal record is process-wide; each test starts with none and no state folder."""
+    from part7 import selfheal
+
+    selfheal.configure(None)
+
+
+@pytest.fixture(autouse=True)
 def _private_gpu_lock(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     """Tests never take the host's shared Part 2 GPU lock: another engagement holding it made fake-runner tests time
     out with "the GPU is busy" (2026-10-31). A test that needs a lock path of its own still sets one."""
     monkeypatch.setenv("SIMON7_GPU_LOCK_PATH", str(tmp_path_factory.mktemp("gpu") / "gpu.lock"))
+    # TICKET-349: real Part 2 reads PART2_GPU_LOCK (part2.trackers.GPU_LOCK_ENV); a test that launches it, marked
+    # `gpu_host` or not, flocks this temp file and never ~/.local/state/simon-part-2/gpu.lock that live staging takes use
+    monkeypatch.setenv("PART2_GPU_LOCK", str(tmp_path_factory.mktemp("p2gpu") / "gpu.lock"))
     monkeypatch.setenv("SIMON7_NARRATION", "off")  # TICKET-146: no test calls the paid transcription API unless it opts in
 
 

@@ -6,15 +6,22 @@
 //   route is likewise absent from the harness
 // - `api/auth/me`: the header asks it on every page whether sign-in is on (identity.md); the harness has no server,
 //   and the app reads a 404 as sign-in off
+// - the model picker (docs/specs/model-picker.md AC-P9): its two catalog calls (`models/library/library.json`, `api/models`)
+//   and the skin modules it loads lazily; a harness has no model server and the picker reads a 404 as an empty list
+// - `api/source/<entry|take>/<id>` (TICKET-322): the source credit reads a 404 as no source and draws nothing
 export const LANE_MODULES = ["voice.js", "second-opinion.js", "export.js", "narration.js"];
 const MODULE_RE = new RegExp(`/web/(${LANE_MODULES.map((f) => f.replace(".", "\\.")).join("|")})$`);
-const OPTIONAL_RE = /\/api\/results\/[^/]+\/(models|skeleton2d|mesh)\.json$|\/api\/narration\/example$|\/api\/auth\/me$/;
+const PICKER_RE = /\/mesh\/[^/]+\/rest\.json$|\/web\/skin\/(character|person-skin)\.js$|\/models\/library\/library\.json$|\/api\/models$/;
+const OPTIONAL_RE = /\/api\/results\/[^/]+\/(models|skeleton2d|mesh|take-ar)\.json$|\/api\/narration\/example$|\/api\/auth\/me$|\/api\/jobs\/[^/]+\/muse-fix$|\/api\/source\/(entry|take)\/[^/]+$/;  // muse-fix: 404 is "no corrected pose" (muse-fix-ui.md)
 
 /** True for the URL of one of the other session's modules (the console message's location). */
 export const isLaneModule404 = (url) => MODULE_RE.test(String(url || ""));
+
+/** True for the model picker's catalog calls and lazy skin modules, which a harness without a model server answers 404. */
+export const isPickerRequest404 = (url) => PICKER_RE.test(String(url || ""));
 
 /** True for a harness job's optional result file. */
 export const isOptionalResult404 = (url) => OPTIONAL_RE.test(String(url || ""));
 
 /** Either of the above. */
-export const isResultScreen404 = (url) => isLaneModule404(url) || isOptionalResult404(url);
+export const isResultScreen404 = (url) => isLaneModule404(url) || isOptionalResult404(url) || isPickerRequest404(url);

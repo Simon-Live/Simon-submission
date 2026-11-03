@@ -1,0 +1,30 @@
+/* Ask the trainer for a note (views/notes.js) on the brand tokens. No literal colors. */
+
+.nt { display: grid; gap: var(--space-3); max-width: 520px; }
+.nt-slot { margin: var(--space-3) 0; }
+.nt-title { margin: 0; font: var(--weight-black) var(--text-lg)/1.2 var(--font-sans); }
+.nt-title:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.nt-subtitle { margin: 0; font: var(--weight-bold) var(--text-md) var(--font-sans); }
+.nt-text { margin: 0; font-size: var(--text-md); line-height: 1.45; overflow-wrap: anywhere; }
+.nt-hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.45; }
+.nt-hint[data-tone="bad"] { color: var(--color-bad); }
+.nt-dialog, .nt-card, .nt-note { display: grid; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); }
+.nt-dialog h2, .nt-note-title { margin: 0; font: var(--weight-bold) var(--text-md) var(--font-sans); }
+.nt-fieldset { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
+.nt-fieldset legend { padding: 0; font: var(--weight-semibold) var(--text-sm) var(--font-sans); }
+.nt-check { display: flex; align-items: center; gap: var(--space-3); min-height: var(--target-min); }
+.nt-check input { flex: none; width: 24px; height: 24px; margin: 0; accent-color: var(--color-accent); }
+.nt-check input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.nt-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.nt-row .btn { min-height: var(--target-min); }
+.nt-moment { margin: 0; color: var(--color-accent); font: var(--weight-semibold) var(--text-sm) var(--font-sans); }
+.nt-note-text { margin: 0; font-size: var(--text-md); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nt-form { display: grid; gap: var(--space-3); }
+.nt-label { font: var(--weight-semibold) var(--text-sm)/1.3 var(--font-sans); }
+.nt-area { width: 100%; box-sizing: border-box; padding: var(--space-3); font: var(--text-md)/1.45 var(--font-sans); resize: vertical; }
+.nt-area:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.nt-list { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-2); }
+.nt-link { display: inline-block; min-height: var(--target-min); line-height: var(--target-min); color: var(--color-accent); }
+.nt-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.nt-clip { width: 100%; border-radius: var(--radius-lg); background: var(--color-media-bg); }
+.nt-item { display: grid; gap: var(--space-1); }

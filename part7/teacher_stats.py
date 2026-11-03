@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 import threading
 from typing import Any
 
-from part7 import applog, jobs
+from part7 import applog, class_table, jobs, my_reference, shown_score
 
 TAKES_MAX = 200  # the newest takes kept; the oldest are dropped, never the newest
 TOP_CUES_PER_TAKE = 3
@@ -57,7 +58,13 @@ def _take_of(job: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any] | 
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not isinstance(grade, str):
         return None
     at, cues = job.get("finished_at") or job.get("created_at"), take_cues(score)
-    return {"at": at if isinstance(at, str) else "", "score": value, "grade": grade[:3], "top_cues": cues[:TOP_CUES_PER_TAKE], "_cues": cues}
+    # a seeded take (tools/seed_class.py) is marked so the page labels it seeded, never as real class data (class-table.md)
+    synthetic = analysis.get("synthetic") is True or job.get("synthetic") is True
+    seed = job.get("seed_follower") if synthetic and isinstance(job.get("seed_follower"), str) else None
+    return {"at": at if isinstance(at, str) else "", "score": value, "grade": grade[:3], "top_cues": cues[:TOP_CUES_PER_TAKE], "_cues": cues,
+            "_synthetic": synthetic, "_seed_follower": seed,
+            # one take, one letter (one-letter.md): the result headline's score beside Part 5's value and grade
+            "shown": shown_score.of_analysis(analysis, (job.get("result") or {}).get("light") if isinstance(job.get("result"), dict) else None)}
 
 
 def _skip(folder: Path, why: str) -> None:
@@ -76,6 +83,8 @@ def _parse_folder(folder: Path) -> tuple[str, dict[str, Any] | None] | None:
         return None
     entry = job.get("entry_id")
     if job.get("kind") != "follow" or job.get("status") != "done" or not isinstance(entry, str):
+        return None
+    if my_reference.uses_own(job):  # scored against the student's own rep, not the teacher's (ADR-0019)
         return None
     if job.get("private") is True:  # a private take (private-mode.md) never reaches a public page
         return None
@@ -120,6 +129,11 @@ def _finished_takes(jobs_root: Path, entry_id: str) -> list[dict[str, Any]]:
     return takes
 
 
+def _window(jobs_root: Path | str, entry_id: str) -> list[dict[str, Any]]:
+    """The kept takes of `entry_id` with their private fields, oldest first, at most `TAKES_MAX` (the newest)."""
+    return sorted(_finished_takes(Path(jobs_root), entry_id), key=lambda t: (t["at"], t["_folder"]))[-TAKES_MAX:]
+
+
 def collect(jobs_root: Path | str, entry_id: str) -> dict[str, Any]:
     """`{entry, takes, cue_counts}` for `entry_id`.
 
@@ -127,12 +141,23 @@ def collect(jobs_root: Path | str, entry_id: str) -> dict[str, Any]:
     nothing about the job (a hash of a 48-bit job id can be searched back to the id, which is the follower's key).
     `cue_counts` are by the number of takes showing the cue.
     """
-    found = sorted(_finished_takes(Path(jobs_root), entry_id), key=lambda t: (t["at"], t["_folder"]))[-TAKES_MAX:]
+    return _shape(entry_id, _window(jobs_root, entry_id))
+
+
+def page(jobs_root: Path | str, entry_id: str, owners: dict[str, str] | None = None, now: datetime | None = None,
+         with_followers: bool = False) -> dict[str, Any]:
+    """`collect` plus `class_table` (class_table.build) over the same takes, read once; per-follower rows only for the owner."""
+    found = _window(jobs_root, entry_id)
+    return {**_shape(entry_id, found), "class_table": class_table.build(found, owners, now, with_followers)}
+
+
+def _shape(entry_id: str, found: list[dict[str, Any]]) -> dict[str, Any]:
     counts: dict[str, int] = {}
     takes = []
     for n, take in enumerate(found, start=1):
         for text in take["_cues"]:
             counts[text] = counts.get(text, 0) + 1
-        takes.append({"n": n, "at": take["at"], "score": take["score"], "grade": take["grade"], "top_cues": take["top_cues"]})
+        takes.append({"n": n, "at": take["at"], "score": take["score"], "grade": take["grade"], "top_cues": take["top_cues"],
+                      "shown": take.get("shown")})
     ranked = sorted(counts, key=lambda text: (-counts[text], text))[:CUES_MAX]
     return {"entry": entry_id, "takes": takes, "cue_counts": [{"text": text, "count": counts[text]} for text in ranked]}

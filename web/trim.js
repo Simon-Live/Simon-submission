@@ -1,6 +1,7 @@
 // Trim editor: pick where the movement starts and ends before anything is uploaded.
 // recorder.md "Trim editor". The video plays from a local object URL; the range control has two handles
 // (buttons with aria labels) over a canvas strip of thumbnails. Resolves {start_ms, end_ms} or null.
+// An uploaded clip also offers "This video is mirrored" (TICKET-310); checked, the range carries `mirrored: true`.
 import { h } from "./ui.js";
 import { showLoading, hideLoading } from "./progress.js";
 
@@ -17,7 +18,13 @@ export const TEXT = {
   bytes: "The file is too large (95 MB at most).",
   tooShort: "This clip is shorter than 1 s, so it cannot be trimmed.",
   unreadable: "This video could not be read. Go back and try another one.",
+  mirrored: "This video is mirrored (a selfie video). Flip left and right.",
 };
+
+/** The range a finished trim resolves: `mirrored: true` only when the person ticked the box (TICKET-310). */
+export function trimResult(startMs, endMs, mirrored = false) {
+  return { start_ms: startMs, end_ms: endMs, ...(mirrored ? { mirrored: true } : {}) };
+}
 
 const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -126,10 +133,11 @@ async function drawStrip(canvas, url, durationMs, isDone = () => false) {
 }
 
 /**
+ * @param offerMirror false hides the mirrored checkbox (a group take); it is only ever shown for an upload
  * @param reference optional reference.js controller: docked beside the take, its playhead follows ours
  * @param durationHint recorded length in ms from the recorder clock, used when the file has no readable duration
  */
-export function openTrimEditor(root, { file, blob, source = "recording", countdownUsed = false, manual = false, durationHint = 0, reference = null } = {}) {
+export function openTrimEditor(root, { file, blob, source = "recording", countdownUsed = false, manual = false, durationHint = 0, reference = null, offerMirror = true } = {}) {
   const media = file || blob;
   return new Promise((resolve) => {
     const url = URL.createObjectURL(media);
@@ -155,6 +163,12 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
     const setEnd = btn("Set end", "trim-set-end");
     const back = btn(source === "upload" ? "Choose another file" : "Record again", "trim-back");
     const next = btn("Continue", "trim-continue", "primary");
+    next.disabled = true; // TICKET-309: no Continue until the length is read, or the selection would be 0 to 0 s
+    // TICKET-310: never detected, only the person's word, and only for a file they picked (in-app takes are unmirrored)
+    const mirror = source === "upload" && offerMirror
+      ? h("input", { type: "checkbox", id: "trim-mirrored", "data-testid": "trim-mirrored" }) : null;
+    const mirrorRow = mirror ? h("p", { class: "field-row trim-mirrored" }, mirror,
+      h("label", { for: "trim-mirrored", text: ` ${TEXT.mirrored}` })) : null;
     const refRow = h("div", { class: reference ? "trim-ref-row" : "" }, h("div", { class: "trim-stage" }, video));
     if (reference) reference.dock(refRow, "trim");
     const section = h("section", { class: "screen trim", "data-testid": "trim", "aria-labelledby": "trim-title" },
@@ -164,6 +178,7 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
       h("div", { class: "trim-clock hint" }, "Now ", now),
       track, length, error,
       h("div", { class: "row trim-tools" }, play, setStart, setEnd),
+      ...(mirrorRow ? [mirrorRow] : []),
       h("div", { class: "row between trim-actions" }, back, next));
 
     let finished = false;
@@ -245,7 +260,7 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
     setEnd.addEventListener("click", () => setEndMs(video.currentTime * 1000));
     back.addEventListener("click", () => finish(null));
     next.addEventListener("click", () => {
-      if (!next.disabled) finish({ start_ms: state.start, end_ms: state.end });
+      if (!next.disabled && state.end > state.start) finish(trimResult(state.start, state.end, Boolean(mirror && mirror.checked)));
     });
     section.addEventListener("keydown", (e) => { if (e.key === "Escape") finish(null); });
 

@@ -65,9 +65,11 @@ export function scoreSentence(score, windows) {
 
 /**
  * Render the timeline under the score panel. `getCompare` returns the 3D compare (seek, highlight) once it exists.
- * Returns the section, or null when the analysis has no timeline.
+ * `credit` is Part 5's credit in the viewer's unit (model/score-credit.js creditDisplay's `windows`), or null: then
+ * each window shows its value out of 100 as before. Returns the section (`setCredit(credit)` repaints the values in
+ * a new unit), or null when the analysis has no timeline.
  */
-export function renderTimeline(root, analysis, getCompare = () => null, flagged = new Set()) {
+export function renderTimeline(root, analysis, getCompare = () => null, flagged = new Set(), credit = null) {
   const windows = timelineOf(analysis);
   if (!windows.length) return null;
   const score = analysis.score;
@@ -76,10 +78,15 @@ export function renderTimeline(root, analysis, getCompare = () => null, flagged 
   const span = Math.max(1e-6, t1 - t0);
 
   const section = el("section", { class: "sr-timeline", "data-testid": "score-timeline", "aria-labelledby": "sr-timeline-h" });
-  section.append(
-    el("h2", { id: "sr-timeline-h", text: "Score over time" }),
-    el("p", { class: "sr-tl-note", "data-testid": "timeline-sentence", text: scoreSentence(score, windows) }),
-  );
+  let shares = credit ? credit(windows) : null;   // {values: [{text, short, frac} | null], note}
+  const sentence = el("p", { class: "sr-tl-note", "data-testid": "timeline-sentence", text: shares ? shares.note : scoreSentence(score, windows) });
+  section.append(el("h2", { id: "sr-timeline-h", text: "Score over time" }), sentence);
+  /** A compared window's value in the shown unit: its credit when Part 5 wrote one for it, else value/100. */
+  const valueOf = (w, i) => {
+    const c = shares && shares.values[i];
+    // Part 5 grades the take's credit, not each window's: a credited window shows no grade
+    return c ? { fill: c.frac * 100, aria: c.text, head: ` ${c.text}` } : { fill: w.value, aria: `${w.value}, grade ${w.grade}`, head: ` ${w.value}/100 (${w.grade})` };
+  };
 
   const chart = el("div", { class: "sr-tl-chart", role: "group", "aria-label": "Score of each part of the take" });
   const detail = el("div", { class: "sr-tl-detail", "data-testid": "timeline-detail", "aria-live": "polite" });
@@ -95,10 +102,10 @@ export function renderTimeline(root, analysis, getCompare = () => null, flagged 
       "data-compared": String(compared),
       "data-review": compared && flagged.has(i) ? "true" : false,
       "aria-pressed": "false",
-      "aria-label": compared ? `${label}: ${w.value}, grade ${w.grade}, ${misses} miss${misses === 1 ? "" : "es"}` : `${label}: not compared`,
+      "aria-label": compared ? `${label}: ${valueOf(w, i).aria}, ${misses} miss${misses === 1 ? "" : "es"}` : `${label}: not compared`,
       style: `left:${((w.t_s[0] - t0) / span) * 100}%;width:${((w.t_s[1] - w.t_s[0]) / span) * 100}%`,
     });
-    bar.append(el("span", { class: "sr-tl-fill", style: `height:${compared ? Math.max(2, w.value) : 100}%` }));
+    bar.append(el("span", { class: "sr-tl-fill", style: `height:${compared ? Math.max(2, valueOf(w, i).fill) : 100}%` }));
     if (misses) bar.append(el("span", { class: "sr-tl-count", "aria-hidden": "true", text: String(misses) }));
     if (compared && flagged.has(i)) bar.append(el("span", { class: "sr-tl-flag", "data-testid": `timeline-${i}-review`, title: "A moment to review", "aria-hidden": "true" }));
     chart.append(bar);
@@ -118,7 +125,7 @@ export function renderTimeline(root, analysis, getCompare = () => null, flagged 
       detail.append(head);
       return;
     }
-    head.append(el("span", { class: "sr-tl-value", "data-grade": w.grade, text: ` ${w.value}/100 (${w.grade})` }));
+    head.append(el("span", { class: "sr-tl-value", "data-testid": "timeline-value", "data-grade": w.grade, text: valueOf(w, i).head }));
     detail.append(head);
     const tempo = tempoLine(w);
     if (tempo) {
@@ -163,5 +170,18 @@ export function renderTimeline(root, analysis, getCompare = () => null, flagged 
   section.showWindow = (i) => windows[i] && show(i);
   // the compare mounts after the timeline: once it exists, put it where the open window starts (the first seek is lost)
   section.seekShown = () => { const cmp = getCompare(); if (cmp && windows[shown]) cmp.seek(windows[shown].t_s[0]); };
+  // the credit switch flipped: the bars, their names, the sentence and the open window in the new unit (no seek)
+  section.setCredit = (next) => {
+    shares = next ? next(windows) : null;
+    sentence.textContent = shares ? shares.note : scoreSentence(score, windows);
+    windows.forEach((w, i) => {
+      if (w.compared === false) return;
+      const v = valueOf(w, i), misses = (w.misses || []).length;
+      bars[i].querySelector(".sr-tl-fill").style.height = `${Math.max(2, v.fill)}%`;
+      bars[i].setAttribute("aria-label", `${windowLabel(w, i, score.basis)}: ${v.aria}, ${misses} miss${misses === 1 ? "" : "es"}`);
+    });
+    const value = detail.querySelector(".sr-tl-value");
+    if (value && windows[shown] && windows[shown].compared !== false) value.textContent = valueOf(windows[shown], shown).head;
+  };
   return section;
 }

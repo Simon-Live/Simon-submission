@@ -35,6 +35,7 @@ export function messageFor(status, body) {
   if (status === 503 && /limit|today/i.test(server)) {
     return "The app has reached today's limit. Try again tomorrow.";
   }
+  if (status === 400 && server) return server; // TICKET-309: the server's own reason; "not a video" only when it gave none
   if (MESSAGES[status]) return MESSAGES[status];
   return "The app could not finish that. Try again in a moment.";
 }
@@ -154,6 +155,18 @@ export const entryPageUrl = (id) => `catalog/#/entry/${encodeURIComponent(id)}`;
 // A 404 on these is a normal outcome the caller shows (job gone, result not found): `expectStatus` tells errors.js not to report it.
 const NOT_FOUND_OK = { expectStatus: [404] };
 export const getJob = (id) => request(`api/jobs/${encodeURIComponent(id)}`, NOT_FOUND_OK);
+/** TICKET-284: the snapshot of a running job's streamed mesh and the bytes of one file of it (owner only; the job answer names the url). */
+export const getMeshStream = (url) => request(url, { expectStatus: [401, 404, 429] });
+export async function getMeshBytes(url) {
+  let res;
+  try { res = await fetch(url); } catch { throw new ApiError(0, OFFLINE); }
+  if (!res.ok) throw new ApiError(res.status, "");
+  return res.arrayBuffer();
+}
+/** TICKET-280: the owner's corrected-pose card state, and the request that starts the picture or the blind referee (202, then poll). */
+const fixUrl = (job) => `api/jobs/${encodeURIComponent(job)}/muse-fix`;
+export const getMuseFix = (job) => request(fixUrl(job), { expectStatus: [401, 404] });
+export const postMuseFix = (job, what) => postJSON(fixUrl(job), { what });
 export const getFixtureResult = () => request("api/fixture-result");
 /** api/results/<job>/<file>, or api/results/<job>/<pid>/<file> for one person of a group job. */
 export const resultUrl = (job, file, pid) =>
@@ -161,11 +174,23 @@ export const resultUrl = (job, file, pid) =>
 export const getAnalysis = (job, pid) => request(resultUrl(job, "analysis.json", pid), NOT_FOUND_OK);
 export const getReplay = (job, pid) => request(resultUrl(job, "replay.json", pid), NOT_FOUND_OK);
 // result-redesign-additions.md: which Meta models ran, the follower's 2D skeleton, and each person's mesh URLs
-export const getModelsUsed = (job) => request(resultUrl(job, "models.json"), NOT_FOUND_OK);
+export const getModelsUsed = (job, pid) => request(resultUrl(job, "models.json", pid), NOT_FOUND_OK);   // pid: one person of a group result
 export const getSkeleton2d = (job) => request(resultUrl(job, "skeleton2d.json"), NOT_FOUND_OK);
 /** The trainer's joints Part 3 never saw (TICKET-116); null when the job has none (a 404 is a normal outcome). */
 export const getTrainerVisibility = (job) => request(resultUrl(job, "trainer-visibility.json"), NOT_FOUND_OK).catch(() => null);
+/** The take the judge view opens first: `{job_id, entry_id, score, source}`, `job_id` null when none qualifies (judge-view.md). */
+export const getHero = () => request("api/judge/hero");
+/** The Impact page's four persona takes: `{source, personas: [{persona, take | null, missing}]}` (impact-page.md). */
+export const getImpact = () => request("api/impact");
+/** The three diagrams of docs/ARCHITECTURE.md: `{doc, diagrams: [{title, source}]}`; 404 when the doc is not here. */
+export const getArchitecture = () => request("api/architecture");
 export const getMeshIndex = (job) => request(resultUrl(job, "mesh.json"), NOT_FOUND_OK);
+/** The trainer's 2D ghost for the live preview (follow-ghost.md, TICKET-264); a 404 means the movement has none. */
+export const getGhost = (entryId) => request(`api/ghost/${encodeURIComponent(entryId)}.json`, NOT_FOUND_OK);
+/** TICKET-282 (take-ar.md): which rigged AR files each person of a done follow job has; null when the answer is not one. */
+export const getTakeAr = (job) => request(resultUrl(job, "take-ar.json"), NOT_FOUND_OK).catch(() => null);
+/** The signed-link request for one person's AR file (take-ar.md); the answer is {url, expires_utc}. */
+export const takeArUrl = (job, who, kind) => `${resultUrl(job, "take-ar-url")}?who=${who}&kind=${kind}`;
 
 /**
  * POST api/uploads with the raw blob; resolves {upload_id, duration_ms, width, height}.
@@ -201,6 +226,9 @@ const extras = (trim, labels, person) => ({
 // The last argument of each create call is the take's id, sent as Idempotency-Key (offline-takes.md).
 export const createTrainerJob = (upload_id, name, category, trim, labels, person, key) =>
   postJSON("api/trainer", { upload_id, name, category, ...extras(trim, labels, person) }, key);
+// TICKET-310 and floor-work.md: a trainer request with more fields ({mirrored?, floor_work?}); the plain one above is unchanged.
+export const createTrainerJobWith = (upload_id, name, category, trim, labels, person, more, key) =>
+  postJSON("api/trainer", { upload_id, name, category, ...extras(trim, labels, person), ...(more || {}) }, key);
 // practice-and-modes.md: `more` is {mode?, section?}
 export const createFollowJob = (upload_id, entry_id, trim, labels, person, more, key) =>
   postJSON("api/follow", { upload_id, entry_id, ...extras(trim, labels, person), ...(more || {}) }, key);
@@ -214,6 +242,7 @@ export const createGroupJob = (body, key) => postJSON("api/group", body, key);
 /** Send the request `buildSubmit` built (take-request.js), with the take's id as the Idempotency-Key. */
 export function submitJob(req, key) {
   const a = req.args;
+  if (req.kind === "trainer" && a[6]) return createTrainerJobWith(a[0], a[1], a[2], a[3], a[4], a[5], a[6], key);
   if (req.kind === "trainer") return createTrainerJob(a[0], a[1], a[2], a[3], a[4], a[5], key);
   if (req.kind === "follow") return createFollowJob(a[0], a[1], a[2], a[3], a[4], a[5], key);
   return createGroupJob(a[0], key);

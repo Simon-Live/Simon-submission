@@ -25,3 +25,6 @@
 .lib-thumb { position: relative; isolation: isolate; }
 .lib-thumb img { filter: grayscale(1) brightness(1.35) contrast(1.15); }
 .lib-thumb:has(img)::after { content: ""; position: absolute; inset: 0; background: var(--color-accent); mix-blend-mode: multiply; pointer-events: none; border-radius: inherit; }
+/* the judge view's links to the Impact and architecture pages (impact-page.md): each a full tap target */
+.lib-more { color: var(--color-text-muted); font-size: var(--text-sm); }
+.lib-more a { display: inline-flex; align-items: center; min-height: 44px; color: var(--color-accent); }

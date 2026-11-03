@@ -29,6 +29,7 @@ def _stub_lock(state: Path) -> modules.Modules:
 def test_p1_spend_cap_reads_the_part_1_module_ledger(state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """AC-H10: a `.meta-spend.json` of >= $5 in the Part 1 module triggers the spend cap."""
     monkeypatch.setenv("SIMON7_MODULES_DIR", str(state_dir / "modules"))
+    monkeypatch.setenv("SIMON7_PART1_SPEND_CAP_USD", "5")
     module1 = state_dir / "modules" / "part-1"
     module1.mkdir(parents=True)
     assert p1_keyframes.total_spend_usd(state_dir) == 0.0
@@ -255,6 +256,7 @@ def test_p6_catalog_child_against_real_part6_clone(tmp_path: Path) -> None:
         child.stop()
 
 
+@pytest.mark.gpu_host
 def test_real_parts_2_to_6_handoffs_end_to_end(tmp_path: Path) -> None:
     """Run real Parts 2 (doctor), 3, 4, 5, and 6 adapters against Part 2's single pose3d fixture."""
     real_lock = modules.load()
@@ -323,3 +325,35 @@ def test_real_parts_2_to_6_handoffs_end_to_end(tmp_path: Path) -> None:
     doc6 = p6_catalog.doctor(cat_dir / manifest["id"], work, lock=real_lock, state=real_state)
     assert doc6["exit"] == 0
 
+
+
+def test_p1_has_no_spend_cap_by_default(state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Off unless SIMON7_PART1_SPEND_CAP_USD is set: a large recorded spend does not stop Part 1."""
+    from part7 import config
+    monkeypatch.setenv("SIMON7_MODULES_DIR", str(state_dir / "modules"))
+    monkeypatch.delenv("SIMON7_PART1_SPEND_CAP_USD", raising=False)
+    module1 = state_dir / "modules" / "part-1"
+    module1.mkdir(parents=True)
+    (module1 / ".meta-spend.json").write_text(json.dumps({"total_usd": 5000.0}), encoding="utf-8")
+    assert p1_keyframes.total_spend_usd(state_dir) == pytest.approx(5000.0)
+    assert config.part1_spend_cap_usd() is None and not config.part1_spend_capped(5000.0)
+    video = state_dir / "clip.mp4"
+    video.write_bytes(b"fake-video-bytes")
+    _step, _kf, note = p1_keyframes.run(video, state_dir / "work", state=state_dir)
+    assert note != "spend cap"
+    monkeypatch.setenv("SIMON7_PART1_SPEND_CAP_USD", "bad")
+    assert config.part1_spend_cap_usd() is None
+    monkeypatch.setenv("SIMON7_PART1_SPEND_CAP_USD", "10")
+    assert config.part1_spend_capped(10.0) and not config.part1_spend_capped(9.99)
+
+
+def test_api_tracker_allowed_ignores_spend_unless_capped(state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from part7.parts import p2_pose
+    monkeypatch.setattr(p2_pose.keys, "has_key", lambda *a, **k: True)
+    monkeypatch.setattr(p2_pose.p1_keyframes, "total_spend_usd", lambda state=None: 5000.0)
+    monkeypatch.setattr(p2_pose.probe, "help_text", lambda *a, **k: f"--tracker {p2_pose.API_TRACKER}")
+    monkeypatch.setattr(p2_pose, "_command", lambda *a, **k: (["x"], None))
+    monkeypatch.delenv("SIMON7_PART1_SPEND_CAP_USD", raising=False)
+    assert p2_pose.api_tracker_allowed(None, state_dir) is True
+    monkeypatch.setenv("SIMON7_PART1_SPEND_CAP_USD", "5")
+    assert p2_pose.api_tracker_allowed(None, state_dir) is False

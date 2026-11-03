@@ -1,6 +1,6 @@
 // The results summary (brand design 2026-10-31). View only: draws the model from model/result-summary.js and
 // reports taps (replay, seek to a moment). Every color comes from theme/results.css through class names.
-// result-redesign-additions.md R4 (TICKET-139): on the first paint of a result the ring counts up and the grade lands;
+// result-redesign-additions.md R4 (TICKET-139): on the first paint of a result the score bar fills and the grade lands;
 // skipped under prefers-reduced-motion. R6: the export slot sits with Retry and Replay.
 import { h, ensureCss } from "../ui.js";
 import { exportSlot } from "./result-slots.js";
@@ -16,42 +16,76 @@ function s(tag, attrs = {}, ...kids) {
   return node;
 }
 
-function ring(r) {
-  const R = 52, C = 2 * Math.PI * R, frac = Math.max(0, Math.min(1, r.value / 100));
-  return h("div", { class: "rs-ring", "data-grade": r.grade, role: "img", "aria-label": `Score ${r.value} out of 100, grade ${r.grade}`, "data-testid": "summary-score" },
-    s("svg", { viewBox: "0 0 120 120", "aria-hidden": "true" },
-      s("circle", { class: "rs-ring-track", cx: 60, cy: 60, r: R }),
-      s("circle", { class: "rs-ring-fill", cx: 60, cy: 60, r: R, "stroke-dasharray": `${C * frac} ${C}`, transform: "rotate(-90 60 60)" })),
-    h("span", { class: "rs-ring-value", "data-testid": "score", text: String(r.value) }),
-    h("span", { class: "rs-ring-caption", text: r.caption }),
-    h("span", { class: "rs-ring-grade", "data-testid": "summary-grade", "aria-hidden": "true", text: r.grade }));
+// The score, once, at the top of the result (team, 2026-11-02): the grade, the headline, a bar that fills to the
+// score past the grade marks (the credit's F to S scale from Part 5, else the score's D 60 to A 90) and the score itself, in points or % (a switch
+// under it) when the take has a credit score. On the first paint the bar starts slowly, then the score grows big and settles.
+const SCORE_MARKS = [[60, "D"], [70, "C"], [80, "B"], [90, "A"]];
+const marksOf = (r) => (Array.isArray(r.grades) && r.grades.some(([, g]) => g === "S") ? [...r.grades].sort((a, b) => a[0] - b[0]) : SCORE_MARKS);
+function scoreBar(r, m, onToggle) {
+  const frac = Math.max(0, Math.min(1, r.frac));
+  const value = h("span", { class: "rs-meter-value", "data-testid": "score", text: r.unit === "percent" ? `${r.text}%` : r.text });
+  const caption = h("span", { class: "rs-meter-caption", "data-testid": "summary-score-caption", text: r.caption });
+  const unitBtn = (mode, label) => h("button", { type: "button", class: "rs-unit", "data-testid": `score-unit-${mode}`, "aria-pressed": String(r.unit === mode),
+    text: label, onclick: () => r.unit !== mode && onToggle(mode) });
+  const units = onToggle ? h("div", { class: "rs-units", role: "group", "aria-label": "Show the score as" }, unitBtn("points", "Points"), unitBtn("percent", "%")) : null;
+  const score = h("span", { class: "rs-meter-score" }, value, caption, ...(units ? [units] : []));
+  return h("div", { class: "rs-meter", "data-grade": r.grade, "data-unit": r.unit, role: "group", "aria-label": r.label, "data-testid": "summary-score",
+    style: `--frac:${frac};--fill:${frac}` },
+    h("span", { class: "rs-meter-grade", "data-testid": "summary-grade", "aria-hidden": "true", text: r.grade }),
+    h("div", { class: "rs-meter-main" },
+      h("p", { class: "rs-eyebrow", text: m.eyebrow }), h("h2", { class: "rs-title", text: m.headline }),
+      h("div", { class: "rs-meter-track", "aria-hidden": "true" },
+        h("span", { class: "rs-meter-fill" }),
+        ...marksOf(r).filter(([at]) => at > 0).map(([at, g]) => h("span", { class: "rs-meter-mark", style: `--at:${at / 100}`, "data-reached": String(frac * 100 >= at) },
+          h("span", { class: "rs-meter-mark-label", text: g }))))),
+    score);
 }
 
-export const REVEAL_MS = 1100;
-const easeOut = (k) => 1 - Math.pow(1 - k, 4);
+/** "Show score as [ % ] [ Points ]", and Easy / Normal / Hard when the credit has levels; a tap reports the choice. */
+function scoreSwitch(sw, onPick) {
+  const group = (label, items, key, testid) => h("div", { class: "rs-switch-row" },
+    h("span", { class: "rs-switch-label", text: label }),
+    h("div", { class: "kind-switch rs-switch", role: "group", "aria-label": label, "data-testid": testid },
+      ...items.map((x) => h("button", { type: "button", "data-key": x.key, "data-testid": `${testid}-${x.key}`, "aria-pressed": String(x.active),
+        "aria-label": x.name || x.text, text: x.text, onclick: () => !x.active && onPick({ [key]: x.key }) }))));
+  return h("div", { class: "rs-switches", "data-testid": "score-switch" },
+    group(sw.label, sw.modes, "mode", "score-mode"),
+    sw.levels.length ? group(sw.levelLabel, sw.levels, "level", "score-level") : null);
+}
+
+export const REVEAL_MS = 1800;
+const easeInOut = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);   // slow start, slow landing
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Count the ring up to its value from `t0` (a performance.now() time; a repaint mid-reveal passes the first paint's,
- * so the count goes on where it was), then land the grade (CSS keyed on data-reveal). Returns a stop function. */
-function reveal(ringEl, value, t0 = performance.now()) {
-  if (reducedMotion()) { ringEl.setAttribute("data-reveal", "skipped"); return () => {}; }
-  const num = ringEl.querySelector(".rs-ring-value");
-  const fill = ringEl.querySelector(".rs-ring-fill");
-  const [len, circ] = fill.getAttribute("stroke-dasharray").split(" ").map(Number);
+const digits = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");   // the count-up in the ring's own format (20,562)
+
+/** Fill the bar and count the score up from `t0` (a performance.now() time; a repaint mid-reveal passes the first
+ * paint's, so it goes on where it was), slowly at first, then land the score and the grade (CSS keyed on data-reveal).
+ * Returns a stop function. */
+function reveal(bar, value, t0 = performance.now()) {
+  if (reducedMotion()) { bar.setAttribute("data-reveal", "skipped"); return () => {}; }
+  const num = bar.querySelector(".rs-meter-value");
+  const final = num.textContent;
+  const unit = final.endsWith("%") ? "%" : "";
+  const frac = Number(bar.style.getPropertyValue("--frac")) || 0;
+  const marks = [...bar.querySelectorAll(".rs-meter-mark")];
   const paint = (k) => {
-    num.textContent = String(k >= 1 ? value : Math.round(value * easeOut(k)));
-    fill.setAttribute("stroke-dasharray", `${k >= 1 ? len : len * easeOut(k)} ${circ}`);
+    const e = k >= 1 ? 1 : easeInOut(k);
+    bar.style.setProperty("--fill", String(frac * e));
+    num.textContent = k >= 1 ? final : `${digits(Math.round(value * e))}${unit}`;
+    for (const m of marks) m.setAttribute("data-reached", String(frac * e >= Number(m.style.getPropertyValue("--at"))));
   };
-  ringEl.setAttribute("data-reveal", "playing");
+  bar.setAttribute("data-reveal", "playing");
+  if (t0 === "hold") { paint(0); return () => {}; }   // waiting for the splash to clear: at zero, not filling yet
   paint(Math.min(1, Math.max(0, (performance.now() - t0) / REVEAL_MS)));
   let raf = 0;
   const step = (now) => {
     const k = Math.min(1, (now - t0) / REVEAL_MS);
     paint(k);
-    if (k < 1) raf = requestAnimationFrame(step); else { raf = 0; ringEl.setAttribute("data-reveal", "done"); }
+    if (k < 1) raf = requestAnimationFrame(step); else { raf = 0; bar.setAttribute("data-reveal", "done"); }
   };
   raf = requestAnimationFrame(step);
-  return () => { if (raf) cancelAnimationFrame(raf); raf = 0; paint(1); ringEl.setAttribute("data-reveal", "done"); };
+  return () => { if (raf) cancelAnimationFrame(raf); raf = 0; paint(1); bar.setAttribute("data-reveal", "done"); };
 }
 
 /** A stick figure from fitted 2D points; joints named in `off` get the focus mark. */
@@ -82,12 +116,11 @@ function figPair(poses, off, refLabel, youLabel) {
 }
 
 /** The card a drift mark opens: "Drift at 0:07", Needs focus, both bodies, the miss in words, the note. */
-function driftCard(d, note, noteTitle) {
+function driftCard(d) {
   const card = h("section", { class: "rs-card rs-drift-detail", "data-testid": "summary-drift-detail", "aria-live": "polite" },
     h("div", { class: "rs-card-head" }, h("h3", { text: d.title }), h("span", { class: "rs-pill", text: d.badge })));
   if (d.poses) card.append(figPair(d.poses, d.offJoints, d.refLabel, d.youLabel));
   if (d.you) card.append(h("dl", { class: "rs-rows" }, h("dt", { text: d.youLabel }), h("dd", { text: d.you })));
-  if (note) card.append(h("div", { class: "rs-card rs-note rs-note-inner" }, h("p", { class: "rs-note-title", text: noteTitle }), h("p", { class: "rs-note-text", text: note })));
   return card;
 }
 
@@ -95,18 +128,21 @@ function driftCard(d, note, noteTitle) {
  * Mount the summary into `root` (before `before` when given).
  * Returns {el, destroy(), worstCard, figures, exportSlot}: the worst moment's card and its Reference vs You figures (or
  * null), where the caller may put the 3D bodies, and the empty export slot.
- * @param on {replay(), seek(atSeconds), reveal: false, or the performance.now() time the ring's count-up started (the
+ * @param on {replay(), seek(atSeconds), scoreDisplay({mode} | {level}) when the viewer flips the credit switch, reveal: false, or the performance.now() time the ring's count-up started (the
  *   first paint of a result, and a repaint while it still runs)}
  */
 export function renderResultSummary(root, m, on = {}, before = null) {
   for (const [file, marker] of THEME) if (!document.querySelector(`link[href$="${file}"]`)) ensureCss(file, marker);
   const el = h("section", { class: "rs", "data-kind": m.kind, "data-testid": "result-summary", "aria-label": "Session summary" });
-  const ringEl = ring(m.ring);
+  const toggle = m.scoreSwitch && on.scoreDisplay && (m.ring.unit === "percent" || m.ring.unit === "points")
+    ? (mode) => on.scoreDisplay({ mode }) : null;
+  const bar = scoreBar(m.ring, m, toggle);
   let worstCard = null, figures = null;
-  el.append(h("div", { class: "rs-head" }, ringEl,
-    h("div", { class: "rs-headline" }, h("p", { class: "rs-eyebrow", text: m.eyebrow }), h("h2", { class: "rs-title", text: m.headline }))));
+  el.append(h("div", { class: "rs-head" }, bar));   // the caller lifts it to the top of the result
+  // the credit score's unit and level (absent without a credit block); the caller saves the choice and repaints
+  if (m.scoreSwitch) el.append(scoreSwitch(m.scoreSwitch, (pick) => on.scoreDisplay && on.scoreDisplay(pick)));
   // result-intent.md R2: how 100 becomes the score, so the points next to each miss never read as a sum error
-  if (m.sum) el.append(h("p", { class: "rs-sum", "data-testid": "score-sum", "data-adds": String(m.sum.adds), "data-capped": String(m.sum.capped), text: m.sum.text }));
+  if (m.sum) el.append(h("p", { class: "rs-sum", "data-testid": "score-sum", "data-adds": String(m.sum.adds), "data-capped": String(m.sum.capped), "data-credit": m.sum.credit ? "true" : false, text: m.sum.text }));
   if (m.stats.length) el.append(h("div", { class: "rs-stats", "data-layout": m.statsLayout }, ...m.stats.map((x) =>
     h("div", { class: "rs-stat", "data-testid": `summary-stat-${x.key}` }, h("span", { class: "rs-stat-label", text: x.label }), h("span", { class: "rs-stat-value", text: x.value })))));
 
@@ -119,19 +155,13 @@ export function renderResultSummary(root, m, on = {}, before = null) {
     el.append(card);
   }
 
-  if (m.bars.length) {
-    el.append(h("div", { class: "rs-bars-wrap" }, h("h3", { text: m.barsTitle }),
-      h("ol", { class: "rs-bars", "data-testid": "summary-bars" }, ...m.bars.map((b) => h("li", { class: "rs-bar", "data-state": b.state },
-        h("button", { type: "button", "data-at-s": b.from, "aria-label": `${m.barsTitle} ${b.label}: ${b.value == null ? "not compared" : b.value}`, onclick: () => on.seek && on.seek(b.from) },
-          h("span", { class: "rs-bar-fill", style: `height:${b.value == null ? 8 : Math.max(8, b.value)}%` })),
-        h("span", { class: "rs-bar-label", text: b.label }))))));
-  }
+  // the per-rep bars (m.bars) are not drawn: "Score over time" shows the same reps (TICKET-336 T4); the model still computes them
 
   if (m.drift) {
     const detail = h("div", { class: "rs-drift-detail-slot" });
     const openDetail = (mark, btn) => {
       track.querySelectorAll(".rs-drift-mark").forEach((b) => b.setAttribute("aria-expanded", String(b === btn)));
-      detail.replaceChildren(driftCard(mark.detail, m.note, m.noteTitle));
+      detail.replaceChildren(driftCard(mark.detail));
       (on.seekInPlace || on.seek || (() => {}))(mark.at);
     };
     const track = h("div", { class: "rs-drift-track", role: "group", "aria-label": `${m.drift.marks.length} moments to focus on` },
@@ -145,18 +175,15 @@ export function renderResultSummary(root, m, on = {}, before = null) {
       h("div", { class: "rs-drift-head" }, h("h3", { text: m.driftTitle }), h("span", { class: "rs-legend", text: m.driftLegend })), track, detail));
   }
 
-  if (m.note) {
-    el.append(h("div", { class: "rs-card rs-note", "data-testid": "summary-note" },
-      h("p", { class: "rs-note-title", text: m.noteTitle }), h("p", { class: "rs-note-text", text: m.note })));
-  }
+  // the cue sits once, under "What to work on" (result.js); no second note card here (TICKET-336 T4)
 
   const slot = exportSlot();
   el.append(h("div", { class: "rs-actions" },
-    h("a", { class: "btn primary rs-retry", href: m.actions.retryHref, "data-testid": "summary-retry", text: `↻ ${m.actions.retryLabel}` }),
-    on.replay ? h("button", { type: "button", class: "btn secondary rs-replay", "data-testid": "summary-replay", onclick: () => on.replay(), text: `▷ ${m.actions.replayLabel}` }) : null,
+    h("a", { class: "btn primary rs-retry", href: m.actions.retryHref, "data-testid": "summary-retry", text: m.actions.retryLabel }),
+    on.replay ? h("button", { type: "button", class: "btn secondary rs-replay", "data-testid": "summary-replay", onclick: () => on.replay(), text: m.actions.replayLabel }) : null,
     slot));
 
   if (before && before.parentNode === root) root.insertBefore(el, before); else root.prepend(el);
-  const stop = on.reveal ? reveal(ringEl, m.ring.value, typeof on.reveal === "number" ? on.reveal : undefined) : () => {};
+  const stop = on.reveal ? reveal(bar, m.ring.value, typeof on.reveal === "number" || on.reveal === "hold" ? on.reveal : undefined) : () => {};
   return { el, worstCard, figures, exportSlot: slot, destroy() { stop(); el.remove(); } };
 }

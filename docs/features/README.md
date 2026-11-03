@@ -114,8 +114,8 @@ lists; `staging/checks-<lane>.mjs` runs on the staging journey's finished follow
 - **Operator's words:** Tempo vs. shape breakdown. A clear indicator saying whether the mistake is your action or missing a beat
 - **Ticket goal:** tell the person whether the mistake is their action (shape) or a missed beat
   (timing), using only Part 5's numbers.
-- **Added:** a "Shape or timing?" panel on the result screen: points lost to shape split into position and
-  range, the overall tempo in words, the windows off the beat, a one-line verdict, and a Shape or Timing
+- **Added:** a "Shape or timing?" panel on the result screen: shape misses split into position and
+  range, as shares, the overall tempo in words, the windows off the beat, a one-line verdict, and a Shape or Timing
   chip on each coaching row.
 - **Where:** web `breakdown.js`, `breakdown.css`; mounted through `breakdown-slot`. Event
   `simon:seek {at_s}` when a moment is tapped.

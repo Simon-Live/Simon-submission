@@ -19,8 +19,12 @@ from pathlib import Path
 import re
 import secrets
 import tempfile
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 from urllib.parse import urlsplit
+
+from part7 import shown_score
+
+Keep = Callable[[dict[str, Any]], bool]  # which stored entries a public view may show (TICKET-327, ADR-0019)
 
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
 ENTRY_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -35,7 +39,7 @@ URL_MAX = 300
 MAX_ENTRIES = 200  # entries on one board
 MAX_BOARDS = 500  # friend and crew boards the web can hold; sponsored boards are the operator's and not counted
 STALE_DAYS = 90  # a friend or crew board with no activity for this long is deleted when a new one is made
-PRIVATE_FIELDS = ("job_id", "pid")  # on disk only
+PRIVATE_FIELDS = ("job_id", "pid", "private", "own_reference")  # on disk only (TICKET-327: the post-time privacy facts too)
 PRIVATE_DOC_FIELDS = ("visitor",)  # on a challenge, on disk only: the hashed key of the visitor who made it
 BOARDS_PER_VISITOR_DAY = 10  # friend and crew boards one visitor may make per UTC day
 _CONTROL = re.compile("[\x00-\x1f\x7f-\x9f  \ud800-\udfff]")
@@ -194,8 +198,9 @@ def ended(doc: dict[str, Any], now: datetime | None = None) -> bool:
 
 
 def ranked(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Entries by score, highest first; a tie goes to the earlier post (then the name, so the order is stable)."""
-    key = lambda e: (-float(e.get("score") or 0), str(e.get("created_at") or ""), str(e.get("name") or ""))  # noqa: E731
+    """Entries by the shown measure (one-letter.md L3: the credit percent shown, else the capped score; a stored entry
+    without it by its score), highest first; a tie goes to the earlier post (then the name, so the order is stable)."""
+    key = lambda e: (-float(shown_score.rank_of(e) or 0), str(e.get("created_at") or ""), str(e.get("name") or ""))  # noqa: E731
     return [{**e, "rank": i + 1} for i, e in enumerate(sorted(entries, key=key))]
 
 
@@ -204,16 +209,22 @@ def public_entry(entry: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in entry.items() if k not in PRIVATE_FIELDS}
 
 
-def view(doc: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
-    """The public form of a challenge: ranked entries (no job id, no pid) and the `ended` flag."""
-    rows = ranked([public_entry(e) for e in doc["entries"]])
+def _kept(doc: dict[str, Any], keep: Keep | None) -> list[dict[str, Any]]:
+    return [e for e in doc["entries"] if keep is None or keep(e)]
+
+
+def view(doc: dict[str, Any], now: datetime | None = None, keep: Keep | None = None) -> dict[str, Any]:
+    """The public form of a challenge: ranked entries (no job id, no pid) and the `ended` flag. `keep` leaves out the
+    entries that stay with their owner (challenge_routes passes `takes_on.board_keep`)."""
+    rows = ranked([public_entry(e) for e in _kept(doc, keep)])
     return {**{k: v for k, v in doc.items() if k not in ("entries", *PRIVATE_DOC_FIELDS)}, "ended": ended(doc, now), "entries": rows}
 
 
-def summary(doc: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
-    """A list row: the challenge without its entries, plus the count and the leader."""
-    board = ranked(doc["entries"])
-    lead = {"name": board[0]["name"], "score": board[0]["score"]} if board else None
+def summary(doc: dict[str, Any], now: datetime | None = None, keep: Keep | None = None) -> dict[str, Any]:
+    """A list row: the challenge without its entries, plus the count and the leader (of the entries `keep` shows)."""
+    board = ranked(_kept(doc, keep))
+    top = next((e for e in board if not shown_score.is_capped(e)), None)   # one-letter.md L6: a capped take never heads a list
+    lead = {"name": top["name"], "score": top["score"], **({"shown": top["shown"]} if top.get("shown") else {})} if top else None
     return {**{k: v for k, v in doc.items() if k not in ("entries", *PRIVATE_DOC_FIELDS)}, "ended": ended(doc, now), "entry_count": len(board), "leader": lead}
 
 
@@ -341,11 +352,11 @@ def close(state: Path, challenge_id: str) -> dict[str, Any]:
 
 
 def list_all(
-    state: Path, *, entry_id: str | None = None, kind: str | None = None
+    state: Path, *, entry_id: str | None = None, kind: str | None = None, keep: Keep | None = None
 ) -> list[dict[str, Any]]:
     """Summaries, newest first, optionally of one movement and one kind. Unchanged files are not read again."""
     out = [
-        summary(doc) for doc in _docs(state)
+        summary(doc, keep=keep) for doc in _docs(state)
         if (entry_id is None or doc.get("entry_id") == entry_id) and (kind is None or doc.get("kind") == kind)
     ]
     return sorted(out, key=lambda d: (d["created_at"], d["id"]), reverse=True)

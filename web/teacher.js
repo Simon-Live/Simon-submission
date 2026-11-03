@@ -25,6 +25,7 @@ export function mountTeacher(container, entryId) {
     const [res, entry] = await Promise.all([load(entryId), getEntry(entryId).catch(() => null)]);
     if (!live) return;
     if (res.status === 200 && res.body && typeof res.body === "object") renderTeacher(screen, teacherView(res.body, entry, entryId));
+    if (res.status === 200 && res.body) import("./programme.js").then((m) => live && m.mountProgrammeForm(screen, entryId, res.body.attribution)).catch(() => {}); // TICKET-283: the author's Home programme form
     else renderTeacherError(screen, res.status === 404);
   })();
   return () => { live = false; };

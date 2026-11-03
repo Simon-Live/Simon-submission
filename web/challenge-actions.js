@@ -3,13 +3,15 @@
 import { getEntry } from "./api.js";
 import { h, clear } from "./ui.js";
 import {
-  createChallenge, addEntry, getChallenge, challengeUrl, cleanName, getSavedName, saveName,
+  createChallenge, addEntry, getChallenge, challengeUrl, cleanName, getSavedName, saveName, boardNums,
   ensureChallengeStyles, ChallengeError, NAME_MAX, MSG_FAILED, MSG_OFFLINE,
 } from "./challenge-core.js";
 import { renderCard, shareCard, copyText, blobToDataUrl } from "./share-card.js";
 import { promoteChallenges } from "./modes.js";
+import { shownRow, shownText, rankOf } from "./model/score-labels.js";
 
 const TITLE_MAX = 60;
+export const MSG_NO_PICTURE = "A warning capped the score, so the link goes without a picture.";
 export const MSG_TAKE_ENDED = "The challenge you took has ended, so this score is not on its board.";
 export const MSG_NEED_NAME = "Type your name first (24 characters at most).";
 
@@ -23,28 +25,48 @@ function nameField(initial) {
   return { input, field: h("div", { class: "field" }, h("label", { for: "challenge-name", text: "Your name on the board" }), input) };
 }
 
+/** The share card's model: the entry's score and grade as the result headline shows them (one-letter.md). */
+export function cardModel(challenge, added, movement, url) {
+  const nums = boardNums(added);
+  return {
+    movement, score: nums.score, grade: nums.grade, strongest: added.strongest_section?.label || null,
+    challenger: added.name, title: challenge.title, url, sponsor: challenge.sponsor?.name || null,
+  };
+}
+
+/** "I scored 16,239 points of 22,367 on Squat. Can you beat it?" (the headline's figures, else the score). */
+export function shareText(added, movement) {
+  if (!added) return `Can you beat me on ${movement}?`;   // one-letter.md L6: no capped score is featured
+  const s = shownRow(added);
+  return `I scored ${s ? shownText(s) : added.score} on ${movement}. Can you beat it?`;
+}
+
+/** The entry a share card features: the best by the shown measure that no warning capped, or null (one-letter.md L6). */
+export function featuredEntry(entries) {
+  const open = (Array.isArray(entries) ? entries : []).filter((e) => e && !(shownRow(e) || {}).capped);
+  return open.length ? open.reduce((a, b) => (rankOf(b) > rankOf(a) ? b : a)) : null;
+}
+
 /** The share step after a challenge exists: the card picture, Share, Copy link. */
 async function shareStep(box, { challenge, added, movement }) {
   const url = challengeUrl(challenge.id);
   const status = h("p", { class: "hint", role: "status", "data-testid": "share-status" });
-  const model = {
-    movement, score: added.score, grade: added.grade, strongest: added.strongest_section?.label || null,
-    challenger: added.name, title: challenge.title, url, sponsor: challenge.sponsor?.name || null,
-  };
+  const model = added ? cardModel(challenge, added, movement, url) : null;
   clear(box).append(
     h("h2", { text: "Challenge ready" }),
     h("p", { class: "ch-link", "data-testid": "challenge-link", text: url }),
     status);
   let card = null;
-  try {
+  if (!model) status.textContent = MSG_NO_PICTURE;
+  else try {
     card = await renderCard(model);
     const src = await blobToDataUrl(card.blob); // TICKET-096: a data: URL cannot be revoked while the <img> still uses it
-    const img = h("img", { class: "ch-card-preview", alt: `Share card: ${added.name} scored ${added.score}`, "data-testid": "share-card-preview", src });
+    const img = h("img", { class: "ch-card-preview", alt: `Share card: ${added.name} scored ${model.score}`, "data-testid": "share-card-preview", src });
     box.append(img);
   } catch (err) {
     status.textContent = "The picture could not be drawn. You can still share the link.";
   }
-  const text = `I scored ${added.score} on ${movement}. Can you beat it?`;
+  const text = shareText(added, movement);
   box.append(h("div", { class: "row" },
     h("button", {
       type: "button", class: "btn primary", "data-testid": "challenge-share", text: "Share",
@@ -116,7 +138,7 @@ export async function mountChallengeActions(slot, ctx) {
       const movement = await movementName(entryId);
       // one request: the challenge and this result together, so a refused result leaves no empty board behind
       const made = await createChallenge({ entry_id: entryId, title: titleFor(movement), creator_name: name, kind: "friend", ...body(name) });
-      await shareStep(box, { challenge: made, added: made.added[0], movement });
+      await shareStep(box, { challenge: made, added: featuredEntry(made.added), movement });
     } catch (err) {
       create.disabled = false;
       fail(messageOf(err));
@@ -183,8 +205,7 @@ export function mountCrewChallenge(slot, { jobId, entryId, rows }) {
       const movement = await movementName(entryId);
       const people = scored.map((r) => ({ pid: String(r.id), name: cleanName(r.label) || `Person ${r.id}` }));
       const made = await createChallenge({ entry_id: entryId, title: titleFor(movement), creator_name: name, kind: "crew", job_id: jobId, people });
-      const best = made.added.reduce((a, b) => (b.score > a.score ? b : a));
-      await shareStep(box, { challenge: made, added: best, movement });
+      await shareStep(box, { challenge: made, added: featuredEntry(made.added), movement });
     } catch (err) {
       start.disabled = false;
       error.textContent = messageOf(err);

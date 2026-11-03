@@ -37,6 +37,14 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--validated", action="store_true", help="The shas the last green parts gate recorded.")
     group.add_argument("--pins", action="store_true", help="The gitlinks this checkout's HEAD commits, when they changed.")
 
+    # part7 parts-tree build --validated|--pins | promote --expect DIR | reclaim | path   (TICKET-329)
+    p_tree = sub.add_parser("parts-tree", help="Per-build module trees: build the next one, swap the pointer, reclaim old ones.")
+    p_tree.add_argument("action", choices=("build", "promote", "reclaim", "path", "serving", "base"))
+    tree_src = p_tree.add_mutually_exclusive_group()
+    tree_src.add_argument("--validated", action="store_true", help="build: the shas the last green parts gate recorded.")
+    tree_src.add_argument("--pins", action="store_true", help="build: the gitlinks this checkout's HEAD commits, when they changed.")
+    p_tree.add_argument("--expect", metavar="DIR", help="promote (required): the modules dir the new server started on.")
+
     # part7 doctor-parts
     sub.add_parser("doctor-parts", help="Check each part's contract or help command in its module.")
 
@@ -93,6 +101,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     diagnose.add_parser(sub)
 
+    # part7 selfheal-status [--staging|--state DIR] [--json]
+    p_heal = sub.add_parser("selfheal-status", help="List the self-heal checks with their last run and last finding.")
+    from part7 import state_flags
+
+    state_flags.add_flags(p_heal)
+    p_heal.add_argument("--json", action="store_true", help="Print the report as JSON.")
+
+    # part7 replay <job> [--staging|--state DIR]
+    p_replay = sub.add_parser("replay", help="Re-run a stored follow job's CPU stages from its pose and compare to its outputs.")
+    p_replay.add_argument("job", help="Job id (under the state's jobs folder) or a job folder path.")
+    state_flags.add_flags(p_replay)
+
     # part7 check
     sub.add_parser("check", help="Run make check-7 end to end.")
 
@@ -107,6 +127,16 @@ def main(argv: list[str] | None = None) -> int:
         from part7 import modules
 
         return modules.cli_parts_status(check_remote=args.check_remote)
+
+    if args.command == "selfheal-status":
+        from part7 import selfheal, state_flags
+
+        return selfheal.cli_selfheal_status(state_flags.state_dir(args), as_json=args.json)
+
+    if args.command == "replay":
+        from part7 import golden, state_flags
+
+        return golden.cli_replay(args.job, state_flags.state_dir(args))
 
     if args.command == "setup-parts":
         from part7 import setup_parts
@@ -123,6 +153,13 @@ def main(argv: list[str] | None = None) -> int:
         from part7 import parts_adopt
 
         return parts_adopt.cli_parts_adopt(pins=args.pins, validated=args.validated)
+
+    if args.command == "parts-tree":
+        from part7 import module_trees
+
+        if args.action == "build" and not (args.pins or args.validated):
+            parser.error("parts-tree build needs --pins or --validated")
+        return module_trees.cli_parts_tree(args.action, pins=args.pins, validated=args.validated, expect=args.expect)
 
     if args.command == "doctor-parts":
         from part7 import setup_parts

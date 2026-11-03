@@ -98,6 +98,17 @@ test("a request marked expectStatus is not reported for that status, an unexpect
   assert.deepEqual(sent.map((s) => s[2].status), [404, 500]);
 });
 
+test("the designed busy answers of a spoken line (503, 429) are not reported; elsewhere they are", async () => {
+  const { win } = fakeWin(async (url) => ({ status: String(url).includes("429") ? 429 : 503 }));
+  const sent = [];
+  installErrorCapture(win, createCapture({ send: (...a) => sent.push(a) }));
+  await win.fetch("api/jobs/c8a9e3a22e14/speech/3.wav");
+  await win.fetch("api/jobs/c8a9e3a22e14/speech/429.wav");
+  assert.equal(sent.length, 0);
+  await win.fetch("api/jobs/c8a9e3a22e14");  // a real 503 on another route is still reported
+  assert.deepEqual(sent.map((s) => s[2].status), [503]);
+});
+
 test("only the app's own routes are reported: not _firm, not another origin, not outside the base path", async () => {
   const { win } = fakeWin(async () => { throw new TypeError("network error"); });
   const sent = [];

@@ -3,7 +3,7 @@
 Branch `lane/breakdown`. Spec: `docs/specs/breakdown.md`. Tickets: TICKET-074 (R4), TICKET-075 (R5).
 
 ## R5 Tempo versus shape (TICKET-075)
-Added: a "Shape or timing?" panel on the result screen. It splits the points lost to shape into "Where a body part is"
+Added: a "Shape or timing?" panel on the result screen. It splits the shape misses into "Where a body part is"
 (position) and "How far you move" (range), words the overall tempo ("On the beat", "Rushing", "Dragging"), lists the
 windows that were off the beat, and gives a one-line verdict. A note says timing is coached but does not lower the score.
 Every coaching row with `data-cue-kind` gets a "Shape" or "Timing" chip.

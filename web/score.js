@@ -1,6 +1,7 @@
 // Score panel (TICKET-046, app.md "Score", journey.md step 8). Part 7 shows Part 5's
 // `score` (simon.score.v1) as written and computes nothing.
 import { qualityCapText } from "./quality-result.js";
+import { shownScore, shownText } from "./model/score-labels.js";
 
 // Part 5's published bands (app.md "Score"). Display only: the grade shown is the one in the file.
 export const BANDS = [
@@ -57,17 +58,53 @@ export function hasScore(analysis) {
 }
 
 /**
- * Render the score panel into `root`. Returns the panel element, or null when `score` is null
- * (a refused take shows no number).
+ * The bands of a letter scale, highest first (`grades` as model/score-credit.js gradesOf gives them): Part 5's A to F
+ * (the same rules and widths as BANDS), or the credit's F to S. The lowest letter also covers everything under it.
  */
-export function renderScore(root, analysis) {
+export function bandsOf(grades) {
+  return grades.map(([lo, grade], i) => {
+    const up = i ? grades[i - 1][0] : 100;
+    const last = i === grades.length - 1;
+    const rule = !i ? `${lo} and above` : last ? `below ${up}` : `${lo} to ${up - 1}`;
+    return { grade, rule, width: !i ? up - lo + 1 : last ? up : up - lo };
+  });
+}
+
+/**
+ * Render the score panel into `root`. Returns the panel element, or null when `score` is null
+ * (a refused take shows no number). One take, one letter (docs/specs/one-letter.md): the grade, the bands and the
+ * marker are the result headline's (model/score-labels.js shownScore), so a credit take shows its credit letter on
+ * the credit's F to S scale in the viewer's `display`, and a capped take its capped score and grade.
+ */
+export function renderScore(root, analysis, display = null) {
   if (!hasScore(analysis)) return null;
-  const { value, grade, components } = analysis.score;
+  const panel = scorePanel(analysis, display);
+  root.append(panel);
+  return panel;
+}
+
+/** The panel drawn again for the viewer's new unit or level (the result's score switch); the number keeps its test id. */
+export function refreshScore(panel, analysis, display = null) {
+  if (!panel || !hasScore(analysis)) return panel;
+  const fresh = scorePanel(analysis, display);
+  const num = (n) => n.querySelector('[class="sr-score-num"]');
+  const id = num(panel) && num(panel).getAttribute("data-testid");
+  if (id && num(fresh)) num(fresh).setAttribute("data-testid", id);
+  panel.after(fresh);
+  panel.remove();
+  return fresh;
+}
+
+function scorePanel(analysis, display) {
+  const { components } = analysis.score;
+  const shown = shownScore(analysis, { display });
+  const grade = shown.letter;
+  const bands = bandsOf(shown.grades);
   const panel = el("section", { class: "sr-score", "data-testid": "score-panel", "data-grade": grade, "aria-label": "Your score" });
   const number = el("p", { class: "sr-score-value" });
   number.append(
-    el("span", { class: "sr-score-num", "data-testid": "score", text: String(value) }),
-    el("span", { class: "sr-score-of", "aria-hidden": "true", text: "/100" }),
+    el("span", { class: "sr-score-num", "data-testid": "score", text: shown.figures }),
+    el("span", { class: "sr-score-of", "aria-hidden": "true", text: shown.unit === "score" ? "/100" : ` ${shown.caption}` }),
   );
   const gradeBtn = el("button", {
     type: "button",
@@ -83,17 +120,17 @@ export function renderScore(root, analysis) {
   head.append(el("p", { class: "sr-eyebrow", text: "Your score" }), number);
   const top = el("div", { class: "sr-score-top" }, head, gradeBtn);
 
-  const bar = el("div", { class: "sr-bands", role: "img", "aria-label": `Score ${value} out of 100, grade ${grade}` });
-  for (const b of [...BANDS].reverse()) {
-    const width = b.grade === "F" ? 60 : b.grade === "A" ? 11 : 10;
-    bar.append(el("span", { class: "sr-band", "data-grade": b.grade, "data-current": b.grade === grade, style: `flex:${width}` }));
+  const said = shown.unit === "score" ? `${shown.figures} out of 100` : shownText(shown);
+  const bar = el("div", { class: "sr-bands", role: "img", "aria-label": `Score ${said}, grade ${grade}` });
+  for (const b of [...bands].reverse()) {
+    bar.append(el("span", { class: "sr-band", "data-grade": b.grade, "data-current": b.grade === grade, style: `flex:${b.width}` }));
   }
-  const marker = el("span", { class: "sr-marker", style: `left:${Math.max(0, Math.min(100, value))}%` });
+  const marker = el("span", { class: "sr-marker", style: `left:${Math.round(shown.frac * 1000) / 10}%` });
   const barWrap = el("div", { class: "sr-bar-wrap" }, bar, marker);
 
   const rule = el("div", { class: "sr-rule", id: "sr-band-rule", "data-testid": "band-rule", hidden: true });
   const list = el("ul", { class: "sr-rule-list" });
-  for (const b of BANDS) {
+  for (const b of bands) {
     list.append(el("li", { "data-grade": b.grade, "data-current": b.grade === grade }, el("b", { text: b.grade }), el("span", { text: b.rule })));
   }
   rule.append(list);
@@ -112,6 +149,5 @@ export function renderScore(root, analysis) {
   const cap = qualityCapText(analysis);
   if (cap) panel.append(el("p", { class: "sr-quality-cap", "data-testid": "quality-cap", text: cap }));
   panel.append(rule);
-  root.append(panel);
   return panel;
 }

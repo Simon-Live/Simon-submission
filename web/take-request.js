@@ -18,10 +18,22 @@ export function buildSubmit({ role, mode, upload, trim, peopleJob, choice, name,
         upload_id: upload, trim, people_job: peopleJob, trainer_id: choice.trainer_id, follower_ids: choice.follower_ids,
         name, category, labels: { ...choice.labels, ...(hasLabels(labels) ? labels : {}) }, save_entry: true,
         ...(extra.mode ? { mode: extra.mode } : {}),
+        ...(extra.floor_work ? { floor_work: true } : {}),
       }],
     };
   }
+  const more = trainerMore(extra);
+  if (more) { // TICKET-310 and floor-work.md: one more argument carries both marks; an unmarked take sends nothing new
+    const plain = buildSubmit({ role, mode, upload, trim, peopleJob, choice, name, category, labels, entryId });
+    return { ...plain, args: [...plain.args, more] };
+  }
   return { kind: "trainer", args: [upload, name, category, trim, hasLabels(labels) ? labels : undefined, { people_job: peopleJob, person_id: choice.person_id }] };
+}
+
+/** A trainer take's top-level marks (`mirrored`, `floor_work`), never inside the person; null when it has none. */
+function trainerMore(extra) {
+  const more = { ...(extra.mirrored === true ? { mirrored: true } : {}), ...(extra.floor_work === true ? { floor_work: true } : {}) };
+  return Object.keys(more).length ? more : null;
 }
 
 /** The mode, section and challenge a take carries, from a saved record (offline-takes.md). */
@@ -31,6 +43,9 @@ export const extraOf = (rec) => ({
   ...(rec && rec.section ? { section: rec.section } : {}),
   ...(rec && rec.challenge_id ? { challenge_id: rec.challenge_id } : {}),
   ...(rec && rec.lang ? { lang: rec.lang } : {}),
+  ...(rec && rec.model_only === true ? { model_only: true } : {}),
+  ...(rec && rec.mirrored === true ? { mirrored: true } : {}), // TICKET-310: the person's word, an upload only
+  ...(rec && rec.floor_work === true ? { floor_work: true } : {}),
 });
 
 /** The request for a saved record: the same call the open take flow makes (role trainer | follow | group). */

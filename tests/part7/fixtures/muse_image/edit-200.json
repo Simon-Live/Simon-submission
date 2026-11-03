@@ -1,0 +1,16 @@
+{
+ "_recorded": "POST https://api.meta.ai/v1/images/edits, muse-image-1.0, JSON body, 2026-11-02 (TICKET-330). Masked: the returned 1171882-byte PNG is replaced by a 4x4 PNG.",
+ "created": 1793643422,
+ "data": [
+  {
+   "b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAADklEQVR4nGNoQAIMxHEAcFIYAYPG8BkAAAAASUVORK5CYII="
+  }
+ ],
+ "output_format": "png",
+ "background": "opaque",
+ "usage": {
+  "input_tokens": 4126,
+  "output_tokens": 319,
+  "total_tokens": 4445
+ }
+}

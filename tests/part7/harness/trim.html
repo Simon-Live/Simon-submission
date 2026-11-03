@@ -22,7 +22,7 @@ window.__ready = false;
 window.__result = undefined;
 if (kase === "trim") {
   const blob = await (await fetch(`/clips/${q.get("clip")}`)).blob();
-  window.__promise = openTrimEditor(root, { blob, source: q.get("source") || "recording", manual: q.get("manual") === "1", countdownUsed: q.get("countdown") === "1" })
+  window.__promise = openTrimEditor(root, { blob, source: q.get("source") || "recording", manual: q.get("manual") === "1", countdownUsed: q.get("countdown") === "1", offerMirror: q.get("mirror") !== "0" })
     .then((r) => { window.__result = r; window.__done = true; });
 } else if (kase === "labels") {
   window.__labels = mountLabels(root);

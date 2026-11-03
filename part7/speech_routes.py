@@ -39,6 +39,7 @@ def handle(h: Any, method: str, route: str) -> bool:
         if status == 404:
             h._error(404, message)
         else:
+            h._expected_busy = status in (429, 503)  # designed answers: the browser speaks the line itself (not an anomaly)
             body = json.dumps({"ok": status == 202, "message": message}).encode("utf-8")
             h._send(status, body, "application/json; charset=utf-8", {"Retry-After": str(RETRY_S)})
     elif made is None:

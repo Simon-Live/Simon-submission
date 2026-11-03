@@ -15,18 +15,18 @@ import logging
 import os
 from pathlib import Path
 import queue
+import re
 import subprocess
 import threading
 import time
 from typing import Any
 
-from part7 import applog, history_facts, history_store, keys
+from part7 import applog, history_facts, history_longpack, history_receipt, history_store, keys, shown_score
 
 FORMAT = "simon.history.v1"
 DEFAULT_PROMPT_VERSION = "simon.history.v1"
 DEFAULT_MODEL = "muse-spark-1.3"
-DAILY_LIMIT = 5
-GLOBAL_DAILY_LIMIT = 50  # paid comparisons per UTC day across everyone (R7)
+# Both daily limits are off unless SIMON7_HISTORY_DAILY / SIMON7_HISTORY_GLOBAL_DAILY hold a positive integer.
 KEEP_REPORTS = 5
 RETRY_AFTER_S = 5
 MIN_TAKES = 2
@@ -39,27 +39,29 @@ ZERO_USAGE = {"input_tokens": 0, "cached_tokens": 0, "output_tokens": 0, "usd": 
 
 
 class Refused(Exception):
-    """The request cannot start; `status` is the HTTP code and `message` is plain words."""
+    """The request cannot start; `status` is the HTTP code and `message` is plain words, `code` a stable machine name ("" when none)."""
 
-    def __init__(self, status: int, message: str) -> None:
+    def __init__(self, status: int, message: str, code: str = "") -> None:
         super().__init__(message)
-        self.status, self.message = status, message
+        self.status, self.message, self.code = status, message, code
 
 
-def daily_limit() -> int:
+def _env_limit(name: str) -> int | None:
     try:
-        value = int(os.environ.get("SIMON7_HISTORY_DAILY", DAILY_LIMIT))
+        value = int(os.environ.get(name, ""))
     except ValueError:
-        return DAILY_LIMIT
-    return value if value > 0 else DAILY_LIMIT
+        return None
+    return value if value > 0 else None
 
 
-def global_daily_limit() -> int:
-    try:
-        value = int(os.environ.get("SIMON7_HISTORY_GLOBAL_DAILY", GLOBAL_DAILY_LIMIT))
-    except ValueError:
-        return GLOBAL_DAILY_LIMIT
-    return value if value > 0 else GLOBAL_DAILY_LIMIT
+def daily_limit() -> int | None:
+    """Reports per user per UTC day; None (no limit) unless SIMON7_HISTORY_DAILY is set."""
+    return _env_limit("SIMON7_HISTORY_DAILY")
+
+
+def global_daily_limit() -> int | None:
+    """Paid comparisons per UTC day across everyone (R7); None unless SIMON7_HISTORY_GLOBAL_DAILY is set."""
+    return _env_limit("SIMON7_HISTORY_GLOBAL_DAILY")
 
 
 def _today_start(now: float) -> float:
@@ -67,11 +69,11 @@ def _today_start(now: float) -> float:
     return moment.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
 
-def runs_today(state: Path, user_id: str, now: float | None = None) -> int:
-    """How many reports the user started since 00:00 UTC."""
+def runs_today(state: Path, user_id: str, now: float | None = None, name: str = "runs.jsonl") -> int:
+    """How many reports the user started since 00:00 UTC (`name` is another day-count file, e.g. history_ask's)."""
     now = time.time() if now is None else now
     try:
-        lines = (history_store.user_dir(state, user_id) / "runs.jsonl").read_text(encoding="utf-8").split()
+        lines = (history_store.user_dir(state, user_id) / name).read_text(encoding="utf-8").split()
     except OSError:
         return 0
     return sum(1 for line in lines if line.replace(".", "", 1).isdigit() and float(line) >= _today_start(now))
@@ -89,12 +91,15 @@ def global_runs_today(state: Path, now: float | None = None) -> int:
     return total
 
 
-def _note_run(state: Path, user_id: str, now: float) -> None:
-    path = history_store.user_dir(state, user_id) / "runs.jsonl"
+def _note_run(state: Path, user_id: str, now: float, name: str = "runs.jsonl") -> None:
+    path = history_store.user_dir(state, user_id) / name
     keep = [line for line in (path.read_text(encoding="utf-8").split() if path.is_file() else [])
             if line.replace(".", "", 1).isdigit() and float(line) >= _today_start(now) - 86400]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join([*keep, f"{now:.3f}"]) + "\n", encoding="utf-8")
+
+
+note_run = _note_run  # the public name, for history_ask
 
 
 # ----- the plan: which takes, which key -----------------------------------------------------------
@@ -103,10 +108,13 @@ def hostable(takes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [t for t in takes if not t["private"]]
 
 
-def cache_key(prompt_version: str, model: str, takes: list[dict[str, Any]], narration_sha: str, consent: bool) -> str:
-    """sha256 of prompt version, model, sorted (take, analysis sha, clip sha), narration sha and video consent."""
+def cache_key(prompt_version: str, model: str, takes: list[dict[str, Any]], narration_sha: str, consent: bool,
+              notes: list[dict[str, Any]] | None = None) -> str:
+    """sha256 of prompt version, model, sorted (take, analysis sha, clip sha), narration sha, video consent and the
+    owner's trainer notes (`history_longpack.owner_notes`), so a new note makes a new report."""
     parts = sorted([t["take"], history_store.sha256_file(t["analysis"]), history_store.sha256_file(t["clip"])] for t in takes)
-    blob = json.dumps([prompt_version, model, parts, narration_sha, bool(consent)], separators=(",", ":"))
+    extra = [history_longpack.key_parts(notes)] if notes else []  # no notes: the key is what it was before notes
+    blob = json.dumps([prompt_version, model, parts, narration_sha, bool(consent), *extra], separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
@@ -132,7 +140,8 @@ def cached(state: Path, user_id: str, entry_id: str, key: str) -> dict[str, Any]
 
 def _row(take: dict[str, Any]) -> dict[str, Any]:
     return {"take": take["take"], "job_id": take["job_id"], "at": take["at"], "score": take["score"],
-            "grade": take["grade"], "duration_s": take["duration_s"], "clip": take["clip"] is not None}
+            "grade": take["grade"], "duration_s": take["duration_s"], "clip": take["clip"] is not None,
+            "shown": shown_score.of_take(take)}  # one-letter.md: a report cached before this has no block (shownRow falls back)
 
 
 def _duration(path: Path | None) -> float | None:
@@ -148,10 +157,30 @@ def _duration(path: Path | None) -> float | None:
     return value if value > 0 else None
 
 
-def _reason(exc: BaseException) -> str:
+MSG_MODEL_FAILED = "Simon could not get an answer from Muse Spark this time. Try again later."
+_TRANSPORT_RE = re.compile(r"^(?:HTTP \d{3}|timeout|request failed|unreadable response) on ")
+
+
+def screen_reason(reason: str, plain: str = MSG_MODEL_FAILED) -> str:
+    """What a page shows for a failure reason: `plain` for a transport failure (status, Meta's message, timeout), which
+    stays in logs and records only; any other reason (a cap, a missing key) is already plain words and is kept."""
+    return plain if _TRANSPORT_RE.match(reason or "") else reason
+
+
+def reason_detail(exc: BaseException) -> str:
+    """The failure as logged and recorded: the reason itself (Meta's masked message included), one line, cut short."""
     reason = getattr(exc, "reason", None)
     text = reason if isinstance(reason, str) and reason else type(exc).__name__
     return keys.redact(" ".join(text.split()))[:REASON_MAX]
+
+
+def _reason(exc: BaseException) -> str:
+    """What the page shows: plain words; a transport failure is logged with its detail and shown as one plain line."""
+    detail = reason_detail(exc)
+    shown = screen_reason(detail)
+    if shown != detail:
+        applog.log(f"history: model call failed: {detail}", level=logging.WARNING)
+    return shown
 
 
 # ----- the runner ---------------------------------------------------------------------------------
@@ -171,7 +200,8 @@ class Runner:
         narration, narration_sha = _narration(self.catalog_dir, entry_id)
         video = history_store.consent(self.state, user_id)["video"]
         prompt_version, model = _versions()
-        return usable, cache_key(prompt_version, model, usable, narration_sha, video), narration
+        notes = history_longpack.owner_notes(self.state, user_id, entry_id, usable)
+        return usable, cache_key(prompt_version, model, usable, narration_sha, video, notes), narration
 
     def status(self, user_id: str, entry_id: str, key: str) -> str | None:
         with self._lock:
@@ -192,9 +222,10 @@ class Runner:
         with self._lock:
             if job in self._active:
                 return ("accepted", self._active[job])
-            if runs_today(self.state, user_id, now) >= daily_limit():
-                raise Refused(429, MSG_LIMIT_FMT.format(n=daily_limit()))
-            if global_runs_today(self.state, now) >= global_daily_limit():
+            per_user, overall = daily_limit(), global_daily_limit()
+            if per_user is not None and runs_today(self.state, user_id, now) >= per_user:
+                raise Refused(429, MSG_LIMIT_FMT.format(n=per_user))
+            if overall is not None and global_runs_today(self.state, now) >= overall:
                 raise Refused(429, MSG_GLOBAL_LIMIT)
             with history_store.locked(self.state):
                 _note_run(self.state, user_id, now)
@@ -260,15 +291,18 @@ class Runner:
             old.unlink(missing_ok=True)
 
     def packed(self, entry_id: str, takes: list[dict[str, Any]], facts: dict[str, Any], narration: Any,
-               video: bool) -> dict[str, Any] | None:
-        """`history_prompt.pack(...)` over the C-STORE rows; None when that module is not there."""
+               video: bool, notes: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+        """`history_prompt.pack(...)` over the C-STORE rows; None when that module is not there. `notes` are the owner's
+        answered trainer notes on these takes (`history_longpack.owner_notes`), sent as quoted data after their take."""
         prompt = history_store.optional_module("part7.history_prompt")
         if prompt is None:
             return None
         teacher = Path(self.catalog_dir) / entry_id / "video.mp4" if self.catalog_dir else None
         teacher = teacher if teacher and teacher.is_file() else None
+        by_job = {t["job_id"]: t["take"] for t in takes}
+        texts = {n: history_longpack.note_block(entry_id, n, [x for x in notes or [] if by_job.get(x["job_id"]) == n]) for n in by_job.values()}
         return prompt.pack(entry_id, facts, takes, teacher_clip=teacher, teacher_duration_s=_duration(teacher),
-                           narration=narration, video_consent=video)
+                           narration=narration, video_consent=video, notes={n: t for n, t in texts.items() if t})
 
     def compose(self, user_id: str, entry_id: str, takes: list[dict[str, Any]], facts: dict[str, Any],
                 narration: Any) -> dict[str, Any]:
@@ -282,7 +316,7 @@ class Runner:
             "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
         api, guard = (history_store.optional_module("part7.history_api"), history_store.optional_module("part7.history_guard"))
-        packed = self.packed(entry_id, takes, facts, narration, video) if api and guard else None
+        packed = self.packed(entry_id, takes, facts, narration, video, history_longpack.owner_notes(self.state, user_id, entry_id, takes)) if api and guard else None
         if packed is None:
             return {**base, "status": "skipped", "reason": "the model step is not available"}
         try:
@@ -290,11 +324,12 @@ class Runner:
             answer = json.loads(text)
             if not isinstance(answer, dict):
                 raise ValueError("the answer is not an object")
-            kept, rejected = guard.check(answer, packed["facts"], narration, guard.load_words())  # Part 5's student-words.json, else the guard's defaults  # the facts of the takes sent
+            kept, rejected = guard.check(answer, packed["facts"], narration, guard.load_words(), clip_takes=packed.get("clip_takes", ()))  # Part 5's student-words.json, else the guard's defaults  # the facts of the takes sent
         except Exception as exc:  # HistoryError, bad JSON or a guard fault: all end in the fact table
             spent = getattr(exc, "usage", None)
-            return {**base, "reason": _reason(exc), "usage": {**ZERO_USAGE, **(spent if isinstance(spent, dict) else {})}}
-        return self._merge(base, kept, rejected, usage)
+            return {**base, "reason": _reason(exc), "detail": reason_detail(exc), "sent": history_receipt.build(packed, spent if isinstance(spent, dict) else None),
+                    "usage": {**ZERO_USAGE, **(spent if isinstance(spent, dict) else {})}}
+        return self._merge({**base, "sent": history_receipt.build(packed, usage)}, kept, rejected, usage)
 
     @staticmethod
     def _merge(base: dict[str, Any], kept: Any, rejected: Any, usage: Any) -> dict[str, Any]:

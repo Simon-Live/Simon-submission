@@ -1,0 +1,134 @@
+{
+ "answers": [
+  {
+   "focus": null,
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 2
+     }
+    ],
+    "text": "Your score went from 70 in take 1 to 74 in take 2."
+   },
+   "teacher_link": null,
+   "trends": []
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "abstain": true,
+  "statuses": {
+   "trunk_lean_forward|center": "unverified"
+  }
+ },
+ "facts": {
+  "best": 2,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 2,
+  "measures": [
+   {
+    "first": {
+     "at_s": 0.9,
+     "magnitude": 21.4,
+     "size": 21.4,
+     "take": 1,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 0.9,
+     "magnitude": 21.4,
+     "size": 21.4,
+     "take": 1,
+     "unit": "deg"
+    },
+    "measure": "trunk_lean_forward",
+    "present_in": [
+     1
+    ],
+    "side": "center",
+    "status": "unverified"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.4,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.4,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 70,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 74,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      4.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "abstain_unverified",
+ "note": "Lean in take 1; take 2 did not compare 0.9 s, so the fact table says unverified and nobody may say it is gone.",
+ "origin": "synthetic"
+}

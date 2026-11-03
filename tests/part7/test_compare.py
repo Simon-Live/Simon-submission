@@ -146,6 +146,52 @@ def test_warning_codes_and_effective_grade_read_old_refusals_as_warnings() -> No
     assert compare.match(old, new)["warnings_equal"] is False
 
 
+def block(level: str, cap: int | None = None) -> dict[str, Any]:
+    """Part 5's quality block (simon.quality.v1, analysis 1.13.0), the fields Part 7 reads."""
+    reasons = [] if level == "ok" else [{"code": "joints_unseen", "words": "Your left knee was out of view for 40% of the take.",
+                                         "value": 0.4, "threshold": 0.3}]
+    return {"version": "simon.quality.v1", "level": level, "reasons": reasons, "signals": {}, "score_cap": cap}
+
+
+def test_a_document_without_the_block_is_not_assessed_never_ok() -> None:
+    old = analysis([])
+    assert compare.quality_level(old) == "not_assessed" and compare.quality_score_cap(old) is None
+    assert compare.quality_cap_valid_level(old) and compare.quality_cap_equal_level(old, copy.deepcopy(old))
+    assert compare.quality_level({"quality": {"level": "fine"}}) == "not_assessed"  # an unknown level is not ok either
+    assert compare.quality_level({"quality": "future"}) == "not_assessed"
+
+
+def test_degraded_and_ok_blocks_promise_no_cap() -> None:
+    for level in ("ok", "degraded"):
+        a = {**analysis([]), "quality": block(level)}
+        assert compare.quality_level(a) == level and compare.quality_score_cap(a) is None and compare.quality_cap_valid_level(a)
+    bad = {**analysis([]), "quality": block("degraded", 59)}  # a cap on a non-major block is not Part 5's contract
+    assert not compare.quality_cap_valid_level(bad)
+
+
+def test_a_major_block_shows_min_of_score_and_cap() -> None:
+    major = {"quality": block("major", 59), "score": {"value": 88, "grade": "B"}}
+    assert compare.quality_score_cap(major) == 59 and compare.shown_score(major) == 59 and compare.quality_cap_valid_level(major)
+    major["score"]["value"] = 45
+    assert compare.shown_score(major) == 45 and compare.quality_cap_valid_level(major)
+    assert compare.match(major, copy.deepcopy(major))["quality_level_equal"]
+
+
+def test_a_major_block_needs_cap_59_and_differences_fail() -> None:
+    major = {"quality": block("major", 59), "score": {"value": 88, "grade": "B"}}
+    for cap in (None, 60, 40):
+        broken = copy.deepcopy(major)
+        broken["quality"]["score_cap"] = cap
+        assert not compare.quality_cap_valid_level(broken) and not compare.quality_cap_equal_level(major, broken)
+    assert not compare.quality_cap_equal_level(major, {**analysis([]), "quality": block("ok")})
+    assert not compare.match(major, {**analysis([]), "quality": block("degraded")})["quality_level_equal"]
+    for value in (float("nan"), True, None):
+        broken = copy.deepcopy(major)
+        broken["score"]["value"] = value
+        assert not compare.quality_cap_valid_level(broken)
+
+
+# The pre-1.13.0 issue-code helpers stay as they were (still correct for a document that carries `quality.issues`).
 def test_quality_helpers_ignore_absent_fields_and_never_promote_signal_level() -> None:
     old = analysis([])
     minor = copy.deepcopy(old)
@@ -181,3 +227,22 @@ def test_quality_cap_on_minor_fails_and_codes_are_sets() -> None:
     assert not compare.quality_cap_valid(a)
     a["quality"]["issues"] = "future unknown field"
     assert compare.quality_codes(a, "major") == []
+
+
+def test_score_within_adr_0018_passes_up_to_one_point_and_fails_above() -> None:  # AC-K9T
+    base = analysis([], score=80)
+    for other, within in ((79.6, True), (79, True), (81, True), (78.9, False), (81.1, False)):
+        assert compare.score_within(base, analysis([], score=other)) is within, other  # type: ignore[arg-type]
+    assert compare.score_drift(base, analysis([], score=79.6)) == 80 - 79.6  # type: ignore[arg-type]
+    assert compare.score_drift(base, analysis([], score=78.9)) == 80 - 78.9  # type: ignore[arg-type]
+    assert compare.SCORE_DRIFT_MAX == 1.0
+
+
+def test_score_within_keeps_score_equal_strict_and_its_null_rules() -> None:  # AC-K9 and AC-K9T together
+    assert not compare.score_equal(analysis([], score=80), analysis([], score=79))
+    assert compare.score_within(analysis([], score=80), analysis([], score=79))
+    refused = analysis([], score=None, status="different_movement")
+    assert compare.score_within(refused, copy.deepcopy(refused)) and compare.score_drift(refused, refused) is None
+    assert not compare.score_within(analysis([], score=None), analysis([], score=None))
+    assert not compare.score_within(analysis([], score=80), analysis([], score=None))
+    assert not compare.score_within(analysis([], score=80), refused)

@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from part7 import chain, failcause, labels as entry_store, modules
+from part7 import chain, failcause, labels as entry_store, modules, shown_score
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
 from part7.people import PersonSel, pose_for, reused_clip
@@ -21,9 +21,23 @@ def person_dir(job_dir: Path, pid: str) -> Path:
     return job_dir / "work" / "person" / pid
 
 
+def with_shown(job: dict[str, Any], job_dir: Path) -> dict[str, Any]:
+    """A finished group job with each person's `shown` (part7/shown_score.py) read now from their own analysis.json, so a
+    result stored before the block existed (staging jobs dbf5d47d974d, 6be0bf0fb8fc) still says why a grade is F
+    (one-letter.md L5). The stored order and record are left as they are; a person without an analysis gets none."""
+    result = job.get("result")
+    if job.get("status") != "done" or not isinstance(result, dict) or not isinstance(result.get("people"), list):
+        return job
+    people = [{**p, "shown": shown_score.of_path(person_dir(Path(job_dir), str(p["id"])) / "analysis.json")}
+              if isinstance(p, dict) and isinstance(p.get("id"), (str, int)) and not isinstance(p.get("id"), bool) else p
+              for p in result["people"]]
+    return {**job, "result": {**result, "people": people}}
+
+
 def order(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Highest score first; takes without a score (refused or failed) last, each side in the given order."""
-    return sorted(people, key=lambda p: (p.get("score") is None, -(p.get("score") or 0)))
+    """Highest shown measure first (one-letter.md L3: the credit percent shown, else the capped score); takes without a
+    score (refused or failed) last, each side in the given order."""
+    return sorted(people, key=lambda p: (shown_score.rank_of(p) is None, -(shown_score.rank_of(p) or 0)))
 
 
 def _follower_row(job_id: str, pid: str, label: str, res: dict[str, Any]) -> dict[str, Any]:
@@ -37,6 +51,7 @@ def _follower_row(job_id: str, pid: str, label: str, res: dict[str, Any]) -> dic
     return {
         "id": pid, "label": label, "status_code": summary.get("status_code") or res.get("status"),
         "score": summary.get("score"), "grade": summary.get("grade"), "faults": summary.get("faults", 0),
+        "shown": shown_score.of_path(res["files"]["analysis"]),  # one-letter.md: the row shows this; `order` still sorts by score
         "analysis": f"{base}/analysis.json", "replay": f"{base}/replay.json" if "replay" in res["files"] else None,
         **({"quality": summary["quality"]} if "quality" in summary else {}),
     }
@@ -59,6 +74,7 @@ def group_job(
     backend: str = "gpu",
     phrasing: str = "live",
     mode: str | None = None,
+    floor_work: bool = False,
 ) -> JobFn:
     """Return the job function of `POST api/group` on the people job whose work folder is `people_work`."""
 
@@ -78,15 +94,17 @@ def group_job(
         trained = chain.trainer(
             video, ctx.work / "trainer", report=to_stage, lock=lk, backend=backend, state=state,
             catalog=catalog if save_entry else None, name=name, category=category, person=sel,
+            floor_work=floor_work,
         )
         if trained.get("note"):
             ctx.add_note(str(trained["note"]))
         _raise_if_failed(trained)
         entry_id = trained.get("entry_id")
-        if entry_id and entry_labels and labels_state is not None:
-            entry_store.save(labels_state, str(entry_id), entry_labels)  # recorder.md "Labels": part7/labels.py
+        save_new = entry_store.entry_saver(labels_state, entry_labels or None, floor_work) if labels_state is not None else None
+        if entry_id and save_new is not None:
+            save_new(str(entry_id))  # recorder.md "Labels" and floor-work.md: part7/labels.py
         rows = _followers(ctx, trained["files"]["animation"], trained["files"]["skeleton"], video, people_work, pose3d,
-                          follower_ids, labels or {}, lk, backend, state, phrasing, mode)
+                          follower_ids, labels or {}, lk, backend, state, phrasing, mode, floor_work)
         result = {"entry_id": entry_id, "trainer_id": trainer_id, "people": order(rows)}
         return {"entry_id": entry_id, "result": result}
 
@@ -118,7 +136,7 @@ def _pose_once(
 def _followers(
     ctx: JobContext, animation: str, skeleton: str, video: Path, people_work: Path, pose3d: Path,
     follower_ids: list[str], labels: dict[str, str], lk: modules.Modules, backend: str, state: Path | str | None,
-    phrasing: str, mode: str | None = None,
+    phrasing: str, mode: str | None = None, floor_work: bool = False,
 ) -> list[dict[str, Any]]:
     """Run the follower chain for each id against the trainer's animation; a failure is a row, not the job."""
     rows: list[dict[str, Any]] = []
@@ -130,7 +148,7 @@ def _followers(
         res = chain.follower(
             video, animation, folder, lock=lk, backend=backend, state=state, phrasing=phrasing,
             person=PersonSel(id=pid, people_work=people_work, pose3d=pose3d), expected_visibility=skeleton,
-            mode=mode,
+            mode=mode, floor_work=floor_work,
         )
         if res.get("note"):
             ctx.add_note(f"person {pid}: {res['note']}")

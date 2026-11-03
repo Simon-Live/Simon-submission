@@ -16,6 +16,8 @@ import subprocess
 import textwrap
 from typing import Any
 
+from part7 import shown_score
+
 WIDTH, HEIGHT = 1080, 1920
 HEADER_H, PANEL_H = 220, 720  # header, then two panels of 1080x720; the rest (260) is the caption strip
 FPS = 30
@@ -56,10 +58,14 @@ class Facts:
     grade: str
     faults: int
     captions: tuple[Caption, ...]
+    # one-letter.md: the result headline's figures and letter (part7/shown_score.py), burned in instead of score and grade
+    figures: str | None = None
+    letter: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {"score": self.score, "grade": self.grade, "faults": self.faults,
-                "captions": [{"at_s": c.start, "until_s": c.end, "cue": c.cue, "detail": c.detail} for c in self.captions]}
+                "captions": [{"at_s": c.start, "until_s": c.end, "cue": c.cue, "detail": c.detail} for c in self.captions],
+                **({"figures": self.figures, "letter": self.letter} if self.figures else {})}
 
 
 def _num(v: Any) -> float | None:
@@ -96,7 +102,8 @@ def facts_from(job: dict[str, Any], analysis: dict[str, Any]) -> Facts:
         end = min(t + span, nxt) if nxt is not None and nxt > t else t + span
         detail = _upper(str(f.get("text_timed") or line).strip())
         caps.append(Caption(round(t, 2), round(end, 2), cue, detail if detail != cue else ""))
-    return Facts(int(round(score)), grade, len(faults), tuple(caps))
+    shown = shown_score.shown(analysis, result.get("light"))
+    return Facts(int(round(score)), grade, len(faults), tuple(caps), shown["figures"] if shown else None, shown["letter"] if shown else None)
 
 
 def faults_label(count: int) -> str:
@@ -139,7 +146,7 @@ def _panel(trainer: bool, section: dict[str, Any] | None, duration: float) -> st
 
 def texts_for(facts: Facts) -> dict[str, str]:
     """The caption and header files (name -> content) that the command reads."""
-    files = {"score.txt": f"{facts.score}", "grade.txt": f"Grade {facts.grade}", "faults.txt": faults_label(facts.faults),
+    files = {"score.txt": facts.figures or f"{facts.score}", "grade.txt": f"Grade {facts.letter or facts.grade}", "faults.txt": faults_label(facts.faults),
              "ref.txt": "Reference", "you.txt": "You"}
     for i, c in enumerate(facts.captions):
         files[f"cue{i}.txt"] = _wrap(c.cue, CUE_WRAP, CUE_LINES)

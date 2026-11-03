@@ -140,7 +140,7 @@ def test_guard_result_and_rejections_are_kept(runner: history_report.Runner, wor
 
     kept = {"summary": {"text": "kept", "cites": [{"take": 1}]}, "trends": [{"kind": "new", "measure": "m", "side": "center", "text": "t", "cites": []}],
             "focus": {"cue": "Keep your chest up"}, "teacher_link": None, "observations": [{"take": 2, "at_s": 1.0, "text": "o"}]}
-    monkeypatch.setattr(sys.modules["part7.history_guard"], "check", lambda *a: (kept, [{"item": "x", "reason": "no cite"}]))
+    monkeypatch.setattr(sys.modules["part7.history_guard"], "check", lambda *a, **k: (kept, [{"item": "x", "reason": "no cite"}]))
     world.answers.append(ANSWER)
     report = _report(runner)
     assert report["status"] == "ok" and report["summary"]["text"] == "kept" and report["trends"] == kept["trends"]
@@ -236,7 +236,9 @@ def test_report_codes(runner: history_report.Runner, world: World, monkeypatch: 
     assert limit.value.status == 429 and history_report.runs_today(runner.state, USER, now + 4) == 2
     assert history_report.runs_today(runner.state, USER, now + 2 * 86400) == 0  # the next day starts clean
     monkeypatch.setenv("SIMON7_HISTORY_DAILY", "x")
-    assert history_report.daily_limit() == 5
+    assert history_report.daily_limit() is None
+    monkeypatch.setenv("SIMON7_HISTORY_DAILY", "3")
+    assert history_report.daily_limit() == 3
 
 
 def test_rehab_take_is_included_like_any_other(tmp_path: Path, world: World, monkeypatch: pytest.MonkeyPatch) -> None:  # private
@@ -332,4 +334,20 @@ def test_global_daily_cap_refuses_with_a_clear_message(runner: history_report.Ru
     assert limit.value.status == 429 and limit.value.message == history_report.MSG_GLOBAL_LIMIT
     assert history_report.global_runs_today(runner.state, now + 2 * 86400) == 0
     monkeypatch.setenv("SIMON7_HISTORY_GLOBAL_DAILY", "x")
-    assert history_report.global_daily_limit() == 50
+    assert history_report.global_daily_limit() is None
+    monkeypatch.setenv("SIMON7_HISTORY_GLOBAL_DAILY", "7")
+    assert history_report.global_daily_limit() == 7
+
+
+def test_no_daily_limit_by_default_many_runs_are_never_refused(runner: history_report.Runner, world: World,
+                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SIMON7_HISTORY_DAILY", raising=False)
+    monkeypatch.delenv("SIMON7_HISTORY_GLOBAL_DAILY", raising=False)
+    world.opted_in.add(USER)
+    now = time.time()
+    for _ in range(60):  # past the old 5 per user and 50 global
+        history_report._note_run(runner.state, USER, now)
+    assert history_report.runs_today(runner.state, USER, now) == 60
+    world.answers.append(ANSWER)
+    kind, _ = runner.request(USER, ENTRY, now=now)
+    assert kind == "accepted" and runner.wait_idle(20)

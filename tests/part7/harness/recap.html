@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<base href="/">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>recap harness</title>
+<link rel="stylesheet" href="web/styles.css">
+<link rel="stylesheet" href="web/theme/tokens.css">
+<link rel="stylesheet" href="web/theme/base.css">
+<link rel="stylesheet" href="web/theme/screens.css">
+<link rel="stylesheet" href="web/theme/results.css">
+<header class="bar"><a class="brand" href="#/"><span class="brand-word">simon</span></a></header>
+<main id="app" class="screen"></main>
+<script type="module">
+// ?mode=all mounts #/me/all, ?mode=recap[&month=] mounts #/me/recap, ?mode=page mounts #/me/<entry>, ?mode=slot the result
+// slot, ?mode=list #/me. The fake server (tests/part7/recap.browser.mjs) answers api/me/history* with SEEDED documents.
+import { mountAcross, mountRecap } from "/web/recap.js";
+import { mountHistory, mountMyTakes } from "/web/history.js";
+const q = new URLSearchParams(location.search);
+const app = document.getElementById("app");
+const entry = q.get("entry") || "squat-aaaaaaaa";
+const mode = q.get("mode");
+if (mode === "all") mountAcross(app);
+else if (mode === "recap") mountRecap(app, q.get("month") || undefined);
+else if (mode === "list") mountMyTakes(app);
+else if (mode === "slot") {
+  const section = document.createElement("section");
+  section.dataset.testid = "history-slot";
+  app.append(section);
+  mountHistory(section, { jobId: "00000000000a", entryId: entry, analysis: {}, seek() {} });
+} else mountHistory(app, entry);
+</script>

@@ -29,7 +29,6 @@ PART6_MAX_DURATION_MS = 120000
 
 DAILY_TRAINER_JOBS_LIMIT = 10
 DAILY_GPU_JOBS_LIMIT = 40
-PART1_RUN_SPEND_CAP_USD = 5.0
 
 DEFAULT_GPU_WORKERS = 2
 DEFAULT_PART1_TIMEOUT_S = 150.0
@@ -63,6 +62,13 @@ DEFAULT_DRAIN_MAX_S = 600.0
 def drain_max_s() -> float:
     """Seconds a stopping server waits for running jobs (`SIMON7_DRAIN_MAX_S`, default 600)."""
     return _env_number("SIMON7_DRAIN_MAX_S", DEFAULT_DRAIN_MAX_S, 0)
+
+
+def jobs_after_pid() -> int | None:
+    """The previous server a restart started this one beside (`SIMON7_JOBS_AFTER_PID`, set by staging/up.sh): the job
+    queue stays a standby until that process has exited (jobs.py, TICKET-240). None when unset or not a pid."""
+    value = os.environ.get("SIMON7_JOBS_AFTER_PID", "").strip()
+    return int(value) if value.isdigit() and int(value) > 0 else None
 
 
 def health_part6_stale_s() -> float:
@@ -108,10 +114,14 @@ def state_root(state: str | Path | None = None) -> Path:
 
 
 def modules_dir() -> Path:
-    """Return the directory holding the part submodules (`<repo>/modules`, or `SIMON7_MODULES_DIR`)."""
+    """Return the directory holding the part submodules: `SIMON7_MODULES_DIR`, else the tree the serving build runs on
+    (`<state>/module-trees/current`, TICKET-329), else `<repo>/modules`."""
     env_val = os.environ.get("SIMON7_MODULES_DIR")
     if env_val:
         return Path(env_val).expanduser().resolve()
+    pointer = state_root() / "module-trees" / "current"
+    if pointer.is_symlink() and pointer.is_dir():
+        return pointer.resolve()
     return REPO_ROOT / "modules"
 
 
@@ -133,6 +143,21 @@ def dev_dir(state: str | Path | None = None) -> Path:
 def staging_dir(state: str | Path | None = None) -> Path:
     """Return the staging server state directory (`<state>/staging`)."""
     return state_root(state) / "staging"
+
+
+STAGING_STATE_DEFAULT = Path.home() / ".local" / "state" / "simon-part-7" / "staging"  # staging/env.sh's SIMON7_STATE_DIR
+
+
+def staging_state_dir() -> Path:
+    """The staging server's state folder: SIMON7_STAGING_STATE_DIR (staging/env.sh exports it), else the default."""
+    return Path(os.environ.get("SIMON7_STAGING_STATE_DIR") or STAGING_STATE_DEFAULT).expanduser().resolve()
+
+
+def is_staging_server(state: str | Path | None = None) -> bool:
+    """True for the staging server: SIMON7_STAGING=1, or its state folder is the staging state folder (GPU guard)."""
+    if os.environ.get("SIMON7_STAGING", "").strip() == "1":
+        return True
+    return state_root(state) == staging_state_dir()
 
 
 def check_dir(state: str | Path | None = None) -> Path:
@@ -193,3 +218,34 @@ def normalize_base_path(base: str | None) -> str:
     if not b.endswith("/"):
         b = b + "/"
     return b
+
+
+def part1_spend_cap_usd() -> float | None:
+    """Part 1's run-wide spend cap in USD: off (None) unless SIMON7_PART1_SPEND_CAP_USD is a positive number.
+    Spend is recorded either way."""
+    try:
+        value = float(os.environ.get("SIMON7_PART1_SPEND_CAP_USD", ""))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def part1_spend_capped(spent: float) -> bool:
+    cap = part1_spend_cap_usd()
+    return cap is not None and spent >= cap
+
+
+def staging_route() -> str | None:
+    """How the hub exposes this app: `root` (own origin), `prefix` (shared gateway origin) or None when not on staging.
+
+    `STAGING_ROUTE` wins. Without it a base path is read the way the hub sets it: `/` is root, any other path is a
+    prefix. ADR-0014: sign-in may be shown only on `root`; in root mode the hub leaves `STAGING_BASE_PATH` empty, so
+    "no base path" alone no longer means "local".
+    """
+    route = os.environ.get("STAGING_ROUTE", "").strip().lower()
+    if route in ("root", "prefix", "strip"):
+        return route
+    base = os.environ.get("STAGING_BASE_PATH", "").strip()
+    if not base:
+        return None
+    return "root" if base == "/" else "prefix"

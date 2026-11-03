@@ -64,6 +64,25 @@ export function effectiveMode(entry, storage) {
   return defaultForCategory(entry && entry.category) || "fitness";
 }
 
+/**
+ * TICKET-311: the mode the entry's own kind names, which scores its takes: rehab for the `rehab` tag, else the
+ * category's mode (dance, exercise -> fitness), else null (the bar's choice applies). The server applies the same rule.
+ */
+export function entryMode(entry, tags = []) {
+  if ((tags || []).includes("rehab")) return "rehab";
+  return defaultForCategory(entry && entry.category);
+}
+
+/** The entry's mode when it decides (modes shown and the entry has a kind), else null: the picker is locked then. */
+export function lockedMode(entry, tags) {
+  return showModes() ? entryMode(entry, tags) : null;
+}
+
+/** The mode a follow take sends: the entry's when it decides, else the bar's choice (null sends none). */
+export function takeMode(entry, tags, barChoice) {
+  return lockedMode(entry, tags) || (isMode(barChoice) ? barChoice : null);
+}
+
 const tagsOf = (labels, entry) => ((labels || {})[entry.id] || {}).tags || [];
 
 /** Catalog filter: dance = category dance or tag dance; fitness = category exercise or tag fitness; rehab = tag rehab. */
@@ -83,7 +102,8 @@ export function ensureStyles() { ensureCss("practice.css", "data-simon-practice-
 
 /**
  * A row of mode buttons. `withAll` adds the "All" filter (catalog). `value` is the selected one.
- * @returns {{el: HTMLElement, set(value: string): void}}
+ * @returns {{el: HTMLElement, set(value: string): void, lock(): void}}
+ * `lock()` (TICKET-311) keeps the shown mode and refuses clicks: the entry's kind decides the take's mode.
  */
 export function mountModePicker({ value, withAll = false, onChange, testid = "mode-picker" }) {
   ensureStyles();
@@ -105,7 +125,8 @@ export function mountModePicker({ value, withAll = false, onChange, testid = "mo
   }
   paint(value);
   if (!showModes()) el.hidden = true; // submission profile
-  return { el, set: paint };
+  const lock = () => { el.dataset.locked = "entry"; for (const b of buttons.values()) b.disabled = true; };
+  return { el, set: paint, lock };
 }
 
 /** The safety line and the framing line of a mode, as elements. */

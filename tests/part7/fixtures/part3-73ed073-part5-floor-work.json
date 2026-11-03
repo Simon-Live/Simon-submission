@@ -1,0 +1,534 @@
+{
+ "format": "simon.animation.v1",
+ "producer": "part3",
+ "view": "part5",
+ "fps": 30,
+ "duration_s": 7.066667,
+ "frame_count": 3,
+ "coordinate_frame": {
+  "origin": "hip_midpoint",
+  "x": "subject_left",
+  "y": "world_up",
+  "z": "anterior",
+  "position_unit": "metres",
+  "angle_unit": "degrees"
+ },
+ "joints": [
+  "nose",
+  "left_eye",
+  "right_eye",
+  "left_ear",
+  "right_ear",
+  "left_shoulder",
+  "right_shoulder",
+  "left_elbow",
+  "right_elbow",
+  "left_wrist",
+  "right_wrist",
+  "left_hip",
+  "right_hip",
+  "left_knee",
+  "right_knee",
+  "left_ankle",
+  "right_ankle"
+ ],
+ "bones": [
+  {
+   "name": "left_pelvis",
+   "parent": "root",
+   "child": "left_hip",
+   "length_m": 0.125
+  },
+  {
+   "name": "right_pelvis",
+   "parent": "root",
+   "child": "right_hip",
+   "length_m": 0.125
+  },
+  {
+   "name": "left_thigh",
+   "parent": "left_hip",
+   "child": "left_knee",
+   "length_m": 0.4165
+  },
+  {
+   "name": "right_thigh",
+   "parent": "right_hip",
+   "child": "right_knee",
+   "length_m": 0.4165
+  },
+  {
+   "name": "left_shank",
+   "parent": "left_knee",
+   "child": "left_ankle",
+   "length_m": 0.4182
+  },
+  {
+   "name": "right_shank",
+   "parent": "right_knee",
+   "child": "right_ankle",
+   "length_m": 0.4182
+  },
+  {
+   "name": "spine",
+   "parent": "root",
+   "child": "neck",
+   "length_m": 0.4896
+  },
+  {
+   "name": "left_clavicle",
+   "parent": "neck",
+   "child": "left_shoulder",
+   "length_m": 0.1979
+  },
+  {
+   "name": "right_clavicle",
+   "parent": "neck",
+   "child": "right_shoulder",
+   "length_m": 0.1979
+  },
+  {
+   "name": "left_upper_arm",
+   "parent": "left_shoulder",
+   "child": "left_elbow",
+   "length_m": 0.3162
+  },
+  {
+   "name": "right_upper_arm",
+   "parent": "right_shoulder",
+   "child": "right_elbow",
+   "length_m": 0.3162
+  },
+  {
+   "name": "left_forearm",
+   "parent": "left_elbow",
+   "child": "left_wrist",
+   "length_m": 0.2482
+  },
+  {
+   "name": "right_forearm",
+   "parent": "right_elbow",
+   "child": "right_wrist",
+   "length_m": 0.2482
+  },
+  {
+   "name": "head",
+   "parent": "neck",
+   "child": "nose",
+   "length_m": 0.1907
+  },
+  {
+   "name": "left_eye_link",
+   "parent": "nose",
+   "child": "left_eye",
+   "length_m": 0.0618
+  },
+  {
+   "name": "right_eye_link",
+   "parent": "nose",
+   "child": "right_eye",
+   "length_m": 0.0618
+  },
+  {
+   "name": "left_ear_link",
+   "parent": "left_eye",
+   "child": "left_ear",
+   "length_m": 0.0774
+  },
+  {
+   "name": "right_ear_link",
+   "parent": "right_eye",
+   "child": "right_ear",
+   "length_m": 0.0774
+  }
+ ],
+ "body": {
+  "profile": "simon-standard",
+  "selected_by": "default",
+  "stature_m": 1.7,
+  "scale": 1.0,
+  "source": "part3/standard_body.json",
+  "symmetrized": false
+ },
+ "person": {
+  "id": 0,
+  "rule": "most_frames",
+  "candidates": {
+   "0": 107
+  },
+  "frames_present": 107,
+  "frames_dropped": 0,
+  "few_frames": false,
+  "measured_bone_lengths_m": {
+   "left_pelvis": 0.0858,
+   "right_pelvis": 0.0858,
+   "left_thigh": 0.4234,
+   "right_thigh": 0.4235,
+   "left_shank": 0.3978,
+   "right_shank": 0.397,
+   "spine": 0.5255,
+   "left_clavicle": 0.1587,
+   "right_clavicle": 0.1587,
+   "left_upper_arm": 0.2632,
+   "right_upper_arm": 0.2631,
+   "left_forearm": 0.2384,
+   "right_forearm": 0.2401,
+   "head": 0.2832,
+   "left_eye_link": 0.0607,
+   "right_eye_link": 0.0605,
+   "left_ear_link": 0.1106,
+   "right_ear_link": 0.1105
+  },
+  "flips_repaired_total": {
+   "body": 0,
+   "legs": 0,
+   "arms": 0,
+   "face": 0
+  }
+ },
+ "mirror": {
+  "setting": "auto",
+  "applied": false,
+  "reason": "auto: no mirrored key in input"
+ },
+ "source": {
+  "schema": "simon.skeleton/1",
+  "sha256": "433ae2edfe61b7e5c027f06ccdea289df34741225829f45fb5a652bb5147d857"
+ },
+ "frames_skipped": 0,
+ "frames": [
+  {
+   "index": 0,
+   "t": 0.0,
+   "interpolated": false,
+   "joints": {
+    "nose": [
+     -0.0194,
+     0.5352,
+     0.2816
+    ],
+    "left_eye": [
+     0.0022,
+     0.5883,
+     0.2586
+    ],
+    "right_eye": [
+     -0.0626,
+     0.5758,
+     0.2641
+    ],
+    "left_ear": [
+     0.0272,
+     0.6001,
+     0.1862
+    ],
+    "right_ear": [
+     -0.1002,
+     0.5743,
+     0.1964
+    ],
+    "left_shoulder": [
+     0.1738,
+     0.4795,
+     0.0998
+    ],
+    "right_shoulder": [
+     -0.222,
+     0.4781,
+     0.0991
+    ],
+    "left_elbow": [
+     0.3816,
+     0.2793,
+     -0.0294
+    ],
+    "right_elbow": [
+     -0.3648,
+     0.2807,
+     -0.1025
+    ],
+    "left_wrist": [
+     0.4841,
+     0.436,
+     0.1335
+    ],
+    "right_wrist": [
+     -0.4565,
+     0.4301,
+     0.0731
+    ],
+    "left_hip": [
+     0.1248,
+     0.0065,
+     0.0
+    ],
+    "right_hip": [
+     -0.1248,
+     -0.0065,
+     0.0
+    ],
+    "left_knee": [
+     0.2173,
+     -0.3629,
+     0.1687
+    ],
+    "right_knee": [
+     -0.2219,
+     -0.3594,
+     0.1988
+    ],
+    "left_ankle": [
+     0.2218,
+     -0.7742,
+     0.0932
+    ],
+    "right_ankle": [
+     -0.2617,
+     -0.7608,
+     0.0884
+    ]
+   },
+   "conf": {
+    "nose": 1.0,
+    "left_eye": 1.0,
+    "right_eye": 1.0,
+    "left_ear": 1.0,
+    "right_ear": 1.0,
+    "left_shoulder": 1.0,
+    "right_shoulder": 1.0,
+    "left_elbow": 1.0,
+    "right_elbow": 1.0,
+    "left_wrist": 1.0,
+    "right_wrist": 1.0,
+    "left_hip": 1.0,
+    "right_hip": 1.0,
+    "left_knee": 1.0,
+    "right_knee": 1.0,
+    "left_ankle": 1.0,
+    "right_ankle": 0.3
+   }
+  },
+  {
+   "index": 1,
+   "t": 0.033333,
+   "interpolated": false,
+   "joints": {
+    "nose": [
+     -0.0202,
+     0.5377,
+     0.2719
+    ],
+    "left_eye": [
+     0.0014,
+     0.5911,
+     0.2493
+    ],
+    "right_eye": [
+     -0.0634,
+     0.5784,
+     0.2546
+    ],
+    "left_ear": [
+     0.0265,
+     0.6033,
+     0.1772
+    ],
+    "right_ear": [
+     -0.1008,
+     0.5774,
+     0.1869
+    ],
+    "left_shoulder": [
+     0.1734,
+     0.4814,
+     0.0902
+    ],
+    "right_shoulder": [
+     -0.2224,
+     0.4799,
+     0.0898
+    ],
+    "left_elbow": [
+     0.3808,
+     0.2788,
+     -0.0359
+    ],
+    "right_elbow": [
+     -0.3675,
+     0.2795,
+     -0.1072
+    ],
+    "left_wrist": [
+     0.4842,
+     0.4391,
+     0.123
+    ],
+    "right_wrist": [
+     -0.4603,
+     0.4329,
+     0.0645
+    ],
+    "left_hip": [
+     0.1248,
+     0.0064,
+     0.0
+    ],
+    "right_hip": [
+     -0.1248,
+     -0.0064,
+     0.0
+    ],
+    "left_knee": [
+     0.2133,
+     -0.3696,
+     0.1557
+    ],
+    "right_knee": [
+     -0.2192,
+     -0.3669,
+     0.186
+    ],
+    "left_ankle": [
+     0.2196,
+     -0.7813,
+     0.0823
+    ],
+    "right_ankle": [
+     -0.2624,
+     -0.7698,
+     0.0824
+    ]
+   },
+   "conf": {
+    "nose": 1.0,
+    "left_eye": 1.0,
+    "right_eye": 1.0,
+    "left_ear": 1.0,
+    "right_ear": 1.0,
+    "left_shoulder": 1.0,
+    "right_shoulder": 1.0,
+    "left_elbow": 1.0,
+    "right_elbow": 1.0,
+    "left_wrist": 1.0,
+    "right_wrist": 1.0,
+    "left_hip": 1.0,
+    "right_hip": 1.0,
+    "left_knee": 1.0,
+    "right_knee": 1.0,
+    "left_ankle": 1.0,
+    "right_ankle": 0.3
+   }
+  },
+  {
+   "index": 2,
+   "t": 0.066667,
+   "interpolated": false,
+   "joints": {
+    "nose": [
+     -0.021,
+     0.5401,
+     0.2622
+    ],
+    "left_eye": [
+     0.0006,
+     0.5936,
+     0.2401
+    ],
+    "right_eye": [
+     -0.0641,
+     0.5809,
+     0.2451
+    ],
+    "left_ear": [
+     0.0259,
+     0.6064,
+     0.168
+    ],
+    "right_ear": [
+     -0.1014,
+     0.5803,
+     0.1773
+    ],
+    "left_shoulder": [
+     0.173,
+     0.4831,
+     0.0805
+    ],
+    "right_shoulder": [
+     -0.2228,
+     0.4815,
+     0.0804
+    ],
+    "left_elbow": [
+     0.3801,
+     0.2782,
+     -0.0423
+    ],
+    "right_elbow": [
+     -0.3702,
+     0.2782,
+     -0.1118
+    ],
+    "left_wrist": [
+     0.4842,
+     0.442,
+     0.1123
+    ],
+    "right_wrist": [
+     -0.4639,
+     0.4355,
+     0.0558
+    ],
+    "left_hip": [
+     0.1248,
+     0.0064,
+     0.0
+    ],
+    "right_hip": [
+     -0.1248,
+     -0.0064,
+     0.0
+    ],
+    "left_knee": [
+     0.2091,
+     -0.3758,
+     0.1425
+    ],
+    "right_knee": [
+     -0.2164,
+     -0.374,
+     0.1731
+    ],
+    "left_ankle": [
+     0.2173,
+     -0.7878,
+     0.0712
+    ],
+    "right_ankle": [
+     -0.2628,
+     -0.7781,
+     0.0762
+    ]
+   },
+   "conf": {
+    "nose": 1.0,
+    "left_eye": 1.0,
+    "right_eye": 1.0,
+    "left_ear": 1.0,
+    "right_ear": 1.0,
+    "left_shoulder": 1.0,
+    "right_shoulder": 1.0,
+    "left_elbow": 1.0,
+    "right_elbow": 1.0,
+    "left_wrist": 1.0,
+    "right_wrist": 1.0,
+    "left_hip": 1.0,
+    "right_hip": 1.0,
+    "left_knee": 1.0,
+    "right_knee": 1.0,
+    "left_ankle": 1.0,
+    "right_ankle": 0.3
+   }
+  }
+ ]
+}

@@ -68,6 +68,7 @@
 .pp-grade[data-grade="C"] { background: #fff4dc; color: #8a5a00; }
 .pp-grade[data-grade="D"] { background: #ffe9d6; color: #94410b; }
 .pp-grade[data-grade="F"] { background: var(--red-bg); color: var(--red-ink); }
+.pp-grade[data-grade="E"] { background: var(--red-bg); color: var(--red-ink); } /* one-letter.md: the credit's E sits with F */
 .pp-grade-none { background: var(--card-fill-raised); color: var(--muted); }
 
 /* watch all */

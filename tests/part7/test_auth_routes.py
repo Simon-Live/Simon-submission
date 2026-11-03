@@ -96,7 +96,8 @@ def test_takes_newest_first_with_score_from_the_analysis(api: Api) -> None:
     by_id = {t["job_id"]: t for t in takes}
     assert by_id[first]["score"] == 81 and by_id[first]["grade"] == "B" and by_id[first]["status"] == "done"
     assert by_id[unscored]["score"] is None and by_id[unscored]["grade"] is None
-    assert set(by_id[first]) == {"job_id", "kind", "entry_id", "created_at", "status", "score", "grade"}
+    assert set(by_id[first]) == {"job_id", "kind", "entry_id", "created_at", "status", "score", "grade", "shown", "video_kept", "attribution"}
+    assert by_id[first]["shown"]["letter"] == "B" and by_id[unscored]["shown"] is None  # one-letter.md
     assert [t["created_at"] for t in takes] == sorted((t["created_at"] for t in takes), reverse=True)
     assert get(api, "api/me/takes", cookie=sign_in(api, "grace@example.com"))[2] == {"takes": []}  # not someone else's
 
@@ -268,7 +269,9 @@ def test_a_signed_in_visitor_sees_the_same_job_record(api: Api) -> None:  # AC-A
     sid = sign_in(api)
     post(api, "api/me/claims", {"job_id": done}, cookie=sid)
     after = api.request("GET", f"api/jobs/{done}", None, {"Cookie": f"s7_sid={sid}"})[2]
-    assert json.loads(before) == json.loads(after) and b"user_id" not in after  # ownership never reaches job.json
+    seen, own = json.loads(before), json.loads(after)
+    assert own.pop("attribution")["mine"] is True and seen.pop("attribution")["mine"] is False  # the one field the viewer changes
+    assert seen == own and b"user_id" not in after  # ownership never reaches job.json
     assert "user_id" not in (api.app.queue.job_dir(done) / "job.json").read_text()
 
 
@@ -296,3 +299,23 @@ def test_staging_trusts_a_host_only_when_it_came_through_the_gateway(api: Api, m
     assert auth.public_origin(req("127.0.0.1")) is None  # a direct request with a made-up Host
     assert auth.public_origin(req("203.0.113.9", **{"Cf-Connecting-Ip": "1.2.3.4"})) is None  # not the gateway hop
     assert auth.public_origin(req("127.0.0.1", **{"Cf-Connecting-Ip": "1.2.3.4"})) == "https://tunnel.example"
+
+
+def test_labels_of_an_only_me_entry_are_its_owners_alone(api: Api) -> None:
+    """GET api/labels and api/labels/<id> never show an only-me entry's labels or floor-work mark to anyone else."""
+    from part7 import labels
+
+    ada, grace = sign_in(api), sign_in(api, "grace@example.com")
+    owner = get(api, "api/auth/me", cookie=ada)[2]["user_id"]
+    auth.identity(api.app).attach_entry(ENTRY, owner, "")
+    labels.save(api.app.state, ENTRY, labels.validate({"tags": ["knee"], "notes": "private"}))
+    labels.set_floor_work(api.app.state, ENTRY, True)
+    labels.save(api.app.state, "public-move", labels.validate({"tags": ["arm"], "notes": ""}))
+    assert post(api, f"api/me/entries/{ENTRY}", {"only_me": True}, cookie=ada)[0] == 200
+    for cookie in (None, grace):  # signed out, then a second account
+        listed = get(api, "api/labels", cookie=cookie)[2]
+        assert ENTRY not in listed and "public-move" in listed
+        assert get(api, f"api/labels/{ENTRY}", cookie=cookie)[0] == 404
+    mine = get(api, "api/labels", cookie=ada)[2]
+    assert mine[ENTRY]["floor_work"] is True and mine[ENTRY]["tags"] == ["knee"]
+    assert get(api, f"api/labels/{ENTRY}", cookie=ada)[0] == 200

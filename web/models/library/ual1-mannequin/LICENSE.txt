@@ -1,0 +1,2 @@
+Universal Animation Library by Quaternius. CC0 1.0 Universal (Public Domain Dedication), https://creativecommons.org/publicdomain/zero/1.0/
+Used unchanged apart from the removal of the animation clips.

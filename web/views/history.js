@@ -1,30 +1,25 @@
 // "Your takes over time" from a view model (web/model/history.js), styled by theme/history.css on the brand tokens.
 // No fetching and no storage: the glue passes the handlers in.
+import { renderReceipt } from "./receipt.js";
 import { h, clear, stateBlock, linkButton } from "../ui.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function svg(tag, attrs = {}, ...kids) {
-  const el = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  for (const kid of kids) {
-    if (typeof kid === "string") el.textContent = kid;
-    else if (kid) el.append(kid);
-  }
-  return el;
-}
+import { authorLine } from "./author-line.js";
+import { renderReelCard } from "./reel.js";
+import { renderSeries } from "./series-chart.js";
+import { svg } from "./svg.js";
 
 /** The score line per take: the grid, the line, one dot and one take number per take. Tokens only (history.css). */
-export function scoreChart({ box, points, path, ticks, label }) {
+export function scoreChart({ box, points, segments, breaks, ticks, label }) {
   const grid = ticks.flatMap((t) => [
     svg("line", { class: "hs-grid", x1: box.left, x2: box.width - box.right, y1: t.y, y2: t.y }),
     svg("text", { class: "hs-tick", x: box.left - 6, y: t.y + 4, "text-anchor": "end" }, String(t.value)),
   ]);
-  const line = path ? svg("path", { class: "hs-line", d: path }) : null;
+  const lines = segments.filter((s) => s.path).map((s, i) => svg("path", { class: "hs-line", d: s.path, "data-testid": `history-segment-${i}`, "data-group": s.key }));
+  const marks = breaks.map((b, i) => svg("line", { class: "hs-break", x1: b.x, x2: b.x, y1: box.top, y2: box.height - box.bottom, "data-testid": `history-break-${i}` }, svg("title", {}, b.label)));
+  const caps = points.filter((p) => p.capDot).map((p) => svg("circle", { class: "hs-dot-open", cx: p.capDot.x, cy: p.capDot.y, r: 5, "data-testid": `history-uncapped-${p.take}` }, svg("title", {}, p.capDot.label)));
   const dots = points.map((p) => svg("circle", { class: "hs-dot", "data-tone": p.tone, cx: p.x, cy: p.y, r: 5, "data-testid": `history-dot-${p.take}` }));
   const nums = points.map((p) => svg("text", { class: "hs-take-no", x: p.x, y: box.height - 4, "text-anchor": "middle" }, String(p.take)));
   return svg("svg", { class: "hs-chart", viewBox: `0 0 ${box.width} ${box.height}`, role: "img", "aria-label": label, "data-testid": "history-chart" },
-    svg("title", {}, label), ...grid, ...[line, ...dots, ...nums].filter(Boolean));
+    svg("title", {}, label), ...grid, ...marks, ...lines, ...caps, ...dots, ...nums);
 }
 
 /** The clip player. `open(url, atSeconds, label)` loads the take's clip and lands on the second. */
@@ -93,7 +88,7 @@ export function fallbackPanel(vm) {
   const rows = t ? t.measures.map((m, i) => h("li", { class: "hs-measure-row", "data-testid": `history-fact-${i}` },
     h("span", { class: "hs-kind", "data-tone": m.tone, text: m.kindText }),
     h("strong", { class: "hs-measure", text: m.label }),
-    h("span", { class: "hs-hint", text: [m.presence, m.first && `first ${m.first.toLowerCase()}`, m.last && `last ${m.last.toLowerCase()}`].filter(Boolean).join(", ") }))) : [];
+    h("span", { class: "hs-hint", text: [m.presence, m.first && `first ${m.first.toLowerCase()}`, m.last && `last ${m.last.toLowerCase()}`, m.close && `a close call in ${m.close.toLowerCase()}`].filter(Boolean).join(", ") }))) : [];
   return h("section", { class: "hs-card", "data-testid": "history-fallback" },
     h("h2", { text: "Measured across your takes" }),
     h("p", { class: "hs-reason", "data-testid": "history-fallback-reason", text: vm.reason }),
@@ -135,6 +130,7 @@ export function renderReport(area, vm, player) {
   if (!vm.hasReport) return;
   if (vm.fallback) area.append(fallbackPanel(vm));
   else area.append(...reportBody(vm, player));
+  if (vm.receipt) area.append(renderReceipt(vm.receipt));
   if (vm.meter) area.append(contextPanel(vm.meter));
 }
 
@@ -145,6 +141,7 @@ function takeRow(t, player) {
     h("strong", { class: "hs-score", "data-tone": t.tone, text: t.score }),
     t.grade ? h("span", { class: "hs-grade", text: t.grade }) : null,
     h("time", { class: "hs-when", text: t.when }),
+    t.seeded ? h("span", { class: "hs-seeded", "data-testid": `history-take-${t.take}-seeded`, text: "Seeded demo history" }) : null,
     t.clip ? h("button", { type: "button", class: "hs-watch", "data-testid": `history-watch-${t.take}`, text: "Watch", "aria-label": `Watch ${label}`, onclick: () => player.open(t.clip, 0, label) }) : null);
 }
 
@@ -154,13 +151,13 @@ function consentBlock(vm, onConsent) {
     text: on ? "Muse Spark watches my takes: on" : "Let Muse Spark watch my takes", onclick: () => onConsent(!on) });
   return h("section", { class: "hs-card", "data-testid": "history-consent", "data-on": on ? "true" : "false" },
     h("h2", { text: "Your choice" }),
-    h("p", { class: "hs-text", text: on ? "Up to 4 of your clips are sent to Muse Spark with the measurements of every take, so it can point at moments in them." : "Without this, only the measurements of your takes are sent. No video leaves the app." }),
+    h("p", { class: "hs-text", text: on ? "Simon sends a few of your kept clips (at most 5) to Meta's Muse Spark with the measurements of every take, so it can point at moments in them." : "Without this, only the measurements of your takes go to Meta's Muse Spark when you compare. No video leaves the app." }),
     btn);
 }
 
 /**
- * Builds the page into `screen`. `hooks` = {onRun(), onConsent(bool)}. Returns the handles the glue drives:
- * `status(kind, text)`, `busy(bool)`, `report(vm)` and the `player`.
+ * Builds the page into `screen`. `hooks` = {onRun(), onConsent(bool), onReel()}. Returns the handles the glue drives:
+ * `status(kind, text)`, `busy(bool)`, `report(vm)`, the `player` and the `reel` card.
  */
 export function renderHistoryPage(screen, vm, hooks) {
   clear(screen).classList.add("hs");
@@ -168,6 +165,7 @@ export function renderHistoryPage(screen, vm, hooks) {
   const player = clipPlayer();
   const area = h("div", { class: "hs-report", "data-testid": "history-report" });
   const status = h("p", { class: "hs-status", role: "status", "aria-live": "polite", "data-testid": "history-status", hidden: true });
+  const reel = renderReelCard(vm.reel, { onMake: () => hooks.onReel() }, player);
   const run = h("button", { type: "button", class: "btn primary hs-run", "data-testid": "history-run", text: "Compare my takes", onclick: () => hooks.onRun(), disabled: !vm.canRun });
   const chips = vm.chips.length ? h("ul", { class: "hs-chips", "data-testid": "history-chips" }, vm.chips.map((c, i) =>
     h("li", { class: "hs-chip", "data-tone": c.tone, "data-kind": c.kind, "data-testid": `history-chip-${i}` },
@@ -175,16 +173,22 @@ export function renderHistoryPage(screen, vm, hooks) {
   screen.append(
     h("p", { class: "hs-back" }, h("a", { href: "#/me", text: "All my takes" })),
     h("h1", { class: "hs-title", "data-testid": "history-title", text: vm.name }),
+    ...[authorLine([vm.byline, vm.trainer], "history-author")].filter(Boolean),
+    ...(vm.seededLabel ? [h("p", { class: "hs-seeded", "data-testid": "history-seeded", text: vm.seededLabel })] : []),
     h("section", { class: "hs-card" }, h("h2", { text: "Your takes over time" }), scoreChart(vm.chart),
-      h("p", { class: "hs-hint", text: "Oldest take on the left. Scores run from 0 to 100." }), chips),
+      h("p", { class: "hs-hint", "data-testid": "history-chart-axis", "data-axis": vm.chart.axis, text: vm.chart.hint }),   // one-letter.md L8
+      ...vm.chart.notes.map((n, i) => h("p", { class: "hs-hint", "data-testid": `history-chart-note-${i}`, text: n })), chips),
+    ...[renderSeries(vm.series)].filter(Boolean),
     h("ol", { class: "hs-takes", "data-testid": "history-takes" }, vm.takes.map((t) => takeRow(t, player))),
     player.el,
     consentBlock(vm, hooks.onConsent),
     h("div", { class: "hs-run-row" }, run,
+      h("p", { class: "hs-hint", "data-testid": "history-run-note", text: vm.runNote }),
       vm.canRun ? null : h("p", { class: "hs-hint", text: "Comparing needs at least 2 takes of this movement." })),
-    status, area);
+    status, area, h("div", { class: "hs-patterns", "data-testid": "history-patterns-slot" }), reel.el);
   const handles = {
-    player,
+    player, reel,
+    patternsSlot: screen.querySelector('[data-testid="history-patterns-slot"]'),
     status(kind, text) {
       status.hidden = !text;
       if (text) status.removeAttribute("hidden"); else status.setAttribute("hidden", "");
@@ -214,9 +218,9 @@ export function renderMyTakes(screen, list) {
       : stateBlock("history-mytakes-empty", "No takes kept yet", "When you follow a movement while signed in, your takes show up here."));
 }
 
-/** The result-page slot: a link card, "Your takes over time (N)". */
-export function renderSlot(section, title, href) {
-  clear(section);
+/** The result-page slot: a link card, "Your takes over time (N)"; `keep` leaves what is already in the section. */
+export function renderSlot(section, title, href, keep = false) {
+  if (!keep) clear(section);
   section.append(h("a", { class: "hs-slot", href, "data-testid": "history-slot-link" },
     h("strong", { text: title }), h("span", { class: "hs-hint", text: "Compare your takes of this movement." })));
 }

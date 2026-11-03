@@ -172,7 +172,8 @@ def test_part1_cut_stream_is_retried_once_with_the_time_left(monkeypatch: pytest
 
 def test_part1_retry_stops_at_the_spend_cap_reached_by_the_first_try(monkeypatch: pytest.MonkeyPatch,
                                                                      tmp_path: Path) -> None:
-    cap = p1_keyframes.config.PART1_RUN_SPEND_CAP_USD
+    monkeypatch.setenv("SIMON7_PART1_SPEND_CAP_USD", "5")
+    cap = 5.0
     calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": CUT, "duration_s": 30.0}, {"exit": 0, "stdout": "ok"}],
                 spend=[cap - 0.01, cap])
     step, kf, note = calls[-1]["result"]
@@ -226,12 +227,12 @@ def _post(api: Api, body: Any, headers: dict[str, str] | None = None) -> tuple[i
 GOOD = {"level": "warn", "event": "upload.retry", "detail": {"status": 502, "try": 2}, "page": "#/record"}
 
 
-def test_client_log_writes_one_redacted_line_and_answers_204(api: Api, caplog: pytest.LogCaptureFixture,
+def test_client_log_writes_one_redacted_line_and_answers_200_with_a_body(api: Api, caplog: pytest.LogCaptureFixture,
                                                              monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(applog.keys, "redact", lambda text, *a, **k: text.replace("sk-secret", "<redacted>"))
     with caplog.at_level(logging.INFO, logger="part7"):
         status, data = _post(api, {**GOOD, "detail": {"status": 502, "key": "sk-secret"}})
-    assert status == 204 and data == b""
+    assert status == 200 and data == b'{"ok": true}'  # 200 with a body: a 204 fetch shows as net::ERR_ABORTED in Chromium
     lines = [r for r in caplog.records if r.getMessage().startswith("client ")]
     assert len(lines) == 1 and lines[0].levelno == logging.WARNING
     assert lines[0].getMessage() == 'client warn upload.retry page=#/record {"key":"<redacted>","status":502}'
@@ -252,7 +253,7 @@ def test_client_log_bad_bodies_are_400(api: Api, body: Any, caplog: pytest.LogCa
 def test_client_log_over_4_kb_is_413(api: Api) -> None:
     assert _post(api, {**GOOD, "detail": {"text": "x" * 4100}})[0] == 413
     assert _post(api, b"{" + b" " * (client_log.BODY_MAX + 10) + b"}")[0] == 413
-    assert _post(api, {**GOOD, "detail": {"text": "x" * 4000}})[0] == 204
+    assert _post(api, {**GOOD, "detail": {"text": "x" * 4000}})[0] == 200
 
 
 def test_the_browsers_cut_bodies_are_accepted_by_the_server(api: Api) -> None:
@@ -271,12 +272,12 @@ def test_the_browsers_cut_bodies_are_accepted_by_the_server(api: Api) -> None:
     bodies = out.stdout.rstrip("\n").split("\n")  # not splitlines: a raw U+2028 is not a line end here
     assert len(bodies) == 3
     for raw in bodies:
-        assert _post(api, raw.encode("utf-8"))[0] == 204, raw[:80]
+        assert _post(api, raw.encode("utf-8"))[0] == 200, raw[:80]
 
 
 def test_client_log_page_is_one_line_and_short(api: Api, caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO, logger="part7"):
-        assert _post(api, {**GOOD, "level": "info", "page": "#/a\nINFO forged" + "p" * 300})[0] == 204
+        assert _post(api, {**GOOD, "level": "info", "page": "#/a\nINFO forged" + "p" * 300})[0] == 200
     msg = [r.getMessage() for r in caplog.records if r.getMessage().startswith("client ")][0]
     assert "\n" not in msg and "page=#/a INFO forged" in msg and len(msg.split(" page=")[1].split(" {")[0]) == 200
 
@@ -285,7 +286,7 @@ def test_client_log_page_is_one_line_and_short(api: Api, caplog: pytest.LogCaptu
 def test_client_log_unicode_line_breaks_cannot_forge_a_line(api: Api, caplog: pytest.LogCaptureFixture, brk: str) -> None:
     assert _post(api, {**GOOD, "event": f"a{brk}b"})[0] == 400
     with caplog.at_level(logging.INFO, logger="part7"):
-        assert _post(api, {**GOOD, "page": f"#/a{brk}INFO forged", "detail": {"t": f"x{brk}INFO forged"}})[0] == 204
+        assert _post(api, {**GOOD, "page": f"#/a{brk}INFO forged", "detail": {"t": f"x{brk}INFO forged"}})[0] == 200
     msg = [r.getMessage() for r in caplog.records if r.getMessage().startswith("client ")][0]
     assert len(msg.splitlines()) == 1 and brk not in msg
     assert "page=#/a INFO forged" in msg
@@ -294,8 +295,8 @@ def test_client_log_unicode_line_breaks_cannot_forge_a_line(api: Api, caplog: py
 
 def test_client_log_is_rate_limited_per_client(api: Api) -> None:
     api.app.client_rate = client_log.RateLimit(limit=3)
-    assert [_post(api, GOOD)[0] for _ in range(4)] == [204, 204, 204, 429]
-    assert _post(api, GOOD, {"Cf-Connecting-Ip": "198.51.100.1"})[0] == 204  # another client has its own budget
+    assert [_post(api, GOOD)[0] for _ in range(4)] == [200, 200, 200, 429]
+    assert _post(api, GOOD, {"Cf-Connecting-Ip": "198.51.100.1"})[0] == 200  # another client has its own budget
 
 
 def test_rate_limit_window_slides() -> None:
@@ -354,6 +355,35 @@ def test_a_route_crashing_after_its_headers_sends_no_second_response(api: Api, c
     assert api.request("GET", "api/version")[0] == 200  # the server still answers the next request
 
 
+@pytest.mark.parametrize("exc", [BrokenPipeError, ConnectionResetError, ConnectionAbortedError])
+def test_a_client_closing_mid_answer_is_info_not_a_crash(api: Api, caplog: pytest.LogCaptureFixture,
+                                                         monkeypatch: pytest.MonkeyPatch, exc: type) -> None:
+    """TICKET-204: a write to a closed connection is the client leaving: INFO, no ERROR, no traceback."""
+    from part7 import server
+
+    class Gone:
+        def write(self, data: bytes) -> None:
+            raise exc(32, "Broken pipe")
+
+        def flush(self) -> None:
+            pass
+
+    def write_to_gone(self: Any) -> None:
+        self.wfile = Gone()
+        self.wfile.write(b"x")
+
+    monkeypatch.setattr(server._Handler, "_health", write_to_gone)
+    with caplog.at_level(logging.INFO, logger="part7"):
+        try:
+            api.request("GET", "api/health")
+        except OSError:
+            pass  # the test client sees the connection end
+    messages = [(r.levelno, r.getMessage()) for r in caplog.records]
+    assert any(lvl == logging.INFO and m == "client closed the connection during GET /simon-part-7/api/health"
+               for lvl, m in messages), messages
+    assert not any("crashed" in m or lvl >= logging.ERROR for lvl, m in messages)
+
+
 # ----- TICKET-174: route arguments never reach the log -----------------------------------------------------
 TOKEN = "Zm9vYmFyLXRva2VuLXZhbHVlLTEyMzQ1Njc4OQabcdef0123456789"
 
@@ -364,7 +394,7 @@ TOKEN = "Zm9vYmFyLXRva2VuLXZhbHVlLTEyMzQ1Njc4OQabcdef0123456789"
 ])
 def test_client_log_scrubs_route_arguments_from_page(api: Api, caplog: pytest.LogCaptureFixture, page: str, shown: str) -> None:
     with caplog.at_level(logging.INFO, logger="part7"):
-        assert _post(api, {**GOOD, "page": page})[0] == 204
+        assert _post(api, {**GOOD, "page": page})[0] == 200
     msg = [r.getMessage() for r in caplog.records if r.getMessage().startswith("client ")][0]
     assert shown in msg and TOKEN not in msg and "0123456789ab" not in msg
 
@@ -372,6 +402,6 @@ def test_client_log_scrubs_route_arguments_from_page(api: Api, caplog: pytest.Lo
 def test_client_log_scrubs_signin_and_result_links_inside_detail(api: Api, caplog: pytest.LogCaptureFixture) -> None:
     detail = {"href": f"https://x.test/#/signin/{TOKEN}", "from": "#/result/0123456789ab"}
     with caplog.at_level(logging.INFO, logger="part7"):
-        assert _post(api, {**GOOD, "detail": detail})[0] == 204
+        assert _post(api, {**GOOD, "detail": detail})[0] == 200
     msg = [r.getMessage() for r in caplog.records if r.getMessage().startswith("client ")][0]
     assert "#/signin" in msg and "#/result" in msg and TOKEN not in msg and "0123456789ab" not in msg

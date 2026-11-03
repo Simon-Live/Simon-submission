@@ -104,6 +104,10 @@ test("auth/me: odd answers mean signed out; the header link is invisible when ma
   const on = A.meInfo({ available: true, signed_in: true, user_id: "u-1", email: "a@b.co", retention: { opted_in: true, days: 90, consent_version: "v" } });
   assert.deepEqual([on.email, on.retention.optedIn, on.retention.days, on.retention.version], ["a@b.co", true, 90, "v"]);
   assert.deepEqual(A.headerLink(on), { href: "#/me", label: "Me" });
+  // signed out, Me sits beside Sign in (the Me page works signed out); signed in or with sign-in off, no second link
+  assert.deepEqual(A.headerMeLink(A.meInfo({ available: true, signed_in: false })), { href: "#/me", label: "Me" });
+  assert.equal(A.headerMeLink(on), null);
+  assert.equal(A.headerMeLink(A.meInfo({ available: false, signed_in: false })), null);
 });
 
 test("me model: claim input, takes rows, delete summary, consent body", () => {
@@ -210,6 +214,11 @@ test("off view and header link: sign-in leaves no trace when mail is off", () =>
   V.renderAuthLink(slot, { href: "#/signin", label: "Sign in" });
   assert.equal(slot.hidden, false);
   assert.equal(find(slot, "auth-link").attrs.href, "#/signin");
+  V.renderAuthLink(slot, { href: "#/signin", label: "Sign in" }, { href: "#/me", label: "Me" });
+  assert.deepEqual(slot.children.map((c) => c.attrs["data-testid"]), ["me-link", "auth-link"], "Me first, Sign in still there");
+  assert.equal(find(slot, "me-link").attrs.href, "#/me");
+  V.renderAuthLink(slot, null, { href: "#/me", label: "Me" });
+  assert.equal(slot.children.length, 0, "negative: sign-in off shows no Me link either");
 });
 
 test("me view: who, consent unticked by default, takes, two-step delete, outcomes", async () => {
@@ -281,4 +290,13 @@ test("signed-out, error and deleted views", () => {
     assert.notEqual(find(el, id), null, id);
   }
   assert.equal(all(host()).length, 1);
+});
+
+test("TICKET-327 Me: the takes card sits first under the account card, before consent and claims (one tap from home)", () => {
+  const el = new El("div");
+  W.renderMe(el, { t: M.TEXT, email: "a@b.co", optedIn: false, consentLines: [], rows: M.takeRows({ takes: [{ job_id: "j1", kind: "follow", score: 61, grade: "D" }] }) },
+    { signOut() {}, consent: async () => ({}), claim: async () => ({}), delete: async () => ({}) });
+  const ids = el.children.map((c) => c.attrs["data-testid"] ?? null);
+  assert.ok(ids.indexOf("me-takes-card") > 0 && ids.indexOf("me-takes-card") < ids.indexOf("me-consent"));
+  assert.equal(find(el, "me-take-0").children.at(-1).attrs.href, "#/result/j1");
 });

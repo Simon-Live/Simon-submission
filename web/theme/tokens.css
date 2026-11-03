@@ -43,6 +43,9 @@
   --color-warn: var(--palette-pink);
   --color-warn-soft: rgb(255 45 149 / 10%);
   --color-warn-line: rgb(255 45 149 / 32%);
+  /* one-letter.md: the credit's F to S scale on the share card: S with A and B (lime), E with F (pink) */
+  --color-grade-s: var(--color-accent);
+  --color-grade-e: var(--color-bad);
 
   /* depth (brand design 2026-11-01): lime is the only pop colour; pink lives in the back layer as smoke and halftone
      dots, and every grey card carries a faint halftone dot field that fades into its grey, so no surface is flat */
@@ -77,14 +80,25 @@
               radial-gradient(ellipse 38% 50% at 100% 8%, var(--color-pink-smoke) 0%, transparent 75%),
               radial-gradient(ellipse 38% 60% at 0% 60%, var(--color-pink-smoke) 0%, transparent 75%),
               var(--color-bg);
+  --color-alert-bg: var(--palette-amber);  /* the test-server banner: loud on purpose */
+  --color-on-alert: var(--palette-pure-black);
+  --color-bad-text: #ff7ab8;  /* pink text on a pink-soft chip: the brand pink alone is under 4.5:1 there (axe) */
+  --color-paper: var(--palette-pure-white);  /* the class handout sheet and its QR code: dark ink on white, as a camera reads best */
+  --color-ink: var(--palette-pure-black);
 
   /* semantic: overlays on top of video or the page */
   --color-header-glass: rgb(10 10 10 / 92%);
   --color-scrim: rgb(0 0 0 / 70%);
   --color-scrim-soft: rgb(0 0 0 / 55%);
 
+  /* semantic: paper, for a printed or saved progress sheet (theme/progress-sheet.css, TICKET-283) */
+  --color-print-paper: var(--palette-pure-white);
+  --color-print-ink: var(--palette-pure-black);
+  --color-print-line: var(--palette-grey-500);
+
   /* typography */
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Sniglet", var(--font-sans);   /* the logo's face (Sniglet, OFL): the grade, the score, the score pops */
   --font-mono: "Geist Mono", "SF Mono", ui-monospace, monospace;
   --text-xs: 12px;
   --text-sm: 13px;
@@ -147,16 +161,42 @@
   --mesh-light: var(--palette-pure-white);
   --mesh-ground: var(--palette-grey-800);
   --mesh-bg: transparent;
+  /* the heat ramp (TICKET-274): cool to hot, the cividis stops, which stay apart for the common colour-blindness types
+     and rise steadily in lightness, so the order also reads in greyscale. Paints the body in the 3D view and its legend. */
+  --palette-heat-0: #00224e;
+  --palette-heat-1: #35456c;
+  --palette-heat-2: #7c7b78;
+  --palette-heat-3: #c3b369;
+  --palette-heat-4: #fee838;
+  --heat-0: var(--palette-heat-0);
+  --heat-1: var(--palette-heat-1);
+  --heat-2: var(--palette-heat-2);
+  --heat-3: var(--palette-heat-3);
+  --heat-4: var(--palette-heat-4);
+  --qr-dark: var(--palette-pure-black);   /* the QR code (web/model/qr.js: the AR page and the class handout): dark modules on a light plate */
+  --qr-light: var(--palette-pure-white);
   --skeleton-line: rgb(198 243 90 / 80%);
   --skeleton-joint: var(--palette-pure-white);
   --skeleton-hot: var(--palette-pink);
+  --ghost-line: rgb(255 200 61 / 70%);   /* the trainer's ghost over your live camera (views/ghost.js, TICKET-264) */
+  --ghost-joint: var(--palette-amber);
 
   /* motion */
   --splash-fade: 0.45s;
   --paw-size: 26px;              /* the splash's paw prints around the logo */
   --paw-r: min(46vw, 220px);     /* the radius of their walk around the mark */
   --paw-in: 0.25s;
+  --meter-h: 10px;               /* the score bar at the top of a result */
+  --meter-glow: 12px;
+  --meter-grade: 56px;           /* the grade letter, pink, no badge */
+  --meter-grade-stroke: 1.5px;   /* thickens Sniglet Regular a little (grade and score) */
+  --pop-stroke: 0.75px;          /* the same for the smaller score pops */
+  --meter-score: 40px;
+  --meter-land: 1400ms;          /* the score and its grade grow, then settle (slow, team 2026-11-02) */
   --paw-step: 70ms;              /* 12 prints within the 1.2 s splash */
+  --paw-size-walk: 44px;         /* the processing screen's background walk (the loading trail's prints, larger) */
+  --paw-step-walk: 260ms;        /* one print every 0.26 s */
+  --paw-walk-opacity: 0.45;      /* faint, so the content stays readable */
   /* a video camera, used as a mask (its fill is never seen): the header's Record button */
   --icon-video: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='6' width='13' height='12' rx='2.5'/%3E%3Cpath d='M16.5 10.2 22 7v10l-5.5-3.2z'/%3E%3C/svg%3E");
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);

@@ -224,9 +224,9 @@ def test_spend_cap_stops_the_call_before_it_is_made(tmp_path: Path, keys_dir: Pa
     monkeypatch.setenv("SIMON7_NARRATION_CAP_USD", "0.25")
     assert narration_api.cap_usd() == 0.25
     monkeypatch.setenv("SIMON7_NARRATION_CAP_USD", "nope")
-    assert narration_api.cap_usd() == narration_api.DEFAULT_CAP_USD
+    assert narration_api.cap_usd() is None
     monkeypatch.setenv("SIMON7_NARRATION_CAP_USD", "-1")
-    assert narration_api.cap_usd() == narration_api.DEFAULT_CAP_USD
+    assert narration_api.cap_usd() is None
     assert narration_api.spent_usd(tmp_path / "none.jsonl") == 0.0
 
 
@@ -331,6 +331,9 @@ class FakeHandler:
     def _error(self, status: int, message: str) -> None:
         self.sent.append(("error", status, message))
 
+    def _send(self, status: int, body: bytes, ctype: str, extra: Any = None) -> None:
+        self.sent.append(("bytes", status, (ctype, body)))
+
 
 def test_route_serves_the_entry_file_and_404s_the_rest(tmp_path: Path) -> None:
     (tmp_path / "squat").mkdir()
@@ -347,7 +350,7 @@ def test_route_serves_the_entry_file_and_404s_the_rest(tmp_path: Path) -> None:
         assert narration_routes.handle(h, "GET", f"narration/{entry}") and h.sent[-1][:2] == ("error", 404)
     assert not narration_routes.handle(h, "POST", "narration/squat")
     assert not narration_routes.handle(h, "GET", "narration")
-    assert not narration_routes.handle(h, "GET", "narration/a/b")
+    assert not narration_routes.handle(h, "GET", "narration/a/b/c")
     assert not narration_routes.handle(h, "GET", "labels/squat")
 
 
@@ -425,3 +428,13 @@ def test_the_whole_job_is_held_to_the_budget(tmp_path: Path, keys_dir: Path, mon
     seen.clear()
     assert narration.attach(speech_clip(tmp_path), tmp_path / "entry3", video=tmp_path / "v.mp4", ledger=tmp_path / "s2.jsonl",
                             keys_dir=keys_dir, opener=opener) is None and seen == []
+
+
+def test_no_cap_by_default_a_huge_ledger_never_refuses(tmp_path: Path, keys_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SIMON7_NARRATION_CAP_USD", raising=False)
+    wav = tone_wav(tmp_path / "a.wav", [(1.0, 2.0)])
+    ledger = tmp_path / "spend.jsonl"
+    ledger.write_text('{"estimated_usd": 9999.0}\n')
+    assert narration_api.cap_usd() is None
+    assert narration_api.transcribe(wav, ledger=ledger, keys_dir=keys_dir, opener=answer([turn(0, 0, 1000, "hi")]))["turns"]
+    assert narration_api.spent_usd(ledger) > 9999.0  # still recorded

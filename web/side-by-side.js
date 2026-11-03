@@ -6,7 +6,7 @@ import { drawSideBySide } from "./views/side-by-side.js";
 
 const SOUND_CHECK_MS = 600;   // Chrome counts decoded audio bytes only once a video plays
 
-/** Mount into `root`; `urls` = {trainer, you}. Returns {el, pause, destroy}. */
+/** Mount into `root`; `urls` = {trainer, you}. Returns {el, trainer, you, pause, seek, destroy} (the two <video>s). */
 export function mountSideBySide(root, urls) {
   const view = drawSideBySide(root, TEXT, urls);
   const v = { trainer: view.trainer, you: view.you };
@@ -85,5 +85,5 @@ export function mountSideBySide(root, urls) {
   view.setYourSound(false);
   applySound();
 
-  return { el: view.el, pause, destroy() { pause(); view.destroy(); } };
+  return { el: view.el, trainer: v.trainer, you: v.you, pause, seek, destroy() { pause(); view.destroy(); } };
 }

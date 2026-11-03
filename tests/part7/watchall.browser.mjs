@@ -48,6 +48,9 @@ async function install(page) {
       r.follower = r.follower.map((_, i, a) => a[(i + shift * 6) % a.length]);
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(r) });
     }
+    // the model picker's catalog (docs/specs/model-picker.md): an empty library and no models of your own
+    if (p === "api/models") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ mine: [] }) });
+    if (p.endsWith("models/library/library.json")) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ models: [] }) });
     return route.fulfill({ status: 404, body: "{}" });
   });
 }
@@ -64,7 +67,7 @@ const cols = async (page, name) => (await attr(page, name)).split(",");
 try {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true });
   const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  page.on("console", (m) => { if (m.type() === "error" && !/\/(mesh|library)\.json$|\/web\/skin\/(character|person-skin)\.js$/.test(m.location().url)) errors.push(m.text()); });  // Person asks each take for its mesh index; a take without one answers 404; the library file is not served by the harness
   page.on("pageerror", (e) => errors.push(e.message));
   await install(page);
   await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/watchall.html#/group/w1`);

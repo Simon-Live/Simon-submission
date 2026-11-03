@@ -5,12 +5,14 @@
 import { ensureCss } from "./ui.js";
 import { call } from "./me-api.js";
 import {
-  TEXT as AUTH_TEXT, initialState, step, sentNotice, parseSigninHash, scrubbedHash, meInfo, headerLink, codeDigits,
+  TEXT as AUTH_TEXT, initialState, step, sentNotice, parseSigninHash, scrubbedHash, meInfo, headerLink, headerMeLink, codeDigits, OUTBOX_HASH,
 } from "./model/auth.js";
 import {
   TEXT as ME_TEXT, CONSENT_LINES, consentBody, jobIdFrom, claimError, takeRows, holdsTake, deletedSummary, busyIds,
 } from "./model/me.js";
 import { renderEmail, renderCode, renderWorking, renderOff, renderAuthLink } from "./views/auth.js";
+import { mountDownload } from "./my-data.js";
+import { forgetTakes } from "./model/takes-on.js"; // TICKET-327: a shared computer keeps no takes past the session
 import { renderMe, renderMeSignedOut, renderMeError, renderDeleted, renderKeep, renderKept } from "./views/me.js";
 
 const css = () => ensureCss("theme/auth.css", "data-auth-css");
@@ -27,10 +29,12 @@ export function mountSignin(el, token) {
   let live = true;
   let state = initialState();
   let screen = null;
+  let outbox = false; // the staging test mailbox is this server's mail (auth/me says so)
   const send = (event) => { state = step(state, event); draw(); };
 
   async function start() {
     const out = await call("POST", "api/auth/start", { email: state.email });
+    if (outbox) import("./outbox.js").then((m) => m.rememberAddress(state.email)).catch(() => {});
     if (live) send(out.status === 202 || out.ok ? { type: "started" } : { type: "start-failed", status: out.status });
   }
 
@@ -47,7 +51,7 @@ export function mountSignin(el, token) {
     else if (state.phase === "sending") { renderWorking(el, t.sending); start(); }
     else if (state.phase === "verifying") renderWorking(el, t.verifying);
     else if (state.phase === "code") {
-      screen = renderCode(el, { t, notice: sentNotice(state.email), error: state.error }, {
+      screen = renderCode(el, { t, notice: sentNotice(state.email), error: state.error, outboxHref: outbox ? OUTBOX_HASH : "" }, {
         onInput: (value) => { state = step(state, { type: "code-input", value }); screen.setError(""); return codeDigits(value); },
         onSubmit: () => { send({ type: "submit-code" }); if (state.phase === "verifying") verify({ email: state.email, code: state.code }, false); },
         onOther: () => send({ type: "other-email" }),
@@ -70,6 +74,7 @@ export function mountSignin(el, token) {
     }
     const info = await fetchMe();
     if (!live) return;
+    outbox = info.outbox;
     if (!info.available) return send({ type: "off" });
     if (info.signedIn && hit.kind !== "token") { location.hash = "#/me"; return; }
     if (hit.kind === "token") {
@@ -104,7 +109,7 @@ export function mountMe(el) {
     if (first.status === 401) return renderMeSignedOut(el, { t });
     if (!first.ok) return renderMeError(el, { t });
     const view = renderMe(el, { t, email: info.email, optedIn: info.retention.optedIn, consentLines: CONSENT_LINES, rows: takeRows(first.body) }, {
-      signOut: async () => { await call("POST", "api/auth/signout", {}); changed(); location.hash = "#/"; },
+      signOut: async () => { await call("POST", "api/auth/signout", {}); forgetTakes(); changed(); location.hash = "#/"; },
       consent: async (on) => {
         const out = await call("POST", "api/me/consent", consentBody(on));
         return { ok: out.ok, text: out.ok ? t.consentSaved : t.consentFailed };
@@ -121,6 +126,7 @@ export function mountMe(el) {
       delete: async () => {
         const out = await call("POST", "api/me/delete", { confirm: "delete" });
         if (out.ok && out.body?.deleted === true) {
+          forgetTakes();
           changed();
           if (live) renderDeleted(el, { t, summary: deletedSummary(out.body) });
           return { ok: true, text: "" };
@@ -129,6 +135,7 @@ export function mountMe(el) {
         return { ok: false, text: busy.length ? t.deleteBusy : t.deleteFailed, busy };
       },
     });
+    mountDownload(view.exportSlot);
   })();
   return () => { live = false; };
 }
@@ -164,7 +171,7 @@ export function mountAuthLink(host) {
   let live = true;
   const refresh = async () => {
     const info = await fetchMe();
-    if (live) renderAuthLink(host, headerLink(info));
+    if (live) renderAuthLink(host, headerLink(info), headerMeLink(info));
   };
   host.hidden = true;
   window.addEventListener("hashchange", refresh);

@@ -36,7 +36,7 @@ def test_no_public_view_names_a_job_but_the_file_keeps_it(api: Api) -> None:
     for doc in (added, api.json("GET", f"api/challenges/{made['id']}")[1]):
         assert "job_id" not in json.dumps(doc) and '"pid"' not in json.dumps(doc), doc
     listing = api.json("GET", "api/challenges")[1]
-    assert "job_id" not in json.dumps(listing) and listing["challenges"][0]["leader"] == {"name": "Sam", "score": 80}
+    assert "job_id" not in json.dumps(listing) and {k: v for k, v in listing["challenges"][0]["leader"].items() if k != "shown"} == {"name": "Sam", "score": 80}
     assert challenges.get(api.app.state, made["id"])["entries"][0]["job_id"] == job
 
 

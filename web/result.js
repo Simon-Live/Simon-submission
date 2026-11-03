@@ -1,19 +1,40 @@
-// The result screen: score panel, 3D compare, timed fault list, downloads (journey.md steps 6 to 8,
+// The result screen: the stage (videos, annotated video, 3D compare), score panel, timed fault list, downloads (journey.md steps 6 to 8,
 // TICKET-045, 046, 047). Part 7 shows Part 5's analysis as written and computes nothing.
-import { el, renderScore, hasScore } from "./score.js";
+import { el, renderScore, refreshScore, hasScore } from "./score.js";
 import { renderTimeline, timelineOf, jointsFor } from "./timeline.js";
 import { mountCompare, mountViewer, normalizeReplay, ensureStyles, MSG_BAD_REPLAY } from "./compare.js";
 import { worstMoment, momentsToReview, flaggedWindows } from "./coaching.js";
 import { mountCoachStage, renderMomentList, momentChip } from "./coach-view.js";
 import { qualityIssues, qualityTips, qualityWarning } from "./quality-result.js";
+import { withLight } from "./light-result.js";
+import { withQualityCap } from "./quality-cap.js";
 import { getEntry } from "./api.js";
-import { summaryOf, TEXT as SUMMARY_TEXT } from "./model/result-summary.js";
+import { mountReviewNote } from "./review-note.js";
+import { floorScoredLine } from "./floor-work.js";
+import { TEXT as SUMMARY_TEXT } from "./model/result-summary.js";
+import { summaryOf, insightsEmptyText, withCapWinning } from "./model/score-labels.js";   // one score: other figures labelled (Part 5 CONTRACT)
 import { currentKind, kindForMode } from "./model/kind.js";
 import { renderResultSummary, REVEAL_MS } from "./views/result-summary.js";
-import { voiceSlot, secondOpinionSlot, historySection, keepTakeSlot, mountLaneModules, mountExport } from "./views/result-slots.js";
-import { hasJobFiles, mountModelsUsed, mountSkeleton, mountMesh, showStage, armSlide } from "./result-wiring.js";
+import { creditDisplay } from "./model/score-credit.js";
+import { loadScoreDisplay, saveScoreDisplay } from "./score-display.js";
+import { voiceSlot, secondOpinionSlot, historySection, keepTakeSlot, correctedSlot, mountLaneModules, mountExport } from "./views/result-slots.js";
+import { hasJobFiles, hasModels, mountModelsUsed, mountSkeleton, mountMesh, showStage, armSlide } from "./result-wiring.js";
+import { stageSplit } from "./model/judge-take.js";
+import { renderStageSplit } from "./views/stage-split.js";
 import { withoutRepeatedFiller } from "./model/filler.js";
+import { dirOf, notesFor } from "./model/lang.js";
+import { langOf } from "./model/voice.js";
+import { bylines } from "./model/attribution.js";
+import { mountSourceCredit } from "./source-credit.js"; // TICKET-322
+import { authorLine } from "./views/author-line.js";
 import { revealLedger } from "./model/reveal.js";
+import { isCinematic } from "./flags.js";
+import { hasFollowerVideo } from "./model/result-stage.js";
+import { mountOrphanNote, mountVideosNote, keepDeadLinksOff } from "./orphan-take.js";
+import { mountStage, STAGE_TEXT, sideHandle, soloHandle, coachHandle, compareHandle } from "./result-stage.js";
+import { drawSoloVideo } from "./views/result-stage.js";
+import { mountCompare as mountCompareFor } from "./compare.js";
+import { referenceLabel, visibilityFor } from "./model/my-reference.js";   // "Your reference" for a take compared with the student's own rep
 
 // results whose reveal has played: once per result per browser session (result-intent.md R4, TICKET-139)
 const sessionStore = () => { try { return window.sessionStorage; } catch { return null; } };
@@ -36,6 +57,8 @@ export const WARNING_TEXT = {
   no_person: "No person was found in this take.",
 };
 const OLD_REFUSALS = ["different_movement", "not_enough_visible", "moving_part_out_of_frame"];
+// The warning box's heading; web/share.js hands it and resultWarnings to a shared take's viewer (docs/specs/share.md).
+export const WARNING_TITLE = "Take with a warning";
 
 /** The warnings of an analysis: its `warnings` list, plus an old-pin refusal status read as one. */
 export function resultWarnings(analysis) {
@@ -128,12 +151,20 @@ export function insightsOf(analysis) {
   return list.filter((x) => x && typeof x.cue === "string" && x.cue);
 }
 
-/** The chip of an insight: what it cost the score, or "Tempo" (tempo is not scored). */
+/** Display grouping of an insight's points (averaged on the take's scale) into words; not a score rule. */
+export const INSIGHT_BIG = 10;
+export const INSIGHT_SMALL = 3;
+
+/**
+ * The chip of an insight: "Tempo" (tempo is not scored), else nothing when Part 5's `why` already says what to fix
+ * (the row shows it), else a word for how big it is. No points figure is ever shown beside the score.
+ */
 export function insightChip(x) {
   if (x.kind === "tempo") return { text: "Tempo", label: "Tempo, not scored" };
-  if (x.points == null) return null;
-  const p = Number(x.points).toFixed(1);
-  return { text: `−${p}`, label: `Costs ${p} points of your score` };
+  if (x.points == null || x.why) return null;
+  const p = Number(x.points);
+  const word = p >= INSIGHT_BIG ? "Big" : p >= INSIGHT_SMALL ? "Medium" : "Small";
+  return { text: word, label: `${word} effect on your score` };
 }
 
 /** "What to work on": Part 5's ranked insights near the score. A tap seeks the 3D compare to the insight's
@@ -144,7 +175,7 @@ function renderInsights(root, analysis, getCompare, getTimeline) {
   const section = el("section", { class: "sr-insights", "data-testid": "insights", "aria-labelledby": "sr-insights-h" });
   section.append(el("h2", { id: "sr-insights-h", text: "What to work on" }));
   if (!items.length) {
-    section.append(el("p", { class: "sr-empty", "data-testid": "insights-empty", text: "Nothing to work on in this take." }));
+    section.append(el("p", { class: "sr-empty", "data-testid": "insights-empty", text: insightsEmptyText(analysis) }));
     root.append(section);
     return section;
   }
@@ -181,7 +212,7 @@ function renderInsights(root, analysis, getCompare, getTimeline) {
 function renderFaults(root, analysis, getCompare) {
   const faults = analysis.faults || [];
   const section = el("section", { class: "sr-faults", "aria-labelledby": "sr-faults-h" });
-  section.append(el("h2", { id: "sr-faults-h", text: "What to fix" }));
+  section.append(el("h2", { id: "sr-faults-h", text: "Mistakes you repeated" }));
   if (!faults.length) {
     // the take-level list keeps a fault only when most reps show it; single-rep misses are on the timeline
     const onTimeline = timelineOf(analysis).some((w) => (w.misses || []).length);
@@ -193,6 +224,12 @@ function renderFaults(root, analysis, getCompare) {
     return;
   }
   const list = el("ol", { class: "sr-fault-list", "data-testid": "fault-list" });
+  const lang = langOf(analysis); // TICKET-266: text written in another language carries its own lang and direction (Arabic reads right to left)
+  if (lang !== "en") {
+    list.setAttribute("lang", lang);
+    list.setAttribute("dir", dirOf(lang));
+    notesFor(lang).forEach((line, i) => section.append(el("p", { class: "sr-lang-note", "data-testid": `lang-note-${i}`, text: line })));
+  }
   const rows = faults.map((f, i) => {
     const row = el("button", {
       type: "button",
@@ -280,6 +317,8 @@ const timelineEnd = (analysis) => timelineOf(analysis).map((w) => w.t_s[1]);
 /**
  * Mount the full result screen into `root`.
  * `job` and `pid` name the result (the follower video is served for them; `videoUrl` overrides, for the harness).
+ * The top is one stage (result-stage.js): Videos, Annotated or 3D in a Reference and a You pane under the grade card,
+ * then the collapsed "Rep breakdown" bar and the action row; everything else follows unchanged.
  * @returns {{seek, highlight, compare, coach, destroy}}
  */
 export async function mountResult(root, { analysis, replay, trainerVisibility = null, record = null, job = null, pid = null, videoUrl, trainerVideoUrl = null } = {}) {
@@ -287,22 +326,27 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   root.replaceChildren();
   root.classList.add("simon-result");
   const urls = [];
+  if (record && record.video_kept === false) root.setAttribute("data-model-only", "true"); // views/result-slots.js shows no export button for it
+  if (record && record.video_kept === false) videoUrl = null; // a model-only take: no video exists, the 3D view is the stage (model-only-take.md)
   let compare = null;
   let coach = null;
   if (!analysis) {
     root.append(el("p", { class: "sr-note", role: "alert", text: "The analysis could not be read." }));
     return { seek() {}, highlight() {}, compare: null, coach: null, destroy() { root.replaceChildren(); } };
   }
+  trainerVisibility = visibilityFor(record, trainerVisibility);   // an own-reference take has no teacher visibility (my-reference.md)
+  analysis = withQualityCap(analysis);   // Part 5 1.13.0 reports quality.score_cap; the shown score is min(score.value, cap)
+  analysis = withLight(analysis, record && record.result && record.result.light);   // TICKET-247: min(score, light cap), warning and tip
   let skeleton = null;
   let mesh = null;
-  // the stage: the follower's video with the 3D compare right under it (result-redesign-additions.md R5, TICKET-138)
-  const stage = el("div", { class: "sr-stage-zone", "data-testid": "stage" });
-  // what the coaching rows drive: the video and the 3D view together (or whichever exists); a jump first brings both
-  // into sight, so a row tapped far down the page shows the views it moves
+  let stageCtl = null;
+  // what the coaching rows drive: the video and the 3D view together (or whichever exists); a jump first brings the
+  // stage into sight (and from the original videos to the view that moves), so a row tapped far down shows it
   const view = {
     seek: (t) => (coach ? coach.seekTo(t) : compare && compare.seek(t)),
     jump: (t) => {
-      showStage(stage, compare && compare.el);
+      if (stageCtl) stageCtl.toDefault();
+      showStage(stageCtl ? stageCtl.stage.el : null, compare && compare.el);
       return coach ? coach.goTo(t) : compare && compare.seek(t);
     },
     highlight: (j) => { if (compare) compare.highlight(j); if (skeleton) skeleton.pin(j); },
@@ -314,7 +358,7 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   const warnings = resultWarnings(analysis);
   if (warnings.length) {
     const box = el("section", { class: "sr-warning", role: "status", "data-testid": "warning", "data-codes": warnings.map((w) => w.code).join(",") });
-    box.append(el("h2", { text: "Take with a warning" }));
+    box.append(el("h2", { text: WARNING_TITLE }));
     for (const w of warnings) {
       box.append(el("p", { class: "sr-warning-text", "data-testid": `warning-${w.code}`, "data-cause": w.cause || false, text: w.text }));
       if (w.tip) box.append(el("p", { class: "sr-warning-tip", "data-testid": `warning-tip-${w.code}`, text: w.tip }));
@@ -323,34 +367,75 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   }
   // result-intent.md R3: the lines on screen say a short filler clause once; downloads and other modules keep Part 5's words
   const display = withoutRepeatedFiller(analysis);
-  const shown = withScore(display);
+  const shown = withCapWinning(withScore(display));   // the cap wins: a warned take shows score.value and its grade, never the credit (score-labels.js S5)
   const real = hasScore(analysis);
-  // brand summary on top (model/result-summary.js -> views/result-summary.js); the old score panel stays hidden below
+  // Part 5's credit score, when the analysis has one: the viewer's unit and level, saved between results
+  let scoreDisplay = loadScoreDisplay();
+  let scorePanel = null;   // web/score.js's grade panel, drawn below and again when the score switch changes
+
+  // ----- the stage, the "Rep breakdown" bar and the action row (team's mockup, 2026-11-01) ----------------
+  stageCtl = mountStage(root, { analysis: shown, scoreDisplay: () => scoreDisplay });
+  const { stage: stageView, breakdown, actions } = stageCtl;
+  const stage = stageView.el;
+  const keptVideo = hasFollowerVideo(record);
+  if (!keptVideo) stageView.setNote(STAGE_TEXT.noVideo);
+  // the breakdown's parts, in order: the credit's switches, form per rep, the trainer's beat, score over time
+  const bdSwitch = el("div", { class: "st-bd-part" });
+  const bdBars = el("div", { class: "st-bd-part" });
+  const breakdownSlot = el("div", { class: "sr-slot", "data-testid": "breakdown-slot" });   // filled once the coaching rows exist (below)
+  const bdTimeline = el("div", { class: "st-bd-part" });
+  breakdown.body.append(bdSwitch, bdBars, breakdownSlot, bdTimeline);
+
+  // brand summary below the actions (model/result-summary.js -> views/result-summary.js); its Retry, export slot,
+  // credit switch and per-rep bars are moved up into the action row and the breakdown on every paint
   const summarySlot = el("div", { class: "rs-slot" });
+  const by = bylines(record && record.attribution);   // who made this, from the job answer (docs/specs/attribution.md)
+  const byEl = authorLine([by.author, by.trainer], "result-author");
+  if (byEl) root.append(byEl);
+  mountOrphanNote(root, record);   // TICKET-331: the trainer deleted the movement; one plain note, and no link to it
+  cleanups.push(keepDeadLinksOff(root, record));
+  const floorEl = floorScoredLine(record && record.result);   // floor-work.md: Part 3 scored the take as floor work
+  if (floorEl) root.append(floorEl);
   root.append(summarySlot);
+  const scoreTop = el("div", { class: "rs-slot rs-score-top", "data-testid": "score-top" });
+  root.prepend(scoreTop);
   root.dataset.summary = "true";
   let summaryModel = null;
   try { summaryModel = replay ? normalizeReplay(replay, trainerVisibility) : null; } catch { summaryModel = null; }
   const summaryOpts = { kind: kindForMode(record && record.mode) || currentKind(), model: summaryModel, retryHref: recordAgainHref(record) };
-  // the video and 3D view sit below the summary: taps scroll to whichever exists, then play the moment there
   const LEAD_S = 2; // the same lead-in the coaching rows use (coaching.js)
-  const stageEl = () => (coach && coach.el) || (compare && compare.el) || zone;
-  const toStage = () => stageEl().scrollIntoView({ behavior: "smooth", block: "center" });
+  const toStage = () => stage.scrollIntoView({ behavior: stageCtl.reducedMotion() ? "auto" : "smooth", block: "start" });
   const playFrom = (t) => {
+    stageCtl.toDefault();
     if (coach) return view.jump(t);                                              // video + 3D: the lead-in span
     if (compare) { compare.seek(Math.max(0, Number(t) - LEAD_S)); compare.play(); } // 3D only: play from the lead-in
   };
   const summaryOn = {
     seek: (t) => { if (!getView()) return; toStage(); playFrom(t); },           // a rep bar: play that rep
     seekInPlace: (t) => getView() && view.seek(t),                               // a drift mark: its card opens here
-    playWorst: (t) => { if (!getView()) return; toStage(); if (coach && coach.replayWorst) coach.replayWorst(); else playFrom(t); },
+    playWorst: (t) => { if (!getView()) return; toStage(); stageCtl.toDefault(); if (coach && coach.replayWorst) coach.replayWorst(); else playFrom(t); },
     replay: toStage,
+    scoreDisplay: (pick) => {
+      scoreDisplay = { ...scoreDisplay, ...pick };
+      saveScoreDisplay(scoreDisplay);
+      const focused = document.activeElement && document.activeElement.getAttribute("data-testid");
+      paintSummary(shownEntryName);
+      if (focused) { const again = root.querySelector(`[data-testid="${focused}"]`); if (again) again.focus(); }   // a keyboard user stays on the switch
+      const credit = creditDisplay(shown, scoreDisplay);
+      if (timeline) timeline.setCredit(credit && credit.windows);
+      stageCtl.setGradeDisplay();
+      scorePanel = refreshScore(scorePanel, shown, scoreDisplay);   // one-letter.md: the grade panel follows the level on screen
+    },
   };
-  // R4: the ring counts up once per result; a repaint for the routine's name while it runs carries it on, never restarts it
+  // the score bar fills from zero every time the result opens (team, 2026-11-02), after the splash when it is up;
+  // a repaint while it runs carries it on, never restarts it. R4's once-per-session rule stays for the 3D slide.
   const revealKey = `${job || "fixture"}/${pid || ""}`;
-  const revealStart = revealed.seen(revealKey) ? null : performance.now();
+  const slideStart = revealed.seen(revealKey) ? null : performance.now();
   revealed.mark(revealKey);
+  const splash = document.querySelector('[data-testid="splash"]:not([data-done])');
+  let revealStart = splash ? null : performance.now();
   const revealing = () => revealStart !== null && performance.now() - revealStart < REVEAL_MS;
+  const revealArg = () => (revealStart === null ? "hold" : revealing() ? revealStart : false);
   let summary = null;
   const meshStage = el("div", { class: "rs-mesh-stage" });
   const meshHost = el("div", { class: "rs-mesh", "data-testid": "summary-mesh", hidden: true }, meshStage,
@@ -365,37 +450,66 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
     meshHost.hidden = false;
     if (summary.figures) summary.figures.replaceWith(meshHost); else summary.worstCard.append(meshHost);
   };
+  /** The summary's Retry goes to the action row (its Replay and export slot stay with it); its switch and bars to the breakdown. */
+  const lift = (s) => {
+    const q = (sel) => s.el.querySelector(sel);
+    scoreTop.replaceChildren(...[q(".rs-head")].filter(Boolean));   // the score, once, at the top of the result
+    actions.lead.replaceChildren(...[q('[data-testid="summary-retry"]')].filter(Boolean));
+    bdSwitch.replaceChildren(...[q('[data-testid="score-switch"]')].filter(Boolean));
+    bdBars.replaceChildren(...[q(".rs-bars-wrap")].filter(Boolean));
+  };
+  let shownEntryName = "";
   const paintSummary = (entryName = "") => {
+    shownEntryName = entryName;
     if (summary) summary.destroy();
     summarySlot.replaceChildren();
-    summary = renderResultSummary(summarySlot, summaryOf(shown, { ...summaryOpts, entryName }), { ...summaryOn, reveal: revealing() ? revealStart : false });
+    summary = renderResultSummary(summarySlot, summaryOf(shown, { ...summaryOpts, entryName, scoreDisplay }), { ...summaryOn, reveal: revealArg() });
     if (hasJobFiles(job, pid)) cleanups.push(mountExport(summary.exportSlot, job));   // C2b: the export button, again in each new slot (real single-person jobs only)
+    lift(summary);
     placeMesh();
   };
   paintSummary();
+  if (splash) {
+    const go = () => { if (revealStart !== null) return; watch.disconnect(); revealStart = performance.now(); paintSummary(shownEntryName); };
+    const watch = new MutationObserver(() => { if (splash.dataset.done || !splash.isConnected) go(); });
+    watch.observe(splash, { attributes: true });
+    const late = setTimeout(go, 3000);   // never wait on a splash for long
+    cleanups.push(() => { watch.disconnect(); clearTimeout(late); });
+  }
   // the routine's name only appears in a rep title ("Lateral raise, rep 3 of 8"); look it up only then
   const namesRep = shown.score && shown.score.basis === "reps" && worstMoment(shown);
   if (namesRep && record && record.entry_id) getEntry(record.entry_id).then((e) => e && e.name && paintSummary(e.name)).catch(() => {});
-  // R1: "How this was made", right under the summary (real jobs only: the example result has no job files)
+  // R1: "How this was made" opens from the stage's "i" pill (real jobs only: the example result has no job files)
   const madeHolder = el("div", { class: "sr-slot hm-slot" });
-  root.append(madeHolder);
-  if (hasJobFiles(job, pid)) mountModelsUsed(madeHolder, job);
+  stageView.madeSlot.append(madeHolder);
+  if (record && record.entry_id) mountReviewNote(root, record.entry_id); // TICKET-204: the movement's video may not match
+  const split = hasJobFiles(job, pid) ? stageSplit(record && record.timing) : null; // judge-take.md: the measured stage split
+  if (split) keepMadePill(stageView); // the split lives in the "i" panel too, so the pill stays even with no models-used list
+  if (hasModels(job)) mountModelsUsed(madeHolder, job, undefined, pid).then((s) => stageView.setMade(!!s)).catch(() => {});
+  if (split) madeHolder.after(renderStageSplit(el("div", { class: "sr-slot ss-slot" }), split).parentElement);
   const modeSlot = makeSlot(root, "mode-slot");
   fillSlot(modeSlot, () => import("./modes.js").then((m) => m.mountModeNote), ctx, cleanups);
-  renderScore(root, shown);
+  fillSlot(makeSlot(root, "mirror-slot"), () => import("./mirrored-note.js").then((m) => m.mountMirroredNote), ctx, cleanups); // TICKET-310
+  fillSlot(makeSlot(root, "heading-slot"), () => import("./heading-note.js").then((m) => m.mountHeadingNote), ctx, cleanups); // TICKET-246: a rough score
+  scorePanel = renderScore(root, shown, scoreDisplay);   // one-letter.md: the headline's letter on its own scale
   // the summary ring is now the score on screen; the old panel's number stays in the page under another id
   root.querySelectorAll('.sr-score [data-testid="score"]').forEach((n) => n.setAttribute("data-testid", "score-detail"));
-  const breakdownSlot = makeSlot(root, "breakdown-slot");   // filled once the coaching rows exist (below)
   const challengeSlot = makeSlot(root, "challenge-slot");
   fillSlot(challengeSlot, () => import("./challenge-actions.js").then((m) => m.mountChallengeActions), ctx, cleanups);
+  cleanups.push(wireActions(actions, challengeSlot, shown));
+  const shareSlot = makeSlot(root, "share-slot"); // TICKET-233: a signed-in person can share this result
+  fillSlot(shareSlot, () => import("./share.js").then((m) => m.mountShareAction), ctx, cleanups);
+  const noteSlot = makeSlot(root, "note-slot"); // TICKET-237: a signed-in follower can ask the trainer for a note, and reads it here
+  fillSlot(noteSlot, () => import("./notes.js").then((m) => m.mountAskTrainer), ctx, cleanups);
+  const askSlot = makeSlot(root, "take-ask-slot"); // TICKET-269: the owner of a kept take can ask a cited question and the player moves
+  fillSlot(askSlot, () => import("./take-ask.js").then((m) => m.mountTakeAsk), ctx, cleanups);
+  const referenceSlot = makeSlot(root, "reference-slot"); // ADR-0019: which reference this take was compared with, and "use as my reference"
+  fillSlot(referenceSlot, () => import("./my-reference.js").then((m) => m.mountMyReference), ctx, cleanups);
 
-  // the zone: the stage (video, then the 3D compare) and the coaching rows below it
+  // the coaching rows below
   const zone = el("div", { class: "sr-zone" });
-  const stageHolder = el("div", { class: "sr-stage-holder" });
-  const sideHolder = el("div", { class: "sr-side-holder" });   // the original videos side by side, with sound
   const body = el("div", { class: "sr-zone-body" });
-  stage.append(sideHolder, stageHolder);
-  zone.append(stage, body);
+  zone.append(body);
   root.append(zone);
 
   const moments = momentsToReview(display);
@@ -404,43 +518,72 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   const momentsHolder = el("div", { class: "sr-moments-holder" });
   body.append(momentsHolder);
   renderInsights(body, display, getView, () => timeline);
-  timeline = renderTimeline(body, shown, getView, flaggedWindows(moments));
+  const credit = creditDisplay(shown, scoreDisplay);
+  timeline = renderTimeline(bdTimeline, shown, getView, flaggedWindows(moments), credit && credit.windows);
   const mine = takeLabels(record);
   if (mine) body.append(mine);
   if (replay || !warnings.length) {
-    const slot = el("div", { class: "sr-compare-slot" });
-    stage.append(slot);
+    const slot = stageView.hosts["3d"];
     let model = null;
     try {
       model = normalizeReplay(replay, trainerVisibility);
     } catch {
       slot.append(el("p", { class: "sr-note", role: "status", "data-testid": "compare-note", text: MSG_BAD_REPLAY }));
     }
-    if (model) compare = await mountCompare(slot, model, { testid: "compare" });
+    const mountCompare = (host, m, opts) => mountCompareFor(host, m, { ...opts, job });   // the 3D picker hook: the job, for the per-take model pick
+    if (model) compare = await mountCompare(slot, model, { testid: "compare", trainerLabel: referenceLabel(record) });
+    if (compare && compare.duration) stageCtl.addView("3d", compareHandle(compare, replay));
+    if (compare && isCinematic()) import("./cinematic.js").then((m) => m.installCinematic(compare)).catch(() => {}); // TICKET-267: only with ?cinematic=1
+    if (compare && compare.el && !pid) import("./any-body.js").then((m) => m.mountAnyBodyLink(compare && compare.el, job)).catch(() => {}); // the Any body button (any-body.md)
     // TICKET-087: put the clock where the open window starts now, while it is still paused and before the video loads.
     // Doing it after the video settles moved a clock the visitor was already looking at (and a paused one at that).
     if (timeline) timeline.seekShown();
   }
-  const url = videoUrl === undefined ? videoUrlFor(job, pid) : videoUrl;
+  // no follower video: a take whose video was not kept (hasFollowerVideo) shows the 3D view only
+  const url = !keptVideo ? null : videoUrl === undefined ? videoUrlFor(job, pid) : videoUrl;
+  let videoFailed = false;
   if (url && (real || worst)) {
     const total = Math.max(compare ? compare.duration : 0, ...timelineEnd(shown));
     // a follow take's stage shows the trainer's video too, kept on the matching part of the movement by the replay
     const trainer = trainerVideoUrl ? { url: trainerVideoUrl, replay } : null;
-    coach = mountCoachStage(stageHolder, { compare, videoUrl: url, worst, moments, total, trainer });
+    coach = mountCoachStage(stageView.hosts.annotated, { compare, videoUrl: url, worst, moments, total, trainer });
     // a settle timeout only lets the rest of the screen render; the stage stays so a late video still works
     // and is destroyed only on a real load error
-    if ((await settledOrTimeout(coach)) === "unavailable") {
+    const settled = await settledOrTimeout(coach);
+    if (settled === "unavailable") {
       coach.destroy();
       coach = null;
+      videoFailed = true;   // the clip did not load: the second guard for a take without its video
+    } else {
+      stageCtl.addView("annotated", coachHandle(coach, compare, replay));
+      if (settled === "timeout") coach.el.addEventListener("coach-ready", () => stageCtl.refresh(), { once: true });
+      const dropVideoViews = () => { stageCtl.removeView("annotated"); stageCtl.removeView("videos"); };
+      coach.video.addEventListener("error", () => { if (coach && coach.unavailable()) dropVideoViews(); }, { once: true });
     }
   }
-  // the trainer's original video next to the follower's, sound on (a follow take with a trainer video; not a group take)
+  // the Videos view: the trainer's original video next to the follower's, sound on (a follow take with a trainer
+  // video); without one (a group take) the follower's own clip with its sound
   let side = null;
-  if (url && trainerVideoUrl) side = (await import("./side-by-side.js")).mountSideBySide(sideHolder, { trainer: trainerVideoUrl, you: url });
+  if (url && !videoFailed) {
+    if (trainerVideoUrl) {
+      side = (await import("./side-by-side.js")).mountSideBySide(stageView.hosts.videos, { trainer: trainerVideoUrl, you: url });
+      stageCtl.addView("videos", sideHandle(side));
+      side.you.addEventListener("error", () => stageCtl.removeView("videos"), { once: true });
+    } else {
+      side = drawSoloVideo(stageView.hosts.videos, url);
+      stageCtl.addView("videos", soloHandle(side.video));
+      side.video.addEventListener("error", () => stageCtl.removeView("videos"), { once: true });
+    }
+  }
+  mountVideosNote(stageView.hosts.videos, record);   // TICKET-331: say the trainer's video is gone, not only show yours
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
   renderFaults(body, display, getView);
+  fillSlot(makeSlot(body, "fix-it-slot"), () => import("./skin/corrected-replay.js").then((m) => m.mountFixIt), ctx, cleanups); // TICKET-265: "Fix it for me"
   fillSlot(makeSlot(body, "near-misses-slot"), () => import("./near-misses.js").then((m) => m.mountNearMisses), ctx, cleanups); // TICKET-100
   body.append(secondOpinionSlot());   // contract C2: one section after the coaching rows
+  body.append(correctedSlot());       // TICKET-280: the owner's corrected-pose image and blind referee; hidden until there is something to show
+  if (job && job !== "fixture") body.append(mountSourceCredit("take", job, "result-source")); // TICKET-322: the take's source and licence, edited by its owner
+  if (trainerVideoUrl && record && record.entry_id) body.append(mountSourceCredit("entry", record.entry_id, "result-entry-source", { edit: false, trainerClip: true })); // TICKET-322: the trainer's clip plays here, so its credit shows too
   body.append(historySection(), keepTakeSlot());   // R6: "Your takes over time" and "Keep this take", empty unless signed in
   renderQualityTips(body, analysis);
   fillSlot(breakdownSlot, () => import("./breakdown.js").then((m) => m.mountBreakdown), ctx, cleanups);
@@ -459,10 +602,12 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
 
   // contracts C2 and C2b: the other session's voice, second opinion and narration modules (missing ones stay silent)
   mountLaneModules(root, { jobId: job || "fixture", analysis, video: coach ? coach.video : null,
-    seek: (t) => getView() && view.jump(t), entryId: (record && record.entry_id) || null });
+    seek: (t) => getView() && view.jump(t), entryId: (record && record.entry_id) || null,
+    owns: !(record && record.attribution && record.attribution.mine === false), narration: !(record && record.narration === false),
+    trainer: record && record.attribution && record.attribution.trainer_credit ? record.attribution.trainer_credit.name : null }); // no owner-only or missing-narration request
 
   // R4: after the ring counts up, the trainer and you slide together in the 3D view (first view in this session only)
-  cleanups.push(armSlide(compare, { startedAt: revealStart, delayMs: REVEAL_MS }));
+  cleanups.push(armSlide(compare, { startedAt: slideStart, delayMs: REVEAL_MS }));
 
   let live = true;
   if (hasJobFiles(job, pid)) {
@@ -477,7 +622,14 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
         mesh = m;
         placeMesh();
         mesh.setTime(worst.at);
-        const follow = (t) => mesh && mesh.setTime(t);
+        // TICKET-274 and TICKET-282: Heat and "See it in your room" under the stage, only for a job whose files name them
+        if (m.heat || m.ar) {
+          import("./heat/stage-tools.js").then((st) => {
+            const tools = live ? st.mountStageTools(meshHost, { view: m, ar: m.ar, seek: (t) => getView() && view.jump(t), pageUrl: location.href }) : null;
+            if (tools) cleanups.push(tools.destroy);
+          }).catch(() => {});
+        }
+        const follow =(t) => mesh && mesh.setTime(t);
         if (compare) cleanups.push(compare.onTick(follow));
         else if (coach) {
           const onTime = () => follow(coach.video.currentTime);
@@ -491,12 +643,14 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   return {
     compare,
     coach,
+    stage: stageCtl,
     seek: (t) => view.seek(t),
     highlight: (j) => view.highlight(j),
     destroy() {
       live = false;
       document.removeEventListener(SEEK_EVENT, onSeek);
       cleanups.splice(0).forEach((fn) => fn());
+      stageCtl.destroy();
       skeleton && skeleton.destroy();
       mesh && mesh.destroy();
       summary && summary.destroy();
@@ -507,4 +661,35 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
       root.replaceChildren();
     },
   };
+}
+
+/** Share (the result's link: the share sheet, else copied) and Challenge a friend (the challenge box below, once it
+ *  has mounted: brought into sight, the name field focused). Returns a stop function. */
+function wireActions(actions, challengeSlot, analysis) {
+  actions.share.addEventListener("click", async () => {
+    const grade = analysis.score && analysis.score.grade;
+    const { shareLink } = await import("./share-card.js");
+    const out = await shareLink({ url: location.href, text: grade ? `My Simon take: grade ${grade}` : "My Simon take" }).catch(() => null);
+    actions.say(out && out.mode === "copy" && out.copied ? STAGE_TEXT.shared : "");
+  });
+  const ready = () => { actions.challenge.hidden = !challengeSlot.querySelector('[data-testid="challenge-actions"]'); };
+  const obs = typeof MutationObserver === "function" ? new MutationObserver(ready) : null;
+  if (obs) obs.observe(challengeSlot, { childList: true });
+  actions.challenge.addEventListener("click", () => {
+    const offer = challengeSlot.querySelector('[data-testid="challenge-offer"]');
+    if (offer && !offer.hidden) offer.click();
+    const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    challengeSlot.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    const name = challengeSlot.querySelector('[data-testid="challenge-name"]');
+    if (name && !name.closest("[hidden]")) name.focus({ preventScroll: true });
+  });
+  return () => { if (obs) obs.disconnect(); };
+}
+
+/** The stage's "i" pill shown from now on, whatever a later `setMade` says (the panel holds our stage split). */
+export function keepMadePill(stageView) {
+  const own = stageView.setMade;
+  stageView.setMade = () => own.call(stageView, true);
+  stageView.setMade();
+  return stageView;
 }

@@ -1,0 +1,284 @@
+{
+ "answers": [
+  {
+   "focus": {
+    "cites": [
+     {
+      "at_s": 2.0,
+      "take": 3
+     }
+    ],
+    "cue": "Push your knees out",
+    "measure": "knee_cave",
+    "side": "left",
+    "text": "Work on the left knee cave at 2.0 s in take 3."
+   },
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 3
+     }
+    ],
+    "text": "Your score went from 70 in take 1 to 71 in take 3."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 2.0,
+       "take": 3
+      },
+      {
+       "at_s": 2.0,
+       "take": 1
+      }
+     ],
+     "kind": "persistent",
+     "measure": "knee_cave",
+     "side": "left",
+     "text": "The left knee cave at 2.0 s is in take 3 and first showed in take 1."
+    },
+    {
+     "cites": [
+      {
+       "at_s": 2.0,
+       "take": 3
+      },
+      {
+       "at_s": null,
+       "take": 2
+      }
+     ],
+     "kind": "new",
+     "measure": "knee_cave",
+     "side": "right",
+     "text": "The right knee cave at 2.0 s shows in take 3, not before."
+    }
+   ]
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "focus": {
+   "cue": "Push your knees out",
+   "measure": "knee_cave",
+   "side": "left"
+  },
+  "statuses": {
+   "knee_cave|left": "persistent",
+   "knee_cave|right": "new"
+  }
+ },
+ "facts": {
+  "best": 2,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 3,
+  "measures": [
+   {
+    "first": {
+     "at_s": 2.0,
+     "magnitude": 12.0,
+     "size": 12.0,
+     "take": 1,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 2.0,
+     "magnitude": 12.0,
+     "size": 12.0,
+     "take": 3,
+     "unit": "deg"
+    },
+    "measure": "knee_cave",
+    "present_in": [
+     1,
+     2,
+     3
+    ],
+    "side": "left",
+    "status": "persistent"
+   },
+   {
+    "first": {
+     "at_s": 2.0,
+     "magnitude": 10.0,
+     "size": 10.0,
+     "take": 3,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 2.0,
+     "magnitude": 10.0,
+     "size": 10.0,
+     "take": 3,
+     "unit": "deg"
+    },
+    "measure": "knee_cave",
+    "present_in": [
+     3
+    ],
+    "side": "right",
+    "status": "new"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [
+     "Push your knees out"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 2.0,
+      "body_part": "knee",
+      "cue": "Push your knees out",
+      "joint": "knee",
+      "magnitude": 12.0,
+      "measure": "knee_cave",
+      "side": "left",
+      "size": 12.0,
+      "span": [
+       1.8,
+       2.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 70,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [
+     "Push your knees out"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 2.0,
+      "body_part": "knee",
+      "cue": "Push your knees out",
+      "joint": "knee",
+      "magnitude": 12.0,
+      "measure": "knee_cave",
+      "side": "left",
+      "size": 12.0,
+      "span": [
+       1.8,
+       2.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 72,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T11:00:00Z",
+    "cues": [
+     "Push your knees out"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 2.0,
+      "body_part": "knee",
+      "cue": "Push your knees out",
+      "joint": "knee",
+      "magnitude": 12.0,
+      "measure": "knee_cave",
+      "side": "left",
+      "size": 12.0,
+      "span": [
+       1.8,
+       2.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     },
+     {
+      "at_s": 2.0,
+      "body_part": "knee",
+      "cue": "Push your knees out",
+      "joint": "knee",
+      "magnitude": 10.0,
+      "measure": "knee_cave",
+      "side": "right",
+      "size": 10.0,
+      "span": [
+       1.8,
+       2.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000003",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 71,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 3,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "sides",
+ "note": "Left knee cave in all takes, right knee cave only in take 3: persistent left, new right; the text names each side.",
+ "origin": "synthetic"
+}

@@ -50,6 +50,19 @@ if (c === "nearmiss" || c === "nearmiss-empty") {
 }
 // TICKET-155: staging job 02e783ae6e63, one fault, its window 73 C, capped to 59 F by low_match
 if (c === "capped") analysis = await fixture("analysis-capped-low-match.json");
+// staging job 652b525a73ee (the judge hero): one part at 100 A, capped to 59 F by low_match, no faults, no insights
+if (c === "low-match-hero") analysis = await fixture("analysis-low-match-hero.json");
+// Part 5's credit score (simon.credit.v1, score.credit) on the 8-rep lateral raise: the "% or points" switch shows;
+// "credit-null" is a take where nothing was compared (credit null): the switch hides and score.value shows as before
+if (c === "credit" || c === "credit-null") analysis = await fixture("analysis-credit.json");
+if (c === "credit-null") analysis.score.credit = null;
+// one-letter.md: the MM-Fit take 42a02415127e's score block (37 F, credit 16,239 of 22,367, C), uncapped and capped
+if (c === "one-letter" || c === "one-letter-capped") {
+  const cases = (await fetch("../fixtures/shown-score-vectors.json").then((r) => r.json())).cases;
+  analysis = await fixture("analysis-credit.json");
+  analysis.score = { ...analysis.score, ...cases[c === "one-letter" ? 0 : 4].analysis.score };
+  if (c === "one-letter-capped") analysis.warnings = [{ code: "low_match", text: "This take does not closely match the trainer's movement." }];
+}
 if (c === "nofaults") analysis.faults = [];
 if (c === "fallback") analysis.phrasing.faults[1] = { backend: "template", model: null, fallback_reason: "live phrasing timed out" };
 // TICKET-116: the trainer's Part 3 unseen mark (part7/trainer_visibility.py over a seated or a standing skeleton sample)
@@ -70,6 +83,31 @@ if (c === "animation-unseen") hideWrist(replay.expected);
 if (c === "viewer") window.__r = await mountViewer(root, { replay });
 else if (c === "animation-sim1") window.__r = await mountViewer(root, { animation: await fetch("../fixtures/input/animation-squat-sample.json").then((r) => r.json()) }); // TICKET-090
 else if (c === "animation" || c === "animation-unseen") window.__r = await mountViewer(root, { animation: animation() });
+else if (c === "orphan" || c === "orphan-present") { // TICKET-331: a fake follow take; "orphan" has its movement deleted, "orphan-present" does not
+  const JOB = "e700387c7a1c", ENTRY = "knee-raise-harness-b6635964";
+  window.__req = [];
+  const real = window.fetch.bind(window);
+  const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  window.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.endsWith("api/auth/me")) return json(200, { available: true, signed_in: true, user_id: "u-1" });
+    if (u.endsWith(`api/jobs/${JOB}`)) return json(200, { id: JOB, kind: "follow", status: "done", entry_id: ENTRY, entry_gone: c === "orphan", narration: true, attribution: { mine: true } });
+    if (u.includes("catalog/api/entries/") || u.includes("ask-trainer") || u.includes("ask-take") || u.includes("since-last-time") || u.includes("api/me/history/") || u.includes("api/narration/")) {
+      window.__req.push(u);
+      return json(c === "orphan" ? 404 : 200, c === "orphan" ? { error: "gone" } : { name: "Knee raise", video_uri: "video.mp4", can_ask: false, takes: [] });
+    }
+    if (u.endsWith("/analysis.json") && u.includes(JOB)) return json(200, analysis);
+    if (u.endsWith("/replay.json") && u.includes(JOB)) return json(200, replay);
+    if (u.endsWith("/trainer-visibility.json") && u.includes(JOB)) return json(200, null);
+    if (u.includes("api/me/")) return json(200, {});
+    return real(url, opts);
+  };
+  const { loadResultFor } = await import("../../../web/orphan-load.js");
+  const loadResult = async () => ({ analysis, replay, trainerVisibility: null, trainerVideoUrl: "../fixtures/coach.webm",
+    record: { id: JOB, kind: "follow", entry_id: ENTRY, entry_gone: false, narration: true, attribution: { mine: true } } });
+  const data = await loadResultFor(JOB, null, loadResult);
+  window.__r = await mountResult(root, { analysis: data.analysis, replay: data.replay, trainerVisibility: data.trainerVisibility, trainerVideoUrl: data.trainerVideoUrl, record: data.record, job: JOB, videoUrl: "../fixtures/coach.webm" });
+}
 else window.__r = await mountResult(root, { analysis, trainerVisibility, replay: c === "badreplay" ? { fps: 0 } : c === "noreplay" ? undefined : replay });
 window.__ready = true;
 </script>

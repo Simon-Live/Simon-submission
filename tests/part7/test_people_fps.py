@@ -166,6 +166,7 @@ def test_a_single_take_tracked_at_3_fps_gives_the_3d_run_boxes_at_the_3d_rate(
     fakes = Fakes(monkeypatch, {0: 20, 1: 18})
     _fake_track(fakes, monkeypatch, {3: _moving({0: 20, 1: 18})})
     monkeypatch.setattr(p2_pose, "FPS", 10)
+    monkeypatch.setattr(p2_pose, "frame_times", lambda *a, **k: None)  # TICKET-349: no real `part2 frame-times` launch
     pj = _post(api, class_mp4, mode="single")["id"]
     _, up = api.upload(class_mp4)
     status, doc = api.json("POST", "api/follow", {"upload_id": up["upload_id"], "entry_id": "lateral-raise",

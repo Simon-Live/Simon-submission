@@ -1,0 +1,150 @@
+[
+  {
+    "persona": "home-rehab",
+    "job_id": "76aa95085684",
+    "entry_id": "wall-push-up-f327c536",
+    "take_url": "#/result/76aa95085684",
+    "trainer_entry_url": "#/watch/wall-push-up-f327c536",
+    "url_note": "take_url and trainer_entry_url are app paths for information only; links are built from job_id and entry_id.",
+    "score": 80,
+    "grade": "B",
+    "mode": "rehab",
+    "clip_source": {
+      "url": "https://www.pexels.com/video/5034561/",
+      "licence": "Pexels License (https://www.pexels.com/license/)",
+      "licence_name": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "file": "pexels-5034561",
+      "title": "A Man Doing Wall Push-Ups",
+      "edit": "trimmed to 0 to 10.8 s, cropped to the man on the right (x 1160 to 2560 of 2560) so the woman beside him is out of frame, mirrored left to right so he faces the wall the same way as in the recording, scaled to 1050x1080, 25 fps, audio removed"
+    },
+    "trainer_clip_source": {
+      "url": "https://www.pexels.com/video/5034321/",
+      "licence": "Pexels License (https://www.pexels.com/license/)",
+      "file": "pexels-5034321",
+      "title": "Man Doing a Wall Push-Ups on the Outdoors",
+      "trainer_job_id": "6340b1ff189d"
+    },
+    "why_this_clip": "Wall push-ups again, from a second shoot at a different wall, followed in Rehab mode (slower practice, longer countdown, the pain-free-range line). The follower clip was mirrored left to right before upload (ffmpeg hflip, not an app option) so he faces the wall the same way as in the recording; the unmirrored first try was capped by low_match. Limit: the person appears to be the same model as in the recording, so this shows the home-programme flow, not a second patient.",
+    "recorded_utc": "2026-11-02T12:50:43Z",
+    "staging_sha": "1f1e42199ed6ee392d38c688ae52efab276fbb21",
+    "meshes": {
+      "trainer": true,
+      "you": true
+    },
+    "api_check": {
+      "request": "GET api/jobs/76aa95085684",
+      "http_status": 200,
+      "at": "2026-11-02T12:56:13Z"
+    }
+  },
+  {
+    "persona": "remote-class",
+    "job_id": "f7f06d0bc4f3",
+    "entry_id": "bodyweight-squat-6b069342",
+    "take_url": "#/result/f7f06d0bc4f3",
+    "trainer_entry_url": "#/watch/bodyweight-squat-6b069342",
+    "url_note": "take_url and trainer_entry_url are app paths for information only; links are built from job_id and entry_id.",
+    "score": 31,
+    "grade": "F",
+    "mode": "fitness",
+    "clip_source": {
+      "url": "https://www.pexels.com/video/5025965/",
+      "licence": "Pexels License (https://www.pexels.com/license/)",
+      "licence_name": "Pexels License",
+      "licence_url": "https://www.pexels.com/license/",
+      "file": "pexels-5025965",
+      "title": "Woman Doing a Squat Exercise",
+      "edit": "trimmed to 0 to 10 s (about five squats), scaled from 1080x1920 to 608x1080, 25 fps, audio removed; no mirroring, no crop"
+    },
+    "trainer_clip_source": {
+      "url": "https://www.pexels.com/video/5034562/",
+      "licence": "Pexels License (https://www.pexels.com/license/)",
+      "file": "pexels-5034562",
+      "title": "Woman Doing Squat Exercise",
+      "trainer_job_id": "263adf67e991"
+    },
+    "why_this_clip": "A different woman (older, outdoors) filmed from the same side and facing the same way as the teacher, doing full bodyweight squats from standing with her hands clasped at her chest where the teacher holds both arms straight forward. The camera angle matches the recording (TICKET-246: a heading change moves scores), and the arm difference is the fault Part 5 labels for this movement (elbows bent, labels.json take pexels-8837221); for this clip it was judged by eye from frames, not taken from labels.json. Trim and scale only; no mirroring.",
+    "recorded_utc": "2026-11-02T17:50:44Z",
+    "staging_sha": "ca9953c65b6335f11948b9f64ba31df18262ef14",
+    "meshes": {
+      "trainer": true,
+      "you": true
+    },
+    "api_check": {
+      "request": "GET api/jobs/f7f06d0bc4f3",
+      "http_status": 200,
+      "at": "2026-11-02T17:50:58Z"
+    },
+    "value_vs_credit": {
+      "value": 31,
+      "grade": "F",
+      "credit_percent": 72.3,
+      "credit_grade": "C"
+    },
+    "faults": [
+      "elbows bent much more than the example",
+      "arms nowhere near raised far enough forward",
+      "hands too close in",
+      "right knee bent slightly more than the example"
+    ],
+    "quality": "ok",
+    "measures_used": "9 alignment measures (diagnostics.alignment_measures); the result prints no 'N of 22' line",
+    "models": [
+      {
+        "id": "sam31-trainer",
+        "model": "SAM 3.1",
+        "status": "live"
+      },
+      {
+        "id": "spark-sections",
+        "model": "Muse Spark",
+        "status": "live"
+      },
+      {
+        "id": "narration",
+        "model": "Muse Voice Transcribe",
+        "status": "not_run",
+        "reason": "no_narration"
+      },
+      {
+        "id": "sam31-you",
+        "model": "SAM 3.1",
+        "status": "live"
+      },
+      {
+        "id": "sam3d-you",
+        "model": "SAM 3D Body",
+        "status": "live"
+      },
+      {
+        "id": "mhr-you",
+        "model": "MHR",
+        "status": "live"
+      },
+      {
+        "id": "spark-phrasing",
+        "model": "Muse Spark",
+        "status": "live"
+      },
+      {
+        "id": "glimmer-phrasing",
+        "model": "Muse Glimmer",
+        "status": "not_run",
+        "reason": "private_mode_off"
+      },
+      {
+        "id": "spark-opinion",
+        "model": "Muse Spark",
+        "status": "live"
+      },
+      {
+        "id": "mms-tts",
+        "model": "MMS-TTS",
+        "status": "not_run",
+        "reason": "no_spoken_lines"
+      }
+    ],
+    "hero_candidate": true
+  }
+]

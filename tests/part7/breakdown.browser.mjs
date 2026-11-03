@@ -40,7 +40,7 @@ try {
   const a = load("breakdown-rushing");
   assert.match(await text(rush, "tempo-line"), /^Rushing: your moves took 37% of the trainer's time$/);
   assert.equal(await rush.getByTestId("tempo-line").getAttribute("data-tempo"), "rushing");
-  assert.match(await text(rush, "breakdown-verdict"), /^Most of your lost points are shape: /);
+  assert.match(await text(rush, "breakdown-verdict"), /^Mostly shape: /);
   assert.match(await text(rush, "timing-note"), /does not lower your score/);
   const tempoRow = rush.locator("[data-cue-kind=tempo]");
   assert.equal(await tempoRow.count(), 1);
@@ -57,9 +57,11 @@ try {
   // witness 2: the split in the DOM equals the sum of Part 5's miss points
   const misses = a.score.timeline.flatMap((w) => w.misses);
   const sumOf = (k) => Math.round(misses.filter((m) => m.cue_kind === k).reduce((s, m) => s + m.points, 0) * 10) / 10;
-  assert.equal(await text(rush, "shape-position"), `Where a body part is${sumOf("position")} points lost`);
-  assert.equal(await text(rush, "shape-range"), `How far you move${sumOf("range")} points lost`);
-  ok("shape split equals the sum of the timeline miss points by cue_kind");
+  const share = (k) => `${Math.round((sumOf(k) / (sumOf("position") + sumOf("range"))) * 100)}% of shape misses`;
+  assert.equal(await text(rush, "shape-position"), `Where a body part is${share("position")}`);
+  assert.equal(await text(rush, "shape-range"), `How far you move${share("range")}`);
+  assert.doesNotMatch(await text(rush, "breakdown"), /points lost|lost \d/, "negative: no loss figure in the panel");
+  ok("shape split is each kind's share of the timeline miss points by cue_kind, with no loss figure")
 
   // idempotent re-mount
   await rush.evaluate(() => window.__remount());
@@ -105,7 +107,7 @@ try {
 
   // rehab: Part 5 says slower is fine, so the panel reassures and lists no timing problem
   const rs = await open("breakdown-rehab-slow");
-  assert.equal(await text(rs, "tempo-line"), "Slower than the trainer, and that is fine in rehab");
+  assert.equal(await text(rs, "tempo-line"), "Slower than the trainer. Your physio sets your pace.");
   assert.equal(await rs.getByTestId("tempo-line").getAttribute("data-tempo"), "slow-ok");
   assert.doesNotMatch(await text(rs, "breakdown-verdict"), /timing is off|dragging/i);
   assert.equal(await rs.getByTestId("breakdown").getAttribute("data-verdict"), "both-good");
@@ -121,9 +123,19 @@ try {
   assert.equal(await rf.locator("[data-cue-kind=tempo] [data-testid=kind-tag]").textContent(), "Timing");
   ok("rehab fast fixture: still Rushing with a Timing tag");
 
+  // fitness: a slow pace beside a high score says the pace is not scored; dance charges it, so no line; rehab keeps its own copy
+  const fs_ = await open("breakdown-fitness-slow");
+  assert.match(await text(fs_, "tempo-line"), /^Dragging: your moves took 2\.4 times the trainer's time$/);
+  assert.equal(await text(fs_, "tempo-unscored"), "Pace is shown for practice; it isn't part of this score.");
+  const dn = await open("breakdown-dance-slow");
+  assert.equal(await dn.getByTestId("tempo-unscored").count(), 0);
+  assert.equal(await dn.getByTestId("timing-note").count(), 0);
+  assert.equal(await rs.getByTestId("tempo-unscored").count(), 0);
+  ok("fitness shows the not-scored pace line; dance and rehab do not");
+
   // old Part 5: no timeline, no tempo
   const old = await open("breakdown-old");
-  assert.match(await text(old, "breakdown-verdict"), /^Most of your lost points are shape: how far you move$/);
+  assert.match(await text(old, "breakdown-verdict"), /^Mostly shape: how far you move$/);
   assert.equal(await text(old, "tempo-line"), "No timing detail in this analysis.");
   assert.equal(await text(old, "shape-range"), "How far you move2 found");
   assert.equal(await old.getByTestId("body-note").count(), 1);

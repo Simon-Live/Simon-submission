@@ -72,6 +72,7 @@ export function renderMe(host, vm, on) {
   };
   setRows(vm.rows);
 
+  const exportSlot = h("section", { class: "au-card", "data-testid": "me-export-slot" }); // "Download my data" (web/my-data.js)
   const deleteNote = note("me-delete-note");
   const busyList = h("p", { class: "au-hint", "data-testid": "me-busy", hidden: true });
   const ask = h("button", { class: "btn danger au-submit", type: "button", "data-testid": "me-delete", text: t.deleteButton });
@@ -97,15 +98,16 @@ export function renderMe(host, vm, on) {
     h("section", { class: "au-card" },
       h("p", { class: "au-who", "data-testid": "me-email", text: t.signedInAs(vm.email) }),
       h("button", { class: "btn secondary au-submit", type: "button", "data-testid": "me-signout", text: t.signOut, onclick: on.signOut })),
+    h("section", { class: "au-card", "data-testid": "me-takes-card" }, h("h2", { text: t.takesTitle }), list, empty), // first under the account: one tap from home (TICKET-327)
     h("section", { class: "au-card", "data-testid": "me-consent" },
       h("h2", { text: t.consentTitle }),
       h("label", { class: "au-tick", for: "me-retention" }, box, h("span", { text: t.consentLabel })),
-      vm.consentLines.map((line) => h("p", { class: "au-hint", text: line })), consentNote),
+      h("ul", { class: "au-hint pf-points", "data-testid": "me-consent-lines" }, vm.consentLines.map((line) => h("li", { text: line }))), consentNote),
     h("section", { class: "au-card" }, h("h2", { text: t.claimTitle }), claimForm),
-    h("section", { class: "au-card" }, h("h2", { text: t.takesTitle }), list, empty),
+    exportSlot,
     h("section", { class: "au-card", "data-testid": "me-delete-card" },
       h("h2", { text: t.deleteTitle }), h("p", { class: "au-hint", text: t.deleteBody }), ask, sure, deleteNote, busyList));
-  return { setRows };
+  return { setRows, exportSlot };
 }
 
 /** The Keep this take slot on a finished result. States: button, kept, error. Returns { setState }. */

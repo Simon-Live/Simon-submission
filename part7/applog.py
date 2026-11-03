@@ -17,6 +17,7 @@ import time
 from typing import Any
 
 from part7 import keys
+from part7 import selfheal
 
 LOGGER = logging.getLogger("part7")
 FORMAT = "%(asctime)sZ %(levelname)s %(message)s"
@@ -137,6 +138,7 @@ def anomaly(kind: str, /, detail: str = "", job: str | None = None, job_dir: Pat
     """Log one machine-readable WARNING line `ANOMALY <kind> ...` (also to the job's log with `job_dir`)."""
     text = keys.redact(anomaly_text(kind, job, detail, **fields))
     LOGGER.warning(text)
+    selfheal.observe_anomaly(kind, detail, fields)  # TICKET-204: a known kind marks its self-heal check
     if job_dir is not None:
         _append_job_log(text, job_dir, logging.WARNING)
 

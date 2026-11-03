@@ -293,6 +293,46 @@ def test_b4_a_busy_synthesis_answers_503_without_starting_a_process(api: Api, fa
     assert len(fake.calls) == 1
 
 
+def wait_for_log(caplog: pytest.LogCaptureFixture, wanted: Any, timeout: float = 5.0) -> list[str]:
+    """The server thread logs after the response is sent: poll the captured records (50 ms) until one matches."""
+    end = time.monotonic() + timeout
+    while True:
+        text = [r.getMessage() for r in list(caplog.records)]
+        if any(wanted(m) for m in text) or time.monotonic() > end:
+            return text
+        time.sleep(0.05)
+
+
+def test_the_designed_busy_answer_is_info_not_an_anomaly_and_a_real_5xx_still_is(
+        api: Api, fake: FakeRun, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    """TICKET-204: 503 "Another spoken line is being made" is by design; any other 5xx stays ANOMALY http_5xx."""
+    import logging
+
+    from part7 import server
+
+    job = follow_job(api, ES)
+    assert speech._SLOT.acquire(blocking=False)
+    try:
+        with caplog.at_level(logging.INFO, logger="part7"):
+            assert api.request("GET", f"api/jobs/{job}/speech/0.wav")[0] == 503
+    finally:
+        speech._SLOT.release()
+    # The INFO line and the ANOMALY line come from one if/else, so once the INFO line is in, no ANOMALY can follow.
+    text = wait_for_log(caplog, lambda m: m.endswith("answered 503 (busy by design)"))
+    assert any(m.endswith("answered 503 (busy by design)") for m in text), text
+    assert not any("ANOMALY http_5xx" in m for m in text), text
+    caplog.clear()
+
+    def boom(self: Any) -> None:
+        self._error(503, "The app is busy.")
+
+    monkeypatch.setattr(server._Handler, "_health", boom)
+    with caplog.at_level(logging.INFO, logger="part7"):
+        assert api.request("GET", "api/health")[0] == 503
+    text = wait_for_log(caplog, lambda m: "ANOMALY http_5xx" in m and "api/health" in m)
+    assert any("ANOMALY http_5xx" in m and "api/health" in m for m in text), text
+
+
 def test_r8_the_first_request_answers_202_at_once_and_a_later_one_is_served(
         api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
     release = threading.Event()

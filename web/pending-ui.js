@@ -5,6 +5,7 @@ import { createProgress } from "./progress.js";
 import { getPending } from "./pending-app.js";
 import { getConfig } from "./api.js";
 import { TEXT, statusText, SENDABLE } from "./pending.js";
+import { KEEP_TEXT, isKept, isWaiting, needsAction, keptStatus } from "./pending-keep.js";
 
 const ensureStyles = () => ensureCss("pending.css", "data-simon-pending-css");
 
@@ -29,11 +30,25 @@ export function mountPendingBanner(el, pending) {
   async function paint() {
     if (!live) return;
     const waiting = (await pending.list()).filter((r) => !pending.isOwned(r.id)); // the take being sent from the open screen is not "waiting"
+    // TICKET-290: a kept take (sent, stopped or refused) is not waiting; a stopped or refused one needs the person,
+    // and a take that failed to send says why with Retry on every screen.
+    for (let i = waiting.length - 1; i >= 0; i--) if (!isWaiting(waiting[i])) waiting.splice(i, 1);
+    const stuck = pending.listKept ? (await pending.listKept()).filter(needsAction) : [];
+    if (!live) return;
     const kids = [];
     if (note) {
       kids.push(h("p", { class: "pending-line", "data-testid": "pending-sent", role: "status" },
         h("span", { text: TEXT.sent + " " }), h("a", { href: `#/job/${encodeURIComponent(note.job)}`, "data-testid": "pending-sent-link", text: "See progress" }),
         h("button", { type: "button", class: "btn-link", "data-testid": "pending-dismiss", text: "Dismiss", onclick: () => { note = null; paint(); } })));
+    }
+    const failing = sending ? [] : waiting.filter((r) => r.last_error && SENDABLE.includes(r.stage));
+    if (failing.length) {
+      kids.push(h("p", { class: "pending-line", "data-testid": "pending-failed", role: "alert", text: statusText(failing[0]) }),
+        h("button", { type: "button", class: "btn-link", "data-testid": "pending-retry", text: KEEP_TEXT.retry, onclick: () => pending.trigger("manual") }));
+    }
+    if (stuck.length) {
+      kids.push(h("p", { class: "pending-line", "data-testid": "pending-stuck", role: "status", text: KEEP_TEXT.needsYou(stuck.length) }));
+      if (!waiting.length) kids.push(h("a", { class: "pending-link", href: "#/pending", "data-testid": "pending-stuck-link", text: "See saved takes" }));
     }
     if (waiting.length) {
       if (sending) {
@@ -74,6 +89,7 @@ export function mountPendingList(root) {
     async function paint() {
       const recs = await pending.list();
       if (!live) return;
+      if (pending.listKept) recs.push(...(await pending.listKept())); // TICKET-290: the kept takes, after the waiting ones
       list.replaceChildren(...recs.map((rec) => row(pending, rec)));
       screen.querySelector('[data-testid="pending-empty"]')?.remove();
       if (!recs.length) screen.append(stateBlock("pending-empty", "Nothing is waiting to send", "A take you record is kept here if the app cannot be reached.", linkButton("#/", "Back to movements", "back-home")));
@@ -81,6 +97,7 @@ export function mountPendingList(root) {
     function row(p, rec) {
       const id = rec.id;
       const sendable = SENDABLE.includes(rec.stage);
+      if (isKept(rec)) return keptRow(p, rec); // TICKET-290
       const status = h("p", { class: "pending-status", "aria-live": "polite", "data-testid": `pending-status-${id}`, text: statusText(rec, { sending }) });
       const send = sendable ? h("button", { type: "button", class: "btn primary", "data-testid": `pending-send-${id}`, text: "Send now", onclick: () => p.sendNow(id) }) : null;
       const finish = rec.stage === "people_ready" ? linkButton(`#/pending/${encodeURIComponent(id)}`, "Finish", `pending-finish-${id}`, "primary") : null;
@@ -127,4 +144,23 @@ export function mountPendingResume(root, id) {
     stop = flow.mountTakeFlow(box, { role: rec.role === "follow" ? "follower" : "trainer", entryId: rec.entry_id, limits: cfg.limits, resume: rec });
   });
   return () => { live = false; stop(); };
+}
+
+/** TICKET-290: a take kept after sending: its status, and Send it again (a stopped job), See progress and Delete. */
+export function keptRow(p, rec) {
+  const id = rec.id;
+  const buttons = [];
+  if (rec.stage === "job_failed") {
+    buttons.push(h("button", { type: "button", class: "btn primary", "data-testid": `pending-again-${id}`, text: KEEP_TEXT.sendAgain, onclick: () => p.sendAgain(id) }));
+  }
+  if (rec.job && rec.stage === "sent") buttons.push(linkButton(`#/job/${encodeURIComponent(rec.job)}`, KEEP_TEXT.seeProgress, `pending-job-${id}`));
+  buttons.push(h("button", { type: "button", class: "btn secondary", "data-testid": `pending-delete-${id}`, text: KEEP_TEXT.delete, onclick: () => p.removeKept(id) }));
+  const statusAttrs = { class: "pending-status", "data-testid": `pending-status-${id}`, text: keptStatus(rec) };
+  if (rec.stage === "sent") statusAttrs["aria-live"] = "polite";
+  else statusAttrs.role = "alert";
+  return h("li", { class: "pending-row", "data-testid": `pending-${id}`, "data-stage": rec.stage },
+    h("p", { class: "pending-title", text: titleOf(rec) }),
+    h("p", { class: "hint", text: `${TEXT.safe} · recorded ${whenText(rec.created_at)} · ${sizeText(rec.size)}` }),
+    h("p", statusAttrs),
+    h("div", { class: "row" }, ...buttons));
 }

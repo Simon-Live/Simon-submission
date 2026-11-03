@@ -17,8 +17,8 @@ test("AC-S1 two observations render with their times and the model's name, label
   assert.equal(items.length, 2);
   assert.match(items[0].textContent, /^1\.9 s/);
   assert.match(items[0].textContent, /La cabeza baja/);
-  assert.match(sec.textContent, /What muse-spark-1\.3 also noticed/);
-  assert.match(sec.textContent, /the AI model's own view/);
+  assert.match(sec.textContent, /A second opinion/);
+  assert.match(sec.textContent, /muse-spark-1\.3 looked at the clip on its own/);
   assert.match(sec.textContent, /does not change your score/);
 });
 
@@ -62,21 +62,35 @@ test("AC-L1 the picker offers exactly the six languages MMS can speak and the wr
   assert.ok(find(box, "lang-picker"));
 });
 
-test("AC-L2 nothing chosen shows English (default), whatever the browser language, and sends no language", () => {
+test("AC-L2 nothing chosen preselects the browser's offered language (TICKET-266 AC-3), stores nothing, and sends it", async () => {
   dom.store.clear();
+  const { langExtra } = await import("../../web/follow-lang.js");
+  const cfg = { part5: { lang: true } };
   Object.defineProperty(globalThis, "navigator", { value: { language: "es-MX", languages: ["de-DE", "es-MX"] }, configurable: true });
-  assert.equal(currentLang(), "en");
+  assert.equal(currentLang(), "es");
   const select = mountLangPicker(new El("div"));
-  assert.equal(select.value, "en");
-  assert.equal(select.children[0].textContent, "English (default)");
-  assert.equal(dom.store.get(KEY), undefined, "showing the default stores nothing");
+  assert.equal(select.value, "es");
+  assert.equal(select.children[0].textContent, "English", "a browser language is offered, so English is not the default");
+  assert.equal(dom.store.get(KEY), undefined, "showing the browser's language stores nothing");
+  assert.deepEqual(langExtra(cfg), { lang: "es" });
+  assert.deepEqual(langExtra({ part5: { lang: false } }), {}, "negative: Part 5 cannot write it, nothing is sent");
+  dom.store.set(KEY, "fr");
+  assert.deepEqual(langExtra(cfg), { lang: "fr" }, "negative: a stored pick wins over the browser");
+  dom.store.clear();
+  for (const language of ["en-US", "de-DE", "xx", ""]) {  // English, a language not offered, junk: English (default), no lang sent
+    Object.defineProperty(globalThis, "navigator", { value: { language }, configurable: true });
+    const plain = mountLangPicker(new El("div"));
+    assert.equal(plain.value, "en");
+    assert.equal(plain.children[0].textContent, "English (default)");
+    assert.deepEqual(langExtra(cfg), {}, `${language || "empty"}: nothing sent`);
+  }
   Object.defineProperty(globalThis, "navigator", { value: undefined, configurable: true });
   assert.equal(currentLang(), "en");
 });
 
 test("AC-L3 a change is stored in simon.lang and is what the follow screen sends", async () => {
   dom.store.clear();
-  Object.defineProperty(globalThis, "navigator", { value: { language: "es-MX" }, configurable: true });
+  Object.defineProperty(globalThis, "navigator", { value: { language: "de-DE" }, configurable: true });
   const select = mountLangPicker(new El("div"));
   assert.equal(select.value, "en");
   select.value = "hi";

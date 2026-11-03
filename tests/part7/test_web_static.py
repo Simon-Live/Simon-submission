@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -103,7 +106,32 @@ def test_no_em_dash_or_en_dash():
 def test_vendored_three_hashes():
     readme = (WEB / "vendor" / "README.md").read_text(encoding="utf-8")
     rows = re.findall(r"\| `(web/vendor/[^`]+)` \| `[^`]+` \| `([0-9a-f]{64})` \|", readme)
-    assert len(rows) == 3
+    assert len(rows) == 8  # three (6 files) and mermaid (2 files)
     for rel, digest in rows:
         assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == digest, rel
     assert "0.170.0" in readme
+
+
+def test_vendored_addons_are_listed_and_unmodified_three_files():
+    """docs/specs/vendor-addons.md AC-VA1 and AC-VA2: the three addon files sit in the README and the notice."""
+    readme = (WEB / "vendor" / "README.md").read_text(encoding="utf-8")
+    # THIRD_PARTY_NOTICES.md is not published yet (legal decision pending, MoAlborati/claude-template#382)
+    notice_file = ROOT / "THIRD_PARTY_NOTICES.md"
+    notice = notice_file.read_text(encoding="utf-8") if notice_file.is_file() else None
+    for name in ("loaders/GLTFLoader.js", "utils/BufferGeometryUtils.js", "utils/SkeletonUtils.js"):
+        assert f"web/vendor/three/examples/jsm/{name}" in readme, name
+        assert (WEB / "vendor/three/examples/jsm" / name).is_file(), name
+        assert notice is None or name.rsplit("/", 1)[1] in notice, name
+    gltf = (WEB / "vendor/three/examples/jsm/loaders/GLTFLoader.js").read_text(encoding="utf-8")
+    assert "from '../utils/BufferGeometryUtils.js'" in gltf  # resolves inside the vendored tree
+
+
+def test_vendored_addons_load_a_skinned_model_on_one_three_instance():
+    """AC-VA3: a real browser imports the loader through the import map and loads a skinned GLB."""
+    node, slot = shutil.which("node"), Path.home() / "claude-template/scripts/with-browser-slot.sh"
+    pw = Path(os.environ.get("PLAYWRIGHT_DIR") or ROOT / "node_modules")
+    if not node or not slot.is_file() or not (pw / "playwright").is_dir():
+        pytest.skip("node, the browser slot script or playwright is not available")
+    r = subprocess.run(["bash", str(slot), node, str(ROOT / "tests/part7/vendor_addons.browser.mjs")],
+                       capture_output=True, text=True, cwd=ROOT, timeout=180, env={**os.environ, "PLAYWRIGHT_DIR": str(pw)})
+    assert r.returncode == 0, r.stdout + r.stderr

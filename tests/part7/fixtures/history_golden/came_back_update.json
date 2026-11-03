@@ -1,0 +1,219 @@
+{
+ "answers": [
+  {
+   "focus": {
+    "cites": [
+     {
+      "at_s": 0.9,
+      "take": 3
+     }
+    ],
+    "cue": "Keep your chest up",
+    "measure": "trunk_lean_forward",
+    "side": "center",
+    "text": "Work on the forward lean at 0.9 s in take 3."
+   },
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 3
+     }
+    ],
+    "text": "Your score went from 68 in take 1 to 69 in take 3."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 0.9,
+       "take": 3
+      },
+      {
+       "at_s": 0.9,
+       "take": 1
+      },
+      {
+       "at_s": null,
+       "take": 2
+      }
+     ],
+     "kind": "came_back",
+     "measure": "trunk_lean_forward",
+     "side": "center",
+     "text": "The forward lean at 0.9 s in take 1 was gone in take 2 and is back in take 3."
+    }
+   ]
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "came_back": [
+   {
+    "measure": "trunk_lean_forward",
+    "side": "center"
+   }
+  ],
+  "focus": {
+   "cue": "Keep your chest up",
+   "measure": "trunk_lean_forward",
+   "side": "center"
+  },
+  "statuses": {
+   "trunk_lean_forward|center": "came_back"
+  }
+ },
+ "facts": {
+  "best": 2,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 3,
+  "measures": [
+   {
+    "first": {
+     "at_s": 0.9,
+     "magnitude": 21.4,
+     "size": 21.4,
+     "take": 1,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 0.9,
+     "magnitude": 21.4,
+     "size": 21.4,
+     "take": 3,
+     "unit": "deg"
+    },
+    "measure": "trunk_lean_forward",
+    "present_in": [
+     1,
+     3
+    ],
+    "side": "center",
+    "status": "came_back"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.4,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.4,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 68,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 85,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T11:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.4,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.4,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000003",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 69,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 3,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "came_back_update",
+ "note": "Lean in take 1, gone in take 2 (window compared), back in take 3: came_back, never improved.",
+ "origin": "synthetic"
+}

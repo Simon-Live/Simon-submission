@@ -10,18 +10,24 @@ from history_support import ENTRY, FIRST, FIXTURES, SECOND
 from part7 import history_facts
 
 
+# a version other than v1: the tests that straddle 2026-10-30 are not about the v1 rescale (test_history_rescale.py is)
+KNOWN = {"section_key": "full", "mode": "fitness", "score_version": "simon.score.v2:e818635b"}
+
+
 def _real(job: str, take: int) -> dict[str, Any]:
     return {"take": take, "analysis": FIXTURES / job / "analysis.json", "at": f"t{take}", "score": None, "grade": None,
-            "duration_s": 9.9, "entry_id": ENTRY}
+            "duration_s": 9.9, "entry_id": ENTRY, **KNOWN}
 
 
-def _made(tmp_path: Path, take: int, score: int, faults: list[tuple[str, str, float, float]], cue: str = "Keep your chest up") -> dict[str, Any]:
+def _made(tmp_path: Path, take: int, score: int, faults: list[tuple[str, str, float, float]], cue: str = "Keep your chest up",
+          window: tuple[float, float] | None = (0.0, 9.0), **known: Any) -> dict[str, Any]:
     path = tmp_path / f"a{take}.json"
-    doc = {"faults": [{"measure": m, "side": s, "at_s": at, "magnitude_deg": mag, "follower_t_s": [at, at + 1], "text_timed": f"{m} at {at} s", "cue": cue}
+    doc = {"status": {"code": "ok"}, "faults": [{"measure": m, "side": s, "at_s": at, "magnitude_deg": mag, "follower_t_s": [at, at + 1], "text_timed": f"{m} at {at} s", "cue": cue}
                       for m, s, at, mag in faults],
-           "score": {"value": score, "timeline": [{"misses": [{"cue": cue}]}] if faults else [{"misses": []}]}}
+           "score": {"value": score, "timeline": [{"t_s": list(window) if window else None, "compared": window is not None,
+                                                    "misses": [{"cue": cue}] if faults else []}]}}
     path.write_text(json.dumps(doc))
-    return {"take": take, "analysis": path, "at": f"t{take}", "score": score, "grade": "B", "duration_s": 5.0}
+    return {"take": take, "analysis": path, "at": f"t{take}", "score": score, "grade": "B", "duration_s": 5.0, **{**KNOWN, **known}}
 
 
 def test_build_on_two_real_takes() -> None:  # AC-1
@@ -51,7 +57,7 @@ def test_status_improved_persistent_fixed_new(tmp_path: Path) -> None:  # AC-1
     got = {(m["measure"], m["side"]): m for m in facts["measures"]}
     assert got[("knee", "left")]["status"] == "improved" and got[("knee", "left")]["present_in"] == [1, 2, 3]
     assert got[("hip", "center")]["status"] == "persistent"
-    assert got[("arm", "right")]["status"] == "fixed" and got[("arm", "right")]["last"]["take"] == 2
+    assert got[("arm", "right")]["status"] == "too_few" and got[("arm", "right")]["last"]["take"] == 2  # gone once only (TICKET-214)
     assert got[("neck", "center")]["status"] == "new" and got[("neck", "center")]["first"]["at_s"] == 4.0
     assert facts["best"] == 3
 
@@ -65,7 +71,7 @@ def test_one_fault_per_measure_and_side_the_largest(tmp_path: Path) -> None:  # 
 def test_bad_or_missing_analysis_gives_an_empty_row(tmp_path: Path) -> None:  # edge
     bad = tmp_path / "bad.json"
     bad.write_text("not json")
-    row = history_facts.build([{"take": 1, "analysis": bad, "score": 3}, {"take": 2, "analysis": tmp_path / "gone.json", "score": None}], ENTRY)
+    row = history_facts.build([{"take": 1, "analysis": bad, "score": 3, **KNOWN}, {"take": 2, "analysis": tmp_path / "gone.json", "score": None, **KNOWN}], ENTRY)
     assert [t["faults"] for t in row["takes"]] == [[], []] and row["measures"] == []
     assert row["best"] == 1
     empty = history_facts.build([], ENTRY)
@@ -80,7 +86,7 @@ def test_fallback_summary_and_trends(tmp_path: Path) -> None:  # AC-6 support
     assert summary["text"] == "Take 1 scored 90 and take 3 scored 70."  # the best take is the first, so no extra line
     assert summary["source"] == "fact_table" and summary["label"] == history_facts.SUMMARY_LABEL
     trends = history_facts.fallback_trends(facts)
-    assert [(t["kind"], t["measure"]) for t in trends] == [("persistent", "hip"), ("fixed", "neck")]
+    assert [(t["kind"], t["measure"]) for t in trends] == [("persistent", "hip")]  # neck was gone in one take only: too few to call it fixed
     assert trends[0]["cites"] == [{"take": 3, "at_s": 2.5}] and "first showed in take 1" in trends[0]["text"]
     assert all(t["source"] == "fact_table" for t in trends)
     assert len(history_facts.fallback_trends({"measures": [{"measure": f"m{i}", "side": "center", "status": "new",

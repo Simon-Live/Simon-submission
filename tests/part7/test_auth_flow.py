@@ -260,9 +260,12 @@ def test_transport_select_smtp_file_off(tmp_path, monkeypatch: pytest.MonkeyPatc
     (authenv / "SIMON7_MAIL_FROM").write_text("Simon <signin@example.com>\n")
     assert mail.select_transport() == "smtp"
     monkeypatch.setenv("STAGING_BASE_PATH", "/simon-part-7/")
-    assert mail.select_transport() == "smtp"  # SMTP works on staging
+    assert mail.select_transport() == "off"  # the shared gateway origin never shows sign-in (ADR-0014, TICKET-177)
+    monkeypatch.setenv("STAGING_ROUTE", "root")
+    assert mail.select_transport() == "smtp"  # SMTP works on the app's own origin
     (authenv / "SIMON7_SMTP_URL").unlink()
     assert mail.select_transport() == "off" and mail.file_refused_on_staging()  # the file outbox is refused there
+    monkeypatch.delenv("STAGING_ROUTE")
     monkeypatch.delenv("STAGING_BASE_PATH")
     assert mail.select_transport() == "file"
     monkeypatch.setenv("SIMON7_MAIL_TRANSPORT", "off")

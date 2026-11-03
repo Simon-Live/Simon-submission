@@ -4,6 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { partTest } from "./needs-part.mjs";
 import { markerGroups, markShare, MARK_SHARE, groupLabel } from "../../web/model/marker-groups.js";
 import { scoreSum } from "../../web/model/score-sum.js";
 import { dropRepeatedFiller, withoutRepeatedFiller } from "../../web/model/filler.js";
@@ -85,19 +86,20 @@ test("a capped score names the cap; with no uncapped value the sum is not printe
   assert.equal(s.adds, false);
   assert.equal(s.capped, true);
   assert.ok(!s.text.includes("≈"), "no equation when it does not land on Part 5's number");
-  assert.equal(s.text, "Your take started at 100 and lost 23.3 points for misses and 4.0 for overall match. "
-    + "A warning then limited it to 59: this take does not closely match the trainer's movement.");
+  // the parts (23.3 and 4.0) do not land on the shown deduction, so no figure is printed (bounded figures, rubric audit)
+  assert.equal(s.text, "Your take started at 100 and lost points for misses and overall match. "
+    + "A warning then limited the score to 59: this take does not closely match the trainer's movement.");
   const withUncapped = sumOf({ ...input("analysis-capped-low-match.json").score, uncapped: { value: 73, grade: "C" } });
   assert.equal(withUncapped.adds, true);
-  assert.match(withUncapped.text, /≈ 73\. A warning then limited it to 59: /);
+  assert.match(withUncapped.text, /≈ 73 before the warning cap\. A warning then limited the score to 59: /);
   assert.match(sumOf({ value: 59, grade: "F", components: { faults: 30, similarity: 1 }, capped_by: ["quality_blur"] }).text,
-    /limited it to 59: the video quality\.$/);
+    /limited the score to 59: the video quality\.$/);
 });
 
 test("v2 and later: the fault cap and the tempo term", () => {
   const v2 = sumOf({ version: "simon.score.v2", value: 89, grade: "B", components: { faults: 5, similarity: 1 }, fault_cap: 89,
     uncapped: { value: 94, grade: "A" } }, 1);
-  assert.equal(v2.text, `Your take started at 100 and lost 5.0 points for misses and 1.0 for overall match: 100 ${MINUS} 5.0 ${MINUS} 1.0 ≈ 94. `
+  assert.equal(v2.text, `Your take started at 100 and lost 5.0 points for misses and 1.0 for overall match: 100 ${MINUS} 5.0 ${MINUS} 1.0 ≈ 94 before the fault cap. `
     + "Capped at 89 (B) because the take shows a fault. Without the cap: 94 (A).");
   // negative: a fault cap that did not lower the value says nothing about it
   assert.equal(sumOf({ value: 70, grade: "C", components: { faults: 28, similarity: 2 }, fault_cap: 89 }).capped, false);
@@ -110,7 +112,7 @@ const synth = (n) => JSON.parse(fs.readFileSync(new URL(`./fixtures/analysis/syn
 
 test("TICKET-120 two faults: the fault cap is explained once, with the uncapped grade", () => {
   const s = sumOf(synth("two-fault"), 2);
-  assert.match(s.text, /≈ 82\. Capped at 79 \(C\) because the take shows two or more faults\. Without the cap: 82 \(B\)\.[^]*$/);
+  assert.match(s.text, /≈ 82 before the fault cap\. Capped at 79 \(C\) because the take shows two or more faults\. Without the cap: 82 \(B\)\.[^]*$/);
   assert.equal(s.capped, true);
   assert.equal(s.text.match(/Capped at/g).length, 1);
 });
@@ -130,7 +132,29 @@ test("TICKET-120 negative: a fault cap that did not lower the value says nothing
 
 test("TICKET-120 both caps: the fault cap comes first, then the unchanged low-match note", () => {
   const s = sumOf({ ...synth("two-fault"), value: 59, grade: "F", capped_by: ["low_match"] }, 2);
-  assert.match(s.text, /Capped at 79 \(C\) because the take shows two or more faults\. Without the cap: 82 \(B\)\. A warning then limited it to 59: this take does not closely match the trainer's movement\./);
+  assert.match(s.text, /Capped at 79 \(C\) because the take shows two or more faults\. Without the cap: 82 \(B\)\. A warning then limited the score to 59: this take does not closely match the trainer's movement\./);
+});
+
+// TICKET-120 AC-4: Part 5's published fixtures (modules/part-5, read as files), not the synthetic ones
+const p5 = (n) => new URL(`../../modules/part-5/fixtures/output/analysis.${n}.example.json`, import.meta.url);
+const p5Test = partTest(5);
+
+p5Test("TICKET-120 AC-4 Part 5 fault-capped fixture: one fault, capped at 89 (B), uncapped 94 (A)", () => {
+  const doc = JSON.parse(fs.readFileSync(p5("fault-capped")));
+  assert.equal(doc.score.version, "simon.score.v3");
+  assert.match(sumOf(doc.score, doc.faults.length).text, /Capped at 89 \(B\) because the take shows a fault\. Without the cap: 94 \(A\)\./);
+});
+
+p5Test("TICKET-120 AC-4 Part 5 double-capped fixture: two faults, capped at 79 (C), uncapped 82 (B), said once", () => {
+  const doc = JSON.parse(fs.readFileSync(p5("double-capped")));
+  const s = sumOf(doc.score, doc.faults.length);
+  assert.match(s.text, /Capped at 79 \(C\) because the take shows two or more faults\. Without the cap: 82 \(B\)\./);
+  assert.equal(s.text.match(/Capped at/g).length, 1);
+});
+
+p5Test("TICKET-120 AC-4 Part 5 no-faults fixture: no fault-cap note", () => {
+  const doc = JSON.parse(fs.readFileSync(p5("no-faults")));
+  assert.doesNotMatch(sumOf(doc.score, 0).text, /Capped|Without the cap/);
 });
 
 test("a sum that does not land on the score prints no equation; no components, no line", () => {
@@ -220,7 +244,7 @@ test("TICKET-193 the fault wording follows the fault count, not the cap value", 
 
 test("TICKET-193 the warning sentence keeps the caps in order when the fault cap is the lower one", () => {
   const s = sumOf({ ...synth("two-fault"), value: 79, grade: "C", capped_by: ["low_match"] }, 2).text;
-  assert.doesNotMatch(s, /then limited it to 79/);
+  assert.doesNotMatch(s, /then limited the score to 79/);
   assert.match(s, /A warning also applies \(this take does not closely match the trainer's movement\), but the fault cap of 79 is the lower limit\./);
 });
 

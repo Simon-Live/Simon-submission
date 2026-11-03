@@ -25,7 +25,7 @@ export function renderEmail(host, { t, email = "", error = "" }, { onInput, onSu
 }
 
 /** Code entry after the mail is sent. Returns { setError }. */
-export function renderCode(host, { t, notice, error = "" }, { onInput, onSubmit, onOther }) {
+export function renderCode(host, { t, notice, error = "", outboxHref = "" }, { onInput, onSubmit, onOther }) {
   const input = h("input", { class: "input au-input au-code", id: "au-code", name: "code", type: "text", autocomplete: "one-time-code",
     inputmode: "numeric", pattern: "[0-9 ]*", autocapitalize: "off", spellcheck: "false", "data-testid": "auth-code" });
   const err = errorLine(error);
@@ -37,7 +37,8 @@ export function renderCode(host, { t, notice, error = "" }, { onInput, onSubmit,
   form.addEventListener("submit", (e) => { e.preventDefault(); onSubmit(); });
   clear(host).classList.add("au");
   host.append(h("h1", { class: "au-title", "data-testid": "auth-code-title", text: t.codeTitle }),
-    h("p", { class: "au-lead", "data-testid": "auth-notice", text: notice }), form);
+    h("p", { class: "au-lead", "data-testid": "auth-notice", text: notice }),
+    ...(outboxHref ? [h("p", { class: "au-lead" }, h("a", { href: outboxHref, "data-testid": "auth-outbox-link", text: t.outboxLink }))] : []), form);
   return { setError: (text) => { err.textContent = text || ""; }, focus: () => input.focus() };
 }
 
@@ -53,9 +54,13 @@ export function renderOff(host, { t }) {
   host.append(stateBlock("auth-off", t.off, t.offBody, linkButton("#/", t.back, "auth-back")));
 }
 
-/** The header link; nothing at all (the host is emptied and hidden) when `link` is null. */
-export function renderAuthLink(host, link) {
+/**
+ * The header link; nothing at all (the host is emptied and hidden) when `link` is null. `me` (signed out) is a Me link
+ * drawn before it, so the Me page is one tap away signed out too.
+ */
+export function renderAuthLink(host, link, me = null) {
   clear(host);
   host.hidden = !link;
+  if (link && me) host.append(h("a", { class: "au-link", href: me.href, "data-testid": "me-link", text: me.label }));
   if (link) host.append(h("a", { class: "au-link", href: link.href, "data-testid": "auth-link", text: link.label }));
 }

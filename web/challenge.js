@@ -2,7 +2,7 @@
 import { getEntry, entryFileUrl } from "./api.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
 import {
-  rankEntries, compact, strongestText, timeLeft, challengeUrl, safeHttps, takeUrl, listChallenges, getChallenge, ChallengeError,
+  rankEntries, boardNums, leaderText, compact, strongestText, timeLeft, challengeUrl, safeHttps, takeUrl, listChallenges, getChallenge, ChallengeError,
   ensureChallengeStyles, KIND_LABELS,
 } from "./challenge-core.js";
 import { shareLink } from "./share-card.js";
@@ -22,14 +22,15 @@ function sponsorBanner(s) {
 
 function boardRow(e) {
   const strongest = strongestText(e);
+  const nums = boardNums(e);   // one-letter.md: the result headline's figures and letter
   return h("li", { class: "ch-row", "data-testid": `board-row-${e.rank}` },
     h("span", { class: "ch-rank", "data-testid": `board-rank-${e.rank}`, text: String(e.rank) }),
     h("span", { class: "ch-who" },
       h("span", { class: "ch-name", "data-testid": `board-name-${e.rank}`, text: e.name }),
       strongest ? h("span", { class: "ch-badge", "data-testid": `board-strongest-${e.rank}`, text: strongest }) : null),
     h("span", { class: "ch-nums" },
-      h("span", { class: "ch-score", "data-testid": `board-score-${e.rank}`, text: String(e.score) }),
-      h("span", { class: "ch-grade", "data-grade": e.grade, "data-testid": `board-grade-${e.rank}`, text: e.grade })));
+      h("span", { class: "ch-score", "data-testid": `board-score-${e.rank}`, text: nums.score }),
+      h("span", { class: "ch-grade", "data-grade": nums.grade, "data-testid": `board-grade-${e.rank}`, text: nums.grade })));
 }
 
 /** @returns cleanup */
@@ -114,5 +115,5 @@ export async function mountChallengeList(box, entryId) {
       h("li", {}, h("a", { class: "ch-list-item", href: `#/challenge/${encodeURIComponent(c.id)}`, "data-testid": `challenge-link-${c.id}` },
         c.kind === "sponsored" ? h("span", { class: "ch-tag", text: "Sponsored" }) : null,
         h("span", { class: "ch-list-title", text: c.title }),
-        h("span", { class: "meta", text: `${count(c.entry_count)}${c.leader ? `, top score ${c.leader.score}` : ""}` }))))));
+        h("span", { class: "meta", text: `${count(c.entry_count)}${leaderText(c.leader)}` }))))));
 }

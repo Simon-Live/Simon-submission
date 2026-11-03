@@ -14,7 +14,7 @@ from pathlib import Path
 import threading
 from typing import Any
 
-from part7 import applog, export_clip, jobs, result_media
+from part7 import applog, export_clip, jobs, model_only, result_media
 from part7.labels import ENTRY_ID_RE
 
 NAME_MP4, NAME_STATUS = "export.mp4", "status.json"
@@ -56,6 +56,8 @@ def _inputs(h: Any, job_id: str) -> tuple[Path, Path, dict[str, Any] | None, exp
         raise Refused(409, MSG_NOT_DONE)
     if job.get("kind") != "follow":
         raise Refused(409, MSG_NOT_FOLLOW)
+    if not model_only.kept(job):
+        raise Refused(409, model_only.MSG_NO_VIDEO)
     job_dir = h.app.queue.job_dir(job_id)
     follower, analysis_file = job_dir / "work" / "video.mp4", job_dir / "work" / "follower" / "analysis.json"
     if not _plain_file(follower) or not _plain_file(analysis_file):

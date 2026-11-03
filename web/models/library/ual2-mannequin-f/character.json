@@ -1,0 +1,140 @@
+{
+  "bone_map": {
+    "chest": {
+      "name": "spine_02",
+      "node": 51
+    },
+    "head": {
+      "name": "Head",
+      "node": 0
+    },
+    "hips": {
+      "name": "pelvis",
+      "node": 63
+    },
+    "leftFoot": {
+      "name": "foot_l",
+      "node": 55
+    },
+    "leftHand": {
+      "name": "hand_l",
+      "node": 22
+    },
+    "leftLowerArm": {
+      "name": "lowerarm_l",
+      "node": 23
+    },
+    "leftLowerLeg": {
+      "name": "calf_l",
+      "node": 56
+    },
+    "leftShoulder": {
+      "name": "clavicle_l",
+      "node": 25
+    },
+    "leftToes": {
+      "name": "ball_l",
+      "node": 54
+    },
+    "leftUpperArm": {
+      "name": "upperarm_l",
+      "node": 24
+    },
+    "leftUpperLeg": {
+      "name": "thigh_l",
+      "node": 57
+    },
+    "neck": {
+      "name": "neck_01",
+      "node": 1
+    },
+    "rightFoot": {
+      "name": "foot_r",
+      "node": 60
+    },
+    "rightHand": {
+      "name": "hand_r",
+      "node": 46
+    },
+    "rightLowerArm": {
+      "name": "lowerarm_r",
+      "node": 47
+    },
+    "rightLowerLeg": {
+      "name": "calf_r",
+      "node": 61
+    },
+    "rightShoulder": {
+      "name": "clavicle_r",
+      "node": 49
+    },
+    "rightToes": {
+      "name": "ball_r",
+      "node": 59
+    },
+    "rightUpperArm": {
+      "name": "upperarm_r",
+      "node": 48
+    },
+    "rightUpperLeg": {
+      "name": "thigh_r",
+      "node": 62
+    },
+    "spine": {
+      "name": "spine_01",
+      "node": 52
+    },
+    "upperChest": {
+      "name": "spine_03",
+      "node": 50
+    }
+  },
+  "checks": {
+    "max_weight_error": 0.0
+  },
+  "converter": {
+    "name": "none",
+    "version": null
+  },
+  "counts": {
+    "joints": 65,
+    "max_texture_px": 0,
+    "skins": 1,
+    "textures": 0,
+    "triangles": 14612
+  },
+  "created_at": "2026-11-01T00:00:00Z",
+  "file": {
+    "bytes": 1442824,
+    "name": "model.glb",
+    "sha256": "2ee6cc3fe888d9b144afa8cc4b2ab7bfc5d13a0d5b7548df777f61f64ad65fa6"
+  },
+  "id": "ual2-mannequin-f",
+  "kind": "library",
+  "licence": {
+    "attribution": "Quaternius, Universal Animation Library 2 (CC0 1.0)",
+    "id": "CC0",
+    "shareable": true
+  },
+  "map_method": "preset:ue5",
+  "name": "Mannequin (female)",
+  "normalize": {
+    "height_m": 1.8062,
+    "leg_length_m": 0.8298,
+    "rest_class": "T",
+    "scale_to_m": 1.0,
+    "up_fix": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  "schema": "simon.character.v1",
+  "source": {
+    "format": "glb",
+    "original_filename": "Mannequin_F.glb",
+    "url": "https://quaternius.com/packs/universalanimationlibrary2.html"
+  },
+  "vrm_version": null
+}

@@ -4,12 +4,13 @@
 // this file only picks, groups and words them.
 import { worstMoment, momentsToReview, flaggedWindows } from "../coaching.js";
 import { scoreSum } from "./score-sum.js";
+import { creditDisplay } from "./score-credit.js";
 
 export const TEXT = {
   eyebrow: "Session complete",
   ringExercise: "average form",
   ringDance: "out of 100",
-  note: "What to work on next",
+  note: "What to work on",
   retry: { exercise: "Retry set", dance: "Try again", rehab: "Try again" },
   replay: "Replay session",
   formPerRep: "Form per rep",
@@ -77,13 +78,32 @@ export function statsOf(analysis, kind) {
   ];
 }
 
-/** One bar per compared window; the flagged ones (coaching.js) are marked "focus". */
-export function barsOf(analysis) {
+/** One bar per compared window; the flagged ones (coaching.js) are marked "focus". With `credit` (creditDisplay)
+ * a window Part 5 credited is drawn at its credit share and named in the switch's unit. */
+export function barsOf(analysis, credit = null) {
   const flagged = new Set(flaggedWindows(momentsToReview(analysis)));
-  return windowsOf(analysis).map((w, i) => ({
-    index: i, label: String(i + 1), value: w.compared === false ? null : num(w.value),
-    state: w.compared === false ? "skipped" : flagged.has(i) ? "focus" : "good", from: w.t_s[0],
-  }));
+  const windows = windowsOf(analysis);
+  const shares = credit ? credit.windows(windows).values : [];
+  return windows.map((w, i) => {
+    const c = w.compared === false ? null : shares[i];
+    return {
+      index: i, label: String(i + 1), value: w.compared === false ? null : c ? Math.round(c.frac * 100) : num(w.value),
+      text: w.compared === false ? null : c ? c.text : num(w.value) == null ? null : String(w.value),
+      state: w.compared === false ? "skipped" : flagged.has(i) ? "focus" : "good", from: w.t_s[0],
+    };
+  });
+}
+
+/** The ring: Part 5's credit in the viewer's unit when the analysis has one, else score.value out of 100. */
+function ringOf(score, credit, kind) {
+  if (credit) {
+    const r = credit.ring;
+    return { value: r.value, text: r.text, frac: r.frac, grade: r.grade, grades: r.grades, caption: r.caption, label: r.label, unit: r.mode };
+  }
+  const value = num(score.value) ?? 0;
+  const grade = typeof score.grade === "string" ? score.grade : "F";
+  return { value, text: String(value), frac: Math.max(0, Math.min(1, value / 100)), grade,
+    caption: kind === "dance" ? TEXT.ringDance : TEXT.ringExercise, label: `Score ${value} out of 100, grade ${grade}`, unit: "score" };
 }
 
 /** Misses along the take's clock, as fractions of its length, for the drift track. */
@@ -135,12 +155,14 @@ const hideEmpty = (stats) => (stats.every((x) => x.value === "–") ? [] : stats
 
 /**
  * The whole summary. `kind` is exercise, dance or rehab; `model` is the normalized replay or null; `entryName`
- * names the movement when known; `retryHref` is where Retry goes.
+ * names the movement when known; `retryHref` is where Retry goes; `scoreDisplay` is the viewer's saved
+ * {mode, level} for Part 5's credit score (model/score-credit.js), used only when the analysis carries one.
  */
-export function summaryOf(analysis, { kind = "exercise", model = null, entryName = "", retryHref = "#/" } = {}) {
+export function summaryOf(analysis, { kind = "exercise", model = null, entryName = "", retryHref = "#/", scoreDisplay = null } = {}) {
   const score = (analysis && analysis.score) || {};
-  const value = num(score.value) ?? 0;
-  const grade = typeof score.grade === "string" ? score.grade : "F";
+  const credit = creditDisplay(analysis, scoreDisplay);
+  const ring = ringOf(score, credit, kind);
+  const grade = ring.grade;
   const k = HEADLINE[kind] ? kind : "exercise";
   const worst = worstMoment(analysis);
   const windows = windowsOf(analysis);
@@ -160,14 +182,18 @@ export function summaryOf(analysis, { kind = "exercise", model = null, entryName
   const firstMiss = windows.flatMap((w) => w.misses || []).find((m) => m && m.text);
   return {
     kind: k,
-    ring: { value, grade, caption: kind === "dance" ? TEXT.ringDance : TEXT.ringExercise },
-    sum: scoreSum(score, Array.isArray(analysis && analysis.faults) ? analysis.faults.length : undefined),   // result-intent.md R2: how the score adds up, under the ring (null without components)
+    ring,
+    // the credit's "% or points" switch, or null: without a credit block the ring is score.value as before
+    scoreSwitch: credit ? credit.switch : null,
+    // result-intent.md R2: how the score adds up, under the ring (null without components); with credit, how credit is earned
+    sum: credit ? { text: credit.ring.explanation, adds: false, capped: false, credit: true }
+      : scoreSum(score, Array.isArray(analysis && analysis.faults) ? analysis.faults.length : undefined),
     eyebrow: TEXT.eyebrow,
     headline: HEADLINE[k][grade] || HEADLINE[k].F,
     stats: hideEmpty(statsOf(analysis, kind)),
     statsLayout: kind === "dance" ? "inline" : "stack",
     worst: worstCard,
-    bars: kind === "dance" ? [] : barsOf(analysis),
+    bars: kind === "dance" ? [] : barsOf(analysis, credit),
     barsTitle: reps ? TEXT.formPerRep : TEXT.formPerPart,
     drift: kind === "dance" ? withDetails(driftOf(analysis), model) : null,
     note: sentence(insight ? insight.cue : firstMiss ? firstMiss.text : null),

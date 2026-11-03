@@ -27,6 +27,7 @@ def authenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     keys.mkdir()
     monkeypatch.setenv("SIMON7_KEYS_DIR", str(keys))
     monkeypatch.delenv("STAGING_BASE_PATH", raising=False)
+    monkeypatch.delenv("STAGING_ROUTE", raising=False)
     monkeypatch.delenv("SIMON7_MAIL_TRANSPORT", raising=False)
     monkeypatch.setattr(auth, "CLOCK", time.time)
     return keys

@@ -31,3 +31,12 @@ export function cuesFor(doc, at) {
 
 /** The line shown for a cue. */
 export const lineFor = (cue) => `${TEXT.said(cue.start_s)}: “${cue.text}”`;
+
+/** The caption naming who spoke: the credited trainer's name, else "The trainer". */
+export const whoSaid = (name) => (typeof name === "string" && name.trim() ? name.trim() : "The trainer");
+
+/** The clip of a cue (the trainer's own voice, cut from the recording) as a url, or null when the cue has none. */
+export function clipUrl(entryId, cue) {
+  const file = cue && cue.clip && typeof cue.clip.file === "string" ? cue.clip.file : "";
+  return /^cue-[0-9]{1,3}\.wav$/.test(file) ? `api/narration/${encodeURIComponent(entryId)}/${file}` : null;
+}

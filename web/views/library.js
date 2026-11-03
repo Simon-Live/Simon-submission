@@ -28,7 +28,7 @@ export function mountLibraryView(root, text, onSearch) {
   const status = h("div", { class: "status", "data-testid": "library-status" });
   const sections = h("div", { "data-testid": "entries" });
   const screen = h("section", { class: "screen library" },
-    h("div", { class: "lib-head" }, h("h1", { text: text.title }), h("p", { text: text.lede }),
+    h("div", { class: "lib-head" }, h("h1", { text: text.title }), text.lede ? h("p", { text: text.lede }) : null,
       text.pitch ? h("p", { class: "lib-pitch", "data-testid": "pitch", text: text.pitch }) : null),
     h("div", { class: "lib-tools" }, search, linkButton("#/record", text.record, "record", "secondary")),
     status, sections,
@@ -39,7 +39,9 @@ export function mountLibraryView(root, text, onSearch) {
     render(model) {
       clear(status);
       if (model.status) status.append(h("p", { class: "lib-empty", "data-testid": model.status.kind === "loading" ? "loading" : model.status.kind, text: model.status.text }));
-      clear(sections).append(...model.sections.map((s) => h("section", { class: "lib-section", "data-testid": `section-${s.key}` },
+      // a section with no cards is not drawn while another has some (TICKET-336 T6); the status line covers a library with none
+      const drawn = model.sections.some((s) => s.cards.length) ? model.sections.filter((s) => s.cards.length) : model.sections;
+      clear(sections).append(...drawn.map((s) => h("section", { class: "lib-section", "data-testid": `section-${s.key}` },
         h("div", { class: "lib-section-head" }, h("h2", { text: s.title }), s.aside ? h("span", { text: s.aside }) : null),
         s.cards.length ? h("ul", { class: "lib-grid" }, ...s.cards.map(card)) : h("p", { class: "lib-empty", text: text.sectionEmpty }))));
     },

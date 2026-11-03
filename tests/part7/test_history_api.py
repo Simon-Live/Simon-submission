@@ -75,6 +75,7 @@ def test_ask_returns_text_and_usage_with_cost_and_clips(tmp_path):
 
 
 def test_caps_a_call_over_the_per_call_limit_is_refused_before_the_call(tmp_path, monkeypatch):
+    monkeypatch.setenv(api.CALL_MAX_ENV, "0.50")  # the old default, now set explicitly
     fake = FakeTransport(count=500_000)  # 500k input tokens alone cost $0.625
     with pytest.raises(api.HistoryError) as err:
         api.ask(packed(), transport=fake, state=tmp_path)
@@ -83,8 +84,7 @@ def test_caps_a_call_over_the_per_call_limit_is_refused_before_the_call(tmp_path
     monkeypatch.setenv(api.CALL_MAX_ENV, "1.00")
     api.ask(packed(), transport=FakeTransport(count=500_000), state=tmp_path)  # the env changes the limit
     monkeypatch.setenv(api.CALL_MAX_ENV, "garbage")
-    with pytest.raises(api.HistoryError):
-        api.ask(packed(), transport=FakeTransport(count=500_000), state=tmp_path / "other")
+    api.ask(packed(), transport=FakeTransport(count=500_000), state=tmp_path / "other")  # unparsable: the limit is off
 
 
 def test_caps_the_total_cap_refuses_and_settled_cost_replaces_the_estimate(tmp_path, monkeypatch):
@@ -99,7 +99,6 @@ def test_caps_the_total_cap_refuses_and_settled_cost_replaces_the_estimate(tmp_p
     assert err.value.reason == "spend cap reached" and "respond" not in fake.calls
     assert len(fake.deleted) == 4  # the refused call still removes its uploads
     assert api.spent_usd(tmp_path / "history" / "spend.jsonl") <= 0.10
-    assert api.CAP_USD == 10.0 and api.CALL_MAX_USD == 0.50
 
 
 def test_caps_tokens_are_counted_first_and_uploads_come_before_the_count(tmp_path):
@@ -119,8 +118,9 @@ def test_ledger_before_call_line_is_written_under_flock_with_no_user_or_text(tmp
     lines = ledger_lines(tmp_path)
     assert [line["kind"] for line in lines] == ["reserve", "settle"] and lines[0]["call"] == lines[1]["call"]
     allowed = {"call", "kind", "model", "usd", "when", "input_tokens", "cached_tokens", "output_tokens", "clips_sent",
-               "seconds"}
+               "seconds", "feature", "prompt_version"}
     assert all(set(line) <= allowed for line in lines)
+    assert {(line["feature"], line["prompt_version"]) for line in lines} == {("compare", history_prompt.PROMPT_VERSION)}
     raw = ledger.read_text()
     assert "Take " not in raw and "job0000" not in raw and "/clips" not in raw and "file-" not in raw
     assert (tmp_path / "history" / "spend.jsonl.lock").exists()
@@ -396,3 +396,33 @@ def test_caps_are_checked_before_any_file_is_uploaded(tmp_path, monkeypatch):  #
     with pytest.raises(api.HistoryError) as err:
         api.ask(packed(), transport=fake, state=tmp_path)
     assert "per-call limit" in err.value.reason and fake.calls == []  # nothing left the machine
+
+
+def test_caps_are_off_by_default_at_large_spend_and_cost(tmp_path, monkeypatch):
+    monkeypatch.delenv(api.CAP_ENV, raising=False)
+    monkeypatch.delenv(api.CALL_MAX_ENV, raising=False)
+    ledger = tmp_path / "history" / "spend.jsonl"
+    ledger.parent.mkdir(parents=True)
+    ledger.write_text('{"call": "old", "kind": "settle", "usd": 5000.0}\n')
+    assert api._env_usd(api.CAP_ENV) is None and api._env_usd(api.CALL_MAX_ENV) is None
+    fake = FakeTransport(count=500_000)  # far over the old $0.50 per-call max
+    api.ask(packed(), transport=fake, state=tmp_path)
+    assert "respond" in fake.calls
+    assert api.spent_usd(ledger) > 5000.0
+    assert any('"reserve"' in line for line in ledger.read_text().splitlines())
+
+
+def test_ledger_lines_name_their_feature_and_old_lines_read_as_compare(tmp_path):  # TICKET-206 (c)
+    ledger = tmp_path / "history" / "spend.jsonl"
+    ledger.parent.mkdir(parents=True)
+    old = {"call": "old1", "kind": "settle", "model": "m", "usd": 0.5, "when": "2026-10-01T00:00:00Z"}
+    ledger.write_text(json.dumps(old) + "\nnot json\n")
+    body = {**packed(), "feature": "plan"}
+    api.ask(body, transport=FakeTransport(), state=tmp_path)
+    rows = api.read_ledger(ledger)
+    assert [r["feature"] for r in rows] == ["compare", "plan", "plan"] and "prompt_version" not in rows[0]
+    assert rows[1]["prompt_version"] == history_prompt.PROMPT_VERSION
+    by = api.spent_by_feature(ledger)
+    assert set(by) == {"compare", "plan"} and by["compare"] == 0.5
+    assert round(sum(by.values()), 6) == round(api.spent_usd(ledger), 6)  # the caps still read the same total
+    assert api.read_ledger(tmp_path / "missing.jsonl") == []

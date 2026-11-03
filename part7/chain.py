@@ -219,13 +219,16 @@ class _Part1:
 
 
 def _skeleton(
-    run: _Run, pose3d: Path, kf_arg: Path | str, work: Path, lk: modules.Modules, state: Any, person: str | None = None
+    run: _Run, pose3d: Path, kf_arg: Path | str, work: Path, lk: modules.Modules, state: Any, person: str | None = None,
+    mirrored: bool = False,
+    floor_args: list[str] | None = None,
 ) -> tuple[Path, Path]:
-    """Part 3 `--view part4`; return `(skeleton.json, keyframes.v1.json)`."""
+    """Part 3 `--view part4`; return `(skeleton.json, keyframes.v1.json)`. `mirrored`: flip left and right (TICKET-310)."""
     run.stage("skeleton")
     keyframes = Path(kf_arg).name if isinstance(kf_arg, Path) else kf_arg
     with stagelog.stage(work, "skeleton", run.steps, view="part4", person=person, keyframes=keyframes):
-        steps, skel, kf_v1, note = p3_skeleton.part4(pose3d, kf_arg, work, lock=lk, state=state, person=person)
+        steps, skel, kf_v1, note = p3_skeleton.part4(pose3d, kf_arg, work, lock=lk, state=state, person=person,
+                                                     mirrored=mirrored, floor_args=floor_args)
         run.steps.extend(steps)
         if note:
             run.notes.append(note)
@@ -299,6 +302,15 @@ def _part1_video(run: _Run, video: Path, work: Path, person: people.PersonSel | 
     return cropped
 
 
+def _floor_args(run: _Run, floor_work: bool, lk: modules.Modules) -> list[str]:
+    """Part 3 `run` options for a floor-work entry; the job note says whether the pin offered the flag."""
+    args, note = p3_skeleton.floor_work_args(floor_work, lk)
+    if note:
+        run.notes.append(note)
+        applog.log(note)
+    return args
+
+
 def trainer(
     video: Path | str,
     work: Path | str,
@@ -311,17 +323,21 @@ def trainer(
     name: str = "Chain trainer",
     category: str = "exercise",
     person: people.PersonSel | None = None,
+    mirrored: bool = False,
+    floor_work: bool = False,
 ) -> dict[str, Any]:
     """Run the trainer chain of `processor.md` (Parts 1, 2, 3, 4, then Part 6 `import` into `catalog`).
 
     `video` is the normalized H.264 MP4. Stages reported: keyframes, pose, skeleton, animation, catalog.
     Without `catalog` the chain ends after Part 4 (no entry is made). With `person` the chain is about that
     one person of a people job: Part 1 sees a copy cropped to them and Part 3 gets `--person`.
+    `floor_work` (the entry is done on the floor) adds Part 3 `--floor-work` when the pin offers it (floor-work.md).
     """
     lk = lock or modules.load()
     video_p, work_p = Path(video), Path(work)
     work_p.mkdir(parents=True, exist_ok=True)
     run = _Run(video_p, report, {"parts": {"keyframes": 3, "skeleton": 3, "animation": 4}})
+    floor_args = _floor_args(run, floor_work, lk)
     try:
         run.stage("keyframes")
         part1 = _Part1(run, _part1_video(run, video_p, work_p, person), work_p, lk, state, keys_dir)
@@ -331,7 +347,8 @@ def trainer(
             kf_path, kf_part = part1.join()  # Part 1 and Part 2 run together; Part 3 needs both
         run.extra["parts"] = {"keyframes": kf_part, "skeleton": 3, "animation": 4}
         skel, kf_v1 = _skeleton(
-            run, pose3d, kf_path if kf_path is not None else "every:10", work_p, lk, state, person and person.id
+            run, pose3d, kf_path if kf_path is not None else "every:10", work_p, lk, state, person and person.id, mirrored,
+            floor_args,
         )
         final_anim = _animation(run, skel, kf_v1, work_p, lk, state)
         final_kf = work_p / "keyframes.json"
@@ -415,11 +432,13 @@ def follower(
     lang: str | None = None,
     expected_video: Path | str | None = None,
     private: bool | None = None,
+    mirrored: bool = False,
+    floor_work: bool = False,
 ) -> dict[str, Any]:
     """`_follower_chain`, except that a failure about the take itself still ends in an analysis (an F with a warning)."""
     res = _follower_chain(
         video, expected, work, report, lock, backend, state, phrasing, person, expected_visibility, mode,
-        lang, expected_video, private,
+        lang, expected_video, private, mirrored, floor_work,
     )
     if res.get("ok") or not _is_analysis_case(res):
         return res
@@ -457,6 +476,8 @@ def _follower_chain(
     lang: str | None = None,
     expected_video: Path | str | None = None,
     private: bool | None = None,
+    mirrored: bool = False,
+    floor_work: bool = False,
 ) -> dict[str, Any]:
     """Run the follower chain of `journey.md` (Parts 2, 3 `--view part5 --fps 30`, 5) with every doctor.
 
@@ -467,11 +488,14 @@ def _follower_chain(
     video_p, expected_p, work_p = Path(video), Path(expected), Path(work)
     work_p.mkdir(parents=True, exist_ok=True)
     run = _Run(video_p, report, {})
+    floor_args = _floor_args(run, floor_work, lk)
     try:
         pose3d = _pose(run, video_p, work_p, backend, lk, state, person)
         run.stage("skeleton")
         with stagelog.stage(work_p, "skeleton", run.steps, view="part5", person=person and person.id):
-            step, follower_path = p3_skeleton.part5(pose3d, work_p, lock=lk, state=state, person=person and person.id)
+            step, follower_path = p3_skeleton.part5(pose3d, work_p, lock=lk, state=state, person=person and person.id,
+                                                    mirrored=mirrored,  # TICKET-310: the person said the video is mirrored
+                                                    floor_args=floor_args)
             run.steps.append(step)
             if step["exit"] != 0 or not follower_path.is_file():
                 if failcause.part3_found_nothing(step):
@@ -496,6 +520,7 @@ def _follower_chain(
             **({"replay": str(replay)} if replay.is_file() else {}),
         },
         "note": "; ".join(run.notes) if run.notes else None, "error": None,
+        **({"floor_work": True} if p3_skeleton.FLOOR_WORK in floor_args else {}),  # Part 3 got the flag (floor-work.md)
     }
 
 

@@ -7,7 +7,6 @@ None on any store error, so no anonymous flow can fail because of identity. With
 from __future__ import annotations
 
 from collections import deque
-from http.cookies import CookieError, SimpleCookie
 import logging
 import os
 from pathlib import Path
@@ -25,6 +24,8 @@ COOKIE_MAX_AGE = ident.SESSION_ABSOLUTE_S
 BODY_MAX = 4096
 START_PER_IP = (10, 3600)  # requests, seconds
 VERIFY_PER_IP = (30, 600)
+START_PER_IP_OUTBOX = (60, 3600)  # staging test mailbox only: no real mail leaves, and every tester shares the
+#                                    tunnel's one address; per-address and global limits still apply
 CLOCK: Callable[[], float] = time.time  # tests replace it
 
 _INIT = threading.Lock()
@@ -58,10 +59,13 @@ class AuthState:
     def __init__(self, app: Any) -> None:
         self.app = app
         self.mailer = mail.Mailer(app.state)
-        self.start_limit, self.verify_limit = Limiter(*START_PER_IP), Limiter(*VERIFY_PER_IP)
+        start = START_PER_IP_OUTBOX if self.mailer.transport == "outbox" else START_PER_IP
+        self.start_limit, self.verify_limit = Limiter(*start), Limiter(*VERIFY_PER_IP)
         self._store: ident.IdentityStore | None = None
         if mail.file_refused_on_staging():
             applog.log("auth: file outbox refused on staging; sign-in is off", level=logging.WARNING)
+        elif mail.provider_blocked_by_origin():
+            applog.log("auth: mail is configured but this app shares the gateway origin; sign-in is off (ADR-0014)", level=logging.WARNING)
 
     @property
     def available(self) -> bool:
@@ -190,16 +194,14 @@ def public_link(h: Any, token: str) -> str | None:
 
 
 def sid_from(h: Any) -> str | None:
-    raw = h.headers.get("Cookie")
-    if not raw:
-        return None
-    jar: SimpleCookie = SimpleCookie()
-    try:
-        jar.load(raw)
-    except CookieError:
-        return None
-    morsel = jar.get(COOKIE)
-    return morsel.value if morsel and morsel.value else None
+    """The session id from `Cookie`. Read piece by piece, not with SimpleCookie: one stray separator (a gateway
+    that removed its own cookie and left "; s7_sid=...") makes SimpleCookie drop every cookie, which signs the
+    person out silently (staging, 2026-11-01)."""
+    for piece in (h.headers.get("Cookie") or "").split(";"):
+        name, _, value = piece.strip().partition("=")
+        if name == COOKIE and value.strip():
+            return value.strip()
+    return None
 
 
 def cookie_header(h: Any, sid: str | None) -> str:
@@ -238,10 +240,27 @@ def attach_job(h: Any, job: dict) -> None:
 
 def on_entry(h: Any, inner: Callable | None) -> Callable | None:
     """Compose the trainer's `on_entry` callback so the signed-in user owns the catalog entry Part 6 names."""
-    user_id = current_user(h)
+    return owned_entry(h.app, current_user(h), inner)
+
+
+def job_owner(app: Any, job_id: str) -> str | None:
+    """The user `attach_job` recorded for `job_id` at submit, or None (signed out, no identity file, a store fault)."""
+    if not ident.db_path(app.state).is_file():
+        return None
+    try:
+        return identity(app).owner_of(job_id)
+    except Exception as exc:  # an unknown owner leaves the entry unowned, as for a signed-out take
+        applog.log(f"auth: could not read the owner of a take ({type(exc).__name__})", job_id, level=logging.WARNING)
+        return None
+
+
+def owned_entry(app: Any, user_id: str | None, inner: Callable | None) -> Callable | None:
+    """`inner` wrapped so `user_id` owns the entry it is called with; `inner` itself when there is no user.
+
+    `on_entry` uses it at submit and `resume.py` for a trainer job rebuilt after a restart (TICKET-287)."""
     if user_id is None:
         return inner
-    store = identity(h.app)
+    store = identity(app)
 
     def wrapped(entry_id: str) -> Any:
         result = inner(entry_id) if inner is not None else None

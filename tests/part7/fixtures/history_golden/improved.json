@@ -1,0 +1,229 @@
+{
+ "answers": [
+  {
+   "focus": {
+    "cites": [
+     {
+      "at_s": 0.9,
+      "take": 3
+     }
+    ],
+    "cue": "Keep your chest up",
+    "measure": "trunk_lean_forward",
+    "side": "center",
+    "text": "Keep working on the forward lean at 0.9 s in take 3."
+   },
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 3
+     }
+    ],
+    "text": "Your score went from 60 in take 1 to 74 in take 3."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 0.9,
+       "take": 3
+      },
+      {
+       "at_s": 0.9,
+       "take": 1
+      }
+     ],
+     "kind": "improved",
+     "measure": "trunk_lean_forward",
+     "side": "center",
+     "text": "The forward lean at 0.9 s is smaller in take 3 than in take 1."
+    }
+   ]
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "focus": {
+   "cue": "Keep your chest up",
+   "measure": "trunk_lean_forward",
+   "side": "center"
+  },
+  "statuses": {
+   "trunk_lean_forward|center": "improved"
+  }
+ },
+ "facts": {
+  "best": 3,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 3,
+  "measures": [
+   {
+    "first": {
+     "at_s": 0.9,
+     "magnitude": 24.0,
+     "size": 24.0,
+     "take": 1,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 0.9,
+     "magnitude": 12.0,
+     "size": 12.0,
+     "take": 3,
+     "unit": "deg"
+    },
+    "measure": "trunk_lean_forward",
+    "present_in": [
+     1,
+     2,
+     3
+    ],
+    "side": "center",
+    "status": "improved"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 24.0,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 24.0,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 60,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 20.0,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 20.0,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 66,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T11:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 12.0,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 12.0,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000003",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 74,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 3,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "improved",
+ "note": "The lean shrinks from 24 to 12 degrees: improved (12 is under 0.8 of 24).",
+ "origin": "synthetic"
+}

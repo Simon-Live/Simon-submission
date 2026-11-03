@@ -2,21 +2,24 @@
 // skeleton and mesh index, build their models (web/model/) and hand them to the views (web/views/). Each part is
 // optional: a missing file, an old server or a failed load leaves the screen as it was. Also the stage helper that
 // keeps the video and the 3D view in sight when a row seeks them (R5, TICKET-138).
-import { getModelsUsed, getSkeleton2d, getMeshIndex } from "./api.js";
+import { getModelsUsed, getSkeleton2d, getMeshIndex, getTakeAr, takeArUrl } from "./api.js";
 import { jointsFor } from "./timeline.js";
 import { modelsPanel } from "./model/models-used.js";
 import { validSkeleton, mistakesOf, skeletonAt } from "./model/skeleton-frame.js";
 import { trainerClock, meshFaults } from "./model/mesh-clock.js";
+import { alignedUntil } from "./heat/heat-data.js";
 import { renderModelsUsed } from "./views/models-used.js";
 import { mountSkeletonOverlay } from "./views/skeleton-overlay.js";
 
 /** True for a single follower's result of a real job (the example result and group people have no job files). */
 export const hasJobFiles = (job, pid) => !!job && job !== "fixture" && !pid;
+/** True when the result names a real job: a single result, or one person of a group (group-results.md R2: each has a models card). */
+export const hasModels = (job) => !!job && job !== "fixture";
 
 /** R1: "How this was made" into `holder`; resolves the section, or null when there is nothing to show. */
-export async function mountModelsUsed(holder, job, load = getModelsUsed) {
+export async function mountModelsUsed(holder, job, load = getModelsUsed, pid = null) {
   let panel = null;
-  try { panel = modelsPanel(await load(job)); } catch { panel = null; }
+  try { panel = modelsPanel(await load(job, pid)); } catch { panel = null; }
   return panel && holder.isConnected !== false ? renderModelsUsed(holder, panel) : null;
 }
 
@@ -38,7 +41,7 @@ const importMeshView = (host, ctx) => import("./mesh-view.js").then((m) => m.mou
  * R3: both people's SAM 3D Body meshes in `host` when the job has them (GET mesh.json names both); resolves the mesh
  * view handle, or null so the caller keeps its stick figures.
  */
-export async function mountMesh(host, { job, analysis, replay, loadIndex = getMeshIndex, mount = importMeshView }) {
+export async function mountMesh(host, { job, analysis, replay, loadIndex = getMeshIndex, mount = importMeshView, loadTakeAr = getTakeAr }) {
   let idx = null;
   try { idx = await loadIndex(job); } catch { idx = null; }
   if (!idx || typeof idx.trainer !== "string" || typeof idx.you !== "string") return null;
@@ -46,7 +49,22 @@ export async function mountMesh(host, { job, analysis, replay, loadIndex = getMe
     fps: replay && replay.fps ? replay.fps : null };
   const clock = trainerClock(replay);
   if (clock) ctx.trainerTime = clock;
-  try { return await mount(host, ctx); } catch { return null; }
+  // TICKET-274 and TICKET-282: the job's heat file and trainer AR files, when mesh.json names the heat file (own job URLs only); take-ar.json names the AR files, reached only through signed links
+  const own = (u) => (typeof u === "string" && u.startsWith(`api/results/${encodeURIComponent(job)}/`) ? u : null);
+  if (own(idx.heat)) ctx.heatUrl = idx.heat;
+  const lead = ((analysis && analysis.faults) || []).find((f) => f && Number.isFinite(f.at_s));   // Part 5's first fault: where Heat opens
+  if (lead) ctx.leadFaultAt = lead.at_s;
+  const aligned = alignedUntil(replay);   // after it the take is the idle tail Part 5 never compared
+  if (aligned !== null) ctx.alignedUntilS = aligned;
+  try {
+    const [view, take] = await Promise.all([mount(host, ctx), loadTakeAr(job).catch(() => null)]);
+    // take-ar.md: "See it in your room" only when the trainer's entry is not null; the page keeps no file path, only the
+    // signed-link request for each kind it can ask for
+    const entry = take && take.schema === "simon.take-ar.v1" && take.trainer && typeof take.trainer === "object" ? take.trainer : null;
+    const kinds = entry ? ["glb", "usdz"].filter((k) => typeof entry[k] === "string") : [];
+    if (view && kinds.length) view.ar = { kinds, linkFor: (kind) => takeArUrl(job, "trainer", kind) };
+    return view;
+  } catch { return null; }
 }
 
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;

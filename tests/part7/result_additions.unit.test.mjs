@@ -54,8 +54,9 @@ test("contract C2/C2b: the other session's glue modules load from the web/ root,
     assert.match(slots, new RegExp(`import\\("\\.\\./${file.replace(".", "\\.")}"\\)\\.then\\(\\(m\\) => m\\.${fn}\\(`), `${file} ${fn}`);
   }
   assert.doesNotMatch(slots, /import\("\.\/(voice|second-opinion|export|narration)\.js"\)/, "negative: not from web/views/");
-  assert.equal((slots.match(/quiet\(import\(/g) || []).length, 6, "every load is wrapped so a missing module is silent");
-  assert.match(slots, /import\("\.\.\/history\.js"\)\.then\(\(m\) => m\.mountHistory\(history, \{ jobId, entryId, analysis, seek \}\)/);
+  assert.equal((slots.match(/quiet\(import\(/g) || []).length, 7, "every load is wrapped so a missing module is silent");
+  assert.match(slots, /corrected && owns && jobId !== "fixture"[\s\S]{0,60}import\("\.\.\/corrected-card\.js"\)/, "the corrected-pose card mounts for the owner only (TICKET-280)");
+  assert.match(slots, /import\("\.\.\/history\.js"\)\.then\(\(m\) => m\.mountHistory\(history, \{ jobId: owns \? jobId : null, entryId, analysis, seek \}\)/); // no since-last-time for a non-owner
   assert.match(slots, /import\("\.\.\/auth\.js"\)\.then\(\(m\) => m\.mountKeepTake\(keep, jobId\)/);
   assert.match(slots, /"data-testid": "history-slot"/);
   for (const id of ["voice-slot", "second-opinion-slot", "export-slot"]) assert.match(slots, new RegExp(`"data-testid": "${id}"`));

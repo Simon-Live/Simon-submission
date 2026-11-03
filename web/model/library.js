@@ -4,8 +4,8 @@ import { entryFileUrl } from "../api.js";
 import { KINDS, KIND_LABEL, kindOfEntry, entryInKind } from "./kind.js";
 
 export const TEXT = {
-  title: "Find your next move.",
-  lede: "Pre-recorded moves. Ready when you are.",
+  title: "Pick a movement to follow",
+  lede: "",   // one lede only: the pitch line under the title (catalog.js); the second one disagreed with it (TICKET-336 T6)
   search: "Search moves",
   use: "Use routine",
   record: "Record a movement",
@@ -16,7 +16,7 @@ export const TEXT = {
   sectionEmpty: "Nothing here yet.",
   other: "More moves",
 };
-export const SECTION_ASIDE = { dance: "Find your rhythm", exercise: "Or switch it up", rehab: "Gentle, at your pace" };
+export const SECTION_ASIDE = {};   // no section asides: they said nothing the section title does not (TICKET-336 T6)
 export const SOURCE_LABEL = { fixture: "Sample", mock: "Sample", import: "Recorded", processor: "Processed", visitor: "Visitor" };
 
 /** Name, category, id and tags (labels is {entry_id: {tags}}). */

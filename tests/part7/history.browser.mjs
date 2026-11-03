@@ -16,6 +16,17 @@ const { chromium } = createRequire(path.join(process.env.PLAYWRIGHT_DIR || path.
 const fx = (f) => JSON.parse(fs.readFileSync(path.join(here, "fixtures/history", f), "utf8"));
 const PAGE = fx("page-body-squat.fixture.json");
 const REPORT = fx("report-body-squat.fixture.json");
+// TICKET-218: a hand-written series (FIXTURE, not a measurement) so the page draws the fault lines; one gap, two sides
+const pt = (take, value) => ({ take, at: `2026-11-0${take}T10:00:00Z`, day: `2026-11-0${take}`, present: !!value, value });
+PAGE.facts = { ...(PAGE.facts || {}), series: { hidden: false, takes: [1, 2, 3, 4], plateaus: [], early_signs: [],
+  measures: [{ measure: "knee_valgus", side_note: null, lines: [
+    { side: "left", unit: "deg", plateau: false, present_in: [1, 2, 4], points: [pt(1, 20), pt(2, 15), pt(3, null), pt(4, 6)] },
+    { side: "right", unit: "deg", plateau: false, present_in: [], points: [pt(1, 0), pt(2, 0), pt(3, 0), pt(4, 0)] }] }] } };
+// one-letter.md L8: a plain 50 F take, then a 37 take shown as C at 72.6% (the MM-Fit take 42a02415127e's credit, CC BY 4.0)
+const SHOWN = (letter, figures, caption, unit, measure) => ({ letter, figures, caption, unit, capped: false, warning: [], measure });
+const CREDIT_PAGE = { ...PAGE, takes: [
+  { ...PAGE.takes[0], score: 50, grade: "F", shown: SHOWN("F", "50", "out of 100", "score", 50) },
+  { ...PAGE.takes[1], score: 37, grade: "F", shown: SHOWN("C", "16,239", "of 22,367", "points", 72.6) }] };
 const CLIP = path.join(ROOT, "web/media/landing-loop.mp4"); // stands in for a kept 480 px take clip
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".woff2": "font/woff2" };
 const ENTRY = PAGE.entry_id;
@@ -32,7 +43,7 @@ function api(req, res, p) {
   if (p.startsWith("/api/me/")) meRequests.push(p);
   if (scenario === "signedout") return json(res, { error: "sign in" }, 401);
   if (p === "/api/me/history") return json(res, { entries: [{ entry_id: ENTRY, name: PAGE.name, takes: 2 }] });
-  if (p === `/api/me/history/${ENTRY}`) return json(res, PAGE);
+  if (p === `/api/me/history/${ENTRY}`) return json(res, scenario === "credit" ? CREDIT_PAGE : PAGE);
   if (p === `/api/me/history/${ENTRY}/report`) {
     if (req.method === "POST") {
       runs++;
@@ -43,11 +54,23 @@ function api(req, res, p) {
     if (scenario === "fallback") return json(res, { ...REPORT, status: "fallback", reason: "over_budget", usage: null, trends: [], focus: null, observations: [], summary: null, facts: PAGE.facts });
     return ++polls < 3 ? json(res, { status: "running" }, 202, { "Retry-After": "1" }) : json(res, { ...REPORT, facts: PAGE.facts });
   }
+  if (p === "/api/me/since-last-time/5277380db1e1") return json(res, { since: SEEDED_SINCE });
   const clip = /^\/api\/me\/history\/[^/]+\/takes\/([0-9a-f]+)\/clip\.mp4$/.exec(p);
   if (clip) { clips.push(clip[1]); return sendFile(req, res, CLIP, "video/mp4"); }
   return json(res, {}, 404);
 }
 const clips = [];
+// SEEDED history, not a real student's: two made takes of the squat, the line a server would build from them (history_since).
+const SEEDED_SINCE = {
+  format: "simon.history.since.v1", job_id: "5277380db1e1", take: 2, entry_id: ENTRY, previous: { take: 1, job_id: "cc7cd5469055", at: "2026-10-28T10:00:00Z" },
+  line: "Since last time (28 Oct): score 77 to 84; the left knee cue is gone; the elbow cue is new",
+  facts: [
+    { kind: "score", text: "score 77 to 84", link: { take: 1, job_id: "cc7cd5469055", at_s: null, clip: `api/me/history/${ENTRY}/takes/cc7cd5469055/clip.mp4` } },
+    { kind: "gone", text: "the left knee cue is gone", link: { take: 1, job_id: "cc7cd5469055", at_s: 1.5, clip: `api/me/history/${ENTRY}/takes/cc7cd5469055/clip.mp4` } },
+    { kind: "new", text: "the elbow cue is new", link: { take: 1, job_id: "cc7cd5469055", at_s: 2, clip: null } },
+  ],
+  bests: [{ kind: "best", text: "New best: 84", link: { take: 1, job_id: "cc7cd5469055", at_s: null, clip: `api/me/history/${ENTRY}/takes/cc7cd5469055/clip.mp4` } }],
+};
 
 function sendFile(req, res, file, type) {
   const size = fs.statSync(file).size;
@@ -92,6 +115,10 @@ try {
   {
     const { page, ctx } = await open("page", "ok");
     await page.waitForSelector(tid("history-chart"));
+    await page.waitForSelector(tid("history-series-chart-knee_valgus"));
+    assert.equal(await page.locator(`${tid("history-series-chart-knee_valgus")} circle`).count(), 7, "3 dots on the left line (take 3 is a gap), 4 zeros on the right");
+    assert.equal(await page.locator(tid("history-series-seeded")).count(), 0, "real takes carry no seeded label");
+    ok("the fault lines draw from the series, a gap is not a dot");
     assert.equal(await page.locator(tid("history-trend-0")).count(), 0, "no report before the run");
     await shot(page, "history-01-before-run.png");
     await page.tap(tid("history-run"));
@@ -147,6 +174,16 @@ try {
     await page.waitForSelector(tid("history-slot-link"));
     assert.match(await page.textContent(tid("history-slot-link")), /Your takes over time \(2\)/);
     await shot(page, "history-06-slot-signed-in.png");
+    // TICKET-213: the seeded "Since last time" line above the link, each fact opens the earlier take's clip
+    await page.waitForSelector(tid("since-line"));
+    assert.match(await page.textContent(tid("since-line")), /^Since last time \(28 Oct\): score 77 to 84; the left knee cue is gone; the elbow cue is new$/);
+    assert.match(await page.textContent(tid("since-best-0")), /New best: 84/);
+    assert.equal(await page.isDisabled(tid("since-fact-2")), true, "a clip that is not kept is disabled");
+    await page.tap(tid("since-fact-1"));
+    await page.waitForFunction(() => { const v = document.querySelector('[data-testid="since-last-time"] [data-testid="history-video"]'); return v && v.readyState >= 1 && v.currentTime >= 1.4; }, null, { timeout: 15000 });
+    assert.match(await page.getAttribute(`${tid("since-last-time")} ${tid("history-video")}`, "src"), /takes\/cc7cd5469055\/clip\.mp4$/);
+    await shot(page, "since-01-line-seeded.png");
+    ok("seeded: the since line shows and a fact opens the earlier take at that second");
     await ctx.close();
     meRequests.length = 0;
     const anon = await open("slot", "signedout");
@@ -154,6 +191,8 @@ try {
     await anon.page.waitForTimeout(600);
     assert.equal(await anon.page.locator(`${tid("history-slot")} > *`).count(), 0, "the slot stays empty when signed out");
     assert.equal(await anon.page.locator(tid("history-slot-link")).count(), 0);
+    assert.equal(await anon.page.locator(tid("since-last-time")).count(), 0, "an anonymous result shows no since line");
+    assert.deepEqual(meRequests.filter((r) => r.includes("since-last-time")), []);
     assert.deepEqual(meRequests, [], "an anonymous result page makes no api/me request");
     await shot(anon.page, "history-07-slot-signed-out-empty.png");
     await anon.ctx.close();
@@ -164,6 +203,23 @@ try {
     await shot(page401.page, "history-08-page-signed-out.png");
     await page401.ctx.close();
     ok("the slot shows only for a signed-in student; signed out it stays empty");
+  }
+  // one-letter.md L8: the chart's heights follow the shown measure, so the C at 37 sits above the F at 50
+  {
+    const { page, ctx } = await open("page", "credit");
+    await page.waitForSelector(tid("history-chart"));
+    const cy = async (n) => Number(await page.getAttribute(tid(`history-dot-${n}`), "cy"));
+    const [f, c] = [await cy(1), await cy(2)];
+    assert.ok(c < f, `the C dot (cy ${c}) sits above the F dot (cy ${f})`);
+    assert.equal(await page.getAttribute(tid("history-dot-2"), "data-tone"), "warn", "coloured by its letter, C");
+    assert.equal(await page.textContent(tid("history-chart-axis")),
+      "Oldest take on the left. The height is the % of the trainer's points, or the score out of 100 for a take without points.");
+    const label = await page.getAttribute(tid("history-chart"), "aria-label");
+    assert.match(label, /highest 16,239 points of 22,367/);
+    assert.doesNotMatch(label, /72\.6/, "negative: the spoken label names the figures, not the height");
+    await shot(page, "history-10-credit-height.png");
+    await ctx.close();
+    ok("the chart draws the C at 37 (72.6%) above the F at 50 and says what the height counts");
   }
   const list = await open("list", "ok");
   await list.page.waitForSelector(tid("history-mytakes-0"));

@@ -1,7 +1,7 @@
 // Glue for the teacher's words next to the matching fault (docs/specs/narration.md, TICKET-146).
 // The server turns what the trainer said while recording into cues, each attached to a movement section
 // (`GET api/narration/<entry>`). Each fault row gets the cues of the section its time falls in.
-import { cuesFor, lineFor } from "./model/narration.js";
+import { clipUrl, cuesFor, lineFor, whoSaid } from "./model/narration.js";
 import { narrationBox } from "./views/narration.js";
 
 export { inSection, cuesFor, MAX_PER_FAULT, TEXT } from "./model/narration.js";
@@ -20,7 +20,7 @@ const faultRows = (container) =>
 
 /**
  * Add the teacher's words under each fault row of `container`.
- * ctx = { entryId, load?(entryId) -> doc|null }. Returns { count, destroy() } (count: rows that got words), or null
+ * ctx = { entryId, trainer?, load?(entryId) -> doc|null, play?(url) }; `trainer` is the credited trainer's name. Returns { count, destroy() } (count: rows that got words), or null
  * when the movement has no narration. A failing load or a bad document leaves the rows as they were.
  */
 export async function mountNarration(container, ctx) {
@@ -37,7 +37,11 @@ export async function mountNarration(container, ctx) {
     const at = Number(row.getAttribute("data-at-s"));
     const cues = Number.isFinite(at) ? cuesFor(doc, at) : [];
     if (!cues.length) continue;
-    const box = narrationBox(`${row.getAttribute("data-testid")}-narration`, cues.map((c) => ({ at: c.start_s, text: lineFor(c) })));
+    const lines = cues.map((c) => {
+      const url = clipUrl(ctx.entryId, c);
+      return { at: c.start_s, text: lineFor(c), audio: url ? { url, who: whoSaid(ctx.trainer) } : null };
+    });
+    const box = narrationBox(`${row.getAttribute("data-testid")}-narration`, lines, ctx.play);
     if (row.parentElement) row.parentElement.append(box); else row.after(box);
     added.push(box);
   }

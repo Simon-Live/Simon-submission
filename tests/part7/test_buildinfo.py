@@ -39,10 +39,10 @@ PARTS = {"1": "a" * 9, "2": "b" * 9}
 @needs_git
 def test_git_present(tmp_path: Path) -> None:
     root, sha = _repo(tmp_path)
-    doc = buildinfo.collect(root, NOW, PARTS)
+    doc = buildinfo.collect(root, NOW, PARTS, env="local")
     assert doc == {
         "sha": sha, "short": sha[:9], "committed_at": "2026-10-30T16:00:00Z", "subject": "x",
-        "started_at": "2026-10-30T16:50:07Z", "parts": {"1": "a" * 9, "2": "b" * 9},
+        "started_at": "2026-10-30T16:50:07Z", "parts": {"1": "a" * 9, "2": "b" * 9}, "environment": "local",
     }
 
 
@@ -90,14 +90,14 @@ def test_version_route_and_health_carry_the_build(api) -> None:  # type: ignore[
 
 
 def test_build_app_fills_the_build(api) -> None:  # type: ignore[no-untyped-def]
-    assert set(api.app.build) == {"sha", "short", "committed_at", "subject", "started_at", "parts"}
+    assert set(api.app.build) == {"sha", "short", "committed_at", "subject", "started_at", "parts", "environment"}
     assert api.app.build["started_at"].endswith("Z")
 
 
 def test_build_line_is_in_the_header_and_web_unit_tests_pass():
     index = (ROOT / "web/index.html").read_text(encoding="utf-8")
     header = index.split("<header", 1)[1].split("</header>", 1)[0]
-    assert re.search(r'<div id="build"[^>]*hidden', header) and "<footer" not in index
+    assert re.search(r'<div id="build"[^>]*hidden', header) and "<footer" not in header  # TICKET-326: the footer is below main
     assert "mountBuildStamp" in (ROOT / "web/app.js").read_text(encoding="utf-8")
     for name in ("build.js", "styles.css"):
         text = (ROOT / "web" / name).read_text(encoding="utf-8")

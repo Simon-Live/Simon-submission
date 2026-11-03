@@ -34,6 +34,9 @@ export function sectionTime(takeMs, offsetMs, range, rate = 1) {
   return range.start_s + (((t % len) + len) % len);
 }
 
+/** The one plain line that stands in for a reference figure that drew nothing. */
+const noFigureLine = () => h("p", { class: "hint ref-empty", "data-testid": "reference-empty", text: TEXT.noViewer });
+
 function ensureStyles() { ensureCss("reference.css", "data-simon-reference-css"); }
 
 /**
@@ -89,6 +92,7 @@ export function mountReference(entry, { mirrored = true } = {}) {
   } else {
     Promise.all([getEntryFile(entry.id, entry.animation), import("./result.js")])
       .then(([animation, mod]) => mod.mountViewer(figure, { animation }))
+      .then(() => { if (!figure.querySelector("canvas, svg, [data-testid=viewer]")) figure.replaceChildren(noFigureLine()); }) // never an empty black box (TICKET-316)
       .catch(() => figure.replaceChildren(h("p", { class: "hint", "data-testid": "reference-empty", text: TEXT.noViewer })));
   }
 
@@ -127,6 +131,8 @@ export function mountReference(entry, { mirrored = true } = {}) {
     /** The first frame as a data URL, "" when unknown (3D reference). */
     firstFrame: () => first,
     mirrored: () => state.mirror,
+    /** The reference video's clock in seconds while a recording runs, else null (follow-ghost.md: the ghost follows it). */
+    time: () => (video && el.dataset.recording === "true" ? video.currentTime : null),
     /**
      * Practice: loop `range` {start_s, end_s, rate} at its playbackRate, or the whole clip at 1x for null.
      * The 3D reference has no clock to loop, so it ignores this.

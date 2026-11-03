@@ -25,7 +25,7 @@ import tempfile
 import time
 from typing import Any, Iterator
 
-from part7 import applog, labels
+from part7 import applog, labels, modes
 
 USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,40}$")  # C-ID
 JOB_ID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -78,6 +78,14 @@ def entry_dir(state: Path | str, user_id: str, entry_id: str) -> Path:
 
 def take_dir(state: Path | str, user_id: str, entry_id: str, job_id: str) -> Path:
     return entry_dir(state, user_id, entry_id) / "takes" / job_id
+
+
+CROSS_DIR = "_cross"  # across-my-movements reports and monthly recaps; "_" cannot start an entry id, so it never reads as an entry
+CROSS_PREFS = "cross_prefs.json"  # the movements the user left out of those reports
+
+
+def cross_dir(state: Path | str, user_id: str) -> Path:
+    return user_dir(state, user_id) / CROSS_DIR
 
 
 def reports_dir(state: Path | str, user_id: str, entry_id: str) -> Path:
@@ -209,11 +217,62 @@ def _make_clip(video: Path, out: Path) -> bool:
     return done.returncode == 0 and out.is_file() and out.stat().st_size > 0
 
 
+def light_of(job: dict[str, Any]) -> dict[str, Any] | None:
+    """The job result's `light` level (part7/light.py), the one field of it the shown score needs (one-letter.md)."""
+    result = job.get("result") if isinstance(job.get("result"), dict) else {}
+    light = result.get("light")
+    return {"level": light["level"]} if isinstance(light, dict) and isinstance(light.get("level"), str) else None
+
+
 def _score(analysis: Any) -> tuple[Any, Any] | None:
     score = analysis.get("score") if isinstance(analysis, dict) else None
     if not isinstance(score, dict) or isinstance(score.get("value"), bool) or not isinstance(score.get("value"), (int, float)):
         return None
     return score["value"], score.get("grade")
+
+
+def reference_key(job: dict[str, Any]) -> str:
+    """"teacher", or "own:<reference job id>": takes compared with different references are not one series (ADR-0019)."""
+    from part7 import my_reference
+    ref = job.get("reference")
+    if my_reference.uses_own(job) and isinstance(ref.get("job_id"), str):
+        return f"own:{ref['job_id']}"
+    return "teacher"
+
+
+def section_key(section: Any) -> str | None:
+    """Which part of the movement a take covers: "full" for the whole movement, else `s<index>of<count>` (a joined
+    ladder step `s<first>-<index>of<count>`, a slowed step `...@<speed>`). None when the record is not readable."""
+    if section is None:
+        return "full"
+    if not isinstance(section, dict):
+        return None
+    index, count, first, speed = (section.get(k) for k in ("index", "count", "first", "speed"))
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 1 for v in (index, count)):
+        return None
+    key = f"s{first}-{index}of{count}" if isinstance(first, int) and not isinstance(first, bool) and 1 <= first < index else f"s{index}of{count}"
+    if isinstance(speed, (int, float)) and not isinstance(speed, bool) and 0 < speed < 1:
+        key += f"@{speed:g}"
+    return key
+
+
+def mode_of(job: dict[str, Any], analysis: Any) -> str:
+    """The mode the student chose, else the profile Part 5 scored with, else fitness (Part 5's standard rules, ADR-0008)."""
+    chosen = job.get("mode")
+    if chosen in modes.MODES:
+        return str(chosen)
+    profile = analysis.get("profile") if isinstance(analysis, dict) else None
+    return str(profile) if profile in modes.MODES else "fitness"
+
+
+def score_version(analysis: Any) -> str | None:
+    """`<score format>:<first 8 of the parameter hash>`: two scores are the same scale only when this agrees."""
+    score = analysis.get("score") if isinstance(analysis, dict) else None
+    version = score.get("version") if isinstance(score, dict) else None
+    if not isinstance(version, str) or not version:
+        return None
+    digest = score.get("params_sha256")
+    return f"{version}:{digest[:8]}" if isinstance(digest, str) and digest else version
 
 
 def _copy(state: Path, user_id: str, job: dict[str, Any], job_dir: Path) -> bool:
@@ -234,12 +293,18 @@ def _copy(state: Path, user_id: str, job: dict[str, Any], job_dir: Path) -> bool
     try:
         shutil.copyfile(source, stage / ANALYSIS_NAME)
         duration = duration_of(job, job_dir, analysis)
-        has_clip = _make_clip(job_dir / "work" / "video.mp4", stage / CLIP_NAME)
+        video_kept = job.get("video_kept") is not False  # a model-only take keeps no clip (model-only-take.md)
+        has_clip = video_kept and _make_clip(job_dir / "work" / "video.mp4", stage / CLIP_NAME)
         meta = {
             "job_id": job_id, "entry_id": entry_id, "at": job.get("finished_at") or job.get("created_at"),
             "duration_s": duration[0], "duration_source": duration[1], "score": scored[0], "grade": scored[1], "private": is_private(job),
-            "clip": has_clip, "kept_ts": time.time(),
+            "section_key": section_key(job.get("section")), "mode": mode_of(job, analysis), "score_version": score_version(analysis),
+            "reference": reference_key(job),
+            "clip": has_clip, "video_kept": video_kept, "kept_ts": time.time(),
+            "light": light_of(job),  # one-letter.md: the light cap is applied to the shown score at read time
         }
+        from part7 import progress_sheet  # TICKET-283: a tracked take keeps its reps, peak angle, tempo and skeleton
+        progress_sheet.extend_copy(state, job, job_dir, analysis, meta, stage)
         write_json(stage / META_NAME, meta)
         with locked(state):
             if not (final / META_NAME).is_file():
@@ -264,6 +329,32 @@ def record_take(state: Path | str, job: dict[str, Any], job_dir: Path) -> bool:
     except OSError as exc:
         applog.log(f"history: copy of {job_id} failed: {applog.cause(exc)}")
         return False
+
+
+def pending_take(state: Path | str, user_id: str, job_id: str) -> dict[str, Any] | None:
+    """The take of a finished job the user owns, read from the job folder, before its history copy exists.
+
+    Shaped like a row of `takes()` (no `take` number, no clip); None unless the user owns the job, kept the retention
+    consent and the job is a finished, scored follow take."""
+    state = Path(state)
+    if not valid_ids(user_id) or not isinstance(job_id, str) or not JOB_ID_RE.match(job_id):
+        return None
+    if owner_of(state, job_id) != user_id or not retention_opt_in(state, user_id):
+        return None
+    job_dir = state / "jobs" / job_id
+    job = read_json(job_dir / "job.json")
+    source = job_dir / "work" / "follower" / ANALYSIS_NAME
+    analysis = read_json(source)
+    if not isinstance(job, dict) or job.get("id") != job_id or job.get("kind") != "follow" or job.get("status") != "done":
+        return None
+    scored, entry_id = _score(analysis), job.get("entry_id")
+    if scored is None or not valid_ids(user_id, entry_id, job_id):
+        return None
+    return {"job_id": job_id, "entry_id": entry_id, "at": job.get("finished_at") or job.get("created_at"), "duration_s": None,
+            "duration_source": None, "score": scored[0], "grade": scored[1], "private": is_private(job),
+            "section_key": section_key(job.get("section")), "mode": mode_of(job, analysis), "score_version": score_version(analysis),
+            "reference": reference_key(job),
+            "video_kept": job.get("video_kept") is not False, "light": light_of(job), "analysis": source, "clip": None}
 
 
 def claim(state: Path | str, user_id: str, job_id: str) -> bool:
@@ -296,6 +387,11 @@ def entries(state: Path | str, user_id: str) -> list[str]:
                   and any((e / "takes").iterdir()))
 
 
+def _text(value: Any) -> str | None:
+    """A recorded label, or None (unknown) for a record made before the field existed."""
+    return value if isinstance(value, str) and value else None
+
+
 def takes(state: Path | str, user_id: str, entry_id: str) -> list[dict[str, Any]]:
     """The user's takes of one entry, oldest first, numbered from 1 by their recorded time."""
     if not valid_ids(user_id, entry_id):
@@ -307,10 +403,18 @@ def takes(state: Path | str, user_id: str, entry_id: str) -> list[dict[str, Any]
         if not (isinstance(meta, dict) and meta.get("job_id") == child.name and (child / ANALYSIS_NAME).is_file()):
             continue
         clip = child / CLIP_NAME
+        video_kept = meta.get("video_kept") is not False  # one eligibility hook: a model-only take has no clip, whatever is on disk
         found.append({
             "job_id": child.name, "entry_id": entry_id, "at": meta.get("at"), "duration_s": meta.get("duration_s"), "duration_source": meta.get("duration_source"),
             "score": meta.get("score"), "grade": meta.get("grade"), "private": bool(meta.get("private")),
-            "analysis": child / ANALYSIS_NAME, "clip": clip if clip.is_file() and not clip.is_symlink() else None,
+            "synthetic": meta.get("synthetic") is True,  # a seeded demo history is labelled so (TICKET-211)
+            "section_key": _text(meta.get("section_key")), "mode": meta.get("mode") if meta.get("mode") in modes.MODES else None,
+            "score_version": _text(meta.get("score_version")),
+            "reference": _text(meta.get("reference")) or "teacher",  # which reference the take was compared with (ADR-0019)
+            "video_kept": video_kept,
+            "light": meta.get("light") if isinstance(meta.get("light"), dict) else None,  # None on a copy made before one-letter.md
+            "analysis": child / ANALYSIS_NAME,
+            "clip": clip if video_kept and clip.is_file() and not clip.is_symlink() else None,
         })
     found.sort(key=lambda t: (str(t["at"] or ""), t["job_id"]))
     for number, item in enumerate(found, 1):
@@ -348,27 +452,32 @@ def withdraw_retention(state: Path | str, user_id: str) -> int:
 
 # ----- removing -------------------------------------------------------------------------------------
 def _drop_reports_citing(reports: Path, job_ids: set[str]) -> int:
+    """Remove the reports (and the reel files beside a reel's json) that cite one of the jobs."""
     removed = 0
-    for path in reports.glob("*.json") if reports.is_dir() else []:
+    for path in [*reports.glob("*.json"), *reports.glob("patterns/*.json")] if reports.is_dir() else []:  # patterns: TICKET-221
         doc = read_json(path)
         cited = {t.get("job_id") for t in doc.get("takes", []) if isinstance(t, dict)} if isinstance(doc, dict) else set()
         if not isinstance(doc, dict) or cited & job_ids:  # an unreadable report cannot be shown to cite nothing
             path.unlink(missing_ok=True)
+            path.with_suffix(".mp4").unlink(missing_ok=True)
             removed += 1
     return removed
 
 
 def _drop_reports_where(base: Path, test: Any) -> int:
     removed = 0
-    for path in base.glob("*/reports/*.json") if base.is_dir() else []:
+    for path in [*base.glob("*/reports/*.json"), *base.glob("*/reports/patterns/*.json"), *base.glob("*/reels/*.json")] if base.is_dir() else []:
         doc = read_json(path)
         if isinstance(doc, dict) and test(doc):
             path.unlink(missing_ok=True)
+            path.with_suffix(".mp4").unlink(missing_ok=True)  # a reel's film sits beside its json
             removed += 1
     return removed
 
 
 def _remove_takes(entry: Path, job_ids: set[str]) -> int:
+    from part7 import notes  # TICKET-237: a trainer's note about a take goes with the take's copy (<state>/history/<user>/<entry>)
+    notes.drop_jobs(entry.parents[2], job_ids)
     count = 0
     for job_id in job_ids:
         target = entry / "takes" / job_id
@@ -376,7 +485,9 @@ def _remove_takes(entry: Path, job_ids: set[str]) -> int:
             shutil.rmtree(target, ignore_errors=True)
             count += 1
     _drop_reports_citing(entry / "reports", job_ids)
-    for leftover in (entry / "takes", entry / "reports", entry):
+    _drop_reports_citing(entry / "reels", job_ids)  # the progress reel cuts from the clips, so it goes with them (TICKET-228)
+    _drop_reports_citing(entry.parent / CROSS_DIR, job_ids)  # a report that read a deleted take goes with it (TICKET-224)
+    for leftover in (entry / "takes", entry / "reports" / "patterns", entry / "reports", entry / "reels", entry):
         try:
             leftover.rmdir()
         except OSError:
@@ -400,6 +511,8 @@ def drop_take(state: Path | str, job_id: str) -> int:
     """Remove the copy of one job and every cached report that cites it; the number of copies removed."""
     if not isinstance(job_id, str) or not JOB_ID_RE.match(job_id):
         return 0
+    from part7 import notes  # TICKET-237: the request goes with the take even when no copy was kept
+    notes.drop_jobs(state, {job_id})
     with locked(state):
         found = [entry for entry, job in _all_takes(state) if job == job_id]
         return sum(_remove_takes(entry, {job_id}) for entry in found)
@@ -409,12 +522,22 @@ def forget(state: Path | str, user_id: str, entry_id: str | None = None) -> int:
     """Remove all of the user's history (or one entry's); the number of takes removed."""
     if not valid_ids(user_id, entry_id if entry_id is not None else "x"):
         return 0
+    from part7 import notes  # TICKET-237: withdrawing retention or forgetting a movement removes its requests and notes
+    from part7 import my_reference  # ADR-0019: an own reference goes with the account, "Delete my data" and a forgotten movement
+    from part7 import reference_approval  # ADR-0019: waiting approvals and "no" answers go the same way; a teacher's approvals are taken off
+    reference_approval.forget(state, user_id, entry_id)  # first: it leaves the mark that refuses an approval already under way
+    my_reference.forget(state, user_id, entry_id)
+    if entry_id is None:
+        notes.drop_follower(state, user_id)
+    else:
+        notes.drop_follower_entry(state, user_id, entry_id)
     with locked(state):
         if entry_id is not None:
             return _forget_entry(entry_dir(state, user_id, entry_id))
         base = user_dir(state, user_id)
         count = sum(_forget_entry(e) for e in base.iterdir() if e.is_dir() and labels.ENTRY_ID_RE.match(e.name)) if base.is_dir() else 0
-        for name in ("consent.json", "runs.jsonl"):
+        shutil.rmtree(base / CROSS_DIR, ignore_errors=True)  # cross reports and recaps (TICKET-223/224)
+        for name in ("consent.json", "runs.jsonl", "ask_runs.jsonl", "ask_take_runs.jsonl", CROSS_PREFS):
             (base / name).unlink(missing_ok=True)
         try:
             base.rmdir()
@@ -428,6 +551,7 @@ def _forget_entry(entry: Path) -> int:
     ids = {t.name for t in folder.iterdir() if t.is_dir() and JOB_ID_RE.match(t.name)} if folder.is_dir() else set()
     count = _remove_takes(entry, ids)
     shutil.rmtree(entry / "reports", ignore_errors=True)  # a report of a forgotten entry goes with it
+    shutil.rmtree(entry / "reels", ignore_errors=True)    # and so does its progress reel
     try:
         entry.rmdir()
     except OSError:

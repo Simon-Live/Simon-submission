@@ -235,7 +235,7 @@ function note(text, testid = "compare-note") {
  * Mount the viewer into `root`. `model` comes from normalizeReplay or normalizeAnimation.
  * opts.testid: "compare" (result) or "viewer" (Watch).
  */
-export async function mountCompare(root, model, { testid = "compare" } = {}) {
+export async function mountCompare(root, model, { testid = "compare", job = null, trainerLabel = "Trainer" } = {}) {   // trainerLabel: "Your reference" when the take was compared with the student's own rep (my-reference.md)
   const single = model.kind === "single";
   const wrap = el("section", {
     class: "sr-cmp",
@@ -244,7 +244,7 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
     "data-camera-azimuth": "",
     "data-camera-elevation": "",
     "data-highlighted-joints": "",
-    "aria-label": single ? "3D viewer" : "Compare the trainer and you in 3D",
+    "aria-label": single ? "3D viewer" : `Compare ${trainerLabel === "Trainer" ? "the trainer" : trainerLabel.toLowerCase()} and you in 3D`,
   });
   root.append(wrap);
 
@@ -263,10 +263,10 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
   const host = el("div", { class: "sr-stage" });
   const legend = el("ul", { class: "sr-legend", "aria-label": "Legend" });
   const tracks = single
-    ? [{ color: TRAINER_COLOR, ghostInOverlay: false, label: "Trainer" }]
-    : [{ color: TRAINER_COLOR, ghostInOverlay: true, label: "Trainer" }, { color: YOU_COLOR, ghostInOverlay: false, label: "You" }];
+    ? [{ color: TRAINER_COLOR, ghostInOverlay: false, label: trainerLabel }]
+    : [{ color: TRAINER_COLOR, ghostInOverlay: true, label: trainerLabel }, { color: YOU_COLOR, ghostInOverlay: false, label: "You" }];
   for (const t of tracks) {
-    legend.append(el("li", { "data-who": t.label.toLowerCase() }, el("i", { style: `background:#${t.color.toString(16).padStart(6, "0")}` }), el("span", { text: t.label })));
+    legend.append(el("li", { "data-who": t.label === trainerLabel ? "trainer" : t.label.toLowerCase() }, el("i", { style: `background:#${t.color.toString(16).padStart(6, "0")}` }), el("span", { text: t.label })));
   }
   host.append(legend);
   wrap.append(host);
@@ -299,6 +299,13 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
     tools.append(modeBtn);
   }
   wrap.append(bar, tools);
+  // model picker (docs/specs/model-picker.md): loaded lazily, so a missing or failing module leaves the view as it was
+  let picker = null;
+  let gone = false;
+  const pickerTracks = single ? [{ role: "trainer", label: trainerLabel }] : [{ role: "trainer", label: trainerLabel }, { role: "you", label: "You" }];
+  import("./skin/picker.js").then((m) => m.mountModelPicker(tools, stage, { tracks: pickerTracks, job }))
+    .then((handle) => { if (gone) handle.destroy(); else picker = handle; })
+    .then(() => (picker && !single ? import("./model-default.js").then((m) => m.mountDefaultHint(picker.el)) : null)).catch(() => {}); // "Your default is set on Me." (model-default.md AC-MD8)
 
   let highlightNames = [];
   const tickers = [];  // listeners of the clock: (t, playing), used to keep the follower video in step
@@ -409,6 +416,8 @@ export async function mountCompare(root, model, { testid = "compare" } = {}) {
     destroy() {
       if (raf) cancelAnimationFrame(raf);
       endSlide(false);
+      gone = true;
+      if (picker) picker.destroy();
       stage.dispose();
       wrap.remove();
     },
@@ -422,6 +431,11 @@ export function writeDrawStats(wrap, stats) {
   wrap.setAttribute("data-joints-drawn", col("joints"));
   wrap.setAttribute("data-joints-dimmed", col("dimmed"));
   wrap.setAttribute("data-bones-drawn", col("bones"));
+  // the skin on each figure ("-" for none): its kind, its id and its largest segment error in degrees
+  const skin = (f) => stats.map((s) => (s && s.skin ? f(s.skin) : "-")).join(",");
+  wrap.setAttribute("data-skin-kind", skin((k) => String(k.kind)));
+  wrap.setAttribute("data-skin-id", skin((k) => String(k.id)));
+  wrap.setAttribute("data-skin-err", skin((k) => (Number.isFinite(k.segErrDeg) ? k.segErrDeg.toFixed(1) : "-")));
 }
 
 function noop(wrap) {
@@ -447,7 +461,7 @@ export async function mountViewer(root, { replay, animation } = {}) {
     root.append(holder);
     return noop(holder);
   }
-  return mountCompare(root, model, { testid: "viewer" });
+  return mountCompare(root, model, { testid: "viewer", job: null });
 }
 
 export function ensureStyles() {

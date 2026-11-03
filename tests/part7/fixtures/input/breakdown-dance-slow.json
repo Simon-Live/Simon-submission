@@ -1,0 +1,80 @@
+{
+ "format": "simon.analysis.v1",
+ "schema_version": "1.12.0",
+ "status": {
+  "code": "ok",
+  "text": "Compared with the expected movement."
+ },
+ "faults": [],
+ "insights": [],
+ "score": {
+  "version": "simon.score.v3",
+  "value": 99,
+  "grade": "A",
+  "components": {
+   "faults": 0.0,
+   "similarity": 0.85,
+   "tempo": 12.5
+  },
+  "basis": "reps",
+  "timeline": [
+   {
+    "t_s": [
+     1.267,
+     9.5
+    ],
+    "value": 99,
+    "grade": "A",
+    "components": {
+     "faults": 0.0,
+     "similarity": 1.04,
+     "tempo": 6.2
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 2.4,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   },
+   {
+    "t_s": [
+     9.5,
+     17.033
+    ],
+    "value": 99,
+    "grade": "A",
+    "components": {
+     "faults": 0.0,
+     "similarity": 0.65,
+     "tempo": 6.2
+    },
+    "misses": [],
+    "tempo": {
+     "ratio": 2.31,
+     "cue": "Speed up to match the trainer"
+    },
+    "compared": true
+   }
+  ],
+  "tempo": {
+   "ratio": 2.35,
+   "cue": "Speed up to match the trainer"
+  },
+  "per_rep": [
+   {
+    "value": 99,
+    "grade": "A",
+    "rep": 0,
+    "tempo_ratio": 2.4
+   },
+   {
+    "value": 99,
+    "grade": "A",
+    "rep": 1,
+    "tempo_ratio": 2.31
+   }
+  ]
+ },
+ "profile": "dance"
+}

@@ -1,0 +1,71 @@
+{
+ "voice": "Rachel",
+ "music": "the cleared track of the release 17 cut (demo/assets/music.mp3 in the release asset rubric-2026-10-31-evidence.tar)",
+ "scenes": [
+  {
+   "id": "s00-cold",
+   "min_s": 5,
+   "vo": "One student's squat, on any body."
+  },
+  {
+   "id": "s01-hook",
+   "min_s": 10,
+   "vo": "Between physio visits, you do your home exercises alone. Your physio can't watch every rep."
+  },
+  {
+   "id": "s02-teacher",
+   "min_s": 7,
+   "vo": "So your physio records the exercise once. Simon turns it into a 3D reference."
+  },
+  {
+   "id": "s03-follow",
+   "min_s": 9,
+   "vo": "At home, you follow it side by side, and live check marks the joints that drift."
+  },
+  {
+   "id": "s04-wait",
+   "min_s": 8,
+   "vo": "Then SAM 3.1, SAM 3D Body and Muse Spark analyse the take."
+  },
+  {
+   "id": "s05-result",
+   "min_s": 17,
+   "vo": "The result: C, 72 percent of the points. The first note comes at its moment: straighten your arms. Turn the 3D view to see where the two bodies differ."
+  },
+  {
+   "id": "s06-opinion",
+   "min_s": 14,
+   "vo": "Fix it for me replays that moment on your own body, with the arms moved to the recorded pose. Muse Spark watches both videos and agrees with all four notes."
+  },
+  {
+   "id": "s07-models",
+   "min_s": 8,
+   "vo": "Every result lists the Meta models behind it, and whether each one ran live."
+  },
+  {
+   "id": "s08-picture",
+   "min_s": 14,
+   "vo": "One picture of a character becomes a rigged model. SAM 3D Objects builds the shape, SAM 3D Body and the MHR body give it a skeleton, and it performs your take."
+  },
+  {
+   "id": "s09-anybody",
+   "min_s": 8,
+   "vo": "Any body plays the same take on several bodies at once."
+  },
+  {
+   "id": "s10-privacy",
+   "min_s": 13,
+   "vo": "You stay in control. You agree before each take, can keep only the 3D model and drop the video, and can delete any take from its result."
+  },
+  {
+   "id": "s11-cost",
+   "min_s": 10,
+   "vo": "One take costs Simon about 7 cents in API calls. An hour with a personal trainer costs 40 to 75 dollars."
+  },
+  {
+   "id": "s12-end",
+   "min_s": 9,
+   "vo": "Simon. Learn any movement from one recording."
+  }
+ ]
+}

@@ -1,0 +1,140 @@
+{
+  "bone_map": {
+    "chest": {
+      "name": "DEF-spine.002",
+      "node": 41
+    },
+    "head": {
+      "name": "DEF-head",
+      "node": 0
+    },
+    "hips": {
+      "name": "DEF-hips",
+      "node": 51
+    },
+    "leftFoot": {
+      "name": "DEF-foot.L",
+      "node": 44
+    },
+    "leftHand": {
+      "name": "DEF-hand.L",
+      "node": 17
+    },
+    "leftLowerArm": {
+      "name": "DEF-forearm.L",
+      "node": 18
+    },
+    "leftLowerLeg": {
+      "name": "DEF-shin.L",
+      "node": 45
+    },
+    "leftShoulder": {
+      "name": "DEF-shoulder.L",
+      "node": 20
+    },
+    "leftToes": {
+      "name": "DEF-toe.L",
+      "node": 43
+    },
+    "leftUpperArm": {
+      "name": "DEF-upper_arm.L",
+      "node": 19
+    },
+    "leftUpperLeg": {
+      "name": "DEF-thigh.L",
+      "node": 46
+    },
+    "neck": {
+      "name": "DEF-neck",
+      "node": 1
+    },
+    "rightFoot": {
+      "name": "DEF-foot.R",
+      "node": 48
+    },
+    "rightHand": {
+      "name": "DEF-hand.R",
+      "node": 36
+    },
+    "rightLowerArm": {
+      "name": "DEF-forearm.R",
+      "node": 37
+    },
+    "rightLowerLeg": {
+      "name": "DEF-shin.R",
+      "node": 49
+    },
+    "rightShoulder": {
+      "name": "DEF-shoulder.R",
+      "node": 39
+    },
+    "rightToes": {
+      "name": "DEF-toe.R",
+      "node": 47
+    },
+    "rightUpperArm": {
+      "name": "DEF-upper_arm.R",
+      "node": 38
+    },
+    "rightUpperLeg": {
+      "name": "DEF-thigh.R",
+      "node": 50
+    },
+    "spine": {
+      "name": "DEF-spine.001",
+      "node": 42
+    },
+    "upperChest": {
+      "name": "DEF-spine.003",
+      "node": 40
+    }
+  },
+  "checks": {
+    "max_weight_error": 0.0
+  },
+  "converter": {
+    "name": "none",
+    "version": null
+  },
+  "counts": {
+    "joints": 53,
+    "max_texture_px": 0,
+    "skins": 1,
+    "textures": 0,
+    "triangles": 13744
+  },
+  "created_at": "2026-11-01T00:00:00Z",
+  "file": {
+    "bytes": 614264,
+    "name": "model.glb",
+    "sha256": "c6108517c7b8fac59a9e324413b945d00c7a9b278d094efa6dafbfa4da8533fd"
+  },
+  "id": "ual1-mannequin",
+  "kind": "library",
+  "licence": {
+    "attribution": "Quaternius, Universal Animation Library (CC0 1.0)",
+    "id": "CC0",
+    "shareable": true
+  },
+  "map_method": "preset:rigify",
+  "name": "Mannequin",
+  "normalize": {
+    "height_m": 1.8287,
+    "leg_length_m": 0.8298,
+    "rest_class": "T",
+    "scale_to_m": 1.0,
+    "up_fix": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  "schema": "simon.character.v1",
+  "source": {
+    "format": "glb",
+    "original_filename": "AnimationLibrary_Godot_Standard.glb",
+    "url": "https://quaternius.com/packs/universalanimationlibrary.html"
+  },
+  "vrm_version": null
+}

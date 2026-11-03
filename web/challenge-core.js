@@ -3,6 +3,8 @@
 // itself; this file only names a finished job and a person.
 
 import { ensureCss } from "./ui.js";
+import { isSubmission } from "./flags.js";
+import { shownRow, shownText, rankOf } from "./model/score-labels.js";
 
 export const NAME_MAX = 24;
 export const NAME_KEY = "simon.challenge.name";
@@ -10,12 +12,25 @@ export const MSG_OFFLINE = "The app could not be reached. Check your connection 
 export const MSG_FAILED = "The challenge could not be saved. Try again in a moment.";
 export const KIND_LABELS = { friend: "Friend challenge", crew: "Crew challenge", sponsored: "Sponsored" };
 
-/** Entries by score (highest first), a tie to the earlier post, with `rank` 1.. (the server's order, kept in step). */
+/** Entries by the shown measure (one-letter.md L3: the credit percent shown, else the capped score; an old entry by its
+ * score), highest first, a tie to the earlier post, with `rank` 1.. (the server's order, kept in step). */
 export function rankEntries(entries) {
   const list = Array.isArray(entries) ? entries.filter((e) => e && typeof e.score === "number") : [];
   const sorted = [...list].sort((a, b) =>
-    b.score - a.score || String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.name || "").localeCompare(String(b.name || "")));
+    rankOf(b) - rankOf(a) || String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.name || "").localeCompare(String(b.name || "")));
   return sorted.map((e, i) => ({ ...e, rank: i + 1 }));
+}
+
+/** A board row's score and grade as the result headline shows them (one-letter.md); the rank still follows `score`. */
+export function boardNums(entry) {
+  const s = shownRow(entry);
+  return s ? { score: s.figures, grade: s.letter } : { score: String(entry && entry.score), grade: (entry && entry.grade) || "" };
+}
+
+/** ", top score 16,239 points of 22,367" for a list row's leader, or nothing without one. */
+export function leaderText(leader) {
+  const s = leader ? shownRow(leader) : null;
+  return s ? `, top score ${shownText(s)}` : leader ? `, top score ${leader.score}` : "";
 }
 
 /** "Strongest: 5.0 s to 10.0 s", or null when the entry has no strongest section. */
@@ -84,8 +99,12 @@ const enc = encodeURIComponent;
 export const createChallenge = (body) => post("api/challenges", body);
 // An unknown link is a normal outcome (the page shows not-found): `expectStatus` keeps errors.js from reporting the 404.
 export const getChallenge = (id) => call(`api/challenges/${enc(id)}`, { expectStatus: [404] });
-export const listChallenges = async (entryId) =>
-  (await call(entryId ? `api/challenges?entry_id=${enc(entryId)}` : "api/challenges")).challenges || [];
+/** The list route. The judge view (submission profile) adds `view=judge`, which leaves out the boards test runs made. */
+export const challengeListUrl = (entryId, judge) => {
+  const query = [entryId ? `entry_id=${enc(entryId)}` : "", judge ? "view=judge" : ""].filter(Boolean).join("&");
+  return query ? `api/challenges?${query}` : "api/challenges";
+};
+export const listChallenges = async (entryId) => (await call(challengeListUrl(entryId, isSubmission()))).challenges || [];
 /** Adds one result: `{job_id, pid?, name}`. */
 export const addEntry = (id, body) => post(`api/challenges/${enc(id)}/entries`, body);
 

@@ -14,6 +14,9 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
   --sr-a: var(--color-good); --sr-b: var(--color-good); --sr-c: var(--color-warn); --sr-d: var(--color-bad); --sr-f: var(--color-bad);
   font-family: var(--font-sans);
 }
+/* pink text on the raised cards: the lighter brand pink, as the brand pink alone is under 4.5:1 there (axe), beside the block above */
+body .simon-result, body .simon-viewer { --sr-hot-text: var(--color-bad-text); }
+body .simon-result .sr-moment, body .simon-result .sr-worst[aria-pressed="true"] { color: var(--sr-hot-text); }
 /* the summary ring carries the number; the old panel keeps only the grade and its bands (tap the grade for the rules) */
 .simon-result[data-summary="true"] .sr-score-head { display: none; }
 .simon-result[data-summary="true"] .sr-score-top { justify-content: flex-start; }
@@ -22,14 +25,6 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
 .rs h3 { margin: 0; font-size: var(--text-md); font-weight: var(--weight-bold); }
 
 .rs-head { display: flex; align-items: center; gap: var(--space-4); }
-.rs-ring { position: relative; width: 120px; height: 120px; flex: none; display: grid; place-items: center; }
-.rs-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.rs-ring-track { fill: none; stroke: var(--color-line); stroke-width: 6; }
-.rs-ring-fill { fill: none; stroke: var(--color-accent); stroke-width: 6; stroke-linecap: round; }
-.rs-ring[data-grade="D"] .rs-ring-fill, .rs-ring[data-grade="F"] .rs-ring-fill { stroke: var(--color-bad); }
-.rs-ring-value { font: var(--weight-black) 44px/1 var(--font-sans); color: var(--color-accent); margin-top: -10px; }
-.rs-ring[data-grade="D"] .rs-ring-value, .rs-ring[data-grade="F"] .rs-ring-value { color: var(--color-bad); }
-.rs-ring-caption { position: absolute; bottom: 30px; font-size: var(--text-xs); color: var(--color-text-muted); }
 .rs-eyebrow { margin: 0 0 var(--space-1); color: var(--color-accent); font: var(--weight-bold) var(--text-xs)/1 var(--font-sans);
   letter-spacing: 0.08em; text-transform: uppercase; }
 .rs-title { margin: 0; font-size: var(--text-lg); line-height: 1.15; }
@@ -94,7 +89,6 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
   transform: translateY(-50%); border-radius: var(--radius-pill); background: var(--color-accent); }
 
 .rs-note-title { margin: 0 0 var(--space-2); color: var(--color-accent); font-size: var(--text-sm); font-weight: var(--weight-bold); }
-.rs-note-title::before { content: "✦ "; }
 .rs-note-text { margin: 0; }
 
 .rs-actions { display: grid; gap: var(--space-2); }
@@ -115,20 +109,12 @@ body .simon-result, body .simon-viewer { /* body: wins over result.css, which lo
 
 /* ----- result-redesign-additions.md ------------------------------------------------------------------------------- */
 /* R4 the reveal: the grade lands on the ring once the count-up ends (transform and opacity only: no layout shift) */
-.rs-ring-grade { position: absolute; top: 2px; right: 2px; min-width: 30px; height: 30px; padding: 0 var(--space-2); display: grid;
-  place-items: center; border-radius: var(--radius-pill); background: var(--color-accent); color: var(--color-on-accent);
-  font: var(--weight-black) var(--text-md)/1 var(--font-sans); box-shadow: 0 0 0 3px var(--color-bg); }
-.rs-ring[data-grade="D"] .rs-ring-grade, .rs-ring[data-grade="F"] .rs-ring-grade { background: var(--color-bad); }
-.rs-ring-value { font-variant-numeric: tabular-nums; }
-.rs-ring[data-reveal="playing"] .rs-ring-grade { opacity: 0; transform: scale(1.8); }
-.rs-ring[data-reveal="done"] .rs-ring-grade { animation: rs-grade-land var(--grade-land) var(--ease-out) both; }
-@keyframes rs-grade-land { from { opacity: 0; transform: scale(1.8) rotate(-12deg); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .rs-ring[data-reveal] .rs-ring-grade { animation: none; opacity: 1; transform: none; } }
+@keyframes rs-grade-land { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* R3 the 3D bodies in the worst moment's card, in place of the stick figures */
 .rs-mesh { display: grid; gap: var(--space-2); }
 .rs-mesh-stage { aspect-ratio: 1; max-height: 340px; width: 100%; border-radius: var(--radius-md); overflow: hidden;
-  background: radial-gradient(120% 90% at 50% 0%, var(--color-raised) 0%, var(--color-surface) 70%); touch-action: pan-y; }
+  background: var(--color-surface); touch-action: pan-y; }
 .rs-mesh-legend { margin: 0; display: flex; justify-content: center; gap: var(--space-4); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
 .rs-mesh-legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: var(--radius-pill); }
 .rs-mesh-ref::before { background: var(--mesh-trainer); opacity: 0.6; }
@@ -152,13 +138,13 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 
 /* R1 "How this was made": the Meta models that ran, as a pipeline per clip */
 .hm { display: grid; gap: var(--space-4); margin-top: var(--space-4); padding: var(--space-4); border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--color-accent-soft), transparent 140px), var(--color-surface); border: 1px solid var(--color-line); }
+  background: var(--color-surface); border: 1px solid var(--color-line); }
 .hm-head { display: grid; gap: var(--space-1); }
-.hm-eyebrow { margin: 0; color: var(--color-accent); font: var(--weight-bold) var(--text-xs)/1 var(--font-sans); letter-spacing: 0.08em; text-transform: uppercase; }
+.hm-eyebrow { margin: 0; color: var(--color-text-muted); font: var(--weight-medium) var(--text-sm)/1.2 var(--font-sans); }
 .hm-title { margin: 0; font-size: var(--text-lg); line-height: 1.15; }
 .hm-made { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
 .hm-group { display: grid; gap: var(--space-2); }
-.hm-clip { margin: 0; color: var(--color-text-muted); font: var(--weight-semibold) var(--text-xs)/1.2 var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; }
+.hm-clip { margin: 0; color: var(--color-text-muted); font: var(--weight-medium) var(--text-sm)/1.2 var(--font-sans); }
 .hm-steps { list-style: none; margin: 0; padding: 0; display: grid; }
 .hm-step { position: relative; display: grid; grid-template-columns: 20px 1fr; gap: var(--space-3); padding-bottom: var(--space-3); }
 .hm-step:last-child { padding-bottom: 0; }
@@ -169,7 +155,7 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 .hm-step[data-tone="fallback"] .hm-dot { border-color: var(--color-warn); }
 .hm-body { display: grid; gap: 2px; min-width: 0; }
 .hm-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
-.hm-model { font-weight: var(--weight-bold); font-size: var(--text-md); }
+.hm-model { font-weight: var(--weight-semibold); font-size: var(--text-md); }
 .hm-pill { padding: 3px var(--space-2); border-radius: var(--radius-pill); font: var(--weight-semibold) var(--text-xs)/1.2 var(--font-sans);
   color: var(--color-text-muted); background: var(--card-fill-raised); border: 1px solid var(--color-line); }
 .hm-step[data-tone="ran"] .hm-pill { color: var(--color-accent); background: var(--color-accent-soft); border-color: transparent; }
@@ -208,7 +194,7 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 /* R1: a mark that holds several moments shows how many */
 .simon-result .sr-mark-count { position: absolute; top: var(--space-1); right: var(--space-1); min-width: 18px; height: 18px;
   padding: 0 var(--space-1); border-radius: var(--radius-pill); background: var(--color-bg); color: var(--color-text);
-  font: var(--weight-bold) var(--text-xs)/18px var(--font-sans); text-align: center; pointer-events: none; }
+  font: var(--weight-semibold) var(--text-xs)/18px var(--font-sans); text-align: center; pointer-events: none; }
 
 /* Side by side (views/side-by-side.js): the trainer's and the follower's original videos with one play button */
 .sbs { background: var(--card-fill); border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: var(--space-4); margin: 0 0 var(--space-4); color: var(--color-text); }
@@ -229,3 +215,65 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 .sbs-sound-option:has(input:disabled) { color: var(--color-text-muted); }
 .sbs-note { width: 100%; margin: 0; }
 @media (max-width: 420px) { .sbs { padding: var(--space-3); } .sbs-grid { gap: var(--space-2); } }
+
+/* the measured stage split (judge-take.md, TICKET-260): one strip per job, under "How this was made" */
+.ss { margin: var(--space-3) 0; padding: var(--space-3); border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); }
+.ss-title { font-size: 16px; margin: 0 0 var(--space-2); }
+.ss-list { display: grid; gap: var(--space-1); margin: 0; }
+.ss-row { display: flex; justify-content: space-between; gap: var(--space-3); }
+.ss-row dt { color: var(--color-text-muted); }
+.ss-row dd { margin: 0; color: var(--color-text); font-variant-numeric: tabular-nums; }
+.ss[data-recorded="false"] .ss-row dt { color: var(--color-text); }
+/* TICKET-266: text in another language. The row follows the text direction; times and counts keep their own left-to-right order, so numbers are not mirrored. */
+body .simon-result .sr-fault-list[dir] .sr-fault { text-align: start; }
+body .simon-result .sr-fault-list[dir="rtl"] .sr-chip { direction: ltr; unicode-bidi: isolate; }
+body .simon-result .sr-lang-note { margin: var(--space-1, 4px) 0; font-size: .875rem; opacity: .85; overflow-wrap: anywhere; }
+/* Part 5's credit score (model/score-credit.js): "Show score as [ % ] [ Points ]" and the level, under the ring */
+.rs-switches { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.rs-switch-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.rs-switch-label { color: var(--color-text-muted); font-size: var(--text-sm); }
+.rs-switch button { min-width: var(--target-min); padding: 0 var(--space-3); }
+/* points run to five digits: a smaller number keeps them inside the ring */
+
+/* The score, once, at the top of the result (views/result-summary.js scoreBar): the grade, the headline over a bar that
+   fills to the score past the grade marks, and the score, which a tap shows as % or points. On the first paint the bar
+   starts slowly, then the score grows big and settles and the grade lands. Lime for A to C, pink for D and F. */
+.rs-score-top { display: block; width: 100%; margin-bottom: var(--space-4); }
+.rs-meter { --fill: var(--frac); box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: var(--card-fill); }
+.rs-meter-grade { flex: none; min-width: 1ch; color: var(--color-pink); font: 400 var(--meter-grade)/1 var(--font-display); text-align: center;
+  -webkit-text-stroke: var(--meter-grade-stroke) currentColor; paint-order: stroke fill; }   /* a little bolder than Regular; Sniglet has no middle weight */
+.rs-meter-main { flex: 1; min-width: 0; display: grid; gap: var(--space-1); }
+.rs-meter-main .rs-title { font-size: var(--text-md); }
+.rs-meter-track { position: relative; height: var(--meter-h); margin-top: var(--space-4); border-radius: var(--radius-pill); background: var(--color-line); }
+.rs-meter-fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--fill) * 100%); border-radius: inherit; background: var(--color-accent);
+  box-shadow: 0 0 var(--meter-glow) var(--color-accent); }
+.rs-meter[data-grade="D"] .rs-meter-fill, .rs-meter[data-grade="E"] .rs-meter-fill, .rs-meter[data-grade="F"] .rs-meter-fill { background: var(--color-pink); box-shadow: 0 0 var(--meter-glow) var(--color-pink); }
+.rs-meter-mark { position: absolute; left: calc(var(--at) * 100%); top: calc(var(--meter-h) * -0.75); bottom: calc(var(--meter-h) * -0.75);
+  width: 2px; background: var(--color-text-muted); opacity: 0.5; }
+.rs-meter-mark-label { position: absolute; bottom: calc(100% + 4px); left: 50%; translate: -50% 0; font: var(--weight-semibold) var(--text-xs)/1 var(--font-sans);
+  color: var(--color-text-muted); }
+.rs-meter-mark[data-reached="true"] { opacity: 1; background: var(--color-text); }
+.rs-meter-mark[data-reached="true"] .rs-meter-mark-label { color: var(--color-text); }
+.rs-meter-score { flex: none; min-width: 6ch; display: grid; justify-items: end; gap: var(--space-1); padding: var(--space-1) var(--space-2);
+  border: 0; border-radius: var(--radius-md); background: transparent; color: inherit; font: inherit; }
+.rs-meter-value { display: inline-block; font: 400 var(--meter-score)/1 var(--font-display); color: var(--color-accent);
+  -webkit-text-stroke: var(--meter-grade-stroke) currentColor; paint-order: stroke fill; transform-origin: right center; }
+.rs-meter[data-grade="D"] .rs-meter-value, .rs-meter[data-grade="E"] .rs-meter-value, .rs-meter[data-grade="F"] .rs-meter-value { color: var(--color-pink); }
+.rs-units { display: inline-flex; margin-top: var(--space-1); padding: 2px; border: 1px solid var(--color-line); border-radius: var(--radius-pill); }
+.rs-unit { min-height: var(--target-min); min-width: var(--target-min); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-pill);
+  background: transparent; color: var(--color-text-muted); font: var(--weight-semibold) var(--text-xs)/1 var(--font-sans); cursor: pointer; }
+.rs-unit[aria-pressed="true"] { background: var(--color-accent); color: var(--color-on-accent); }
+.rs-unit:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.rs-meter-caption { font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.rs-meter[data-reveal="playing"] .rs-meter-value { opacity: 0.8; }
+.rs-meter[data-reveal="playing"] .rs-meter-grade { opacity: 0; transform: scale(1.8); }
+.rs-meter[data-reveal="done"] .rs-meter-value { animation: rs-meter-land var(--meter-land) var(--ease-out) both; }
+.rs-meter[data-reveal="done"] .rs-meter-grade { animation: rs-grade-land var(--meter-land) var(--ease-out) both; }
+@keyframes rs-meter-land { 0% { transform: scale(1); } 45% { transform: scale(1.6); } 100% { transform: scale(1); } }
+@media (max-width: 520px) {
+  .rs-meter { flex-wrap: wrap; gap: var(--space-3); }
+  .rs-meter-main { order: 3; flex-basis: 100%; }
+  .rs-meter-score { margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .rs-meter[data-reveal] .rs-meter-value, .rs-meter[data-reveal] .rs-meter-grade { animation: none; opacity: 1; transform: none; } }

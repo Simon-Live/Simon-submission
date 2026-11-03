@@ -33,6 +33,7 @@
 .ch-grade[data-grade="C"] { background: #fff4dc; color: #8a5a00; }
 .ch-grade[data-grade="D"] { background: #ffe9d6; color: #94410b; }
 .ch-grade[data-grade="F"] { background: var(--red-bg); color: var(--red-ink); }
+.ch-grade[data-grade="E"] { background: var(--red-bg); color: var(--red-ink); } /* one-letter.md: the credit's E sits with F */
 .ch-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .ch-list-item { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card-fill); text-decoration: none; min-height: var(--tap); }
 .ch-list-item .ch-tag { justify-self: start; }

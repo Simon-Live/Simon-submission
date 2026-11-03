@@ -1,4 +1,9 @@
-"""Job queue (SIMON7_GPU_WORKERS worker threads, default 2) with job records on disk under `<state>/jobs/<id>/` (app.md "Jobs")."""
+"""Job queue (SIMON7_GPU_WORKERS worker threads, default 2) with job records on disk under `<state>/jobs/<id>/` (app.md "Jobs").
+
+One server runs jobs per state folder: the queue holds `flock` on `<state>/jobs.lock` (TICKET-240, staging.md "Restart with
+no gap"). A second server started on the same folder (the new build of a restart) is a standby: it serves requests and
+queues new jobs, reads the records the other server writes, and runs nothing until it holds the lock.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +20,8 @@ import traceback
 import uuid
 from typing import Any, Callable
 
-from part7 import applog, config, history_store, job_lookup, keys
+from part7 import applog, config, history_store, job_gpu, job_lookup, keys, queue_eta
+from part7.queue_lock import QueueLock
 
 QUEUE_FULL_MESSAGE = "The app is busy. Try again in a few minutes."
 FALLBACK_REASON = "the step failed unexpectedly"
@@ -39,6 +45,14 @@ class DrainingError(Exception):
 DRAINING_MESSAGE = "Restarting shortly, try again in a minute."
 DRAIN_RETRY_AFTER_S = 60
 DRAIN_CUT_REASON = "the app restarted before this take finished; record it again"
+# TICKET-290: a running job that can be rebuilt (it has a `_resume` spec) is queued again instead of failed, at most
+# this many times; the next server runs it from the start with a fresh work folder.
+CUT_REQUEUE_MAX = 2
+CUT_REQUEUE_NOTE = "The app restarted while this take was running. It starts again on its own."
+# Only before anything irreversible: a trainer makes its catalog entry at the end of the chain, so a cut in a later
+# stage is not rerun (a second entry), and a follow that keeps no video drops its source when the run ends.
+CUT_REQUEUE_STAGES = frozenset({None, "upload", "keyframes", "track", "pose"})
+LOCK_POLL_S = 0.5  # a standby asks for the lock this often
 
 
 class JobFailed(Exception):
@@ -115,10 +129,16 @@ JobFn = Callable[[JobContext], "dict[str, Any] | None"]
 
 
 class JobQueue:
-    """Runs queued jobs on `workers` threads; the GPU lock decides how many Part 2 calls overlap."""
+    """Runs queued jobs on `workers` threads; the GPU lock decides how many Part 2 calls overlap.
+
+    `lock` (default: `start`) takes the state folder's queue lock; without it the queue is a standby until it gets it.
+    `after_pid` (default: `SIMON7_JOBS_AFTER_PID`) also keeps it a standby while that process runs: a restart names the
+    old server, so an old build that predates the lock is waited for too.
+    """
 
     def __init__(
-        self, state: Path | str, *, limit: int = config.QUEUE_LIMIT, start: bool = True, workers: int | None = None
+        self, state: Path | str, *, limit: int = config.QUEUE_LIMIT, start: bool = True, workers: int | None = None,
+        lock: bool | None = None, after_pid: int | None = None,
     ) -> None:
         self.root = Path(state) / "jobs"
         self.root.mkdir(parents=True, exist_ok=True)
@@ -134,20 +154,110 @@ class JobQueue:
         self._closed = False
         self._draining = False
         self._resumable: list[str] = []  # queued jobs from before a restart that carry a `_resume` spec
+        self._cut: set[str] = set()  # TICKET-290: queued again at a drain; the old run's late writes are ignored
         self.on_cleanup: Callable[[], None] | None = None  # the server sweeps old uploads with each job sweep
         self._stop_sweeper = threading.Event()
-        self.cleanup()  # the startup sweep; later sweeps run in their own thread, never on the job-start path
-        self._load()
+        self._rebuild: Callable[[dict[str, Any]], "JobFn | None"] | None = None  # kept by a standby for the takeover
+        self._on_owner: list[Callable[[], None]] = []
+        self._foreign: set[str] = set()  # records another server owns, read from disk while this one is a standby
+        self._lock: QueueLock | None = None
+        self._owner = True
+        self._eta = queue_eta.EtaCache(self.root)  # recent run times per kind for `eta_s` (TICKET-288)
+        if start if lock is None else lock:
+            self._lock = QueueLock(state, after_pid if after_pid is not None else config.jobs_after_pid())
+            self._owner = self._lock.try_take()
+        if self._owner:
+            self.cleanup()  # the startup sweep; later sweeps run in their own thread, never on the job-start path
+            self._load()
+        else:
+            applog.log("jobs: standby, another server runs the jobs of this state folder; new jobs wait for its lock")
+            with self._cond:
+                self._scan_foreign()
         job_lookup.register(self.root, self.trainer_for)
+        self._eta.refresh()
         self.workers = max(1, workers if workers is not None else config.gpu_workers())
         self._threads = [
             threading.Thread(target=self._loop, name=f"part7-jobs-{n}", daemon=True) for n in range(self.workers)
         ]
         self._sweeper = threading.Thread(target=self._sweep_loop, name="part7-jobs-sweep", daemon=True)
+        self._taker = threading.Thread(target=self._await_lock, name="part7-jobs-lock", daemon=True)
         if start:
             for thread in self._threads:
                 thread.start()
+            (self._sweeper if self._owner else self._taker).start()
+
+    # ----- the queue lock (TICKET-240) -----------------------------------------------------------------------------
+    @property
+    def owner(self) -> bool:
+        """True when this queue runs jobs: it holds the state folder's queue lock (or runs without one)."""
+        return self._owner
+
+    def when_owner(self, fn: Callable[[], None]) -> None:
+        """Run `fn` now when this queue runs jobs, else once it takes the lock (the warm Part 2 workers)."""
+        with self._cond:
+            if not self._owner:
+                self._on_owner.append(fn)
+                return
+        fn()
+
+    def _await_lock(self) -> None:
+        """A standby's thread: take the lock once it is free, unless the server stops first."""
+        while not self._stop_sweeper.wait(LOCK_POLL_S):
+            with self._cond:  # drain() sets the flag under the same lock: a stopping standby never takes over
+                if self._draining or self._closed:
+                    return
+                if self._lock is None or not self._lock.try_take():
+                    continue
+            self._take_over()
+            return
+
+    def _take_over(self) -> None:
+        """Load the records the other server left (as a restart does), queue the resumable ones, start running."""
+        applog.log("jobs: queue lock taken; loading the records the previous server left")
+        self.cleanup()
+        with self._cond:  # one step, so a request cannot read a record back in as foreign before the load
+            for job_id in self._foreign:
+                self._jobs.pop(job_id, None)
+            self._foreign.clear()
+            self._load()
+            rebuild, self._rebuild = self._rebuild, None
+        if rebuild is not None:
+            self._resume_now(rebuild)
+        self._eta.refresh()
+        with self._cond:
+            self._owner = True
+            hooks, self._on_owner = self._on_owner, []
+            self._cond.notify_all()
+        if not self._stop_sweeper.is_set():
             self._sweeper.start()
+        for fn in hooks:
+            try:
+                fn()
+            except Exception as exc:  # a hook must not stop the jobs, which already run
+                applog.log(f"jobs: start hook failed: {applog.cause(exc)}", level=logging.WARNING)
+        applog.log(f"jobs: running jobs now, {len(self._waiting)} queued")
+
+    def _read_record(self, job_id: str) -> dict[str, Any] | None:
+        try:
+            job = json.loads((self.job_dir(job_id) / "job.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return job if isinstance(job, dict) and job.get("id") == job_id else None
+
+    def _scan_foreign(self) -> None:
+        """A standby's view of the other server's records: new folders, and the ones still queued or running, re-read
+        from disk (caller holds the lock). Never writes."""
+        for child in self.root.iterdir():
+            job_id = child.name
+            if not JOB_ID_RE.match(job_id) or (job_id in self._jobs and job_id not in self._foreign):
+                continue
+            known = self._jobs.get(job_id)
+            if known is not None and known.get("status") not in ("queued", "running"):
+                continue
+            job = self._read_record(job_id)
+            if job is not None:
+                self._jobs[job_id] = job
+                self._foreign.add(job_id)
 
     def job_dir(self, job_id: str) -> Path:
         return self.root / job_id
@@ -176,12 +286,25 @@ class JobQueue:
     def trainer_for(self, entry_id: str) -> str | None:
         """The id of the newest done trainer job that made catalog entry `entry_id`, from the records in memory."""
         with self._cond:
+            if not self._owner:
+                self._scan_foreign()
             found = [
                 (str(j.get("finished_at") or ""), jid) for jid, j in self._jobs.items()
                 if j.get("kind") == "trainer" and j.get("status") == "done"
                 and (j.get("entry_id") or (j.get("result") or {}).get("entry_id")) == entry_id
             ]
         return max(found)[1] if found else None
+
+    def recent_trainer_entries(self, limit: int) -> list[tuple[str, str]]:
+        """`(job id, entry id)` of the newest done trainer jobs that made an entry, newest first (the entry content check)."""
+        with self._cond:
+            if not self._owner:
+                self._scan_foreign()
+            found = [
+                (str(j.get("finished_at") or ""), jid, str(j.get("entry_id") or (j.get("result") or {}).get("entry_id") or ""))
+                for jid, j in self._jobs.items() if j.get("kind") == "trainer" and j.get("status") == "done"
+            ]
+        return [(jid, eid) for _, jid, eid in sorted(found, reverse=True) if eid][:limit]
 
     def _sweep_loop(self) -> None:
         """Retention sweep every `config.cleanup_every_s()` seconds, off the workers and the request threads."""
@@ -199,7 +322,12 @@ class JobQueue:
                 continue
             if not isinstance(job, dict) or not isinstance(job.get("id"), str):
                 continue
+            if job["id"] in self._jobs:  # queued by this server while it was a standby: already in the queue
+                continue
             if job.get("status") == "queued" and isinstance(job.get("_resume"), dict):
+                if job.pop("work_reset", None):  # TICKET-290: cut off at a drain; the next run starts clean
+                    shutil.rmtree(record.parent / "work", ignore_errors=True)
+                    self._write(job)
                 applog.log("was queued when the server stopped; stays queued and runs after the restart",
                            job["id"], record.parent)
                 self._resumable.append(job["id"])
@@ -214,7 +342,15 @@ class JobQueue:
         """Queue the jobs that were waiting at the last stop; `rebuild(record)` makes each one's function.
 
         A job `rebuild` cannot rebuild (None, or an exception) is marked failed. Returns how many were queued.
+        A standby keeps `rebuild` and queues them when it takes the lock (0 now).
         """
+        with self._cond:
+            if not self._owner:
+                self._rebuild = rebuild
+                return 0
+        return self._resume_now(rebuild)
+
+    def _resume_now(self, rebuild: Callable[[dict[str, Any]], "JobFn | None"]) -> int:
         queued = 0
         with self._cond:
             ids, self._resumable = self._resumable, []
@@ -259,14 +395,35 @@ class JobQueue:
                     break
                 self._cond.wait(min(left, poll_s))
             cut = sorted(self._running)
+            requeued = {job_id for job_id in cut if self._requeue_cut(self._jobs[job_id])}
             for job_id in cut:
-                self._mark_failed(self._jobs[job_id], self._jobs[job_id].get("stage") or "upload", DRAIN_CUT_REASON)
+                if job_id not in requeued:
+                    self._mark_failed(self._jobs[job_id], self._jobs[job_id].get("stage") or "upload", DRAIN_CUT_REASON)
                 self._write(self._jobs[job_id])
+            self._cut |= requeued
         for job_id in cut:
             applog.anomaly("drain_cut_off", f"job still running after {max_s:.0f} s", job=job_id,
-                           job_dir=self.job_dir(job_id), kind=self._jobs[job_id].get("kind"))
+                           job_dir=self.job_dir(job_id), kind=self._jobs[job_id].get("kind"),
+                           requeued=job_id in requeued)
         applog.log(f"drain: done, {len(cut)} job(s) cut off")
         return len(cut)
+
+    @staticmethod
+    def _requeue_cut(job: dict[str, Any]) -> bool:
+        """TICKET-290: put a job cut off at a drain back in the queue when it can be rebuilt; False when it cannot.
+
+        Only a job with a `_resume` spec, cut in a stage before anything irreversible (`CUT_REQUEUE_STAGES`, not a
+        model-only follow, not a trainer that already has its entry), qualifies, at most `CUT_REQUEUE_MAX` times. The record says so (`cut_offs`,
+        the note); `work_reset` asks the next server to clear the old run's work folder before it runs again.
+        """
+        cuts = int(job.get("cut_offs") or 0)
+        if not isinstance(job.get("_resume"), dict) or cuts >= CUT_REQUEUE_MAX:
+            return False
+        if job.get("stage") not in CUT_REQUEUE_STAGES or job.get("video_kept") is False or job.get("entry_id") and job.get("kind") == "trainer":
+            return False
+        job.update(status="queued", stage=None, stages=[], started_at=None, note=CUT_REQUEUE_NOTE,
+                   cut_offs=cuts + 1, work_reset=True)
+        return True
 
     def _write(self, job: dict[str, Any]) -> None:
         directory = self.job_dir(job["id"])
@@ -308,6 +465,12 @@ class JobQueue:
 
     def update(self, job_id: str, **fields: Any) -> None:
         with self._cond:
+            if job_id in self._cut:  # TICKET-290: queued again at the drain; only a cut run that still finishes counts
+                if fields.get("status") != "done":
+                    return
+                self._cut.discard(job_id)
+                self._jobs[job_id].pop("work_reset", None)
+                fields = {"note": None, **fields}
             job = self._jobs[job_id]
             job.update(fields)
             stage = fields.get("stage")
@@ -337,6 +500,17 @@ class JobQueue:
             return {"queued": len(self._waiting), "running": len(self._running),
                     "oldest_running_s": max(ages) if ages else None}
 
+    def gpu_waits(self) -> list[tuple[str, float, str]]:
+        """`(job id, wait start as epoch seconds, reason)` of each queued or running job in GPU admission (TICKET-305)."""
+        with self._cond:
+            found = []
+            for job in self._jobs.values():
+                wait = job.get("wait")
+                since = queue_eta.epoch(wait.get("since")) if isinstance(wait, dict) else None
+                if since is not None and job.get("status") in ("queued", "running"):
+                    found.append((str(job["id"]), since, str(wait.get("reason") or "")))
+            return found
+
     def add_note(self, job_id: str, note: str) -> None:
         with self._cond:
             job = self._jobs[job_id]
@@ -350,20 +524,46 @@ class JobQueue:
             ids = [jid for jid, _ in self._waiting]
             position = ids.index(job["id"]) + 1 if job["id"] in ids else None
         view["queue_position"] = position
+        view.update(self._eta_fields(job))
         return view
 
+    def _elapsed(self, job_id: str) -> float:
+        """Seconds a running job has run: this server's clock, else the record's `started_at` (caller holds the lock)."""
+        if job_id in self._started:
+            return max(0.0, self._clock() - self._started[job_id])
+        started = queue_eta.epoch(self._jobs.get(job_id, {}).get("started_at"))
+        return max(0.0, time.time() - started) if started is not None else 0.0
+
+    def _eta_fields(self, job: dict[str, Any]) -> dict[str, Any]:
+        """`eta_s` and `eta_basis` for a queued or running job, or nothing without enough samples (caller holds the lock)."""
+        kind, got = str(job.get("kind")), None
+        if job["status"] == "running":
+            got = queue_eta.for_running(kind, self._elapsed(job["id"]), self._eta.median)
+        elif job["status"] == "queued":
+            ids = [jid for jid, _ in self._waiting]
+            if job["id"] in ids:
+                ahead = [str(self._jobs[jid].get("kind")) for jid in ids[:ids.index(job["id"])]]
+                running = [(str(self._jobs[jid].get("kind")), self._elapsed(jid)) for jid in sorted(self._running)]
+                got = queue_eta.for_queued(kind, ahead, running, self.workers, self._eta.median)
+        return {"eta_s": got[0], "eta_basis": got[1]} if got is not None else {}
+
     def get(self, job_id: str) -> dict[str, Any] | None:
-        """Return the public record of `job_id`, or None."""
+        """Return the public record of `job_id`, or None. A standby reads the other server's records from disk."""
         with self._cond:
             job = self._jobs.get(job_id)
+            if not self._owner and (job is None or job_id in self._foreign):
+                fresh = self._read_record(job_id)
+                if fresh is not None:
+                    self._jobs[job_id], job = fresh, fresh
+                    self._foreign.add(job_id)
             return self._view(job) if job is not None else None
 
     def forget(self, job_id: str) -> bool:
         """Drop a finished (`done` or `failed`) job and its folder; False when it is unknown or still queued or running."""
         with self._cond:
             job = self._jobs.get(job_id)
-            if job is None or job["status"] not in ("done", "failed"):
-                return False
+            if job is None or job["status"] not in ("done", "failed") or job_id in self._foreign:
+                return False  # a standby never removes a record the other server owns
             del self._jobs[job_id]
             self._marks.pop(job_id, None)
             self._durations.pop(job_id, None)
@@ -374,6 +574,8 @@ class JobQueue:
     def active_refs(self, field: str, value: str, exclude: str = "") -> bool:
         """True when a queued or running job other than `exclude` has `field == value` (an upload or people job in use)."""
         with self._cond:
+            if not self._owner:
+                self._scan_foreign()
             return any(j.get(field) == value and j.get("status") in ("queued", "running")
                        for jid, j in self._jobs.items() if jid != exclude)
 
@@ -383,6 +585,8 @@ class JobQueue:
         Jobs of a kind in `ignore_kinds` do not count.
         """
         with self._cond:
+            if not self._owner:
+                self._scan_foreign()
             return any(j.get(field) == value and j.get("status") == "done" and j.get("kind") not in ignore_kinds
                        for jid, j in self._jobs.items() if jid != exclude)
 
@@ -412,11 +616,18 @@ class JobQueue:
         for thread in self._threads:
             if thread.is_alive():
                 thread.join(timeout=timeout)
+        if self._taker.is_alive():
+            self._taker.join(timeout=timeout)
+        with self._cond:
+            busy = bool(self._running)
+        if self._lock is not None and not busy:
+            self._lock.release()  # a standby on the same folder takes over
+        # A job still running (cut off by a drain) keeps the lock until this process exits.
 
     def _loop(self) -> None:
         while True:
             with self._cond:
-                while (not self._waiting or self._draining) and not self._closed:
+                while (not self._waiting or self._draining or not self._owner) and not self._closed:
                     self._cond.wait()
                 if self._closed:
                     return
@@ -427,6 +638,7 @@ class JobQueue:
                 self._write(self._jobs[job_id])
                 self._cond.notify_all()
             self._run_one(job_id, fn)
+            self._eta.refresh()  # a finished job is a new sample; requests never read the disk for it
             with self._cond:
                 self._running.discard(job_id)
                 self._started.pop(job_id, None)
@@ -462,6 +674,8 @@ class JobQueue:
         ctx = JobContext(self, job_id)
         t0 = self._clock()
         applog.log(self._start_line(job_id), job_id, ctx.dir)
+        self._clear_wait(job_id, "wait", "worker", "worker_reason")  # a resumed record: the old run's GPU state
+        job_gpu.track(ctx.dir, lambda **f: self.update(job_id, **f))  # TICKET-289: GPU wait and worker path
         try:
             outcome = fn(ctx)
             outcome = outcome if isinstance(outcome, dict) else {}
@@ -489,6 +703,22 @@ class JobQueue:
             applog.log(f"crashed at {stage}: {applog.cause(exc)} (traceback in steps/error.log)", job_id, ctx.dir, logging.ERROR)
             self._finish(job_id, ctx, t0, "failed", stage, FALLBACK_REASON, "crash")
             self._fail(job_id, stage, FALLBACK_REASON)
+        finally:
+            self._end_gpu_note(job_id, ctx)
+
+    def _end_gpu_note(self, job_id: str, ctx: JobContext) -> None:
+        """A finished job reports no more GPU state, and a wait left set (a timed out admission) is cleared."""
+        job_gpu.untrack(ctx.dir)
+        self._clear_wait(job_id)
+
+    def _clear_wait(self, job_id: str, *names: str) -> None:
+        """Set the GPU fields `names` (default: `wait`) to None when any is set (TICKET-289)."""
+        names = names or ("wait",)
+        with self._cond:
+            job = self._jobs.get(job_id)
+            if job is None or all(job.get(n) is None for n in names):
+                return
+        self.update(job_id, **dict.fromkeys(names))
 
     def _record_history(self, job_id: str) -> None:
         """A finished take of a signed-in student who opted in gets a history copy (history.md).
@@ -506,6 +736,8 @@ class JobQueue:
 
     def _fail(self, job_id: str, stage: str, reason: str) -> None:
         with self._cond:
+            if job_id in self._cut:  # TICKET-290: see update()
+                return
             job = self._jobs[job_id]
             self._mark_failed(job, stage, reason)
             self._write(job)

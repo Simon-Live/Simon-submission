@@ -33,3 +33,20 @@
   .ref { border: 1px solid var(--line, #ddd); }
   .ref-stage { aspect-ratio: 4 / 3; max-height: 60dvh; } /* the height of the 4/3 camera beside it */
 }
+/* TICKET-291 (docs/specs/follow-side-by-side.md): on Follow the trainer and the camera sit side by side at one height,
+   both whole under the sticky header; web/follow-side.js sets data-layout and --follow-box-h. These selectors outrank
+   the design chrome's stacked column (web/theme/capture.css), which stays as written for a row with no data-layout. */
+.capture .ref-row[data-layout] { gap: var(--follow-gap, 12px); align-items: start; width: 100%; }
+.capture .ref-row[data-layout="side"] { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.capture .ref-row[data-layout="stack"] { display: flex; flex-direction: column; }
+.capture .ref-row[data-layout] > .ref { order: 1; width: 100%; }
+.capture .ref-row[data-layout] > .cam { order: 2; }
+.capture .ref-row[data-layout][data-swap="true"] > .ref { order: 2; }
+.capture .ref-row[data-layout][data-swap="true"] > .cam { order: 1; }
+.capture .ref-row[data-layout] .ref-stage, .capture .ref-row[data-layout] > .cam {
+  height: var(--follow-box-h); max-height: none; aspect-ratio: auto; width: 100%; }
+/* a narrow column: the title wraps above Watch, the buttons share the width */
+.capture .ref-row[data-layout="side"] .cap-ref-meta { flex-wrap: wrap; padding: var(--space-2, 8px) var(--space-3, 12px); }
+.capture .ref-row[data-layout="side"] .ref-bar { padding-left: 0; padding-right: 0; }
+/* TICKET-316: the line that stands in for a figure that drew nothing is readable on the black stage */
+.ref-empty, .ref-figure [data-testid="reference-empty"] { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 12px; text-align: center; color: #fff; font-size: 13px; }

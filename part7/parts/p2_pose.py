@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import contextlib
+import json
+import logging
 import os
+import shutil
+import time
 from pathlib import Path
 from typing import Any
 
-from part7 import applog, config, gpu_lock, keys, p2_worker, modules, runner
+from part7 import applog, config, gpu_lock, job_gpu, keys, p2_worker, modules, runner, warm_wait
 from part7.parts import p1_keyframes, probe
 
 API_TRACKER = "api-sam31"
@@ -74,6 +78,10 @@ TRACK_MIN_FREE_MIB = 12288
 # figure, after the warm worker's resident memory was given back, so it cannot be killed for lack of memory.
 COLD_SAM31_MIN_FREE_MIB = 26624
 COLD_MIN_FREE_ENV = "SIMON7_P2_COLD_SAM31_MIN_FREE_MIB"  # operator override of that figure (a card where it can never be met)
+# TICKET-320: what stopping an idle loaded tracker gives back before its load was measured (`_tracker_gives_back`;
+# WSL2's nvidia-smi reports [N/A] per process, so no pid is read). part7.log measured about 4038 MiB twice (2026-11-01 13:48:58Z, 2026-11-02 17:18:15Z); the figure is
+# kept low on purpose: an estimate too low only makes the take wait for the warm tracker, one too high stops it in vain.
+TRACK_RESIDENT_MIB = 4000
 
 
 COLD_WAIT_ENV = "SIMON7_P2_COLD_SAM31_WAIT_S"  # longest the cold repeat waits for that memory before local-open instead
@@ -118,6 +126,12 @@ def has_mesh(lk: modules.Modules, clone: Path) -> bool:
     return probe.has_flag(2, [*base, "run"], clone, "--mesh", lk)
 
 
+def has_mesh_stream(lk: modules.Modules, clone: Path) -> bool:
+    """True when the pinned `part2 run` offers `--mesh-stream` (mesh3d.stream/ while SAM 3D Body runs, TICKET-284)."""
+    base = _command("cpu", [], clone)[0]
+    return probe.has_flag(2, [*base, "run"], clone, "--mesh-stream", lk)
+
+
 def drop_mesh(out_dir: Path) -> bool:
     """Remove `mesh3d.json` and `mesh3d.bin` from Part 2's folder (a malformed pair is treated as no mesh)."""
     gone = False
@@ -128,13 +142,34 @@ def drop_mesh(out_dir: Path) -> bool:
     return gone
 
 
-WARM_WORKERS_DEFAULT = "1"  # env SIMON7_P2_WARM_WORKERS: ONE warm `serve-worker` for `part2 run`; "0" turns it off (TICKET-099)
+WARM_WORKERS_ENV = "SIMON7_P2_WARM_WORKERS"  # explicit: any value but 0, off, no, false or empty starts ONE worker
+WARM_OFF = ("", "0", "off", "no", "false")
 
 
-def warm_worker_enabled() -> bool:
-    """True when SIMON7_P2_WARM_WORKERS asks for the warm worker (any value but 0, off, no, false or empty)."""
-    value = os.environ.get("SIMON7_P2_WARM_WORKERS", WARM_WORKERS_DEFAULT).strip().lower()
-    return value not in ("", "0", "off", "no", "false")
+def warm_workers_decision(state: Path | str | None = None) -> tuple[int, str]:
+    """How many warm 3D workers (`part2 serve-worker`) this server starts, and why (GPU guard, TICKET-099).
+
+    An explicit SIMON7_P2_WARM_WORKERS wins (`explicit`: 0 for 0, off, no, false or empty, else 1). Unset, only the
+    staging server starts one (`staging`: SIMON7_STAGING=1 or the staging state folder); every other server, a lane
+    or dev one, starts none (`dev default off`): each worker holds 5 to 11 GB of the shared GPU.
+    """
+    raw = os.environ.get(WARM_WORKERS_ENV)
+    if raw is not None:
+        return (0 if raw.strip().lower() in WARM_OFF else 1), "explicit"
+    if config.is_staging_server(state):
+        return 1, "staging"
+    return 0, "dev default off"
+
+
+def warm_workers_note(state: Path | str | None = None) -> str:
+    """The one startup line: `p2 warm workers: N (staging|dev default off|explicit)`."""
+    count, why = warm_workers_decision(state)
+    return f"p2 warm workers: {count} ({why})"
+
+
+def warm_worker_enabled(state: Path | str | None = None) -> bool:
+    """True when this server starts the warm worker (`warm_workers_decision`)."""
+    return warm_workers_decision(state)[0] > 0
 
 
 def track_worker_enabled() -> bool:
@@ -189,6 +224,7 @@ def start_track_worker(state: Path | str, lock: modules.Modules | None = None, b
         label="p2_tracker", folder="p2-tracker", on_demand=idle_s > 0, idle_release_s=idle_s, marker=p2_worker.TRACK_MARKER,
         on_started=lambda: applog.log(f"p2_tracker resident: warm SAM 3.1 loaded; {_gpu_used_note()}"),
         version=lambda: modules.head_sha(clone),
+        measure_free=gpu_lock.free_gpu_memory_mib,  # TICKET-320: its resident size, for `_cold_fits`
     )
     p2_worker.start_track_pool(pool)
     return True
@@ -220,7 +256,7 @@ def _start_run_worker(
     Only `part2 run` uses it (`_execute`); `track` uses the tracker pool. Returns False (and starts nothing) when it is
     off or the pin lacks the flag. Stopped with `p2_worker.stop_pool()`.
     """
-    if not warm_worker_enabled():
+    if not warm_worker_enabled(state):
         return False
     lk = lock or modules.load()
     clone = lk.path("2")
@@ -244,14 +280,31 @@ def _execute(
         return _execute_warm_track(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
     if not (backend == "gpu" and sub[0] == "run" and has_worker(lk, clone)):
         return _attempt(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
-    with _admission(backend, acquire_lock, work_p, p2_worker.state() == "idle", gpu_lock_kwargs):
+    warm_admit, warm = p2_worker.state() == "idle", warm_wait.WarmWait(work_p)  # the wait's bound runs from here
+    with _admission(backend, acquire_lock, work_p, warm_admit, {"wait_since": warm.since, **(gpu_lock_kwargs or {})}):
         with p2_worker.lease() as sock:
-            step = _launch(sub, sock, work_p, log_name, lk, clone, backend)
+            missed = sock is None and warm_admit and p2_worker.state() in ("busy", "starting")
+            if not missed:
+                _report_worker(work_p, sock)
+                step = _launch(sub, sock, work_p, log_name, lk, clone, backend)
+    if missed:  # TICKET-320: admitted for the warm worker alone (no memory floor), so never a cold run without a wait
+        sock, step = _wait_warm_run(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs, warm)
     if sock is not None and step["exit"] != 0 and _worker_lost(work_p / "steps" / log_name):
         applog.anomaly("p2_worker_unhealthy", "the worker dropped the request; the run repeats in-process",
                        job_dir=work_p, exit=step["exit"])
+        job_gpu.worker(work_p, job_gpu.COLD, job_gpu.COLD_FAILED)
         return _attempt(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
     return step
+
+
+def _report_worker(work_p: Path, sock: Path | None) -> None:
+    """TICKET-289: the job record says whether the 3D step got the warm worker or runs the slower per-call path.
+    No pool (`off`: dev, or the worker is not enabled) is not a fallback and reports nothing."""
+    pool = p2_worker.state()
+    if sock is not None:
+        job_gpu.worker(work_p, job_gpu.WARM)
+    elif pool != "off":
+        job_gpu.worker(work_p, job_gpu.COLD, job_gpu.COLD_BUSY if pool == "busy" else job_gpu.COLD_RESTARTING)
 
 
 def _tracker_arg(sub: list[str]) -> str | None:
@@ -271,20 +324,22 @@ def _execute_warm_track(
     run does (TICKET-125). The first call after a release loads the model in the lease.
     Part 2's contract for `track --worker`: exit 1 means run the cold `part2 track` (a model failure, an out-of-memory
     call, a worker that crashed or removed its socket); exit 4 (no person) and exit 2 are answers and pass through.
-    A busy worker is waited for up to the call timeout (one call at a time; going cold beside a loaded worker could
+    A busy worker is waited for up to the warm wait's bound (TICKET-320; one call at a time; going cold beside a loaded worker could
     run out of GPU memory). No worker (down, starting, restarting) runs per-call. A timed-out call or exit 1 logs
     `ANOMALY p2_tracker_unhealthy` and repeats per-call in a fresh out folder. A timed-out worker is still running
     the call and holds Part 2's GPU lock (its spec: a disconnecting client does not stop the call), so the lease
     stops it (its process group) and the repeat waits for the lock to be free. Every per-call repeat of
     local-sam31 first stops the warm worker (`_cold_attempt`): it restarts at the next lease.
+    TICKET-320: while the warm tracker holds a model, an admission that times out goes on waiting for it
+    (`_warm_track_call`), and a missed lease waits for it when the cold call cannot fit beside the resident workers
+    (`_wait_warm_track`); either wait ends at `warm_wait.max_s()` from the start of the take's GPU wait.
     """
-    with _admission(backend, acquire_lock, work_p, False, gpu_lock_kwargs, min_free_mib=TRACK_MIN_FREE_MIB):
-        with p2_worker.track_lease(config.TIMEOUTS["2"]) as sock:
-            step = _launch(sub, sock, work_p, log_name, lk, clone, backend) if sock is not None else None
-            if step is not None and step.get("timed_out") and sock is not None:
-                p2_worker.track_mark_restart(sock)
+    warm = warm_wait.WarmWait(work_p)
+    step = _warm_track_call(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs, warm)
+    if step is None and p2_worker.track_holds_model() and _cold_fits(cold_min_free_mib(), gpu_lock_kwargs) is False:
+        step = _wait_warm_track(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs, warm)
     if step is None:
-        return _cold_attempt(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
+        return _cold_attempt(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs, warm)
     if step["exit"] == 1 or step.get("timed_out"):
         applog.anomaly("p2_tracker_unhealthy", "the warm track call failed or timed out; the call repeats per-call",
                        job_dir=work_p, exit=step["exit"])
@@ -294,6 +349,112 @@ def _execute_warm_track(
         retry["out_dir"] = str(fresh)
         return retry
     return step
+
+
+def _warm_track_once(
+    sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
+    acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None, warm: warm_wait.WarmWait,
+    lease_wait_s: float | None = None,
+) -> runner.Step | None:
+    """One admission, then the warm tracker's lease (waiting up to `lease_wait_s`, default the call timeout) and the
+    call; None when no worker was lent. A lease after a warm wait ends that wait (`warm.got`)."""
+    wait_s = config.TIMEOUTS["2"] if lease_wait_s is None else lease_wait_s
+    with _admission(backend, acquire_lock, work_p, False, gpu_lock_kwargs, min_free_mib=TRACK_MIN_FREE_MIB):
+        with p2_worker.track_lease(wait_s) as sock:
+            if sock is not None:
+                warm.got()
+            step = _launch(sub, sock, work_p, log_name, lk, clone, backend) if sock is not None else None
+            if step is not None and step.get("timed_out") and sock is not None:
+                p2_worker.track_mark_restart(sock)
+    return step
+
+
+def _warm_track_call(
+    sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
+    acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None, warm: warm_wait.WarmWait,
+) -> runner.Step | None:
+    """`_warm_track_once`; TICKET-320: when its admission times out while the warm tracker holds a model, the take
+    is admitted again with what is left of `warm`'s bound and the same wait start on its record; at the bound it
+    gives up (logged) and the TimeoutError goes to `track`, which routes as before. No warm tracker: as before."""
+    first = {"wait_since": warm.since, **(gpu_lock_kwargs or {})}  # one wait start on the record for both admissions
+    try:
+        return _warm_track_once(sub, backend, work_p, log_name, lk, clone, acquire_lock, first, warm,
+                                lease_wait_s=max(0.0, warm.left()))
+    except TimeoutError:
+        if not (p2_worker.track_holds_model() and warm.left() > 0):
+            raise
+    warm.shown = True  # the admission's own watcher keeps the record's reason (another take or other GPU work)
+    try:
+        return _warm_track_once(sub, backend, work_p, log_name, lk, clone, acquire_lock,
+                                warm_wait.admission_kw(warm, gpu_lock_kwargs), warm, lease_wait_s=max(0.0, warm.left()))
+    except TimeoutError:
+        warm.gave_up(f"no GPU turn within {warm_wait.max_s():g} s")
+        raise
+    except BaseException:
+        warm.end()
+        raise
+
+
+def _wait_warm_track(
+    sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
+    acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None, warm: warm_wait.WarmWait,
+) -> runner.Step | None:
+    """TICKET-320: the lease missed (another take holds the warm tracker, or it starts) and a cold call cannot fit
+    beside the resident workers (staging da5275f0c143, 2026-11-02 17:19Z): wait for the tracker (`warm_wait.wait_for`).
+    None at the bound or when the tracker stops holding a model; the caller then goes cold (`_cold_attempt`)."""
+    def attempt(kw: dict[str, Any]) -> runner.Step | None:
+        return _warm_track_once(sub, backend, work_p, log_name, lk, clone, acquire_lock, kw, warm,
+                                lease_wait_s=max(0.0, warm.left()))
+
+    return warm_wait.wait_for(warm, gpu_lock_kwargs, p2_worker.track_holds_model, p2_worker.track_wait_ready, attempt)
+
+
+def _free_mib(gpu_lock_kwargs: dict[str, Any] | None) -> int | None:
+    """Free GPU memory now, read as the admission reads it (the caller's `memory_fn`, else nvidia-smi)."""
+    read = (gpu_lock_kwargs or {}).get("memory_fn") or gpu_lock.free_gpu_memory_mib
+    return read()
+
+
+def _cold_fits(need: int, gpu_lock_kwargs: dict[str, Any] | None) -> bool | None:
+    """TICKET-320: whether a cold call needing `need` MiB fits beside the other resident workers once the warm tracker
+    is stopped: free memory now plus what an idle loaded tracker gives back (`_tracker_gives_back`; a leased or
+    starting one gives back nothing certain). None when free memory cannot be read: the caller goes on as before."""
+    free = _free_mib(gpu_lock_kwargs)
+    if free is None:
+        return None
+    return free + (_tracker_gives_back() if p2_worker.track_state() == "idle" else 0) >= need
+
+
+def _tracker_gives_back() -> int:
+    """MiB stopping the idle tracker gives back: its size measured at load (`p2_worker.track_resident_mib`), else
+    `TRACK_RESIDENT_MIB`. WSL2's nvidia-smi reports no per-process memory, so no pid is read."""
+    measured = p2_worker.track_resident_mib()
+    return measured if measured is not None else TRACK_RESIDENT_MIB
+
+
+def _wait_warm_run(
+    sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
+    acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None, warm: warm_wait.WarmWait,
+) -> tuple[Path | None, runner.Step]:
+    """TICKET-320: the 3D step was admitted for the idle warm worker (no memory floor) and another take leased it first.
+    Wait for it (`warm_wait.wait_for`, bounded from the start of the step's GPU wait), admitted on its turn again once
+    nobody leases it. At the bound, or when the worker stops, the run goes in-process on the usual memory floor."""
+    def attempt(kw: dict[str, Any]) -> tuple[Path, runner.Step] | None:
+        with _admission(backend, acquire_lock, work_p, True, kw):
+            with p2_worker.lease() as sock:
+                if sock is None:
+                    return None
+                warm.got()
+                _report_worker(work_p, sock)
+                return sock, _launch(sub, sock, work_p, log_name, lk, clone, backend)
+
+    got = warm_wait.wait_for(warm, gpu_lock_kwargs, p2_worker.holds_model, p2_worker.wait_ready, attempt)
+    if got is not None:
+        return got
+    warm.gave_up("the warm worker stopped" if not p2_worker.holds_model() else
+                 f"no warm worker within {warm_wait.max_s():g} s")
+    job_gpu.worker(work_p, job_gpu.COLD, job_gpu.COLD_BUSY)
+    return None, _attempt(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
 
 
 def cold_wait_s() -> float:
@@ -309,10 +470,22 @@ def _skipped_step(lk: modules.Modules, clone: Path, log_name: str, work_p: Path)
 
 def _cold_attempt(
     sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
-    acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None,
+    acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None, warm: warm_wait.WarmWait | None = None,
 ) -> runner.Step:
     """The per-call `part2 track` that follows a warm one: the warm worker is stopped first when it holds a model,
-    then the call is admitted on `COLD_SAM31_MIN_FREE_MIB` (a cold run peaks near 26 GiB; TICKET-129)."""
+    then the call is admitted on `COLD_SAM31_MIN_FREE_MIB` (a cold run peaks near 26 GiB; TICKET-129).
+    TICKET-320: a warm tracker is never stopped for a cold call that cannot fit beside the other resident workers
+    (`_cold_fits`): cold local-sam31 is skipped and `track` goes on to local-open. `warm` is the take's warm wait,
+    which ends here (logged) when it was shown."""
+    need = cold_min_free_mib()
+    if p2_worker.track_holds_model() and _cold_fits(need, gpu_lock_kwargs) is False:
+        if warm is not None:
+            warm.gave_up(f"no warm tracker within {warm_wait.max_s():g} s; cold local-sam31 cannot fit, local-open")
+        applog.anomaly("p2_cold_sam31_skipped", "the cold call cannot fit beside the resident workers; the warm "
+                       "tracker stays", job_dir=work_p, free_mib=_free_mib(gpu_lock_kwargs), need_mib=need)
+        return _skipped_step(lk, clone, log_name, work_p)
+    if warm is not None:
+        warm.gave_up("the warm tracker stopped; cold local-sam31")
     if p2_worker.track_holds_model() and not p2_worker.stop_track_worker(config.TIMEOUTS["2"]):
         applog.anomaly("p2_tracker_unhealthy", "the warm tracker could not be stopped before the per-call run",
                        job_dir=work_p)
@@ -409,6 +582,8 @@ def run(
     # `_launch` forwards the whole `sub`, and a worker started before a deploy is restarted by it (staging.sh up).
     if has_mesh(lk, clone) and "--refine" not in sub:
         sub += ["--mesh"]
+        if has_mesh_stream(lk, clone):  # TICKET-284: the pending page draws the body while the model runs
+            sub += ["--mesh-stream"]
     step = _execute(sub, backend, work_p, "part2.log", lk, clone, acquire_lock, gpu_lock_kwargs)
     return (step, out_dir / "pose3d.json")
 
@@ -452,6 +627,7 @@ def track(
         # TICKET-067: at the pin a named tracker never falls back (`trackers.select`) and api-sam31 loads no torch and
         # no local model: it uploads a video to the Meta API, so it needs no GPU admission (parts-harness.md "GPU").
         admit = acquire_lock and tracker != API_TRACKER
+        began = time.monotonic()
         try:
             named = _execute(
                 [*sub, "--tracker", tracker], backend, work_p, _tracker_log(tracker), lk, clone, admit,
@@ -463,7 +639,7 @@ def track(
             # TICKET-191: no GPU admission for local-sam31 in time (other apps hold the card): never park the people
             # step for the 30 minute default; api-sam31 needs no local GPU, else the free local-open.
             tracker = API_TRACKER if api_tracker_allowed(lk, clone, state) else LOCAL_TRACKER
-            applog.anomaly("p2_track_gpu_busy", job_dir=work_p, waited_s=track_gpu_wait_s(),
+            applog.anomaly("p2_track_gpu_busy", job_dir=work_p, waited_s=round(max(track_gpu_wait_s(), time.monotonic() - began), 1),
                            free_mib=gpu_lock.free_gpu_memory_mib(), routed=tracker)
             try:
                 named = _execute(
@@ -473,7 +649,7 @@ def track(
                     if tracker == LOCAL_TRACKER else gpu_lock_kwargs,
                 )
             except TimeoutError:
-                applog.anomaly("p2_track_gpu_busy_final", job_dir=work_p, waited_s=2 * track_gpu_wait_s(),
+                applog.anomaly("p2_track_gpu_busy_final", job_dir=work_p, waited_s=round(time.monotonic() - began, 1),
                                free_mib=gpu_lock.free_gpu_memory_mib(),
                                detail="no GPU admission for local-sam31 or local-open; the job fails with a busy message")
                 raise TimeoutError("the GPU is busy, try again in a few minutes") from None
@@ -507,7 +683,7 @@ def api_tracker_allowed(lk: modules.Modules, clone: Path, state: Path | str | No
     """True when the pin's `track` offers `--tracker` with `api-sam31`, the key file exists and Part 1's spend cap holds."""
     if not keys.has_key("MODEL_API_KEY"):
         return False
-    if p1_keyframes.total_spend_usd(state) >= config.PART1_RUN_SPEND_CAP_USD:
+    if config.part1_spend_capped(p1_keyframes.total_spend_usd(state)):
         return False
     text = probe.help_text(2, [*_command("cpu", [], clone)[0], "track"], clone, lk)
     return "--tracker" in text and API_TRACKER in text
@@ -523,6 +699,34 @@ def capabilities(lock: modules.Modules | None = None, state: Path | str | None =
         "track": track_ok,
         "ids": probe.has_flag(2, [*base, "run"], clone, "--ids", lk),
     }
+
+
+def frame_times(
+    video: Path | str, work: Path | str, fps: float, lock: modules.Modules | None = None
+) -> list[float] | None:
+    """Seconds of the frames `part2 run --fps <fps>` samples from `video`, from `part2 frame-times` (TICKET-203).
+
+    None when the pinned Part 2 lacks the command (`part2 frame-times --help` fails) or the call fails; the caller
+    then uses Part 7's copy of the rule (`track_resample.sample_times`)."""
+    lk = lock or modules.load()
+    clone = lk.path("2")
+    if not Path(clone).is_dir():  # TICKET-328: nothing to run in; said once, never a silent switch
+        applog.log(f"part 2 frame-times: no Part 2 checkout at {Path(clone).name}, using Part 7's rule", job_dir=work,
+                   level=logging.WARNING)  # a deploy fault on staging; expected only in tests and CI
+        return None
+    base = [*_command("cpu", [], clone)[0]]
+    if not probe.help_text(2, [*base, "frame-times"], clone, lk):
+        return None
+    out = Path(work) / "frame_times.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    argv = [*base, "frame-times", "--input", str(Path(video).resolve()), "--fps", str(fps), "--out", str(out.resolve())]
+    step = runner.run(2, argv, cwd=clone, timeout_s=probe.HELP_TIMEOUT_S, lock=lk, log_path=Path(work) / "steps" / "part2_frame_times.log")
+    if step["exit"] != 0:
+        return None
+    try:
+        return [float(f["t_ms"]) / 1000.0 for f in json.loads(out.read_text(encoding="utf-8"))["frames"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
 
 def doctor(
@@ -553,3 +757,25 @@ def doctor(
         log_path=work_p / "steps" / "part2_doctor.log",
         lock=lk,
     )
+
+
+def warmup_step(state: Path | str, lk: modules.Modules, sock: Path, backend: str = "gpu") -> tuple[runner.Step | None, str]:
+    """TICKET-260: one 1-frame `part2 run` through the warm worker on `sock`, so the first take skips the first-run cost.
+
+    The input is the first frame of Part 2's own single-person fixture, copied to `<state>/p2-warmup/in/`. Returns the
+    step (None and a reason when the fixture is missing). The caller holds the lease and the GPU admission.
+    """
+    clone = lk.path("2")
+    frame = clone / "fixtures" / "input" / "single" / "frames" / "000000.jpg"
+    if not frame.is_file():
+        return (None, "Part 2's single-person fixture frame is missing")
+    work = Path(state) / "p2-warmup"
+    src, out = work / "in", work / "out"
+    src.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(frame, src / frame.name)
+    sub = ["run", "--mode", "single", "--input", str(src.resolve()), "--out", str(out.resolve()), "--fps", str(FPS),
+           "--backend", backend]
+    if has_mesh(lk, clone):
+        sub += ["--mesh"]
+    return (_launch(sub, sock, work, "warmup.log", lk, clone, backend), "")

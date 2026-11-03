@@ -1,0 +1,65 @@
+/* The progress sheet (views/progress-sheet.js, TICKET-283) on the brand tokens. No literal colours.
+   Print: only the sheet prints, on paper colours, with no buttons; "Save as PDF" is the browser's own print dialog. */
+
+.ps { display: grid; gap: var(--space-4); }
+.ps-head { display: grid; gap: var(--space-1); }
+.ps-kicker { margin: 0; color: var(--color-accent); font-size: var(--text-sm); font-weight: var(--weight-bold); }
+.ps-title { margin: 0; font-size: var(--text-lg); }
+.ps-measure { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.ps-hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.ps-actions, .ps-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.ps-owner, .ps-share { display: grid; gap: var(--space-2); }
+.ps-label { display: grid; gap: var(--space-1); font-size: var(--text-sm); }
+.ps-link { width: 100%; min-height: 44px; padding: 0 var(--space-2); border-radius: var(--radius-sm); border: 1px solid var(--color-line); background: var(--color-raised); color: var(--color-text); }
+.ps-sure { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-raised); border: 1px solid var(--color-line); }
+.ps-sure[hidden] { display: none; }
+.ps-sure p { margin: 0; }
+.ps-block { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); break-inside: avoid; }
+.ps-block h2 { margin: 0; font-size: var(--text-md); }
+
+.ps-cal { border-collapse: separate; border-spacing: 3px; font-size: var(--text-xs); }
+.ps-cal th { color: var(--color-text-muted); font-weight: var(--weight-medium); }
+.ps-week { text-align: right; padding-right: var(--space-1); white-space: nowrap; }
+.ps-day { width: 36px; height: 36px; text-align: center; vertical-align: middle; border-radius: var(--radius-sm); background: var(--color-raised); color: var(--color-text-muted); }
+.ps-day[data-sessions]:not([data-sessions="0"]) { background: var(--color-accent-soft); color: var(--color-text); border: 1px solid var(--color-accent); }
+.ps-date { display: block; }
+.ps-count { display: block; font-weight: var(--weight-bold); color: var(--color-accent); }
+
+.ps-chart { width: 100%; height: auto; }
+.ps-grid { stroke: var(--color-line); }
+.ps-tick { fill: var(--color-text-muted); font-size: 11px; }
+.ps-line { fill: none; stroke: var(--color-accent); stroke-width: 2; }
+.ps-dot { fill: var(--color-accent); }
+.ps-bar { fill: var(--color-text-muted); }
+
+.ps-skel { width: min(100%, 240px); height: auto; justify-self: center; background: var(--color-raised); border-radius: var(--radius-md); }
+.ps-bone { stroke: var(--skeleton-line, var(--color-accent)); stroke-width: 3; stroke-linecap: round; }
+.ps-joint { fill: var(--skeleton-joint, var(--color-text)); }
+
+.ps-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.ps-table th, .ps-table td { text-align: left; padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--color-line); }
+.ps-table th { color: var(--color-text-muted); font-weight: var(--weight-medium); }
+
+/* the trainer's Home programme form on the teacher page (views/programme-form.js) */
+.pg { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); }
+.pg-title { margin: 0; font-size: var(--text-md); }
+.pg-hint, .pg-status { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.pg-label { display: grid; gap: var(--space-1); font-size: var(--text-sm); }
+.pg-select { min-height: 44px; padding: 0 var(--space-2); border-radius: var(--radius-sm); border: 1px solid var(--color-line); background: var(--color-raised); color: var(--color-text); }
+
+@media print {
+  body * { visibility: hidden; }
+  .ps, .ps * { visibility: visible; }
+  .ps { position: absolute; inset: 0 auto auto 0; width: 100%; color: var(--color-print-ink); background: var(--color-print-paper); }
+  .ps-noprint, .ps-noprint * { display: none; }
+  .ps-block { background: var(--color-print-paper); border-color: var(--color-print-line); }
+  .ps-hint, .ps-cal th, .ps-table th, .ps-day { color: var(--color-print-ink); }
+  .ps-day { background: var(--color-print-paper); border: 1px solid var(--color-print-line); }
+  .ps-day[data-sessions]:not([data-sessions="0"]) { background: var(--color-print-paper); border: 2px solid var(--color-print-ink); }
+  .ps-count, .ps-kicker { color: var(--color-print-ink); }
+  .ps-grid, .ps-table th, .ps-table td { border-color: var(--color-print-line); stroke: var(--color-print-line); }
+  .ps-tick { fill: var(--color-print-ink); }
+  .ps-line, .ps-bone { stroke: var(--color-print-ink); }
+  .ps-dot, .ps-joint, .ps-bar { fill: var(--color-print-ink); }
+  .ps-skel { background: var(--color-print-paper); }
+}

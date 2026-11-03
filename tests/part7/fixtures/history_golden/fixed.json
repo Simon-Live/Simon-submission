@@ -1,0 +1,193 @@
+{
+ "answers": [
+  {
+   "focus": null,
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 3
+     }
+    ],
+    "text": "Your score went from 65 in take 1 to 80 in take 3."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 3.0,
+       "take": 2
+      },
+      {
+       "at_s": null,
+       "take": 3
+      }
+     ],
+     "kind": "fixed",
+     "measure": "hip_shift",
+     "side": "center",
+     "text": "The hip shift at 3.0 s in take 2 is not in take 3."
+    }
+   ]
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "statuses": {
+   "hip_shift|center": "fixed"
+  }
+ },
+ "facts": {
+  "best": 3,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 3,
+  "measures": [
+   {
+    "first": {
+     "at_s": 3.0,
+     "magnitude": 12.0,
+     "size": 12.0,
+     "take": 1,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 3.0,
+     "magnitude": 6.0,
+     "size": 6.0,
+     "take": 2,
+     "unit": "deg"
+    },
+    "measure": "hip_shift",
+    "present_in": [
+     1,
+     2
+    ],
+    "side": "center",
+    "status": "fixed"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [
+     "Keep your hips level"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 3.0,
+      "body_part": "hip",
+      "cue": "Keep your hips level",
+      "joint": "hip",
+      "magnitude": 12.0,
+      "measure": "hip_shift",
+      "side": "center",
+      "size": 12.0,
+      "span": [
+       2.8,
+       3.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 65,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [
+     "Keep your hips level"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 3.0,
+      "body_part": "hip",
+      "cue": "Keep your hips level",
+      "joint": "hip",
+      "magnitude": 6.0,
+      "measure": "hip_shift",
+      "side": "center",
+      "size": 6.0,
+      "span": [
+       2.8,
+       3.6
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 66,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T11:00:00Z",
+    "cues": [],
+    "duration_s": 6.0,
+    "faults": [],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000003",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 80,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 3,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "fixed",
+ "note": "Hip shift in takes 1 and 2 (12 then 6 degrees), gone in take 3 which compared that moment: fixed.",
+ "origin": "synthetic"
+}

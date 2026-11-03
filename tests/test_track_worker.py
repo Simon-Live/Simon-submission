@@ -428,7 +428,11 @@ def test_a_slow_start_on_a_busy_host_is_waited_for(tmp_path: Path) -> None:
 
     busy = 4.0 * (os.cpu_count() or 1)  # load1 per CPU of 4: the 0.4 s base deadline becomes 1.6 s
     w = _SlowStart(tmp_path, delay_s=1.0, load=busy)
-    assert w.pool._spawn(w.pool._slots[0]) is True and not w.proc.terminated
+    slot = w.pool._slots[0]
+    try:
+        assert w.pool._spawn(slot) is True and not w.proc.terminated
+    finally:
+        p2_worker._loads(slot, -1)  # _spawn alone counts the load in; _start_slot counts it out, so do that here
 
 
 def test_a_start_that_runs_out_of_time_logs_why(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:

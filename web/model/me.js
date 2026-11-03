@@ -1,14 +1,16 @@
 // Pure logic of the Me page (docs/specs/web-signin.md): consent text, the takes list, claim input and the words of
 // every outcome. No DOM and no fetching here.
 import { plural } from "./teacher.js";
+import { shownRow, toneOfLetter } from "./score-labels.js";
 
 /** The version stored with the retention choice; change it whenever CONSENT_LINES changes. */
-export const CONSENT_VERSION = "retention-90-v2";
+export const CONSENT_VERSION = "retention-90-v3";
 
 export const CONSENT_LINES = [
   "Signing in is optional and Simon works without it.",
   "We keep your email address and which takes and movements are yours. We use the address only to send sign-in mail.",
   "If you tick the box, we also keep a copy of your takes (the analysis and a short clip) for 90 days instead of 7, to show your progress over weeks.",
+  "When you press Compare on a movement, the measurements of your kept takes go to Meta's Muse Spark model, with short clips only if you also allow video.",
   "Untick it at any time and we delete the copies of your takes and every comparison made from them right away. Your takes then follow the 7 day rule.",
   "Anyone who holds the link to a take can keep it in their own account; the first account to keep a take owns it.",
   "Delete my data below removes everything we hold. It cannot undo what was already sent to Meta's API for analysis.",
@@ -78,8 +80,6 @@ export function claimError(status) {
 }
 
 const KIND = { follow: "Follow take", trainer: "Teacher take" };
-const TONE = { A: "good", B: "good", C: "warn", D: "warn", F: "bad" };
-
 /** "Oct 31, 10:00 AM" for an ISO time; empty when it is missing or not a date. */
 export function formatWhen(at, timeZone = "UTC") {
   const d = new Date(at);
@@ -89,16 +89,16 @@ export function formatWhen(at, timeZone = "UTC") {
 
 /** One row of `api/me/takes` for the view. */
 export function takeRow(t, timeZone) {
-  const score = Number.isFinite(t?.score) ? Math.round(t.score) : null;
+  const shown = shownRow(t);   // one-letter.md: the result headline's figures and letter (the server's, else score and grade)
   const id = encodeURIComponent(t.job_id);
   let href = `#/result/${id}`;
   if (t.kind === "trainer" && t.entry_id) href = `#/watch/${encodeURIComponent(t.entry_id)}`;
   return {
     jobId: t.job_id,
     kind: KIND[t.kind] || "Take",
-    score: score === null ? "" : String(score),
-    grade: typeof t.grade === "string" ? t.grade : "",
-    tone: TONE[t.grade] || "warn",
+    score: shown && t.shown ? shown.figures : Number.isFinite(t?.score) ? String(Math.round(t.score)) : "",
+    grade: shown ? shown.letter : typeof t.grade === "string" ? t.grade : "",
+    tone: shown ? shown.tone : toneOfLetter(t.grade),
     when: formatWhen(t.created_at, timeZone),
     href,
   };

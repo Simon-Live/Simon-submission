@@ -10,7 +10,7 @@ const consent = await import("../../web/consent.js");
 // catalog.js needs a DOM only when mounted; `visible` is pure
 const node = () => ({ attrs: {}, kids: [], setAttribute(k, v) { this.attrs[k] = v; }, append(...k) { this.kids.push(...k); }, addEventListener() {} });
 globalThis.document = { createElement: node, createTextNode: (t) => ({ t }), querySelector: () => null, head: { append() {} } };
-const { visible, PITCH } = await import("../../web/catalog.js");
+const { visible, PITCH, chainDestroy } = await import("../../web/catalog.js");
 
 const e = (id, name, extra = {}) => ({ id, name, category: "dance", ...extra });
 const ENTRIES = [
@@ -121,6 +121,7 @@ test("the consent line names retention and the data note names Meta's API", () =
   assert.doesNotMatch(note, /go with the take when it is deleted/, "negative: no promise a trainer take cannot keep");
   assert.match(note, /A trainer recording is kept with its sound and meshes for 7 days.*Delete my recording.*movement stays in the catalog as a copy without sound, unless you choose Delete the movement too/);
   assert.match(note, /Baseten/);
+  assert.match(note, /second opinion, your video and the trainer's video go to Muse Spark through Meta's Model API/, "every Meta call that carries video is named");
   assert.match(note, /does not use content sent to SAM 3\.1 to train/);
   assert.match(note, /board entry keeps its name and score longer/);
   assert.match(note, /cannot remove what Meta's API holds/);
@@ -182,4 +183,17 @@ test("follow sends the picked language, English by default", async () => {
   const s = memory(); s.setItem("simon.lang", "es");
   assert.equal(currentLang(s), "es");
   assert.equal(currentLang({ getItem() { throw new Error("blocked"); } }), "en");
+});
+
+test("the catalog teardown keeps the client's line and still stops the judge hero, before the view goes", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../../web/catalog.js", import.meta.url), "utf8");
+  assert.ok(src.includes("  return () => { stopKind(); view.destroy(); };\n"), "the client's line, byte for byte");
+  assert.ok(src.includes("chainDestroy(view, stopHero);"), "our hero cleanup rides on view.destroy");
+  const order = [];
+  const view = { removed: false, destroy() { order.push("view"); this.removed = true; } };
+  assert.equal(chainDestroy(view, () => order.push("hero")), view);
+  view.destroy();
+  assert.deepEqual(order, ["hero", "view"]);
+  assert.equal(view.removed, true, "the view's own destroy still runs with its this");
 });

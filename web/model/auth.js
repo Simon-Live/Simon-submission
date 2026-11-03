@@ -28,7 +28,12 @@ export const TEXT = {
   back: "Back to movements",
   headerSignIn: "Sign in",
   headerMe: "Me",
+  outboxLink: "Open the test mail outbox to get your code",
 };
+
+/** Where the staging test mailbox page lives and the one thing the tab remembers for it: the address just used. */
+export const OUTBOX_HASH = "#/outbox";
+export const OUTBOX_KEY = "simon.outbox.email";
 
 /** Mail sent notice with the address typed in. */
 export const sentNotice = (email) =>
@@ -87,6 +92,7 @@ export function meInfo(body) {
     signedIn,
     email: signedIn && typeof b.email === "string" ? b.email : "",
     userId: signedIn && typeof b.user_id === "string" ? b.user_id : "",
+    outbox: available && b.outbox === true,
     retention: {
       optedIn: signedIn && b.retention?.opted_in === true,
       days: Number.isFinite(b.retention?.days) ? b.retention.days : 7,
@@ -100,6 +106,9 @@ export function headerLink(info) {
   if (!info.available) return null;
   return info.signedIn ? { href: "#/me", label: TEXT.headerMe } : { href: SIGNIN_HASH, label: TEXT.headerSignIn };
 }
+
+/** Signed out, the Me link beside Sign in (the Me page works signed out: My 3D model on this device); else null. */
+export const headerMeLink = (info) => (info.available && !info.signedIn ? { href: "#/me", label: TEXT.headerMe } : null);
 
 /**
  * The sign-in screen as a small state machine. Phases: email, sending, code, verifying, off.

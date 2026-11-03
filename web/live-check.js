@@ -18,7 +18,7 @@ const STEP_MS = 66; // about 15 checks a second is plenty for cues and keeps pho
 export const OFF_DEG = 25; // a joint further than this from the trainer's angle is flagged
 export const TEXT = {
   note: "Live check is approximate guidance from your device. Your results after the take are more accurate.",
-  offNote: "Live check draws your joints on the preview and, on Follow, tells you when a joint is off the trainer. Turning it on loads Google's MediaPipe in this browser; no frame leaves your device.",
+  offNote: "It draws your joints on the preview and, on Follow, flags a joint that is off the trainer. Turning it on loads Google's MediaPipe in this browser; no frame leaves your device.",
   loading: "Live check is starting…",
   unavailable: "Live check is not available in this browser.",
   inView: "Whole body in view",

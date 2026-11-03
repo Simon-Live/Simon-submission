@@ -2,7 +2,7 @@
 // where known, an estimate). createProgress is the bar with text and elapsed time; showLoading and
 // hideLoading are the spinner and skeleton for screens that load JSON or 3D.
 import { h, mmss, ensureCss } from "./ui.js";
-import { pawTrail } from "./views/paw-loader.js";
+import { pawTrail, pawWalk } from "./views/paw-loader.js";
 
 /** Typical seconds per job stage [low, high], from app.md and the processor timings. api/config may override. */
 export const TYPICAL_S = {
@@ -28,13 +28,15 @@ export const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
  * A progress block. `value` is 0..1 for a determinate bar, null for an indeterminate one.
  * @returns {{el, setValue, setText, setElapsed, startClock, stop}}
  */
-export function createProgress({ testid = "progress", label = "Progress", value = null, text = "", elapsed = false } = {}) {
+/** `walk`: the lime paw prints walk across the screen behind the content until stop() (uploading, checking, processing). */
+export function createProgress({ testid = "progress", label = "Progress", value = null, text = "", elapsed = false, walk = false } = {}) {
   ensureProgressStyles();
   const status = h("p", { class: "pg-text", role: "status", "aria-live": "polite", "data-testid": "progress-text", text });
   const fill = h("span", { class: "pg-fill" });
   const bar = h("div", { class: "pg-bar", role: "progressbar", "aria-label": label, "aria-valuemin": "0", "aria-valuemax": "100", "data-testid": "progress-bar" }, fill);
   const time = h("p", { class: "pg-elapsed tnum", "data-testid": "progress-elapsed", hidden: !elapsed, text: elapsed ? "Elapsed 0:00" : "" });
-  const el = h("div", { class: "pg", "data-testid": testid }, status, bar, time);
+  const paws = walk ? pawWalk() : null;
+  const el = h("div", { class: "pg", "data-testid": testid }, status, bar, time, ...(paws ? [paws] : []));
   let clock = null;
 
   function setValue(v) {
@@ -56,7 +58,7 @@ export function createProgress({ testid = "progress", label = "Progress", value 
     setElapsed((Date.now() - t0) / 1000);
     clock = setInterval(() => setElapsed((Date.now() - t0) / 1000), 1000);
   }
-  const stop = () => { clearInterval(clock); clock = null; };
+  const stop = () => { clearInterval(clock); clock = null; paws?.remove(); };
   return { el, setValue, setText: (t) => { status.textContent = t; }, setElapsed, startClock, stop };
 }
 

@@ -1,0 +1,117 @@
+{
+ "excluded": {
+  "before_cutoff": 407,
+  "test": 76,
+  "unknown_job": 0
+ },
+ "format": "simon.eval.latency_jobs/1",
+ "jobs": [
+  {
+   "gpu_wait_s": {
+    "track": 45.1
+   },
+   "id": "da8d604e2bf5",
+   "kind": "people",
+   "logged_at": "2026-11-02T01:52:21Z",
+   "stages_s": {
+    "people": 0.6,
+    "track": 60.1,
+    "upload": 2.7
+   },
+   "status": "ok",
+   "total_s": 63.3
+  },
+  {
+   "gpu_wait_s": {
+    "pose": 60.0
+   },
+   "id": "4849554605e0",
+   "kind": "trainer",
+   "logged_at": "2026-11-02T01:54:41Z",
+   "stages_s": {
+    "animation": 0.5,
+    "catalog": 0.3,
+    "keyframes": 0.5,
+    "pose": 108.3,
+    "skeleton": 0.5,
+    "upload": 0.0
+   },
+   "status": "ok",
+   "total_s": 110.1
+  },
+  {
+   "gpu_wait_s": {},
+   "id": "eadf963ca0ba",
+   "kind": "people",
+   "logged_at": "2026-11-02T01:59:57Z",
+   "stages_s": {
+    "people": 0.2,
+    "track": 14.7,
+    "upload": 1.0
+   },
+   "status": "ok",
+   "total_s": 15.9
+  },
+  {
+   "gpu_wait_s": {},
+   "id": "652b525a73ee",
+   "kind": "follow",
+   "logged_at": "2026-11-02T02:01:47Z",
+   "stages_s": {
+    "analyse": 25.8,
+    "pose": 79.9,
+    "skeleton": 0.3,
+    "upload": 0.0
+   },
+   "status": "ok",
+   "total_s": 106.0
+  },
+  {
+   "gpu_wait_s": {
+    "track": 90.0
+   },
+   "id": "84681f1b285f",
+   "kind": "people",
+   "logged_at": "2026-11-02T04:01:09Z",
+   "stages_s": {
+    "people": 0.2,
+    "track": 120.3,
+    "upload": 2.4
+   },
+   "status": "ok",
+   "total_s": 123.0
+  },
+  {
+   "gpu_wait_s": {
+    "track": 90.0
+   },
+   "id": "313d6eeb32c3",
+   "kind": "people",
+   "logged_at": "2026-11-02T04:29:17Z",
+   "stages_s": {
+    "people": 0.3,
+    "track": 125.2,
+    "upload": 1.7
+   },
+   "status": "ok",
+   "total_s": 127.1
+  },
+  {
+   "gpu_wait_s": {
+    "pose": 1800.0
+   },
+   "id": "574351f9807f",
+   "kind": "trainer",
+   "logged_at": "2026-11-02T04:31:33Z",
+   "stages_s": {
+    "keyframes": 0.5,
+    "pose": 1822.1,
+    "upload": 0.0
+   },
+   "status": "failed",
+   "total_s": 1822.7
+  }
+ ],
+ "since": "2026-11-01T23:09:55Z",
+ "source": "staging part7.log summary lines"
+}

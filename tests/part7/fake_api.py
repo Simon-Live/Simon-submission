@@ -16,12 +16,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_challenges  # noqa: E402  (challenge lane: in-memory api/challenges)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from part7 import ghost as part7_ghost  # noqa: E402  (TICKET-264: the real ghost builder on the fake animation)
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 FIXTURES = ROOT / "fixtures" / "input"
 MIME = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".md": "text/plain"}
 
+FAKE_BUILD = {"sha": "fake (test server)", "short": "fake (test server)", "subject": "fake (test server)",
+              "started_at": "unknown", "committed_at": "unknown", "parts": {}}
 ENTRIES = [
     {"id": "lateral-raise", "name": "Dumbbell lateral raise", "category": "exercise", "files_source": "import",
      "video_uri": "video.webm", "animation": "animation.json", "skeleton": "skeleton.json"},
@@ -35,6 +39,11 @@ FOLLOW_STAGES = ["upload", "pose", "skeleton", "analyse"]
 
 STATE = {"uploads": [], "jobs": {}, "polls": {}, "range_requests": 0, "people_jobs": 0, "idem": {}, "replays": 0,
          "people": None}
+STATE["ghost_requests"] = 0  # TICKET-264: how often the ghost was asked for
+# TICKET-260: the stage split a done follow job answers with (part7/stage_split.py); POST __test/timing changes it
+TIMING = {"recorded": True, "status": "ok", "total_s": 41.2, "picker": "skipped", "people_s": 9.4,
+          "stages": [{"name": "upload", "seconds": 0.4}, {"name": "pose", "seconds": 33.1}, {"name": "analyse", "seconds": 7.7}]}
+STATE["timing"] = TIMING
 _video = {}
 
 
@@ -93,7 +102,8 @@ def job_view(job_id: str) -> tuple[int, dict]:
     if n - 2 < len(stages):
         return 200, {**base, "status": "running", "stage": stages[n - 2], "queue_position": None}
     entry = "lateral-raise" if job["kind"] == "trainer" else job.get("entry_id")
-    return 200, {**base, "status": "done", "stage": stages[-1], "entry_id": entry, "queue_position": None}
+    timing = {"timing": STATE["timing"]} if job["kind"] == "follow" and STATE.get("timing") is not None else {}
+    return 200, {**base, "status": "done", "stage": stages[-1], "entry_id": entry, "queue_position": None, **timing}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -127,8 +137,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"base": "", "limits": {"max_seconds": 60, "max_bytes": 95000000, "recorder_bps": 2500000},
                                    "phrasing": "template", "movement": "lateral-raise", "fixture_result": True,
                                    "part5": {"lang": True, "video": True, "private": True}})
-        if path == "api/health":
-            return self.send(200, {"ok": True})
+        if path == "api/health":  # says plainly that this is the test stand-in (TICKET-204): the app shows a banner
+            return self.send(200, {"ok": True, "fake": True, "build": FAKE_BUILD})
+        if path == "api/version":
+            return self.send(200, FAKE_BUILD)
         if path == "__test/state":
             return self.send(200, STATE)
         if path == "catalog/api/entries":
@@ -141,6 +153,15 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"api/jobs/([^/]+)$", path)
         if m:
             return self.send(*job_view(m.group(1)))
+        if re.match(r"api/jobs/[^/]+/muse-fix$", path):  # TICKET-280: what the real route answers for a take with no corrected pose
+            return self.send(200, {"eligible": False, "consent": False, "running": False, "card": None, "image": None, "referee": None})
+        m = re.match(r"api/ghost/([^/]+)\.json$", path)
+        if m:  # the trainer's ghost (part7/ghost.py on this fake's animation); an entry with no animation has none
+            STATE["ghost_requests"] += 1
+            has = any(e["id"] == m.group(1) and e.get("animation") for e in ENTRIES)
+            doc = part7_ghost.build(animation()) if has else None
+            return self.send(200, {**doc, "available": True, "entry_id": m.group(1), "source": "animation"} if doc
+                             else {"available": False, "entry_id": m.group(1), "reason": part7_ghost.MSG_NONE})
         if path == "api/fixture-result":
             return self.send(200, {"analysis": json.loads((FIXTURES / "analysis-1.2.0.json").read_text()),
                                    "replay": json.loads((FIXTURES / "replay.json").read_text())})
@@ -203,7 +224,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(code, answer)
         if path == "__test/reset":  # forget uploads, jobs, keys and the chosen people answer
             STATE.update({"uploads": [], "jobs": {}, "polls": {}, "people_jobs": 0, "idem": {}, "replays": 0, "people": None})
+            STATE.update({"timing": TIMING, "ghost_requests": 0})  # ours (TICKET-260, TICKET-264), beside the client's line
             return self.send(200, {"ok": True})
+        if path == "__test/timing":  # the next done follow jobs answer with this timing (null: no field)
+            STATE["timing"] = json.loads(body or b"null")
+            return self.send(204)
         if path == "__test/people":  # the next people jobs answer with this {people, auto_id}
             STATE["people"] = json.loads(body or b"null")
             return self.send(200, {"ok": True})

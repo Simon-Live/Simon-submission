@@ -11,8 +11,10 @@ import importlib
 import json
 import logging
 from typing import Any, Callable
+from urllib.parse import parse_qs, urlsplit
 
-from part7 import applog, auth, challenge_routes, identity, jobs, labels, mail
+from part7 import (applog, attribution, auth, challenge_routes, devices, history_store, identity, jobs, labels, mail, model_only, model_store,
+                   shown_score, staging_mailbox)
 from part7.http_body import drain_before_refusal
 
 MSG_SIGN_IN = "Sign in to see this."
@@ -95,6 +97,8 @@ def _user_or_401(h: Any) -> str | None:
 def _me_doc(h: Any, user_id: str | None) -> dict[str, Any]:
     st = auth.state(h.app)
     doc: dict[str, Any] = {"available": st.available, "signed_in": False}
+    if st.mailer.transport == "outbox":
+        doc["outbox"] = True  # the sign-in screen links the staging test mailbox
     user = auth.identity(h.app).user(user_id) if user_id else None
     if user is not None:
         doc.update(signed_in=True, user_id=user["user_id"], email=user["email"], retention=user["retention"])
@@ -151,7 +155,7 @@ def _verify(h: Any) -> None:
         store.end_session(presented)
     if user_id is None:
         return _fail(h, 400, MSG_INVALID)
-    sid = store.new_session(user_id)
+    sid = store.new_session(user_id, devices.device_label(h.headers.get("User-Agent")))  # a coarse label, never the User-Agent
     user = store.user(user_id) or {}
     applog.log(f"auth: signed in {user_id}")
     _reply(h, 200, {"user_id": user_id, "email": user.get("email")}, {"Set-Cookie": auth.cookie_header(h, sid)})
@@ -196,36 +200,40 @@ def _kind_of(job: dict | None) -> str | None:
     return job["kind"]
 
 
-def _score_of(h: Any, job_id: str) -> tuple[Any, Any]:
-    """Score and grade from the job's own `analysis.json` (never stored twice)."""
+def _score_of(h: Any, job_id: str, light: Any = None) -> tuple[Any, Any, Any]:
+    """Score, grade and the shown score (one-letter.md) from the job's own `analysis.json` (never stored twice)."""
     path = h.app.queue.job_dir(job_id) / "work" / "follower" / "analysis.json"
     try:
-        score = json.loads(path.read_text(encoding="utf-8")).get("score")
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        score = doc.get("score")
     except (OSError, ValueError, AttributeError):
-        return None, None
+        return None, None, None
     if not isinstance(score, dict):
-        return None, None
+        return None, None, None
     value, grade = score.get("value"), score.get("grade")
     return (value if isinstance(value, (int, float)) and not isinstance(value, bool) else None,
-            grade if isinstance(grade, str) else None)
+            grade if isinstance(grade, str) else None, shown_score.of_analysis(doc, light))
 
 
 def _takes(h: Any, user_id: str) -> None:
     out = []
     for take in auth.identity(h.app).takes_of(user_id):
         job = h.app.queue.get(take["job_id"])
-        score, grade = _score_of(h, take["job_id"]) if job else (None, None)
+        score, grade, shown = _score_of(h, take["job_id"], history_store.light_of(job)) if job else (None, None, None)
         out.append({"job_id": take["job_id"], "kind": take["kind"], "entry_id": take["entry_id"],
                     "created_at": take["created_at"], "status": job["status"] if job else "expired",
-                    "score": score, "grade": grade})
+                    "score": score, "grade": grade, "shown": shown, "video_kept": model_only.kept(job),
+                    "attribution": attribution.for_take(h, take["job_id"], take["entry_id"], owner=user_id)})
     _reply(h, 200, {"takes": out})
 
 
 def _entries(h: Any, user_id: str) -> None:
     out = []
     for entry in auth.identity(h.app).entries_of(user_id):
-        out.append({"entry_id": entry["entry_id"], "name": labels.entry_name(h.app.child, entry["entry_id"]),
-                    "created_at": entry["created_at"], "only_me": entry["only_me"]})
+        out.append({"entry_id": entry["entry_id"], "name": labels.entry_name(h.app.child, entry["entry_id"], h.app.state),
+                    "created_at": entry["created_at"], "only_me": entry["only_me"],
+                    "floor_work": labels.floor_work(h.app.state, entry["entry_id"]),
+                    "attribution": attribution.for_entry(h, entry["entry_id"])})
     _reply(h, 200, {"entries": out})
 
 
@@ -233,12 +241,20 @@ def _entry_switch(h: Any, entry_id: str) -> None:
     doc = _post_body(h)
     if doc is None or (user_id := _user_or_401(h)) is None:
         return
-    value = doc.get("only_me")
-    if not isinstance(value, bool):
+    value, floor = doc.get("only_me"), doc.get("floor_work")
+    if not (isinstance(value, bool) or isinstance(floor, bool)) or any(v is not None and not isinstance(v, bool) for v in (value, floor)):
         return _fail(h, 400, MSG_BAD)
-    if not auth.identity(h.app).set_only_me(entry_id, user_id, value):
+    store = auth.identity(h.app)
+    if isinstance(floor, bool) and not labels.ENTRY_ID_RE.match(entry_id):  # the floor-work store holds no such id
         return _fail(h, 404, MSG_NO_ENTRY)
-    _reply(h, 200, {"entry_id": entry_id, "only_me": value})
+    if (found := store.entry_owner(entry_id)) is None or found[0] != user_id:
+        return _fail(h, 404, MSG_NO_ENTRY)
+    if isinstance(value, bool):
+        store.set_only_me(entry_id, user_id, value)
+    if isinstance(floor, bool):
+        labels.set_floor_work(h.app.state, entry_id, floor)  # floor-work.md: Part 7's own store, read by every Part 3 call
+    _reply(h, 200, {"entry_id": entry_id, "only_me": found[1] if value is None else value,
+                    **({"floor_work": floor} if isinstance(floor, bool) else {})})
 
 
 def _consent(h: Any) -> None:
@@ -254,6 +270,8 @@ def _consent(h: Any) -> None:
         withdraw = _history("withdraw_retention")
         if withdraw is not None:
             withdraw(h.app.state, user_id)
+        from part7 import progress_sheet  # TICKET-283: a progress sheet holds copies of those takes' measures, so it goes too
+        progress_sheet.drop_shares(store, user_id)
     _reply(h, 200, {"retention": (store.user(user_id) or {}).get("retention")})
 
 
@@ -281,12 +299,31 @@ def _delete(h: Any) -> None:
     forget = _history("forget")
     if forget is not None:
         forget(app.state, user_id)
+    model_store.delete_all(app.state, f"u:{user_id}")  # the models they imported or generated, files and spool entries
     store.delete_user(user_id)
+    from part7 import my_reference, reference_approval  # again, only these two: an approval under way when the account went leaves no copy (ADR-0019)
+    reference_approval.forget(app.state, user_id)
+    my_reference.forget(app.state, user_id)
     if email:
         mail.purge_outbox(app.state, email)
     applog.log(f"auth: account deleted {user_id}")
     _reply(h, 200, {"deleted": True, "takes_removed": removed, "entries_unlinked": unlinked},
            {"Set-Cookie": auth.cookie_header(h, None)})
+
+
+def _outbox(h: Any) -> None:
+    """The staging test mailbox: the messages sent to exactly the address in `?email=`, newest first (identity.md)."""
+    st = auth.state(h.app)
+    if st.mailer.transport != "outbox":
+        return _fail(h, 404, MSG_OFF)
+    if not st.verify_limit.hit(auth.client_key(h)):
+        return _fail(h, 429, MSG_RATE)
+    raw = parse_qs(urlsplit(h.path).query).get("email", [""])[0]
+    email = identity.normalise_email(raw)
+    if email is None:
+        return _fail(h, 400, MSG_EMAIL)
+    _reply(h, 200, {"messages": staging_mailbox.messages_for(h.app.state, email), "minutes": staging_mailbox.TTL_S // 60},
+           {"Cache-Control": "no-store"})
 
 
 # ----- dispatch -------------------------------------------------------------------------------------
@@ -301,6 +338,8 @@ def handle(h: Any, method: str, route: str) -> bool:
         return True
     if route == "auth/me" and get:
         _reply(h, 200, _me_doc(h, auth.current_user(h)))
+    elif route == "auth/outbox" and get:
+        _outbox(h)
     elif route == "auth/start" and method == "POST":
         _start(h)
     elif route == "auth/verify" and method == "POST":

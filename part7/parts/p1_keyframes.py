@@ -75,8 +75,8 @@ def run(
     keys_dir: Path | str | None = None,
     timeout_s: float | None = None,
 ) -> tuple[runner.Step | None, Path | None, str | None]:
-    """Run Part 1 on `video` if under the $5 cap and `MODEL_API_KEY` is present (`timeout_s` caps the call)."""
-    if total_spend_usd(state) >= config.PART1_RUN_SPEND_CAP_USD:
+    """Run Part 1 on `video` if under the cap (off unless `SIMON7_PART1_SPEND_CAP_USD` is set) and `MODEL_API_KEY` is present (`timeout_s` caps the call)."""
+    if config.part1_spend_capped(total_spend_usd(state)):
         return (None, None, "spend cap")
 
     if not keys.has_key("MODEL_API_KEY", keys_dir=keys_dir):
@@ -123,7 +123,7 @@ def run(
                            f"{max(left, 0.0):.1f} s of its {budget:.0f} s budget left (a retry needs "
                            f"{RETRY_MIN_S:.0f} s)", applog.job_id_of(work_p), work_p, logging.WARNING)
             if transient_failure(step) and left >= RETRY_MIN_S:
-                if total_spend_usd(state) >= config.PART1_RUN_SPEND_CAP_USD:  # the first try may have spent the rest
+                if config.part1_spend_capped(total_spend_usd(state)):  # the first try may have spent the rest
                     applog.log("Part 1 lost its network stream and the spend cap is reached, no second try",
                                applog.job_id_of(work_p), work_p, logging.WARNING)
                     return (step, None, "spend cap")

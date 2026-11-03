@@ -35,7 +35,10 @@ test("an empty list is kept apart from no list, and items without a cue are drop
 });
 
 test("the chip says what an insight cost, or Tempo, or nothing without points", () => {
-  assert.deepEqual(insightChip({ kind: "range", points: 5.33 }), { text: "−5.3", label: "Costs 5.3 points of your score" });
+  assert.deepEqual(insightChip({ kind: "range", points: 5.33 }), { text: "Medium", label: "Medium effect on your score" });
+  assert.deepEqual(insightChip({ kind: "range", points: 12 }), { text: "Big", label: "Big effect on your score" });
+  assert.deepEqual(insightChip({ kind: "range", points: 1 }), { text: "Small", label: "Small effect on your score" });
+  assert.equal(insightChip({ kind: "range", points: 5.33, why: "Right foot too far right at 1.9 s (3 of 8 reps)" }), null, "the why line says it");
   assert.deepEqual(insightChip({ kind: "tempo", points: null }), { text: "Tempo", label: "Tempo, not scored" });
   assert.equal(insightChip({ kind: "position", points: null }), null);
 });

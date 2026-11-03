@@ -1,6 +1,6 @@
 name: CI
 
-# GPU-free checks only: the Python tests, the browser-module unit tests and the linter.
+# GPU-free checks only: the Python tests, the browser-module unit and DOM tests and the linter.
 # Real jobs (Parts 1 to 6 on a GPU) and `make check-7` need a CUDA host and run there.
 on:
   push:
@@ -11,22 +11,96 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # A secret cannot sit in a step `if:`; this flag is "true" only when PARTS_READ_TOKEN exists, i.e. when
+      # the private part repos are readable (TICKET-244). Parts 1 to 6 are private repositories (checked 2026-10-31
+      # with `gh repo view --json visibility`), so the default token cannot fetch them.
+      HAVE_PARTS: ${{ secrets.PARTS_READ_TOKEN != '' }}
     steps:
-      # Parts 1 to 6 are private repositories (checked 2026-10-31 with `gh repo view --json visibility`), so the
-      # default token cannot fetch them. The secret PARTS_READ_TOKEN (read access to the six part repos) is required
-      # until they are public; without it the checkout fails.
+      # TICKET-244: without the secret the job still runs everything that does not need Parts 1 to 6 (lint, the
+      # evaluation and architecture checks, the node tests, the pytest tests that do not read or run a part). The
+      # tests that need a part skip with a reason naming the secret (tests/part7/ci_skips.py, tests/part7/needs-part.mjs)
+      # and the count lands in the job summary. With the secret: the six submodules at their pins and the full suite.
+      - name: Part repos (PARTS_READ_TOKEN)
+        run: |
+          if [ "$HAVE_PARTS" = true ]; then
+            echo "PARTS_READ_TOKEN is set: Parts 1 to 6 are checked out at their pinned shas and the full suite runs."
+          else
+            echo "::notice title=PARTS_READ_TOKEN is not set::Parts 1 to 6 are not checked out; the tests that need them skip and are counted in the job summary. Set the secret (read access to the six part repos) in Settings > Secrets and variables > Actions to run them."
+          fi
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          submodules: recursive
+          submodules: ${{ env.HAVE_PARTS == 'true' && 'recursive' || 'false' }}
           token: ${{ secrets.PARTS_READ_TOKEN || github.token }}
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The video tests cut clips with ffmpeg; install it when the runner image has none.
+      - name: ffmpeg
+        run: command -v ffmpeg || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
       - name: Lint
-        run: uvx ruff check part7 tests
+        run: uvx ruff check part7 tests tools
+      # TICKET-279: docs/evaluation.md and the README tables must equal what bench/results/ produces. No key, no GPU.
+      # The public-dataset tables come from docs/audit/eval-public-2026-11/, which stays in the workspace (dataset
+      # licence, research only): where those files are absent the check cannot rebuild the page, so it says so.
+      - name: Evaluation page matches the committed run files
+        run: |
+          if [ -f docs/audit/eval-public-2026-11/details.json ]; then
+            python3 tools/eval_report.py --check
+          else
+            line="Evaluation page check skipped: docs/audit/eval-public-2026-11/ (the public-dataset run files) is not in this repo"
+            echo "::notice title=eval-report not checked::$line"
+            echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # Without the part repos the formats only a part's contracts/ confirm are listed as not checked (TICKET-244).
+      - name: Architecture drift check (docs/ARCHITECTURE.md against the code)
+        run: |
+          if [ "$HAVE_PARTS" = true ]; then python3 tools/arch_check.py; else python3 tools/arch_check.py --without-parts; fi
+      # Tests that need a part checkout skip with a reason naming PARTS_READ_TOKEN and are counted in the job summary;
+      # GPU and staging host tests always skip here, with a stated reason (tests/part7/ci_skips.py).
       - name: Python tests
-        run: uv run pytest -q
-      - name: Browser-module unit tests
-        run: node --test tests/part7/*.unit.test.mjs
+        run: uv run pytest -q -rs
+      - name: Browser-module unit and DOM tests
+        run: |
+          node --test --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=tap --test-reporter-destination=node-tap.txt \
+            tests/part7/*.unit.test.mjs tests/part7/*.dom.test.mjs
+          n=$(grep -c '# SKIP needs modules/part-' node-tap.txt || true)
+          if [ "$HAVE_PARTS" != true ]; then
+            line="Part repos not checked out (PARTS_READ_TOKEN not set): $n node tests skipped that need them"
+            echo "$line"
+            echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          u=$(grep -c '# SKIP reads .*, which is not in this repo' node-tap.txt || true)
+          if [ "$u" != 0 ]; then
+            line="Workspace files not in this repo: $u node tests skipped that read them"
+            echo "$line"
+            echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # TICKET-263 (docs/specs/golden-replay.md): Parts 3 to 6 and the compare on the CPU from committed Part 2
+      # poses; asserts the exact score, fault set and fault times of tests/part7/fixtures/golden/expected.json.
+      # Prepared and gated: it runs only once PARTS_READ_TOKEN exists (TICKET-244). SIMON7_GOLDEN_REQUIRED turns a
+      # missing part set-up into a failure instead of a skip.
+      - name: Golden pipeline (no GPU)
+        if: env.HAVE_PARTS == 'true'
+        env:
+          SIMON7_GOLDEN_REQUIRED: "1"
+        run: |
+          uv run python -m part7 setup-parts --only 3,4,5,6
+          uv run --with pytest-cov pytest -q -s tests/part7/test_golden_pipeline.py \
+            --junitxml=golden-junit.xml --cov=part7.golden --cov-report=xml:golden-coverage.xml
+      - name: Test summary and badge files
+        if: env.HAVE_PARTS == 'true' && always()
+        run: >
+          uv run python -m part7.golden_badges --junit golden-junit.xml --coverage golden-coverage.xml
+          --out badges --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: env.HAVE_PARTS == 'true' && always()
+        with:
+          name: badges
+          path: badges/
+          if-no-files-found: ignore

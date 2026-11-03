@@ -152,7 +152,7 @@ All read from the environment (`part7/config.py`, `part7/quota.py`, `part7/serve
 | `SIMON7_PORT` | 8727 | port used by `bin/dev.sh` |
 | `SIMON7_PHRASING` | `live` | `live` asks Part 5 for `--phrasing muse-spark --live`; `template` for template text. Tests and `make check-7` use `template`. |
 | `SIMON7_GPU_WORKERS` | 2 | job threads; Part 2 calls still wait for free GPU memory |
-| `SIMON7_P2_WARM_WORKERS` | 1 | `1` keeps ONE Part 2 `serve-worker` loaded for `part2 run` (the 3D step) only; `track` stays in-process. A `run` that cannot lease the worker within 5 s (`SIMON7_P2_LEASE_WAIT_S`) runs in-process. `0` turns it off. Measurements and the history of the 2026-10-30 stall: "Warm Part 2 worker" below. |
+| `SIMON7_P2_WARM_WORKERS` | unset: 1 on staging, 0 elsewhere | Unset, only the staging server (`SIMON7_STAGING=1` or the staging state folder, both set by `staging/env.sh`) starts the worker; lane and dev servers start none. `1` keeps ONE Part 2 `serve-worker` loaded for `part2 run` (the 3D step) only; `track` stays in-process. A `run` that cannot lease the worker within 5 s (`SIMON7_P2_LEASE_WAIT_S`) runs in-process. `0` turns it off. Measurements and the history of the 2026-10-30 stall: "Warm Part 2 worker" below. |
 | `SIMON7_P2_FPS` | 10 | the rate Part 2 samples a take at, for the people step and the 3D step alike (moalborati/simon#62) |
 | `SIMON7_P2_TRACK_FPS` | `SIMON7_P2_FPS` | the people step's tracking rate; when it differs from `SIMON7_P2_FPS`, Part 7 resamples the tracks to the 3D rate (`part7/track_resample.py`) |
 | `SIMON7_P2_TRACKER` | unset | a Part 2 tracker name (`local-sam31`, `local-open`, `bytetrack`, `api-sam31`) used in place of "auto" for `part2 track` |
@@ -296,7 +296,7 @@ The API underneath, for scripting: `POST api/uploads` (raw body, at most 95,000,
 
 ## Warm Part 2 worker (TICKET-099)
 
-`SIMON7_P2_WARM_WORKERS=1` (default) starts ONE `part2 serve-worker` under `<state>/p2-workers`. Only `part2 run`
+On the staging server (unset `SIMON7_P2_WARM_WORKERS`; other servers start none and log `p2 warm workers: 0 (dev default off)`) or with `SIMON7_P2_WARM_WORKERS=1`, Part 7 starts ONE `part2 serve-worker` under `<state>/p2-workers`. Only `part2 run`
 uses it. `track` stays in-process because it loads its own tracker and needs GPU admission. A `run` waits at most 5 s
 for the busy worker, then runs in-process as before; it never queues behind it. A worker that fails its health
 check logs `ANOMALY p2_worker_unhealthy`, the call runs in-process, and the worker is restarted once in the
@@ -367,6 +367,19 @@ shipped this entry.
   on exit, after the running takes drain.
 - Starting either warm worker is patient on a busy host: the 180 s deadline is multiplied by load1 per CPU (1 to 4),
   and an abandoned start logs the elapsed time, load1, the exit code or signal and the last lines of the worker log.
+
+## If the app looks wrong
+
+1. Look at the top of the page. A yellow banner "Test server: nothing you record here is saved." means the browser is
+   talking to the test stand-in (`tests/part7/fake_api.py`), not the real app. Stop that process
+   and open the real address.
+2. Open the page with `?debug=1`: the header shows the build line (commit and start time). A real server shows a real
+   commit; the stand-in shows `fake (test server)`.
+3. Read `api/health` (staging: `staging/health.sh` prints its URL): `fake` must be `false`, `build.sha` a commit, and
+   `selfheal.summary` `ok`.
+4. `uv run python -m part7 selfheal-status --staging` lists every self-heal check with its last run and last finding.
+5. A movement that says "This movement's video may not match what was recorded" was flagged by the saved-entry check;
+   the log has `ANOMALY entry_video_mismatch`. Record it again. Details: `docs/specs/self-healing.md`.
 
 ## Known issues and limits
 

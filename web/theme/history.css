@@ -20,11 +20,29 @@
 .hs-dot[data-tone="warn"] { fill: var(--color-warn); }
 .hs-dot[data-tone="bad"] { fill: var(--color-bad); }
 
+/* the fault lines (one chart per measure, a line per side) */
+.hs-series { margin-top: var(--space-4); }
+.hs-series-title { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+.hs-sline { fill: none; stroke: var(--color-text-muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.hs-sline[data-side="left"], .hs-sdot[data-side="left"] { stroke: var(--color-accent); }
+.hs-sline[data-side="right"], .hs-sdot[data-side="right"] { stroke: var(--color-text); }
+.hs-sline[data-plateau="true"] { stroke-dasharray: 6 3; }
+.hs-sdot { fill: var(--color-surface); stroke: var(--color-text-muted); stroke-width: 2; }
+.hs-sdot[data-present="true"] { fill: var(--color-text-muted); }
+.hs-sdot[data-present="true"][data-side="left"] { fill: var(--color-accent); }
+.hs-sdot[data-present="true"][data-side="right"] { fill: var(--color-text); }
+.hs-legend { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; gap: var(--space-4); font-size: var(--text-xs); color: var(--color-text-muted); }
+.hs-sline[data-side="right"] { stroke-width: 3.5; } /* a second cue beside the hue: the right side is the thicker line */
+.hs-legend li::before { content: ""; display: inline-block; width: var(--space-4); height: 2px; margin-right: var(--space-2); vertical-align: middle; background: currentColor; }
+.hs-legend li[data-side="right"]::before { height: 4px; }
+.hs-legend li[data-side="left"] { color: var(--color-accent); }
+.hs-legend li[data-side="right"] { color: var(--color-text); }
+
 /* fixed, persistent, improved and new chips */
 .hs-chips { display: flex; flex-wrap: wrap; margin-top: var(--space-3); }
 .hs-chip { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill);
   background: var(--card-fill-raised); border: 1px solid var(--color-line); font-size: var(--text-xs); }
-.hs-chip-kind, .hs-kind { font-weight: var(--weight-bold); color: var(--color-good); }
+.hs-chip-kind, .hs-kind { font-weight: var(--weight-semibold); color: var(--color-good); }
 .hs-chip[data-tone="warn"] .hs-chip-kind, .hs-kind[data-tone="warn"] { color: var(--color-warn); }
 .hs-chip[data-tone="bad"] .hs-chip-kind, .hs-kind[data-tone="bad"] { color: var(--color-bad); }
 .hs-kind { font-size: var(--text-xs); }
@@ -32,11 +50,12 @@
 /* takes and the clip player */
 .hs-take { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); background: var(--card-fill-raised); }
 .hs-take-no-text { font-size: var(--text-sm); }
-.hs-score { font: var(--weight-black) var(--text-lg)/1 var(--font-sans); color: var(--color-good); }
+.hs-score { font: var(--weight-semibold) var(--text-lg)/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--color-good); }
+.hs-take .hs-score { font-family: var(--font-display); font-weight: 400; } /* Sniglet ships at 400 only; the recap counts keep Inter */
 .hs-score[data-tone="warn"] { color: var(--color-warn); }
 .hs-score[data-tone="bad"] { color: var(--color-bad); }
 .hs-grade { padding: 2px var(--space-2); border-radius: var(--radius-pill); background: var(--card-fill); color: var(--color-text-muted); font: var(--weight-bold) var(--text-xs)/1.5 var(--font-sans); }
-.hs-when { color: var(--color-text-muted); font-size: var(--text-xs); }
+.hs-when { font-variant-numeric: tabular-nums; color: var(--color-text-muted); font-size: var(--text-xs); }
 .hs-watch { margin-left: auto; min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-pill); border: 1.5px solid var(--color-accent);
   background: transparent; color: var(--color-accent); font: var(--weight-semibold) var(--text-sm)/1 var(--font-sans); cursor: pointer; }
 .hs-player[hidden] { display: none; }
@@ -48,11 +67,11 @@
 .hs-trend-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3); }
 .hs-cites { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
 .hs-cite { min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-pill); border: 1px solid var(--color-accent); background: var(--color-accent-soft);
-  color: var(--color-accent); font: var(--weight-bold) var(--text-xs)/1 var(--font-mono); cursor: pointer; }
+  color: var(--color-accent); font: var(--weight-semibold) var(--text-xs)/1 var(--font-mono); cursor: pointer; }
 .hs-cite:disabled { border-color: var(--color-line); background: transparent; color: var(--color-text-muted); cursor: default; }
 .hs-tag { color: var(--color-text-muted); font-size: var(--text-xs); }
 .hs-focus { border-color: var(--color-accent); }
-.hs-cue { margin: var(--space-2) 0 0; color: var(--color-accent); font: var(--weight-bold) var(--text-lg)/1.25 var(--font-sans); }
+.hs-cue { margin: var(--space-2) 0 0; color: var(--color-accent); font: var(--weight-semibold) var(--text-lg)/1.25 var(--font-sans); }
 .hs-reason { margin: 0 0 var(--space-3); font-size: var(--text-md); }
 .hs-measure-row { display: grid; gap: var(--space-1); }
 
@@ -61,7 +80,7 @@
 .hs-run { width: 100%; min-height: var(--button-height); }
 .hs-status { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-text); font-size: var(--text-sm); }
 .hs-status[hidden] { display: none; }
-.hs-status[data-kind="error"], .hs-status[data-kind="limit"], .hs-status[data-kind="few"], .hs-status[data-kind="consent"] { background: var(--color-warn-soft); border: 1px solid var(--color-warn-line); }
+.hs-status[data-kind="error"], .hs-status[data-kind="limit"], .hs-status[data-kind="few"], .hs-status[data-kind="consent"], .hs-status[data-kind="busy"] { background: var(--color-warn-soft); border: 1px solid var(--color-warn-line); }
 .hs-toggle { margin-top: var(--space-3); min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-pill); border: 1px solid var(--color-line);
   background: var(--card-fill); color: var(--color-text-muted); font: var(--weight-semibold) var(--text-sm)/1 var(--font-sans); cursor: pointer; }
 .hs-toggle[aria-pressed="true"] { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
@@ -76,3 +95,44 @@
   border: 1px solid var(--color-line); color: var(--color-text); text-decoration: none; }
 .hs-slot strong { color: var(--color-accent); }
 .hs-mine { list-style: none; }
+
+/* since last time (result page) */
+.hs-since { display: grid; gap: var(--space-3); margin-bottom: var(--space-3); }
+.hs-since-line { margin: 0; font-size: var(--text-md); line-height: 1.5; }
+.hs-since-head { color: var(--color-text-muted); }
+.hs-since-fact { min-height: var(--target-min); padding: 0 var(--space-3); border-radius: var(--radius-pill); border: 1px solid var(--color-accent);
+  background: var(--color-accent-soft); color: var(--color-accent); font: var(--weight-semibold) var(--text-sm)/1.2 var(--font-sans); cursor: pointer; }
+.hs-since-fact:disabled { border-color: var(--color-line); background: transparent; color: var(--color-text-muted); cursor: default; }
+.hs-since-bests { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+
+/* "What Simon sent" (views/receipt.js) */
+.hs-receipt-sum { cursor: pointer; font-weight: var(--weight-semibold); font-size: var(--text-sm); }
+.hs-receipt-sum:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.hs-receipt-rows { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); margin: var(--space-3) 0 0; font-size: var(--text-sm); }
+.hs-receipt-rows dt { color: var(--color-text-muted); }
+.hs-receipt-rows dd { margin: 0; }
+
+/* the fair score line (model/score-line.js): a break where the scoring changed, a hollow dot for a capped score */
+.hs-break { stroke: var(--color-text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.hs-dot-open { fill: none; stroke: var(--color-text-muted); stroke-width: 2; }
+
+/* the label on every view of a seeded demo copy (TICKET-211), the progress reel's included */
+.hs-seeded { margin: 0; padding: var(--space-1) var(--space-3); width: fit-content; border-radius: var(--radius-pill); border: 1px dashed var(--color-warn);
+  color: var(--color-warn); font: var(--weight-semibold) var(--text-xs)/1.5 var(--font-sans); }
+
+/* progress reel (TICKET-228) */
+.hs-reel-body { display: grid; gap: var(--space-3); margin-top: var(--space-3); }
+.hs-reel-body:empty { display: none; }
+.hs-reel .btn { justify-self: start; }
+
+/* Ask my history (views/ask.js) */
+.ask-form { display: grid; gap: var(--space-2); }
+.ask-answer { display: grid; gap: var(--space-3); margin-top: var(--space-3); }
+.ask-answer:empty { display: none; }
+.ask .hs-chips { margin-top: var(--space-3); }
+.ask .hs-toggle { margin-top: 0; text-align: left; line-height: 1.3; height: auto; padding: var(--space-2) var(--space-4); }
+
+/* recap, plan and across my movements (views/recap.js) */
+.hs-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin: 0; }
+.hs-stats dd { margin: 0; }
+.hs-plan { border-color: var(--color-accent); }

@@ -9,7 +9,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { serveRoot } from "./serve_static.mjs";
-import { isLaneModule404 } from "./lane_modules.mjs";
+import { isLaneModule404, isPickerRequest404, isOptionalResult404 } from "./lane_modules.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const req = createRequire(path.join(process.env.PLAYWRIGHT_DIR || path.resolve(here, "../../node_modules"), "x.js"));
@@ -32,6 +32,9 @@ const MODELS = { job: JOB, job_seconds: 163, models: [
   { id: "sam31-you", model: "SAM 3.1", maker: "Meta", clip: "you", status: "not_run", seconds: null, facts: { reason: "one_person" } },
   { id: "sam3d-you", model: "SAM 3D Body", maker: "Meta", clip: "you", status: "live", seconds: 52.1, facts: { via: "local_gpu", frames: 121 } },
   { id: "spark-phrasing", model: "Muse Spark", maker: "Meta", clip: "you", status: "fallback", seconds: 3.0, facts: { ran: "template", reason: "budget", lines: 2 } },
+  { id: "narration", model: "Muse Voice Transcribe", maker: "Meta", clip: "trainer", status: "not_run", seconds: null, facts: { reason: "no_narration" } },
+  { id: "spark-opinion", model: "Muse Spark", maker: "Meta", clip: "you", status: "live", seconds: null, facts: { via: "meta_api", verdicts: 2, observations: 1 } },
+  { id: "spark-history", model: "Muse Spark", maker: "Meta", clip: "account", status: "live", seconds: null, facts: { via: "meta_api", takes: 3, cached_tokens: 4000 } },
 ] };
 // stand-ins for the other session's modules: each records its call so the contract can be checked
 const STUB = {
@@ -48,11 +51,13 @@ let passed = 0;
 const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 
 /** Open the harness with the job's routes answered. `mesh`: "both" (real meshes), "none" (index nulls), "broken" (404 files). */
-async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduced = false, analysis = "" } = {}) {
+async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduced = false, analysis = "", pid = "" } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true, reducedMotion: reduced ? "reduce" : "no-preference" });
+  // the stage's "Rep breakdown" (score over time, form per rep) opens for these checks, as a viewer who left it open
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); } catch { /* blocked */ } });
   const page = await ctx.newPage();
   // the 404s a case asks for: missing modules (no stubs), broken mesh files, a missing models.json
-  const expected = (url) => (!stubs && isLaneModule404(url)) || (mesh === "broken" && /\/mesh\/(you|trainer)\/mesh3d/.test(url))
+  const expected = (url) => (!stubs && isLaneModule404(url)) || isPickerRequest404(url) || (/\/(take-ar\.json|muse-fix)$/.test(url) && isOptionalResult404(url)) || (mesh === "broken" && /\/mesh\/(you|trainer)\/mesh3d/.test(url))
     || (!models && url.endsWith("/models.json"));
   page.on("console", (m) => { if (m.type() === "error" && !expected(m.location().url)) errors.push(`${kase}: ${m.text()} ${m.location().url}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
@@ -60,6 +65,8 @@ async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduce
   // the video goes to the static server, which answers Range requests: a fulfilled body cannot be seeked
   await page.route(`**/api/results/${JOB}/video.mp4`, (r) => r.continue({ url: `http://127.0.0.1:${port}/tests/part7/fixtures/coach.webm` }));
   await page.route("**/api/auth/me", (r) => json(r, { available: false }, 200)); // sign-in off, as a server without mail answers (identity.md)
+  if (pid) await page.route(`**/api/results/${JOB}/${pid}/video.mp4`, (r) => r.continue({ url: `http://127.0.0.1:${port}/tests/part7/fixtures/coach.webm` }));
+  if (pid) await page.route(`**/api/results/${JOB}/${pid}/models.json`, (r) => { (page.asked ||= []).push(new URL(r.request().url()).pathname); return json(r, models || { error: "gone" }, models ? 200 : 404); });
   await page.route(`**/api/results/${JOB}/models.json`, (r) => json(r, models || { error: "gone" }, models ? 200 : 404));
   await page.route(`**/api/results/${JOB}/skeleton2d.json`, (r) => json(r, SKELETON));
   await page.route(`**/api/results/${JOB}/mesh.json`, (r) => json(r, mesh === "none" ? { trainer: null, you: null }
@@ -67,11 +74,13 @@ async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduce
   await page.route(`**/api/results/${JOB}/mesh/*/*`, (r) => {
     const [who, file] = new URL(r.request().url()).pathname.split("/").slice(-2);
     if (mesh === "broken") return r.fulfill({ status: 404, body: "" });
-    return r.fulfill({ path: path.join(web, "mesh-demo", who === "you" ? "follower" : "trainer", file) });
+    const demo = path.join(web, "mesh-demo", who === "you" ? "follower" : "trainer", file);
+    if (!fs.existsSync(demo)) return r.fulfill({ status: 404, body: "" }); // the demo has no rest.json, which the Person skin asks for
+    return r.fulfill({ path: demo });
   });
   await page.route("**/catalog/api/entries/*", (r) => json(r, { id: "lateral-raise-0f13199f", name: "Lateral raise" }));
   if (stubs) for (const [file, body] of Object.entries(STUB)) await page.route(`**/web/${file}`, (r) => r.fulfill({ contentType: "text/javascript", body }));
-  await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/result-additions.html?case=${kase}${analysis ? `&analysis=${analysis}` : ""}`);
+  await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/result-additions.html?case=${kase}${analysis ? `&analysis=${analysis}` : ""}${pid ? `&pid=${pid}` : ""}`);
   await page.waitForFunction(() => window.__ready === true);
   await page.waitForTimeout(600);
   return page;
@@ -85,8 +94,13 @@ const inView = (page, id) => tid(page, id).first().evaluate((n) => {
 try {
   // ---- R1 how this was made -----------------------------------------------------------------------------------
   const page = await open("ok");
+  await tid(page, "stage-made").click();   // the card opens from the stage's "i" pill (client stage, ui-for-r20)
   await tid(page, "models-used").waitFor();
-  assert.equal(await page.locator('[data-testid="models-used"] .hm-step').count(), 5);
+  assert.equal(await page.locator('[data-testid="models-used"] .hm-step').count(), 8);
+  assert.equal(await tid(page, "model-spark-opinion-status").textContent(), "Ran live", "TICKET-262 the second opinion row");
+  assert.equal(await tid(page, "model-narration-status").textContent(), "Not used", "negative: no narration file, no live narration row");
+  assert.match(await tid(page, "model-spark-history-detail").textContent(), /4000 tokens reused/);
+  assert.equal(await page.locator('[data-testid="models-used"] .hm-group[data-clip="account"] .hm-step').count(), 1);
   assert.equal(await tid(page, "model-sam3d-you").getAttribute("data-status"), "live");
   assert.equal(await tid(page, "model-sam3d-you-status").textContent(), "Ran live");
   assert.equal(await tid(page, "model-spark-sections-status").textContent(), "Saved run reused");
@@ -95,9 +109,8 @@ try {
   assert.equal(await tid(page, "model-sam31-you-status").textContent(), "Not used");
   assert.equal(await tid(page, "models-made-with").textContent(), "Made with Meta's SAM 3.1, Muse Spark and SAM 3D Body.");
   assert.equal(await tid(page, "models-total").textContent(), "Your take, from upload to result: 2 min 43 s.");
-  // it sits right under the summary, before the other panels
-  const order = await page.evaluate(() => [...document.querySelectorAll('[data-testid="result-summary"], [data-testid="models-used"], [data-testid="stage"]')].map((n) => n.dataset.testid));
-  assert.deepEqual(order, ["result-summary", "models-used", "stage"]);
+  // it sits in the stage's "How this was made" panel, at the top of the result
+  assert.equal(await tid(page, "models-used").evaluate((n) => !!n.closest('[data-testid="stage-made-panel"]') && !!n.closest('[data-testid="stage"]')), true);
   await tid(page, "models-used").screenshot({ path: path.join(SHOTS, "additions-models-used.png") });
   ok("AC-R1 how this was made: every row from models.json, fallback labelled, made-with names only models that ran");
 
@@ -105,17 +118,20 @@ try {
   // the repaint for the routine's name ("Lateral raise, rep ...") lands mid-count and carries it on to the end
   await page.waitForFunction(() => /Lateral raise/.test(document.querySelector(".rs-worst h3")?.textContent || ""));
   await page.waitForFunction(() => document.querySelector('[data-testid="summary-score"]').dataset.reveal === "done");
-  assert.equal(await tid(page, "summary-score").locator(".rs-ring-value").textContent(), "77");
+  assert.equal(await tid(page, "summary-score").locator(".rs-meter-value").textContent(), "77");
   assert.equal(await tid(page, "summary-grade").textContent(), "C");
 
-  // ---- result-intent.md AC-I2 how the score adds up, under the ring --------------------------------------------
+  // ---- result-intent.md AC-I2 how the score adds up --------------------------------------------------------------
   const sum = tid(page, "score-sum");
-  assert.equal((await sum.textContent()).replace(/ /g, " "), "Each rep started at 100 and lost, on average, 19.4 points for misses and 3.7 for overall match: "
+  const sumText = (await sum.textContent()).replace(/\u00a0/g, " ");
+  assert.equal(sumText, "Each rep started at 100 and lost, on average, 19.4 points for misses and 3.7 for overall match: "
     + "100 − 19.4 − 3.7 ≈ 77. The points next to each miss count only in its own rep, so together they add up to more.");
+  for (const f of sumText.match(/\d+(?:\.\d+)?/g)) assert.ok(Number(f) <= 100, `negative: ${f} is off the 0 to 100 scale`);
   assert.equal(await sum.getAttribute("data-adds"), "true");
-  assert.equal(await sum.evaluate((n) => n.previousElementSibling.matches(".rs-head") && n.nextElementSibling.matches(".rs-stats")), true, "between the ring and the stats");
-  assert.ok((await sum.evaluate((n) => n.getBoundingClientRect().bottom)) < 915, "on the first screen");
-  ok("AC-I2 how your score adds up: 100 minus Part 5's components lands on 77, under the ring, on the first screen");
+  assert.equal(await sum.evaluate((n) => n.nextElementSibling.matches(".rs-stats")), true, "just before the stats");
+  assert.ok((await sum.evaluate((n) => n.getBoundingClientRect().height)) > 0, "shown in the summary (below the client's stage, ui-for-r20)");
+  ok("AC-I2 how your score adds up: 100 minus Part 5's components lands on 77, on the first screen");
+  ok("AC-I2 every figure in the score line is on the 0 to 100 scale (rubric audit)");
 
   // ---- result-intent.md AC-I4 the reveal's last beat: the trainer and you slide together, once seen --------------
   const cmp = tid(page, "compare");
@@ -125,6 +141,7 @@ try {
   };
   assert.equal(await cmp.getAttribute("data-reveal"), "waiting", "negative: off screen, the 3D view waits");
   assert.equal(await cmp.getAttribute("data-mode"), "side");
+  await tid(page, "stage-view-3d").click();   // the 3D view is one of the stage's views (client stage, ui-for-r20)
   await cmp.evaluate((n) => n.scrollIntoView({ block: "center" }));
   await page.waitForTimeout(150);
   const gapStart = await gap();
@@ -178,10 +195,11 @@ try {
   // the same result mounted again does not play it again
   await page.evaluate(async () => { window.__r.destroy(); window.__lane = []; window.__r = await window.__mount(); });
   await page.waitForFunction(() => /Lateral raise/.test(document.querySelector(".rs-worst h3")?.textContent || ""));
-  assert.equal(await tid(page, "summary-score").getAttribute("data-reveal"), null);
-  assert.equal(await tid(page, "summary-score").locator(".rs-ring-value").textContent(), "77");
+  await page.waitForFunction(() => document.querySelector('[data-testid="summary-score"]')?.dataset.reveal === "done");   // the bar fills every time (client, 2026-11-02)
+  assert.equal(await tid(page, "summary-score").locator(".rs-meter-value").textContent(), "77");
   assert.equal(await tid(page, "compare").getAttribute("data-reveal"), "skipped", "AC-I4 no second slide");
   assert.equal(await tid(page, "compare").getAttribute("data-mode"), "side");
+  await tid(page, "stage-made").click();
   await tid(page, "models-used").waitFor();
   ok("AC-R4 the ring counts up to Part 5's score once per result, the grade lands, a mid-count repaint carries it on");
 
@@ -215,9 +233,18 @@ try {
   await page.evaluate(fs.readFileSync(req.resolve("axe-core/axe.min.js"), "utf8"));
   const contrast = await page.evaluate(() => axe.run(document.querySelector('[data-testid="fault-list"]'), { runOnly: ["color-contrast"] }));
   assert.deepEqual(contrast.violations.flatMap((v) => v.nodes.map((n) => n.target.join(" "))), []);
-  assert.equal(await tid(page, "fault-1-low").evaluate((n) => getComputedStyle(n).color), await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--palette-coral").trim()).then((hex) => {
-    const v = parseInt(hex.slice(1), 16); return `rgb(${v >> 16}, ${(v >> 8) & 255}, ${v & 255})`;
-  }));
+  // the chip's colour is the theme's "bad" token (theme/results.css .sr-low), read from the theme, not a literal: the client
+  // theme maps it to its pink (TICKET-241 AC-1). A probe element resolves the token chain to a computed colour.
+  const badToken = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--color-bad)";
+    document.body.append(probe);
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  });
+  assert.notEqual(badToken, "rgb(0, 0, 0)", "the token resolved");
+  assert.equal(await tid(page, "fault-1-low").evaluate((n) => getComputedStyle(n).color), badToken);
   // a scroll to a card stops below the sticky header
   assert.equal(await page.locator(".sr-fault-item").first().evaluate((n) => getComputedStyle(n).scrollMarginTop),
     await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim()));
@@ -227,6 +254,7 @@ try {
   ok("AC-R6 the voice slot sits inside its fault card; Low confidence passes AA; scrolls stop below the header");
 
   // ---- R2 the skeleton over the video -------------------------------------------------------------------------
+  await tid(page, "stage-view-annotated").click();   // the skeleton is the stage's Annotated view (the 3D pick above is saved)
   const skel = tid(page, "skeleton-overlay");
   await skel.waitFor({ state: "attached" });
   // at 9.1 s (the knee fault, after the seek above) the knee is lit
@@ -249,16 +277,18 @@ try {
   await page.waitForTimeout(200);
   const fault = tid(page, "fault-1");
   await fault.scrollIntoViewIfNeeded();
-  assert.equal(await inView(page, "compare"), false, "negative: the 3D view is off screen before the tap");
+  // the client's stage (ui-for-r20) shows one view at a time: the tap brings the stage's top into sight on the view that moves
+  const stageTop = () => tid(page, "stage").evaluate((n) => { const r = n.getBoundingClientRect(); return r.top >= -1 && r.top < innerHeight / 2; });
+  assert.equal(await stageTop(), false, "negative: the stage is off screen before the tap");
   await fault.click();
   await page.waitForTimeout(1200);
-  assert.equal(await inView(page, "result-video"), true, "video in sight after the tap");
-  assert.equal(await inView(page, "compare"), true, "3D view in sight after the tap");
+  assert.equal(await stageTop(), true, "the stage in sight after the tap");
+  assert.ok(["annotated", "3d"].includes(await tid(page, "stage").getAttribute("data-view")), "on a view that moves (video with the skeleton, or 3D)");
   const clock = Number(await tid(page, "coach-clock").getAttribute("data-t"));
   const cmpClock = Number(await tid(page, "clock").getAttribute("data-t"));
   assert.ok(Math.abs(clock - 9.1) < 0.2 && Math.abs(cmpClock - 9.1) < 0.2, `seeked to ${clock} and ${cmpClock}`);
   await page.screenshot({ path: path.join(SHOTS, "additions-after-tap.png") });
-  ok("AC-R5 tapping a coaching line brings the video and the 3D view into sight, both at the line's time");
+  ok("AC-R5 tapping a coaching line brings the stage into sight on a view that moves; the video and the 3D view are both at the line's time");
 
   // ---- R3 the 3D bodies in the worst moment's card ------------------------------------------------------------
   await tid(page, "summary-mesh").locator("canvas").waitFor({ timeout: 15000 });
@@ -282,7 +312,7 @@ try {
   // ---- reduced motion, the example result, missing modules -----------------------------------------------------
   const calm = await open("ok", { reduced: true });
   assert.equal(await tid(calm, "summary-score").getAttribute("data-reveal"), "skipped");
-  assert.equal(await tid(calm, "summary-score").locator(".rs-ring-value").textContent(), "77");
+  assert.equal(await tid(calm, "summary-score").locator(".rs-meter-value").textContent(), "77");
   assert.equal(await tid(calm, "compare").getAttribute("data-reveal"), "skipped", "AC-I4 no slide under reduced motion");
   await tid(calm, "compare").evaluate((n) => n.scrollIntoView({ block: "center" }));
   await calm.waitForTimeout(1500);
@@ -290,13 +320,13 @@ try {
   await calm.context().close();
   ok("AC-R4 and AC-I4 prefers-reduced-motion shows the final score at once and does not slide the figures");
 
-  // AC-I4 once per result per session: a reload in the same tab plays neither the count-up nor the slide again
+  // the score bar fills every time the result opens (team, 2026-11-02); the 3D slide stays once per result per session
   const again = await open("ok");
   await again.waitForFunction(() => document.querySelector('[data-testid="summary-score"]')?.dataset.reveal === "done");
   await again.reload();
   await again.waitForFunction(() => window.__ready === true);
-  assert.equal(await tid(again, "summary-score").getAttribute("data-reveal"), null, "no count-up after a reload");
-  assert.equal(await tid(again, "summary-score").locator(".rs-ring-value").textContent(), "77");
+  await again.waitForFunction(() => document.querySelector('[data-testid="summary-score"]')?.dataset.reveal === "done");   // it fills again
+  assert.equal(await tid(again, "summary-score").locator(".rs-meter-value").textContent(), "77");
   assert.equal(await tid(again, "compare").getAttribute("data-reveal"), "skipped", "no slide after a reload");
   await again.context().close();
   ok("AC-I4 the reveal plays once per result per session: a reload shows the end state at once");
@@ -314,6 +344,26 @@ try {
   assert.equal(await tid(noModels, "models-used").count(), 0, "models.json 404: no panel, no error");
   await noModels.context().close();
   ok("the example result, a 404 models.json and missing modules leave the screen as it was");
+
+  // ---- group-results.md R2: one person of a group result has its own "How this was made" card ---------------------
+  const PERSON = { job: JOB, person: "p2", job_seconds: 180, models: [
+    { id: "sam31-you", model: "SAM 3.1", maker: "Meta", clip: "you", status: "live", seconds: 30, facts: { via: "meta_api" } },
+    { id: "sam3d-you", model: "SAM 3D Body", maker: "Meta", clip: "you", status: "live", seconds: 70, facts: { via: "local_gpu" } },
+    { id: "spark-phrasing", model: "Muse Spark", maker: "Meta", clip: "you", status: "live", seconds: null, facts: { via: "meta_api", lines: 3 } },
+  ] };
+  const grp = await open("ok", { pid: "p2", models: PERSON });
+  await tid(grp, "stage-made").click();
+  await tid(grp, "models-used").waitFor();
+  assert.deepEqual(grp.asked, [`/tests/part7/harness/api/results/${JOB}/p2/models.json`], "the card is asked for this person only");
+  assert.equal(await grp.locator('[data-testid="models-used"] .hm-step').count(), 3);
+  assert.equal(await tid(grp, "model-sam3d-you-status").textContent(), "Ran live");
+  assert.equal(await grp.locator('[data-testid="models-used"] .hm-group[data-clip="trainer"]').count(), 0, "negative: no trainer rows on a person's card");
+  await grp.context().close();
+  const grpGone = await open("ok", { pid: "p2", models: null });
+  await grpGone.waitForTimeout(500);
+  assert.equal(await tid(grpGone, "models-used").count(), 0, "a 404 for the person shows no card");
+  await grpGone.context().close();
+  ok("group-results R2: a group person's result shows the card from its own models.json; a 404 shows none");
 
   // ---- TICKET-120 the fault cap (synthetic simon.score.v3 fixtures) ---------------------------------------------
   const two = await open("ok", { analysis: "synthetic-v3-two-fault" });

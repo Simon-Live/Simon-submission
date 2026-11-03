@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- TICKET-322: the result page with the trainer's clip playing; ?case=cc|none|notrainer|mine decides the entry's source and clip. -->
+<link rel="stylesheet" href="../../../web/theme/tokens.css"><link rel="stylesheet" href="../../../web/theme/base.css"><link rel="stylesheet" href="../../../web/theme/source-credit.css"><div id="app"></div>
+<script type="module">
+import { mountResult } from "../../../web/result.js";
+const q = new URLSearchParams(location.search);
+const c = q.get("case");
+const [analysis, replay] = await Promise.all(["analysis-1.2.0.json", "replay.json"].map((f) => fetch(`../../../fixtures/input/${f}`).then((r) => r.json())));
+const JOB = "e700387c7a1c", ENTRY = "knee-raise-harness-b6635964";
+const CCBY = { title: "MM-Fit workout", creator: "Stromback et al.", licence: "CC BY 4.0", licence_other: "", licence_label: "CC BY 4.0", licence_url: "https://creativecommons.org/licenses/by/4.0/", url: "https://mmfit.github.io/" };
+window.__req = [];
+const real = window.fetch.bind(window);
+const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+window.fetch = async (url, opts) => {
+  const u = String(url);
+  if (u.includes("api/source/")) window.__req.push(u);
+  if (u.endsWith(`api/source/entry/${ENTRY}`)) return json(200, { source: c === "none" ? null : CCBY, mine: c === "mine", licences: ["CC BY 4.0"] });
+  if (u.endsWith(`api/source/take/${JOB}`)) return json(200, { source: null, mine: false, licences: [] });
+  if (u.endsWith("api/auth/me")) return json(200, { available: true, signed_in: true, user_id: "u-1" });
+  if (u.includes("catalog/api/entries/")) return json(200, { name: "Knee raise", video_uri: "video.mp4", can_ask: false, takes: [] });
+  if (u.includes("api/")) return json(200, {});
+  return real(url, opts);
+};
+const record = { id: JOB, kind: "follow", entry_id: ENTRY, entry_gone: false, narration: true, attribution: { mine: c === "mine" } };
+window.__r = await mountResult(document.getElementById("app"), { analysis, replay, record, job: JOB, videoUrl: "../fixtures/coach.webm",
+  trainerVideoUrl: c === "notrainer" ? null : "../fixtures/coach.webm" });
+window.__ready = true;
+</script>

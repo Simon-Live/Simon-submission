@@ -1,0 +1,1126 @@
+{
+ "format": "simon.eval.check7_runs/1",
+ "runs": [
+  {
+   "animation_max_joint_diff_m": 0.0003458366666506131,
+   "durations_s": {
+    "app": 144.5,
+    "direct": 1789.4,
+    "total": 1933.9
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 3,
+    "followers_matched": "2/2",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": false,
+    "ok_status_both_paths": 2,
+    "pins_consistent": true,
+    "refusal_both": true,
+    "score_equal": true
+   },
+   "part7_commit": "fbd93ca65ba1ce1e2d403234157860e5ff351b84",
+   "pass": false,
+   "run": "20261030T164400Z",
+   "takes": [
+    {
+     "clip": "pexels-8836968",
+     "faults_compared": 3,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 54,
+     "score_direct": 54,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-40297504",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 98,
+     "score_direct": 98,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": null,
+     "score_direct": null,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00037647177849081025,
+   "durations_s": {
+    "app": 138.5,
+    "direct": 951.8,
+    "total": 1090.3
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 0,
+    "followers_matched": "2/2",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": false,
+    "ok_status_both_paths": 2,
+    "pins_consistent": true,
+    "score_equal": true
+   },
+   "part7_commit": "90aa473b17c0276ab01aa2523962e5996c1d5fd4",
+   "pass": false,
+   "run": "20261030T194413Z",
+   "takes": [
+    {
+     "clip": "pexels-8836968",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 96,
+     "score_direct": 96,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-40297504",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 96,
+     "score_direct": 96,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 6,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.0009012796458368976,
+   "durations_s": {
+    "app": 189.6,
+    "direct": 1262.1,
+    "total": 1451.7
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 0,
+    "followers_matched": "2/2",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": false,
+    "ok_status_both_paths": 2,
+    "pins_consistent": true,
+    "score_equal": true
+   },
+   "part7_commit": "8cb7fd85decf6716694a28cd55cbee61ba7ba162",
+   "pass": false,
+   "run": "20261031T042834Z",
+   "takes": [
+    {
+     "clip": "pexels-8836968",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 96,
+     "score_direct": 96,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-40297504",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 76,
+     "score_direct": 76,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 6,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.0003460476845753765,
+   "durations_s": {
+    "app": 153.6,
+    "direct": 1171.5,
+    "total": 1325.1
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 0,
+    "followers_matched": "2/2",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": false,
+    "ok_status_both_paths": 2,
+    "pins_consistent": true,
+    "score_equal": true
+   },
+   "part7_commit": "4b394e1947d06290e27440a5d6ff39438c74cedc",
+   "pass": false,
+   "run": "20261031T155709Z",
+   "takes": [
+    {
+     "clip": "pexels-8836968",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 99,
+     "score_direct": 99,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-40297504",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 76,
+     "score_direct": 76,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 6,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00014567429423203824,
+   "durations_s": {
+    "app": 228.6,
+    "direct": 1286.8,
+    "total": 1515.5
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 6,
+    "followers_matched": "2/2",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 2,
+    "pins_consistent": true,
+    "score_equal": true
+   },
+   "part7_commit": "af396ca4f7bf9604702caf6246a64f1fba2b4a3e",
+   "pass": true,
+   "run": "20261031T182615Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 44,
+     "score_direct": 44,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 4,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 30,
+     "score_direct": 30,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00015456390264223508,
+   "durations_s": {
+    "app": 225.6,
+    "direct": 1123.0,
+    "total": 1348.6
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 6,
+    "followers_matched": "2/2",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 2,
+    "pins_consistent": true,
+    "score_equal": true
+   },
+   "part7_commit": "af396ca4f7bf9604702caf6246a64f1fba2b4a3e",
+   "pass": true,
+   "run": "20261031T193705Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 44,
+     "score_direct": 44,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 4,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 30,
+     "score_direct": 30,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00015691080268737966,
+   "durations_s": {
+    "app": 249.8,
+    "direct": 1223.8,
+    "total": 1473.6
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 6,
+    "followers_matched": "2/2",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 2,
+    "pins_consistent": true,
+    "score_equal": true
+   },
+   "part7_commit": "6b35877719c20f27fffa988bc7c7c233ccde70f3",
+   "pass": true,
+   "run": "20261031T203508Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 44,
+     "score_direct": 44,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 4,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 30,
+     "score_direct": 30,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.0001558236182354958,
+   "durations_s": {
+    "app": 219.6,
+    "direct": 1184.4,
+    "total": 1404.0
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 6,
+    "followers_matched": "2/2",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 2,
+    "pins_consistent": true,
+    "score_equal": true
+   },
+   "part7_commit": "b9a2b4142f7b5b13f700afbd41022699f612eb1b",
+   "pass": true,
+   "run": "20261031T214443Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 44,
+     "score_direct": 44,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 4,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 30,
+     "score_direct": 30,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00014291955779388113,
+   "durations_s": {
+    "app": 277.8,
+    "direct": 1633.3,
+    "total": 1911.1
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 9,
+    "followers_matched": "3/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": false
+   },
+   "part7_commit": "7001d491cc07d8d8ca3d90b6e49dd8b0d368b179",
+   "pass": false,
+   "run": "20261101T055450Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 45,
+     "score_direct": 45,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 5,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 25,
+     "score_direct": 25,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 40,
+     "score_direct": 42,
+     "score_equal": false
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00023465080438809315,
+   "durations_s": {
+    "app": 159.6,
+    "direct": 819.7,
+    "total": 979.2
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 21,
+    "followers_matched": "3/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": false
+   },
+   "part7_commit": "7001d491cc07d8d8ca3d90b6e49dd8b0d368b179",
+   "pass": false,
+   "run": "20261101T062644Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 7,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 1,
+     "score_direct": 1,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 4,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 18,
+     "score_direct": 23,
+     "score_equal": false
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 10,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00018873526432546824,
+   "durations_s": {
+    "app": 264.8,
+    "direct": 2083.9,
+    "total": 2348.7
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 9,
+    "followers_matched": "2/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": false
+   },
+   "part7_commit": "fdafeda1697546f32ede8465e9cab26b4a68c70e",
+   "pass": false,
+   "run": "20261101T064422Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 45,
+     "score_direct": 45,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 5,
+     "faults_equal": false,
+     "role": "follower",
+     "score_app": 25,
+     "score_direct": 22,
+     "score_equal": false
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 40,
+     "score_direct": 40,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00014009639538540279,
+   "durations_s": {
+    "app": 312.7,
+    "direct": 1339.0,
+    "total": 1651.8
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 9,
+    "followers_matched": "3/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": true
+   },
+   "part7_commit": "ba9ea1751b8deffae7cd55a93e9243e1507ba929",
+   "pass": false,
+   "run": "20261101T072131Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 45,
+     "score_direct": 45,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 5,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 25,
+     "score_direct": 25,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 40,
+     "score_direct": 40,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00018966022250328432,
+   "durations_s": {
+    "app": 246.7,
+    "direct": 1337.9,
+    "total": 1584.6
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 9,
+    "followers_matched": "3/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": true
+   },
+   "part7_commit": "7cbb1ba9a8462bb23405b89c795842c2ac52db20",
+   "pass": false,
+   "run": "20261101T090427Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 45,
+     "score_direct": 45,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 5,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 25,
+     "score_direct": 25,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 42,
+     "score_direct": 42,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00016346559270989566,
+   "durations_s": {
+    "app": 237.7,
+    "direct": 1419.2,
+    "total": 1656.9
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 9,
+    "followers_matched": "3/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": true
+   },
+   "part7_commit": "7cbb1ba9a8462bb23405b89c795842c2ac52db20",
+   "pass": false,
+   "run": "20261101T094127Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 45,
+     "score_direct": 45,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 5,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 25,
+     "score_direct": 25,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 40,
+     "score_direct": 40,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00014009639538540279,
+   "durations_s": {
+    "app": 240.7,
+    "direct": 1364.0,
+    "total": 1604.7
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 9,
+    "followers_matched": "3/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": true
+   },
+   "part7_commit": "399f18ba7f0b36daad85ff7833b89ae243af21b9",
+   "pass": false,
+   "run": "20261101T110143Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 45,
+     "score_direct": 45,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 5,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 25,
+     "score_direct": 25,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 40,
+     "score_direct": 40,
+     "score_equal": true
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00016869202707893712,
+   "durations_s": {
+    "app": 304.1,
+    "direct": 3247.6,
+    "total": 3551.7
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 9,
+    "followers_matched": "3/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": false
+   },
+   "part7_commit": "1267a970d1d3c1cf4f2b01e9f56c9674fae2de8c",
+   "pass": false,
+   "run": "20261101T194823Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 45,
+     "score_direct": 45,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 5,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 25,
+     "score_direct": 25,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 40,
+     "score_direct": 42,
+     "score_equal": false
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  },
+  {
+   "animation_max_joint_diff_m": 0.00014291955779388113,
+   "durations_s": {
+    "app": 300.4,
+    "direct": 1508.8,
+    "total": 1809.2
+   },
+   "gates": {
+    "app_result_complete": true,
+    "at_s_equal": true,
+    "entry_ok": true,
+    "faults_compared": 9,
+    "followers_matched": "3/3",
+    "followers_min_2": true,
+    "inputs_identical": true,
+    "mismatch_equal": true,
+    "movement_never_configured": true,
+    "ok_status_both_paths": 3,
+    "pins_consistent": true,
+    "quality_cap_equal": true,
+    "quality_degraded_major_capped": false,
+    "quality_good_no_major": true,
+    "quality_major_codes_equal": true,
+    "score_equal": false
+   },
+   "part7_commit": "17adac8759964f48b37f013410573ccf5a04b407",
+   "pass": false,
+   "run": "20261102T021153Z",
+   "takes": [
+    {
+     "clip": "pexels-8026937",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 53,
+     "score_direct": 53,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-4224405",
+     "faults_compared": 5,
+     "faults_equal": true,
+     "role": "follower",
+     "score_app": 40,
+     "score_direct": 39,
+     "score_equal": false
+    },
+    {
+     "clip": "pexels-5034562",
+     "faults_compared": 0,
+     "faults_equal": true,
+     "role": "mismatch",
+     "score_app": 0,
+     "score_direct": 0,
+     "score_equal": true
+    },
+    {
+     "clip": "pexels-8026937-dark",
+     "faults_compared": 2,
+     "faults_equal": true,
+     "role": "degraded",
+     "score_app": 49,
+     "score_direct": 50,
+     "score_equal": false
+    }
+   ],
+   "tolerance": {
+    "deg_abs": 2.0,
+    "m_abs": 0.01,
+    "rel": 0.1
+   }
+  }
+ ]
+}

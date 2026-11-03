@@ -26,13 +26,15 @@ const rep = (n, ...ms) => ({ rep: n, movement: "raise", keyframes: ms.map((t_ms,
 const ENTRIES = [
   { id: "salsa", name: "Salsa basic", category: "dance", files_source: "import", video_uri: null, animation: "animation.json", duration_ms: 12000 },
   { id: "sq", name: "Lateral raise", category: "exercise", files_source: "import", video_uri: "video.webm", keyframes: "keyframes.json", animation: "animation.json", duration_ms: 12000 },
-  { id: "knee", name: "Knee bends", category: "exercise", files_source: "import", video_uri: null, animation: "animation.json", duration_ms: 8000 },
+  { id: "knee", name: "Knee bends", category: "exercise", files_source: "import", video_uri: "video.webm", keyframes: "keyframes.json", animation: "animation.json", duration_ms: 12000 },
+  // TICKET-311: an entry with no kind (no category, no rehab tag) is the only one whose mode the picker decides
+  { id: "free", name: "Free move", files_source: "import", video_uri: null, animation: "animation.json", duration_ms: 12000 },
 ];
 const LABELS = { knee: { tags: ["rehab"], notes: "" } };
 const KEYFRAMES = { fps: 25, people: [{ id: 0, repetitions: [rep(1, 0, 1500), rep(2, 4000, 5500), rep(3, 8000, 9500)] }] };
 const JOBS = {
-  fj1: { id: "fj1", kind: "follow", status: "done", entry_id: "sq", mode: "rehab", section: { start_ms: 0, end_ms: 4000, index: 1, count: 3, speed: 0.5 }, result: { score: 85, grade: "B" } },
-  fjlow: { id: "fjlow", kind: "follow", status: "done", entry_id: "sq", result: { score: 70, grade: "C" } },
+  fj1: { id: "fj1", kind: "follow", status: "done", entry_id: "knee", mode: "rehab", section: { start_ms: 0, end_ms: 4000, index: 1, count: 3, speed: 0.5 }, result: { score: 85, grade: "B" } },
+  fjlow: { id: "fjlow", kind: "follow", status: "done", entry_id: "knee", result: { score: 70, grade: "C" } },
 };
 const posts = [];
 
@@ -142,7 +144,19 @@ try {
   await go("#/follow/salsa");
   await tid("follow-mode").waitFor();
   assert.equal(await tid("follow-mode").getAttribute("data-value"), "dance", "dance defaults to dance");
+  // TICKET-311: an entry with a kind shows that kind's mode, locked; the rehab tag wins over the category
   await go("#/follow/sq");
+  await tid("follow-mode").waitFor();
+  assert.equal(await tid("follow-mode").getAttribute("data-locked"), "entry");
+  assert.equal(await tid("follow-mode-fitness").getAttribute("aria-pressed"), "true");
+  assert.equal(await tid("follow-mode-rehab").isDisabled(), true, "the picker refuses another mode for this entry");
+  await go("#/follow/knee");
+  await tid("follow-mode").waitFor();
+  await page.waitForFunction(() => document.querySelector('[data-testid="follow-mode"]').dataset.value === "rehab");
+  assert.equal(await tid("follow-mode").getAttribute("data-locked"), "entry");
+  await go("#/follow/free");
+  await tid("follow-mode").waitFor();
+  assert.equal(await tid("follow-mode").getAttribute("data-locked"), null, "negative: an entry without a kind keeps the picker");
   await tid("follow-mode-rehab").click();
   assert.match(await tid("mode-safety").textContent(), /Move within a pain-free range; stop if it hurts\./);
   assert.equal(await tid("countdown-select").inputValue(), "10", "rehab counts down longer");
@@ -151,7 +165,10 @@ try {
   assert.equal(await tid("countdown-select").inputValue(), "5");
   await tid("follow-mode-rehab").click();
   assert.equal(await store("simon.mode"), "rehab");
-  ok("follow: default from category, picker stored, rehab safety line and 10 s countdown");
+  ok("follow: default from category, the entry's kind locks the picker, picker stored, rehab safety line and 10 s countdown");
+
+  await go("#/follow/knee"); // the rehab-tagged entry: rehab presets whatever the bar says
+  await tid("follow-mode").waitFor();
 
   // 3. Sections: derived from the keyframes, the ladder, the reference at the step's rate
   await tid("practice-toggle").check();
@@ -189,15 +206,15 @@ try {
   assert.deepEqual(posts.at(-1).section, { start_ms: 0, end_ms: 4000, index: 1, count: 3, speed: 0.5 });
   assert.equal(posts.at(-1).mode, "rehab");
   assert.equal("lang" in posts.at(-1), false, "no language is sent until the person picks one");
-  assert.deepEqual(JSON.parse(await store("simon.practice.sq")).pending, { key: "s1@slow", job: "fj1" });
-  await go("#/follow/sq");
+  assert.deepEqual(JSON.parse(await store("simon.practice.knee")).pending, { key: "s1@slow", job: "fj1" });
+  await go("#/follow/knee");
   await tid("ladder").waitFor();
   await tid("step-s1@full").waitFor();
   await page.waitForFunction(() => !document.querySelector('[data-testid="step-s1@full"]').disabled);
   assert.equal(await tid("step-s1@slow").getAttribute("data-state"), "passed");
   assert.match(await tid("step-s1@slow").textContent(), /Passed with 85/);
   assert.equal(await tid("step-s2@slow").isDisabled(), true, "the next section waits for section 1 at full speed");
-  assert.equal(JSON.parse(await store("simon.practice.sq")).pending, null);
+  assert.equal(JSON.parse(await store("simon.practice.knee")).pending, null);
   await tid("step-s1@full").click();
   assert.equal(await tid("reference-video").evaluate((v) => v.playbackRate), 1);
   assert.equal(await tid("reference").getAttribute("data-section"), "0-4");
@@ -205,10 +222,10 @@ try {
   ok("practice: POST api/follow has mode and section, score 85 passes the slow step and unlocks full speed");
 
   // 5. A score below 80 does not unlock
-  await page.evaluate(() => localStorage.setItem("simon.practice.sq", JSON.stringify({ v: 1, on: true, best: {}, pending: { key: "s1@slow", job: "fjlow" } })));
-  await go("#/follow/sq");
+  await page.evaluate(() => localStorage.setItem("simon.practice.knee", JSON.stringify({ v: 1, on: true, best: {}, pending: { key: "s1@slow", job: "fjlow" } })));
+  await go("#/follow/knee");
   await tid("ladder").waitFor();
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem("simon.practice.sq")).best["s1@slow"] === 70);
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("simon.practice.knee")).best["s1@slow"] === 70);
   assert.equal(await tid("step-s1@full").isDisabled(), true, "negative: 70 is below 80");
   ok("practice: a take scored 70 does not unlock the next step");
 
@@ -262,7 +279,7 @@ try {
   assert.match(await tid("follow-challenge").textContent(), /Beat my Lateral raise/);
   let sent = await takeOne();
   assert.equal(sent.challenge_id, "chOpen", "the challenge id travels with the take");
-  assert.equal("mode" in sent, false, "negative: no mode was chosen, so none is sent (the default is for presets only)");
+  assert.equal(sent.mode, "fitness", "TICKET-311: the entry's category decides, even with nothing chosen");
   assert.equal("lang" in sent, false, "no language is sent until the person picks one");
   assert.equal(await store("simon.mode"), null);
   await go("#/follow/sq/c/chEnded");
@@ -277,12 +294,22 @@ try {
   await tid("follow-mode").waitFor();
   await page.waitForTimeout(400);
   assert.equal(await tid("follow-challenge").isHidden(), true, "a challenge for another movement is not offered");
-  await go("#/follow/sq");
+  await go("#/follow/free");
   await tid("follow-mode-rehab").click();
   sent = await takeOne();
-  assert.equal(sent.mode, "rehab");
+  assert.equal(sent.mode, "rehab", "an entry without a kind sends the picked mode");
   assert.equal("challenge_id" in sent, false);
-  ok("take: mode only when chosen, challenge_id only for an open challenge of this movement");
+  await go("#/follow/sq");
+  await tid("follow-mode").waitFor();
+  assert.equal(await store("simon.mode"), "rehab", "the bar says Rehab");
+  sent = await takeOne();
+  assert.equal(sent.mode, "fitness", "TICKET-311: a fitness entry with the bar on Rehab follows the entry");
+  await page.evaluate(() => localStorage.setItem("simon.mode", "fitness"));
+  await go("#/follow/knee");
+  await tid("follow-mode").waitFor();
+  sent = await takeOne();
+  assert.equal(sent.mode, "rehab", "TICKET-311: a rehab entry with the bar on Exercise sends rehab");
+  ok("take: the entry's kind decides the mode, the picker only for an entry without one; challenge_id only for an open challenge of this movement");
 
   assert.deepEqual(errors, [], `console errors: ${errors.join(" | ")}`);
   ok("no console errors");

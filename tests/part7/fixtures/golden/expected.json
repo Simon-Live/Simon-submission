@@ -1,0 +1,77 @@
+{
+  "schema": "part7.golden/1",
+  "trainer": "pexels-6326808",
+  "takes": {
+    "pexels-8026937": {
+      "status": "ok",
+      "score": 53,
+      "faults": [
+        {
+          "measure": "upper_arm_forward",
+          "side": "both",
+          "direction": "less",
+          "at_s": 1.0,
+          "magnitude_deg": -26.8
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "left",
+          "direction": "more",
+          "at_s": 1.5,
+          "magnitude_deg": 20.9
+        }
+      ]
+    },
+    "pexels-4224405": {
+      "status": "ok",
+      "score": 39,
+      "faults": [
+        {
+          "measure": "elbow_flexion",
+          "side": "left",
+          "direction": "more",
+          "at_s": 3.0,
+          "magnitude_deg": 25.5
+        },
+        {
+          "measure": "upper_arm_out",
+          "side": "right",
+          "direction": "more",
+          "at_s": 0.0,
+          "magnitude_deg": 20.4
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "both",
+          "direction": "less",
+          "at_s": 0.9,
+          "magnitude_deg": -17.1
+        },
+        {
+          "measure": "trunk_lean_side",
+          "side": "center",
+          "direction": "more",
+          "at_s": 0.0,
+          "magnitude_deg": 10.5
+        },
+        {
+          "measure": "shoulder_tilt",
+          "side": "center",
+          "direction": "less",
+          "at_s": 0.0,
+          "magnitude_deg": -10.0
+        }
+      ]
+    },
+    "pexels-5034562": {
+      "status": "ok",
+      "score": 0,
+      "faults": []
+    }
+  },
+  "pins": {
+    "3": "fd96379ed194",
+    "4": "7036622fb5d6",
+    "5": "ec67dc11f4c7"
+  }
+}

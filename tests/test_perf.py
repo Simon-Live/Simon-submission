@@ -300,6 +300,8 @@ def test_track_uses_api_tracker_while_budget_allows_then_default(
     out = tmp_path / "w" / "part2_track"
     out.mkdir(parents=True)
     (out / "tracks.json").write_text("{}", encoding="utf-8")
+    # fa0de8e (spend caps off by default; parts-harness.md): the budget only bites when the cap env var is set.
+    monkeypatch.setenv("SIMON7_PART1_SPEND_CAP_USD", "5")
     _budget(monkeypatch, True, 0.0)
     p2_pose.track(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False)
     cmd = ran[-1]
@@ -307,6 +309,10 @@ def test_track_uses_api_tracker_while_budget_allows_then_default(
     _budget(monkeypatch, True, 99.0)
     p2_pose.track(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False)
     assert "--tracker" not in ran[-1]
+    monkeypatch.delenv("SIMON7_PART1_SPEND_CAP_USD")  # uncapped: a large spend no longer stops the api tracker
+    p2_pose.track(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False)
+    assert ran[-1][ran[-1].index("--tracker") + 1] == "api-sam31"
+    monkeypatch.setenv("SIMON7_PART1_SPEND_CAP_USD", "5")
     _budget(monkeypatch, False, 0.0)
     p2_pose.track(_video(tmp_path), tmp_path / "w", lock=lk, state=state_dir, acquire_lock=False)
     assert "--tracker" not in ran[-1]
@@ -336,15 +342,17 @@ def test_part5_gets_phrasing_concurrency(tmp_path: Path, state_dir: Path, monkey
 
 
 def test_warm_workers_are_off_unless_enabled(monkeypatch, tmp_path) -> None:
-    """SIMON7_P2_WARM_WORKERS gates the pool; the default is WARM_WORKERS_DEFAULT (TICKET-099)."""
+    """SIMON7_P2_WARM_WORKERS gates the pool; unset, only staging starts it (TICKET-099, GPU guard)."""
     monkeypatch.setattr(p2_pose, "has_worker", lambda *a, **k: True)
     monkeypatch.setenv("SIMON7_P2_WARM_WORKERS", "0")
     assert p2_pose.start_workers(tmp_path, object()) is False
 
 
-def test_warm_worker_default_follows_the_constant(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SIMON7_P2_WARM_WORKERS", raising=False)
-    assert p2_pose.warm_worker_enabled() is (p2_pose.WARM_WORKERS_DEFAULT == "1")
+def test_warm_worker_is_off_by_default_off_staging(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    for name in ("SIMON7_P2_WARM_WORKERS", "SIMON7_STAGING"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SIMON7_STATE_DIR", str(tmp_path))
+    assert p2_pose.warm_worker_enabled() is False
 
 
 def test_start_workers_starts_a_single_pool_of_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -97,7 +97,7 @@ class World:
         api.ask, api.HistoryError = ask, HistoryError  # type: ignore[attr-defined]
         guard = types.ModuleType("part7.history_guard")
 
-        def check(answer: dict[str, Any], facts: Any, narration: Any, words: Any) -> tuple[dict[str, Any], list[Any]]:
+        def check(answer: dict[str, Any], facts: Any, narration: Any, words: Any, **_: Any) -> tuple[dict[str, Any], list[Any]]:
             self.guard_calls.append((answer, facts, narration, words))
             return answer, []
 

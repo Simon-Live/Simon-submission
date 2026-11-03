@@ -1,0 +1,68 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.12.0",
+  "profile": "fitness",
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement, with a warning that caps the grade at F."
+  },
+  "faults": [],
+  "warnings": [
+    {
+      "code": "low_match",
+      "text": "This take doesn't closely match the trainer's movement, so the grade is capped at F. Check that you picked the right movement and that the whole movement is in the take."
+    }
+  ],
+  "match": {
+    "quality": "low",
+    "residual": 0.259,
+    "timing_corr": 0.4376,
+    "limits": {
+      "max_residual": 0.5677,
+      "min_timing_corr": 0.8336
+    }
+  },
+  "insights": [],
+  "score": {
+    "version": "simon.score.v3",
+    "value": 59,
+    "grade": "F",
+    "components": {
+      "faults": 0.0,
+      "similarity": 0.08
+    },
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          1.667,
+          6.533
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.08
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": null,
+          "cue": null
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": null,
+      "cue": null
+    },
+    "capped_by": [
+      "low_match"
+    ],
+    "uncapped": {
+      "value": 100,
+      "grade": "A"
+    }
+  }
+}

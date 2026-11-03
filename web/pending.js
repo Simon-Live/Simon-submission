@@ -6,6 +6,8 @@
 //   saved -> uploaded -> people_ready -> ready_to_submit -> submitting -> (202: deleted)
 // The video stays only in this browser. Nothing about it is logged except sizes, counts and statuses.
 
+import { KEPT_STAGES, KEPT_MAX, WATCH_MS, jobOutcome, againRecord, keptStatus, tooLargeText } from "./pending-keep.js";
+
 export const DB_NAME = "simon-local";
 export const STORE_NAME = "pending-takes";
 export const MAX_TAKES = 3;
@@ -135,7 +137,9 @@ export function statusText(rec, { sending = null } = {}) {
   if (sending && sending.id === rec.id) {
     return sending.fraction == null ? "Sending" : `Sending, ${Math.round(sending.fraction * 100)}%`;
   }
+  if (keptStatus(rec)) return keptStatus(rec); // TICKET-290: a take kept after sending (pending-keep.js)
   if (rec.stage === "people_ready") return rec.last_error && rec.last_error.kind === "fixable" ? rec.last_error.message : TEXT.peopleReady;
+  if (rec.stage === "submitting" && rec.last_error) return failureText(rec.last_error.kind, rec.last_error.status); // TICKET-290: say why it stopped
   if (rec.stage === "submitting") return "Starting the analysis";
   const e = rec.last_error;
   if (e && e.kind === "later") return TEXT.later;
@@ -217,6 +221,11 @@ export function createPending(deps) {
     log = () => {}, sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = (t) => clearTimeout(t),
   } = deps;
+  // TICKET-290: with `keep` a take leaves the outbox at the 202 into `keptStore` (its own IndexedDB database, so the
+  // outbox store reads as before) and stays there until its job is done. `keepRefused` also keeps a refused take.
+  const keptStore = deps.keptStore || null;
+  const keep = deps.keep === true && !!keptStore;
+  const keepRefused = keep && deps.keepRefused === true;
   const listeners = new Set();
   const savedIds = new Set(); // records of this tab that live in the store
   const owned = new Set(); // records the open take flow is sending: the background sender leaves them alone
@@ -264,6 +273,7 @@ export function createPending(deps) {
     if (!store) return 0;
     let n = 0;
     for (const rec of await store.all()) if (isExpired(rec, now())) { await remove(rec.id, "expired"); n++; }
+    for (const rec of await listKept()) if (isExpired(rec, now())) { await keptRemove(rec.id, "expired"); n++; } // TICKET-290
     return n;
   }
 
@@ -297,6 +307,94 @@ export function createPending(deps) {
     return { record, saved: true, notice: null };
   }
 
+  // -- TICKET-290: a take kept after sending (pending-keep.js) ---------------------------------------------------------
+
+  const byAge = (a, b) => a.created_at - b.created_at;
+  /** The kept takes (sent, stopped, refused), oldest first. */
+  const listKept = async () => (keptStore ? (await keptStore.all()).sort(byAge) : []);
+
+  async function keptPatch(rec, fields) {
+    Object.assign(rec, fields);
+    const cur = await keptStore.get(rec.id);
+    if (cur) await keptStore.put({ ...cur, ...fields });
+    return rec;
+  }
+
+  async function keptRemove(id, reason) {
+    await keptStore.delete(id);
+    log("info", "pending_deleted", { reason, kept: true });
+    changed();
+  }
+
+  /** Move a saved take from the outbox into the kept store with `fields`: written there first, then deleted here. */
+  async function moveToKept(rec, fields) {
+    const cur = (await store.get(rec.id)) || rec;
+    Object.assign(rec, fields);
+    await keptStore.put({ ...cur, ...fields });
+    await store.delete(rec.id);
+    savedIds.delete(rec.id);
+    owned.delete(rec.id);
+    const all = await listKept(); // past KEPT_MAX the oldest takes at "sent" go (the server holds those), never the others
+    let extra = all.length - KEPT_MAX;
+    for (const old of all.filter((r) => r.stage === "sent" && r.id !== rec.id)) {
+      if (extra-- <= 0) break;
+      await keptRemove(old.id, "room");
+    }
+  }
+
+  /** Watch the jobs of the kept takes at "sent" that are due (all of them with `force`). */
+  async function watchKept({ force = false, only = null } = {}) {
+    for (const rec of await listKept()) {
+      if ((only && rec.id !== only) || rec.stage !== "sent") continue;
+      if (!force && rec.next_try_at > now()) continue;
+      await watchOne(rec);
+    }
+  }
+
+  /** Ask about the job of a take at "sent": done deletes the take, failed (or gone) keeps it at "job_failed". */
+  async function watchOne(rec) {
+    let job;
+    try {
+      job = await api.getJob(rec.job);
+    } catch (err) {
+      if (err && err.status === 404) return stopJob(rec, 404, "");
+      const attempts = (rec.attempts || 0) + 1; // unreachable: ask again later, the take stays
+      await keptPatch(rec, { attempts, next_try_at: now() + Math.max(WATCH_MS, backoffMs(attempts)) });
+      return "unknown";
+    }
+    const out = jobOutcome(job);
+    if (out === "done") { await keptRemove(rec.id, "done"); return out; }
+    if (out === "failed") return stopJob(rec, 200, (job && (job.reason || job.note)) || "");
+    await keptPatch(rec, { attempts: 0, next_try_at: now() + WATCH_MS });
+    return out;
+  }
+
+  async function stopJob(rec, status, message) {
+    await keptPatch(rec, { stage: "job_failed", next_try_at: null, last_error: { status, message, kind: "job_failed" } });
+    log("info", "pending_job_failed", { status });
+    changed();
+    return "failed";
+  }
+
+  /**
+   * Send it again: a take whose job stopped (or is at "sent" when the job page already shows it failed) goes back as
+   * a new record with fresh keys (pending-keep.js againRecord), sent at once. Resolves {id, record} (the new record
+   * as stored after the try) or null when there is no such take.
+   */
+  async function sendAgain(id) {
+    if (!store || !keptStore) return null;
+    const old = await keptStore.get(id);
+    if (!old || !(old.stage === "job_failed" || old.stage === "sent")) return null;
+    const rec = againRecord(old, { id: uuid(), now: now() });
+    await store.put(rec); // back in the outbox first, then out of the kept store
+    await keptStore.delete(id);
+    savedIds.add(rec.id);
+    log("info", "pending_send_again", { stage: rec.stage, from: old.stage });
+    changed();
+    await tick({ source: "manual", force: true, only: rec.id });
+    return { id: rec.id, record: (await store.get(rec.id)) || (await keptStore.get(rec.id)) };
+  }
+
   /** Hand a record back to the background sender (the open flow is done with it). */
   const release = (rec) => { owned.delete(rec.id); schedule(); };
   /** Write fields the person entered (name, category, labels, auto_submit) onto a record. */
@@ -308,6 +406,15 @@ export function createPending(deps) {
     const e = err && typeof err === "object" ? err : new Error(String(err));
     e.kind = c.kind;
     const message = c.status === 422 ? TEXT.keyReused : (err && err.message) || "";
+    const keepThis = c.kind === "fatal" && keepRefused && store && savedIds.has(rec.id); // TICKET-290
+    if (c.kind === "fatal" && c.status === 413) e.message = tooLargeText(e.message, keepThis); // say why, and how to fit
+    if (keepThis) { // TICKET-290: kept, with the reason, until the person deletes it
+      await moveToKept(rec, { stage: "refused", next_try_at: null, last_error: { status: c.status, message: e.message, kind: c.kind } });
+      log("info", "pending_refused", { status: c.status, step });
+      changed();
+      e.kept = true;
+      return e;
+    }
     if (c.kind === "fatal") {
       await remove(rec.id, "fatal");
       return e;
@@ -391,6 +498,13 @@ export function createPending(deps) {
     });
     const job = typeof made.job === "object" ? made.job.id : made.job;
     log("info", "pending_sent", { attempts: rec.attempts || 0, bytes: rec.size, headless });
+    if (keep && store && savedIds.has(rec.id)) { // TICKET-290: kept at "sent" (kept store) until the job is done
+      await moveToKept(rec, { stage: "sent", job, sent_at: now(), attempts: 0, next_try_at: now() + WATCH_MS, last_error: null });
+      changed();
+      emit({ type: "sent", id: rec.id, job, headless });
+      schedule(); // the watch of its job
+      return { job };
+    }
     await remove(rec.id, "sent");
     emit({ type: "sent", id: rec.id, job, headless });
     return { job };
@@ -473,6 +587,7 @@ export function createPending(deps) {
             if (err && (err.kind === "auto" || err.kind === "later")) break; // unreachable or over the limit: not worth trying the next one
           }
         }
+        if (keep) await watchKept({ only }); // TICKET-290: the jobs of the kept takes that are due
       }, { wait: false });
     } finally {
       ticking = false;
@@ -489,6 +604,7 @@ export function createPending(deps) {
       if (!SENDABLE.includes(rec.stage) || owned.has(rec.id)) continue;
       soonest = Math.min(soonest, rec.next_try_at && rec.next_try_at > now() ? rec.next_try_at : now() + backoffMs(1));
     }
+    for (const rec of await listKept()) if (rec.stage === "sent") soonest = Math.min(soonest, Math.max(rec.next_try_at || 0, now() + 1000)); // TICKET-290
     if (soonest === Infinity) return;
     const wait = Math.min(Math.max(soonest - now(), 1000), BACKOFF_S[BACKOFF_S.length - 1] * 1000);
     timer = setTimer(() => tick({ source: "timer" }), wait);
@@ -496,6 +612,7 @@ export function createPending(deps) {
 
   return {
     begin, update, release, list, get: (id) => (store ? store.get(id) : Promise.resolve(null)), remove: (id, reason = "user") => remove(id, reason),
+    sendAgain, watchOne, listKept, removeKept: (id) => (keptStore ? keptRemove(id, "user") : Promise.resolve()), keep, keepRefused, keptStages: KEPT_STAGES, // TICKET-290
     purgeExpired, front, submit, tick, schedule,
     /** A trigger from the page: app start, "online", visibilitychange. */
     trigger: (source) => tick({ source }),

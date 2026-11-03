@@ -11,8 +11,10 @@ import { PRERECORD_THRESHOLDS as QUALITY_THRESHOLDS } from "./quality-constants.
 import { measurePreview, previewCodes, updateTipState, visibleTips } from "./quality-check.js";
 import {
   COUNTDOWNS, DURATIONS, RAW_LIMIT_S, countdownLabel, durationLabel, loadPrefs, savePrefs, hasSavedPrefs,
-  runCountdown, recBadge, injectStyles,
+  runCountdown, recBadge, injectStyles, QUICK_TAKE,
 } from "./countdown.js";
+import { isSubmission } from "./flags.js";
+import { angleHint } from "./heading-note.js";
 
 export const CAMERA_OFF = "Camera access is off. Allow it in the browser, or upload a video.";
 export const FRAMING_HINT = "Step back until your whole body fits, or at least everything that moves.";
@@ -22,6 +24,7 @@ export const CAMERA_TEXT = {
   blocked: "Camera access is off. Allow it in the browser's site settings, then tap Open camera. Or upload a video.",
   dark: "The camera is on but shows no picture. Close other apps using it, then tap Open camera.",
 };
+export const QUICK_TAKE_TEXT = "Quick take: 6 seconds after a 3 second countdown.";
 const NO_PICTURE_MS = 3000; // a stream with no frame after this long is reported (another app holds the camera)
 export const MIME_ORDER = ["video/webm;codecs=vp9", "video/webm", "video/mp4"];
 
@@ -80,6 +83,7 @@ export function editTake(root, take, info, reference = null) {
   return openTrimEditor(root, {
     reference,
     blob: take, source: info.source, countdownUsed: info.countdownUsed, manual: info.manual, durationHint: info.durationHint,
+    offerMirror: info.offerMirror !== false, // TICKET-310: shown for an upload only (trim.js)
   });
 }
 
@@ -95,7 +99,7 @@ function selectField(id, label, values, current, text, onchange) {
  * fn(take, {source, countdownUsed, manual}) when a take arrives; reset() returns to the preview.
  * `reference` (follower only, reference.js) is docked beside the preview, shown in the countdown, and plays from its end.
  */
-export function mountCapture(root, limits, { reference = null, countdownDefault = null, audio: audioOpt = false, liveCheck = null } = {}) {
+export function mountCapture(root, limits, { reference = null, countdownDefault = null, audio: audioOpt = false, liveCheck = null, ghost = null } = {}) {
   // `audio` is a boolean, or a function read at each use (the trainer's Group mode records no sound: nothing transcribes it)
   const wantAudio = () => (typeof audioOpt === "function" ? Boolean(audioOpt()) : Boolean(audioOpt));
   let stream = null;
@@ -109,6 +113,8 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   let counting = null;
   let prefs = loadPrefs();
   if (COUNTDOWNS.includes(countdownDefault) && !hasSavedPrefs()) prefs.countdown = countdownDefault; // mode default (modes.js)
+  const quick = isSubmission(); // judge-take.md (TICKET-260): a 6 s Quick take after 3 s is the judge's default
+  if (quick && !hasSavedPrefs()) prefs = { ...QUICK_TAKE };
   let source = "recording";
   let countdownUsed = false;
   let manual = false;
@@ -143,6 +149,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     selectField("countdown-select", "Countdown", COUNTDOWNS, prefs.countdown, countdownLabel, (v) => { prefs.countdown = v; savePrefs(prefs); }),
     selectField("duration-select", "Duration", DURATIONS, prefs.duration, durationLabel, (v) => { prefs.duration = v; savePrefs(prefs); }));
   const framing = h("p", { class: "rc-hint", "data-testid": "framing-hint", text: FRAMING_HINT });
+  const quickHint = h("p", { class: "rc-hint", "data-testid": "quick-take", hidden: !quick, text: QUICK_TAKE_TEXT });
   const qualityTips = h("div", { class: "prerecord-tips", "data-testid": "prerecord-tips", "aria-live": "polite", "aria-atomic": "true", hidden: true });
   const timer = h("span", { class: "timer", "data-testid": "timer", "aria-live": "off", text: `0:00 / ${mmss(RAW_LIMIT_S)}` });
   const error = h("p", { class: "error", role: "alert", "data-testid": "capture-error", hidden: true });
@@ -159,7 +166,10 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
   if (liveCheck) liveCheck.attach(stage, live); // client 22d09a7: joints on the preview, a chip, the trainer comparison
   root.append(camRow || stage, framing, qualityTips, opts, h("div", { class: "row between" }, timer, h("div", { class: "row" }, start, stop, upload, input)), info, error);
   if (liveCheck) framing.before(liveCheck.el); // client 22d09a7 live check, placed after the preview (Shruti's line above kept as written)
+  if (ghost) { ghost.attach(stage, live); framing.before(ghost.el); } // follow the ghost (TICKET-264), over the preview
+  framing.after(quickHint); // the Quick take line under the framing hint (TICKET-260)
   framing.after(audioHint); // the microphone hint sits under the framing hint
+  if (reference) framing.after(angleHint()); // Follow only: film from the trainer's side and angle (TICKET-246)
 
   // Operator 2026-10-30: the live preview shows as soon as the screen opens, before Record, on Record and Follow.
   // The camera is asked for on mount; a refused, blocked or dark camera leaves Open camera (Try again) and Upload.
@@ -205,6 +215,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   function releaseCamera() {
     if (liveCheck) liveCheck.stop();
+    if (ghost) ghost.stop();
     stopQualitySampling(true);
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = null;
@@ -316,6 +327,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     if (stage.dataset.state === "idle") stage.dataset.state = "preview";
     camStatus("idle");
     if (liveCheck) liveCheck.start();
+    if (ghost) ghost.start();
     startQualitySampling();
     setTimeout(() => {
       if (stream && !take && !destroyed && live.videoWidth === 0) {
@@ -381,6 +393,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   function cancelled() {
     if (reference) reference.stopRecording();
+    if (ghost) ghost.recording(null);
     lockOptions(false);
     stage.dataset.state = stream ? "preview" : "idle";
     start.hidden = false;
@@ -438,6 +451,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     logQuality();
     startedAt = Date.now();
     if (reference) reference.startRecording(); // in step with the recording clock
+    if (ghost) ghost.recording(startedAt); // the ghost follows the reference clock from here
     if (liveCheck) liveCheck.recording(startedAt);
     timer.textContent = `0:00 / ${mmss(limitS)}`;
     stage.dataset.state = "recording";
@@ -492,7 +506,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     isBusy: () => stage.dataset.state === "counting" || stage.dataset.state === "recording",
     /** A mode's countdown default; ignored once the person chose one themselves. */
     setCountdownDefault(n) {
-      if (!COUNTDOWNS.includes(n) || hasSavedPrefs()) return;
+      if (!COUNTDOWNS.includes(n) || hasSavedPrefs() || quick) return; // the Quick take keeps its 3 s
       prefs.countdown = n;
       const sel = opts.querySelector('[data-testid="countdown-select"]');
       if (sel) sel.value = String(n);
@@ -511,6 +525,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
       if (recorder && recorder.state !== "inactive") recorder.stop();
       releaseCamera();
       if (liveCheck) liveCheck.destroy();
+      if (ghost) ghost.destroy();
       releaseMediaUrl(playback, takeUrl);
     },
   };

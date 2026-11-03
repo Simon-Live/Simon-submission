@@ -1,0 +1,312 @@
+{
+ "answers": [
+  {
+   "focus": {
+    "cites": [
+     {
+      "at_s": 0.9,
+      "take": 3
+     }
+    ],
+    "cue": "Keep your chest up",
+    "measure": "trunk_lean_forward",
+    "side": "center",
+    "text": "Work on the forward lean at 0.9 s in take 3."
+   },
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 3
+     }
+    ],
+    "text": "Your score went from 70 in take 1 to 71 in take 3."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 0.9,
+       "take": 3
+      },
+      {
+       "at_s": 0.9,
+       "take": 1
+      }
+     ],
+     "kind": "persistent",
+     "measure": "trunk_lean_forward",
+     "side": "center",
+     "text": "The forward lean at 0.9 s is in take 3 and first showed in take 1."
+    }
+   ]
+  },
+  {
+   "focus": {
+    "cites": [
+     {
+      "at_s": 0.9,
+      "take": 3
+     }
+    ],
+    "cue": "Keep your chest up",
+    "measure": "trunk_lean_forward",
+    "side": "center",
+    "text": "Work on the forward lean at 0.9 s in take 3."
+   },
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 3
+     }
+    ],
+    "text": "Your score went from 70 in take 1 to 71 in take 3."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 0.9,
+       "take": 3
+      },
+      {
+       "at_s": 0.9,
+       "take": 1
+      }
+     ],
+     "kind": "persistent",
+     "measure": "trunk_lean_forward",
+     "side": "center",
+     "text": "The forward lean at 0.9 s is in take 3 and first showed in take 1."
+    }
+   ]
+  },
+  {
+   "focus": null,
+   "observations": [],
+   "summary": {
+    "cites": [
+     {
+      "at_s": null,
+      "take": 1
+     },
+     {
+      "at_s": null,
+      "take": 3
+     }
+    ],
+    "text": "Your score went from 70 in take 1 to 71 in take 3."
+   },
+   "teacher_link": null,
+   "trends": [
+    {
+     "cites": [
+      {
+       "at_s": 0.9,
+       "take": 3
+      },
+      {
+       "at_s": 0.9,
+       "take": 1
+      }
+     ],
+     "kind": "persistent",
+     "measure": "trunk_lean_forward",
+     "side": "center",
+     "text": "The forward lean at 0.9 s is in take 3 and first showed in take 1."
+    }
+   ]
+  }
+ ],
+ "entry_id": "body-squat-synth-a",
+ "expect": {
+  "focus": {
+   "cue": "Keep your chest up",
+   "measure": "trunk_lean_forward",
+   "side": "center"
+  },
+  "statuses": {
+   "trunk_lean_forward|center": "persistent"
+  }
+ },
+ "facts": {
+  "best": 2,
+  "entry_id": "body-squat-synth-a",
+  "format": "simon.history.facts.v1",
+  "group": {
+   "mode": "fitness",
+   "section": "whole"
+  },
+  "latest": 3,
+  "measures": [
+   {
+    "first": {
+     "at_s": 0.9,
+     "magnitude": 21.0,
+     "size": 21.0,
+     "take": 1,
+     "unit": "deg"
+    },
+    "last": {
+     "at_s": 0.9,
+     "magnitude": 21.0,
+     "size": 21.0,
+     "take": 3,
+     "unit": "deg"
+    },
+    "measure": "trunk_lean_forward",
+    "present_in": [
+     1,
+     2,
+     3
+    ],
+    "side": "center",
+    "status": "persistent"
+   }
+  ],
+  "takes": [
+   {
+    "at": "2026-10-01T09:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.0,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.0,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000001",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 70,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 1,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T10:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 22.0,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 22.0,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000002",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 72,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 2,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   },
+   {
+    "at": "2026-10-01T11:00:00Z",
+    "cues": [
+     "Keep your chest up"
+    ],
+    "duration_s": 6.0,
+    "faults": [
+     {
+      "at_s": 0.9,
+      "body_part": "torso",
+      "cue": "Keep your chest up",
+      "joint": "spine",
+      "magnitude": 21.0,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "size": 21.0,
+      "span": [
+       0.9,
+       3.2
+      ],
+      "text_timed": null,
+      "unit": "deg"
+     }
+    ],
+    "grade": "B",
+    "in_group": true,
+    "job_id": "synth0000003",
+    "mode": "fitness",
+    "near_misses": [],
+    "no_person": false,
+    "private": false,
+    "score": 71,
+    "score_version": "v1",
+    "section_key": "whole",
+    "take": 3,
+    "windows": [
+     [
+      0.0,
+      6.0
+     ]
+    ]
+   }
+  ]
+ },
+ "id": "persistent_stability",
+ "note": "A lean in all three takes; the three canned runs differ (run 3 drops the focus), so stability is below 1.",
+ "origin": "synthetic"
+}

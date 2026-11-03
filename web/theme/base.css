@@ -1,3 +1,7 @@
+/* The logo's face, Sniglet Regular (SIL Open Font License, fonts/Sniglet-OFL.txt; basic Latin only), served with the app:
+   the grade letter, the score and the score pops (--font-display) */
+@font-face { font-family: "Sniglet"; font-weight: 400; font-display: swap; src: url("fonts/sniglet-regular.woff2") format("woff2"); }
+
 /* App-wide components on the brand tokens (theme/tokens.css). No literal colors or sizes here. */
 body { background: var(--backdrop); background-attachment: fixed; background-blend-mode: screen; color: var(--color-text); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 /* the back layer (brand design 2026-11-01): pink halftone fields fading out of the smoke, lime halftone in two corners;
@@ -34,12 +38,26 @@ h2 { font-weight: var(--weight-bold); letter-spacing: -0.01em; }
   -webkit-mask: var(--icon-video) center / contain no-repeat; mask: var(--icon-video) center / contain no-repeat; }
 .bar-nav a[data-testid="nav-record"]:hover { filter: brightness(1.08); }
 .build { grid-area: 2 / 1 / 3 / 4; color: var(--color-text-muted); }
+/* Account links after Record: Me and Sign in signed out, Me alone signed in. Phones wrap them (the rule below). */
 
 .kind-switch { display: inline-flex; gap: 2px; padding: var(--space-1); border-radius: var(--radius-pill);
   background: var(--card-fill); border: 1px solid var(--color-line); }
 .kind-switch button { min-height: var(--target-min); padding: 0 var(--space-4); border: 0; border-radius: var(--radius-pill);
   background: transparent; color: var(--color-text-muted); font: var(--weight-semibold) var(--text-sm)/1 var(--font-sans); cursor: pointer; }
 .kind-switch button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-on-accent); }
+/* Phones: the header never makes the page wider than the screen. The three-column row above needs about 460 px with
+   Record and Sign in (more signed in), so a 412 px phone laid the whole page out wider and zoomed it out, and taps
+   landed off their buttons (staging verify on 47d79a8: Continue under the trim editor's Set end). Here the row wraps:
+   brand, switch and links stay on one line when they fit, else the links, then the switch, move to a line below. */
+@media (max-width: 480px) {
+  body .bar { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); }
+  body .bar > * { order: 4; flex: 1 0 100%; }
+  body .bar > .brand { order: 1; flex: none; }
+  body .bar > #kind-switch { order: 2; flex: none; margin-inline: auto; }
+  body .bar > .bar-nav { order: 3; flex: none; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+  body .kind-switch button { padding: 0 var(--space-2); }
+  body .bar .bar-nav a { padding-left: var(--space-2); padding-right: 0; }
+}
 
 /* buttons and fields */
 .btn { border-radius: var(--radius-md); font-family: var(--font-sans); font-weight: var(--weight-bold); min-height: var(--button-height); }
@@ -82,6 +100,12 @@ header.bar .brand { position: relative; z-index: 3; align-self: start; align-ite
 .splash-tag { color: var(--color-text); font-size: var(--text-md); }
 @media (prefers-reduced-motion: reduce) { .splash { transition: none; } }
 
+/* TICKET-204: the test-server banner sits in the sticky header, so it stays on every screen */
+.test-banner { grid-area: 3 / 1 / 4 / 4; background: var(--color-alert-bg); color: var(--color-on-alert);
+  font-weight: var(--weight-black); font-size: 15px; line-height: 1.3; padding: 8px 16px; margin: 0 -16px; text-align: center; }
+.review-note { margin: 8px 0; padding: 8px 12px; border: 1px solid var(--color-warn-line); background: var(--color-warn-soft);
+  color: var(--color-text); border-radius: var(--radius-lg); }
+
 /* the content column sits on a soft dark veil, so text placed straight on the page stays readable over the chalk;
    the veil fades out at both sides and the chalk stays dense in the margins (brand design 2026-11-01) */
 main#app { position: relative; }
@@ -105,3 +129,14 @@ main#app::before { content: ""; position: absolute; top: 0; bottom: 0; left: -64
 /* the content column takes 60% of a wide screen (brand design 2026-11-01); phones and laptops keep the full width */
 body main#app, body .simon-result { max-width: var(--page-width); }
 body .simon-result .sr-cmp { max-width: none; }
+
+/* phones: the content veil above reaches 64px past the column, which widened the page past the screen (phone_width test);
+   on a phone the column is the screen, so the veil stays inside it */
+@media (max-width: 520px) {
+  main#app::before { left: 0; right: 0; }
+  /* the test-server banner bleeds to the header's edges; the phone header above pads by space-2, not 16px */
+  .test-banner { margin-left: calc(-1 * var(--space-2)); margin-right: calc(-1 * var(--space-2)); }
+}
+
+/* a 44 px tap target for the Record button (a11y test), beside the rule above; it still fits a 390 px header */
+.bar-nav a[data-testid="nav-record"] { min-height: var(--target-min, 44px); min-width: var(--target-min, 44px); justify-content: center; }

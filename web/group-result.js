@@ -3,6 +3,8 @@
 import { getJob, ApiError } from "./api.js";
 import { h, clear, stateBlock, linkButton, num } from "./ui.js";
 import { ensurePeopleStyles, cropUrl } from "./people.js";
+import { shownRow } from "./model/score-labels.js";
+import { capNote, CAP_REASONS } from "./score.js";
 import { hasMajorQuality } from "./quality-result.js";
 
 export const REFUSALS = {
@@ -30,16 +32,34 @@ export function boardRows(result) {
     const refused = (score === null || grade === null) && !analysed;
     const warned = analysed && (score === null || grade === null || (!!p.status_code && p.status_code !== "ok"));
     const faults = Array.isArray(p.faults) ? p.faults.length : num(p.faults) ?? 0;
+    const shown = p.shown ? shownRow(p) : null;
+    const cappedBy = !refused && p.shown && Array.isArray(p.shown.warning) ? p.shown.warning : [];
     return {
       id: p.id,
       label: (p.label && String(p.label).trim()) || `Person ${p.id}`,
-      score: refused ? score : score ?? 0, grade: refused ? grade : grade ?? "F", refused, faults,
+      // one-letter.md: the result headline's figures and letter when the server sent them; the order stays the server's
+      ...(shown && !refused ? { score: shown.figures, grade: shown.letter } : { score: refused ? score : score ?? 0, grade: refused ? grade : grade ?? "F" }),
+      refused, faults,
+      capNote: capNote({ capped_by: cappedBy }) || "", capCodes: cappedBy,   // one-letter.md L5: why a capped take is F
       scorable: !refused && !warned, // only a take Part 5 scored "ok" can join a challenge
       refusal: refused ? (p.status_text || p.reason || REFUSALS[p.status_code] || MSG_REFUSED) : "",
       warning: warned ? (p.status_text || REFUSALS[p.status_code] || MSG_REFUSED) : "",
       ...(hasMajorQuality(p) ? { majorQuality: true } : {}),
     };
   });
+}
+
+/**
+ * The page's line when every scored take was capped for the same reason (44's dance run: every person low_match), so the
+ * page says once why every grade is F; "" otherwise. Words from score.js CAP_REASONS, said of all the takes.
+ */
+export function groupCapNote(rows) {
+  const scored = (rows || []).filter((r) => !r.refused);
+  const codes = [...new Set(scored.flatMap((r) => r.capCodes || []))].filter((c) => !String(c).startsWith("quality_"));
+  if (!scored.length || !codes.length || !scored.every((r) => r.capNote)) return "";
+  const reasons = [...new Set(codes.map((c) => CAP_REASONS[c] || "the take has a warning"))]
+    .map((t) => t.replace(/^this take does /, "these takes do ").replace(/^this looks /, "these look ").replace(/^the take has /, "the takes have "));
+  return `Every take here is graded F at most: ${reasons.join("; ")}.`;
 }
 
 const faultText = (n) => (n === 0 ? "No faults" : `${n} fault${n === 1 ? "" : "s"}`);
@@ -69,7 +89,8 @@ export function mountGroupResult(root, jobId) {
       const meta = r.refused
         ? h("p", { class: "pp-refusal", "data-testid": `group-refusal-${r.id}`, text: r.refusal })
         : h("p", { class: "pp-faults", text: faultText(r.faults) });
-      const warn = r.warning ? h("p", { class: "pp-refusal", "data-testid": `group-warning-${r.id}`, text: r.warning }) : null;
+      const warn = r.warning ? h("p", { class: "pp-refusal", "data-testid": `group-warning-${r.id}`, text: r.warning })
+        : r.capNote ? h("p", { class: "pp-refusal", "data-testid": `group-cap-${r.id}`, text: r.capNote }) : null;   // one-letter.md L5
       const quality = r.majorQuality ? h("span", { class: "pp-quality-chip", "data-testid": `group-quality-${r.id}`, text: "Video quality" }) : null;
       list.append(h("li", { class: "pp-row-item" },
         h("a", { class: "pp-row", href, "data-testid": `group-row-${r.id}`, "data-refused": String(r.refused), "aria-label": `${r.label}, ${r.refused ? "not scored" : `score ${r.score}, grade ${r.grade}`}` },
@@ -94,7 +115,7 @@ export function mountGroupResult(root, jobId) {
       // a refused person is never overlaid, even if a replay exists for them
       const loaded = await Promise.all(scored.map(async (r) => {
         const replay = await fetchReplay(jobId, r.id).catch(() => null);
-        return replay ? { id: r.id, label: r.label, replay } : null;
+        return replay ? { id: r.id, label: r.label, replay, job: jobId } : null;
       }));
       if (!live || panel.hidden) return;
       clear(panel);
@@ -109,7 +130,8 @@ export function mountGroupResult(root, jobId) {
       h("p", { class: "crumb" }, h("a", { href: "#/", text: "Back to movements" })),
       h("div", { class: "head" },
         h("div", {}, h("h1", { text: "Group result" }),
-          h("p", { class: "lede", text: rows.length ? `${scored.length} of ${rows.length} scored. Tap a person for their full result.` : "No one was analysed." })),
+          h("p", { class: "lede", text: rows.length ? `${scored.length} of ${rows.length} scored. Tap a person for their full result.` : "No one was analysed." }),
+          groupCapNote(rows) ? h("p", { class: "pp-refusal", "data-testid": "group-cap-note", text: groupCapNote(rows) }) : null),
         scored.length ? watchBtn : null),
       panel,
       rows.length ? list : stateBlock("group-empty", "Nobody to show", "This group job has no people in it.", linkButton("#/", "Back to movements", "back-home")),

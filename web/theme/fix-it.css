@@ -1,0 +1,33 @@
+/* "Fix it for me" (views/fix-it.js, skin/corrected-replay.js) on the brand tokens. No literal colors. */
+
+.fx { display: grid; gap: var(--space-3); margin: var(--space-4) 0; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); }
+.fx[hidden], .fx [hidden] { display: none; }
+.fx-lead, .fx-caption, .fx-msg { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.45; }
+.fx-label { margin: 0; color: var(--color-accent); font: var(--weight-semibold) var(--text-md) var(--font-sans); line-height: 1.35; overflow-wrap: anywhere; }
+.fx-msg:empty { display: none; }
+.fx-pick { display: grid; gap: var(--space-1); font: var(--weight-semibold) var(--text-sm) var(--font-sans); }
+.fx-select { min-height: var(--target-min); width: 100%; max-width: 32rem; box-sizing: border-box; }
+.fx-open, .fx-close, .fx-seg, .fx-split, .fx-play { min-height: var(--target-min); }
+.fx-open { justify-self: start; }
+.fx-open:focus-visible, .fx-close:focus-visible, .fx-seg:focus-visible, .fx-split:focus-visible, .fx-play:focus-visible,
+.fx-select:focus-visible, .fx-scrub:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.fx-panel { display: grid; gap: var(--space-3); }
+.fx-tools { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.fx-segs { display: inline-flex; gap: var(--space-1); }
+.fx-seg[aria-pressed="true"], .fx-split[aria-pressed="true"] { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
+.fx-stages { display: grid; gap: var(--space-2); grid-template-columns: 1fr; }
+.fx-fig { margin: 0; display: grid; gap: var(--space-1); }
+.fx-host { position: relative; width: 100%; aspect-ratio: 412 / 380; max-height: 60vh; background: var(--color-media-bg); border-radius: var(--radius-lg); overflow: hidden; }
+.fx-host canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.fx-cap { color: var(--color-text); font: var(--weight-semibold) var(--text-sm) var(--font-sans); text-align: center; }
+.fx-legend { position: absolute; left: var(--space-3); top: var(--space-3); margin: 0; padding: 0; list-style: none; display: flex; gap: var(--space-2); pointer-events: none; }
+.fx-legend li { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 28px; padding: 0 var(--space-3) 0 var(--space-2); border-radius: var(--radius-lg); background: var(--color-media-bg); border: 1px solid var(--color-line); font: var(--weight-semibold) var(--text-sm) var(--font-sans); }
+.fx-legend i { width: 10px; height: 10px; border-radius: 50%; }
+.fx-bar { display: grid; grid-template-columns: var(--target-min) 1fr auto; gap: var(--space-3); align-items: center; }
+.fx-play svg { width: 22px; height: 22px; fill: currentColor; }
+.fx-scrub { width: 100%; min-height: var(--target-min); margin: 0; accent-color: var(--color-accent); background: transparent; }
+.fx-clock { font: var(--weight-semibold) var(--text-sm) var(--font-sans); min-width: 4ch; }
+.fx-close { justify-self: start; }
+@media (min-width: 720px) {
+  .fx-stages[data-split="true"] { grid-template-columns: 1fr 1fr; }
+}

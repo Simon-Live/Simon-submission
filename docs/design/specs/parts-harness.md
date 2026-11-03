@@ -73,7 +73,7 @@ Part 2 takes no `gpu.lock` in its single-mode CLI (in its workspace only the mul
 takes it; its backends spec plans it for its own job worker and `make outputs`). The lock therefore
 serializes Part 7's own calls and only those Part 2 paths that take it; the free-memory wait is the real
 guard against Part 2's run and staging.
-Warm worker (TICKET-099): one `part2 serve-worker` (default on, `SIMON7_P2_WARM_WORKERS=0` off) serves `part2 run`
+Warm worker (TICKET-099): one `part2 serve-worker` (on for the staging server only; `SIMON7_P2_WARM_WORKERS` set wins) serves `part2 run`
 only; a call that cannot lease it within 5 s runs in-process, so nothing queues behind it. `track` is never sent to it.
 Part 2's GPU venv (ASM-012) is used read only and only if it exists; Part 7 never builds or rebuilds it
 while Part 2's own staging server is running on the same host.

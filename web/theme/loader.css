@@ -35,3 +35,15 @@
   /* a still trail, fading toward the front, so the screen still says "on its way" */
   .paw-trail i { animation: none; opacity: calc(0.25 + var(--n, 0) * 0.15); }
 }
+
+/* The processing screen's walk (views/paw-loader.js pawWalk): the loading trail's lime prints, larger and faint,
+   walking right across the whole screen behind the content, looping while the job works */
+.paw-walk { position: fixed; left: 0; right: 0; top: 50%; height: 0; z-index: -1; pointer-events: none; display: flex;
+  justify-content: space-evenly; align-items: center; opacity: var(--paw-walk-opacity); }
+.paw-walk i { display: block; width: var(--paw-size-walk); height: var(--paw-size-walk); flex: none; background: var(--color-accent);
+  -webkit-mask: var(--paw-mask) center / contain no-repeat; mask: var(--paw-mask) center / contain no-repeat;
+  transform: rotate(90deg) translateX(calc(var(--side, 1) * var(--paw-size-walk) * 0.45)); opacity: 0;
+  animation: paw-step calc(var(--paw-step-walk) * (var(--paw-count) + 4)) steps(1, end) infinite;
+  animation-delay: calc(var(--paw-step-walk) * var(--n, 0)); }
+.paw-walk i:nth-child(odd) { --side: -1; }
+@media (prefers-reduced-motion: reduce) { .paw-walk i { animation: none; opacity: 0.4; } }

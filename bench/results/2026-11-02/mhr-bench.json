@@ -1,0 +1,766 @@
+{
+  "source_manifest_sha256": "45dbfe8fecbdd36ded07653fcdaa8dbbf96d34eac7d3fcd5e32b0389030fe03a",
+  "command": "python -m part7.mhr_bench --manifest bench/bodies/manifest-partial.json --jobs-root bench/bodies/jobs",
+  "n": 57,
+  "per_body": [
+    {
+      "shape_id": "mean",
+      "angle": "front",
+      "condition": "clean",
+      "mpjpe_mm": 77.23,
+      "pa_mpjpe_mm": 62.61,
+      "score": 77.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "mean",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 73.07,
+      "pa_mpjpe_mm": 62.18,
+      "score": 43.0,
+      "fault_planted": true,
+      "fault_found": true
+    },
+    {
+      "shape_id": "mean",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 67.59,
+      "pa_mpjpe_mm": 45.89,
+      "score": 83.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "mean",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 68.29,
+      "pa_mpjpe_mm": 47.19,
+      "score": 84.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "mean",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 97.76,
+      "pa_mpjpe_mm": 57.15,
+      "score": 77.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "mean",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 105.75,
+      "pa_mpjpe_mm": 59.57,
+      "score": 60.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall",
+      "angle": "front",
+      "condition": "clean",
+      "mpjpe_mm": 81.12,
+      "pa_mpjpe_mm": 66.42,
+      "score": 0.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 77.07,
+      "pa_mpjpe_mm": 64.13,
+      "score": 0.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 57.9,
+      "pa_mpjpe_mm": 41.76,
+      "score": 85.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 58.81,
+      "pa_mpjpe_mm": 42.27,
+      "score": 86.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 69.34,
+      "pa_mpjpe_mm": 49.36,
+      "score": 64.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 77.78,
+      "pa_mpjpe_mm": 51.32,
+      "score": 62.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 79.12,
+      "pa_mpjpe_mm": 67.07,
+      "score": 0.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 153.02,
+      "pa_mpjpe_mm": 93.15,
+      "score": 50.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 164.43,
+      "pa_mpjpe_mm": 97.78,
+      "score": 42.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "heavy",
+      "angle": "front",
+      "condition": "clean",
+      "mpjpe_mm": 95.45,
+      "pa_mpjpe_mm": 79.54,
+      "score": 0.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "heavy",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 83.37,
+      "pa_mpjpe_mm": 60.92,
+      "score": 52.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "heavy",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 83.16,
+      "pa_mpjpe_mm": 64.04,
+      "score": 48.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "heavy",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 107.0,
+      "pa_mpjpe_mm": 74.43,
+      "score": 59.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "heavy",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 115.11,
+      "pa_mpjpe_mm": 76.36,
+      "score": 52.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "slight",
+      "angle": "front",
+      "condition": "clean",
+      "mpjpe_mm": 93.3,
+      "pa_mpjpe_mm": 63.45,
+      "score": 43.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "slight",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 89.4,
+      "pa_mpjpe_mm": 63.21,
+      "score": 40.0,
+      "fault_planted": true,
+      "fault_found": true
+    },
+    {
+      "shape_id": "slight",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 104.08,
+      "pa_mpjpe_mm": 72.89,
+      "score": 17.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "slight",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 98.03,
+      "pa_mpjpe_mm": 69.35,
+      "score": 39.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "slight",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 108.1,
+      "pa_mpjpe_mm": 70.87,
+      "score": 35.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "slight",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 113.26,
+      "pa_mpjpe_mm": 72.9,
+      "score": 54.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "broad",
+      "angle": "front",
+      "condition": "clean",
+      "mpjpe_mm": 88.27,
+      "pa_mpjpe_mm": 62.05,
+      "score": 43.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "broad",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 88.48,
+      "pa_mpjpe_mm": 63.66,
+      "score": 35.0,
+      "fault_planted": true,
+      "fault_found": true
+    },
+    {
+      "shape_id": "broad",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 92.96,
+      "pa_mpjpe_mm": 65.74,
+      "score": 39.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "broad",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 101.95,
+      "pa_mpjpe_mm": 70.13,
+      "score": 26.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "broad",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 109.29,
+      "pa_mpjpe_mm": 62.34,
+      "score": 64.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "broad",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 118.36,
+      "pa_mpjpe_mm": 68.15,
+      "score": 55.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "narrow",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 66.41,
+      "pa_mpjpe_mm": 44.91,
+      "score": 75.0,
+      "fault_planted": true,
+      "fault_found": true
+    },
+    {
+      "shape_id": "narrow",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 56.23,
+      "pa_mpjpe_mm": 42.56,
+      "score": 61.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_heavy",
+      "angle": "front",
+      "condition": "clean",
+      "mpjpe_mm": 75.24,
+      "pa_mpjpe_mm": 63.69,
+      "score": 0.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_heavy",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 72.87,
+      "pa_mpjpe_mm": 64.11,
+      "score": 0.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_heavy",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 62.38,
+      "pa_mpjpe_mm": 45.04,
+      "score": 64.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_heavy",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 67.53,
+      "pa_mpjpe_mm": 49.97,
+      "score": 48.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_heavy",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 91.17,
+      "pa_mpjpe_mm": 62.22,
+      "score": 59.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_heavy",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 104.04,
+      "pa_mpjpe_mm": 67.11,
+      "score": 55.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_slight",
+      "angle": "front",
+      "condition": "clean",
+      "mpjpe_mm": 88.19,
+      "pa_mpjpe_mm": 49.86,
+      "score": 73.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_slight",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 87.35,
+      "pa_mpjpe_mm": 50.12,
+      "score": 72.0,
+      "fault_planted": true,
+      "fault_found": true
+    },
+    {
+      "shape_id": "tall_slight",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 77.35,
+      "pa_mpjpe_mm": 51.01,
+      "score": 70.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_slight",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 74.02,
+      "pa_mpjpe_mm": 49.39,
+      "score": 64.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_slight",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 71.4,
+      "pa_mpjpe_mm": 48.6,
+      "score": 63.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "tall_slight",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 80.84,
+      "pa_mpjpe_mm": 53.31,
+      "score": 68.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_heavy",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 64.12,
+      "pa_mpjpe_mm": 44.74,
+      "score": 0.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_heavy",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 80.19,
+      "pa_mpjpe_mm": 67.5,
+      "score": 0.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_heavy",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 74.65,
+      "pa_mpjpe_mm": 62.2,
+      "score": 0.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_heavy",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 124.37,
+      "pa_mpjpe_mm": 74.09,
+      "score": 47.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_heavy",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 129.19,
+      "pa_mpjpe_mm": 74.33,
+      "score": 56.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_slight",
+      "angle": "front",
+      "condition": "clean",
+      "mpjpe_mm": 109.95,
+      "pa_mpjpe_mm": 65.75,
+      "score": 66.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_slight",
+      "angle": "front",
+      "condition": "knee15",
+      "mpjpe_mm": 111.47,
+      "pa_mpjpe_mm": 66.23,
+      "score": 79.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_slight",
+      "angle": "45",
+      "condition": "clean",
+      "mpjpe_mm": 109.71,
+      "pa_mpjpe_mm": 71.58,
+      "score": 19.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_slight",
+      "angle": "45",
+      "condition": "knee15",
+      "mpjpe_mm": 104.65,
+      "pa_mpjpe_mm": 70.02,
+      "score": 16.0,
+      "fault_planted": true,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_slight",
+      "angle": "side",
+      "condition": "clean",
+      "mpjpe_mm": 139.33,
+      "pa_mpjpe_mm": 78.83,
+      "score": 61.0,
+      "fault_planted": false,
+      "fault_found": false
+    },
+    {
+      "shape_id": "short_slight",
+      "angle": "side",
+      "condition": "knee15",
+      "mpjpe_mm": 145.68,
+      "pa_mpjpe_mm": 80.81,
+      "score": 57.0,
+      "fault_planted": true,
+      "fault_found": false
+    }
+  ],
+  "summary": {
+    "score_spread": 55.5,
+    "fault_recall": 0.1724,
+    "n": 57
+  },
+  "flags": [
+    {
+      "kind": "missed_fault",
+      "shape_id": "mean",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "mean",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "tall",
+      "angle": "front",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "tall",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "tall",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "short",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "short",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "heavy",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "heavy",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "slight",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "slight",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "broad",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "broad",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "tall_heavy",
+      "angle": "front",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "tall_heavy",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "tall_heavy",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "tall_slight",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "tall_slight",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "short_heavy",
+      "angle": "front",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "short_heavy",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "short_heavy",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "short_slight",
+      "angle": "front",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "short_slight",
+      "angle": "45",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "missed_fault",
+      "shape_id": "short_slight",
+      "angle": "side",
+      "detail": "the 15 degree knee fault was planted and Part 5 did not report it inside the planted window"
+    },
+    {
+      "kind": "score_outlier",
+      "shape_id": "heavy",
+      "angle": null,
+      "detail": "clean score 37.0 is 11.7 points from the median 48.7"
+    },
+    {
+      "kind": "score_outlier",
+      "shape_id": "mean",
+      "angle": null,
+      "detail": "clean score 79.0 is 30.3 points from the median 48.7"
+    },
+    {
+      "kind": "score_outlier",
+      "shape_id": "narrow",
+      "angle": null,
+      "detail": "clean score 61.0 is 12.3 points from the median 48.7"
+    },
+    {
+      "kind": "score_outlier",
+      "shape_id": "short_heavy",
+      "angle": null,
+      "detail": "clean score 23.5 is 25.2 points from the median 48.7"
+    },
+    {
+      "kind": "score_outlier",
+      "shape_id": "slight",
+      "angle": null,
+      "detail": "clean score 31.7 is 17.0 points from the median 48.7"
+    },
+    {
+      "kind": "score_outlier",
+      "shape_id": "tall_slight",
+      "angle": null,
+      "detail": "clean score 68.7 is 20.0 points from the median 48.7"
+    }
+  ],
+  "synthetic": true,
+  "domain_gap_note": "Synthetic MHR renders with textured skin and a plain background, not recordings of people. The ground truth is MHR's own joints, the body family SAM 3D Body regresses, so agreement may be flattered; the render-to-photo domain gap may also raise error. These numbers do not transfer to real video unchanged."
+}

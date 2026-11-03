@@ -20,7 +20,7 @@ test("exercise: ring, headline, reps and best rep, a bar per rep with the weak o
   assert.match(m.worst.title, /^Lateral raise, rep \d of 8$/);
   assert.ok(m.note && m.note.length);
   assert.equal(m.actions.retryLabel, "Retry set");
-  assert.equal(m.noteTitle, "What to work on next");
+  assert.equal(m.noteTitle, "What to work on");
   assert.doesNotMatch(JSON.stringify(m), /coach/i, "no coach wording in visible copy (#61)");
 });
 

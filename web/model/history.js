@@ -1,6 +1,12 @@
 // Pure logic of "Your takes over time" (docs/specs/history-web.md): URLs, response states, 202 polling, the context
 // meter and the view model of a report (simon.history.v1, C-REPORT). No DOM and no fetching here.
-import { chartModel, formatAt, plural, toneOf } from "./teacher.js";
+import { receiptView, RUN_NOTE } from "./receipt.js";
+import { reelPanel } from "./reel.js";
+import { scoreLine, lineNotes } from "./score-line.js";
+import { seriesView } from "./series-chart.js";
+import { formatAt, plural, toneOf } from "./teacher.js";
+import { shownRow, chartWords } from "./score-labels.js";
+import { historyText, trainerText } from "./attribution.js";
 
 export { plural };
 
@@ -11,7 +17,7 @@ export const POLL_MIN_MS = 1000;
 export const POLL_MAX_MS = 30000;
 /** Give up waiting on the screen after this long (the report keeps running on the server). */
 export const POLL_LIMIT_MS = 5 * 60 * 1000;
-export const CONSENT_VERSION = "video-v1"; // a string of 1 to 40 letters, digits, dot, underscore or hyphen: history_store.VERSION_RE
+export const CONSENT_VERSION = "video-v2"; // a string of 1 to 40 letters, digits, dot, underscore or hyphen: history_store.VERSION_RE
 
 const enc = encodeURIComponent;
 export const historyUrls = (entryId) => ({
@@ -23,10 +29,12 @@ export const historyUrls = (entryId) => ({
 });
 export const clipUrl = (entryId, jobId) => `api/me/history/${enc(entryId)}/takes/${enc(jobId)}/clip.mp4`;
 
-const KIND_LABEL = { improved: "Improved", persistent: "Still there", fixed: "Fixed", new: "New" };
-const KIND_TONE = { improved: "good", fixed: "good", persistent: "warn", new: "bad" };
-export const kindLabel = (kind) => KIND_LABEL[kind] || "Noted";
-export const kindTone = (kind) => KIND_TONE[kind] || "warn";
+const KIND_LABEL = { improved: "Improved", persistent: "Still there", fixed: "Fixed", new: "New", came_back: "Came back",
+  too_few: "Not enough takes yet to tell", unverified: "Not seen again, not checked", plateau: "Holding steady", early_sign: "Early sign" };
+const KIND_TONE = { improved: "good", fixed: "good", persistent: "warn", new: "bad", came_back: "warn", too_few: "warn", unverified: "warn", plateau: "warn", early_sign: "warn" };
+/** `close` (TICKET-214): a fixed fault that a near miss of the latest take shows is still close to the line. */
+export const kindLabel = (kind, close = false) => (kind === "fixed" && close ? "Fixed but still close" : KIND_LABEL[kind] || "Noted");
+export const kindTone = (kind, close = false) => (kind === "fixed" && close ? "warn" : KIND_TONE[kind] || "warn");
 
 /** "trunk_lean_forward" + "center" -> "Trunk lean forward"; "knee_valgus" + "left" -> "Knee valgus, left". */
 export function measureLabel(measure, side) {
@@ -96,20 +104,23 @@ function citeChips(cites, clipOf) {
 
 /** The score line: one point per take, oldest to newest, each with its take number. */
 export function takesChart(takes) {
-  const list = asList(takes).filter((t) => t && Number.isFinite(t.score));
-  const m = chartModel(list);
-  const points = m.points.map((p, i) => ({ ...p, take: list[i].take }));
-  const scores = list.map((t) => t.score);
-  const label = !scores.length ? "No scores yet."
-    : scores.length === 1 ? `One take, score ${scores[0]}.`
-      : `${scores.length} takes, oldest to newest, scores from ${scores[0]} to ${scores[scores.length - 1]}. Lowest ${Math.min(...scores)}, highest ${Math.max(...scores)}.`;
-  return { ...m, points, label };
+  const m = scoreLine(asList(takes));
+  const on = new Set(m.points.map((p) => p.take));
+  const w = chartWords(asList(takes).filter((t) => t && on.has(t.take)));   // one-letter.md L8: the shown figures, not the heights
+  const label = !w ? "No scores yet."
+    : w.count === 1 ? `One take, score ${w.first}.`
+      : `${w.count} takes, oldest to newest, scores from ${w.first} to ${w.latest}. Lowest ${w.lowest}, highest ${w.highest}.`;
+  const split = m.segments.length > 1 ? ` The line has ${m.segments.length} parts because the scoring changed between them.` : "";
+  return { ...m, label: label + split, notes: lineNotes(m) };
 }
+
+/** The headline's letter of a take (one-letter.md): the server's `shown`, else its grade. */
+const letterOf = (t) => (shownRow(t) || {}).letter || t.grade || "";
 
 function takeRows(takes, entryId) {
   return asList(takes).map((t) => ({
-    take: t.take, score: Number.isFinite(t.score) ? String(t.score) : "-", grade: t.grade || "", tone: toneOf(t.grade),
-    when: formatAt(t.at), duration: Number.isFinite(t.duration_s) ? `${t.duration_s.toFixed(1)} s` : "",
+    take: t.take, score: Number.isFinite(t.score) && !t.no_person ? shownRow(t).figures : "-", grade: t.no_person ? "No person found" : letterOf(t),
+    tone: t.no_person ? "warn" : toneOf(letterOf(t)), noPerson: !!t.no_person, seeded: !!t.synthetic, when: formatAt(t.at), duration: Number.isFinite(t.duration_s) ? `${t.duration_s.toFixed(1)} s` : "",
     clip: t.job_id && t.clip !== false ? clipUrl(entryId, t.job_id) : "",
   }));
 }
@@ -117,7 +128,7 @@ function takeRows(takes, entryId) {
 /** Fixed, persistent, improved and new measures from the fact table, as chips. */
 export function factChips(facts) {
   return asList(facts && facts.measures).map((m) => ({
-    label: measureLabel(m.measure, m.side), kind: m.status, kindText: kindLabel(m.status), tone: kindTone(m.status),
+    label: measureLabel(m.measure, m.side), kind: m.status, kindText: kindLabel(m.status, !!m.still_close), tone: kindTone(m.status, !!m.still_close),
     detail: Number.isFinite(m.present_in) ? `in ${m.present_in} of ${asList(facts.takes).length}` : "",
   }));
 }
@@ -151,12 +162,16 @@ export function pageView(doc, entryId, report) {
   return {
     entryId,
     name: d.name || entryId,
+    byline: historyText(rep?.attribution || d.attribution, d.name || entryId),
+    trainer: trainerText(rep?.attribution || d.attribution),
     takeCount: takes.length,
     canRun: takes.length >= 2,
     chart: takesChart(takes),
+    series: seriesView((d.facts && d.facts.series) || (facts && facts.series), takes), // the page's own facts: a stored report may predate the series
     takes: rows,
     chips: factChips(facts),
     video: !!(d.consent && d.consent.video),
+    reel: reelPanel(d),
     hasReport: !!rep,
     ok,
     fallback: !!rep && rep.status !== "ok",
@@ -169,6 +184,9 @@ export function pageView(doc, entryId, report) {
       text: o.text || "", cite: chips([{ take: o.take, at_s: o.at_s }])[0],
     })) : [],
     facts: facts ? factTable(facts) : null,
+    receipt: rep ? receiptView(rep.sent) : null,
+    runNote: RUN_NOTE,
+    seededLabel: takes.some((t) => t && t.synthetic) ? SEEDED_LABEL : "",
     meter: rep ? contextMeter(rep.usage, takes.length) : null,
     model: rep && rep.model ? rep.model : "",
   };
@@ -181,9 +199,10 @@ const takeText = (v) => (takeNo(v) == null ? "" : `Take ${takeNo(v)}`);
 export function factTable(facts) {
   const takes = asList(facts.takes);
   return {
-    takes: takes.map((t) => ({ take: t.take, score: Number.isFinite(t.score) ? String(t.score) : "-", grade: t.grade || "", tone: toneOf(t.grade), when: formatAt(t.at) })),
+    takes: takes.map((t) => ({ take: t.take, score: Number.isFinite(t.score) ? shownRow(t).figures : "-", grade: letterOf(t), tone: toneOf(letterOf(t)), when: formatAt(t.at) })),
     measures: asList(facts.measures).map((m) => ({
-      label: measureLabel(m.measure, m.side), kindText: kindLabel(m.status), tone: kindTone(m.status),
+      label: measureLabel(m.measure, m.side), kindText: kindLabel(m.status, !!m.still_close), tone: kindTone(m.status, !!m.still_close),
+      close: m.still_close ? `${takeText(m.still_close.take)}${Number.isFinite(m.still_close.at_s) ? `, ${m.still_close.at_s.toFixed(1)} s` : ""}` : "",
       presence: `${m.present_in == null ? 0 : m.present_in} of ${takes.length} takes`,
       first: takeText(m.first), last: takeText(m.last),
     })),
@@ -191,6 +210,9 @@ export function factTable(facts) {
     latest: takeText(facts.latest),
   };
 }
+
+/** The label on every view of a seeded demo copy (TICKET-211), the progress reel's included. */
+export const SEEDED_LABEL = "Seeded demo history";
 
 /** The slot title on the result page: "Your takes over time (3)". */
 export const slotTitle = (n) => `Your takes over time (${n})`;

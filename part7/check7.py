@@ -20,7 +20,7 @@ from typing import Any, Callable
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
-from part7 import compare, config, gpu_lock, movement, modules, runner, setup_parts, staging_live, videos
+from part7 import compare, config, gpu_lock, light, movement, modules, runner, setup_parts, staging_live, videos
 from part7.parts import p2_pose, p3_skeleton, p4_animate, p6_catalog
 from part7.quality_constants import QUALITY_SCORE_CAP
 
@@ -128,9 +128,9 @@ class AppClient:
         upload_id = self.upload(clip)
         job = self.post_json("api/follow", {"upload_id": upload_id, "entry_id": entry_id})
         job_id = str(job["job"])
-        self.wait_job(job_id)
+        done = self.wait_job(job_id)
         analysis = self.get_json(f"api/results/{job_id}/analysis.json")
-        return {"job": job_id, "analysis": analysis}
+        return {"job": job_id, "analysis": analysis, "light": (done.get("result") or {}).get("light")}
 
 
 # --------------------------------------------------------------------------- direct path (CLIs only)
@@ -267,6 +267,7 @@ def take_metrics(clip: dict[str, Any], app: dict[str, Any], direct: dict[str, An
         "pose3d_max_joint_diff_m": direct.get("pose3d_max_joint_diff_m"),
         "score_app": compare.score_value(a), "score_direct": compare.score_value(d),
         "score_equal": compare.score_equal(a, d),
+        "score_within": compare.score_within(a, d), "score_drift": compare.score_drift(a, d),  # ADR-0018
         "at_s_equal": m["at_s_equal"],
         "text_timed_present": compare.text_timed_present(a),
         "app_result_complete": compare.app_result_complete(a),
@@ -281,6 +282,18 @@ def take_metrics(clip: dict[str, Any], app: dict[str, Any], direct: dict[str, An
         "quality_cap_valid_direct": compare.quality_cap_valid(d),
         "quality_major_codes_equal": m["quality_major_codes_equal"],
         "quality_cap_equal": m["quality_cap_equal"],
+        # Part 5 1.13.0 block: level and score_cap (the old issue-code keys above stay for a pre-1.13.0 document)
+        "quality_level_app": compare.quality_level(a),
+        "quality_level_direct": compare.quality_level(d),
+        "quality_score_cap_app": compare.quality_score_cap(a),
+        "quality_score_cap_direct": compare.quality_score_cap(d),
+        "quality_cap_valid_level_app": compare.quality_cap_valid_level(a),
+        "quality_cap_valid_level_direct": compare.quality_cap_valid_level(d),
+        "quality_level_equal": m["quality_level_equal"],
+        "quality_cap_equal_level": m["quality_cap_equal_level"],
+        "light_level_app": light.level_of(app.get("light")),
+        "light_level_direct": light.level_of(direct.get("light")),
+        "light_app": app.get("light"), "light_direct": direct.get("light"),
     }
 
 
@@ -321,6 +334,7 @@ def build_gates(takes: list[dict[str, Any]], entry: dict[str, Any], mov: dict[st
         "pins_consistent": pins_ok,
         "movement_never_configured": not mov.get("grep_hits"),
         "score_equal": bool(takes) and all(t["score_equal"] for t in takes),
+        "score_within": bool(takes) and all(t.get("score_within", t["score_equal"]) for t in takes),  # ADR-0018
         "at_s_equal": bool(takes) and all(t["at_s_equal"] for t in takes),
         "app_result_complete": bool(takes) and all(t["app_result_complete"] for t in takes) and bool(ok_takes),
         "quality_major_codes_equal": bool(takes) and all(t["quality_major_codes_equal"] for t in takes),
@@ -330,7 +344,25 @@ def build_gates(takes: list[dict[str, Any]], entry: dict[str, Any], mov: dict[st
         "quality_degraded_major_capped": bool(degraded) and all(
             t["quality_major_codes_app"] and t["quality_major_codes_direct"]
             and t["quality_cap_valid_app"] and t["quality_cap_valid_direct"] for t in degraded),
+        "light_good_ok": bool(good) and all(
+            t["light_level_app"] == "ok" and t["light_level_direct"] == "ok" for t in good),
     }
+    # Part 5 1.13.0 (quality-cap.md): a document with the quality block is judged on its level and score_cap, not on reason
+    # codes. The code-based gates above stay as they were for a document with `quality.issues`; a real 1.13.0 block has none, so
+    # they are vacuously true for the two "equal" and "no major" gates and false for the degraded gate, which then takes the level.
+    gates["quality_level_equal"] = bool(takes) and all(t.get("quality_level_equal", True) for t in takes)
+    gates["quality_cap_equal"] = gates["quality_cap_equal"] and bool(takes) and all(t.get("quality_cap_equal_level", True) for t in takes)
+    gates["quality_good_no_major"] = gates["quality_good_no_major"] and bool(good) and all(
+        t.get("quality_level_app") != "major" and t.get("quality_level_direct") != "major" for t in good)
+    gates["quality_degraded_major_capped"] = gates["quality_degraded_major_capped"] or (bool(degraded) and all(
+        t.get("quality_level_app") == "major" and t.get("quality_level_direct") == "major"
+        and t.get("quality_cap_valid_level_app") and t.get("quality_cap_valid_level_direct") for t in degraded))
+    # TICKET-247 (video-light.md): a degraded take may pass on Part 7's own major light reading in both paths instead of
+    # Part 5's capped issue. The takes without it must still pass the Part 5 rule above, judged by the same gate.
+    dark = [t for t in degraded if t["light_level_app"] == "major" and t["light_level_direct"] == "major"]
+    if dark and not gates["quality_degraded_major_capped"]:
+        rest = [t for t in degraded if t not in dark]
+        gates["quality_degraded_major_capped"] = not rest or build_gates(rest, entry, mov, pins_ok)[0]["quality_degraded_major_capped"]
     return gates, {"mismatch_warnings": [t["app_warnings"] for t in mism]}
 
 
@@ -349,6 +381,25 @@ def passes(gates: dict[str, Any]) -> bool:
         elif value is not True:
             return False
     return True
+
+
+def passes_k9t(gates: dict[str, Any]) -> bool:
+    """ADR-0018 (AC-K9T): every gate as `passes`, except that `score_within` decides the score in place of the strict
+    `score_equal`, which stays in the gates and in `pass_strict`."""
+    return passes({k: v for k, v in gates.items() if k != "score_equal"}) and gates.get("score_within") is True
+
+
+def score_drift_report(takes: list[dict[str, Any]], gates: dict[str, Any]) -> dict[str, Any]:
+    """ADR-0018: the app and direct score drift of every take, the largest, the limit, the reason and the strict result."""
+    drifts = [t["score_drift"] for t in takes if t.get("score_drift") is not None]
+    return {
+        "per_take": [{"clip": t["clip"], "role": t["role"], "drift": t.get("score_drift")} for t in takes],
+        "max": max(drifts) if drifts else None,
+        "limit": compare.SCORE_DRIFT_MAX,
+        "reason": compare.SCORE_DRIFT_REASON,
+        "score_equal": gates.get("score_equal"),
+        "score_within": gates.get("score_within"),
+    }
 
 
 # --------------------------------------------------------------------------- orchestration
@@ -388,6 +439,7 @@ def run_check(
         log(f"check-7: direct path, {clip['id']}")
         d = direct.follower(path, Path(d_t["animation"]), Path(facts["work"]) / clip["id"])
         d["input_sha"] = sha256_file(path)
+        d.setdefault("light", light.measure(path))  # TICKET-247: Part 7's own reading, the same code as the app path
         a["input_sha"] = (app_input_sha(a["job"], path) if app_input_sha else sha256_file(path))
         if pose_diff and d.get("pose3d") and a.get("pose3d"):
             d["pose3d_identical"], d["pose3d_max_joint_diff_m"] = pose_diff(Path(a["pose3d"]), Path(d["pose3d"]))
@@ -399,8 +451,11 @@ def run_check(
     )
     gates, reported = build_gates(takes, entry, movement_info, pins_ok)
     total = time.monotonic() - t0
+    drift = score_drift_report(takes, gates)  # ADR-0018: printed on every run, pass or fail
+    log(f"check-7: score drift max {drift['max']} (limit {drift['limit']}), score_equal {drift['score_equal']}: {drift['reason']}")
     return {
-        "part": 7, "pass": passes(gates), "part7_commit": facts.get("part7_commit", ""),
+        "part": 7, "pass": passes_k9t(gates), "part7_commit": facts.get("part7_commit", ""),
+        "pass_strict": passes(gates), "score_drift": drift,  # ADR-0018
         "movement": {k: movement_info.get(k) for k in ("id", "name", "rule_ok", "excluded_list_sha", "grep_hits", "doc_mentions")},
         "pins": short,
         "clips": [{"id": c["id"], "role": c["role"], "source_url": c.get("url"), "licence": c.get("licence"),

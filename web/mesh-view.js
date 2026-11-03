@@ -22,10 +22,18 @@
 //   --mesh-trainer (the ghost), --mesh-you (the follower), --mesh-fault (the tint), --mesh-light and --mesh-ground
 //   (sky and ground light), --mesh-bg (clear colour; transparent when unset). FALLBACK_COLORS below is used for a property that is unset.
 //
+// Heat (TICKET-274, docs/specs/heat-and-ar.md): ctx.heatUrl, the URL of the job's heat.json. When it loads and matches the
+// follower's mesh, the view also holds `view.heat` = {open: {t, name, value, source}, on, setOn(bool), onRegion(fn)} and paints
+// the follower's body with the --heat-0 to --heat-4 ramp while on (the trainer's ghost is hidden then). With no heatUrl, a
+// failed load, a mismatch or a take that is cold throughout, view.heat is null and the view is exactly what it was.
+// ctx.alignedUntilS: after this follower time the take is unaligned (heat-data alignedUntil): no heat is painted and the listener gets {after: true}.
+// ctx.leadFaultAt: the time of the analysis' first fault; `open.t` is the heat frame nearest it (the server's open_moment, docs/specs/heat.md).
+//
 // Part 7 reads only Part 2's output files (mesh3d.json + mesh3d.bin, Part 2 CONTRACT.md); it never imports Part 2.
 // three.js is loaded lazily so the pure helpers below run under node for the unit tests.
 
 import { FALLBACK_COLORS } from "./theme-fallbacks.js";
+import { loadHeat, heatAt, rampAt, hottestRegion, openMoment, isAligned } from "./heat/heat-data.js"; // TICKET-274
 
 export const TINT_WINDOW_S = 0.5;
 export { FALLBACK_COLORS }; // the harness fallbacks live in theme-fallbacks.js
@@ -93,6 +101,20 @@ export async function loadMesh(url, fetchImpl = globalThis.fetch) {
   } catch {
     return null;
   }
+}
+
+const meshCaches = new WeakMap();
+/**
+ * loadMesh with a cache by fetch function and URL, so the result page's mesh view and the Person skin parse a mesh once
+ * (docs/specs/person-skin.md). A failure is not remembered.
+ */
+export function cachedMesh(url, fetchImpl = globalThis.fetch) {
+  let byUrl = meshCaches.get(fetchImpl);
+  if (!byUrl) meshCaches.set(fetchImpl, (byUrl = new Map()));
+  if (!byUrl.has(url)) {
+    byUrl.set(url, loadMesh(url, fetchImpl).then((m) => { if (!m) byUrl.delete(url); return m; }));
+  }
+  return byUrl.get(url);
 }
 
 // ---- time --------------------------------------------------------------------------------------
@@ -176,6 +198,30 @@ function paint(colors, mask, base, hot) {
   }
 }
 
+/** TICKET-274: the follower's vertex colours from the heat at t; tells the region listener when the hottest region changes. */
+function paintHeat(heat, follower, stops, state, colors, t, ghost) {
+  if (!isAligned(heat, t)) {   // the idle tail after the movement: the body in its own colour, no heat
+    for (let i = 0; i < state.level.length; i++) { colors.array[i * 3] = state.base.r; colors.array[i * 3 + 1] = state.base.g; colors.array[i * 3 + 2] = state.base.b; }
+    colors.needsUpdate = true;
+    ghost.visible = false;
+    if (state.region !== "\u0000after") { state.region = "\u0000after"; if (state.listener) state.listener({ after: true }); }
+    return;
+  }
+  heatAt(heat, t, state.level);
+  for (let i = 0; i < state.level.length; i++) {
+    rampAt(stops, state.level[i], state.rgb);
+    colors.array[i * 3] = state.rgb[0]; colors.array[i * 3 + 1] = state.rgb[1]; colors.array[i * 3 + 2] = state.rgb[2];
+  }
+  colors.needsUpdate = true;
+  ghost.visible = false;
+  const hot = hottestRegion(heat, follower, t);
+  const name = hot ? hot.name : "";
+  if (name !== state.region) {
+    state.region = name;
+    if (state.listener) state.listener(hot);
+  }
+}
+
 function buildScene(THREE, host, trainer, follower) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
@@ -227,7 +273,7 @@ function orbit(canvas, view) {
 /** Contract C6: see the top of this file. */
 export async function mountMeshView(container, ctx = {}) {
   const fetchImpl = ctx.fetch || globalThis.fetch;
-  const [trainer, follower] = await Promise.all([loadMesh(ctx.trainerMeshUrl, fetchImpl), loadMesh(ctx.followerMeshUrl, fetchImpl)]);
+  const [trainer, follower] = await Promise.all([cachedMesh(ctx.trainerMeshUrl, fetchImpl), cachedMesh(ctx.followerMeshUrl, fetchImpl)]);
   if (!trainer || !follower || !container || !webglAvailable()) return null;
   let THREE;
   try {
@@ -246,6 +292,11 @@ export async function mountMeshView(container, ctx = {}) {
   let raf = 0;
   let frames = 0;
   const view = { azimuth: 0, dirty: () => schedule() };
+  // TICKET-274: heat on the follower's body
+  const heat = ctx.heatUrl ? await loadHeat(ctx.heatUrl, follower.vertexCount, fetchImpl) : null;
+  if (heat) heat.alignedUntil = Number.isFinite(ctx.alignedUntilS) ? ctx.alignedUntilS : null;   // after it: no heat
+  const heatStops = [0, 1, 2, 3, 4].map((k) => { const c = new THREE.Color(cssColor(container, `--heat-${k}`)); return [c.r, c.g, c.b]; });
+  const heatState = { on: false, region: "", listener: null, level: new Float32Array(follower.vertexCount), rgb: [0, 0, 0], base };
 
   const draw = () => {
     raf = 0;
@@ -263,6 +314,7 @@ export async function mountMeshView(container, ctx = {}) {
       colors.needsUpdate = true;
       tintKey = key;
     }
+    if (heat && heatState.on) paintHeat(heat, follower, heatStops, heatState, colors, t, s.ghost);
     const r = 3.4;
     s.camera.position.set(Math.sin(view.azimuth) * r, 0.25, Math.cos(view.azimuth) * r);
     s.camera.lookAt(0, -0.05, 0);
@@ -283,13 +335,25 @@ export async function mountMeshView(container, ctx = {}) {
   const detach = orbit(s.canvas, view);
   resize();
 
+  const open = heat ? openMoment(heat, follower, ctx.leadFaultAt) : null;
   return {
+    heat: heat && open ? {
+      open,
+      get on() { return heatState.on; },
+      setOn(on) {
+        heatState.on = !!on;
+        s.ghost.visible = !heatState.on;
+        if (!heatState.on) { tintKey = null; heatState.region = ""; }
+        schedule();
+      },
+      onRegion(fn) { heatState.listener = typeof fn === "function" ? fn : null; },
+    } : null,
     setTime(next) {
       if (Number.isFinite(next)) { t = next; schedule(); }
     },
     stats() {
       return { frames, fps: ctx.fps ?? null, trainerVertices: trainer.vertexCount, followerVertices: follower.vertexCount,
-        faces: follower.faces.length / 3, tinted: tintKey || "" };
+        faces: follower.faces.length / 3, tinted: tintKey || "", heat: heatState.on ? heatState.region || "on" : "" };
     },
     destroy() {
       if (raf) cancelAnimationFrame(raf);

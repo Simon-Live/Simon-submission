@@ -3,6 +3,13 @@
 import * as api from "./api.js";
 import { createLock, createPending, openIdbStore } from "./pending.js";
 import { requestOf } from "./take-request.js";
+import { openKeptStore } from "./pending-keep.js";
+
+/**
+ * TICKET-290: keep a refused take (413 and the like) until the person deletes it. Off until the outbox's owner
+ * agrees on moalborati/simon#61; while off a refused take is deleted as before, with a message that says why.
+ */
+export const KEEP_REFUSED = false;
 
 let ready = null;
 
@@ -13,6 +20,9 @@ async function build() {
   try { store = await openIdbStore(); } catch { store = null; } // private mode, blocked or missing IndexedDB
   return createPending({
     store,
+    keep: true, // TICKET-290: a take stays on the device until its job is done (pending-keep.js)
+    keptStore: await openKeptStore().catch(() => null),
+    keepRefused: KEEP_REFUSED,
     api: {
       upload: (blob, opts) => api.uploadVideo(blob, { ...opts, onProgress: opts && opts.onProgress ? opts.onProgress : () => {} }),
       createPeopleJob: (uploadId, trim) => api.createPeopleJob(uploadId, trim),

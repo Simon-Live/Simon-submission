@@ -28,12 +28,19 @@ const entry = (id, name, extra = {}) => ({ id, name, category: "dance", files_so
 const ENTRIES = [
   entry("verify-2026-10-31t06-23-06z-317d3534", "verify 2026-10-31T06:23:06Z", { files_source: "import" }),
   entry("arm-salute-8b6512a8", "arm salute", { files_source: "import" }),
-  entry("squat", "Squat", { category: "exercise" }),
-  entry("arm-wave", "Arm wave"),
+  entry("squat", "Squat", { category: "exercise", video_uri: "video.mp4" }), // TICKET-316: the judge view lists entries with a trainer video
+  entry("arm-wave", "Arm wave", { video_uri: "video.mp4" }),
   entry("extra-move", "Extra move"),
 ];
 const LABELS = { "extra-move": { tags: ["rehab"], notes: "" } };
 const JOBS = { gj1: { id: "gj1", kind: "group", status: "done", entry_id: "arm-wave", result: {} }, tj1: { id: "tj1", kind: "trainer", status: "done", entry_id: "arm-wave", result: { entry_id: "arm-wave" } }, tj2: { id: "tj2", kind: "trainer", status: "done", entry_id: "arm-wave", result: { entry_id: "arm-wave" } }, rj1: { id: "rj1", kind: "follow", status: "done", entry_id: "arm-wave", result: { score: 80, grade: "B" } } };
+// The judge URL (docs/specs/judge-view.md): the server writes the default-profile meta into the page and lists boards.
+const judge = { on: false, heroAsked: 0, boardQueries: [] };
+const BOARDS = [
+  { id: "bReal", entry_id: "arm-wave", title: "Beat my wave", kind: "friend", entry_count: 1, ended: false, leader: null },
+  { id: "bVerify", entry_id: "verify-2026-10-31t06-23-06z-317d3534", title: "Beat my verify", kind: "friend", entry_count: 1, ended: false, leader: null },
+  { id: "bWave", entry_id: "arm-wave", title: "Beat my verify wave", kind: "friend", entry_count: 1, ended: false, leader: null },
+];
 const posts = [];
 const deletes = [];
 const deleteBodies = [];
@@ -47,9 +54,15 @@ const server = http.createServer((req, res) => {
   req.on("end", () => {
     let m;
     if (p === "/api/config") return json(res, { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 }, part5: { lang: true, video: true, private: true } });
-    if (p === "/api/client-log") { res.writeHead(204); return res.end(); }
+    if (p === "/api/client-log") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end('{"ok": true}'); }
     if (p === "/api/version") return json(res, { short: "abc123def", started_at: "2026-10-31T12:00:00Z", parts: {} });
     if (p === "/api/labels") return json(res, LABELS);
+    if (p === "/api/judge/hero") { judge.heroAsked += 1; return json(res, { job_id: "rj1", entry_id: "arm-wave", score: 81, source: "best" }); }
+    if (p === "/api/challenges" && judge.on) {
+      judge.boardQueries.push(url.search);
+      const rows = url.searchParams.get("view") === "judge" ? BOARDS.filter((b) => !b.entry_id.startsWith("verify-") && b.id !== "bWave") : BOARDS;
+      return json(res, { challenges: rows });
+    }
     if (p === "/api/challenges") return json(res, { challenges: [] });
     if (p === "/catalog/api/entries") return json(res, { entries: ENTRIES });
     if ((m = /^\/catalog\/api\/entries\/([^/]+)(?:\/(.+))?$/.exec(p))) {
@@ -75,7 +88,8 @@ const server = http.createServer((req, res) => {
     const file = path.resolve(WEB, rel);
     if (!file.startsWith(WEB) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404).end("no"); return; }
     res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream" });
-    res.end(fs.readFileSync(file));
+    const page = fs.readFileSync(file);
+    res.end(judge.on && rel === "index.html" ? page.toString().replace("</head>", '<meta name="simon-default-profile" content="submission">\n</head>') : page);
   });
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -257,6 +271,33 @@ try {
   await page.waitForTimeout(500);
   assert.match(page.url(), /#\/result\/rj1$/, "negative: switching the bar on a result does not navigate");
   ok("kind bar: watch, follow and record go to the chosen kind's library; a result stays");
+
+  // ---- the judge URL: the first visit opens curated with the hero take and without test boards; ?profile=default shows all
+  judge.on = true;
+  page = await fresh();
+  await page.goto(BASE);
+  await page.waitForSelector('[data-testid="section-exercise"]');
+  await page.waitForSelector('[data-testid="hero-link"]');
+  assert.equal(await page.getByTestId("hero-link").getAttribute("href"), "#/result/rj1");
+  assert.match(await page.getByTestId("hero-take").textContent(), /Scored 81 out of 100/);
+  assert.equal(await kindSwitchShown(page), false, "negative: the judge view has no mode picker");
+  assert.equal(await page.locator('[data-testid="entry-extra-move"]').count(), 0, "negative: only the curated list");
+  await page.goto(`${BASE}#/watch/arm-wave`);
+  await page.waitForSelector('[data-testid="challenge-link-bReal"]');
+  assert.equal(await page.locator('[data-testid="challenge-link-bVerify"]').count(), 0, "negative: no test board in the judge view");
+  assert.ok(judge.boardQueries.some((q) => q.includes("view=judge")), "the judge view asks for view=judge");
+  await page.goto(`${BASE}?profile=default#/watch/arm-wave`);
+  await page.waitForSelector('[data-testid="challenge-link-bWave"]');
+  assert.equal(await page.locator('[data-testid="challenge-link-bReal"]').count(), 1);
+  assert.ok(judge.boardQueries.some((q) => !q.includes("view=judge")), "the full app asks for the plain list");
+  const heroBefore = judge.heroAsked;
+  await page.goto(`${BASE}#/`);
+  await page.waitForSelector('[data-testid="entry-extra-move"]');
+  assert.equal(await kindSwitchShown(page), true, "?profile=default is kept: the picker is back");
+  assert.equal(await page.locator('[data-testid="hero-link"]').count(), 0, "negative: no hero link in the full app");
+  assert.equal(judge.heroAsked, heroBefore, "the full app does not ask for the hero");
+  judge.on = false;
+  ok("judge URL: curated with the hero take and no test boards by default; ?profile=default shows the full app");
 
   assert.deepEqual(errors, [], "no console errors");
   ok("no console errors");

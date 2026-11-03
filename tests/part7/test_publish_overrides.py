@@ -15,9 +15,22 @@ pytestmark = pytest.mark.skipif(not FILE.is_file(), reason="publish/overrides.js
 OWN_COMMENT = "6554168349"
 
 
-def test_only_provisional_disclosure_at_the_top_level():
+CONSENT_PREFIX = "https://github.com/moalborati/simon/issues/61#issuecomment-"
+
+
+def test_a_top_level_entry_never_cites_the_firms_own_comment():
+    """A top-level path entry reads as consent, so it must cite a #61 comment and never the firm's own one.
+
+    The guard checks at publish time that the comment's author is not firm and does not open with the agent header.
+    """
     doc = json.loads(FILE.read_text(encoding="utf-8"))
-    assert list(doc) == ["provisional_disclosure"], "a top-level path entry would read as consent"
+    for path, shas in doc.items():
+        if path == "provisional_disclosure":
+            continue
+        assert isinstance(shas, dict) and shas, path
+        for url in shas.values():
+            assert url.startswith(CONSENT_PREFIX), (path, url)
+            assert not url.endswith(OWN_COMMENT), (path, "the firm's own comment is disclosure, not consent")
 
 
 def test_every_disclosed_entry_cites_the_firms_own_comment():

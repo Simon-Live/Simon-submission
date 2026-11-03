@@ -1,0 +1,133 @@
+/* The result stage (views/result-stage.js): the top row, the Reference and You panes over one view at a time, the
+   collapsed "Rep breakdown" bar and the action row. Tokens only (theme/tokens.css). */
+.simon-result .st { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding: var(--space-3);
+  background: var(--card-fill); border: 1px solid var(--color-line); border-radius: var(--radius-lg);
+  scroll-margin-top: var(--header-height); min-width: 0; }
+
+/* top row: "How this was made" left, the grade card in the middle, the view switch right */
+.st-top { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-2); }
+.st-top-left { display: flex; justify-content: flex-start; min-width: 0; }
+.st-pill { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--target-min); padding: 0 var(--space-3);
+  border: 1px solid var(--color-line); border-radius: var(--radius-pill); background: var(--card-fill-raised); color: var(--color-text);
+  font: var(--weight-semibold) var(--text-sm) var(--font-sans); cursor: pointer; }
+.st-pill[aria-expanded="true"], .st-pill[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
+.st-made-pop { padding: var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--card-fill-raised); }
+.st-made-pop .hm-slot > * { margin: 0; }
+
+
+.st-switch { justify-self: end; display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--color-line); border-radius: var(--radius-pill);
+  background: var(--card-fill-raised); }
+.st-seg { min-height: var(--target-min); min-width: var(--target-min); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-pill); background: transparent;
+  color: var(--color-text-muted); font: var(--weight-semibold) var(--text-sm) var(--font-sans); cursor: pointer; }
+.st-seg[aria-pressed="true"] { background: var(--color-accent); color: var(--color-on-accent); }
+.st-note { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+
+/* the panes: two columns over the view, its bars and the caption (one column when the view has no reference) */
+.st-panes { display: grid; gap: var(--space-1); min-width: 0; }
+.st[data-empty="true"] .st-panes { display: none; }
+.st-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); min-width: 0; }
+.st[data-single="true"] .st-cols { grid-template-columns: 1fr; }
+.st[data-single="true"] .st-ref-cell { display: none; }
+.st-label-cell { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); min-width: 0; min-height: var(--target-min); }
+.st-label { font: var(--weight-semibold) var(--text-sm) var(--font-sans); color: var(--color-text-muted); }
+/* the 3D view overlays both bodies in one scene and has its own Trainer and You legend: no column labels over it */
+.st[data-view="3d"] .st-labels { display: none; }
+.st-you-cell .st-label { color: var(--color-accent); }
+.st-progress { width: 100%; margin: 0; accent-color: var(--color-accent); height: var(--target-min); }
+.st-progress-reference { accent-color: var(--color-text-muted); }
+.st-you-foot { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-you-foot .st-progress { flex: 1; min-width: 0; }
+.st-caption-row[hidden] { display: none; }
+.st-caption { margin: 0; min-width: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--color-scrim-soft);
+  color: var(--color-text); font: var(--weight-semibold) var(--text-sm)/1.3 var(--font-sans); text-wrap: pretty; }
+.st-caption-tools { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; }
+.st-voice .vx-toggle { min-height: var(--target-min); padding: 0 var(--space-2); font-size: var(--text-xs); }
+.st-voice { display: inline-flex; margin: 0; padding: 0; }
+.st-cc { min-height: var(--target-min); min-width: var(--target-min); justify-content: center; padding: 0 var(--space-2); font-size: var(--text-xs); }
+
+/* the score pops (views/score-pops.js): a layer over the views with the panes' columns; pops fly up ~40 px over the
+   You pane and fade. Window values sit high in lime, misses lower in pink; later lanes stack under the first. */
+/* its own stacking context: the pops sit over the coach pane (z-index 20 in result.css) but under the sticky header */
+.st-views { position: relative; isolation: isolate; min-width: 0; }
+.st-pops { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+.st-pops-you { position: relative; min-width: 0; overflow: hidden; }
+.st-pop { position: absolute; left: 50%; top: 16%; max-width: calc(100% - var(--space-2)); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; padding: 2px var(--space-2); border-radius: var(--radius-pill); background: var(--color-scrim-soft);
+  font: 400 var(--text-lg)/1.15 var(--font-display); -webkit-text-stroke: var(--pop-stroke) currentColor; paint-order: stroke fill; color: var(--color-accent);
+  transform: translate(-50%, calc(var(--lane, 0) * 1.75em)); opacity: 0; animation: st-pop-fly 1.1s ease-out forwards; }
+.st-pop[data-kind="miss"] { top: 38%; color: var(--color-pink); font-size: var(--text-md); white-space: normal; width: max-content;
+  max-width: min(90%, 22ch); text-align: center; line-height: 1.2; }
+@keyframes st-pop-fly {
+  0% { opacity: 0; transform: translate(-50%, calc(var(--lane, 0) * 1.75em + 8px)) scale(0.85); }
+  15% { opacity: 1; transform: translate(-50%, calc(var(--lane, 0) * 1.75em)) scale(1.05); }
+  60% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, calc(var(--lane, 0) * 1.75em - 40px)) scale(1); }
+}
+@keyframes st-pop-fade { 0% { opacity: 0; } 15%, 70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* the views inside the stage: no own titles or labels (the panes have them), media short enough to leave the
+   breakdown bar and the action row on a 1280 x 800 screen */
+.st-view { min-width: 0; }
+.st .sbs { background: transparent; border: 0; padding: 0; margin: 0; }
+.st .sbs > h2, .st .sbs-hint, .st .sbs-label, .st .sr-coach-label { display: none; }
+.st .sbs-grid { gap: var(--space-2); }
+.st .sbs-video, .st .sr-coach-pair .sr-video { height: auto; max-height: min(30vh, 340px); aspect-ratio: auto; width: 100%; object-fit: contain; }
+.st .sbs-controls { margin: var(--space-2) 0 0; }
+.st .sbs-sound { gap: var(--space-2); font-size: var(--text-sm); }
+.simon-result .st .sr-coach { margin: 0; position: relative; }
+.st .sr-coach-pair { padding: 0; }
+.simon-result .st .sr-stage { aspect-ratio: auto; height: min(33vh, 400px); min-height: 200px; max-height: none; }
+/* the 3D controls on one row under the bodies: play, position, clock, camera, overlay */
+.simon-result .st .sr-cmp { display: flex; flex-wrap: wrap; align-items: center; margin: 0; max-width: none; border-radius: var(--radius-md); border-inline: 1px solid var(--color-line); }
+.simon-result .st .sr-cmp > .sr-stage, .simon-result .st .sr-cmp > .sr-note { flex: 1 0 100%; }
+.simon-result .st .sr-cmp > .sr-bar { flex: 1 1 280px; min-width: 0; padding: var(--space-2) var(--space-3); }
+.simon-result .st .sr-cmp > .sr-tools { flex: 0 1 auto; padding: var(--space-2) var(--space-3); gap: var(--space-2); }
+.st-solo { display: block; width: 100%; height: auto; max-height: min(30vh, 340px); object-fit: contain; background: var(--color-media-bg); border-radius: var(--radius-md); }
+
+/* "Rep breakdown": closed by default */
+.simon-result .st-bd { margin: 0 0 var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--card-fill); }
+.st-bd-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; min-height: var(--target-min);
+  padding: 0 var(--space-3); border: 0; background: transparent; color: var(--color-text); font: var(--weight-semibold) var(--text-sm) var(--font-sans);
+  cursor: pointer; }
+/* a line chevron (1.5 px stroke), not a text glyph */
+.st-chev { display: inline-block; width: 8px; height: 8px; margin-bottom: 4px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg); transition: transform 160ms var(--ease-out); }
+.st-bd[data-open="true"] .st-chev { margin-bottom: -4px; transform: rotate(-135deg); }
+.st-bd-body { display: grid; gap: var(--space-3); padding: 0 var(--space-3) var(--space-3); min-width: 0; }
+.st-bd-body[hidden] { display: none; }
+.st-bd-part:empty { display: none; }
+
+/* the action row: Retry (lime), Share, Challenge a friend */
+.simon-result .st-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-4); }
+.st-act-lead { display: contents; }
+.st-actions .btn { flex: 1 1 0; min-width: 0; min-height: var(--button-height); display: inline-flex; align-items: center; justify-content: center;
+  text-decoration: none; padding: 0 var(--space-3); white-space: nowrap; }
+.st-actions .btn[hidden] { display: none; }
+.st-act-extra { display: contents; }
+.st-act-extra:empty { display: none; }
+.st-act-status { flex-basis: 100%; color: var(--color-text-muted); font-size: var(--text-sm); }
+.st-act-status:empty { display: none; }
+
+/* below 720 px the stage runs edge to edge, as the 3D view did, so the bodies keep the width */
+@media (max-width: 719px) {
+  .simon-result .st { margin-inline: -16px; border-radius: 0; border-inline: 0; padding-inline: var(--space-2); }
+}
+/* phones: the top row wraps (pill and grade, then the switch across), the panes stay side by side at half width */
+@media (max-width: 520px) {
+  .simon-result .st { padding: var(--space-2); }
+  .st-switch { grid-column: 1 / -1; justify-self: stretch; }
+  .st-seg { flex: 1; }
+  .st-made-text { display: none; }
+  .st-made { padding: 0; width: var(--target-min); justify-content: center; }
+  .st-pop { font-size: var(--text-md); }
+  .st-pop[data-kind="miss"] { font-size: var(--text-sm); }
+  .st .sbs-video, .st .sr-coach-pair .sr-video, .st-solo { max-height: 28vh; }
+  .st-you-foot { flex-wrap: wrap; justify-content: flex-end; }
+  .st-you-foot .st-progress { flex-basis: 100%; }
+  .simon-result .st .sr-stage { height: 30vh; min-height: 200px; }
+  .st-actions .btn { flex: 1 1 30%; font-size: var(--text-sm); padding: 0 var(--space-2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-chev { transition: none; }
+  .st-pop { transform: translate(-50%, calc(var(--lane, 0) * 1.75em)); animation: st-pop-fade 0.8s linear forwards; }
+}

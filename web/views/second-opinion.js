@@ -13,8 +13,8 @@ export function observationsPanel(modelName, obs, onSeek) {
       h("span", { class: "vx-tag", text: "model's opinion" }))));
   });
   return [
-    h("h3", { class: "so-title", text: `What ${modelName} also noticed` }),
-    h("p", { class: "so-note", text: "This is the AI model's own view of the clip. It does not change your score." }),
+    h("h3", { class: "so-title", text: "A second opinion" }),
+    h("p", { class: "so-note", text: `${modelName} looked at the clip on its own. It does not change your score.` }),
     list,
   ];
 }

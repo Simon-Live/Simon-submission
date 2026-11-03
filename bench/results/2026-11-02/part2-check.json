@@ -1,0 +1,340 @@
+{
+  "one_person": {
+    "metric": "reprojection_error_pct_of_body_height",
+    "threshold_pct": 5.0,
+    "rule": "every_frame",
+    "body_height": "clip max of clicked nose to ankle-midpoint distance in px (stricter than full stature)",
+    "n_frames": 20,
+    "n_side_frames": 20,
+    "n_failed_frames": 0,
+    "mean_pct": 3.839,
+    "p95_pct": 4.816,
+    "max_pct": 4.884,
+    "worst_frame": 29,
+    "checks": {
+      "enough_frames": true,
+      "has_side_views": true,
+      "within_threshold": true
+    },
+    "pass": true,
+    "outputs": {
+      "dir": "fixtures/output/scored/single",
+      "backend": "gpu",
+      "tracker": null,
+      "lifter": null,
+      "refine": [
+        "focal",
+        "kp2d-fit"
+      ],
+      "stamp": "fresh",
+      "code_sha256": "bc3cf71f06b221153133f89da7588904def163365580244d856933d29011b204",
+      "env_profile": "gpu-cu128",
+      "host_gpu": "NVIDIA GeForce RTX 5090",
+      "created_utc": "2026-11-01T01:15:09Z"
+    }
+  },
+  "one_person_coco": {
+    "metric": "reprojection_error_pct_of_body_height",
+    "threshold_pct": 5.0,
+    "rule": "every_frame",
+    "body_height": "per image nose to ankle-midpoint distance in px (each image its own clip)",
+    "n_frames": 20,
+    "n_failed_frames": 0,
+    "mean_pct": 2.019,
+    "p95_pct": 4.092,
+    "max_pct": 4.903,
+    "worst_frame": 229553,
+    "checks": {
+      "enough_frames": true,
+      "within_threshold": true
+    },
+    "pass": true,
+    "outputs": {
+      "dir": "fixtures/output/scored/coco-single",
+      "backend": "gpu",
+      "tracker": null,
+      "lifter": null,
+      "refine": [
+        "focal",
+        "kp2d-fit"
+      ],
+      "stamp": "fresh",
+      "code_sha256": "8d76a1d341509c5d8e3fe8ee08b0daa9e8b074b8d20f8f82f9f8498b6442a812",
+      "env_profile": "gpu-cu128",
+      "host_gpu": "NVIDIA GeForce RTX 5090",
+      "created_utc": "2026-11-01T01:24:49Z"
+    }
+  },
+  "multi_person": {
+    "metric": "tracking_coverage_and_id_swaps",
+    "swap_rate_basis": "max(1, clip_min)",
+    "clip_min": 0.293,
+    "allowed_swaps": 1.0,
+    "n_appearances_missing_timestamps": 0,
+    "iou_threshold": 0.5,
+    "min_people": 5,
+    "n_gt_people": 7,
+    "n_keyframes": 126,
+    "mean_coverage": 1.0,
+    "total_id_swaps": 0,
+    "checks": {
+      "enough_people": true,
+      "coverage_ge_95pct": true,
+      "swaps_le_1_per_min": true,
+      "pose3d_per_person": true
+    },
+    "pass": true,
+    "per_person": [
+      {
+        "gt_id": 0,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          0
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 1,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          6
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 2,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          1
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 3,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          2
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 4,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          3
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 5,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          4
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 6,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          5
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      }
+    ],
+    "outputs": {
+      "dir": "fixtures/output/scored/class",
+      "backend": "gpu",
+      "tracker": "api-sam31",
+      "lifter": null,
+      "refine": [],
+      "stamp": "fresh",
+      "code_sha256": "6dcff44f68a61967abcfe2384612bb16dc44f6b1d78d962c4b4e797c880cb623",
+      "env_profile": "gpu-cu128",
+      "host_gpu": "NVIDIA GeForce RTX 5090",
+      "created_utc": "2026-11-01T01:19:01Z"
+    }
+  },
+  "multi_person_local_open": {
+    "metric": "tracking_coverage_and_id_swaps",
+    "swap_rate_basis": "max(1, clip_min)",
+    "clip_min": 0.293,
+    "allowed_swaps": 1.0,
+    "n_appearances_missing_timestamps": 0,
+    "iou_threshold": 0.5,
+    "min_people": 5,
+    "n_gt_people": 7,
+    "n_keyframes": 126,
+    "mean_coverage": 0.873,
+    "total_id_swaps": 0,
+    "checks": {
+      "enough_people": true,
+      "coverage_ge_95pct": false,
+      "swaps_le_1_per_min": true,
+      "pose3d_per_person": true
+    },
+    "pass": false,
+    "per_person": [
+      {
+        "gt_id": 0,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          4
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 1,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          6
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 2,
+        "n_keyframes": 18,
+        "n_matched": 2,
+        "coverage": 0.1111,
+        "id_swaps": 0,
+        "track_ids": [
+          0
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 3,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          1
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 4,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          5
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 5,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          3
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      },
+      {
+        "gt_id": 6,
+        "n_keyframes": 18,
+        "n_matched": 18,
+        "coverage": 1.0,
+        "id_swaps": 0,
+        "track_ids": [
+          2
+        ],
+        "pose3d_coverage": 1.0,
+        "has_pose3d": true
+      }
+    ],
+    "gated": false,
+    "outputs": {
+      "dir": "fixtures/output/scored/class-local-open",
+      "backend": "gpu",
+      "tracker": "local-open",
+      "lifter": null,
+      "refine": [],
+      "stamp": "fresh",
+      "code_sha256": "bf27187cdb76318a100a2dce47d0729e7eac6b9404f54f330dfea6550ca491ab",
+      "env_profile": "gpu-cu128",
+      "host_gpu": "NVIDIA GeForce RTX 5090",
+      "created_utc": "2026-11-01T01:21:58Z"
+    }
+  },
+  "cpu_backend_3d": {
+    "pass": false,
+    "mean_m": 0.1451,
+    "p95_m": 0.3788,
+    "worst_joint": "right_knee",
+    "bone_cv_mean": 0.016,
+    "bone_cv_max": 0.1117,
+    "lifter": "bones-prior",
+    "frames": 111,
+    "cpu_frames": 111,
+    "reference_frames": 111,
+    "missing_frames": 0,
+    "thresholds": {
+      "mean_m": 0.1,
+      "bone_cv_mean": 0.05
+    },
+    "mean_joint_distance_m": 0.1451,
+    "bone_length_cv_mean": 0.016,
+    "bone_length_cv_max": 0.1117,
+    "cpu": "fixtures/output/scored/cpu-single",
+    "reference": "fixtures/output/scored/single",
+    "outputs": {
+      "dir": "fixtures/output/scored/cpu-single",
+      "backend": "cpu",
+      "tracker": null,
+      "lifter": "bones-prior",
+      "refine": [],
+      "stamp": "fresh",
+      "code_sha256": "e97eb86d6e4a36610accf65053d7bf9ade960715debacb6ba4377fd2b3d38c1d",
+      "env_profile": "gpu-cu128",
+      "host_gpu": null,
+      "created_utc": "2026-11-01T01:27:43Z"
+    }
+  },
+  "pass": true
+}

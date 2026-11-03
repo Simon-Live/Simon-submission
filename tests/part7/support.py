@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import threading
-from typing import Any
+from typing import Any, Iterator
 import tempfile
 
 from part7 import config, modules, server
@@ -32,6 +34,8 @@ _DEFAULT_ROOT = Path(tempfile.mkdtemp(prefix="part7-test-modules-"))
 def _seed_default_root() -> None:
     """The default stub root ships Part 5's real replay schema, as the part5 module does."""
     src = config.part_dir("5") / "contracts" / "replay.schema.json"
+    if not src.is_file():
+        return  # no Part 5 checkout (CI without PARTS_READ_TOKEN): tests that need the schema skip (ci_skips.py)
     dst = _DEFAULT_ROOT / "part-5" / "contracts" / "replay.schema.json"
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(src.read_bytes())
@@ -208,3 +212,29 @@ def lock_with_schema(tmp_path: Path, schema: dict[str, Any]) -> tuple[modules.Mo
     (clone / "contracts").mkdir(parents=True)
     (clone / "contracts" / "replay.schema.json").write_text(json.dumps(schema), encoding="utf-8")
     return lk, tmp_path / "pstate"
+
+
+# ---------------------------------------------------------------- model job owners (TICKET-306)
+def dead_pid() -> int:
+    """The pid of a process that has already exited."""
+    proc = subprocess.Popen([sys.executable, "-c", ""])
+    proc.wait()
+    return proc.pid
+
+
+@contextlib.contextmanager
+def live_process() -> Iterator[int]:
+    """Another live process (the old server, in a restart with no gap); stopped by its pid when the block ends."""
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        yield proc.pid
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def stamp_of(pid: int) -> dict[str, Any]:
+    """The `run_by` stamp a server with this pid writes into a model's status."""
+    from part7.queue_lock import start_time
+
+    return {"pid": pid, "start": start_time(pid)}

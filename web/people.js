@@ -43,7 +43,7 @@ export function openPeoplePicker(root, { peopleJob, mode = "single", trimMs, pol
     };
 
     const lede = h("p", { class: "lede", hidden: true });
-    const prog = createProgress({ testid: "people-progress", label: "Finding the people", text: FINDING, elapsed: true });
+    const prog = createProgress({ testid: "people-progress", label: "Finding the people", text: FINDING, elapsed: true, walk: true });
     const stageLine = h("p", { class: "hint", "data-testid": "people-stage", hidden: true });
     const body = h("div", { class: "pp-body" }, prog.el, stageLine);
     prog.startClock();
@@ -75,7 +75,8 @@ export function openPeoplePicker(root, { peopleJob, mode = "single", trimMs, pol
     function choose(result) {
       const people = Array.isArray(result.people) ? result.people : [];
       if (!people.length) { fail(MSG_NOBODY); return; }
-      if (!group && result.auto_id != null) { finish({ person_id: result.auto_id }); return; }
+      // `auto` and `count` say the picker was skipped and how many people the clip held (judge-take.md, TICKET-260)
+      if (!group && result.auto_id != null) { finish({ person_id: result.auto_id, auto: true, count: people.length }); return; }
       if (group && people.length < 2) { fail(MSG_NEED_TWO); return; }
       if (group && Number.isFinite(trimMs) && trimMs > GROUP_MAX_MS) { fail(MSG_TOO_LONG); return; }
       screen.setAttribute("data-state", "ready");

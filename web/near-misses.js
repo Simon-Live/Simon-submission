@@ -1,6 +1,6 @@
 // "Close calls" on the result screen (TICKET-100, moalborati/simon#59 item 3): the things Part 5 looked at and dropped, shown so a
 // score of 100 with no faults is explainable. Reads `analysis.diagnostics.near_misses` (schema 1.8.0) and computes nothing:
-// it picks, orders and words Part 5's items. A close call costs no points. Mounted by result.js after "What to fix".
+// it picks, orders and words Part 5's items. A close call costs no points. Mounted by result.js after "Mistakes you repeated".
 import { el } from "./score.js";
 import { momentChip } from "./coach-view.js";
 import { num, ensureCss } from "./ui.js";
@@ -69,7 +69,7 @@ export function secondsOfFrame(frame, replay) {
 /**
  * Up to MAX_CLOSE_CALLS rows: persistence misses first, then reps misses, each closest first (Part 5's order on a tie).
  * Items covered by a kept fault ("explained_by") and profile drops ("fitness") are left out: the first is already
- * in "What to fix", the second is a rule of the profile, not something the follower did.
+ * in "Mistakes you repeated", the second is a rule of the profile, not something the follower did.
  * @returns {{text: string, at_s: number|null, item: object}[]}
  */
 export function closeCalls(analysis, replay) {

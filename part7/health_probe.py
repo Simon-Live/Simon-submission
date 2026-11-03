@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from part7 import applog, config
+from part7 import applog, config, selfheal
 
 WARN_EVERY_S = 30.0
 
@@ -31,6 +31,7 @@ class Part6Probe:
             entries = len(child.list_entries())
             with self._lock:
                 self._good_at, self._entries = self._clock(), entries
+            selfheal.record("health_stale_cache")
             return True, {"ok": True, "entries": entries}
         now = self._clock()
         with self._lock:
@@ -43,4 +44,5 @@ class Part6Probe:
                 self._warned_at = now
         if warn:
             applog.log(f"health: Part 6 probe missed; answering from the last good probe {age:.0f}s old", level=logging.WARNING)
+        selfheal.record("health_stale_cache", f"Part 6 probe missed; answered from the last good probe {age:.0f}s old")
         return True, {"ok": True, "entries": entries, "stale_s": round(age)}

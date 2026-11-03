@@ -9,10 +9,13 @@ import { clientLog } from "./api.js";
 import { buildSubmit, requestOf } from "./take-request.js";
 import { getPending } from "./pending-app.js";
 import { TEXT as PENDING_TEXT, failureText } from "./pending.js";
+// TICKET-290: with the browser wiring the take is kept until its job is done, and a refused take until it is deleted.
+import { KEEP_TEXT } from "./pending-keep.js";
 export { buildSubmit };
 import { mountCapture, editTake } from "./capture.js";
 import { mountLiveCheck } from "./live-check.js";
 import { mountLabels } from "./labels.js";
+import { mountFloorWork, floorPatch } from "./floor-work.js";
 import { mountModeSwitch } from "./group.js";
 import { openPeoplePicker } from "./people.js";
 import { mountReference } from "./reference.js";
@@ -23,6 +26,11 @@ import { captureChromeOf } from "./model/capture-chrome.js";
 import { decorateCapture } from "./views/capture-chrome.js";
 import { currentKind } from "./model/kind.js";
 import { holdTakeWhen } from "./take-guard.js";
+import { mountModelOnlyChoice } from "./model-only.js";
+import { mountGhost } from "./ghost.js";
+import { isSubmission } from "./flags.js";
+import { autoStarts } from "./model/judge-take.js";
+import { mountFollowSide } from "./follow-side.js";
 
 export const NAME_ERROR = "Give the movement a name.";
 export const TAKE_ERROR = "Record a video or upload one first.";
@@ -61,10 +69,14 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
   let saved = false;
   let pending = null;
   let unsub = () => {};
+  let side = null; // follow-side.js: the side-by-side layout of the reference and the camera (TICKET-291)
 
   const modeBox = h("div", { class: "take-mode", hidden: !trainer });
   const capBox = h("div", { class: "capture" });
+  const choiceBox = h("div", { class: "take-choice", hidden: trainer || !!resume });
   const captureStep = h("div", { class: "capture-step", hidden: !!resume }, modeBox, capBox);
+  captureStep.append(choiceBox); // model-only take choice, beside the line above (teammate line kept exact)
+  const modelOnly = trainer || resume ? null : mountModelOnlyChoice(choiceBox); // a follower take only (model-only-take.md)
   const editBox = h("div", { class: "editor", hidden: true });
   const notice = h("p", { class: "hint pending-notice", role: "status", "data-testid": "pending-notice", hidden: true });
   const pickBox = h("div", { class: "picker", hidden: true });
@@ -102,6 +114,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     if (!rec || !saved || !pending || !labels) return;
     try {
       await pending.update(rec, { name: name.value.trim(), category: category.value, labels: labels.value() });
+      if (floorWork) await pending.update(rec, floorPatch(floorWork)); // an untick is saved too, as floor_work: false
     } catch { /* the details are still on screen */ }
   }
   detailsBox.addEventListener("input", () => { if (detailsBox.dataset.offline) syncFields(); });
@@ -211,16 +224,29 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     pickBox.replaceChildren(h("p", { class: "error", role: "alert", "data-testid": "people-error", text: err.message }), retry, rerecord);
   }
 
+  /** TICKET-290: the server refused the take: say why, and that the recording stays on this device until deleted. */
+  function showRefused(err) {
+    detailsBox.hidden = true;
+    pickBox.hidden = false;
+    const del = h("button", { type: "button", class: "btn secondary block", "data-testid": "pending-delete", text: "Delete take" });
+    del.addEventListener("click", async () => { await pending.removeKept(rec.id); rec = null; saved = false; backToPreview(); });
+    pickBox.replaceChildren(h("p", { class: "error", role: "alert", "data-testid": "people-error", text: err.message }),
+      h("p", { class: "hint", "data-testid": "refused-kept", text: KEEP_TEXT.refusedKept }), del,
+      h("button", { type: "button", class: "btn secondary block", "data-testid": "record-again", text: "Record again", onclick: () => backToPreview() }),
+      h("a", { class: "btn secondary block", href: "#/pending", "data-testid": "pending-see-all", text: "See saved takes" }));
+  }
+
   // ---- capture -> trim -> save -> upload -> people ----------------------------------------------------------------------
   async function onTake(take, info) {
     captureStep.hidden = true;
     editBox.hidden = false;
+    info.offerMirror = mode !== "group"; // TICKET-310: the mirrored checkbox, never on a group upload
     const range = await editTake(editBox, take, info, reference);
     if (!alive) return;
     editBox.replaceChildren();
     editBox.hidden = true;
     if (!range) { clientLog("info", "trim_back", { role, source: info.source }); backToPreview(); return; }
-    trim = range;
+    trim = { start_ms: range.start_ms, end_ms: range.end_ms }; // the mirrored choice rides on the record (TICKET-310)
     console.info("[take] trim:", range.start_ms, "to", range.end_ms, "ms");
     clientLog("info", "trim_chosen", { role, source: info.source, start_ms: range.start_ms, end_ms: range.end_ms, bytes: take.size });
     // Saved on the device first (a camera take only), so a failed or lost upload never loses it.
@@ -233,6 +259,8 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     if (!alive) return;
     rec = begun.record;
     saved = begun.saved;
+    if (modelOnly && modelOnly.value()) { rec.model_only = true; if (saved) pending.update(rec, { model_only: true }).catch(() => {}); }
+    if (range.mirrored) { rec.mirrored = true; if (saved) pending.update(rec, { mirrored: true }).catch(() => {}); } // TICKET-310
     show(notice, begun.notice);
     await sendTake();
   }
@@ -240,7 +268,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
   async function sendTake() {
     pickBox.hidden = false;
     // progress: byte bar for the upload, then the people job takes over inside the picker
-    const up = createProgress({ testid: "upload-progress", label: UPLOADING, text: UPLOADING });
+    const up = createProgress({ testid: "upload-progress", label: UPLOADING, text: UPLOADING, walk: true });
     pickBox.replaceChildren(up.el);
     up.startClock();
     try {
@@ -258,6 +286,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
       console.warn("[take] upload or people job failed:", err && err.status, err && err.message);
       clientLog("error", rec.upload_id ? "people_job_failed" : "upload_failed", { role, status: err && err.status, message: err && err.message, bytes: rec.size });
       if (!alive) return;
+      if (err && err.kind === "fatal" && err.kept) { saved = false; showRefused(err); return; } // TICKET-290: kept until deleted
       if (err && err.kind === "fatal") { // the server refused the file itself: show why, the saved copy is already gone
         saved = false;
         pickBox.replaceChildren(h("p", { class: "error", role: "alert", "data-testid": "people-error", text: err.message }),
@@ -282,9 +311,15 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     rec.choice = picked;
     detailsBox.hidden = false;
     if (trainer) name.focus();
+    // judge-take.md (TICKET-260): one person in a follower's clip under the submission profile starts the analysis at once
+    if (autoStarts({ role, mode, choice: picked, submission: isSubmission() })) {
+      clientLog("info", "picker_skipped", { role, people: picked.count, person_id: picked.person_id });
+      submit.click();
+    }
   }
 
   labels = mountLabels(labelBox);
+  const floorWork = trainer ? mountFloorWork(labelBox) : null; // floor-work.md: only the trainer marks an entry
   if (resume) {
     // Reopen at the picker from the saved record: no camera, no trim, no upload (it is already on the server).
     rec = resume;
@@ -293,6 +328,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     name.value = rec.name || "";
     if (rec.category) category.value = rec.category;
     labels.set(rec.labels);
+    if (floorWork) floorWork.set(rec.floor_work);
     getPending().then((p) => {
       pending = p;
       pending.resumed(rec);
@@ -301,9 +337,11 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
   } else {
     // Live check (client 22d09a7): joints on the preview everywhere; the trainer comparison only on Follow
     const liveCheck = mountLiveCheck({ entry: role === "follower" ? entry : null, reference });
-    capture = mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group", liveCheck });
+    const ghost = role === "follower" && entry ? mountGhost({ entry, reference }) : null; // follow the ghost (TICKET-264)
+    capture = mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group", liveCheck, ghost });
     decorateCapture(capBox, captureChromeOf({ kind: currentKind(), entry: trainer ? null : entry })); // brand chrome (views/capture-chrome.js)
     capture.onChange(onTake);
+    side = reference ? mountFollowSide(capBox) : null; // trainer and camera side by side (TICKET-291), after the chrome
   }
 
   // The name error clears the moment the field is valid and stays while it is not; aria-invalid follows.
@@ -325,6 +363,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
       }
     } else if (!takeBlob()) { show(formError, TAKE_ERROR); return; }
     if (!labels.valid()) { show(formError, "Check the tags and notes."); return; }
+    if (floorWork) await pending.update(rec, floorPatch(floorWork));
     busy = true;
     submit.disabled = true;
     submit.textContent = "Sending";
@@ -341,6 +380,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
       busy = false;
       submit.disabled = false;
       paintSubmit();
+      if (err && err.kind === "fatal" && err.kept) { saved = false; showRefused(err); return; } // TICKET-290
       if (err && err.kind === "fatal") { saved = false; show(formError, err.message); return; }
       if (saved && err && (err.kind === "auto" || err.kind === "later")) { await showSaved(err); return; }
       if (err && err.resumed) { await openPicker(); return; }
@@ -356,6 +396,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     if (rec && saved && pending) pending.release(rec); // leaving the screen hands the saved take to the background sender
     if (capture) capture.destroy();
     if (reference) reference.destroy();
+    if (side) side.destroy();
   };
   stop.setCountdownDefault = (n) => { if (capture) capture.setCountdownDefault(n); };
   return stop;

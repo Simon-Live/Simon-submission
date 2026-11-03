@@ -50,6 +50,18 @@ def test_auth_401_without_a_session_and_404_for_another_user(seeded: Api) -> Non
     assert _get(seeded, f"{BASE}/{ENTRY}/takes/{FIRST}/clip.mp4", "bad id")[0] == 401  # not a valid user id: no session
 
 
+def test_owner_without_takes_gets_200_empty(seeded: Api) -> None:  # AC-H2: "no takes yet" is an answer, not a console error
+    path = f"{BASE}/lateral-raise"  # in the catalog stub, with no takes by USER
+    status, doc = _json(seeded, "GET", path)
+    assert status == 200 and doc["takes"] == [] and doc["entry_id"] == "lateral-raise" and doc["can_compare"] is False
+    assert doc["report"] == "none" and set(doc) == set(_json(seeded, "GET", f"{BASE}/{ENTRY}")[1])  # the shape of a non-empty answer
+    assert _json(seeded, "GET", path, user=None)[0] == 401
+    assert _json(seeded, "GET", f"{BASE}/nothing-here")[0] == 404 and _json(seeded, "GET", f"{BASE}/Bad_Entry")[0] == 404
+    assert _json(seeded, "GET", f"{BASE}/{ENTRY}", user=OTHER)[0] == 404  # another user's entry stays 404
+    assert history_store.takes(seeded.app.state, USER, "lateral-raise") == []  # negative: reading it stored nothing
+    assert _json(seeded, "GET", BASE)[1]["entries"][0]["entry_id"] == ENTRY and len(_json(seeded, "GET", BASE)[1]["entries"]) == 1
+
+
 def test_anonymous_flows_unchanged_with_no_auth_module(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:  # opt-in identity
     for name in ("part7.auth", "part7.identity"):
         monkeypatch.setitem(sys.modules, name, None)  # lane lc-auth not present
@@ -62,7 +74,9 @@ def test_anonymous_flows_unchanged_with_no_auth_module(api: Api, monkeypatch: py
 def test_list_and_entry(seeded: Api) -> None:
     status, doc = _json(seeded, "GET", BASE)
     assert status == 200 and doc["retention"] is True and doc["consent"]["video"] is False
-    assert doc["entries"] == [{"entry_id": ENTRY, "name": ENTRY, "takes": 2, "latest": {"take": 2, "at": "2026-10-31T18:23:16Z", "score": 77, "grade": "C"}}]
+    assert doc["entries"] == [{"entry_id": ENTRY, "name": ENTRY, "takes": 2, "synthetic": False, "latest": {"take": 2, "at": "2026-10-31T18:23:16Z", "score": 77, "grade": "C",
+        "shown": {"letter": "C", "figures": "77", "caption": "out of 100", "unit": "score", "capped": False, "warning": [],
+                   "measure": 77}}}]  # one-letter.md
     status, doc = _json(seeded, "GET", f"{BASE}/{ENTRY}")
     assert status == 200 and doc["can_compare"] is True and doc["report"] == "none" and doc["name"] == ENTRY  # the catalog stub names none: the id
     assert [(t["take"], t["job_id"], t["score"]) for t in doc["takes"]] == [(1, FIRST, 100), (2, SECOND, 77)]
@@ -140,7 +154,7 @@ def test_consent_route(seeded: Api) -> None:
 
 def test_forget_routes(seeded: Api) -> None:
     assert _json(seeded, "DELETE", f"{BASE}/{ENTRY}") == (200, {"removed": 2})
-    assert _json(seeded, "GET", f"{BASE}/{ENTRY}")[0] == 404 and _json(seeded, "GET", BASE)[1]["entries"] == []
+    assert _json(seeded, "GET", f"{BASE}/{ENTRY}")[0] == 404 and _json(seeded, "GET", BASE)[1]["entries"] == []  # ENTRY is not in the catalog stub
     assert _json(seeded, "DELETE", BASE) == (200, {"removed": 0})
 
 

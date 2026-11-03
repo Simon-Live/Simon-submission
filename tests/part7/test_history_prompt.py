@@ -133,7 +133,7 @@ def test_schema_is_strict_ready_and_names_the_contract_fields():
     props = hp.SCHEMA["properties"]
     assert set(props) == {"summary", "trends", "focus", "teacher_link", "observations"}
     assert hp.SCHEMA["additionalProperties"] is False and set(hp.SCHEMA["required"]) == set(props)
-    assert props["trends"]["items"]["properties"]["kind"]["enum"] == ["improved", "persistent", "fixed", "new"]
+    assert props["trends"]["items"]["properties"]["kind"]["enum"] == ["improved", "persistent", "fixed", "new", "came_back", "plateau", "early_sign"]
     for text in (hp.INSTRUCTIONS,):
         assert "coach" not in text.lower() and chr(0x2014) not in text and chr(0x2013) not in text
 
@@ -145,7 +145,7 @@ def test_packing_drops_takes_without_facts():
     assert [t["take"] for t in packed["facts"]["takes"]] == [1] and videos(packed) == ["Take 1"]
 
 
-def test_seven_takes_without_a_teacher_clip_send_four_take_clips():  # the consent copy says "up to 4"
+def test_seven_takes_without_a_teacher_clip_send_four_take_clips():  # the consent copy says "at most 5" (Compare sends 4 take clips, the reel up to 5)
     facts, rows = make([50, 90, 70, 20, 60, 65, 66])
     packed = hp.pack("e1", facts, rows, video_consent=True)
     assert packed["clips_sent"] == 4 and len(videos(packed)) == 4

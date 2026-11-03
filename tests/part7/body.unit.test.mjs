@@ -123,7 +123,8 @@ test("logBody writes one console warning and one client log event when a view di
 test("writeDrawStats writes per-figure joints, dimmed and bones; a hidden figure is a dash", () => {
   const attrs = {};
   writeDrawStats({ setAttribute: (k, v) => { attrs[k] = v; } }, [{ joints: 17, dimmed: 1, bones: 18 }, null]);
-  assert.deepEqual(attrs, { "data-joints-drawn": "17,-", "data-joints-dimmed": "1,-", "data-bones-drawn": "18,-" });
+  assert.deepEqual(attrs, { "data-joints-drawn": "17,-", "data-joints-dimmed": "1,-", "data-bones-drawn": "18,-",
+    "data-skin-kind": "-,-", "data-skin-id": "-,-", "data-skin-err": "-,-" });  // model picker: no skin on either figure
 });
 
 test("Watch all dims each person's unseen joints and nothing for a hidden person", () => {

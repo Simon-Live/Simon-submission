@@ -14,6 +14,7 @@ import json
 import math
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import time
@@ -24,6 +25,10 @@ from part7 import applog, media, narration_api
 
 FORMAT = "simon.narration.v1"
 FILE_NAME = "narration.json"
+CLIPS_DIR = "narration"  # <entry>/narration/cue-<index>.wav: the trainer's own words, cut from the upload (TICKET-270)
+CLIP_TOLERANCE_MS = 50
+CLIP_MAX_MS = 15000  # a longer phrase keeps its text and has no clip
+MAX_CLIPS = 12
 SAMPLE_RATE = 16000
 FRAME_S = 0.01
 SILENCE_DBFS = -50.0  # a track whose loudest frame is below this has no speech worth paying to transcribe
@@ -206,6 +211,43 @@ def snap(turn: dict[str, Any], levels: list[float]) -> dict[str, Any]:
     return out
 
 
+# ----- the trainer's own words as short wav files (TICKET-270) ------------------------------------------------
+def clip_name(cue: dict[str, Any]) -> str:
+    return f"cue-{int(cue['index'])}.wav"
+
+
+def cut_clips(raw: Path | str, entry_dir: Path | str, doc: dict[str, Any], start_ms: int = 0,
+              deadline: float | None = None) -> int:
+    """Cut each cue's real audio (its snapped start to its end) from the upload into `<entry>/narration/cue-<n>.wav`
+    and add `clip: {file, ms}` to the cue. A clip whose length is not the cue's within 50 ms is deleted, and a cue
+    that is too long, past the end of the audio or unreadable keeps its text and has no clip. Returns the clip count;
+    an upload with no audio track writes nothing."""
+    folder = Path(entry_dir) / CLIPS_DIR
+    shutil.rmtree(folder, ignore_errors=True)
+    made = 0
+    for cue in doc["cues"][:MAX_CLIPS]:
+        first, last = start_ms + round(cue["start_s"] * 1000), start_ms + round(cue["end_s"] * 1000)
+        if not 0 < last - first <= CLIP_MAX_MS:
+            continue
+        target = folder / clip_name(cue)
+        try:
+            folder.mkdir(exist_ok=True)
+            if extract_audio(raw, target, first, last, deadline) is None:
+                break
+            got_ms = narration_api.wav_seconds(target) * 1000
+        except Exception:  # one bad clip never costs the others, or the cues
+            target.unlink(missing_ok=True)
+            continue
+        if abs(got_ms - (last - first)) > CLIP_TOLERANCE_MS:
+            target.unlink(missing_ok=True)
+            continue
+        cue["clip"] = {"file": target.name, "ms": round(got_ms)}
+        made += 1
+    if not made:
+        shutil.rmtree(folder, ignore_errors=True)
+    return made
+
+
 # ----- the entry point -----------------------------------------------------------------------------------------
 def build(
     audio: Path | str, keyframes: Any, duration_ms: int, *, ledger: Path | str | None = None, call: str = "narration",
@@ -281,13 +323,18 @@ def attach(
                 doc = {}
             built = build(audio, doc, duration_ms, ledger=ledger, call=f"narration:{entry.name}",
                           keys_dir=keys_dir, opener=opener, deadline=deadline)
+            if built is not None:
+                cut_clips(raw, entry, built, start, deadline)
         if built is None:
+            shutil.rmtree(entry / CLIPS_DIR, ignore_errors=True)
             note("no speech found in the audio, no cues")
             return None
         target.write_text(json.dumps(built, indent=2) + "\n", encoding="utf-8")
-        note(f"{len(built['cues'])} cues in {len(built['sections'])} sections, about ${built['estimated_usd']:.4f}")
+        clips = sum(1 for c in built["cues"] if "clip" in c)
+        note(f"{len(built['cues'])} cues in {len(built['sections'])} sections, {clips} clips, about ${built['estimated_usd']:.4f}")
         return target
     except Exception as exc:  # narration is optional: whatever fails, the trainer job goes on without it
         note(f"skipped, {applog.cause(exc)}")
         target.unlink(missing_ok=True)
+        shutil.rmtree(entry / CLIPS_DIR, ignore_errors=True)
         return None

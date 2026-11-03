@@ -154,3 +154,13 @@ test("warnings: the list, an old-pin refusal read as one, no duplicates; a missi
   assert.deepEqual(withScore({ score: null }).score, { value: 0, grade: "F", components: null });
   assert.equal(withScore(analysis), analysis);
 });
+
+test("keepMadePill: with a stage split the \"i\" pill stays shown, even when models-used later reports nothing", async () => {
+  const { keepMadePill } = await import("../../web/result.js");
+  const calls = [];
+  const stageView = { setMade(has) { calls.push(has); } };
+  assert.equal(keepMadePill(stageView), stageView);
+  stageView.setMade(false); // the models-used answer was empty
+  stageView.setMade(true);
+  assert.deepEqual(calls, [true, true, true]);
+});

@@ -20,3 +20,6 @@
 .saved-panel .field-row { display: flex; gap: 8px; align-items: flex-start; }
 .saved-panel .field-row input { margin-top: 4px; width: 20px; height: 20px; flex: none; }
 .save-step[data-offline] { margin-top: 12px; }
+/* the header's sign hangs below the pink divider at the left: the banner starts to the right of it */
+.pending-banner { padding-left: calc(var(--brand-inset) + var(--brand-mark) + var(--space-4)); }
+@media (max-width: 520px) { .pending-banner { padding-left: calc(var(--brand-inset) + var(--brand-mark-phone) + var(--space-3)); } }

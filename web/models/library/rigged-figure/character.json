@@ -1,0 +1,128 @@
+{
+  "bone_map": {
+    "chest": {
+      "name": "torso_joint_3",
+      "node": 12
+    },
+    "head": {
+      "name": "neck_joint_2",
+      "node": 20
+    },
+    "hips": {
+      "name": "torso_joint_1",
+      "node": 2
+    },
+    "leftFoot": {
+      "name": "leg_joint_L_3",
+      "node": 9
+    },
+    "leftHand": {
+      "name": "arm_joint_L_3",
+      "node": 18
+    },
+    "leftLowerArm": {
+      "name": "arm_joint_L_2",
+      "node": 17
+    },
+    "leftLowerLeg": {
+      "name": "leg_joint_L_2",
+      "node": 8
+    },
+    "leftToes": {
+      "name": "leg_joint_L_5",
+      "node": 10
+    },
+    "leftUpperArm": {
+      "name": "arm_joint_L_1",
+      "node": 16
+    },
+    "leftUpperLeg": {
+      "name": "leg_joint_L_1",
+      "node": 7
+    },
+    "neck": {
+      "name": "neck_joint_1",
+      "node": 19
+    },
+    "rightFoot": {
+      "name": "leg_joint_R_3",
+      "node": 5
+    },
+    "rightHand": {
+      "name": "arm_joint_R_3",
+      "node": 15
+    },
+    "rightLowerArm": {
+      "name": "arm_joint_R_2",
+      "node": 14
+    },
+    "rightLowerLeg": {
+      "name": "leg_joint_R_2",
+      "node": 4
+    },
+    "rightToes": {
+      "name": "leg_joint_R_5",
+      "node": 6
+    },
+    "rightUpperArm": {
+      "name": "arm_joint_R_1",
+      "node": 13
+    },
+    "rightUpperLeg": {
+      "name": "leg_joint_R_1",
+      "node": 3
+    },
+    "spine": {
+      "name": "torso_joint_2",
+      "node": 11
+    }
+  },
+  "checks": {
+    "max_weight_error": 0.0
+  },
+  "converter": {
+    "name": "none",
+    "version": null
+  },
+  "counts": {
+    "joints": 19,
+    "max_texture_px": 0,
+    "skins": 1,
+    "textures": 0,
+    "triangles": 256
+  },
+  "created_at": "2026-11-01T00:00:00Z",
+  "file": {
+    "bytes": 27680,
+    "name": "model.glb",
+    "sha256": "a9d14f3d379abc1dd2a986f0d5f006ef89fd6c091fcb5fee033c569f235bdd89"
+  },
+  "id": "rigged-figure",
+  "kind": "library",
+  "licence": {
+    "attribution": "Rigged Figure by Cesium (c) 2017, CC BY 4.0",
+    "id": "CC-BY",
+    "shareable": true
+  },
+  "map_method": "topology",
+  "name": "Rigged Figure",
+  "normalize": {
+    "height_m": 1.4499,
+    "leg_length_m": 0.5419,
+    "rest_class": "A",
+    "scale_to_m": 1.0,
+    "up_fix": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  "schema": "simon.character.v1",
+  "source": {
+    "format": "glb",
+    "original_filename": "RiggedFigure.glb",
+    "url": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/RiggedFigure"
+  },
+  "vrm_version": null
+}

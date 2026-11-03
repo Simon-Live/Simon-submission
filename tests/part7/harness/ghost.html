@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Follow the ghost harness</title>
+<link rel="stylesheet" href="../../../web/styles.css">
+<link rel="stylesheet" href="../../../web/theme/tokens.css">
+<link rel="stylesheet" href="../../../web/theme/capture.css">
+<main id="capture" class="capture"></main>
+<script type="module">
+  // TICKET-264: the capture widget with the docked reference and the trainer's ghost. The camera is a canvas in blue and
+  // white only, so any amber in a recorded frame could only come from the ghost (it must not: camera pixels only).
+  import { mountCapture } from "../../../web/capture.js";
+  import { mountReference } from "../../../web/reference.js";
+  import { mountGhost } from "../../../web/ghost.js";
+  const camera = document.createElement("canvas");
+  camera.width = 320; camera.height = 240;
+  const context = camera.getContext("2d");
+  setInterval(() => { context.fillStyle = "#224"; context.fillRect(0, 0, 320, 240); context.fillStyle = "#eef"; context.fillRect(Date.now() % 200, 60, 40, 120); }, 50);
+  navigator.mediaDevices.getUserMedia = async () => camera.captureStream(20);
+  navigator.permissions.query = async () => ({ state: "granted" });
+  const q = new URLSearchParams(location.search);
+  const entry = { id: q.get("entry") || "ghost-demo", name: "Ghost demo", video_uri: "coach.webm" };
+  const reference = mountReference(entry);
+  const ghost = mountGhost({ entry, reference, on: q.get("on") !== "0" });
+  window.reference = reference;
+  window.ghost = ghost;
+  window.capture = mountCapture(document.getElementById("capture"), { recorder_bps: 2500000, max_bytes: 95000000 }, { reference, ghost });
+  window.__ready = true;
+</script>
+</html>

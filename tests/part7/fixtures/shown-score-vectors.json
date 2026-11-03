@@ -1,0 +1,1026 @@
+{
+ "about": "One take, one letter (docs/specs/one-letter.md). Read by tests/part7/one_letter.unit.test.mjs and tests/part7/test_one_letter.py, so web/model/score-labels.js shownScore and part7/shown_score.py shown never drift. The credit block is the real MM-Fit take 42a02415127e (CC BY 4.0).",
+ "cases": [
+  {
+   "name": "credit, uncapped: the MM-Fit take 42a02415127e (CC BY 4.0)",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 37,
+     "grade": "F",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 72.6,
+      "grade": "C",
+      "points": 16239,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    }
+   },
+   "expect": {
+    "letter": "C",
+    "figures": "16,239",
+    "caption": "of 22,367",
+    "unit": "points",
+    "value": 37,
+    "capped": false,
+    "warning": [],
+    "tone": "warn",
+    "measure": 72.6
+   }
+  },
+  {
+   "name": "the same take given as its score block",
+   "analysis": {
+    "version": "simon.score.v3",
+    "value": 37,
+    "grade": "F",
+    "basis": "reps",
+    "fault_cap": 79,
+    "credit": {
+     "version": "simon.credit.v1",
+     "percent": 72.6,
+     "grade": "C",
+     "points": 16239,
+     "max_points": 22367,
+     "tolerance": "normal",
+     "levels": {
+      "easy": {
+       "percent": 83.4,
+       "points": 13994,
+       "max_points": 16775
+      },
+      "normal": {
+       "percent": 72.6,
+       "points": 16239,
+       "max_points": 22367
+      },
+      "hard": {
+       "percent": 60.4,
+       "points": 20263,
+       "max_points": 33550
+      }
+     },
+     "bands": [
+      [
+       0.5,
+       1.0
+      ],
+      [
+       1.0,
+       0.6
+      ],
+      [
+       2.0,
+       0.2
+      ]
+     ],
+     "grades": [
+      [
+       95,
+       "S"
+      ],
+      [
+       85,
+       "A"
+      ],
+      [
+       75,
+       "B"
+      ],
+      [
+       65,
+       "C"
+      ],
+      [
+       55,
+       "D"
+      ],
+      [
+       45,
+       "E"
+      ],
+      [
+       30,
+       "F"
+      ]
+     ],
+     "points_per_measure_second": 100
+    }
+   },
+   "expect": {
+    "letter": "C",
+    "figures": "16,239",
+    "caption": "of 22,367",
+    "unit": "points",
+    "value": 37,
+    "capped": false,
+    "warning": [],
+    "tone": "warn",
+    "measure": 72.6
+   }
+  },
+  {
+   "name": "credit, uncapped, the viewer's percent",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 37,
+     "grade": "F",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 72.6,
+      "grade": "C",
+      "points": 16239,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    }
+   },
+   "display": {
+    "mode": "percent"
+   },
+   "expect": {
+    "letter": "C",
+    "figures": "73%",
+    "caption": "credit earned",
+    "unit": "percent",
+    "value": 37,
+    "capped": false,
+    "warning": [],
+    "tone": "warn",
+    "measure": 72.6
+   }
+  },
+  {
+   "name": "credit, uncapped, at Hard: the letter follows the level",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 37,
+     "grade": "F",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 72.6,
+      "grade": "C",
+      "points": 16239,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    }
+   },
+   "display": {
+    "mode": "points",
+    "level": "hard"
+   },
+   "expect": {
+    "letter": "D",
+    "figures": "20,263",
+    "caption": "of 33,550",
+    "unit": "points",
+    "value": 37,
+    "capped": false,
+    "warning": [],
+    "tone": "warn",
+    "measure": 60.4
+   }
+  },
+  {
+   "name": "credit, warning capped: the cap wins",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 37,
+     "grade": "F",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 72.6,
+      "grade": "C",
+      "points": 16239,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     },
+     "capped_by": [
+      "low_match"
+     ],
+     "uncapped": {
+      "value": 70,
+      "grade": "C"
+     }
+    },
+    "warnings": [
+     {
+      "code": "low_match",
+      "text": "Low match."
+     }
+    ]
+   },
+   "expect": {
+    "letter": "F",
+    "figures": "37",
+    "caption": "score out of 100",
+    "unit": "score",
+    "value": 37,
+    "capped": true,
+    "warning": [
+     "low_match"
+    ],
+    "tone": "bad",
+    "measure": 37
+   }
+  },
+  {
+   "name": "credit, Part 5 quality major caps 75 to 59",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 75,
+     "grade": "C",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 72.6,
+      "grade": "C",
+      "points": 16239,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    },
+    "quality": {
+     "level": "major",
+     "score_cap": 59,
+     "reasons": []
+    }
+   },
+   "expect": {
+    "letter": "F",
+    "figures": "59",
+    "caption": "score out of 100",
+    "unit": "score",
+    "value": 59,
+    "capped": true,
+    "warning": [
+     "quality_major"
+    ],
+    "tone": "bad",
+    "measure": 59
+   }
+  },
+  {
+   "name": "credit, a dark video caps 75 to 59",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 75,
+     "grade": "C",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 72.6,
+      "grade": "C",
+      "points": 16239,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    }
+   },
+   "light": {
+    "level": "major"
+   },
+   "expect": {
+    "letter": "F",
+    "figures": "59",
+    "caption": "score out of 100",
+    "unit": "score",
+    "value": 59,
+    "capped": true,
+    "warning": [
+     "quality_light_dark"
+    ],
+    "tone": "bad",
+    "measure": 59
+   }
+  },
+  {
+   "name": "credit, quality major that did not lower the score: not capped",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 37,
+     "grade": "F",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 72.6,
+      "grade": "C",
+      "points": 16239,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    },
+    "quality": {
+     "level": "major",
+     "score_cap": 59
+    }
+   },
+   "expect": {
+    "letter": "C",
+    "figures": "16,239",
+    "caption": "of 22,367",
+    "unit": "points",
+    "value": 37,
+    "capped": false,
+    "warning": [],
+    "tone": "warn",
+    "measure": 72.6
+   }
+  },
+  {
+   "name": "credit without Part 5's scale keeps the letter it wrote",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 37,
+     "grade": "F",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 72.6,
+      "grade": "D",
+      "points": 16239,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    }
+   },
+   "expect": {
+    "letter": "D",
+    "figures": "16,239",
+    "caption": "of 22,367",
+    "unit": "points",
+    "value": 37,
+    "capped": false,
+    "warning": [],
+    "tone": "warn",
+    "measure": 72.6
+   }
+  },
+  {
+   "name": "a malformed credit block is no credit",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 37,
+     "grade": "F",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "percent": null,
+      "grade": "C"
+     }
+    }
+   },
+   "expect": {
+    "letter": "F",
+    "figures": "37",
+    "caption": "out of 100",
+    "unit": "score",
+    "value": 37,
+    "capped": false,
+    "warning": [],
+    "tone": "bad",
+    "measure": 37
+   }
+  },
+  {
+   "name": "no credit block",
+   "analysis": {
+    "score": {
+     "value": 82,
+     "grade": "B"
+    }
+   },
+   "expect": {
+    "letter": "B",
+    "figures": "82",
+    "caption": "out of 100",
+    "unit": "score",
+    "value": 82,
+    "capped": false,
+    "warning": [],
+    "tone": "good",
+    "measure": 82
+   }
+  },
+  {
+   "name": "no credit block, warning capped",
+   "analysis": {
+    "score": {
+     "value": 59,
+     "grade": "F",
+     "capped_by": [
+      "low_match"
+     ],
+     "uncapped": {
+      "value": 80,
+      "grade": "B"
+     }
+    }
+   },
+   "expect": {
+    "letter": "F",
+    "figures": "59",
+    "caption": "score out of 100",
+    "unit": "score",
+    "value": 59,
+    "capped": true,
+    "warning": [
+     "low_match"
+    ],
+    "tone": "bad",
+    "measure": 59
+   }
+  },
+  {
+   "name": "a score of S on the credit scale",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 37,
+     "grade": "F",
+     "basis": "reps",
+     "fault_cap": 79,
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 96.0,
+      "grade": "C",
+      "points": 21472,
+      "max_points": 22367,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 83.4,
+        "points": 13994,
+        "max_points": 16775
+       },
+       "normal": {
+        "percent": 72.6,
+        "points": 16239,
+        "max_points": 22367
+       },
+       "hard": {
+        "percent": 60.4,
+        "points": 20263,
+        "max_points": 33550
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    }
+   },
+   "expect": {
+    "letter": "S",
+    "figures": "21,472",
+    "caption": "of 22,367",
+    "unit": "points",
+    "value": 37,
+    "capped": false,
+    "warning": [],
+    "tone": "good",
+    "measure": 96.0
+   }
+  },
+  {
+   "name": "no score block",
+   "analysis": {
+    "status": {
+     "code": "no_person"
+    }
+   },
+   "expect": null
+  }
+ ]
+}

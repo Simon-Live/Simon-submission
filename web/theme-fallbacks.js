@@ -23,4 +23,10 @@ export const FALLBACK_COLORS = {
   "--mesh-fault": "rgb(255, 77, 77)",
   "--mesh-light": "rgb(255, 255, 255)",
   "--mesh-ground": "rgb(51, 68, 85)",
+  // the heat ramp (TICKET-274), cool to hot; the same colour-blind safe stops as the tokens
+  "--heat-0": "rgb(0, 34, 78)",
+  "--heat-1": "rgb(53, 69, 108)",
+  "--heat-2": "rgb(124, 123, 120)",
+  "--heat-3": "rgb(195, 179, 105)",
+  "--heat-4": "rgb(254, 232, 56)",
 };

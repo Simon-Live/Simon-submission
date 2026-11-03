@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
-from part7 import challenges, client_log, group, jobs, quota
+from part7 import challenges, client_log, group, history_store, jobs, judge_view, quota, shown_score, takes_on
 from part7.http_body import drain_before_refusal
 
 BODY_MAX = 8192
@@ -25,6 +25,8 @@ MSG_JOB = "Name a finished result to add."
 MSG_NO_JOB = "This result was not found. Results are kept for 7 days."
 MSG_UNFINISHED = "This result is not finished yet."
 MSG_UNSCORED = "This take was not scored, so it cannot join a challenge."
+MSG_OWNER_ONLY = "This take is private to you, so it cannot go on a board."  # private mode or own reference (TICKET-327)
+MSG_STORE = "Boards are not available right now. Try again in a minute."  # the identity store did not answer
 MSG_OTHER_MOVEMENT = "This result is for a different movement than the challenge."
 MSG_PERSON = "Choose which person of the group result to add."
 MSG_PEOPLE = "Add 1 to 8 people, each with a name."
@@ -82,6 +84,12 @@ def _analysis_of(h: Any, job_id: Any, pid: Any) -> tuple[dict[str, Any], str | N
         raise challenges.ChallengeError(MSG_NO_JOB, 404)
     if job.get("status") != "done":
         raise challenges.ChallengeError(MSG_UNFINISHED, 409)
+    entry = job.get("entry_id") or (job.get("result") or {}).get("entry_id")
+    owner_id = takes_on.owner(h.app, job_id)
+    if owner_id is takes_on.UNKNOWN:
+        raise challenges.ChallengeError(MSG_STORE, 503)  # not the take's fault: nothing is decided without the store
+    if takes_on.stays_with_owner(h.app.state, job_id, job, owner_id, str(entry or "")):
+        raise challenges.ChallengeError(MSG_OWNER_ONLY, 409)  # a board is public: an owner-only take never goes on one
     folder = h.app.queue.job_dir(job_id)
     if job.get("kind") == "group":
         people = (job.get("result") or {}).get("people") or []
@@ -116,9 +124,12 @@ def _score_entry(h: Any, challenge: dict[str, Any], job_id: Any, pid: Any, name:
     code = status.get("code") if isinstance(status, dict) else None
     if code != "ok" or isinstance(value, bool) or not isinstance(value, (int, float)) or not isinstance(grade, str):
         raise challenges.ChallengeError(MSG_UNSCORED, 409)
+    light = history_store.light_of(h.app.queue.get(job_id) or {}) if pid is None else None   # a group person has no light reading
     return {
         "name": clean, "score": value, "grade": grade[:3], "job_id": job_id, "pid": None if pid is None else str(pid),
         "strongest_section": challenges.strongest_section(score),
+        "shown": shown_score.of_analysis(analysis, light),  # one-letter.md: the board shows this; it still ranks by `score`
+        "private": False, "own_reference": False,  # TICKET-327: checked at post time (refused otherwise); disk only, read after the job expires
     }
 
 
@@ -157,7 +168,7 @@ def _create(h: Any) -> None:
         )
     except challenges.ChallengeError as exc:
         return _fail(h, exc)
-    h._json(201, {**challenges.view(made), "added": [challenges.public_entry(e) for e in made["entries"]]})
+    h._json(201, {**challenges.view(made, keep=takes_on.board_keep(h.app, entry_id)), "added": [challenges.public_entry(e) for e in made["entries"]]})
 
 
 def _add(h: Any, challenge_id: str) -> None:
@@ -174,7 +185,7 @@ def _add(h: Any, challenge_id: str) -> None:
         stored = challenges.add_entries(h.app.state, challenge_id, entries)
     except challenges.ChallengeError as exc:
         return _fail(h, exc)
-    h._json(201, {**challenges.view(stored), "added": [challenges.public_entry(e) for e in entries]})
+    h._json(201, {**challenges.view(stored, keep=takes_on.board_keep(h.app, stored["entry_id"])), "added": [challenges.public_entry(e) for e in entries]})
 
 
 def follow_ref(h: Any, doc: dict[str, Any], entry_id: str) -> dict[str, Any] | None:
@@ -206,14 +217,17 @@ def _list(h: Any, query: dict[str, str]) -> None:
         return h._error(400, "Unknown kind of challenge.")
     if entry_id is not None and not challenges.ENTRY_ID_RE.match(entry_id):
         return h._error(400, challenges.MSG_ENTRY)
-    h._json(200, {"challenges": challenges.list_all(h.app.state, entry_id=entry_id, kind=kind)})
+    rows = challenges.list_all(h.app.state, entry_id=entry_id, kind=kind, keep=takes_on.board_keep(h.app))  # ADR-0019: owner-only posts leave the count and the lead
+    if query.get("view") == judge_view.VIEW_JUDGE:  # the judge view leaves test boards out; no view keeps them (judge-view.md)
+        rows = judge_view.judge_challenges(rows)
+    h._json(200, {"challenges": rows})
 
 
 def _one(h: Any, challenge_id: str) -> None:
     doc = challenges.get(h.app.state, challenge_id)
     if doc is None:
         return h._error(404, MSG_CHALLENGE)
-    h._json(200, challenges.view(doc))
+    h._json(200, challenges.view(doc, keep=takes_on.board_keep(h.app, doc["entry_id"])))
 
 
 def handle(h: Any, method: str, route: str) -> bool:

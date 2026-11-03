@@ -232,6 +232,43 @@ const sel = (page) => page.evaluate(() => {
   ok("a clip under 1 s says it is too short");
 }
 
+// 5b. Mirrored uploads (TICKET-310): the checkbox is on an upload's trim step only, off by default, and only a tick
+// adds `mirrored: true` to what the editor resolves.
+{
+  const rec = await editor(`case=trim&clip=${playable}`);
+  assert.equal(await tid(rec, "trim-mirrored").count(), 0, "negative: a recorded take never shows the checkbox");
+  await tid(rec, "trim-continue").click();
+  await rec.waitForFunction(() => window.__done === true);
+  assert.equal("mirrored" in (await rec.evaluate(() => window.__result)), false);
+  await rec.context().close();
+
+  const group = await editor(`case=trim&clip=${playable}&source=upload&mirror=0`);
+  assert.equal(await tid(group, "trim-mirrored").count(), 0, "a group upload is not offered the checkbox");
+  await group.context().close();
+
+  const plain = await editor(`case=trim&clip=${playable}&source=upload`);
+  const box = tid(plain, "trim-mirrored");
+  assert.equal(await box.isVisible(), true);
+  assert.equal(await box.isChecked(), false, "off by default");
+  assert.equal(await plain.locator('label[for="trim-mirrored"]').textContent(), " This video is mirrored (a selfie video). Flip left and right.");
+  await tid(plain, "trim-continue").click();
+  await plain.waitForFunction(() => window.__done === true);
+  assert.equal("mirrored" in (await plain.evaluate(() => window.__result)), false, "negative: unticked sends nothing new");
+  await plain.context().close();
+
+  const ticked = await editor(`case=trim&clip=${playable}&source=upload`);
+  await ticked.locator('label[for="trim-mirrored"]').click();
+  assert.equal(await tid(ticked, "trim-mirrored").isChecked(), true, "the label toggles the box");
+  await ticked.screenshot({ path: path.join(SHOTS, "trim-08-mirrored.png") });
+  await tid(ticked, "trim-continue").click();
+  await ticked.waitForFunction(() => window.__done === true);
+  const r = await ticked.evaluate(() => window.__result);
+  assert.equal(r.mirrored, true);
+  assert.ok(r.end_ms > r.start_ms);
+  await ticked.context().close();
+  ok("mirrored checkbox: upload only, off by default, a tick resolves mirrored: true");
+}
+
 // 6. labels: chips, validation, limits.
 {
   const page = await open("case=labels");

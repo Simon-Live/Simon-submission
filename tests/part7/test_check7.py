@@ -128,7 +128,7 @@ def test_score_difference_fails_score_gate() -> None:
     d = _good()
     d["f1.mp4"] = _analysis([_fault()], score=79)
     m = _run(_good(), d)
-    assert m["gates"]["score_equal"] is False and m["pass"] is False
+    assert m["gates"]["score_equal"] is False and m["pass_strict"] is False  # ADR-0018: `pass` takes score_within
 
 
 def test_at_s_difference_fails_at_s_gate() -> None:
@@ -433,3 +433,126 @@ def test_the_verdict_and_the_exit_code_follow_every_gate_including_the_degraded_
     assert check7.passes(gates) is True
     assert check7.passes({**gates, "quality_degraded_major_capped": False}) is False
     assert check7.passes({**gates, "score_equal": False}) is False
+
+
+# ----- TICKET-247: the degraded gate reads Part 7's light OR Part 5's quality ---------------------------------
+class LightApp(FakeApp):
+    def __init__(self, results: dict[str, dict[str, Any]], levels: dict[str, str]) -> None:
+        super().__init__(results)
+        self.levels = levels
+
+    def follow(self, clip: Path, entry_id: str) -> dict[str, Any]:
+        out = super().follow(clip, entry_id)
+        if clip.name in self.levels:
+            out["light"] = {"median_y": 44.0, "dark_share": 1.0, "level": self.levels[clip.name]}
+        return out
+
+
+class LightDirect(FakeDirect):
+    def __init__(self, results: dict[str, dict[str, Any]], levels: dict[str, str]) -> None:
+        super().__init__(results)
+        self.levels = levels
+
+    def follower(self, clip: Path, animation: Path, work: Path) -> dict[str, Any]:
+        out = super().follower(clip, animation, work)
+        if clip.name in self.levels:
+            out["light"] = {"median_y": 44.0, "dark_share": 1.0, "level": self.levels[clip.name]}
+        return out
+
+
+def _run_light(results: dict[str, dict[str, Any]], app_levels: dict[str, str], direct_levels: dict[str, str]) -> dict[str, Any]:
+    return check7.run_check(
+        LightApp(results, app_levels), LightDirect(json.loads(json.dumps(results)), direct_levels), CLIPS,
+        lambda c: Path(f"{c['id']}.mp4"), MOV, _lock(),
+        lambda t, c: {"entry": ENTRY, "keyframes_path": None, "work": Path("w"), "part7_commit": "c" * 40})
+
+
+def _part5_blind() -> dict[str, dict[str, Any]]:
+    """The dark twin as Part 5 saw it: an ok quality block, no major issue, an uncapped score."""
+    res = _good()
+    res["q.mp4"] = _analysis([], score=88)
+    return res
+
+
+def test_the_dark_take_passes_the_gate_on_part_7_light_alone() -> None:
+    m = _run_light(_part5_blind(), {"q.mp4": "major"}, {"q.mp4": "major"})
+    assert m["gates"]["quality_degraded_major_capped"] is True and m["pass"] is True
+
+
+def test_the_dark_take_fails_the_gate_when_neither_part_flags_it() -> None:
+    m = _run_light(_part5_blind(), {}, {})
+    assert m["gates"]["quality_degraded_major_capped"] is False and m["pass"] is False
+
+
+def test_the_light_must_read_major_in_both_paths() -> None:
+    m = _run_light(_part5_blind(), {"q.mp4": "major"}, {"q.mp4": "degraded"})
+    assert m["gates"]["quality_degraded_major_capped"] is False
+
+
+def test_part_5_major_still_passes_without_a_light_reading() -> None:
+    assert _run_light(_good(), {}, {})["gates"]["quality_degraded_major_capped"] is True
+
+
+def test_the_clean_twin_does_not_trip_the_light_gate() -> None:
+    m = _run_light(_good(), {"q.mp4": "major"}, {"q.mp4": "major"})
+    assert m["gates"]["light_good_ok"] is True and m["pass"] is True
+
+
+def test_a_dark_reading_on_a_good_follower_fails_the_light_gate() -> None:
+    m = _run_light(_good(), {"f1.mp4": "major", "q.mp4": "major"}, {"q.mp4": "major"})
+    assert m["gates"]["light_good_ok"] is False and m["pass"] is False
+    assert m["takes"][0]["light_level_app"] == "major" and m["takes"][0]["light_level_direct"] == "ok"
+
+
+def _gate_take(role: str, part5_capped: bool, light: str) -> dict[str, Any]:
+    """The fields build_gates reads, for one take; only the degraded-cap inputs vary."""
+    return {"role": role, "status_equal": True, "faults_equal": True, "magnitudes_within": True, "warnings_equal": True,
+            "app": {"status": "ok"}, "direct": {"status": "ok"}, "app_grade": "F", "direct_grade": "F", "faults_compared": 1,
+            "input_sha_equal": True, "score_equal": True, "at_s_equal": True, "app_result_complete": True,
+            "quality_major_codes_equal": True, "quality_cap_equal": True,
+            "quality_major_codes_app": ["dark"] if part5_capped else [], "quality_major_codes_direct": ["dark"] if part5_capped else [],
+            "quality_cap_valid_app": part5_capped, "quality_cap_valid_direct": part5_capped,
+            "light_level_app": light, "light_level_direct": light, "app_warnings": []}
+
+
+@pytest.mark.parametrize(("degraded", "expected"), [
+    ([(False, "major"), (True, "ok")], True),     # one dark by Part 7's light, one capped by Part 5: both count
+    ([(False, "major"), (False, "ok")], False),   # negative: a dark take does not excuse an uncapped one beside it
+    ([(False, "major")], True),
+    ([(False, "ok")], False),
+    ([], False),
+])
+def test_the_degraded_gate_takes_light_or_part5_per_take(degraded: list[tuple[bool, str]], expected: bool) -> None:
+    takes = [_gate_take("degraded", p5, light) for p5, light in degraded]
+    gates, _ = check7.build_gates(takes, {}, {}, True)
+    assert gates["quality_degraded_major_capped"] is expected
+
+
+def _drifted(score: float) -> dict[str, Any]:
+    d = _good()
+    d["f1.mp4"] = _analysis([_fault()], score=score)  # type: ignore[arg-type]
+    return _run(_good(), d)
+
+
+@pytest.mark.parametrize(("score", "passed"), [(79.6, True), (79.0, True), (78.9, False)])
+def test_adr_0018_pass_takes_score_within_one_point(score: float, passed: bool) -> None:  # AC-K9T
+    m = _drifted(score)
+    assert m["pass"] is passed and m["gates"]["score_within"] is passed
+    assert m["gates"]["score_equal"] is False and m["pass_strict"] is False  # the strict result is still recorded
+
+
+def test_adr_0018_drift_is_reported_per_take_with_max_and_reason() -> None:  # AC-K9T
+    m = _drifted(78.9)
+    rep = m["score_drift"]
+    by_clip = {t["clip"]: t["drift"] for t in rep["per_take"]}
+    assert by_clip["f1"] == 80 - 78.9 and by_clip["f2"] == 0.0 and by_clip["m"] is None
+    assert rep["max"] == 80 - 78.9 and rep["limit"] == 1.0
+    assert rep["reason"] == "Part 2 GPU pose is not deterministic (Part 2 lane, 2026-11-02)"
+    assert rep["score_equal"] is False and rep["score_within"] is False
+    take = next(t for t in m["takes"] if t["clip"] == "f1")
+    assert take["score_drift"] == 80 - 78.9 and take["score_equal"] is False and take["score_within"] is False
+
+
+def test_adr_0018_identical_scores_pass_both_ways_with_zero_drift() -> None:
+    m = _run(_good(), _good())
+    assert m["pass"] is True and m["pass_strict"] is True and m["score_drift"]["max"] == 0.0

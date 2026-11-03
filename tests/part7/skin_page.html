@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>skin test page</title>
+<script type="importmap">
+{"imports": {"three": "/web/vendor/three/three.module.min.js", "three/addons/": "/web/vendor/three/examples/jsm/"}}
+</script>
+<body style="margin:0"><div id="host" style="width:640px;height:480px;position:relative"></div>
+<script type="module">
+// Test page for skin.browser.mjs: exposes the stage, the skin loader.
+import * as THREE from "/web/vendor/three/three.module.min.js";
+import { createStage } from "/web/viewer3d.js";
+import * as character from "/web/skin/character.js";
+window.__skin = { THREE, createStage, character };
+window.__ready = true;
+</script>

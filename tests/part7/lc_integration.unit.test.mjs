@@ -9,11 +9,14 @@ const web = (f) => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.m
 
 test("app.js routes sign-in, the account page and one movement's history, all loaded on first use", () => {
   const app = web("app.js");
+  const me = web("me-page.js"); // the one Me page (docs/specs/me-page.md)
   for (const re of ["signin$", "signin\\/([^/]+)$", "me$", "me\\/([^/]+)$"]) assert.ok(app.includes(`[/^${re}/`), re);
   assert.match(app, /import\("\.\/auth\.js"\)/);
   assert.match(app, /import\("\.\/history\.js"\)/);
-  assert.doesNotMatch(app, /^import .* from "\.\/(auth|history)\.js"/m, "negative: anonymous visitors download neither module at start");
-  assert.match(app, /Your takes over time/, "#/me embeds the history list");
+  assert.match(me, /import\("\.\/auth\.js"\)/);
+  assert.match(me, /import\("\.\/history\.js"\)/);
+  for (const src of [app, me]) assert.doesNotMatch(src, /^import .* from "\.\/(auth|history)\.js"/m, "negative: anonymous visitors download neither module at start");
+  assert.match(me, /Your takes over time/, "#/me embeds the history list");
 });
 
 test("the route attribute keeps the route name only, never a sign-in token or job id", () => {

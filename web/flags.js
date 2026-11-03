@@ -7,15 +7,28 @@ export const SUBMISSION = "submission";
 const store = (storage) => storage || globalThis.localStorage;
 const searchOf = (search) => (typeof search === "string" ? search : (globalThis.location && globalThis.location.search) || "");
 
-/** "submission" or "default". A `profile` query value wins and is remembered; otherwise the stored one. */
+/** The profile this server opens in: the judge URL writes `<meta name="simon-default-profile" content="submission">` into the page. */
+function pageDefault() {
+  try {
+    const tag = globalThis.document && globalThis.document.querySelector('meta[name="simon-default-profile"]');
+    return tag && tag.getAttribute("content") === SUBMISSION ? SUBMISSION : "default";
+  } catch { return "default"; }
+}
+
+/** "submission" or "default". A `profile` query value wins and is remembered; otherwise the stored one, then the page's default. */
 export function profile(search, storage) {
   const asked = new URLSearchParams(searchOf(search)).get("profile");
+  const open = pageDefault();
   try {
     if (asked === SUBMISSION) { store(storage).setItem(PROFILE_KEY, SUBMISSION); return SUBMISSION; }
-    if (asked === "default") { store(storage).removeItem(PROFILE_KEY); return "default"; }
-    return store(storage).getItem(PROFILE_KEY) === SUBMISSION ? SUBMISSION : "default";
+    if (asked === "default") { // on the judge URL "default" is kept as a value, so the page's own default does not win back
+      if (open === SUBMISSION) store(storage).setItem(PROFILE_KEY, "default"); else store(storage).removeItem(PROFILE_KEY);
+      return "default";
+    }
+    const kept = store(storage).getItem(PROFILE_KEY);
+    return kept === SUBMISSION || (kept !== "default" && open === SUBMISSION) ? SUBMISSION : "default";
   } catch {
-    return asked === SUBMISSION ? SUBMISSION : "default"; // blocked storage: the query alone decides
+    return asked === SUBMISSION || (asked !== "default" && open === SUBMISSION) ? SUBMISSION : "default"; // blocked storage: the query, then the page's default
   }
 }
 
@@ -26,3 +39,5 @@ export const showModes = (search, storage) => !isSubmission(search, storage);
 export const showSponsored = (search, storage) => !isSubmission(search, storage);
 /** `?debug=1` shows the build line. */
 export const isDebug = (search) => new URLSearchParams(searchOf(search)).get("debug") === "1";
+/** `?cinematic=1` turns on the frame-stepped render hook (web/cinematic.js). Only result.js asks; no other page reads it. */
+export const isCinematic = (search) => new URLSearchParams(searchOf(search)).get("cinematic") === "1";

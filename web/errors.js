@@ -19,6 +19,11 @@ export function reportableStatus(status, path) {
   return status >= 500 || (status === 404 && API_PATH.test(path));
 }
 
+const SPEECH_PATH = /(^|\/)api\/jobs\/[^/]+\/speech\/\d+\.wav$/;
+
+/** 429 and 503 on a spoken line are designed answers ("try again shortly"): the browser voice speaks it meanwhile. */
+export const isDesignedBusy = (status, path) => (status === 429 || status === 503) && SPEECH_PATH.test(path);
+
 const FIRM_PATH = /(^|\/)_firm\//; // the firm staging gateway's injected widget, not the app
 
 /** Whether a fetch URL is one of the app's own routes: under the page's directory (the base path), same origin, not `_firm`. */
@@ -83,6 +88,7 @@ export function installErrorCapture(win = globalThis, capture = createCapture())
         if (!cancelled) capture.report("fetch", "network error", { path });
         throw err;
       }
+      if (isDesignedBusy(res.status, path)) return res;
       if (!expected.includes(res.status) && reportableStatus(res.status, path)) capture.report("fetch", `status ${res.status}`, { path, status: res.status });
       return res;
     };

@@ -1,0 +1,8 @@
+{
+ "error": {
+  "code": null,
+  "message": "`image[]` is not a valid image key; use `image[N]` with indices numbered consecutively from 0, in order",
+  "param": "image",
+  "type": "invalid_request_error"
+ }
+}

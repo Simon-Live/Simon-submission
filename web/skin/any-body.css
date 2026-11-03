@@ -1,0 +1,28 @@
+/* Any body (docs/specs/any-body.md). Uses the result view's variables; no colours of its own. */
+.ab { display: grid; gap: 10px; padding: 16px; max-width: 1200px; margin-inline: auto; background: var(--sr-surface); border: 1px solid var(--sr-line); border-radius: 18px; }
+.ab-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.ab-head h2 { margin: 0; font: 600 22px/1.2 var(--font-sans); }
+.ab-intro, .ab-note { margin: 0; font: 400 15px/1.45 var(--font-sans); color: var(--sr-text); }
+.ab-note { color: var(--sr-muted); }
+.ab-grid {
+  --ab-per: 4; display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - (var(--ab-per) - 1) * 10px) / var(--ab-per));
+  gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
+}
+.ab-grid::-webkit-scrollbar { display: none; }
+.ab-fig { margin: 0; scroll-snap-align: start; min-width: 0; display: grid; gap: 6px; align-content: start; }
+.ab-stage {
+  position: relative; width: 100%; aspect-ratio: 3 / 4; max-height: 62vh; border: 1px solid var(--sr-line); border-radius: 14px; overflow: hidden;
+  background: var(--sr-bg);
+}
+.ab-stage canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.ab-stage canvas:focus-visible, .ab-scrub:focus-visible { outline: 3px solid var(--sr-text); outline-offset: 2px; }
+.ab-name { text-align: center; font: 600 15px/1.3 var(--font-sans); color: var(--sr-text); overflow-wrap: anywhere; }
+.ab-error { margin: 0; font: 600 13px/1.4 var(--font-sans); color: var(--sr-text); border-inline-start: 3px solid var(--sr-f); padding-inline-start: 8px; }
+.ab-pager { justify-self: center; }
+.ab-bar { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 12px; }
+.ab-play svg { width: 22px; height: 22px; fill: currentColor; }
+.ab-scrub { width: 100%; height: 44px; margin: 0; accent-color: var(--sr-you); background: transparent; }
+.ab-clock { min-width: 56px; text-align: right; font: 500 1em var(--font-sans); font-variant-numeric: tabular-nums; }
+.ab-credit { margin: 0; font: 400 13px/1.4 var(--font-sans); color: var(--sr-muted); }
+.ab [hidden] { display: none; }
+@media (max-width: 600px) { .ab { padding: 12px; border-radius: 0; border-inline: 0; } .ab-stage { max-height: 52vh; } }

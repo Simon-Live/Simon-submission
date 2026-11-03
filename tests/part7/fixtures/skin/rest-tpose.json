@@ -1,0 +1,307 @@
+{
+ "schema": "simon.rest.v1",
+ "source": "hand-written T pose",
+ "preset": "hand-written",
+ "fix": [
+  0,
+  0,
+  0,
+  1
+ ],
+ "bones": {
+  "hips": {
+   "head": [
+    0,
+    0.95,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0,
+    1
+   ]
+  },
+  "spine": {
+   "head": [
+    0,
+    1.05,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0,
+    1
+   ]
+  },
+  "chest": {
+   "head": [
+    0,
+    1.2,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0,
+    1
+   ]
+  },
+  "neck": {
+   "head": [
+    0,
+    1.45,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0,
+    1
+   ]
+  },
+  "head": {
+   "head": [
+    0,
+    1.5,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0,
+    1
+   ]
+  },
+  "leftShoulder": {
+   "head": [
+    0.03,
+    1.4,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0,
+    1
+   ]
+  },
+  "leftUpperArm": {
+   "head": [
+    0.18,
+    1.4,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    -0.707107,
+    0.707107
+   ]
+  },
+  "leftLowerArm": {
+   "head": [
+    0.46,
+    1.4,
+    0.0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    -0.707107,
+    0.707107
+   ]
+  },
+  "leftHand": {
+   "head": [
+    0.72,
+    1.4,
+    0.0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    -0.707107,
+    0.707107
+   ]
+  },
+  "leftUpperLeg": {
+   "head": [
+    0.09,
+    0.92,
+    0
+   ],
+   "tail": null,
+   "world": [
+    1,
+    0,
+    0,
+    0
+   ]
+  },
+  "leftLowerLeg": {
+   "head": [
+    0.09,
+    0.5,
+    0
+   ],
+   "tail": null,
+   "world": [
+    1,
+    0,
+    0,
+    0
+   ]
+  },
+  "leftFoot": {
+   "head": [
+    0.09,
+    0.08,
+    0
+   ],
+   "tail": null,
+   "world": [
+    1,
+    0,
+    0,
+    0
+   ]
+  },
+  "leftToes": {
+   "head": [
+    0.09,
+    0.02,
+    0.12
+   ],
+   "tail": null,
+   "world": [
+    1,
+    0,
+    0,
+    0
+   ]
+  },
+  "rightShoulder": {
+   "head": [
+    -0.03,
+    1.4,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0,
+    1
+   ]
+  },
+  "rightUpperArm": {
+   "head": [
+    -0.18,
+    1.4,
+    0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0.707107,
+    0.707107
+   ]
+  },
+  "rightLowerArm": {
+   "head": [
+    -0.46,
+    1.4,
+    0.0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0.707107,
+    0.707107
+   ]
+  },
+  "rightHand": {
+   "head": [
+    -0.72,
+    1.4,
+    0.0
+   ],
+   "tail": null,
+   "world": [
+    0,
+    0,
+    0.707107,
+    0.707107
+   ]
+  },
+  "rightUpperLeg": {
+   "head": [
+    -0.09,
+    0.92,
+    0
+   ],
+   "tail": null,
+   "world": [
+    1,
+    0,
+    0,
+    0
+   ]
+  },
+  "rightLowerLeg": {
+   "head": [
+    -0.09,
+    0.5,
+    0
+   ],
+   "tail": null,
+   "world": [
+    1,
+    0,
+    0,
+    0
+   ]
+  },
+  "rightFoot": {
+   "head": [
+    -0.09,
+    0.08,
+    0
+   ],
+   "tail": null,
+   "world": [
+    1,
+    0,
+    0,
+    0
+   ]
+  },
+  "rightToes": {
+   "head": [
+    -0.09,
+    0.02,
+    0.12
+   ],
+   "tail": null,
+   "world": [
+    1,
+    0,
+    0,
+    0
+   ]
+  }
+ }
+}

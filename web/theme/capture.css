@@ -5,14 +5,16 @@
 /* a video gets the design's frame; a 3D reference keeps its own height, controls included */
 .capture[data-chrome] .ref-stage:has(> video.ref-media) { aspect-ratio: 4 / 3; }
 .capture[data-chrome] .ref-stage:not(:has(> video.ref-media)) { aspect-ratio: 4 / 5; }
-/* the 3D viewer's legend moves right, so the REFERENCE ROUTINE pill has the top-left corner */
+/* the 3D viewer's legend moves right, so the Reference routine pill has the top-left corner */
 .capture[data-chrome] .ref-figure .sr-legend { left: auto; right: var(--space-3); }
 .capture[data-chrome] .cam { aspect-ratio: 4 / 3; }
 .capture[data-chrome] .ref-bar { background: transparent; padding: var(--space-2) 0 0; }
 
 .cap-pill { position: absolute; z-index: 2; display: inline-flex; align-items: center; padding: 4px 12px; border-radius: var(--radius-pill);
   border: 1.5px solid var(--color-accent); background: var(--color-scrim); color: var(--color-accent);
-  font: var(--weight-bold) var(--text-xs)/1.4 var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; pointer-events: none; }
+  font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); pointer-events: none; }
+/* the camera pill never sits on the camera's own text: it shows once the camera is live, not over "Open the camera..." (TICKET-336 T6) */
+.capture[data-chrome] .cam:not([data-state="preview"]):not([data-state="counting"]):not([data-state="recording"]):not([data-state="take"]) .cap-pill { display: none; }
 .cap-pill-top { top: var(--space-3); left: var(--space-3); }
 /* the recording clock and its dot sit under the camera badge, never on it (TICKET-200) */
 .capture[data-chrome] .cam .rc-rec { top: calc(var(--space-3) + 36px); left: calc(var(--space-3) + 16px); }
@@ -67,7 +69,14 @@ body .ref[data-mirror="true"] .ref-media:not(video) canvas { transform: scaleX(-
 .live-chip[data-ok="false"] { color: var(--color-bad); }
 .live-cue { position: absolute; left: var(--space-3); right: var(--space-3); bottom: var(--space-3); z-index: 3; margin: 0;
   padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--color-scrim); color: var(--color-on-media);
-  font-weight: var(--weight-bold); text-align: center; }
+  font-weight: var(--weight-semibold); text-align: center; }
 .cam[data-state="take"] .live-chip, .cam[data-state="take"] .live-cue { display: none; }
 .live-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-2); }
 .live-bar .live-note { margin: 0; flex: 1 1 240px; }
+
+/* Follow the ghost (TICKET-264): the trainer's outline over the live preview, above the countdown veil */
+.ghost-canvas { position: absolute; pointer-events: none; z-index: 4; }
+.cam[data-state="take"] .ghost-canvas, .cam[data-state="idle"] .ghost-canvas { display: none; }
+.ghost-panel { margin: var(--space-3) 0 0; }
+.ghost-panel .row { flex-wrap: wrap; gap: var(--space-2); }
+.ghost-step { margin: var(--space-2) 0; }

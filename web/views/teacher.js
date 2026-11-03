@@ -1,19 +1,8 @@
 // The teacher page from a view model (web/model/teacher.js), styled by theme/teacher.css on the brand tokens. No
 // fetching and no storage.
 import { h, clear, stateBlock, linkButton } from "../ui.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-/** An SVG element; `kids` are nodes or text (a string is set as the text of a leaf). */
-function svg(tag, attrs = {}, ...kids) {
-  const el = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  for (const kid of kids) {
-    if (typeof kid === "string") el.textContent = kid;
-    else if (kid) el.append(kid);
-  }
-  return el;
-}
+import { authorLine } from "./author-line.js";
+import { svg } from "./svg.js";
 
 function scoreChart({ box, points, path, ticks, label }) {
   const grid = ticks.flatMap((t) => [
@@ -36,21 +25,57 @@ const takeRow = (t, i) => h("li", { class: "th-take", "data-testid": `teacher-ta
 const cueRow = (c, i) => h("li", { class: "th-cue", "data-testid": `teacher-cue-${i}` },
   h("strong", { class: "th-cue-text", text: c.text }), h("span", { class: "th-cue-share", text: c.share }));
 
+const factBox = (f) => h("div", { class: "th-fact", "data-testid": `class-${f.key}` },
+  h("strong", { class: "th-fact-value", text: f.value }), h("span", { class: "th-fact-label", text: f.label }));
+
+const changeRow = (r, i) => h("li", { class: "th-change", "data-testid": `class-follower-${i}` },
+  h("span", { class: "th-change-who", text: r.label }),
+  h("strong", { class: "th-change-value", "data-tone": r.tone, text: r.change }),
+  h("span", { class: "th-change-detail", text: r.detail }));
+
+const seededLine = (seeded, testid) => h("p", { class: "th-seeded", "data-testid": testid },
+  h("strong", { class: "th-seeded-badge", text: seeded.badge }), h("span", { text: ` ${seeded.note}` }));
+
+const followerBlock = (ct) => h("div", { class: "th-follower-block", "data-testid": "class-follower-block" },
+  h("h3", { text: "From first take to latest" }),
+  h("p", { class: "th-hint", "data-testid": "class-owner-note", text: ct.ownerNote }),
+  ct.rows.length
+    ? h("ul", { class: "th-changes", "data-testid": "class-changes" }, ct.rows.map(changeRow))
+    : h("p", { class: "th-hint", "data-testid": "class-no-change", text: "No follower has come back for a second take yet." }));
+
+/** The class table card (docs/specs/class-table.md) from `classTableView`. */
+function classCard(ct) {
+  return h("section", { class: "th-card th-class", "data-testid": "class-table" },
+    h("h2", { text: "Your class at a glance" }),
+    ct.seeded ? seededLine(ct.seeded, "class-seeded") : null,
+    h("div", { class: "th-facts" }, ct.facts.map(factBox)),
+    h("h3", { text: "Top cue across followers" }),
+    ct.topCue
+      ? h("p", { class: "th-top-cue", "data-testid": "class-top-cue" }, h("strong", { class: "th-cue-text", text: ct.topCue.text }), h("span", { class: "th-cue-share", text: ct.topCue.share }))
+      : h("p", { class: "th-hint", "data-testid": "class-no-cue", text: "No cue has come up yet." }),
+    ct.rows ? followerBlock(ct) : null, // the owner alone gets the rows; nobody else sees the block
+    h("p", { class: "th-hint", text: "Each follower counts once. A take made while signed out counts as its own follower. Followers are numbered, never named." }));
+}
+
 /** Fill `screen` with the page of `vm` (from `teacherView`). */
 export function renderTeacher(screen, vm) {
   const back = `#/watch/${encodeURIComponent(vm.entryId)}`;
-  const head = [h("p", { class: "th-back" }, h("a", { href: back, text: "Back to the movement" })), h("h1", { class: "th-title", "data-testid": "teacher-title", text: vm.name })];
+  const handout = linkButton(vm.handoutHref, "Print a class handout", "teacher-handout");
+  const head = [h("p", { class: "th-back" }, h("a", { href: back, text: "Back to the movement" })), h("h1", { class: "th-title", "data-testid": "teacher-title", text: vm.name }),
+    authorLine([vm.byline], "teacher-author"), vm.classTable?.seeded ? seededLine(vm.classTable.seeded, "teacher-seeded") : null].filter(Boolean);
   clear(screen).classList.add("th");
   if (vm.empty) {
     screen.append(...head, stateBlock("teacher-empty", "No one has followed this movement yet",
-      "When someone follows it and their score is ready, their take shows up here.", linkButton(back, "Open the movement", "teacher-open")));
+      "When someone follows it and their score is ready, their take shows up here. Print a class handout to share the link.",
+      linkButton(back, "Open the movement", "teacher-open"), handout));
     return;
   }
   screen.append(...head,
-    h("p", { class: "th-summary", "data-testid": "teacher-summary", text: vm.summary }),
+    h("div", { class: "th-actions" }, h("p", { class: "th-summary", "data-testid": "teacher-summary", text: vm.summary }), handout),
+    ...(vm.classTable ? [classCard(vm.classTable)] : []),
     h("section", { class: "th-card" },
       h("h2", { text: "Scores over time" }), scoreChart(vm.chart),
-      h("p", { class: "th-hint", text: "Oldest take on the left. Scores run from 0 to 100." })),
+      h("p", { class: "th-hint", "data-testid": "teacher-chart-axis", "data-axis": vm.chart.axis, text: vm.chart.hint })),   // one-letter.md L8
     h("section", { class: "th-card" },
       h("h2", { text: "Most common cues" }),
       vm.cues.length ? h("ul", { class: "th-cues", "data-testid": "teacher-cues" }, vm.cues.map(cueRow)) : h("p", { class: "th-hint", "data-testid": "teacher-no-cues", text: "No cues came up in these takes." })),

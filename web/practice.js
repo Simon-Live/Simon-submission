@@ -134,13 +134,16 @@ export function loadProgress(entryId, storage) {
     }
     const p = raw.pending;
     const pending = p && typeof p.key === "string" && typeof p.job === "string" ? { key: p.key, job: p.job } : null;
-    return { v: 1, on: raw.on === true, best, pending };
+    return { v: 1, on: raw.on === true, best, pending, ...(typeof raw.focus === "string" && raw.focus ? { focus: raw.focus } : {}) };
   } catch { return emptyProgress(); }
 }
 
 export function saveProgress(entryId, progress, storage) {
   try { (storage || globalThis.localStorage).setItem(KEY_PREFIX + entryId, JSON.stringify(progress)); } catch { /* not remembered */ }
 }
+
+/** Index of the step the history plan asked for (`progress.focus`), or -1. */
+export const focusIndex = (steps, progress) => (progress.focus ? steps.findIndex((s) => s.key === progress.focus) : -1);
 
 export const isPassed = (progress, step) => (progress.best[step.key] ?? -1) >= PASS_SCORE;
 /** A step can start when every step before it is passed. */
@@ -260,6 +263,13 @@ export function mountPractice(root, { entry, mode, storage }) {
     steps = buildLadder(data.sections, learnSpeed(mode));
     const now = currentIndex(steps, progress);
     selected = Math.min(now, Math.max(0, steps.length - 1));
+    const asked = focusIndex(steps, progress); // "Practise this section" from the plan: open that step once
+    if (progress.focus) {
+      if (asked >= 0) selected = asked;
+      const { focus: _used, ...rest } = progress;
+      progress = rest;
+      save();
+    }
     paint();
   }
 

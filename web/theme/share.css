@@ -1,0 +1,25 @@
+/* Share links (views/share.js, shared.js, share-list.js) on the brand tokens. No literal colors or sizes. */
+
+.sh { display: grid; gap: var(--space-3); }
+.sh-title { margin: 0; }
+.sh-by, .sh-hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.sh-score { margin: 0; font: 400 var(--text-xl)/1.2 var(--font-display); }
+.sh-score strong { font-weight: inherit; }
+.sh-text { margin: 0; font-size: var(--text-md); line-height: 1.45; }
+.sh-of, .sh-grade { font-size: var(--text-md); color: var(--color-text-muted); }
+.sh-warning { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-lg); }
+.sh-warning h2 { margin: 0; font-size: var(--text-md); }
+.sh-list, .sh-takes, .sh-rows { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-2); }
+.sh-rows { list-style: none; padding-left: 0; }
+.sh-clip { width: 100%; border-radius: var(--radius-lg); }
+.sh-foot { margin: 0; font-size: var(--text-sm); }
+.sh-action { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.sh-dialog, .sh-list-box { display: grid; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); }
+.sh-dialog h2, .sh-dialog h3, .sh-list-box h2 { margin: 0; font-size: var(--text-md); }
+.sh-preview { padding: var(--space-3); border-radius: var(--radius-lg); border: 1px dashed var(--color-line); }
+.sh-check { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; }
+.sh-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.sh-state[data-state="revoked"], .sh-state[data-state="expired"] { color: var(--color-text-muted); }
+.sh-sure { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-bad-soft); }
+.sh-sure[hidden], .sh-list-box [hidden] { display: none; }
+.sh-sure p { margin: 0; color: var(--color-bad); font-weight: var(--weight-semibold); }

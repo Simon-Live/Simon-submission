@@ -399,6 +399,54 @@ def _note_tracker(ctx: JobContext, tracks: Path) -> None:
         ctx.add_note(f"people were found with the fallback tracker {name}")
 
 
+def _resampled(
+    tracks: Path, work: Path, rate: float, video: Path, frame_time: dict[int, float] | None, lk: modules.Modules
+) -> Path:
+    """`tracks` at the 3D rate over exactly the frames Part 2 samples from `video` (TICKET-203): the times
+    `part2 frame-times` lists; a pin without it falls back to Part 7's copy of the rule on the ffprobe timestamps, and
+    that to an even spacing at the clip's stated rate."""
+    at = p2_pose.frame_times(video, work, p2_pose.FPS, lk)
+    if at is None:
+        at = track_resample.probe_sample_times(video, p2_pose.FPS)
+    if at is None:
+        meta = media.probe(video)
+        at = track_resample.uniform_sample_times(meta["duration_s"], meta["fps"], p2_pose.FPS)
+    return track_resample.write_at_rate(tracks, work / f"tracks_{p2_pose.FPS}fps.json", rate, p2_pose.FPS,
+                                        media.probe(video)["duration_s"], frame_time, out_times=at)
+
+
+def _frames_mismatch(work: Path) -> bool:
+    """True when Part 2's log says the tracks and its sampled frames differ (`--tracks` has an entry/no entry for frame)."""
+    try:
+        text = (work / "steps" / "part2.log").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "--tracks" in text and ("that this input lacks" in text or "has no entry for frame" in text)
+
+
+def _retrack_for_3d(
+    video: Path, work: Path, backend: str, lk: modules.Modules, state: Path | str | None, ids: list[str],
+    failed: runner.Step, failed_pose: Path,
+) -> tuple[runner.Step, Path]:
+    """Part 2 refused the resampled tracks: track the clip at the 3D rate (no resampling) and run 3D once more. When the
+    re-track fails or loses a wanted person, the first failure stands (TICKET-203)."""
+    applog.anomaly("tracks_frame_mismatch", "Part 2 refused the resampled tracks; tracking again at the 3D rate",
+                   job=applog.job_id_of(work), job_dir=work, fps=p2_pose.FPS)
+    try:
+        t_step, found = p2_pose.track(video, work / "retrack_3d", backend=backend, lock=lk, state=state, fps=p2_pose.FPS)
+        if t_step["exit"] != 0 or not found.is_file():
+            return failed, failed_pose
+        have = {str(p.get("id")) for f in json.loads(found.read_text(encoding="utf-8")).get("frames", [])
+                for p in f.get("people", []) if isinstance(p, dict)}
+    except (OSError, ValueError, TimeoutError):
+        return failed, failed_pose
+    if not {str(i) for i in ids} <= have:
+        applog.anomaly("tracks_frame_mismatch", "the re-track lost a wanted person; the first failure stands",
+                       job=applog.job_id_of(work), job_dir=work)
+        return failed, failed_pose
+    return p2_pose.run(video, work, backend=backend, lock=lk, state=state, tracks=found, ids=ids)
+
+
 def pose_for(
     sel: PersonSel, ids: list[str], video: Path, work: Path, backend: str, lk: modules.Modules, state: Path | str | None
 ) -> tuple[runner.Step, Path, str | None]:
@@ -408,13 +456,14 @@ def pose_for(
     """
     tracks = (sel.people_work or work) / "tracks.json"
     rate = tracked_fps(sel.people_work or work)
-    if tracks.is_file() and rate != p2_pose.FPS:  # people tracked at another rate than the 3D run (#62, TICKET-198)
-        tracks = track_resample.write_at_rate(
-            tracks, work / f"tracks_{p2_pose.FPS}fps.json", rate, p2_pose.FPS,
-            media.probe(video)["duration_s"], frame_times(sel.people_work or work) or None)
+    resampled = tracks.is_file() and rate != p2_pose.FPS
+    if resampled:  # people tracked at another rate than the 3D run (#62, TICKET-198)
+        tracks = _resampled(tracks, work, rate, video, frame_times(sel.people_work or work) or None, lk)
         applog.log(f"people tracks at {rate} fps resampled to {p2_pose.FPS} fps for the 3D run", applog.job_id_of(work), work)
     if tracks.is_file() and p2_pose.capabilities(lk, state)["ids"]:
         step, pose = p2_pose.run(video, work, backend=backend, lock=lk, state=state, tracks=tracks, ids=ids)
+        if resampled and step["exit"] != 0 and _frames_mismatch(work):
+            step, pose = _retrack_for_3d(video, work, backend, lk, state, ids, step, pose)
         return (step, pose, None)
     stored = (sel.people_work or work) / "pose3d_all.json"
     if stored.is_file():

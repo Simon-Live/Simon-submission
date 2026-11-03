@@ -23,7 +23,6 @@ from part7 import config, keys
 URL = "https://api.meta.ai/v1/asr/transcribe"
 MODEL = "muse-voice-transcribe-1.0"
 USD_PER_HOUR = 0.18  # Meta's list price for the model, ledger estimate
-DEFAULT_CAP_USD = 5.0
 BOUNDARY = "simon-part7-narration"
 TIMEOUT_S = 180.0
 KEY_NAME = "MODEL_API_KEY"
@@ -65,22 +64,23 @@ def spent_usd(ledger: Path) -> float:
     return total
 
 
-def cap_usd() -> float:
+def cap_usd() -> float | None:
+    """The spend cap in USD; off (None) unless SIMON7_NARRATION_CAP_USD is a positive number."""
     try:
         value = float(os.environ.get("SIMON7_NARRATION_CAP_USD", ""))
     except ValueError:
-        return DEFAULT_CAP_USD
-    return value if value > 0 else DEFAULT_CAP_USD
+        return None
+    return value if value > 0 else None
 
 
-def reserve(ledger: Path, entry: dict[str, Any], cap: float) -> None:
+def reserve(ledger: Path, entry: dict[str, Any], cap: float | None) -> None:
     """Check the cap and append `entry` as one step under a file lock, so two jobs cannot both pass the check.
     The line is written before the request is sent: a call that is billed and then times out or answers 5xx counts."""
     ledger.parent.mkdir(parents=True, exist_ok=True)
     with ledger.with_name(ledger.name + ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            if spent_usd(ledger) + float(entry["estimated_usd"]) > cap:
+            if cap is not None and spent_usd(ledger) + float(entry["estimated_usd"]) > cap:
                 raise NarrationError(f"the narration spend cap of ${cap:.2f} would be passed")
             with ledger.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(entry, sort_keys=True) + "\n")

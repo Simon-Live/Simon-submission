@@ -97,7 +97,7 @@ test("voice views: the verdict says whose opinion it is and the speak button nam
 test("second opinion view: one row per observation, each labelled as the model's view", () => {
   const seen = [];
   const [title, note, list] = observationsPanel("Llama", [{ at_s: 1.25, text: "Knees cave" }], (t) => seen.push(t));
-  assert.match(title.textContent, /What Llama also noticed/);
+  assert.match(title.textContent, /A second opinion/);
   assert.match(note.textContent, /does not change your score/);
   assert.equal(byClass(list, "so-row").length, 1);
   assert.match(list.textContent, /model's opinion/);
@@ -132,7 +132,8 @@ test("the new stylesheets are linked after the redesign ones, and each file exis
 
 test("the teacher route and the way to it", () => {
   assert.match(read("app.js"), /\^teacher\\\/\(\[\^\/\]\+\)\$\/, \(el, m\) => mountTeacher\(el, m\[1\]\)/);
-  assert.match(read("watch.js"), /#\/teacher\/\$\{encodeURIComponent\(eid\)\}`, "Your followers"/);
+  assert.match(read("owner-link.js"), /#\/teacher\/\$\{encodeURIComponent\(entryId\)\}`, "Your followers"/); // TICKET-316: drawn by owner-link.js, for the owner only
+  assert.match(read("watch.js"), /mountOwnerLink\(eid\)/);
 });
 
 test("landing page: muted autoplay loop with poster, one line, a Try it link to the catalog, no banned words", () => {

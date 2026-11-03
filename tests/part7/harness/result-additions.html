@@ -26,10 +26,22 @@ analysis.faults = [
   { at_s: 6.2, joints: ["right_elbow"], text: "Keep your right elbow closer in.", cue: "Elbow in", cue_kind: "position" },
   { at_s: 9.1, joints: ["left_knee"], text: "Bend your left knee more.", cue: "Knee bent", cue_kind: "range", confidence: "low" },
 ];
+// ?lang=ar|hi|es: the coaching lines are written in that language (TICKET-266). SEEDED sample sentences, not a model's output
+// and not reviewed by a native reader.
+const SEEDED = { ar: ["أبقِ مرفقك الأيمن أقرب إلى جسمك عند 6.2 ثانية.", "اثنِ ركبتك اليسرى أكثر عند 9.1 ثانية."],
+  hi: ["अपनी दाहिनी कोहनी को पास रखें।", "अपना बायाँ घुटना और मोड़ें।"], es: ["Mantén el codo derecho más cerca.", "Dobla más la rodilla izquierda."] };
+const lang = q.get("lang");
+if (lang && SEEDED[lang]) {
+  analysis.faults.forEach((f, i) => { f.text = SEEDED[lang][i]; });
+  analysis.phrasing = { lang, faults: analysis.faults.map((f) => ({ text: f.text, lang })) };
+}
+// ?faultAt=<s> makes that the analysis' first (and only) fault, for the heat view's opening time (TICKET-274)
+if (q.get("faultAt")) analysis.faults = [{ at_s: Number(q.get("faultAt")), joints: ["left_knee"], text: "Bend your left knee more.", cue: "Knee bent", cue_kind: "range" }];
 const c = q.get("case") || "ok";
 const job = c === "fixture" ? "fixture" : "abcdef123456";
-const record = c === "fixture" ? null : { id: job, kind: "follow", status: "done", entry_id: "lateral-raise-0f13199f" };
-window.__mount = () => mountResult(document.getElementById("app"), { analysis, replay, job, record });
+const pid = q.get("pid");   // ?pid=p2: one person of a group result (group-results.md)
+const record = c === "fixture" ? null : { id: job, kind: pid ? "group" : "follow", status: "done", entry_id: "lateral-raise-0f13199f" };
+window.__mount = () => mountResult(document.getElementById("app"), { analysis, replay, job, record, pid });
 window.__r = await window.__mount();
 window.__ready = true;
 </script>

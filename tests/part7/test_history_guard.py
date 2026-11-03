@@ -75,7 +75,7 @@ ANSWER: dict[str, Any] = {
 
 
 def run(answer: Any, **kw: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    return history_guard.check(answer, kw.get("facts", FACTS), kw.get("narration", NARRATION), kw.get("words"))
+    return history_guard.check(answer, kw.get("facts", FACTS), kw.get("narration", NARRATION), kw.get("words"), clip_takes=kw.get("clip_takes", (1, 2)))
 
 
 def variant(**changes: Any) -> dict[str, Any]:

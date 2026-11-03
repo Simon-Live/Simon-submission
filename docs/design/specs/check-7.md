@@ -135,6 +135,10 @@ build that produces different bytes is an error, as for the existing videos.
   `mismatch_equal`.
 - AC-K8 A stub clone containing the movement id makes `movement_never_configured` false.
 - AC-K9 `score_equal` fails on a one-point difference (stub).
+- AC-K9T (ADR-0018) `score_within` passes when app and direct `score.value` differ by at most 1 point
+  (0.4 and 1.0 pass, 1.1 fails) and the overall `pass` uses it in place of `score_equal`. Every run reports
+  `score_drift` (per take, the max, the limit and the reason "Part 2 GPU pose is not deterministic (Part 2 lane,
+  2026-11-02)"); `score_equal` stays in the gates and `pass_strict` records the strict result (stub).
 - AC-K10 `at_s_equal` fails on a 0.1 s difference (stub).
 - AC-K11 A fault without `text_timed` in the app result fails `app_result_complete` (stub).
 - AC-K12 Unequal major codes or missing/incorrect cap causes fail; a major above 59 or with a non-F
@@ -168,6 +172,25 @@ build that produces different bytes is an error, as for the existing videos.
 ## Dissent Review
 Reviewed at setup, 2026-10-28.
 - Concern: check-7 takes long (about nine Part 2 runs). Resolution: accepted; it is the DoD.
+
+### Video quality, Part 5 1.13.0 (pin 03137b9)
+
+Part 5 now writes the top-level `quality` block (`simon.quality.v1`): `level` (`ok`, `degraded`, `major`) and `score_cap`
+(59 when major, else null). It only reports the cap, so Part 7 shows `min(score.value, quality.score_cap)`
+(`compare.shown_score`, `part7/quality_cap.py`). A document without the block is `not_assessed`, never `ok`. The
+contract above is kept for a document that carries `quality.issues`; for a document with the block, `build_gates` adds the
+level-based reading beside it (`compare.quality_level`, `quality_score_cap`, `quality_cap_valid_level`,
+`quality_cap_equal_level`):
+
+- `quality_level_equal` (new): `quality.level` matches in both paths, for every take.
+- `quality_cap_equal`: the code-based rule above AND `quality_cap_equal_level` (a major block needs `score_cap` 59 and a
+  shown score of 59 or less; any other level or an absent block needs `score_cap` null; both paths agree).
+- `quality_good_no_major`: the rule above AND no good follower reads `major` in either path.
+- `quality_degraded_major_capped`: the rule above OR every degraded clip reads `major` with a valid cap in both paths.
+  Part 7's own major light (video-light.md) is still an alternative. A `degraded` or absent block does not pass.
+
+Per-take report keys added: `quality_level_*`, `quality_score_cap_*`, `quality_cap_valid_level_*`, `quality_level_equal`,
+`quality_cap_equal_level`.
 
 ## Delivery Verification Plan
 `make test` covers AC-K1 to AC-K15 with stubs and synthetic video; the real run records exit and JSON.

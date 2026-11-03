@@ -28,6 +28,8 @@ const EXPECTED_404 = /missing\.webm/;
 async function open(kase, { noWebgl = false, hangVideo = false, lateVideoMs = 0, block = null, analysisBody = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true });
   const page = await ctx.newPage();
+  // the stage's "Rep breakdown" (score over time, form per rep) opens for these checks, as a viewer who left it open
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); } catch { /* blocked */ } });
   // another take's analysis in place of the harness's (result-intent.md AC-I1)
   if (analysisBody) await page.route("**/fixtures/input/analysis-insights.json", (r) => r.fulfill({ status: 200, contentType: "application/json", body: analysisBody }));
   page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_404.test(m.location().url + m.text()) && !isResultScreen404(m.location().url) && !(block && m.location().url.endsWith(block))) errors.push(`${kase}: ${m.text()}`); });
@@ -214,7 +216,8 @@ try {
     const b = await open("ok");
     assert.equal(await tid(b, "breakdown-slot").count(), 1);
     const order = await b.evaluate(() => [...document.querySelectorAll('[data-testid="score-panel"], [data-testid="breakdown-slot"], [data-testid="challenge-slot"], [data-testid="mode-slot"]')].map((e) => e.dataset.testid));
-    assert.deepEqual(order, ["mode-slot", "score-panel", "breakdown-slot", "challenge-slot"]);
+    // the breakdown slot sits in the stage's "Rep breakdown" bar, above the rest of the screen
+    assert.deepEqual(order, ["breakdown-slot", "mode-slot", "score-panel", "challenge-slot"]);
     await b.waitForSelector('[data-testid="breakdown-slot"] [data-testid="breakdown"]');
     await b.context().close();
     const gone = await open("ok", { block: "breakdown.js" });
@@ -393,7 +396,8 @@ try {
       assert.equal(await tid(p, "play").getAttribute("data-playing"), "false", `${why}: 3D paused`);
     };
     await still("opened");
-    // pause with the 3D view's play button
+    // pause with the 3D view's play button (the stage shows one view at a time: the 3D view's controls are on its tab)
+    await tid(p, "stage-view-3d").click();
     await tid(p, "play").click();
     await p.waitForFunction(() => document.querySelector('[data-testid="play"]').dataset.playing === "true");
     await p.waitForTimeout(700);
@@ -403,6 +407,7 @@ try {
     // pause with the video
     await tid(p, "play").click();
     await p.waitForTimeout(600);
+    await tid(p, "stage-view-annotated").click();   // the same clock: switching between these two keeps it running
     await tid(p, "result-video").click();
     await still("paused by tapping the video");
     // a moment tap plays the lead-in, then stops

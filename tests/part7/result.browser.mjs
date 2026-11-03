@@ -25,8 +25,10 @@ const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 
 async function open(kase, { noWebgl = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true, reducedMotion: "reduce" });
+  // the stage's "Rep breakdown" (score over time, form per rep) opens for these checks, as a viewer who left it open
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); } catch { /* blocked */ } });
   const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error" && !isResultScreen404(m.location().url)) errors.push(`${kase}: ${m.text()}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !isResultScreen404(m.location().url)) errors.push(`${kase}: ${m.text()} ${m.location().url}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
   if (noWebgl) {
     await page.addInitScript(() => {
@@ -167,7 +169,8 @@ try {
   const layout = await page.evaluate(() => ({
     sw: document.documentElement.scrollWidth,
     canvasW: document.querySelector("canvas").getBoundingClientRect().width,
-    small: [...document.querySelectorAll("button, a.sr-btn, input[type=range]")].map((e) => [e.dataset.testid, e.getBoundingClientRect().height, e.getBoundingClientRect().width]).filter(([, h, w]) => h < 43.5 || w < 43.5),
+    // hidden controls (0 x 0: a stage view this take lacks, a chip with no moment) are not targets, as in a11y.browser.mjs
+    small: [...document.querySelectorAll("button, a.sr-btn, input[type=range]")].map((e) => [e.dataset.testid, e.getBoundingClientRect().height, e.getBoundingClientRect().width]).filter(([, h, w]) => h > 0 && w > 0 && (h < 43.5 || w < 43.5)),
   }));
   assert.ok(layout.sw <= 412, `scrollWidth ${layout.sw}`);
   assert.ok(layout.canvasW >= 380, `canvas ${layout.canvasW}`);
@@ -246,6 +249,56 @@ try {
     await p.screenshot({ path: path.join(SHOTS, "08c-capped.png"), clip: { x: 0, y: 0, width: 412, height: 560 } });
     await p.context().close();
     ok("TICKET-155 capped score: the score card says why; a clean take has no cap line");
+  }
+  // the judge hero (staging job 652b525a73ee, QA 2026-11-02): one score on screen, every other figure labelled
+  {
+    const p = await open("low-match-hero");
+    assert.equal(await tid(p, "score").textContent(), "59", "the ring is score.value");
+    assert.equal(await tid(p, "summary-score-caption").textContent(), "score out of 100");
+    assert.equal(await tid(p, "summary-grade").textContent(), "F");
+    const sum = (await tid(p, "score-sum").textContent()).replace(/\u00a0/g, " ");
+    assert.match(sum, /≈ 100 before the warning cap\. A warning then limited the score to 59: /);
+    assert.equal(await tid(p, "summary-stat-best").locator(".rs-stat-label").textContent(), "Best part before the cap");
+    await p.waitForSelector('[data-testid="breakdown-verdict"]', { state: "attached" });
+    assert.equal(await tid(p, "breakdown-verdict").textContent(), "This take didn't match the trainer closely enough to judge form.");
+    assert.equal(await tid(p, "insights-empty").textContent(), "This take didn't match the trainer closely enough to judge form.");
+    assert.doesNotMatch(await p.locator("body").innerText(), /Nothing to work on|average form/i, "negative: no empty-praise line, no 'average form'");
+    // negative: in the score and summary area, a figure other than 59 sits only beside its label
+    const area = await p.evaluate(() => ["score-top", "result-summary"].map((id) => document.querySelector(`[data-testid="${id}"]`)?.innerText || "").join("\n"));
+    const loose = area.replace(/\u00a0/g, " ").split("\n").flatMap((line) => [...line.matchAll(/\d+(?:\.\d+)?/g)]
+      .filter((x) => x[0] !== "59" && !/before the (warning |fault )?caps?|started at 100|lost|out of 100|^Parts$|^\d+$/i.test(line))   // innerText follows the CSS case ("SCORE OUT OF 100")
+      .map((x) => `${x[0]} in "${line}"`));
+    assert.deepEqual(loose, [], "unlabelled figures in the summary");
+    await p.screenshot({ path: path.join(SHOTS, "08d-low-match-hero.png"), fullPage: true });
+    await p.context().close();
+    // with motion on, the ring counts up from 0 (the reveal) and settles on score.value: a read mid-count sees a lower
+    // number (QA's 8 and 39 were frames of this count), the settled read is 59
+    const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
+    const m = await ctx.newPage();
+    await m.goto(`http://127.0.0.1:${port}/tests/part7/harness/result.html?case=low-match-hero`);
+    await m.waitForFunction(() => window.__ready === true);
+    await m.waitForFunction(() => document.querySelector('[data-testid="summary-score"]')?.dataset.reveal === "done", null, { timeout: 10000 });
+    assert.equal(await tid(m, "score").textContent(), "59", "settled on score.value after the count-up");
+    await ctx.close();
+    ok("judge hero: one score (59) in the ring, the grade and the sum; 100 only beside 'before the cap'; no 'Nothing to work on'");
+  }
+  // one-letter.md: the MM-Fit take 42a02415127e (37 F, credit 16,239 of 22,367, C). The headline and the grade panel
+  // show one letter; capped by a warning, both show 37 and F.
+  {
+    const p = await open("one-letter");
+    assert.equal(await tid(p, "summary-grade").textContent(), "C");
+    assert.equal(await tid(p, "grade").textContent(), "C", "the grade panel shows the headline's letter");
+    assert.equal(await attr(p, "grade", "data-grade"), "C");
+    assert.match(await tid(p, "band-rule").textContent(), /S95 and above/, "the panel's bands are the credit's F to S scale");
+    assert.doesNotMatch(await tid(p, "band-rule").textContent(), /90 and above/, "negative: not the old A to F bands");
+    await p.context().close();
+    const p0 = (page) => page.evaluate(() => document.querySelector('[data-testid="score-panel"]').textContent);   // hidden rules included
+    const c = await open("one-letter-capped");
+    assert.equal(await tid(c, "summary-grade").textContent(), "F");
+    assert.equal(await tid(c, "grade").textContent(), "F", "capped: the cap wins in the panel too");
+    assert.doesNotMatch(await p0(c), /16,239|22,367|S95/, "negative: no credit figure or scale on a capped take");
+    await c.context().close();
+    ok("one letter: the result's headline and grade panel agree (C uncapped, F capped)");
   }
   // no faults, fallback, bad replay
   {
@@ -367,12 +420,12 @@ try {
     const first = await tid(p, "near-miss-0-text").textContent();
     assert.match(first, /^Your head was further forward than the trainer's for part of the move, not long enough to count \(held for 50 of the 60 frames needed\)\.$/);
     assert.match(await tid(p, "near-misses").textContent(), /did not cost you any points/);
-    // after "What to fix", and the explained_by item (shoulder tilt) is not shown
+    // after "Mistakes you repeated", and the explained_by item (shoulder tilt) is not shown
     const order = await p.evaluate(() => {
       const a = document.querySelector(".sr-faults"), b = document.querySelector('[data-testid="near-misses"]');
       return !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
-    assert.ok(order, "Close calls follow What to fix");
+    assert.ok(order, "Close calls follow Mistakes you repeated");
     assert.ok(!/shoulder/.test(await tid(p, "near-misses").textContent()));
     const atS = Number(await attr(p, "near-miss-1", "data-at-s")); // trunk lean, follower frame 45
     await tid(p, "near-miss-1").click();
@@ -381,7 +434,7 @@ try {
     assert.ok(Math.abs(t - atS) <= 1 / 30, `clock ${t}, close call at ${atS}`);
     assert.ok(atS > 1.4 && atS < 1.6, `frame 45 is about 1.5 s, got ${atS}`);
     await p.context().close();
-    ok("close calls: three rows after What to fix, wording from Part 5's numbers, a tap moves the clock, explained_by hidden");
+    ok("close calls: three rows after Mistakes you repeated, wording from Part 5's numbers, a tap moves the clock, explained_by hidden");
     for (const kase of ["ok", "nearmiss-empty"]) { // 1.2.0 without the field, and 1.8.0 listing none
       const o = await open(kase);
       assert.equal(await o.getByTestId("near-misses").count(), 0, `${kase}: no close calls section`);
@@ -441,7 +494,78 @@ try {
     assert.ok(dimmed.every((l) => l.level === "warn" && /dims left_wrist/.test(l.detail.report)), JSON.stringify(dimmed));
     ok("a view that dims joints posts one body_dimmed client log event");
   }
-  assert.deepEqual(errors, []);
+  // TICKET-331: a fake follow take whose movement the trainer deleted (harness case "orphan"); signed in, so the owner's calls would
+  // be made if the page did not skip them. A 404 on any of them would also surface in `errors` (not an ignored URL).
+  {
+    const gone = await open("orphan");
+    const present = await open("orphan-present");
+    const read = (page) => page.evaluate(() => ({
+      req: window.__req.slice(),
+      note: document.querySelector('[data-testid="orphan-note"]')?.textContent || null,
+      retry: document.querySelectorAll('[data-testid="summary-retry"], [data-testid="record-again"]').length,
+      dead: document.querySelectorAll('a[href^="#/follow/"], a[href^="#/watch/"]').length,
+      videosNote: document.querySelector('[data-testid="orphan-videos-note"]')?.textContent || null,
+      score: document.querySelector('[data-testid="score"], [data-testid="summary-score"]')?.textContent || null,
+      stage: !!document.querySelector('[data-testid="stage"]'),
+      compare: !!document.querySelector('[data-testid="compare"]'),
+    }));
+    const g = await read(gone);
+    assert.equal(g.note, "The trainer removed this movement. Your take and its result are still here.");
+    assert.equal(g.retry, 0, "no Retry set and no Record again");
+    assert.equal(g.dead, 0, "no link to the deleted movement");
+    assert.match(g.videosNote, /trainer's video is no longer available/);
+    assert.deepEqual(g.req, [], "none of the entry-dependent calls was made");
+    assert.ok(g.score && g.stage && g.compare, "the score, the stage and the 3D compare still render");
+    await gone.screenshot({ path: path.join(SHOTS, "orphan-take-top.png") });
+    await gone.screenshot({ path: path.join(SHOTS, "orphan-take-full.png"), fullPage: true });
+    ok("TICKET-331 an orphaned take shows the note, no dead links, the Videos note, and makes no entry-dependent call");
+    const p = await read(present);
+    assert.equal(p.note, null);
+    assert.equal(p.videosNote, null);
+    assert.ok(p.retry >= 1, "an existing movement keeps Retry set");
+    ok("TICKET-331 negative: a take whose movement exists shows none of it");
+    await gone.context().close();
+    await present.context().close();
+  }
+  {
+    // TICKET-322 AC-S14: the trainer's clip plays on the result page, so the entry's source and licence show beside the take's
+    const openSource = async (kase) => {
+      const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
+      const page = await ctx.newPage();
+      page.on("pageerror", (e) => errors.push(`source ${kase}: ${e.message}`));
+      await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/result-source.html?case=${kase}`);
+      await page.waitForFunction(() => window.__ready === true, null, { timeout: 60000 });
+      await page.waitForTimeout(800);
+      return page;
+    };
+    const cc = await openSource("cc");
+    const block = cc.getByTestId("result-entry-source");
+    assert.equal(await block.count(), 1, "the entry credit shows");
+    assert.equal(await block.isVisible(), true);
+    assert.equal(await cc.getByTestId("result-entry-source-lead").textContent(), "Trainer's video:");
+    const lic = cc.getByTestId("result-entry-source-licence-link");
+    assert.equal(await lic.getAttribute("href"), "https://creativecommons.org/licenses/by/4.0/");
+    assert.equal(await lic.getAttribute("rel"), "noopener noreferrer");
+    assert.equal(await lic.getAttribute("target"), "_blank");
+    assert.equal(await cc.getByTestId("result-entry-source-changes").textContent(), "Changes: Simon re-encodes the clip, may cut its length and builds a 3D model from it.");
+    assert.equal(await cc.getByTestId("result-entry-source-link").getAttribute("href"), "https://mmfit.github.io/");
+    assert.equal(await cc.getByTestId("result-entry-source-edit").count(), 0, "read-only: no edit form here");
+    await cc.screenshot({ path: path.join(SHOTS, "result-entry-source.png"), fullPage: true });
+    ok("TICKET-322 the CC BY entry credit shows with its licence link, changes line and Trainer's video lead");
+    const none = await openSource("none");
+    assert.equal(await none.getByTestId("result-entry-source").count(), 0);
+    ok("TICKET-322 negative: an entry with no source shows no credit block");
+    const alone = await openSource("notrainer");
+    assert.equal(await alone.getByTestId("result-entry-source").count(), 0);
+    assert.equal(await alone.getByTestId("result-entry-source-slot").count(), 0, "no slot without a trainer video");
+    assert.equal((await alone.evaluate(() => window.__req)).some((u) => u.includes("api/source/entry/")), false, "no entry source request");
+    ok("TICKET-322 negative: no trainer video, no entry credit slot and no request");
+    const mine = await openSource("mine");
+    assert.equal(await mine.getByTestId("result-entry-source-edit").count(), 0, "the owner edits on the watch page, not here");
+    ok("TICKET-322 the owner sees no entry edit form on the result page");
+    for (const pg of [cc, none, alone, mine]) await pg.context().close();
+  }
+  assert.deepEqual(errors, [], JSON.stringify(errors));
   ok("no console errors");
   console.log(`# pass ${passed}`);
 } catch (err) {

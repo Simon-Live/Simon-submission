@@ -1,0 +1,35 @@
+{
+  "models": [
+    {
+      "glb": "models/library/ual2-mannequin-f/model.glb",
+      "id": "ual2-mannequin-f",
+      "licence": {
+        "attribution": "Quaternius, Universal Animation Library 2 (CC0 1.0)",
+        "id": "CC0"
+      },
+      "manifest": "models/library/ual2-mannequin-f/character.json",
+      "name": "Mannequin (female)"
+    },
+    {
+      "glb": "models/library/ual1-mannequin/model.glb",
+      "id": "ual1-mannequin",
+      "licence": {
+        "attribution": "Quaternius, Universal Animation Library (CC0 1.0)",
+        "id": "CC0"
+      },
+      "manifest": "models/library/ual1-mannequin/character.json",
+      "name": "Mannequin"
+    },
+    {
+      "glb": "models/library/rigged-figure/model.glb",
+      "id": "rigged-figure",
+      "licence": {
+        "attribution": "Rigged Figure by Cesium (c) 2017, CC BY 4.0",
+        "id": "CC-BY"
+      },
+      "manifest": "models/library/rigged-figure/character.json",
+      "name": "Rigged Figure"
+    }
+  ],
+  "schema": "simon.model-library.v1"
+}

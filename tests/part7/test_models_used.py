@@ -94,8 +94,8 @@ def test_live_run_names_every_model_with_times(tmp_path: Path) -> None:
     doc = models_used.collect(tmp_path, "bbbbbbbbbbb1")
     assert doc is not None and doc["job_seconds"] == 167.0
     r = rows(doc)
-    assert [m["id"] for m in doc["models"]] == ["sam31-trainer", "spark-sections", "sam31-you", "sam3d-you",
-                                                 "spark-phrasing"]
+    assert [m["id"] for m in doc["models"]] == ["sam31-trainer", "spark-sections", "narration", "sam31-you", "sam3d-you",
+                                                 "mhr-you", "spark-phrasing", "glimmer-phrasing", "spark-opinion", "mms-tts"]
     assert (r["sam31-trainer"]["status"], r["sam31-trainer"]["seconds"], r["sam31-trainer"]["facts"]["frames"]) == \
         ("live", 41.2, 200)
     assert (r["spark-sections"]["status"], r["spark-sections"]["facts"]["repetitions"]) == ("live", 3)

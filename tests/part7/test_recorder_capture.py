@@ -33,7 +33,8 @@ def test_existing_testids_kept():
 def test_option_lists_follow_spec():
     c = src("countdown")
     assert "COUNTDOWNS = [0, 3, 5, 10]" in c
-    assert "DURATIONS = [0, 5, 10, 15, 20, 30, 45, 60]" in c
+    assert "DURATIONS = [0, 5, 6, 10, 15, 20, 30, 45, 60]" in c  # 6 s: the Quick take (TICKET-260)
+    assert "QUICK_TAKE = { countdown: 3, duration: 6 }" in c
     assert "countdown: 5, duration: 15" in c
     assert "RAW_LIMIT_S = 90" in c
 

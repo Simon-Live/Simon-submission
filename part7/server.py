@@ -23,11 +23,22 @@ from urllib.parse import urlsplit
 import uuid
 
 from part7 import (
-    animation_format, applog, auth, auth_routes, buildinfo, challenge_routes, client_log, config, delete_routes, export_routes, heartbeat,
-    health_probe, history_routes, history_store, idempotency, identity, jobs, labels, media, mesh_files, models_used, modes, modules, narration_routes,
-    people, people_routes, private_mode, processor, proxy, quota, refused_uploads, replay, result_media, resume, sections, speech_routes,
-    teacher_routes,
+    animation_format, applog, attribution, auth, auth_routes, buildinfo, challenge_routes, client_log, config, delete_routes, entry_check, export_data_routes, export_routes, heartbeat,
+    health_probe, history_routes, history_store, idempotency, identity, jobs, judge_view, labels, media, mesh_files, mesh_stream_routes, model_import, model_only, models_used, modes, modules, muse_fix_routes, narration_routes,
+    devices_routes, my_reference, my_reference_routes, notes_routes, people, people_routes, private_mode, profile_routes, processor, proxy, quota, reference_approval_routes, refused_uploads, replay, result_media, resume, sections, selfheal, share_routes, speech_routes,
+    source_routes, progress_routes, teacher_routes,
+    takes_on_routes,
+    architecture, impact,
+    group,  # one-letter.md L5: a group job's people carry `shown` at read time
 )
+from part7 import take_ar, take_ar_url
+from part7 import heat  # TICKET-274: heat on the follower's own body
+from part7 import orphan_take  # TICKET-331: a follow take whose movement was deleted
+from part7 import gpu_lock  # TICKET-289: api/health gpu block
+from part7 import ghost, stage_split  # TICKET-264 follow the ghost, TICKET-260 stage split
+from part7 import p2_warmup
+from part7 import notices_routes  # TICKET-326: the footer's Licences link
+from part7 import mirrored as mirrored_take  # TICKET-310: the person says an upload is a mirrored video
 from part7.parts import p5_analyse
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -38,6 +49,7 @@ NAME_MAX = 80
 DRAIN_LIMIT = 300_000_000  # an oversized upload is read and dropped up to here so the browser sees the 413
 DURATION_SLACK_S = 0.5  # MediaRecorder stops a little after its 60 s timer
 TRIM_END_SLACK_MS = 1500  # a trim end this far past the probed length is cut at the end (the recorder clock runs long)
+UNSET_TRIM = {"start_ms": 0, "end_ms": 0}  # TICKET-309: what a trim editor sends before it knows the length
 JSON_BODY_MAX = 65536
 CHUNK = 1 << 20
 
@@ -99,8 +111,8 @@ def phrasing_from_env() -> str:
 
 
 SLOW_REQUEST_S = 2.0
-DRAIN_ROUTES = frozenset({"uploads", "trainer", "follow", "people", "group"})  # POSTs that start work
-SLOW_UPLOAD_S = 20.0  # a POST api/uploads carries the visitor's file: transfer time is part of it
+DRAIN_ROUTES = frozenset({"uploads", "trainer", "follow", "people", "group", "models"})  # POSTs that start work (models: TICKET-306)
+SLOW_UPLOAD_S = 20.0  # a POST api/uploads or api/models carries the visitor's file: transfer time is part of it
 SLOW_MEDIA_S = 10.0  # media GETs stream; the limit applies to the time to the first byte (headers out)
 MEDIA_SUFFIXES = (".mp4", ".webm", ".mov")
 
@@ -116,19 +128,22 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
 class _Handler(BaseHTTPRequestHandler):
     _body_cache: bytes | None = None  # a JSON body read early by the Idempotency-Key check
     app: App
+    _expected_busy = False  # set per request by a route whose 5xx is busy by design (speech_routes.py)
     server_version = "Simon7"
     sys_version = ""
 
     # ----- plumbing -------------------------------------------------------------------------
     def log_message(self, fmt: str, *args: Any) -> None:
-        sys.stderr.write(f"{self.log_date_time_string()} {fmt % args}\n")
+        line = re.sub(r"(/api/shared/)[^/\s?\"]+", r"\1<token>", fmt % args)  # TICKET-233: a share token is never logged
+        sys.stderr.write(f"{self.log_date_time_string()} {line}\n")
 
     def _send(self, status: int, body: bytes, ctype: str, extra: dict[str, str] | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Referrer-Policy", "no-referrer")  # a sign-in link or a job id in the URL never travels onward
+        if not any(key.lower() == "referrer-policy" for key in (extra or {})):  # a route that names it itself is not sent it twice
+            self.send_header("Referrer-Policy", "no-referrer")  # a sign-in link or a job id in the URL never travels onward
         for key, value in (extra or {}).items():
             self.send_header(key, value)
         self.end_headers()
@@ -203,6 +218,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _dispatch(self) -> None:
         self._answered = False
         self._status = 0
+        self._expected_busy = False  # a route sets it on an answer that is busy by design (speech_routes.py)
         self._first_byte = None
         t0 = time.monotonic()
         try:
@@ -214,7 +230,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _slow_limit(self, rest: str | None) -> tuple[float, bool]:
         """(limit in seconds, whether it applies to the time to first byte) for this route (observability.md)."""
-        if self.command == "POST" and rest == "api/uploads":
+        if self.command == "POST" and rest in ("api/uploads", "api/models"):
             return applog.env_float("SIMON7_SLOW_UPLOAD_S", SLOW_UPLOAD_S), False
         if self.command in ("GET", "HEAD") and rest is not None and rest.lower().endswith(MEDIA_SUFFIXES):
             return applog.env_float("SIMON7_SLOW_MEDIA_S", SLOW_MEDIA_S), True
@@ -232,14 +248,21 @@ class _Handler(BaseHTTPRequestHandler):
         limit, on_first_byte = self._slow_limit(rest)
         if (first_byte_s if on_first_byte and first_byte_s is not None else seconds) > limit:
             applog.anomaly("slow_request", **fields)
-        if self._status >= 500:
+        if self._status >= 500 and self._expected_busy:  # a designed "try again shortly": one INFO line, no anomaly
+            applog.log(f"{self.command} {fields['path']} answered {self._status} (busy by design)")
+        elif self._status >= 500:
             applog.anomaly("http_5xx", **fields)
 
     def _timed_route(self) -> None:
         try:
             self._route()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # the client closed the connection mid-answer: not a server fault, so no ERROR and no traceback (TICKET-204)
+            applog.log(f"client closed the connection during {self.command} {urlsplit(self.path).path}")
+            self.close_connection = True
         except Exception as exc:  # a handler bug: logged with the request, the visitor gets a plain 500
             applog.log(f"{self.command} {urlsplit(self.path).path} crashed: {applog.cause(exc)}", level=logging.ERROR)
+            selfheal.note_crash(self.command, self._rest() or urlsplit(self.path).path, exc)  # names the type in the 5xx finding
             if self._answered:  # headers (and maybe part of a body) already went out: end the connection instead
                 self.close_connection = True
                 return
@@ -349,11 +372,49 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if mesh_files.handle(self, method, route):  # each person's SAM 3D Body mesh (result-redesign-additions.md R3)
             return
+        if heat.handle(self, method, route):  # heat on the follower's own body (heat.md)
+            return
+        if mesh_stream_routes.handle(self, method, route):  # the follower's body while the job runs, owner only (mesh-stream.md)
+            return
+        if muse_fix_routes.handle(self, method, route):  # the corrected-pose picture and the blind referee (muse-fix-ui.md)
+            return
+        if take_ar_url.handle(self, method, route):  # owner-only short-lived signed link to a take file (take-ar.md)
+            return
+        if take_ar.handle(self, method, route):  # the rigged, animated take as GLB and USDZ for AR (take-ar.md)
+            return
+        if model_import.handle(self, method, route):  # imported character models (model-import.md)
+            return
+        if share_routes.handle(self, method, route):  # share links, api/shares and api/shared (share.md)
+            return
+        if progress_routes.handle(self, method, route):  # home programme and progress sheet (progress-sheet.md, TICKET-283)
+            return
         if auth_routes.handle(self, method, route):  # opt-in sign-in and api/me (identity.md)
+            return
+        if profile_routes.handle(self, method, route):  # profile and avatars (profile.md)
+            return
+        if devices_routes.handle(self, method, route):  # signed-in devices (devices.md)
+            return
+        if export_data_routes.handle(self, method, route):  # download my data (export-data.md)
+            return
+        if my_reference_routes.handle(self, method, route):  # my reference (my-reference.md)
+            return
+        if reference_approval_routes.handle(self, method, route):  # a teacher approves a take as the reference (my-reference.md)
+            return
+        if notes_routes.handle(self, method, route):  # ask the trainer for a note (notes.md)
+            return
+        if source_routes.handle(self, method, route):  # source and licence credit of an entry or a take (source-credit.md)
             return
         if people_routes.handle(self, method, route):  # people choice and group mode (people.md)
             return
         if speech_routes.handle(self, method, route):  # spoken feedback lines (voice.md)
+            return
+        if judge_view.handle(self, method, route):  # the hero take of the judge view (judge-view.md)
+            return
+        if ghost.handle(self, method, route):  # the trainer's 2D ghost over the live preview (follow-ghost.md)
+            return
+        if impact.handle(self, method, route):  # the Impact page's persona takes (impact-page.md)
+            return
+        if architecture.handle(self, method, route):  # the architecture page's diagrams (impact-page.md)
             return
         if challenge_routes.handle(self, method, route):  # challenges and leaderboards (challenges.md)
             return
@@ -361,11 +422,15 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if teacher_routes.handle(self, method, route):  # the teacher page (teacher-dashboard.md)
             return
+        if takes_on_routes.handle(self, method, route):  # takes on this movement (takes-on-movement.md)
+            return
         if export_routes.handle(self, method, route):  # split-screen mp4 export (export-clip.md)
             return
         if narration_routes.handle(self, method, route):  # the trainer's spoken cues (narration.md)
             return
         if history_routes.handle(self, method, route):  # the student's history, api/me/history (history.md)
+            return
+        if notices_routes.handle(self, method, route):  # the third-party notices of this build (version-footer.md)
             return
         if method in ("GET", "HEAD"):
             if route == "health":
@@ -376,10 +441,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._config()
             if route == "fixture-result":
                 return self._fixture()
-            if route == "labels":
-                return self._json(200, labels.all_labels(self.app.state))
+            if route == "labels":  # an entry its owner keeps to "only me" is listed to that owner alone (identity.md)
+                return self._json(200, {k: v for k, v in labels.all_labels(self.app.state).items() if auth.may_view_entry(self, k)})
             if len(parts) == 2 and parts[0] == "labels":
-                found = labels.get(self.app.state, parts[1])
+                found = labels.view(self.app.state, parts[1]) if auth.may_view_entry(self, parts[1]) else None
                 return self._json(200, found) if found is not None else self._error(404, "No labels for this movement.")
             if len(parts) == 2 and parts[0] == "jobs":
                 return self._job(parts[1])
@@ -402,9 +467,13 @@ class _Handler(BaseHTTPRequestHandler):
             "part6": part6,
             "pins": app.lock.shas_short(),
             "queue": app.queue.counts(),
+            "gpu": gpu_lock.gpu_status(),  # TICKET-289: an outside GPU holder shows beside an idle queue (no pids)
             "draining": app.queue.draining,
+            "jobs": "run" if app.queue.owner else "standby",  # standby: a restart's new build, before the queue lock
             "gpu_jobs_today": app.quota.gpu_jobs_today(),
             "build": app.build,
+            "fake": False,  # the test stand-in (tests/part7/fake_api.py) answers true; the web shows a banner for it
+            "selfheal": selfheal.status(app.state),
         }
         self._json(200 if up else 503, doc)
 
@@ -448,6 +517,18 @@ class _Handler(BaseHTTPRequestHandler):
         job = self.app.queue.get(job_id) if jobs.JOB_ID_RE.match(job_id) else None
         if job is None:
             return self._error(404, "This job was not found.")
+        if job.get("kind") == "follow":  # the author line of a follower result (docs/specs/attribution.md)
+            job = {**job, model_only.FIELD: model_only.kept(job), "attribution": attribution.for_take(self, job_id, job.get("entry_id"))}
+            # narration only when there is one; owner-only routes are asked only when attribution.mine (AC-AU-12: the one viewer field)
+            job["narration"] = narration_routes.has_narration(self, job.get("entry_id"))
+            job["entry_gone"] = orphan_take.entry_gone(self, job.get("entry_id"))  # TICKET-331: the trainer deleted the movement
+            if isinstance(job.get("reference"), dict):  # the id of the reference take and the teacher link are the owner's (ADR-0019)
+                job["reference"] = my_reference.visible(job["reference"], job["attribution"].get("mine") is True)
+            if job.get("status") in ("done", "failed"):  # the measured stage split (judge-take.md, TICKET-260)
+                job["timing"] = stage_split.split(self.app.queue, job_id, job)
+            job["mesh_stream"] = mesh_stream_routes.hint(self, job)  # null unless the caller owns this running job
+        elif job.get("kind") == "group":  # each person's shown score, read now, so a result stored before it says why F
+            job = group.with_shown(job, self.app.queue.job_dir(job_id))
         self._json(200, job)
 
     def _result(self, job_id: str, name: str) -> None:
@@ -462,6 +543,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._error(422, "The replay file does not match its contract.", problems=problems)
         else:
             raw = path.read_bytes()
+        if not model_only.kept(self.app.queue.get(job_id)):  # model-only-take.md: the web keys on video_kept === false
+            raw = model_only.mark(raw)
         self._send(200, raw, "application/json; charset=utf-8")
 
     def _static(self, rest: str) -> None:
@@ -473,7 +556,11 @@ class _Handler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if target.suffix in (".js", ".mjs"):
             ctype = "text/javascript"
-        self._send(200, target.read_bytes(), ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""))
+        body = target.read_bytes()
+        if rel == "index.html":
+            body = judge_view.page_with_profile(body)  # the judge URL opens in the submission profile (judge-view.md)
+            p2_warmup.maybe_start(self.app, urlsplit(self.path).query)  # TICKET-260: prime the warm worker (p2-warmup.md)
+        self._send(200, body, ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""))
 
     # ----- uploads ----------------------------------------------------------------------------
     def _drain(self, length: int) -> None:
@@ -589,6 +676,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._error(400, MSG_NOT_VIDEO)
             return None
         trim = doc.get("trim")
+        # TICKET-309: Continue pressed before the browser read the length is no selection: the whole clip
+        if trim == UNSET_TRIM and not any(isinstance(v, bool) for v in trim.values()):
+            applog.log(f"trim 0-0 ms on a {duration_ms} ms clip ({raw.suffix}) is no selection, the whole clip is used")
+            trim = None
         if trim is None:
             if duration_ms > (config.MAX_CLIP_SECONDS + DURATION_SLACK_S) * 1000:
                 self._error(413, MSG_TOO_LONG)
@@ -658,12 +749,15 @@ class _Handler(BaseHTTPRequestHandler):
         if clip is None:
             return
         trim, record, person = clip
+        mirrored = mirrored_take.take(doc, record)  # TICKET-310: kept on the job record, Part 3 flips left and right
         state = self.app.state
-        on_entry = (lambda entry_id: labels.save(state, entry_id, entry_labels)) if entry_labels is not None else None
+        floor = doc.get("floor_work") is True  # the owner's checkbox (floor-work.md)
+        on_entry = labels.entry_saver(state, entry_labels, floor)
         on_entry = auth.on_entry(self, on_entry)  # the signed-in person owns the new entry (identity.md)
         fn = processor.trainer_job(
             raw, name=name, category=category, catalog=self.app.child.catalog_dir, lock=self.app.lock,
-            backend=self.app.backend, trim=trim, on_entry=on_entry, person=person,
+            backend=self.app.backend, trim=trim, on_entry=on_entry, person=person, review_state=state,
+            mirrored=mirrored, floor_work=floor,
         )
         self._enqueue("trainer", fn, _resume=resume.trainer_spec(doc, name, category, person), **record)
 
@@ -689,6 +783,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         trim, record, person = clip
         record.update(practice)
+        mirrored = mirrored_take.take(doc, record)  # TICKET-310
         record["upload_id"] = str(doc.get("upload_id"))  # so a deleted take can drop its raw upload (delete_routes.py)
         lang = doc.get("lang")  # the language the person picked (lang-picker.js); kept in job.json
         if isinstance(lang, str) and LANG_RE.match(lang):
@@ -702,6 +797,7 @@ class _Handler(BaseHTTPRequestHandler):
         manifest = self.app.child.get_entry(entry_id) if ID_RE.match(entry_id) else None
         if manifest is None:
             return self._error(404, MSG_NO_ENTRY)
+        self._entry_mode(record, entry_id, manifest)  # TICKET-311: the entry's kind decides the scoring profile
         expected = self._expected_clip(entry_id, manifest)
         if expected is None:
             return
@@ -710,8 +806,12 @@ class _Handler(BaseHTTPRequestHandler):
                 expected = sections.cut(expected, record["section"])
             except sections.SectionError as exc:
                 return self._error(400, str(exc))
+        grouped = my_reference.is_group(self.app.queue, record)  # a person of a real group video is scored against the teacher
+        choice = my_reference.choose(self.app.state, auth.current_user(self), entry_id, expected, record.get("section"), grouped)  # ADR-0019
+        expected = choice.expected
+        record["reference"] = choice.record  # the result always says which reference was used
         skeleton = manifest.get("skeleton")
-        visibility = self.app.child.get_entry_file(entry_id, str(skeleton)) if skeleton else None
+        visibility = self.app.child.get_entry_file(entry_id, str(skeleton)) if skeleton and not choice.own else None  # the teacher's visibility describes the teacher's body, not the reference's
         # Private mode for this take (private-mode.md): Part 7 keeps the feedback wording local and sends no trainer
         # video to Part 5. Part 2 still sends frames to SAM 3.1 when a Meta key exists. True/False in the request
         # wins over SIMON7_PRIVATE; absent leaves it to the env.
@@ -720,13 +820,26 @@ class _Handler(BaseHTTPRequestHandler):
             record["private"] = True
         video_name = (manifest.get("video_uri")
                       if self.app.phrasing == "live" and not private_mode.enabled(job_flag=private) else None)
-        trainer_video = self.app.child.get_entry_file(entry_id, str(video_name)) if video_name else None
+        trainer_video = self.app.child.get_entry_file(entry_id, str(video_name)) if video_name and not choice.own else None  # Part 5's second opinion compares with the teacher's video
+        model_choice = model_only.requested(doc)  # "Use my 3D model instead of video" (model-only-take.md)
+        if model_choice:
+            record[model_only.FIELD] = False
+        drop_source = (model_only.source_dropper(self.app.queue, self.app.uploads, str(doc.get("upload_id")), record.get("people_job"))
+                       if model_choice else None)
         fn = processor.follow_job(
             raw, expected=expected, entry_id=entry_id, phrasing=self.app.phrasing, lock=self.app.lock,
             backend=self.app.backend, trim=trim, person=person, visibility=visibility,
             mode=record.get("mode"), lang=record.get("lang"), trainer_video=trainer_video, private=private,
+            video_kept=not model_choice, drop_source=drop_source, mirrored=mirrored,
+            floor_work=labels.floor_work(self.app.state, entry_id),
         )
         self._enqueue("follow", fn, entry_id=entry_id, _resume=resume.follow_spec(doc, person), **record)
+
+    def _entry_mode(self, record: dict[str, Any], entry_id: str, manifest: dict[str, Any]) -> None:
+        """Replace a posted mode with the entry's own (rehab tag, else category); a mismatch is logged (modes.py)."""
+        if "mode" in record:
+            tags = (labels.get(self.app.state, entry_id) or {}).get("tags")
+            record["mode"] = modes.decide(record["mode"], modes.of_entry(manifest, tags), entry_id)
 
     def _practice(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         """The optional `mode` and `section` of a request as job-record fields; answers 400 itself, returns None."""
@@ -761,14 +874,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _skeleton_accepted(self, data: bytes) -> bool:
         """Part 5's doctor decides whether a skeleton-only entry can be the expected clip."""
-        scratch = self.app.state / "tmp" / uuid.uuid4().hex[:12]
-        scratch.mkdir(parents=True)
-        try:
-            (scratch / "expected.json").write_bytes(data)
-            step = p5_analyse.doctor(scratch / "expected.json", scratch, consumer="part5", lock=self.app.lock)
-            return step["exit"] == 0
-        finally:
-            shutil.rmtree(scratch, ignore_errors=True)
+        return p5_analyse.accepts_expected(data, self.app.state / "tmp", self.app.lock)
 
 
 def _fixture_files() -> tuple[Path, Path]:
@@ -796,6 +902,7 @@ def build_app(
         build=buildinfo.collect(config.REPO_ROOT),
     )
     app.uploads.mkdir(parents=True, exist_ok=True)
+    selfheal.configure(root)
     _clean_uploads(app.uploads)
     refused_uploads.sweep(app.state)
     app.queue.on_cleanup = lambda: _sweep(app)  # with each job sweep, so a long-running server also frees them
@@ -812,6 +919,10 @@ def _sweep(app: App) -> None:
         refused_uploads.sweep(app.state)
     except OSError as exc:  # kept evidence must not stop the job sweep
         applog.log(f"refused uploads: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
+    try:
+        entry_check.sweep(app.state, app.child.catalog_dir, app.queue)  # saved videos still match their recordings
+    except Exception as exc:  # the content check must not stop the job sweep
+        applog.log(f"entry check: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
     try:
         history_store.sweep(app.state)
     except Exception as exc:  # a history fault must not stop the job sweep
@@ -840,7 +951,12 @@ def _drain_then_stop(queue: jobs.JobQueue, server: ThreadingHTTPServer) -> None:
     """SIGTERM: refuse new jobs, let the running ones finish (up to SIMON7_DRAIN_MAX_S), then stop serving."""
     try:
         applog.log(f"SIGTERM: draining, at most {config.drain_max_s():.0f} s")
-        queue.drain(config.drain_max_s())
+        deadline = time.monotonic() + config.drain_max_s()  # one max for the take jobs and the model jobs
+        model_import.begin_drain()  # TICKET-306: no model job starts here any more
+        cut = queue.drain(config.drain_max_s())
+        cut += model_import.drain(deadline)
+        if not cut:
+            selfheal.record("restart_drain")  # drained clean; a cut-off job marks it through ANOMALY drain_cut_off
     finally:
         server.shutdown()
 
@@ -858,7 +974,7 @@ def cli_serve(
     base = config.normalize_base_path(base_path)
     log_path = applog.setup(state)  # first: the queue logs jobs a restart interrupted while it loads
     applog.log(f"serve start: pid {os.getpid()} on {host}:{port}{base}, state {Path(state)}, log {log_path}")
-    if follow_url is None and not os.environ.get("STAGING_BASE_PATH"):
+    if follow_url is None and config.staging_route() is None:
         follow_url = f"http://{host}:{port}{base}#/follow/{{id}}"
     child = p6_catalog.Child(
         catalog_dir=Path(state) / "catalog", base_path=base, follow_url=follow_url, state=Path(state)
@@ -871,7 +987,10 @@ def cli_serve(
     app = build_app(state, base, child=child)
     applog.log(f"serve ready: build {app.build.get('short')}, pins {app.lock.shas_short()}")
     p5_analyse.warm(app.lock)  # the Part 5 probes run off the request path; api/config reads the cached answer
-    p2_pose.start_workers(state, app.lock)  # the one warm Part 2 worker for `run`, when enabled and the pin has it
+    # The one warm Part 2 worker for `run`, when enabled and the pin has it. A standby (the new build of a restart,
+    # TICKET-240) starts it once it takes the queue lock: its sockets live in the shared state folder.
+    applog.log(p2_pose.warm_workers_note(state))  # GPU guard: resident workers on staging only
+    app.queue.when_owner(lambda: p2_pose.start_workers(state, app.lock))
     server = make_server(app, host, port)
     beat = heartbeat.Heartbeat(app.queue, state).start()  # one line a minute; stops with the server
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(
