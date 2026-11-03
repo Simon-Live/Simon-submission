@@ -34,6 +34,7 @@ export function renderLegal(el, page, others = []) {
     h("header", { class: "lg-head" },
       h("h1", { text: page.title }),
       h("p", { class: "lg-updated", "data-testid": "legal-updated", text: page.updated }),
+      page.notice ? h("p", { class: "lg-notice", role: "note", "data-testid": "legal-standin", text: page.notice }) : null,
       h("p", { class: "lg-lead", text: page.lead })),
     contents,
     sections,

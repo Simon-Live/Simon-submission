@@ -1,4 +1,4 @@
-// `#/about` and `#/safety`: the business pages for simon.live (model/legal.js words,
+// `#/about`, `#/safety` and the legal stand-ins (`#/privacy`, `#/terms`, ...): the business pages for simon.live (model/legal.js words,
 // views/legal.js drawing). Static words: nothing is fetched.
 import { clear, ensureCss } from "./ui.js";
 import { PAGES, legalPage } from "./model/legal.js";

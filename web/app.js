@@ -184,7 +184,7 @@ export const ROUTES = [
   [/^me\/([^/]+)$/, (el, m) => mountHistoryRoute(el, m[1])],
   [/^impact$/, (el) => mountLazy(el, "./impact.js", "mountImpact")], // who Simon is for: persona cards (impact-page.md)
   [/^architecture$/, (el) => mountLazy(el, "./architecture.js", "mountArchitecture")], // the three diagrams of docs/ARCHITECTURE.md
-  [/^(about|safety)$/, (el, m) => mountLegalRoute(el, m[1])], // About us and Health and safety (model/legal.js)
+  [/^(about|safety|privacy|terms|accessibility|biometric|dmca|sub-processors)$/, (el, m) => mountLegalRoute(el, m[1])], // the business pages and legal stand-ins (model/legal.js)
   [/^profile(?:\/.*)?$/, () => redirectToMe()], // the old profile address, and anything below it, opens the Me page
 ];
 

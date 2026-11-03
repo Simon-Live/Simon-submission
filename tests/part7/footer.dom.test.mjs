@@ -75,9 +75,8 @@ test("source and feedback are plain text; the only links are app pages and the c
   const hrefs = el.querySelectorAll("[href]").map((a) => a.getAttribute("href"));
   // simon.live's footer (2026-11-03): the brand's contact, then the app, company and legal columns
   assert.deepEqual(hrefs, ["mailto:hello@simon.live", "#/", "#/record", "#/impact", "#/architecture", "#/about", "mailto:hello@simon.live",
-    "#/me", "privacy", "terms", "accessibility", "#/safety", "api/notices"]);
-  // the go-live pages (part7/legal_pages.py) are app paths too
-  const app = (x) => x.startsWith("#/") || x.startsWith("api/") || ["privacy", "terms", "accessibility"].includes(x);
+    "#/me", "#/privacy", "#/terms", "#/accessibility", "#/biometric", "#/dmca", "#/sub-processors", "#/safety", "api/notices"]);
+  const app = (x) => x.startsWith("#/") || x.startsWith("api/");
   assert.ok(hrefs.every((x) => app(x) || x === "mailto:hello@simon.live"), "negative: no outside link");
   assert.equal(q(el, "footer-copyright").textContent, "© 2026 The Simon team");
 });

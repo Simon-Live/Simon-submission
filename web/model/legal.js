@@ -1,10 +1,11 @@
-// The business pages for simon.live (team, 2026-11-03): About us and Health and safety. Words only, no DOM:
-// views/legal.js draws them. The Terms, Privacy Policy, Accessibility and the other legal pages are the go-live work's
-// (docs/legal/, part7/legal_pages.py, under lawyer review); these pages link to them and say nothing that contradicts
-// them, and name no governing law, company or licence. A paragraph is a string, or a list of strings and links ({text, href}).
+// The business pages for simon.live (team, 2026-11-03): About us and Health and safety, and stand-ins for the
+// legal pages (Privacy, Terms, Accessibility, Biometric data, Copyright, Who processes your data) until the go-live
+// work's lawyer-reviewed versions (docs/legal/, part7/legal_pages.py) replace them. Words only, no DOM: views/legal.js
+// draws them. Every fact is one the app states elsewhere (consent.js, model/me.js); none names a governing law,
+// company, address or licence. A paragraph is a string, or a list of strings and links ({text, href}).
 
 export const CONTACT = "hello@simon.live";
-export const TEAM = ["the team", "Mo Alborati", "Shruti Doshi"];
+export const TEAM = ["Mo Alborati", "Shruti Doshi"];   // in this order (team, 2026-11-03)
 export const UPDATED = "3 November 2026";
 export const COPYRIGHT = "© 2026 The Simon team";
 
@@ -45,7 +46,7 @@ export const PAGES = {
     lead: "Simon gives feedback on how you move. It is not a doctor, physiotherapist or coach watching you.",
     sections: [
       { id: "advice", heading: "Not medical advice", body: [
-        ["Simon's scores, cues and comparisons are for practice only. They are not medical or professional advice, a diagnosis or a treatment plan, and they can be wrong. The ", link("Terms", "terms"), " say the same."],
+        ["Simon's scores, cues and comparisons are for practice only. They are not medical or professional advice, a diagnosis or a treatment plan, and they can be wrong. The ", link("Terms", "#/terms"), " say the same."],
         "Talk to a doctor before you start a new exercise programme, especially if you are pregnant, injured, recovering from surgery, or have a heart, joint or other health condition.",
       ] },
       { id: "rehab", heading: "Rehab exercises", body: [
@@ -64,15 +65,139 @@ export const PAGES = {
     ],
   },
 
+  // Stand-ins (team, 2026-11-03) until the go-live work's lawyer-reviewed pages replace them: a notice that the
+  // full text is on its way, then only what the app already states. No governing law, company, address or licence.
+  privacy: {
+    route: "privacy",
+    title: "Privacy Policy",
+    standin: true,
+    lead: "Our full Privacy Policy is being finalised. Until it is published here, this is what Simon does with your data.",
+    sections: [
+      { id: "collect", heading: "What Simon uses", body: [
+        { list: [
+          "The videos you record or upload, and what Simon makes from them: body positions, 3D bodies, your score and feedback.",
+          "If you sign in (optional): your email address, used only to send sign-in mail, and which takes are yours.",
+          "A sign-in cookie, and your IP address to limit and protect the service. No advertising or tracking cookies.",
+        ] },
+      ] },
+      { id: "share", heading: "Where it goes", body: [
+        ["Analysing a movement uses AI models run by others, mainly Meta's Model API. ", link("Who processes your data", "#/sub-processors"), " lists each one and what it receives."],
+      ] },
+      { id: "keep", heading: "How long we keep it", body: [
+        "Takes are deleted after 7 days, or after 90 days if you chose to keep them while signed in. You can delete a take from its result sooner.",
+        ["Delete my data on the ", link("Me", "#/me"), " page removes your account and everything linked to it. Deleting cannot undo what was already sent to Meta's API for analysis."],
+      ] },
+      { id: "contact", heading: "Questions", body: [["Email ", mail, "."]] },
+    ],
+  },
+
+  terms: {
+    route: "terms",
+    title: "Terms of Service",
+    standin: true,
+    lead: "Our full Terms of Service are being finalised. Until they are published here, these are the ground rules for using Simon.",
+    sections: [
+      { id: "basics", heading: "The basics", body: [
+        { list: [
+          "Simon is for people aged 16 and older.",
+          ["Simon's scores and cues are approximate and for practice only. They are not medical or professional advice. Read ", link("Health and safety", "#/safety"), " before you start."],
+          "You keep ownership of the videos you record. You let Simon process them to give you your result and to run the features you choose, such as sharing or a challenge board.",
+          "Only record or upload people who agreed to it, and only content you have the rights to.",
+          "Do not use Simon to harass anyone, to break the law, or to overload or attack the service.",
+        ] },
+      ] },
+      { id: "contact", heading: "Questions", body: [["Email ", mail, "."]] },
+    ],
+  },
+
+  accessibility: {
+    route: "accessibility",
+    title: "Accessibility",
+    standin: true,
+    lead: "Our full accessibility statement is being finalised. We want everyone to be able to practise with Simon.",
+    sections: [
+      { id: "now", heading: "What Simon does today", body: [
+        { list: [
+          "Every button and link is at least 44 pixels, so it is easy to tap.",
+          "Motion is reduced when your device asks for reduced motion.",
+          "Controls carry labels for screen readers, and the pages work with a keyboard.",
+          "Feedback is written out in words, not shown only in colour.",
+        ] },
+      ] },
+      { id: "help", heading: "Tell us what gets in your way", body: [
+        ["If something in Simon is hard to use with your device or assistive technology, email ", mail, " or use the Feedback tab on the right edge of the screen. We read every message."],
+      ] },
+    ],
+  },
+
+  biometric: {
+    route: "biometric",
+    title: "Biometric data",
+    standin: true,
+    lead: "Our full biometric data notice is being finalised. Simon measures how your body moves; this is what that means.",
+    sections: [
+      { id: "what", heading: "What Simon measures", body: [
+        "From your video, Simon builds the positions of your joints and a 3D model of your body, to compare your movement with the trainer's.",
+        "Simon does not use your face or body to identify who you are, and it does not keep a template to recognise you later.",
+      ] },
+      { id: "keep", heading: "How long it is kept", body: [
+        "The body positions and 3D models are deleted with your take: after 7 days, or after 90 days if you chose to keep it while signed in, or sooner when you delete the take.",
+      ] },
+      { id: "contact", heading: "Questions", body: [["Email ", mail, "."]] },
+    ],
+  },
+
+  dmca: {
+    route: "dmca",
+    title: "Copyright and takedown",
+    standin: true,
+    lead: "Our full copyright policy is being finalised. If you believe something on Simon uses your work without permission, tell us.",
+    sections: [
+      { id: "report", heading: "How to report it", body: [
+        ["Email ", mail, " with:"],
+        { list: [
+          "the link to the movement, result or video on Simon;",
+          "a description of your work;",
+          "your name and how to reach you;",
+          "a statement that you own the work or may act for its owner.",
+        ] },
+        "We review every report and remove content that infringes someone's rights.",
+      ] },
+    ],
+  },
+
+  "sub-processors": {
+    route: "sub-processors",
+    title: "Who processes your data",
+    standin: true,
+    lead: "The full list of the services that process data for Simon is being finalised. These are the ones Simon uses today.",
+    sections: [
+      { id: "ai", heading: "AI models", body: [
+        { list: [
+          "Meta's Model API: frames of your video to find the people in it (SAM 3.1), and, for the features that use them, videos, a frame or speech for Muse Spark, Muse Image and Muse Voice Transcribe. Meta's terms say it does not use content sent to SAM 3.1 to train its models.",
+          "Baseten, which runs Muse Spark for Simon: the wording of your feedback, to phrase it.",
+          "Cloud GPU providers such as Modal, when your take is processed there: your video, to build the 3D bodies.",
+        ] },
+      ] },
+      { id: "device", heading: "On your device", body: [
+        "Live check, when you turn it on, downloads Google's MediaPipe code and model to your browser. It runs on your device, and no video frame leaves it for this.",
+      ] },
+      { id: "other", heading: "Running the service", body: [
+        ["Simon also uses hosting, network and email providers to serve the app and send sign-in mail. For the current list, email ", mail, "."],
+      ] },
+    ],
+  },
 };
 
 export const LEGAL_ROUTES = Object.keys(PAGES);
+export const STANDIN_NOTICE = "Summary for now. The full page is being reviewed and will replace this one.";
 
 /** The page for `key` with the shared parts every page shows: its last update and the contact line. Null for an unknown key. */
 export function legalPage(key) {
   const page = PAGES[key];
   if (!page) return null;
-  return { ...page, key, updated: `Last updated ${UPDATED}`, contents: page.sections.map((s) => ({ id: s.id, heading: s.heading })) };
+  return { ...page, key, updated: `Last updated ${UPDATED}`, contents: page.sections.map((s) => ({ id: s.id, heading: s.heading })),
+    notice: page.standin ? STANDIN_NOTICE : null };
 }
 
 // The footer's columns (team, 2026-11-03): the app, the company, the legal pages. Relative links only, so they
@@ -94,10 +219,13 @@ export const FOOTER_COLUMNS = [
     { label: "Your data", href: "#/me", testid: "footer-link-data" },
   ] },
   { title: "Legal", links: [
-    // the go-live pages (part7/legal_pages.py), first and with their test ids, so the two footers merge cleanly
-    { label: "Privacy", href: "privacy", testid: "footer-link-privacy" },
-    { label: "Terms", href: "terms", testid: "footer-link-terms" },
-    { label: "Accessibility", href: "accessibility", testid: "footer-link-accessibility" },
+    // the go-live pages' test ids; the hrefs open the stand-ins until part7/legal_pages.py serves the real pages
+    { label: "Privacy", href: "#/privacy", testid: "footer-link-privacy" },
+    { label: "Terms", href: "#/terms", testid: "footer-link-terms" },
+    { label: "Accessibility", href: "#/accessibility", testid: "footer-link-accessibility" },
+    { label: "Biometric data", href: "#/biometric", testid: "footer-link-biometric" },
+    { label: "Copyright", href: "#/dmca", testid: "footer-link-dmca" },
+    { label: "Who processes your data", href: "#/sub-processors", testid: "footer-link-sub-processors" },
     { label: "Health and safety", href: "#/safety", testid: "footer-link-safety" },
     { label: "Open-source notices", href: "api/notices", testid: "footer-link-licences" },
   ] },

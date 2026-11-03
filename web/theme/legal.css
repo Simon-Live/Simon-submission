@@ -4,6 +4,8 @@
 .lg-head { display: grid; gap: var(--space-2); border-bottom: 2px solid var(--color-pink); padding-bottom: var(--space-4); }
 .lg-head h1 { margin: 0; font-size: var(--text-xl); }
 .lg-updated { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.lg-notice { margin: 0; justify-self: start; padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill);
+  background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
 .lg-lead { margin: 0; color: var(--color-text); font-size: var(--text-lg); line-height: 1.45; }
 
 .lg-contents { padding: var(--space-3) var(--space-4); background: var(--card-fill); border: 1px solid var(--color-line);
