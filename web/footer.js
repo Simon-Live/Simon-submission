@@ -25,12 +25,14 @@ export function versionBlock(fb, copy = copyText) {
   return h("details", { class: "sf-build", "data-testid": "footer-build" }, summary, panel);
 }
 
-/** The brand block: the logo word, the tagline and the contact address. */
-export function brandBlock() {
+/** The brand block: the logo word, the tagline, the contact address, then the live version and the credit lines
+ * under it (team, 2026-11-03: one footer, the version under the email). `extra` are those last elements. */
+export function brandBlock(...extra) {
   return h("div", { class: "sf-brand", "data-testid": "footer-brand" },
     h("p", { class: "sf-logo", text: FOOTER_BRAND.name }),
     h("p", { class: "sf-tagline", text: FOOTER_BRAND.tagline }),
-    h("a", { class: "sf-mail", href: `mailto:${CONTACT}`, "data-testid": "footer-contact", text: CONTACT }));
+    h("a", { class: "sf-mail", href: `mailto:${CONTACT}`, "data-testid": "footer-contact", text: CONTACT }),
+    ...extra);
 }
 
 /** The link columns: the app, the company, the legal pages. */
@@ -46,13 +48,14 @@ export function linksNav() {
 export function renderFooter(el, build, copy = copyText, { pending = false } = {}) {
   const version = pending ? h("p", { class: "sf-build", "data-testid": "footer-version-pending" }) : versionBlock(footerBuild(build), copy);
   const inner = h("div", { class: "sf-inner" },
-    h("div", { class: "sf-top" }, brandBlock(), linksNav()),
+    h("div", { class: "sf-top" },
+      brandBlock(version,
+        h("p", { class: "sf-credit", "data-testid": "footer-credit", text: FOOTER_TEXT.credit }),
+        h("p", { class: "sf-credit", "data-testid": "footer-feedback", text: FOOTER_TEXT.feedback }),
+        h("p", { class: "sf-credit", "data-testid": "footer-source", text: FOOTER_TEXT.source })),
+      linksNav()),
     h("div", { class: "sf-bottom" },
-      h("p", { class: "sf-copy", "data-testid": "footer-copyright", text: COPYRIGHT }),
-      version,
-      h("p", { class: "sf-credit", "data-testid": "footer-credit", text: FOOTER_TEXT.credit }),
-      h("p", { class: "sf-credit", "data-testid": "footer-feedback", text: FOOTER_TEXT.feedback }),
-      h("p", { class: "sf-credit", "data-testid": "footer-source", text: FOOTER_TEXT.source })));
+      h("p", { class: "sf-copy", "data-testid": "footer-copyright", text: COPYRIGHT })));
   el.replaceChildren(inner);
   el.hidden = false;
   return el;

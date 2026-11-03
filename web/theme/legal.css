@@ -34,3 +34,24 @@
   .lg-contents, .lg-more { display: none; }
   .lg a { color: inherit; }
 }
+
+/* The whitepaper (web/whitepaper.js): the blueprint in a frame as wide as the page column, as tall as its content. */
+.wp { display: grid; gap: var(--space-4); }
+.wp .lg-head { max-width: 72ch; }
+.wp-open { justify-self: start; display: inline-flex; align-items: center; min-height: var(--tap-target); color: var(--color-accent);
+  text-decoration: underline; text-underline-offset: 3px; }
+.wp-frame { width: 100%; min-height: 80vh; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); }
+
+/* The open-source notices (web/notices.js): tables that scroll sideways on a phone, licence texts in mono. */
+.nt h2 { margin: var(--space-4) 0 0; font-size: var(--text-md); color: var(--color-text); }
+.nt h3 { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text); }
+.nt p { margin: 0; color: var(--color-text-muted); line-height: 1.6; overflow-wrap: anywhere; }
+.nt-table-wrap { overflow-x: auto; border: 1px solid var(--color-line); border-radius: var(--radius-md); }
+.nt-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.nt-table th, .nt-table td { padding: var(--space-2) var(--space-3); text-align: left; vertical-align: top; border-bottom: 1px solid var(--color-line); }
+.nt-table th { color: var(--color-text); font-weight: var(--weight-semibold); background: var(--card-fill); }
+.nt-table td { color: var(--color-text-muted); }
+.nt-table tr:last-child td { border-bottom: 0; }
+.nt-text { margin: 0; max-height: 24rem; overflow: auto; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line);
+  border-radius: var(--radius-md); background: var(--card-fill); color: var(--color-text-muted); font: var(--text-xs)/1.6 var(--font-mono);
+  white-space: pre-wrap; overflow-wrap: anywhere; }

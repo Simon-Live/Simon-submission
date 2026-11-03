@@ -40,6 +40,30 @@ export const PAGES = {
     ],
   },
 
+  mission: {
+    route: "mission",
+    title: "Our mission",
+    lead: "Good coaching should not stop when the lesson ends. Simon lets anyone practise a movement with feedback from the person who taught it.",
+    sections: [
+      { id: "why", heading: "Why Simon exists", body: [
+        "A dance teacher, a coach or a physiotherapist can only correct you while they are watching. Between lessons you practise alone, and small mistakes go unnoticed until they become habits, or injuries.",
+        "Simon carries the teacher's demonstration home with you. The teacher records a movement once; you follow it with any phone or laptop camera, and Simon shows you where your movement differs from theirs and what to change.",
+      ] },
+      { id: "believe", heading: "What we believe", body: [
+        { list: [
+          "Your teacher's movement, not a library's. Simon learns a movement from one demonstration, so it works for any dance, exercise or rehab routine a teacher chooses to record.",
+          "No special equipment. A phone camera is enough: no sensors, no suits, no studio.",
+          "Every body counts. Simon compares the shape of a movement, not the size of the body making it.",
+          "Honest feedback. Simon says how sure it is, shows what it measured, and never pretends a guess is a fact. It is a practice tool, not a doctor.",
+          "Your data is yours. Recordings are deleted after 7 days unless you choose to keep them, and you can delete them sooner at any time.",
+        ] },
+      ] },
+      { id: "where", heading: "Where we are going", body: [
+        ["Simon started as a hackathon project in 2026, built on Meta's open AI models. We want every student to be able to keep practising with their own teacher's guidance, wherever they are. Read how it works in the ", link("whitepaper", "#/whitepaper"), ", or meet ", link("the team", "#/about"), "."],
+      ] },
+    ],
+  },
+
   safety: {
     route: "safety",
     title: "Health and safety",
@@ -215,8 +239,9 @@ export const FOOTER_COLUMNS = [
   ] },
   { title: "Company", links: [
     { label: "About us", href: "#/about", testid: "footer-link-about" },
+    { label: "Mission", href: "#/mission", testid: "footer-link-mission" },
+    { label: "Whitepaper", href: "#/whitepaper", testid: "footer-link-whitepaper" },
     { label: "Contact", href: `mailto:${CONTACT}`, testid: "footer-link-contact" },
-    { label: "Your data", href: "#/me", testid: "footer-link-data" },
   ] },
   { title: "Legal", links: [
     // the go-live pages' test ids; the hrefs open the stand-ins until part7/legal_pages.py serves the real pages
@@ -227,6 +252,6 @@ export const FOOTER_COLUMNS = [
     { label: "Copyright", href: "#/dmca", testid: "footer-link-dmca" },
     { label: "Who processes your data", href: "#/sub-processors", testid: "footer-link-sub-processors" },
     { label: "Health and safety", href: "#/safety", testid: "footer-link-safety" },
-    { label: "Open-source notices", href: "api/notices", testid: "footer-link-licences" },
+    { label: "Open-source notices", href: "#/notices", testid: "footer-link-licences" },
   ] },
 ];

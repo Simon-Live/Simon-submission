@@ -14,8 +14,8 @@ const hrefs = (x, out = []) => {
 };
 const STANDINS = ["privacy", "terms", "accessibility", "biometric", "dmca", "sub-processors"];   // the go-live page names
 
-test("eight pages, each with a title, a lead, the last update and its own section ids", () => {
-  assert.deepEqual(LEGAL_ROUTES, ["about", "safety", ...STANDINS]);
+test("nine pages, each with a title, a lead, the last update and its own section ids", () => {
+  assert.deepEqual(LEGAL_ROUTES, ["about", "mission", "safety", ...STANDINS]);
   for (const key of LEGAL_ROUTES) {
     const p = legalPage(key);
     assert.ok(p.title && p.lead && /^Last updated \d{1,2} \w+ \d{4}$/.test(p.updated), key);
@@ -27,7 +27,7 @@ test("eight pages, each with a title, a lead, the last update and its own sectio
 
 test("the legal pages are stand-ins that say so; About and Health and safety are not", () => {
   for (const key of STANDINS) assert.equal(legalPage(key).notice, STANDIN_NOTICE, key);
-  for (const key of ["about", "safety"]) assert.equal(legalPage(key).notice, null, key);
+  for (const key of ["about", "mission", "safety"]) assert.equal(legalPage(key).notice, null, key);
 });
 
 test("the team in the team's order, and the one contact address", () => {
@@ -57,7 +57,8 @@ test("links stay in the app or go to the one contact address; the footer opens e
   for (const key of LEGAL_ROUTES) for (const h of hrefs(PAGES[key])) assert.ok(ok(h), `${key}: ${h}`);
   const links = FOOTER_COLUMNS.flatMap((c) => c.links);
   for (const l of links) assert.ok(ok(l.href), l.href);
-  for (const key of LEGAL_ROUTES) assert.ok(links.some((l) => l.href === `#/${key}`), `the footer links ${key}`);
+  for (const key of [...LEGAL_ROUTES, "whitepaper", "notices"]) assert.ok(links.some((l) => l.href === `#/${key}`), `the footer links ${key}`);
+  assert.ok(!links.some((l) => l.label === "Your data"), "negative: no Your data link (team, 2026-11-03)");
   const legal = FOOTER_COLUMNS.find((c) => c.title === "Legal").links;
   assert.deepEqual(legal.slice(0, 3).map((l) => l.testid), ["footer-link-privacy", "footer-link-terms", "footer-link-accessibility"],
     "the go-live pages' test ids first");
