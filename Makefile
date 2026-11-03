@@ -23,7 +23,7 @@ keyframes-fresh: $(VENV)/.installed
 
 # Local tests. These do not call the API.
 test: $(VENV)/.installed
-	$(PY) -m unittest keyframe_finder.mask_motion_test keyframe_finder.from_video_test keyframe_finder.evaluate_test keyframe_finder.quality_test keyframe_finder.schema_test
+	$(PY) -m unittest keyframe_finder.mask_motion_test keyframe_finder.meta_client_test keyframe_finder.from_video_test keyframe_finder.evaluate_test keyframe_finder.quality_test keyframe_finder.schema_test
 
 # Correct predicted keyframes in the browser. Saves fixtures/labels/<name>.json.
 label: $(VENV)/.installed

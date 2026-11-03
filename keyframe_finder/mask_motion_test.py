@@ -132,6 +132,25 @@ class MaskMotionTest(unittest.TestCase):
         found = find_mask_repetitions(masks, 8, ["start", "bottom", "top"], centers)
         self.assertGreaterEqual(len(found), 1)
 
+    def test_knee_lifts_are_found_while_the_person_drifts_sideways(self):
+        # TICKET-380: a trainer drifting 18% of the frame one way while lifting their knees. The drift used to be the
+        # biggest change, so the signal followed it and found no repetition.
+        stand, lift = _pose(8), _pose(20)
+        masks, centers = [], []
+        for rep in range(4):
+            for index in range(8):
+                masks.append(stand if index < 4 else lift)
+        for index in range(len(masks)):
+            centers.append((0.40 + 0.18 * index / (len(masks) - 1), 0.50))
+        found = find_mask_repetitions(masks, 8, ["start", "bottom", "top"], centers)
+        self.assertGreaterEqual(len(found), 3)
+
+    def test_a_drift_alone_is_still_not_a_repetition(self):
+        pose = _pose(8)
+        masks = [pose] * 32
+        centers = [(0.30 + 0.30 * index / 31, 0.50) for index in range(32)]
+        self.assertEqual(find_mask_repetitions(masks, 8, ["start", "bottom", "top"], centers), [])
+
     def test_a_shivering_box_is_not_a_step(self):
         pose = _pose(8)
         masks = [pose] * 24
