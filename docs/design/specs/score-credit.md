@@ -64,12 +64,12 @@ the result can show them beside the score and the viewer can choose which to see
 |---|---|
 | `version` | `simon.credit.v1` |
 | `percent`, `points`, `max_points` | at the level named by `tolerance` (`normal`); `percent = 100 * points / max_points`, to 0.1 |
-| `grade` | the letter for `percent` on the credit's own scale, `grades` (S 95 and above, A 85, B 75, C 65, D 55, E 45, F 30, and under 30 still F). Informational: not `score.grade`, no cap, no gate, and it ignores warnings and caps |
+| `grade` | the letter for `percent` on the credit's own scale, `grades` (S 95 and above, A 85, B 75, C 65, D 55, E 40, and F under 40). Informational: not `score.grade`, no cap, no gate, and it ignores warnings and caps |
 | `tolerance` | the level the top-level numbers are shown at |
 | `levels` | `easy`, `normal`, `hard`, each `{percent, points, max_points}` |
 | `bands` | `[[0.5, 1.0], [1.0, 0.6], [2.0, 0.2]]`, the rule that earned them |
 | `points_per_measure_second` | 100 |
-| `grades` | `[[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]]`, `[percent at least, letter]` from the highest, the scale `grade` is read on |
+| `grades` | `[[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [40, "E"], [0, "F"]]`, `[percent at least, letter]` from the highest, the scale `grade` is read on |
 | `per_window` | one `{t_s, percent, points, max_points}` for each compared window of `score.timeline`, same `t_s`, same order, at the `normal` level |
 
 ### How a number is made
@@ -90,8 +90,8 @@ the result can show them beside the score and the viewer can choose which to see
   applied to each window of the follower's clock (see "Retimed takes"). Without the example's clock (`compute_timeline` without `expected_times`) there is no credit.
 - **Percent.** The take's points over its max points, summed over its compared windows, so a window weighs by its example
   frames and the measures counted in it.
-- **Grade.** The first letter of `grades` that `percent` reaches: S 95 and above, A 85, B 75, C 65, D 55, E 45, F 30, and a
-  percent under 30 is still F (`score.credit_grade`, `CREDIT_GRADES`). The scale is the team's game scale, as the team
+- **Grade.** The first letter of `grades` that `percent` reaches: S 95 and above, A 85, B 75, C 65, D 55, E 40, and F under
+  40 (`score.credit_grade`, `CREDIT_GRADES`; team, 3 Nov, was E 45 and F 30). The scale is the team's game scale, as the team
   reported the ruling on moalborati/simon#61 (issuecomment-6569445776) and wrote it in 8f135ee. It is not the score's bands,
   which stay A to F for `score.value`, and it changes no other number of the block or of the score.
 - **Constants.** `CREDIT_*` in `part5/score.py`. They are not in `part5/rules.json`, whose `score` section stays frozen.
@@ -228,10 +228,12 @@ Given a credit that is a string, a `levels` that is not an object of objects, a 
 
 ### AC-CR-11: the grade scale
 Given a credit percent, then `grade` is the first letter of `grades` it reaches: 95 and above S, 94.9 A, 85 A, 75 B, 65 C, 55
-D, 45 E, 44.9 F, 30 F and under 30 still F; every golden carries `grades` as `[[95, "S"], [85, "A"], [75, "B"], [65, "C"],
-[55, "D"], [45, "E"], [30, "F"]]` and its grade is its percent's letter on it; the schema accepts S to F in `grade` and in
-each `grades` entry and refuses any other letter; the score's own bands stay A to F. Tests: `tests/test_score_credit.py`
-(the team), `tests/test_score_credit_pins.py`, `tests/test_score_credit_history.py`.
+D, 54.9 E, 45 E, 40 E, 39.9 F, 30 F and 0 F; every golden carries `grades` as `[[95, "S"], [85, "A"], [75, "B"], [65, "C"],
+[55, "D"], [40, "E"], [0, "F"]]` and its grade is its percent's letter on it; the schema accepts S to F in `grade` and in
+each `grades` entry and refuses any other letter; the score's own bands stay A to F. A document written before 1.14.3
+carries `[45, "E"], [30, "F"]` and is read on it, so a percent of 40 to 44.9 is an F there and an E on the new scale; the
+validator holds each document to its own `grades`. Tests:
+`tests/test_score_credit.py` (the team), `tests/test_score_credit_pins.py`, `tests/test_score_credit_history.py`.
 
 ### AC-CR-12: the take's last second (1.14.2, TICKET-108)
 Given the last second of a take where the follower holds still and the example moves away, then each measure the example moves
@@ -318,8 +320,9 @@ kept as it is. The stakeholder-proxy ruled them. They are also in ADR-0020, "Par
 - One `$defs.credit_entry` in the schema; the credit tests use `shipped_score.aligned`.
 - A shape check before the credit validator; foot measures stated as earning none; the half-window rule stated as Part 5's
   reading.
-- the team's 8f135ee merged as it is (the team's grade scale, S 95 to F 30, written as `grades`; AC-CR-11): the schema's
-  one `$defs.credit_entry` keeps S, E and `grades`, the grade stays informational, and the shape check accepts them.
+- the team's 8f135ee merged as it is (the team's grade scale, S 95 to F 30, written as `grades`; AC-CR-11; from 1.14.3 E 40
+  and F under 40, the team's 93a95db): the schema's one `$defs.credit_entry` keeps S, E and `grades`, the grade stays
+  informational, and the shape check accepts them.
 
 ## Files (every new or changed source file; the write gate reads this table)
 | File | Change | Ticket | Published |
@@ -342,6 +345,12 @@ kept as it is. The stakeholder-proxy ruled them. They are also in ADR-0020, "Par
 | `part5/score_report.py` | `_rep_timeline` reads the tail on the last rep's window | TICKET-108 | yes |
 | `docs/design/adr/ADR-0020-score-credit-ddr-display.md` and its design copy | Amendment 1 | TICKET-108 | yes |
 | `tests/test_score_credit_tail.py`, `tests/fixtures/staging-b5acba462f16/` | AC-CR-12 | TICKET-108 | yes |
+| `part5/score.py`, `part5/contract.py`, `contracts/analysis.schema.json`, `contracts/history-fields.json`, `CONTRACT.md`, `docs/schemas.md` | the grade scale E 40 and F under 40 (the team, 93a95db); the history notes and `docs/schemas.md` say what a document written before carries | TICKET-109 | yes |
+| `docs/design/specs/integration-contract.md` and its design copy | the Part 5 row of the compatibility table, as `part5 contract` prints it | TICKET-109 | yes (the copy) |
+| `docs/design/adr/ADR-0020-score-credit-ddr-display.md` and its design copy | Amendment 2 | TICKET-109 | yes |
+| `fixtures/output/analysis*.example.json`, `tests/test_quality_pins.py`; `fixtures/output/lang/analysis.{ar,es,hi}.json`, `fixtures/output/lang/PROVENANCE.md` | regenerated, four quality pins repinned (the team, 93a95db); the recorded translations' `grades` by hand | TICKET-109 | yes |
+| `tests/test_score_credit.py`, `tests/test_score_credit_pins.py`, `tests/test_score_credit_history.py` | AC-CR-11 at the new edges (the team, 93a95db); a document written before 1.14.3 keeps its own letter | TICKET-109 | yes |
+| `part5/__init__.py`, `pyproject.toml`, `uv.lock`, `tests/test_version.py`, `CHANGELOG.md` | the release 1.14.3 in the three places that name it, held equal by the test; the changelog | TICKET-109 | yes |
 | `scripts/make_score_credit_retime_noise.py` | the retimed takes measurement of AC-CR-03 (`--mode retime`, the default, or `stretch`); named `scripts/score_credit_retime_noise.py` until review B2 of 1.13.0, renamed `make_*` so the published `tests/test_retimed.py` can load it | TICKET-078 | yes (`scripts/make_*.py`) |
 
 ## Delivery Verification Plan

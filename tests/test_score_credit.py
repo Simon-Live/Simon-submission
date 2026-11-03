@@ -264,6 +264,6 @@ def test_the_golden_percents_stay_within_half_a_point_of_what_the_follower_clock
 
 def test_credit_grades_run_f_to_s_on_their_own_scale():
     g = score.credit_grade
-    assert [g(p) for p in (100, 95, 94.9, 85, 75, 65, 55, 45, 44.9, 30, 0)] == ["S", "S", "A", "A", "B", "C", "D", "E", "F", "F", "F"]
-    assert score.CREDIT_GRADES[-1] == [30, "F"], "F's mark sits at 30; under it is still F"
+    assert [g(p) for p in (100, 95, 94.9, 85, 75, 65, 55, 54.9, 45, 44.9, 40, 39.9, 30, 0)] == ["S", "S", "A", "A", "B", "C", "D", "E", "E", "E", "E", "F", "F", "F"]
+    assert score.CREDIT_GRADES[-2:] == [[40, "E"], [0, "F"]], "E from 40; F under 40 (team, 3 Nov)"
     assert score.BANDS[0] == [90, "A"], "the score's own bands stay A to F"

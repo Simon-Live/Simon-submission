@@ -24,10 +24,12 @@ OUT = ROOT / "fixtures/output"
 SAMPLE = OUT / "analysis.quality-major.example.json"
 # sha256 of the four goldens as main had them just before the block (c23dde4, the credit grade scale in): the block is all that
 # the quality change added. At c8673d1, before the grade scale, they were 3a4e00a8, 3aa17c2d, 4913d1bd and 643f2b59 (first 8 digits).
-BEFORE = {"analysis.example.json": "0967410a607b92d7f69a79bfaf96bd6312ac11666c6ea7f59341e19499121d23",
-          "analysis.no-faults.example.json": "ba84b7713efa87805aecec27391222f271c362d2b8bc10fa920f20c319b0b4ff",
-          "analysis.fault-capped.example.json": "25eca1b7d7ef51b68f61e1fa2530abae9c8b944e0f9129ee642e8a9bb48fac28",
-          "analysis.double-capped.example.json": "b3e77796df144d11b1b33bf649ca57a59cf60e2385c92ecb252ff05365c43c2c"}
+# repinned 2026-11-03 for the credit's grade scale (E from 40, F under 40; the team on moalborati/simon#61):
+# only score.credit.grades differs, no letter changed
+BEFORE = {"analysis.example.json": "1ffe49d6050b422058d41a85aa8ea95700c253b98c6ad087bf96c1911df7caef",
+          "analysis.no-faults.example.json": "42915eac4e9d9374843e0f4505dee5473e6c5253c5bd2fb42d9add46b7f62677",
+          "analysis.fault-capped.example.json": "f90370f345ae397f14233985f77e61fc0456cdc854842f1ea597de5189ccd9e4",
+          "analysis.double-capped.example.json": "8b78ebdb70a2db3a531af993598ac7bfbaa181d351420d3515810db6efa15256"}
 SCORE_FIELDS = ("value", "grade", "fault_cap", "uncapped", "capped_by")
 
 

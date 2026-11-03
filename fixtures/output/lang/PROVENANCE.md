@@ -81,6 +81,13 @@ goldens carry (S 95, A 85, B 75, C 65, D 55, E 45, F 30). The credit percent of 
 it was before, so `score.credit.grade` did not change. No other byte changed: no model text, no phrasing entry and no other score
 field.
 
+## Changed at the 1.14.3 merge (TICKET-109)
+
+The team moved the credit's E to 40 and F to everything under 40 (moalborati/simon#61, issuecomment-6596716382; the team's
+93a95db). The goldens in `fixtures/output/` were regenerated with the new scale, and these three files had their
+`score.credit.grades` changed by hand to match: `[40, "E"], [0, "F"]` where they had `[45, "E"], [30, "F"]`. Each file's credit
+percent, 92.9, is an A on both scales, so `score.credit.grade` did not change. No other byte changed.
+
 ## No `quality` block (R9 of the 1.14.0 review)
 
 The three files carry no top-level `quality` block, though they are labelled `1.14.0` and `contracts/history-fields.json` says

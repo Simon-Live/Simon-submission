@@ -549,9 +549,10 @@ def compute_timeline(analysis, aligned, frame_times, rules=None, window_s=WINDOW
 # same measures seen, and a longer routine has a higher one.
 CREDIT_VERSION = "simon.credit.v1"
 CREDIT_BANDS = [[0.5, 1.0], [1.0, 0.6], [2.0, 0.2]]   # [z / tolerance at most, credit]; beyond the last: 0 (a miss)
-# The credit's own letter grades, game style (team, 2026-11-02): F to S, [percent at least, grade]; under the
-# last (F at 30) is still F. Not the score's BANDS, which stay A to F for score.value and its caps.
-CREDIT_GRADES = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]]
+# The credit's own letter grades, game style (team, 2026-11-02; E and F moved 2026-11-03, moalborati/simon#61
+# 6596716382): F to S, [percent at least, grade]; F's mark is 0, so every percent under 40 is F. Not the score's BANDS,
+# which stay A to F for score.value and its caps.
+CREDIT_GRADES = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [40, "E"], [0, "F"]]   # F under 40 (team, 3 Nov)
 
 
 def credit_grade(percent, grades=CREDIT_GRADES):

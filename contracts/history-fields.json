@@ -1291,7 +1291,7 @@
     },
     {
       "path": "score.credit.grade",
-      "meaning": "The letter for score.credit.percent on the credit's own scale, score.credit.grades: S 95 and above, A 85 to 94.9, B 75 to 84.9, C 65 to 74.9, D 55 to 64.9, E 45 to 54.9, F below 45 (F's mark is 30, and under 30 is still F).",
+      "meaning": "The letter for score.credit.percent on the credit's own scale, score.credit.grades: S 95 and above, A 85 to 94.9, B 75 to 84.9, C 65 to 74.9, D 55 to 64.9, E 40 to 54.9, F below 40.",
       "units": "none",
       "direction": "later_letter_is_worse",
       "order": ["S", "A", "B", "C", "D", "E", "F"],
@@ -1300,7 +1300,7 @@
       "stability": "additive",
       "presence": "conditional",
       "present_when": "score.credit is not null (the take was compared).",
-      "notes": "Informational. Not the score's grade: score.grade is the letter for score.value under the score's bands (A to F), and the two can differ, for a take capped to F can show a credit grade of B; S and E are credit letters only. Reported only, it sets no cap and no gate, and it ignores warnings and caps. The scale is the team's game scale (ADR-0020)."
+      "notes": "Informational. Not the score's grade: score.grade is the letter for score.value under the score's bands (A to F), and the two can differ, for a take capped to F can show a credit grade of B; S and E are credit letters only. Reported only, it sets no cap and no gate, and it ignores warnings and caps. The scale is the team's game scale (ADR-0020); a document written before Part 5 1.14.3 reads its grade on E 45 and F 30, as its own score.credit.grades says."
     },
     {
       "path": "score.credit.tolerance",
@@ -1328,7 +1328,7 @@
     },
     {
       "path": "score.credit.grades",
-      "meaning": "The credit's letter grades, [percent at least, letter] from the highest, as [[95, \"S\"], [85, \"A\"], [75, \"B\"], [65, \"C\"], [55, \"D\"], [45, \"E\"], [30, \"F\"]]: score.credit.grade is the first letter score.credit.percent reaches, and a percent under the last is still F.",
+      "meaning": "The credit's letter grades, [percent at least, letter] from the highest, as [[95, \"S\"], [85, \"A\"], [75, \"B\"], [65, \"C\"], [55, \"D\"], [40, \"E\"], [0, \"F\"]]: score.credit.grade is the first letter score.credit.percent reaches, and a percent under the last is still F.",
       "units": "none",
       "direction": "none",
       "order": ["S", "A", "B", "C", "D", "E", "F"],
@@ -1337,7 +1337,7 @@
       "stability": "additive",
       "presence": "conditional",
       "present_when": "score.credit is not null (the take was compared).",
-      "notes": "The team's game scale for the credit (ADR-0020), not the score's bands: score.value and score.grade do not use it. A constant of the credit version, listed so a reader can draw the marks."
+      "notes": "The team's game scale for the credit (ADR-0020), not the score's bands: score.value and score.grade do not use it. Listed so a reader can draw the marks. It changed once within simon.credit.v1: from Part 5 1.14.3 E starts at 40 and F is everything under 40, and a document written before carries [45, \"E\"], [30, \"F\"], so to compare letters across takes, read each percent on one scale."
     },
     {
       "path": "score.credit.points_per_measure_second",

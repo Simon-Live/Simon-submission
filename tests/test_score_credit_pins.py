@@ -18,7 +18,7 @@ What is pinned here:
   every level and in every window, and the same for the entry function over a fine z grid; the sign of the offset does not
   matter;
 - the score's value, grade and fault_cap never read the credit, and the credit's grade is its own letter on its own scale
-  (`grades`, the team's S 95, A 85, B 75, C 65, D 55, E 45, F 30: a slowed take is 59 F beside a credit of 82.7, a B),
+  (`grades`, the team's S 95, A 85, B 75, C 65, D 55, E 40, F under 40: a slowed take is 59 F beside a credit of 82.7, a B),
   the credit not reading the reported faults and the cap lowering only the value;
 - the validator's shape check (R2) accepts every letter of that scale, S and E included, and the `grades` block;
 - the credit constants live outside the frozen `score` section of part5/rules.json, whose hash the block still carries."""
@@ -303,8 +303,8 @@ def _slowed_correct_take(tmp_path, speed=0.25):
 
 def test_the_score_never_reads_the_credit_and_a_slowed_take_is_59_f_beside_a_credit_of_b(tmp_path, monkeypatch):
     """A correct take slowed to a quarter of the speed gets `low_match`: the score is capped at 59, grade F. The credit of what
-    was compared is 82.7 percent (measured), a B on the credit's own scale (S 95, A 85, B 75, C 65, D 55, E 45, F 30; the team's
-    8f135ee), so B's band, 75 up to 85, is pinned. Replace the credit block by nothing, and by a block that says 0 and F: no
+    was compared is 82.7 percent (measured), a B on the credit's own scale (S 95, A 85, B 75, C 65, D 55, E 40, F under 40; the team's
+    8f135ee and 93a95db), so B's band, 75 up to 85, is pinned. Replace the credit block by nothing, and by a block that says 0 and F: no
     other field of the score moves, so value, grade, fault_cap, components and capped_by never read it."""
     expected, follower = _slowed_correct_take(tmp_path)
 
@@ -433,6 +433,21 @@ def test_the_validator_reads_the_letter_on_the_documents_own_grades_and_accepts_
     for path in GOLDENS:
         doc = json.loads(path.read_text())
         assert validate_analysis(doc) is doc, path.name
+
+
+def test_a_document_written_before_1_14_3_keeps_its_own_scale_and_its_letter():
+    """TICKET-109 (ADR-0020 Amendment 2): 40.0 to 44.9 is the one band whose letter moved, F on the scale documents carried
+    before 1.14.3 and E on the new one. A document validates with the letter its own `grades` give and is refused with the
+    other, so an old document stays valid as written and a new one cannot carry the old letter."""
+    credit = json.loads(GOLDENS[0].read_text())["score"]["credit"]
+    old = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]]
+    assert credit["grades"] == score.CREDIT_GRADES and score.credit_grade(42.0) == "E"
+    assert validate_analysis(_golden_with_credit({**credit, "percent": 42.0, "grades": old, "grade": "F"}))
+    assert validate_analysis(_golden_with_credit({**credit, "percent": 42.0, "grade": "E"}))
+    with pytest.raises(OutputError, match=r"reaches on score.credit.grades, E, got 'F'"):
+        validate_analysis(_golden_with_credit({**credit, "percent": 42.0, "grade": "F"}))
+    with pytest.raises(OutputError, match=r"reaches on score.credit.grades, F, got 'E'"):
+        validate_analysis(_golden_with_credit({**credit, "percent": 42.0, "grades": old, "grade": "E"}))
 
 
 def test_a_null_credit_and_a_document_without_one_still_validate():

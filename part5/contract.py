@@ -98,7 +98,7 @@ TABLE_ROWS = (
      "1.13.0 (ADR-0020) adds `score.credit` (`simon.credit.v1`, a DDR-style display beside the score: a percent and "
      "points at the levels easy, normal and hard, one `per_window` entry per compared window of `score.timeline`, null "
      "when nothing was compared; its `grade` is informational, the credit percent's own letter on the credit's own scale "
-     "`grades`, S 95, A 85, B 75, C 65, D 55, E 45, F 30, under 30 still F, never `score.grade`; `value`, `grade` and "
+     "`grades`, S 95, A 85, B 75, C 65, D 55, E 40, F under 40, never `score.grade`; `value`, `grade` and "
      "the caps are unchanged and the 59 warning cap does not apply to it); "
      "1.14.0 (ADR-0023) adds `body_mask`, written only when the follower declared limb chains that are not scored "
      "(`--mask`, API field `mask`): no fault, cue or insight names a masked chain, and the score compares only with takes "

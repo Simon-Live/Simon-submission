@@ -5,7 +5,7 @@ which paths a new schema version must list. The other half is here for 1.13.0, t
 the keys of `score.credit` are the ones pinned below, each key is listed from 1.13.0, and every path a committed golden holds
 under `score.credit` is either listed or lies inside a listed container (`levels`, `per_window[]`, `bands`, `grades`) whose
 meaning names every field on the way down. CONTRACT.md says `score.credit` is reported only, and names the credit's own grade
-scale (`grades`, the team's 8f135ee: the team's S 95, A 85, B 75, C 65, D 55, E 45, F 30).
+scale (`grades`: the team's S 95, A 85, B 75, C 65, D 55, E 40, F under 40; the team's 8f135ee, E and F moved in 93a95db).
 
 Like the files it sits beside, it reads the files and imports nothing from `part5`."""
 import copy
@@ -110,8 +110,9 @@ def test_the_credit_grade_is_called_informational_wherever_it_is_described():
     assert "## Part 5 review (TICKET-078)" in adr and "The credit's grade stays and is informational" in adr
 
 
-# The team's game scale for the credit's letters (the team's 8f135ee, moalborati/simon#61 issuecomment-6569445776), as text.
-GRADE_SCALE = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]]
+# The team's game scale for the credit's letters (the team's 8f135ee, moalborati/simon#61 issuecomment-6569445776; E and F
+# moved in the team's 93a95db, issuecomment-6596716382), as text.
+GRADE_SCALE = [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [40, "E"], [0, "F"]]
 
 
 def test_the_history_file_lists_the_grades_and_names_the_credits_own_scale():
@@ -119,10 +120,10 @@ def test_the_history_file_lists_the_grades_and_names_the_credits_own_scale():
     the direction that ranks letters says S is the credit's best, not the alphabet's last."""
     meaning = BY_PATH["score.credit.grades"]["meaning"]
     assert all(doc["score"]["credit"]["grades"] == GRADE_SCALE for doc in GOLDENS.values())
-    assert '[[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]]' in meaning
+    assert '[[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [40, "E"], [0, "F"]]' in meaning
     assert "not the score's bands" in BY_PATH["score.credit.grades"]["notes"]
     grade = BY_PATH["score.credit.grade"]["meaning"]
-    assert all(band in grade for band in ("S 95 and above", "A 85 to 94.9", "B 75 to 84.9", "E 45 to 54.9", "F below 45"))
+    assert all(band in grade for band in ("S 95 and above", "A 85 to 94.9", "B 75 to 84.9", "E 40 to 54.9", "F below 40"))
     assert "under the score's bands" not in grade
     assert "S, A, B, C, D, E, F for score.credit.grade (S is best" in HISTORY["how_to_read"]["direction_values"][
         "later_letter_is_worse"]
@@ -155,7 +156,7 @@ def test_every_letter_field_carries_its_order_and_the_order_is_the_schemas_enum(
 
 def test_contract_md_names_the_credits_own_grade_scale():
     paragraph = re.search(r"^\*\*Score credit \(1\.13\.0\)\.\*\*.*$", CONTRACT_MD, re.M).group(0)
-    assert "S 95, A 85, B 75, C 65, D 55, E 45, F 30, and under 30 still F" in paragraph
+    assert "S 95, A 85, B 75, C 65, D 55, E 40, and F under 40" in paragraph
     assert "`.grades`" in paragraph and "never `score.grade`, whose bands stay A to F" in paragraph
 
 

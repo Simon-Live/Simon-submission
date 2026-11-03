@@ -441,8 +441,8 @@ earns 0.6, at most 2 earns 0.2, beyond that 0 (`bands`). A frame lasts what it d
 over its frames less one, for a rep the rep's reference clip), so `points = credit * frame_s * 100 * multiplier` (100
 points per measure per second, `points_per_measure_second`) and `max_points` the same with every credit 1. The same
 routine has the same `max_points` however fast or slowly it was followed, within one comparison basis (the whole take, or rep by rep) and with the same measures seen. `percent` is `100 * points / max_points`, to 0.1, and `grade` is the percent's own letter on the
-credit's own scale, `grades` (`[percent at least, letter]`, highest first): S 95, A 85, B 75, C 65, D 55, E 45, F 30;
-under 30 is still F (the team's game scale, ADR-0020; the score's bands are not used here). It is informational: it is not `score.grade`, it sets no cap and no gate,
+credit's own scale, `grades` (`[percent at least, letter]`, highest first): S 95, A 85, B 75, C 65, D 55, E 40;
+F under 40 (the team's game scale, ADR-0020; the score's bands are not used here). It is informational: it is not `score.grade`, it sets no cap and no gate,
 and it ignores warnings and caps, so a take capped to F can show a credit grade of B. Only the 22 body measures of `part5.measures.MEASURES` earn credit; the foot measures (`foot_rotation`, `ankle_inversion`, from the optional foot files) are compared and can be reported as faults, but earn none.
 
 The take's last second (Part 5 1.14.2, TICKET-108, ADR-0020 Amendment 1): over the example's last second of the take (at most
@@ -458,7 +458,7 @@ both make and a follower who moves anything there are scored as before, and `max
                       "normal": {"percent": 87.5, "points": 5841, "max_points": 6673},
                       "hard": {"percent": 81.2, "points": 8131, "max_points": 10010}},
            "bands": [[0.5, 1.0], [1.0, 0.6], [2.0, 0.2]],
-           "grades": [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [45, "E"], [30, "F"]],
+           "grades": [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [40, "E"], [0, "F"]],
            "points_per_measure_second": 100,
            "per_window": [{"t_s": [0.1, 2.5], "percent": 87.5, "points": 5841, "max_points": 6673}]}
 ```
@@ -466,7 +466,8 @@ both make and a follower who moves anything there are scored as before, and `max
 - `levels`: `easy` (tolerance 1.5, points x0.75), `normal` (1.0, x1.0), `hard` (0.7, x1.5); the top-level `percent`,
   `points` and `max_points` are those of the level `tolerance` names (`normal`).
 - `grades`: the credit's letters, `[percent at least, letter]` from S down to F; `grade` is the first one `percent`
-  reaches, and a percent under the last (30) is still F.
+  reaches. From 1.14.3 F's mark is 0, so every percent under 40 is F; a document written before carries
+  `[45, "E"], [30, "F"]`, where a percent under 30 is still F.
 - `per_window`: one entry per compared window of `score.timeline`, the same `t_s`, in the same order, at that level. A
   window with no measure seen in half its frames has `percent` null and 0 points.
 - `null`: nothing was compared (the take could not be aligned, or no window was compared), or no measure could be counted.

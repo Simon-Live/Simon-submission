@@ -42,8 +42,8 @@ take compared as a whole, or one window per accepted rep):
   `expected_times`) has no credit.
 - The take's points and max points are the sums over its compared windows; `percent = 100 * points / max_points`, to 0.1
   (so a window weighs by its example frames and its counted measures); `grade` is the percent's letter on the credit's own game
-  scale, written with it as `grades` (team, 2026-11-02): S 95 and above, A 85, B 75, C 65, D 55, E 45, F 30, and
-  under 30 still F. The score's bands (A to F) are unchanged for `score.value`.
+  scale, written with it as `grades` (team, 2026-11-02): S 95 and above, A 85, B 75, C 65, D 55, E 40, and F under 40
+  (team, 3 Nov; was E 45 and F 30; Amendment 2). The score's bands (A to F) are unchanged for `score.value`.
 
 Levels: `easy` (tolerance x1.5, points x0.75), `normal` (x1.0, x1.0), `hard` (x0.7, x1.5). All three are written under
 `levels`; the top-level `percent`, `points` and `max_points` are the `normal` level's (`tolerance: "normal"`). `per_window`
@@ -99,7 +99,8 @@ the team's, whose commit is kept as it is.
   credit block. A reader that shows both must say which letter is which.
 - The credit's letters are the team's game scale, as the team reported the ruling on moalborati/simon#61
   (issuecomment-6569445776) and wrote it in 8f135ee, merged as it is: S 95, A 85, B 75, C 65, D 55, E 45, F 30, under 30
-  still F, written as `grades`; the score's bands, `score.value` and the caps are unchanged.
+  still F, written as `grades`; the score's bands, `score.value` and the caps are unchanged. From 1.14.3 E starts at 40 and F
+  is everything under 40 (Amendment 2).
 - Points use the example's clock, not the follower's: see "Differences from the replay script". Within one comparison
   basis a routine has one maximum, and points do not scale with the follower's clock. A retimed take's points are still
   not the original's, and they move in both directions; the falls are not the clock's and were not traced further
@@ -154,11 +155,19 @@ that move; the rule cannot tell that from stopping early, and it breaks AC-CR-08
 Accepted, on the owner's ruling: one second at most, and a miss that both sides hold, makes while moving together or makes while
 moving anything at all, still costs.
 
+## Amendment 2 (2026-11-03, TICKET-109): the grade scale
+Decision: from 1.14.3 the credit's letters are S 95 and above, A 85, B 75, C 65, D 55, E 40, and F under 40, so
+`CREDIT_GRADES` and every document's `grades` end `[40, "E"], [0, "F"]`. Only the letter of a percent from 40 to 44.9 changes
+(F to E). The team confirmed the scale on moalborati/simon#61 (issuecomment-6596716382): "S 95+, A 85-95, B 75-85, C 65-75,
+D 55-65, E 40-55, F under 40." Track C wrote it in the team's 93a95db, merged as it is. The percent, the points, the score's bands,
+`score.value` and the caps are unchanged. A document written before 1.14.3 keeps the `grades` it was written with, and its
+`grade` is read on that scale.
+
 ## Reversal Cost
 Low: remove the block from `timeline_block` and the schema property; no other field reads it.
 
 ## Code Backlinks
-- `part5/score.py`: `credit_z`, `credit_of`, `credit_sums`, `credit_points`, `credit_grade` (`CREDIT_GRADES`),
+- `part5/score.py`: `credit_z`, `credit_of`, `credit_sums`, `credit_points`, `credit_grade` (`CREDIT_GRADES`, Amendment 2),
   `credit_block`; `window_score` (`credit_raw`),
   `timeline_block` (`credit`).
 - `part5/score_report.py`: `score_block` (null credit for a take that could not be aligned); `_rep_timeline` (the last rep's
