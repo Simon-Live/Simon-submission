@@ -131,6 +131,9 @@ export const PAGES = {
           "Do not use Simon to harass anyone, to break the law, or to overload or attack the service.",
         ] },
       ] },
+      { id: "law", heading: "Governing law", body: [
+        `Simon is run by ${OPERATOR}, a New York company. These terms are governed by the laws of the State of New York, USA, and disputes are heard in the courts of New York.`,
+      ] },
       { id: "contact", heading: "Questions", body: [["Email ", mail, "."]] },
     ],
   },

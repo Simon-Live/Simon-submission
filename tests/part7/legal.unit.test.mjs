@@ -39,11 +39,15 @@ test("the team in the team's order, and the one contact address", () => {
   assert.deepEqual(mails, [`mailto:${CONTACT}`]);
 });
 
-test("no legal fact the operator has not confirmed: no governing law, company, address or licence name", () => {
+test("only the legal facts the team confirmed: New York law in the Terms, Simon Live LLC; no address or licence name", () => {
   const all = LEGAL_ROUTES.map((k) => words(PAGES[k])).join(" ");
-  for (const never of ["California", "New York", "governed by", "MIT", "Apache", "Street", "shall"]) assert.ok(!all.includes(never), never);
+  for (const never of ["California", "MIT", "Apache", "Street", "shall"]) assert.ok(!all.includes(never), never);
+  // New York law, confirmed by the team (2026-11-04), is stated once: in the Terms
+  const law = LEGAL_ROUTES.filter((k) => words(PAGES[k]).includes("governed by"));
+  assert.deepEqual(law, ["terms"]);
+  assert.match(words(PAGES.terms), /laws of the State of New York/);
   // the one company name is the operator the team confirmed (2026-11-04)
-  assert.deepEqual([...new Set(all.match(/[A-Z][\w ]*\bLLC\b/g) || [])], ["Simon Live LLC"]);
+  assert.deepEqual([...new Set(all.match(/(?:\b[A-Z]\w* )+LLC\b/g) || [])], ["Simon Live LLC"]);
   assert.ok(words(PAGES.safety).includes("not medical or professional advice"));
 });
 
