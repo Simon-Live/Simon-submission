@@ -105,11 +105,18 @@ def upload_video(path, tries=None, wait_s=None, sleep=None):
 
 
 def delete_file(file_id):
+    """Delete an uploaded clip from Meta's files. Never raises; says on one line whether it worked, with the file id,
+    so a clip left at Meta can be found from the step log (TICKET-388: `delete_file failed`)."""
     try:
         with _request("DELETE", f"/files/{file_id}", timeout=60):
-            return
-    except RuntimeError:
+            pass
+    except RuntimeError as exc:
+        print(f"  delete_file failed file_id={file_id}: {str(exc)[:200]}", flush=True)
         return
+    except (OSError, http.client.HTTPException) as exc:   # a dropped connection: the clip may still be at Meta
+        print(f"  delete_file failed file_id={file_id}: {type(exc).__name__}", flush=True)
+        return
+    print(f"  delete_file ok file_id={file_id}", flush=True)
 
 
 def _iter_sse(response):

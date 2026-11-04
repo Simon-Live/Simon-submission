@@ -163,5 +163,68 @@ class UploadRetry(unittest.TestCase):
                 meta_client.upload_video("v.mp4", tries=2, wait_s=0.0, sleep=lambda s: None)
 
 
+
+class DeleteFileSays(unittest.TestCase):
+    """TICKET-388: a delete says whether it worked, with the file id, and never raises."""
+
+    def run_delete(self, request):
+        import io
+        import contextlib
+        out = io.StringIO()
+        with mock.patch.object(meta_client, "_request", request), contextlib.redirect_stdout(out):
+            self.assertIsNone(meta_client.delete_file("file-7"))
+        return out.getvalue()
+
+    def test_a_delete_that_works_says_ok_with_the_id(self):
+        class Ok:
+            def __enter__(self):
+                return self
+            def __exit__(self, *exc):
+                return False
+        self.assertIn("delete_file ok file_id=file-7", self.run_delete(lambda *a, **k: Ok()))
+
+    def test_a_refused_delete_says_failed_with_the_id_and_the_reason(self):
+        def refused(*a, **k):
+            raise RuntimeError("Meta API 403 on /files/file-7: no")
+        said = self.run_delete(refused)
+        self.assertIn("delete_file failed file_id=file-7: Meta API 403", said)
+
+    def test_a_dropped_connection_says_failed(self):
+        def dropped(*a, **k):
+            raise ConnectionResetError("reset")
+        self.assertIn("delete_file failed file_id=file-7: ConnectionResetError", self.run_delete(dropped))
+
+
+class StopHandler(unittest.TestCase):
+    """TICKET-388: SIGTERM ends a run like an exception, so `finally` (the delete) still runs."""
+
+    def test_sigterm_runs_the_finally_and_exits_143(self):
+        import os
+        import subprocess
+        import sys
+        import tempfile
+        import time
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "deleted"
+            code = (
+                "import sys, time\n"
+                f"sys.path.insert(0, {str(root)!r})\n"
+                "import keyframe_finder.from_video as fv\n"
+                "fv.install_stop_handler()\n"
+                "try:\n"
+                "    print('ready', flush=True)\n"
+                "    time.sleep(30)\n"
+                "finally:\n"
+                f"    open({str(marker)!r}, 'w').write('yes')\n"
+            )
+            proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+            self.assertEqual(proc.stdout.readline().strip(), "ready")
+            proc.terminate()
+            self.assertEqual(proc.wait(timeout=20), 143)
+            self.assertTrue(marker.exists(), "the finally ran")
+
+
 if __name__ == "__main__":
     unittest.main()
