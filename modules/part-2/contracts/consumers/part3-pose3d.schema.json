@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-3-skeleton-consistency/contracts/pose3d.schema.json",
+  "title": "Part 2 pose3d.json (canonical form)",
+  "description": "The file Part 3 reads. Part 2 writes it without a version field. This schema is the canonical form: exactly the 17 joints, frame and t_ms on every frame. Part 3 also accepts looser shapes through input adapters (flat joints, joints as arrays, extra joints, no frame, no t_ms with an fps); python3 -m part3 doctor names the adapter that would fire. Frame numbers must also strictly increase, which a schema cannot say. Extra keys are ignored.",
+  "x-simon-version": "part2.pose3d/2026-10-28",
+  "x-direction": "input",
+  "x-producer": "Part 2",
+  "x-consumers": [
+    "Part 3"
+  ],
+  "type": "object",
+  "required": [
+    "frames"
+  ],
+  "properties": {
+    "frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    },
+    "mirrored": {
+      "type": "boolean",
+      "description": "Optional hint: the saved video is mirrored (true) or known not to be (false)."
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Optional frame rate; the derive-t_ms adapter uses it when frames carry no t_ms."
+    }
+  },
+  "$defs": {
+    "person_id": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "A person id as Part 2 writes it: an integer or a string."
+    },
+    "joint": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "conf": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z",
+        "conf"
+      ],
+      "description": "One joint: metres and a confidence in 0 to 1."
+    },
+    "joints": {
+      "type": "object",
+      "properties": {
+        "nose": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ankle": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ankle": {
+          "$ref": "#/$defs/joint"
+        }
+      },
+      "required": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ],
+      "additionalProperties": false
+    },
+    "person": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/person_id"
+        },
+        "joints": {
+          "$ref": "#/$defs/joints"
+        }
+      },
+      "required": [
+        "id",
+        "joints"
+      ]
+    },
+    "frame": {
+      "type": "object",
+      "properties": {
+        "frame": {
+          "type": "integer"
+        },
+        "t_ms": {
+          "type": "number"
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/person"
+          }
+        }
+      },
+      "required": [
+        "frame",
+        "t_ms",
+        "people"
+      ]
+    }
+  }
+}

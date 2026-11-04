@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contract | Simon Part 2</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-contract">
+  <header class="site-header">
+    <a class="brand" href="./"><img src="icon.svg" alt="" width="28" height="28"><span>Simon Part 2</span></a>
+    <nav id="site-nav" aria-label="Pages">
+      <a href="index.html">Browse</a>
+      <a href="contract.html" aria-current="page">Contract</a>
+      <a href="run.html">Run</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Contract</h1>
+    <p class="lede">What Part 2 promises to the parts that read its files. Each schema below is a file you can download.</p>
+    <p id="status" role="status" class="meta">Loading the contract.</p>
+    <p id="alert" role="alert" class="alert" hidden></p>
+
+    <section aria-labelledby="schemas-heading">
+      <h2 id="schemas-heading">Schemas</h2>
+      <div class="table-wrap">
+        <table id="schemas">
+          <thead><tr><th scope="col">Name</th><th scope="col">Version</th><th scope="col">Direction</th><th scope="col">File</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="schemas-empty" class="empty" hidden>No schemas are listed yet.</p>
+    </section>
+
+    <section aria-labelledby="compat-heading">
+      <h2 id="compat-heading">Compatibility</h2>
+      <div class="table-wrap">
+        <table id="compat">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="compat-empty" class="empty" hidden>No compatibility rows are listed yet.</p>
+    </section>
+
+    <section aria-labelledby="doc-heading">
+      <h2 id="doc-heading">Full text</h2>
+      <article id="contract-doc" class="doc"></article>
+    </section>
+  </main>
+
+  <script src="browse.js"></script>
+</body>
+</html>

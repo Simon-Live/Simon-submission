@@ -1,0 +1,118 @@
+{
+ "schema": "part2.stamp/2",
+ "mode": "coco-single",
+ "backend": "gpu",
+ "tracker": null,
+ "lifter": null,
+ "refine": [
+  "focal",
+  "kp2d-fit"
+ ],
+ "env_profile": "gpu-cu128",
+ "env_lock": "envs/gpu-cu128/constraints.txt",
+ "env_lock_sha256": "f6335d220b1febc14f8aafb618ea3797551b53feb987a9614349e7fc3a28f3c6",
+ "code_files": {
+  "part2/backends/__init__.py": "aed448390b9f3519f8d0e9b30a3fd06e2b20643c6fab24c9023fd1197858fa16",
+  "part2/backends/cpu_rtm.py": "56702b0aa8f8baf1c9a64c58b37f350a816a923a25cd57818843bf3d62634740",
+  "part2/backends/gpu_sam3db.py": "f6133df98be685a1d13e4bb62aa82668d957802be2d9dda757f6bbe24fb3afa4",
+  "part2/body3d.py": "9637fd0b3fdffe8098905f96ae1514346c4ecec9b7e39ec263c0558bbeb28e8c",
+  "part2/canonical.py": "9995c1213f775d325fa70c2d5ed91d433758ff67079b2f9d5eda9dca16f53348",
+  "part2/coco_set.py": "1e0c4bd1f3cd07120d9115aec8cfb2e4244d288d317835644c0c9c1faa85f3ea",
+  "part2/eval_reproj.py": "a8a0b80d33f238a96d684c5f48c06b87275c5815e59a4fa0d1c947c8f492ef2a",
+  "part2/frames.py": "e0fe8480cc6bb7fa4bfeb5bb3087deaa8584503424e51e3959c4ed2b49b8bb4d",
+  "part2/gpu_guard.py": "e408e4c2aee53d574cf0d9cfd0b85ee34791a73548c16a208943aa395724e6cc",
+  "part2/hashing.py": "78d43a3527c832b4e17c637ed874b40ea5833b81f571a9c718978bfd0c01001f",
+  "part2/joints.py": "860a777a1bf9a1b292b40649068667379cf195db906b1da3316b9aef0421b17a",
+  "part2/lifters/__init__.py": "8536389f58dc92c71a4de5a70a2f4f868a8ce75979ecdb0bd4f6b236239ee006",
+  "part2/meta_api.py": "6add1c2f2deee0611b061ada1d46fc871c1c2651425f1b8820dc9e91649470f5",
+  "part2/output_steps.py": "68cf903a51495fc59a25197a7237cad8c0612ad065c1ce02898f63db57762318",
+  "part2/refine/__init__.py": "08a85509100f3618476bef04195e886a50a35e5fb40176581bf4a4b3c9a49d29",
+  "part2/refine/focal.py": "bb622e45cccfb58bcfa38c91626e8558241f05de0d27aeba508da9788ee97537",
+  "part2/refine/kp2d_fit.py": "f828511700c470c7c9e467a9052a12dc537f3d21f69d8a3b5f5020b0c63c8029",
+  "part2/track.py": "645a432b72ce55c23c50077ff915d2f921c457ab3ff47d63aecda54c9a45d45b",
+  "part2/trackers/__init__.py": "65e9e6ef368b6e52eaeb3a83d3e755341f196f708b65ad1124bbe22c444e02b3"
+ },
+ "code_sha256": "8d76a1d341509c5d8e3fe8ee08b0daa9e8b074b8d20f8f82f9f8498b6442a812",
+ "frames_dir": "fixtures/input/coco/images",
+ "frames_sha256": "9eb6c237c217d81880f57f5683a45cd11f86d542a9580c73b8a3376ddf30d152",
+ "models": [
+  {
+   "name": "sam-3d-body-dinov3",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/model.ckpt",
+   "weights_sha256": "b5a2f9d305dd02626b967aa2e86021fba07065df66ce7a7e00ffb9664f150abf"
+  },
+  {
+   "name": "mhr",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/assets/mhr_model.pt",
+   "weights_sha256": "352e271a6c42729c68554ceaea0c955e866970160c31e35506d782dc0f7377bc"
+  },
+  {
+   "name": "moge-2-vitl-normal",
+   "source": "hf:Ruicheng/moge-2-vitl-normal@cb0e8bbd6b1e243589717c78e750b1ba4c093acf/model.pt",
+   "weights_sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01"
+  },
+  {
+   "name": "vitdet-h-cascade-mask-rcnn",
+   "source": "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl",
+   "weights_sha256": "8601bc52000c8a87960f3db6a9672596c5e06ce33bc30a3b8f96a96efe42ae60"
+  },
+  {
+   "name": "rtmpose-x body7 384x288 (rtmlib performance mode)",
+   "source": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-x_simcc-body7_pt-body7_700e-384x288-71d7b7e9_20230629.zip",
+   "weights_sha256": "df0c0fa91e9870b1515dcaff741fd76cc753dcfb12786862f61b243bae81cd52"
+  }
+ ],
+ "files_sha256": {
+  "161875/camera.json": "7514f5db9ddfc6c31c9922a65ff7cab6cb177afedd2df958ddcc1ddb8b783ab8",
+  "161875/pose3d.json": "29a6d3e417189ca8e49b767b502a45ef0f5c06b0bbaec8ddbc98fa04bd57fa2e",
+  "22705/camera.json": "318c81571d27522f553f7b8507b83872d47ebc95a5f4defa68acdc679eea9d3f",
+  "22705/pose3d.json": "8dea561b8de5fc9d5fc35ae28324d480b9c8c32c8139b3284f7abcdbb3bd8df3",
+  "229553/camera.json": "27d2d689add08fdb24122a17c5997cfbf1bbecadd7c06171a58ff6dcc3cadaaf",
+  "229553/pose3d.json": "16188c1276f97a3f4e6d6617ad2b42b623c344918b808fa78ba05b20c79554c0",
+  "261732/camera.json": "decc18166506d5ef303886ea439d0e49aa9fc6e12b13db548c8581c75d6e3511",
+  "261732/pose3d.json": "f7bb3a1c518b971499fffb5ef39565f779213965b21644cc5db1efd8f76fb670",
+  "273760/camera.json": "a2860c3ac4dfc403e892db4cc42c45574d8e33ec801d827dce246c70fba2e377",
+  "273760/pose3d.json": "2713e52fc8e2052feea0f28b046e762cb87e40bd0adea5f51e35c2c1acfc1b40",
+  "317433/camera.json": "d1ad2dd09474433bafb886599f8305d1ca49f113e30658402551b0d7c67c92bf",
+  "317433/pose3d.json": "b939de6fcf1d055e04c6afc6b9f7acd823358ca68342c70e47402be0c09a47c5",
+  "326128/camera.json": "fa9d3a366b3aca90e4575fb3af181f0e11fd2e22e459ff3170601c82e3afbb0e",
+  "326128/pose3d.json": "46a5887a042519aa2fc4997cb3645a7a929a919b0b4212f8494789c6f92552d3",
+  "340451/camera.json": "024910b9f8413a219794e96c9b732cb97ca3c2b8ff6ab7cb704272e2f9e3f748",
+  "340451/pose3d.json": "c073565ac4e40a3e9ec46293051629ce0e14546d09f3da99ac36809f4dcdc327",
+  "352760/camera.json": "45f4ff14c1058ae551a3da4316074ffa8e9ba99531635a3676c2fcec265502c0",
+  "352760/pose3d.json": "b9e5b6d64f482a5481e78b72e4380b3a3d1d20bd351af5821dd6507819c36ab6",
+  "356505/camera.json": "60031112b7d0a9a56e67ef825c1a87eb78b2256d8a561c27754f1cd4a60e56cd",
+  "356505/pose3d.json": "add0e745f268ebc4dd718e889f2ab17ce99188b460c93d68c6ee58234b25c91a",
+  "358195/camera.json": "275055f4963cd75c53a4d3e87f16b41bf9569baeb889f7a398eee256f339e40b",
+  "358195/pose3d.json": "bc162cd461073d6116bbb694ce718f1f9dba7c57a01ec5973515e5ebc9e7c41b",
+  "42102/camera.json": "793d975c8fb960eea88d1df2b68c2872f34806da0fb49800ab862b15564532ac",
+  "42102/pose3d.json": "5a9c5497a5add1f3e19534e933cf7d233f8162220f85c87d805a8ff31382a224",
+  "473406/camera.json": "9f28120c1315aa962f4df9082bcf92cfbdad70c4d2f1bbe6d05e6c469b7cf34c",
+  "473406/pose3d.json": "e176a767abc21b26f3abcaedd6b48369161e747a046779877cbbce3b139a433e",
+  "480936/camera.json": "c9dbe452f65bcac61cf116a9a9f3495f3b62851210c1436951c1161c97d49ac0",
+  "480936/pose3d.json": "38d0c29c13877863efcbacaf83b1a4a5746b2a459971a47002cbc56d1aa01607",
+  "481386/camera.json": "21bb2b662385e3af29b39d1b4c65270596666d0e372fcc970501110a01bfe617",
+  "481386/pose3d.json": "60052e8182c6925bdc77288d9fda96c53eac035ac47ec3b3b8b073084e70793a",
+  "493442/camera.json": "a4d0a31e8e2b8180cb57319b51105334f571f69b9f3341f240980260559a4e98",
+  "493442/pose3d.json": "c9a01a54d11e5f210f7efd1aff90bb48551e8e8213cbee4ebfb64ebeb9c70d82",
+  "520910/camera.json": "0f06a9fd2bf36f371e6c43bd83e49bb52456eae038e8e4e2075236e4985de8aa",
+  "520910/pose3d.json": "26f7c8afba6b43378fa621bba80b494348c9e3157f1c2379ba1fa694d07cfd15",
+  "54931/camera.json": "4eec826d0f4725f18ab3e71daa92ebd42bbe6be8d7374a66a464818cede7425a",
+  "54931/pose3d.json": "ed0d6a7560607d1ca9a42dbeca52339d38e4938e3ddd2db7d1da86317fb57864",
+  "556158/camera.json": "de974ef5114f247dbfa4084937022c5b49d243aac9acf46044088df9e0aa7c00",
+  "556158/pose3d.json": "1a1538ce53ede5ce52952ec21c5cb45a4d2a673ded5abb38be3dd2b827f870ac",
+  "785/camera.json": "1ab277d9407344b5cfd2fa9a2528da43563c2cfaf8d0b3e9e13997d93f452d0f",
+  "785/pose3d.json": "c5d58193b93ed2449fdaa9f094296a06f985be61ebff1cd611671e32351fb576"
+ },
+ "created_utc": "2026-11-01T01:24:49Z",
+ "host_gpu": "NVIDIA GeForce RTX 5090",
+ "run": {
+  "frames": 20,
+  "people": 20,
+  "seconds": 170.8,
+  "params": {
+   "smooth": false,
+   "mirrored": false
+  }
+ }
+}

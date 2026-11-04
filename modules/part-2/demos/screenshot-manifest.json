@@ -1,0 +1,81 @@
+{
+ "engagement_id": "simon-part-2",
+ "generated_by": "orchestrator (vanilla-HTML UI; scripts/generate-screenshot-manifest.sh detects no UI framework for html, reported to firm as iem-20261031T071625Z-simon-part-2-e47c). The capture list was fixed before capture: the three pages in web/*.html at the generator's two web viewports (mweb 393x852, desktop 1440x900), each page once, plus the run page with a finished job. Frames copied unedited from the capture run.",
+ "generated_date": "2026-10-31",
+ "source": "Captured through the firm gateway http://127.0.0.1:7100/simon-part-2/ from the staging checkout at 91bb7f1 (api/health version 91bb7f1 before and after); run-result jobs 97e6e1019cf9 (mweb) and 64c74598e425 (desktop) on the gpu backend; capture log demos/screenshots/staging-91bb7f1/capture-log.json",
+ "note": "Three document routes under the /simon-part-2/ prefix: / (web/index.html), /contract.html, /run.html. The Feedback button at the bottom left of some frames is the gateway's injected widget, not the app.",
+ "entries": [
+  {
+   "step": 1,
+   "path": "demos/screenshots/staging-91bb7f1/01-mweb-index.png",
+   "route": "/",
+   "description": "Browse outputs: the class output open, seven ids in their colours on the picture, the 3D skeleton of id 0 beside it",
+   "viewport": "mweb (393x852 CSS px, mobile emulation)",
+   "captured_at": "2026-10-31T07:18:16.889Z",
+   "screen": "/simon-part-2/"
+  },
+  {
+   "step": 2,
+   "path": "demos/screenshots/staging-91bb7f1/02-mweb-contract.png",
+   "route": "/contract.html",
+   "description": "Contract: the four Part 2 schemas with downloads and the compatibility table",
+   "viewport": "mweb (393x852 CSS px, mobile emulation)",
+   "captured_at": "2026-10-31T07:18:17.297Z",
+   "screen": "/simon-part-2/contract.html"
+  },
+  {
+   "step": 3,
+   "path": "demos/screenshots/staging-91bb7f1/03-mweb-run-form.png",
+   "route": "/run.html",
+   "description": "Run the pipeline: the form before any action (Stretch sample, One person, GPU backend)",
+   "viewport": "mweb (393x852 CSS px, mobile emulation)",
+   "captured_at": "2026-10-31T07:18:17.388Z",
+   "screen": "/simon-part-2/run.html"
+  },
+  {
+   "step": 4,
+   "path": "demos/screenshots/staging-91bb7f1/04-mweb-run-result.png",
+   "route": "/run.html",
+   "description": "Run the pipeline: the Stretch sample finished on the GPU, result line, picture with overlay and the 3D skeleton (\"Done in 141 s.\")",
+   "viewport": "mweb (393x852 CSS px, mobile emulation)",
+   "captured_at": "2026-10-31T07:20:39.187Z",
+   "screen": "/simon-part-2/run.html"
+  },
+  {
+   "step": 5,
+   "path": "demos/screenshots/staging-91bb7f1/05-desktop-index.png",
+   "route": "/",
+   "description": "Browse outputs: the class output open, seven ids in their colours on the picture, the 3D skeleton of id 0 beside it",
+   "viewport": "desktop (1440x900 CSS px)",
+   "captured_at": "2026-10-31T07:20:39.459Z",
+   "screen": "/simon-part-2/"
+  },
+  {
+   "step": 6,
+   "path": "demos/screenshots/staging-91bb7f1/06-desktop-contract.png",
+   "route": "/contract.html",
+   "description": "Contract: the four Part 2 schemas with downloads and the compatibility table",
+   "viewport": "desktop (1440x900 CSS px)",
+   "captured_at": "2026-10-31T07:20:39.910Z",
+   "screen": "/simon-part-2/contract.html"
+  },
+  {
+   "step": 7,
+   "path": "demos/screenshots/staging-91bb7f1/07-desktop-run-form.png",
+   "route": "/run.html",
+   "description": "Run the pipeline: the form before any action (Stretch sample, One person, GPU backend)",
+   "viewport": "desktop (1440x900 CSS px)",
+   "captured_at": "2026-10-31T07:20:40.011Z",
+   "screen": "/simon-part-2/run.html"
+  },
+  {
+   "step": 8,
+   "path": "demos/screenshots/staging-91bb7f1/08-desktop-run-result.png",
+   "route": "/run.html",
+   "description": "Run the pipeline: the Stretch sample finished on the GPU, result line, picture with overlay and the 3D skeleton (\"Done in 149 s.\")",
+   "viewport": "desktop (1440x900 CSS px)",
+   "captured_at": "2026-10-31T07:23:09.796Z",
+   "screen": "/simon-part-2/run.html"
+  }
+ ]
+}

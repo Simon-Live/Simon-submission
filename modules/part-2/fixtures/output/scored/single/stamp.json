@@ -1,0 +1,78 @@
+{
+ "schema": "part2.stamp/2",
+ "mode": "single",
+ "backend": "gpu",
+ "tracker": null,
+ "lifter": null,
+ "refine": [
+  "focal",
+  "kp2d-fit"
+ ],
+ "env_profile": "gpu-cu128",
+ "env_lock": "envs/gpu-cu128/constraints.txt",
+ "env_lock_sha256": "f6335d220b1febc14f8aafb618ea3797551b53feb987a9614349e7fc3a28f3c6",
+ "code_files": {
+  "part2/backends/__init__.py": "aed448390b9f3519f8d0e9b30a3fd06e2b20643c6fab24c9023fd1197858fa16",
+  "part2/backends/cpu_rtm.py": "56702b0aa8f8baf1c9a64c58b37f350a816a923a25cd57818843bf3d62634740",
+  "part2/backends/gpu_sam3db.py": "f6133df98be685a1d13e4bb62aa82668d957802be2d9dda757f6bbe24fb3afa4",
+  "part2/body3d.py": "9637fd0b3fdffe8098905f96ae1514346c4ecec9b7e39ec263c0558bbeb28e8c",
+  "part2/canonical.py": "9995c1213f775d325fa70c2d5ed91d433758ff67079b2f9d5eda9dca16f53348",
+  "part2/frames.py": "e0fe8480cc6bb7fa4bfeb5bb3087deaa8584503424e51e3959c4ed2b49b8bb4d",
+  "part2/gpu_guard.py": "e408e4c2aee53d574cf0d9cfd0b85ee34791a73548c16a208943aa395724e6cc",
+  "part2/hashing.py": "78d43a3527c832b4e17c637ed874b40ea5833b81f571a9c718978bfd0c01001f",
+  "part2/joints.py": "860a777a1bf9a1b292b40649068667379cf195db906b1da3316b9aef0421b17a",
+  "part2/lifters/__init__.py": "8536389f58dc92c71a4de5a70a2f4f868a8ce75979ecdb0bd4f6b236239ee006",
+  "part2/meta_api.py": "6add1c2f2deee0611b061ada1d46fc871c1c2651425f1b8820dc9e91649470f5",
+  "part2/output_steps.py": "68cf903a51495fc59a25197a7237cad8c0612ad065c1ce02898f63db57762318",
+  "part2/refine/__init__.py": "08a85509100f3618476bef04195e886a50a35e5fb40176581bf4a4b3c9a49d29",
+  "part2/refine/focal.py": "bb622e45cccfb58bcfa38c91626e8558241f05de0d27aeba508da9788ee97537",
+  "part2/refine/kp2d_fit.py": "f828511700c470c7c9e467a9052a12dc537f3d21f69d8a3b5f5020b0c63c8029",
+  "part2/track.py": "645a432b72ce55c23c50077ff915d2f921c457ab3ff47d63aecda54c9a45d45b",
+  "part2/trackers/__init__.py": "65e9e6ef368b6e52eaeb3a83d3e755341f196f708b65ad1124bbe22c444e02b3"
+ },
+ "code_sha256": "bc3cf71f06b221153133f89da7588904def163365580244d856933d29011b204",
+ "frames_dir": "fixtures/input/single/frames",
+ "frames_sha256": "80a75a298f8a947c35060e20ad3020c1f04133cf4ba3d628fccb644a4a676df2",
+ "models": [
+  {
+   "name": "sam-3d-body-dinov3",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/model.ckpt",
+   "weights_sha256": "b5a2f9d305dd02626b967aa2e86021fba07065df66ce7a7e00ffb9664f150abf"
+  },
+  {
+   "name": "mhr",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/assets/mhr_model.pt",
+   "weights_sha256": "352e271a6c42729c68554ceaea0c955e866970160c31e35506d782dc0f7377bc"
+  },
+  {
+   "name": "moge-2-vitl-normal",
+   "source": "hf:Ruicheng/moge-2-vitl-normal@cb0e8bbd6b1e243589717c78e750b1ba4c093acf/model.pt",
+   "weights_sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01"
+  },
+  {
+   "name": "vitdet-h-cascade-mask-rcnn",
+   "source": "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl",
+   "weights_sha256": "8601bc52000c8a87960f3db6a9672596c5e06ce33bc30a3b8f96a96efe42ae60"
+  },
+  {
+   "name": "rtmpose-x body7 384x288 (rtmlib performance mode)",
+   "source": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-x_simcc-body7_pt-body7_700e-384x288-71d7b7e9_20230629.zip",
+   "weights_sha256": "df0c0fa91e9870b1515dcaff741fd76cc753dcfb12786862f61b243bae81cd52"
+  }
+ ],
+ "files_sha256": {
+  "camera.json": "987faa9ac0f4ecdf34075516fdddeb814879aea974b58a5605411a3e601a4432",
+  "pose3d.json": "d372add4b5cf2a11e802084e636dde0dbd7648fddc6676264f1005262b45746c"
+ },
+ "created_utc": "2026-11-01T01:15:09Z",
+ "host_gpu": "NVIDIA GeForce RTX 5090",
+ "run": {
+  "frames": 111,
+  "people": 1,
+  "seconds": 930.8,
+  "params": {
+   "smooth": false,
+   "mirrored": false
+  }
+ }
+}

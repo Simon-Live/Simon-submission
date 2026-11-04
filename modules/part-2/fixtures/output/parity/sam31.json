@@ -1,0 +1,111 @@
+{
+  "pass": true,
+  "checked_utc": "2026-10-29T03:30:35Z",
+  "clip": "fixtures/input/class/frames (89 frames, 5 fps)",
+  "rule": "same id count, every id matched by mean mask IoU >= 0.5, per-id coverage within 1 point; label-free",
+  "a": {
+    "tracker": "local-sam31",
+    "part2_commit": "344f3d0b7efe4b33df43e59ec981b7484ac77656",
+    "created_utc": "2026-10-29T03:30:05Z",
+    "models": [
+      {
+        "name": "sam3.1",
+        "source": "https://huggingface.co/facebook/sam3.1/blob/daa63191845a41281374e725f4c9e51c7a824460/sam3.1_multiplex.pt",
+        "weights_sha256": "0567debeec80ba4ac6369540c6c248025283cb3ff2b92827509e57e2b3541cb6",
+        "licence": "SAM License (gated weights, ADR-0005)"
+      }
+    ],
+    "tracks_sha256": "43343571653d5e7e4a4e2aa2f45b463c8c45fb133223e92887dae431d4147616"
+  },
+  "b": {
+    "tracker": "api-sam31",
+    "part2_commit": "e4ff9755bd141083bb3c3d09881da32f2667eeae-dirty",
+    "created_utc": "2026-10-29T03:21:50Z",
+    "models": [
+      {
+        "name": "sam-3.1",
+        "source": "Meta Model API https://api.meta.ai/v1",
+        "weights_sha256": null,
+        "licence": "Meta Model API terms (ADR-0005)"
+      }
+    ],
+    "tracks_sha256": "5c3103389a85523b42c15a47cfd860390f5b64ca93a7f9d681473cfa304aba77"
+  },
+  "result": {
+    "pass": true,
+    "reasons": [],
+    "tolerance_pp": 1.0,
+    "min_match_iou": 0.5,
+    "n_frames": 89,
+    "ids_a": 7,
+    "ids_b": 7,
+    "max_diff_pp": 0.0,
+    "pairs": [
+      {
+        "a": 1,
+        "b": 2,
+        "mean_mask_iou": 0.9907,
+        "coverage_a": 1.0,
+        "coverage_b": 1.0,
+        "diff_pp": 0.0,
+        "within": true
+      },
+      {
+        "a": 5,
+        "b": 6,
+        "mean_mask_iou": 0.9867,
+        "coverage_a": 1.0,
+        "coverage_b": 1.0,
+        "diff_pp": 0.0,
+        "within": true
+      },
+      {
+        "a": 0,
+        "b": 0,
+        "mean_mask_iou": 0.9864,
+        "coverage_a": 1.0,
+        "coverage_b": 1.0,
+        "diff_pp": 0.0,
+        "within": true
+      },
+      {
+        "a": 2,
+        "b": 3,
+        "mean_mask_iou": 0.9813,
+        "coverage_a": 1.0,
+        "coverage_b": 1.0,
+        "diff_pp": 0.0,
+        "within": true
+      },
+      {
+        "a": 4,
+        "b": 5,
+        "mean_mask_iou": 0.9811,
+        "coverage_a": 1.0,
+        "coverage_b": 1.0,
+        "diff_pp": 0.0,
+        "within": true
+      },
+      {
+        "a": 6,
+        "b": 1,
+        "mean_mask_iou": 0.9735,
+        "coverage_a": 1.0,
+        "coverage_b": 1.0,
+        "diff_pp": 0.0,
+        "within": true
+      },
+      {
+        "a": 3,
+        "b": 4,
+        "mean_mask_iou": 0.971,
+        "coverage_a": 1.0,
+        "coverage_b": 1.0,
+        "diff_pp": 0.0,
+        "within": true
+      }
+    ],
+    "unmatched_a": [],
+    "unmatched_b": []
+  }
+}

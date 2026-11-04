@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-2-images-to-3d/contracts/tracks.schema.json",
+  "title": "Part 2 tracks.json",
+  "description": "One box and mask per tracked person per frame. bbox is [x, y, w, h] in pixels with w, h >= 0; mask_rle is COCO RLE ({size: [h, w], counts}). frame strictly increases and matches pose3d.json; ids are unique within a frame. Part 3 does not read this file.",
+  "x-simon-version": "part2.tracks/2026-10-28",
+  "x-direction": "output",
+  "x-producer": "Part 2",
+  "x-consumers": [],
+  "type": "object",
+  "required": [
+    "frames"
+  ],
+  "properties": {
+    "frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    },
+    "t0_pts_ms": {
+      "type": "number",
+      "description": "Optional. The first decoded frame's presentation time in milliseconds, so a reader can rebase t_ms onto the file clock: file time = t_ms + t0_pts_ms."
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "track": {
+      "type": "object",
+      "required": [
+        "id",
+        "bbox",
+        "mask_rle",
+        "confidence"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Stable track id; the same id names the person in pose3d.json."
+        },
+        "bbox": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "[x, y, w, h] in pixels."
+        },
+        "mask_rle": {
+          "type": "object",
+          "required": [
+            "size",
+            "counts"
+          ],
+          "properties": {
+            "size": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "description": "[h, w]."
+            },
+            "counts": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": [
+        "frame",
+        "people"
+      ],
+      "properties": {
+        "frame": {
+          "type": "integer"
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/track"
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Optional. What produced this file. Readers ignore it; removing it keeps the file valid. Extra keys are allowed.",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "description": "The x-simon-version of this file's schema."
+        },
+        "backend": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The 3D backend that ran, for example gpu."
+        },
+        "tracker": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The tracker that ran; null when none did (one-person mode)."
+        },
+        "lifter": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The 2D to 3D lifter, for the cpu backend; null otherwise."
+        },
+        "refine": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Refinement rungs applied, in order."
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/model"
+          }
+        },
+        "part2_commit": {
+          "type": "string",
+          "description": "git commit of Part 2 that wrote the file; a +dirty suffix marks uncommitted changes, unknown when git was not available."
+        },
+        "created_utc": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "licence_notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "name",
+        "source",
+        "weights_sha256"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where the weights come from."
+        },
+        "weights_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the weights file; null when the model is hosted or the file was not hashed."
+        }
+      }
+    }
+  }
+}

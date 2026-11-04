@@ -1,0 +1,180 @@
+{
+  "target": "staging app through the firm gateway, path /simon-part-2/ on 127.0.0.1:7100",
+  "expected_commit": "91bb7f1",
+  "staging_status": {
+    "before": "simon-part-2 up, checkout 91bb7f1ed (staging.sh status, before the drive)",
+    "after": "simon-part-2 up, checkout 91bb7f1ed (staging.sh status, 2026-10-31T07:23:42Z)"
+  },
+  "api_health_version": {
+    "before": "91bb7f1",
+    "before_at": "2026-10-31T07:18:16.579Z",
+    "after": "91bb7f1",
+    "after_at": "2026-10-31T07:23:09.822Z",
+    "also_read_around_each_job": "91bb7f1 before and after both jobs (worker idle each time)"
+  },
+  "browser": "headless Chromium via playwright-core through scripts/lane-browser.sh under staging.sh exec; the login was supplied as httpCredentials and never printed",
+  "viewports": [
+    { "id": "mweb", "width": 393, "height": 852, "is_mobile": true, "has_touch": true, "device_scale_factor": 1 },
+    { "id": "desktop", "width": 1440, "height": 900, "is_mobile": false, "has_touch": false, "device_scale_factor": 1 }
+  ],
+  "capture_method": "page.screenshot with fullPage true; every wait is on the app's own ready state (window.app.ready, rendered row counts, viewer canvas pixels drawn, picture loaded, status \"Done in N s.\"), no fixed sleeps",
+  "gpu_free_mib_nvidia_smi": [
+    { "label": "start", "at": "2026-10-31T07:18:16.632Z", "free_mib": 28221, "total_mib": 32607 },
+    { "label": "before-job-mweb", "at": "2026-10-31T07:18:17.445Z", "free_mib": 28221, "total_mib": 32607 },
+    { "label": "before-job-desktop", "at": "2026-10-31T07:20:40.075Z", "free_mib": 28221, "total_mib": 32607 },
+    { "label": "end", "at": "2026-10-31T07:23:09.879Z", "free_mib": 28221, "total_mib": 32607 }
+  ],
+  "jobs": [
+    { "viewport": "mweb", "job_id": "97e6e1019cf9", "sample": "single", "state": "done", "frames": 111, "backend": "gpu", "part2_commit": "91bb7f1edbf71bba80cf38738e022836c11031ae", "frame_file": "04-mweb-run-result.png" },
+    { "viewport": "desktop", "job_id": "64c74598e425", "sample": "single", "state": "done", "frames": 111, "backend": "gpu", "part2_commit": "91bb7f1edbf71bba80cf38738e022836c11031ae", "frame_file": "08-desktop-run-result.png" }
+  ],
+  "frames": [
+    {
+      "file": "01-mweb-index.png",
+      "viewport": { "id": "mweb", "width": 393, "height": 852, "device_scale_factor": 1, "is_mobile": true },
+      "url_path": "/simon-part-2/",
+      "captured_at": "2026-10-31T07:18:16.889Z",
+      "what_visible": "Browse outputs: Each output is a clip the pipeline already ran. Pick one, then drag the skeleton to turn it.",
+      "data_text_visible": "Clip: People Doing the Cat Cow Pose in a Yoga Class by Yan Krukau (Pexels licence). Backend: SAM 3D Body (HPC V100). Tracker: SAM 3.1 through the Meta API. 7 people, 89 frames.",
+      "ready_state": { "app_ready": true, "frame_count": 89, "canvas_drawn": true },
+      "full_page_png_px": { "width": 393, "height": 1537 },
+      "png_bytes": 205370,
+      "sha256": "27d0f7339b5a9a1296697af25dd9e91eaa14deabe24536e0c0dea0316c1b8c6a",
+      "rendered_ok": true,
+      "problems": [],
+      "console_since_last_frame": [ { "kind": "console.warning", "text": "Canvas2D: Multiple readback operations using getImageData (from the capture script's own canvas check)" } ]
+    },
+    {
+      "file": "02-mweb-contract.png",
+      "viewport": { "id": "mweb", "width": 393, "height": 852, "device_scale_factor": 1, "is_mobile": true },
+      "url_path": "/simon-part-2/contract.html",
+      "captured_at": "2026-10-31T07:18:17.297Z",
+      "what_visible": "Contract: What Part 2 promises to the parts that read its files. Each schema below is a file you can download.",
+      "data_text_visible": "4 schema rows and 11 compatibility rows rendered, then the full CONTRACT.md text",
+      "full_page_png_px": { "width": 393, "height": 18281 },
+      "png_bytes": 1576415,
+      "sha256": "4b18014e034b2c232b87ad3a35293885d40b33b7d52c199ec5bc7b52722b1970",
+      "rendered_ok": true,
+      "problems": [],
+      "console_since_last_frame": []
+    },
+    {
+      "file": "03-mweb-run-form.png",
+      "viewport": { "id": "mweb", "width": 393, "height": 852, "device_scale_factor": 1, "is_mobile": true },
+      "url_path": "/simon-part-2/run.html",
+      "captured_at": "2026-10-31T07:18:17.388Z",
+      "what_visible": "Run the pipeline: Pick a sample or upload a video or photo. The server turns it into 3D skeletons you can turn and download.",
+      "data_text_visible": "Samples: Stretch sample (single), Yoga sample (class). Backend: GPU (SAM 3D Body). Run enabled, status empty.",
+      "full_page_png_px": { "width": 393, "height": 852 },
+      "png_bytes": 64564,
+      "sha256": "2c1560b2a47caf0387628ebe0937fa41ade0a38f5f890ce9fbc19fcceb6d427b",
+      "rendered_ok": true,
+      "problems": [],
+      "console_since_last_frame": []
+    },
+    {
+      "file": "04-mweb-run-result.png",
+      "viewport": { "id": "mweb", "width": 393, "height": 852, "device_scale_factor": 1, "is_mobile": true },
+      "url_path": "/simon-part-2/run.html",
+      "captured_at": "2026-10-31T07:20:39.187Z",
+      "what_visible": "The status line reads \"Done in 141 s.\" and the result line reads \"Backend: gpu. Tracker: none (one person mode). Lifter: none. 111 frames.\" above the Picture and 3D skeleton panels.",
+      "data_text_visible": "Status: Done in 141 s. Result: Backend: gpu. Tracker: none (one person mode). Lifter: none. 111 frames.",
+      "job_id": "97e6e1019cf9",
+      "job_state": "done",
+      "sample": "single",
+      "mode": "single",
+      "served_version": "91bb7f1",
+      "served_version_after": "91bb7f1",
+      "part2_commit_in_pose3d": "91bb7f1edbf71bba80cf38738e022836c11031ae",
+      "served_version_note": "api/health version read through the gateway just before the job (served_version) and just after it (served_version_after); the job's own pose3d.json provenance.part2_commit agrees",
+      "status_sequence": [ "Waiting for the GPU to have enough free memory.", "Running: estimating 3D poses, 0 of 111.", "Running: writing files, 0 of 1." ],
+      "full_page_png_px": { "width": 393, "height": 2015 },
+      "png_bytes": 195548,
+      "sha256": "635c8fa421ec7d35b41ba39be2922caea43a436901fa73d0cd3891cc732330b3",
+      "rendered_ok": true,
+      "problems": [],
+      "console_since_last_frame": [
+        { "kind": "console.error", "text": "Applying inline style violates the following Content Security Policy directive 'default-src 'self'' (gateway-injected Feedback widget)" },
+        { "kind": "console.warning", "text": "Canvas2D: Multiple readback operations using getImageData (from the capture script's own canvas check)" }
+      ]
+    },
+    {
+      "file": "05-desktop-index.png",
+      "viewport": { "id": "desktop", "width": 1440, "height": 900, "device_scale_factor": 1, "is_mobile": false },
+      "url_path": "/simon-part-2/",
+      "captured_at": "2026-10-31T07:20:39.459Z",
+      "what_visible": "Browse outputs: Each output is a clip the pipeline already ran. Pick one, then drag the skeleton to turn it.",
+      "data_text_visible": "Clip: People Doing the Cat Cow Pose in a Yoga Class by Yan Krukau (Pexels licence). Backend: SAM 3D Body (HPC V100). Tracker: SAM 3.1 through the Meta API. 7 people, 89 frames.",
+      "ready_state": { "app_ready": true, "frame_count": 89, "canvas_drawn": true },
+      "full_page_png_px": { "width": 1440, "height": 999 },
+      "png_bytes": 377270,
+      "sha256": "5c3458749866884da749fdc61e89000cc49ac62629d8779c402aa7c057a26740",
+      "rendered_ok": true,
+      "problems": [],
+      "console_since_last_frame": [ { "kind": "console.warning", "text": "Canvas2D: Multiple readback operations using getImageData (from the capture script's own canvas check)" } ]
+    },
+    {
+      "file": "06-desktop-contract.png",
+      "viewport": { "id": "desktop", "width": 1440, "height": 900, "device_scale_factor": 1, "is_mobile": false },
+      "url_path": "/simon-part-2/contract.html",
+      "captured_at": "2026-10-31T07:20:39.910Z",
+      "what_visible": "Contract: What Part 2 promises to the parts that read its files. Each schema below is a file you can download.",
+      "data_text_visible": "4 schema rows and 11 compatibility rows rendered, then the full CONTRACT.md text",
+      "full_page_png_px": { "width": 1440, "height": 9054 },
+      "png_bytes": 1777279,
+      "sha256": "2aabee627e91fe3cabdc22df257ce84b7eb881098efe1ccbcfe6a8ea43a1e23d",
+      "rendered_ok": true,
+      "problems": [],
+      "console_since_last_frame": []
+    },
+    {
+      "file": "07-desktop-run-form.png",
+      "viewport": { "id": "desktop", "width": 1440, "height": 900, "device_scale_factor": 1, "is_mobile": false },
+      "url_path": "/simon-part-2/run.html",
+      "captured_at": "2026-10-31T07:20:40.011Z",
+      "what_visible": "Run the pipeline: Pick a sample or upload a video or photo. The server turns it into 3D skeletons you can turn and download.",
+      "data_text_visible": "Samples: Stretch sample (single), Yoga sample (class). Backend: GPU (SAM 3D Body). Run enabled, status empty.",
+      "full_page_png_px": { "width": 1440, "height": 900 },
+      "png_bytes": 70226,
+      "sha256": "fd0b7150b12f6b99a20968794373f710ac4b3772287354abcf11f09ff90e1023",
+      "rendered_ok": true,
+      "problems": [],
+      "console_since_last_frame": []
+    },
+    {
+      "file": "08-desktop-run-result.png",
+      "viewport": { "id": "desktop", "width": 1440, "height": 900, "device_scale_factor": 1, "is_mobile": false },
+      "url_path": "/simon-part-2/run.html",
+      "captured_at": "2026-10-31T07:23:09.796Z",
+      "what_visible": "The status line reads \"Done in 149 s.\" and the result line reads \"Backend: gpu. Tracker: none (one person mode). Lifter: none. 111 frames.\" above the Picture and 3D skeleton panels.",
+      "data_text_visible": "Status: Done in 149 s. Result: Backend: gpu. Tracker: none (one person mode). Lifter: none. 111 frames.",
+      "job_id": "64c74598e425",
+      "job_state": "done",
+      "sample": "single",
+      "mode": "single",
+      "served_version": "91bb7f1",
+      "served_version_after": "91bb7f1",
+      "part2_commit_in_pose3d": "91bb7f1edbf71bba80cf38738e022836c11031ae",
+      "served_version_note": "api/health version read through the gateway just before the job (served_version) and just after it (served_version_after); the job's own pose3d.json provenance.part2_commit agrees",
+      "status_sequence": [ "Waiting for the GPU to have enough free memory.", "Running: estimating 3D poses, 0 of 111.", "Running: writing files, 1 of 1.", "Done in 149 s." ],
+      "full_page_png_px": { "width": 1440, "height": 1479 },
+      "png_bytes": 284797,
+      "sha256": "69e3ee4d836bdf676e14427456ee5266f82c8ed61bf259b50483f35bf31b21a2",
+      "rendered_ok": true,
+      "problems": [],
+      "console_since_last_frame": [
+        { "kind": "console.error", "text": "Applying inline style violates the following Content Security Policy directive 'default-src 'self'' (gateway-injected Feedback widget)" },
+        { "kind": "console.warning", "text": "Canvas2D: Multiple readback operations using getImageData (from the capture script's own canvas check)" }
+      ]
+    }
+  ],
+  "notes": [
+    "run.js keeps no job id in the URL or storage, so the page cannot show a finished job again. The one-person sample was therefore run once at mweb (job 97e6e1019cf9, frame 04) and once at desktop (job 64c74598e425, frame 08). The mweb run came first because mweb is first in the capture order.",
+    "The status_sequence of the mweb job ends at \"Running: writing files, 0 of 1.\" because the 150 ms status observer missed the last text change; the frame itself shows \"Done in 141 s.\".",
+    "The Feedback button at the bottom left of the two run-result frames is the gateway-injected feedback widget, not part of the app. It also causes the one Content Security Policy console error (inline style) on the pages that load it.",
+    "On the mweb contract frame the Schemas and Compatibility tables scroll sideways inside their wrapper, so their right-hand columns are clipped in the frame. That is the page's own layout at 393 px.",
+    "The Canvas2D getImageData warnings come from the capture script's own canvas-drawn check, not from the app.",
+    "No page failed to render and no retry was needed. No frame was edited after capture.",
+    "The capture script and scratch files are outside the repo, in the maintainers' local state directory."
+  ]
+}

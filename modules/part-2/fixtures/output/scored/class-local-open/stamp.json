@@ -1,0 +1,82 @@
+{
+ "schema": "part2.stamp/2",
+ "mode": "class-local-open",
+ "backend": "gpu",
+ "tracker": "local-open",
+ "lifter": null,
+ "refine": [],
+ "env_profile": "gpu-cu128",
+ "env_lock": "envs/gpu-cu128/constraints.txt",
+ "env_lock_sha256": "f6335d220b1febc14f8aafb618ea3797551b53feb987a9614349e7fc3a28f3c6",
+ "code_files": {
+  "part2/backends/__init__.py": "aed448390b9f3519f8d0e9b30a3fd06e2b20643c6fab24c9023fd1197858fa16",
+  "part2/backends/cpu_rtm.py": "56702b0aa8f8baf1c9a64c58b37f350a816a923a25cd57818843bf3d62634740",
+  "part2/backends/gpu_sam3db.py": "f6133df98be685a1d13e4bb62aa82668d957802be2d9dda757f6bbe24fb3afa4",
+  "part2/body3d.py": "9637fd0b3fdffe8098905f96ae1514346c4ecec9b7e39ec263c0558bbeb28e8c",
+  "part2/canonical.py": "9995c1213f775d325fa70c2d5ed91d433758ff67079b2f9d5eda9dca16f53348",
+  "part2/frames.py": "e0fe8480cc6bb7fa4bfeb5bb3087deaa8584503424e51e3959c4ed2b49b8bb4d",
+  "part2/gpu_guard.py": "e408e4c2aee53d574cf0d9cfd0b85ee34791a73548c16a208943aa395724e6cc",
+  "part2/hashing.py": "78d43a3527c832b4e17c637ed874b40ea5833b81f571a9c718978bfd0c01001f",
+  "part2/joints.py": "860a777a1bf9a1b292b40649068667379cf195db906b1da3316b9aef0421b17a",
+  "part2/lifters/__init__.py": "8536389f58dc92c71a4de5a70a2f4f868a8ce75979ecdb0bd4f6b236239ee006",
+  "part2/meta_api.py": "6add1c2f2deee0611b061ada1d46fc871c1c2651425f1b8820dc9e91649470f5",
+  "part2/multi3d.py": "d392da5f52dc5b209513e1e69f36e74e39e2b2997772ed3cc9644a92e5c58fd8",
+  "part2/output_steps.py": "68cf903a51495fc59a25197a7237cad8c0612ad065c1ce02898f63db57762318",
+  "part2/refine/__init__.py": "08a85509100f3618476bef04195e886a50a35e5fb40176581bf4a4b3c9a49d29",
+  "part2/track.py": "645a432b72ce55c23c50077ff915d2f921c457ab3ff47d63aecda54c9a45d45b",
+  "part2/trackers/__init__.py": "65e9e6ef368b6e52eaeb3a83d3e755341f196f708b65ad1124bbe22c444e02b3",
+  "part2/trackers/bytetrack.py": "ed4782fe404a4761bad5961fe40c745dbb1316b97e7abaa504900bf54c721b7e",
+  "part2/trackers/local_open.py": "60e76eecfe4877ef18fd5afda46a8ff8ab4da9683a104e06a2d5032e731f259d"
+ },
+ "code_sha256": "bf27187cdb76318a100a2dce47d0729e7eac6b9404f54f330dfea6550ca491ab",
+ "frames_dir": "fixtures/input/class/frames",
+ "frames_sha256": "9de0db9dd793ab193f017efdae96f7cdcee8fdb55782ed8a450e1b55c8607f45",
+ "models": [
+  {
+   "name": "sam-3d-body-dinov3",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/model.ckpt",
+   "weights_sha256": "b5a2f9d305dd02626b967aa2e86021fba07065df66ce7a7e00ffb9664f150abf"
+  },
+  {
+   "name": "mhr",
+   "source": "hf:jetjodh/sam-3d-body-dinov3@1f026b2cc9076fd460243dae553cff9b0dcd199d/assets/mhr_model.pt",
+   "weights_sha256": "352e271a6c42729c68554ceaea0c955e866970160c31e35506d782dc0f7377bc"
+  },
+  {
+   "name": "moge-2-vitl-normal",
+   "source": "hf:Ruicheng/moge-2-vitl-normal@cb0e8bbd6b1e243589717c78e750b1ba4c093acf/model.pt",
+   "weights_sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01"
+  },
+  {
+   "name": "vitdet-h-cascade-mask-rcnn",
+   "source": "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl",
+   "weights_sha256": "8601bc52000c8a87960f3db6a9672596c5e06ce33bc30a3b8f96a96efe42ae60"
+  },
+  {
+   "name": "sam2.1-hiera-large",
+   "source": "https://huggingface.co/facebook/sam2.1-hiera-large",
+   "weights_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318"
+  },
+  {
+   "name": "rtmlib-yolox-x-humanart",
+   "source": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_x_8xb8-300e_humanart-a39d44ed.zip",
+   "weights_sha256": "8e9ea96a176bd48501eaaa77216e49ee30794d2f8ba80c7b9862beca4ea972da"
+  }
+ ],
+ "files_sha256": {
+  "camera.json": "1ddf7a48cf9855708049e2da2e70ce9ed40f3e011f61250ac2ff56a5e8c8f33b",
+  "pose3d.json": "ab571a4e10115490bda828e43b0aee158d6319ae4e960b6c2390603d01e1fd10",
+  "tracks.json": "b1c5ba929e9eaa36034446e89900f697648319343efd7a56b3677a70632aa768"
+ },
+ "created_utc": "2026-11-01T01:21:58Z",
+ "host_gpu": "NVIDIA GeForce RTX 5090",
+ "run": {
+  "frames": 89,
+  "people": 7,
+  "seconds": 176.9,
+  "params": {
+   "smooth": false,
+   "mirrored": false
+  }
+ }
+}

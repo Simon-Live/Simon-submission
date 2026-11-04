@@ -1,0 +1,22 @@
+# CPU backend extras (docs/specs/backends-gpu-cpu.md, ADR-0002), installed by `make setup-cpu` into the uv
+# project venv on top of uv.lock (numpy and pillow come from there). Exact pins, measured 2026-10-28
+# (TICKET-013, TICKET-015). Model weights download to ~/.cache on first use, never into the repo.
+# torch is the CPU wheel from the PyTorch CPU index (lifter C, MotionBERT).
+--extra-index-url https://download.pytorch.org/whl/cpu
+rtmlib==0.0.16
+onnxruntime==1.31.1
+opencv-python==5.0.0.93
+opencv-contrib-python==5.0.0.93
+tqdm==4.70.1
+flatbuffers==25.12.19
+protobuf==7.36.2
+torch==2.15.0+cpu
+filelock==4.2.4
+fsspec==2026.9.0
+jinja2==3.1.6
+markupsafe==3.0.3
+mpmath==1.3.0
+networkx==3.7
+setuptools==78.1.0
+sympy==1.14.0
+typing-extensions==4.16.0
