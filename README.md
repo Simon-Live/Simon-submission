@@ -5,7 +5,8 @@
 **One demonstration in, a 3D movement model out.** A teacher films a movement once on a phone. Simon turns it into a
 3D reference with eleven Meta models chained together, then compares anyone who follows it, joint by joint and moment by
 moment, and says in plain words where and when they moved differently. No sensors, no motion-capture suit, no
-per-movement configuration: the movement is learned from the recording itself.
+per-movement configuration: the movement is learned from the recording itself. That turns any dance or exercise video
+into a challenge friends can take on and be scored against, the way trends already spread on Facebook and Instagram Reels.
 
 Meta Global AI Developer Hackathon · Indie Developer track · theme **Push the Frontier**. Built by Mo Alborati,
 the team and Shruti Doshi between Oct 26 and Nov 4, 2026.
@@ -24,6 +25,22 @@ then turn those measurements into feedback a person can act on: a sentence held 
 own frame redrawn in the corrected pose, answers to questions about the take, and the teacher's spoken cues. The
 teacher's recording, not a model's opinion, is the reference; Simon reports differences from it and gives no medical
 or health advice.
+
+## Built for challenges between friends
+
+Dance trends and fitness challenges already spread through Facebook and Instagram Reels: someone posts a routine and
+friends post their own version. What is missing is a fair answer to "who did it best?". Simon gives one, because it
+compares each person's body with the original, joint by joint, instead of counting likes.
+
+**In Simon today:** after a take, "Challenge a friend" opens a board and shares a link. Friends follow the same
+routine on their own phones, each take is scored against the same reference, and the board ranks everyone until its
+end date. Crew boards, sponsored boards for brands and gyms, and a shareable result card are built too
+([docs/features/README.md](docs/features/README.md)).
+
+**Where it goes with Reels:** any creator's Reel becomes the reference, friends film their version in the same flow,
+and Simon's score card and their own frame redrawn by Muse Image ("You, doing it right") go back out as a Reel or a
+Story with the challenge link. Every step uses models Meta already runs: SAM 3.1 and SAM 3D Body read the video,
+Muse Spark explains the differences. This integration is the next step, not part of this submission.
 
 ## The Meta models, and what each one makes possible
 
