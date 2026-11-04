@@ -61,6 +61,10 @@ and 5. When the Meta Model API refuses Part 1, Part 3's every-10 keyframes stand
 | MMA | [part7/keys.py:12](../part7/keys.py#L12) | `KEY_NAMES` |
 | BT | [part7/parts/p5_analyse.py:84](../part7/parts/p5_analyse.py#L84) | `phrasing_args` |
 
+Part 3's adapter names each function after the part that receives its output: `p3_skeleton.part4` runs Part 3 with
+`--view part4`, the skeleton Part 4 animates (this recording), and `p3_skeleton.part5` runs it with `--view part5`,
+the clip Part 5 compares (a follower's take, below).
+
 ## One follow job
 
 A student's take, from the upload to the result. Times are the measured figures in
@@ -108,6 +112,8 @@ sequenceDiagram
 | P2 | [part7/parts/p2_pose.py:632](../part7/parts/p2_pose.py#L632) | `run` |
 | P3 | [part7/parts/p3_skeleton.py:229](../part7/parts/p3_skeleton.py#L229) | `part5` |
 | P5 | [part7/parts/p5_analyse.py:95](../part7/parts/p5_analyse.py#L95) | `run` |
+
+P3's `part5` is Part 3 with `--view part5`: the follower's skeleton clip, shaped for Part 5.
 
 The doctor after each part is that part's own check of the file it wrote (`p2_pose.doctor`, `p3_skeleton.doctor`,
 `p5_analyse.doctor`). A failed doctor stops the job with the part named.
