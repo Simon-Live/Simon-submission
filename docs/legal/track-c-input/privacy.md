@@ -6,7 +6,7 @@ This policy explains what Simon collects, why, who it goes to, how long we keep 
 
 ## Who is responsible
 
-Simon is run by the Simon team: Mo Alborati and Shruti Doshi. For anything about your data, email [hello@simon.live](mailto:hello@simon.live).
+Simon is run by Simon Live LLC, a New York company, whose team is Mo Alborati and Shruti Doshi. For anything about your data, email [hello@simon.live](mailto:hello@simon.live).
 
 ## What we collect
 

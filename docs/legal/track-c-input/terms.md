@@ -2,11 +2,11 @@
 
 Draft of 3 November 2026. Not reviewed by a lawyer. Every data fact matches the app's own wording (web/consent.js, web/model/me.js, part7/auth.py).
 
-These terms are the agreement between you and the Simon team when you use Simon at simon.live. Please read them with the Privacy Policy and the Health and safety notice.
+These terms are the agreement between you and Simon Live LLC when you use Simon at simon.live. Please read them with the Privacy Policy and the Health and safety notice.
 
 ## 1. Who we are
 
-Simon is operated by the Simon team: Mo Alborati and Shruti Doshi ("we", "us"). You can reach us at [hello@simon.live](mailto:hello@simon.live).
+Simon is operated by Simon Live LLC, a New York company, whose team is Mo Alborati and Shruti Doshi ("we", "us"). You can reach us at [hello@simon.live](mailto:hello@simon.live).
 
 ## 2. Accepting these terms
 
@@ -70,7 +70,7 @@ You can stop using Simon at any time and delete your data from the [Me](#/me) pa
 
 ## 15. Governing law
 
-These terms are governed by the laws of the State of California, USA, without regard to its conflict-of-laws rules. Disputes will be heard in the state or federal courts located in California, unless the law of the place you live gives you a right to bring them there.
+These terms are governed by the laws of the State of New York, USA, without regard to its conflict-of-laws rules. Disputes will be heard in the state or federal courts located in New York County, New York, unless the law of the place you live gives you a right to bring them there.
 
 ## 16. Changes
 
