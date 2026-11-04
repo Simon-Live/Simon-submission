@@ -10,13 +10,13 @@ This repo is the hub: scope and coordination only. Each part is built in its own
 
 | Part | Does | Repo |
 |---|---|---|
-| 1 | Key frame finder/splitter | [simon-part-1-keyframes](https://github.com/moalborati/simon-part-1-keyframes) |
-| 2 | Images → 3D models | [simon-part-2-images-to-3d](https://github.com/moalborati/simon-part-2-images-to-3d) |
-| 3 | Align 3D / skeleton consistency | [simon-part-3-skeleton-consistency](https://github.com/moalborati/simon-part-3-skeleton-consistency) |
-| 4 | Animate 3D between key frames | [simon-part-4-animate-keyframes](https://github.com/moalborati/simon-part-4-animate-keyframes) |
-| 5 | Compare 3D animations, fault analysis | [simon-part-5-fault-analysis](https://github.com/moalborati/simon-part-5-fault-analysis) |
-| 6 | Recording / playback app, catalog | [simon-part-6-recording-catalog](https://github.com/moalborati/simon-part-6-recording-catalog) |
-| 7 | Stitching into one app | [simon-part-7-stitching-app](https://github.com/moalborati/simon-part-7-stitching-app) |
+| 1 | Key frame finder/splitter | [modules/part-1](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-1) |
+| 2 | Images → 3D models | [modules/part-2](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-2) |
+| 3 | Align 3D / skeleton consistency | [modules/part-3](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-3) |
+| 4 | Animate 3D between key frames | [modules/part-4](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-4) |
+| 5 | Compare 3D animations, fault analysis | [modules/part-5](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-5) |
+| 6 | Recording / playback app, catalog | [modules/part-6](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-6) |
+| 7 | Stitching into one app | [repo root](https://github.com/Simon-Live/Simon-submission) |
 
 Parts connect only through the shared files in [docs/MINI-APPS.md](docs/MINI-APPS.md). Work starts from issue #1 in each part repo.
 

@@ -4,7 +4,7 @@ This repo turns a handful of 3D poses into a smooth 30 fps animation.
 
 A trainer records a movement once. Part 1 marks the important moments (the keyframes). Part 3 supplies the skeleton at those moments. This part fills every frame in between and writes `animation.json`. Later, Part 5 compares a follower against that animation, and Part 6 plays it back.
 
-This repo is only Part 4. It reads its own input files and writes its own output. It does not import the other parts. Hub repo: https://github.com/moalborati/simon. Source task: [moalborati/simon issue #58](https://github.com/moalborati/simon/issues/58). Scope: `docs/MINI-APPS.md` in that repo.
+This folder is only Part 4. It reads its own input files and writes its own output. It does not import the other parts. Hub: https://github.com/Simon-Live/Simon-submission/tree/main/hub. Source task: hub issue #58. Scope: `docs/MINI-APPS.md` in that repo.
 
 ## Where this part sits
 

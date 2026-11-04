@@ -7,8 +7,8 @@ How to build, run, test and debug Part 3 from a fresh clone. `README.md` describ
 Prerequisites: Python 3.11 or later (the config reader uses `tomllib`) and git. Node is optional: `tests/part3/test_web_node.py` runs page code under node and skips those checks without it. No network, model, GPU or key is needed at any point.
 
 ```
-git clone https://github.com/moalborati/simon-part-3-skeleton-consistency.git
-cd simon-part-3-skeleton-consistency
+git clone https://github.com/Simon-Live/Simon-submission.git
+cd Simon-submission/modules/part-3
 python3 -m venv .venv && . .venv/bin/activate
 make setup          # pip install -r requirements.txt (numpy 2.4.6, pytest 9.1.0)
 make check-3        # prints the metrics JSON; exit 0 means the clone works

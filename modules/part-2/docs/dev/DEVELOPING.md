@@ -23,8 +23,8 @@ outputs and need no GPU, no key and no network.
 ## 2. Setup from a fresh clone
 
 ```
-git clone https://github.com/moalborati/simon-part-2-images-to-3d.git
-cd simon-part-2-images-to-3d
+git clone https://github.com/Simon-Live/Simon-submission.git
+cd Simon-submission/modules/part-2
 make setup          # uv sync: the base venv in .venv (numpy, pillow, imageio-ffmpeg, pytest)
 make test           # the whole suite, no GPU needed
 make check-2        # the done-check on the committed scored outputs; exit 0

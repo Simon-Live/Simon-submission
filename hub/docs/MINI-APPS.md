@@ -1,6 +1,6 @@
 # Simon scope: 7 parts
 
-**This is Simon's scope. Nothing else is in scope.** Defined by Mo on [#1](https://github.com/moalborati/simon/issues/1) and [#27](https://github.com/moalborati/simon/issues/27), confirmed by the team Oct 26. "Part" and "mini-app" mean the same thing: a small piece that does one thing, can be built and demoed alone, and has a definition of done an AI can check. Earlier lists (the 8-app and 16-app splits, and PLAN.md's P0–P18 roadmap) are superseded — see [progress.md](progress.md).
+**This is Simon's scope. Nothing else is in scope.** Defined by Mo on #1 and #27, confirmed by the team Oct 26. "Part" and "mini-app" mean the same thing: a small piece that does one thing, can be built and demoed alone, and has a definition of done an AI can check. Earlier lists (the 8-app and 16-app splits, and PLAN.md's P0–P18 roadmap) are superseded — see [progress.md](progress.md).
 
 What Simon does: a trainer records an expected movement once. A follower performs it in front of a camera. Simon compares the follower's 3D movement against the expected 3D movement and tells them what differed ("left foot too far out").
 
@@ -98,12 +98,12 @@ Each part is built in its own repo containing **only that part's context**, so a
 
 | Part | Repo | Main-repo tracker |
 |---|---|---|
-| 1 Key frame finder/splitter | [moalborati/simon-part-1-keyframes](https://github.com/moalborati/simon-part-1-keyframes) | #55 |
-| 2 Images → 3D models | [moalborati/simon-part-2-images-to-3d](https://github.com/moalborati/simon-part-2-images-to-3d) | #56 |
-| 3 Align 3D / skeleton consistency | [moalborati/simon-part-3-skeleton-consistency](https://github.com/moalborati/simon-part-3-skeleton-consistency) | #57 |
-| 4 Animate between key frames | [moalborati/simon-part-4-animate-keyframes](https://github.com/moalborati/simon-part-4-animate-keyframes) | #58 |
-| 5 Compare + fault analysis | [moalborati/simon-part-5-fault-analysis](https://github.com/moalborati/simon-part-5-fault-analysis) | #59 |
-| 6 Recording/playback catalog app | [moalborati/simon-part-6-recording-catalog](https://github.com/moalborati/simon-part-6-recording-catalog) | #60 |
-| 7 Stitching into one app | [moalborati/simon-part-7-stitching-app](https://github.com/moalborati/simon-part-7-stitching-app) | #61 |
+| 1 Key frame finder/splitter | [modules/part-1](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-1) | #55 |
+| 2 Images → 3D models | [modules/part-2](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-2) | #56 |
+| 3 Align 3D / skeleton consistency | [modules/part-3](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-3) | #57 |
+| 4 Animate between key frames | [modules/part-4](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-4) | #58 |
+| 5 Compare + fault analysis | [modules/part-5](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-5) | #59 |
+| 6 Recording/playback catalog app | [modules/part-6](https://github.com/Simon-Live/Simon-submission/tree/main/modules/part-6) | #60 |
+| 7 Stitching into one app | [repo root](https://github.com/Simon-Live/Simon-submission) | #61 |
 
 Work happens in the part repo (its issue #1). The main-repo issues #55–#61 are trackers pointing there; do not build in this repo.

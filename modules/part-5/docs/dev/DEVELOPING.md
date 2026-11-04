@@ -16,8 +16,8 @@ Prerequisites:
   `make contracts-check` and `make contracts-sync` without local checkouts, and for live phrasing.
 
 ```bash
-git clone https://github.com/moalborati/simon-part-5-fault-analysis.git
-cd simon-part-5-fault-analysis
+git clone https://github.com/Simon-Live/Simon-submission.git
+cd Simon-submission/modules/part-5
 uv sync              # numpy, plus pytest and jsonschema from the dev group
 make test            # unit tests
 make check-5         # the done-check

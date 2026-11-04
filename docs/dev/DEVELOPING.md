@@ -104,8 +104,8 @@ phrasing; set `SIMON7_PHRASING=template` to ask for template text from the start
 
 1. Clone and install Part 7's own environment (it has no runtime dependencies; pytest for dev):
    ```bash
-   git clone --recursive https://github.com/moalborati/simon-part-7-stitching-app.git
-   cd simon-part-7-stitching-app
+   git clone https://github.com/Simon-Live/Simon-submission.git
+   cd Simon-submission
    make setup                 # uv sync
    ```
 2. Bring Parts 1 to 6 to the latest `main` and set each one up: `make parts`. It exits non-zero and
