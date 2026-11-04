@@ -1,6 +1,6 @@
 # Simon
 
-[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml)
+[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml) · [Try it on simon.live](https://simon.live) · [Blueprint](blueprint.html) · [Architecture](docs/ARCHITECTURE.md)
 
 ## Abstract
 
