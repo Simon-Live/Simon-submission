@@ -227,6 +227,8 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad-text); background: v
 /* TICKET-266: text in another language. The row follows the text direction; times and counts keep their own left-to-right order, so numbers are not mirrored. */
 body .simon-result .sr-fault-list[dir] .sr-fault { text-align: start; }
 body .simon-result .sr-fault-list[dir="rtl"] .sr-chip { direction: ltr; unicode-bidi: isolate; }
+/* the AI label is a legal promise: its fixed-height pill let a wrapped label spill onto the dark card, so the pill grows with its text */
+body .sr-chip.sr-ai { height: auto; min-height: 26px; padding: 4px 10px; line-height: 1.2; text-align: center; }
 body .simon-result .sr-ai-note { margin: var(--space-2, 8px) 0; font-size: .875rem; overflow-wrap: anywhere; }
 body .simon-result .sr-lang-note { margin: var(--space-1, 4px) 0; font-size: .875rem; opacity: .85; overflow-wrap: anywhere; }
 /* Part 5's credit score (model/score-credit.js): "Show score as [ % ] [ Points ]" and the level, under the ring */
