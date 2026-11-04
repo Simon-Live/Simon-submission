@@ -3,10 +3,11 @@
     modal deploy deploy/judges/relay.py           # once the secret below exists (deploy/judges/README.md)
     modal run deploy/judges/relay.py::status      # spent, cap, open or closed
     modal run deploy/judges/relay.py::switch --off   # close it now; --on opens it again (until RELAY_ENDS)
+    modal run deploy/judges/relay.py::ping        # send a test notification
 
 A judge's local Simon sends its Meta API calls to <relay>/meta/v1/... (SIMON_META_API) and its Part 2 runs to
-<relay>/part2 (SIMON_PART2_RELAY). The relay forwards only the calls Simon makes, counts their cost, alerts the owner
-through ntfy at 50, 80 and 100% of the cap, and refuses everything past the cap or after judging ends (rules.py).
+<relay>/part2 (SIMON_PART2_RELAY). The relay forwards only the calls Simon makes, counts their cost, tells the owner
+through ntfy about every call (and loudly at 50, 80 and 100% of the cap), and refuses everything past the cap or after judging ends (rules.py).
 The judge's own key header is dropped: the relay's key is added on the way out and never sent back.
 
 Secret `simon-judges-relay` (made by the team): MODEL_API_KEY (a key made for judging only) and NTFY_TOPIC.
@@ -48,6 +49,13 @@ def _notify(title: str, text: str, priority: str = "default") -> None:
         pass
 
 
+def _tell_call(ip: str, what: str, outcome: str) -> None:
+    """One ntfy message for every call the relay gets (team, 2026-11-04): who, what, how it went, the total."""
+    import rules
+    _notify(f"Simon relay: {what}", f"{outcome}\nfrom {ip}\ntotal ${float(state.get('spent', 0.0)):.2f} of ${rules.CAP_USD:.0f}",
+            "low")
+
+
 def _charge(usd: float, ip: str) -> None:
     """Add `usd` to the total and to this address's day, and send any alert the total just passed. A negative `usd`
     gives back the part of a reserve a call did not use (no alert)."""
@@ -72,22 +80,21 @@ def _charge(usd: float, ip: str) -> None:
     state["alerts"] = sent
 
 
-def _gate(ip: str, cost: float):
+def _gate(ip: str, cost: float, what: str = "call"):
     """None when the call may go ahead (and it is counted against the minute), else the refusal response."""
     import rules
     from fastapi.responses import JSONResponse
     if state.get("off", False):
+        _tell_call(ip, what, "refused: switched off")
         return JSONResponse({"error": "the judges' relay is switched off"}, status_code=503)
     minute_key = f"rate:{int(time.time() // 60)}:{ip}"
     count = int(state.get(minute_key, 0))
     ip_day = float(state.get(f"ip:{datetime.now(timezone.utc):%Y-%m-%d}:{ip}", 0.0))
     refused = rules.refusal(float(state.get("spent", 0.0)), ip_day, count, cost)
     if refused:
+        _tell_call(ip, what, f"refused ({refused[0]}): {refused[1]}")
         return JSONResponse({"error": refused[1]}, status_code=refused[0])
     state[minute_key] = count + 1
-    if not state.get("first_use_told", False):
-        state["first_use_told"] = True
-        _notify("Simon judges' relay: first call", f"From {ip} at {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC.")
     return None
 
 
@@ -157,11 +164,13 @@ def web():
             return JSONResponse({"error": f"request over {rules.MAX_BODY_BYTES // 2**20} MB"}, status_code=413)
         ctype = request.headers.get("content-type", "")
         model = _model_of(body, ctype)
+        what = f"{request.method} {path}" + (f" ({model})" if model else "")
         why = rules.allowed(request.method, path, model)
         if why:
+            _tell_call(ip, what, f"blocked (403): {why}")
             return JSONResponse({"error": why}, status_code=403)
         held = rules.reserve(path, model)
-        refused = _gate(ip, held)
+        refused = _gate(ip, held, what)
         if refused:
             return refused
         _charge(held, ip)
@@ -191,6 +200,8 @@ def web():
                       f" ({len(seen)} bytes seen, starts {bytes(seen[:12])!r}, usage {'found' if usage else 'none'})", flush=True)
                 if actual is not None:   # the answer said what it cost: settle the reserve to that, up or down
                     _charge(actual - held, ip)
+                cost = actual if actual is not None else held
+                _tell_call(ip, what, f"{upstream.status_code}, ${cost:.4f}" + ("" if actual is not None or not held else " (reserve)"))
 
         keep = {k: v for k, v in upstream.headers.items() if k.lower() in ("content-type", "cache-control")}
         return StreamingResponse(relay_body(), status_code=upstream.status_code, headers=keep)
@@ -208,30 +219,46 @@ def web():
             sha = str(doc["sha"])
         except (ValueError, KeyError, TypeError):
             return JSONResponse({"error": "send {argv, inputs (base64), sha}"}, status_code=400)
-        refused = _gate(ip, rules.PART2_RESERVE_USD)
+        refused = _gate(ip, rules.PART2_RESERVE_USD, "Part 2 run")
         if refused:
             return refused
         _charge(rules.PART2_RESERVE_USD, ip)
         started = time.monotonic()
+        exit_code = {"code": None}
 
         def lines():
             try:
                 part2 = modal.Cls.from_name(PART2_APP, "Part2")()
                 for kind, payload in part2.run_part2.remote_gen(argv, inputs, sha):
                     if kind == "result":
+                        exit_code["code"] = int(payload["exit"])
                         payload = {"exit": int(payload["exit"]), "tar": base64.b64encode(payload["tar"] or b"").decode()}
                     yield json.dumps([kind, payload]) + "\n"
             except Exception as exc:   # the client reports it and Part 7 treats it like any Part 2 failure
                 yield json.dumps(["log", f"relay: the Part 2 run failed: {type(exc).__name__}: {exc}\n"]) + "\n"
                 yield json.dumps(["result", {"exit": 1, "tar": ""}]) + "\n"
             finally:
-                extra = rules.part2_cost(time.monotonic() - started) - rules.PART2_RESERVE_USD
+                took = time.monotonic() - started
+                extra = rules.part2_cost(took) - rules.PART2_RESERVE_USD
                 if extra > 0:
                     _charge(extra, ip)
+                _tell_call(ip, f"Part 2 {argv[0] if argv else ''}",
+                           f"exit {exit_code['code']}, {took:.0f} s on the GPU, ${max(rules.part2_cost(took), rules.PART2_RESERVE_USD):.2f}")
 
         return StreamingResponse(lines(), media_type="application/x-ndjson")
 
     return api
+
+
+@app.function(image=image, secrets=[modal.Secret.from_name("simon-judges-relay")], timeout=60)
+def ping() -> bool:
+    """Send one test notification to the owner's ntfy topic."""
+    import os
+    if not os.environ.get("NTFY_TOPIC", "").strip():
+        print("NTFY_TOPIC is not set in the secret simon-judges-relay")
+        return False
+    _notify("Simon judges' relay: test", "Notifications work. You get one for every call the relay gets.", "default")
+    return True
 
 
 @app.local_entrypoint()

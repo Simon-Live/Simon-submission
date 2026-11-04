@@ -8,7 +8,7 @@ Their Simon sends its Meta API calls and its Part 2 runs to this relay, which ho
 - **Per address:** $25 a UTC day, 60 requests a minute.
 - **Only Simon's calls are forwarded:** the four Meta API paths Simon uses (`files`, `responses`, `responses/input_tokens`, `asr/transcribe`), with Simon's five models. Anything else gets 403, so the key cannot be used for other work.
 - **Part 2 always tracks on the GPU** (`local-sam31`): a Meta-API tracker inside Modal would spend the key without the relay counting it.
-- **Alerts to the owner through ntfy:** the first call, then 50%, 80% and 100% of the cap.
+- **Alerts to the owner through ntfy:** one for every call (what, from which address, how it went, its cost and the total), including blocked and refused ones, and urgent ones at 50%, 80% and 100% of the cap. `modal run deploy/judges/relay.py::ping` sends a test.
 
 The rules and every number above are in [rules.py](rules.py) and checked by `tests/test_judges_relay.py`.
 
