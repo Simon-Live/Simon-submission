@@ -241,13 +241,13 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 <section id="product">
   <div class="eyebrow">02 · Product</div>
   <h2>The problem and the idea</h2>
-  <p>Form feedback today comes from a person watching you, or from apps with hand-written joint rules for each exercise they support. A trainer can't teach a new movement to such an app, and a physio can't hand a patient their own routine. Simon learns the movement from one recording, so any routine (a lift, a dance phrase, a rehab exercise) becomes something a follower can be coached on.</p>
+  <p>Form feedback today comes from a person watching you, or from apps with hand-written joint rules for each exercise they support. A trainer can't teach a new movement to such an app, and a physio can't hand a patient their own routine. Simon learns the movement from one recording, so any routine (a lift, a dance phrase, a rehab exercise) becomes something a follower can be compared against.</p>
   <h3>Who it is for</h3>
   <div class="cards">
-    <div class="card"><span class="status s-done tag">Trainer</span><h4>Records once, coaches many</h4><p>A personal trainer or instructor who wants clients to train between sessions with the same cues they would give in person.</p></div>
-    <div class="card"><span class="status s-done tag">Follower</span><h4>Gets a coach at home</h4><p>Someone following a routine from a phone, at any angle and in any room, who wants to know what to fix, not just a rep count.</p></div>
+    <div class="card"><span class="status s-done tag">Trainer</span><h4>Records once, guides many</h4><p>A teacher, choreographer or instructor who wants clients to train between sessions with the same cues they would give in person.</p></div>
+    <div class="card"><span class="status s-done tag">Follower</span><h4>Gets feedback at home</h4><p>Someone following a routine from a phone, at any angle and in any room, who wants to know what to fix, not just a rep count.</p></div>
     <div class="card"><span class="status s-part tag">Physio</span><h4>Prescribes a movement</h4><p>Records a patient's exercise in the clinic; the patient follows it at home, and the physio sees how close each session was.</p></div>
-    <div class="card"><span class="status s-part tag">Studio</span><h4>Scores the whole room</h4><p>A dance or group-fitness studio scoring a class from one phone, and running challenges between members.</p></div>
+    <div class="card"><span class="status s-part tag">Studio</span><h4>Scores the whole room</h4><p>A dance or group-class studio scoring a class from one phone, and running challenges between members.</p></div>
   </div>
   <h3>What makes it different</h3>
   <div class="table-wrap"><table>
@@ -256,7 +256,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>One take makes an exercise: no hand-written rules per movement</td><td>The follower is compared with the trainer's own 3D animation; faults come from the difference</td><td><span class="status s-done">Built</span></td></tr>
       <tr><td>Any angle, any light</td><td>SAM 3D Body per frame, then Part 3 rotates both bodies to a standard facing</td><td><span class="status s-part">Built; knee valgus weak off the front view, a 15° turn moves most scores (Part 5 limits)</span></td></tr>
       <tr><td>The whole room: one phone scores a class</td><td>Multi-person tracking (SAM 3.1 or the local tracker) and a 3D body per person; each person's row says why they are capped</td><td><span class="status s-part">Built; run on licensed group clips, not yet on a real class</span></td></tr>
-      <tr><td>Coaching in plain words, at the moment it happened</td><td>Fault text with a time; Muse Spark phrasing as a cue</td><td><span class="status s-done">Built</span></td></tr>
+      <tr><td>Feedback in plain words, at the moment it happened</td><td>Fault text with a time; Muse Spark phrasing as a cue</td><td><span class="status s-done">Built</span></td></tr>
       <tr><td>Your own rep as the reference</td><td>"My reference": a student marks one of their own good reps, or a teacher approves it, and later takes are compared with it. On physiotherapist-labelled reps (REHAB24-6) this separates correct from incorrect reps at AUC 0.70; another person's rep does no better than chance</td><td><span class="status s-done">Built, live on staging</span></td></tr>
       <tr><td>Your own body or character in 3D</td><td>Import a GLB, glTF, VRM or FBX, rigged automatically if it has no skeleton, or make a textured model from a picture (SAM 3D Objects, then SAM 3D Body and the MHR rig)</td><td><span class="status s-done">Built; hands-to-thigh limit noted</span></td></tr>
       <tr><td>"You, doing it right"</td><td>Muse Image redraws the student's own frame with the joint moved to the target; Simon re-measures it and withholds a picture that misses</td><td><span class="status s-done">Built, live on staging</span></td></tr>
@@ -296,7 +296,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <text class="t" x="40" y="276">Score ring, grade, timeline</text><circle class="dot-lime" cx="300" cy="272" r="5"/>
       <text class="t" x="40" y="300">Worst moment, trainer vs you</text><circle class="dot-lime" cx="300" cy="296" r="5"/>
       <text class="t" x="40" y="324">3D replay and timed misses</text><circle class="dot-lime" cx="300" cy="320" r="5"/>
-      <text class="t" x="40" y="348">Coach note (Muse Spark)</text><circle class="dot-lime" cx="300" cy="344" r="5"/>
+      <text class="t" x="40" y="348">Feedback note (Muse Spark)</text><circle class="dot-lime" cx="300" cy="344" r="5"/>
 
       <rect class="box" x="640" y="220" width="300" height="160" rx="12"/>
       <text class="tl" x="660" y="248">Community</text>
@@ -333,7 +333,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>Watch on the follow screen</td><td>Under the trainer's video while you follow: <b>Watch</b> plays the trainer's video in place and turns into <b>Pause</b>. In Learn in sections it plays the current section from its start. It used to leave the take for the movement page (<code>follow-watch-in-place</code> <code>fe62d34</code>, 3 Nov)</td><td>Part 7 (Track C)</td><td><span class="status s-progress">In the local app; Mo porting it for the combined build, due 09:10Z</span></td></tr>
       <tr><td>Learn in sections</td><td>On the follow screen: the routine broken into sections, practised one at a time, slow first, then joined ("Sections 1 to 2" ... "Full routine"). A step passes at <b>80% or more</b> of the trainer's points at Standard, the number the result shows, and unlocks the next. Until the fix (<code>practice-credit</code> <code>1471dc7</code>, 3 Nov) a step was judged on the old capped 0 to 100 score, so nothing past Section 1 unlocked</td><td>Part 7 (Mo; fix by Track C)</td><td><span class="status s-progress">On Part 7 main (<code>581f16ea</code>) and the local app; in the combined build</span></td></tr>
       <tr><td>See it in your room (AR) and Heat</td><td>Under the 3D bodies on a result: <b>Heat</b> tints the body where it was off, with a legend. <b>"See it in your room"</b> places the trainer's 3D body in your room through the phone camera (Android Scene Viewer, iPhone Quick Look) from a short-lived signed link to the take's model file. On a computer it shows a QR code of the result page instead, drawn in the page with no outside service, to open it on a phone. It appears only for takes whose job has the model file (TICKET-282)</td><td>Part 7 (Mo)</td><td><span class="status s-part">Shipped in release 21; automated tests pass (15 web, 40 server). The browser test and a real phone have not been checked</span></td></tr>
-      <tr><td>Score pop-ups</td><td>Each rep's score ("+1,474" or "+98%") flies up in lime over your video as the rep ends; each miss pops in pink as one or two words naming the body part ("Left arm"; branch <code>pops-one-word</code>, for the combined build), with Part 5's full line kept in the coaching list, then fades. They replay on seeking back</td><td>Part 7 (<code>ui-pops-words</code>)</td><td><span class="status s-done">Live on staging</span></td></tr>
+      <tr><td>Score pop-ups</td><td>Each rep's score ("+1,474" or "+98%") flies up in lime over your video as the rep ends; each miss pops in pink as one or two words naming the body part ("Left arm"; branch <code>pops-one-word</code>, for the combined build), with Part 5's full line kept in the feedback list, then fades. They replay on seeking back</td><td>Part 7 (<code>ui-pops-words</code>)</td><td><span class="status s-done">Live on staging</span></td></tr>
       <tr><td>Credit grades, F to S</td><td>The credit score (<code>simon.credit.v1</code>) in points, with its own grades: S 95 and above, A 85, B 75, C 65, D 55, <b>E 40</b>, and <b>F under 40</b> (team, 3 Nov; was E 45, F 30). Levels: Lenient (tolerance ×1.5, points ×0.75), Standard, Strict (×0.7, ×1.5)</td><td>Part 5 1.13.0, scale in 1.14.3 (<code>credit-grades-40</code> <code>93a95db</code>)</td><td><span class="status s-part">Scale publishing in 1.14.3</span></td></tr>
       <tr><td>Score timeline</td><td>A score per rep or 5 s window; the take's score is their mean</td><td>Part 5 (ADR-0013)</td><td><span class="status s-done">Done</span></td></tr>
       <tr><td>3D replay</td><td>Trainer and follower skeletons on one clock; tap a miss to jump there</td><td>Part 7</td><td><span class="status s-done">Done</span></td></tr>
@@ -420,7 +420,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <ol><li>Picks the routine, props the phone at a side angle.</li><li>Gets a pre-record tip: "Turn on a light in front of you".</li><li>Follows along; the live check flags the right elbow.</li><li>Waits for the 3D comparison while the lime paws walk; about 40 s on the serverless route, longer on the host.</li></ol>
       <p class="out"><b>Outcome:</b> the score bar fills to 11,661 points (49%, E at Standard; D at Lenient, F at Strict); pink pops at each miss say what to fix; "What to work on" lists the top 3 cues; the worst rep replays side by side.</p></div>
     <div class="scenario"><div class="head"><h4>Dancer learns a phrase</h4><span class="sid">S3</span></div>
-      <ol><li>Switches to Dance and opens a salsa basic.</li><li>Follows the trainer's video, mirrored.</li><li>Part 5 scores shape; timing is coached but never lowers the score.</li></ol>
+      <ol><li>Switches to Dance and opens a salsa basic.</li><li>Follows the trainer's video, mirrored.</li><li>Part 5 scores shape; timing is noted but never lowers the score.</li></ol>
       <p class="out"><b>Outcome:</b> "Keep finding your rhythm", Shape 82, Timing "Rushing", and a drift track of the moments to fix.</p></div>
     <div class="scenario"><div class="head"><h4>Patient does a rehab exercise</h4><span class="sid">S4</span></div>
       <ol><li>The physio records a knee extension in the clinic.</li><li>The patient follows it daily from the Rehab tab.</li><li>The result uses gentle wording; progress shows over sessions.</li></ol>
@@ -521,7 +521,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <rect class="box-gpu" x="170" y="248" width="130" height="50" rx="10"/><text class="t" x="235" y="270" text-anchor="middle">2 Images → 3D</text><text class="tm" x="235" y="288" text-anchor="middle">tracks · pose3d</text>
       <rect class="box" x="350" y="248" width="140" height="50" rx="10"/><text class="t" x="420" y="270" text-anchor="middle">3 Skeleton</text><text class="tm" x="420" y="288" text-anchor="middle">skeleton.json</text>
       <rect class="box-simon" x="540" y="248" width="140" height="50" rx="10"/><text class="t" x="610" y="270" text-anchor="middle">5 Compare</text><text class="tm" x="610" y="288" text-anchor="middle">analysis · replay</text>
-      <rect class="box-simon" x="730" y="248" width="140" height="50" rx="10"/><text class="t" x="800" y="270" text-anchor="middle">7 Result</text><text class="tm" x="800" y="288" text-anchor="middle">score · coaching</text>
+      <rect class="box-simon" x="730" y="248" width="140" height="50" rx="10"/><text class="t" x="800" y="270" text-anchor="middle">7 Result</text><text class="tm" x="800" y="288" text-anchor="middle">score · feedback</text>
       <path class="wire" d="M120 273 H170" marker-end="url(#a2)"/>
       <path class="wire" d="M300 273 H350" marker-end="url(#a2)"/>
       <path class="wire" d="M490 273 H540" marker-end="url(#a2)"/>
@@ -599,7 +599,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
         <ellipse class="box" cx="340" cy="210" rx="110" ry="24"/><text class="t" x="340" y="215" text-anchor="middle">Browse the library</text>
         <ellipse class="box" cx="340" cy="270" rx="110" ry="24"/><text class="t" x="340" y="275" text-anchor="middle">Follow a routine</text>
         <ellipse class="box" cx="340" cy="350" rx="110" ry="24"/><text class="t" x="340" y="355" text-anchor="middle">Score a group take</text>
-        <ellipse class="box-simon" cx="620" cy="200" rx="110" ry="24"/><text class="t" x="620" y="205" text-anchor="middle">Get score and coaching</text>
+        <ellipse class="box-simon" cx="620" cy="200" rx="110" ry="24"/><text class="t" x="620" y="205" text-anchor="middle">Get score and feedback</text>
         <ellipse class="box" cx="620" cy="270" rx="110" ry="24"/><text class="t" x="620" y="275" text-anchor="middle">Live joint check</text>
         <ellipse class="box" cx="620" cy="130" rx="110" ry="24"/><text class="t" x="620" y="135" text-anchor="middle">Replay in 3D</text>
         <ellipse class="box" cx="620" cy="60" rx="110" ry="24"/><text class="t" x="620" y="65" text-anchor="middle">Challenge a friend</text>
@@ -854,7 +854,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <tbody>
       <tr><td><b>SAM 3D Body</b></td><td>3D body per frame from one image</td><td>2</td><td>GPU (RTX 5090 or Modal L40S)</td><td>GPU time</td><td>SAM License</td></tr>
       <tr><td><b>SAM 3.1</b></td><td>People tracking with stable ids (text prompt "person"); Part 1's people boxes</td><td>1, 2</td><td>Our GPU (gated <code>facebook/sam3.1</code>, kept warm on Modal); Meta API for Part 1</td><td>GPU time; API $0.20 / 1,000 frames</td><td>SAM License, gated weights (HF token)</td></tr>
-      <tr><td><b>Muse Spark 1.3</b></td><td>Phase names; coaching phrasing</td><td>1, 5</td><td>Meta API; Baseten for Part 5</td><td>~$1.25 / $4.25 per M tokens</td><td>API key; template wording without</td></tr>
+      <tr><td><b>Muse Spark 1.3</b></td><td>Phase names; feedback phrasing</td><td>1, 5</td><td>Meta API; Baseten for Part 5</td><td>~$1.25 / $4.25 per M tokens</td><td>API key; template wording without</td></tr>
       <tr><td>ViTDet (ViT-H)</td><td>Person boxes for SAM 3D Body</td><td>2</td><td>GPU</td><td>GPU time</td><td>Apache-2.0</td></tr>
       <tr><td>MoGe-2</td><td>Camera focal length, once per clip</td><td>2</td><td>GPU</td><td>GPU time</td><td>MIT</td></tr>
       <tr><td>SAM 2.1 + YOLOX-x</td><td>Free local tracker (<code>local-open</code>)</td><td>2</td><td>GPU</td><td>GPU time</td><td>Apache-2.0</td></tr>
@@ -936,7 +936,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="cards">
     <div class="card"><h4>Per-part done-checks</h4><p><code>make check-1</code> to <code>check-6</code> each print a metrics JSON and pass only when every threshold does.</p></div>
     <div class="card"><h4>check-7: app equals direct</h4><p>Runs the frozen clips through the app and through each part directly, and compares scores, faults, times and quality codes across 16 gates.</p></div>
-    <div class="card"><h4>Unit and browser tests</h4><p>Release 21 candidate: 3,430 Python and 1,352 node tests pass, plus 258 publish tests; Playwright suites for the result, coach, challenge, people and quality screens. Part 5: 7,514 tests, re-run independently on a fresh clone.</p></div>
+    <div class="card"><h4>Unit and browser tests</h4><p>Release 21 candidate: 3,430 Python and 1,352 node tests pass, plus 258 publish tests; Playwright suites for the result, feedback, challenge, people and quality screens. Part 5: 7,514 tests, re-run independently on a fresh clone.</p></div>
     <div class="card"><h4>Accessibility</h4><p>axe-core on 22 page and size combinations: no serious or critical violations, 44 px targets, no sideways scroll.</p></div>
   </div>
   <h3>check-7 on the serverless route (31 Oct)</h3>
@@ -971,10 +971,10 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="table-wrap"><table>
     <thead><tr><th>Segment</th><th>Pain today</th><th>What Simon gives them</th><th>Buyer</th></tr></thead>
     <tbody>
-      <tr><td>Independent trainers</td><td>Clients train alone between sessions and drift</td><td>Their own routines, coached at home, with a score they can check</td><td>The trainer</td></tr>
+      <tr><td>Independent trainers</td><td>Clients train alone between sessions and drift</td><td>Their own routines, practised at home, with a score they can check</td><td>The trainer</td></tr>
       <tr><td>Dance and group studios</td><td>One teacher can't watch 20 people</td><td>Score the room from one phone; challenges that bring members back</td><td>Studio owner</td></tr>
       <tr><td>Physio and rehab clinics</td><td>Home exercises done wrong or not at all</td><td>Prescribed movements with adherence and range over time</td><td>Clinic</td></tr>
-      <tr><td>Brands and gyms</td><td>Engagement campaigns are passive</td><td>Sponsored challenges with leaderboards</td><td>Marketing</td></tr>
+      <tr><td>Brands and studios</td><td>Engagement campaigns are passive</td><td>Sponsored challenges with leaderboards</td><td>Marketing</td></tr>
     </tbody>
   </table></div>
 
@@ -1029,7 +1029,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     </svg>
     </div>
     <div class="legend"><span><i style="background:var(--lime)"></i>Serverless (Modal, per second)</span><span><i style="background:var(--coral)"></i>Always-on, sized for the busiest hour</span><span><i style="background:var(--amber)"></i>Hybrid: always-on for the average load, serverless for the peaks</span></div>
-    <figcaption><b>GPU cost per active user per month.</b> Serverless is cheapest until about 1,000 users. After that, a hybrid that keeps the average load on always-on GPUs and sends the peaks to serverless is cheapest. Always-on sized for the peak never wins, because workout traffic bunches up.</figcaption>
+    <figcaption><b>GPU cost per active user per month.</b> Serverless is cheapest until about 1,000 users. After that, a hybrid that keeps the average load on always-on GPUs and sends the peaks to serverless is cheapest. Always-on sized for the peak never wins, because practice traffic bunches up.</figcaption>
   </figure>
   <div class="table-wrap"><table>
     <thead><tr><th class="num">Active users</th><th class="num">Takes / month</th><th class="num">Busiest hour</th><th class="num">GPUs at peak</th><th class="num">Serverless</th><th class="num">Always-on</th><th class="num">Hybrid</th><th>Cheapest</th></tr></thead>
@@ -1080,7 +1080,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <thead><tr><th>Alternative</th><th>Strength</th><th>Where Simon wins</th></tr></thead>
     <tbody>
       <tr><td>Form apps with per-exercise rules</td><td>Fast, polished for the exercises they cover</td><td>Any routine from one recording; the trainer's own movement is the reference</td></tr>
-      <tr><td>Live video coaching</td><td>A real person</td><td>Available any time, at a fraction of the price, and scored</td></tr>
+      <tr><td>Live video lessons</td><td>A real person</td><td>Available any time, at a fraction of the price, and scored</td></tr>
       <tr><td>Wearable sensors</td><td>Precise joint data</td><td>No hardware; one phone scores a room</td></tr>
       <tr><td>Recorded classes</td><td>Huge libraries</td><td>Feedback on what you actually did</td></tr>
     </tbody>
@@ -1169,7 +1169,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>A part's push to its <code>main</code> reaches staging in about 10 minutes with no Part 7 commit</td><td>Medium: a push that sets up fine but breaks behaviour goes live</td><td>Accepted trade-off (Part 7 ADR-0007); README "When a part push breaks Part 7"</td><td>Each part owner</td><td><span class="status s-part">Accepted</span></td></tr>
       <tr><td>Meta API cost and reliability (Part 1: 13 of 13 SAM 3.1 streams cut on 31 Oct)</td><td>High</td><td>SAM 3.1 on our own GPU (#62); Part 1 falls back to Part 3's key frames</td><td>Team</td><td><span class="status s-part">Part 2 done; Part 1 pending</span></td></tr>
       <tr><td>Health data in rehab, and the medical-advice restriction</td><td>High for clinics; Medium for judging</td><td>Data processing terms, regional storage, no video kept after analysis by default. The rubric audit warned that a rehab-led pitch leans toward the unofficial "AI medical advice" restriction, so the pitch leads with practice and keeps rehab as one kind</td><td>Team</td><td><span class="status s-plan">Before clinic tier</span></td></tr>
-      <tr><td>"Coach" and medical wording in a hackathon with a banned list naming "sports analyzers or coaches"</td><td>Medium until confirmed</td><td>Visible copy avoids "coach" and medical claims; Rehab tab kept per the team</td><td>Team</td><td><span class="status s-part">Guarded</span></td></tr>
+      <tr><td>Wording that reads as advice: Simon reports measured differences from a person's own reference and gives no medical or health advice</td><td>Medium until confirmed</td><td>Visible copy makes no medical or health claims; Rehab tab kept per the team</td><td>Team</td><td><span class="status s-part">Guarded</span></td></tr>
       <tr><td>Repos private; CI never green</td><td>Medium: a red badge for judges</td><td>Releases 21 and 22 are on the client repo. CI needs the <code>PARTS_READ_TOKEN</code> secret on the Part 7 repo (team), or public repos</td><td>the team</td><td><span class="status s-open">Token not set</span></td></tr>
       <tr><td>No licence on the client repo; a non-commercial voice</td><td>Medium: unclear reuse terms; the paid plans can't use the current voice</td><td>No LICENSE or notices until MoAlborati/claude-template#382 is decided; Meta MMS-TTS is CC BY-NC 4.0, so the paid plans need another voice</td><td>Mo</td><td><span class="status s-open">Open</span></td></tr>
       <tr><td>Another person's rep as the reference</td><td>High for the one-teacher-many-students claim</td><td>On video it separates correct from incorrect reps no better than chance; the student's own rep reaches AUC 0.70. "My reference" and teacher approval make the own rep the default; pose accuracy is the lever for the rest</td><td>Mo, Part 5</td><td><span class="status s-part">Mitigated</span></td></tr>

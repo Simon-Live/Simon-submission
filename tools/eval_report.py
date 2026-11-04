@@ -888,8 +888,12 @@ def marker(name: str, edge: str) -> str:
 
 
 def apply_blocks(text: str, blocks: dict[str, list[str]]) -> str:
+    """Fill each block the README has. The submission README carries none (the tables live in docs/evaluation.md and
+    the blueprint), so a README without a block's markers is left as it is; a half or doubled pair is an error."""
     for name in BLOCKS:
         begin, end = marker(name, "begin"), marker(name, "end")
+        if text.count(begin) == 0 and text.count(end) == 0:
+            continue
         if text.count(begin) != 1 or text.count(end) != 1:
             raise ReportError(f"{README}: needs exactly one {begin} and one {end}")
         head, rest = text.split(begin, 1)

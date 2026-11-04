@@ -2,45 +2,85 @@
 
 [![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml) · [Try it on simon.live](https://simon.live) · [Blueprint](blueprint.html) · [Architecture](docs/ARCHITECTURE.md) · Demo video: link added at submission
 
-**One demonstration in, a 3D movement model out.** A teacher films a movement once on a phone. Simon turns it into a
-3D reference with eleven Meta models chained together, then compares anyone who follows it, joint by joint and moment by
+**One demonstration in, a 3D movement model out.** Someone films a movement once on a phone. Simon turns it into a 3D
+reference with eleven Meta models chained together, then compares anyone who follows it, joint by joint and moment by
 moment, and says in plain words where and when they moved differently. No sensors, no motion-capture suit, no
-per-movement configuration: the movement is learned from the recording itself. That turns any dance or exercise video
-into a challenge friends can take on and be scored against, the way trends already spread on Facebook and Instagram Reels.
+per-movement configuration: the movement is learned from the recording itself. That turns any dance or movement video
+into a challenge friends can take on and be compared against, the way trends already spread on Facebook and Instagram
+Reels.
 
 Meta Global AI Developer Hackathon · Indie Developer track · theme **Push the Frontier**. Built by Mo Alborati,
 the team and Shruti Doshi between Oct 26 and Nov 4, 2026.
 
 ## Abstract
 
-Movement is taught by demonstration, and corrected only while the teacher is watching. Between lessons a dance
-student, a beginner learning an exercise or anyone practising a routine at home has nobody to say what differs.
-Existing tools need special hardware, or only know movements someone configured in advance.
+Movement is learned by copying someone, and nobody tells you where your copy differs unless they are watching. A
+dancer learning a routine from a video, friends trying the same trend, or a class following its teacher between lessons
+all practise without that answer. Existing tools need special hardware, or only know movements someone configured in
+advance.
 
 Simon learns a movement from one ordinary video. SAM 3.1 finds and follows the person, SAM 3D Body with the MHR body
 model lifts every frame into a 3D body from a single phone camera at any angle, and Muse Spark watches the clip and
 names the movement's phases. A follower's take goes through the same 3D pipeline; Simon's own code aligns the two in
 time, measures the differences per joint and per moment, and scores them. Meta's language, image and speech models
-then turn those measurements into feedback a person can act on: a sentence held to the measured facts, the follower's
-own frame redrawn in the corrected pose, answers to questions about the take, and the teacher's spoken cues. The
-teacher's recording, not a model's opinion, is the reference; Simon reports differences from it and gives no medical
-or health advice.
+then turn those measurements into something a person can act on: a sentence held to the measured facts, the
+follower's own frame redrawn in the matching pose, answers to questions about the take, and the original creator's
+spoken cues. The original recording, not a model's opinion, is the reference; Simon reports differences from it and
+gives no medical or health advice.
+
+## For the judges
+
+| Criterion | Where to look |
+|---|---|
+| **Theme: Push the Frontier** | A machine gains a new capability: it learns a 3D movement from one ordinary video and measures anyone against it ([Abstract](#abstract)) |
+| **Impact (30%)** | [Why it matters](#why-it-matters) and [Built for challenges between friends](#built-for-challenges-between-friends) |
+| **Use of Meta AI tooling (25%)** | Eleven Meta models chained, each named with the file that calls it ([table](#the-meta-models-and-what-each-one-makes-possible)) |
+| **Technical depth (20%)** | Seven parts with their full history, about 3,600 tests in CI, measured accuracy ([Evidence](#evidence)) |
+| **Demo (25%)** | [simon.live](https://simon.live), the demo video, and the whole pipeline on your machine with our keys ([Clone and run it](#clone-and-run-it)) |
+| **New work only** | Every commit is from Oct 26 to Nov 4, 2026; what we built and what we used are separated in [What we built, and what we used](#what-we-built-and-what-we-used) |
+
+**Bonus prizes Simon is built for:**
+- **Best Build on Meta Open Weight Models:** Muse Spark Open (`meta-models/muse-spark-open-1026` through Baseten) writes
+  the feedback sentences, and Muse Glimmer (`muse-glimmer:30b`, on the user's own machine through Ollama) writes them in
+  private mode (`modules/part-5/part5/phrasing/muse_spark.py`, `modules/part-5/part5/phrasing/local_llm.py`).
+- **Best Creative Build:** Muse Image redraws the follower's own frame in the matching pose ("You, doing it right",
+  `part7/muse_fix_api.py`), and Muse Wonder answers questions about a take ("Ask this take", `part7/take_ask.py`).
+
+## Why it matters
+
+- **Any movement, including ones no app knows.** Simon learns from a single demonstration, so it works for a regional
+  folk dance, a choreographer's new routine or a family dance from an elder's video. Apps with built-in movement
+  libraries only know what someone set up in advance.
+- **One creator, a whole crowd.** SAM 3.1 tracks every person in a group video (the demo follows 7 people at once), so
+  one recording can be compared with a whole class or a whole friend group, and a teacher sees everyone, not only the
+  person in front of them.
+- **Challenges between friends.** A fair answer to "who did it best?" for the dance and movement trends that already
+  spread on Reels: everyone is compared with the same original, body against body, instead of by likes.
+- **No equipment, any language.** A phone instead of a motion-capture studio, feedback in the follower's own language,
+  and the creator's spoken cues transcribed and timed by Muse Voice Transcribe.
+- **Private by design.** Private mode writes feedback with Muse Glimmer on the user's own machine, recordings are
+  deleted after 7 days unless kept, and every take can be deleted at any time.
+- **Your own character.** Replay a take as a character made from one picture with SAM 3D Objects and MHR, then share
+  it: a reason to come back and to post.
+- **Measured, not guessed.** Every number in this README is traced to the run that produced it, and the tests on
+  real people were pre-registered before they ran ([Evidence](#evidence)).
 
 ## Built for challenges between friends
 
-Dance trends and fitness challenges already spread through Facebook and Instagram Reels: someone posts a routine and
+Dance trends and movement challenges already spread through Facebook and Instagram Reels: someone posts a routine and
 friends post their own version. What is missing is a fair answer to "who did it best?". Simon gives one, because it
 compares each person's body with the original, joint by joint, instead of counting likes.
 
 **In Simon today:** after a take, "Challenge a friend" opens a board and shares a link. Friends follow the same
-routine on their own phones, each take is scored against the same reference, and the board ranks everyone until its
-end date. Crew boards, sponsored boards for brands and gyms, and a shareable result card are built too
-([docs/features/README.md](docs/features/README.md)).
+routine on their own phones, each take is compared with the same reference, and the board ranks everyone until its
+end date. Crew boards, sponsored boards, a shareable result card and "Learn in sections" for hard routines are built
+too ([docs/features/README.md](docs/features/README.md)). Each take can be replayed in 3D as the person's own
+character.
 
 **Where it goes with Reels:** any creator's Reel becomes the reference, friends film their version in the same flow,
-and Simon's score card and their own frame redrawn by Muse Image ("You, doing it right") go back out as a Reel or a
-Story with the challenge link. Every step uses models Meta already runs: SAM 3.1 and SAM 3D Body read the video,
-Muse Spark explains the differences. This integration is the next step, not part of this submission.
+and Simon's result card and their own frame redrawn by Muse Image go back out as a Reel or a Story with the challenge
+link. Every step uses models Meta already runs: SAM 3.1 and SAM 3D Body read the video, Muse Spark explains the
+differences. This integration is the next step, not part of this submission.
 
 ## The Meta models, and what each one makes possible
 
@@ -81,7 +121,7 @@ Follower's take ── SAM 3.1 ── SAM 3D Body + MHR ── aligned in time w
 | 2 Images to 3D | 3D joints for every frame from one phone camera; avatars from pictures | SAM 3.1, SAM 3D Body, MHR, SAM 3D Objects |
 | 3 Skeleton | One consistent skeleton from the joints | none (our code) |
 | 4 Animation | The teacher's reference animation | none (our code) |
-| 5 Fault analysis | Aligns the take with the reference, finds the differences with times, scores 0 to 100 | Muse Spark Open, Glimmer, Muse Spark 1.3, Muse Wonder |
+| 5 Difference analysis | Aligns the take with the reference, finds where and when it differs, scores 0 to 100 | Muse Spark Open, Glimmer, Muse Spark 1.3, Muse Wonder |
 | 6 Catalog and player | Stores references, plays 3D in the browser | none (our code) |
 | 7 The app | The web app, job queue and GPU lock that join the six | Muse Image, Muse Voice Transcribe, MMS-TTS, Muse Spark 1.3 |
 
@@ -89,10 +129,21 @@ Each part was built in its own repo during the event and is merged here with its
 ([modules/PINS.json](modules/PINS.json) names where each came from). The team's coordination repo, with the plan and the
 seven part briefs, is under [`hub/`](hub/).
 
+## Verify it in 5 minutes
+
+```bash
+git lfs install && git clone https://github.com/Simon-Live/Simon-submission.git && cd Simon-submission
+make dev          # then open http://127.0.0.1:8727/#/result/fixture: a scored take, both bodies in 3D, timed notes, no keys
+make parts-smoke  # about 30 s: Part 7 against the six parts' contracts and adapters
+```
+
+The full suite (about 3,600 tests, 27 minutes) runs in CI on every push: see the badge above. To run the whole
+pipeline on your own takes, see [Clone and run it](#clone-and-run-it).
+
 ## Try it
 
 **[simon.live](https://simon.live)**: pick a movement, press Use routine, record or upload your take, and get your
-score and feedback. Trainers press Record to add their own movement.
+result. Creators and teachers press Record to add their own movement.
 
 ## Clone and run it
 
@@ -123,12 +174,29 @@ committed example, with the score, both bodies in 3D and the timed notes.
 **With your own keys and GPU.** A CUDA GPU with 12 GB free, `make parts` to set up Parts 1 to 6, and a Meta Model
 API key. [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md) covers setup, keys, running and debugging.
 
+## Evidence
+
+Every number below is traced to the run that produced it. The full tables, with each source file's sha256, are in
+[docs/evaluation.md](docs/evaluation.md); open questions are tracked in the [blueprint](blueprint.html).
+
+| What was measured | Result | Source |
+|---|---|---|
+| 3D pose from one camera, 20 COCO images | 2.02% of body height mean reprojection error | `bench/results/2026-11-02/part2-check.json` |
+| 3D pose, 20 hand-labelled frames | 3.84% of body height mean reprojection error | same |
+| Finding planted differences, held-out seeds, front, 45 degrees and side | precision 0.88 to 1.00, recall 0.83 to 1.00 | `bench/results/2026-11-02/part5-heldout-attempts.json` |
+| A person's own approved take as the reference, on video, pre-registered (public expert-labelled set, 38 reps, 7 people) | AUC 0.70; shuffled-label p 0.007 | [docs/evaluation.md](docs/evaluation.md), "The person's own rep as the reference" |
+| A correct take against an incorrect one, same people | correct scored higher for 6 of 6 people on video (median +12.6 points, p 0.016) and 10 of 10 on motion capture | same, "Paired before and after" |
+| The 3D step with a resident Part 2 worker | 97.1 s down to 51.7 s mean over three runs | commit `1d54206` |
+
+The `bench/results/` files are in this repo. The pre-registered tests on the public dataset ran in the team's GPU
+workspace; docs/evaluation.md gives each result file's path there and its sha256.
+
 ## What we built, and what we used
 
 Everything in this repo was written by the team between Oct 26 and Nov 4, 2026; `git log` shows every commit, from the
 first one on Oct 26. We built: the seven parts (keyframes, the 3D pipeline around the models, the skeleton, the
 animation, the alignment, measurement and scoring, the catalog and player, and the app), the prompts and validators
-around each language model, the evaluation in `bench/` and `docs/audit/`, and the judges' relay in `deploy/judges/`.
+around each language model, the evaluation in `bench/` and [docs/evaluation.md](docs/evaluation.md), and the judges' relay in `deploy/judges/`.
 
 We used, and did not write: the Meta models above (called through the Meta Model API, or with their published weights,
 downloaded at setup and never committed), and the open-source libraries listed in
@@ -140,177 +208,6 @@ Mermaid under `web/vendor/` (MIT). Part 1's three test videos are stock clips us
 - **[The blueprint](blueprint.html)** (download and open it in a browser): the whole design on one page, with the
   features, requirements, scoring, architecture, risks and status.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): three diagrams, each node linked to its code.
-
-## How accurate is Simon
-
-Full table with every source: [docs/evaluation.md](docs/evaluation.md).
-
-<!-- eval-report:accuracy:begin -->
-| Layer | Result | Source |
-|---|---|---|
-| 3D pose, 20 hand-labelled frames | 3.84% of body height mean 2D reprojection error, max 4.88% | `bench/results/2026-11-02/part2-check.json`, block `one_person` |
-| 3D pose, 20 COCO images | 2.02% mean, max 4.90% | same, block `one_person_coco` |
-| Fault finding, good light, held-out seeds 29, 31, 37, 67, 71, 73 | precision 0.88 to 1.00, recall 0.83 to 1.00 at front, 45 degrees and side | `bench/results/2026-11-02/part5-heldout-attempts.json` |
-| App path against a direct run of Parts 2 to 5 | latest recorded run `20261102T021153Z` at `17adac8`: `pass` false; passed in 4 of 17 recorded runs | `bench/results/`, `check7-runs.json` |
-| Real people, physiotherapist labels (REHAB24-6, interim, 40 of 120 reps, 2026-11-02), reference by another person | score AUC 0.43 (0.31 to 0.54), 0.5 is chance; 21 of 22 correct reps flagged | `docs/audit/eval-public-2026-11/details.json`, `trainer-rehab` |
-| Same, reference by the person's own correct rep | score AUC 0.68 (0.58 to 0.79); 11 of 22 correct reps flagged | same, `same-rehab` |
-| Same correct reps, another person's reference instead of their own | mean score 48.1 (95% 36.9 to 64.0) points lower | same, `body_invariance` |
-| Motion capture, pre-registered leave-one-person-out (REHAB24-6, 1057 reps), one other person's correct rep | AUC 0.58 (0.54 to 0.63); recall 0.23 at 80% specificity | `docs/audit/kcurve-2026-11-02/results.json`, `pooled.a` |
-| Same, an envelope over 4 to all available other people (up to 8) | AUC 0.64 to 0.66; recall 0.36 to 0.46 | same, `pooled.b4` to `pooled.bmax` |
-| Same, the person's own correct rep | AUC 0.77 (0.73 to 0.82); recall 0.61 | same, `pooled.c` |
-| Simon's video pipeline, 41 follower reps, motion-capture envelope of all other people | AUC 0.375 (0.161 to 0.546); the interval includes 0.5 | `docs/audit/kcurve-2026-11-02/pipeline-summary.json` |
-| Simon's video pipeline, pre-registered, the person's own correct rep (REHAB24-6, 38 reps, 7 people) | AUC 0.70 (0.65 to 0.86); shuffled-label p 0.007; recall 0.41 at 80% specificity | `docs/audit/ownref-video-2026-11-02/results.json`, `A.video` |
-| Same pairs on motion capture | AUC 0.84 (0.73 to 0.94) | same, `A.mocap` |
-| Paired before and after on video (a measurement proxy, not coaching): a correct take and an incorrect one, both against the person's held-out correct rep | correct above incorrect for 6 of 6 people, median +12.6 points; Wilcoxon one-sided p 0.016 | same, `B.video` |
-| Same, all motion-capture reps | 10 of 10 people, median +20.4 points | same, `B.mocap_full` |
-| Synthetic bodies, one squat on 11 body shapes, 57 renders (interim) | clean score spread 55.5 points across shapes; 9 of 57 renders scored 0 | `bench/results/2026-11-02/mhr-bench.json` |
-| 3D joints on those bodies, mean per camera angle | MPJPE 80 to 111 mm, PA-MPJPE 58 to 69 mm | same |
-| Planted knee fault on those bodies | found front 5 of 9, 45 degrees 0 of 10, side 0 of 10 | same |
-<!-- eval-report:accuracy:end -->
-
-The Part 5 fault rows use synthetic planted faults. The rows below them come from real people and from bodies of
-known shape. The first three real-people rows are a pre-registered leave-one-person-out run on REHAB24-6 motion
-capture (CC BY-NC 4.0), the cleanest test of the reference idea because no pose estimator is involved; the
-pre-registration and every number are in [docs/audit/kcurve-2026-11-02/](docs/audit/kcurve-2026-11-02/). The
-"interim, 40 of 120 reps" rows are an earlier, smaller run of the full video pipeline. They are kept as the video
-citation for Simon's own score with another person's rep or the person's own rep; the motion-capture rows are the
-newer, larger measurement. The two are not merged. The four rows after the video envelope row are a second
-pre-registered run, the person's own correct rep on Simon's video pipeline; the pre-registration and every number are
-in [docs/audit/ownref-video-2026-11-02/](docs/audit/ownref-video-2026-11-02/).
-
-- **Motion capture, 1057 reps (pre-registered).** Another person's correct rep as the reference gave an AUC of 0.58
-  (recall 0.23 at 80% specificity); 0.5 is chance. An envelope built from several correct people helps a little: 0.64
-  with 4 people, 0.66 with 6 or with all available (up to 8). The person's own correct rep is the strongest reference,
-  0.77.
-- **Simon's video pipeline, 41 reps.** The same envelope, with every available other person as the reference, gave
-  an AUC of 0.375 (0.161 to 0.546). The interval includes 0.5, so the set of reference people did not make the
-  score useful on video, although on clean motion capture the same method reached 0.66. That gap points to pose
-  error as the main limit today. This video run used one setting (all available people), not a sweep.
-- **Simon's video pipeline, the person's own rep (pre-registered).** This is what My reference does: the teacher
-  approves one of the student's reps, and later takes are compared with it. With another correct rep by the same
-  person as the reference, Simon's score on video separated physiotherapist-labelled incorrect reps from correct ones
-  better than a label shuffle within each person did. The same pairs on motion capture scored higher, so pose error
-  still costs accuracy. Most references came from the same recording session, which is easier than a reference
-  recorded on another day, and the sample is small, so this shows that own-rep comparison works on video, not a
-  precise accuracy figure. A paired before and after on the same data put the correct take above the incorrect one
-  for every person. That part is a measurement proxy, not coaching: the mistakes in REHAB24-6 were acted, and nobody
-  received a cue between takes.
-- **Earlier interim run, video, 40 of 120 reps.** The reference was a correct rep by another person, as when a student
-  follows a teacher's recording. The score did no better than chance and nearly every correct rep was flagged. With
-  the person's own correct rep as the reference, the score separated correct from incorrect better than chance and
-  half the correct reps were flagged. Swapping in another person's rep costs most of the score on a correct rep, and
-  the cause is mostly how two people perform the same correct exercise, not their height. Method and every table:
-  [docs/audit/eval-public-2026-11/README.md](docs/audit/eval-public-2026-11/README.md).
-- **Synthetic bodies.** One squat, identical in joint angles, rendered on 11 body shapes with known 3D joints. The
-  clean score still changes with the body shape, some renders of the unchanged movement scored 0, and the planted knee
-  fault was found only from the front.
-
-What this means today: Simon is not validated for judging a student against a different person's recording. Even on
-clean motion capture, comparing with another person's rep is weak (0.58); a set of correct reps helps a little (0.64
-to 0.66); the student's own rep is strongest (0.77), and on video it is the only reference that has beaten chance in
-a pre-registered run. On video, pose error dominates today, so better pose accuracy is the main lever. The score also varies with body shape. A fix is in progress with Part 5. The video samples are small
-(41, 40 and 38 reps), and the video pipeline has not been run on the full dataset. See "Limits" below.
-
-## How long it takes
-
-Staging job summaries since the release 20 live build, test jobs left out (details in [docs/evaluation.md](docs/evaluation.md)).
-
-<!-- eval-report:latency:begin -->
-| Job | n | p50 | p95 | Longest stage |
-|---|---|---|---|---|
-| Analyse a follower take (`follow`) | 1 | 106.0 s | 106.0 s | pose |
-| Choose the person (`people`) | 4 | 93.2 s | 126.5 s | track |
-| Trainer recording (`trainer`) | 1 | 110.1 s | 110.1 s | pose |
-<!-- eval-report:latency:end -->
-
-A resident Part 2 worker cut the 3D step from 97.1 s to 51.7 s mean over three runs each on an RTX 5090
-(commit `1d54206`).
-
-## Tests
-
-```bash
-uv run pytest -q                              # Python tests, no GPU
-node --test tests/part7/*.unit.test.mjs       # browser-module unit tests
-make check-7                                  # the done-check: app path against a direct run (needs the GPU setup)
-```
-
-`uv run pytest -q`, the node tests and the linter run in CI on every push to `main` and on every pull request ([workflow](.github/workflows/ci.yml)). Parts 1 to 6 are in this repo, so CI runs the full suite, the part tests and the golden pipeline included; tests that need a GPU or the staging host skip there with a stated reason.
-
-## Limits
-
-- Camera angle and occlusion: the pose comes from one phone camera. A body part hidden from the lens is
-  estimated, and a side view hides the far limb. Part 5 refuses a take whose moving part is out of frame.
-- 17 joints plus 6 foot points are kept. There is no ankle twist, no hand or finger detail and no face.
-  SAM 3D Body also gives a full body mesh: the result draws both people as overlaid meshes with the faulty limb tinted. The scoring uses the joints only.
-- A take is analysed after it is recorded, not live. A student waits about three to four minutes (picker plus analysis).
-- Accuracy is shown on synthetic planted faults, and Part 5's seed 37 check failed on one correct take (a
-  false right-ankle note in a side view). Details in [docs/evaluation.md](docs/evaluation.md).
-- `make check-7` is not stable yet: it passed once, and later runs failed `score_equal` on one take (see the accuracy table above).
-- One standard body of 1.70 m is used for everyone, so that height and limb length should not change the score. The interim synthetic body bench shows the score still varies with body shape, and the planted knee fault was missed at 45 degrees and from the side; `docs/submission.md` says where this stops.
-- A model made from a picture, or rigged automatically on import, whose hands touch its body is repaired when it is stored (TICKET-333). A small piece of inner hand or thigh surface can stay attached to the hand, and a prop resting on the thigh loses the triangles where it touches; `part7 models-reskin --staging --id <id> --restore` puts a stored model back exactly.
-- Run on: Serverless appears only on a server with Modal set up, and model import has no serverless route. Users cannot yet bring their own Modal credentials (TICKET-367).
-- Part 5 1.14.4 no longer refuses a long follow as "too long to compare together" (Part 5 TICKET-106; a series a whole turn wide is now read frame by frame, so a trainer clip with many reps reads its reps again). A follow take is still refused when neither the rep-by-rep nor the whole-clip comparison fits the frame-pair limit; the message then overstates the size. Record the trainer with a few reps.
-- Knee valgus (knees falling inward) is read reliably only from the front. On Part 5's bench a planted 15 degree valgus reads 12.4 degrees from the front, 2.4 at 45 degrees and 1.3 from the side (Part 5 TICKET-092). From a 45 degree or side take, a knee valgus fault is weak evidence and its absence is no evidence.
-- Teacher to student is not validated. With another person's correct rep as the reference, motion capture of 1057 rehabilitation reps gave an AUC of 0.58 (pre-registered, `docs/audit/kcurve-2026-11-02/`), and Simon's video pipeline was at chance on small samples (41 and 40 reps). The strongest case is a person against their own correct rep: 0.77 on motion capture, and on video a pre-registered run beat a label shuffle on a small sample whose references mostly came from the same recording session (`docs/audit/ownref-video-2026-11-02/`). On video, pose error dominates.
-- Simon is not a health tool and gives no health advice.
-- On staging, sign-in codes arrive through the public test outbox, so anyone who can open staging could sign in as anyone. Staging therefore relies on its gateway login. A production mode that refuses the outbox comes after delivery (security audit row APP-C2).
-
-## Practice modes and challenges
-
-Besides the main journey the app has three practice modes, each with its own scoring profile in Part 5, learn-in-sections for hard routines, challenges with a shareable result card, crew
-leaderboards and brand-sponsored challenges. They are built and sit behind the same result screen; see
-[docs/features/README.md](docs/features/README.md).
-
-## More
-
 - [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md): set up a host, run the app, debug a job.
-- [docs/design/](docs/design/README.md): specs and decisions behind the code.
-- [docs/submission.md](docs/submission.md): the hackathon write-up, by judging criterion.
-- Licence: to be decided; see the team.
-- `CONTRACT.md`: the files Part 7 reads and writes.
-- [Task brief (from the team)](#task-brief-from-the-team): the client's original task, rules and definition of done.
-- Hub repository with all seven parts: https://github.com/moalborati/simon
-
-## Task brief (from the team)
-
-The client's original brief for this part (moalborati/simon issue #61), kept verbatim from the upstream README (cbeec87, 90aa473) and restored by TICKET-118. `CLAUDE.md` points here.
-
-Part of **Simon** → hub repo: https://github.com/moalborati/simon (scope and the other parts live there; this repo is only this part).
-This repo is **only** Simon Part 7. It is a black box: it reads its input files and writes its output files, and knows nothing about the other parts. Keep it that way: that isolation is what lets agents work here with a small context.
-
-Simon in one line (all you need): a trainer records an expected movement once; a follower performs it to camera; the follower's 3D movement is compared against the expected one and the differences are reported in plain words. This part is one step of that.
-
-Source task: moalborati/simon issue #61. Scope source: `docs/MINI-APPS.md` in moalborati/simon (Part 7).
-
-## Input
-
-The outputs of Parts 1–6, consumed only through their shared files (`keyframes.json`, `tracks.json`, `pose3d.json`, `skeleton.json`, `animation.json`, `analysis.json`, catalog entries).
-
-## Output
-
-The Simon app: pick (or record) an expected movement from the catalog → watch its animation → perform it to camera → get the Part 5 fault analysis.
-
-## Shared-file context (only what this part touches)
-
-Black-box rule is strictest here: this repo calls the other parts through their files/demos only. No importing another part's code.
-
-## Frontier model
-
-none (stitches Parts 1–6 through their shared files)
-
-## Definition of done
-
-End to end on a movement the app was never hand-configured for: record it via Part 6, follow it, and the faults reported match running Parts 2–5 directly on the same recorded follower clip.
-
-Done-check: `make check-7` prints a metrics JSON and exits 0 only when every threshold passes. Write the check as part of this work; until it exists, the stub in the Makefile fails honestly.
-
-## Demos
-
-- **Isolated:** n/a, this part is the integrated demo.
-- **Integrated:** The submission demo: one take records an exercise, a follower is analysed against it.
-
-## Rules
-
-- Work only in this repo. Do not copy or import another part's code; consume other parts only through the shared files above, using fixtures until they exist.
-- Every run of the done-check goes through `make check-7`.
-- Fixtures of your inputs live in `fixtures/input/`; ship a fixture of your output so the next part can start.
+- [docs/design/](docs/design/README.md): the specs and decisions behind the code.
+- [hub/docs/MINI-APPS.md](hub/docs/MINI-APPS.md): the seven parts and the files they pass between them.

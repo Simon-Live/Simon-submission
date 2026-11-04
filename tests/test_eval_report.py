@@ -81,8 +81,8 @@ def test_check_names_the_differing_line(tree, capsys):
     assert "docs/evaluation.md:" in err and "3.838%" in err
     readme = tree / "README.md"
     doc.write_text((ROOT / "docs" / "evaluation.md").read_text())
-    readme.write_text(readme.read_text().replace("3.84%", "3.85%", 1))
-    assert report.main(["--check", "--root", str(tree)]) == 1
+    readme.write_text("intro\n<!-- eval-report:accuracy:begin -->\n| stale |\n<!-- eval-report:accuracy:end -->\n")
+    assert report.main(["--check", "--root", str(tree)]) == 1, "a README that carries a block is kept in step"
     assert "README.md:" in capsys.readouterr().err
 
 
@@ -102,9 +102,15 @@ def test_missing_input_and_marker_are_errors(tree, capsys):
     other = tree / "other"
     shutil.copytree(ROOT / "bench", other / "bench")
     (other / "docs").mkdir()
-    (other / "README.md").write_text("no markers\n")
+    (other / "README.md").write_text("half a pair\n<!-- eval-report:accuracy:begin -->\n")
     assert report.main(["--check", "--root", str(other)]) == 2
     assert "eval-report:accuracy:begin" in capsys.readouterr().err
+
+
+def test_a_readme_without_blocks_is_left_alone(tree):
+    (tree / "README.md").write_text("no tables here\n")
+    assert report.main(["--root", str(tree)]) == 0
+    assert (tree / "README.md").read_text() == "no tables here\n"
 
 
 def test_no_unsourced_phrase():
