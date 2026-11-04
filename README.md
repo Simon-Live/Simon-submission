@@ -39,13 +39,6 @@ gives no medical or health advice.
 | **Demo** | [simon.live](https://simon.live), the demo video, and the whole pipeline on your machine with our keys ([Clone and run it](#clone-and-run-it)) |
 | **New work only** | Every commit is from Oct 26 to Nov 4, 2026; what we built and what we used are separated in [What we built, and what we used](#what-we-built-and-what-we-used) |
 
-**Bonus prizes Simon is built for:**
-- **Best Build on Meta Open Weight Models:** Muse Spark Open (`meta-models/muse-spark-open-1026` through Baseten) writes
-  the feedback sentences, and Muse Glimmer (`muse-glimmer:30b`, on the user's own machine through Ollama) writes them in
-  private mode (`modules/part-5/part5/phrasing/muse_spark.py`, `modules/part-5/part5/phrasing/local_llm.py`).
-- **Best Creative Build:** Muse Image redraws the follower's own frame in the matching pose ("You, doing it right",
-  `part7/muse_fix_api.py`), and Muse Wonder answers questions about a take ("Ask this take", `part7/take_ask.py`).
-
 ## Why it matters
 
 - **Any movement, including ones no app knows.** Simon learns from a single demonstration, so it works for a regional
