@@ -2,6 +2,7 @@
 
 import http.client
 import json
+import os
 import time
 import uuid
 from pathlib import Path
@@ -186,7 +187,10 @@ def _sam_stream(body):
                 data = line[5:].strip()
                 if not data or data == "[DONE]":
                     continue
-                event = json.loads(data)
+                try:
+                    event = json.loads(data)
+                except json.JSONDecodeError:   # a stream closed mid-event leaves half an event behind: a cut
+                    raise StreamCut(f"SAM 3.1 stream cut after {parser.frames} frames (an event broken off)") from None
                 kind = event.get("type", "")
                 if kind == "response.output_text.delta":
                     parser.feed(event.get("delta") or "")
@@ -205,28 +209,48 @@ def _sam_stream(body):
     return parser, usage
 
 
-def track_people(file_id, frame_count, tries=SAM_TRIES, wait_s=SAM_RETRY_WAIT_S, sleep=time.sleep):
+DEADLINE_ENV = "SIMON_P1_DEADLINE"   # Unix seconds by which this run must be done (Part 7 passes it); unset: no deadline
+DEADLINE_MARGIN_S = 15.0
+
+
+def _deadline():
+    try:
+        return float(os.environ[DEADLINE_ENV])
+    except (KeyError, ValueError):
+        return None
+
+
+def track_people(file_id, frame_count, tries=SAM_TRIES, wait_s=SAM_RETRY_WAIT_S, sleep=time.sleep, deadline=None, clock=time.time):
     """Stream SAM 3.1 person tracks. Returns observations and the billed frame count.
 
-    A cut stream is tried again up to `tries` times in all; a try that was cut is recorded at its estimated cost, since
-    the frames it processed may be billed. The last cut raises StreamCut."""
+    Each try is recorded in the ledger at its estimated cost when it starts, so a try a timeout kills is counted too; a
+    try that bills more than its estimate adds the difference. A cut stream is tried again up to `tries` times in all,
+    and only when the time left before `deadline` (Unix seconds; default SIMON_P1_DEADLINE) covers another try as long
+    as the one that was cut. The last cut raises StreamCut."""
     billed = max(50, int(frame_count))
     cost = estimate(SAM, frame=billed)
+    deadline = _deadline() if deadline is None else deadline
     warnings = []
     for attempt in range(1, tries + 1):
         require_budget(cost, f"SAM 3.1 on {billed} frames (${cost:.2f}), try {attempt} of {tries}")
+        warnings += record(cost, f"SAM 3.1 person track, {billed} frames, try {attempt} (estimate at start)", model=SAM) or []
+        started = clock()
         try:
             parser, usage = _sam_stream(_sam_body(file_id))
         except StreamCut as exc:
-            warnings += record(cost, f"SAM 3.1 person track, {billed} frames, cut on try {attempt} (estimate)", model=SAM) or []
-            print(f"  {exc}; {'trying again' if attempt < tries else 'giving up'}", flush=True)
-            if attempt == tries:
+            took = clock() - started
+            wait = wait_s * attempt
+            late = deadline is not None and clock() + wait + took + DEADLINE_MARGIN_S > deadline
+            last = attempt == tries or late
+            print(f"  {exc}; {'giving up' + (' (no time left for another try)' if late and attempt < tries else '') if last else 'trying again'}", flush=True)
+            if last:
                 raise
-            sleep(wait_s * attempt)
+            sleep(wait)
             continue
         billed_frames = int(usage.get("video_frames_processed") or billed)
-        actual = estimate(SAM, frame=billed_frames)
-        warnings += record(actual, f"SAM 3.1 person track, {billed_frames} frames", model=SAM) or []
+        extra = estimate(SAM, frame=billed_frames) - cost
+        if extra > 0:
+            warnings += record(extra, f"SAM 3.1 person track, {billed_frames} frames billed, over the estimate", model=SAM) or []
         return parser.tracks, warnings
     raise StreamCut("SAM 3.1 was not tried")  # tries < 1
 

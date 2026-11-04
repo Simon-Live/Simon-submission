@@ -51,10 +51,11 @@ class TrackPeopleRetry(unittest.TestCase):
             self.addCleanup(p.stop)
         self.waits = []
 
-    def run_with(self, responses, tries=2):
+    def run_with(self, responses, tries=2, deadline=None, clock=None):
         it = iter(responses)
         with mock.patch.object(meta_client, "_stream", lambda body, timeout: next(it)):
-            return meta_client.track_people("file-1", 60, tries=tries, wait_s=1.0, sleep=self.waits.append)
+            return meta_client.track_people("file-1", 60, tries=tries, wait_s=1.0, sleep=self.waits.append,
+                                            deadline=deadline, **({"clock": clock} if clock else {}))
 
     def test_a_cut_stream_is_tried_again_and_the_second_answer_is_used(self):
         cut = _Response(_sse({"type": "response.output_text.delta", "delta": ""}), http.client.IncompleteRead(b""))
@@ -62,9 +63,10 @@ class TrackPeopleRetry(unittest.TestCase):
         tracks, _ = self.run_with([cut, whole])
         self.assertEqual(tracks, meta_client.BoxParser().tracks)
         self.assertEqual(self.waits, [1.0])
+        # each try is recorded at its estimate when it starts (TICKET-380 review), so a killed try still counts
         self.assertEqual(len(self.recorded), 2)
-        self.assertIn("cut on try 1", self.recorded[0])
-        self.assertIn("60 frames", self.recorded[1])
+        self.assertIn("try 1 (estimate at start)", self.recorded[0])
+        self.assertIn("try 2 (estimate at start)", self.recorded[1])
 
     def test_a_stream_that_closes_without_completing_is_a_cut_not_a_full_answer(self):
         early = _Response(_sse({"type": "response.output_text.delta", "delta": ""}))   # ends cleanly, no completed
@@ -86,6 +88,50 @@ class TrackPeopleRetry(unittest.TestCase):
         self.assertNotIsInstance(caught.exception, meta_client.StreamCut)
         self.assertEqual(self.waits, [])
 
+
+
+class ReviewFixes(TrackPeopleRetry):
+    """TICKET-380 review (moalborati/simon#61 6621762147)."""
+
+    def test_a_stream_closed_mid_event_is_a_cut_and_is_tried_again(self):
+        broken = _Response(b'data: {"type": "response.output_text.delta", "del')   # the close leaves half an event
+        tracks, _ = self.run_with([broken, _Response(_sse(DONE))])
+        self.assertEqual(self.waits, [1.0])
+
+    def test_no_second_try_when_the_deadline_leaves_no_time_for_it(self):
+        now = [1000.0]
+        def clock():
+            now[0] += 40.0   # each look at the clock is 40 s later: the cut try took 40 s
+            return now[0]
+        cut = _Response(b"", http.client.IncompleteRead(b""))
+        with self.assertRaises(meta_client.StreamCut):
+            self.run_with([cut, _Response(_sse(DONE))], deadline=1100.0, clock=clock)
+        self.assertEqual(self.waits, [], "negative: the second paid try never starts")
+        self.assertEqual(len(self.recorded), 1)
+
+    def test_a_far_deadline_still_allows_the_second_try(self):
+        cut = _Response(b"", http.client.IncompleteRead(b""))
+        self.run_with([cut, _Response(_sse(DONE))], deadline=10 ** 12)
+        self.assertEqual(self.waits, [1.0])
+
+
+class LedgerLock(unittest.TestCase):
+    def test_overlapping_writers_keep_every_record(self):
+        import tempfile
+        import threading
+        from keyframe_finder import spend
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(spend, "LEDGER", __import__("pathlib").Path(tmp) / "spend.json"):
+            def write(n):
+                for i in range(25):
+                    spend.record(0.01, f"writer {n} call {i}")
+            threads = [threading.Thread(target=write, args=(n,)) for n in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            ledger = spend._load()
+            self.assertEqual(len(ledger["entries"]), 100)
+            self.assertAlmostEqual(ledger["usd"], 1.0, places=6)
 
 
 class UploadRetry(unittest.TestCase):
