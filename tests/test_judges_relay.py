@@ -190,17 +190,13 @@ def test_photo_mesh_and_character_models_run_on_modal_without_a_local_gpu(monkey
     assert not avatar_jobs.available("image3d"), "negative: no GPU and no remote route"
 
 
-def test_this_machine_without_a_gpu_runs_on_modal_when_serverless_is_set_up(monkeypatch):
-    from part7 import gpu_lock, run_on
+def test_with_serverless_set_up_a_run_on_choice_is_ignored_and_part2_runs_there(monkeypatch):
+    from part7 import run_on
     from part7.parts import p2_pose
     seen = []
-    job = run_on.bind(lambda ctx: seen.append(p2_pose.job_route()) or {}, "local")
+    job = run_on.bind(lambda ctx: seen.append(p2_pose.first_route()) or {}, "local")
     monkeypatch.setenv("SIMON7_PART2_REMOTE", "modal")
-    monkeypatch.setattr(gpu_lock, "nvidia_smi_path", lambda: None)
-    job(None)
-    monkeypatch.setattr(gpu_lock, "nvidia_smi_path", lambda: "/usr/bin/nvidia-smi")
     job(None)
     monkeypatch.delenv("SIMON7_PART2_REMOTE")
-    monkeypatch.setattr(gpu_lock, "nvidia_smi_path", lambda: None)
     job(None)
-    assert seen == ["modal", "local", "local"], "only a machine with no GPU and the serverless route moves to Modal"
+    assert seen == ["modal", "local"], "the serverless route wins; without it the choice applies as before"

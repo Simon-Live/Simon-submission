@@ -8,7 +8,6 @@
 import { clientLog } from "./api.js";
 import { getConfig } from "./api.js"; // TICKET-364: api/config says whether serverless is set up
 import { mountCapture as mountCaptureWith } from "./capture.js"; // TICKET-365: wrapped in mountTakeFlow for `hideOwn`
-import { mountRunOn, offersRunOn } from "./run-on.js";
 import { buildSubmit, requestOf } from "./take-request.js";
 import { getPending } from "./pending-app.js";
 import { TEXT as PENDING_TEXT, failureText } from "./pending.js";
@@ -117,7 +116,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
   };
   paintSubmit();
   if (trainer && !resume) mountModeSwitch(modeBox, { mode, onChange: (m) => { mode = m; paintSubmit(); } });
-  if (!trainer && !resume) getConfig().then((c) => { if (alive) runOn = mountRunOn(runOnBox, { enabled: offersRunOn(c, role) }); });
+  // No "Run on" choice in this build: Part 2 runs where the server is set up to run it (the judges' relay: Modal)
 
   // ---- the saved take: panel, offline details, background send ----------------------------------------------------
   /** What the person typed so far, onto the record (so a reload or a background send uses it). */
