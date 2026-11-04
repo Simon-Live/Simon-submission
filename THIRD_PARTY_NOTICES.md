@@ -6,7 +6,7 @@ Simon's web app and server use the open-source components and AI models below. E
 
 | Component | Version | Used for | Licence |
 |---|---|---|---|
-| three.js | 0.170.0 | The 3D views of the trainer and you | MIT |
+| three.js, with its add-ons OrbitControls.js, GLTFLoader.js, BufferGeometryUtils.js and SkeletonUtils.js (unmodified) | 0.170.0 | The 3D views of the trainer and you, and rigged character models | MIT |
 | Mermaid | 11.17.2 | The diagrams on "How Simon works" | MIT |
 | lodash-es (bundled in Mermaid) | | | MIT |
 | DOMPurify (bundled in Mermaid) | 3.4.12 | | Apache License 2.0 or Mozilla Public License 2.0 |
