@@ -53,4 +53,7 @@ make setup
 make setup-parts || echo "Part setup reported a problem above; Part 2 runs on the relay, so the app may still work." >&2
 echo
 echo "Starting Simon: open http://127.0.0.1:$PORT"
+echo "Sign-in codes are printed here: no mail is sent from a local Simon."
+# the local server writes each sign-in mail to <state>/dev/outbox; print each code here (deploy/judges/signin_codes.py)
+python3 deploy/judges/signin_codes.py "${SIMON7_STATE_DIR:-$HOME/.local/state/simon-part-7}/dev/outbox" "$$" &
 exec uv run python -m part7 serve --host 127.0.0.1 --port "$PORT" --base-path /
