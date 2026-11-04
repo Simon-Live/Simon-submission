@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from pathlib import Path
+
+from part7 import compute_mode, prod_check
+from part7.prod_mode import is_prod
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = REPO_ROOT / "web"
@@ -18,20 +22,20 @@ STAGING_BASE_PATH = "/simon-part-7/"
 MAX_UPLOAD_SECONDS = 90  # raw capture; a trim (or no trim) narrows it to MAX_CLIP_SECONDS
 MAX_CLIP_SECONDS = 60
 MIN_CLIP_SECONDS = 1
-MAX_UPLOAD_BYTES = 95_000_000
+# The ONE byte cap of a request body (operator, 2026-11-03). EDGE-413: Cloudflare refuses a body over 100 MB before the
+# app sees it and the firm gateway answers 413 from its registry max_body_mb (90, docs/prod/registry-block.yaml), so
+# the app's own cap sits under both and the 413 is the app's. The recorder makes about 28 MB per 90 s, so it loses
+# nothing. The video upload, model import and the central prod 413 all derive from it.
+MAX_UPLOAD_BYTES = 85_000_000
 RECORDER_BPS = 2_500_000
 QUEUE_LIMIT = 8
 RETENTION_DAYS = 7
-VISITOR_TRAINER_PER_DAY = 3
-VISITOR_GPU_PER_DAY = 10
 PART6_MIN_DURATION_MS = 1000
 PART6_MAX_DURATION_MS = 120000
 
-DAILY_TRAINER_JOBS_LIMIT = 10
-DAILY_GPU_JOBS_LIMIT = 40
-
 DEFAULT_GPU_WORKERS = 2
-DEFAULT_PART1_TIMEOUT_S = 150.0
+# 150 s for Part 1's work, then `p1_keyframes.STOP_GRACE_S` for it to delete its upload at Meta (TICKET-388).
+DEFAULT_PART1_TIMEOUT_S = 215.0
 # TICKET-067: Part 2 `track` sends every frame to a remote tracker, so its time grows with the pixel count
 # (412.6 s for 176 frames at 2048x1080, 21.3 s at 608x1080). Every job's clip is scaled to this long side.
 DEFAULT_CLIP_MAX_SIDE = 1280
@@ -46,9 +50,76 @@ def _env_number(name: str, default: float, minimum: float) -> float:
     return value if value >= minimum else default
 
 
+def upload_max_bytes() -> int:
+    """Largest video upload in bytes (`MAX_UPLOAD_BYTES`, also `api/config` `limits.max_bytes`)."""
+    return MAX_UPLOAD_BYTES
+
+
+def body_cap_bytes() -> int | None:
+    """Largest request body of any route in prod (a model import, a proxied Part 6 upload, a form); None outside prod,
+    where each route keeps its own cap (each derives from `MAX_UPLOAD_BYTES`)."""
+    return MAX_UPLOAD_BYTES if is_prod() else None
+
+
+def socket_timeout_s() -> float | None:
+    """Seconds one socket read or write may block (`SIMON7_SOCKET_TIMEOUT_S`): 60 in prod, off elsewhere unless set (APP-M3)."""
+    default = 60.0 if is_prod() else 0.0
+    value = _env_number("SIMON7_SOCKET_TIMEOUT_S", default, 0)
+    return value or None
+
+
+def byok_idle_ttl_s() -> int:
+    """Seconds a stored BYOK credential may sit unused (`byok_idle_ttl_s` of the health line): the TTL the credential
+    store enforces, `modal_creds.IDLE_TTL_S` (one source; the contract caps it at 86400)."""
+    from part7 import modal_creds  # here: modal_creds is not needed by the many readers of config
+
+    return modal_creds.IDLE_TTL_S
+
+
+def disk_floor_bytes() -> int:
+    """Free space the state disk must keep after an upload (`SIMON7_DISK_FLOOR_BYTES`, default 5 GB)."""
+    return int(_env_number("SIMON7_DISK_FLOOR_BYTES", 5_000_000_000, 0))
+
+
 def gpu_workers() -> int:
-    """Job worker threads (`SIMON7_GPU_WORKERS`, default 2)."""
+    """Job worker threads (`SIMON7_GPU_WORKERS`, default 2); in serverless mode the configured GPU concurrency."""
+    if compute_mode.serverless():
+        return serverless_max_concurrent()
     return int(_env_number("SIMON7_GPU_WORKERS", DEFAULT_GPU_WORKERS, 1))
+
+
+# docs/specs/serverless-compute.md: set in prod/compute.conf.
+SERVERLESS_CONCURRENT_ENV = "SIMON7_SERVERLESS_MAX_CONCURRENT"
+SERVERLESS_QUEUE_WAIT_ENV = "SIMON7_SERVERLESS_QUEUE_WAIT_S"
+DEFAULT_SERVERLESS_CONCURRENT = 4  # also Modal's max_containers (deploy/serverless/part2_app.py reads the same name)
+DEFAULT_SERVERLESS_QUEUE_WAIT_S = 900.0
+
+
+def _count(name: str, default: int) -> int:
+    """A whole number from the environment; anything unusable is 0, which refuses (fail closed)."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return int(raw) if raw.isdigit() else 0
+
+
+def queue_limit() -> float:
+    """Jobs the queue holds before it refuses. On Modal a job past the workers waits its turn in memory, however many there
+    are (operator: "no limits anywhere ever"); the host's own GPU keeps `QUEUE_LIMIT`."""
+    return math.inf if compute_mode.serverless() else QUEUE_LIMIT
+
+
+def serverless_max_concurrent() -> int:
+    return max(1, _count(SERVERLESS_CONCURRENT_ENV, DEFAULT_SERVERLESS_CONCURRENT))
+
+
+def serverless_image3d() -> bool:
+    """A picture of a character or object is offered on Modal (prod/compute.conf, serverless-compute.md AC-SC20)."""
+    return os.environ.get("SIMON7_SERVERLESS_IMAGE3D", "").strip() == "1"
+
+
+def serverless_queue_wait_s() -> float:
+    return _env_number(SERVERLESS_QUEUE_WAIT_ENV, DEFAULT_SERVERLESS_QUEUE_WAIT_S, 1)
 
 
 def cleanup_every_s() -> float:
@@ -77,7 +148,7 @@ def health_part6_stale_s() -> float:
 
 
 def part1_timeout_s() -> float:
-    """Seconds the trainer chain waits for Part 1 (`SIMON7_PART1_TIMEOUT_S`, default 150)."""
+    """Seconds the trainer chain waits for Part 1 (`SIMON7_PART1_TIMEOUT_S`, default 215), its stop included."""
     return _env_number("SIMON7_PART1_TIMEOUT_S", DEFAULT_PART1_TIMEOUT_S, 1)
 
 
@@ -182,6 +253,8 @@ def keys_dir() -> Path:
     When neither is set nor present, one line says so (the directory is named, never any content).
     """
     global _KEYS_LOGGED
+    if is_prod():  # the firm's contract: secrets come from PROD_SECRETS_DIR only, never an operator or home folder
+        return prod_check.keys_dir_for_prod()
     env_val = os.environ.get("SIMON7_KEYS_DIR")
     if env_val:
         return Path(env_val).expanduser().resolve()

@@ -6,7 +6,7 @@ import fs from "node:fs";
 import { QUESTION_MAX, answerView, citeLabel, droppedLine, questionError, receiptLine, stateForStatus } from "../../web/model/ask.js";
 
 const BODY = {
-  status: "ok", text: "Trunk lean forward is new in take 2.", dropped: 2, remaining: 19, message: "",
+  status: "ok", text: "Trunk lean forward is new in take 2.", dropped: 2, message: "",
   claims: [{ kind: "trend", text: "Trunk lean forward shows in take 2 at 1 s.", cites: [{ take: 2, at_s: 1, clip: "api/me/history/e/takes/j/clip.mp4" }, { take: 1, at_s: null, clip: null }] }],
   reach: { takes: 2, movements: 1, left_out: 0, video: false },
   usage: { input_tokens: 20000, cached_tokens: 10000, output_tokens: 500, usd: 0.016 },
@@ -24,7 +24,6 @@ test("each status maps to a state, and the server's words win", () => {
   assert.equal(stateForStatus(409).kind, "consent");
   assert.equal(stateForStatus(409, { message: "Simon is answering another question." }).message, "Simon is answering another question.");
   assert.equal(stateForStatus(422).kind, "few");
-  assert.equal(stateForStatus(429).kind, "limit");
   assert.equal(stateForStatus(500).kind, "error");
 });
 
@@ -50,13 +49,12 @@ test("an answer view keeps the claims, the cites, the dropped count and the rece
   assert.equal(v.dropped, "Simon could not check this (2 left out).");
   assert.match(v.receipt, /2 takes of 1 movement as text, with no video/);
   assert.match(v.receipt, /20,000 tokens in, 10,000 of them cached, 500 out\./);
-  assert.equal(v.remaining, 19);
 });
 
 test("no dropped claims means no dropped line, and nothing is invented for a missing field", () => {
   assert.equal(droppedLine(0), "");
   const v = answerView({ status: "abstain", message: "Your takes do not mention tempo." });
-  assert.deepEqual([v.kind, v.message, v.claims, v.dropped, v.receipt, v.remaining], ["abstain", "Your takes do not mention tempo.", [], "", "", null]);
+  assert.deepEqual([v.kind, v.message, v.claims, v.dropped, v.receipt], ["abstain", "Your takes do not mention tempo.", [], "", ""]);
   assert.equal(answerView(null).kind, "failed");
   assert.equal(receiptLine({ reach: { takes: 5, movements: 2, left_out: 1 } }), "Simon read 5 takes of 2 movements as text, with no video, and sent them to Meta's model. 1 older take left out to fit the limit.");
 });
@@ -82,7 +80,6 @@ test("each server code maps to its own state; busy never shows the consent text"
   assert.match(forbidden.message, /another site/);
   assert.notEqual(forbidden.message, stateForStatus(500).message); // not the generic line
   assert.equal(stateForStatus(422, { code: "too_few_takes" }).kind, "few");
-  assert.equal(stateForStatus(429, { code: "daily_limit" }).kind, "limit");
   assert.equal(stateForStatus(400, { code: "invalid_question" }).kind, "error");
   assert.equal(stateForStatus(403).kind, "error"); // no body: still not the generic line
   assert.match(stateForStatus(403).message, /another site/);

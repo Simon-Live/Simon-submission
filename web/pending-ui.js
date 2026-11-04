@@ -4,8 +4,10 @@ import { h, clear, ensureCss, stateBlock, linkButton } from "./ui.js";
 import { createProgress } from "./progress.js";
 import { getPending } from "./pending-app.js";
 import { getConfig } from "./api.js";
-import { TEXT, statusText, SENDABLE } from "./pending.js";
-import { KEEP_TEXT, isKept, isWaiting, needsAction, keptStatus } from "./pending-keep.js";
+import { TEXT, canSendNow, statusText, SENDABLE } from "./pending.js";
+import { ensureConsent } from "./consent-gate.js";
+import { fetchMe } from "./auth.js";
+import { KEEP_TEXT, canSendAgain, isKept, isWaiting, needsAction, keptStatus, stuckLine } from "./pending-keep.js";
 
 const ensureStyles = () => ensureCss("pending.css", "data-simon-pending-css");
 
@@ -43,11 +45,16 @@ export function mountPendingBanner(el, pending) {
     }
     const failing = sending ? [] : waiting.filter((r) => r.last_error && SENDABLE.includes(r.stage));
     if (failing.length) {
-      kids.push(h("p", { class: "pending-line", "data-testid": "pending-failed", role: "alert", text: statusText(failing[0]) }),
-        h("button", { type: "button", class: "btn-link", "data-testid": "pending-retry", text: KEEP_TEXT.retry, onclick: () => pending.trigger("manual") }));
+      const signIn = failing[0].last_error.kind === "signin"; // AC-OT10: a retry cannot help until the person signs in
+      kids.push(h("p", { class: "pending-line", "data-testid": "pending-failed", role: "alert", text: statusText(failing[0]) }));
+      if (signIn) kids.push(h("a", { class: "pending-link", href: "#/signin", "data-testid": "pending-signin", text: "Sign in" }));
+      else kids.push(h("button", { type: "button", class: "btn-link", "data-testid": "pending-retry", text: KEEP_TEXT.retry, onclick: () => pending.trigger("manual") }));
     }
     if (stuck.length) {
-      kids.push(h("p", { class: "pending-line", "data-testid": "pending-stuck", role: "status", text: KEEP_TEXT.needsYou(stuck.length) }));
+      kids.push(h("p", { class: "pending-line", "data-testid": "pending-stuck", role: "status", text: stuckLine(stuck) }));
+      if (stuck.length === 1 && canSendAgain(stuck[0])) { // AC-OT15: the way out is on the line that says why
+        kids.push(h("button", { type: "button", class: "btn-link", "data-testid": "pending-stuck-again", text: KEEP_TEXT.sendAgain, onclick: () => pending.sendAgain(stuck[0].id).catch(() => {}) }));
+      }
       if (!waiting.length) kids.push(h("a", { class: "pending-link", href: "#/pending", "data-testid": "pending-stuck-link", text: "See saved takes" }));
     }
     if (waiting.length) {
@@ -72,12 +79,29 @@ export function mountPendingBanner(el, pending) {
   return () => { live = false; off(); };
 }
 
+/**
+ * The Send now button of a saved take. A consent answer that is missing or waiting for this person (a held take) is asked in `box`, on this
+ * page, before the take goes; otherwise it sends at once. `opts` are for tests.
+ */
+export function sendNowButton(p, id, box, opts = {}) {
+  const go = () => { box.replaceChildren(); p.sendNow(id); };
+  return h("button", { type: "button", class: "btn primary", "data-testid": `pending-send-${id}`, text: "Send now",
+    onclick: () => ensureConsent(box, go, { refresh: fetchMe, onUnreachable: go, ...opts }) });
+}
+
+/** The step box of take `id`: the same element every repaint, so a consent step being answered is not wiped by a list repaint. */
+export function stepFor(steps, id) {
+  if (!steps.has(id)) steps.set(id, h("div", { "data-testid": `pending-step-${id}` }));
+  return steps.get(id);
+}
+
 /** `#/pending`: every saved take with Send now / Finish / Delete. */
 export function mountPendingList(root) {
   ensureStyles();
   let live = true;
   let off = () => {};
   let sending = null;
+  const steps = new Map(); // take id -> its step box (stepFor)
   const list = h("ul", { class: "pending-list", "data-testid": "pending-list" });
   const screen = h("section", { class: "screen pending-screen", "data-testid": "pending" },
     h("h1", { text: "Saved takes" }),
@@ -90,6 +114,7 @@ export function mountPendingList(root) {
       const recs = await pending.list();
       if (!live) return;
       if (pending.listKept) recs.push(...(await pending.listKept())); // TICKET-290: the kept takes, after the waiting ones
+      for (const id of [...steps.keys()]) if (!recs.some((r) => r.id === id)) steps.delete(id);
       list.replaceChildren(...recs.map((rec) => row(pending, rec)));
       screen.querySelector('[data-testid="pending-empty"]')?.remove();
       if (!recs.length) screen.append(stateBlock("pending-empty", "Nothing is waiting to send", "A take you record is kept here if the app cannot be reached.", linkButton("#/", "Back to movements", "back-home")));
@@ -99,13 +124,14 @@ export function mountPendingList(root) {
       const sendable = SENDABLE.includes(rec.stage);
       if (isKept(rec)) return keptRow(p, rec); // TICKET-290
       const status = h("p", { class: "pending-status", "aria-live": "polite", "data-testid": `pending-status-${id}`, text: statusText(rec, { sending }) });
-      const send = sendable ? h("button", { type: "button", class: "btn primary", "data-testid": `pending-send-${id}`, text: "Send now", onclick: () => p.sendNow(id) }) : null;
+      const step = stepFor(steps, id); // the consent step opens here when Send now needs an answer
+      const send = sendable && canSendNow(rec) ? sendNowButton(p, id, step) : null;
       const finish = rec.stage === "people_ready" ? linkButton(`#/pending/${encodeURIComponent(id)}`, "Finish", `pending-finish-${id}`, "primary") : null;
       const del = h("button", { type: "button", class: "btn secondary", "data-testid": `pending-delete-${id}`, text: "Delete", onclick: async () => { await p.remove(id, "user"); } });
       return h("li", { class: "pending-row", "data-testid": `pending-${id}`, "data-stage": rec.stage },
         h("p", { class: "pending-title", text: titleOf(rec) }),
         h("p", { class: "hint", text: `${TEXT.safe} · recorded ${whenText(rec.created_at)} · ${sizeText(rec.size)}` }),
-        status, h("div", { class: "row" }, send, finish, del));
+        status, h("div", { class: "row" }, send, finish, del), step);
     }
     off = pending.subscribe((evt) => {
       if (evt.type === "progress") {
@@ -150,7 +176,7 @@ export function mountPendingResume(root, id) {
 export function keptRow(p, rec) {
   const id = rec.id;
   const buttons = [];
-  if (rec.stage === "job_failed") {
+  if (canSendAgain(rec)) {
     buttons.push(h("button", { type: "button", class: "btn primary", "data-testid": `pending-again-${id}`, text: KEEP_TEXT.sendAgain, onclick: () => p.sendAgain(id) }));
   }
   if (rec.job && rec.stage === "sent") buttons.push(linkButton(`#/job/${encodeURIComponent(rec.job)}`, KEEP_TEXT.seeProgress, `pending-job-${id}`));

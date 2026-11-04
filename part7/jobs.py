@@ -34,6 +34,8 @@ UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 PID_RE = re.compile(r"^[0-9A-Za-z_-]{1,40}$")  # a person of a group job; shared by result_media and challenge_routes
 
 
+FUTURE_SLACK_S = 86400  # a job.json dated further ahead than this is not a clock that drifted
+
 class QueueFullError(Exception):
     """More jobs wait than the queue limit allows (HTTP 503)."""
 
@@ -63,6 +65,28 @@ class JobFailed(Exception):
         self.stage = stage
         self.reason = reason
         self.cause = cause  # the class of the failure for `ANOMALY job_failed` (failcause.py)
+
+
+def _seeded_jobs(state: Path) -> set[str] | None:
+    """The job ids `prod/seed.py` lists in `<state>/seed/ledger.json`: empty with no ledger, None when it cannot be read."""
+    try:
+        doc = json.loads((state / "seed" / "ledger.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return set()
+    except (OSError, ValueError):
+        return None
+    listed = doc.get("jobs") if isinstance(doc, dict) else None
+    return {str(j) for j in listed} if isinstance(listed, list) else None
+
+
+def _expired(job_id: str, stamp: float, now: float, cutoff: float, seeded: set[str] | None) -> bool:
+    """Whether the 7-day sweep takes this record (prod-seed.md AC-SEED5). Only the seed ledger exempts a job: a date in the
+    future is no way past the sweep, so a job that holds one and is not listed goes, unless the ledger cannot be read."""
+    if seeded is not None and job_id in seeded:
+        return False
+    if stamp < cutoff:
+        return True
+    return seeded is not None and stamp > now + FUTURE_SLACK_S
 
 
 def sanitize_reason(reason: str) -> str:
@@ -124,6 +148,11 @@ class JobContext:
     def set_fields(self, **fields: Any) -> None:
         self._queue.update(self.id, **fields)
 
+    @property
+    def draining(self) -> bool:
+        """True once the server stops for a restart (the drain): a step cut off now was not at fault."""
+        return self._queue.draining
+
 
 JobFn = Callable[[JobContext], "dict[str, Any] | None"]
 
@@ -137,12 +166,12 @@ class JobQueue:
     """
 
     def __init__(
-        self, state: Path | str, *, limit: int = config.QUEUE_LIMIT, start: bool = True, workers: int | None = None,
+        self, state: Path | str, *, limit: int | None = None, start: bool = True, workers: int | None = None,
         lock: bool | None = None, after_pid: int | None = None,
     ) -> None:
         self.root = Path(state) / "jobs"
         self.root.mkdir(parents=True, exist_ok=True)
-        self.limit = limit
+        self.limit = config.queue_limit() if limit is None else limit
         self._cond = threading.Condition()
         self._jobs: dict[str, dict[str, Any]] = {}
         self._waiting: deque[tuple[str, JobFn]] = deque()
@@ -155,6 +184,7 @@ class JobQueue:
         self._draining = False
         self._resumable: list[str] = []  # queued jobs from before a restart that carry a `_resume` spec
         self._cut: set[str] = set()  # TICKET-290: queued again at a drain; the old run's late writes are ignored
+        self._drain_lost: set[str] = set()  # jobs a drain lost; a job counts once whichever way it ended
         self.on_cleanup: Callable[[], None] | None = None  # the server sweeps old uploads with each job sweep
         self._stop_sweeper = threading.Event()
         self._rebuild: Callable[[dict[str, Any]], "JobFn | None"] | None = None  # kept by a standby for the takeover
@@ -264,12 +294,14 @@ class JobQueue:
 
     def cleanup(self, now: float | None = None) -> int:
         """Remove job folders not touched for 7 days (and their entries in memory); return how many."""
-        cutoff = (now if now is not None else time.time()) - config.RETENTION_DAYS * 86400
+        clock = now if now is not None else time.time()
+        cutoff = clock - config.RETENTION_DAYS * 86400
+        seeded = _seeded_jobs(self.root.parent)
         removed = 0
         for child in self.root.iterdir():
             record = child / "job.json"
             if child.is_dir() and JOB_ID_RE.match(child.name) and record.is_file():
-                if record.stat().st_mtime < cutoff:
+                if _expired(child.name, record.stat().st_mtime, clock, cutoff, seeded):
                     with self._cond:
                         job = self._jobs.get(child.name)
                         if job is not None and job["status"] in ("queued", "running"):
@@ -294,6 +326,19 @@ class JobQueue:
                 and (j.get("entry_id") or (j.get("result") or {}).get("entry_id")) == entry_id
             ]
         return max(found)[1] if found else None
+
+    def trainer_meta_answer(self, entry_id: str) -> bool | None:
+        """Whether the job that made `entry_id` kept the Meta tick (muse-prod.md AC-MP5); None when no such job is on file."""
+        with self._cond:
+            if not self._owner:
+                self._scan_foreign()
+            jobs = list(self._jobs.values())
+        for job in jobs:
+            made = job.get("entry_id") or (job.get("result") or {}).get("entry_id")
+            if job.get("kind") == "trainer" and made == entry_id:
+                items = (job.get("consent") or {}).get("items") or {}
+                return items.get("meta") is True and items.get("meta_adults") is True
+        return None
 
     def recent_trainer_entries(self, limit: int) -> list[tuple[str, str]]:
         """`(job id, entry id)` of the newest done trainer jobs that made an entry, newest first (the entry content check)."""
@@ -401,12 +446,14 @@ class JobQueue:
                     self._mark_failed(self._jobs[job_id], self._jobs[job_id].get("stage") or "upload", DRAIN_CUT_REASON)
                 self._write(self._jobs[job_id])
             self._cut |= requeued
+            lost = len(self._drain_lost)
+            self._drain_lost |= set(cut)  # such a job's own end, if it comes, adds no second line
         for job_id in cut:
             applog.anomaly("drain_cut_off", f"job still running after {max_s:.0f} s", job=job_id,
                            job_dir=self.job_dir(job_id), kind=self._jobs[job_id].get("kind"),
                            requeued=job_id in requeued)
-        applog.log(f"drain: done, {len(cut)} job(s) cut off")
-        return len(cut)
+        applog.log(f"drain: done, {lost + len(cut)} job(s) cut off")
+        return lost + len(cut)
 
     @staticmethod
     def _requeue_cut(job: dict[str, Any]) -> bool:
@@ -499,6 +546,17 @@ class JobQueue:
             ages = [now - self._started[j] for j in self._running if j in self._started]
             return {"queued": len(self._waiting), "running": len(self._running),
                     "oldest_running_s": max(ages) if ages else None}
+
+    def follow_counts(self) -> dict[str, int]:
+        """`{entry_id: finished solo follow takes}` among the job records still kept (the retention window); the
+        number the catalog search sorts "popular" by. A count only: no job id, owner or take content."""
+        with self._cond:
+            found: dict[str, int] = {}
+            for job in self._jobs.values():
+                entry = job.get("entry_id")
+                if job.get("kind") == "follow" and job.get("status") == "done" and isinstance(entry, str) and entry:
+                    found[entry] = found.get(entry, 0) + 1
+            return found
 
     def gpu_waits(self) -> list[tuple[str, float, str]]:
         """`(job id, wait start as epoch seconds, reason)` of each queued or running job in GPU admission (TICKET-305)."""
@@ -662,6 +720,13 @@ class JobQueue:
             spent = dict(self._durations.get(job_id, {}))
             job = dict(self._jobs[job_id])
         facts = applog.pop_facts(job_id)
+        if status == "failed" and self._draining and DRAIN_CUT_REASON in reason:
+            with self._cond:
+                fresh = job_id not in self._drain_lost
+                self._drain_lost.add(job_id)
+            if fresh:  # its step died during the drain: as lost to the restart as one still running at the deadline
+                applog.anomaly("drain_cut_off", "the step ended during the drain", job=job_id, job_dir=ctx.dir,
+                               kind=job.get("kind"), requeued=False)
         if status == "failed":
             applog.anomaly("job_failed", reason, job=job_id, job_dir=ctx.dir, stage=stage, cause=cause,
                            kind=job.get("kind"), seconds=total)

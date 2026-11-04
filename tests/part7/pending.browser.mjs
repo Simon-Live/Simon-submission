@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { answerConsentStep } from "./consent-step.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const req = createRequire(path.join(process.env.PLAYWRIGHT_DIR || path.resolve(here, "../../node_modules"), "x.js"));
@@ -62,6 +63,7 @@ const waitFor = async (fn, what, ms = 20000) => {
   }
 };
 async function record(page, tid) {
+  await answerConsentStep(page);
   await tid("countdown-select").selectOption("0");
   await tid("duration-select").selectOption("5");
   await tid("framing-hint").waitFor();

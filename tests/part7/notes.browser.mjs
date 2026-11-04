@@ -27,7 +27,7 @@ for (let i = 0; i < 200; i++) {
   try { if ((await fetch(`${base}api/auth/me`)).ok && fs.existsSync(idFile)) break; } catch { /* not up yet */ }
   await new Promise((r) => setTimeout(r, 150));
 }
-const { first, second, entry } = JSON.parse(fs.readFileSync(idFile, "utf8")); // seeded takes, not real recordings
+const { first, second, entry, tokens } = JSON.parse(fs.readFileSync(idFile, "utf8")); // seeded takes, not real recordings
 const FOLLOWER = "fred.follower@example.com";
 const TRAINER = "tina.trainer@example.com";
 const THIRD = "theo.third@example.com";
@@ -37,7 +37,7 @@ const errors = [];
 let passed = 0;
 const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 const t = (p, id) => p.getByTestId(id);
-const EXPECTED = /status of (401|404|429)/; // refused calls are the normal answers this test provokes
+const EXPECTED = /status of (401|403|404)/; // refused calls are the normal answers this test provokes
 const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, name), fullPage: true });
 
 async function person(email) {
@@ -75,6 +75,15 @@ try {
   await follower.goto(`${base}#/me`);
   await t(follower, "me-retention").check();
   await follower.waitForFunction(() => document.querySelector('[data-testid="me-consent-note"]')?.textContent);
+  // negative: this browser has not got the take's key yet, so its id alone keeps nothing (LEG-H4)
+  await t(follower, "me-claim-input").fill(first);
+  await t(follower, "me-claim-button").tap();
+  await follower.waitForFunction(() => document.querySelector('[data-testid="me-claim-note"]')?.textContent);
+  assert.equal(await follower.locator(`[data-job="${first}"]`).count(), 0, "a result link alone keeps nothing");
+  await follower.evaluate(async (keys) => {
+    const { rememberKey } = await import(new URL("model/creator-keys.js", document.baseURI));
+    for (const [job, token] of Object.entries(keys)) rememberKey(job, token);
+  }, tokens);
   for (const job of [first, second]) {
     await t(follower, "me-claim-input").fill(job);
     await t(follower, "me-claim-button").tap();

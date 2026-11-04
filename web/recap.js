@@ -30,7 +30,7 @@ function runner(ui, { start, read, show, live }) {
   let timer = null;
   const fail = (status) => {
     ui.busy(false);
-    ui.status("error", status === 409 ? "Simon needs to keep your takes before it can read them. Turn on keeping takes in your account." : status === 429 ? "You have used today's readings. Try again tomorrow." : status === 422 ? TEXT[422][1] : "The reading could not start. Try again in a moment.");
+    ui.status("error", status === 409 ? "Simon needs to keep your takes before it can read them. Turn on keeping takes in your account." : status === 422 ? TEXT[422][1] : "The reading could not start. Try again in a moment.");
   };
   const poll = (startedAt, delay) => {
     timer = setTimeout(async () => {

@@ -59,6 +59,41 @@ HOST_ONLY: dict[str, str] = {
 
 # Tests that read a workspace file .simon-publish keeps out of the client repo. They run where the file is present.
 NEEDS_FILE: dict[str, str] = {
+    # the live server's own files (prod/, docs/prod/, staging/), which stay out of this repo
+    "tests/part7/test_byok_own_clients.py::test_the_cli_down_sh_runs_stops_every_client":
+        "prod/down.sh",
+    "tests/part7/test_mail_hardening.py::test_support_is_a_registered_inbound_address":
+        "docs/prod/registry-block.yaml",
+    "tests/part7/test_mail_probe.py::test_smoke_fails_on_a_failing_probe_and_says_when_it_did_not_run":
+        "prod/smoke.py",
+    "tests/part7/test_mail_webhook.py::test_the_key_file_is_one_prod_reads_and_the_how_to_names_the_clicks":
+        "docs/specs/mail-delivery.md",
+    "tests/part7/test_muse_prod.py::test_ac_mp7_prod_copy_and_hashes":
+        "deploy/part1-requirements.txt",
+    "tests/part7/test_no_limits.py::test_no_window_or_cap_setting_is_left_in_the_prod_config":
+        "prod/compute.conf",
+    "tests/part7/test_part1_stop.py::test_each_setup_keeps_its_working_time":
+        "staging/env.sh",
+    "tests/part7/test_private_default.py::test_d3_the_teacher_specs_say_what_prod_data_says":
+        "docs/specs/prod-data.md",
+    "tests/part7/test_records_licences.py::test_ac1_licence_texts_sit_beside_the_meshes":
+        "web/mesh-demo/LICENSE-SAM.txt",
+    "tests/part7/test_serverless_client.py::test_up_sh_asks_for_the_converter_at_this_version":
+        "prod/up.sh",
+    "tests/part7/test_serverless_client.py::test_up_sh_passes_every_whole_number_setting_of_compute_conf":
+        "prod/up.sh",
+    "tests/part7/test_serverless_client.py::test_real_take_measures_a_cold_and_a_warm_call_with_no_server":
+        "prod/compute.conf",
+    "tests/part7/test_serverless_client.py::test_deploy_sh_stamps_only_after_a_deploy_that_worked_and_keeps_tokens_out_of_argv":
+        "prod/compute.conf",
+    "tests/part7/test_serverless_client.py::test_up_refuses_a_release_whose_app_is_not_deployed_and_names_the_command":
+        "prod/up.sh",
+    "tests/part7/test_serverless_client.py::test_up_refuses_another_version_and_passes_the_right_one":
+        "prod/up.sh",
+    "tests/part7/test_serverless_client.py::test_a_checked_release_restarts_with_modal_down_and_another_does_not":
+        "prod/up.sh",
+    "tests/part7/test_serverless_client.py::test_up_does_not_ask_modal_under_byok":
+        "prod/up.sh",
     "tests/part7/test_camera_paths.py::test_the_samples_validate": "docs/specs/camera-path-samples/orbit.json",
     "tests/part7/test_camera_paths.py::test_the_samples_are_what_the_tool_makes_for_the_fixture_result":
         "docs/specs/camera-path-samples/orbit.json",

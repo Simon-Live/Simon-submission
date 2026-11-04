@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  MODES, PRESETS, ALL, loadChoice, saveChoice, defaultForCategory, effectiveMode, matchesMode, learnSpeed,
+  MODES, PRESETS, ALL, KEY, LEGACY_KEY, loadChoice, saveChoice, forgetHeaderChoice, defaultForCategory, effectiveMode, matchesMode, learnSpeed,
   countdownFor, promoteChallenges, sectionLabel, scoringLine,
 } from "../../web/modes.js";
 import {
@@ -14,7 +14,7 @@ import { buildSubmit } from "../../web/take-flow.js";
 
 const memory = (init = {}) => {
   const data = { ...init };
-  return { getItem: (k) => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v); }, data };
+  return { getItem: (k) => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v); }, removeItem: (k) => { delete data[k]; }, data };
 };
 const rep = (rep, ...ms) => ({ rep, movement: "squat", keyframes: ms.map((t_ms, i) => ({ name: `k${i}`, frame: t_ms / 40, t_ms })) });
 
@@ -25,8 +25,8 @@ test("the mode defaults from the entry category and the stored choice wins", () 
   assert.equal(defaultForCategory("other"), null);
   assert.equal(effectiveMode({ category: "dance" }, memory()), "dance");
   assert.equal(effectiveMode({ category: "exercise" }, memory()), "fitness");
-  assert.equal(effectiveMode({ category: "exercise" }, memory({ "simon.mode": "rehab" })), "rehab");
-  assert.equal(effectiveMode({ category: "dance" }, memory({ "simon.mode": "all" })), "dance"); // All is a filter only
+  assert.equal(effectiveMode({ category: "exercise" }, memory({ [KEY]: "rehab" })), "rehab");
+  assert.equal(effectiveMode({ category: "dance" }, memory({ [KEY]: "all" })), "dance"); // All is a filter only
   assert.equal(effectiveMode({}, memory()), "fitness");
 });
 
@@ -34,12 +34,25 @@ test("the mode choice round-trips and junk or blocked storage reads as unset", (
   const s = memory();
   assert.equal(loadChoice(s), null);
   saveChoice("rehab", s);
-  assert.equal(s.data["simon.mode"], "rehab");
+  assert.equal(s.data[KEY], "rehab");
   assert.equal(loadChoice(s), "rehab");
-  assert.equal(loadChoice(memory({ "simon.mode": "zen" })), null);
+  assert.equal(loadChoice(memory({ [KEY]: "zen" })), null);
   const blocked = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
   assert.equal(loadChoice(blocked), null);
   assert.doesNotThrow(() => saveChoice("dance", blocked));
+});
+
+test("what the removed header switch stored is ignored and dropped (TICKET-436)", () => {
+  const old = memory({ [LEGACY_KEY]: "dance" });
+  assert.equal(loadChoice(old), null, "the old key is not read");
+  assert.equal(effectiveMode({ category: "exercise" }, old), "fitness", "the entry's own kind decides");
+  forgetHeaderChoice(old);
+  assert.equal(old.data[LEGACY_KEY], undefined);
+  const kept = memory({ [KEY]: "rehab", [LEGACY_KEY]: "dance" });
+  forgetHeaderChoice(kept);
+  assert.equal(kept.data[KEY], "rehab", "the follow screen's own choice stays");
+  const blocked = { getItem() { throw new Error("blocked"); }, removeItem() { throw new Error("blocked"); } };
+  assert.doesNotThrow(() => forgetHeaderChoice(blocked));
 });
 
 test("the catalog filter follows the documented rules", () => {

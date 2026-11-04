@@ -4,6 +4,7 @@
 import * as THREE from "./vendor/three/three.module.min.js";
 import { tokenHex } from "./theme-colors.js";
 import { FALLBACK_3D as FB } from "./theme-fallbacks.js";
+import { extremeFrames, frameStickBox, projectBoxes } from "./stage-extent.js";
 
 const SIDE_GAP_M = 0.8; // compare-view.md, Modes: figures 0.8 m apart on x
 const TARGET = new THREE.Vector3(0, -0.06, 0);
@@ -20,7 +21,8 @@ const FIT_MARGIN_PX = 12; // the framed figures keep this far from every edge of
 const LEGEND_GAP_PX = 6; // and this far below the Trainer and You chips (result.css .sr-legend), when the stage has them
 const FIT_STEP = 1.06;
 const FIT_MAX = 4;
-const FIT_EVERY = 6; // renders between checks of the posed figures' box once it is placed
+const FIT_EVERY = 6; // renders between checks of the posed figures' box once it is placed and the take's extent is known
+const NO_DIM = new Set();
 export const VIEWS = {
   front: { azimuth: 0, elevation: 8 },
   side: { azimuth: 90, elevation: 8 },
@@ -102,11 +104,11 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
       return h;
     });
     scene.add(group);
-    return { group, mat, dimMat, boneMeshes, jointMeshes, halos, pose: null, skin: null, dim: new Set(), hide: new Set(), stats: null, offset: new THREE.Vector3(), pelvis: new THREE.Vector3() };
+    return { group, mat, dimMat, boneMeshes, jointMeshes, halos, pose: null, skin: null, take: null, dim: new Set(), hide: new Set(), stats: null, offset: new THREE.Vector3(), pelvis: new THREE.Vector3() };
   });
 
   const state = { azimuth: 24, elevation: 14, distance: 3.4, mode: tracks.length > 1 ? "side" : "single", highlight: new Set() };
-  const fit = { skinFit: 1, fitLocked: false, fitDue: true, renders: 0 }; // the skin back-off, see fitSkins
+  const fit = { skinFit: 1, fitLocked: false, fitDue: true, fitGrow: false, renders: 0 }; // the skin back-off, see fitSkins
   const listeners = { camera: new Set(), render: new Set() };
   let queued = false;
   let disposed = false;
@@ -215,6 +217,7 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
       fig.skin = adapter;
       fig.group.add(adapter.object3d);
     }
+    if (fig.take) fig.take = newTake(fig.take.frames); // the extent is the new skin's, scanned again
     fit.fitDue = true;
     applyMaterials();
     invalidate();
@@ -249,8 +252,12 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
     fig.jointMeshes.forEach((m) => { if (m.visible) box.expandByPoint(m.position); });
     return box.expandByScalar(JOINT_R);
   }
-  /** The NDC box {x0, x1, y0, y1} of the figures shown at the current camera, `skins` of them drawn as skins; null with none. */
-  function projectedFigures() {
+  const project = (x, y, z) => { corner.set(x, y, z).project(camera); return [corner.x, corner.y]; };
+  /**
+   * The NDC box {x0, x1, y0, y1} of the figures shown at the current camera, `skins` of them drawn as skins; null with none.
+   * `withTake` adds every scanned frame of each figure's take at the figure's slot (the framing; skinScreenBox reads the frame shown).
+   */
+  function projectedFigures(withTake = false) {
     let r = null;
     figures.forEach((fig) => {
       const shown = fig.skin ? fig.skin.object3d.visible : fig.group.visible;
@@ -262,9 +269,45 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
         r.y0 = Math.min(r.y0, corner.y); r.y1 = Math.max(r.y1, corner.y);
       }
       if (fig.skin) r.skins++;
+      if (withTake && fig.take && fig.take.boxes.length) projectBoxes(fig.take.boxes, [fig.pelvis.x, fig.pelvis.y, fig.pelvis.z], project, r);
     });
     return r;
   }
+
+  // Take framing (model-skin.md AC16): the stage poses each figure, skin or sticks, on the take's extreme frames and keeps
+  // their boxes relative to the figure's slot, so the first fit already holds every frame and the camera never has to
+  // back off during the first play. A take that grows (frames still coming in) is scanned for its new frames only, and
+  // the camera then backs off further from where it is, never in and out again.
+  function newTake(frames) { return { frames, n: frames.length, scanned: new Set(), boxes: [], pending: true }; }
+  function boxOfFrame(fig, pose) {
+    if (!fig.skin) return frameStickBox(pose, hipL, hipR, JOINT_R);
+    fig.skin.setPose(pose, NO_DIM, joints);
+    fig.skin.object3d.position.set(0, 0, 0);
+    const b = skinBox(fig);
+    return b.isEmpty() ? null : { min: b.min.toArray(), max: b.max.toArray() };
+  }
+  function scanTakes() {
+    if (state.free || !framing || !figures.some((f) => f.skin)) return;
+    figures.forEach((fig) => {
+      const take = fig.take;
+      if (!take || !take.pending) return;
+      take.pending = false;
+      const todo = extremeFrames(take.frames, hipL, hipR).filter((i) => !take.scanned.has(i));
+      try {
+        // a skin sizes itself from the legs it has seen (character.js, person-skin.js): it sees the frames once, then is measured
+        if (fig.skin) for (const i of todo) fig.skin.setPose(take.frames[i], NO_DIM, joints);
+        for (const i of todo) {
+          take.scanned.add(i);
+          const b = boxOfFrame(fig, take.frames[i]);
+          if (b) take.boxes.push(b);
+        }
+      } catch {
+        take.boxes = []; // a frame the skin cannot follow: no extent, so the frame shown is checked on every render instead
+      }
+    });
+  }
+  /** Every figure shown has its take's extent: the posed box is then checked only every FIT_EVERY renders. */
+  const takeCovered = () => figures.every((f) => !f.group.visible || (f.take && f.take.boxes.length));
   /** Px from the stage's top edge that the figures must stay below: the margin, or the chips' bottom plus a gap. */
   function topClearPx() {
     const legend = host.querySelector(".sr-legend");
@@ -275,14 +318,17 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
     if (state.free) return; // the scripted camera is exact; no back-off
     if (!framing || !figures.some((f) => f.skin)) { fit.skinFit = 1; fit.fitDue = true; return; }
     fit.renders++;
-    if (fit.fitLocked || !(fit.fitDue || fit.renders % FIT_EVERY === 0)) return;
+    // without the take's extent the posed box is checked on every render, so each frame is in shot as it is drawn
+    const every = takeCovered() ? FIT_EVERY : 1;
+    if (fit.fitLocked || !(fit.fitDue || fit.fitGrow || fit.renders % every === 0)) return;
     if (fit.fitDue) fit.skinFit = 1;
+    fit.fitGrow = false;
     const w = Math.max(1, host.clientWidth), h = Math.max(1, host.clientHeight);
     const [left, right, bottom, top] = [-1 + (2 * FIT_MARGIN_PX) / w, 1 - (2 * FIT_MARGIN_PX) / w, -1 + (2 * FIT_MARGIN_PX) / h, 1 - (2 * topClearPx()) / h];
     let backed = false;
     for (let i = 0; i < 24 && fit.skinFit < FIT_MAX; i++) {
       placeCamera();
-      const r = projectedFigures();
+      const r = projectedFigures(true);
       if (!r) return;
       fit.fitDue = false;
       if (r.x0 >= left && r.x1 <= right && r.y0 >= bottom && r.y1 <= top) {
@@ -298,6 +344,7 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
   function render() {
     queued = false;
     if (disposed) return;
+    scanTakes(); // before the figures are posed: the scan leaves a skin on a scanned frame
     figures.forEach((fig, i) => poseFigure(fig, i));
     fitSkins();
     placeCamera();
@@ -403,6 +450,29 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
       });
       invalidate();
     },
+    /**
+     * takes[i] is every frame of figure i's take (null or missing: none), so the framing holds the whole take from its
+     * first frame. Called again with the same frames plus more (a take still loading), the camera only backs off as far
+     * as the new frames need; it is not reset.
+     */
+    setTake(takes) {
+      figures.forEach((fig, i) => {
+        const frames = takes && takes[i];
+        if (!frames || !frames.length) { fig.take = null; return; }
+        const old = fig.take;
+        if (old && frames.length >= old.n && frames[0] === old.frames[0]) { // the same take, maybe with more frames
+          if (frames.length === old.n) { old.frames = frames; return; }
+          old.frames = frames;
+          old.n = frames.length;
+          old.pending = true;
+          fit.fitGrow = true;
+          return;
+        }
+        fig.take = newTake(frames);
+        fit.fitDue = true;
+      });
+      invalidate();
+    },
     /** Per figure, what the last render drew: {joints, dimmed, bones}, or null for a hidden figure. */
     drawStats: () => figures.map((f) => (f.stats ? { ...f.stats } : null)),
     /** The gap between the figures as a share of side by side (1) down to overlay (0); null follows the mode again. */
@@ -437,7 +507,8 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
       if (!cam) { fit.fitDue = true; resize(); return; } // resize restores the orbit camera's field of view
       invalidate();
     },
-    getCamera: () => ({ azimuth: state.azimuth, elevation: state.elevation, distance: state.distance }),
+    // backOff: the framing's distance factor (1 is none), so a test can see the camera hold still over a take
+    getCamera: () => ({ azimuth: state.azimuth, elevation: state.elevation, distance: state.distance, backOff: fit.skinFit }),
     onCamera(fn) { listeners.camera.add(fn); },
     onRender(fn) { listeners.render.add(fn); },
     /** CSS px position of a figure's pelvis within the canvas */

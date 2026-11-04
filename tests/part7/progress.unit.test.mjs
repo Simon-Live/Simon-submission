@@ -81,9 +81,9 @@ test("the indicator never draws a lower percent than it already drew", () => {
     stepView({ status: "queued" }), // a late poll from before the job started
     stepView({ status: "converting", step: "checking", step_index: 4, step_count: 5 })]) {
     bar.update(view);
-    seen.push([meter.getAttribute("aria-valuenow"), fill.style.width]);
+    seen.push([meter.getAttribute("aria-valuenow"), fill.style.transform]); // reels 1.1: the fill scales, never resizes
   }
-  assert.deepEqual(seen, [[null, ""], ["9", "9%"], ["15", "15%"], ["20", "20%"], ["40", "40%"], ["40", "40%"], ["60", "60%"]]);
+  assert.deepEqual(seen, [[null, ""], ["9", "scaleX(0.09)"], ["15", "scaleX(0.15)"], ["20", "scaleX(0.2)"], ["40", "scaleX(0.4)"], ["40", "scaleX(0.4)"], ["60", "scaleX(0.6)"]]);
   bar.destroy();
 });
 

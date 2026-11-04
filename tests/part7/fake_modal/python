@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stands in for the pinned Modal venv's python (SIMON7_MODAL_PYTHON) in tests and the local QA run: the real p2_client.py on
+# the fake `modal` beside this file. Its env is the client's clean one, so the workspace folder comes from `root`, a file
+# next to a copy of this script, or from the FAKE_MODAL_ROOT the caller's wrapper set.
+here="$(cd "$(dirname "$0")" && pwd)"
+shift   # the launcher's -I, which would keep the fake off the module path
+[ -n "$FAKE_MODAL_ROOT" ] || FAKE_MODAL_ROOT="$(cat "$here/root")"
+FAKE_MODAL_DIR="$(cat "$here/fake-dir" 2> /dev/null || echo "$here")"
+FAKE_MODAL_ROOT="$FAKE_MODAL_ROOT" PYTHONPATH="$FAKE_MODAL_DIR" exec python3 "$@"

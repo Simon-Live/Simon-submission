@@ -3,6 +3,7 @@
 // import-dialog.js calls attachPicture once; this file holds the question, the check and the upload for the object
 // choice, so the dialog's own code stays as it was.
 import { uploadModel, waitReady, isImage, MODELS_URL } from "./catalog.js";
+import { policyOn, personCheckOff } from "../policy.js";
 import { mountProgress, stepView } from "./progress.js";
 import { fetchMe } from "../auth.js"; // who is signed in, from the server alone
 
@@ -11,8 +12,8 @@ export const PLAN = "object"; // the step plan of progress.js for this path
 export const PERSON = "person";
 export const OBJECT = "object";
 export const CHOICES = [
-  [PERSON, "A real person (makes a body of them)"],
-  [OBJECT, "A character or object (makes a 3D model of it)"],
+  [PERSON, "A real person (a plain skin-coloured body)"],
+  [OBJECT, "A character or object (a textured model with a skeleton)"],
 ];
 export const MSG = {
   question: "What is in the picture?",
@@ -23,9 +24,11 @@ export const MSG = {
   // TICKET-318: the option to copy a real person's look, off until chosen (docs/specs/image3d-intake.md AC-I20 to AC-I25)
   look: "Include their face, hair and clothing colours",
   lookConsent: "Choose this only if the photo shows you, or someone who agreed to have their face and clothing copied into a 3D model. The model stays private to your account and you can delete it any time.",
-  lookHint: "Simon copies the face, hair and clothing colours from the photo onto a body it builds. The photo shows one side, so the back is a guess. If no skeleton fits the clothes, Simon makes the plain grey body instead and says so.",
+  lookHint: "Simon copies the face, hair and clothing colours from the photo onto a body it builds. The photo shows one side, so the back is a guess. If no skeleton fits the clothes, Simon makes the plain skin-coloured body instead and says so.",
   // a picture sent as a character or object that seems to show a person asks the consent question first (AC-I26)
-  noRealPerson: "It shows no real person (a drawing, toy or statue)",
+  noRealPerson: "It shows no real person",
+  // a select shows one line, so the example is under the question, not in the option (TICKET-493)
+  noRealPersonHint: "No real person means a drawing, toy or statue.",
   signInPicture: "Sign in to make a 3D model from a picture.", // signed out (AC-I35, TICKET-318b)
 };
 export const NO_REAL_PERSON = "fiction"; // the consent value for that answer; the server refuses it for a person photo
@@ -120,13 +123,17 @@ export function attachPicture(ctx) {
   // comes back for the object choice, with "no real person" as a third answer, until the file or the choice changes
   let objectAsk = false;
   const noRealPerson = el(doc, "option", { value: NO_REAL_PERSON, text: MSG.noRealPerson });
+  const askNote = consentField.querySelector("small");
+  const askNoteBase = askNote ? askNote.textContent : "";
   const askForObject = (on) => {
     objectAsk = on;
+    if (askNote) askNote.textContent = on ? `${askNoteBase} ${MSG.noRealPersonHint}` : askNoteBase;
     if (on && !noRealPerson.parentElement && consentSelect) consentSelect.append(noRealPerson);
     if (!on && noRealPerson.parentElement) { noRealPerson.remove(); if (consentSelect && consentSelect.value === NO_REAL_PERSON) consentSelect.value = ""; }
   };
   // the look copies a real face, so it needs an account (a signed-out visitor is owned by a shared network address)
   let signedIn = false;
+  const faceCopy = policyOn("face_copy"); // #415, LEG-C4: face copy is off in prod; the option never shows
   let known = false; // until fetchMe answers the server decides: nothing is blocked on a guess
   (async () => {
     try {
@@ -144,11 +151,11 @@ export function attachPicture(ctx) {
   // listens on the dialog, so it runs after the dialog's own change handler on the file input: the question shows for one
   // picture, and the consent question hides for an object
   const sync = (e) => {
-    if (e && e.target !== consentSelect && e.target !== lookBox) askForObject(false); // a new file or choice starts over
+    if (e && e.target !== consentSelect && e.target !== lookBox) askForObject(personCheckOff() && subject() === OBJECT); // a new file or choice starts over; with no check on the server the question is asked up front
     const single = isSinglePicture(files());
     group.hidden = !single;
     if (single) consentField.hidden = subject() === OBJECT && !objectAsk;
-    lookField.hidden = !(signedIn && single && subject() === PERSON && consentSelect && !!consentSelect.value);
+    lookField.hidden = !(faceCopy && signedIn && single && subject() === PERSON && consentSelect && !!consentSelect.value);
     if (lookField.hidden) lookBox.checked = false; // the option is off until it is chosen after an answer
     if (photoHint) photoHint.textContent = single && subject() === OBJECT ? (blocked() ? MSG.signInPicture : MSG.hint) : single && lookBox.checked ? MSG.lookHint : personHint;
   };
@@ -165,9 +172,14 @@ export function attachPicture(ctx) {
     if (blocked()) { ctx.fail(MSG.signInPicture); return; } // before the picture goes up
     const options = ctx.options();
     const answer = look || objectAsk ? consentSelect.value : "";
-    const bad = validatePicture({ files: files(), validateForm: ctx.validateForm, licence: options.licence, attribution: options.attribution,
-      ...(look || objectAsk ? { consent: answer } : {}) });
-    if (bad) { ctx.fail(bad); return; }
+    const form = { files: files(), validateForm: ctx.validateForm, licence: options.licence, attribution: options.attribution,
+      ...(look || objectAsk ? { consent: answer } : {}) };
+    const bad = validatePicture(form);
+    if (bad) { // the field at fault is outlined; the consent question has its own path above
+      const where = ctx.fieldOf ? ctx.fieldOf({ consent: "not-asked", ...form }) : null;
+      ctx.fail(bad, where === "consent" ? null : where);
+      return;
+    }
     const signal = ctx.begin(); // null while an import already runs: a double click starts nothing
     if (!signal) return;
     const bar = progressHost ? mountProgress(progressHost, { startedAt: Date.now(), doc, name: options.name || "your model" }) : null;
@@ -190,7 +202,7 @@ export function attachPicture(ctx) {
       if (bar) bar.destroy();
       const asked = out.field === "consent" && !look; // the server wants the answer for this picture: show the question again
       if (asked) { askForObject(true); consentField.hidden = false; }
-      ctx.fail(out.error, asked ? "consent" : null);
+      ctx.fail(out.error, out.field === "consent" ? (asked ? "consent" : null) : out.field);
       return;
     }
     const note = look ? await readNote(out.id, ctx.fetchImpl) : ""; // the server says which body the person got

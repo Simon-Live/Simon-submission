@@ -53,7 +53,7 @@ test("a gateway answer (an HTML restart page) says what happened and promises no
   const res = await uploadModel({ name: "a.glb" }, {}, fetchImpl);
   assert.equal(res.error, GATEWAY);
   assert.match(GATEWAY, /restarting/);
-  assert.equal(errorText(503, { error: "Making the model could not start. Try again soon." }), GATEWAY);
+  assert.equal(errorText(503, { error: "The app has reached today's limit. Try again tomorrow." }), "The app has reached today's limit. Try again tomorrow.", "Simon's own 503 says why");
   assert.equal(errorText(413, { error: "This file is over 100 MB. Use a smaller model." }), "This file is over 100 MB. Use a smaller model.");
 });
 

@@ -160,10 +160,11 @@ def _expire(api: Api, job: str) -> None:
     api.app.queue._jobs.pop(job, None)
 
 
-def _post_board(api: Api, job: str) -> tuple[int, Any]:
+def _post_board(api: Api, job: str, sid: str | None = None) -> tuple[int, Any]:
+    """Post `job` to a new board; `sid` is the take owner's session (a signed-in take goes on a board only from it, D6)."""
     from test_challenges import VISITOR
     body = {"entry_id": ENTRY, "title": "Beat me", "creator_name": "Sam", "kind": "friend", "job_id": job}
-    return api.json("POST", "api/challenges", body, VISITOR)
+    return api.json("POST", "api/challenges", body, {**VISITOR, **({"Cookie": f"{auth.COOKIE}={sid}"} if sid else {})})
 
 
 def _scored_job(api: Api, **fields: Any) -> str:
@@ -183,11 +184,12 @@ def test_posting_a_private_or_own_reference_take_to_a_board_is_refused(api: Api)
     kept = _scored_job(api)
     uid = own(api, kept, grace)
     my_reference.set_reference(api.app.state, uid, ENTRY, kept, "2026-11-01", b"{}", False)
-    assert _post_board(api, kept)[0] == 409  # the take kept as someone's own reference
+    assert _post_board(api, kept)[0] == 404  # D6: from anyone else it is not there
+    assert _post_board(api, kept, grace)[0] == 409  # the take kept as its owner's own reference
     assert len(challenges.list_all(api.app.state)) == before  # negative: no board and no count holds them
     status, doc = _post_board(api, _scored_job(api))
     assert status == 201 and challenges.get(api.app.state, doc["id"])["entries"][0]["private"] is False
-    assert "private" not in json.dumps(api.json("GET", f"api/challenges/{doc['id']}")[1])  # the flags stay on disk
+    assert '"private"' not in json.dumps(api.json("GET", f"api/challenges/{doc['id']}")[1])  # the entry flags stay on disk (the board's own `movement_private` is not one)
 
 
 def test_an_expired_private_post_never_shows_and_a_checked_public_one_still_does(api: Api) -> None:  # B2
@@ -227,6 +229,8 @@ def test_shared_stops_at_its_cap(api: Api, monkeypatch: pytest.MonkeyPatch) -> N
     made = []
     real = challenges.public_entry
     monkeypatch.setattr(challenges, "public_entry", lambda e: made.append(e) or real(e))
+    listed = challenges.list_all
+    monkeypatch.setattr(challenges, "list_all", lambda *a, **k: (lambda rows: (made.clear(), rows)[1])(listed(*a, **k)))  # the board summaries build a leader row too: not a shown post
     assert len(get(api, URL)[2]["shared"]) == 2
     assert len(made) == 2  # a row is built for the shown posts only (the slice after a full scan built all 4)
 
@@ -246,7 +250,7 @@ def test_a_post_later_kept_as_my_reference_leaves_the_board_view_and_its_summary
     grace = sign_in(api, "grace@example.com")
     job = _scored_job(api)
     uid = own(api, job, grace)
-    status, doc = _post_board(api, job)
+    status, doc = _post_board(api, job, grace)
     assert status == 201
     cid = doc["id"]
     listed = lambda: next(c for c in api.json("GET", f"api/challenges?entry_id={ENTRY}")[1]["challenges"] if c["id"] == cid)  # noqa: E731

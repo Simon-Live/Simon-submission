@@ -15,6 +15,7 @@ import wave
 import pytest
 
 from part7 import narration, narration_api, narration_routes
+from support import published
 
 RATE = 16000
 SECTIONS = [
@@ -322,8 +323,10 @@ def test_off_switch(tmp_path: Path, keys_dir: Path, monkeypatch: pytest.MonkeyPa
 # ----- the route and the job hook ------------------------------------------------------------------------------
 class FakeHandler:
     def __init__(self, catalog: Path) -> None:
-        self.app = type("A", (), {"child": type("C", (), {"catalog_dir": catalog})()})()
+        self.app = type("A", (), {"child": type("C", (), {"catalog_dir": catalog})(), "state": catalog / "state"})()
+        self.headers: dict[str, str] = {}  # signed out, no creator token: a public movement still answers (D8)
         self.sent: list[tuple[str, int, Any]] = []
+        published(self.app.state, "squat")  # the public movement these routes answer for (W-N1: a row is needed)
 
     def _json(self, status: int, obj: Any) -> None:
         self.sent.append(("json", status, obj))

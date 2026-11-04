@@ -4,6 +4,7 @@
 // Part 7 shows `score.timeline` as written and computes nothing. Older pins have no timeline: nothing shows.
 import { el } from "./score.js";
 import { momentChip } from "./coach-view.js";
+import { AI_LABEL } from "./model/fault-line.js";
 
 const secs = (t) => `${Number(t).toFixed(1)} s`;
 
@@ -139,12 +140,14 @@ export function renderTimeline(root, analysis, getCompare = () => null, flagged 
       if (m.at_s != null) words.append(momentChip(m.at_s, `moment-chip-timeline-${i}-${k}`));
       if (m.cue) words.append(el("span", { class: "sr-cue", "data-testid": `timeline-${i}-miss-${k}-cue`, text: m.cue }));
       words.append(el("span", { class: "sr-tl-miss-text", text: m.text }));
+      // a sentence a model wrote carries the same label as on the fault and insight rows; fixed text carries none
+      if (m.ai) words.append(el("span", { class: "sr-chip sr-ai", "data-testid": `timeline-${i}-miss-${k}-ai`, text: AI_LABEL }));
       const row = el("button", { type: "button", class: "sr-tl-miss", "data-testid": `timeline-${i}-miss-${k}`, "data-cue-kind": m.cue_kind || false },
         words, el("span", { class: "sr-tl-points", text: `−${Number(m.points).toFixed(1)}` }));
       row.addEventListener("click", () => {
         const cmp = getCompare();
         if (!cmp) return;
-        if (m.at_s != null) (cmp.jump || cmp.seek)(m.at_s);
+        if (m.at_s != null) (cmp.jump || cmp.seek)(m.at_s, m.cue);   // the row's own cue owns the caption (jump pins it)
         cmp.highlight(jointsFor(m, analysis));
       });
       list.append(el("li", {}, row));

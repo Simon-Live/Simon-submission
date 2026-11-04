@@ -93,7 +93,7 @@ test("a job cut by a restart keeps the take at job_failed; Send it again sends i
   await r.p.tick({ source: "timer" });
   const [stopped] = await r.kept.all();
   assert.equal(stopped.stage, "job_failed");
-  assert.equal(keptStatus(stopped), KEEP_TEXT.jobFailed);
+  assert.equal(keptStatus(stopped), KEEP_TEXT.jobRestarted);
   assert.equal(needsAction(stopped), true);
   const out = await r.p.sendAgain(stopped.id);
   assert.notEqual(out.id, record.id, "a new record");
@@ -151,7 +151,8 @@ for (const [name, failure] of [["a network error", new TypeError("Failed to fetc
     assert.equal(kept.stage, "saved");
     assert.ok(kept.blob);
     assert.ok(kept.next_try_at > r.clock.t, "a retry is scheduled");
-    assert.ok([TEXT.unreachable, TEXT.busy].includes(statusText(kept)));
+    const said = failure.detail ? `${failure.detail} ${TEXT.willSend}` : TEXT.unreachable; // AC-OT12: the server's reason when it gave one
+    assert.equal(statusText(kept), said);
     r.clock.t = kept.next_try_at;
     await r.p.tick({ source: "timer" });
     assert.equal(r.calls.filter((c) => c[0] === "upload").length, 2, "retried");
@@ -172,17 +173,6 @@ test("keepRefused on: a refused upload (too large) says why and keeps the record
   assert.equal(r.calls.filter((c) => c[0] === "upload").length, 1, "a refused take is not sent again by itself");
   assert.equal(await r.p.sendAgain(kept.id), null, "nor by Send it again");
   await r.p.removeKept(kept.id);
-  assert.deepEqual(await r.kept.all(), []);
-});
-
-test("an over-quota answer (429) keeps the recording for tomorrow", async () => {
-  const r = rig({ script: { submit: [err(429, "You have used today's analyses. Try again tomorrow.")] } });
-  const { record } = await trainer(r);
-  await r.p.front(record);
-  await r.p.update(record, { choice: { person_id: "0" }, stage: "ready_to_submit" });
-  await assert.rejects(r.p.submit(record), (e) => e.kind === "later");
-  const [kept] = await r.store.all();
-  assert.equal(statusText(kept), TEXT.later);
   assert.deepEqual(await r.kept.all(), []);
 });
 

@@ -22,4 +22,4 @@
 .sh-state[data-state="revoked"], .sh-state[data-state="expired"] { color: var(--color-text-muted); }
 .sh-sure { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-bad-soft); }
 .sh-sure[hidden], .sh-list-box [hidden] { display: none; }
-.sh-sure p { margin: 0; color: var(--color-bad); font-weight: var(--weight-semibold); }
+.sh-sure p { margin: 0; color: var(--color-bad-text); font-weight: var(--weight-semibold); }

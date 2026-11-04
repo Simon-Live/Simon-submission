@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 from typing import Any
+import uuid
 
 import pytest
 
@@ -63,6 +64,13 @@ if mode == "fail" or (mode == "fail45" and "4.5" in image):
     sys.exit(1)
 if mode == "sleep":
     time.sleep(60)
+if mode == "flood":  # APP-L1: a converter that never stops writing to stderr
+    err = os.fdopen(2, "wb")
+    for _ in range(200):
+        err.write(b"x" * 1_000_000)
+        err.flush()
+        time.sleep(0.02)
+    sys.exit(0)
 if mode == "nomagic":
     sys.stdout.write("not a glb")
     sys.exit(0)
@@ -508,6 +516,37 @@ def test_supervisor_timeout(state: Path, fake_docker: Path, monkeypatch: pytest.
     assert "kill simon7-convert-" in (tmp_path / "docker.log").read_text(encoding="utf-8")
 
 
+def test_stderr_flood_is_stopped_and_only_its_tail_is_read(state: Path, fake_docker: Path, monkeypatch: pytest.MonkeyPatch,
+                                                           tmp_path: Path) -> None:
+    monkeypatch.setenv("FAKE_MODE", "flood")
+    monkeypatch.setattr(sup, "MAX_LOG_BYTES", 2_000_000)
+    folder = _model(state)
+    _enqueue(state, folder)
+    started = time.monotonic()
+    result = _run_supervisor(state)[folder.name]
+    assert time.monotonic() - started < 20
+    assert result["ok"] is False and result["reason"] == "too-big"
+    assert result["message"] == sup.LOG_TOO_BIG_MESSAGE
+    assert "kill simon7-convert-" in (tmp_path / "docker.log").read_text(encoding="utf-8")
+    kept = (folder / "convert.log").read_text(encoding="utf-8")
+    assert len(kept) <= sup.LOG_KEEP * 2 + 1000  # the kept log is a tail, never the 200 MB the converter wrote
+
+
+def test_tail_bytes_reads_only_the_end(tmp_path: Path) -> None:
+    path = tmp_path / "log"
+    path.write_bytes(b"a" * 1000 + b"END")
+    assert sup._tail_bytes(path, 10) == b"a" * 7 + b"END"
+    assert sup._tail_bytes(path, 5000) == b"a" * 1000 + b"END"
+
+
+def test_jail_has_cpu_file_and_log_caps() -> None:
+    argv = sup.container_argv("n", "/scratch/in", "input.fbx", IMAGE45)
+    pairs = list(zip(argv, argv[1:]))
+    for flag in (("--ulimit", "cpu=900"), ("--ulimit", "nofile=1024:1024"), ("--ulimit", "fsize=1073741824"),
+                 ("--ulimit", "core=0"), ("--log-driver", "none"), ("--network", "none"), ("--read-only", "--tmpfs")):
+        assert flag in pairs, flag
+
+
 def test_timeout_constant_is_180_seconds() -> None:
     assert sup.TIMEOUT_S == 180
 
@@ -670,8 +709,9 @@ def test_supervisor_cli_once_exits_zero(state: Path, fake_docker: Path) -> None:
 
 def test_convert_script_never_enables_autoexec_or_network() -> None:
     text = (ROOT / "tools" / "model-converter" / "convert.py").read_text(encoding="utf-8")
-    for needle in ("urllib", "import socket", "requests", "subprocess", "os.system", "autoexec", "use_scripts=True"):
+    for needle in ("urllib.request", "from urllib import", "import socket", "requests", "subprocess", "os.system", "autoexec", "use_scripts=True"):
         assert needle not in text
+    assert text.count("urllib") == text.count("urllib.parse")  # only the name parser, nothing that opens a connection
 
 
 def test_dockerfile_pins_blender_by_sha256_and_drops_root() -> None:
@@ -709,7 +749,8 @@ def _glb_json(path: Path) -> dict[str, Any]:
 
 
 def _real_convert(state: Path, src: Path, fmt: str, name: str) -> tuple[Path, dict[str, Any]]:
-    folder = _model(state, "e", fmt_file=name)
+    # A unique id names the container: a fixed one collides with any other suite on this host (TICKET-380 publish).
+    folder = _model(state, uuid.uuid4().hex, fmt_file=name)
     shutil.copyfile(src, folder / "in" / name)
     _enqueue(state, folder, fmt, name)
     s = sup.Supervisor(mc.spool_dir(state))
@@ -1357,3 +1398,35 @@ def test_synthetic_leaf_bones_never_become_joints(state: Path, fbx_files: dict[s
         shutil.rmtree(folder)
     assert not [n for n in joints["rigged-leaves"] if n.endswith("_end")]
     assert sorted(joints["rigged-leaves"]) == sorted(joints["rigged"]) and len(joints["rigged"]) == 17
+
+
+def _text_fbx(tmp_path: Path) -> Path:
+    spec = importlib.util.spec_from_file_location("ascii_fbx", ROOT / "tests" / "part7" / "fbx_fixtures" / "ascii_fbx.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.write(tmp_path / "text.fbx")
+
+
+def test_the_text_fbx_fixture_carries_a_mesh_for_the_real_fbx2gltf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The first fixture lacked the Model's DefaultAttributeIndex: FBX2glTF kept the node and dropped the mesh (0 triangles)."""
+    _with_fbx2gltf(monkeypatch)
+    out = tmp_path / "out"
+    out.mkdir()
+    (tmp_path / "sdk").mkdir()
+    done = subprocess.run([os.environ["SIMON7_FBX2GLTF"], "-b", "--pbr-metallic-roughness", "--fbx-temp-dir", str(tmp_path / "sdk"),
+                           "-i", str(_text_fbx(tmp_path)), "-o", str(out / "model")], capture_output=True, timeout=120)
+    assert done.returncode == 0, done.stderr[-1000:]
+    doc = _glb_json(out / "model.glb")
+    assert len(doc["meshes"]) == 1
+    assert doc["accessors"][doc["meshes"][0]["primitives"][0]["indices"]]["count"] == 36  # a box: 12 triangles
+
+
+@synthetic
+def test_synthetic_text_fbx_reads_through_fbx2gltf_and_is_cleaned_up(state: Path, tmp_path: Path,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    _with_fbx2gltf(monkeypatch)
+    folder, result, record = _synthetic(state, _text_fbx(tmp_path))
+    assert result["ok"] is True and result["reader"] == "fbx2gltf", (folder / "convert.log").read_text(encoding="utf-8")[-3000:]
+    doc = _glb_json(folder / "out" / "model.glb")
+    assert len(doc["meshes"]) == 1 and "skins" not in doc
+    assert _height(folder / "out" / "model.glb") == pytest.approx(1.75, rel=0.02)

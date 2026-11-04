@@ -5,6 +5,7 @@
 // A low-match take is never told it has nothing to work on: the match was too weak to judge form at all.
 import { summaryOf as baseSummaryOf } from "./result-summary.js";
 import { creditDisplay, SCORE_GRADES } from "./score-credit.js";
+import { headlineFor } from "./score-feedback.js";
 import { withQualityCap } from "../quality-cap.js";
 import { withLight } from "../light-result.js";
 
@@ -41,7 +42,7 @@ export function isWarningCapped(score) {
  * one score. Other takes are returned as they are.
  */
 export function withCapWinning(analysis) {
-  // Repo owner, 2 Nov (#61): every take is scored the new way and nothing is capped. A take with Part 5's credit
+  // Team, 2 Nov (#61): every take is scored the new way and nothing is capped. A take with Part 5's credit
   // keeps it whatever its warnings say; the warning banner still names the problem. Only a take without a credit
   // (an analysis older than Part 5 1.13.0) shows score.value and its A to F grade.
   return analysis;
@@ -72,7 +73,9 @@ export function labelSummary(model, analysis) {
 
 /** model/result-summary.js summaryOf with the cap winning (withCapWinning), labelled (labelSummary). Same arguments. */
 export function summaryOf(analysis, opts) {
-  return labelSummary(baseSummaryOf(withCapWinning(analysis), opts), analysis);
+  const model = labelSummary(baseSummaryOf(withCapWinning(analysis), opts), analysis);
+  // TICKET-392: the client's headline words A to F only; the words come from the grade the ring shows, on its scale
+  return model && model.ring ? { ...model, headline: headlineFor(model.kind, model.ring.grade, model.ring.grades) } : model;
 }
 
 /** "What to work on" with no items: the low-match line on a low-match take, else the plain empty line. */
@@ -133,7 +136,7 @@ export function shownRow(row) {
   if (s && typeof s === "object" && typeof s.letter === "string" && typeof s.figures === "string") {
     return { letter: s.letter, figures: s.figures, caption: typeof s.caption === "string" ? s.caption : "",
       unit: typeof s.unit === "string" ? s.unit : "score", capped: s.capped === true, tone: toneOfLetter(s.letter),
-      measure: num(s.measure) ?? num(row.score) };
+      measure: num(s.measure) ?? num(row.score), note: typeof s.note === "string" ? s.note : "", partial: s.partial === true };
   }
   if (!row || num(row.score) == null) return null;
   const letter = typeof row.grade === "string" ? row.grade : "";

@@ -16,6 +16,7 @@ the same take. Owner-only: no answer to a third person carries these files. Part
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
 from pathlib import Path
 import shutil
 import time
@@ -24,7 +25,8 @@ from typing import Any, Callable
 from part7 import history_store, labels, my_reference
 
 ROOT, SUGGESTION, COPY, DECLINED = "myref_suggest", "suggestion.json", "reference.json", "declined.json"
-TOMBSTONES = ".forgot"  # <student>.<entry|all>: when their data was last forgotten (a late approval is refused)
+TOMBSTONES = ".forgot"  # <hash of student and entry|all>: when their data was last forgotten (a late approval is refused)
+TOMBSTONE_KEEP_S = 86400  # D6: an approval runs for seconds, so a day covers it; the sweep then removes the tombstone
 SUGGESTION_DAYS, DECLINED_KEPT = 30, 20
 ACCEPTED, SUGGESTED = "accepted", "suggested"
 _FMT = "%Y-%m-%dT%H:%M:%SZ"
@@ -88,7 +90,29 @@ def drop_suggestion(state: Path | str, student: str, entry_id: str) -> bool:
 
 
 def _tombstone(state: Path | str, student: str, entry_id: str | None) -> Path:
-    return Path(state) / ROOT / TOMBSTONES / f"{student}.{entry_id or 'all'}"
+    """The tombstone's path. Named by a hash, so no file is named after a deleted account's id (data-integrity D6)."""
+    key = hashlib.sha256(f"{student}.{entry_id or 'all'}".encode("utf-8")).hexdigest()[:32]
+    return Path(state) / ROOT / TOMBSTONES / key
+
+
+def sweep_tombstones(state: Path | str, now: float | None = None) -> int:
+    """Remove tombstones older than TOMBSTONE_KEEP_S (by their `at`, else the file time), the older id-named ones
+    too; the periodic sweep calls it (`server._sweep`). The count removed."""
+    folder, gone = Path(state) / ROOT / TOMBSTONES, 0
+    cutoff = (time.time() if now is None else now) - TOMBSTONE_KEEP_S
+    for path in folder.iterdir() if folder.is_dir() else []:
+        if not path.is_file() or path.is_symlink():
+            continue
+        found = history_store.read_json(path)
+        at = found.get("at") if isinstance(found, dict) else None
+        try:
+            when = float(at) if isinstance(at, (int, float)) else path.stat().st_mtime
+        except OSError:
+            continue
+        if when < cutoff:
+            path.unlink(missing_ok=True)
+            gone += 1
+    return gone
 
 
 def _forgotten_since(state: Path | str, student: str, entry_id: str, since: float) -> bool:

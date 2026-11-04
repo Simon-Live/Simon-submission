@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import re
 from pathlib import Path
 import sys
 from typing import Any, Iterator
@@ -129,9 +130,10 @@ def _p1(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, outcomes: list[dict[str
     def dotenv(*a: Any, **k: Any) -> Iterator[bool]:
         yield True
 
-    def fake_run(part: Any, argv: list[str], cwd: Path, timeout_s: float, log_path: Path, lock: Any) -> runner.Step:
+    def fake_run(part: Any, argv: list[str], cwd: Path, env_extra: dict[str, str], timeout_s: float, log_path: Path,
+                 lock: Any, kill_grace_s: float, **kw: Any) -> runner.Step:
         out = outcomes[len(calls)]
-        calls.append({"timeout_s": timeout_s, "log": Path(log_path)})
+        calls.append({"timeout_s": timeout_s, "log": Path(log_path), "env": env_extra})
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         Path(log_path).write_text(out["stdout"], encoding="utf-8")
         if out["exit"] == 0:
@@ -154,67 +156,113 @@ def _p1(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, outcomes: list[dict[str
 
 
 CUT = "Traceback ...\nhttp.client.IncompleteRead: IncompleteRead(51928 bytes read)\n"
+STREAM_CUT = "Traceback ...\nkeyframe_finder.meta_client.StreamCut: SAM 3.1 stream cut after 58 frames (IncompleteRead)\n"
 
 
-def test_part1_cut_stream_is_retried_once_with_the_time_left(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": CUT, "duration_s": 30.0}, {"exit": 0, "stdout": "ok"}])
+def test_part1_cut_stream_is_run_once_and_named_on_the_page(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """TICKET-380: Part 1 owns the retry, so a cut leaves Part 7 with one run however much budget is left."""
+    calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": STREAM_CUT, "duration_s": 30.0}])
     step, kf, note = calls[-1]["result"]
-    assert [c["timeout_s"] for c in calls[:-1]] == [90.0, 60.0]
-    assert step["exit"] == 0 and kf is not None and note is None
-    first = calls[0]["log"].with_name("part1.try1.log")
-    assert "IncompleteRead" in first.read_text(encoding="utf-8")
-    assert "lost its network stream after 30.0 s, retrying once" in _job_log(tmp_path / "jobs" / "cccccccccccc")
-    # the job record keeps both tries: the second is the step, the first rides along under `first_try`
-    assert step["first_try"]["exit"] == 1 and step["first_try"]["duration_s"] == 30.0
-    assert step["first_try"]["log"] == str(first)
-    assert json.loads(json.dumps(step))["first_try"]["log"].endswith("part1.try1.log")
+    assert [c["timeout_s"] for c in calls[:-1]] == [45.0]  # half of the 90 s budget is its stop
+    assert step["exit"] == 1 and kf is None and note == p1_keyframes.CUT_NOTE and "first_try" not in step
+    assert not calls[0]["log"].with_name("part1.try1.log").exists()
+    log = _job_log(tmp_path / "jobs" / "cccccccccccc")
+    assert "Part 1 lost its network stream after 30.0 s, its own retry included" in log
+    assert "SAM 3.1 stream cut after 58 frames (IncompleteRead)" in log and "retrying" not in log
 
 
-def test_part1_retry_stops_at_the_spend_cap_reached_by_the_first_try(monkeypatch: pytest.MonkeyPatch,
-                                                                     tmp_path: Path) -> None:
-    monkeypatch.setenv("SIMON7_PART1_SPEND_CAP_USD", "5")
-    cap = 5.0
-    calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": CUT, "duration_s": 30.0}, {"exit": 0, "stdout": "ok"}],
-                spend=[cap - 0.01, cap])
-    step, kf, note = calls[-1]["result"]
-    assert len(calls) == 2 and [c["timeout_s"] for c in calls[:-1]] == [90.0]  # one paid call only
-    assert step["exit"] == 1 and kf is None and note == "spend cap"
-    assert "first_try" not in step
-    assert "spend cap is reached, no second try" in _job_log(tmp_path / "jobs" / "cccccccccccc")
+@pytest.mark.parametrize("stdout", [
+    STREAM_CUT,
+    "keyframe_finder.meta_client.StreamCut: SAM 3.1 stream closed after 12 frames without response.completed\n",
+    "keyframe_finder.meta_client.StreamCut: upload to /files cut (RemoteDisconnected)\n",
+    CUT,  # the marker of a Part 1 that raises the raw error
+])
+def test_part1_every_cut_shape_reads_as_transient(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout: str) -> None:
+    calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": stdout}])
+    assert len(calls) == 2 and calls[-1]["result"][2] == p1_keyframes.CUT_NOTE
 
 
 @pytest.mark.parametrize("first", [
     {"exit": 1, "stdout": "RuntimeError: could not read video metadata for inbox/x.mp4\n"},  # not a network cut
     {"exit": None, "stdout": CUT, "timed_out": True},  # out of time already
-    {"exit": 1, "stdout": CUT, "duration_s": 80.0},  # under RETRY_MIN_S left
 ])
-def test_part1_other_failures_are_not_retried(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, first: dict[str, Any]) -> None:
+def test_part1_other_failures_keep_the_exit_note(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, first: dict[str, Any]) -> None:
     calls = _p1(monkeypatch, tmp_path, [first])
     step, kf, note = calls[-1]["result"]
-    assert len(calls) == 2 and kf is None and note is not None and note.startswith("key frames from Part 3")
+    assert len(calls) == 2 and kf is None and note == f"key frames from Part 3, Part 1 exited {first['exit']}"
 
 
-def test_part1_cut_stream_with_too_little_time_logs_why_no_second_try(monkeypatch: pytest.MonkeyPatch,
-                                                                     tmp_path: Path) -> None:
-    calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": CUT, "duration_s": 82.4}])
+RETRY = "  SAM 3.1 stream cut after 58 frames (IncompleteRead); trying again\n"
+AFTER_A_SURVIVED_CUT = [
+    (RETRY + "Traceback ...\nRuntimeError: Meta API 500 on /responses/input_tokens: upstream failed\n", 1, "Spark HTTP 500"),
+    ("  SAM 3.1 stream cut after 58 frames (RemoteDisconnected); trying again\nTraceback ...\n"
+     "RuntimeError: SAM 3.1 failed: {'code': 'server_error'}\n", 1, "try 2 response.failed"),
+    (RETRY + "Traceback ...\nRuntimeError: MODEL_API_KEY is missing. Add it to .env.\n", 1, "the key went away"),
+    (RETRY + "\nWARNING: Stopping before SAM 3.1 on 150 frames ($0.03), try 2 of 2: it would reach $5. Projected total "
+     "$5.01.\n\nNo further videos were sent.\n{\n  \"usd\": 4.98,\n  \"next_warning_usd\": 5,\n  \"warnings_due\": []\n}\n", 2,
+     "the spend mark stops try 2"),
+]
+
+
+@pytest.mark.parametrize(("stdout", "code", "why"), AFTER_A_SURVIVED_CUT, ids=[c[2] for c in AFTER_A_SURVIVED_CUT])
+def test_part1_a_later_failure_after_a_survived_cut_is_no_cut(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout: str,
+                                                              code: int, why: str) -> None:
+    """B1: the page note and `part7.log` name what ended the run; the survived cut keeps its own log line."""
+    calls = _p1(monkeypatch, tmp_path, [{"exit": code, "stdout": stdout}])
     step, kf, note = calls[-1]["result"]
-    assert len(calls) == 2 and [c["timeout_s"] for c in calls[:-1]] == [90.0]  # no second run
-    assert kf is None and note is not None and "first_try" not in step
-    assert ("Part 1 lost its network stream after 82.4 s, no second try: 7.6 s of its 90 s budget left "
-            "(a retry needs 40 s)") in _job_log(tmp_path / "jobs" / "cccccccccccc")
+    assert not p1_keyframes.transient_failure(step), why
+    assert note == f"key frames from Part 3, Part 1 exited {code}"
+    text = _job_log(tmp_path / "jobs" / "cccccccccccc")
+    assert "lost its network stream" not in text
+    assert "Part 1 tried again after a cut: SAM 3.1 stream cut after 58 frames" in text
 
 
-def test_part1_retry_needs_40_s_left_and_the_budget_is_logged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """TICKET-113: 39 s left is not enough for a second try, 40 s is; the lines name the budget used."""
-    assert p1_keyframes.RETRY_MIN_S == 40.0
-    calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": CUT, "duration_s": 51.0}])
-    assert len(calls) == 2 and "no second try: 39.0 s of its 90 s budget left (a retry needs 40 s)" in _job_log(
-        tmp_path / "jobs" / "cccccccccccc")
-    (tmp_path / "b").mkdir()
-    calls = _p1(monkeypatch, tmp_path / "b", [{"exit": 1, "stdout": CUT, "duration_s": 50.0}, {"exit": 0, "stdout": "ok"}])
-    assert [c["timeout_s"] for c in calls[:-1]] == [90.0, 40.0]
-    text = _job_log(tmp_path / "b" / "jobs" / "cccccccccccc")
-    assert "Part 1 starts with a 90 s budget" in text and "retrying once with 40 s left of its 90 s budget" in text
+@pytest.mark.parametrize(("stdout", "expected"), [
+    ("Traceback ...\nRuntimeError: Meta API 500 on /files: ProtocolError from upstream\n", False),  # quotes a marker
+    ("Traceback ...\nkeyframe_finder.meta_client.StreamCut: x\n\n  \n", True),  # trailing blank lines
+    ("  SAM 3.1 stream cut after 58 frames (IncompleteRead); giving up\n", False),  # no exception line
+    ("urllib3.exceptions.ProtocolError: ('Connection aborted.')\n", True),
+    ("", False),
+])
+def test_transient_failure_reads_only_the_exception_name_on_the_final_line(stdout: str, expected: bool) -> None:
+    step = runner.Step(part=1, exit=1, timed_out=False, duration_s=1.0, log="x", stdout=stdout)
+    assert p1_keyframes.transient_failure(step) is expected
+
+
+def test_cut_line_is_the_final_line_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+    step = runner.Step(part=1, exit=1, timed_out=False, duration_s=1.0, log="x", stdout="first\nStreamCut: " + "x" * 300 + "\n")
+    assert p1_keyframes._cut_line(step) == ("StreamCut: " + "x" * 300)[:200]
+    assert p1_keyframes._cut_line(runner.Step(part=1, exit=1, stdout="")) == "no detail"
+
+
+@pytest.mark.parametrize(("line", "shown"), [
+    ("  SAM 3.1 stream cut after 58 frames (IncompleteRead); trying again", "SAM 3.1 stream cut after 58 frames (IncompleteRead)"),
+    ("  SAM 3.1 stream closed after 12 frames without response.completed; trying again",
+     "SAM 3.1 stream closed after 12 frames without response.completed"),
+    ("  upload cut (RemoteDisconnected); trying again", "upload cut (RemoteDisconnected)"),
+])
+def test_part1_a_recovered_cut_logs_what_was_lost_on_a_clean_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, line: str,
+                                                                 shown: str) -> None:
+    """R8: the frame count of a cut Part 1 survived is in `part7.log` even though the run went on to exit 0."""
+    calls = _p1(monkeypatch, tmp_path, [{"exit": 0, "stdout": line + "\nok\n"}])
+    assert calls[-1]["result"][2] is None
+    text = _job_log(tmp_path / "jobs" / "cccccccccccc")
+    assert f"Part 1 tried again after a cut: {shown}\n" in text and "lost its network stream" not in text
+
+
+def test_part1_giving_up_is_not_logged_as_tried_again(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    stdout = "  SAM 3.1 stream cut after 9 frames (IncompleteRead); giving up\n" + STREAM_CUT
+    calls = _p1(monkeypatch, tmp_path, [{"exit": 1, "stdout": stdout}])
+    assert calls[-1]["result"][2] == p1_keyframes.CUT_NOTE
+    assert "tried again after a cut" not in _job_log(tmp_path / "jobs" / "cccccccccccc")
+
+
+def test_part1_budget_is_logged_and_no_cut_on_a_clean_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls = _p1(monkeypatch, tmp_path, [{"exit": 0, "stdout": "ok"}])
+    step, kf, note = calls[-1]["result"]
+    assert kf is not None and note is None
+    text = _job_log(tmp_path / "jobs" / "cccccccccccc")
+    assert "Part 1 starts with a 90 s budget" in text and "lost its network stream" not in text
 
 
 # ----- POST api/client-log ---------------------------------------------------------------------------------
@@ -328,7 +376,7 @@ def test_a_crashing_route_is_a_plain_500_and_a_log_line(api: Api, caplog: pytest
     with caplog.at_level(logging.INFO, logger="part7"):
         status, _, data = api.request("GET", "api/health")
     assert status == 500 and "went wrong" in json.loads(data)["message"]
-    assert any("GET /simon-part-7/api/health crashed: KeyError" in r.getMessage() for r in caplog.records)
+    assert any(re.search(r"GET /simon-part-7/api/health crashed rid=[0-9a-f]+: KeyError", r.getMessage()) for r in caplog.records)
 
 
 def test_a_route_crashing_after_its_headers_sends_no_second_response(api: Api, caplog: pytest.LogCaptureFixture,
@@ -351,7 +399,7 @@ def test_a_route_crashing_after_its_headers_sends_no_second_response(api: Api, c
         while chunk := sock.recv(65536):
             raw += chunk
     assert raw.count(b"HTTP/1.") == 1 and raw.startswith(b"HTTP/1.0 200") and raw.endswith(b"\r\n\r\npart")
-    assert any("api/health crashed: RuntimeError" in r.getMessage() for r in caplog.records)
+    assert any(re.search(r"api/health crashed rid=[0-9a-f]+: RuntimeError", r.getMessage()) for r in caplog.records)
     assert api.request("GET", "api/version")[0] == 200  # the server still answers the next request
 
 

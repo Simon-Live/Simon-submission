@@ -42,7 +42,9 @@ try {
       const page = await ctx.newPage();
       const who = `${device}, ${signedIn ? "signed in" : "signed out"}`;
       await page.goto(`${base}#/follow/lateral-raise`);
-      await page.getByTestId("splash").waitFor({ state: "detached" }); // the first-visit brand splash fades out
+      // the first-visit brand splash plays in full: it only appears once the policy is known, after `goto` resolves, so wait for it first
+      await page.getByTestId("splash").waitFor({ state: "attached" });
+      await page.getByTestId("splash").waitFor({ state: "detached" });
       await page.getByTestId("auth-link").waitFor();
       if (signedIn) await page.locator('[data-testid="auth-link"][href="#/me"]').waitFor(); // the one account entry point
       else await page.locator('[data-testid="me-link"][href="#/me"]').waitFor(); // signed out: Me beside Sign in

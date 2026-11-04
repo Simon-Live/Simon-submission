@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from auth_support import authenv, get, origin, post, sign_in  # noqa: F401
+from auth_support import authenv, get, origin, post, sign_in, claim_doc  # noqa: F401
 from part7 import auth, history_store, identity, notes
 from support import Api
 
@@ -42,7 +42,7 @@ def make_job(api: Api, *, clip: bool = True, private: bool = False, entry: str =
 
 def claimed(api: Api, sid: str, **more: Any) -> str:
     job = make_job(api, **more)
-    assert post(api, "api/me/claims", {"job_id": job}, cookie=sid)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, job), cookie=sid)[0] == 200
     return job
 
 
@@ -572,7 +572,7 @@ def test_cascade_deleting_the_trainers_own_take_removes_requests_to_that_entry(a
     follower = sign_in(api, FOLLOWER)
     made = api.app.queue.submit("trainer", lambda ctx: {"result": {"entry_id": "made-entry-1"}}, entry_id=None)
     api.app.queue.wait(made["id"], 10)
-    assert post(api, "api/me/claims", {"job_id": made["id"]}, cookie=trainer)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, made["id"]), cookie=trainer)[0] == 200
     job = claimed(api, follower, entry="made-entry-1")
     assert send(api, f"api/me/takes/{job}/ask-trainer", {"confirm": True}, follower)[0] == 201
     assert post(api, f"api/jobs/{made['id']}/delete", cookie=trainer)[0] == 200  # the owner (TICKET-373)
@@ -580,29 +580,6 @@ def test_cascade_deleting_the_trainers_own_take_removes_requests_to_that_entry(a
 
 
 # ----- AC-N10 limits ------------------------------------------------------------------------------------------------------------------
-def test_limit_ten_open_requests_per_follower(world: World) -> None:
-    jobs = [world.job] + [claimed(world.api, world.follower) for _ in range(10)]
-    for job in jobs[:10]:
-        assert world.ask(job=job)[0] == 201
-    status, doc = world.ask(job=jobs[10])
-    assert status == 429 and "10 requests waiting" in doc["message"]
-    assert send(world.api, f"api/me/takes/{jobs[0]}/ask-trainer/withdraw", {}, world.follower)[0] == 200
-    assert world.ask(job=jobs[10])[0] == 201  # room again
-
-
-def test_limit_fifty_new_requests_per_trainer_per_day(world: World) -> None:
-    now = world.store.clock()
-    for n in range(49):
-        world.store.write("INSERT INTO note_requests (id, job_id, entry_id, follower_id, trainer_id, state, asked_utc) "
-                          "VALUES (?, ?, ?, ?, ?, 'answered', ?)", (f"seed{n:04d}xx", f"{n:012x}", ENTRY, f"u-other{n}", world.tid, identity._iso(now - 60)))
-    assert world.ask()[0] == 201  # the 50th
-    other = claimed(world.api, world.follower)
-    status, doc = world.ask(job=other)
-    assert status == 429 and "Try again tomorrow" in doc["message"]
-    world.store.write("UPDATE note_requests SET asked_utc = ?", (identity._iso(now - 86400 - 5),))  # a day later
-    assert world.ask(job=other)[0] == 201
-
-
 # ----- anonymous flows and sign-in off -------------------------------------------------------------------------------------------------
 def test_anonymous_flows_are_unchanged(api: Api) -> None:
     job = make_job(api)

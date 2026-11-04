@@ -328,6 +328,8 @@ export async function mountCompare(root, model, { testid = "compare", job = null
     const { follower, expected } = picked;
     stage.setPoses(single ? [model.frames[follower]] : [model.expected[expected], model.follower[follower]], dimsForPicked(model, picked), hidesForPicked(model, picked));
   };
+  // the framing holds the whole take from its first frame (model-skin.md AC16)
+  if (stage.setTake) stage.setTake(single ? [model.frames] : [model.expected, model.follower]);
   logBody(testid, bodyReport(model));
   const onClock = (t, playing) => {
     clockEl.textContent = `${t.toFixed(1)} s`;

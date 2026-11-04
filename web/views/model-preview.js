@@ -26,6 +26,7 @@ export function renderModelPreview(host, { t }, on) {
     },
     setStatus(text) { status.textContent = text || ""; },
     setReady(ready) { play.disabled = !ready; stageHost.hidden = !ready; },
+    setPlayable(playable) { play.disabled = !playable; },
     setCamera({ azimuth, elevation }) {
       box.setAttribute("data-camera-azimuth", String(Math.round(azimuth)));
       box.setAttribute("data-camera-elevation", String(Math.round(elevation)));

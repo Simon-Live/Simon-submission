@@ -4,6 +4,7 @@ Run: python3 serve_as_fixes.py <port> <file for the seeded job id>. The trainer 
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -38,8 +39,15 @@ def seed(ctx: object) -> dict:
     return {"result": {}}
 
 
+
+def write_tokens(ids: list[str]) -> None:
+    """The creator token of each seeded take, as the device that made it holds them (prod-data.md, LEG-H4)."""
+    from part7 import creator
+    Path(f"{id_file}.tokens.json").write_text(json.dumps({j: creator.token_for(app.state, j) for j in ids}))
+
 made = app.queue.submit("follow", seed, entry_id="lateral-raise")
 app.queue.wait(made["id"], 20)
+write_tokens([made["id"]])
 id_file.write_text(made["id"])
 http = server.make_server(app, port=port)
 print(f"serving on {http.server_address[1]}", flush=True)

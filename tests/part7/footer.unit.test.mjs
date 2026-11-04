@@ -64,14 +64,14 @@ test("a build with no git still shows its pins, and a local server says Local", 
 
 test("AC-F6 links are app pages only; source and feedback are plain text, no link to a private repo", () => {
   assert.deepEqual(FOOTER_LINKS.map((l) => l.href), ["#/me", "#/architecture", "api/notices"]);
-  assert.equal(FOOTER_TEXT.source, "Source: private repository (moalborati/simon-part-7-stitching-app)");
+  assert.equal(FOOTER_TEXT.source, "Source: private repository");
   assert.match(FOOTER_TEXT.feedback, /Feedback tab/);
   assert.ok(!JSON.stringify({ ...FOOTER_TEXT, FOOTER_LINKS }).includes("http"));
 });
 
-test("AC-F8 the credit names only the models with a live staging run", () => {
-  assert.equal(FOOTER_TEXT.credit, "Built with Meta models: SAM 3.1, Muse Spark, SAM 3D Body, MHR and SAM 3D Objects.");
-  for (const never of ["Muse Voice Transcribe", "MMS-TTS", "Muse Glimmer"]) assert.ok(!FOOTER_TEXT.credit.includes(never), never);
+test("AC-F8 the credit names only the Meta models a prod take runs under a licence that asks for it", () => {
+  assert.equal(FOOTER_TEXT.credit, "Built with Meta models: SAM 3D Body and MHR.");
+  for (const never of ["SAM 3.1", "Muse Spark", "SAM 3D Objects", "Muse Voice Transcribe", "MMS-TTS", "Muse Glimmer"]) assert.ok(!FOOTER_TEXT.credit.includes(never), never);
 });
 
 test("footer copy has no em dash, en dash or spaced hyphen", () => {

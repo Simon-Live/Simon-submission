@@ -46,7 +46,7 @@ def seed(ctx: object) -> dict:
     return {"result": {"entry_id": ENTRY, "trainer_id": 9, "people": rows}}
 
 
-made = app.queue.submit("group", seed, entry_id=ENTRY)
+made = app.queue.submit("group", seed, entry_id=ENTRY, _people_owner="")  # made signed out: its id is its key (upload_owner.people_owner)
 app.queue.wait(made["id"], 20)
 id_file.write_text(json.dumps({"job": made["id"]}))
 http = server.make_server(app, port=port)

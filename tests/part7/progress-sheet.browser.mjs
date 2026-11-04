@@ -25,6 +25,7 @@ for (let i = 0; i < 200; i++) {
 }
 const jobs = fs.readFileSync(idFile, "utf8").trim().split("\n");
 const trainerJob = jobs.pop(); // serve_progress.py writes the trainer job last
+const tokens = JSON.parse(fs.readFileSync(`${idFile}.tokens.json`, "utf8")); // prod-data.md: the making device's creator tokens
 const ENTRY = "lateral-raise";
 const EMAIL = "rehab.sheet@example.com";
 const browser = await chromium.launch();
@@ -63,12 +64,12 @@ try {
   await t(page, "auth-code").fill(code);
   await t(page, "auth-verify").tap();
   await t(page, "me-email").waitFor();
-  const kept = await page.evaluate(async (ids) => {
+  const kept = await page.evaluate(async ([ids, keys]) => {
     const send = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.status);
     const out = [await send("api/me/consent", { retention: true, version: "v1" })];
-    for (const j of ids) out.push(await send("api/me/claims", { job_id: j }));
+    for (const j of ids) out.push(await send("api/me/claims", { job_id: j, creator_token: keys[j] }));
     return out;
-  }, jobs);
+  }, [jobs, tokens]);
   assert.deepEqual(kept, [200, 200, 200, 200, 200, 200]);
   ok("signed in, kept takes and claimed five rehab takes");
 
@@ -142,7 +143,7 @@ try {
   ok("delete removes the sheet: the link shows the not-available page");
 
   // The trainer's Home programme form (TICKET-283 follow-up): the author declares the measure from the teacher page.
-  assert.equal(await page.evaluate(async (j) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j }) })).status, trainerJob), 200);
+  assert.equal(await page.evaluate(async ([j, t]) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j, creator_token: t }) })).status, [trainerJob, tokens[trainerJob]]), 200);
   await page.goto(`${base}#/teacher/${ENTRY}`);
   await t(page, "programme-form").waitFor();
   assert.equal(await t(page, "programme-save").isDisabled(), true, "nothing to save before a pick");

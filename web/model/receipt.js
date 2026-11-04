@@ -39,7 +39,7 @@ export function receiptView(sent) {
   const clips = takeNums(sent.clip_takes);
   const rows = [];
   const add = (key, label, value) => { if (value) rows.push({ key, label, value }); };
-  add("model", "Model", `${MODEL_NAME} (${sent.model || "muse-spark"}). Nothing is stored there.`);
+  add("model", "Model", `${MODEL_NAME} (${sent.model || "muse-spark"}). Meta's terms let it keep what it receives as needed, with no time limit.`);
   const named = list(sent.digest_cites).filter((p) => Array.isArray(p) && typeof p[0] === "string" && Number.isInteger(p[1]) && p[1] > 0);
   add("takes", "Measurements of", named.length ? citesText(named) : digests.length ? takesText(digests) : "no takes");
   add("fields", "What was read from each take", list(sent.fields).map(fieldText).join(", "));

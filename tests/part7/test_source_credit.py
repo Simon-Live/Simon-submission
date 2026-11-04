@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from auth_support import authenv, get, origin, post, sign_in  # noqa: F401
-from part7 import auth, share, source_credit
+from auth_support import authenv, get, origin, post, sign_in, claim_doc  # noqa: F401
+from part7 import auth, share, source_credit, source_routes
 from support import Api
 
 pytestmark = pytest.mark.usefixtures("authenv")
@@ -39,12 +39,16 @@ class World:
         self.oid = self.store.session_user(self.owner)
         self.store.attach_entry(ENTRY, self.oid)
         self.job = make_job(api)
-        assert post(api, "api/me/claims", {"job_id": self.job}, cookie=self.owner)[0] == 200
+        assert post(api, "api/me/claims", claim_doc(api, self.job), cookie=self.owner)[0] == 200
 
     def read(self, kind: str, subject: str, sid: str | None = None) -> dict[str, Any]:
         status, _, body = get(self.api, f"api/source/{kind}/{subject}", cookie=sid)
         assert status == 200
         return body
+
+    def refused(self, kind: str, subject: str, sid: str | None = None) -> bool:
+        """app-surface R1: a hidden movement's and another account's take credit answer 404, as their own routes do."""
+        return get(self.api, f"api/source/{kind}/{subject}", cookie=sid)[0] == 404
 
     def write(self, kind: str, subject: str, doc: Any, sid: str | None = None) -> tuple[int, Any]:
         return send(self.api, f"api/me/source/{kind}/{subject}", doc, sid or self.owner)
@@ -66,11 +70,12 @@ def test_owner_saves_and_everyone_reads_an_entry_source(world: World) -> None:
         assert doc["source"]["title"] == GOOD["title"] and doc["source"]["url"] == GOOD["url"] and doc["mine"] is mine
 
 
-def test_owner_saves_and_everyone_reads_a_take_source(world: World) -> None:
+def test_owner_saves_and_reads_a_take_source_and_no_one_else_reads_it(world: World) -> None:
     status, body = world.write("take", world.job, {"creator": "Ana", "licence": "own recording"})
     assert status == 200 and body["source"]["licence_label"] == "Own recording (no licence needed)" and body["source"]["url"] == ""
-    assert world.read("take", world.job)["source"]["creator"] == "Ana"
-    assert world.read("take", world.job)["licences"] == list(source_credit.LICENCES)
+    assert world.read("take", world.job, world.owner)["source"]["creator"] == "Ana"
+    assert world.read("take", world.job, world.owner)["licences"] == list(source_credit.LICENCES)
+    assert world.refused("take", world.job, world.other) and world.refused("take", world.job), "app-surface R1"
 
 
 def test_licence_list_has_the_agreed_names_and_other_shows_the_persons_words(world: World) -> None:
@@ -125,7 +130,7 @@ def test_url_at_the_length_limit_is_accepted_and_one_more_is_not(world: World) -
 def test_a_bad_field_answers_one_sentence(world: World, doc: dict[str, Any], message: str) -> None:
     status, body = world.write("take", world.job, doc)
     assert status == 400 and body["message"] == message
-    assert world.read("take", world.job)["source"] is None
+    assert world.read("take", world.job, world.owner)["source"] is None
 
 
 def test_markup_is_stored_as_text_and_the_page_escapes_it(world: World) -> None:
@@ -151,7 +156,7 @@ def test_signed_out_is_401_and_another_account_is_403(world: World) -> None:
     assert send(world.api, f"api/me/source/take/{world.job}", GOOD, None)[0] == 401
     assert world.write("entry", ENTRY, GOOD, world.other)[0] == 403
     assert world.write("take", world.job, GOOD, world.other)[0] == 403
-    assert world.read("entry", ENTRY)["source"] is None and world.read("take", world.job)["source"] is None
+    assert world.read("entry", ENTRY)["source"] is None and world.read("take", world.job, world.owner)["source"] is None
 
 
 def test_an_unknown_subject_is_404_and_a_missing_origin_is_403(world: World) -> None:
@@ -180,7 +185,7 @@ def test_an_only_me_entry_hides_its_source_from_others(world: World) -> None:
     assert post(world.api, f"api/me/entries/{ENTRY}", {"only_me": True}, cookie=world.owner)[0] == 200
     assert world.read("entry", ENTRY, world.owner)["source"]["title"] == GOOD["title"]
     for sid in (world.other, None):
-        assert world.read("entry", ENTRY, sid)["source"] is None
+        assert world.refused("entry", ENTRY, sid), "an only-me movement is hidden, its credit with it"
     post(world.api, f"api/me/entries/{ENTRY}", {"only_me": False}, cookie=world.owner)
     assert world.read("entry", ENTRY)["source"] is not None
 
@@ -188,24 +193,27 @@ def test_an_only_me_entry_hides_its_source_from_others(world: World) -> None:
 def test_a_take_of_an_only_me_entry_hides_its_source_from_others(world: World) -> None:
     world.write("take", world.job, GOOD)
     post(world.api, f"api/me/entries/{ENTRY}", {"only_me": True}, cookie=world.owner)
-    assert world.read("take", world.job)["source"] is None
+    assert world.refused("take", world.job) and world.refused("take", world.job, world.other)
     assert world.read("take", world.job, world.owner)["source"] is not None
 
 
 def test_a_private_take_hides_its_source_from_others(api: Api) -> None:
     w = World(api)
     job = make_job(api, private=True)
-    assert post(api, "api/me/claims", {"job_id": job}, cookie=w.owner)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, job), cookie=w.owner)[0] == 200
     assert w.write("take", job, GOOD)[0] == 200
-    assert w.read("take", job)["source"] is None and w.read("take", job, w.other)["source"] is None
+    assert w.refused("take", job) and w.refused("take", job, w.other)
     assert w.read("take", job, w.owner)["source"]["title"] == GOOD["title"]
 
 
 # ----- AC-S6 nothing written -----------------------------------------------------------------------------
-def test_no_source_reads_as_null_and_a_bad_id_reads_as_null(world: World) -> None:
-    assert world.read("entry", ENTRY)["source"] is None and world.read("take", world.job)["source"] is None
-    assert world.read("entry", "no%20such%20id")["source"] is None
-    assert world.read("take", "x")["mine"] is False
+def test_no_source_reads_as_null_and_a_bad_id_answers_as_an_unknown_one(world: World) -> None:
+    assert world.read("entry", ENTRY)["source"] is None and world.read("take", world.job, world.owner)["source"] is None
+    # the team on moalborati/simon#61: a malformed id answers 404, so the answer never tells a valid id from an invalid one
+    assert get(world.api, "api/source/entry/no%20such%20id")[0] == 404
+    assert get(world.api, "api/source/take/x")[0] == 404
+    assert source_routes._well_formed("entry", "squat"), "a shipped sample's id is shorter than a job id"
+    assert not source_routes._well_formed("take", "squat")
 
 
 # ----- AC-S7 download my data ----------------------------------------------------------------------------
@@ -307,7 +315,7 @@ def test_a_stranger_gets_404_not_403_for_a_hidden_subject(world: World) -> None:
 def test_a_stranger_gets_404_for_a_private_take(api: Api) -> None:
     w = World(api)
     job = make_job(api, private=True)
-    post(api, "api/me/claims", {"job_id": job}, cookie=w.owner)
+    post(api, "api/me/claims", claim_doc(api, job), cookie=w.owner)
     assert w.write("take", job, GOOD, w.other)[0] == 404
 
 
@@ -315,7 +323,7 @@ def test_deleting_a_trainer_take_through_the_route_removes_the_entry_credit(api:
     owner = sign_in(api, OWNER)
     made = api.app.queue.submit("trainer", lambda ctx: {"result": {"entry_id": "made-entry-1"}}, entry_id=None)
     api.app.queue.wait(made["id"], 10)
-    assert post(api, "api/me/claims", {"job_id": made["id"]}, cookie=owner)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, made["id"]), cookie=owner)[0] == 200
     assert send(api, "api/me/source/entry/made-entry-1", GOOD, owner)[0] == 200
     store = auth.identity(api.app)
     assert len(store.fetch("SELECT * FROM source_credits")) == 1

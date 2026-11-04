@@ -1,47 +1,63 @@
-# Third-party notices
+# Open-source notices
 
-Simon's web app and server use the open-source components and AI models below. Each is used under its own licence, named here, with the full text for every component the app ships.
+Simon is released under the MIT licence. It uses the open-source software, fonts, AI models and stock video below,
+each under its own licence. The licence texts for three.js, Mermaid, idna and Sniglet follow the tables. Inter's is `web/vendor/inter/LICENSE` and Mermaid's is also `web/vendor/mermaid/LICENSE`. The SAM License and the Apache License 2.0 text for the 3D demo data are `web/mesh-demo/LICENSE-SAM.txt` and `web/mesh-demo/LICENSE-MHR-Apache-2.0.txt`. The Apache License 2.0, the Mozilla Public License 2.0, the SAM License and the Meta Model API Terms of Service are at the addresses at the end of this file.
 
-## Shipped with the web app
+## Software and fonts in the web app
 
-| Component | Version | Used for | Licence |
-|---|---|---|---|
-| three.js, with its add-ons OrbitControls.js, GLTFLoader.js, BufferGeometryUtils.js and SkeletonUtils.js (unmodified) | 0.170.0 | The 3D views of the trainer and you, and rigged character models | MIT |
-| Mermaid | 11.17.2 | The diagrams on "How Simon works" | MIT |
-| lodash-es (bundled in Mermaid) | | | MIT |
-| DOMPurify (bundled in Mermaid) | 3.4.12 | | Apache License 2.0 or Mozilla Public License 2.0 |
-| Cytoscape.js (bundled in Mermaid) | | | MIT |
-| Sniglet font | | The "simon" logo, the grade and the score | SIL Open Font License 1.1 |
+| Component | Used for | Licence |
+|---|---|---|
+| three.js 0.170.0, with its add-ons OrbitControls.js, GLTFLoader.js, BufferGeometryUtils.js and SkeletonUtils.js | The 3D views of the original and of you | MIT |
+| Mermaid 11.17.2, with lodash-es, DOMPurify 3.4.12 and Cytoscape.js bundled | Diagrams | MIT; DOMPurify under Apache License 2.0 or Mozilla Public License 2.0. The file bundles its dependencies. As npm lists them: MIT for most of them (among them khroma, cytoscape, dagre-d3-es, marked, katex, roughjs, dayjs, stylis, uuid, es-toolkit, `@braintree/sanitize-url` and `@mermaid-js/parser`), ISC for d3, BSD-3-Clause for d3-sankey and Apache-2.0 for chevrotain. |
+| Inter 4 font | The app's text | SIL Open Font License 1.1, copyright 2016 The Inter Project Authors |
+| Sniglet font | The "simon" logo, the grade and the score | SIL Open Font License 1.1 |
+| MediaPipe Tasks Vision 0.10.14 (Google), with the Pose Landmarker Lite model | Live check, only when you turn it on | Apache License 2.0 |
 
-## Loaded only when you turn on Live check
+## Software on the server
 
-| Component | Version | Used for | Licence |
-|---|---|---|---|
-| MediaPipe Tasks Vision (Google), with the Pose Landmarker Lite model | 0.10.14 | Live joint check while recording, on your device | Apache License 2.0 |
-
-## Used by the server
-
-| Component | Version | Used for | Licence |
-|---|---|---|---|
-| idna | 3.20 | Internationalised domain names in sign-in email addresses | BSD 3-Clause |
+| Component | Used for | Licence |
+|---|---|---|
+| idna 3.20 | Sign-in email addresses in any language | BSD 3-Clause |
+| Blender 4.5 LTS and 3.6 LTS | Reading uploaded 3D files (FBX, .blend, glTF) | GPL-2.0-or-later |
+| FBX2glTF 0.9.7 | Reading older FBX files | BSD 3-Clause; contains Autodesk FBX code under Autodesk's notice, below |
 
 ## AI models
 
-Simon analyses a movement with these models. They run on Simon's servers or through their providers' services, and are not shipped to your browser.
-
 | Model | Used for | Licence or terms |
 |---|---|---|
-| SAM 3.1 (Meta) | Finding the people in each frame | Meta Model API Terms of Service, when run through Meta's API; the SAM License when run from its weights |
-| SAM 3D Body (Meta) | The 3D body pose in each frame | SAM License (19 November 2025) |
-| MHR, Momentum Human Rig (Meta) | The body mesh | Apache License 2.0, and the SAM License for the copy that comes with SAM 3D Body |
-| SAM 3D Objects (Meta) | A 3D model from a picture, on the Me page | SAM License (19 November 2025) |
-| Muse Spark, Muse Image, Muse Voice Transcribe (Meta) | Naming poses, phrasing feedback, a second opinion, drawing the corrected pose, writing a trainer's spoken cues | Meta Model API Terms of Service |
-| Muse Spark Open (Meta), hosted on Baseten | Phrasing the feedback | Its model licence and Baseten's terms |
-| SAM 2.1 (Meta) | Fallback person tracker | Apache License 2.0 |
-| TRELLIS (Microsoft) | Fallback for SAM 3D Objects | MIT |
+| SAM 3.1 (Meta) | Following the person in a trainer's recording, only when that trainer ticks the Meta box | Meta Model API Terms of Service |
+| SAM 3D Body (Meta) | The 3D body in each frame | SAM License (19 November 2025) |
+| MHR, Momentum Human Rig (Meta) | The body model and the rig of a 3D avatar | Apache License 2.0, and the SAM License for the copy that comes with SAM 3D Body |
+| SAM 3D Objects (Meta) | A 3D model from one picture | SAM License (19 November 2025) |
+| Muse Spark (Meta) | Naming a movement's phases, explaining your history, a second opinion | Meta Model API Terms of Service |
+| Muse Spark Open (Meta), hosted on Baseten | Writing each difference as one sentence | Its model licence and Baseten's terms |
+| Muse Glimmer (Meta) | The same sentences in private mode; off on simon.live | Its model licence |
+| Muse Wonder (Meta) | Answering a question about one of your takes | Meta Model API Terms of Service |
+| Muse Image (Meta) | Your own frame redrawn in the matching pose; off on simon.live | Meta Model API Terms of Service |
+| Muse Voice Transcribe (Meta) | Writing down a creator's spoken cues; off on simon.live, where faster-whisper does this | Meta Model API Terms of Service |
+| Meta MMS-TTS voices | Reading feedback aloud; not used on simon.live | CC BY-NC 4.0 (non-commercial) |
+| SAM 2.1 (Meta) | Following the people in each frame | Apache License 2.0 |
+| YOLOX, through rtmlib | Finding the people in each frame | Apache License 2.0 |
+| faster-whisper | Writing down a creator's spoken cues | MIT |
+| TRELLIS (Microsoft) | A fallback for SAM 3D Objects | MIT |
 | MoGe-2 (Microsoft) | The camera's field of view | MIT, with Apache License 2.0 for its DINOv2 code |
 
-Meta, SAM and Muse are trademarks of Meta Platforms, Inc. Simon is an independent project and is not endorsed by Meta.
+## Stock video
+
+| Source | Used for | Licence |
+|---|---|---|
+| Pexels stock clips | Example movements and demo material | Pexels License (https://www.pexels.com/license/) |
+| 3D demo data made with SAM 3D Body from two Pexels clips | The 3D demo | SAM License and Apache License 2.0, whose texts come with the data |
+
+## FBX2glTF and the Autodesk FBX notice
+
+The package's `LICENSE` and `README.md` are the only licence files it ships, and they name two things:
+
+> Copyright (c) Facebook, Inc. and its affiliates. All rights reserved. 3-clause BSD license, as in the package's `LICENSE`.
+
+> This software contains Autodesk® FBX® code developed by Autodesk, Inc. Copyright 2017 Autodesk, Inc. All rights, reserved. Such code is provided "as is" and Autodesk, Inc. disclaims any and all warranties, whether express or implied, including without limitation the implied warranties of merchantability, fitness for a particular purpose or non-infringement of third party rights. In no event shall Autodesk, Inc. be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of such code.
+
+The package carries no notice for anything else. A search of the binary's strings on 2026-11-04 also finds these, none with a licence text in the package: Draco, nlohmann json, fifo_map, mathfu, cppcodec, CLI11, stb_image, Boost, libxml2, zlib 1.2.11 (copyright Jean-loup Gailly and Mark Adler), libiconv, and a copyright line of Oculus VR, LLC (2016-2018). The Modal image keeps the package's `LICENSE` at `/opt/fbx2gltf/LICENSE`. The binary runs only inside the converter's sandbox and is not given to anyone.
 
 ## Licence texts
 
@@ -232,3 +248,5 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
 
 The full texts of the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0), the Mozilla Public License 2.0 (https://www.mozilla.org/MPL/2.0/), the SAM License (https://github.com/facebookresearch/sam-3d-body/blob/main/LICENSE) and the Meta Model API Terms of Service (https://dev.meta.ai/legal/terms-of-service) are at those addresses.
+
+Meta, SAM and Muse are trademarks of Meta Platforms, Inc. Simon is an independent project and is not endorsed by Meta.

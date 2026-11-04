@@ -12,7 +12,7 @@ import sys
 import threading
 from typing import Any, Callable
 
-from part7 import applog, config, crop, failcause, modules, people, quality, runner, stagelog
+from part7 import applog, config, consent_record, crop, failcause, modules, people, quality, runner, stagelog
 from part7.quality_constants import OWN_ANALYSIS_SCHEMA_VERSION
 from part7.parts import (
     p1_keyframes,
@@ -155,13 +155,14 @@ def _keyframes(
 ) -> tuple[Path | None, int]:
     """Part 1 with the fallback of `processor.md`; return `(keyframes.json or None, provenance part)`.
 
-    Part 1 gets `SIMON7_PART1_TIMEOUT_S` (default 150); a timeout is a fallback to Part 3 `every:10`, never a failure.
+    Part 1 gets `SIMON7_PART1_TIMEOUT_S` (default 215, of which 65 s is for its stop); a timeout is a fallback to Part 3 `every:10`, never a failure.
     """
     timeout_s = config.part1_timeout_s()
     step, kf_path, note = p1_keyframes.run(
         video, work, lock=lk, state=state, keys_dir=keys_dir, timeout_s=timeout_s
     )
     if step is not None and step.get("timed_out"):
+        timeout_s = step.get("timeout_s", timeout_s)  # the time it had before the stop signal
         note = f"key frames from Part 3, Part 1 took longer than {applog.secs(timeout_s)} s"
         applog.log(f"Part 1 timed out after {applog.secs(timeout_s)} s (load {_load_1m()})", applog.job_id_of(work), work,
                    logging.WARNING)  # TICKET-089: a busy host is the usual cause
@@ -262,17 +263,36 @@ def _animation_steps(run: _Run, skel: Path, kf_v1: Path, work: Path, lk: modules
     return final
 
 
+def _reserved(run: _Run, catalog: Path, name: str, reserve: Callable[[str], Callable[[], None]] | None, work: Path,
+              ) -> tuple[str | None, Callable[[], None] | None]:
+    """The id Part 6 is asked for and the undo of its held-back access row; (None, None) without `reserve`."""
+    if reserve is None:
+        return None, None
+    try:
+        link = getattr(reserve, "__self__", None)  # entry_access.Link: its rows are not free ids (app-surface R5)
+        asked = p6_catalog.new_id(catalog, name, getattr(link, "state", None))
+        return asked, reserve(asked)
+    except (OSError, RuntimeError) as exc:  # W-N1: no row, no save
+        applog.log(f"no access row before the catalog save: {applog.cause(exc)}", applog.job_id_of(work), work)
+        raise run.fail("catalog", "the catalog did not accept the entry") from None
+
+
 def _catalog(
     run: _Run, folder: Path, catalog: Path, name: str, category: str, kf_part: int, work: Path,
-    lk: modules.Modules, state: Any,
+    lk: modules.Modules, state: Any, reserve: Callable[[str], Callable[[], None]] | None = None,
 ) -> str:
-    """Part 6 `import` with provenance, then Part 6 doctor on the entry; return the entry id."""
+    """Part 6 `import` with provenance, then Part 6 doctor on the entry; return the entry id. With `reserve` the
+    movement's held-back access row is written first and Part 6 saves it under that id (W-N1)."""
     run.stage("catalog")
     parts = {"keyframes": kf_part, "skeleton": 3, "animation": 4}
+    asked, undo = _reserved(run, catalog, name, reserve, work)
     with stagelog.stage(work, "catalog", run.steps, category=category, keyframes_part=kf_part,
                         video=stagelog.video_facts(folder / "video.mp4")) as end:
-        step, manifest = p6_catalog.import_entry(catalog, folder, name, category, parts, work, lock=lk, state=state)
+        step, manifest = p6_catalog.import_entry(catalog, folder, name, category, parts, work, lock=lk, state=state,
+                                                 **({"entry_id": asked} if asked else {}))
         run.steps.append(step)
+        if undo is not None and (not manifest or manifest.get("id") != asked):
+            undo()  # nothing was saved under the reserved id; a movement saved under another stays hidden (no row)
         if step["exit"] != 0 or not manifest or not manifest.get("id"):
             raise run.fail("catalog", "the catalog did not accept the entry")
         doc = p6_catalog.doctor(Path(catalog) / str(manifest["id"]), work, lock=lk, state=state)
@@ -325,6 +345,8 @@ def trainer(
     person: people.PersonSel | None = None,
     mirrored: bool = False,
     floor_work: bool = False,
+    reserve: Callable[[str], Callable[[], None]] | None = None,
+    part1_allowed: bool | None = None,
 ) -> dict[str, Any]:
     """Run the trainer chain of `processor.md` (Parts 1, 2, 3, 4, then Part 6 `import` into `catalog`).
 
@@ -332,6 +354,8 @@ def trainer(
     Without `catalog` the chain ends after Part 4 (no entry is made). With `person` the chain is about that
     one person of a people job: Part 1 sees a copy cropped to them and Part 3 gets `--person`.
     `floor_work` (the entry is done on the floor) adds Part 3 `--floor-work` when the pin offers it (floor-work.md).
+    `reserve(entry_id)` (entry_access.Link.reserve) writes the movement's held-back access row before Part 6 saves it
+    under that id, and returns its undo (W-N1: no movement is listed or served before its row exists).
     """
     lk = lock or modules.load()
     video_p, work_p = Path(video), Path(work)
@@ -340,11 +364,15 @@ def trainer(
     floor_args = _floor_args(run, floor_work, lk)
     try:
         run.stage("keyframes")
-        part1 = _Part1(run, _part1_video(run, video_p, work_p, person), work_p, lk, state, keys_dir)
+        # muse-prod.md AC-MP5: None means the caller knows no answer, so a gated build sends nothing to Meta.
+        may_send = (not consent_record.required()) if part1_allowed is None else part1_allowed
+        part1 = _Part1(run, _part1_video(run, video_p, work_p, person), work_p, lk, state, keys_dir) if may_send else None
+        if part1 is None:
+            run.notes.append("key frames from Part 3, this take was not sent to Meta")
         try:
             pose3d = _pose(run, video_p, work_p, backend, lk, state, person)
         finally:
-            kf_path, kf_part = part1.join()  # Part 1 and Part 2 run together; Part 3 needs both
+            kf_path, kf_part = part1.join() if part1 is not None else (None, 3)  # Part 1 and Part 2 run together; Part 3 needs both
         run.extra["parts"] = {"keyframes": kf_part, "skeleton": 3, "animation": 4}
         skel, kf_v1 = _skeleton(
             run, pose3d, kf_path if kf_path is not None else "every:10", work_p, lk, state, person and person.id, mirrored,
@@ -363,7 +391,7 @@ def trainer(
                 (final_anim, "animation.json"), (video_p, "video.mp4"),
             ):
                 shutil.copyfile(src, folder / dst)
-            entry_id = _catalog(run, folder, Path(catalog), name, category, kf_part, work_p, lk, state)
+            entry_id = _catalog(run, folder, Path(catalog), name, category, kf_part, work_p, lk, state, reserve)
     except _Stop as stop:
         return stop.result
     return {

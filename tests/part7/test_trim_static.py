@@ -42,7 +42,7 @@ def test_watch_and_catalog_use_labels():
 def test_trim_follows_spec():
     t = src("trim.js")
     assert "export function openTrimEditor" in t
-    for frag in ["createObjectURL", "releaseSharedMediaUrl([video, probe], url)", "95000000", "STEP_MS = 100", "MIN_MS = 1000", "MAX_MS = 60000",
+    for frag in ["createObjectURL", "releaseSharedMediaUrl([video, probe], url)", "85000000", "STEP_MS = 100", "MIN_MS = 1000", "MAX_MS = 60000",
                  "clamp(Math.round(durationMs / 3000), 8, 12)", "1e101", "pointerdown", "setPointerCapture",
                  "ArrowLeft", "ArrowRight", "aria-label"]:
         assert frag in t, frag
@@ -50,9 +50,10 @@ def test_trim_follows_spec():
     assert "URL.revokeObjectURL" in src("media-url.js"), "the shared release revokes the clip URL (recorder.md Object URL lifetime)"
 
 
-def test_handles_are_buttons_with_a_touch_target():
-    css = src("styles.css")
-    assert 'h("button", { type: "button", class: "trim-handle start"' in src("trim.js")
+def test_handles_are_sliders_with_a_touch_target():
+    """a11y-copy R3: each handle is a focusable slider (role, value range); the 44 px target stays."""
+    css, js = src("styles.css"), src("trim.js")
+    assert 'role: "slider", tabindex: "0"' in js and '"aria-valuenow"' in js and '"aria-valuetext"' in js
     assert "touch-action: none" in css and "inset: 0 -10px" in css
 
 

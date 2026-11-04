@@ -177,7 +177,7 @@ const cases = {
     await tid(page, "model-import-file").setInputFiles({ name: "armour.png", mimeType: "image/png", buffer: PNG });
     await tid(page, "model-import-picture").waitFor();
     const hint = tid(page, "model-import-photo-hint");
-    assert.match(await hint.innerText(), /plain grey human body/);
+    assert.match(await hint.innerText(), /plain skin-coloured human body/);
     await tid(page, "model-import-picture-object").check();
     const text = await hint.innerText();
     assert.match(text, /3D model of what is in the picture/);
@@ -185,7 +185,7 @@ const cases = {
     assert.doesNotMatch(text, /grey human body|armour|costumes|does not copy/i);
     ok("the object choice shows the object hint, not the person hint");
     await tid(page, "model-import-picture-person").check();
-    assert.match(await hint.innerText(), /plain grey human body/);
+    assert.match(await hint.innerText(), /plain skin-coloured human body/);
     await tid(page, "model-import-picture-object").check();
     await shot(page, "pic-hint-object.png");
 
@@ -315,6 +315,49 @@ const cases = {
 
   // staging 2026-11-02: DELETE api/models/<id> answered 200 with a body and still logged net::ERR_ABORTED. The client
   // never read the body, so Chromium kept the request open and the next reload cancelled it. Real server, no stubs.
+  // The real server refuses a licence with no credit, the field is outlined and the file kept; the fix alone imports the model
+  // and the viewer shows it. PROOF_GLB names a model made on Modal (serverless-compute.md AC-SC20); default a fixture.
+  async refusalreal() {
+    const port = PORT + 200;
+    const app = spawn("python3", [path.join(here, "real_app.py"), String(port), String(port + 1)], { stdio: ["ignore", "pipe", "inherit"] });
+    try {
+      await new Promise((resolve, reject) => {
+        app.stdout.on("data", (d) => { if (String(d).includes("ready")) resolve(); });
+        app.on("exit", (code) => reject(new Error(`real_app.py ended with ${code}`)));
+      });
+      const page = await newPage();
+      const posts = [];
+      page.on("response", (r) => { if (r.request().method() === "POST" && r.url().includes("api/models")) posts.push(r.status()); });
+      await page.goto(`http://127.0.0.1:${port}/simon-part-7/#/me`);
+      await tid(page, "my-model-upload").click();
+      await tid(page, "model-import-file").setInputFiles(process.env.PROOF_GLB || path.join(here, "fixtures/models/riggedfigure.glb"));
+      await tid(page, "model-import-licence").selectOption("CC-BY");
+      await tid(page, "model-import-submit").click();
+      const error = tid(page, "model-import-error");
+      await error.waitFor();
+      assert.match(await error.textContent(), /Credit line is empty, and CC-BY, CC-BY-SA and CC-BY-NC need/);
+      assert.equal(await tid(page, "model-import-credit").getAttribute("aria-invalid"), "true");
+      assert.equal(await tid(page, "model-import-status").textContent(), "Your file is still chosen, so you do not need to choose it again.");
+      assert.deepEqual(posts, [], "negative: nothing was sent");
+      assert.equal(await tid(page, "model-import-file").evaluate((n) => n.files.length), 1, "the file stays chosen");
+      await shot(page, "refusal-credit.png");
+      await tid(page, "model-import-licence").selectOption("own-work");
+      const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("api/models"), { timeout: 60000 });
+      await tid(page, "model-import-submit").click();
+      await answered;
+      await tid(page, "model-import-dialog").waitFor({ state: "detached", timeout: 30000 });
+      await tid(page, "my-model-preview").waitFor({ timeout: 60000 });
+      assert.deepEqual(posts, [201], "the changed licence alone imported it");
+      const mine = await page.evaluate(async () => (await (await fetch("api/models")).json()).mine);
+      assert.equal(mine.length, 1);
+      assert.equal(mine[0].status, "ready");
+      await sleep(3000);
+      await shot(page, "viewer-model.png");
+      ok("refusalreal: credit refusal marked, file kept, licence change imports, viewer shows the model");
+    } finally {
+      app.kill();
+    }
+  },
   async deletereal() {
     const port = PORT + 100;
     const app = spawn("python3", [path.join(here, "real_app.py"), String(port), String(port + 1)], { stdio: ["ignore", "pipe", "inherit"] });

@@ -20,6 +20,8 @@ import os
 import re
 import sys
 import time
+import unicodedata
+from urllib.parse import unquote
 import zipfile
 
 import bpy
@@ -30,6 +32,11 @@ MAX_TOTAL = 400 * 1024 * 1024
 MAX_RATIO = 100
 MAX_TEXTURE_PX = 2048
 SIMPLE_NODES = 12
+# TICKET-341, HARDENING 3: the importer has read the file inside the jail; before any clean-up work runs on it, a scene
+# past these counts is refused (the jail's memory, CPU and pid caps already bound the read itself).
+MAX_OBJECTS = 5000
+MAX_VERTICES = 2_000_000
+MAX_SCENE_BONES = 2000
 CLAVICLE = re.compile(r"shoulder|clavicle|collar", re.IGNORECASE)
 JOIN_TOLERANCE = 0.01  # a control bone and its deform counterpart start within this fraction of the rig's height
 
@@ -97,12 +104,52 @@ def unzip_gltf(zip_path, dest):
             with zf.open(info) as src, open(target, "wb") as out:
                 out.write(src.read())
     found = sorted(
-        os.path.join(d, f) for d, _, files in os.walk(dest) for f in files if f.lower().endswith(".gltf")
+        os.path.join(d, f) for d, _, files in os.walk(root) for f in files if f.lower().endswith(".gltf") and not is_sidecar(os.path.join(d, f))
     )
     if not found:
         raise SystemExit("zip has no .gltf file")
     found.sort(key=lambda p: p.count(os.sep))
+    link_loose_names(found[0], root)
     return found[0]
+
+
+def is_sidecar(path):
+    """What macOS adds to a zip (`__MACOSX/`, `._a.gltf`); part7/model_import.py `_is_sidecar` skips the same."""
+    parts = path.split("/")  # a backslash is part of a name here, as the server's `_is_sidecar` reads it
+    return "__MACOSX" in parts or parts[-1].startswith("._")
+
+
+def name_key(name):
+    """A file name as Mac and Windows tools treat it: one Unicode form, any case (part7/model_import.py `_name_key`)."""
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def link_loose_names(gltf_path, root):
+    """A .gltf made on a Mac or on Windows may name a file in another Unicode form or case than the zip holds. This system's
+    files are exact, so such a name gets a link to its one match; two matches are left, and the reader says the file is missing."""
+    try:
+        with open(gltf_path, encoding="utf-8") as src:
+            doc = json.load(src)
+    except (OSError, ValueError, RecursionError):
+        return  # the reader reports a file it cannot read
+    if not isinstance(doc, dict):
+        return
+    files = [os.path.join(d, f) for d, _, names in os.walk(root) for f in names]
+    wanted = [item.get("uri") for key in ("buffers", "images") if isinstance(doc.get(key), list)
+              for item in doc[key] if isinstance(item, dict)]
+    for uri in wanted:
+        if not isinstance(uri, str) or (uri.startswith("data:") and ";base64," in uri):  # Blender's own test for an inline file
+            continue
+        target = os.path.normpath(os.path.join(os.path.dirname(gltf_path), unquote(uri.replace("\\", "/"))))
+        if not target.startswith(root + os.sep):
+            fail("unreadable", "this .gltf points to a file outside the zip: zip it with its files, then choose the new zip",
+                 detail="uri leaves the zip")
+        if os.path.exists(target):
+            continue
+        matches = [f for f in files if name_key(f) == name_key(target)]
+        if len(matches) == 1:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            os.symlink(matches[0], target)
 
 
 def _import(path):
@@ -153,9 +200,27 @@ def skinned_by(mesh_obj, armature_obj):
     return linked and any(g.name in bones for g in mesh_obj.vertex_groups)
 
 
+def scene_counts(scene):
+    """(objects, vertices, bones) of everything the import left in the scene."""
+    objects = list(scene.objects)
+    verts = sum(len(o.data.vertices) for o in objects if o.type == "MESH")
+    bones = sum(len(o.data.bones) for o in objects if o.type == "ARMATURE")
+    return len(objects), verts, bones
+
+
+def check_scene_size(scene):
+    """Stop with `unreadable` when the scene has more objects, vertices or bones than the converter handles."""
+    objects, verts, bones = scene_counts(scene)
+    step("size", objects=objects, vertices=verts, bones=bones)
+    if objects > MAX_OBJECTS or verts > MAX_VERTICES or bones > MAX_SCENE_BONES:
+        fail("unreadable", "this file is too large to convert: %d objects, %d vertices, %d bones" % (objects, verts, bones),
+             detail="over the object, vertex or bone limit")
+
+
 def survey(scene):
     """(armatures, meshes with faces, mode): `rigged` when a mesh is skinned, `static` when meshes are not; stops with
     `skeleton-only` or `empty` when there is no mesh to keep."""
+    check_scene_size(scene)
     armatures = [o for o in scene.objects if o.type == "ARMATURE"]
     shapes = {pb.custom_shape for a in armatures for pb in a.pose.bones if pb.custom_shape is not None}
     # a bone display shape (the glTF importer's Icosphere, a rig's widgets) is not part of the body

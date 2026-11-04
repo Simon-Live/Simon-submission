@@ -8,11 +8,14 @@ import shutil
 import threading
 import uuid
 
-from part7 import applog, config, modules, private_mode, runner
+from part7 import applog, config, modules, muse_prod, private_mode, runner
 from part7.parts import probe
 
 PHRASING_CONCURRENCY = "4"
-_ANALYSE_ARGV = ["uv", "run", "python", "-m", "part5", "analyse"]
+# Part 5 runs from its own uv.lock as it is: never re-resolved, even when the lock is stale (supply audit R6). In prod
+# UV_OFFLINE=1 (prod/up.sh) also keeps a request from fetching anything.
+UV_RUN = ["uv", "run", "--frozen"]
+_ANALYSE_ARGV = [*UV_RUN, "python", "-m", "part5", "analyse"]
 PROFILE_SOURCE = "part7-rules"
 NOTE_UNAVAILABLE = "Scoring rules for {mode} unavailable in this Part 5; standard rules used"
 
@@ -127,6 +130,8 @@ def run(
     out_path = work_p / "analysis.json"
     notes: list[str] = []
 
+    if phrasing == "live" and muse_prod.gate(state) is not None:  # the stop file reaches a queued job too (muse-prod.md)
+        phrasing = "template"
     extra, note = phrasing_args(clone, phrasing, lk)
     if note:
         notes.append(note)
@@ -174,7 +179,7 @@ def run(
     def call(head: list[str], out: Path, args: list[str], log: str, env: dict[str, str]) -> runner.Step:
         return runner.run(
             5, [*head, *inputs, "--out", str(out.resolve()), *args], cwd=clone,
-            env_extra={**env, "PART5_PHRASING_CONCURRENCY": PHRASING_CONCURRENCY},  # harmless where the pin ignores it
+            env_extra={**muse_prod.part5_env(), **env, "PART5_PHRASING_CONCURRENCY": PHRASING_CONCURRENCY},  # harmless where the pin ignores it
             timeout_s=config.TIMEOUTS["5"], log_path=work_p / "steps" / log, lock=lk)
 
     # Private mode (private-mode.md): the Part 5 call is built from the plan gpu_turn yields; inactive plans pass through.
@@ -225,8 +230,7 @@ def doctor(
     return runner.run(
         5,
         [
-            "uv",
-            "run",
+            *UV_RUN,
             "python",
             "-m",
             "part5",

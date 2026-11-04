@@ -1,6 +1,7 @@
 // "Your takes over time" (docs/specs/history-web.md, contract C-WEB): glue between the history routes (C-HTTP), the
 // model (model/history.js) and the views (views/history.js). Opt-in: with nobody signed in every call answers 401 and
 // the page, the list and the result slot stay empty or say so; nothing else in the app reads this module.
+import { consentPolicy, policyOn } from "./policy.js";
 import { ensureCss } from "./ui.js";
 import { call } from "./me-api.js";
 import { fetchMe } from "./auth.js";
@@ -63,7 +64,7 @@ function mountPage(container, entryId) {
   let rtimer = null; // the reel's poll (TICKET-228), apart from the report's `timer`
   const clipOf = (n) => (pageView(doc, entryId, report).takes.find((r) => r.take === n) || {}).clip || "";
   const draw = () => {
-    ui = renderHistoryPage(screen, pageView(doc, entryId, report), { onRun: run, onConsent: setConsent, onReel: makeReel });
+    ui = renderHistoryPage(screen, pageView(doc, entryId, report), { onRun: run, onConsent: setConsent, onReel: makeReel, adultsAsked: consentPolicy().required === true });
     patterns = patternsSection(patternsGate(doc), ui.player, { onFind: findPatterns });
     ui.patternsSlot.append(patterns.el);
     if (found) patterns.result(patternsView(found, clipOf));
@@ -181,8 +182,8 @@ function mountPage(container, entryId) {
     if (res.status === 202) return pollReel(Date.now(), retryDelayMs(res.retryAfter));
     failReel(res.status);
   }
-  async function setConsent(video) {
-    const res = await post(urls.consent, { video, version: CONSENT_VERSION });
+  async function setConsent(video, adults) {
+    const res = await post(urls.consent, { video, version: CONSENT_VERSION, ...(adults === true ? { meta_adults: true } : {}) });
     if (!live) return;
     if (res.status >= 200 && res.status < 300) {
       doc = { ...doc, consent: { ...(doc.consent || {}), video } };
@@ -213,7 +214,7 @@ function mountPage(container, entryId) {
       const title = screen.querySelector('[data-testid="history-title"]');
       if (link) { if (title && title.after) title.after(link); else screen.append(link); }
     }).catch(() => {});
-    if (patternsGate(doc).ok) await loadPatterns();
+    if (policyOn("muse") && patternsGate(doc).ok) await loadPatterns();
     if (!live) return;
     const earlier = await get(reelUrl, NONE_YET); // a reel made in an earlier visit, or one still being cut
     if (!live) return;
@@ -258,7 +259,7 @@ export async function historySlot(section, ctx) {
 async function mountAsk(host, isLive) {
   const info = await get(ASK_URL, PAGE_OK);
   if (!isLive() || info.status !== 200 || !info.body || !info.body.retention || !info.body.can_ask) return;
-  const ui = renderAsk(host, { suggestions: info.body.suggestions || [], remaining: info.body.remaining, maxChars: QUESTION_MAX }, { ask });
+  const ui = renderAsk(host, { suggestions: info.body.suggestions || [], maxChars: QUESTION_MAX }, { ask });
   async function ask(text) {
     const bad = questionError(text);
     if (bad) return ui.status("error", bad);

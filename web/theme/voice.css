@@ -17,7 +17,7 @@
 .vx-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
 .vx-badge { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: var(--color-accent-soft);
   color: var(--color-good); font: var(--weight-semibold) var(--text-xs)/1.4 var(--font-sans); }
-.vx-badge[data-verdict="disagrees"] { background: var(--color-bad-soft); color: var(--color-bad); }
+.vx-badge[data-verdict="disagrees"] { background: var(--color-bad-soft); color: var(--color-bad-text); }
 .vx-tag { color: var(--color-text-muted); font-size: var(--text-xs); }
 .vx-note { flex-basis: 100%; color: var(--color-text); font-size: var(--text-sm); }
 

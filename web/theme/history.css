@@ -44,7 +44,7 @@
   background: var(--card-fill-raised); border: 1px solid var(--color-line); font-size: var(--text-xs); }
 .hs-chip-kind, .hs-kind { font-weight: var(--weight-semibold); color: var(--color-good); }
 .hs-chip[data-tone="warn"] .hs-chip-kind, .hs-kind[data-tone="warn"] { color: var(--color-warn); }
-.hs-chip[data-tone="bad"] .hs-chip-kind, .hs-kind[data-tone="bad"] { color: var(--color-bad); }
+.hs-chip[data-tone="bad"] .hs-chip-kind, .hs-kind[data-tone="bad"] { color: var(--color-bad-text); }
 .hs-kind { font-size: var(--text-xs); }
 
 /* takes and the clip player */
@@ -53,7 +53,7 @@
 .hs-score { font: var(--weight-semibold) var(--text-lg)/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--color-good); }
 .hs-take .hs-score { font-family: var(--font-display); font-weight: 400; } /* Sniglet ships at 400 only; the recap counts keep Inter */
 .hs-score[data-tone="warn"] { color: var(--color-warn); }
-.hs-score[data-tone="bad"] { color: var(--color-bad); }
+.hs-score[data-tone="bad"] { color: var(--color-bad-text); }
 .hs-grade { padding: 2px var(--space-2); border-radius: var(--radius-pill); background: var(--card-fill); color: var(--color-text-muted); font: var(--weight-bold) var(--text-xs)/1.5 var(--font-sans); }
 .hs-when { font-variant-numeric: tabular-nums; color: var(--color-text-muted); font-size: var(--text-xs); }
 .hs-watch { margin-left: auto; min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-pill); border: 1.5px solid var(--color-accent);
@@ -80,7 +80,7 @@
 .hs-run { width: 100%; min-height: var(--button-height); }
 .hs-status { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-text); font-size: var(--text-sm); }
 .hs-status[hidden] { display: none; }
-.hs-status[data-kind="error"], .hs-status[data-kind="limit"], .hs-status[data-kind="few"], .hs-status[data-kind="consent"], .hs-status[data-kind="busy"] { background: var(--color-warn-soft); border: 1px solid var(--color-warn-line); }
+.hs-status[data-kind="error"], .hs-status[data-kind="few"], .hs-status[data-kind="consent"], .hs-status[data-kind="busy"] { background: var(--color-warn-soft); border: 1px solid var(--color-warn-line); }
 .hs-toggle { margin-top: var(--space-3); min-height: var(--target-min); padding: 0 var(--space-4); border-radius: var(--radius-pill); border: 1px solid var(--color-line);
   background: var(--card-fill); color: var(--color-text-muted); font: var(--weight-semibold) var(--text-sm)/1 var(--font-sans); cursor: pointer; }
 .hs-toggle[aria-pressed="true"] { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }

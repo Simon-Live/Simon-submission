@@ -15,7 +15,7 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: var(--header-height, 88px); } /* a11y-copy B13: a focused control never scrolls under the sticky header (WCAG 2.4.11) */
 body {
   margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font);
   min-height: 100dvh; overflow-x: hidden;
@@ -178,8 +178,9 @@ li.failed .dot { background: var(--red-ink); border-color: var(--red-ink); }
 .trim-mask { position: absolute; top: 0; bottom: 0; background: rgba(251, 251, 250, 0.72); pointer-events: none; }
 .trim-mask.left { left: 0; border-radius: 4px 0 0 4px; }
 .trim-mask.right { right: 0; border-radius: 0 4px 4px 0; }
+/* reels 1.2 (impeccable border-accent-on-rounded): the selection's top and bottom edges are inset shadows, not borders */
 .trim-frame {
-  position: absolute; top: 0; bottom: 0; border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink);
+  position: absolute; top: 0; bottom: 0; box-shadow: inset 0 3px 0 var(--ink), inset 0 -3px 0 var(--ink);
   pointer-events: none;
 }
 .trim-playhead {
@@ -219,14 +220,37 @@ li.failed .dot { background: var(--red-ink); border-color: var(--red-ink); }
 .consent-note[open] summary::before { transform: translateY(-2px) rotate(45deg); }
 .consent-note summary::-webkit-details-marker { display: none; }
 .consent-note summary:hover { color: var(--color-text); }
+/* the consent and age step (consent-gate.js, consent-and-age.md) */
+.consent-age, .consent-step { display: grid; gap: var(--space-3); margin: var(--space-4) 0; padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-line); border-radius: var(--radius-md); }
+.consent-age legend, .consent-step legend { font-weight: var(--weight-bold); padding: 0 var(--space-2); }
+.consent-age-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.consent-step h3 { margin: 0; font-size: var(--text-md); }
+.consent-step ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+.consent-item { display: flex; align-items: flex-start; gap: var(--space-2); min-height: 44px;
+  scroll-margin-top: calc(var(--header-height, 88px) + var(--space-2)); } /* a11y N3: scrolled to below the sticky header */
+.consent-item input { width: 24px; height: 24px; flex: none; margin-top: 2px; }
+/* a11y-copy B13: each link is a 24 px target with clear space when the three wrap at 390 px (WCAG 2.5.8) */
+.consent-links { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.consent-links a { display: inline-flex; align-items: center; min-height: 24px; }
+.consent-done .btn { margin-left: var(--space-2); }
+.consent-blocked { margin: var(--space-4) 0; font-weight: var(--weight-bold); }
 /* the watch page's category reads in sentence case (the entry stores it lowercase) */
 .head h1 + .hint::first-letter { text-transform: uppercase; }
 [data-testid="lang-picker"] select { min-height: 44px; }
 
 /* TICKET-308: the waiting page's paw walk has its own row in the flow, never over the step hint, the slower-path
    note, the time left or the elapsed time. Later and more specific than theme/loader.css; the prints keep animating. */
+.pg, .pg > * { min-width: 0; max-width: 100%; }   /* release 14: the grid `.pg` of theme/progress-sheet.css must never size its track by the paw walk's row */
+.pg-text, .pg-elapsed { overflow-wrap: anywhere; }
 .pg > .paw-walk { position: relative; top: auto; left: auto; right: auto; z-index: auto; height: 88px; margin: var(--space-2) 0; overflow: hidden; }
 
 /* TICKET-360: the corrected picture is 2048 px wide; it fits the card (min-width 0 lets a grid or flex parent shrink below the picture own width) */
 .sr-corrected, .cc-figure { min-width: 0; max-width: 100%; margin-inline: 0; }
 .cc-img { display: block; width: 100%; max-width: 100%; height: auto; object-fit: contain; border-radius: 8px; }
+
+/* serverless-compute.md AC-SC12: a feature that is switched off for now */
+.wip-badge { display: inline-block; padding: 1px 8px; border: 1px solid var(--muted); border-radius: 4px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.wip-note { margin-block: 8px; }
+.run-on-option { display: block; margin-block: 4px; }
+[data-testid="consent-policy-links"] a { display: inline-flex; align-items: center; min-height: var(--tap-target); }

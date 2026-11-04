@@ -2,7 +2,8 @@
 // Run: node --test tests/part7/follow-challenge.unit.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { joinable, challengeText, watchChallenge } from "../../web/follow-challenge.js";
+import { joinable, challengeText, watchChallenge, MSG_CLOSED } from "../../web/follow-challenge.js";
+import { ChallengeError } from "../../web/challenge-core.js";
 
 const CH = { id: "c1", title: "Beat my Lateral raise", entry_id: "lateral-raise", ended: false };
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -26,12 +27,35 @@ test("a joinable challenge fills and shows the line and the getter returns it", 
   assert.match(n.textContent, /Beat my Lateral raise/);
 });
 
-test("no challenge id, an unmounted screen, another movement or a failed load leave the line hidden", async () => {
+test("the line says what happens next, and says sign-in is needed first where recording needs an account", () => {
+  assert.doesNotMatch(challengeText(CH), /Sign in/);
+  assert.match(challengeText(CH), /type your name and choose Add my score/);
+  assert.match(challengeText(CH, true), /^You are taking the challenge: Beat my Lateral raise\. Sign in before you record/);
+});
+
+test("a challenge that is ended, for another movement or not found says it is closed", async () => {
+  const cases = [
+    async () => ({ ...CH, ended: true }),
+    async () => ({ ...CH, entry_id: "squat" }),
+    async () => { throw new ChallengeError(404, "This challenge was not found."); },
+  ];
+  for (const load of cases) {
+    const n = note();
+    const taking = watchChallenge("c1", "lateral-raise", n, () => true, load);
+    await flush();
+    assert.equal(taking(), null);
+    assert.equal(n.hidden, false);
+    assert.equal(n.textContent, MSG_CLOSED);
+  }
+});
+
+test("no challenge id, an unmounted screen or a lookup that failed offline leave the line hidden", async () => {
   const cases = [
     [null, () => true, async () => CH],
     ["c1", () => false, async () => CH],
-    ["c1", () => true, async () => ({ ...CH, entry_id: "squat" })],
+    ["c1", () => false, async () => ({ ...CH, ended: true })],
     ["c1", () => true, async () => { throw new Error("offline"); }],
+    ["c1", () => true, async () => { throw new ChallengeError(0, "offline"); }],
   ];
   for (const [id, alive, load] of cases) {
     const n = note();

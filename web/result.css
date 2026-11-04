@@ -62,7 +62,8 @@
 .sr-rule-list li[data-grade="S"] b { color: var(--sr-a); } .sr-rule-list li[data-grade="E"] b { color: var(--sr-f); }
 .sr-rule-list li[data-current="true"] { background: var(--card-fill-raised); color: var(--sr-text); font-weight: 600; }
 .sr-rule-note { margin: 10px 0 0; color: var(--sr-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-.sr-score-cap { margin: 12px 0 0; padding-left: 10px; border-left: 3px solid var(--sr-f); font-size: 15px; font-weight: 600; text-wrap: pretty; } /* TICKET-155 */
+/* TICKET-155; reels 1.2 (impeccable side-tab): a tinted note instead of a thick left border */
+.sr-score-cap { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--sr-f) 14%, transparent); font-size: 15px; font-weight: 600; text-wrap: pretty; }
 
 /* compare and viewer */
 .sr-cmp { background: var(--card-fill); border: 1px solid var(--sr-line); border-radius: 18px; overflow: hidden; max-width: 960px; }

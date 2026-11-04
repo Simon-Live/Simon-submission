@@ -104,9 +104,8 @@
   text-decoration: none; padding: 0 var(--space-3); white-space: nowrap; }
 .st-actions .btn[hidden] { display: none; }
 .st-act-extra { display: contents; }
+.st-actions .sr-slot:has(> .sh-action > *) { flex: 1 1 100%; }   /* the share prompt, link and live line take their own row (share.md "Result share") */
 .st-act-extra:empty { display: none; }
-.st-act-status { flex-basis: 100%; color: var(--color-text-muted); font-size: var(--text-sm); }
-.st-act-status:empty { display: none; }
 
 /* below 720 px the stage runs edge to edge, as the 3D view did, so the bodies keep the width */
 @media (max-width: 719px) {

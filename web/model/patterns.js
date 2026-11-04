@@ -29,7 +29,6 @@ export function patternsState(status) {
   if (status === 404) return { kind: "missing", message: "No takes of this movement were found for you." };
   if (status === 409) return { kind: "consent", message: "Simon needs to keep your takes before it can look for patterns. Turn on keeping takes in your account, then try again." };
   if (status === 422) return { kind: "few", message: `Patterns need at least ${MIN_TAKES} takes of the same section and mode of this movement.` };
-  if (status === 429) return { kind: "limit", message: "You have used today's comparisons. Try again tomorrow." };
   return { kind: "error", message: "The patterns could not start. Try again in a moment." };
 }
 

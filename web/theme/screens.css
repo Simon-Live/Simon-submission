@@ -10,7 +10,7 @@ body .ch-sponsor { border-color: var(--color-warn-line); background: var(--color
 body .ch-row:first-child { border-color: var(--color-warn-line); background: var(--color-warn-soft); color: var(--color-text); }
 body .ch-badge { background: var(--color-accent-soft); color: var(--color-accent); }
 body .ch-grade[data-grade="C"] { background: var(--color-warn-soft); color: var(--color-warn); }
-body .ch-grade[data-grade="D"] { background: var(--color-bad-soft); color: var(--color-bad); }
+body .ch-grade[data-grade="D"] { background: var(--color-bad-soft); color: var(--color-bad-text); }
 body .ch-tag { background: var(--color-warn-soft); color: var(--color-warn); }
 
 /* header: the head mark alone on phones, so the switch and Record fit */
@@ -52,7 +52,7 @@ body .pp-quality-chip, body .pp-warn { background: var(--color-warn-soft); color
 body .pp-badge[aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-on-accent); }
 body .pp-row:hover { border-color: var(--color-text-muted); }
 body .pp-grade[data-grade="C"] { background: var(--color-warn-soft); color: var(--color-warn); }
-body .pp-grade[data-grade="D"] { background: var(--color-bad-soft); color: var(--color-bad); }
+body .pp-grade[data-grade="D"] { background: var(--color-bad-soft); color: var(--color-bad-text); }
 body .pp-toggle[aria-pressed="false"] i { box-shadow: 0 0 0 2px var(--color-text-muted) inset; }
 body *:focus-visible { outline-color: var(--color-accent); }
 
@@ -69,5 +69,5 @@ body .sr-marker { background: var(--color-text); }
 body .sr-legend li { background: var(--color-scrim); }
 body .sr-video-frame { background: var(--color-media-bg); }
 body .sb-chip-dragging { background: var(--color-warn-soft); color: var(--color-warn); }
-body .rc-digit { color: var(--color-accent); }
+body .rc-digit { color: var(--color-accent); background: var(--color-scrim); border-radius: var(--radius-lg); padding: 0 var(--space-4); }  /* a11y go-live N2: its own veil, so the digit keeps 4.5:1 over any camera scene */
 .brand { min-width: var(--target-min); min-height: var(--target-min); justify-content: center; }

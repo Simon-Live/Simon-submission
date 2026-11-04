@@ -14,6 +14,8 @@ export const defaultLoad = {
   share: () => import("./share.js"),
   profile: () => import("./profile.js"),
   myModel: () => import("./my-model.js"),
+  modalCreds: () => import("./modal-creds.js"), // TICKET-367: the person's own Modal token, signed in only
+  boards: () => import("./boards-list.js"), // finding leaderboards: the boards the account or this browser is on
   deviceTakes: () => import("./takes-on.js"), // TICKET-327: the takes this browser sent, signed in or not
 };
 
@@ -30,8 +32,10 @@ export function mountMePage(el, load = defaultLoad) {
   const list = h("div");
   const shareSlot = h("div", { "data-testid": "me-shares" });
   const deviceSlot = h("div", { "data-testid": "me-device-takes" });
+  const modalSlot = h("div", { "data-testid": "me-modal" });
+  const boardsSlot = h("div", { "data-testid": "me-boards" });
   over.append(list);
-  el.append(account, deviceSlot, profileSlot, modelSlot, over, shareSlot);
+  el.append(account, deviceSlot, boardsSlot, profileSlot, modelSlot, modalSlot, over, shareSlot);
   (async () => {
     const auth = await load.auth();
     if (!live) return;
@@ -40,6 +44,8 @@ export function mountMePage(el, load = defaultLoad) {
     if (!live) return;
     const device = load.deviceTakes ? await optional(load.deviceTakes) : null;
     if (device && live) stops.push(device.mountDeviceTakes(deviceSlot, { signedIn }));
+    const boards = load.boards ? await optional(load.boards) : null;
+    if (boards && live) stops.push(boards.mountMyBoards(boardsSlot)); // signed in or not: the server reads the account or the jobs named
     const myModel = await optional(load.myModel);
     if (myModel && live) stops.push(myModel.mountMyModel(modelSlot, { signedIn }));
     if (!signedIn || !live) return; // signed out: the account card already says so
@@ -53,6 +59,8 @@ export function mountMePage(el, load = defaultLoad) {
     if (shares) stops.push(shares.mountShareList(shareSlot, { signedIn: true }));
     stops.push(history.mountMyTakes(list));
     if (profile) stops.push(profile.mountProfile(profileSlot, { signedIn: true })); // its requests, devices too, go out in this tick
+    const modal = load.modalCreds ? await optional(load.modalCreds) : null;
+    if (modal && live) stops.push(modal.mountModalCreds(modalSlot));
   })().catch(() => {});
   return () => { live = false; stops.forEach((stop) => stop()); };
 }

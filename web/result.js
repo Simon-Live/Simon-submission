@@ -14,7 +14,7 @@ import { mountReviewNote } from "./review-note.js";
 import { floorScoredLine } from "./floor-work.js";
 import { TEXT as SUMMARY_TEXT } from "./model/result-summary.js";
 import { summaryOf, insightsEmptyText, withCapWinning, uncappedWords } from "./model/score-labels.js";   // one score: other figures labelled (Part 5 CONTRACT)
-import { currentKind, kindForMode } from "./model/kind.js";
+import { kindForMode } from "./model/kind.js";
 import { renderResultSummary, REVEAL_MS } from "./views/result-summary.js";
 import { creditDisplay, creditOf } from "./model/score-credit.js";
 import { shownScoreDisplay, saveScoreDisplay } from "./score-display.js";
@@ -23,7 +23,7 @@ import { hasJobFiles, hasModels, mountModelsUsed, mountSkeleton, mountMesh, show
 import { stageSplit } from "./model/judge-take.js";
 import { renderStageSplit } from "./views/stage-split.js";
 import { withoutRepeatedFiller } from "./model/filler.js";
-import { faultLine } from "./model/fault-line.js";
+import { faultLine, insightLine, whyCarriesLive, hasLiveLines, withModelFlags, AI_LABEL, AI_NOTE } from "./model/fault-line.js";
 import { dirOf, notesFor } from "./model/lang.js";
 import { langOf } from "./model/voice.js";
 import { bylines } from "./model/attribution.js";
@@ -194,13 +194,17 @@ function renderInsights(root, analysis, getCompare, getTimeline) {
       type: "button", class: "sr-insight", "data-testid": `insight-${i}`, "data-kind": x.kind || false, "data-cue-kind": x.kind || false,
       "data-at-s": x.at_s ?? false, "data-window": x.window ?? false, "aria-pressed": "false",
     });
+    const live = insightLine(analysis, x);   // a model-worded line replaces the fixed "why" and is labelled as AI
     const words = el("span", { class: "sr-insight-words" },
       el("span", { class: "sr-insight-line" },
         x.at_s != null ? momentChip(x.at_s, `moment-chip-insight-${i}`) : null,
         el("span", { class: "sr-insight-cue", "data-testid": `insight-${i}-cue`, text: x.cue })),
-      x.why ? el("span", { class: "sr-insight-why", "data-testid": `insight-${i}-why`, text: x.why }) : null);
+      // Part 5's why is shown only when it holds the model's clause, retimed, with its rep count; template words give way to the live sentence
+      live ? el("span", { class: "sr-insight-why", "data-testid": `insight-${i}-live`, text: whyCarriesLive(x.why, live.text) ? x.why : live.text })
+        : x.why ? el("span", { class: "sr-insight-why", "data-testid": `insight-${i}-why`, text: x.why }) : null);
     const chip = insightChip(x);
     row.append(words);
+    if (live) row.append(el("span", { class: "sr-chip sr-ai", "data-testid": `insight-${i}-ai`, text: AI_LABEL }));
     if (chip) row.append(el("span", { class: `sr-insight-chip${x.kind === "tempo" ? " sr-tempo" : ""}`, "aria-label": chip.label, text: chip.text }));
     row.addEventListener("click", () => {
       list.querySelectorAll(".sr-insight").forEach((r) => r.setAttribute("aria-pressed", String(r === row)));
@@ -208,7 +212,7 @@ function renderInsights(root, analysis, getCompare, getTimeline) {
       if (tl && x.window != null) tl.showWindow(x.window);
       const cmp = getCompare();
       if (!cmp) return;
-      if (x.at_s != null) cmp.jump(x.at_s);
+      if (x.at_s != null) cmp.jump(x.at_s, x.cue);
       cmp.highlight(jointsFor(x, analysis));
     });
     const li = el("li", {}, row);
@@ -254,10 +258,12 @@ function renderFaultCues(root, analysis, getCompare) {
       type: "button", class: "sr-fault", "data-testid": `fault-${i}`, "data-fault-index": i, "data-at-s": f.at_s,
       "data-joints": (f.joints || []).join(","), "data-cue-kind": f.cue_kind || false, "data-confidence": f.confidence || false, "aria-pressed": "false",
     });
-    const text = el("span", { class: "sr-fault-text", text: faultLine(analysis, i).text });   // TICKET-368: live line, else template
+    const line = faultLine(analysis, i);
+    const text = el("span", { class: "sr-fault-text", text: line.text });   // TICKET-368: live line, else template
     if (f.cue) row.append(el("span", { class: "sr-cue", "data-testid": `fault-${i}-cue`, text: f.cue }));
     const meta = el("span", { class: "sr-fault-meta" }, el("span", { class: "sr-chip", "data-testid": `fault-${i}-at`, text: `at ${Number(f.at_s).toFixed(1)} s` }));
     if (f.confidence === "low") meta.append(el("span", { class: "sr-chip sr-low", "data-testid": `fault-${i}-low`, text: "Low confidence" }));
+    if (line.live) meta.append(el("span", { class: "sr-chip sr-ai", "data-testid": `fault-${i}-ai`, text: AI_LABEL })); // AI output is labelled as AI
     row.append(text, meta);
     const li = el("li", { class: "sr-fault-item" }, row, voiceSlot(i, f.at_s));
     if (i >= TOP_CUES) { li.hidden = true; rest.push(li); }
@@ -273,7 +279,7 @@ function renderFaultCues(root, analysis, getCompare) {
     const cmp = getCompare();
     if (wasOn) { if (cmp) cmp.highlight([]); return; }
     row.setAttribute("aria-pressed", "true");
-    if (cmp) { cmp.jump(faults[i].at_s); cmp.highlight(faults[i].joints || []); }
+    if (cmp) { cmp.jump(faults[i].at_s, faults[i].cue || faults[i].text); cmp.highlight(faults[i].joints || []); }
   });
   section.append(list);
   if (rest.length) {
@@ -354,6 +360,7 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
     return { seek() {}, highlight() {}, compare: null, coach: null, destroy() { root.replaceChildren(); } };
   }
   trainerVisibility = visibilityFor(record, trainerVisibility);   // an own-reference take has no teacher visibility (my-reference.md)
+  analysis = withModelFlags(analysis);   // R16: which rep rows a model worded, decided before any display rewrite
   analysis = withQualityCap(analysis);   // Part 5 1.13.0 reports quality.score_cap; the shown score is min(score.value, cap)
   analysis = withLight(analysis, record && record.result && record.result.light);   // TICKET-247: min(score, light cap), warning and tip
   let skeleton = null;
@@ -363,10 +370,12 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   // stage into sight (and from the original videos to the view that moves), so a row tapped far down shows it
   const view = {
     seek: (t) => (coach ? coach.seekTo(t) : compare && compare.seek(t)),
-    jump: (t) => {
+    jump: (t, cue) => {
       if (stageCtl) stageCtl.toDefault();
       showStage(stageCtl ? stageCtl.stage.el : null, compare && compare.el);
-      return coach ? coach.goTo(t) : compare && compare.seek(t);
+      const moved = coach ? coach.goTo(t) : compare && compare.seek(t);
+      if (stageCtl) stageCtl.pinCue(t, cue);   // the tapped row's own cue, not the cue of the window the lead-in lands in
+      return moved;
     },
     highlight: (j) => { if (compare) compare.highlight(j); if (skeleton) skeleton.pin(j); },
   };
@@ -429,7 +438,7 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   root.dataset.summary = "true";
   let summaryModel = null;
   try { summaryModel = replay ? normalizeReplay(replay, trainerVisibility) : null; } catch { summaryModel = null; }
-  const summaryOpts = { kind: kindForMode(record && record.mode) || currentKind(), model: summaryModel, retryHref: recordAgainHref(record) };
+  const summaryOpts = { kind: kindForMode(record && record.mode) || "exercise", model: summaryModel, retryHref: recordAgainHref(record) };
   const LEAD_S = 2; // the same lead-in the coaching rows use (coaching.js)
   const toStage = () => stage.scrollIntoView({ behavior: stageCtl.reducedMotion() ? "auto" : "smooth", block: "start" });
   const playFrom = (t) => {
@@ -516,8 +525,8 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   if (split) madeHolder.after(renderStageSplit(el("div", { class: "sr-slot ss-slot" }), split).parentElement);
 
   fillSlot(challengeSlot, () => import("./challenge-actions.js").then((m) => m.mountChallengeActions), ctx, cleanups);
-  cleanups.push(wireActions(actions, challengeSlot, shown));
-  fillSlot(shareSlot, () => import("./share.js").then((m) => m.mountShareAction), ctx, cleanups);
+  cleanups.push(wireActions(actions, challengeSlot));
+  fillSlot(shareSlot, () => import("./share.js").then((m) => m.mountShareAction), { ...ctx, trigger: actions.share }, cleanups); // "Share this result" opens the duration prompt (share.md "Result share")
   fillSlot(referenceSlot, () => import("./my-reference.js").then((m) => m.mountMyReference), ctx, cleanups);
 
   const moments = momentsToReview(display);
@@ -528,6 +537,7 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
     const voice = voiceLines(display);   // the stage's voice switch speaks Part 5's fault lines at their moments
     if (voice) work.append(voice);
   } else renderFaultCues(work, display, getView);   // an analysis from before insights: its faults are the cues
+  if (hasLiveLines(display)) work.append(el("p", { class: "sr-ai-note", "data-testid": "ai-note", text: AI_NOTE }));   // no live line goes undisclosed
   const credit = creditDisplay(shown, scoreDisplay);
   timeline = renderTimeline(bdTimeline, shown, getView, flaggedWindows(moments), credit && credit.windows);
   if (replay || !warnings.length) {
@@ -587,8 +597,8 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   mountVideosNote(stageView.hosts.videos, record);   // TICKET-331: say the trainer's video is gone, not only show yours
   if (coach || compare) renderMomentList(momentsHolder, moments, (at) => view.jump(at));
 
+  more.el.before(secondOpinionSlot());   // contract C2: a second look at the take, in view; a closed "More" must not hide it
   // the rest of "More", in the approved order (after the worst moment and the moments above)
-  body.append(secondOpinionSlot());   // contract C2: a second look at the take
   fillSlot(makeSlot(body, "near-misses-slot"), () => import("./near-misses.js").then((m) => m.mountNearMisses), ctx, cleanups); // TICKET-100
   fillSlot(makeSlot(body, "fix-it-slot"), () => import("./skin/corrected-replay.js").then((m) => m.mountFixIt), ctx, cleanups); // TICKET-265: "Fix it for me"
   body.append(correctedSlot());       // TICKET-280: the owner's corrected-pose image and blind referee; hidden until there is something to show
@@ -697,20 +707,14 @@ export async function mountResult(root, { analysis, replay, trainerVisibility = 
   };
 }
 
-/** Share (the result's link: the share sheet, else copied) and Challenge a friend (the challenge box under the row, once
- *  it has mounted: unfolded, brought into sight, the name field focused). Returns a stop function. */
-function wireActions(actions, challengeSlot, analysis) {
-  actions.share.addEventListener("click", async () => {
-    const grade = analysis.score && analysis.score.grade;
-    const { shareLink } = await import("./share-card.js");
-    const out = await shareLink({ url: location.href, text: grade ? `My Simon take: grade ${grade}` : "My Simon take" }).catch(() => null);
-    actions.say(out && out.mode === "copy" && out.copied ? STAGE_TEXT.shared : "");
-  });
+/** Challenge a friend (the challenge box under the row, once it has mounted: unfolded, brought into sight, the name field
+ *  focused). "Share this result" is wired by web/views/share-prompt.js, which makes a signed link. Returns a stop function. */
+function wireActions(actions, challengeSlot) {
   // the box stays folded under the row until the button is tapped, unless it holds a challenge to join or an ended one
   let opened = false;
   const ready = () => {
     actions.challenge.hidden = !challengeSlot.querySelector('[data-testid="challenge-actions"]');
-    challengeSlot.hidden = !opened && !challengeSlot.querySelector('[data-testid="challenge-join"], [data-testid="challenge-ended-note"]');
+    challengeSlot.hidden = !opened && !challengeSlot.querySelector('[data-testid="challenge-join"], [data-testid="challenge-ended-note"], [data-testid="result-offers"], [data-testid="challenge-link"]');
   };
   ready();
   const obs = typeof MutationObserver === "function" ? new MutationObserver(ready) : null;

@@ -59,7 +59,7 @@ class PatternRunner:
         facts = history_facts.build(usable, entry_id)
         members = {t["take"] for t in facts["takes"] if t.get("in_group")}
         rows = [t for t in usable if t["take"] in members]
-        narration, narration_sha = history_report._narration(self.catalog_dir, entry_id)
+        narration, narration_sha = history_report._narration(self.catalog_dir, entry_id, self.state)
         _, model = history_report._versions()
         parts = sorted([t["take"], history_store.sha256_file(t["analysis"])] for t in rows)
         parts += history_longpack.key_parts(history_longpack.owner_notes(self.state, user_id, entry_id, rows))  # a new note makes a new result
@@ -79,7 +79,7 @@ class PatternRunner:
             return self._active.get((user_id, entry_id, key))
 
     def request(self, user_id: str, entry_id: str, now: float | None = None) -> tuple[str, Any]:
-        """`("cached", result)` or `("accepted", "queued"|"running")`; `Refused` for 409, 422 and 429."""
+        """`("cached", result)` or `("accepted", "queued"|"running")`; `Refused` for 409 and 422."""
         if not history_store.retention_opt_in(self.state, user_id):
             raise history_report.Refused(409, history_report.MSG_CONSENT)
         if not self.eligibility(user_id, entry_id)["eligible"]:
@@ -93,11 +93,7 @@ class PatternRunner:
         with self._lock:
             if job in self._active:
                 return ("accepted", self._active[job])
-            per_user, overall = history_report.daily_limit(), history_report.global_daily_limit()
-            if per_user is not None and history_report.runs_today(self.state, user_id, now) >= per_user:
-                raise history_report.Refused(429, history_report.MSG_LIMIT_FMT.format(n=per_user))
-            if overall is not None and history_report.global_runs_today(self.state, now) >= overall:
-                raise history_report.Refused(429, history_report.MSG_GLOBAL_LIMIT)
+            history_report.muse_gate("patterns", user_id, self.state)
             with history_store.locked(self.state):
                 history_report._note_run(self.state, user_id, now)
             self._active[job] = "queued"

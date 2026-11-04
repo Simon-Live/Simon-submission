@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from auth_support import authenv, post, sign_in  # noqa: F401  authenv is a fixture
+from auth_support import authenv, claim_doc, post, sign_in  # noqa: F401  authenv is a fixture
 from part7 import auth, delete_routes, identity, impact, judge_view
 from support import Api
 from test_judge_view import REAL, finished
@@ -124,12 +124,12 @@ def test_a_featured_take_cannot_be_claimed(api: Api, authenv: Path, monkeypatch:
     monkeypatch.setenv(impact.ENV, str(rows))
     sid = sign_in(api, OTHER)
     for job_id in (hero, persona):
-        status, _, body = post(api, "api/me/claims", {"job_id": job_id}, cookie=sid)
+        status, _, body = post(api, "api/me/claims", claim_doc(api, job_id), cookie=sid)  # even with the creator token
         assert (status, body["error"]) == (403, delete_routes.MSG_NO_CLAIM)
         assert identity.owner_of_job(api.app.state, job_id) is None  # negative: nothing recorded
     assert delete(api, hero, sid)[0] == 403 and clip.is_file() and plays(api, hero)
     plain, _ = take(api)
-    assert post(api, "api/me/claims", {"job_id": plain}, cookie=sid)[0] == 200  # any other take is claimed as before
+    assert post(api, "api/me/claims", claim_doc(api, plain), cookie=sid)[0] == 200  # any other take is claimed as before
 
 
 def test_an_earlier_claim_neither_deletes_the_hero_nor_takes_it_with_the_account(api: Api, authenv: Path) -> None:
@@ -167,10 +167,12 @@ def test_an_owned_take_is_deleted_only_from_the_owners_session(api: Api, authenv
         status, body = delete(api, job_id, sid)
         assert (status, body["error"]) == (403, delete_routes.MSG_NOT_OWNER)
         assert clip.is_file()  # negative: the refused delete removed nothing
-    assert api.json("GET", f"api/jobs/{job_id}")[0] == 200
+    as_owner = {"Cookie": f"{auth.COOKIE}={owner}"}
+    assert api.json("GET", f"api/jobs/{job_id}", headers=as_owner)[0] == 200
+    assert api.json("GET", f"api/jobs/{job_id}")[0] == 404  # B2: the job record answers its owner only
     status, body = delete(api, job_id, owner)
     assert status == 200 and body == {"deleted": True, "removed": ["job"]}
-    assert not clip.exists() and api.json("GET", f"api/jobs/{job_id}")[0] == 404
+    assert not clip.exists() and api.json("GET", f"api/jobs/{job_id}", headers=as_owner)[0] == 404
 
 
 def test_an_unreadable_owner_refuses_the_delete(api: Api, authenv: Path, monkeypatch: pytest.MonkeyPatch) -> None:

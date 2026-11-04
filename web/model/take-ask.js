@@ -62,19 +62,18 @@ export function receiptLine(body) {
   return line;
 }
 
-/** The answer on screen. `kind`: ok, unverified, refused, failed. */
+/** The answer on screen. `kind`: ok, unverified, refused, crisis (the fixed help text, reels 3.10), failed. */
 export function takeAnswerView(body) {
   const b = body && typeof body === "object" ? body : {};
   const steps = stepsOf(b.actions);
   const view = {
-    kind: ["ok", "unverified", "refused", "failed"].includes(b.status) ? b.status : "failed",
+    kind: ["ok", "unverified", "refused", "crisis", "failed"].includes(b.status) ? b.status : "failed",
     text: typeof b.text === "string" ? b.text : "",
     message: typeof b.message === "string" ? b.message : "",
     source: b.source, validated: b.validated === true,
     evidence: (Array.isArray(b.tool_calls) ? b.tool_calls : []).filter((c) => TOOLS[c.name]).map((c) => `${c.ok ? "Looked up" : "Could not look up"} ${TOOLS[c.name]}.`),
     cites: steps.filter((s) => s.tool === "seek").map((s) => ({ at: s.t, label: `Go to ${secs(s.t)}` })),
     receipt: receiptLine(b),
-    remaining: Number.isFinite(b.remaining) ? b.remaining : null,
   };
   return { ...view, sourceLine: view.kind === "ok" ? sourceLine(view) : "" };
 }

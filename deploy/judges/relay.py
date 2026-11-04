@@ -37,7 +37,7 @@ image = (modal.Image.debian_slim(python_version="3.12").pip_install("fastapi[sta
          .add_local_file(HERE / "warm.mp4", "/root/warm.mp4"))   # 2 s of Pexels 6326808 (High knees), Pexels License
 state = modal.Dict.from_name("simon-judges-relay-state", create_if_missing=True)
 META = "https://api.meta.ai/v1"
-PART2_APP = "simon-part2"   # deploy/serverless/part2_app.py from this repo, deployed in the same Modal workspace
+PART2_APP = "simon-part2"   # deploy/judges/part2_app.py from this repo, deployed in the same Modal workspace
 
 
 def _notify(title: str, text: str, priority: str = "default") -> None:

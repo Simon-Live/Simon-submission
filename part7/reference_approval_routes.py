@@ -24,18 +24,9 @@ from part7.notes_routes import _store
 
 MSG_GROUP = "This take shows one person of a group video, so it cannot be this student's reference."
 MSG_NOT_FOUND = "This request is not available."
-MSG_RATE = "You approved many takes just now. Try again in a minute."
 MSG_NO_SUGGESTION = "There is no waiting approval for this movement."
 MSG_DECLINED = "The student has already said no to this rep."
 MSG_ACTION = "Choose accept or decline."
-LIMIT = (10, 60)  # approvals per teacher, seconds (each one runs Part 5's check)
-
-
-def _limiter(app: Any) -> auth.Limiter:
-    found = getattr(app, "_approve_limit", None)
-    if found is None:
-        found = app._approve_limit = auth.Limiter(*LIMIT)
-    return found
 
 
 def _owned_take(h: Any, teacher: str, row: Any) -> tuple[dict[str, Any], Path]:
@@ -65,8 +56,6 @@ def _approve(h: Any, teacher: str, request_id: str) -> None:
         job, path = _owned_take(h, teacher, row)
         if reference_approval.was_declined(h.app.state, row["follower_id"], row["entry_id"], row["job_id"]):
             raise _Refuse(409, MSG_DECLINED)
-        if not _limiter(h.app).hit(teacher):
-            return _fail(h, 429, MSG_RATE)
         data = _skeleton(h, path)
     except _Refuse as exc:
         return _fail(h, exc.status, exc.message)

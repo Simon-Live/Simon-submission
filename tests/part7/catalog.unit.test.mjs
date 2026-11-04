@@ -150,8 +150,8 @@ test("a trainer recording's delete offers both options and sends remove_entry on
   const fetcher = async (url, init) => { calls.push([url, init]); return { ok: true, status: 200, json: async () => ({ deleted: true, removed: ["job"], kept: ["entry"] }) }; };
   assert.deepEqual((await del.postDelete("a1", fetcher)).kept, ["entry"]);
   await del.postDelete("a1", fetcher, { removeEntry: true });
-  assert.equal(calls[0][1].headers["Content-Type"], "application/json", "the route needs same-origin JSON");
-  assert.deepEqual(JSON.parse(calls[0][1].body), {}, "negative: the default does not ask to remove the movement");
+  assert.equal(calls[0][1].body, "{}", "negative: the default asks to remove nothing else");
+  assert.equal(calls[0][1].headers["Content-Type"], "application/json", "the CSRF guard wants JSON (security audit R5)");
   assert.equal(calls[1][1].body, JSON.stringify({ remove_entry: true }));
 });
 
@@ -186,10 +186,10 @@ test("follow sends the picked language, English by default", async () => {
   assert.equal(currentLang({ getItem() { throw new Error("blocked"); } }), "en");
 });
 
-test("the catalog teardown keeps the client's line and still stops the judge hero, before the view goes", async () => {
+test("the catalog teardown keeps its teardown line and still stops the judge hero, before the view goes", async () => {
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("../../web/catalog.js", import.meta.url), "utf8");
-  assert.ok(src.includes("  return () => { stopKind(); view.destroy(); };\n"), "the client's line, byte for byte");
+  assert.match(src, /return \(\) => \{[^}]*stopBoards\(\); view\.destroy\(\); \};/, "the teardown stops the boards and removes the view");
   assert.ok(src.includes("chainDestroy(view, stopHero);"), "our hero cleanup rides on view.destroy");
   const order = [];
   const view = { removed: false, destroy() { order.push("view"); this.removed = true; } };

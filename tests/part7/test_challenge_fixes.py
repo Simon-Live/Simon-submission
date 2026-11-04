@@ -146,13 +146,11 @@ def test_concurrent_processes_keep_every_update(tmp_path: Path) -> None:
 
 
 # ----- R6: cap, prune and the read cache ---------------------------------------------------------------------
-def test_the_board_cap_refuses_a_new_public_board_but_not_the_operator(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(challenges, "MAX_BOARDS", 2)
-    assert [_post(api)[0] for _ in range(3)] == [201, 201, 409]
-    assert _boards(api) == 2
-    sponsor = {"name": "N", "tagline": "t", "url": "https://example.com", "prize": "p"}
-    challenges.create(api.app.state, entry_id="lateral-raise", title="S", creator_name="N", kind="sponsored", sponsor=sponsor, allow_sponsored=True)
-    assert _boards(api) == 3
+def test_no_count_of_boards_refuses_a_new_one(api: Api) -> None:
+    """Operator 2026-11-04, no limits anywhere: the 500-board cap is gone (the file store reads boards by stat key, so
+    many small files list fast); idle boards still leave by age."""
+    assert not hasattr(challenges, "MAX_BOARDS")
+    assert [_post(api)[0] for _ in range(6)] == [201] * 6 and _boards(api) == 6
 
 
 def _age(state: Path, cid: str, days: int) -> None:
@@ -163,10 +161,10 @@ def _age(state: Path, cid: str, days: int) -> None:
 
 
 def test_idle_public_boards_are_pruned_and_sponsored_ones_stay(tmp_path: Path) -> None:
-    sponsor = {"name": "N", "tagline": "t", "url": "https://example.com", "prize": "p"}
+    sponsor = {"name": "N", "tagline": "t", "url": "https://example.com", "prize": "p", "rules_url": "https://example.com/rules"}
     old = challenges.create(tmp_path, entry_id="lateral-raise", title="Old", creator_name="S", kind="friend")["id"]
     fresh = challenges.create(tmp_path, entry_id="lateral-raise", title="New", creator_name="S", kind="friend")["id"]
-    kept = challenges.create(tmp_path, entry_id="lateral-raise", title="Ad", creator_name="N", kind="sponsored", sponsor=sponsor, allow_sponsored=True)["id"]
+    kept = challenges.create(tmp_path, entry_id="lateral-raise", title="Ad", creator_name="N", kind="sponsored", sponsor=sponsor, allow_sponsored=True, ends_at="2999-12-01T00:00:00Z")["id"]
     for cid in (old, kept):
         _age(tmp_path, cid, challenges.STALE_DAYS + 5)
     challenges.create(tmp_path, entry_id="lateral-raise", title="Trigger", creator_name="S", kind="friend")
@@ -197,30 +195,12 @@ def test_a_bad_content_length_is_400(api: Api, path: str, length: str) -> None:
 
 
 # ----- pre-mortem: a cap on the boards one visitor makes in a day ------------------------------------------------
-def test_one_visitor_makes_at_most_the_daily_number_of_boards(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(challenges, "BOARDS_PER_VISITOR_DAY", 3)
-    assert [_post(api)[0] for _ in range(3)] == [201, 201, 201]
-    status, err = _post(api)
-    assert status == 429 and err["error"] == challenges.MSG_VISITOR_BOARDS
-    assert _boards(api) == 3
-    other = api.json("POST", "api/challenges", dict(BODY), {"Cf-Connecting-Ip": "203.0.113.9"})
-    assert other[0] == 201  # a second visitor is counted on their own
-
-
-def test_the_visitor_cap_counts_per_key_and_per_day_and_stays_private(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(challenges, "BOARDS_PER_VISITOR_DAY", 2)
+def test_the_daily_board_cap_per_visitor_is_gone_and_the_visitor_key_stays_private(tmp_path: Path) -> None:
+    """Operator 2026-11-04, no limits anywhere: one visitor may make any number of boards a day. The hashed key is still
+    stored (the sweep drops it after 3 days) and never reaches a public view."""
+    assert not hasattr(challenges, "BOARDS_PER_VISITOR_DAY")
     make = lambda who: challenges.create(tmp_path, entry_id="lateral-raise", title="T", creator_name="S", kind="friend", visitor=who)  # noqa: E731
-    first = make("aaaa")
-    make("aaaa")
-    with pytest.raises(challenges.ChallengeError) as caught:
-        make("aaaa")
-    assert caught.value.status == 429
-    assert make("bbbb")["id"]  # another visitor is not held back
-    _age(tmp_path, first["id"], 1)  # yesterday's board does not count
-    assert make("aaaa")["id"]
+    first = [make("aaaa") for _ in range(12)][0]
     stored = challenges.get(tmp_path, first["id"])
     assert stored["visitor"] == "aaaa"
     assert "visitor" not in challenges.view(stored) and "visitor" not in challenges.summary(stored)
-    sponsor = {"name": "N", "tagline": "t", "url": "https://example.com", "prize": "p"}
-    for _ in range(3):  # the operator's sponsored boards are not capped
-        challenges.create(tmp_path, entry_id="lateral-raise", title="S", creator_name="N", kind="sponsored", sponsor=sponsor, allow_sponsored=True, visitor="aaaa")

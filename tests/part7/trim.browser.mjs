@@ -141,7 +141,13 @@ const sel = (page) => page.evaluate(() => {
   assert.equal((await sel(page))[0], s1 + 300);
   await page.keyboard.press("ArrowLeft");
   assert.equal((await sel(page))[0], s1 + 200);
-  assert.match(await tid(page, "trim-start").getAttribute("aria-label"), /^Start of the movement, \d\.\d s/);
+  const startHandle = tid(page, "trim-start"); // a11y-copy R3: a slider whose value is the start in seconds
+  assert.equal(await startHandle.getAttribute("role"), "slider");
+  assert.equal(await startHandle.getAttribute("aria-label"), "Start of the movement");
+  assert.equal(await startHandle.getAttribute("aria-valuenow"), ((s1 + 200) / 1000).toFixed(1));
+  assert.match(await startHandle.getAttribute("aria-valuetext"), /^\d+\.\d s$/);
+  await page.keyboard.press("Home");
+  assert.equal((await sel(page))[0], 0);
   await tid(page, "trim-end").focus();
   await page.keyboard.press("ArrowLeft");
   assert.equal((await sel(page))[1], e1 - 100);
@@ -323,9 +329,11 @@ const labelRoutes = async (page) => {
   assert.match(await metaOf("e2"), /isometric · beginner/);
   assert.doesNotMatch(await metaOf("e1"), /isometric|beginner/);
   await tid(page, "search").fill("ISOMETRIC");
+  await page.getByTestId("entry-e1").waitFor({ state: "detached" }); // the search waits for typing to pause (home-browse.md)
   assert.deepEqual(await cardIds(), ["entry-e2"]);
   await page.screenshot({ path: path.join(SHOTS, "trim-06-catalog-tags.png") });
   await tid(page, "search").fill("nothing-like-this");
+  await page.getByTestId("entry-e2").waitFor({ state: "detached" });
   assert.deepEqual(await cardIds(), []);
   ok("catalog shows tags and search matches them");
   await page.context().close();

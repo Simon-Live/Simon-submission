@@ -26,7 +26,7 @@ The rules and every number above are in [rules.py](rules.py) and checked by `tes
 4. **Set Modal's own budget limit** in the workspace's billing settings (Usage and billing), as a backstop if the relay's count is ever wrong.
 5. **Deploy Part 2 from this repo**, so its version matches `modules/PINS.json` (Part 2 refuses a run from another version):
    ```
-   modal deploy deploy/serverless/part2_app.py
+   modal deploy deploy/judges/part2_app.py
    ```
 6. **Deploy the relay:**
    ```

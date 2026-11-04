@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import json
 import logging
+import re
 from pathlib import Path
 import sys
 import time
@@ -387,7 +388,7 @@ def test_the_media_limit_comes_from_the_environment(api: Api, caplog: pytest.Log
 def test_the_path_is_below_the_base_path_and_a_5xx_has_bytes_too(api: Api, caplog: pytest.LogCaptureFixture) -> None:
     lines = _report(api, caplog, "POST", "api/uploads", 0.1, length="5", status=500)
     assert len(lines) == 1 and lines[0].startswith("ANOMALY http_5xx method=POST path=api/uploads status=500")
-    assert lines[0].endswith("bytes=5") and api.app.base.strip("/") not in lines[0].split("path=")[1].split()[0]
+    assert " bytes=5 " in lines[0] and api.app.base.strip("/") not in lines[0].split("path=")[1].split()[0]
 
 
 def test_a_fast_request_logs_nothing(api: Api, caplog: pytest.LogCaptureFixture) -> None:
@@ -419,7 +420,8 @@ def test_client_error_events_become_anomalies_with_the_page_and_cut_fields(api: 
     with caplog.at_level(logging.INFO, logger="part7"):
         assert _post(api, {"level": "error", "event": "client_error", "detail": detail, "page": "#/follow/e1"}) == 200  # e977821: 200 with a body, not 204
         assert _post(api, {"level": "warn", "event": "camera_dark", "detail": {"a": 1}, "page": "#/record"}) == 200  # e977821: 200 with a body, not 204
-    assert _lines(caplog) == ["ANOMALY client_error page=#/follow source=fetch status=502 path=api/jobs/ab12 detail=status 502"]
+    (line,) = _lines(caplog)
+    assert re.sub(r" rid=[0-9a-f]{12}", " rid=X", line) == 'ANOMALY client_error page=#/follow source=fetch status=502 path=api/jobs/ab12 route="GET api/jobs/ab12" rid=X detail=status 502'
     assert _lines(caplog, "client warn camera_dark") == ['client warn camera_dark page=#/record {"a":1}']
 
 

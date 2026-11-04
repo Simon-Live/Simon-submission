@@ -5,6 +5,7 @@ description = "Simon Part 7: stitching Parts 1 to 6 into one phone app"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "cryptography==50.0.2",  # AES-256-GCM for users' own Modal tokens at rest (docs/specs/byok-prod.md, ASM-367-2)
     "idna>=3.20",
 ]
 

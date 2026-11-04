@@ -19,7 +19,8 @@ def finished(api: Api, kind: str, clip: Path, pids: tuple[str, ...] = (), write_
             (ctx.work / "person" / pid).mkdir(parents=True)
         return {"result": result or {}}
 
-    job = api.app.queue.submit(kind, fn)
+    owner = {"_people_owner": ""} if kind in ("people", "group") else {}  # made signed out (prod-data.md P-N1)
+    job = api.app.queue.submit(kind, fn, **owner)
     assert api.app.queue.wait(job["id"], 10)["status"] == "done"
     return job["id"]
 

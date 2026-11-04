@@ -102,11 +102,11 @@ test("negative: an entry without a kind uses the bar, and no bar sends none", ()
 test("a locked picker keeps its mode and refuses clicks", () => {
   const picker = mountModePicker({ value: "rehab", testid: "follow-mode" });
   picker.lock();
-  assert.equal(picker.el.dataset.locked, "entry");
+  assert.equal(picker.el.getAttribute("data-locked"), "entry");
   assert.equal(find(picker.el, "follow-mode-rehab").getAttribute("aria-pressed"), "true");
   for (const m of ["dance", "rehab", "fitness"]) assert.equal(find(picker.el, `follow-mode-${m}`).disabled, true);
   const open = mountModePicker({ value: "fitness", testid: "free-mode" });
-  assert.equal(open.el.dataset.locked, undefined, "negative: not locked unless asked");
+  assert.equal(open.el.getAttribute("data-locked") ?? undefined, undefined, "negative: not locked unless asked");
   assert.equal(find(open.el, "free-mode-dance").disabled === true, false);
 });
 

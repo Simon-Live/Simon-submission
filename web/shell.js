@@ -1,12 +1,12 @@
-// App shell controller: the splash, the header's logo and its height. The state lives in model/, the drawing in
-// views/; this file only connects them. The header has no Exercise / Dance switch (removed 2026-11-04): the library
-// lists every kind, and a record or follow page keeps its own mode picker.
+// App shell controller: wires the splash, the header height and the brand mark. The state lives in model/, the drawing
+// in views/; this file only connects them.
 import { takeSplash, SPLASH_TEXT, SPLASH_MS } from "./model/splash.js";
 import { renderSplash } from "./views/splash.js";
 import { renderTestBanner } from "./views/test-banner.js";
 import { isTestServer, TEST_SERVER_TEXT, TEST_SERVER_EVENT, testServerDetail } from "./model/test-server.js";
 import { getHealth, clientLog } from "./api.js";
 import { logoBar } from "./views/logo.js";
+import { forgetHeaderChoice } from "./modes.js";
 
 /** Keep `--header-height` equal to the sticky header's real height (it is shorter without the ?debug=1 build line). */
 export function trackHeaderHeight(header, root = document.documentElement) {
@@ -20,6 +20,7 @@ export function trackHeaderHeight(header, root = document.documentElement) {
 }
 
 export function mountShell({ body = document.body } = {}) {
+  forgetHeaderChoice(); // the Exercise / Dance / Rehab switch is gone: what it stored is dropped, not read (TICKET-436)
   if (takeSplash()) renderSplash(body, SPLASH_TEXT, SPLASH_MS);
   trackHeaderHeight(document.querySelector("header.bar"));
   const brand = document.querySelector(".brand");

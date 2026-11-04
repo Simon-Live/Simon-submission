@@ -20,7 +20,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from part7 import config, media, movement
+from part7 import config, ffsafe, media, movement
 
 SCHEMA = "part7.videos/1.1"
 SUPPORTED_SCHEMAS = ("part7.videos/1", SCHEMA)
@@ -343,7 +343,7 @@ def ensure_degraded(entry: dict[str, Any], source: dict[str, Any], root: Path) -
             "-threads", "1", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
             "-an", "-movflags", "+faststart", str(temporary)]
     try:
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=300, check=False)
+        result = ffsafe.run(argv, timeout=300, text=True)
         if result.returncode != 0 or not temporary.is_file():
             raise VideoError(f"videos: {entry['id']} degradation failed: {result.stderr}")
         digest = sha256_file(temporary)

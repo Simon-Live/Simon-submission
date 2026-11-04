@@ -104,3 +104,23 @@ test("negative: with the entry present the same modules do ask", async () => {
   assert.ok(requests.some((u) => u.includes("ask-trainer")), requests.join(" "));
   assert.ok(requests.some((u) => u.includes("ask-take")));
 });
+
+test("a trainer job on the result route goes to its movement, with no analysis request", async () => {
+  jobRecord = { id: "7e2294fcbad3", kind: "trainer", status: "done", entry_id: "squat-f7374065", result: { entry_id: "squat-f7374065" } };
+  requests.length = 0;
+  const data = await loadResultFor("7e2294fcbad3", undefined, async () => assert.fail("the result loader must not run"));
+  assert.deepEqual(data, { redirect: "#/watch/squat-f7374065" });
+  assert.ok(!requests.some((u) => u.includes("analysis.json")), requests.join(" "));
+});
+
+test("a trainer job with its movement only in result, or with none yet, still leaves the result route", async () => {
+  jobRecord = { id: "7e2294fcbad3", kind: "trainer", status: "done", result: { entry_id: "a b" } };
+  assert.deepEqual(await loadResultFor("7e2294fcbad3", undefined, async () => assert.fail("no loader")), { redirect: "#/watch/a%20b" });
+  jobRecord = { id: "7e2294fcbad3", kind: "trainer", status: "failed", result: null };
+  assert.deepEqual(await loadResultFor("7e2294fcbad3", undefined, async () => assert.fail("no loader")), { redirect: "#/job/7e2294fcbad3" });
+});
+
+test("negative: a follow take on the result route still loads as a result", async () => {
+  jobRecord = { id: "e700387c7a1c", kind: "follow", status: "done", entry_id: "squat" };
+  assert.deepEqual(await loadResultFor("e700387c7a1c", undefined, async () => ({ analysis: "loaded" })), { analysis: "loaded" });
+});

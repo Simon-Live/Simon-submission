@@ -36,6 +36,15 @@ await seed({
     entry("Tie first", 70, "C", "2026-10-30T10:00:01Z", null),
   ],
 });
+const pct = (name, figures, letter, at, extra = {}) => ({ ...entry(name, 49, "F", at, null), shown: { letter, figures, caption: "credit earned", unit: "percent", capped: false, warning: [], measure: Number.parseFloat(figures), level: "normal", ...extra } });
+await seed({   // score-consistency.md S7: the real prod case, posted C first, listed C first; the board ranks B above it
+  ...base, id: "real1", title: "Lateral raise", creator_name: "P1",
+  entries: [
+    pct("P1", "72.3%", "C", "2026-11-04T05:19:21Z", { points: { points: 10865, max_points: 15033 } }),
+    pct("P2", "76.1%", "B", "2026-11-04T05:25:11Z", { points: { points: 9249, max_points: 12160 }, note: "Standard level" }),
+    pct("P3", "88.0%", "A", "2026-11-04T05:30:00Z", { note: "Standard level, 55% of measures seen, take warning", partial: true }),
+  ],
+});
 await seed({
   ...base, id: "spons1", title: "Raise the roof", kind: "sponsored", creator_name: "Example Sportswear", ends_at: iso(3 * day + 3600000),
   sponsor: { name: "Example Sportswear", tagline: "Move more, every day", url: "https://example.com/shop", prize: "A pair of running shoes" },
@@ -79,7 +88,7 @@ try {
   await tid(page, "challenge-create").tap();
   await tid(page, "challenge-link").waitFor();
   const link = (await tid(page, "challenge-link").textContent()).trim();
-  assert.match(link, new RegExp(`^${BASE}/__harness/challenge\\.html#/challenge/fake\\d{4}$`));
+  assert.match(link, new RegExp(`^${BASE}/__harness/c/fake\\d{4}$`));
   const created = await api(`api/challenges/${link.split("/").pop()}`);
   assert.equal(created.entries.length, 1);
   assert.deepEqual([created.entries[0].name, created.entries[0].score, created.entries[0].grade], ["Sam", 61, "D"]); // the score the server read
@@ -141,7 +150,7 @@ try {
   await page.waitForFunction(() => window.__shared.length === 1);
   const shared = await page.evaluate(() => window.__shared[0]);
   assert.deepEqual(shared.types, ["image/png"]);
-  assert.match(shared.url, /#\/challenge\/fake\d{4}$/);
+  assert.match(shared.url, /\/c\/fake\d{4}$/);
   assert.match(shared.text, /I scored 61 on Dumbbell lateral raise\. Can you beat it\?/);
   ok("native share: files, url and text go to navigator.share");
 
@@ -164,6 +173,23 @@ try {
   assert.equal(await page.evaluate(() => [...document.querySelector(".ch-screen").childNodes].filter((n) => n.nodeType === 3).length), 0, "no stray text node on the board");
   await shot(page, "challenge-2-board.png");
   ok("leaderboard: rank order with tie to the earliest, strongest badge only with a timeline, movement shown");
+
+  // ---- S7: the number that ranks is the number shown, and the grade follows it --------------------------
+  page = await open("/#/challenge/real1");
+  await tid(page, "leaderboard").waitFor();
+  assert.deepEqual(await page.locator('[data-testid^="board-name-"]').allTextContents(), ["P2", "P1", "P3"]);   // P3 left out 45% of the measures: below every full take, with its reason
+  assert.deepEqual(await page.locator('[data-testid^="board-score-"]').allTextContents(), ["76.1%", "72.3%", "88.0%"]);
+  assert.deepEqual(await page.locator('[data-testid^="board-grade-"]').allTextContents(), ["B", "C", "A"]);
+  assert.equal(await tid(page, "board-note-1").textContent(), "Standard level");
+  assert.match(await tid(page, "board-note-3").textContent(), /55% of measures seen, take warning/);
+  assert.equal(await tid(page, "board-note-2").count(), 0); // negative: no note on a take with nothing to add
+  assert.equal(await tid(page, "board-partial-3").textContent(), "Ranks below full takes because part of the movement was not seen.");
+  assert.equal(await tid(page, "board-partial-1").count() + await tid(page, "board-partial-2").count(), 0, "negative: a full take gives no such reason");
+  assert.equal(await tid(page, "board-order").textContent(), "Full takes rank first, by score. A take with over a quarter of its measures unseen ranks below them.");
+  assert.ok(!/9,249|10,865/.test(await tid(page, "leaderboard").innerText()), "negative: no points on the board to contradict the rank");
+  ok("S7: B 76.1% ranks above C 72.3% and shows the higher number");
+  page = await open("/#/challenge/board1");
+  await tid(page, "leaderboard").waitFor();
 
   // ---- take the challenge carries the id in the address (B5) ---------------------------------------------
   assert.equal(await tid(page, "take-challenge").getAttribute("href"), "#/follow/lateral-raise/c/board1");
@@ -274,13 +300,24 @@ try {
   await tid(page, "challenge-list").waitFor();
   const ids = await page.locator('[data-testid^="challenge-link-"]').evaluateAll((els) => els.map((e) => e.dataset.testid));
   assert.ok(ids.includes("challenge-link-board1") && ids.includes("challenge-link-spons1"));
-  assert.ok(!ids.includes("challenge-link-ended1") && !ids.includes("challenge-link-lunge1"));
+  const active = await tid(page, "challenge-list").locator('[data-testid^="challenge-link-"]').evaluateAll((els) => els.map((e) => e.dataset.testid));
+  assert.ok(!active.includes("challenge-link-ended1") && !ids.includes("challenge-link-lunge1"), "negative: ended is not active, other movements are not here");
+  assert.ok(await tid(page, "boards-ended").locator('[data-testid="challenge-link-ended1"]').count(), "the ended board is kept apart");
   assert.match(await tid(page, "challenge-link-spons1").textContent(), /Sponsored/);
   const listed = JSON.stringify(await api("api/challenges"));
   assert.equal(/job_id|"pid"/.test(listed), false, "negative: the list names no job");
   page = await harness("screen=list&entry=salsa-basic");
   assert.equal(await tid(page, "challenge-list").count(), 0);
   ok("watch list: open challenges of this movement only, sponsored marked, nothing when there are none");
+
+  // ---- the result says where the take stands (board-discovery.md AC-7) ---------------------------------------
+  page = await harness("screen=rank&entry=lateral-raise&job=x");
+  await tid(page, "result-rank-board1").waitFor();
+  assert.match(await tid(page, "result-rank-board1").textContent(), /^You are 1st on Beat my Dumbbell lateral raise$/);
+  assert.equal(await tid(page, "result-rank-lunge1").count(), 0, "negative: no line for a board of another movement");
+  page = await harness("screen=rank&entry=lateral-raise&job=nobody");
+  assert.equal(await tid(page, "result-ranks").count(), 0, "negative: a take on no board says nothing");
+  ok("result: the take's rank on each board it is on, nothing otherwise");
 
   // ---- crew challenge ----------------------------------------------------------------------------------------
   page = await harness("screen=crew&job=grp1&entry=salsa-basic", { clipboard: true });
@@ -293,6 +330,34 @@ try {
   assert.equal(crew.kind, "crew");
   assert.deepEqual(crew.entries.map((e) => [e.name, e.score]).sort(), [["Front row left", 88], ["Person 2", 73]]); // the refused and warned rows are not posted
   ok("crew challenge: every scored person posted at once in the create request, refused and warned rows left out");
+
+  // ---- a crew joins the challenge it took (board-visibility.md, release 10) ---------------------------------------
+  page = await open("/#/challenge/board1");
+  await tid(page, "record-crew").waitFor();
+  assert.equal(await tid(page, "record-crew").getAttribute("href"), "#/record/c/board1");
+  page = await open("/#/challenge/ended1");
+  await tid(page, "leaderboard").waitFor();
+  assert.equal(await tid(page, "record-crew").count(), 0, "negative: an ended challenge offers no crew recording");
+  page = await open("/#/record/c/board1");
+  await tid(page, "record-challenge").waitFor({ state: "visible" });
+  assert.match(await tid(page, "record-challenge").textContent(), /Recording your crew for Beat my Dumbbell lateral raise\. Choose Group/);
+  assert.match(await page.locator("h1").first().textContent(), /Record your crew/);
+  await seed({ ...base, id: "crewjoin1", entry_id: "salsa-basic", kind: "friend", title: "Salsa night", creator_name: "Sam", entries: [] });
+  page = await harness("screen=crew&job=grp1&entry=salsa-basic&challenge=crewjoin1");
+  await tid(page, "crew-challenge-start").waitFor();
+  await page.waitForFunction(() => /Add the crew to Salsa night/.test(document.querySelector('[data-testid="crew-challenge-start"]').textContent));
+  await tid(page, "crew-pick-2").uncheck();                                   // pick: only person 1 goes on the board
+  await tid(page, "crew-name-1").fill("Ann");                                  // name: shown on the board
+  await tid(page, "challenge-name").fill("Coach");
+  await tid(page, "crew-name-1").fill("ann@example.com");
+  await tid(page, "crew-challenge-start").tap();
+  assert.match(await tid(page, "challenge-error").textContent(), /Email addresses go in the invite box/, "an address is refused as a name");
+  await tid(page, "crew-name-1").fill("Ann");
+  await tid(page, "crew-challenge-start").tap();
+  await page.waitForFunction(() => location.hash === "#/challenge/crewjoin1");
+  const joined = await api("api/challenges/crewjoin1");
+  assert.deepEqual(joined.entries.map((e) => [e.name, e.score]), [["Ann", 88]], "negative: the unpicked person is not posted, and no new board was made");
+  ok("a crew joins the challenge it took through the pick and name step; an address is refused as a name");
 } finally {
   await browser.close();
   server.kill();

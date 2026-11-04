@@ -1,0 +1,1146 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.14.0",
+  "profile": "fitness",
+  "expected": {
+    "path": "work/expected.json"
+  },
+  "follower": {
+    "path": "work/follower/follower.json"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement, with a warning that caps the grade at F."
+  },
+  "faults": [
+    {
+      "measure": "elbow_flexion",
+      "measure_kind": "angle",
+      "joint": "elbow",
+      "body_part": "arms",
+      "side": "both",
+      "direction": "more",
+      "magnitude_deg": 95.3,
+      "peak_deg": 118.4,
+      "threshold_deg": 20.0,
+      "unit": "degrees",
+      "expected_frames": [
+        0,
+        299
+      ],
+      "follower_frames": [
+        0,
+        194
+      ],
+      "runs": [
+        [
+          0,
+          299
+        ]
+      ],
+      "phase": [
+        0.0,
+        1.0
+      ],
+      "coverage": 1.0,
+      "confidence": "low",
+      "text": "elbows bent much more than the example",
+      "cue": "Straighten your arms more",
+      "cue_kind": "range",
+      "follower_t_s": [
+        0.0,
+        6.467
+      ],
+      "at_s": 0.0,
+      "follower_runs": [
+        [
+          0,
+          194
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "elbows bent much more than the example at 0.0 s",
+      "joints": [
+        "left_elbow",
+        "right_elbow"
+      ],
+      "coaching": "At 0.0 s, your elbows are bent much more than the example."
+    },
+    {
+      "measure": "knee_flexion",
+      "measure_kind": "angle",
+      "joint": "knee",
+      "body_part": "legs",
+      "side": "both",
+      "direction": "more",
+      "magnitude_deg": 57.9,
+      "peak_deg": 113.8,
+      "threshold_deg": 10.0,
+      "unit": "degrees",
+      "expected_frames": [
+        85,
+        222
+      ],
+      "follower_frames": [
+        56,
+        144
+      ],
+      "runs": [
+        [
+          0,
+          41
+        ],
+        [
+          78,
+          131
+        ],
+        [
+          168,
+          222
+        ],
+        [
+          256,
+          299
+        ]
+      ],
+      "phase": [
+        0.284,
+        0.742
+      ],
+      "coverage": 1.0,
+      "confidence": "low",
+      "text": "knees bent much more than the example",
+      "cue": "Straighten your knees more",
+      "cue_kind": "range",
+      "follower_t_s": [
+        1.867,
+        4.8
+      ],
+      "at_s": 1.9,
+      "follower_runs": [
+        [
+          0,
+          28
+        ],
+        [
+          47,
+          85
+        ],
+        [
+          104,
+          144
+        ],
+        [
+          162,
+          194
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "knees bent much more than the example at 1.9 s",
+      "joints": [
+        "left_knee",
+        "right_knee"
+      ],
+      "coaching": "Your knees are bent much more than the example at 1.9 s."
+    },
+    {
+      "measure": "thigh_forward",
+      "measure_kind": "direction",
+      "joint": "left_hip",
+      "body_part": "legs",
+      "side": "left",
+      "direction": "more",
+      "magnitude_deg": 54.4,
+      "peak_deg": 72.1,
+      "threshold_deg": 15.0,
+      "unit": "degrees",
+      "expected_frames": [
+        90,
+        121
+      ],
+      "follower_frames": [
+        59,
+        74
+      ],
+      "runs": [
+        [
+          90,
+          121
+        ],
+        [
+          179,
+          210
+        ]
+      ],
+      "phase": [
+        0.301,
+        0.405
+      ],
+      "coverage": 1.0,
+      "confidence": "low",
+      "text": "left thigh raised much too high",
+      "cue": "Keep your left knee lower",
+      "cue_kind": "range",
+      "follower_t_s": [
+        1.967,
+        2.467
+      ],
+      "at_s": 2.0,
+      "follower_runs": [
+        [
+          59,
+          74
+        ],
+        [
+          117,
+          132
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "left thigh raised much too high at 2.0 s",
+      "joints": [
+        "left_hip"
+      ],
+      "coaching": "Around 2.0 s your left thigh is much too high."
+    },
+    {
+      "measure": "forearm_out",
+      "measure_kind": "direction",
+      "joint": "right_elbow",
+      "body_part": "arms",
+      "side": "right",
+      "direction": "less",
+      "magnitude_deg": -35.3,
+      "peak_deg": -44.7,
+      "threshold_deg": 17.0,
+      "unit": "degrees",
+      "expected_frames": [
+        138,
+        167
+      ],
+      "follower_frames": [
+        89,
+        103
+      ],
+      "runs": [
+        [
+          3,
+          30
+        ],
+        [
+          46,
+          73
+        ],
+        [
+          94,
+          119
+        ],
+        [
+          138,
+          167
+        ],
+        [
+          179,
+          208
+        ],
+        [
+          225,
+          252
+        ],
+        [
+          267,
+          294
+        ]
+      ],
+      "phase": [
+        0.462,
+        0.559
+      ],
+      "coverage": 1.0,
+      "confidence": "low",
+      "text": "right hand too close in",
+      "cue": "Move your right hand out",
+      "cue_kind": "position",
+      "follower_t_s": [
+        2.967,
+        3.433
+      ],
+      "at_s": 3.0,
+      "follower_runs": [
+        [
+          2,
+          15
+        ],
+        [
+          31,
+          44
+        ],
+        [
+          61,
+          73
+        ],
+        [
+          89,
+          103
+        ],
+        [
+          117,
+          131
+        ],
+        [
+          146,
+          159
+        ],
+        [
+          175,
+          189
+        ]
+      ],
+      "lateral": "left",
+      "text_timed": "right hand too far left at 3.0 s",
+      "joints": [
+        "right_elbow"
+      ],
+      "coaching": "Compared with the recording, your right hand is too far left at 3.0 s."
+    },
+    {
+      "measure": "trunk_lean_forward",
+      "measure_kind": "direction",
+      "joint": "spine",
+      "body_part": "torso",
+      "side": "center",
+      "direction": "less",
+      "magnitude_deg": -31.1,
+      "peak_deg": -45.4,
+      "threshold_deg": 9.0,
+      "unit": "degrees",
+      "expected_frames": [
+        209,
+        274
+      ],
+      "follower_frames": [
+        132,
+        178
+      ],
+      "runs": [
+        [
+          30,
+          89
+        ],
+        [
+          120,
+          181
+        ],
+        [
+          209,
+          274
+        ]
+      ],
+      "phase": [
+        0.699,
+        0.916
+      ],
+      "coverage": 1.0,
+      "confidence": "low",
+      "text": "much more upright than the example, lean forward more",
+      "cue": "Lean forward more",
+      "cue_kind": "position",
+      "follower_t_s": [
+        4.4,
+        5.933
+      ],
+      "at_s": 4.4,
+      "follower_runs": [
+        [
+          15,
+          58
+        ],
+        [
+          74,
+          118
+        ],
+        [
+          132,
+          178
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "much more upright than the example, lean forward more at 4.4 s",
+      "joints": [
+        "left_shoulder",
+        "right_shoulder",
+        "left_hip",
+        "right_hip"
+      ],
+      "coaching": "Your torso is much more upright than the example at 4.4 s."
+    },
+    {
+      "measure": "head_forward",
+      "measure_kind": "direction",
+      "joint": "neck",
+      "body_part": "head",
+      "side": "center",
+      "direction": "more",
+      "magnitude_deg": 28.3,
+      "peak_deg": 32.5,
+      "threshold_deg": 18.0,
+      "unit": "degrees",
+      "expected_frames": [
+        0,
+        299
+      ],
+      "follower_frames": [
+        0,
+        194
+      ],
+      "runs": [
+        [
+          0,
+          299
+        ]
+      ],
+      "phase": [
+        0.0,
+        1.0
+      ],
+      "coverage": 1.0,
+      "confidence": "low",
+      "text": "head further forward than the example",
+      "cue": "Pull your head back",
+      "cue_kind": "position",
+      "follower_t_s": [
+        0.0,
+        6.467
+      ],
+      "at_s": 0.0,
+      "follower_runs": [
+        [
+          0,
+          194
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "head further forward than the example at 0.0 s",
+      "joints": [
+        "nose",
+        "left_shoulder",
+        "right_shoulder"
+      ],
+      "coaching": "Around 0.0 s your head is further forward than the example."
+    },
+    {
+      "measure": "upper_arm_out",
+      "measure_kind": "direction",
+      "joint": "shoulder",
+      "body_part": "arms",
+      "side": "both",
+      "direction": "more",
+      "magnitude_deg": 15.5,
+      "peak_deg": 21.1,
+      "threshold_deg": 11.0,
+      "unit": "degrees",
+      "expected_frames": [
+        0,
+        299
+      ],
+      "follower_frames": [
+        0,
+        194
+      ],
+      "runs": [
+        [
+          0,
+          299
+        ]
+      ],
+      "phase": [
+        0.0,
+        1.0
+      ],
+      "coverage": 1.0,
+      "confidence": "low",
+      "text": "elbows slightly wider than the example",
+      "cue": "Keep your elbows closer in",
+      "cue_kind": "range",
+      "follower_t_s": [
+        0.0,
+        6.467
+      ],
+      "at_s": 0.0,
+      "follower_runs": [
+        [
+          0,
+          194
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "elbows slightly wider than the example at 0.0 s",
+      "joints": [
+        "left_shoulder",
+        "right_shoulder"
+      ],
+      "coaching": "At 0.0 s, your elbows are slightly wider than the example."
+    }
+  ],
+  "warnings": [
+    {
+      "code": "low_match",
+      "text": "This take doesn't closely match the trainer's movement, so the grade is capped at F. Check that you picked the right movement and that the whole movement is in the take."
+    }
+  ],
+  "match": {
+    "quality": "low",
+    "residual": 0.6968,
+    "timing_corr": -0.0126,
+    "limits": {
+      "max_residual": 0.5677,
+      "min_timing_corr": 0.8336
+    }
+  },
+  "quality": {
+    "version": "simon.quality.v1",
+    "level": "ok",
+    "reasons": [],
+    "signals": {
+      "unseen_joint_share": 0.0,
+      "missing_joint_share": 0.0,
+      "missing_frame_share": 0.0,
+      "hidden_measure_share": 0.0,
+      "position_jitter_mm": 0.3,
+      "heading_offset_deg": 3.7
+    },
+    "score_cap": null
+  },
+  "diagnostics": {
+    "alignment_residual": 0.6968,
+    "alignment_measures": [
+      "left_knee_flexion",
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward"
+    ],
+    "follower_span": [
+      0,
+      194
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.6968,
+      "timing_corr": -0.0126,
+      "span_share": 0.65,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    },
+    "near_misses": {
+      "total": 10,
+      "omitted": 0,
+      "items": [
+        {
+          "measure": "upper_arm_forward",
+          "side": "right",
+          "joint": "right_shoulder",
+          "body_part": "arms",
+          "direction": "less",
+          "magnitude_deg": -106.6,
+          "peak_deg": -129.2,
+          "threshold_deg": 15.0,
+          "margin_deg": 91.6,
+          "expected_frames": [
+            112,
+            188
+          ],
+          "follower_frames": [
+            70,
+            121
+          ],
+          "frames_over": 247,
+          "counted_frames": 77,
+          "needed_frames": 34,
+          "min_run_frames": 4,
+          "reason": "explained_by",
+          "explained_by": {
+            "measure": "trunk_lean_forward",
+            "side": "center",
+            "direction": "less"
+          }
+        },
+        {
+          "measure": "upper_arm_forward",
+          "side": "left",
+          "joint": "left_shoulder",
+          "body_part": "arms",
+          "direction": "less",
+          "magnitude_deg": -69.4,
+          "peak_deg": -174.8,
+          "threshold_deg": 15.0,
+          "margin_deg": 54.4,
+          "expected_frames": [
+            0,
+            297
+          ],
+          "follower_frames": [
+            0,
+            192
+          ],
+          "frames_over": 298,
+          "counted_frames": 298,
+          "needed_frames": 40,
+          "min_run_frames": 4,
+          "reason": "explained_by",
+          "explained_by": {
+            "measure": "trunk_lean_forward",
+            "side": "center",
+            "direction": "less"
+          }
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "right",
+          "joint": "right_knee",
+          "body_part": "legs",
+          "direction": "less",
+          "magnitude_deg": -55.1,
+          "peak_deg": -75.6,
+          "threshold_deg": 10.0,
+          "margin_deg": 45.1,
+          "expected_frames": [
+            136,
+            165
+          ],
+          "follower_frames": [
+            88,
+            102
+          ],
+          "frames_over": 91,
+          "counted_frames": 30,
+          "needed_frames": 34,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 4
+        },
+        {
+          "measure": "thigh_forward",
+          "side": "right",
+          "joint": "right_hip",
+          "body_part": "legs",
+          "direction": "less",
+          "magnitude_deg": -51.7,
+          "peak_deg": -66.3,
+          "threshold_deg": 15.0,
+          "margin_deg": 36.7,
+          "expected_frames": [
+            135,
+            165
+          ],
+          "follower_frames": [
+            87,
+            102
+          ],
+          "frames_over": 92,
+          "counted_frames": 31,
+          "needed_frames": 34,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 3
+        },
+        {
+          "measure": "thigh_forward",
+          "side": "right",
+          "joint": "right_hip",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 23.4,
+          "peak_deg": 69.4,
+          "threshold_deg": 15.0,
+          "margin_deg": 8.4,
+          "expected_frames": [
+            202,
+            218
+          ],
+          "follower_frames": [
+            128,
+            142
+          ],
+          "frames_over": 84,
+          "counted_frames": 36,
+          "needed_frames": 40,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 4
+        },
+        {
+          "measure": "thigh_forward",
+          "side": "left",
+          "joint": "left_hip",
+          "body_part": "legs",
+          "direction": "less",
+          "magnitude_deg": -19.9,
+          "peak_deg": -30.4,
+          "threshold_deg": 15.0,
+          "margin_deg": 4.9,
+          "expected_frames": [
+            73,
+            83
+          ],
+          "follower_frames": [
+            44,
+            55
+          ],
+          "frames_over": 37,
+          "counted_frames": 17,
+          "needed_frames": 40,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 23
+        },
+        {
+          "measure": "forearm_out",
+          "side": "left",
+          "joint": "left_elbow",
+          "body_part": "arms",
+          "direction": "less",
+          "magnitude_deg": -19.3,
+          "peak_deg": -24.8,
+          "threshold_deg": 17.0,
+          "margin_deg": 2.3,
+          "expected_frames": [
+            122,
+            133
+          ],
+          "follower_frames": [
+            75,
+            86
+          ],
+          "frames_over": 51,
+          "counted_frames": 23,
+          "needed_frames": 34,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 11
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "left",
+          "joint": "left_knee",
+          "body_part": "legs",
+          "direction": "less",
+          "magnitude_deg": -12.9,
+          "peak_deg": -22.2,
+          "threshold_deg": 10.0,
+          "margin_deg": 2.9,
+          "expected_frames": [
+            252,
+            261
+          ],
+          "follower_frames": [
+            159,
+            170
+          ],
+          "frames_over": 17,
+          "counted_frames": 10,
+          "needed_frames": 40,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 30
+        },
+        {
+          "measure": "foot_out",
+          "side": "left",
+          "joint": "left_ankle",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 6.9,
+          "peak_deg": 8.2,
+          "threshold_deg": 6.0,
+          "margin_deg": 0.9,
+          "expected_frames": [
+            3,
+            20
+          ],
+          "follower_frames": [
+            2,
+            10
+          ],
+          "frames_over": 46,
+          "counted_frames": 26,
+          "needed_frames": 40,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 14
+        },
+        {
+          "measure": "foot_out",
+          "side": "right",
+          "joint": "right_ankle",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 6.1,
+          "peak_deg": 6.1,
+          "threshold_deg": 6.0,
+          "margin_deg": 0.1,
+          "expected_frames": [
+            195,
+            200
+          ],
+          "follower_frames": [
+            125,
+            127
+          ],
+          "frames_over": 10,
+          "counted_frames": 6,
+          "needed_frames": 40,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 34
+        }
+      ]
+    }
+  },
+  "insights": [
+    {
+      "cue": "Straighten your knees more",
+      "why": "Your knees are bent much more than the example at 1.9 s",
+      "kind": "range",
+      "at_s": 1.9,
+      "window": 0,
+      "points": 25.7,
+      "measure": "knee_flexion",
+      "side": "both",
+      "joint": "knee"
+    },
+    {
+      "cue": "Lean forward more",
+      "why": "Your torso is much more upright than the example at 4.4 s",
+      "kind": "position",
+      "at_s": 4.4,
+      "window": 0,
+      "points": 24.8,
+      "measure": "trunk_lean_forward",
+      "side": "center",
+      "joint": "spine"
+    },
+    {
+      "cue": "Straighten your arms more",
+      "why": "At 0.0 s, your elbows are bent much more than the example",
+      "kind": "range",
+      "at_s": 0.0,
+      "window": 0,
+      "points": 23.3,
+      "measure": "elbow_flexion",
+      "side": "both",
+      "joint": "elbow"
+    },
+    {
+      "cue": "Keep your left knee lower",
+      "why": "Around 2.0 s your left thigh is much too high",
+      "kind": "range",
+      "at_s": 2.0,
+      "window": 0,
+      "points": 18.9,
+      "measure": "thigh_forward",
+      "side": "left",
+      "joint": "left_hip"
+    },
+    {
+      "cue": "Pull your head back",
+      "why": "Around 0.0 s your head is further forward than the example",
+      "kind": "position",
+      "at_s": 0.0,
+      "window": 0,
+      "points": 14.5,
+      "measure": "head_forward",
+      "side": "center",
+      "joint": "neck"
+    }
+  ],
+  "phrasing": {
+    "requested": "muse-spark",
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "lang": "en",
+    "faults": [
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "At 0.0 s, your elbows are bent much more than the example."
+      },
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "Your knees are bent much more than the example at 1.9 s."
+      },
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "Around 2.0 s your left thigh is much too high."
+      },
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "Compared with the recording, your right hand is too far left at 3.0 s."
+      },
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "Your torso is much more upright than the example at 4.4 s."
+      },
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "Around 0.0 s your head is further forward than the example."
+      },
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "At 0.0 s, your elbows are slightly wider than the example."
+      }
+    ],
+    "selected_by": "flag"
+  },
+  "score": {
+    "version": "simon.score.v3",
+    "value": 0,
+    "grade": "F",
+    "components": {
+      "faults": 134.9,
+      "similarity": 4.0
+    },
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.0,
+          6.467
+        ],
+        "value": 0,
+        "grade": "F",
+        "components": {
+          "faults": 134.9,
+          "similarity": 4.0
+        },
+        "misses": [
+          {
+            "text": "At 0.0 s, your elbows are bent much more than the example.",
+            "measure": "elbow_flexion",
+            "side": "both",
+            "joint": "elbow",
+            "t_s": [
+              0.0,
+              6.467
+            ],
+            "at_s": 0.0,
+            "points": 23.3,
+            "cue": "Straighten your arms more",
+            "cue_kind": "range",
+            "direction": "more"
+          },
+          {
+            "text": "Around 0.0 s your head is further forward than the example.",
+            "measure": "head_forward",
+            "side": "center",
+            "joint": "neck",
+            "t_s": [
+              0.0,
+              6.467
+            ],
+            "at_s": 0.0,
+            "points": 14.5,
+            "cue": "Pull your head back",
+            "cue_kind": "position",
+            "direction": "more"
+          },
+          {
+            "text": "At 0.0 s, your elbows are slightly wider than the example.",
+            "measure": "upper_arm_out",
+            "side": "both",
+            "joint": "shoulder",
+            "t_s": [
+              0.0,
+              6.467
+            ],
+            "at_s": 0.0,
+            "points": 13.8,
+            "cue": "Keep your elbows closer in",
+            "cue_kind": "range",
+            "direction": "more"
+          },
+          {
+            "text": "Your knees are bent much more than the example at 1.9 s.",
+            "measure": "knee_flexion",
+            "side": "both",
+            "joint": "knee",
+            "t_s": [
+              1.867,
+              4.8
+            ],
+            "at_s": 1.9,
+            "points": 25.7,
+            "cue": "Straighten your knees more",
+            "cue_kind": "range",
+            "direction": "more"
+          },
+          {
+            "text": "Around 2.0 s your left thigh is much too high.",
+            "measure": "thigh_forward",
+            "side": "left",
+            "joint": "left_hip",
+            "t_s": [
+              1.967,
+              2.467
+            ],
+            "at_s": 2.0,
+            "points": 18.9,
+            "cue": "Keep your left knee lower",
+            "cue_kind": "range",
+            "direction": "more"
+          },
+          {
+            "text": "Compared with the recording, your right hand is too far left at 3.0 s.",
+            "measure": "forearm_out",
+            "side": "right",
+            "joint": "right_elbow",
+            "t_s": [
+              2.967,
+              3.433
+            ],
+            "at_s": 3.0,
+            "points": 13.9,
+            "cue": "Move your right hand out",
+            "cue_kind": "position",
+            "direction": "less"
+          },
+          {
+            "text": "Your torso is much more upright than the example at 4.4 s.",
+            "measure": "trunk_lean_forward",
+            "side": "center",
+            "joint": "spine",
+            "t_s": [
+              4.4,
+              5.933
+            ],
+            "at_s": 4.4,
+            "points": 24.8,
+            "cue": "Lean forward more",
+            "cue_kind": "position",
+            "direction": "less"
+          }
+        ],
+        "tempo": {
+          "ratio": null,
+          "cue": null
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": null,
+      "cue": null
+    },
+    "credit": {
+      "version": "simon.credit.v1",
+      "percent": 46.9,
+      "grade": "E",
+      "points": 10311,
+      "max_points": 22000,
+      "tolerance": "normal",
+      "levels": {
+        "easy": {
+          "percent": 56.8,
+          "points": 9375,
+          "max_points": 16500
+        },
+        "normal": {
+          "percent": 46.9,
+          "points": 10311,
+          "max_points": 22000
+        },
+        "hard": {
+          "percent": 37.6,
+          "points": 12407,
+          "max_points": 33000
+        }
+      },
+      "bands": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.6
+        ],
+        [
+          2.0,
+          0.2
+        ]
+      ],
+      "grades": [
+        [
+          95,
+          "S"
+        ],
+        [
+          85,
+          "A"
+        ],
+        [
+          75,
+          "B"
+        ],
+        [
+          65,
+          "C"
+        ],
+        [
+          55,
+          "D"
+        ],
+        [
+          40,
+          "E"
+        ],
+        [
+          0,
+          "F"
+        ]
+      ],
+      "points_per_measure_second": 100,
+      "per_window": [
+        {
+          "t_s": [
+            0.0,
+            6.467
+          ],
+          "percent": 46.9,
+          "points": 10311,
+          "max_points": 22000
+        }
+      ]
+    },
+    "fault_cap": 79,
+    "capped_by": [
+      "low_match"
+    ]
+  }
+}

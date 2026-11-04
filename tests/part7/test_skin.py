@@ -38,6 +38,22 @@ def test_stage_framing_keeps_every_skin_in_shot():
     assert "FAIL" not in r.stdout
 
 
+@pytest.mark.skipif(NODE is None, reason="node is not available")
+def test_take_extent_unit_tests_pass():
+    """docs/specs/model-skin.md AC16c: the frames the stage scans and the projected box of a take."""
+    r = subprocess.run([NODE, "--test", str(ROOT / "tests/part7/stage-extent.unit.test.mjs")], capture_output=True, text=True, cwd=ROOT, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_take_framing_holds_the_first_play():
+    """docs/specs/model-skin.md AC16c: with the take given, every frame of the first play in shot and the camera still."""
+    if not NODE or not SLOT.is_file() or not (ROOT / "node_modules/playwright").is_dir():
+        pytest.skip("node, the browser slot script or playwright is not available")
+    r = subprocess.run(["bash", str(SLOT), NODE, str(ROOT / "tests/part7/take-framing.browser.mjs")], capture_output=True, text=True, cwd=ROOT, timeout=900)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "FAIL" not in r.stdout
+
+
 def test_skin_files_follow_the_repo_rules():
     text = (ROOT / "web/skin/character.js").read_text()
     assert "—" not in text and "–" not in text

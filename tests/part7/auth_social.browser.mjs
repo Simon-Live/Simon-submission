@@ -21,6 +21,7 @@ for (let i = 0; i < 150; i++) {
   try { if ((await fetch(`${base}api/auth/me`)).ok && fs.existsSync(idFile)) break; } catch { await new Promise((r) => setTimeout(r, 150)); }
 }
 const job = fs.readFileSync(idFile, "utf8").trim(); // seeded take, not a real recording
+const tokens = JSON.parse(fs.readFileSync(`${idFile}.tokens.json`, "utf8")); // prod-data.md: the making device's creator tokens
 const EMAIL = "ada.social@example.com";
 const NAME = "Ada Social";
 const browser = await chromium.launch();
@@ -41,7 +42,7 @@ try {
   await t(page, "auth-code").fill(code);
   await t(page, "auth-verify").tap();
   await t(page, "me-email").waitFor();
-  const claimed = await page.evaluate(async (j) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j }) })).status, job);
+  const claimed = await page.evaluate(async ([j, t]) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j, creator_token: t }) })).status, [job, tokens[job]]);
   assert.equal(claimed, 200);
   ok("signed in and kept the seeded take");
 
@@ -52,12 +53,11 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-testid="profile-save-note"]')?.textContent === "Saved.");
   ok("profile saved with a public name and show-name on");
 
+  // the result page's prompt never shows a name; a named link is the API's own option, made with the page's session
   await page.goto(`${base}#/result/${job}`);
-  await t(page, "share-take-open").tap();
-  await t(page, "share-name").check();
-  await t(page, "share-create").tap();
-  await t(page, "share-link").waitFor();
-  const link = await t(page, "share-link").inputValue();
+  await t(page, "action-share").waitFor();
+  const minted = await page.evaluate(async (j) => (await (await fetch("api/shares", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "take_result", item_ref: j, show_name: true, days: 7, confirm: true }) })).json()).token, job);
+  const link = `${base}#/shared/${minted}`;
   assert.match(link, /#\/shared\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/);
   ok("shared the take with the name shown");
 
@@ -88,11 +88,11 @@ try {
   await t(page, "share-revoke").first().tap();
   await page.waitForFunction(() => document.querySelector('[data-testid="share-state"]')?.textContent === "Revoked");
   const status = await (await clean.request.get(`${base}api/shared/${token}`)).status();
-  assert.equal(status, 404);
+  assert.equal(status, 410);
   await viewer.reload();
-  await t(viewer, "shared-gone").waitFor();
+  await t(viewer, "shared-ended").waitFor();
   assert.equal(await t(viewer, "shared-score").count(), 0, "negative: the revoked link shows no result");
-  ok("revoke then reload: the link is dead (404 and the not-available page)");
+  ok("revoke then reload: the link is dead (410 and the plain ended page)");
   assert.deepEqual(errors, []);
 } finally {
   await browser.close();

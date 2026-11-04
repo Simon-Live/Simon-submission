@@ -28,7 +28,7 @@ os.environ.setdefault("STAGING_ROUTE", "root")
 os.environ.update(SIMON7_MAIL_TRANSPORT="outbox", SIMON7_STATE_DIR=str(state),
                   SIMON7_KEYS_DIR=str(state / "keys"), SIMON7_PUBLIC_ORIGIN=f"http://127.0.0.1:{port}")
 
-from part7 import auth, server  # noqa: E402
+from part7 import auth, creator, server  # noqa: E402
 from support import FakeChild, ffmpeg_video, make_lock  # noqa: E402
 
 ENTRY = "lateral-raise"
@@ -73,7 +73,9 @@ class Helper(BaseHTTPRequestHandler):
 
 
 threading.Thread(target=ThreadingHTTPServer(("127.0.0.1", port + 1), Helper).serve_forever, daemon=True).start()
-id_file.write_text(json.dumps({"first": ids[0], "second": ids[1], "entry": ENTRY}))
+# what the submit answer gives the device that made a take (part7/creator.py): the test puts them in the follower's browser
+tokens = {job: creator.token_for(state, job) for job in ids}
+id_file.write_text(json.dumps({"first": ids[0], "second": ids[1], "entry": ENTRY, "tokens": tokens}))
 http = server.make_server(app, port=port)
 print(f"serving on {http.server_address[1]}", flush=True)
 http.serve_forever()

@@ -3,6 +3,8 @@
 `POST api/jobs/<job>/export` queues a render of a finished follow job (202; 200 when it is ready already),
 `GET api/jobs/<job>/export` answers the status JSON, `GET api/jobs/<job>/export.mp4` serves the clip with Range
 (404 until it is ready). One render runs at a time, in a daemon thread, so the request never waits for ffmpeg.
+A take made signed in answers all three only to its owner's session (take_access.py; 404 to anyone else). The render
+lives in the job folder (`export/`), so it goes with the take's delete and its 7-day sweep.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from pathlib import Path
 import threading
 from typing import Any
 
-from part7 import applog, export_clip, jobs, model_only, result_media
+from part7 import applog, export_clip, jobs, model_only, result_media, take_access
 from part7.labels import ENTRY_ID_RE
 
 NAME_MP4, NAME_STATUS = "export.mp4", "status.json"
@@ -169,8 +171,12 @@ def handle(h: Any, method: str, route: str) -> bool:
     if len(parts) != 3 or parts[0] != "jobs" or parts[2] not in ("export", NAME_MP4):
         return False
     job_id, what = parts[1], parts[2]
-    if not jobs.JOB_ID_RE.match(job_id) or not h.app.queue.get(job_id):
+    job = h.app.queue.get(job_id) if jobs.JOB_ID_RE.match(job_id) else None
+    refused = take_access.refusal(h, job_id) if job and not model_only.view_only(job) else None
+    if not job:
         h._error(404, NOT_THERE)
+    elif refused:  # another account's take: the same 404 as no take (prod-data.md "Object routes")
+        h._error(refused[0], NOT_THERE if refused[0] == 404 else refused[1])
     elif what == NAME_MP4 and method in ("GET", "HEAD"):
         _clip(h, job_id)
     elif what == "export" and method == "POST":

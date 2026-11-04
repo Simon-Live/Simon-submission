@@ -15,6 +15,7 @@ test("the stand-in says fake, or has no real build sha", () => {
 test("a real server is never called a test server", () => {
   assert.equal(isTestServer(REAL), false);
   assert.equal(isTestServer({ ok: true, build: REAL.build }), false); // an older real answer without the fake field
+  assert.equal(isTestServer({ ok: true, sha: "32f4dd0d67328ea14c6259471fc841f20fbba03c", draining: false, jobs: "run" }), false); // prod's public line
   assert.equal(isTestServer({ ok: true, fake: false, build: { sha: "unknown" } }), false); // real, built without git
 });
 

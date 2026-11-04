@@ -3,18 +3,40 @@
 import { plural } from "./teacher.js";
 import { shownRow, toneOfLetter } from "./score-labels.js";
 
-/** The version stored with the retention choice; change it whenever CONSENT_LINES changes. */
-export const CONSENT_VERSION = "retention-90-v3";
+/** The version stored with the retention choice; change it whenever the consent lines change. */
+export const CONSENT_VERSION = "retention-90-v5";
+
+// The privacy lane's contract (private-default.md W5, prod): a take made signed in opens for its owner only, and a
+// claim needs the creator token of the browser that recorded it (LEG-H4), so no line says a link opens or keeps a take.
+const OWNER_LINE = "A take can be kept only in the browser that made it; the first account to keep it owns it."; // W5; a11y R12: the creator token is kept per browser
 
 export const CONSENT_LINES = [
   "Signing in is optional and Simon works without it.",
-  "We keep your email address and which takes and movements are yours. We use the address only to send sign-in mail.",
+  "We keep your email address and which takes and movements are yours. We use the address only to send sign-in mail and notices about your account.",
   "If you tick the box, we also keep a copy of your takes (the analysis and a short clip) for 90 days instead of 7, to show your progress over weeks.",
   "When you press Compare on a movement, the measurements of your kept takes go to Meta's Muse Spark model, with short clips only if you also allow video.",
   "Untick it at any time and we delete the copies of your takes and every comparison made from them right away. Your takes then follow the 7 day rule.",
-  "Anyone who holds the link to a take can keep it in their own account; the first account to keep a take owns it.",
+  OWNER_LINE,
   "Delete my data below removes everything we hold. It cannot undo what was already sent to Meta's API for analysis.",
 ];
+
+// Prod (a11y-copy B1, B2, docs/specs/muse-prod.md): with the Muse switch off nothing goes to Meta and Compare is off; every take needs sign-in
+// and runs in the Modal workspace the operator of Simon pays for (docs/specs/serverless-compute.md).
+export const PROD_MUSE_LINES = [
+  "When you press Compare, ask a question or ask for a picture of you doing it right, the measurements of your kept takes go to Meta's AI models, with short clips or a frame only if you also allow video.",
+  "Meta's terms let it keep what it receives as needed, with no time limit. Delete my data cannot undo what was already sent.",
+];
+export const PROD_CONSENT_LINES = [
+  "You sign in to make a take: every take runs in Simon's Modal workspace.",
+  "We keep your email address and which takes and movements are yours. We use the address only to send sign-in mail and notices about your account.",
+  "If you tick the box, we also keep a copy of your takes (the analysis and a short clip) for 90 days instead of 7, to show your progress over weeks.",
+  "Untick it at any time and we delete the copies of your takes right away. Your takes then follow the 7 day rule.",
+  OWNER_LINE,
+  "Delete my data below removes everything we hold, any saved Modal token included, and what your takes left in Modal's storage.",
+];
+
+/** The consent lines for this server: the prod set when `prod` is true. */
+export const consentLines = (prod, muse = false) => (!prod ? CONSENT_LINES : muse ? [...PROD_CONSENT_LINES, ...PROD_MUSE_LINES] : PROD_CONSENT_LINES);
 
 export const TEXT = {
   title: "Me",
@@ -26,7 +48,7 @@ export const TEXT = {
   consentFailed: "Could not save your choice. Try again.",
   claimTitle: "Keep a take",
   claimLabel: "Result link or take id",
-  claimHint: "Paste the link of a result you hold, or its take id. Anyone with the link can still open it.",
+  claimHint: "Paste the link of a result made in this browser, or its take id.", // W5; a11y R12: per browser
   claimButton: "Keep this take",
   claimDone: "Kept. It is in your list.",
   claimEmpty: "Enter the link or id of a take.",
@@ -34,7 +56,7 @@ export const TEXT = {
   takesEmpty: "No takes kept yet.",
   open: "Open",
   deleteTitle: "Delete my data",
-  deleteBody: "Removes your account, your sign-in sessions, the takes you kept and the link between you and your movements. A teacher's movement stays in the catalog. Takes you never kept are not touched and expire after 7 days.",
+  deleteBody: "Removes your account, your sign-in sessions, your takes, the movements you recorded and your Modal token. A sample movement that ships with Simon stays, without its link to you. Takes you never kept are not touched and expire after 7 days.",
   deleteButton: "Delete my data",
   deleteSure: "This cannot be undone.",
   deleteConfirm: "Yes, delete everything",
@@ -49,13 +71,17 @@ export const TEXT = {
   keepButton: "Keep this take",
   keepDone: "Kept. See it in Me.",
   keepFailed: "Could not keep this take.",
+  keepNeedsConsent: "This take is on your account for 7 days. To keep it for 90, tick Keep my takes in Me, then press Keep this take again.",
+  notCreator: "Only the browser that recorded this take can keep it.",
 };
 
-/** "2 takes removed. 1 movement unlinked." from the delete answer. */
+/** "2 takes removed. 1 movement removed. 1 movement unlinked." from the delete answer (prod-data.md: entries_removed). */
 export function deletedSummary(body) {
-  const takes = Number.isFinite(body?.takes_removed) ? body.takes_removed : 0;
-  const entries = Number.isFinite(body?.entries_unlinked) ? body.entries_unlinked : 0;
-  return `${plural(takes, "take", "takes")} removed. ${plural(entries, "movement", "movements")} unlinked.`;
+  const count = (key) => (Number.isFinite(body?.[key]) ? body[key] : 0);
+  const removed = count("entries_removed");
+  return `${plural(count("takes_removed"), "take", "takes")} removed. `
+    + (removed ? `${plural(removed, "movement", "movements")} removed. ` : "")
+    + `${plural(count("entries_unlinked"), "movement", "movements")} unlinked.`;
 }
 
 /** The job ids a refused delete named as busy; empty when the answer names none. */
@@ -71,8 +97,9 @@ export function jobIdFrom(raw) {
 }
 
 /** The words for a refused claim. */
-export function claimError(status) {
+export function claimError(status, body) {
   if (status === 401) return TEXT.signInFirst;
+  if (status === 403) return typeof body?.error === "string" && body.error ? body.error : TEXT.notCreator; // LEG-H4, TICKET-373
   if (status === 404) return "This take was not found. Results are kept for 7 days.";
   if (status === 409) return "This take is kept by another account.";
   if (status === 0) return "The app could not be reached. Check your connection and try again.";
@@ -108,8 +135,8 @@ export function takeRow(t, timeZone) {
 export const takeRows = (body, timeZone) =>
   (Array.isArray(body?.takes) ? body.takes.filter((t) => t && t.job_id).map((t) => takeRow(t, timeZone)) : []);
 
-/** Whether `jobId` is among the answer's takes (the Keep slot shows nothing once it is). */
-export const holdsTake = (body, jobId) => takeRows(body).some((r) => r.jobId === jobId);
+/** Whether the answer says `jobId` is kept: on the account is not enough, a follow take needs its history copy. */
+export const keptTake = (body, jobId) => Array.isArray(body?.takes) && body.takes.some((t) => t && t.job_id === jobId && t.kept === true);
 
 /** The body of `POST api/me/consent`. */
 export const consentBody = (on) => ({ retention: Boolean(on), version: CONSENT_VERSION });

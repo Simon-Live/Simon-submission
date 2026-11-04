@@ -27,7 +27,7 @@
 .th-take-head { display: flex; align-items: baseline; gap: var(--space-3); }
 .th-score { font: var(--weight-black) var(--text-lg)/1 var(--font-sans); color: var(--color-good); }
 .th-score[data-tone="warn"] { color: var(--color-warn); }
-.th-score[data-tone="bad"] { color: var(--color-bad); }
+.th-score[data-tone="bad"] { color: var(--color-bad-text); }
 .th-grade { padding: 2px var(--space-2); border-radius: var(--radius-pill); background: var(--card-fill); color: var(--color-text-muted);
   font: var(--weight-bold) var(--text-xs)/1.5 var(--font-sans); }
 .th-when { margin-left: auto; color: var(--color-text-muted); font-size: var(--text-xs); }

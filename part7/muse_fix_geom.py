@@ -85,8 +85,23 @@ def _rows(replay: dict[str, Any], who: str, frame: int) -> dict[str, Vec] | None
     return {n: p for n, p in pts.items() if p is not None}
 
 
-def choose_moment(replay: dict[str, Any], joint: str, follower_frames: Sequence[int]) -> dict[str, Any] | None:
-    """The follower frame inside `follower_frames` where the joint is furthest from the trainer's matched frame.
+# Part 5 measure -> how its fault grows with the drawn joint's angle: +1 the angle grows with the fault, -1 it shrinks.
+# Flexion measures grow as the joint closes; the shoulder's "out" grows as it opens. A measure not listed has no known direction.
+FAULT_GROWS_WITH_ANGLE = {"elbow_flexion": -1, "knee_flexion": -1, "thigh_forward": -1, "upper_arm_out": 1}
+
+
+def wanted_move(measure: Any, direction: Any) -> int | None:
+    """Which way the cue asks the joint's angle to go: +1 opens it, -1 closes it. `direction` is Part 5's: "more" is a follower
+    with more of the fault than the example, so the cue takes some away. None when the measure's relation to the angle is unknown."""
+    grows = FAULT_GROWS_WITH_ANGLE.get(measure)
+    if grows is None or direction not in ("more", "less"):
+        return None
+    return -grows if direction == "more" else grows
+
+
+def choose_moment(replay: dict[str, Any], joint: str, follower_frames: Sequence[int], want: int | None = None) -> dict[str, Any] | None:
+    """The follower frame inside `follower_frames` where the joint is furthest from the trainer's matched frame, on the
+    side the cue asks for: with `want` (+1 opens the joint, -1 closes it) a frame whose target lies the other way is no moment.
 
     `replay` is `simon.replay.v1`; `exp_to_fol[e]` is the follower frame matched to expected frame `e`. Returns
     `{follower_frame, expected_frame, follower_deg, target_deg, t_s}` or None when no frame has both angles."""
@@ -112,6 +127,8 @@ def choose_moment(replay: dict[str, Any], joint: str, follower_frames: Sequence[
         a, b = joint_angle(mine, joint), joint_angle(theirs, joint)
         if a is None or b is None:
             continue
+        if want in (1, -1) and (b - a) * want <= 0:
+            continue  # the trainer's angle is on the wrong side of the cue: drawing it would ask for the opposite of what the page says
         if best is None or abs(a - b) > abs(best["follower_deg"] - best["target_deg"]):
             t = times[f] if isinstance(times, list) and f < len(times) and isinstance(times[f], (int, float)) else None
             best = {"follower_frame": f, "expected_frame": e, "follower_deg": a, "target_deg": b, "t_s": t}

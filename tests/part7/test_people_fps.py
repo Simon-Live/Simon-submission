@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from part7 import people
 from part7.parts import p2_pose
 from support import Api, load_scaled
 from test_people import VISITOR, Fakes, _people_job, _step, class_mp4, tracks_doc  # noqa: F401 (class_mp4 is a fixture)
@@ -98,11 +100,11 @@ def test_the_old_variable_overrides_the_mode_in_the_job(api: Api, class_mp4: Pat
     assert fakes.track_fps == [6] and "people tracking at 6 fps (single)" in _log(api, job)
 
 
-def test_a_single_take_with_nobody_moving_repeats_once_at_10_fps(
+def test_a_single_take_with_nobody_there_long_enough_repeats_once_at_10_fps(
     api: Api, class_mp4: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fakes = Fakes(monkeypatch, {0: 20})
-    _fake_track(fakes, monkeypatch, {3: tracks_doc({0: 20}), 10: _moving({0: 20})})  # still box at 3 fps
+    _fake_track(fakes, monkeypatch, {3: tracks_doc({0: 5}), 10: _moving({0: 20})})  # 5 frames at 3 fps is 1.67 s
     job = _post(api, class_mp4, mode="single")
     assert fakes.track_fps == [3, 10]
     text = _log(api, job)
@@ -116,16 +118,28 @@ def test_the_repeat_happens_once_even_when_the_10_fps_run_finds_nobody_moving(
     api: Api, class_mp4: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fakes = Fakes(monkeypatch, {0: 20})
-    _fake_track(fakes, monkeypatch, {3: tracks_doc({0: 20}), 10: tracks_doc({0: 20})})
+    _fake_track(fakes, monkeypatch, {3: tracks_doc({0: 5}), 10: tracks_doc({0: 20})})
     _post(api, class_mp4, mode="single")
     assert fakes.track_fps == [3, 10]
+
+
+@pytest.mark.parametrize("mode", ["single", "group"])
+def test_someone_there_all_clip_who_barely_moves_is_tracked_once_and_offered(
+    api: Api, class_mp4: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """Prod job 4577688732c2 paid for two Modal runs that found the same still person."""
+    fakes = Fakes(monkeypatch, {0: 20})
+    _fake_track(fakes, monkeypatch, {3: tracks_doc({0: 20})})  # 6.67 s at 3 fps, a still box
+    job = _post(api, class_mp4, mode=mode)
+    assert fakes.track_fps == [3] and "tracking again" not in _log(api, job)
+    assert [p["id"] for p in job["result"]["people"]] == ["0"]
 
 
 def test_a_group_take_with_no_participant_repeats_once_at_10_fps(
     api: Api, class_mp4: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fakes = Fakes(monkeypatch, {0: 20})
-    _fake_track(fakes, monkeypatch, {3: tracks_doc({0: 20}), 10: _moving({0: 20})})
+    _fake_track(fakes, monkeypatch, {3: tracks_doc({0: 5}), 10: _moving({0: 20})})
     job = _post(api, class_mp4, mode="group")
     assert fakes.track_fps == [3, 10] and "(group)" in _log(api, job)
 
@@ -175,3 +189,15 @@ def test_a_single_take_tracked_at_3_fps_gives_the_3d_run_boxes_at_the_3d_rate(
     job = api.app.queue.wait(doc["job"], load_scaled(60))
     assert job and job["status"] == "done", job
     assert "people tracks at 3 fps resampled to 10 fps for the 3D run" in _log(api, job)
+
+
+@pytest.mark.parametrize("barred, noted", [(True, False), (False, True)])
+def test_the_open_tracker_is_only_called_a_fallback_where_another_is_allowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, barred: bool, noted: bool
+) -> None:
+    monkeypatch.setattr(people.licence_gates, "meta_barred", lambda: barred)
+    tracks = tmp_path / "tracks.json"
+    tracks.write_text(json.dumps({"frames": [], "provenance": {"tracker": "local-open"}}), encoding="utf-8")
+    notes: list[str] = []
+    people._note_tracker(SimpleNamespace(add_note=notes.append), tracks)
+    assert bool(notes) is noted

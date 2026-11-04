@@ -69,7 +69,7 @@ body .ref[data-mirror="true"] .ref-media:not(video) canvas { transform: scaleX(-
   border-radius: var(--radius-pill); background: var(--color-scrim); color: var(--color-on-media); font-size: var(--text-sm);
   max-width: calc(100% - 24px); }
 .live-chip[data-ok="true"] { color: var(--color-accent); }
-.live-chip[data-ok="false"] { color: var(--color-bad); }
+.live-chip[data-ok="false"] { color: var(--color-bad-text); }
 .live-cue { position: absolute; left: var(--space-3); right: var(--space-3); bottom: var(--space-3); z-index: 3; margin: 0;
   padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--color-scrim); color: var(--color-on-media);
   font-weight: var(--weight-semibold); text-align: center; }

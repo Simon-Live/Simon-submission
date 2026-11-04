@@ -18,8 +18,11 @@ import ci_skips
 TESTS = Path(__file__).resolve().parent
 ADAPTERS = {"p2_pose", "p2_worker", "p2_avatar", "p2_image3d", "p2_autorig"}
 # A test that replaces one of these with a fake (monkeypatch.setattr) never starts a Part 2 process: `runner.run` is
-# every launch, `p2_pose._execute` and `_on_route` every Part 2 call on either route (tests/test_modal_route.py).
-FAKED_LAUNCH = {("runner", "run"), ("p2_pose", "_execute"), ("p2_pose", "_on_route")}
+# every launch, `p2_pose._execute` and `_on_route` every Part 2 call on either route (tests/test_modal_route.py), and
+# `p2_pose.run` and `.track` the adapter calls themselves. The target may be reached through a module attribute
+# (`monkeypatch.setattr(p2_pose.runner, "run", fake)` replaces the same `runner.run`; the BYOK tests do this).
+FAKED_LAUNCH = {("runner", "run"), ("p2_pose", "_execute"), ("p2_pose", "_on_route"), ("p2_pose", "run"),
+                ("p2_pose", "track")}
 
 
 def _is_real_checkout(node: ast.AST) -> bool:
@@ -48,8 +51,8 @@ def _is_launch_fake(node: ast.AST) -> bool:
             and isinstance(node.func.value, ast.Name) and node.func.value.id == "monkeypatch" and len(node.args) >= 2):
         return False
     target, name = node.args[0], node.args[1]
-    return (isinstance(target, ast.Name) and isinstance(name, ast.Constant)
-            and (target.id, name.value) in FAKED_LAUNCH)
+    module = target.id if isinstance(target, ast.Name) else target.attr if isinstance(target, ast.Attribute) else None
+    return module is not None and isinstance(name, ast.Constant) and (module, name.value) in FAKED_LAUNCH
 
 
 def _fakes_launch(fn: ast.AST, helpers: dict[str, ast.AST], seen: frozenset[str] = frozenset()) -> bool:
@@ -137,3 +140,11 @@ def test_every_test_runs_with_a_private_part_2_lock(request: pytest.FixtureReque
     lock = Path(os.environ["PART2_GPU_LOCK"])
     assert "simon-part-2" not in lock.parts and lock != Path.home() / ".local/state/simon-part-2/gpu.lock"
     assert lock.parent.is_dir()
+
+
+def test_a_launch_faked_through_a_module_attribute_counts_as_faked() -> None:
+    body = ("def test_x(monkeypatch):\n    monkeypatch.setattr(p2_pose.runner, 'run', fake)\n"
+            "    p2_pose.run(v, w, lock=modules.load())\n")
+    assert unmarked_launchers(body) == []
+    unfaked = "def test_x(monkeypatch):\n    monkeypatch.setattr(p2_pose.applog, 'anomaly', f)\n    p2_pose.run(v, w, lock=modules.load())\n"
+    assert unmarked_launchers(unfaked) == ["test_x"]  # negative: another attribute's fake is not a launch fake

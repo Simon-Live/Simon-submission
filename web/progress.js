@@ -4,11 +4,13 @@
 import { h, mmss, ensureCss } from "./ui.js";
 import { pawTrail, pawWalk } from "./views/paw-loader.js";
 
-/** Typical seconds per job stage [low, high], from app.md and the processor timings. api/config may override. */
+/** Typical seconds per job stage [low, high], from app.md and the processor timings. api/config may override.
+ * tracking: measured 109 to 187 s on prod at 10 fps earlier; then a clean camera take read 5:19 on screen (321 s in the server log)
+ * and the j2 report has 338.3 s of Part 2 for the job, so the range runs to 360 s. A range, not a promise. */
 export const TYPICAL_S = {
   upload: [5, 30], keyframes: [10, 30], pose: [60, 180], skeleton: [10, 40], animation: [20, 60], catalog: [2, 10],
   analyse: [10, 40], track: [20, 60], trainer: [30, 90], followers: [30, 120],
-  normalizing: [3, 8], trimming: [2, 6], tracking: [8, 20],
+  normalizing: [3, 8], trimming: [2, 6], tracking: [110, 360],
 };
 
 export function ensureProgressStyles() { ensureCss("progress.css", "data-simon-progress-css"); }
@@ -43,13 +45,13 @@ export function createProgress({ testid = "progress", label = "Progress", value 
     if (v == null) {
       bar.removeAttribute("aria-valuenow");
       bar.setAttribute("data-mode", "indeterminate");
-      fill.style.width = "";
+      fill.style.transform = "";
       return;
     }
     const pct = Math.round(clamp01(v) * 100);
     bar.setAttribute("aria-valuenow", String(pct));
     bar.setAttribute("data-mode", "determinate");
-    fill.style.width = `${pct}%`;
+    fill.style.transform = `scaleX(${pct / 100})`; // reels 1.1: the fill grows by transform, never by width (progress.css)
   }
   setValue(value);
   const setElapsed = (sec) => { time.hidden = false; time.textContent = `Elapsed ${mmss(sec)}`; };

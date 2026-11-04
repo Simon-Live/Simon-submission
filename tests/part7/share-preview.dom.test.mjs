@@ -1,4 +1,4 @@
-// The owner's Share dialog preview (web/views/share.js, docs/specs/share.md "Ticks") against a tiny fake DOM and a
+// The owner's comparison Share dialog preview (web/views/share.js, docs/specs/share.md "Ticks"; the result page has its own prompt, share-prompt.dom.test.mjs) against a tiny fake DOM and a
 // recorded fetch. QA share-link-take-create on release 20 saw "Your result" and no faults in the dialog while the viewer
 // showed the movement name and three faults: the dialog drew a local placeholder first. Now it asks the server on open,
 // draws only the server's snapshot, and says loading, server or failed in data-preview.
@@ -27,15 +27,15 @@ globalThis.fetch = async (url, init = {}) => {
 };
 function reply(status, body) { return { status, json: async () => body, headers: { get: () => null } }; }
 function hold() { let open; const wait = new Promise((r) => { open = r; }); return { wait, open }; }
-const { mountShareAction } = await import("../../web/share.js");
+const { mountReportShare } = await import("../../web/share.js");
 const settle = () => new Promise((r) => setTimeout(r, 20));
 const texts = (n) => all(n).filter((x) => x instanceof El && x._text !== null).map((x) => x._text);
 
 async function openDialog() {
   const slot = new El("div");
-  const stop = mountShareAction(slot, { job: "03636841a269", analysis: { score: { value: 52, grade: "F" } } });
+  const stop = mountReportShare(slot, "lateral-raise");
   await settle();
-  find(slot, "share-take-open").click();
+  find(slot, "share-report-open").click();
   return { slot, stop, preview: () => find(slot, "share-preview") };
 }
 
@@ -45,8 +45,8 @@ test("on open the dialog asks the server and draws its title, score and faults",
   gate = hold();
   const { preview, stop } = await openDialog();
   assert.equal(sent.length, 1, "the preview is asked for on open, before any tick changes");
-  assert.equal(sent[0].kind, "take_result");
-  assert.equal(sent[0].item_ref, "03636841a269");
+  assert.equal(sent[0].kind, "history_report");
+  assert.equal(sent[0].item_ref, "lateral-raise");
   assert.equal(preview().getAttribute("data-preview"), "loading");
   assert.equal(find(preview(), "shared-title"), null, "negative: no title is drawn before the server answers");
   assert.ok(!texts(preview()).includes("Your result"), "negative: the old placeholder never shows");
@@ -63,17 +63,18 @@ test("on open the dialog asks the server and draws its title, score and faults",
 
 test("a tick change asks again and draws the new snapshot, never a local one", async () => {
   sent.length = 0;
-  answer = (b) => ({ status: 200, body: b.include_faults === false ? { ...SNAP, faults: undefined, include: { score: true, faults: false } } : SNAP });
+  answer = (b) => ({ status: 200, body: b.show_name ? { ...SNAP, author: "Sam" } : SNAP });
   const { slot, preview, stop } = await openDialog();
   await settle();
-  const faultsBox = find(slot, "share-faults");
-  faultsBox.checked = false;
-  faultsBox.dispatchEvent(new Event("change"));
+  const nameBox = find(slot, "share-name");
+  nameBox.checked = true;
+  nameBox.dispatchEvent(new Event("change"));
   await settle();
   assert.equal(sent.length, 2);
-  assert.equal(sent[1].include_faults, false);
+  assert.equal(sent[1].show_name, true);
   assert.equal(preview().getAttribute("data-preview"), "server");
-  assert.equal(find(preview(), "shared-faults"), null, "unticked faults are not in the preview");
+  assert.equal(find(slot, "share-score"), null, "negative: a comparison dialog has no score or clip tick");
+  assert.equal(find(slot, "share-clip"), null);
   assert.equal(find(preview(), "shared-title").textContent, "Lateral raise", "the title stays the server's");
   stop();
 });
@@ -90,10 +91,10 @@ test("when the server cannot answer, the preview says so and draws no result", a
 });
 
 test("a refusal shows the server's reason", async () => {
-  answer = () => ({ status: 400, body: { ok: false, message: "This take has no kept clip to share." } });
+  answer = () => ({ status: 400, body: { ok: false, message: "Make a comparison of your takes first, then share it." } });
   const { preview, stop } = await openDialog();
   await settle();
   assert.equal(preview().getAttribute("data-preview"), "failed");
-  assert.equal(find(preview(), "share-preview-status").textContent, "This take has no kept clip to share.");
+  assert.equal(find(preview(), "share-preview-status").textContent, "Make a comparison of your takes first, then share it.");
   stop();
 });

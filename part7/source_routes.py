@@ -1,9 +1,10 @@
 """HTTP routes of the source and licence credit (docs/specs/source-credit.md; TICKET-322); `server.py` calls `handle`
 with the route below `api/`.
 
-`GET source/<entry|take>/<id>` is open to every viewer: `{source, mine, licences}`; `source` is null when none was
-written, and also for a viewer who is not the owner when the entry is "only me" or the take is private (the answer is the
-same, so nothing says that a credit exists). `POST me/source/<entry|take>/<id>` is the owner's edit: 401 signed out, 403
+`GET source/<entry|take>/<id>` answers `{source, mine, licences}`; `source` is null when none was written, and also for
+a viewer who is not the owner when the take is private or its movement "only me" (the answer is the same, so nothing
+says that a credit exists). A movement the caller may not view (`auth.may_view_entry`) and another account's take
+(`take_access.refusal`) answer 404, as their own routes do (app-surface R1). `POST me/source/<entry|take>/<id>` is the owner's edit: 401 signed out, 403
 for anyone else, 404 for an unknown subject, 400 with one sentence for a bad field; all-empty fields clear the source.
 Logs carry no field text.
 """
@@ -12,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from part7 import auth, history_store, identity, share, source_credit
+from part7 import auth, history_store, identity, labels, share, source_credit, take_access
 from part7.auth_routes import _fail, _post_body, _reply, _user_or_401
 
 NO_STORE = {"Cache-Control": "no-store"}
@@ -37,9 +38,27 @@ def _hidden_take(h: Any, store: Any, job_id: str) -> bool:
     return bool(row and row[0]["only_me"])
 
 
+def _well_formed(kind: str, subject_id: str) -> bool:
+    """A movement id by the catalog's rule (a shipped sample such as `squat` is short), any other id by the credit's."""
+    return bool((labels.ENTRY_ID_RE if kind == "entry" else source_credit.ID_RE).match(subject_id))
+
+
+def _refused(h: Any, kind: str, subject_id: str) -> tuple[int, str] | None:
+    """app-surface R1: the credit of a movement the caller may not view (unpublished, "only me", a minor's) and of
+    another account's take answer as a missing one, as the movement's and the take's own routes do."""
+    if kind == "entry":
+        return None if auth.may_view_entry(h, subject_id) else (404, MSG_NONE)
+    return take_access.refusal(h, subject_id)
+
+
 def _read(h: Any, kind: str, subject_id: str) -> None:
+    # a malformed id answers as an unknown one, so the answer never tells a valid id from an invalid one (R4, the team on #61)
+    if not _well_formed(kind, subject_id):
+        return _fail(h, 404, MSG_NONE)
+    if refused := _refused(h, kind, subject_id):
+        return _fail(h, *refused)
     viewer = auth.current_user(h)
-    if not source_credit.ID_RE.match(subject_id) or not identity.db_path(h.app.state).is_file():
+    if not identity.db_path(h.app.state).is_file():
         return _reply(h, 200, {"source": None, "mine": False, "licences": list(source_credit.LICENCES)}, NO_STORE)
     store = auth.identity(h.app)
     owner, hidden = _owner(store, kind, subject_id)
@@ -55,7 +74,7 @@ def _write(h: Any, kind: str, subject_id: str) -> None:
     if doc is None or (user_id := _user_or_401(h)) is None:
         return
     store = auth.identity(h.app)
-    owner = _owner(store, kind, subject_id)[0] if source_credit.ID_RE.match(subject_id) else None
+    owner = _owner(store, kind, subject_id)[0] if _well_formed(kind, subject_id) else None
     if owner is None:
         return _fail(h, 404, MSG_NONE)
     if owner != user_id:  # a hidden subject answers as an unknown one, so existence does not leak (R4)

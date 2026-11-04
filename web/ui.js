@@ -50,5 +50,18 @@ export function ensureCss(file, marker) {
   document.head.append(link);
 }
 
+const FOCUSABLE = /^(a|button|input|select|textarea|summary)$/i;
+/**
+ * Move keyboard focus to `el` after the control that had it was hidden or replaced (WCAG 2.4.3, a11y-copy B11 and R1).
+ * A native control keeps its own tab stop; any other element gets tabindex -1 first, so it takes focus without joining
+ * the tab order. Returns `el`.
+ */
+export function focusOn(el) {
+  if (!el || typeof el.focus !== "function") return el;
+  if (!FOCUSABLE.test(el.tagName || el.tag || "") && el.getAttribute("tabindex") === null) el.setAttribute("tabindex", "-1");
+  el.focus();
+  return el;
+}
+
 /** A finite number, else null. */
 export const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);

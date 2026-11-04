@@ -18,6 +18,9 @@ from typing import Any
 MAGIC = b"glTF"
 JSON_CHUNK, BIN_CHUNK = 0x4E4F534A, 0x004E4942
 MAX_TRIANGLES, MAX_JOINTS, MAX_TEXTURES, MAX_TEXTURE_PX = 300_000, 512, 32, 4096
+# HARDENING 3 (TICKET-341): the document is read before any count is trusted, so nodes, meshes, vertices and the
+# depth of the node tree are capped before anything is built from them.
+MAX_NODES, MAX_MESHES, MAX_VERTICES, MAX_NODE_DEPTH = 10_000, 2_000, 600_000, 512
 # The extensions GLTFLoader r170 reads without a decoder. Draco, meshopt and KTX2 need decoders the app does not ship.
 SUPPORTED_REQUIRED = frozenset({
     "KHR_materials_unlit", "KHR_materials_emissive_strength", "KHR_materials_clearcoat", "KHR_materials_ior",
@@ -31,7 +34,7 @@ COMPONENT = {5120: ("b", 1), 5121: ("B", 1), 5122: ("h", 2), 5123: ("H", 2), 512
 NORM_MAX = {5120: 127.0, 5121: 255.0, 5122: 32767.0, 5123: 65535.0}
 WIDTH = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 
-MSG_NOT_GLB = "This file is not a valid GLB or VRM model."
+MSG_NOT_GLB = "This file is not a valid GLB or VRM model. Export it again from your 3D tool, then choose the new file."
 MSG_EXTERNAL = "This model points at files outside itself. Export it with everything embedded."
 
 
@@ -144,9 +147,9 @@ def _check_uris(doc: dict[str, Any]) -> list[bytes | None]:
 def _check_extensions(doc: dict[str, Any]) -> None:
     for ext in doc.get("extensionsRequired") or []:
         if ext in DECODERS:
-            raise GlbError(f"This model is compressed with {DECODERS[ext]}, which Simon cannot open. Export it without compression.")
+            raise GlbError(f"This model is compressed with {DECODERS[ext]}, which Simon cannot open. Export it without compression, then choose the new file.")
         if ext not in SUPPORTED_REQUIRED:
-            raise GlbError(f"This model needs the extension {ext}, which Simon does not support.")
+            raise GlbError(f"This model needs the extension {ext}, which Simon does not support. Export it without that extension, then choose the new file.")
 
 
 # ---------------------------------------------------------------- accessors
@@ -248,11 +251,15 @@ def _max_texture_px(doc: dict[str, Any], blob: bytes, buffers: list[bytes | None
 # ---------------------------------------------------------------- skin and weights
 def _primitive_stats(doc: dict[str, Any], blob: bytes, buffers: list[bytes | None], skinned: set[int]) -> tuple[int, float]:
     """(triangles, worst weight-sum error) over the meshes; structural checks on joints and weights raise GlbError."""
-    triangles, worst = 0, 0.0
+    triangles, worst, vertices = 0, 0.0, 0
     accessors = doc.get("accessors") or []
     for mi, mesh in enumerate(doc.get("meshes") or []):
         for prim in mesh.get("primitives") or []:
             attrs = prim.get("attributes") or {}
+            if isinstance(attrs.get("POSITION"), int) and 0 <= attrs["POSITION"] < len(accessors):
+                vertices += accessors[attrs["POSITION"]].get("count", 0)
+                if vertices > MAX_VERTICES:
+                    raise GlbError(f"This model has more than {MAX_VERTICES} vertices. The limit is {MAX_VERTICES}. Reduce it in your 3D tool, then choose the new file.")
             if prim.get("mode", 4) == 4:
                 if "indices" in prim and 0 <= prim["indices"] < len(accessors):
                     triangles += accessors[prim["indices"]].get("count", 0) // 3
@@ -261,7 +268,7 @@ def _primitive_stats(doc: dict[str, Any], blob: bytes, buffers: list[bytes | Non
             if mi not in skinned:
                 continue
             if "JOINTS_0" not in attrs or "WEIGHTS_0" not in attrs:
-                raise GlbError("A skinned part of this model has no joint weights (JOINTS_0 and WEIGHTS_0).")
+                raise GlbError("A skinned part of this model has no joint weights (JOINTS_0 and WEIGHTS_0). Export it with its skin weights, then choose the new file.")
             joints = read_accessor(doc, blob, buffers, attrs["JOINTS_0"])
             weights = read_accessor(doc, blob, buffers, attrs["WEIGHTS_0"])
             if len(joints) != len(weights):
@@ -269,7 +276,7 @@ def _primitive_stats(doc: dict[str, Any], blob: bytes, buffers: list[bytes | Non
             skin_size = max((len(doc["skins"][s].get("joints") or []) for s in skinned_skins(doc, mi)), default=0)
             for jrow, wrow in zip(joints, weights):
                 if not all(math.isfinite(v) for v in wrow) or max(jrow) >= max(skin_size, 1):
-                    raise GlbError("The joint weights of this model are not valid.")
+                    raise GlbError("The joint weights of this model are not valid. Export it again with its skin weights, then choose the new file.")
                 worst = max(worst, abs(sum(wrow) - 1.0))
     return triangles, worst
 
@@ -290,7 +297,7 @@ def _world_poses(doc: dict[str, Any]) -> tuple[list[int | None], list[list[float
     world: list[list[float] | None] = [None] * len(nodes)
 
     def solve(i: int, depth: int = 0) -> list[float]:
-        if depth > len(nodes):
+        if depth > min(len(nodes), MAX_NODE_DEPTH):
             raise GlbError(MSG_NOT_GLB)  # a loop in the node tree
         if world[i] is None:
             local = node_local(nodes[i])
@@ -305,23 +312,27 @@ def inspect_bytes(data: bytes) -> Report:
     buffers = _check_uris(doc)
     _check_extensions(doc)
     nodes, skins = doc.get("nodes") or [], doc.get("skins") or []
+    if len(nodes) > MAX_NODES:
+        raise GlbError(f"This model has {len(nodes)} nodes. The limit is {MAX_NODES}. Reduce it in your 3D tool, then choose the new file.")
+    if len(doc.get("meshes") or []) > MAX_MESHES:
+        raise GlbError(f"This model has {len(doc['meshes'])} meshes. The limit is {MAX_MESHES}. Reduce it in your 3D tool, then choose the new file.")
     parent, world = _world_poses(doc)
     skin_nodes: list[int] = []
     for skin in skins:
         joints = skin.get("joints") or []
         if len(joints) > MAX_JOINTS:
-            raise GlbError(f"This model has {len(joints)} joints in one skeleton. The limit is {MAX_JOINTS}.")
+            raise GlbError(f"This model has {len(joints)} joints in one skeleton. The limit is {MAX_JOINTS}. Reduce it in your 3D tool, then choose the new file.")
         if not all(isinstance(j, int) and 0 <= j < len(nodes) for j in joints):
             raise GlbError(MSG_NOT_GLB)
         if joints and skin.get("inverseBindMatrices") is None:
-            raise GlbError("This model has no inverse bind matrices, so it cannot be posed.")
+            raise GlbError("This model has no inverse bind matrices, so it cannot be posed. Export it with its skin, then choose the new file.")
         skin_nodes.extend(j for j in joints if j not in skin_nodes)
     skinned_meshes = {n["mesh"] for n in nodes if isinstance(n.get("mesh"), int) and isinstance(n.get("skin"), int)}
     triangles, worst = _primitive_stats(doc, blob, buffers, skinned_meshes)
     textures = len(doc.get("images") or [])
     biggest = _max_texture_px(doc, blob, buffers)
     if triangles > MAX_TRIANGLES:
-        raise GlbError(f"This model has {triangles} triangles. The limit is {MAX_TRIANGLES}.")
+        raise GlbError(f"This model has {triangles} triangles. The limit is {MAX_TRIANGLES}. Reduce it in your 3D tool, then choose the new file.")
     if textures > MAX_TEXTURES:
         raise GlbError(f"This model has {textures} textures. The limit is {MAX_TEXTURES}.")
     if biggest > MAX_TEXTURE_PX:

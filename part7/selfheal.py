@@ -44,6 +44,8 @@ CHECKS: tuple[tuple[str, str, str], ...] = (
 )
 CHECKS += (("gpu_starved", "a take waits over 300 s (SIMON7_GPU_STARVE_S) for the GPU while work outside staging holds it; "
             "an alert only, nothing is killed (ANOMALY gpu_starved)", "server"),)
+CHECKS += (("part6_supervisor", "a Part 6 child that exited or stopped answering is restarted with a growing backoff (ANOMALY part6_down)", "server"),
+           ("mail_send", "a mail the provider did not take after its one retry (ANOMALY mail_failed), the hourly limit on all sign-in mail reached (ANOMALY signin_global_limited) or a failed send probe (ANOMALY mail_probe_failed); a success closes it", "server"),)
 NAMES = tuple(c[0] for c in CHECKS)
 # ANOMALY kinds (applog.anomaly) that mark a check with a finding.
 ANOMALY_CHECKS = {
@@ -56,6 +58,10 @@ ANOMALY_CHECKS = {
     "p2_track_gpu_busy_final": "gpu_busy_routing",
     "upload_refused": "refused_upload_logging",
     "entry_video_mismatch": "entry_content",
+    "part6_down": "part6_supervisor",
+    "mail_failed": "mail_send",
+    "signin_global_limited": "mail_send",
+    "mail_probe_failed": "mail_send",
 }
 
 # Checks whose findings come and go on their own: open while new events keep arriving, closed after a quiet period.
@@ -77,12 +83,17 @@ _FINDINGS: dict[str, dict[str, Any]] = {}  # "<check>|<key>" -> {check, finding,
 _HITS: dict[str, list[float]] = {}  # client_error kind -> times within the window
 _CRASH: dict[str, str] = {}  # "METHOD path" -> exception type of the last handler crash
 _STARVED: set[str] = set()  # jobs whose `ANOMALY gpu_starved` is logged
+_ACTIONS: list[dict[str, Any]] = []  # the last ACTIONS_MAX self-heal actions, newest last
+ACTIONS_MAX = 20
 _BROKEN: dict[str, Any] = {"reason": None, "logged": -LOG_EVERY_S}  # why selfheal cannot record, once it cannot
 
 
 def configure(state: Path | str | None) -> None:
     """Name the state folder that keeps `selfheal.json` (None keeps the record in memory only)."""
     global _STATE
+    from part7 import ops_notice  # ops_notice imports applog, which imports this module
+
+    ops_notice.reset()
     with _LOCK:
         _STATE = Path(state) if state is not None else None
         _MEM.clear()
@@ -91,6 +102,7 @@ def configure(state: Path | str | None) -> None:
         _HITS.clear()
         _CRASH.clear()
         _STARVED.clear()
+        _ACTIONS.clear()
         _BROKEN.update(reason=None, logged=-LOG_EVERY_S)
 
 
@@ -136,6 +148,8 @@ def _flush(state: Path) -> None:
         del doc["_findings"][key]
     if "gpu_starved|gpu" not in _FINDINGS:
         doc["_findings"].pop("gpu_starved|gpu", None)  # closed when the wait ended (TICKET-305), not after the quiet backstop
+    if _ACTIONS:
+        doc["_actions"] = {"rows": list(_ACTIONS)}
     tmp = state / f".{FILE}.{os.getpid()}.tmp"
     tmp.write_text(json.dumps(doc), encoding="utf-8")
     os.replace(tmp, state / FILE)
@@ -168,7 +182,24 @@ def record(check: str, finding: str | None = None) -> None:
         _stopped(f"record failed: {type(exc).__name__}: {exc}"[:160])
 
 
-def _route_key(method: str, path: str) -> str:
+def action(name: str, detail: str) -> None:
+    """A repair this app just made: one `SELFHEAL` line in the log, and a row in `status()["actions"]`. Never raises."""
+    row = {"at": _now(), "action": name, "detail": detail[:200]}
+    _log(f"SELFHEAL action={name} {detail}", logging.WARNING)
+    try:
+        with _LOCK:
+            state = _STATE
+            if not _ACTIONS and state is not None:
+                _ACTIONS.extend(_read_file(state).get("_actions", {}).get("rows", []))
+            _ACTIONS.append(row)
+            del _ACTIONS[:-ACTIONS_MAX]
+            if state is not None:
+                _flush(state)
+    except OSError as exc:
+        _stopped(f"cannot write {FILE}: {exc.strerror or type(exc).__name__}")
+
+
+def route_key(method: str, path: str) -> str:
     """`GET api/jobs/<id>/speech/0.wav`: ids in the path do not make a new route."""
     parts = [("<id>" if _ID_PART.match(p) else p) for p in path.strip("/").split("/")]
     return f"{method} " + "/".join(parts)
@@ -286,8 +317,9 @@ def _watch(kind: str, fields: dict[str, Any]) -> None:
         method, path = str(fields.get("method", "?")), str(fields.get("path", "?"))
         with _LOCK:
             err = _CRASH.get(f"{method} {path}")
-        route = _route_key(method, path)
-        _touch("route_errors", route, f"{route} answered {fields.get('status', '5xx')}, error {err or 'not named'}")
+        route = route_key(method, path)
+        _touch("route_errors", route, f"{route} answered {fields.get('status', '5xx')}, error {err or fields.get('reason') or 'not named'}")
+        _count_failure(route)
     elif kind == "client_error" and not _client_benign(fields):
         source = str(fields.get("source") or "script")
         now = time.time()
@@ -299,6 +331,15 @@ def _watch(kind: str, fields: dict[str, Any]) -> None:
         if n >= CLIENT_ERRORS_N:
             example = fields.get("path") or fields.get("page") or "-"
             _touch("client_errors", source, f"client_error source={source} {n} in 10 min, e.g. {example}")
+        _count_failure(f"browser {source} {fields.get('route') or fields.get('path') or '-'}")
+    elif kind == "mail_failed":
+        _count_failure("mail not sent")
+
+
+def _count_failure(label: str) -> None:
+    from part7 import ops_notice  # ops_notice imports applog, which imports this module
+
+    ops_notice.note_failure(label, _STATE)
 
 
 def observe_anomaly(kind: str, detail: str = "", fields: dict[str, Any] | None = None) -> None:
@@ -369,6 +410,7 @@ def status(state: Path | str | None = None) -> dict[str, Any]:
         findings = sorted([*findings, deferred], key=lambda f: f.get("last_seen") or "")
     with _LOCK:
         disk, mem, degraded = _read_file(folder), dict(_MEM), _BROKEN["reason"]
+        actions = list(_ACTIONS) or list(disk.get("_actions", {}).get("rows", []))
     open_checks = {f["check"] for f in findings}
     rows = []
     for name, what, where in CHECKS:
@@ -379,7 +421,7 @@ def status(state: Path | str | None = None) -> dict[str, Any]:
                      "last_finding": got.get("last_finding"), "open": _is_open(got, name) or name in open_checks})
     names = [r["name"] for r in rows if r["open"]]
     parts = (["degraded"] if degraded else []) + ([f"issues:{len(names)}"] if names else [])
-    return {"checks": rows, "findings": findings, "issues": len(names), "open": names, "degraded": degraded, "state": "degraded" if degraded else "ok",
+    return {"actions": actions, "checks": rows, "findings": findings, "issues": len(names), "open": names, "degraded": degraded, "state": "degraded" if degraded else "ok",
             "summary": ",".join(parts) or "ok"}
 
 
@@ -405,4 +447,6 @@ def cli_selfheal_status(state: Path | str, as_json: bool = False) -> int:
         ran = row["last_run"] or "not run in this state folder"
         finding = row["last_finding"] or "none"
         print(f"  {row['name']:<24} last run {ran}; last finding: {finding}{' (open)' if row['open'] else ''}")
+    for row in doc["actions"]:
+        print(f"  action {row['at']} {row['action']}: {row['detail']}")
     return 0 if doc["issues"] == 0 else 1

@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import hmac
+import logging
 import os
 from pathlib import Path
 import re
@@ -32,6 +33,9 @@ SESSION_ABSOLUTE_S = 30 * 86400
 SESSION_IDLE_S = 14 * 86400
 SESSION_TOUCH_S = 60
 ACCOUNT_IDLE_S = 180 * 86400
+BACKUP_KEEP_S = 7 * 86400  # a migration's copy of identity.db (`identity.db.pre-*`) is kept a week (LEG-M2)
+BACKUP_GLOB = "identity.db.pre-*"
+_PERSON_COLUMNS = ("user_id", "owner_id", "follower_id", "trainer_id")
 KINDS = ("follow", "trainer")  # group takes are not owned (identity.md)
 VIAS = ("submit", "claim")
 _CODE_RE = re.compile(r"^[0-9]{6}$")
@@ -139,12 +143,34 @@ def migrate_attribution(db: sqlite3.Connection, path: Path | str) -> bool:
     return True
 
 
+AGE_BAND_BACKUP = "identity.db.pre-age-band"
+MINOR_BANDS = ("minor", "under13")  # `users.age_band` values of an account that never publishes (PM-R5)
+BUSY_TIMEOUT_MS = 30_000  # how long a statement waits for another connection's lock
+CHECKPOINT_RETRY_MS = 1_000  # the periodic sweep's retry waits this long for readers (R2)
+
+
+def migrate_age_band(db: sqlite3.Connection, path: Path | str) -> bool:
+    """Add `users.age_band TEXT` once (go-live R6): "minor" once the account answered 13 to 17 on any upload, else
+    NULL. True when it ran. Additive; the database is copied first when it holds accounts (profile._backup)."""
+    if any(r[1] == "age_band" for r in db.execute("PRAGMA table_info(users)")):
+        return False
+    from part7 import profile  # the one backup helper of the identity migrations
+
+    profile._backup(db, Path(path), AGE_BAND_BACKUP, "age band")
+    db.execute("ALTER TABLE users ADD COLUMN age_band TEXT")
+    return True
+
+
 class IdentityStore:
     """Users, challenges, sessions, takes and entries behind one lock."""
 
     def __init__(self, state: Path, pepper: bytes, clock: Callable[[], float] = time.time) -> None:
         self.pepper, self.clock, self.state = pepper, clock, Path(state)
+        # The whole "Delete my data" of one idle account (auth.AuthState sets it to auth_routes.delete_account):
+        # True when the account went, False when a take of it still runs (the next sweep tries again).
+        self.idle_remover: Callable[[str], bool] | None = None
         self._lock = threading.RLock()
+        self.checkpoint_due = False  # a checkpoint after a delete that a reader kept from finishing (go-live R2)
         folder = Path(state) / "identity"
         folder.mkdir(parents=True, exist_ok=True)
         os.chmod(folder, 0o700)
@@ -152,9 +178,10 @@ class IdentityStore:
         fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
         os.close(fd)
         os.chmod(path, 0o600)
-        self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None, timeout=30)
+        self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None, timeout=BUSY_TIMEOUT_MS / 1000)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
+        self._db.execute("PRAGMA secure_delete=ON")  # D9: a deleted row's bytes are overwritten, not left in a free page
         self._db.executescript(_SCHEMA)
         from part7 import profile  # additive `profiles` table, with a backup copy first (profile.md)
         profile.migrate(self._db, path)
@@ -167,6 +194,7 @@ class IdentityStore:
         source_credit.migrate(self._db)
         profile.migrate_default_model(self._db, path)  # additive `profiles.default_model_id`, backup copy first (profile.md)
         profile.migrate_model_only_view(self._db, path)  # additive `profiles.model_only_view`, backup copy first (model-default.md)
+        migrate_age_band(self._db, path)  # additive `users.age_band`, backup copy first (prod-data.md, go-live R6)
         for suffix in ("-wal", "-shm"):  # SQLite creates these with the umask; keep them private too
             side = Path(str(path) + suffix)
             if side.exists():
@@ -228,9 +256,13 @@ class IdentityStore:
     # ----- sign-in challenges ---------------------------------------------------------------
     def start_challenge(self, email: str, ip_key: str) -> tuple[str, str] | None:
         """One challenge holding a link token and a 6-digit code; None when limited (5 an hour, 20 a day, 200 mails an hour)."""
+        return self.start_challenge_why(email, ip_key)[0]
+
+    def start_challenge_why(self, email: str, ip_key: str) -> tuple[tuple[str, str] | None, str | None]:
+        """`start_challenge` and, when limited, which limit: `address` (5 an hour or 20 a day) or `global` (200 an hour)."""
         norm = normalise_email(email)
         if norm is None:
-            return None
+            return None, None
         now = self.clock()
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
@@ -241,10 +273,12 @@ class IdentityStore:
                         f"SELECT COUNT(*) FROM challenges WHERE {where + ' AND ' if where else ''}created_at > ?", args
                     ).fetchone()[0]
 
-                if (count(now - _HOUR) >= EMAIL_STARTS_PER_HOUR or count(now - _DAY) >= EMAIL_STARTS_PER_DAY
-                        or count(now - _HOUR, "") >= GLOBAL_MAILS_PER_HOUR):
+                if count(now - _HOUR) >= EMAIL_STARTS_PER_HOUR or count(now - _DAY) >= EMAIL_STARTS_PER_DAY:
                     self._db.execute("COMMIT")
-                    return None
+                    return None, "address"
+                if count(now - _HOUR, "") >= GLOBAL_MAILS_PER_HOUR:
+                    self._db.execute("COMMIT")
+                    return None, "global"
                 cid, token = secrets.token_hex(8), secrets.token_urlsafe(32)
                 code = f"{secrets.randbelow(10 ** 6):06d}"
                 self._db.execute("UPDATE challenges SET used_at = ? WHERE email = ? AND used_at IS NULL", (now, norm))
@@ -257,7 +291,7 @@ class IdentityStore:
             except BaseException:
                 self._db.execute("ROLLBACK")
                 raise
-        return token, code
+        return (token, code), None
 
     def _user_for(self, email: str, now: float) -> str:
         row = self._one("SELECT user_id FROM users WHERE email = ?", (email,))
@@ -361,6 +395,40 @@ class IdentityStore:
         self._q("UPDATE users SET consent_version = ?, consent_at = ?, retention_opt_in = ? WHERE user_id = ?",
                 (version, self.clock(), 1 if retention else 0, user_id))
 
+    def mark_minor(self, user_id: str) -> None:
+        """The account answered 13 to 17: kept on its row, never cleared, so it outlives the 7-day job sweep (R6).
+        Applied backwards (privacy PM-R2, PM-B1): every movement the account owns turns private and every live share
+        link of it ends, once, when the mark changes (review R5). An under 13 mark is never lowered to 13 to 17."""
+        changed = self.write("UPDATE users SET age_band = 'minor' WHERE user_id = ? AND (age_band IS NULL OR "
+                             "age_band NOT IN ('minor', 'under13'))", (user_id,))
+        if changed:  # review R5: only when the mark changes, not on every take of a marked account
+            self._apply_minor(user_id)
+
+    def _apply_minor(self, user_id: str) -> None:
+        from part7 import challenges, entry_access, share  # all read this module; imported here to keep the import order
+
+        entry_access.unpublish_owner(self.state, user_id)
+        share.revoke_all(self, user_id)
+        # Boards show names (privacy PM-B2): the account's scores leave every board and its starter name goes (challenges.md "Integrity").
+        from part7 import upload_owner  # group takes have no takes row
+
+        challenges.remove_account(self.state, user_id, [t["job_id"] for t in self.takes_of(user_id)] + list(upload_owner.jobs_of(self.state, user_id)))
+
+    def mark_under13(self, user_id: str) -> None:
+        """The account answered under 13 (privacy PM-R5): kept on its row so a clean browser cannot pass the refusal,
+        and treated as a minor everywhere a 13 to 17 mark is read."""
+        if self.write("UPDATE users SET age_band = 'under13' WHERE user_id = ? AND (age_band IS NULL OR "
+                      "age_band <> 'under13')", (user_id,)):
+            self._apply_minor(user_id)
+
+    def is_minor(self, user_id: str) -> bool:
+        row = self._one("SELECT age_band FROM users WHERE user_id = ?", (user_id,))
+        return bool(row and row["age_band"] in MINOR_BANDS)
+
+    def is_under13(self, user_id: str) -> bool:
+        row = self._one("SELECT age_band FROM users WHERE user_id = ?", (user_id,))
+        return bool(row and row["age_band"] == "under13")
+
     # ----- ownership ------------------------------------------------------------------------
     def attach(self, job_id: str, user_id: str, kind: str, entry_id: str | None, people_job: str | None, via: str) -> bool:
         """First owner wins (unique `job_id`); True for the owner, also on a repeat, False for anyone else."""
@@ -426,6 +494,13 @@ class IdentityStore:
             self.write_if_table("shares", "UPDATE shares SET revoked_utc = ? WHERE item_ref = ? AND revoked_utc IS NULL",
                                 (_iso(self.clock()), job_id))  # TICKET-233: a deleted take takes its share links with it
 
+    def drop_entry(self, entry_id: str) -> None:
+        """A deleted catalog movement: its owner row, its credit and the note requests about it go (prod-data.md)."""
+        with self._lock:
+            self.write_if_table("source_credits", "DELETE FROM source_credits WHERE kind = 'entry' AND subject_id = ?", (entry_id,))
+            self.write_if_table("note_requests", "DELETE FROM note_requests WHERE entry_id = ?", (entry_id,))
+            self._db.execute("DELETE FROM entries WHERE entry_id = ?", (entry_id,))
+
     def delete_user(self, user_id: str) -> None:
         """Remove the user, sessions, open challenges and ownership rows."""
         with self._lock:
@@ -447,12 +522,75 @@ class IdentityStore:
             except BaseException:
                 self._db.execute("ROLLBACK")
                 raise
+            self.checkpoint()
+        self.scrub_backups(user_id, row["email"] if row is not None else None)
+
+    def checkpoint(self, wait_ms: int | None = None) -> bool:
+        """Copy the WAL into the database file and truncate it, so a deleted account's rows are no longer readable in
+        `identity.db-wal` (data-integrity D9). True when the whole WAL was copied. A reader holding an old snapshot can
+        keep part of it: then `checkpoint_due` stays set and the periodic sweep calls this again until it succeeds
+        (go-live R2), with one log line for the whole wait. `wait_ms` bounds how long this call waits for readers (the
+        sweep's retry: the store lock is held meanwhile); None keeps the connection's 30 s. Never raised: the delete
+        itself already happened."""
+        with self._lock:
+            try:
+                if wait_ms is not None:
+                    self._db.execute(f"PRAGMA busy_timeout = {int(wait_ms)}")
+                busy = self._db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
+                cause = "a reader holds an older snapshot"
+            except sqlite3.Error as exc:
+                busy, cause = 1, f"{type(exc).__name__}"
+            finally:
+                if wait_ms is not None:
+                    self._db.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+            if busy and not self.checkpoint_due:
+                from part7 import applog
+                applog.log(f"auth: checkpoint incomplete ({cause}); the periodic sweep tries again", level=logging.WARNING)
+            elif not busy and self.checkpoint_due:
+                from part7 import applog
+                applog.log("auth: checkpoint done after a retry")
+            self.checkpoint_due = bool(busy)
+        return not busy
+
+    def _backups(self) -> list[Path]:
+        return sorted(p for p in db_path(self.state).parent.glob(BACKUP_GLOB) if p.is_file() and not p.is_symlink())
+
+    def scrub_backups(self, user_id: str, email: str | None) -> None:
+        """Remove a deleted account from every migration copy of the database; a copy that cannot be cleaned goes."""
+        for path in self._backups():
+            try:
+                db = sqlite3.connect(str(path), timeout=10)
+                try:
+                    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall():
+                        columns = {r[1] for r in db.execute(f'PRAGMA table_info("{table}")')}
+                        for column in [c for c in _PERSON_COLUMNS if c in columns]:
+                            db.execute(f'DELETE FROM "{table}" WHERE "{column}" = ?', (user_id,))
+                        if email and "email" in columns:
+                            db.execute(f'DELETE FROM "{table}" WHERE "email" = ?', (email,))
+                    db.commit()
+                finally:
+                    db.close()
+            except sqlite3.Error:
+                path.unlink(missing_ok=True)
+
+    def prune_backups(self) -> int:
+        """Delete migration copies older than BACKUP_KEEP_S (they hold every address); returns how many went."""
+        cutoff, gone = self.clock() - BACKUP_KEEP_S, 0
+        for path in self._backups():
+            try:
+                if path.stat().st_mtime <= cutoff:
+                    path.unlink()
+                    gone += 1
+            except OSError:
+                continue
+        return gone
 
     def prune(self, state: Path | str | None = None) -> None:
-        """Drop expired sessions, challenges older than two days and accounts idle for 180 days.
+        """Drop expired sessions, challenges older than two days, accounts idle for 180 days and old migration copies.
 
-        An idle account goes whole, as "Delete my data" does: its history copies and reports (`history_store.forget`),
-        its outbox mail, then the account. `state` is the server's state folder; the store's own folder is the default."""
+        An idle account goes whole, as "Delete my data" does (`idle_remover`: its takes, movements, history, models,
+        references, outbox mail, then the account). A bare store with no remover reaches only the history copies and
+        the outbox. `state` is the server's state folder; the store's own folder is the default."""
         from part7 import history_store, mail
         state = Path(state) if state is not None else self.state
         now = self.clock()
@@ -462,11 +600,19 @@ class IdentityStore:
             idle = [r["user_id"] for r in self._db.execute("SELECT user_id FROM users WHERE last_seen_at <= ?",
                                                            (now - ACCOUNT_IDLE_S,)).fetchall()]
         for user_id in idle:
-            email = (self.user(user_id) or {}).get("email")
+            if self.idle_remover is not None:  # LEG-M1: takes, movements, models and references go too
+                try:
+                    self.idle_remover(user_id)
+                except Exception as exc:  # one account's fault must not keep the others or the copies past their time
+                    from part7 import applog
+                    applog.log(f"auth: idle account {user_id} not deleted: {applog.cause(exc)}")
+                continue
+            email = (self.user(user_id) or {}).get("email")  # a bare store (no app): what it can reach
             history_store.forget(state, user_id)
             if email:
                 mail.purge_outbox(state, email)
             self.delete_user(user_id)
+        self.prune_backups()
 
 
 # ----- read-only readers for other lanes (no pepper, never create the file) -------------------------
@@ -491,6 +637,12 @@ def owner_of_job(state: Path, job_id: str) -> str | None:
     return row["user_id"] if row else None
 
 
+def entry_owner_account(state: Path | str, entry_id: str) -> str | None:
+    """The account that owns catalog entry `entry_id`, or None (signed out, unknown or no identity store). Read-only, no pepper."""
+    row = _read_one(state, "SELECT user_id FROM entries WHERE entry_id = ?", (entry_id,))
+    return row["user_id"] or None if row else None
+
+
 def follow_owners(state: Path, entry_id: str) -> dict[str, str]:
     """`{job_id: user_id}` of the signed-in follow takes of one entry (empty with no store); for the class table only."""
     path = db_path(state)
@@ -505,6 +657,25 @@ def follow_owners(state: Path, entry_id: str) -> dict[str, str]:
     except sqlite3.Error:
         return {}
     return {str(job): str(user) for job, user in rows}
+
+
+def account_minor(state: Path | str, user_id: str) -> bool:
+    """True when the account's row carries a 13 to 17 or under 13 mark (privacy PM-R2), or when a store that exists
+    cannot be read (fails closed); False with no store or no such account. Read-only, no pepper."""
+    path = db_path(state)
+    if not user_id or not path.is_file():
+        return False
+    try:
+        db = sqlite3.connect(str(path), timeout=10)  # as `_read_one`: the file exists, so nothing is created
+        try:
+            if not any(r[1] == "age_band" for r in db.execute("PRAGMA table_info(users)")):
+                return False  # a store from before the mark (migrate_age_band) holds no answer yet
+            row = db.execute("SELECT age_band FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return True
+    return bool(row and row[0] in MINOR_BANDS)
 
 
 def retention_opt_in(state: Path, user_id: str) -> bool:

@@ -1,7 +1,8 @@
 """A synthetic text (ASCII) FBX 7.3 file with one static box figure (TICKET-341).
 
 Blender's importer refuses text FBX, so this file exercises the FBX2glTF fallback. Stdlib only; the tests import
-`write(path)`.
+`write(path)`. The Model's `DefaultAttributeIndex` is what ties the Geometry to the node for the FBX SDK: without it FBX2glTF
+reads the node and drops the mesh ("0 triangles"), as it did in the first version of this file.
 """
 
 from __future__ import annotations
@@ -13,8 +14,9 @@ HEIGHT_CM = 175.0  # FBX's default unit is the centimetre
 
 def _box() -> tuple[list[float], list[int]]:
     w, d, h = 40.0, 20.0, HEIGHT_CM
-    corners = [(x, y, z) for z in (0.0, h) for y in (-d / 2, d / 2) for x in (-w / 2, w / 2)]
+    corners = [(x, y, z) for y in (0.0, h) for z in (-d / 2, d / 2) for x in (-w / 2, w / 2)]  # Y up, as the Blender file the SDK reads
     faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    faces = [f[::-1] for f in faces]  # the swapped axes mirror the box, so the corners run the other way round
     verts = [c for corner in corners for c in corner]
     index: list[int] = []
     for face in faces:
@@ -35,10 +37,10 @@ FBXHeaderExtension:  {{
 GlobalSettings:  {{
 \tVersion: 1000
 \tProperties70:  {{
-\t\tP: "UpAxis", "int", "Integer", "",2
+\t\tP: "UpAxis", "int", "Integer", "",1
 \t\tP: "UpAxisSign", "int", "Integer", "",1
-\t\tP: "FrontAxis", "int", "Integer", "",1
-\t\tP: "FrontAxisSign", "int", "Integer", "",-1
+\t\tP: "FrontAxis", "int", "Integer", "",2
+\t\tP: "FrontAxisSign", "int", "Integer", "",1
 \t\tP: "CoordAxis", "int", "Integer", "",0
 \t\tP: "CoordAxisSign", "int", "Integer", "",1
 \t\tP: "UnitScaleFactor", "double", "Number", "",1
@@ -67,6 +69,7 @@ Objects:  {{
 \tModel: 2000, "Model::Body", "Mesh" {{
 \t\tVersion: 232
 \t\tProperties70:  {{
+\t\t\tP: "DefaultAttributeIndex", "int", "Integer", "", 0
 \t\t}}
 \t}}
 }}

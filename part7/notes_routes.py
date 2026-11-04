@@ -1,6 +1,10 @@
 """HTTP routes of "ask the trainer for a note" (docs/specs/notes.md; TICKET-237); `server.py` calls `handle` with the route
 below `api/`. Owner only: 401 signed out, 404 for anyone but the follower (their take) or the trainer (their request).
 A POST passes the same CSRF guard as `api/me/consent`. Logs carry no id, name or note text.
+
+Someone under 18 sends no grant to a trainer, so no clip goes and no free text comes back (privacy PM-R1): for an
+account marked 13 to 17, or a take with that answer, `can_ask` is false and a request is 403 `notes.MSG_MINOR`
+(`trainer_publish.minor_refused`). A request already sent stays withdrawable.
 """
 
 from __future__ import annotations
@@ -9,7 +13,8 @@ import logging
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from part7 import applog, auth, history_store, jobs, labels, model_only, notes, result_media, shown_score
+from part7 import (applog, auth, history_store, jobs, labels, model_only, notes, result_media, shown_score,
+                   trainer_publish)
 from part7.auth_routes import _fail, _post_body, _reply, _user_or_401
 
 NO_STORE = {"Cache-Control": "no-store"}
@@ -116,7 +121,9 @@ def _follower_view(h: Any, follower: str, job_id: str) -> None:
     store = _store(h)
     row = notes.latest_for_job(store, follower, job_id)
     probe = {"job_id": job_id, "entry_id": found["entry_id"], "follower_id": follower}
-    _reply(h, 200, {"can_ask": row is None or row["state"] == "declined", "has_clip": _clip(h, probe) is not None,
+    minor = trainer_publish.minor_refused(h, follower, h.app.queue.get(job_id))  # PM-R1
+    can_ask = not minor and (row is None or row["state"] == "declined")
+    _reply(h, 200, {"can_ask": can_ask, "has_clip": _clip(h, probe) is not None,
                     "shown_as": notes.follower_name(store, probe), "include_default": notes.DEFAULT_INCLUDE,
                     "trainer": {"name": notes.trainer_name(store, probe)},
                     "request": _request_doc(h, row) if row is not None else None}, NO_STORE)
@@ -128,6 +135,8 @@ def _ask(h: Any, follower: str, job_id: str) -> None:
         return
     try:
         found = _eligible(h, follower, job_id)
+        if trainer_publish.minor_refused(h, follower, h.app.queue.get(job_id)):  # PM-R1: no grant, no clip, no note
+            raise notes.NoteError(notes.MSG_MINOR, 403)
         if doc.get("confirm") is not True:
             raise notes.NoteError(notes.MSG_CONFIRM)
         include = notes.clean_include(doc.get("include"))

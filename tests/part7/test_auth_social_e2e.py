@@ -50,7 +50,7 @@ def test_profile_delete_ends_my_share_links_and_leaves_another_users(api: Api) -
     mine, theirs = make_share(api, ada, owned_job(api, ada)), make_share(api, grace, owned_job(api, grace))
     assert get(api, f"api/shared/{mine}")[0] == 200
     assert send(api, "DELETE", "api/me/profile", {}, ada)[0] == 200
-    assert get(api, f"api/shared/{mine}")[0] == 404  # negative: the deleted profile's link is dead
+    assert get(api, f"api/shared/{mine}")[0] == 410  # negative: the deleted profile's link is dead
     assert {s["state"] for s in owner_shares(api, ada)} == {"revoked"}
     assert get(api, f"api/shared/{theirs}")[0] == 200
     assert [s["state"] for s in owner_shares(api, grace)] == ["active"]

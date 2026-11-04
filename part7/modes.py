@@ -9,10 +9,21 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from part7 import applog
+from part7 import applog, prod_mode
 
 MODES = ("dance", "rehab", "fitness")
 MSG_MODE = "Pick dance, rehab or fitness as the mode."
+MSG_MODE_NO_REHAB = "Pick dance or fitness as the mode."
+
+
+def rehab_on() -> bool:
+    """#415 and LEG-H3: Rehab is consumer health data, so the prod `rehab` switch hides it (off by default in prod)."""
+    return prod_mode.policy("rehab")
+
+
+def offered() -> tuple[str, ...]:
+    """The modes a visitor may pick here: every mode, or all but rehab when the switch is off."""
+    return MODES if rehab_on() else tuple(m for m in MODES if m != "rehab")
 
 
 class ModeError(ValueError):
@@ -23,8 +34,8 @@ def parse(value: Any) -> str | None:
     """None when absent, the mode when valid, else `ModeError`."""
     if value is None:
         return None
-    if not isinstance(value, str) or value not in MODES:
-        raise ModeError(MSG_MODE)
+    if not isinstance(value, str) or value not in offered():
+        raise ModeError(MSG_MODE if rehab_on() else MSG_MODE_NO_REHAB)
     return value
 
 
@@ -34,8 +45,9 @@ CATEGORY_MODE = {"dance": "dance", "exercise": "fitness"}
 
 
 def of_entry(manifest: dict[str, Any] | None, tags: list[str] | None) -> str | None:
-    """The mode an entry's own kind names: rehab for the `rehab` tag, else its category's mode, else None."""
-    if REHAB_TAG in (tags or []):
+    """The mode an entry's own kind names: rehab for the `rehab` tag, else its category's mode, else None.
+    With the rehab switch off the tag is ignored and the category decides."""
+    if REHAB_TAG in (tags or []) and rehab_on():
         return "rehab"
     category = (manifest or {}).get("category")
     return CATEGORY_MODE.get(category) if isinstance(category, str) else None

@@ -22,7 +22,7 @@ import re
 import subprocess
 import threading
 
-from part7 import applog, config
+from part7 import applog, byok_route, config
 
 NAME = "rtmlib-yolox-x-humanart"  # recorded beside the consent answer (character.json consent.detector)
 MAX_CHECKS = 2  # at most this many detectors run at once: each loads a 200 MB model and uses every CPU core
@@ -57,7 +57,10 @@ def _python() -> Path:
 
 
 def available() -> bool:
-    """True when Part 2's venv python and the cached detector exist, so a check can run."""
+    """True when Part 2's venv python and the cached detector exist, so a check can run. Never under BYOK-only (prod,
+    nofallback D1): the answer is None and the consent question is asked."""
+    if byok_route.host_models_refused():
+        return False
     return _python().is_file() and model_path().is_file()
 
 

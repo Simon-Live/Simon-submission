@@ -13,6 +13,7 @@ a server that is gone.
 from __future__ import annotations
 
 import collections
+import contextlib
 import json
 import logging
 import os
@@ -23,9 +24,9 @@ import signal
 import subprocess
 import threading
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
-from part7 import config, gpu_lock, import_timings, keys, model_store, p2_worker
+from part7 import byok_route, compute_mode, config, gpu_lock, import_timings, keys, model_store, modules, p2_worker, serverless_route
 
 log = logging.getLogger("part7")
 
@@ -36,6 +37,7 @@ MAX_QUEUE = 8
 # SAM 3D Body peaks at 10.32 GiB (10568 MiB, Part 2 TICKET-011); the floor adds about 0.7 GiB of margin.
 MIN_FREE_MIB = 11264  # the GPU must have this much free before Part 2 starts
 MIN_FREE_MIB_IMAGE3D = image3d_jobs.MIN_FREE_MIB  # a picture of a character or object needs its own, higher floor
+FOLLOW_S = 2.0  # how often a job on Modal looks at its call's wait state
 CARD_POLL_S = 2.0  # how often a job waiting for the graphics card looks again
 LOCK_TIMEOUT_S = 1800.0
 TIMEOUT_S = {"image": 900.0, "autorig": 1800.0}
@@ -65,6 +67,11 @@ MSG_TIMEOUT = "The model took too long. Try again."
 STUCK_MESSAGE = "The server restarted while this model was being made. Try again."
 MSG_QUEUE_FULL = "Too many models are being made right now. Try again in a few minutes."
 
+MSG_SERVERLESS_BUSY = "Simon's graphics cards were all busy, so this model was not made. Try it again in a few minutes."
+MSG_SERVERLESS_STOPPED = "Simon cannot run GPU work right now, so this model was not made. Try again later."
+MSG_WAITING_GPU = "Waiting for a free graphics card."
+# What runs on the operator's Modal workspace (serverless-compute.md AC-SC20).
+SERVERLESS_KINDS = ("image", image3d_jobs.KIND, "autorig")
 _SUBCOMMAND = {"image": "avatar", "autorig": "autorig"}
 _TIMING_STAGE = {"image": "avatar", "autorig": "autorig", "image3d": "image3d"}  # TICKET-363
 _SECRET_ENV = re.compile(r"KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL", re.IGNORECASE)
@@ -200,6 +207,14 @@ def _remove_dir(path: Path) -> None:
 
 # --- availability ---------------------------------------------------------------------------------------------
 
+
+def on_modal(kind: str) -> bool:
+    """This kind of job runs on the operator's Modal workspace, through the route a take uses."""
+    if not compute_mode.serverless() or kind not in SERVERLESS_KINDS:
+        return False
+    return kind != image3d_jobs.KIND or config.serverless_image3d()
+
+
 _MODULE = {"image": "avatar.py", "autorig": "autorig.py"}
 image3d_jobs.extend(_SUBCOMMAND, _MODULE, TIMEOUT_S, MSG_NO_PERSON)  # the picture of a character or object kind
 
@@ -216,8 +231,13 @@ def _remote() -> bool:
 
 
 def available(kind: str = "image") -> bool:
-    """True when this checkout of Part 2 has the `avatar` (image) or `autorig` command and its GPU venv exists, or
-    Part 2 runs on Modal and the kind runs there."""
+    """True when this checkout of Part 2 has the `avatar` (image) or `autorig` command and its GPU venv exists.
+    Never under BYOK-only (prod): no model runs on this machine (byok_route.host_models_refused, nofallback D1). In
+    serverless mode, or with Part 2 on Modal (the judges' relay), a picture runs there, so nothing on this machine is asked about."""
+    if on_modal(kind):
+        return True
+    if byok_route.host_models_refused():
+        return False
     part2, py = config.part_dir(2), config.part2_gpu_venv_path() / "bin" / "python"
     if kind == image3d_jobs.KIND:
         has_command = (part2 / "part2" / image3d_jobs.MODULE).is_file() or (part2 / "part2" / image3d_jobs.SUBCOMMAND / "__init__.py").is_file()
@@ -245,9 +265,11 @@ def _check_inputs(model_dir: Path, paths: list[Path], low: int, high: int, what:
 def _submit(kind: str, model_dir: Path | str, files: list[Path], owner: Any) -> None:
     """Queue one job. While this server drains it is written to disk only, so the next server runs it (TICKET-306)."""
     model_dir = Path(model_dir)
+    if byok_route.host_models_refused() and not on_modal(kind):  # nofallback D1: nothing is queued for this machine's GPU
+        raise AvatarError(byok_route.MSG_NO_HOST_MODELS)
     names = [p.name for p in files]
     with _cond:
-        if len(_queue) + (1 if _running else 0) >= MAX_QUEUE:
+        if not on_modal(kind) and len(_queue) + (1 if _running else 0) >= MAX_QUEUE:  # this machine's GPU; on Modal a job waits its turn
             raise QueueFull(MSG_QUEUE_FULL)
         _write_json(model_dir / JOB_FILE, {"kind": kind, "inputs": names, "owner": owner})
         _set_status(model_dir, "queued")
@@ -338,6 +360,7 @@ def _cleanup(model_dir: Path) -> None:
     _remove_dir(model_dir / "in")
     _remove_dir(model_dir / "out")
     _remove_dir(model_dir / "tmp")
+    _remove_dir(model_dir / "steps")  # the wait state of a Modal call
 
 
 def _fail(model_dir: Path, message: str, missing: list[str] | None = None) -> None:
@@ -496,7 +519,60 @@ def _attempt(model_dir: Path, kind: str, files: list[Path], part2: Path, py: Pat
         return 4, True
 
 
+def _attempt_on_modal(model_dir: Path, kind: str, files: list[Path]) -> int | None:
+    """One call on Modal: no card, lock or retry here. Exit code, or None after the timeout. A person's picture goes up to
+    the Volume under a random key; the ledger holds that key under this model's id until Modal confirmed it gone."""
+    out_dir = model_dir / "out"
+    _remove_dir(out_dir)
+    began = import_timings.start()
+    sub = [_SUBCOMMAND[kind], "--out", str(out_dir), *map(str, files)]
+    with serverless_route.job(model_dir.parent.parent, model_dir.name):
+        argv = serverless_route.command(sub, modules.load().sha("2"), model_dir)
+        with _following_call(model_dir):
+            code = _run_part2(argv, config.REPO_ROOT, _environment(config.REPO_ROOT), model_dir,
+                              serverless_route.timeout_s(TIMEOUT_S[kind]))
+    if code == 0:
+        _set_status(model_dir, "converting", step="making")
+        import_timings.done(model_dir, _TIMING_STAGE.get(kind, "avatar"), began)
+    return code
+
+
+@contextlib.contextmanager
+def _following_call(model_dir: Path) -> Iterator[None]:
+    """While a Modal call runs: the owner sees the wait for a GPU, then the making step, and a model deleted meanwhile ends
+    the call (SIGTERM: the client cancels it and removes its object), so nobody pays for a model that is gone."""
+    path, stop = model_dir / "steps" / serverless_route.STATUS_FILE, threading.Event()
+
+    def loop() -> None:
+        started = False
+        while not stop.wait(FOLLOW_S):
+            if not _alive(model_dir):
+                with _cond:
+                    proc = _proc
+                if proc is not None:
+                    proc.terminate()
+                return
+            state = (_read_json(path) or {}).get("state")
+            if state == "queued" and not started:
+                _note_waiting(model_dir, MSG_WAITING_GPU, 1)
+            elif state == "running" and not started:
+                started = True
+                _set_status(model_dir, "converting", step="making")
+
+    thread = threading.Thread(target=loop, name="avatar-call", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=FOLLOW_S + 1)
+
+
 def _exit_message(kind: str, code: int, model_dir: Path) -> str:
+    if code == serverless_route.BUSY_EXIT:
+        return MSG_SERVERLESS_BUSY
+    if code == serverless_route.STOPPED_EXIT:
+        return MSG_SERVERLESS_STOPPED
     picture = image3d_jobs.exit_message(kind, code, _stderr_line(model_dir))
     if picture:
         return picture
@@ -576,21 +652,27 @@ def _run_job(model_dir: Path) -> None:
         return  # deleted, or settled by someone else, while it waited
     kind = job.get("kind") if job.get("kind") in _SUBCOMMAND else "image"
     files = [model_dir / "in" / str(n) for n in job.get("inputs", [])]
-    part2, py = config.part_dir(2), config.part2_gpu_venv_path() / "bin" / "python"
-    if not part2.is_dir() or not (py.is_file() or (kind in REMOTE_KINDS and _remote())):   # no GPU here: Modal runs it
-        _fail(model_dir, MSG_NOT_SET_UP)
+    if byok_route.host_models_refused() and not on_modal(kind):  # nofallback D1: a job left on disk never starts Part 2 here
+        _fail(model_dir, byok_route.MSG_NO_HOST_MODELS)
         return
     code: int | None = 4
-    for attempt in range(BUSY_RETRIES + 1):
-        if not _alive(model_dir):
-            return _drop(model_dir)
-        code, lock_timed_out = _attempt(model_dir, kind, files, part2, py)
-        if code != 4 or lock_timed_out:
-            break
-        if attempt < BUSY_RETRIES:
-            _set_status(model_dir, "queued")
-            _note_waiting(model_dir, "The graphics card was busy. Trying again in a moment.", 1)
-            time.sleep(RETRY_WAIT_S)
+    if on_modal(kind):
+        code = _attempt_on_modal(model_dir, kind, files)  # no retry: each call is the operator's money
+    else:
+        part2, py = config.part_dir(2), config.part2_gpu_venv_path() / "bin" / "python"
+        if not part2.is_dir() or not (py.is_file() or (kind in REMOTE_KINDS and _remote())):   # no GPU here: the judges' relay runs it on Modal
+            _fail(model_dir, MSG_NOT_SET_UP)
+            return
+        for attempt in range(BUSY_RETRIES + 1):
+            if not _alive(model_dir):
+                return _drop(model_dir)
+            code, lock_timed_out = _attempt(model_dir, kind, files, part2, py)
+            if code != 4 or lock_timed_out:
+                break
+            if attempt < BUSY_RETRIES:
+                _set_status(model_dir, "queued")
+                _note_waiting(model_dir, "The graphics card was busy. Trying again in a moment.", 1)
+                time.sleep(RETRY_WAIT_S)
     if model_dir.name in _cut or _left_for_next_server(model_dir):
         return
     if not _alive(model_dir):
@@ -659,7 +741,7 @@ def _requeue(model_dir: Path) -> bool:
     """A queued job whose server is gone runs here when its inputs are still on disk; False when they are not."""
     job = _read_json(model_dir / JOB_FILE) or {}
     kind = job.get("kind")
-    if kind not in _SUBCOMMAND:
+    if kind not in _SUBCOMMAND or (byok_route.host_models_refused() and not on_modal(kind)):  # D1: settled as failed by fail_stuck instead
         return False
     inputs = [model_dir / "in" / str(n) for n in job.get("inputs") or []]
     try:

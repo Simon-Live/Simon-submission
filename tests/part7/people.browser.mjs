@@ -103,7 +103,7 @@ try {
   // ---- AC-P1: one person skips the picker ---------------------------------------------------
   let page = await open("screen=picker&mode=single&job=pone");
   await page.waitForFunction(() => window.__result !== "pending");
-  assert.deepEqual(await result(page), { person_id: 7 });
+  assert.deepEqual(await result(page), { person_id: 7, auto: true, count: 1 }); // judge-take.md: `auto` and `count` start a judge's take by themselves
   assert.equal(await tid(page, "people").count(), 0);
   ok("AC-P1 one person: resolves with auto_id and shows no picker");
 

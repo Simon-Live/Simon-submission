@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from auth_support import authenv, get, post, sign_in  # noqa: F401
+from auth_support import authenv, get, post, sign_in, claim_doc  # noqa: F401
 from part7 import auth, auth_routes, delete_routes, history_store, identity, keys
 from support import Api
 
@@ -92,7 +92,7 @@ def test_delete_take_drops_the_history_copy_and_the_ownership_row(api: Api, monk
     monkeypatch.setattr(history_store, "drop_take", lambda state, job_id: dropped.append(job_id) or 0)
     sid = sign_in(api)
     job_id = finished(api)
-    assert post(api, "api/me/claims", {"job_id": job_id}, cookie=sid)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, job_id), cookie=sid)[0] == 200
     assert [t["job_id"] for t in get(api, "api/me/takes", cookie=sid)[2]["takes"]] == [job_id]
     assert post(api, f"api/jobs/{job_id}/delete", {}, cookie=sid)[0] == 200  # a claimed take: its owner deletes it (TICKET-373)
     assert dropped == [job_id]
@@ -110,7 +110,7 @@ def test_account_delete_removes_the_real_takes(api: Api) -> None:
     assert auth_routes.TAKE_REMOVER is delete_routes.remove_for_account
     sid = sign_in(api)
     job_id = finished(api)
-    post(api, "api/me/claims", {"job_id": job_id}, cookie=sid)
+    post(api, "api/me/claims", claim_doc(api, job_id), cookie=sid)
     status, _, body = post(api, "api/me/delete", {"confirm": "delete"}, cookie=sid)
     assert status == 200 and body["deleted"] is True and body["takes_removed"] == 1
     assert api.app.queue.get(job_id) is None
@@ -139,7 +139,7 @@ def test_a_claim_copies_into_history_through_the_store(api: Api, monkeypatch: py
     monkeypatch.setattr(history_store, "claim", lambda state, user, job: claimed.append((user, job)) or True)
     sid = sign_in(api)
     job_id = finished(api)
-    assert post(api, "api/me/claims", {"job_id": job_id}, cookie=sid)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, job_id), cookie=sid)[0] == 200
     assert claimed == [(get(api, "api/auth/me", cookie=sid)[2]["user_id"], job_id)]
 
 

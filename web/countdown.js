@@ -87,6 +87,10 @@ export function runCountdown(stage, seconds, { tickMs = 1000 } = {}) {
   const cancelBtn = h("button", { type: "button", class: "btn secondary", "data-testid": "countdown-cancel", text: "Cancel", onclick: () => end(false) });
   const over = h("div", { class: "rc-over" }, digit, cancelBtn);
   stage.append(over);
+  // a11y-copy B13: Record is hidden now, so Cancel takes focus (WCAG 2.4.3). N7: focus alone scrolled the page so the
+  // digit sat under the sticky header at 1280 px; focus without scrolling, then centre the digit, Cancel just below it.
+  if (typeof cancelBtn.focus === "function") cancelBtn.focus({ preventScroll: true });
+  if (typeof digit.scrollIntoView === "function") digit.scrollIntoView({ block: "center", inline: "nearest" });
   const done = new Promise((resolve) => { finish = resolve; });
   const timer = setInterval(() => {
     left -= 1;

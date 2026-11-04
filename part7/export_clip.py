@@ -16,7 +16,7 @@ import subprocess
 import textwrap
 from typing import Any
 
-from part7 import shown_score
+from part7 import ffsafe, shown_score
 
 WIDTH, HEIGHT = 1080, 1920
 HEADER_H, PANEL_H = 220, 720  # header, then two panels of 1080x720; the rest (260) is the caption strip
@@ -180,20 +180,21 @@ def build_command(trainer: Path, follower: Path, out: Path, duration: float, fac
     ss: list[str] = []
     if section:  # the trainer clip is cut to the practised range, as the take was compared with it
         ss = ["-ss", f"{section['start_ms'] / 1000:.3f}", "-t", f"{(section['end_ms'] - section['start_ms']) / 1000:.3f}"]
-    return [
+    return ffsafe.harden([
         ffmpeg, "-y", "-loglevel", "error", "-nostdin",
         *ss, "-i", str(trainer), "-i", str(follower),
         "-f", "lavfi", "-i", f"color=c=0x0D1117:s={WIDTH}x{HEIGHT}:r={FPS}:d={duration:.2f}",
         "-filter_complex", graph, "-map", "[v]", "-an", "-t", f"{duration:.2f}",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-profile:v", "main", "-level", "4.0",
         "-pix_fmt", "yuv420p", "-r", str(FPS), "-movflags", "+faststart", str(out),
-    ]
+    ])
 
 
 def probe_duration(path: Path, runner: Any = subprocess.run) -> float:
     """Seconds of video in `path`; ExportError when ffprobe cannot read it."""
     try:
-        done = runner(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        done = runner(ffsafe.prepare(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                                     timeout=30),
                       capture_output=True, text=True, timeout=30, check=False)
         value = float(done.stdout.strip())
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
@@ -214,7 +215,7 @@ def clip_duration(trainer: Path, follower: Path, section: dict[str, Any] | None,
 def run_ffmpeg(cmd: list[str], cwd: Path, timeout: float = RENDER_TIMEOUT_S) -> tuple[int, str]:
     """Run `cmd` in `cwd`; (exit code, last stderr text). A run past `timeout` is killed and is exit -9."""
     try:
-        done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
+        done = subprocess.run(ffsafe.wrap(cmd, timeout, cwd), cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
         return (-9, f"ffmpeg ran past {timeout:.0f} s")
     except OSError as exc:

@@ -30,7 +30,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from part7 import applog, history_store, job_lookup, models_used, skeleton2d
+from part7 import applog, auth, history_store, job_lookup, models_used, skeleton2d
 from part7.skeleton2d import BONES, JOINTS
 
 ENTRY_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -271,6 +271,9 @@ def handle(h: Any, method: str, route: str) -> bool:
     m = ROUTE_RE.match(route)
     if not m or method not in ("GET", "HEAD"):
         return False
+    if not auth.may_view_entry(h, m.group("id")):  # app-surface B1: a hidden movement answers as a missing one
+        h._error(404, MSG_ENTRY)
+        return True
     status, body = for_entry(h.app.child, m.group("id"), h.app.queue.root, h.app.state)
     if status == 200:
         h._json(200, body)

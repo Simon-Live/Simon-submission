@@ -217,3 +217,12 @@ def test_a_resumed_job_checks_its_stored_choice_again(caplog: pytest.LogCaptureF
     assert run_on.resumed(["x"], "j1") is None, "an invalid stored value keeps the env route"
     assert run_on.resumed("serverless", "j1") == "local", "serverless no longer set up runs on this machine"
     assert "serverless is no longer set up" in caplog.text and "is not valid" in caplog.text
+
+
+def test_the_judges_relay_keeps_a_saved_this_machine_choice_off_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """deploy/judges/: with the relay set, Part 2 has one route, so `bind` hands the job back unchanged."""
+    monkeypatch.setenv("SIMON_PART2_RELAY", "https://relay.example")
+    job = lambda ctx: {}  # noqa: E731
+    assert run_on.bind(job, "local") is job
+    monkeypatch.delenv("SIMON_PART2_RELAY")
+    assert run_on.bind(job, "local") is not job, "negative: without the relay the choice still binds a route"

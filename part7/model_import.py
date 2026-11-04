@@ -8,6 +8,8 @@ output (`model_convert`) and a generated avatar (`avatar_jobs`). It checks the f
 
 from __future__ import annotations
 
+import codecs
+from collections import Counter
 import hashlib
 import importlib
 import importlib.util
@@ -15,21 +17,27 @@ import json
 import logging
 import os
 from pathlib import Path
+import posixpath
 import re
 import shutil
 import time
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+import unicodedata
+from urllib.parse import parse_qs, unquote, urlsplit
 import zipfile
+import zlib
 
 from part7 import applog, auth, bone_map, glb_inspect, http_body, import_timings, model_store as store, profile, quota
-from part7 import person_check, picture_kind
+from part7 import compute_mode, config, consent_record, person_check, picture_kind, serverless_route
+from part7.prod_mode import is_prod
 
-MAX_MODEL_BYTES = 100_000_000
+MAX_MODEL_BYTES = config.MAX_UPLOAD_BYTES  # the one body cap (config.py); under the gateway 90 MB and the edge 100 MB
 MAX_IMAGE_BYTES = 25_000_000
 MAX_IMAGES = 4
 CHUNK = 1 << 20
 ZIP_MAX_ENTRIES, ZIP_MAX_BYTES, ZIP_MAX_RATIO = 200, 400_000_000, 100
+GLTF_PARSE_MAX = 2_000_000  # a single .gltf over this is scanned, never parsed in the server's process
+SCAN_WINDOW, SCAN_OVERLAP = 8_000_000, 64_000  # how much of a bigger one the scan holds at a time
 LICENCES = ("own-work", "CC0", "CC-BY", "CC-BY-SA", "CC-BY-NC", "VPL-1.0", "Mixamo-Adobe-terms", "personal-use-only", "unknown")
 OPEN_LICENCES = ("own-work", "CC0", "CC-BY")  # the only ones that may ever be shared
 CONSENTS = ("self", "consented")
@@ -41,41 +49,56 @@ FOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")  # the take (job id) and person a 
 
 MSG_GONE = "This model is not available."
 MSG_CSRF = "This request came from another site."
-MSG_LENGTH = "The upload has no length."
-MSG_EMPTY = "The upload is empty."
-MSG_TOO_BIG = "This file is over 100 MB. Use a smaller model."
-MSG_QUOTA = "You have reached the limit of 20 models or 500 MB. Delete one first."
+MSG_LENGTH = "The browser sent the file without its size, so Simon could not take it. Press Import again."
+MSG_EMPTY = "This file is empty, so there is nothing to import. Choose a file that holds the model."
+MSG_TOO_BIG = f"This file is over {MAX_MODEL_BYTES // 1_000_000} MB, the limit for a model. Choose a smaller file."
 MSG_SHORT = "The upload stopped before the end. Try again."
-MSG_TYPE = "Upload a rigged GLB or VRM, or an FBX, Blender or glTF zip file, or a photo of the person."
+MSG_TYPE = ("Simon cannot read this file type. Choose a GLB, VRM, FBX, Blender file, OBJ, a zip with a glTF, "
+            "or a JPEG, PNG or WebP photo.")
 MSG_ASCII_FBX = "This is a text FBX file. Export a binary FBX, or a GLB, and upload that."
 MSG_GLTF_TEXT = "This is a .gltf text file. Export a .glb, or zip the .gltf with its files."
-MSG_NO_CONVERTER = "This server cannot convert that format. Upload a GLB or VRM instead."
-MSG_NO_GENERATOR = "Making a model from photos or a mesh is not available here."
+MSG_GLTF_NEEDS_FILES = "This .gltf file points to other files. Zip it with those files, or export a .glb, and upload that."
+MSG_NO_CONVERTER = "This server cannot convert that format. Choose a GLB or VRM instead."
+MSG_NO_GENERATOR = "Making a model from a photo is not available on this server. Choose a rigged GLB or VRM instead."
+MSG_NO_RIGGER = ("This file has no skeleton, and this server cannot add one. Rig it in your 3D tool and choose that file, "
+                 "or choose a photo instead.")
 MSG_CONSENT = "Say who the photo shows: you, or someone who agreed."
+MSG_PHOTO_CONSENT = ("Before you upload a photo of a person, answer the age question and agree to each point of the "
+                     "consent step. Open Record a movement to see it, then try again.")
 MSG_DRAFT = "That set of photos is not open. Start again."
-MSG_MANY_IMAGES = "Use at most 4 photos."
-MSG_ZIP = "This zip file is not safe or has no .gltf in it."
-MSG_LICENCE = "The licence is not one Simon knows. Choose one from the Licence list."
+MSG_MANY_IMAGES = "One model takes at most 4 photos. Choose 4 or fewer."
+MSG_ZIP_NO_GLTF = "This zip has no .gltf file in it. Zip the .gltf with its files, then choose that zip."
+MSG_ZIP_GLTF_MISSING = "The .gltf in this zip points to a file that is not in the zip. Zip it with those files, then choose the new zip."
+MSG_ZIP_UNREADABLE = "This zip could not be opened. Zip the .gltf with its files again, then choose the new zip."
+MSG_ZIP_UNSAFE = (f"This zip is over the limits: at most {ZIP_MAX_ENTRIES} files, {ZIP_MAX_BYTES // 1_000_000} MB unpacked, and no "
+                  "link or path that leaves its folder. Zip only the .gltf and its files, then choose that zip.")
+LICENCE_LABELS = ("My own work", "CC0", "CC-BY", "CC-BY-SA", "CC-BY-NC", "VPL 1.0", "Personal use only", "I do not know")  # = web/skin/catalog.js
+CREDIT_LICENCES = ("CC-BY", "CC-BY-SA", "CC-BY-NC")
+MSG_LICENCE = ("Simon does not accept that licence. In the Licence list, choose " + ", ".join(LICENCE_LABELS[:-1]) +
+               f" or {LICENCE_LABELS[-1]}, then press Import again.")
 MSG_CONSENT_VALUE = "Who the photo shows must be you or someone who agreed. Choose one of the two."
 MSG_FOR = "The take this model is for is not valid. Open the take again and try once more."
 MSG_DRAFT_ID = "That set of photos is not valid. Start again."
-MSG_CREDIT = "The Credit line is empty. This licence needs the name of who made the model."
-MSG_IMAGE_BIG = "This photo is over 25 MB. Use a smaller photo."
-MSG_QUERY = "The model details are not valid."
-GREY_BODY_NOTE = ("Simon builds a plain grey human body from the pose and build in a photo. "
+MSG_CREDIT = ("The Credit line is empty, and " + ", ".join(CREDIT_LICENCES[:-1]) + f" and {CREDIT_LICENCES[-1]} need the name of who made the "
+              "model. Type that name in the Credit line, or choose another licence, then press Import again.")
+MSG_IMAGE_BIG = "This photo is over 25 MB, the limit for a photo. Choose a smaller photo."
+MSG_QUERY = "Simon could not read the model details. Close this window, open it again and retry."
+GREY_BODY_NOTE = ("Simon builds a plain skin-coloured human body from the pose and build in a photo. "
                   "It does not copy armour, costumes or textures.")
 LOOK_NOTE = ("Simon copied the face, hair and clothing colours from your photo. The photo shows one side, so the back is "
              "the model's guess. The model is private to you and you can delete it any time.")
-LOOK_FALLBACK_NOTE = ("Simon could not fit a skeleton to the clothes in your photo, so it made the plain grey body instead. "
+LOOK_FALLBACK_NOTE = ("Simon could not fit a skeleton to the clothes in your photo, so it made the plain skin-coloured body instead. "
                       "It does not copy the face, hair or clothing colours.")
 MSG_SIGN_IN = "Sign in to copy a face, hair and clothing."
+MSG_SIGN_IN_MODEL = "Sign in to add a character model."
 MSG_SIGN_IN_PICTURE = "Sign in to make a 3D model from a picture."
-CONSENT_TEXT_VERSION = "2026-11-02.2"  # the wording of the look consent sentence and the person question the answer was given to
+CONSENT_TEXT_VERSION = "2026-11-04.2"  # the wording of the look consent sentence and the person question the answer was given to
 MSG_PERSON_UNCHECKED = ("Simon could not check whether this picture shows a person. Say who it shows: you, someone who agreed, "
                         "or no real person (a drawing, toy or statue).")
 MSG_PERSON_IN_PICTURE = ("This picture seems to show a person. Say who it shows: you, someone who agreed, "
                          "or no real person (a drawing, toy or statue).")
 MSG_BUSY = "Making the model could not start. Try again soon."
+GPU_QUOTA_KIND = "follow"  # a model counts as one GPU job, as a take does (serverless-compute.md AC-SC8, AC-SC20)
 SETTLE_EVERY_S = 30.0  # TICKET-306: how often a models request looks again for jobs whose server has gone
 DRAIN_POLL_S = 1.0
 
@@ -163,6 +186,19 @@ def _generator(kind: str = "image") -> Any:
     return mod if mod is not None and (check is None or check(kind)) else None
 
 
+def _count_rig(model_dir: Path) -> str | None:
+    """A rig after a conversion is a GPU job with no request to answer: on the operator's GPU it counts as a take does
+    (serverless-compute.md AC-SC20); the sign-in or stop line goes on the model."""
+    if not compute_mode.serverless():
+        return None
+    owner = str((store.read_status(model_dir) or {}).get("owner") or "")
+    try:
+        quota.Quota(model_dir.parent.parent).reserve(GPU_QUOTA_KIND, quota.counted_as(owner.removeprefix("u:") or None, None))
+    except (quota.SignInRequired, quota.ComputeStopped) as exc:
+        return str(exc)
+    return None
+
+
 def _on_converted(model_dir: Path, ok: bool, message: str) -> None:
     """model_convert's done handler: a converted file ends ready or failed (the converter already set failed when not ok)."""
     if not ok:
@@ -174,6 +210,11 @@ def _on_converted(model_dir: Path, ok: bool, message: str) -> None:
     except ImportRefused:
         unrigged = False  # finalize below marks the model failed with the reason
     if unrigged and _generator("autorig") is not None:  # a converted FBX with no skeleton is rigged, as an unrigged GLB is
+        refused = _count_rig(model_dir)
+        if refused:
+            store.write_status(model_dir, status="failed", error=refused)
+            shutil.rmtree(model_dir / "in", ignore_errors=True)
+            return
         try:
             _note_step(model_dir, {"step": "autorig", "why": "the file has a mesh and no skin"})
             _queue_autorig(model_dir, glb)
@@ -217,8 +258,133 @@ def detect_format(head: bytes) -> str | None:
     return None
 
 
+# A `uri` key and its string, also with the key escaped. A .gltf over GLTF_PARSE_MAX is scanned, not parsed: a small zip can
+# unpack to a file of many small values that costs the server many times its size once parsed. In the scan any `uri` counts,
+# so `extras` can only over-refuse there.
+_URI_VALUE = re.compile(rb'"(?:u|\\u0075)(?:r|\\u0072)(?:i|\\u0069)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
+# Blender treats a uri as embedded data only with `;base64,`; any other `data:...` it opens as a path (its `uri_to_path`), and
+# normpath collapses the prefix: `data:a/b,/../../x` reads `../x`. So only the base64 form is data here too.
+_URI_OPEN = re.compile(rb'"(?:u|\\u0075)(?:r|\\u0072)(?:i|\\u0069)"\s*(?::\s*(?:"[^"\\]*(?:\\.[^"\\]*)*\\?)?)?\Z')  # a `uri` key cut off by the end
+_DATA_URI_BYTES = re.compile(rb"data:([\w.+-]+/[\w.+-]+)?(;[\w=.+-]+)*;base64,")
+
+
+def _not_utf8_text(raw: bytes) -> bool:
+    """True for a UTF-16 or UTF-32 .gltf, which the byte scan cannot read: glTF is UTF-8, and JSON text in UTF-8 holds no NUL."""
+    return raw[:2] in (b"\xff\xfe", b"\xfe\xff") or b"\x00" in raw
+
+
+def _scan_forms(raw: bytes) -> list[bytes]:
+    """What the byte scan reads: the file, and for a UTF-16 or UTF-32 one its text as UTF-8, since a reader may take those and
+    follow a `uri` the bytes hide. The first bytes name the encoding, as JSON readers do, so one copy is made at most."""
+    codec = json.detect_encoding(raw[:4])
+    return [raw] if codec in ("utf-8", "utf-8-sig") else [raw, raw.decode(codec, "ignore").encode("utf-8")]
+
+
+def _name_key(name: str) -> str:
+    """A file name as Mac and Windows tools treat it: one Unicode form, any case. tools/model-converter/convert.py opens it so."""
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+class _ZipNames(set):
+    """The normalised file names of a zip, and how many names share each loose key, counted once for every `uri` checked."""
+
+    def __init__(self, names: Any = ()) -> None:
+        super().__init__(names)
+        self.loose = Counter(_name_key(n) for n in self)
+
+
+def _uri_outside(uri: str, folder: str, names: set[str]) -> bool:
+    """True when `uri` is neither a real data URI nor one file of the zip."""
+    if _DATA_URI.match(uri):
+        return False
+    target = posixpath.normpath(posixpath.join(folder, unquote(uri.replace("\\", "/"))))  # the path Blender would open: backslashes turned, unquoted, normalised
+    loose = (names if isinstance(names, _ZipNames) else _ZipNames(names)).loose
+    return target not in names and loose[_name_key(target)] != 1  # two loose matches: which one is unknown
+
+
+def _open_value_start(buf: bytes) -> int | None:
+    """Where, in `buf`, a `uri` key begins whose value the buffer ends inside (key, colon, spaces or a half-read string), else None."""
+    found = _URI_OPEN.search(buf)
+    if found is None:
+        return None
+    value = re.search(rb':\s*"', found[0])  # a real data URI is allowed any length (AC-M12): only a name has to fit the buffer
+    return None if value and _DATA_URI_BYTES.match(found[0][value.end():]) else found.start()
+
+
+def _names_a_file_outside(raw: bytes, folder: str, names: set[str]) -> bool:
+    """True when the scan of a .gltf in a zip finds a `uri` that points at anything but a real data URI or another file of that zip."""
+    for found in _URI_VALUE.finditer(raw):
+        if _DATA_URI_BYTES.match(found[1]):
+            continue
+        try:
+            uri = json.loads(b'"' + found[1] + b'"')
+        except ValueError:
+            return True
+        if _uri_outside(uri, folder, names):
+            return True
+    return False
+
+
+class _Pairs(tuple):
+    """A parsed JSON object as its key and value pairs, repeats kept."""
+
+
+def _parsed_uris(raw: bytes) -> list[str] | None:
+    """Every `uri` string of a .gltf that parses, duplicate keys too, and none under `extras`, which no reader follows. None when it does not parse."""
+    try:
+        tree = json.loads(raw, object_pairs_hook=_Pairs)
+    except (ValueError, RecursionError):
+        return None
+    uris, stack = [], [tree]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, list):
+            stack.extend(node)
+        elif isinstance(node, _Pairs):
+            for key, value in node:
+                if key == "uri" and isinstance(value, str):
+                    uris.append(value)
+                elif key != "extras":
+                    stack.append(value)
+    return uris
+
+
+def _member_points_outside(zf: zipfile.ZipFile, info: zipfile.ZipInfo, names: set[str]) -> bool:
+    """True when a .gltf member of the zip points outside it. One up to GLTF_PARSE_MAX is parsed; a bigger one is scanned a
+    window at a time, so a member costs the server a window and not its size. A real file name fits in the overlap."""
+    folder = posixpath.dirname(info.filename)
+    if info.file_size <= GLTF_PARSE_MAX:
+        raw = zf.read(info)
+        uris = _parsed_uris(raw)
+        if uris is not None:
+            return any(_uri_outside(uri, folder, names) for uri in uris)
+        return any(_names_a_file_outside(form, folder, names) for form in _scan_forms(raw))
+    with zf.open(info) as member:
+        first = member.read(SCAN_WINDOW)
+        codec = json.detect_encoding(first[:4])
+        decoder = None if codec in ("utf-8", "utf-8-sig") else codecs.getincrementaldecoder(codec)("ignore")
+        chunk, tail = first, b""
+        while chunk:
+            text = decoder.decode(chunk).encode("utf-8") if decoder else chunk
+            buf = tail + text
+            if _names_a_file_outside(buf, folder, names):
+                return True
+            open_at = _open_value_start(buf)  # a key whose value is not closed stays in the buffer, however far back it began
+            if open_at is not None and len(buf) - open_at > SCAN_WINDOW:
+                return True  # a value that long is no file name: refuse
+            tail = buf[min(open_at if open_at is not None else len(buf), max(len(buf) - SCAN_OVERLAP, 0)):]
+            chunk = member.read(SCAN_WINDOW)
+    return False
+
+
+def _is_sidecar(name: str) -> bool:
+    """True for what macOS adds to a zip (`__MACOSX/`, `._a.gltf`): no reader's file, and convert.py never picks one."""
+    parts = name.split("/")  # only "/" divides a name here: convert.py unzips on Linux, where a backslash is a letter of the name
+    return "__MACOSX" in parts or parts[-1].startswith("._")
+
+
 def check_zip(path: Path) -> None:
-    """Refuse a zip that could write outside its folder or expand without bound, or holds no .gltf."""
+    """Refuse a zip that could write outside its folder or expand without bound, holds no .gltf, or whose .gltf points outside it."""
     try:
         with zipfile.ZipFile(path) as zf:
             infos = zf.infolist()
@@ -229,10 +395,16 @@ def check_zip(path: Path) -> None:
                 mode = (i.external_attr >> 16) & 0o170000
                 bad = bad or i.filename.startswith(("/", "\\")) or ".." in parts or bool(re.match(r"^[A-Za-z]:", i.filename)) \
                     or mode == 0o120000
-            if bad or not any(i.filename.lower().endswith(".gltf") for i in infos):
-                raise ImportRefused(422, MSG_ZIP)
-    except zipfile.BadZipFile as exc:
-        raise ImportRefused(422, MSG_ZIP) from exc
+            if bad:
+                raise ImportRefused(422, MSG_ZIP_UNSAFE, field="file")
+            names = _ZipNames(posixpath.normpath(i.filename) for i in infos)
+            gltfs = [i for i in infos if i.filename.lower().endswith(".gltf") and not _is_sidecar(i.filename)]
+            if any(_member_points_outside(zf, i, names) for i in gltfs):
+                raise ImportRefused(422, MSG_ZIP_GLTF_MISSING, field="file")
+    except (zipfile.BadZipFile, RuntimeError, EOFError, OSError, zlib.error) as exc:  # a damaged, encrypted or unknown member
+        raise ImportRefused(422, MSG_ZIP_UNREADABLE, field="file") from exc
+    if not gltfs:
+        raise ImportRefused(422, MSG_ZIP_NO_GLTF, field="file")
 
 
 # ---------------------------------------------------------------- analysis and manifest
@@ -240,20 +412,20 @@ def read_report(glb_path: Path) -> glb_inspect.Report:
     try:
         return glb_inspect.inspect(glb_path)
     except glb_inspect.GlbError as exc:
-        raise ImportRefused(422, str(exc)) from exc
+        raise ImportRefused(422, str(exc), field="file") from exc
 
 
 def analyse(glb_path: Path, report: glb_inspect.Report | None = None) -> tuple[glb_inspect.Report, bone_map.MapResult, dict[str, Any]]:
     """Check a GLB, map its bones and measure it; raises ImportRefused(422) with a plain reason."""
     report = report or read_report(glb_path)
     if not report.has_skin:
-        raise ImportRefused(422, "This model has no skeleton, so it cannot be posed. Missing: " + ", ".join(bone_map.REQUIRED) + ".",
-                            list(bone_map.REQUIRED))
+        raise ImportRefused(422, "This model has no skeleton, so it cannot be posed. Rig it in your 3D tool, then choose the new file. Missing: " + ", ".join(bone_map.REQUIRED) + ".",
+                            list(bone_map.REQUIRED), field="file")
     res = bone_map.map_result(report.gltf, report.positions())
     if res.missing:
         why = "; ".join(res.problems)
-        raise ImportRefused(422, "Simon could not find these bones: " + ", ".join(res.missing) + "." + (f" {why}." if why else ""),
-                            res.missing)
+        raise ImportRefused(422, "Simon could not find these bones: " + ", ".join(res.missing) + "." + (f" {why}." if why else "") +
+                            " Add or rename them in your 3D tool, then choose the new file.", res.missing, field="file")
     return report, res, glb_inspect.normalization(report, res.bones)
 
 
@@ -297,12 +469,15 @@ def _install(glb_path: Path, folder: Path) -> Path:
     return target
 
 
-def _entry(rec: dict[str, Any], manifest: dict[str, Any] | None) -> dict[str, Any]:
-    mid = rec["id"]
-    out = {"id": mid, "name": (manifest or {}).get("name") or rec.get("name") or "Model",
-           "kind": (manifest or {}).get("kind") or "upload", "glb": f"api/models/{mid}/model.glb",
+def _entry(rec: dict[str, Any], manifest: dict[str, Any] | None, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    """One row of the owner's list. Until there is a manifest (and for good on a failed model) the name, kind and licence are
+    what the uploader typed, from `meta`: they are the owner's own words, and the row must not lose them."""
+    mid, meta = rec["id"], meta or {}
+    licence = (manifest or {}).get("licence") or {"id": meta.get("licence"), "attribution": meta.get("attribution")}
+    out = {"id": mid, "name": (manifest or {}).get("name") or rec.get("name") or meta.get("name") or "Model",
+           "kind": (manifest or {}).get("kind") or meta.get("kind") or "upload", "glb": f"api/models/{mid}/model.glb",
            "manifest": f"api/models/{mid}/character.json",
-           "licence": {k: (manifest or {}).get("licence", {}).get(k) for k in ("id", "attribution")}, "status": rec["status"]}
+           "licence": {k: licence.get(k) for k in ("id", "attribution")}, "status": rec["status"]}
     if (manifest or {}).get("for"):
         out["for"] = manifest["for"]
     if (manifest or {}).get("note"):
@@ -410,11 +585,6 @@ def _clear_default(h: Any, owner: str, model_id: str) -> None:
         profile.clear_default_model(auth.identity(h.app), owner[2:], f"up:{model_id}")
 
 
-def _same_origin(h: Any) -> bool:
-    origin, host = h.headers.get("Origin"), (h.headers.get("Host") or "").strip().lower()
-    return bool(origin and host and urlsplit(origin).netloc.lower() == host)
-
-
 def _clean(text: str, limit: int) -> str:
     return "".join(c for c in text if c.isprintable()).strip()[:limit]
 
@@ -457,6 +627,7 @@ def _refuse(h: Any, status: int, message: str, length: int = 0, **extra: Any) ->
     # The whole file is read and dropped (up to the size limit) so the answer reaches the browser: a proxy that is still
     # sending the body when the app closes turns the refusal into its own 503 page and the real message is lost.
     http_body.drain_before_refusal(h, length, MAX_MODEL_BYTES)
+    applog.log(f"model_import: refused {status} field={extra.get('field') or '-'}: {message}")  # the plain sentence, never the file or a name
     h._error(status, message, **extra)
 
 
@@ -474,14 +645,50 @@ def _read_body(h: Any, length: int, first: bytes, path: Path) -> bool:
     return True
 
 
-def _refusal_for(kind: str | None) -> tuple[int, str] | None:
+def _refusal_for(kind: str | None, state: Any = None) -> tuple[int, str] | None:
+    """A text FBX or .gltf is refused only where nothing here can read it (model-convert.md AC-M10)."""
+    reader = _converter(state) if kind in ("fbx-text", "gltf-text") else None
+    if reader is not None and (kind == "gltf-text" or getattr(reader, "reads_text_fbx", lambda _state: False)(state)):
+        return None
     return {None: (415, MSG_TYPE), "fbx-text": (415, MSG_ASCII_FBX), "gltf-text": (415, MSG_GLTF_TEXT)}.get(kind)
 
 
-def _check_room(state: Path, owner: str, length: int, draft: bool) -> bool:
-    if not draft:
-        return store.room_for(state, owner, length)
-    return sum(int(r.get("bytes") or 0) for r in store.owned(state, owner)) + length <= store.MAX_BYTES
+_DATA_URI = re.compile(r"data:([\w.+-]+/[\w.+-]+)?(;[\w=.+-]+)*;base64,")  # see _DATA_URI_BYTES
+
+
+def _check_gltf_shape(raw: bytes) -> None:
+    """Refuse a small .gltf that is not JSON, or whose buffers and images are not lists of objects."""
+    try:
+        doc = json.loads(raw)
+    except (ValueError, RecursionError) as exc:
+        raise ImportRefused(422, MSG_GLTF_TEXT, field="file") from exc
+    lists = [doc.get("buffers", []), doc.get("images", [])] if isinstance(doc, dict) else None
+    if lists is None or not all(isinstance(part, list) and all(isinstance(p, dict) for p in part) for part in lists):
+        raise ImportRefused(422, MSG_GLTF_TEXT, field="file")
+
+
+def _zip_gltf(path: Path) -> Path:
+    """A single .gltf goes to the converter as the zip of it, when it holds everything itself: a file naming others cannot work.
+
+    Its `uri`s are scanned, not parsed, as in a zip: a file near the upload cap can cost the server many times its size once
+    parsed. Only a file up to GLTF_PARSE_MAX is parsed, for its shape; a bigger one of a bad shape is the converter's refusal.
+    """
+    try:
+        raw = path.read_bytes()
+        raw.decode("utf-8")
+    except (OSError, ValueError) as exc:
+        raise ImportRefused(422, MSG_GLTF_TEXT, field="file") from exc
+    if _not_utf8_text(raw):
+        raise ImportRefused(422, MSG_GLTF_TEXT, field="file")
+    if len(raw) <= GLTF_PARSE_MAX:
+        _check_gltf_shape(raw)
+    if _names_a_file_outside(raw, "", set()):
+        raise ImportRefused(415, MSG_GLTF_NEEDS_FILES, field="file")
+    packed = path.with_name("upload.zip")
+    with zipfile.ZipFile(packed, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(path, "model.gltf")
+    path.unlink()
+    return packed
 
 
 def _post(h: Any) -> None:
@@ -490,29 +697,33 @@ def _post(h: Any) -> None:
     if not raw_len.isdigit():
         return _refuse(h, 411, MSG_LENGTH)
     length = int(raw_len)
+    if is_prod() and not owner.startswith("u:"):  # app-surface R4: a network address is shared, an account is not
+        return _refuse(h, 401, MSG_SIGN_IN_MODEL, length)
     try:
         q = parse_query(h)
     except ImportRefused as exc:
         return _refuse(h, exc.status, exc.message, length, field=exc.field)
     ctype = (h.headers.get("Content-Type") or "").split(";")[0].strip().lower()
     if length <= 0:
-        return _refuse(h, 400, MSG_EMPTY)
+        return _refuse(h, 400, MSG_EMPTY, field="file")
     if length > MAX_MODEL_BYTES:
         return _refuse(h, 413, MSG_TOO_BIG, length, field="file")
     if ctype in BAD_TYPES:
-        return _refuse(h, 415, MSG_TYPE, length)
-    if not _check_room(state, owner, length, bool(q["draft"])):
-        return _refuse(h, 429, MSG_QUOTA, length)
+        return _refuse(h, 415, MSG_TYPE, length, field="file")
     first = h.rfile.read(min(CHUNK, length))
     kind = detect_format(first)
-    refusal = _refusal_for(kind)
+    refusal = _refusal_for(kind, state)
     if refusal:
-        return _refuse(h, refusal[0], refusal[1], length - len(first))
+        return _refuse(h, refusal[0], refusal[1], length - len(first), field="file")
+    if kind in ("jpeg", "png", "webp"):  # a photo is a picture of a person: the consent step first, as for a video upload
+        refusal = consent_record.upload_refusal(h.headers)  # consent-and-age.md AC-CA4 (integration decision)
+        if refusal:
+            return _refuse(h, refusal[0], MSG_PHOTO_CONSENT, length - len(first), field="consent")
     if q["look"] and q["consent"] not in CONSENTS:  # a look is a likeness: only after "me" or "someone who agreed"
         return _refuse(h, 400, picture_kind.MSG_LOOK_CONSENT, length - len(first), field="consent")
     subject, not_ok = picture_kind.intake(h.path, kind, q, length, MAX_IMAGE_BYTES, lambda: _generator("image3d"))
     if not_ok:
-        return _refuse(h, not_ok[0], not_ok[1], length - len(first))
+        return _refuse(h, not_ok[0], not_ok[1], length - len(first), field=picture_kind.field_of(not_ok[1]))
     account = _needs_account(owner, subject)  # the one place: every textured generation needs an account
     if account:
         return _refuse(h, account[0], account[1], length - len(first))
@@ -521,12 +732,12 @@ def _post(h: Any) -> None:
     if subject == picture_kind.LOOK:  # a person photo with the look option: same consent, the textured generator
         return _store_and_dispatch(h, state, owner, {**q, "subject": subject}, kind, length, first)
     if kind in ("fbx", "blend", "zip") and _converter(state) is None:
-        return _refuse(h, 415, MSG_NO_CONVERTER, length - len(first))
+        return _refuse(h, 415, MSG_NO_CONVERTER, length - len(first), field="file")
     photo = kind in ("jpeg", "png", "webp")  # only a photo of a person asks who it shows; a mesh is rigged without a question
     if photo and q["consent"] not in CONSENTS:
         return _refuse(h, 400, MSG_CONSENT, length - len(first), field="consent")
     if (photo or kind == "obj") and _generator("image" if photo else "autorig") is None:
-        return _refuse(h, 415, MSG_NO_GENERATOR, length - len(first))
+        return _refuse(h, 415, MSG_NO_GENERATOR if photo else MSG_NO_RIGGER, length - len(first), field="file")
     if kind in ("jpeg", "png", "webp") and length > MAX_IMAGE_BYTES:
         return _refuse(h, 413, MSG_IMAGE_BIG, length - len(first), field="file")
     _store_and_dispatch(h, state, owner, q, kind, length, first)
@@ -541,11 +752,11 @@ def _store_and_dispatch(h: Any, state: Path, owner: str, q: dict[str, Any], kind
         folder, mid = found[0], found[1]["id"]
         taken = sorted((folder / "in").glob("image-*"))
         if len(taken) >= MAX_IMAGES:
-            return _refuse(h, 400, MSG_MANY_IMAGES, length - len(first))
+            return _refuse(h, 400, MSG_MANY_IMAGES, length - len(first), field="file")
     else:
         mid, folder = store.create(state, owner, "draft" if image and q["more"] else "queued")
         taken = []
-    ext = "jpg" if kind == "jpeg" else kind
+    ext = {"jpeg": "jpg", "fbx-text": "fbx", "gltf-text": "gltf"}.get(kind, kind)
     path = folder / "in" / (f"image-{len(taken) + 1}.{ext}" if image else f"upload.{ext}")
 
     def drop() -> None:
@@ -567,7 +778,7 @@ def _store_and_dispatch(h: Any, state: Path, owner: str, q: dict[str, Any], kind
     if not found:
         store.write_meta(folder, {"name": q["name"], "licence": q["licence"], "attribution": q["attribution"],
                                   "source_url": q["source_url"], "source_note": q["source_note"], "filename": q["filename"], "consent": q["consent"],
-                                  **({"look": True} if q.get("look") else {}), **_consent_record(q), "format": "gltf-zip" if kind == "zip" else kind, "for": q["for"],
+                                  **({"look": True} if q.get("look") else {}), **_consent_record(q, image), "format": "gltf-zip" if kind == "zip" else kind, "for": q["for"],
                                   "kind": "generated" if (image or kind == "obj") else "upload"})
     store.write_status(folder, bytes=total)
     import_timings.done(folder, "upload", began)
@@ -577,10 +788,12 @@ def _store_and_dispatch(h: Any, state: Path, owner: str, q: dict[str, Any], kind
         if image:
             return _dispatch_images(h, folder, mid, q)
         if kind == "obj":
-            return _dispatch_generate(h, folder, mid, lambda: _generator("autorig").submit_autorig(folder, path, owner))
+            return _dispatch_counted(h, folder, mid, lambda: _generator("autorig").submit_autorig(folder, path, owner))
+        if kind == "gltf-text":
+            path, kind = _zip_gltf(path), "zip"
         if kind == "zip":
             check_zip(path)
-        fmt = "gltf-zip" if kind == "zip" else kind
+        fmt = {"zip": "gltf-zip", "fbx-text": "fbx"}.get(kind, kind)
         _dispatch_generate(h, folder, mid, lambda: _converter(state).submit(folder, path, fmt))
     except ImportRefused as exc:
         drop()
@@ -594,10 +807,10 @@ def _dispatch_glb(h: Any, folder: Path, mid: str, path: Path, q: dict[str, Any])
     report = read_report(path)
     if not report.has_skin:  # an unrigged mesh: a skeleton is made for it, with no question asked
         if _generator("autorig") is None:
-            raise ImportRefused(415, MSG_NO_GENERATOR)
+            raise ImportRefused(415, MSG_NO_RIGGER, field="file")
         store.write_meta(folder, {**store.read_meta(folder), "kind": "generated"})
         owner = (store.read_status(folder) or {})["owner"]
-        return _dispatch_generate(h, folder, mid, lambda: _generator("autorig").submit_autorig(folder, path, owner))
+        return _dispatch_counted(h, folder, mid, lambda: _generator("autorig").submit_autorig(folder, path, owner))
     manifest = _finish(folder, path, {}, report)
     h._json(201, {"id": mid, "status": "ready", "entry": _entry(store.read_status(folder) or {}, manifest)})
 
@@ -618,14 +831,14 @@ def _dispatch_picture(h: Any, folder: Path, mid: str, q: dict[str, Any]) -> None
     result = {True: "found", False: "none", None: "unchecked"}[found]
     store.write_meta(folder, {**store.read_meta(folder), "subject": picture_kind.OBJECT, "detector": result,
                               "asked": found is not False and q.get("consent") is not None})
-    _dispatch_generate(h, folder, mid, lambda: _generator("image3d").submit_image3d(folder, paths, owner))
+    _dispatch_counted(h, folder, mid, lambda: _generator("image3d").submit_image3d(folder, paths, owner))
 
 
 def _dispatch_look(h: Any, folder: Path, mid: str) -> None:
     """A person photo with the look option goes to `part2 image3d` like a picture, and the model remembers it (TICKET-318)."""
     store.write_meta(folder, {**store.read_meta(folder), "subject": picture_kind.LOOK})
     owner, paths = (store.read_status(folder) or {})["owner"], sorted((folder / "in").glob("image-*"))
-    _dispatch_generate(h, folder, mid, lambda: _generator("image3d").submit_image3d(folder, paths, owner))
+    _dispatch_counted(h, folder, mid, lambda: _generator("image3d").submit_image3d(folder, paths, owner))
 
 
 def _dispatch_images(h: Any, folder: Path, mid: str, q: dict[str, Any]) -> None:
@@ -637,7 +850,7 @@ def _dispatch_images(h: Any, folder: Path, mid: str, q: dict[str, Any]) -> None:
         store.write_status(folder, status="draft")
         return h._json(202, {"id": mid, "status": "draft", "images": len(list((folder / "in").glob("image-*")))})
     paths = sorted((folder / "in").glob("image-*"))
-    _dispatch_generate(h, folder, mid, lambda: _generator("image").submit_images(folder, paths, store.read_status(folder)["owner"]))
+    _dispatch_counted(h, folder, mid, lambda: _generator("image").submit_images(folder, paths, store.read_status(folder)["owner"]))
 
 
 def _start_failure(exc: Exception) -> tuple[int, str]:
@@ -653,18 +866,36 @@ def _start_failure(exc: Exception) -> tuple[int, str]:
     return 503, MSG_BUSY
 
 
-def _consent_record(q: dict[str, Any]) -> dict[str, Any]:
-    """When the answer was given and which wording it was given to, kept from the upload (not the finish)."""
-    if q.get("consent") and (q.get("look") or q.get("subject") == picture_kind.OBJECT):
+def _consent_record(q: dict[str, Any], image: bool) -> dict[str, Any]:
+    """When the answer was given and which wording it was given to, kept from the upload (not the finish): any picture the
+    person answered for, with or without the look. A record from before this stays as it is, with no time or version."""
+    if q.get("consent") and image:
         return {"consent_at": store.now(), "consent_text": CONSENT_TEXT_VERSION}
     return {}
 
 
-def _dispatch_generate(h: Any, folder: Path, mid: str, start: Any) -> None:
+def _dispatch_counted(h: Any, folder: Path, mid: str, start: Any) -> None:
+    """A picture job. On the operator's GPU it is counted first, as a take is; a sign-in or stop refusal raises, so nothing
+    is kept. A job that never starts gives its count back."""
+    if not compute_mode.serverless():
+        return _dispatch_generate(h, folder, mid, start)
+    visitor = quota.counted_as(auth.current_user(h), h._visitor())
+    try:
+        h.app.quota.reserve(GPU_QUOTA_KIND, visitor)
+    except quota.SignInRequired as exc:
+        raise ImportRefused(429, str(exc)) from None
+    except quota.ComputeStopped as exc:
+        raise ImportRefused(503, str(exc)) from None
+    _dispatch_generate(h, folder, mid, start, undo=lambda: h.app.quota.release(GPU_QUOTA_KIND, visitor))
+
+
+def _dispatch_generate(h: Any, folder: Path, mid: str, start: Any, undo: Any = None) -> None:
     store.write_status(folder, status="queued", error=None)
     try:
         start()
     except Exception as exc:  # another lane's worker failed to take the job: the model fails, the server stays up
+        if undo is not None:
+            undo()
         code, message = _start_failure(exc)
         applog.log(f"model_import: could not start {mid} ({type(exc).__name__})", level=logging.WARNING)
         store.write_status(folder, status="failed", error=message)
@@ -678,7 +909,10 @@ def _list(h: Any, owner: str) -> None:
     out = []
     for rec in store.owned(h.app.state, owner):
         folder = store.model_dir(h.app.state, rec["id"])
-        out.append(_entry(rec, store.read_json(folder / "character.json") if rec["status"] == "ready" else None))
+        ready = rec["status"] == "ready"
+        manifest = store.read_json(folder / "character.json") if ready else None
+        # TICKET-493: until the manifest exists, and on a failed model for good, the name and licence are in meta.json
+        out.append(_entry(rec, manifest, None if manifest else store.read_meta(folder)))
     h._json(200, {"mine": out})
 
 
@@ -756,7 +990,7 @@ def handle(h: Any, method: str, route: str) -> bool:
         return False
     _once(h)
     owner = owner_key(h)
-    if method in ("POST", "DELETE") and not _same_origin(h):
+    if method in ("POST", "DELETE") and not auth.same_origin(h):  # multipart and raw bodies: no JSON content type rule
         http_body.drain_before_refusal(h, int(h.headers.get("Content-Length") or 0) if (h.headers.get("Content-Length") or "").isdigit() else 0)
         h._error(403, MSG_CSRF)
     elif method in ("GET", "HEAD") and len(parts) == 1:
@@ -770,6 +1004,7 @@ def handle(h: Any, method: str, route: str) -> bool:
         _post(h)
     elif method == "DELETE" and len(parts) == 2:
         if store.delete(h.app.state, parts[1], owner):
+            serverless_route.forget_job(h.app.state, parts[1])  # AC-SC4: what is still at Modal for this model goes with it
             _clear_default(h, owner, parts[1])
             # 200 with a body, not 204: Chromium reports every bodiless fetch answer as net::ERR_ABORTED (staging intake polish 5)
             h._json(200, {"ok": True, "deleted": parts[1]})

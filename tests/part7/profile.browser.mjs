@@ -133,7 +133,7 @@ const cases = {
     await page.waitForFunction(() => document.querySelector('[data-testid="profile-save-note"]')?.textContent === "Saved.");
     await shot(page, "3-saved.png");
     const kept = (await getJson("__test/profiles"))["sam@example.com"];
-    assert.deepEqual(kept, { public_name: "Sam", avatar: "tide", modes: ["dance"], goals: ["learn_the_moves"], show_name: true, credit_me_as_trainer: false, default_model_id: null, created_utc: null, updated_utc: null });
+    assert.deepEqual(kept, { public_name: "Sam", avatar: "tide", modes: ["dance"], goals: ["learn_the_moves"], show_name: true, credit_me_as_trainer: false, default_model_id: null, model_only_view: false, created_utc: null, updated_utc: null });
 
     // reload: what was saved is what comes back
     await page.reload();
@@ -162,7 +162,7 @@ const cases = {
     await shot(page, "4-delete-confirm.png");
     await tid(page, "profile-delete-yes").tap();
     await page.waitForFunction(() => document.querySelector('[data-testid="profile-delete-note"]')?.textContent === "Profile details deleted.");
-    assert.deepEqual((await getJson("__test/profiles"))["sam@example.com"], { public_name: null, avatar: null, modes: [], goals: [], show_name: false, credit_me_as_trainer: false, default_model_id: null, created_utc: null, updated_utc: null });
+    assert.deepEqual((await getJson("__test/profiles"))["sam@example.com"], { public_name: null, avatar: null, modes: [], goals: [], show_name: false, credit_me_as_trainer: false, default_model_id: null, model_only_view: false, created_utc: null, updated_utc: null });
     assert.equal(await tid(page, "profile-who").innerText(), "You");
     assert.equal(await page.getByLabel("Display name", { exact: true }).inputValue(), "");
     ok("edit: sign in, the Me link, bad name refused, save, reload keeps it, no email on the page, delete confirmed");

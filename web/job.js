@@ -2,6 +2,7 @@
 import { hideStaticTimes } from "./job-eta.js";
 import { getJob, getConfig, ApiError } from "./api.js";
 import { h, clear, stateBlock, linkButton } from "./ui.js";
+import { failedText, foundNobody, needsMe, ME_HREF, ME_LINK } from "./model/job-reason.js"; // byok-ui D1
 import { createProgress, estimateText, TYPICAL_S } from "./progress.js";
 import { mountMeshStream } from "./mesh-stream.js";
 import { queueText, leftText, gpuText } from "./queue-eta.js";
@@ -122,10 +123,13 @@ export function mountJob(root, id) {
     } else if (job.status === "failed") {
       stop();
       head.textContent = "This did not work";
-      note.textContent = job.note || "The job stopped. Try again with a new video.";
+      const said = failedText(job, "The job stopped. Try again with a new video."); // byok-ui D1: the reason says what to do
+      note.textContent = said;
+      prog.setText("Stopped"); // byok-ui D1: the status line no longer reads "Starting"
       const back = job.kind === "trainer" || job.kind === "group" ? "#/record" : `#/follow/${encodeURIComponent(job.entry_id || "")}`;
-      actions.append(linkButton(back, "Try again", "retry", "primary"), linkButton("#/", "Back to movements", "back-home"));
-      mountSendAgain(actions, job.id || id); // TICKET-290: the recording this browser still keeps, sent again
+      if (needsMe(said)) actions.append(linkButton(ME_HREF, ME_LINK, "open-me", "primary")); // a Modal token refusal
+      actions.append(linkButton(back, "Try again", "retry", needsMe(said) ? "secondary" : "primary"), linkButton("#/", "Back to movements", "back-home"));
+      if (!foundNobody(said)) mountSendAgain(actions, job.id || id); // TICKET-290: the recording this browser still keeps, sent again; never a clip with nobody in it
       if (job.kind === "trainer") mountTrainerDelete(job.id || id);
     } else {
       head.textContent = job.status === "queued" ? "Waiting in line" : "Working on it";

@@ -6,9 +6,9 @@ export const SIGNIN_HASH = "#/signin";
 
 export const TEXT = {
   title: "Sign in",
-  intro: "Signing in is optional. Simon works without it. Sign in to keep your takes together on one page.",
+  intro: "Sign in to send your takes and keep them together on one page.",
   emailLabel: "Email address",
-  emailHint: "We use it only to send you sign-in mail.",
+  emailHint: "We use it only to send you sign-in mail and notices about your account.",
   send: "Send me a code",
   sending: "Sending",
   emailBad: "Enter an email address like name@example.com.",
@@ -22,6 +22,7 @@ export const TEXT = {
   invalid: "This link or code is not valid or has expired. Ask for a new one.",
   tooMany: "Too many tries. Wait a few minutes and try again.",
   startFailed: "That email address does not look right.",
+  mailFailed: "The sign-in mail could not be sent. Wait a few minutes and try again.",
   offline: "Sign-in could not be reached. Check your connection and try again.",
   off: "Sign-in is not available here.",
   offBody: "Simon works the same without it. Record, follow and see results as before.",
@@ -35,9 +36,19 @@ export const TEXT = {
 export const OUTBOX_HASH = "#/outbox";
 export const OUTBOX_KEY = "simon.outbox.email";
 
-/** Mail sent notice with the address typed in. */
+/** Mail sent notice with the address typed in. The last sentence is for a sign-in that was limited: it sends no mail and looks the same. */
 export const sentNotice = (email) =>
-  `A sign-in message is on its way to ${email}. It holds a 6 digit code and a link, good for 15 minutes.`;
+  `A sign-in message is on its way to ${email}. It holds a 6 digit code and a link, good for 15 minutes. If nothing arrives in a few minutes, check spam or wait an hour.`;
+
+/** The code screen asks `api/auth/mail-status` every 1.5 s, at most 27 times (a try, the retry and the provider's own wait). */
+export const MAIL_POLL_MS = 1500;
+export const MAIL_POLL_MAX = 27;
+
+/** What one `mail-status` answer means for the screen: "failed" leaves the code screen, "wait" keeps asking, "done" stops. */
+export function mailVerdict(out) {
+  const status = out && out.ok && out.body && typeof out.body === "object" ? out.body.status : "";
+  return status === "failed" ? "failed" : status === "pending" ? "wait" : "done";
+}
 
 const EMAIL = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
@@ -114,7 +125,7 @@ export const headerMeLink = (info) => (info.available && !info.signedIn ? { href
  * The sign-in screen as a small state machine. Phases: email, sending, code, verifying, off.
  * `error` holds the sentence shown under the active field. Pure: returns a new state.
  */
-export const initialState = () => ({ phase: "email", email: "", code: "", error: "" });
+export const initialState = () => ({ phase: "email", email: "", code: "", error: "", attempt: "" });
 
 export function step(state, event) {
   switch (event.type) {
@@ -125,7 +136,8 @@ export function step(state, event) {
       return isEmail(state.email)
         ? { ...state, email: cleanEmail(state.email), phase: "sending", error: "" }
         : { ...state, error: TEXT.emailBad };
-    case "started": return { ...state, phase: "code", code: "", error: "" };
+    case "started": return { ...state, phase: "code", code: "", error: "", attempt: typeof event.attempt === "string" ? event.attempt : "" };
+    case "mail-failed": return state.phase === "code" ? { ...state, phase: "email", code: "", attempt: "", error: TEXT.mailFailed } : state;
     case "start-failed": return { ...state, phase: "email", error: startError(event.status) };
     case "code-input": return { ...state, code: codeDigits(event.value), error: "" };
     case "submit-code":
@@ -133,7 +145,7 @@ export function step(state, event) {
       return isCode(state.code) ? { ...state, phase: "verifying", error: "" } : { ...state, error: TEXT.codeShort };
     case "verify-token": return { ...state, phase: "verifying", error: "" };
     case "verify-failed": return { ...state, phase: event.fromLink ? "email" : "code", code: "", error: verifyError(event.status) };
-    case "other-email": return { ...state, phase: "email", code: "", error: "" };
+    case "other-email": return { ...state, phase: "email", code: "", attempt: "", error: "" };
     default: return state;
   }
 }

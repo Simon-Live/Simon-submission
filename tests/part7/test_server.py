@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from part7 import chain, config, jobs, quota, server
+from part7 import chain, config, jobs, server
 from support import VIDEO_BYTES, Api, ffmpeg_video
 
 OK_ANALYSIS = {"format": "simon.analysis.v1", "status": {"code": "ok"}, "faults": [{"at_s": 1.0}],
@@ -51,7 +51,7 @@ def _upload(api: Api, mp4: Path) -> str:
 
 
 def test_upload_limits_are_the_spec_values() -> None:
-    assert config.MAX_UPLOAD_BYTES == 95_000_000 and config.MAX_UPLOAD_SECONDS == 90
+    assert config.MAX_UPLOAD_BYTES == 85_000_000 and config.MAX_UPLOAD_SECONDS == 90
 
 
 def test_outside_base_path_is_404(api: Api) -> None:
@@ -67,7 +67,7 @@ def test_health_and_config(api: Api) -> None:
     assert doc["gpu_jobs_today"] == 0
     cfg = json.loads(api.request("GET", "api/config")[2])
     assert cfg["base"] == "/simon-part-7/" and cfg["limits"] == {
-        "max_seconds": 90, "max_clip_seconds": 60, "min_clip_seconds": 1, "max_bytes": 95000000,
+        "max_seconds": 90, "max_clip_seconds": 60, "min_clip_seconds": 1, "max_bytes": 85000000,
         "recorder_bps": 2500000}
     assert cfg["phrasing"] == "template" and cfg["fixture_result"] is True
 
@@ -135,7 +135,7 @@ def test_upload_not_a_video_is_400_and_nothing_is_kept(api: Api, tmp_path: Path)
 def test_upload_over_byte_cap_is_413(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config, "MAX_UPLOAD_BYTES", tiny_mp4.stat().st_size - 1)
     status, doc = api.upload(tiny_mp4)
-    assert status == 413 and doc["error"] == server.MSG_TOO_LARGE and list(api.app.uploads.iterdir()) == []
+    assert status == 413 and doc["error"] == server.too_large_message() and list(api.app.uploads.iterdir()) == []
 
 
 def test_upload_over_90_seconds_is_413_and_nothing_queued(api: Api, tmp_path: Path) -> None:
@@ -229,28 +229,6 @@ def test_replay_that_fails_its_contract_is_422(api: Api, tiny_mp4: Path, monkeyp
     assert api.request("GET", f"api/results/{job}/other.json")[0] == 404
 
 
-def test_visitor_quota_gives_429_and_queues_nothing(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(chain, "trainer", _fake_trainer())
-    upload_id = _upload(api, tiny_mp4)
-    hdr = {"Cf-Connecting-Ip": "203.0.113.9"}
-    body = {"upload_id": upload_id, "name": "A", "category": "dance"}
-    for _ in range(config.VISITOR_TRAINER_PER_DAY):
-        status, doc = api.json("POST", "api/trainer", body, hdr)
-        assert status == 202
-        api.app.queue.wait(doc["job"], 60)
-    status, doc = api.json("POST", "api/trainer", body, hdr)
-    assert status == 429 and doc["error"] == quota.VISITOR_MESSAGE
-    assert api.json("POST", "api/trainer", body, {"Cf-Connecting-Ip": "203.0.113.10"})[0] == 202
-    assert api.json("POST", "api/trainer", body)[0] == 202  # no header, no visitor quota
-
-
-def test_daily_cap_gives_503_with_its_message(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(chain, "trainer", _fake_trainer())
-    api.app.quota.daily_gpu = 0
-    status, doc = api.json("POST", "api/trainer", {"upload_id": _upload(api, tiny_mp4), "name": "A", "category": "dance"})
-    assert status == 503 and doc["error"] == quota.DAILY_MESSAGE
-
-
 def test_queue_full_is_503_and_returns_the_quota(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     gate = threading.Event()
 
@@ -275,15 +253,17 @@ def test_unknown_job_is_404(api: Api) -> None:
     assert api.request("GET", "api/jobs/../../etc")[0] == 404
 
 
-def test_catalog_proxy_passes_range_206_headers_and_posts(api: Api) -> None:
+def test_catalog_proxy_passes_range_206_headers_and_refuses_writes(api: Api) -> None:
     status, headers, body = api.request("GET", "catalog/video.mp4", headers={"Range": "bytes=100-199"})
     assert status == 206 and body == VIDEO_BYTES[100:200]
     assert headers["content-range"] == f"bytes 100-199/{len(VIDEO_BYTES)}"
-    status, headers, body = api.request("GET", "catalog/api/entries?q=x", headers={"X-Custom": "yes"})
-    assert status == 200 and json.loads(body)["path"] == "/simon-part-7/catalog/api/entries?q=x" and headers["x-seen-custom"] == "yes"
+    status, headers, body = api.request("GET", "catalog/api/health?q=x", headers={"X-Custom": "yes"})
+    assert status == 200 and json.loads(body)["path"] == "/simon-part-7/catalog/api/health?q=x" and headers["x-seen-custom"] == "yes"
     assert headers["x-seen-host"] == f"127.0.0.1:{api.app.child.port}"
-    status, _, body = api.request("POST", "catalog/api/import", b"payload", {"Content-Type": "application/json"})
-    assert status == 201 and body == b"payload"
+    status, _, body = api.request("GET", "catalog/api/entries?q=x")
+    assert status == 200 and [e["id"] for e in json.loads(body)["entries"]] == ["lateral-raise", "skel-only", "empty"]
+    status, headers, _ = api.request("POST", "catalog/api/import", b"payload", {"Content-Type": "application/json"})
+    assert status == 405 and headers["allow"] == "GET, HEAD"  # APP-H2: Part 6's write routes are not public
 
 
 def test_catalog_proxy_503_when_the_child_is_gone(api: Api) -> None:

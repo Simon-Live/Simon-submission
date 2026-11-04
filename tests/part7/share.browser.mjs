@@ -1,6 +1,7 @@
 // Browser drive at 412x915 of share links against the REAL routes (serve_share.py): sign in through the sign-in screen,
-// keep a take, share it through the Share dialog (name and clip off by default), open the link in a clean browser
-// context with no cookies, revoke from the list, and see the not-available page. Negative assertions: the viewer page
+// keep a take, share it with "Share this result" (a duration prompt; name and clip never on), copy the link, open the copied
+// link in a clean browser context with no cookies, stop it from the result page, let a 1 day link expire (the helper server's
+// clock is moved on), revoke from the list, and see the plain ended lines and the not-available page. Negative assertions: the viewer page
 // holds no email, user id or job id; a tampered token shows the same page as a revoked one.
 //   SIMON7_MODULES_DIR=<checkout>/modules /home/gingy/claude-template/scripts/with-browser-slot.sh node tests/part7/share.browser.mjs
 import assert from "node:assert/strict";
@@ -21,6 +22,7 @@ for (let i = 0; i < 150; i++) {
   try { if ((await fetch(`${base}api/auth/me`)).ok && fs.existsSync(idFile)) break; } catch { await new Promise((r) => setTimeout(r, 150)); }
 }
 const job = fs.readFileSync(idFile, "utf8").trim();
+const tokens = JSON.parse(fs.readFileSync(`${idFile}.tokens.json`, "utf8")); // prod-data.md: the making device's creator tokens
 const EMAIL = "ada.share@example.com";
 const browser = await chromium.launch();
 const errors = [];
@@ -40,36 +42,37 @@ try {
   await t(page, "auth-code").fill(code);
   await t(page, "auth-verify").tap();
   await t(page, "me-email").waitFor();
-  const claimed = await page.evaluate(async (j) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j }) })).status, job);
+  const claimed = await page.evaluate(async ([j, t]) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j, creator_token: t }) })).status, [job, tokens[job]]);
   assert.equal(claimed, 200);
   ok("signed in through the screen and kept the seeded take");
 
+  const minted = [];
+  page.on("request", (r) => { if (r.method() === "POST" && /api\/shares$/.test(r.url())) minted.push(JSON.parse(r.postData())); });
   await page.goto(`${base}#/result/${job}`);
-  await t(page, "share-take-open").waitFor();
-  assert.equal(await t(page, "share-card-off").isDisabled(), true, "the progress card stays off until TICKET-227 is merged");
-  await page.evaluate(() => { // negative witness: every text the preview ever holds, from before the dialog opens
-    window.__previewTexts = [];
-    new MutationObserver(() => {
-      const p = document.querySelector('[data-testid="share-preview"]');
-      if (p) window.__previewTexts.push(p.innerText);
-    }).observe(document.body, { subtree: true, childList: true, characterData: true });
-  });
-  await t(page, "share-take-open").tap();
-  assert.equal(await t(page, "share-name").isChecked(), false, "name is off by default");
-  assert.equal(await t(page, "share-clip").isChecked(), false, "clip is off by default");
-  assert.match(await t(page, "share-until").textContent(), /Anyone with this link can see this until .* or until you revoke it\./);
-  await page.locator('[data-testid="share-preview"][data-preview="server"]').waitFor(); // asked on open, no tick changed
-  const shownPreview = await page.evaluate(() => {
-    const p = document.querySelector('[data-testid="share-preview"]');
-    const q = (id) => p.querySelector(`[data-testid="${id}"]`);
-    return { title: q("shared-title")?.innerText, score: q("shared-score")?.innerText, faults: [...p.querySelectorAll('[data-testid="shared-faults"] li')].map((li) => li.innerText) };
-  });
-  assert.ok(shownPreview.faults.length > 0, "the preview shows the faults the viewer will get");
-  await t(page, "share-create").tap();
+  await t(page, "action-share").waitFor();
+  assert.equal(await t(page, "action-share").textContent(), "Share this result");
+  for (const gone of ["share-take-open", "share-card-off"]) assert.equal(await t(page, gone).count(), 0, `negative: the separate ${gone} control is gone`);
+  await t(page, "action-share").tap();
+  assert.equal(await t(page, "share-ask").textContent(), "Sharing will make this public, how long should this link work?");
+  assert.deepEqual(await page.locator('[data-testid^="share-days-"]').allInnerTexts(), ["1 day", "7 days", "30 days"]);
+  await t(page, "share-cancel").tap();
+  await t(page, "share-prompt").waitFor({ state: "detached" });
+  assert.deepEqual(minted, [], "negative: opening the prompt and cancelling made nothing");
+  ok("Share this result asks the question with three durations and a Cancel, and Cancel makes nothing");
+
+  await t(page, "action-share").tap();
+  await t(page, "share-days-7").tap();
   await t(page, "share-link").waitFor();
-  const link = await t(page, "share-link").inputValue();
+  assert.equal(minted.length, 1);
+  assert.deepEqual([minted[0].days, minted[0].show_name, minted[0].show_clip], [7, false, false]);
+  await t(page, "share-copy").tap();
+  await page.waitForFunction(() => document.querySelector('[data-testid="share-copy-status"]').textContent === "Copied.");
+  const link = await page.evaluate(() => navigator.clipboard.readText());
+  assert.equal(link, await t(page, "share-link").inputValue(), "the clipboard holds the link shown");
   assert.match(link, /#\/shared\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/);
-  ok("the Share dialog previews, defaults name and clip off, and makes a link");
+  assert.equal(link.includes("/result/") || link.includes(job), false, "negative: the copied link is not the result address");
+  assert.match(await t(page, "share-until").textContent(), /^Anyone with this link can see this result until .* You can stop it before then\.$/);
+  ok("choosing 7 days makes a signed #/shared/ link and Copy puts exactly that link on the clipboard");
 
   const clean = await browser.newContext({ viewport: { width: 412, height: 915 } }); // no cookies: nobody signed in
   const viewer = await clean.newPage();
@@ -77,41 +80,66 @@ try {
   await viewer.goto(link);
   await t(viewer, "shared-score").waitFor();
   assert.match(await t(viewer, "shared-score").textContent(), /\d+/);
+  assert.ok((await viewer.locator('[data-testid="shared-faults"] li').count()) > 0, "the fixes show");
   assert.equal(await t(viewer, "shared-by").textContent(), "Shared from Simon", "name off: no name on the page");
   const html = (await viewer.content()) + (await viewer.evaluate(() => document.body.innerText)) + (await (await clean.request.get(`${base}api/shared/${link.split("#/shared/")[1]}`)).text());
   for (const secret of [EMAIL, "example.com", job]) assert.equal(html.includes(secret), false, `negative: the viewer holds no "${secret}"`);
   assert.equal(/\bu-[0-9a-f]{24}\b/.test(html), false, "negative: the viewer holds no user id");
-  assert.equal(await t(viewer, "shared-clip").count(), 0, "negative: no clip unless ticked");
-  ok("a clean browser opens the link and sees the score only, with no email, user id or job id");
+  assert.equal(await t(viewer, "shared-clip").count(), 0, "negative: no clip on a result link");
+  const resultLink = await clean.newPage();
+  await resultLink.goto(`${base}#/result/${job}`);
+  await resultLink.getByText(/not found/i).first().waitFor();
+  ok("a clean browser opens the copied link and sees the score and fixes, with no email, user id or job id; the result address stays closed");
 
-  const seenViewer = { title: await t(viewer, "shared-title").innerText(), score: await t(viewer, "shared-score").innerText(),
-    faults: await viewer.locator('[data-testid="shared-faults"] li').allInnerTexts() };
-  assert.deepEqual(shownPreview, seenViewer, "the owner's preview has the viewer's title, score and faults");
-  const api = await (await clean.request.get(`${base}api/shared/${link.split("#/shared/")[1]}`)).json();
-  assert.equal(shownPreview.title, api.title);
-  assert.deepEqual(shownPreview.faults, api.faults);
-  const everShown = await page.evaluate(() => window.__previewTexts);
-  assert.ok(everShown.length > 0, "the observer saw the preview");
-  assert.equal(everShown.some((s) => s.includes("Your result")), false, "negative: the placeholder title never showed");
-  ok("the dialog preview equals the viewer and api/shared/<token>, and never showed a placeholder title");
+  await page.reload(); // a fresh load of the result page: the live link is found from the owner's list
+  assert.match(await t(page, "share-live").textContent(), /^Shared publicly until \d+ [A-Z][a-z]{2} 20\d\d\.$/);
+  await t(page, "share-stop").tap();
+  await t(page, "share-note").waitFor();
+  assert.equal(await t(page, "share-note").textContent(), "Sharing stopped. The link no longer works.");
+  await viewer.reload();
+  await t(viewer, "shared-ended").waitFor();
+  assert.equal(await t(viewer, "shared-ended").innerText().then((s) => s.includes("This link was stopped.")), true);
+  assert.equal(await t(viewer, "shared-score").count(), 0, "negative: a stopped link shows no result");
+  ok("the result page shows the link is live and until when, Stop sharing ends it, and the viewer says so plainly");
+
+  await t(page, "action-share").tap();
+  await t(page, "share-days-1").tap();
+  const dayLink = await t(page, "share-link").inputValue();
+  await viewer.goto(dayLink);
+  await t(viewer, "shared-score").waitFor();
+  fs.writeFileSync(`${idFile}.skew`, String(2 * 86400)); // the server's clock moves on two days: a 1 day link has ended
+  await viewer.reload();
+  await t(viewer, "shared-ended").waitFor();
+  assert.equal(await t(viewer, "shared-ended").innerText().then((s) => s.includes("This link has expired.") && !/not found/i.test(s)), true);
+  fs.writeFileSync(`${idFile}.skew`, "0");
+  ok("a 1 day link stops working after a day and the viewer says it has expired, not that it was not found");
+
+  await page.waitForTimeout(1100); // the list is newest first by the second, and a tie falls to the random token: below, first means this new link
+  await t(page, "action-share").tap();
+  await t(page, "share-days-30").tap();
+  const link30 = await t(page, "share-link").inputValue();
+  await t(page, "share-done").tap();
+  const v30 = await clean.newPage();
+  await v30.goto(link30);
+  await t(v30, "shared-score").waitFor();
 
   await page.goto(`${base}#/me`);
   await t(page, "share-row").first().waitFor();
   assert.equal(await t(page, "share-state").first().textContent().then((s) => s.startsWith("Works until")), true);
   await t(page, "share-revoke").first().tap();
   await page.waitForFunction(() => document.querySelector('[data-testid="share-state"]')?.textContent === "Revoked");
-  await viewer.reload();
-  await t(viewer, "shared-gone").waitFor();
+  await v30.reload();
+  await t(v30, "shared-ended").waitFor();
   const tampered = await clean.newPage();
   await tampered.goto(link.slice(0, -2) + (link.endsWith("AA") ? "BB" : "AA"));
   await t(tampered, "shared-gone").waitFor();
   assert.equal(await t(tampered, "shared-score").count(), 0, "negative: a tampered link shows no result");
-  assert.equal(await t(viewer, "shared-score").count(), 0, "negative: the revoked link shows no result");
-  ok("revoke from the list ends the link on the next load; a tampered link shows the same page");
+  assert.equal(await t(v30, "shared-score").count(), 0, "negative: the revoked link shows no result");
+  ok("revoke from the list ends the link on the next load; a tampered link shows the generic not-available page");
 
   // nothing is capped (one-letter.md L1, moalborati/simon#61 comment 6594742067): a warned take with a credit shows it as given
   const cappedJob = fs.readFileSync(`${idFile}.capped`, "utf8").trim();
-  assert.equal(await page.evaluate(async (j) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j }) })).status, cappedJob), 200);
+  assert.equal(await page.evaluate(async ([j, t]) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j, creator_token: t }) })).status, [cappedJob, tokens[cappedJob]]), 200);
   await page.goto(`${base}#/result/${cappedJob}`);
   await page.locator('[data-testid="summary-score"]').first().waitFor();
   await page.waitForFunction(() => !document.querySelector('[data-testid="summary-score"][data-reveal="playing"]'), null, { timeout: 10000 });
@@ -124,10 +152,8 @@ try {
   assert.equal(head.grade, "C");
   assert.ok(head.warning && !/capped/i.test(head.warning), "the warning stays, without the cap claim");
   assert.equal(/capped/i.test(head.top), false, "negative: the headline carries no cap wording");
-  await t(page, "share-take-open").tap();
-  await page.locator('[data-testid="share-preview"][data-preview="server"]').waitFor();
-  const cappedPreview = await t(page, "share-preview").innerText();
-  await t(page, "share-create").tap();
+  await t(page, "action-share").tap();
+  await t(page, "share-days-7").tap();
   await t(page, "share-link").waitFor();
   const cappedLink = await t(page, "share-link").inputValue();
   const cappedView = await clean.newPage();
@@ -140,10 +166,8 @@ try {
   assert.equal(shared.score, `${head.score} ${head.caption}, grade ${head.grade}`);
   for (const loose of ["grade F", "score out of 100"]) {
     assert.equal(shared.page.includes(loose), false, `negative: the viewer never shows ${loose}`);
-    assert.equal(cappedPreview.includes(loose), false, `negative: the preview never shows ${loose}`);
   }
-  assert.ok(cappedPreview.includes(shared.score) && cappedPreview.includes(shared.warning), "the preview shows the viewer's score and warning");
-  ok("a capped take: the headline, the preview and the viewer show the credit as given, grade C and a warning");
+  ok("a capped take: the headline and the viewer show the credit as given, grade C and a warning");
   assert.deepEqual(errors, []);
 } finally {
   await browser.close();

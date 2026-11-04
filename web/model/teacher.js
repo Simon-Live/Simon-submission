@@ -92,13 +92,17 @@ function rowScore(t) {
 export function teacherView(doc, entry, entryId) {
   const takes = Array.isArray(doc?.takes) ? doc.takes : [];
   const cues = Array.isArray(doc?.cue_counts) ? doc.cue_counts : [];
+  // the privacy lane's contract (06927b20): anyone but the owner gets class_table null, takes [] and take_count only
+  const count = Number.isInteger(doc?.take_count) && doc.take_count > 0 && takes.length === 0 ? doc.take_count : 0;
   return {
+    countOnly: count > 0,
+    countLine: count ? `${plural(count, "take", "takes")} from people who followed it. Only the person who recorded this movement sees them.` : "",
     entryId,
     handoutHref: handoutHref(entryId),
     classTable: classTableView(doc?.class_table),
     name: entry?.name || entryId,
     byline: authorText(doc?.attribution),
-    empty: takes.length === 0,
+    empty: takes.length === 0 && count === 0,
     summary: `${plural(takes.length, "take", "takes")} from people who followed it`,
     chart: { ...chartModel(takes), label: chartLabel(takes) },
     cues: cues.map((c) => ({ text: c.text, share: cueShare(c.count, takes.length) })),

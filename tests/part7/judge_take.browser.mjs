@@ -2,7 +2,8 @@
 // under ?profile=submission the capture defaults to a 6 s Quick take after 3 s, a one-person clip goes from the trim
 // straight to the analysis (no picker, no details step), and the result shows the measured stage split. Negatives: a
 // two-person clip still shows the picker, the default profile keeps the details step, an old job says "Timing not
-// recorded". Signed out and signed in, no console errors.
+// recorded". Signed out and signed in, no console errors. The consent step is on, as in prod and on staging, and answered
+// through the screen: the check before a send then answers later, which is the path a judge's take runs.
 //   PLAYWRIGHT_DIR=<node_modules> /home/gingy/claude-template/scripts/with-browser-slot.sh node tests/part7/judge_take.browser.mjs
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -12,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { answerConsentStep } from "../../staging/consent-step.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const { chromium } = createRequire(path.join(process.env.PLAYWRIGHT_DIR || path.resolve(here, "../../node_modules"), "x.js"))("playwright");
@@ -34,11 +36,15 @@ const browser = await chromium.launch({ args: ["--use-fake-device-for-media-stre
 let passed = 0;
 const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 
-async function open(query, signedIn) {
+async function open(query, signedIn, gated = true) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
   ctx.setDefaultTimeout(20000);
   await ctx.route(/api\/auth\/me$/, (route) => route.fulfill({ contentType: "application/json",
     body: JSON.stringify({ available: true, signed_in: signedIn, ...(signedIn ? { email: "judge@example.com", user_id: "u-judge" } : {}) }) }));
+  if (gated) await ctx.route(/api\/policy$/, async (route) => {
+    const doc = await (await route.fetch()).json();
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...doc, consent: { ...doc.consent, required: true, version: "test" } }) });
+  });
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -48,6 +54,7 @@ async function open(query, signedIn) {
   page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text())) errors.push(m.text()); });
   page.on("response", (r) => { if (r.status() >= 400 && /\/api\/(ghost|jobs|follow|people|uploads|config)\b/.test(r.url()) && !/\.jpg$/.test(r.url())) errors.push(`${r.status()} ${r.url()}`); });
   await page.goto(`${base}${query}#/follow/lateral-raise`);
+  if (gated) await answerConsentStep(page);
   await page.getByTestId("upload").waitFor({ state: "attached" });
   return { ctx, page, errors };
 }
@@ -89,6 +96,18 @@ try {
     assert.equal(await page.getByTestId("stage-split").count(), 1, "one strip per job");
     assert.deepEqual(errors, [], `${who}: no console errors`);
     ok(`${who}: AC-4 the result shows the measured split from the job's timing`);
+    await ctx.close();
+  }
+
+  // AC-1 with no consent step (a server outside prod and staging): the check before a send answers at once and the job still goes
+  await post("__test/reset", {});
+  {
+    const { ctx, page, errors } = await open("?profile=submission", false, false);
+    await uploadAndTrim(page);
+    await page.waitForURL(/#\/job\/job1$/);
+    assert.equal((await state()).jobs.job1.kind, "follow");
+    assert.deepEqual(errors, []);
+    ok("AC-1 with no consent step: one person, the analysis starts by itself");
     await ctx.close();
   }
 

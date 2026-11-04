@@ -20,6 +20,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from part7 import ffsafe
+
 PROBE_TIMEOUT_S = 120
 
 
@@ -47,9 +49,11 @@ def sample_times(pts: list[float], fps: float) -> list[float]:
 
 def probe_pts(video: Path) -> list[float]:
     """The decoded frame timestamps of `video` in seconds, read the way Part 2 reads them (ffprobe)."""
-    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                          "frame=best_effort_timestamp_time", "-of", "csv=p=0", str(video)],
-                         capture_output=True, text=True, check=True, timeout=PROBE_TIMEOUT_S).stdout
+    done = ffsafe.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                       "frame=best_effort_timestamp_time", "-of", "csv=p=0", str(video)], timeout=PROBE_TIMEOUT_S, text=True)
+    if done.returncode != 0:
+        raise subprocess.CalledProcessError(done.returncode, "ffprobe", done.stdout, done.stderr)
+    out = done.stdout
     return [float(x.strip().rstrip(",")) for x in out.splitlines() if x.strip().rstrip(",") not in ("", "N/A")]
 
 

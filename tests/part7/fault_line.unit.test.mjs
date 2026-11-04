@@ -111,3 +111,66 @@ test("no analysis, or a document without phrasing rows, leaves the server's mode
   const section = await mountModelsUsed(new El("div"), "f7f06d0bc4f3", async () => HERO_MODELS);
   assert.match(detailOf(section, "spark-phrasing").textContent, /\b4 of 4 lines\b/);
 });
+
+// release 14: an insight row carries the AI label only when the fault it names (same measure, side and cue) was worded live
+const live = (t) => ({ backend: "muse-spark", fallback_reason: null, lang: "en", text: t });
+const tmpl = (t) => ({ backend: "template", fallback_reason: null, lang: "en", text: t });
+const KNEE = [{ measure: "knee_flexion", side: "left", direction: "more", at_s: 2.0, cue: "Straighten your left knee more" },
+  { measure: "knee_flexion", side: "left", direction: "less", at_s: 9.0, cue: "Bend your left knee more" }];
+
+test("insightLine: the live line of the fault an insight names, else null (fixed text carries no label)", async () => {
+  const { insightLine } = await import("../../web/model/fault-line.js");
+  const faults = [{ measure: "elbow_flexion", side: "both", at_s: 0.0, text: "t0", cue: "c0" }, { measure: "foot_out", side: "both", at_s: 0.0, text: "t1", cue: "c1" }];
+  const phrasing = { faults: [{ backend: "muse-spark", text: "Your elbows are far too bent.", fallback_reason: null }, { backend: "template", text: "x" }] };
+  const a = { faults, phrasing };
+  assert.deepEqual(insightLine(a, { measure: "elbow_flexion", side: "both", at_s: 0.0, cue: "c0" }), { text: "Your elbows are far too bent.", live: true, backend: "muse-spark" });
+  assert.equal(insightLine(a, { measure: "foot_out", side: "both", at_s: 0.0, cue: "c1" }), null, "a template line: no label");
+  assert.equal(insightLine(a, { measure: "tempo" }), null, "no fault of that measure");
+  assert.equal(insightLine({ faults, phrasing: null }, { measure: "elbow_flexion", cue: "c0" }), null);
+});
+
+test("insightLine A: the opposite direction's live sentence does not attach", async () => {
+  const { insightLine } = await import("../../web/model/fault-line.js");
+  const a = { faults: KNEE, phrasing: { faults: [tmpl("x"), live("Your left knee is not bent enough at 9.0 s.")] } };
+  assert.equal(insightLine(a, { measure: "knee_flexion", side: "left", at_s: 8.0, cue: "Straighten your left knee more" }), null);
+});
+
+test("insightLine B: a live sentence from another fault does not attach to a cue whose own fault was template text", async () => {
+  const { insightLine } = await import("../../web/model/fault-line.js");
+  const b = { faults: KNEE, phrasing: { faults: [tmpl("x"), live("Your left knee is not bent enough at 9.0 s.")] } };
+  assert.equal(insightLine(b, { measure: "knee_flexion", side: "left", at_s: 8.0, cue: "Straighten your left knee more" }), null);
+});
+
+test("insightLine C: a cue whose fault was worded live carries the label even when its why is Part 5's retimed clause", async () => {
+  const { insightLine } = await import("../../web/model/fault-line.js");
+  const c = { faults: KNEE, phrasing: { faults: [live("Your left knee is bent too much at 2.0 s."), tmpl("x")] } };
+  const got = insightLine(c, { measure: "knee_flexion", side: "left", at_s: 7.0, cue: "Straighten your left knee more", why: "Your left knee is bent too much at 7.0 s (5 of 5 reps)" });
+  assert.equal(got && got.live, true);
+  assert.equal(insightLine(c, { measure: "knee_flexion", side: "left", at_s: 7.0, cue: "Bend your left knee more" }), null, "its own fault is template text");
+});
+
+test("whyCarriesLive R15: the why is shown only when it holds the live clause, retimed", async () => {
+  const { whyCarriesLive } = await import("../../web/model/fault-line.js");
+  const liveText = "Your left knee is bent too much at 2.0 s.";
+  assert.equal(whyCarriesLive("Your left knee is bent too much at 7.0 s (5 of 5 reps)", liveText), true);
+  assert.equal(whyCarriesLive("Right elbow bent more than the example at 0.7 s", "Your right elbow bends far more than the trainer's."), false, "template words");
+  assert.equal(whyCarriesLive(undefined, liveText), false);
+  assert.equal(whyCarriesLive("anything", ""), false);
+});
+
+test("withModelFlags R16: a rep row holding its fault's live sentence exactly is flagged; fixed text and fallbacks are not", async () => {
+  const { withModelFlags } = await import("../../web/model/fault-line.js");
+  const sentence = "Compared with the recording, your left knee is bent too much at 7.8 s.";
+  const mk = (text, cue = "Straighten your left knee more") => ({ measure: "knee_flexion", side: "left", at_s: 7.8, cue, text });
+  const a = { faults: KNEE, phrasing: { faults: [live(sentence), tmpl("x")] },
+    score: { timeline: [{ t_s: [0, 9], misses: [mk(sentence), mk("left knee bent slightly more than the example at 7.8 s"), mk(sentence, "Bend your left knee more"), mk("knees")] }] } };
+  const got = withModelFlags(a).score.timeline[0].misses.map((m) => m.ai === true);
+  assert.deepEqual(got, [true, false, false, false], "only the verbatim sentence of the right fault; no short stem matches");
+  assert.equal(a.score.timeline[0].misses[0].ai, undefined, "the input is not changed");
+  const es = { faults: KNEE, phrasing: { lang: "es", faults: [{ ...live("Su rodilla izquierda esta muy doblada."), lang: "es" }, tmpl("x")] },
+    score: { timeline: [{ t_s: [0, 9], misses: [mk("Su rodilla izquierda esta muy doblada.")] }] } };
+  assert.equal(withModelFlags(es).score.timeline[0].misses[0].ai, true, "a translated live line is still the model's");
+  const fell = { faults: KNEE, phrasing: { faults: [{ ...live(sentence), fallback_reason: "timed out" }, tmpl("x")] }, score: a.score };
+  assert.equal(withModelFlags(fell).score.timeline[0].misses[0].ai, undefined, "a fallback is fixed text");
+  assert.equal(withModelFlags({ faults: [] }).score, undefined);
+});

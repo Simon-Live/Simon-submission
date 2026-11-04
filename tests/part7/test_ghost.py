@@ -9,7 +9,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from part7 import ghost, jobs
+import pytest
+
+from part7 import auth, ghost, jobs
 from part7.skeleton2d import JOINTS
 
 # ----- Part 2 fixtures: pose3d.json and camera.json of a trainer clip (Part 2 CONTRACT.md) ----------------------------
@@ -94,15 +96,24 @@ class Child:
 
 
 class H:
-    def __init__(self, child: Child, jobs_root: Path | None = None, state: Path | None = None) -> None:
+    def __init__(self, child: Child, jobs_root: Path | None = None, state: Path | None = None, viewable: bool = True) -> None:
         self.app = SimpleNamespace(child=child, queue=SimpleNamespace(root=jobs_root), state=state)
         self.sent: list[tuple[int, Any]] = []
+        self.viewable = viewable  # what `auth.may_view_entry` answers for this stand-in (the real rule runs below)
 
     def _json(self, status: int, body: Any) -> None:
         self.sent.append((status, body))
 
     def _error(self, status: int, msg: str) -> None:
         self.sent.append((status, {"error": msg}))
+
+
+@pytest.fixture(autouse=True)
+def _stand_in_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The stand-in handler `H` has no session or access store: it says itself whether the caller may view the entry.
+    A real handler (the running-app tests below) keeps the real rule."""
+    real = auth.may_view_entry
+    monkeypatch.setattr(auth, "may_view_entry", lambda h, entry_id: h.viewable if isinstance(h, H) else real(h, entry_id))
 
 
 def trainer_job(root: Path, entry: str, job_id: str = "aaaaaaaaaaa1", person: str | None = None, **part2: Any) -> Path:
@@ -416,6 +427,17 @@ def test_route_falls_back_to_the_skeleton_when_the_animation_is_unreadable() -> 
                 {"animation.json": b"not json", "skeleton.json": _skeleton()}))
     ghost.handle(h, "GET", "ghost/squat.json")
     assert h.sent[0][0] == 200 and h.sent[0][1]["source"] == "skeleton"
+
+
+class Untouchable(Child):
+    def get_entry(self, entry_id: str) -> dict[str, Any] | None:
+        raise AssertionError("a hidden movement's files are never read")
+
+
+def test_route_answers_a_movement_the_caller_may_not_view_as_a_missing_one(tmp_path: Path) -> None:  # app-surface B1
+    h = H(Untouchable(ENTRY, {"animation.json": _anim()}), tmp_path / "jobs", tmp_path / "state", viewable=False)
+    assert ghost.handle(h, "GET", "ghost/square-arms.json") is True
+    assert h.sent == [(404, {"error": ghost.MSG_ENTRY})]
 
 
 def test_route_404s_and_ignores_other_routes() -> None:

@@ -130,9 +130,11 @@ test("me model: claim input, takes rows, delete summary, consent body", () => {
   ]);
   assert.equal(rows[0].when, "Oct 31, 10:05 AM");
   assert.equal(rows[1].when, "");
-  assert.equal(M.holdsTake({ takes: [{ job_id: "a" }] }, "a"), true);
-  assert.equal(M.holdsTake({ takes: [{ job_id: "a" }] }, "b"), false);
-  assert.equal(M.holdsTake(null, "a"), false);
+  assert.equal(M.keptTake({ takes: [{ job_id: "a", kept: true }] }, "a"), true);
+  assert.equal(M.keptTake({ takes: [{ job_id: "a", kept: true }] }, "b"), false);
+  assert.equal(M.keptTake({ takes: [{ job_id: "a", kept: false }] }, "a"), false, "negative: on the account is not kept");
+  assert.equal(M.keptTake({ takes: [{ job_id: "a" }] }, "a"), false);
+  assert.equal(M.keptTake(null, "a"), false);
   assert.equal(M.deletedSummary({ takes_removed: 1, entries_unlinked: 2 }), "1 take removed. 2 movements unlinked.");
   assert.equal(M.deletedSummary({}), "0 takes removed. 0 movements unlinked.");
   assert.deepEqual(M.busyIds({ busy: ["a", 3, "b"] }), ["a", "b"]);
@@ -143,13 +145,29 @@ test("me model: claim input, takes rows, delete summary, consent body", () => {
 
 test("consent text covers the design's requirements and the user-facing words are clean", () => {
   const text = M.CONSENT_LINES.join(" ");
-  for (const need of [/optional/, /email address/, /90 days instead of 7/, /progress over weeks/, /Untick/, /delete the copies of your takes and every comparison made from them right away/, /Anyone who holds the link to a take can keep it/, /Delete my data/, /Meta/, /only to send sign-in mail/]) {
+  for (const need of [/optional/, /email address/, /90 days instead of 7/, /progress over weeks/, /Untick/, /delete the copies of your takes and every comparison made from them right away/, /A take can be kept only in the browser that made it; the first account to keep it owns it/, /Delete my data/, /Meta/, /only to send sign-in mail/]) {
     assert.match(text, need);
   }
   const all = JSON.stringify([A.TEXT, M.TEXT, M.CONSENT_LINES, A.sentNotice("a@b.co"), M.TEXT.signedInAs("a@b.co")]);
   assert.doesNotMatch(all, /coach|medical|injury/i);
   assert.doesNotMatch(all, /[\u2013\u2014]/);
-  assert.match(M.TEXT.deleteBody, /teacher's movement stays in the catalog/);
+  assert.match(M.TEXT.deleteBody, /the movements you recorded and your Modal token/); // delete_account removes them (auth_routes.py)
+});
+
+test("prod consent lines: no Meta, Simon's Modal workspace, owner-only takes; no line says a link opens or keeps a take", () => {
+  // a11y-copy B1, B2 and the privacy lane's contract (private-default.md W5)
+  assert.equal(M.consentLines(true), M.PROD_CONSENT_LINES);
+  assert.equal(M.consentLines(false), M.CONSENT_LINES);
+  const prod = M.PROD_CONSENT_LINES.join(" ");
+  assert.doesNotMatch(prod, /Meta|Muse|optional/);
+  assert.match(prod, /every take runs in Simon's Modal workspace/);
+  assert.match(prod, /kept only in the browser that made it; the first account to keep it owns it/);
+  assert.doesNotMatch(prod, /device/); // a11y R12: the creator token is kept per browser, not per device
+  assert.equal(M.TEXT.claimHint, "Paste the link of a result made in this browser, or its take id.");
+  for (const words of [prod, M.CONSENT_LINES.join(" "), M.TEXT.claimHint]) {
+    assert.doesNotMatch(words, /[Aa]nyone (who holds|with) the link/);
+  }
+  assert.doesNotMatch(prod, /[\u2013\u2014]| - /);
 });
 
 test("the views use no coach, medical or injury word and no dash characters", () => {
@@ -299,4 +317,24 @@ test("TICKET-327 Me: the takes card sits first under the account card, before co
   const ids = el.children.map((c) => c.attrs["data-testid"] ?? null);
   assert.ok(ids.indexOf("me-takes-card") > 0 && ids.indexOf("me-takes-card") < ids.indexOf("me-consent"));
   assert.equal(find(el, "me-take-0").children.at(-1).attrs.href, "#/result/j1");
+});
+
+test("a refused mail leaves the code screen with a plain sentence, and the notice carries the spam hint", () => {
+  const s = A.step(A.step(A.step(A.initialState(), { type: "email-input", value: "me@example.com" }), { type: "submit-email" }), { type: "started", attempt: "0123456789abcdef" });
+  assert.equal(s.attempt, "0123456789abcdef");
+  assert.match(A.sentNotice("me@example.com"), /If nothing arrives in a few minutes, check spam or wait an hour\./);
+  const failed = A.step(s, { type: "mail-failed" });
+  assert.deepEqual([failed.phase, failed.error, failed.attempt], ["email", A.TEXT.mailFailed, ""]);
+  const away = A.step(s, { type: "other-email" });
+  assert.equal(away.attempt, "");
+  assert.equal(A.step(away, { type: "mail-failed" }).error, "", "a late answer after Use a different email changes nothing");
+  assert.equal(/[\u2013\u2014]/.test(A.TEXT.mailFailed + A.sentNotice("a@b.co")), false);
+});
+
+test("the mail-status answer: only failed leaves the screen, pending keeps asking, anything else stops", () => {
+  assert.equal(A.mailVerdict({ ok: true, body: { status: "failed" } }), "failed");
+  assert.equal(A.mailVerdict({ ok: true, body: { status: "pending" } }), "wait");
+  for (const out of [{ ok: true, body: { status: "sent" } }, { ok: true, body: { status: "unknown" } }, { ok: false, status: 429 }, null, { ok: true, body: null }]) {
+    assert.equal(A.mailVerdict(out), "done");
+  }
 });

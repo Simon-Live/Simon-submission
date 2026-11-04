@@ -5,19 +5,28 @@ import { withQualityCap } from "../quality-cap.js";
 import { withLight } from "../light-result.js";
 
 export const TEXT = {
-  action: "Share",
   actionReport: "Share this comparison",
+  askDays: "Sharing will make this public, how long should this link work?",
+  daysGroup: "How long the link works",
+  signedOut: "Sign in to share this result.",
+  makingLink: "Making the link",
+  readyTitle: "Your link is ready",
+  readyUntil: (when) => `Anyone with this link can see this result until ${when}. You can stop it before then.`,
+  send: "Send link",
+  stop: "Stop sharing",
+  stopping: "Stopping the link",
+  stopped: "Sharing stopped. The link no longer works.",
+  stopFailed: "The link was not stopped. Try again.",
+  liveUntil: (when) => `Shared publicly until ${when}.`,
+  liveNote: "Anyone with the link can see the movement, score, grade and fixes. The link is shown once, so make a new one to send it again.",
+  expired: "This link has expired.",
+  expiredBody: "Ask the person who sent it for a new link.",
+  stoppedByOwner: "This link was stopped.",
+  stoppedByOwnerBody: "The person who shared it ended it.",
   title: "Share a link",
-  cardOff: "Share progress card",
-  cardOffNote: "The progress card is not available yet.",
   daysLabel: "The link works for",
   nameLabel: "Show my name",
-  scoreLabel: "Show my score",
-  faultsLabel: "Show what to work on",
-  clipLabel: "Include my video clip",
-  clipHint: "Your body is on the clip. Leave this off unless you want it seen.",
   preview: "What the person sees",
-  previewClip: "Your clip will play here for the person with the link.",
   previewLoading: "Loading what the person will see.",
   previewFailed: "The preview did not load. Close this and open Share again to see it.",
   create: "Create link",
@@ -64,16 +73,14 @@ export function expirySentence(isoOrDays, now = Date.now()) {
 }
 
 /**
- * The body of `POST api/shares`; name and clip are off unless ticked, and `confirm` is always the person's click.
- * Score and faults are on by default, so they are sent only when unticked (and only for a take result).
+ * The body of `POST api/shares`; the name is off unless ticked (a comparison only), a take result never asks for its clip,
+ * and `confirm` is always the person's click. Score and faults are always in.
  */
-export function createBody({ kind, itemRef, showName = false, showClip = false, days = DEFAULT_DAYS, includeScore = true, includeFaults = true, scoreDisplay = null }) {
+export function createBody({ kind, itemRef, showName = false, days = DEFAULT_DAYS, scoreDisplay = null }) {
   const take = kind === "take_result";
   const display = take ? displayChoice(scoreDisplay) : null;   // the share always carries points, so the link shows the points unit
   return {
-    kind, item_ref: itemRef, show_name: showName === true, show_clip: take && showClip === true, days, confirm: true,
-    ...(take && includeScore === false ? { include_score: false } : {}),
-    ...(take && includeFaults === false ? { include_faults: false } : {}),
+    kind, item_ref: itemRef, show_name: showName === true, show_clip: false, days, confirm: true,
     ...(display ? { score_display: display } : {}),
   };
 }

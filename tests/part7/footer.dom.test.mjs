@@ -5,6 +5,7 @@ import { installDom, El } from "./fake-dom.mjs";
 
 installDom();
 const { mountFooter, renderFooter } = await import("../../web/footer.js");
+const { setPolicy, resetPolicy } = await import("../../web/policy.js");
 
 const SHA = "1234abcd" + "e".repeat(32);
 const BUILD = { sha: SHA, short: SHA.slice(0, 9), subject: "x", committed_at: "2026-11-02T10:05:00Z",
@@ -68,7 +69,7 @@ test("a missing host element is a no-op", async () => {
 test("source and feedback are plain text; the only links are app pages and the contact address", () => {
   const el = renderFooter(new El("footer"), BUILD);
   assert.equal(q(el, "footer-source").tag, "p");
-  assert.equal(q(el, "footer-source").textContent, "Source: private repository (moalborati/simon-part-7-stitching-app)");
+  assert.equal(q(el, "footer-source").textContent, "Source: private repository");
   assert.equal(q(el, "footer-feedback").tag, "p");
   assert.equal(q(el, "footer-link-source"), null);
   assert.equal(q(el, "footer-link-feedback"), null);
@@ -79,4 +80,12 @@ test("source and feedback are plain text; the only links are app pages and the c
   const app = (x) => x.startsWith("#/") || x.startsWith("api/");
   assert.ok(hrefs.every((x) => app(x) || x === "mailto:hello@simon.live"), "negative: no outside link");
   assert.equal(q(el, "footer-copyright").textContent, "© 2026 Simon Live LLC");
+});
+
+test("the Muse credit shows only in prod with live wording on", () => {
+  const with_ = (doc) => { setPolicy({ switches: {}, consent: {}, ...doc }); const el = renderFooter(new El("footer"), BUILD); resetPolicy(); return q(el, "footer-muse-credit"); };
+  assert.equal(with_({ prod: true, phrasing_live: true }).textContent, "Built with Muse Spark Open");
+  assert.equal(with_({ prod: true, phrasing_live: false }), null, "negative: prod with template wording");
+  assert.equal(with_({ prod: false, phrasing_live: true }), null, "negative: not prod");
+  assert.equal(q(renderFooter(new El("footer"), BUILD), "footer-muse-credit"), null, "negative: no policy loaded");
 });

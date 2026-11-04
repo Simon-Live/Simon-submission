@@ -25,7 +25,7 @@ import tempfile
 import time
 from typing import Any, Iterator
 
-from part7 import applog, labels, model_only, modes
+from part7 import applog, consent_record, ffsafe, labels, model_only, modes
 
 USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,40}$")  # C-ID
 JOB_ID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -211,7 +211,7 @@ def _make_clip(video: Path, out: Path) -> bool:
            "-vf", f"fps={CLIP_FPS},{scale}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
     try:
-        done = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT_S, check=False)
+        done = ffsafe.run(cmd, timeout=FFMPEG_TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired):
         return False
     return done.returncode == 0 and out.is_file() and out.stat().st_size > 0
@@ -357,6 +357,11 @@ def pending_take(state: Path | str, user_id: str, job_id: str) -> dict[str, Any]
             "video_kept": job.get("video_kept") is not False, "light": light_of(job), "analysis": source, "clip": None}
 
 
+def has_copy(state: Path | str, user_id: str, entry_id: Any, job_id: str) -> bool:
+    """True when the user's history holds this take: what "Kept" on the result page promises."""
+    return valid_ids(user_id, entry_id, job_id) and (take_dir(state, user_id, entry_id, job_id) / META_NAME).is_file()
+
+
 def claim(state: Path | str, user_id: str, job_id: str) -> bool:
     """Copy a finished job the user holds (the identity store already recorded the claim); a repeat is a no-op."""
     state = Path(state)
@@ -425,16 +430,19 @@ def takes(state: Path | str, user_id: str, entry_id: str) -> list[dict[str, Any]
 # ----- consent (the video consent only; retention consent is the identity store's) -----------------------
 def consent(state: Path | str, user_id: str) -> dict[str, Any]:
     doc = read_json(user_dir(state, user_id) / "consent.json") if valid_ids(user_id) else None
-    if isinstance(doc, dict) and doc.get("video") is True:
+    # Meta Model API Terms 10.1 (muse-prod.md AC-MP11): in a gated build the choice holds only with the person's 18 statement.
+    if isinstance(doc, dict) and doc.get("video") is True and (doc.get("meta_adults") is True or not consent_record.required()):
         return {"video": True, "version": doc.get("version"), "at": doc.get("at")}
     return {"video": False, "version": None, "at": None}
 
 
-def set_consent(state: Path | str, user_id: str, video: bool, version: str) -> dict[str, Any]:
-    """Record whether Muse Spark may watch the user's takes; ValueError for a bad id, flag or version."""
+def set_consent(state: Path | str, user_id: str, video: bool, version: str, adults: Any = False) -> dict[str, Any]:
+    """Record whether Muse Spark may watch the user's takes; ValueError for a bad id, flag or version, or a yes without the 18 statement."""
     if not valid_ids(user_id) or not isinstance(video, bool) or not isinstance(version, str) or not VERSION_RE.match(version):
         raise ValueError("history consent needs a user, a true or false and a version")
-    doc = {"video": video, "version": version, "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    if video and consent_record.required() and adults is not True:
+        raise ValueError("sending video to Meta needs the 18 statement")
+    doc = {"video": video, "meta_adults": video and adults is True, "version": version, "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     with locked(state):
         write_json(user_dir(state, user_id) / "consent.json", doc)
         if not video:  # reports made with the user's video go; the copies stay

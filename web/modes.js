@@ -1,10 +1,11 @@
 // Modes: dance, rehab, fitness (practice-and-modes.md "Modes"). A mode changes how Part 7 guides and paces
 // practice. The submission profile (flags.js) hides the picker and every mode line; the code stays. It does not change the score unless Part 5 offers a scoring profile (analysis.profile says so).
 import { h, ensureCss } from "./ui.js";
-import { showModes } from "./flags.js";
+import { showModes, showRehab } from "./flags.js";
 
 export const MODES = ["dance", "rehab", "fitness"];
-export const KEY = "simon.mode";
+export const KEY = "simon.practice.mode"; // the follow screen's own picker; the header switch's `simon.mode` is no longer read
+export const LEGACY_KEY = "simon.mode";   // written by the removed header switch (TICKET-436); dropped on start, never read
 export const ALL = "all"; // the catalog filter that shows everything; never a practice mode
 
 /** What Part 7 controls per mode. `learnSpeed` is the slow step of the section ladder (1 = no slow step). */
@@ -37,6 +38,9 @@ export const TEXT = {
 };
 
 const isMode = (m) => MODES.includes(m);
+/** The modes offered here: rehab only while showRehab() (#415 `rehab` switch, LEG-H3). */
+export const offeredModes = () => (showRehab() ? MODES : MODES.filter((m) => m !== "rehab"));
+const isOffered = (m) => offeredModes().includes(m);
 const store = (storage) => storage || globalThis.localStorage;
 
 /** The stored choice: a mode, ALL (catalog filter) or null when unset, blocked or junk. */
@@ -44,8 +48,13 @@ export function loadChoice(storage) {
   if (!showModes()) return null; // submission profile: no stored mode applies
   try {
     const v = store(storage).getItem(KEY);
-    return isMode(v) || v === ALL ? v : null;
+    return isOffered(v) || v === ALL ? v : null;
   } catch { return null; }
+}
+
+/** Drop what the removed header switch stored. A blocked storage is fine: the old value is not read either way. */
+export function forgetHeaderChoice(storage) {
+  try { store(storage).removeItem(LEGACY_KEY); } catch { /* blocked storage: nothing to drop */ }
 }
 
 export function saveChoice(value, storage) {
@@ -101,37 +110,38 @@ export const countdownFor = (mode) => (isMode(mode) ? PRESETS[mode].countdown : 
 export function ensureStyles() { ensureCss("practice.css", "data-simon-practice-css"); }
 
 /**
- * A row of mode buttons. `withAll` adds the "All" filter (catalog). `value` is the selected one.
+ * A row of mode buttons. `withAll` adds the "All" filter. `value` is the selected one (null: none yet). With
+ * `remember: false` a pick is not stored (the record screen's kind of movement is for that one recording).
  * @returns {{el: HTMLElement, set(value: string): void, lock(): void}}
  * `lock()` (TICKET-311) keeps the shown mode and refuses clicks: the entry's kind decides the take's mode.
  */
-export function mountModePicker({ value, withAll = false, onChange, testid = "mode-picker" }) {
+export function mountModePicker({ value, withAll = false, remember = true, onChange, testid = "mode-picker" }) {
   ensureStyles();
-  const options = withAll ? [ALL, ...MODES] : MODES;
+  const options = withAll ? [ALL, ...offeredModes()] : offeredModes();
   const buttons = new Map();
   const el = h("div", { class: "mode-picker", role: "group", "aria-label": TEXT.pick, "data-testid": testid });
   const paint = (v) => {
-    el.dataset.value = v;
+    el.setAttribute("data-value", String(v));
     for (const [k, b] of buttons) b.setAttribute("aria-pressed", String(k === v));
   };
   for (const opt of options) {
     const b = h("button", {
       type: "button", class: "mode-btn", "data-testid": `${testid}-${opt}`,
       text: opt === ALL ? TEXT.all : PRESETS[opt].label,
-      onclick: () => { paint(opt); saveChoice(opt); if (onChange) onChange(opt); },
+      onclick: () => { paint(opt); if (remember) saveChoice(opt); if (onChange) onChange(opt); },
     });
     buttons.set(opt, b);
     el.append(b);
   }
   paint(value);
   if (!showModes()) el.hidden = true; // submission profile
-  const lock = () => { el.dataset.locked = "entry"; for (const b of buttons.values()) b.disabled = true; };
+  const lock = () => { el.setAttribute("data-locked", "entry"); for (const b of buttons.values()) b.disabled = true; };
   return { el, set: paint, lock };
 }
 
 /** The safety line and the framing line of a mode, as elements. */
 export function modeCoaching(mode) {
-  if (!isMode(mode) || !showModes()) return [];
+  if (!isOffered(mode) || !showModes()) return [];
   const p = PRESETS[mode];
   return [
     p.safety ? h("p", { class: "mode-safety", role: "note", "data-testid": "mode-safety", text: p.safety }) : null,
@@ -163,7 +173,7 @@ export function scoringLine(analysis) {
  */
 export function mountModeNote(slot, ctx) {
   const record = (ctx && ctx.jobRecord) || {};
-  const mode = isMode(record.mode) && showModes() ? record.mode : null;
+  const mode = isOffered(record.mode) && showModes() ? record.mode : null;
   const section = sectionLabel(record.section);
   if (!mode && !section) return;
   ensureStyles();

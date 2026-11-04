@@ -15,8 +15,8 @@ const reply = (status, body) => ({ ok: status >= 200 && status < 300, status, js
 test("the question offers a person and a character or object, in those words", () => {
   assert.equal(MSG.question, "What is in the picture?");
   assert.deepEqual(CHOICES, [
-    [PERSON, "A real person (makes a body of them)"],
-    [OBJECT, "A character or object (makes a 3D model of it)"],
+    [PERSON, "A real person (a plain skin-coloured body)"],
+    [OBJECT, "A character or object (a textured model with a skeleton)"],
   ]);
   for (const text of [MSG.question, MSG.making, MSG.uploading, MSG.failed, ...CHOICES.map((c) => c[1])]) {
     assert.doesNotMatch(text, /[\u2013\u2014]| - /);
@@ -173,7 +173,7 @@ test("the look copy is the agreed wording, names the consequence and has no dash
   assert.match(MSG.lookConsent, /private to your account/);
   assert.match(MSG.lookConsent, /delete it any time/);
   assert.match(MSG.lookHint, /face, hair and clothing colours/);
-  assert.match(MSG.lookHint, /plain grey body/);
+  assert.match(MSG.lookHint, /plain skin-coloured body/);
   assert.equal(NO_REAL_PERSON, "fiction");
   for (const text of [MSG.look, MSG.lookConsent, MSG.lookHint, MSG.noRealPerson]) {
     assert.doesNotMatch(text, /[\u2013\u2014]| - /);

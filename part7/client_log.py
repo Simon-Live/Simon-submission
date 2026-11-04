@@ -3,6 +3,8 @@
 Body `{"level": "info"|"warn"|"error", "event": "<1..64 chars>", "detail": {...}, "page": "<string>"}`.
 Answers 200 `{"ok": true}` when written, 400 for a bad body, 413 when the body or `detail` is over 4 KB, 429 past 60 events a
 minute from one client. The line is `client <level> <event> page=<page> <detail json>`, redacted by `applog`.
+With Global Privacy Control (`Sec-GPC: 1`, part7/gpc.py) only the error report `client_error` is written; a usage
+event is answered the same 200 and kept nowhere (go-live-readiness.md "GPC").
 """
 
 from __future__ import annotations
@@ -11,11 +13,12 @@ from collections import deque
 import json
 import logging
 import re
+import secrets
 import threading
 import time
 from typing import Any
 
-from part7 import applog
+from part7 import applog, gpc, quota, selfheal
 from part7.http_body import drain_before_refusal
 
 DETAIL_MAX = 4096  # bytes of `detail` as compact JSON
@@ -36,6 +39,7 @@ _JSON_ESCAPE = re.compile("[\x7f-\x9f\u2028\u2029\ud800-\udfff]")
 # TICKET-174: a route with arguments (`#/result/<job>`, `#/signin/<token>`) keeps its name only, so an old cached
 # client cannot put a job id or a sign-in token in the log. In `detail` (JSON text) a quote ends the argument.
 _ROUTE_ARGS = re.compile(r'(#/[A-Za-z0-9_-]+)/[^\s"\\]+')
+_SERVER_RID = re.compile(r"[0-9a-f]{12}")
 MSG_BAD = "The log event needs level info, warn or error, an event name of 64 characters at most, a detail object and a page."
 MSG_LARGE = "The log event is too large (4 KB at most)."
 MSG_RATE = "Too many log events. Try again in a minute."
@@ -101,6 +105,11 @@ def error_fields(event: dict[str, Any]) -> dict[str, Any]:
     for key in ("source", "status", "path", "file", "line", "col", "count"):
         if isinstance(detail.get(key), (str, int)) and not isinstance(detail.get(key), bool):
             out[key] = detail[key]
+    if isinstance(out.get("path"), str):
+        out["path"] = applog.safe_path(out["path"])
+        out["route"] = selfheal.route_key("GET", out["path"])
+    if isinstance(detail.get("rid"), str) and _SERVER_RID.fullmatch(detail["rid"]):
+        out["server_rid"] = detail["rid"]  # the X-Request-Id of the answer the browser complains about
     return {**out, "detail": str(detail.get("message", ""))[:300]}
 
 
@@ -121,13 +130,16 @@ def handle(h: Any, limiter: RateLimit) -> None:
     status, parsed = parse(h.rfile.read(length) if length > 0 else b"")
     if status != 200 or not isinstance(parsed, dict):
         return h._error(status, str(parsed))
-    key = h._visitor() or (h.client_address[0] if h.client_address else "unknown")
+    key = quota.client_of(h._visitor() or (h.client_address[0] if h.client_address else "unknown"))  # R12: an IPv6 /64
     if not limiter.allow(key):
         return h._error(429, MSG_RATE)
     if parsed["event"] == ERROR_EVENT:
-        applog.anomaly("client_error", **error_fields(parsed))
+        applog.anomaly("client_error", **error_fields(parsed), rid=secrets.token_hex(6))
+    elif gpc.signal(h.headers):
+        pass  # GPC: a usage event is optional analytics, so it is not kept (go-live-readiness.md "GPC")
     else:
-        applog.log(line(parsed), level=LEVELS[parsed["level"]])
+        rid = f" rid={secrets.token_hex(6)}" if parsed["level"] == "error" else ""
+        applog.log(line(parsed) + rid, level=LEVELS[parsed["level"]])
     body = b'{"ok": true}'  # 200 with a body: Chromium logs a 204 fetch as net::ERR_ABORTED in the console
     h.send_response(200)
     h.send_header("Cache-Control", "no-store")

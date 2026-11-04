@@ -136,15 +136,15 @@ test("the teacher route and the way to it", () => {
   assert.match(read("watch.js"), /mountOwnerLink\(eid\)/);
 });
 
-test("landing page: muted autoplay loop with poster, one line, a Try it link to the catalog, no banned words", () => {
+test("landing page: muted loop with poster and a pause button, one line, a Try it link to the catalog, no banned words", () => {
   const html = read("landing.html");
-  for (const a of ["muted", "loop", "autoplay", "playsinline", 'poster="media/landing-poster.jpg"', 'src="media/landing-loop.mp4"']) assert.ok(html.includes(a), a);
+  for (const a of ["muted", "loop", "playsinline", 'poster="media/landing-poster.jpg"', 'src="media/landing-loop.mp4"']) assert.ok(html.includes(a), a);
+  assert.match(html, /data-testid="landing-pause"/); // LEG-M8: the moving loop can be paused (landing.js)
   assert.match(html, /<a class="ld-try"[^>]*href="\.\/#\/"[^>]*>Try it<\/a>/);
   assert.equal((html.match(/<h1/g) || []).length, 1);
   assert.doesNotMatch(html, /coach|medical|injur|\u2014|\u2013/i);
-  assert.match(html, /rel="preconnect" href="https:\/\/fonts\.googleapis\.com"/);
-  assert.ok(html.indexOf("preconnect") < html.indexOf("theme/tokens.css"), "the font host is warmed before the tokens load");
-  assert.doesNotMatch(html, /<script/); // negative: the page needs no script
+  assert.doesNotMatch(html, /googleapis|gstatic|preconnect/); // LEG-H2: Inter is served from this site, no font host
+  assert.deepEqual(html.match(/<script[^>]*>/g), ['<script type="module" src="landing.js"></script>'.slice(0, -9)]); // only the pause control
   // the client's font handling (ee3990c): theme/fonts.css loads Inter off the render path; the landing page does the same
   const swapped = /<link rel="stylesheet" href="theme\/fonts\.css" media="print" onload="this\.media='all'">/;
   assert.match(html, swapped);
@@ -152,7 +152,8 @@ test("landing page: muted autoplay loop with poster, one line, a Try it link to 
   // lane/rubric-54-ui 92fea18: the app page swaps the same font link in, and the font itself is display=swap, so no
   // page waits on the font host for first paint
   assert.match(read("index.html"), swapped);
-  assert.match(read("theme/fonts.css"), /display=swap/);
+  assert.match(read("theme/fonts.css"), /font-display: swap/);
+  assert.doesNotMatch(read("theme/fonts.css"), /https?:\/\//); // LEG-H2: no outside font host
   assert.doesNotMatch(read("theme/tokens.css"), /@import/); // negative: the tokens import nothing
   assert.doesNotMatch(read("index.html"), /https?:\/\//); // test_web_static: the app page names no outside host
 });

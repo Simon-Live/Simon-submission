@@ -566,3 +566,11 @@ test("a library or imported model is loaded as a character with its own weights:
   assert.ok(!/person-skin|motion-weights|rest\.json/.test(src), "character.js does not reach the person skin's weights");
   assert.match(src, /skinWeight/, "character.js reads the model's own skinWeight attribute");
 });
+
+// TICKET-493: a missing mesh.json is a normal answer; the request says so, and web/errors.js then does not report the 404
+test("loadPersonSkin asks for mesh.json as one whose 404 is expected, and still returns null for it", async () => {
+  const inits = [];
+  const fetchImpl = async (url, init) => { inits.push([url, init]); return { ok: false, status: 404 }; };
+  assert.equal(await loadPersonSkin("job1", "you", { fetchImpl, THREE, retarget: realRetarget }), null);
+  assert.deepEqual(inits, [["api/results/job1/mesh.json", { expectStatus: [404] }]]);
+});

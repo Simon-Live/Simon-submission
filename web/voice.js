@@ -1,7 +1,9 @@
 // Glue for spoken feedback in the result rows (docs/specs/voice.md, contracts C2 and C5).
 // Logic: model/voice.js, model/opinion.js. Rendering: views/voice.js. Here: storage, fetch, audio and the video clock.
-// Audio: Meta MMS-TTS from the server first, the browser's own speech on any non-200 or error (works offline).
+// Audio: Meta MMS-TTS from the server first, the browser's own speech on any non-200 or error (works offline). With the
+// prod `mms_tts` switch off (#415, LIC-C1) the server is not asked: the browser speaks every line.
 import { num } from "./ui.js";
+import { policyOn } from "./policy.js";
 import { crossed, langOf, lineLang, lineOf, speechUrl } from "./model/voice.js";
 import { modelName, opinionOf, verdictFor } from "./model/opinion.js";
 import { controlsBox, hearButton, paintToggle, verdictBadge, voiceToggle } from "./views/voice.js";
@@ -32,7 +34,7 @@ export function makeSpeaker(ctx) {
     if (s && typeof s.cancel === "function") s.cancel();
   };
   async function fromServer(i, mine) {
-    if (!ctx.jobId) return false;
+    if (!ctx.jobId || !policyOn("mms_tts")) return false;
     if (!urls.has(i)) {
       abort = typeof AbortController === "function" ? new AbortController() : null;
       const res = await fetch(speechUrl(ctx.jobId, i), { expectStatus: [404], ...(abort ? { signal: abort.signal } : {}) }); // a 404 means the browser voice speaks it

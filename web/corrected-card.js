@@ -8,6 +8,8 @@ import { getMuseFix, postMuseFix } from "./api.js";
 export const LABEL = "AI-generated illustration";
 export const OPINION = "The AI model's opinion, not a measurement.";
 export const POLL_MS = 3000;
+export const NO_CHECK = "Simon cannot check pictures on this server, so it does not draw one. Nothing was sent.";
+export const NO_FAULT = "Simon draws elbows, knees, shoulders and hips, and this take has no fault there to draw.";
 
 /** Pure: the referee's line, always the model's opinion; the tally (n, k, p) prints only when the badge is earned. */
 export function refereeText(mine, summary) {
@@ -38,6 +40,12 @@ function paint(el, state, ask) {
   }
   if (state.running) {
     el.append(h("p", { class: "hint", role: "status", "data-testid": "corrected-running", text: "Working on it. This can take a few minutes." }));
+  } else if (card && card.status === "not_available") {
+    return; // its line above says so; another press finds the same
+  } else if (state.no_check === true && (!card || card.status !== "shown")) {
+    el.append(h("p", { class: "hint", "data-testid": "corrected-no-check", text: state.no_check_reason || NO_CHECK }));
+  } else if (state.can_draw === false && (!card || card.status !== "shown")) {
+    el.append(h("p", { class: "hint", "data-testid": "corrected-no-fault", text: NO_FAULT }));
   } else if (!card || card.status !== "shown") {
     el.append(h("button", { type: "button", class: "btn secondary", "data-testid": "corrected-ask", onclick: () => ask("image"),
       text: card ? "Try again" : "Draw me doing it right" }),
@@ -74,7 +82,8 @@ export async function mountCorrectedCard(el, jobId, { api = { getMuseFix, postMu
       await api.postMuseFix(jobId, what);
       await refresh();
     } catch (err) {
-      note.textContent = err && err.status === 403 ? "Allow Meta's AI models to see your video in your settings first. Nothing was sent." : "That did not work. Nothing was kept.";
+      const reason = err && err.status === 409 && typeof err.detail === "string" ? err.detail.trim() : "";   // R4: the server's own reason
+      note.textContent = err && err.status === 403 ? "Allow Meta's AI models to see your video in your settings first. Nothing was sent." : reason || "That did not work. Nothing was kept.";
     }
     busy = false;
   }

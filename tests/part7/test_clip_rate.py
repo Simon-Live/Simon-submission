@@ -9,6 +9,7 @@ import subprocess
 import pytest
 
 from part7 import crop, media
+from media_frames import coded_frames  # APP-M2: a remux keeps the frames, not the file bytes
 from support import part1_reads, recorder_webm
 
 
@@ -80,7 +81,7 @@ def test_a_real_240_fps_clip_keeps_its_rate_and_is_not_re_timed(phone_240: Path,
     meta = media.probe(phone_240)
     assert meta["fps"] == 240.0 and meta["fps_counted"] is False
     assert media.rate_args(meta) == []
-    assert media.normalize(phone_240, tmp_path / "n.mp4").read_bytes() == phone_240.read_bytes()  # kept as is
+    assert coded_frames(media.normalize(phone_240, tmp_path / "n.mp4")) == coded_frames(phone_240)  # not re-encoded
     clip = media.trim(phone_240, tmp_path / "t.mp4", 0, 500)
     assert media.probe(clip)["fps"] == 240.0 and _packets(clip) >= 100  # not re-timed to 30 (15 frames)
 
@@ -116,7 +117,7 @@ def test_believable_rates_keep_ffmpeg_defaults_so_frozen_clips_are_byte_identica
                     "-c:v", "libx264", "-pix_fmt", "yuv420p", str(src)], check=True, timeout=60)
     a = media.trim(src, tmp_path / "a.mp4", 200, 1500).read_bytes()
     b = media.trim(src, tmp_path / "b.mp4", 200, 1500).read_bytes()
-    assert a == b and media.normalize(src, tmp_path / "n.mp4").read_bytes() == src.read_bytes()
+    assert a == b and coded_frames(media.normalize(src, tmp_path / "n.mp4")) == coded_frames(src)
 
 
 @pytest.mark.parametrize("frames, seconds, fps", [

@@ -10,7 +10,7 @@ import { getConfig } from "./api.js"; // TICKET-364: api/config says whether ser
 import { mountCapture as mountCaptureWith } from "./capture.js"; // TICKET-365: wrapped in mountTakeFlow for `hideOwn`
 import { buildSubmit, requestOf } from "./take-request.js";
 import { getPending } from "./pending-app.js";
-import { TEXT as PENDING_TEXT, failureText } from "./pending.js";
+import { TEXT as PENDING_TEXT, canSendNow, failureText } from "./pending.js";
 // TICKET-290: with the browser wiring the take is kept until its job is done, and a refused take until it is deleted.
 import { KEEP_TEXT } from "./pending-keep.js";
 export { buildSubmit };
@@ -20,20 +20,22 @@ import { mountLabels } from "./labels.js";
 import { mountFloorWork, floorPatch } from "./floor-work.js";
 import { mountModeSwitch } from "./group.js";
 import { openPeoplePicker } from "./people.js";
+import { mountTakeSignIn } from "./take-signin.js";
+import { ensureConsent } from "./consent-gate.js"; // a signed-out consent answer is confirmed by whoever signs in
+import { uploadLog } from "./model/job-reason.js";
+import { holdTakeWhen } from "./take-guard.js";
 import { mountReference } from "./reference.js";
-import { h } from "./ui.js";
-import { loadChoice, MODES } from "./modes.js";
+import { h, focusOn } from "./ui.js";
 import { createProgress } from "./progress.js";
 import { captureChromeOf } from "./model/capture-chrome.js";
 import { decorateCapture } from "./views/capture-chrome.js";
-import { currentKind } from "./model/kind.js";
-import { holdTakeWhen } from "./take-guard.js";
 import { mountModelOnlyChoice } from "./model-only.js";
 import { mountGhost } from "./ghost.js";
 import { isSubmission } from "./flags.js";
 import { autoStarts } from "./model/judge-take.js";
 import { mountFollowSide } from "./follow-side.js";
 import { standInLine } from "./model-only-view.js";
+import { fetchMe } from "./auth.js"; // api/me/modal is asked signed in only, so no 401 reaches the console
 
 export const NAME_ERROR = "Give the movement a name.";
 export const TAKE_ERROR = "Record a video or upload one first.";
@@ -55,15 +57,15 @@ const jobId = (job) => encodeURIComponent(typeof job === "object" ? job.id : job
  * at the person picker and details with what was saved (offline-takes.md).
  * Returns the cleanup function.
  */
-export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onReference, countdownDefault, resume = null, onDone = (id, kind) => { location.hash = kind === "group" ? `#/job/${id}` : `#/job/${id}`; } }) {
+export function mountTakeFlow(root, { role, entryId, entry, limits, extra, kind = "exercise", publish = null, onReference, countdownDefault, resume = null, onDone = (id, kind) => { location.hash = kind === "group" ? `#/job/${id}` : `#/job/${id}`; } }) {
   const modelOnlyView = (arguments[1] || {}).modelOnlyView === true; // TICKET-365, read on a new line (upstream signature kept)
   // TICKET-365: the follow capture gets `hideOwn` through this local wrapper, so the upstream mountCapture line stays as it is
   const mountCapture = (box, lim, opts) => mountCaptureWith(box, lim, { ...opts, hideOwn: modelOnlyView && !trainer ? standInLine() : null }); // the own videos are never inserted (AC-MD11)
   const trainer = role === "trainer";
   const reference = trainer || resume ? null : mountReference(entry);
   if (reference && onReference) onReference(reference);
-  // a trainer's group job carries the stored mode when there is one; a follower's fields come from the caller
-  const extraFields = extra || (() => { const m = loadChoice(); return MODES.includes(m) ? { mode: m } : {}; });
+  // the caller names the job's fields (follow: the entry's mode; record: the person's pick of the kind); none sends none
+  const extraFields = extra || (() => ({}));
   let capture = null;
   let labels = null;
   let trim = null;
@@ -140,6 +142,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
   }
 
   function backToPreview() {
+    stopSignIn();
     if (rec && saved && pending) pending.release(rec); // a saved take stays saved and is sent in the background
     rec = null; saved = false; trim = null;
     unsub(); unsub = () => {};
@@ -150,6 +153,34 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     captureStep.hidden = false;
     if (capture) capture.reset();
   }
+
+  let endSignIn = null;
+  function stopSignIn() { if (endSignIn) endSignIn(); endSignIn = null; }
+
+  /** AC-OT10: signed out. Ask for sign-in here, keep the take, and run `then` once signed in. */
+  function showSignIn(then) {
+    stopSignIn();
+    detailsBox.hidden = true;
+    pickBox.hidden = false;
+    endSignIn = mountTakeSignIn(pickBox, {
+      saved,
+      onRecordAgain: () => backToPreview(),
+      onSignedIn: async () => {
+        stopSignIn();
+        if (!alive || !rec) return;
+        clientLog("info", "take_signed_in", { role, stage: rec.stage });
+        if (saved) {
+          const fresh = await pending.get(rec.id); // another tab may have moved it on
+          if (!fresh) { backToPreview(); show(notice, PENDING_TEXT.gone); return; }
+          const { blob, ...fields } = fresh;
+          Object.assign(rec, fields);
+        }
+        await pending.update(rec, { last_error: null, next_try_at: null });
+        ensureConsent(pickBox, then, { refresh: fetchMe }); // waits for api/auth/me; nothing is sent until the person confirms
+      },
+    });
+  }
+  const sendAfterSignIn = () => { pending.resumed(rec); sendTake(); };
 
   function paintSaved(state) {
     const link = (href, text, testid) => h("a", { class: "btn primary block", href, "data-testid": testid, text });
@@ -168,18 +199,26 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     else {
       kids.push(h("p", { class: "field-row" }, auto, h("label", { for: "saved-auto", text: " Start the analysis automatically when the app is back" })),
         h("p", { class: "hint", text: "Keep Simon open and it sends the take when the app is back. If you close Simon, sending continues the next time you open it. " + PENDING_TEXT.privacy }));
-      kids.push(send, del);
+      if (canSendNow(rec)) kids.push(send);
+      kids.push(del);
     }
     kids.push(rerecord, h("a", { class: "btn secondary block", href: "#/pending", "data-testid": "pending-see-all", text: "See saved takes" }));
     savedBox.replaceChildren(...kids);
     savedBox.hidden = false;
-    send.addEventListener("click", async () => {
-      send.disabled = true;
+    const sendIt = async () => {
+      pickBox.replaceChildren();
+      pickBox.hidden = true;
       await syncFields();
       await pending.update(rec, { auto_submit: auto.checked });
       pending.release(rec);
       pending.sendNow(rec.id);
-      document.querySelector('[data-testid="saved-message"]').textContent = "Sending";
+      const msg = document.querySelector('[data-testid="saved-message"]');
+      if (msg) msg.textContent = "Sending";
+    };
+    send.addEventListener("click", () => {
+      send.disabled = true;
+      pickBox.hidden = false; // a consent answer that is missing or waiting is asked here, when the person presses Send now
+      ensureConsent(pickBox, sendIt, { refresh: fetchMe, onUnreachable: () => { pickBox.replaceChildren(); pickBox.hidden = true; send.disabled = false; sendIt(); } });
     });
     del.addEventListener("click", async () => { await pending.remove(rec.id, "user"); rec = null; saved = false; backToPreview(); });
   }
@@ -197,7 +236,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     const kind = err && err.kind;
     await pending.update(rec, { auto_submit: true });
     await syncFields();
-    paintSaved({ kind: "wait", text: failureText(kind, err && err.status) });
+    paintSaved({ kind: "wait", text: failureText(kind, err && err.status, err && err.detail) });
     pending.release(rec);
     unsub();
     unsub = pending.subscribe(async (evt) => {
@@ -216,9 +255,13 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
         const { blob, ...fields } = fresh;
         Object.assign(rec, fields);
         if (rec.stage === "people_ready") { detailsBox.hidden = true; paintSaved({ kind: "choose", text: PENDING_TEXT.peopleReady }); }
-        else if (rec.last_error) {
+        else if (rec.last_error && rec.last_error.kind === "signin") { // the session ended while the take waited
+          unsub(); unsub = () => {};
+          leaveSavedMode();
+          showSignIn(sendAfterSignIn);
+        } else if (rec.last_error) {
           const msg = savedBox.querySelector('[data-testid="saved-message"]');
-          if (msg) msg.textContent = failureText(rec.last_error.kind, rec.last_error.status);
+          if (msg) msg.textContent = failureText(rec.last_error.kind, rec.last_error.status, rec.last_error.detail);
           const sendBtn = savedBox.querySelector('[data-testid="pending-send"]');
           if (sendBtn) sendBtn.disabled = false;
         }
@@ -227,11 +270,16 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
   }
 
   /** The take could not be sent and is not saved (a picked file, or saving failed): retry from memory. */
+  /** The server's reason for a refused take, announced (role=alert) and given focus (a11y-copy B11). */
+  const peopleError = (text) => h("p", { class: "error", role: "alert", "data-testid": "people-error", text });
+
   function showTryAgain(err) {
     const retry = h("button", { type: "button", class: "btn primary block", "data-testid": "try-again", text: "Try again" });
     const rerecord = h("button", { type: "button", class: "btn secondary block", "data-testid": "record-again", text: "Record again", onclick: () => backToPreview() });
     retry.addEventListener("click", () => sendTake());
-    pickBox.replaceChildren(h("p", { class: "error", role: "alert", "data-testid": "people-error", text: err.message }), retry, rerecord);
+    const said = peopleError(err.message);
+    pickBox.replaceChildren(said, retry, rerecord);
+    focusOn(said); // a11y-copy B11: the step that held focus is gone; the reason takes it, the way out is one Tab away
   }
 
   /** TICKET-290: the server refused the take: say why, and that the recording stays on this device until deleted. */
@@ -240,10 +288,12 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     pickBox.hidden = false;
     const del = h("button", { type: "button", class: "btn secondary block", "data-testid": "pending-delete", text: "Delete take" });
     del.addEventListener("click", async () => { await pending.removeKept(rec.id); rec = null; saved = false; backToPreview(); });
-    pickBox.replaceChildren(h("p", { class: "error", role: "alert", "data-testid": "people-error", text: err.message }),
+    const said = peopleError(err.message);
+    pickBox.replaceChildren(said,
       h("p", { class: "hint", "data-testid": "refused-kept", text: KEEP_TEXT.refusedKept }), del,
       h("button", { type: "button", class: "btn secondary block", "data-testid": "record-again", text: "Record again", onclick: () => backToPreview() }),
       h("a", { class: "btn secondary block", href: "#/pending", "data-testid": "pending-see-all", text: "See saved takes" }));
+    focusOn(said); // a11y-copy B11
   }
 
   // ---- capture -> trim -> save -> upload -> people ----------------------------------------------------------------------
@@ -276,8 +326,22 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     await sendTake();
   }
 
+  let checking = false; // the consent check of a send is under way: Try again does nothing meanwhile
   async function sendTake() {
+    if (checking) return;
+    checking = true;
     pickBox.hidden = false;
+    // Another tab may have signed in or out since the gate passed: look again, confirm or ask again before any byte goes.
+    // If api/auth/me cannot be reached nothing is dropped or asked: the send goes to the saved panel like any unreachable app.
+    const offline = await new Promise((resolve) => ensureConsent(pickBox, () => resolve(false), { refresh: fetchMe, onUnreachable: () => resolve(true) }));
+    checking = false;
+    if (!alive || !rec) return;
+    if (offline) {
+      const gone = Object.assign(new Error("Couldn't reach the app."), { kind: "auto", status: 0 });
+      if (saved) { await showSaved(gone); return; }
+      showTryAgain(gone);
+      return;
+    }
     // progress: byte bar for the upload, then the people job takes over inside the picker
     const up = createProgress({ testid: "upload-progress", label: UPLOADING, text: UPLOADING, walk: true });
     pickBox.replaceChildren(up.el);
@@ -295,16 +359,20 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     } catch (err) {
       up.stop();
       console.warn("[take] upload or people job failed:", err && err.status, err && err.message);
-      clientLog("error", rec.upload_id ? "people_job_failed" : "upload_failed", { role, status: err && err.status, message: err && err.message, bytes: rec.size });
+      const [logLevel, logEvent] = uploadLog(rec, err);
+      clientLog(logLevel, logEvent, { role, route: rec.upload_id ? "api/people" : "api/uploads", status: err && err.status, message: err && err.message, reason: (err && err.detail) || "", bytes: rec.size });
       if (!alive) return;
+      if (err && err.kind === "signin") { showSignIn(() => sendTake()); return; } // AC-OT10: nothing is lost by being signed out
       if (err && err.kind === "fatal" && err.kept) { saved = false; showRefused(err); return; } // TICKET-290: kept until deleted
       if (err && err.kind === "fatal") { // the server refused the file itself: show why, the saved copy is already gone
         saved = false;
-        pickBox.replaceChildren(h("p", { class: "error", role: "alert", "data-testid": "people-error", text: err.message }),
+        const said = peopleError(err.message);
+        pickBox.replaceChildren(said,
           h("button", { type: "button", class: "btn secondary block", "data-testid": "record-again", text: "Record again", onclick: () => backToPreview() }));
+        focusOn(said); // a11y-copy B11: after Continue the trim step is gone; focus would fall to the page
         return;
       }
-      if (saved && err && (err.kind === "auto" || err.kind === "later")) { await showSaved(err); return; }
+      if (saved && err && err.kind === "auto") { await showSaved(err); return; }
       showTryAgain(err);
       return;
     }
@@ -325,7 +393,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     // judge-take.md (TICKET-260): one person in a follower's clip under the submission profile starts the analysis at once
     if (autoStarts({ role, mode, choice: picked, submission: isSubmission() })) {
       clientLog("info", "picker_skipped", { role, people: picked.count, person_id: picked.person_id });
-      submit.click();
+      checkThenSend();
     }
   }
 
@@ -350,7 +418,7 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     const liveCheck = mountLiveCheck({ entry: role === "follower" ? entry : null, reference });
     const ghost = role === "follower" && entry ? mountGhost({ entry, reference }) : null; // follow the ghost (TICKET-264)
     capture = mountCapture(capBox, limits, { reference, countdownDefault, audio: () => trainer && mode !== "group", liveCheck, ghost });
-    decorateCapture(capBox, captureChromeOf({ kind: currentKind(), entry: trainer ? null : entry }), // brand chrome (views/capture-chrome.js)
+    decorateCapture(capBox, captureChromeOf({ kind, entry: trainer ? null : entry }), // brand chrome (views/capture-chrome.js)
       { watch: reference && reference.preview ? (on) => reference.preview(on) : null });   // Watch plays the reference in place
     capture.onChange(onTake);
     side = reference ? mountFollowSide(capBox) : null; // trainer and camera side by side (TICKET-291), after the chrome
@@ -363,8 +431,21 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     show(nameError, bad ? NAME_ERROR : ""); name.setAttribute("aria-invalid", String(bad));
   });
 
-  submit.addEventListener("click", async () => {
-    if (busy || !rec) return;
+  // A sign-in in another tab, or a held consent answer: look and ask before the job goes.
+  function checkThenSend() {
+    if (busy || !rec || !alive) return;
+    const go = () => {
+      if (!alive || !rec) return;
+      pickBox.replaceChildren();
+      pickBox.hidden = true;
+      send();
+    };
+    pickBox.hidden = false;
+    ensureConsent(pickBox, go, { refresh: fetchMe, onUnreachable: go });
+  }
+  submit.addEventListener("click", checkThenSend);
+  async function send() {
+    if (busy || !rec || !alive) return;
     show(nameError, ""); show(formError, ""); name.setAttribute("aria-invalid", "false");
     if (trainer) {
       const problem = validateTrainer(name.value, takeBlob());
@@ -376,6 +457,10 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
     } else if (!takeBlob()) { show(formError, TAKE_ERROR); return; }
     if (!labels.valid()) { show(formError, "Check the tags and notes."); return; }
     if (floorWork) await pending.update(rec, floorPatch(floorWork));
+    if (trainer && publish) { // trainer-publish.md: the opt-in and its PM-B3 statement ride on the record
+      const chosen = publish();
+      await pending.update(rec, { public: chosen.public === true, nobody_under_18: chosen.nobody_under_18 === true });
+    }
     busy = true;
     submit.disabled = true;
     submit.textContent = "Sending";
@@ -392,17 +477,22 @@ export function mountTakeFlow(root, { role, entryId, entry, limits, extra, onRef
       busy = false;
       submit.disabled = false;
       paintSubmit();
+      if (err && err.kind === "signin") { // AC-OT10: the session ended before the job went: sign in and send it
+        showSignIn(() => { pickBox.hidden = true; detailsBox.hidden = false; checkThenSend(); });
+        return;
+      }
       if (err && err.kind === "fatal" && err.kept) { saved = false; showRefused(err); return; } // TICKET-290
       if (err && err.kind === "fatal") { saved = false; show(formError, err.message); return; }
-      if (saved && err && (err.kind === "auto" || err.kind === "later")) { await showSaved(err); return; }
+      if (saved && err && err.kind === "auto") { await showSaved(err); return; }
       if (err && err.resumed) { await openPicker(); return; }
       show(formError, err.message);
     }
-  });
-  // The mode bar asks whether leaving would lose a take (take-guard.js): recording, or a take not yet submitted.
+  }
+  // A new build reloads the page only when nothing would be lost (web/app.js, take-guard.js): not while recording or with a take not yet submitted.
   const releaseGuard = resume ? () => {} : holdTakeWhen(() => alive && Boolean((capture && capture.isBusy()) || takeBlob()));
   const stop = () => {
     alive = false;
+    stopSignIn();
     releaseGuard();
     unsub();
     if (rec && saved && pending) pending.release(rec); // leaving the screen hands the saved take to the background sender

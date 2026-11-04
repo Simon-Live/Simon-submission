@@ -6,7 +6,7 @@
 //   saved -> uploaded -> people_ready -> ready_to_submit -> submitting -> (202: deleted)
 // The video stays only in this browser. Nothing about it is logged except sizes, counts and statuses.
 
-import { KEPT_STAGES, KEPT_MAX, WATCH_MS, jobOutcome, againRecord, keptStatus, tooLargeText } from "./pending-keep.js";
+import { KEPT_STAGES, KEPT_MAX, WATCH_MS, canSendAgain, jobOutcome, againRecord, keptStatus, tooLargeText } from "./pending-keep.js";
 
 export const DB_NAME = "simon-local";
 export const STORE_NAME = "pending-takes";
@@ -20,7 +20,6 @@ export const BACKOFF_S = [10, 30, 60, 120, 300];
 export const LARGE_BYTES = 5_000_000;
 export const POLL_MS = 2000;
 export const POLL_MAX_MS = 5 * 60 * 1000;
-export const LATER_MARGIN_MS = 60 * 1000;
 export const LOCK_NAME = "simon-pending-sender";
 export const STAGES = ["saved", "uploaded", "people_ready", "ready_to_submit", "submitting"];
 /** Stages the sender moves on its own; people_ready waits for the person to choose who is in the clip. */
@@ -33,12 +32,18 @@ export const TEXT = {
   noSpace: "This device has no room to keep the take. It is only kept while this page is open.",
   unreachable: "Couldn't reach the app. Your take is saved on this device and will be sent when the app is back.",
   busy: "The app is busy. Your take is saved on this device and will be sent in a moment.",
-  later: "The app has reached its limit for today. Your take is saved on this device and will be sent tomorrow.",
   unreachableUnsaved: "Couldn't reach the app. Try again, or record again.",
   peopleReady: "Your take is uploaded. Choose who is in it to finish.",
   sent: "Your take was sent. The analysis has started.",
   gone: "This take is no longer saved on this device.",
+  accountUnknown: "Waiting to check who is signed in. Your take is still saved on this device.",
+  consentNeeded: "Agree to each point of the consent step before you record or upload. Press Send now to answer it.",
   keyReused: "The app could not match this take with the one it already has. Your take is still saved on this device.",
+  signIn: "Your take is saved on this device. Sign in to send it.",
+  signInUnsaved: "Sign in to send this take. It is only kept while this page is open.",
+  signInLead: "Enter your email and we will send a 6 digit code. Your take stays here while you sign in.",
+  trouble: "The app hit a problem. Your take is saved on this device and will be sent in a moment.",
+  willSend: "Your take is saved on this device and will be sent in a moment.",
   safe: "Saved on this device",
   privacy: "The video stays in this browser until it is sent. You can delete it any time.",
 };
@@ -46,18 +51,26 @@ export const TEXT = {
 // ---- pure rules -----------------------------------------------------------------------------------------------
 
 /**
- * Sort a failed call: "auto" retries on the fast schedule, "later" waits for the next UTC midnight, "fatal" shows
+ * Sort a failed call: "auto" retries on the fast schedule, "fatal" shows
  * the message and deletes the saved copy, "lost_upload" means the server lost the file (upload again from the
- * saved Blob without asking), "fixable" is a refused job request that the person can correct (the take is kept).
+ * saved Blob without asking), "fixable" is a refused job request that the person can correct (the take is kept),
+ * "signin" waits for the person to sign in, "held" waits for the person to press Retry (both keep the take and send
+ * nothing on their own: AC-OT10, AC-OT11).
  * @param step "upload" | "people" | "submit": which call failed
  */
 export function classifyFailure(err, step = "upload") {
   const status = err && Number.isFinite(err.status) ? err.status : 0;
   const said = `${(err && err.detail) || ""}`;
   if (status === 0) return { kind: "auto", status: 0 };
+  if (status === 401 || (status === 429 && /^sign in/i.test(said))) return { kind: "signin", status }; // quota.SIGN_IN_MESSAGE is a 429
+  if (status === 403) return { kind: /not available to you/i.test(said) ? "fatal" : "held", status }; // MSG_UNDER13 keeps nothing
+  if (status === 400 && step !== "submit" && /consent|age question/i.test(said)) return { kind: "held", status };
+  if (status === 408 || status === 425) return { kind: "auto", status };
   if (status === 400 && /upload was not found/i.test(said || (err && err.message) || "")) return { kind: "lost_upload", status };
-  if (status === 429) return { kind: "later", status };
-  if (status === 503) return { kind: /limit|today/i.test(said) ? "later" : "auto", status };
+  if (status === 429) return { kind: "auto", status }; // no daily cap exists: a 429 past sign-in is a short rate rule
+  // PROD-D11: the operator's stop (quota.STOPPED_MESSAGE) sends nothing by itself when it lifts: the person presses Retry
+  if (status === 503 && /paused new analyses/i.test(said)) return { kind: "held", status };
+  if (status === 503) return { kind: "auto", status };
   if (status === 500 || status === 502 || status === 504) return { kind: "auto", status };
   if (status === 400) return { kind: step === "submit" ? "fixable" : "fatal", status };
   if (status === 422) return { kind: step === "submit" ? "fixable" : "auto", status }; // never fatal: the job may be running server-side
@@ -69,12 +82,6 @@ export function classifyFailure(err, step = "upload") {
 export function backoffMs(attempts) {
   if (!(attempts >= 1)) return 0;
   return BACKOFF_S[Math.min(attempts, BACKOFF_S.length) - 1] * 1000;
-}
-
-/** Just after the next UTC midnight (when the daily allowance resets). */
-export function nextUtcMidnightMs(now) {
-  const d = new Date(now);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0) + LATER_MARGIN_MS;
 }
 
 /** Room for one more take among the saved ones: {ok: true} or {ok: false, reason: "too_many" | "too_big"}. */
@@ -115,22 +122,41 @@ export function detailsComplete(rec) {
   return false;
 }
 
+/** The take waits for the person (sign-in, or a refusal only they can lift): the sender leaves it alone. */
+export const waitsForPerson = (rec) => !!(rec && rec.last_error && (rec.last_error.kind === "signin" || rec.last_error.kind === "held"));
+
+/** AC-OT16: "Send now" is offered unless signed out: a person's tap asks the server, whose answer decides. */
+export function canSendNow(rec) {
+  const e = rec && rec.last_error;
+  return !(e && e.kind === "signin");
+}
+
 export function eligible(rec, { now, source = "start", force = false }) {
   if (!SENDABLE.includes(rec.stage)) return false;
   if (force) return true;
-  if (rec.next_try_at && rec.next_try_at > now) {
-    if (source === "timer") return false;
-    if (rec.last_error && rec.last_error.kind === "later") return false; // a daily limit does not lift on a reconnect
-  }
+  if (waitsForPerson(rec) && source !== "manual") return false; // no full upload to a server that will refuse it
+  // A take saved under the old daily limit (`later`) waits for nothing now: no such limit exists.
+  if (rec.next_try_at && rec.next_try_at > now && source === "timer" && !(rec.last_error && rec.last_error.kind === "later")) return false;
   return true;
 }
 
 /** The text the failure puts in the "Saved on this device" panel. */
-export function failureText(kind, status) {
-  if (kind === "later") return TEXT.later;
-  if (kind === "auto" && status === 503) return TEXT.busy;
+export function failureText(kind, status, detail = "") {
+  if (kind === "signin") return TEXT.signIn;
+  if (kind === "held") return detail || TEXT.keyReused;
+  if (kind === "auto" && status === 503) return detail && !/busy/i.test(detail) ? `${detail} ${TEXT.willSend}` : TEXT.busy; // the server's reason
+  if (kind === "auto" && status === 429) return TEXT.busy;
+  if (kind === "auto" && status === 422) return TEXT.keyReused;
+  if (kind === "auto" && status === 500) return TEXT.trouble; // the app answered, so "could not reach" would be wrong
   return TEXT.unreachable;
 }
+
+/** failureText of a stored `last_error`. */
+const errorText = (e) => failureText(e.kind, e.status, e.detail || (e.kind === "held" ? e.message : ""));
+
+/** The route a failed step called, for the log line (AC-OT13). */
+const routeOf = (step, rec) => (step === "upload" ? "api/uploads" : step === "people" ? "api/people"
+  : `api/${rec.role === "follow" ? "follow" : rec.role === "group" ? "group" : "trainer"}`);
 
 /** Plain words for a saved take on the list. `sending` is the live progress {id, fraction} or null. */
 export function statusText(rec, { sending = null } = {}) {
@@ -139,11 +165,10 @@ export function statusText(rec, { sending = null } = {}) {
   }
   if (keptStatus(rec)) return keptStatus(rec); // TICKET-290: a take kept after sending (pending-keep.js)
   if (rec.stage === "people_ready") return rec.last_error && rec.last_error.kind === "fixable" ? rec.last_error.message : TEXT.peopleReady;
-  if (rec.stage === "submitting" && rec.last_error) return failureText(rec.last_error.kind, rec.last_error.status); // TICKET-290: say why it stopped
+  if (rec.stage === "submitting" && rec.last_error) return errorText(rec.last_error); // TICKET-290: say why it stopped
   if (rec.stage === "submitting") return "Starting the analysis";
   const e = rec.last_error;
-  if (e && e.kind === "later") return TEXT.later;
-  if (e && e.kind === "auto") return e.status === 503 ? TEXT.busy : TEXT.unreachable;
+  if (e && (e.kind === "auto" || waitsForPerson(rec))) return errorText(e);
   if (rec.stage === "uploaded") return "Uploaded. Checking who is in the clip.";
   return "Waiting to send";
 }
@@ -385,7 +410,7 @@ export function createPending(deps) {
   async function sendAgain(id) {
     if (!store || !keptStore) return null;
     const old = await keptStore.get(id);
-    if (!old || !(old.stage === "job_failed" || old.stage === "sent")) return null;
+    if (!old || !(canSendAgain(old) || old.stage === "sent")) return null;
     const rec = againRecord(old, { id: uuid(), now: now() });
     await store.put(rec); // back in the outbox first, then out of the kept store
     await keptStore.delete(id);
@@ -407,6 +432,13 @@ export function createPending(deps) {
     const e = err && typeof err === "object" ? err : new Error(String(err));
     e.kind = c.kind;
     const message = c.status === 422 ? TEXT.keyReused : (err && err.message) || "";
+    const detail = (err && err.detail) || "";
+    log("warn", "take_send_failed", { route: routeOf(step, rec), step, status: c.status, kind: c.kind, reason: detail || message || "no answer" }); // AC-OT13
+    if (c.kind === "signin" || c.kind === "held") { // kept, and left alone until the person acts
+      await patch(rec, { next_try_at: null, last_error: { status: c.status, message, detail, kind: c.kind } });
+      changed();
+      return e;
+    }
     const keepThis = c.kind === "fatal" && keepRefused && store && savedIds.has(rec.id); // TICKET-290
     if (c.kind === "fatal" && c.status === 413) e.message = tooLargeText(e.message, keepThis); // say why, and how to fit
     if (keepThis) { // TICKET-290: kept, with the reason, until the person deletes it
@@ -430,8 +462,8 @@ export function createPending(deps) {
     if (c.kind === "fixable") {
       await patch(rec, { stage: "people_ready", auto_submit: false, attempts, next_try_at: null, last_error: { status: c.status, message, kind: c.kind } });
     } else {
-      const next = c.kind === "later" ? nextUtcMidnightMs(now()) : now() + backoffMs(attempts);
-      await patch(rec, { attempts, next_try_at: next, last_error: { status: c.status, message, kind: c.kind } });
+      const next = now() + backoffMs(attempts);
+      await patch(rec, { attempts, next_try_at: next, last_error: { status: c.status, message, detail, kind: c.kind } });
     }
     changed();
     return e;
@@ -456,7 +488,10 @@ export function createPending(deps) {
   async function doPeople(rec) {
     const deps = { ...pendingDeps, api: withRunOn(pendingDeps.api, rec) }; // TICKET-364: the take's "Run on" choice
     const api = withPeopleMode(deps.api, peopleMode(rec)); // the call below reads this one
-    const made = await guard(rec, "people", () => api.createPeopleJob(rec.upload_id, rec.trim));
+    const role = rec.role === "trainer" || rec.role === "group" ? rec.role : undefined; // people.md AC-P24
+    const made = await guard(rec, "people", () => (pendingDeps.api.createPeopleJobFor
+      ? pendingDeps.api.createPeopleJobFor(rec.upload_id, rec.trim, peopleMode(rec), rec.run_on, role)
+      : api.createPeopleJob(rec.upload_id, rec.trim)));
     await patch(rec, { people_job: typeof made.job === "object" ? made.job.id : made.job });
   }
 
@@ -520,6 +555,12 @@ export function createPending(deps) {
     if (headless) log("info", "pending_resumed", { stage: rec.stage });
     const report = (n, total) => { if (onProgress) onProgress(n, total); progress(rec.id, total ? n / total : null); };
     try {
+      if (deps.ensureAccount && !(await deps.ensureAccount())) { // who is signed in is unknown: no byte goes on the header alone; the take is kept and tried again
+        throw await failed(rec, "upload", Object.assign(new Error(TEXT.accountUnknown), { status: 0 }));
+      }
+      if (deps.needsAnswer && deps.needsAnswer()) { // no consent answer may be sent: marked, and asked when the person next acts (no step by itself)
+        throw await failed(rec, "upload", Object.assign(new Error(TEXT.consentNeeded), { status: 400, detail: TEXT.consentNeeded }));
+      }
       for (let guardN = 0; guardN < 12; guardN++) {
         const step = resumeStep(rec);
         try {
@@ -589,7 +630,7 @@ export function createPending(deps) {
           try {
             await process(rec);
           } catch (err) {
-            if (err && (err.kind === "auto" || err.kind === "later")) break; // unreachable or over the limit: not worth trying the next one
+            if (err && (err.kind === "auto" || err.kind === "signin")) break; // unreachable or signed out: not worth trying the next one
           }
         }
         if (keep) await watchKept({ only }); // TICKET-290: the jobs of the kept takes that are due
@@ -600,13 +641,25 @@ export function createPending(deps) {
     }
   }
 
+  /** AC-OT10: takes waiting for sign-in go back to the sender once the server says someone is signed in. */
+  async function resumeSignedIn() {
+    if (!store || !deps.isSignedIn) return;
+    const waiting = (await list()).filter((r) => r.last_error && r.last_error.kind === "signin");
+    if (!waiting.length || !(await deps.isSignedIn())) return;
+    for (const rec of waiting) {
+      savedIds.add(rec.id);
+      await patch(rec, { last_error: null, next_try_at: null });
+    }
+    changed();
+  }
+
   async function schedule() {
     clearTimer(timer);
     timer = null;
     if (!store) return;
     let soonest = Infinity;
     for (const rec of await list()) {
-      if (!SENDABLE.includes(rec.stage) || owned.has(rec.id)) continue;
+      if (!SENDABLE.includes(rec.stage) || owned.has(rec.id) || waitsForPerson(rec)) continue;
       soonest = Math.min(soonest, rec.next_try_at && rec.next_try_at > now() ? rec.next_try_at : now() + backoffMs(1));
     }
     for (const rec of await listKept()) if (rec.stage === "sent") soonest = Math.min(soonest, Math.max(rec.next_try_at || 0, now() + 1000)); // TICKET-290
@@ -620,7 +673,7 @@ export function createPending(deps) {
     sendAgain, watchOne, listKept, removeKept: (id) => (keptStore ? keptRemove(id, "user") : Promise.resolve()), keep, keepRefused, keptStages: KEPT_STAGES, // TICKET-290
     purgeExpired, front, submit, tick, schedule,
     /** A trigger from the page: app start, "online", visibilitychange. */
-    trigger: (source) => tick({ source }),
+    trigger: async (source) => { await resumeSignedIn().catch(() => {}); return tick({ source }); },
     sendNow: (id) => tick({ source: "manual", force: true, only: id }),
     /** The record came back from the store (Finish): the flow resumes at `stage`. */
     resumed: (rec) => { log("info", "pending_resumed", { stage: rec.stage }); savedIds.add(rec.id); owned.add(rec.id); },

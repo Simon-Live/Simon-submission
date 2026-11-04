@@ -4,9 +4,11 @@
 const LEAD = "Key frames are evenly spaced: the key frame finder";
 // First match wins; the note texts come from part7/chain.py, part7/parts/p1_keyframes.py and part7/part1_breaker.py.
 const REASONS = [
+  ["not sent to Meta", "was not used on this take."], // chain.py: no consent to send it, so the finder never ran
   ["found no person", "found no person in this take."],
   ["took longer than", "took too long on this take."],
   ["paused after repeated network failures", "is paused after repeated network failures."],
+  ["lost its network stream", "lost its connection on this take."],
   ["Part 1 unavailable", "is not set up here."],
   ["spend cap", "reached its spending limit."],
   ["Part 1 exited", "could not finish on this take."],

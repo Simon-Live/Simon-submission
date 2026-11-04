@@ -41,6 +41,12 @@ const probe = (file) => {
 const body = (req) => new Promise((resolve) => { const parts = []; req.on("data", (c) => parts.push(c)); req.on("end", () => resolve(Buffer.concat(parts))); });
 const server = http.createServer(async (req, res) => {
   const pathname = decodeURIComponent(new URL(req.url, "http://x").pathname);
+  if (pathname === "/api/policy") { // a non-prod server, as tests/part7/fake_api.py answers: with no answer the app fails closed and asks consent first (af9be2c2)
+    const switches = Object.fromEntries(["face_copy", "rehab", "trainer_public", "prize_boards", "byok_ranked", "mms_tts", "muse"].map((k) => [k, true]));
+    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ prod: false, switches, phrasing_live: false, age: { minimum: 13, adult: 18 },
+      consent: { required: false, version: null, items: [], header: "X-Simon-Consent" } }));
+    return;
+  }
   if (req.method === "POST" && pathname === "/api/client-log") {
     logs.push(JSON.parse((await body(req)).toString()));
     res.writeHead(204).end();
@@ -303,7 +309,8 @@ async function granted() {
 }
 
 // TICKET-193: with no take on the record page, another kind goes to the library as before; the same kind does not move.
-async function noModeBar() {   // the header's Exercise / Dance switch was removed (2026-11-04): none on #/record
+// TICKET-436: no kind switch in the header; the kind of a new movement is picked on the record screen and is not stored
+async function recordKindPick() {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
   const page = await ctx.newPage();
   await page.route("**/api/config", (r) => r.fulfill({ json: { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } } }));
@@ -311,7 +318,12 @@ async function noModeBar() {   // the header's Exercise / Dance switch was remov
   await page.route("**/api/labels", (r) => r.fulfill({ json: {} }));
   await page.goto(`${BASE}#/record`);
   await page.getByTestId("cam-open").waitFor({ state: "visible", timeout: 5000 });
-  check("no mode bar: the header has no kind switch on #/record", await page.locator('header.bar [data-testid^="kind-"]').count() === 0);
+  check("record: no kind switch in the header", await page.locator('[data-testid^="kind-"]').count() === 0);
+  check("record: no kind picked by default", await page.getByTestId("record-kind").getAttribute("data-value") === "null" || await page.getByTestId("record-kind").getAttribute("data-value") === "");
+  await page.getByTestId("record-kind-dance").click();
+  check("record: the picked kind shows pressed", await page.getByTestId("record-kind-dance").getAttribute("aria-pressed") === "true");
+  check("record: the pick is not stored", await page.evaluate(() => localStorage.getItem("simon.practice.mode")) === null);
+  check("record: the page stays", await page.evaluate(() => location.hash) === "#/record");
   await ctx.close();
 }
 
@@ -320,7 +332,7 @@ for (const viewport of [{ width: 412, height: 915 }, { width: 1280, height: 800 
     try { await run(role, viewport); } catch (e) { check(`${role}-${viewport.width}: drive ran`, false, e.message.split("\n")[0]); }
   }
 }
-try { await noModeBar(); } catch (e) { check("mode bar no take: drive ran", false, e.message.split("\n")[0]); }
+try { await recordKindPick(); } catch (e) { check("record kind pick: drive ran", false, e.message.split("\n")[0]); }
 try { await refused(); } catch (e) { check("refused: drive ran", false, e.message.split("\n")[0]); }
 try { await granted(); } catch (e) { check("granted: drive ran", false, e.message.split("\n")[0]); }
 try { await denied(); } catch (e) { check("denied: drive ran", false, e.message.split("\n")[0]); }

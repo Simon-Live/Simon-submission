@@ -28,6 +28,7 @@ const body = new El("body");
 document.body = body;
 document.createElement = (t) => (t === "dialog" ? new Dialog() : new Field(t));
 const { openImportDialog, MSG } = await import("../../web/skin/import-dialog.js");
+const { setPolicy, resetPolicy } = await import("../../web/policy.js");
 const { MSG: KIND_MSG, NO_REAL_PERSON } = await import("../../web/skin/picture-kind.js");
 
 const ID = "b".repeat(32);
@@ -179,6 +180,26 @@ test("an object picture that shows a person brings the question back with 'no re
   const done = await m.out;
   assert.deepEqual([sent[1].kind, sent[1].consent], ["object", NO_REAL_PERSON]);
   assert.equal(done.id, ID);
+});
+
+test("TICKET-493: with no person check on the server the object picture is asked about once, with the first send", async () => {
+  setPolicy({ prod: true, person_check: false, switches: { face_copy: false }, consent: { required: false } });
+  try {
+    const sent = [];
+    const m = await mount({ upload: async (f, o) => { sent.push(o); return { ok: true, id: ID, status: "queued" }; } });
+    m.choosePhoto("object");
+    assert.equal(m.q("model-import-consent").parent.hidden, false, "asked before the first send");
+    assert.ok(m.q("model-import-consent").children.map((o) => o.attrs.value).includes(NO_REAL_PERSON));
+    m.submit();
+    await tick();
+    assert.equal(sent.length, 0, "no answer: nothing is sent");
+    m.answer(NO_REAL_PERSON);
+    m.submit();
+    await m.out;
+    assert.deepEqual(sent.map((o) => o.consent), [NO_REAL_PERSON], "one send, with the answer");
+    m.pick("person");
+    assert.equal(m.q("model-import-consent").children.map((o) => o.attrs.value).includes(NO_REAL_PERSON), false, "negative: a person photo cannot say it");
+  } finally { resetPolicy(); }
 });
 
 test("the 'no real person' answer goes away when the person choice is back (AC-I34 negative)", async () => {

@@ -1,11 +1,23 @@
+/* The legal pages (/privacy, /terms and the other drafts of docs/legal/, part7/legal_pages.py). Brand tokens only. */
+.legal { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-sans);
+  line-height: 1.55; }
+.legal-skip { position: absolute; left: -9999px; }
+.legal-skip:focus { left: var(--space-3); top: var(--space-3); padding: var(--space-2); background: var(--color-bg); }
+.legal-head, .legal-foot { max-width: 46rem; margin: 0 auto; padding: var(--space-4); }
+.legal-foot { display: flex; flex-wrap: wrap; gap: var(--space-3); border-top: 1px solid var(--color-line); }
+.legal-main { max-width: 46rem; margin: 0 auto; padding: 0 var(--space-4) var(--space-6); }
+.legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.legal a:focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }
+.legal table { border-collapse: collapse; width: 100%; margin: var(--space-3) 0; }
+.legal th, .legal td { border: 1px solid var(--color-line); padding: var(--space-2); text-align: left; vertical-align: top; }
+.legal code { font-size: 0.92em; overflow-wrap: anywhere; }
+
 /* The business pages (web/model/legal.js): About, Terms, Privacy, Health and safety, License. A readable column of text
    on the brand tokens only: every value is a var() from tokens.css. */
 .lg { display: grid; gap: var(--space-6); max-width: 72ch; margin: 0 auto; padding-bottom: var(--space-6); }
 .lg-head { display: grid; gap: var(--space-2); border-bottom: 2px solid var(--color-pink); padding-bottom: var(--space-4); }
 .lg-head h1 { margin: 0; font-size: var(--text-xl); }
 .lg-updated { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
-.lg-notice { margin: 0; justify-self: start; padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill);
-  background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
 .lg-lead { margin: 0; color: var(--color-text); font-size: var(--text-lg); line-height: 1.45; }
 
 .lg-contents { padding: var(--space-3) var(--space-4); background: var(--card-fill); border: 1px solid var(--color-line);
@@ -19,6 +31,7 @@
 .lg-section h2 { margin: 0; font-size: var(--text-md); color: var(--color-text); }
 .lg-section p, .lg-list { margin: 0; color: var(--color-text-muted); line-height: 1.6; overflow-wrap: anywhere; }
 .lg-list { padding-left: var(--space-6); display: grid; gap: var(--space-2); }
+.lg-list li > a:only-child { display: inline-flex; align-items: center; min-height: 44px; }
 .lg-license { padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-md);
   background: var(--card-fill); display: grid; gap: var(--space-2); }
 .lg-license p { font-family: var(--font-mono); font-size: var(--text-xs); }

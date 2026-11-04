@@ -2,12 +2,13 @@
 // reached. `expectStatus` tells errors.js a status is a normal answer, so it is not reported as an anomaly.
 
 /** @returns {Promise<{status: number, ok: boolean, body: any, retryAfter: string | null}>} */
-export async function call(method, url, data, { expectStatus } = {}) {
+export async function call(method, url, data, { expectStatus, timeoutMs } = {}) {
   try {
     const res = await fetch(url, {
       method,
       ...(data === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }),
       ...(expectStatus ? { expectStatus } : {}),
+      ...(timeoutMs && typeof AbortSignal !== "undefined" && AbortSignal.timeout ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     });
     let body = null;
     try { body = await res.json(); } catch { /* 204 and empty answers have no body */ }

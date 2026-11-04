@@ -49,9 +49,10 @@ def _utc(moment: datetime) -> str:
 
 def collect(root: Path, now: datetime | None = None, parts: dict[str, str] | None = None,
             env: str | None = None) -> dict[str, Any]:
-    sha = _git(root, "rev-parse", "HEAD")
-    committed = _git(root, "log", "-1", "--format=%cI", "HEAD") if sha else None
-    subject = _git(root, "log", "-1", "--format=%s", "HEAD") if sha else None
+    marked = modules.firm_sha(root)  # a prod release tree has no .git, only .firm-sha
+    sha = marked or _git(root, "rev-parse", "HEAD")
+    committed = _git(root, "log", "-1", "--format=%cI", "HEAD") if sha and not marked else None
+    subject = _git(root, "log", "-1", "--format=%s", "HEAD") if sha and not marked else None
     if committed:
         try:
             committed = _utc(datetime.fromisoformat(committed))

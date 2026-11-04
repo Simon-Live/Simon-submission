@@ -36,14 +36,12 @@ def get_wav(api: Api, job: str, index: int = 0, timeout: float = 10.0) -> tuple[
 @pytest.fixture(autouse=True)
 def _clean_speech_state() -> Any:
     speech._FAILED.clear()
-    speech._STARTS.clear()
     yield
     for _ in range(200):  # let a background synthesis end before the next test
         if not speech._ACTIVE:
             break
         time.sleep(0.02)
     speech._FAILED.clear()
-    speech._STARTS.clear()
 
 
 def follow_job(api: Api, analysis: Any, kind: str = "follow", write: bool = True) -> str:
@@ -168,10 +166,9 @@ def _wait_idle() -> None:
 
 def test_failed_and_start_records_expire(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(speech, "_FAILED", {Path("/x/a.wav"): 0.0})
-    monkeypatch.setattr(speech, "_STARTS", {"v": [0.0], "w": [999.0]})
     with speech._LOCK:
         speech._expire(1000.0)
-    assert speech._FAILED == {} and list(speech._STARTS) == ["w"]
+    assert speech._FAILED == {}
 
 
 def test_ac_r8_the_subprocess_is_time_boxed_and_the_server_imports_no_model(tmp_path: Path) -> None:
@@ -360,16 +357,6 @@ def test_r8_an_unfinished_or_unknown_job_never_starts_a_synthesis(api: Api, fake
     release.set()
     assert api.request("GET", "api/jobs/0123456789ab/speech/0.wav")[0] == 404
     assert fake.calls == []
-
-
-def test_r8_a_visitor_may_start_only_so_many_syntheses(api: Api, fake: FakeRun, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(speech, "START_LIMIT", 2)
-    jobs_ = [follow_job(api, {"faults": [{"text": f"Line {n}."}]}) for n in range(3)]
-    for job in jobs_[:2]:
-        assert get_wav(api, job)[0] == 200
-    assert api.request("GET", f"api/jobs/{jobs_[2]}/speech/0.wav")[0] == 429
-    assert len(fake.calls) == 2
-    assert api.request("GET", f"api/jobs/{jobs_[0]}/speech/0.wav")[0] == 200, "a cached line is never limited"
 
 
 def test_b4_two_threads_at_once_start_one_process(tmp_path: Path) -> None:

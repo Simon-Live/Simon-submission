@@ -19,8 +19,6 @@ import uuid
 from part7.queue_lock import start_time
 
 ID_RE = re.compile(r"^[0-9a-f]{32}$")
-MAX_MODELS = 20
-MAX_BYTES = 500_000_000
 SERVED = {"model.glb": "model/gltf-binary", "character.json": "application/json; charset=utf-8"}
 MSG_RESTART = "The server restarted while this model was being made. Upload it again."
 STEP_FIELDS = ("step", "step_index", "step_count")  # which stage of making a model it is in (avatar_jobs writes them)
@@ -148,12 +146,6 @@ def owned(state: Path | str, owner: str) -> list[dict[str, Any]]:
         if rec and rec.get("owner") == owner:
             out.append(rec)
     return sorted(out, key=lambda r: (r.get("created_at") or "", r.get("id") or ""))
-
-
-def room_for(state: Path | str, owner: str, incoming: int) -> bool:
-    """Whether `owner` may add a model of `incoming` bytes (20 models, 500 MB)."""
-    recs = owned(state, owner)
-    return len(recs) < MAX_MODELS and sum(int(r.get("bytes") or 0) for r in recs) + incoming <= MAX_BYTES
 
 
 def public_status(rec: dict[str, Any]) -> dict[str, Any]:

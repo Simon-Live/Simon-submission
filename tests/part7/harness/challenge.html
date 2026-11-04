@@ -10,18 +10,25 @@
 // ?screen=actions&job=job1&pid=&entry=lateral-raise&score=82   the result screen's challenge slot (contract item 1)
 //   &challenge=board1&mode=rehab&tookended=1&code=error         the job record's challenge_id, mode and challenge_ended; the analysis status code
 // ?screen=crew&job=grp1&entry=salsa-basic                       the group result's crew challenge
-// ?screen=list&entry=lateral-raise                              the watch screen's Challenges section
+// ?screen=list&entry=lateral-raise                              the watch screen's leaderboards section
+// ?screen=mine, ?screen=home, ?screen=rank&job=job1&entry=lateral-raise   Me's My challenges, home's list, a result's rank line
 import { mountChallengeActions, mountCrewChallenge } from "./challenge-actions.js";
-import { mountChallengeList } from "./challenge.js";
+import { mountMovementBoards, mountMyBoards, mountHomeBoards, mountResultRank } from "./boards-list.js";
 const q = new URLSearchParams(location.search);
 const root = document.getElementById("app");
 const screen = q.get("screen");
 if (screen === "crew") {
-  mountCrewChallenge(root, { jobId: q.get("job"), entryId: q.get("entry"), rows: [
+  mountCrewChallenge(root, { jobId: q.get("job"), entryId: q.get("entry"), challengeId: q.get("challenge") || null, rows: [
     { id: 1, label: "Front row left", refused: false, score: 88 }, { id: 2, label: "", refused: false, score: 73 },
     { id: 3, label: "Back row", refused: true, score: null }, { id: 4, label: "Warned", refused: false, scorable: false, score: 0 }] });
 } else if (screen === "list") {
-  await mountChallengeList(root, q.get("entry"));
+  mountMovementBoards(root, q.get("entry"));
+} else if (screen === "mine") {
+  mountMyBoards(root);
+} else if (screen === "home") {
+  mountHomeBoards(root);
+} else if (screen === "rank") {
+  await mountResultRank(root, q.get("entry"), q.get("job"));
 } else {
   const pid = q.get("pid");
   await mountChallengeActions(root, {

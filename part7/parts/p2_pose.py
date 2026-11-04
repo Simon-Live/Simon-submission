@@ -13,8 +13,12 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from part7 import applog, config, gpu_lock, job_gpu, keys, p2_worker, modules, runner, warm_wait
-from part7.parts import p1_keyframes, probe
+from part7 import applog, byok_route, config, gpu_lock, job_gpu, keys, p2_worker, modules, quota, runner, warm_wait
+from part7 import failcause  # whether a failed run looked and found nobody
+from part7 import licence_gates  # licence-gates.md: which tracker prod may run
+from part7 import prod_mode
+from part7 import serverless_route  # serverless-compute.md: the operator's Modal workspace
+from part7.parts import p1_keyframes, p2_host, probe
 
 API_TRACKER = "api-sam31"
 LOCAL_TRACKER = "local-open"  # the free retry after a failed api-sam31 run
@@ -71,7 +75,7 @@ REMOTE_ENV = "SIMON7_PART2_REMOTE"  # "modal": run Part 2 on Modal instead of th
 # other's failsafe (team, 2026-11-02). Off by default; the first route is still chosen by REMOTE_ENV.
 FALLBACK_ENV = "SIMON7_PART2_FALLBACK"
 FALLBACK_LOG = ".fallback.log"   # the second route's log sits beside the first: part2.log -> part2.fallback.log
-MODAL_REQ = "modal>=1.0,<2"
+MODAL_REQ = "modal==1.6.3"  # docs/specs/byok-prod.md: the version whose spawn and Volume reads were checked
 LOCAL_SAM31 = "local-sam31"  # the tracker the warm tracker worker serves (TICKET-117)
 TRACK_WORKER_ENV = "SIMON7_P2_TRACK_WORKER"  # "1": Part 2's warm track worker for the people step (staging/env.sh sets 1; "0" turns it off)
 TRACK_IDLE_ENV = "SIMON7_P2_TRACK_WORKER_IDLE_S"  # seconds idle before the tracker worker frees its GPU memory; 0: never
@@ -115,9 +119,9 @@ def cold_min_free_mib() -> int:
 def _command(backend: str, sub: list[str], clone: Path) -> tuple[list[str], dict[str, str] | None]:
     """The Part 2 argv for `sub` (a subcommand and its flags) and the env it needs."""
     gpu_py = config.part2_gpu_venv_path() / "bin" / "python"
-    if backend == "gpu" and gpu_py.exists():
+    if backend == "gpu" and not byok_route.host_models_refused() and gpu_py.exists():
         return ([str(gpu_py), "-m", "part2", *sub], {"PYTHONPATH": str(clone)})
-    return (["uv", "run", "part2", *sub], None)
+    return ([*p2_host.base(), *sub], None)  # prod: the prepared CPU venv, never `uv run` in the release tree (D3)
 
 
 def has_worker(lk: modules.Modules, clone: Path) -> bool:
@@ -169,6 +173,8 @@ def warm_workers_decision(state: Path | str | None = None) -> tuple[int, str]:
     staging server starts one (`staging`: SIMON7_STAGING=1 or the staging state folder); every other server, a lane
     or dev one, starts none (`dev default off`): each worker holds 5 to 11 GB of the shared GPU.
     """
+    if byok_route.host_models_refused():  # nofallback D2: no model is resident on this machine, whatever the env says
+        return 0, "byok" if byok_route.byok_only() else "serverless"
     raw = os.environ.get(WARM_WORKERS_ENV)
     if raw is not None:
         return (0 if raw.strip().lower() in WARM_OFF else 1), "explicit"
@@ -189,7 +195,10 @@ def warm_worker_enabled(state: Path | str | None = None) -> bool:
 
 
 def track_worker_enabled() -> bool:
-    """True when SIMON7_P2_TRACK_WORKER asks for Part 2's warm track worker (1, on, yes or true; unset is off)."""
+    """True when SIMON7_P2_TRACK_WORKER asks for Part 2's warm track worker (1, on, yes or true; unset is off).
+    Never under BYOK-only (prod, nofallback D2) or in serverless mode."""
+    if byok_route.host_models_refused():
+        return False
     return os.environ.get(TRACK_WORKER_ENV, "").strip().lower() in ("1", "on", "yes", "true")
 
 
@@ -228,6 +237,9 @@ def start_track_worker(state: Path | str, lock: modules.Modules | None = None, b
     """
     gpu_py = config.part2_gpu_venv_path() / "bin" / "python"
     if not track_worker_enabled() or backend != "gpu" or not gpu_py.exists():
+        return False
+    if not licence_gates.warm_tracker_allowed():  # LIC-H2: the warm worker serves local SAM 3.1, off in prod while unread
+        applog.log("p2_tracker: not started; local SAM 3.1 is off in prod until its weights licence is read")
         return False
     lk = lock or modules.load()
     clone = lk.path("2")
@@ -309,8 +321,46 @@ def job_route_set(route: str | None) -> Iterator[None]:
         _JOB_ROUTE.reset(token)
 
 
+# TICKET-367 (AC-H16): the job owner's own Modal credentials, set by `run_on.bind` at execution time for that job's thread
+# only. They reach one Part 2 subprocess through `runner.run(env_extra=...)`; os.environ is never touched. The second
+# variable is a one-item list the job reads after its calls: whether Modal refused those credentials.
+_JOB_MODAL_ENV: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar("p2_job_modal_env", default=None)
+_JOB_MODAL_REFUSED: contextvars.ContextVar[list[bool] | None] = contextvars.ContextVar("p2_job_modal_refused", default=None)
+# go-live BYOK N1: the gate each own-route process starts through (runner.run `gate`), which reads the token again
+# under the owner's lock and registers the process before Remove can run.
+_JOB_MODAL_GATE: contextvars.ContextVar[Any] = contextvars.ContextVar("p2_job_modal_gate", default=None)
+CREDS_REFUSED_EXIT = byok_route.CREDS_REFUSED_EXIT  # deploy/serverless/p2_client.py: Modal refused the credentials
+
+
+@contextlib.contextmanager
+def job_modal_env_set(env: dict[str, str] | None, gate: Any = None) -> Iterator[list[bool]]:
+    """Within the block, the Modal route of this thread runs with `env` (the user's tokens), each process started
+    through `gate` (runner.Gate) when given; yields the refused flag."""
+    refused: list[bool] = [False]
+    token, token_r, token_g = _JOB_MODAL_ENV.set(env), _JOB_MODAL_REFUSED.set(refused), _JOB_MODAL_GATE.set(gate)
+    try:
+        yield refused
+    finally:
+        _JOB_MODAL_ENV.reset(token)
+        _JOB_MODAL_REFUSED.reset(token_r)
+        _JOB_MODAL_GATE.reset(token_g)
+
+
+def job_modal_env() -> dict[str, str] | None:
+    """The current job's own Modal env (`job_modal_env_set`), for another call on the owner's account (captions)."""
+    return _JOB_MODAL_ENV.get()
+
+
+def job_modal_gate() -> Any:
+    """The current job's launch gate (`job_modal_env_set`), or None."""
+    return _JOB_MODAL_GATE.get()
+
+
 def first_route(route: str | None = None) -> str:
-    """The route a Part 2 call tries first: `route`, else the job's choice, else SIMON7_PART2_REMOTE, else local."""
+    """The route a Part 2 call tries first: `route`, else the job's choice, else SIMON7_PART2_REMOTE, else local. In
+    serverless mode always Modal: never on the host (serverless-compute.md AC-SC1)."""
+    if serverless_route.enabled():
+        return "modal"
     return route or job_route() or ("modal" if remote() else "local")
 
 
@@ -326,6 +376,9 @@ def _remote_command(sub: list[str], lk: modules.Modules) -> list[str]:
     return ["uv", "run", "--no-project", "--with", MODAL_REQ, "python", str(client), "--sha", sha, "--", *sub]
 
 
+MSG_TOKEN_REFUSED = "Modal refused the owner's token earlier in this job; it is not sent to Modal again"
+
+
 def _execute(
     sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
     acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None, route: str | None = None,
@@ -334,8 +387,18 @@ def _execute(
     SIMON7_PART2_REMOTE=modal, else the local GPU); with SIMON7_PART2_FALLBACK=on a failure there runs the same call
     once on the other route, logged beside the first."""
     first = first_route(route)
-    step = _on_route(first, sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
-    if step["exit"] == 0 or not fallback():
+    if (why := byok_route.refusal(first, _JOB_MODAL_ENV.get())) is not None:  # BYOK-C2: never here, never the server's Modal
+        return byok_route.refused_step(lk.sha12("2"), clone, work_p / "steps" / log_name, why)
+    own = first == "modal" and _JOB_MODAL_ENV.get() is not None  # TICKET-367: a failure on the user's own Modal runs here
+    flag = _JOB_MODAL_REFUSED.get()
+    if own and flag is not None and flag[0]:  # byok-ui D2: Modal refused this token already; it is not sent again
+        step = byok_route.refused_step(lk.sha12("2"), clone, work_p / "steps" / log_name, MSG_TOKEN_REFUSED)
+        step["exit"] = CREDS_REFUSED_EXIT
+    else:
+        step = _on_route(first, sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
+    if own and step["exit"] == CREDS_REFUSED_EXIT and flag is not None:
+        flag[0] = True
+    if step["exit"] == 0 or not byok_route.may_fall_back(own, step["exit"], fallback()):  # R1, BYOK-H1
         return step
     other = "local" if first == "modal" else "modal"
     applog.anomaly("p2_route_fallback", f"Part 2 failed on the {first} route; the same call runs on the {other} route",
@@ -350,10 +413,18 @@ def _on_route(
     route: str, sub: list[str], backend: str, work_p: Path, log_name: str, lk: modules.Modules, clone: Path,
     acquire_lock: bool, gpu_lock_kwargs: dict[str, Any] | None,
 ) -> runner.Step:
+    if route == "modal" and serverless_route.enabled():
+        return _on_operator_modal(sub, work_p, log_name, lk, clone)
     if route == "modal":  # serverless route: no local GPU, no warm worker, no GPU lock; the runner still logs and times it
+        own = _JOB_MODAL_ENV.get() is not None  # BYOK-C1: the own route never unpickles a result (byok_route)
+        low = quota.disk_refusal(work_p) if own else None  # security audit R7: the result is written here
+        if low:
+            applog.log(f"part2: own Modal run not started ({low})", level=logging.WARNING)
+            return _skipped_step(lk, clone, log_name, work_p)
         return runner.run(
-            2, _remote_command(sub, lk), cwd=clone, timeout_s=config.TIMEOUTS["2"],
-            log_path=work_p / "steps" / log_name, lock=lk,
+            2, byok_route.command(sub, lk.sha("2")) if own else _remote_command(sub, lk), cwd=clone, timeout_s=config.TIMEOUTS["2"],
+            log_path=work_p / "steps" / log_name, lock=lk, env_extra=_JOB_MODAL_ENV.get(),  # TICKET-367: this subprocess only
+            gate=_JOB_MODAL_GATE.get() if own else None,  # go-live BYOK N1: the token read again as the client starts
         )
     # TICKET-101: only `run` (the 3D step) may use the warm worker, and it is leased AFTER the GPU admission, so a
     # long flock wait never parks the worker as busy. An idle worker already holds the model in GPU memory, so its
@@ -377,6 +448,21 @@ def _on_route(
                        job_dir=work_p, exit=step["exit"])
         job_gpu.worker(work_p, job_gpu.COLD, job_gpu.COLD_FAILED)
         return _attempt(sub, backend, work_p, log_name, lk, clone, acquire_lock, gpu_lock_kwargs)
+    return step
+
+
+def _on_operator_modal(sub: list[str], work_p: Path, log_name: str, lk: modules.Modules, clone: Path) -> runner.Step:
+    """One Part 2 call on the operator's workspace (serverless-compute.md): no fallback, the media through a Volume, the
+    job page told while Modal has not started it."""
+    low = quota.disk_refusal(work_p)
+    if low:
+        applog.log(f"part2: Modal run not started ({low})", level=logging.WARNING)
+        return _skipped_step(lk, clone, log_name, work_p)
+    with serverless_route.watching(work_p):
+        step = runner.run(2, serverless_route.command(sub, lk.sha("2"), work_p), cwd=clone,
+                          timeout_s=serverless_route.timeout_s(config.TIMEOUTS["2"]),
+                          log_path=work_p / "steps" / log_name, lock=lk)
+    serverless_route.note_exit(step["exit"])
     return step
 
 
@@ -710,6 +796,7 @@ def track(
         auto_local = True
     if tracker == "auto":
         tracker = API_TRACKER if api_tracker_allowed(lk, clone, state) else None
+    tracker = licence_gates.tracker(tracker)  # LIC-H2: prod never loads local SAM 3.1 (api-sam31, then local-open by name)
     if tracker:
         # TICKET-067: at the pin a named tracker never falls back (`trackers.select`) and api-sam31 loads no torch and
         # no local model: it uploads a video to the Meta API, so it needs no GPU admission (parts-harness.md "GPU").
@@ -742,6 +829,10 @@ def track(
                 raise TimeoutError("the GPU is busy, try again in a few minutes") from None
         named_dir = Path(named.get("out_dir") or out_dir)
         if named["exit"] == 0 and (named_dir / "tracks.json").is_file():
+            return (named, named_dir / "tracks.json")
+        if failcause.part2_found_nobody(named):  # it looked and found nobody: a second tracker would spend again on the same clip
+            return (named, named_dir / "tracks.json")
+        if licence_gates.meta_barred():  # AC-SC5: Part 2's default order holds api-sam31, so nothing runs without a name
             return (named, named_dir / "tracks.json")
         # moalborati/simon#61: after a failed api-sam31 run (a refused key) retry with the free local tracker by name; Part 2's
         # default order would try api-sam31 again. Its own log keeps the first error readable. Other trackers keep the default order.
@@ -801,6 +892,8 @@ def frame_times(
         applog.log(f"part 2 frame-times: no Part 2 checkout at {Path(clone).name}, using Part 7's rule", job_dir=work,
                    level=logging.WARNING)  # a deploy fault on staging; expected only in tests and CI
         return None
+    if prod_mode.is_prod():  # this command runs ffprobe outside `ffsafe`; Part 7's rule reads the timestamps through it
+        return None
     base = [*_command("cpu", [], clone)[0]]
     if not probe.help_text(2, [*base, "frame-times"], clone, lk):
         return None
@@ -828,17 +921,8 @@ def doctor(
     work_p = Path(work)
     return runner.run(
         2,
-        [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "part2",
-            "doctor",
-            str(Path(pose3d_path).resolve()),
-            "--for",
-            "part3",
-        ],
+        [*p2_host.base(("uv", "run", "python", "-m", "part2")), "doctor", str(Path(pose3d_path).resolve()), "--for",
+         "part3"],
         cwd=clone,
         timeout_s=config.TIMEOUTS["doctor"],
         log_path=work_p / "steps" / "part2_doctor.log",

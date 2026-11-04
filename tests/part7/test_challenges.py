@@ -9,11 +9,12 @@ from typing import Any
 
 import pytest
 
-from part7 import challenge_cli, challenges, cli, client_log, group
-from support import Api
+from part7 import challenge_cli, challenges, cli, client_log, entry_access, group
+from auth_support import authenv, post, sign_in  # noqa: F401  authenv is a fixture
+from support import Api, published
 
 VISITOR = {"Cf-Connecting-Ip": "198.51.100.7"}
-SPONSOR = {"name": "Example Sportswear", "tagline": "Move more", "url": "https://example.com/shop", "prize": "A pair of shoes"}
+SPONSOR = {"name": "Example Sportswear", "tagline": "Move more", "url": "https://example.com/shop", "prize": "A pair of shoes", "rules_url": "https://example.com/rules"}
 
 
 def _timeline(basis: str = "windows") -> dict[str, Any]:
@@ -52,6 +53,8 @@ def _group_job(api: Api, job_id: str, scores: dict[str, Any], entry_id: str = "l
 
 def _create(api: Api, **over: Any) -> dict[str, Any]:
     body = {"entry_id": "lateral-raise", "title": "Beat my raises", "creator_name": "Sam", "kind": "friend", **over}
+    if not entry_access.shipped_sample(api.app.child.catalog_dir, body["entry_id"]):  # a take's movement, published (W-N1)
+        published(api.app.state, body["entry_id"])
     status, doc = api.json("POST", "api/challenges", body, VISITOR)
     assert status == 201, doc
     return doc
@@ -60,7 +63,7 @@ def _create(api: Api, **over: Any) -> dict[str, Any]:
 def _sponsored(api: Api, **over: Any) -> dict[str, Any]:
     return challenges.create(
         api.app.state, entry_id="lateral-raise", title="Raise the roof", creator_name="Example Sportswear",
-        kind="sponsored", sponsor=SPONSOR, allow_sponsored=True, **over)
+        kind="sponsored", sponsor=SPONSOR, allow_sponsored=True, **{"ends_at": "2999-12-01T00:00:00Z", **over})
 
 
 def _add(api: Api, cid: str, **body: Any) -> tuple[int, Any]:
@@ -134,8 +137,10 @@ def test_public_cannot_set_a_sponsor_on_any_route(api: Api) -> None:
 
 
 def test_bad_bodies_and_sizes(api: Api) -> None:
-    assert api.request("POST", "api/challenges", b"not json", {"Content-Length": "8"})[0] == 400
-    assert api.request("POST", "api/challenges", b"[]", {})[0] == 400
+    json_type = {"Content-Type": "application/json"}  # without it the body is 415 (prod-hardening.md item 15)
+    assert api.request("POST", "api/challenges", b"not json", {"Content-Length": "8", **json_type})[0] == 400
+    assert api.request("POST", "api/challenges", b"[]", json_type)[0] == 400
+    assert api.request("POST", "api/challenges", b"{}", {"Content-Type": "text/plain"})[0] == 415
     big = json.dumps({"entry_id": "lateral-raise", "title": "x" * 9000}).encode()
     assert api.request("POST", "api/challenges", big, {"Content-Type": "application/json"})[0] == 413
 
@@ -252,12 +257,13 @@ def test_the_same_result_cannot_be_added_twice(api: Api) -> None:
     assert len(api.json("GET", f"api/challenges/{made['id']}")[1]["entries"]) == 1
 
 
-def test_an_ended_challenge_rejects_entries_but_stays_readable(api: Api) -> None:
+def test_an_ended_challenge_rejects_entries_but_stays_readable(api: Api, authenv: Any) -> None:
     doc = _sponsored(api, ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
-    job = _job(api, "aaaaaaaaaaaa")
-    assert _add(api, doc["id"], job_id=job, name="Sam")[0] == 201
+    sid = sign_in(api)  # a prize board takes a signed-in account only
+    add = lambda job: post(api, f"api/challenges/{doc['id']}/entries", {"job_id": job, "name": "Sam"}, cookie=sid)[::2]  # noqa: E731
+    assert add(_job(api, "aaaaaaaaaaaa"))[0] == 201
     challenges.close(api.app.state, doc["id"])
-    status, err = _add(api, doc["id"], job_id=_job(api, "eeeeeeeeeeee"), name="Late")
+    status, err = add(_job(api, "eeeeeeeeeeee"))
     assert status == 409 and err["error"] == challenges.MSG_ENDED
     board = api.json("GET", f"api/challenges/{doc['id']}")[1]
     assert board["ended"] is True and len(board["entries"]) == 1
@@ -268,11 +274,14 @@ def test_entry_on_a_missing_challenge_is_404(api: Api) -> None:
     assert _add(api, "nosuchid1", job_id=job, name="Sam")[0] == 404
 
 
-def test_a_full_board_is_409(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(challenges, "MAX_ENTRIES", 1)
+def test_no_cap_on_entries_per_board(api: Api) -> None:
+    """Operator, no limits: the 200-entry cap is gone. A board is one JSON file rewritten under one lock per add; it grows
+    slower (about 400 bytes an entry, so 4 MB at 10,000) but does not fail."""
+    assert not hasattr(challenges, "MAX_ENTRIES")
     made = _create(api)
-    assert _add(api, made["id"], job_id=_job(api, "aaaaaaaaaaaa"), name="A")[0] == 201
-    assert _add(api, made["id"], job_id=_job(api, "bbbbbbbbbbbb"), name="B")[0] == 409
+    for i in range(205):
+        stored = challenges.add_entries(api.app.state, made["id"], [{"name": f"P{i}", "score": i, "grade": "C", "job_id": f"{i:012d}", "pid": None}])
+    assert len(stored["entries"]) == 205
 
 
 def test_ranking_across_entries_on_the_wire(api: Api) -> None:
@@ -337,7 +346,7 @@ def _run(capsys: pytest.CaptureFixture[str], state: Path, *args: str) -> tuple[i
 def test_cli_create_list_close(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     code, out, _ = _run(capsys, tmp_path, "create", "--entry", "lateral-raise", "--title", "Raise the roof",
                         "--sponsor-name", "Example Sportswear", "--sponsor-url", "https://example.com",
-                        "--prize", "Shoes", "--ends", "2999-12-01")
+                        "--prize", "Shoes", "--rules-url", "https://example.com/rules", "--ends", "2999-12-01")
     assert code == 0
     made = json.loads(out)
     stored = challenges.get(tmp_path, made["id"])
@@ -354,7 +363,7 @@ def test_cli_create_list_close(tmp_path: Path, capsys: pytest.CaptureFixture[str
                                   ["--entry", "Bad Entry"]])
 def test_cli_refuses_bad_input_with_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[str], over: list[str]) -> None:
     base = {"--entry": "lateral-raise", "--title": "T", "--sponsor-name": "Example Sportswear",
-            "--sponsor-url": "https://example.com", "--prize": "Shoes"}
+            "--sponsor-url": "https://example.com", "--prize": "Shoes", "--rules-url": "https://example.com/rules", "--ends": "2999-12-01"}
     base.update(dict(zip(over[::2], over[1::2])))
     code, out, err = _run(capsys, tmp_path, "create", *[x for kv in base.items() for x in kv])
     assert code == 2 and out == "" and err.startswith("challenge:")

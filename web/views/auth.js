@@ -20,7 +20,7 @@ export function renderEmail(host, { t, email = "", error = "" }, { onInput, onSu
     h("button", { class: "btn primary au-submit", type: "submit", "data-testid": "auth-send", text: t.send }));
   form.addEventListener("submit", (e) => { e.preventDefault(); onSubmit(); });
   clear(host).classList.add("au");
-  host.append(h("h1", { class: "au-title", text: t.title }), h("p", { class: "au-lead", text: t.intro }), form);
+  host.append(h(t.titleTag || "h1", { class: "au-title", text: t.title }), h("p", { class: "au-lead", text: t.intro }), form);
   return { setError: (text) => { err.textContent = text || ""; }, focus: () => input.focus() };
 }
 
@@ -36,7 +36,7 @@ export function renderCode(host, { t, notice, error = "", outboxHref = "" }, { o
     h("button", { class: "btn secondary au-submit", type: "button", "data-testid": "auth-other", text: t.otherEmail, onclick: onOther }));
   form.addEventListener("submit", (e) => { e.preventDefault(); onSubmit(); });
   clear(host).classList.add("au");
-  host.append(h("h1", { class: "au-title", "data-testid": "auth-code-title", text: t.codeTitle }),
+  host.append(h(t.titleTag || "h1", { class: "au-title", "data-testid": "auth-code-title", text: t.codeTitle }),
     h("p", { class: "au-lead", "data-testid": "auth-notice", text: notice }),
     ...(outboxHref ? [h("p", { class: "au-lead" }, h("a", { href: outboxHref, "data-testid": "auth-outbox-link", text: t.outboxLink }))] : []), form);
   return { setError: (text) => { err.textContent = text || ""; }, focus: () => input.focus() };

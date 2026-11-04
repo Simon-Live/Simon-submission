@@ -6,6 +6,8 @@ import { clear, ensureCss, h } from "./ui.js";
 export const WHITEPAPER = {
   title: "Whitepaper",
   lead: "How Simon works, end to end: the product, the pipeline, the AI models, scoring, privacy, and what we are still working on.",
+  note: "This is the design document, so it also covers models and services that are off on simon.live, such as Muse Image, Muse Glimmer, Muse Voice Transcribe, the MMS-TTS voices and the SAM 3.1 open weights. Muse Spark is on, and Muse Spark Open runs on Baseten. The live service's list is on ",
+  noteLink: "Who processes your data",
   open: "Open in a new tab",
   src: "whitepaper.html",
   frameTitle: "Simon whitepaper",
@@ -27,6 +29,7 @@ export function mountWhitepaper(el) {
     h("header", { class: "lg-head" },
       h("h1", { text: WHITEPAPER.title }),
       h("p", { class: "lg-lead", text: WHITEPAPER.lead }),
+      h("p", { class: "lg-lead", "data-testid": "whitepaper-note" }, WHITEPAPER.note, h("a", { href: "sub-processors", text: WHITEPAPER.noteLink }), "."),
       h("a", { class: "wp-open", href: WHITEPAPER.src, target: "_blank", rel: "noopener", "data-testid": "whitepaper-open", text: WHITEPAPER.open })),
     frame));
   window.scrollTo(0, 0);

@@ -23,17 +23,17 @@ const json = (res, body, status = 200, headers = {}) => { res.writeHead(status, 
 const SENT = { takes: 2, movements: 1, left_out: 0, video: false };
 const USAGE = { input_tokens: 9200, cached_tokens: 0, output_tokens: 310, usd: 0.0125 };
 const ANSWERS = {
-  ok: { status: "ok", text: null, dropped: 1, remaining: 19, message: "", reach: SENT, usage: USAGE,
+  ok: { status: "ok", text: null, dropped: 1, message: "", reach: SENT, usage: USAGE,
     claims: [{ kind: "trend", text: "Trunk lean forward shows in take 2 at 1 s, not before.", measure: "trunk_lean_forward", side: "center", relation: "new",
       cites: [{ ref: 2, entry_id: ENTRY, take: 2, job_id: "5277380db1e1", at_s: 1, clip: CLIP_URL }, { ref: 1, entry_id: ENTRY, take: 1, job_id: "cc7cd5469055", at_s: null, clip: null }] }] },
-  clean: { status: "ok", text: "Trunk lean forward is new in take 2.", dropped: 0, remaining: 18, message: "", reach: SENT, usage: { ...USAGE, cached_tokens: 7400 },
+  clean: { status: "ok", text: "Trunk lean forward is new in take 2.", dropped: 0, message: "", reach: SENT, usage: { ...USAGE, cached_tokens: 7400 },
     claims: [{ kind: "count", text: "Trunk lean forward shows in 1 take.", cites: [{ ref: 2, entry_id: ENTRY, take: 2, job_id: "5277380db1e1", at_s: null, clip: CLIP_URL }] }] },
-  abstain: { status: "abstain", text: null, claims: [], dropped: 0, remaining: 17, message: "Your takes do not mention tempo.", reach: SENT, usage: USAGE },
-  refused: { status: "refused", text: null, claims: [], dropped: 0, remaining: 17, message: "Simon answers questions about your takes only. Ask about a movement, a score or how a move changed.", usage: null },
+  abstain: { status: "abstain", text: null, claims: [], dropped: 0, message: "Your takes do not mention tempo.", reach: SENT, usage: USAGE },
+  refused: { status: "refused", text: null, claims: [], dropped: 0, message: "Simon answers questions about your takes only. Ask about a movement, a score or how a move changed.", usage: null },
 };
 const SUGGESTIONS = ["Is my trunk lean forward getting better in Body squat?", "When did my trunk lean forward first show up in Body squat?", "Which take of Body squat scored best?"];
 
-let scenario = "ok"; // ok | signedout | few | limit
+let scenario = "ok"; // ok | signedout | few | turned-away
 const asked = []; // the questions the server received
 function api(req, res, p) {
   if (req.url.startsWith("/__scenario/")) { scenario = req.url.split("/").pop(); asked.length = 0; return json(res, {}); }
@@ -41,7 +41,7 @@ function api(req, res, p) {
   if (scenario === "signedout") return json(res, { error: "sign in" }, 401);
   if (p === "/api/me/history") return json(res, { entries: [{ entry_id: ENTRY, name: "Body squat", takes: 2 }] });
   if (p === "/api/me/history/ask" && req.method === "GET") {
-    return json(res, { retention: true, takes: scenario === "few" ? 1 : 2, can_ask: scenario !== "few", suggestions: SUGGESTIONS, limit: 20, remaining: 20, max_chars: 200 });
+    return json(res, { retention: true, takes: scenario === "few" ? 1 : 2, can_ask: scenario !== "few", suggestions: SUGGESTIONS, max_chars: 200 });
   }
   if (p === "/api/me/history/ask" && req.method === "POST") {
     let raw = "";
@@ -49,7 +49,7 @@ function api(req, res, p) {
     req.on("end", () => {
       const q = JSON.parse(raw).question;
       asked.push(q);
-      if (scenario === "limit") return json(res, { message: "You have asked 20 questions today. Try again tomorrow." }, 429);
+      if (scenario === "turned-away") return json(res, { message: "You have asked 20 questions today. Try again tomorrow." }, 429);
       const key = /pain/i.test(q) ? "refused" : /tempo/i.test(q) ? "abstain" : /best/i.test(q) ? "clean" : "ok";
       json(res, ANSWERS[key]);
     });
@@ -112,7 +112,8 @@ try {
     assert.match(await page.textContent(tid("ask-receipt")), /2 takes of 1 movement as text, with no video/);
     assert.match(await page.textContent(tid("ask-receipt")), /9,200 tokens in, 0 of them cached/);
     assert.equal(await page.locator(tid("ask-lead")).count(), 0, "no lead sentence when a claim was dropped");
-    assert.match(await page.textContent(tid("ask-remaining")), /19 questions left today/);
+    assert.equal(await page.locator(tid("ask-remaining")).count(), 0, "no count of questions: asking has no limit");
+    assert.doesNotMatch(await page.textContent(".ask"), /left today/);
     assert.equal(await page.isDisabled(tid("ask-cite-0-1")), true, "a clip that is not kept is disabled");
     await shot(page, "ask-02-answer-with-dropped-seeded.png");
     ok("seeded: a suggested question gets a claim, a dropped count and a receipt");
@@ -146,14 +147,15 @@ try {
     ok("an empty question is stopped before it is sent");
   }
   {
-    const { page, ctx } = await open("limit");
+    const { page, ctx } = await open("turned-away");
     await page.waitForSelector(tid("ask"));
     await page.tap(tid("ask-suggestion-1"));
-    await page.waitForSelector(`${tid("ask-status")}[data-kind="limit"]`);
-    assert.match(await page.textContent(tid("ask-status")), /Try again tomorrow/);
+    await page.waitForSelector(`${tid("ask-status")}[data-kind="error"]`);
+    assert.match(await page.textContent(tid("ask-status")), /Simon could not answer just now/);
+    assert.doesNotMatch(await page.textContent(".ask"), /Try again tomorrow|questions today/, "no limit words, whatever a proxy says");
     assert.equal(await page.isDisabled(tid("ask-send")), false);
     await ctx.close();
-    ok("a 429 shows its words and frees the button");
+    ok("a 429 from anything in front of the app is a plain failure with no limit words, and frees the button");
   }
   for (const kase of ["signedout", "few"]) {
     const { page, ctx } = await open(kase);

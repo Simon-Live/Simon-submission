@@ -86,18 +86,6 @@ def test_every_pattern_rejected_shows_the_table_not_nothing(runner: job_mod.Patt
     assert doc["patterns"][0]["source"] == "fact_table" and len(doc["rejected"]) == 1
 
 
-def test_daily_limit_counts_against_the_report_cap_and_few_takes_are_refused(runner: job_mod.PatternRunner, monkeypatch: pytest.MonkeyPatch,
-                                                                              tmp_path: Path) -> None:
-    monkeypatch.setenv("SIMON7_HISTORY_DAILY", "1")
-    _run(runner, _transport([GOOD]))
-    assert history_report.runs_today(runner.state, USER) == 1
-    runner.transport = _transport([GOOD])
-    history_store.drop_take(tmp_path, f"{1:012x}")  # a changed history is a new key: it needs a new call, which the cap refuses
-    with pytest.raises(history_report.Refused) as caught:
-        runner.request(USER, ENTRY)
-    assert caught.value.status == 429
-
-
 def test_consent_and_minimum_takes(tmp_path: Path, world: World) -> None:  # noqa: F811
     seed_store(tmp_path, world, SCENARIO[:2])
     runner = job_mod.PatternRunner(tmp_path)

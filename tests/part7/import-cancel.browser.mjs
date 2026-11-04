@@ -113,8 +113,7 @@ const cases = {
     const { page, log, close } = await open(vp);
     let held = null;
     await page.route(/api\/models\?/, (route) => { held = route; }); // the upload never gets an answer while it is held
-    await page.getByTestId("model-import-file").setInputFiles(photo);
-    await page.getByTestId("model-import-consent").selectOption("self");
+    await page.getByTestId("model-import-file").setInputFiles(rigged); // a photo needs Modal here; a rigged file makes a model at once
     await page.getByTestId("model-import-submit").click();
     for (let i = 0; i < 50 && !held; i++) await sleep(50);
     assert.ok(held, "the upload started");

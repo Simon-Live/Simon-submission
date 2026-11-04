@@ -3,7 +3,7 @@
 The server never imports a model, and a request never waits for one: `start` begins one background synthesis at a
 time and the route answers 202 until the wav exists. `synthesize` runs `tools/mms_tts.py` in a subprocess with its own isolated
 environment, time-boxed, and caches the wav under the job folder. Any failure returns None; the route answers 404 and
-the browser falls back to its own speech.
+the browser falls back to its own speech. With the prod `mms_tts` switch off (`enabled`) nothing is made or served.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from part7 import applog
+from part7 import applog, prod_mode
 
 # Languages the follow screen offers: BCP 47 primary subtag -> ISO 639-3 code of the facebook/mms-tts-<code> voice.
 LANGS = {"en": "eng", "es": "spa", "fr": "fra", "ar": "ara", "hi": "hin", "pt": "por"}
@@ -29,14 +29,17 @@ INDEX_RE = re.compile(r"^[0-9]{1,3}$")
 _SLOT = threading.BoundedSemaphore(1)  # one synthesis process at a time
 
 FAILED_TTL_S = 60.0  # a line that failed answers 404 for this long before another try may start
-START_LIMIT = 6  # synthesis starts one visitor may cause ...
-START_WINDOW_S = 60.0  # ... in this many seconds
 _LOCK = threading.Lock()
 _ACTIVE: set[Path] = set()
 _FAILED: dict[Path, float] = {}
-_STARTS: dict[str, list[float]] = {}
 
 Runner = Callable[..., Any]
+
+
+def enabled() -> bool:
+    """#415 and LIC-C1: the MMS-TTS voices are CC BY-NC 4.0, so the prod `mms_tts` switch turns them off; the browser
+    speaks every line itself. With it off nothing installs or runs at request time (LIC-H4)."""
+    return prod_mode.policy("mms_tts")
 
 
 def command(lang3: str, text_file: Path, out: Path) -> list[str]:
@@ -95,8 +98,6 @@ def _expire(now: float) -> None:
     """Forget failures older than their rest and start times older than the window (caller holds `_LOCK`)."""
     for path in [p for p, t in _FAILED.items() if now - t >= FAILED_TTL_S]:
         del _FAILED[path]
-    for who in [v for v, ts in _STARTS.items() if not any(now - t < START_WINDOW_S for t in ts)]:
-        del _STARTS[who]
 
 
 def start(job_dir: Path, index: int, lang3: str, text: str, visitor: str = "", run: Runner | None = None,
@@ -104,9 +105,10 @@ def start(job_dir: Path, index: int, lang3: str, text: str, visitor: str = "", r
     """Make sure the wav of a line exists or is being made; never waits for the model.
 
     Returns `ready` (cached), `pending` (this line is being made), `started` (a background thread began now),
-    `busy` (another line is being made: one at a time), `failed` (it failed within `FAILED_TTL_S`) or `limited`
-    (this visitor started `START_LIMIT` syntheses within `START_WINDOW_S`).
+    `busy` (another line is being made: one at a time) or `failed` (it failed within `FAILED_TTL_S`).
     """
+    if not enabled():
+        return "failed"
     out = cache_path(job_dir, index, lang3, text)
     if out.is_file() and out.stat().st_size > 0:
         return "ready"
@@ -117,13 +119,8 @@ def start(job_dir: Path, index: int, lang3: str, text: str, visitor: str = "", r
             return "pending"
         if now - _FAILED.get(out, -FAILED_TTL_S) < FAILED_TTL_S:
             return "failed"
-        recent = [t for t in _STARTS.get(visitor, []) if now - t < START_WINDOW_S]
-        if len(recent) >= START_LIMIT:
-            _STARTS[visitor] = recent
-            return "limited"
         if not _SLOT.acquire(blocking=False):
             return "busy"
-        _STARTS[visitor] = [*recent, now]
         _ACTIVE.add(out)
     threading.Thread(target=_background, args=(out, job_dir, index, lang3, text, run, timeout), daemon=True).start()
     return "started"

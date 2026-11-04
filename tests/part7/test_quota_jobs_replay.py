@@ -16,38 +16,6 @@ from part7.jobs import JobFailed, JobQueue, QueueFullError, sanitize_reason
 
 
 # ----- quota ------------------------------------------------------------------------------------
-def test_visitor_trainer_limit_is_three_and_gpu_limit_ten(tmp_path: Path) -> None:
-    q = quota.Quota(tmp_path)
-    for _ in range(3):
-        q.reserve("trainer", "1.2.3.4")
-    with pytest.raises(quota.VisitorQuotaError, match="Try again tomorrow"):
-        q.reserve("trainer", "1.2.3.4")
-    for _ in range(7):
-        q.reserve("follow", "1.2.3.4")
-    with pytest.raises(quota.VisitorQuotaError):
-        q.reserve("follow", "1.2.3.4")
-    q.reserve("follow", "5.6.7.8")
-
-
-def test_no_visitor_skips_the_visitor_quota_but_not_the_daily_caps(tmp_path: Path) -> None:
-    q = quota.Quota(tmp_path, daily_gpu=15, daily_trainer=2)
-    for _ in range(2):
-        q.reserve("trainer", None)
-    with pytest.raises(quota.DailyCapError, match="today's limit"):
-        q.reserve("trainer", None)
-    for _ in range(13):
-        q.reserve("follow", None)
-    with pytest.raises(quota.DailyCapError):
-        q.reserve("follow", None)
-    assert q.gpu_jobs_today() == 15
-
-
-def test_default_daily_caps_are_forty_gpu_and_ten_trainer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SIMON7_DAILY_GPU", raising=False)
-    q = quota.Quota(tmp_path)
-    assert (q.daily_gpu, q.daily_trainer) == (40, 10)
-
-
 def test_counters_persist_reset_by_day_and_release(tmp_path: Path) -> None:
     day = ["2026-10-30"]
     q = quota.Quota(tmp_path, today=lambda: day[0])
@@ -279,17 +247,6 @@ def test_worker_count_comes_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert JobQueue(tmp_path, start=False).workers == 3
     monkeypatch.setenv("SIMON7_GPU_WORKERS", "nope")
     assert JobQueue(tmp_path, start=False).workers == 2
-
-
-def test_limits_off_counts_but_never_refuses(tmp_path, monkeypatch) -> None:
-    """Operator 2026-10-30: no limits during heavy testing (SIMON7_LIMITS off is the default)."""
-    from part7 import quota
-
-    monkeypatch.delenv("SIMON7_LIMITS", raising=False)
-    q = quota.Quota(tmp_path, daily_gpu=1, daily_trainer=1, visitor_gpu=1, visitor_trainer=1)
-    for _ in range(5):
-        q.reserve("trainer", "203.0.113.9")
-    assert q.gpu_jobs_today() == 5
 
 
 def test_missing_schema_fails_closed(tmp_path: Path) -> None:

@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from auth_support import authenv, get, post, sign_in  # noqa: F401
+from auth_support import authenv, get, post, sign_in, claim_doc  # noqa: F401
 from part7 import auth, chain, model_only, profile
 from history_support import FIRST, SECOND, USER, job_record, seed_job, world  # noqa: F401
 from support import Api
@@ -52,13 +52,15 @@ def test_a_stamped_take_serves_no_camera_clip_to_the_owner_or_anyone(api: Api, t
     record = api.app.queue.get(job)
     assert record["model_only_view"] is True and record.get("video_kept") is not False  # stamped, the video is still kept
     assert (api.app.queue.job_dir(job) / "work" / "video.mp4").is_file()  # the raw take stays for Part 2
-    for who in (ada, grace, None):
+    status, body = clip_status(api, job, ada)
+    assert status == 404 and body["error"] == model_only.MSG_VIEW_ONLY  # the owner is told why
+    for who in (grace, None):  # anyone else gets the plain 404 of a take that is not theirs (B2), no clip either way
         status, body = clip_status(api, job, who)
-        assert status == 404 and body["error"] == model_only.MSG_VIEW_ONLY, who
-    status, doc = api.json("POST", f"api/jobs/{job}/export", {})
+        assert status == 404 and body["error"] in (model_only.MSG_VIEW_ONLY, "This take is not available."), who
+    status, doc = api.json("POST", f"api/jobs/{job}/export", {}, {"Cookie": f"{auth.COOKIE}={ada}"})
     assert status == 404 and doc["error"] == model_only.MSG_VIEW_ONLY  # no export clip either
-    served = api.json("GET", f"api/jobs/{job}")[1]
-    assert served["model_only_view"] is True  # the result page reads the stamp, for every viewer
+    served = api.json("GET", f"api/jobs/{job}", headers={"Cookie": f"{auth.COOKIE}={ada}"})[1]
+    assert served["model_only_view"] is True  # the result page reads the stamp (an owned take is the owner's only, B2)
 
 
 @pytest.mark.usefixtures("authenv")
@@ -67,7 +69,7 @@ def test_an_unstamped_take_is_unchanged(api: Api, tiny_mp4: Path, monkeypatch: p
     job = signed_follow(api, tiny_mp4, monkeypatch, ada)
     assert "model_only_view" not in api.app.queue.get(job)
     assert clip_status(api, job, ada)[0] in (200, 206)
-    assert clip_status(api, job, None)[0] in (200, 206)
+    assert clip_status(api, job, None)[0] == 404  # prod-data.md: a take made signed in plays for its owner only
 
 
 @pytest.mark.usefixtures("authenv")
@@ -90,7 +92,7 @@ def stamped_kept_take(api: Api, sid: str) -> str:
     """A finished follow take with its camera clip on disk, stamped by its owner, claimed into the owner's history."""
     from test_notes import make_job
     job = make_job(api, model_only_view=True)
-    assert post(api, "api/me/claims", {"job_id": job}, cookie=sid)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, job), cookie=sid)[0] == 200
     return job
 
 

@@ -29,6 +29,19 @@ KINDS = ("trend", "moment", "comparison", "count")
 RELATIONS = ("smaller", "larger", "score_up", "score_down")
 MSG_ABSTAIN = "Your takes do not hold enough to answer that."
 MSG_UNCHECKED = "Simon could not check an answer to that against your takes."
+# Reels 3.10 (HARDENING section 11, LAW): a question about self-harm or suicide gets this fixed answer, never a model's,
+# from "Ask my history" and "Ask this take" alike, before any other check and without a model call. Each line was read
+# at its own site on 2026-11-03: https://988lifeline.org/, https://988.ca/, https://www.samaritans.org/how-we-can-help/contact-samaritan/,
+# https://www.lifeline.org.au/, https://findahelpline.com/ (also linked by https://www.iasp.info/crisis-centres-helplines/).
+CRISIS_TEXT = ("It sounds like you may be thinking about hurting yourself. You do not have to face this alone: talk to "
+               "someone now. In the US or Canada, call or text 988. In the UK or Ireland, call Samaritans on 116 123. In Australia, "
+               "call Lifeline on 13 11 14. Anywhere else, find a free helpline at findahelpline.com. If you are in danger right now, call your local "
+               "emergency number. Simon is an exercise app and cannot help with this, but these people can.")
+_CRISIS = re.compile(
+    r"\bsuicid\w*|\bself[\s-]*harm\w*|\bkill(?:ing)?\s+my\s*self\b|\bend(?:ing)?\s+(?:it\s+all|my\s+life)\b"
+    r"|\btake\s+my\s+(?:own\s+)?life\b|\b(?:harm|cut|cutting|hang)\s+my\s*self\b|\bwant\s+to\s+die\b"
+    r"|\bwish\s+i\s+(?:was|were)\s+dead\b|\bbetter\s+off\s+dead\b|\bno\s+reason\s+to\s+live\b|\boverdos\w*",
+    re.I)
 _DATE = re.compile(r"(\d{1,2}) \w{3} (\d{4})")
 _SNAKE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b", re.I)  # a raw id such as trunk_lean_forward
 
@@ -42,6 +55,18 @@ def _num(value: Any) -> bool:
 
 def _int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def crisis(question: Any) -> bool:
+    """True when free text from the person speaks of self-harm or suicide (reels 3.10). Whitespace and case are
+    ignored; anything that is not a string is not a crisis message."""
+    return isinstance(question, str) and bool(_CRISIS.search(" ".join(question.split())))
+
+
+def crisis_reply(**extra: Any) -> dict[str, Any]:
+    """The fixed answer to a crisis message: no model text, no claims, no usage. `extra` adds the feature's own empty
+    fields (claims, actions) so the route answers it like any other outcome, with HTTP 200."""
+    return {"status": "crisis", "text": None, "message": CRISIS_TEXT, "usage": None, "source": None, **extra}
 
 
 def display_name(measure: str) -> str:

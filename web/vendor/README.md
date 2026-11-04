@@ -47,3 +47,60 @@ which is under the Eclipse Public License 2.0. The 11.17.2 bundle has no elkjs c
 | `web/vendor/mermaid/LICENSE` | `package/LICENSE` | `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80` |
 
 `mermaid.min.js` is a classic script that sets `globalThis.mermaid`; it is not an ES module.
+
+## Inter (LEG-H2)
+
+`@fontsource/inter@5.3.0` is vendored unmodified from the npm registry tarball: the latin and latin-ext `.woff2` files
+of weights 400 to 800 and the licence. `web/theme/fonts.css` declares them; nothing loads from Google Fonts.
+
+| Field | Value |
+|---|---|
+| Package | `@fontsource/inter` |
+| Version | `5.3.0` |
+| Tarball URL | `https://registry.npmjs.org/@fontsource/inter/-/inter-5.3.0.tgz` |
+| Tarball SHA-1 | `866278dc2357659f8be1755c8b67f29d3697b440` |
+| Tarball SHA-256 | `02034af8d41dcc67ac8eab88f642e129bb8a2e8922abf30229c32725f54d8fd6` |
+| Licence | SIL Open Font License 1.1 (`web/vendor/inter/LICENSE`) |
+
+| Path | Source path in tarball | SHA-256 |
+|---|---|---|
+| `web/vendor/inter/LICENSE` | `package/LICENSE` | `3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345` |
+| `web/vendor/inter/inter-latin-400-normal.woff2` | `package/files/inter-latin-400-normal.woff2` | `8909904ab6c872eb994093482a88a28eca2cd95912d7b6fecd72103b0dc07edc` |
+| `web/vendor/inter/inter-latin-500-normal.woff2` | `package/files/inter-latin-500-normal.woff2` | `f3779f1efccc4bdcdf9c0a02ab95bf6bd092ed09c48c08cedc725889edd1d19f` |
+| `web/vendor/inter/inter-latin-600-normal.woff2` | `package/files/inter-latin-600-normal.woff2` | `f9a06e79cd3a2a20951c0f0e28f66dd0e6d3fda73911d640a2125c8fcb78f21a` |
+| `web/vendor/inter/inter-latin-700-normal.woff2` | `package/files/inter-latin-700-normal.woff2` | `6f56409fd3d64bb85f7d070bce20749db2d66b6d63cec586cc22d1c761be2491` |
+| `web/vendor/inter/inter-latin-800-normal.woff2` | `package/files/inter-latin-800-normal.woff2` | `a7d0a50f15d389cad679238466bdb5fc9787aa0715719064ce25abaff042820d` |
+| `web/vendor/inter/inter-latin-ext-400-normal.woff2` | `package/files/inter-latin-ext-400-normal.woff2` | `6744a7f509ebc6ab220a6cd4ea77e898adf014f03d88dcda5d45d8a9feefb4e9` |
+| `web/vendor/inter/inter-latin-ext-500-normal.woff2` | `package/files/inter-latin-ext-500-normal.woff2` | `2c6fbc42d315528beb06c1096df45487bf4186c4b78b8111d12c9c951f8acca2` |
+| `web/vendor/inter/inter-latin-ext-600-normal.woff2` | `package/files/inter-latin-ext-600-normal.woff2` | `e4bdf67b0cd15ca9e184509275be95db942195d3cc2b17f6a0452f2adf75d0bf` |
+| `web/vendor/inter/inter-latin-ext-700-normal.woff2` | `package/files/inter-latin-ext-700-normal.woff2` | `143f9504f1377012aa3e39c90c4354ef429cb0494b9ac0e1437f1a81e5412236` |
+| `web/vendor/inter/inter-latin-ext-800-normal.woff2` | `package/files/inter-latin-ext-800-normal.woff2` | `eade55593308b9e4916dd7f47826929ce3e40cad85a2b338d56e5fd1e7bf8e5e` |
+
+## MediaPipe (LIC-H5)
+
+`@mediapipe/tasks-vision@0.10.14` is vendored unmodified from the npm registry tarball for Live check
+(`web/live-check.js`), with the pose landmarker model from Google's model bucket. Before this, Live check loaded both
+from jsDelivr and Google Cloud Storage with no integrity check. The bundle's `sourceMappingURL` names a `.map` file
+that is not vendored; only developer tools ask for it.
+
+| Field | Value |
+|---|---|
+| Package | `@mediapipe/tasks-vision` |
+| Version | `0.10.14` |
+| Tarball URL | `https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-0.10.14.tgz` |
+| Tarball SHA-1 | `16c5ddc513408f2a416ccc6ce8ccc797ee02da3b` |
+| Tarball SHA-256 | `3122ba7a70d414ffbb3a1bd194c370594a1bf1c90e467c375a5b8bd25be2c004` |
+| Licence | Apache-2.0 (`license` in the package's `package.json`; no LICENSE file in the package) |
+| Model URL | `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task` |
+| Model licence | Apache-2.0 (model card "BlazePose GHUM 3D", read 2026-11-02) |
+
+| Path | Source | SHA-256 |
+|---|---|---|
+| `web/vendor/mediapipe/vision_bundle.mjs` | `package/vision_bundle.mjs` | `e77f281f9619150d937023c355bae170e9120e3b9e43f1e23a2a7bee07197669` |
+| `web/vendor/mediapipe/wasm/vision_wasm_internal.js` | `package/wasm/vision_wasm_internal.js` | `9440cf0cc0cea21800e31581ec32aeedcc5fbf9df4509796bbc7d3f99e52ab9c` |
+| `web/vendor/mediapipe/wasm/vision_wasm_internal.wasm` | `package/wasm/vision_wasm_internal.wasm` | `f82a8e6c05e08a44cc9f9e7ec5f845935bcbb1b1500ebe8c2f4812fb4e2917dc` |
+| `web/vendor/mediapipe/wasm/vision_wasm_nosimd_internal.js` | `package/wasm/vision_wasm_nosimd_internal.js` | `abe9b6fbeaf86fcb53a5edce3926c82ccb0619e18fed4d9d9ce561ee7f55e054` |
+| `web/vendor/mediapipe/wasm/vision_wasm_nosimd_internal.wasm` | `package/wasm/vision_wasm_nosimd_internal.wasm` | `38b61feab2fd7934e05cbe9f68baa308978a5e3b7f85c1913bb8ae89b8ef8b97` |
+| `web/vendor/mediapipe/models/pose_landmarker_lite.task` | the model URL above | `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a` |
+
+`tests/part7/test_web_static.py` checks the package file hashes and `tests/part7/test_prod_policy.py` the model hash.

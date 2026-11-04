@@ -191,16 +191,18 @@ def test_photo_mesh_and_character_models_run_on_modal_without_a_local_gpu(monkey
     assert not avatar_jobs.available("image3d"), "negative: no GPU and no remote route"
 
 
-def test_with_serverless_set_up_a_run_on_choice_is_ignored_and_part2_runs_there(monkeypatch):
+def test_with_the_relay_set_up_a_run_on_choice_is_ignored_and_part2_runs_there(monkeypatch):
     from part7 import run_on
     from part7.parts import p2_pose
     seen = []
-    job = run_on.bind(lambda ctx: seen.append(p2_pose.first_route()) or {}, "local")
+    work = lambda ctx: seen.append(p2_pose.first_route()) or {}  # noqa: E731
     monkeypatch.setenv("SIMON7_PART2_REMOTE", "modal")
-    job(None)
+    monkeypatch.setenv("SIMON_PART2_RELAY", "https://relay.example")
+    run_on.bind(work, "local")(None)
+    monkeypatch.delenv("SIMON_PART2_RELAY")
     monkeypatch.delenv("SIMON7_PART2_REMOTE")
-    job(None)
-    assert seen == ["modal", "local"], "the serverless route wins; without it the choice applies as before"
+    run_on.bind(work, "local")(None)
+    assert seen == ["modal", "local"], "the relay's route wins; without it the choice applies as before"
 
 
 def test_a_start_warms_part2_for_an_hour_and_a_second_start_only_adds_the_rest():

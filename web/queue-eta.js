@@ -32,12 +32,13 @@ export function leftText(job) {
 // TICKET-289 (docs/specs/app.md "GPU wait on the job"): the server sets `wait` while the job waits for the GPU and
 // `worker: "cold"` when the 3D step runs the slower per-call path. Without those fields the page shows nothing new.
 export const GPU_WAIT = "Waiting for the graphics card. Another job is using it.";
+export const GPU_QUEUE = "Waiting for a free graphics card. Your take stays in line and starts by itself."; // serverless-compute.md AC-SC7
 export const COLD_PATH = "Running the slower path. This take will need more time.";
 
 /** Pure: the GPU line under the step line of a running job, or "". The cold line shows during the 3D step only. */
 export function gpuText(job) {
   if (job.status !== "running") return "";
-  if (job.wait && typeof job.wait === "object") return GPU_WAIT;
+  if (job.wait && typeof job.wait === "object") return job.wait.reason === "gpu queue" ? GPU_QUEUE : GPU_WAIT;
   if (job.worker === "cold" && job.stage === "pose") return COLD_PATH;
   return "";
 }

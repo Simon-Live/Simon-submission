@@ -49,7 +49,7 @@ async function audit(page, who, scope) {
   }
   const geo = await page.evaluate((scope) => ({
     small: [...document.querySelectorAll(`${scope} a[href], ${scope} button`)].filter((e) => {
-      const r = e.getBoundingClientRect(); return r.width > 0 && (r.height < 43.5 || r.width < 43.5);
+      const r = e.getBoundingClientRect(); if (e.closest(".lg-section p, .lg-section td") || (e.closest(".lg-section li") && e.parentElement.textContent.trim() !== e.textContent.trim())) return false; /* a link inside a sentence: the inline exception of WCAG 2.5.8 */ return r.width > 0 && (r.height < 43.5 || r.width < 43.5);
     }).map((e) => `${e.dataset.testid || e.textContent.trim().slice(0, 24)} ${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}`),
     overflow: document.documentElement.scrollWidth - innerWidth,
   }), scope);
@@ -65,10 +65,10 @@ try {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
 
-    await page.goto(`${base}?profile=submission#/`);
-    await page.getByTestId("impact-link").waitFor();
-    assert.equal(await page.getByTestId("architecture-link").count(), 1, `${label}: Home links the architecture page`);
-    await page.getByTestId("impact-link").click();
+    await page.goto(`${base}?profile=default#/`); // the submission profile leaves out the rehab persona (LEG-H3, model/impact.js)
+    await page.getByTestId("footer-link-impact").waitFor(); // home-browse.md: the footer holds the links the old hero had
+    assert.equal(await page.getByTestId("footer-link-how").count(), 1, `${label}: Home links the architecture page`);
+    await page.getByTestId("footer-link-impact").click();
     await page.getByTestId("impact").waitFor();
     assert.equal(await page.locator("article.imp-card").count(), 4, `${label}: four persona cards`);
     for (const persona of ["seated", "home-rehab"]) {
@@ -95,15 +95,32 @@ try {
     ok(`${label}: Impact page, 4 cards, 2 real takes, QA take refused, take link opens its result`);
 
     await page.goto(`${base}?profile=submission#/architecture`);
-    await page.getByTestId("architecture").waitFor();
-    assert.equal(await page.getByTestId("arch-figure").count(), 3, `${label}: three diagrams`);
-    await page.waitForFunction(() => document.querySelectorAll("[data-testid=arch-slot][data-drawn=true] svg").length === 3, null, { timeout: 30000 });
-    assert.equal(await page.getByTestId("arch-failed").count(), 0, `${label}: negative: no diagram failed to draw`);
-    assert.equal(await page.locator("[data-testid=arch-slot] svg[role=img][aria-label]").count(), 3, `${label}: each drawing is a labelled image`);
-    await audit(page, `${label} architecture`, "[data-testid=architecture]");
+    await page.getByTestId("legal-architecture").waitFor();
+    assert.match(await page.locator("h1").first().textContent(), /How Simon works/, `${label}: the public page`);
+    assert.equal(await page.locator("[data-testid=legal-architecture] .lg-section").count(), 5, `${label}: five sections`);
+    assert.equal(await page.locator("[data-testid=legal-architecture] svg, [data-testid=arch-figure]").count(), 0, `${label}: negative: no diagrams`);
+    await audit(page, `${label} how Simon works`, "[data-testid=legal-architecture]");
     if (shots) await page.screenshot({ path: path.join(shots, `architecture-${width}.png`), fullPage: true });
     if (errors.length) failures.push(`${label}: page errors ${errors.join("; ")}`);
-    ok(`${label}: architecture page, three Mermaid drawings from docs/ARCHITECTURE.md`);
+    ok(`${label}: How Simon works, a public page in plain words, no diagrams`);
+
+    // the legal pages, signed out: the footer opens the server's text in the app's theme; the plain paths the consent step links still answer
+    await page.goto(`${base}?profile=submission#/`);
+    await page.getByTestId("footer-link-privacy").click();
+    await page.getByTestId("legal-privacy").waitFor();
+    assert.match(await page.locator("h1").first().textContent(), /Privacy policy/, `${label}: the server's title`);
+    for (const path_ of ["privacy", "terms"]) assert.equal((await ctx.request.get(`${base}${path_}`)).status(), 200, `${label}: /${path_} still served`);
+    await page.goto(`${base}?profile=submission#/dmca`);
+    await page.getByTestId("legal-dmca").waitFor();
+    assert.ok(!(await page.locator("[data-testid=legal-dmca]").textContent()).includes("DMCA_AGENT_ADDRESS"), `${label}: negative: no raw address token`);
+    await audit(page, `${label} legal page`, "[data-testid=legal-dmca]");
+    await page.route("**/simon-part-7/terms", (r) => r.abort());
+    await page.goto(`${base}?profile=submission#/terms`);
+    await page.getByTestId("legal-unavailable").waitFor();
+    assert.equal(await page.getByTestId("legal-server-link").getAttribute("href"), "terms", `${label}: a plain link to the server's page`);
+    assert.equal(await page.locator("[data-testid=legal-unavailable] .lg-section").count(), 0, `${label}: negative: no legal text of the app's own`);
+    await page.unroute("**/simon-part-7/terms");
+    ok(`${label}: legal pages from the server, signed out; a failed fetch shows a message and a plain link`);
     await ctx.close();
   }
 } finally {

@@ -381,3 +381,11 @@ def test_real_clip_through_the_route(api: Api, tmp_path: Path) -> None:
     assert doc["state"] == "ready", doc
     status, hdr, body = api.request("GET", f"api/jobs/{job}/export.mp4")
     assert status == 200 and len(body) == doc["bytes"] and body[4:8] == b"ftyp"
+
+
+def test_an_invitee_with_an_account_does_not_stop_the_owners_export() -> None:
+    """Review of release 10: the owner typed that address, so it is their data; anyone else's still stops the file."""
+    doc = {"boards": [{"made_by_me": True, "invites": [{"email": "Bob@Example.com"}]}, {"made_by_me": False, "invites": [{"email": "eve@example.com"}]}]}
+    from part7 import export_data
+
+    assert export_data._invited_by_me(doc) == {"bob@example.com"}

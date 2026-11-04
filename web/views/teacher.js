@@ -64,6 +64,10 @@ export function renderTeacher(screen, vm) {
   const head = [h("p", { class: "th-back" }, h("a", { href: back, text: "Back to the movement" })), h("h1", { class: "th-title", "data-testid": "teacher-title", text: vm.name }),
     authorLine([vm.byline], "teacher-author"), vm.classTable?.seeded ? seededLine(vm.classTable.seeded, "teacher-seeded") : null].filter(Boolean);
   clear(screen).classList.add("th");
+  if (vm.countOnly) { // not the owner: a count and nothing of anyone's takes (privacy lane 06927b20)
+    screen.append(...head, h("p", { class: "th-summary", "data-testid": "teacher-count", text: vm.countLine }), handout);
+    return;
+  }
   if (vm.empty) {
     screen.append(...head, stateBlock("teacher-empty", "No one has followed this movement yet",
       "When someone follows it and their score is ready, their take shows up here. Print a class handout to share the link.",

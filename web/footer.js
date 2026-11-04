@@ -3,16 +3,17 @@
 // the source and feedback go, and the Meta model credit. The data comes from GET api/version; a failed fetch shows "Version
 // unavailable" and the rest of the footer, and never throws into the page.
 import { getVersion } from "./api.js";
+import { isProd, phrasingLive } from "./policy.js";
 import { h } from "./ui.js";
 import { copyText } from "./share-card.js";
-import { FOOTER_TEXT, footerBuild, footerRows, buildInfoText, buildLabel } from "./model/footer.js";
+import { FOOTER_TEXT, footerBuild, footerRows, buildInfoText } from "./model/footer.js";
 import { FOOTER_BRAND, FOOTER_COLUMNS, CONTACT, COPYRIGHT } from "./model/legal.js";
 
 /** The version block: a <details> whose summary is the environment, build date and short sha; or the unavailable line. */
 export function versionBlock(fb, copy = copyText) {
   const t = FOOTER_TEXT;
   if (!fb) return h("p", { class: "sf-build sf-unknown", "data-testid": "footer-version", text: t.unavailable });
-  const summary = h("summary", { "data-testid": "footer-version", "aria-label": `${t.detailsLabel}: ${[fb.environment, fb.version && `${t.build} ${buildLabel(fb.version)}`, fb.short].filter(Boolean).join(", ")}` },
+  const summary = h("summary", { "data-testid": "footer-version" },
     fb.environment ? h("span", { class: "sf-env", "data-testid": "footer-env", text: fb.environment }) : null,
     fb.version ? h("span", { class: "sf-version", "data-testid": "footer-build-name" }, `${t.build} ${fb.version} `,
       h("span", { class: "sf-note", text: t.buildNote })) : null,
@@ -51,6 +52,7 @@ export function renderFooter(el, build, copy = copyText, { pending = false } = {
     h("div", { class: "sf-top" },
       brandBlock(version,
         h("p", { class: "sf-credit", "data-testid": "footer-credit", text: FOOTER_TEXT.credit }),
+        isProd() && phrasingLive() ? h("p", { class: "sf-credit", "data-testid": "footer-muse-credit", text: FOOTER_TEXT.museCredit }) : null,
         h("p", { class: "sf-credit", "data-testid": "footer-feedback", text: FOOTER_TEXT.feedback }),
         h("p", { class: "sf-credit", "data-testid": "footer-source", text: FOOTER_TEXT.source })),
       linksNav()),

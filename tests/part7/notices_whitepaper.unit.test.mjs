@@ -21,13 +21,19 @@ test("the notices read as headings, tables, licence texts and paragraphs; nothin
 
 test("the build has its notices: every shipped component with its licence, and the texts it ships", () => {
   const md = read("THIRD_PARTY_NOTICES.md");
-  for (const name of ["three.js", "Mermaid", "DOMPurify", "lodash-es", "Cytoscape", "Sniglet", "MediaPipe", "idna", "SAM 3.1", "SAM 3D Body", "MHR"]) {
+  for (const name of ["three.js", "Mermaid", "DOMPurify", "lodash-es", "Cytoscape", "Sniglet", "MediaPipe", "idna", "SAM 3.1", "SAM 3D Body", "MHR", "YOLOX", "faster-whisper"]) {
     assert.ok(md.includes(name), name);
   }
   assert.ok(md.includes(read("web/vendor/three/LICENSE").trim()), "three's own licence text");
   assert.ok(md.includes(read("web/vendor/mermaid/LICENSE").trim()), "Mermaid's own licence text");
   const blocks = noticeBlocks(md);
   assert.ok(blocks.filter((b) => b.kind === "table").length >= 4 && blocks.filter((b) => b.kind === "code").length >= 4);
+});
+
+test("the whitepaper page says the paper covers more than the live service does", () => {
+  const code = read("web/whitepaper.js");
+  for (const name of ["SAM 3.1", "Muse Spark", "Baseten"]) assert.ok(code.includes(name), name);
+  assert.ok(code.includes('href: "sub-processors"') && code.includes('data-testid": "whitepaper-note"'));
 });
 
 test("the whitepaper is the blueprint, with nothing loaded from a third party and no address or key in it", () => {

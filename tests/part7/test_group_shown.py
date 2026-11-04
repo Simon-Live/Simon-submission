@@ -36,7 +36,7 @@ def _old_group_job(api: Api, people: dict[str, dict[str, Any]]) -> str:
                          "analysis": f"api/results/{ctx.id}/{pid}/analysis.json", "replay": None})
         return {"result": {"entry_id": ENTRY, "trainer_id": 9, "people": rows}}
 
-    rec = api.app.queue.submit("group", fn, entry_id=ENTRY)
+    rec = api.app.queue.submit("group", fn, entry_id=ENTRY, _people_owner="")  # made signed out (prod-data.md P-N1)
     assert api.app.queue.wait(rec["id"], 10)["status"] == "done"
     stored = api.app.queue.get(rec["id"])["result"]["people"]
     assert all("shown" not in p for p in stored)   # the fixture is shaped like the staging jobs

@@ -8,10 +8,11 @@ import { MODES, effectiveMode, loadChoice, mountModePicker, modeCoaching, countd
 import { getEntryLabels } from "./labels.js";
 import { mountPractice } from "./practice.js";
 import { watchChallenge } from "./follow-challenge.js";
-import { consentBlock } from "./consent.js";
+import { mountConsentGate } from "./consent-gate.js";
 import { savedMode } from "./saved-mode.js";
 import { mountEntryAuthor } from "./entry-author.js";
 import { mountFocus } from "./focus.js";
+import { kindForMode } from "./model/kind.js";
 import { langOffered, langExtra } from "./follow-lang.js";
 import { rememberSignedOutTake } from "./takes-on.js"; // the takes this browser sent signed out (TICKET-327)
 
@@ -49,7 +50,8 @@ export function mountFollow(root, id, challengeId = null) {
     const offerLang = langOffered(cfg);
     const langSlot = h("div", { "data-testid": "lang-picker-slot" });
     const challengeNote = h("p", { class: "hint", role: "status", "data-testid": "follow-challenge", hidden: true });
-    const taking = watchChallenge(challengeId, eid, challengeNote, () => alive); // the open challenge this take joins
+    const gate = h("div", { "data-testid": "consent-slot" });
+    const taking = watchChallenge(challengeId, eid, challengeNote, () => alive, undefined, cfg.signin_required === true); // the open challenge this take joins
     const paintCoaching = () => { coaching.dataset.mode = mode; coaching.replaceChildren(...modeCoaching(mode)); };
     const picker = mountModePicker({
       value: mode, testid: "follow-mode",
@@ -69,17 +71,19 @@ export function mountFollow(root, id, challengeId = null) {
       mountEntryAuthor(eid, "follow-author", { credit: "follow-source" }),
       h("p", { class: "lede", text: "Do the movement once, from the front, with your whole body in view." }),
       focusBox,
-      challengeNote, picker.el, coaching, ...(offerLang ? [langSlot] : []), practiceBox, consentBlock(), box);
+      challengeNote, picker.el, coaching, ...(offerLang ? [langSlot] : []), practiceBox, gate, box);
+    practiceBox.hidden = !!challengeId; // a section take is refused on a board (score-consistency.md S8): no practice sections on the way to one
     if (offerLang) import("./lang-picker.js").then((m) => m.mountLangPicker(langSlot)).catch(() => {}); // contract C4: another lane builds it
     practice = mountPractice(practiceBox, { entry: full, mode });
     mountFocus(focusBox, eid, () => alive).catch(() => {});
-    stop = mountTakeFlow(box, {
-      role: "follower", entryId: eid, entry: full, limits: cfg.limits, modelOnlyView, // "Show only my 3D model" (model-default.md AC-MD11)
-      extra: () => ({ ...langExtra(cfg), ...(chosen ? { mode: chosen } : {}), ...(taking() ? { challenge_id: taking().id } : {}), ...practice.extra() }),
+    // LEG-C4, LEG-H1: no camera and no file picker before the consent and age step (consent-gate.js)
+    mountConsentGate(gate, () => { if (alive) stop = mountTakeFlow(box, {
+      role: "follower", entryId: eid, entry: full, kind: kindForMode(mode) || "exercise", limits: cfg.limits, modelOnlyView, // "Show only my 3D model" (model-default.md AC-MD11)
+      extra: () => ({ ...langExtra(cfg), ...(chosen ? { mode: chosen } : {}), ...(taking() ? { challenge_id: taking().id } : {}), ...(taking() ? {} : practice.extra()) }),
       onReference: (ref) => practice.attach(ref),
       countdownDefault: countdownFor(mode),
       onDone: (jobId) => { practice.markPending(jobId); rememberSignedOutTake(jobId, eid, entry.name).catch(() => {}); location.hash = `#/job/${jobId}`; }, // TICKET-327: listed on the watch page and Me
-    });
+    }); });
   }).catch((e) => {
     const missing = e instanceof ApiError && e.status === 404;
     clear(screen).append(stateBlock("not-found",

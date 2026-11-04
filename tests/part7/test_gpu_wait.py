@@ -137,6 +137,13 @@ def test_the_default_order_fallback_keeps_gpu_admission_and_names_the_job(
     assert fake.logs == [job_dir / "steps" / "part2_track.api.log", job_dir / "steps" / "part2_track_retry.log"]
 
 
+def test_a_run_that_found_nobody_is_not_tracked_again(job_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _Track(monkeypatch, api_exit=4)
+    step, _ = p2_pose.track(tmp_path / "clip.mp4", job_dir, lock=_Lock(tmp_path), tracker=p2_pose.API_TRACKER)
+    assert step["exit"] == 4 and "first_try" not in step
+    assert fake.runs == [(p2_pose.API_TRACKER, False)]  # negative: no second tracker on the same clip
+
+
 def test_a_successful_api_tracker_run_has_no_first_try_and_its_own_log(
     job_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

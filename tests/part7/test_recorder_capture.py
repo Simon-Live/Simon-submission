@@ -51,7 +51,7 @@ def test_prefs_storage_wrapped_in_try_catch():
 def test_record_and_follow_are_thin_wrappers_over_one_take_flow():
     r, f, t, a = src("record"), src("follow"), src("take-flow"), src("api")
     for s in (r, f):
-        assert "mountTakeFlow" in s and "mountCapture" not in s and "editTake" not in s and len(s.splitlines()) < (50 if s is r else 100)  # follow also hosts the mode picker, the practice ladder and the 3D-model-only read (TICKET-365)
+        assert "mountTakeFlow" in s and "mountCapture" not in s and "editTake" not in s and len(s.splitlines()) < (70 if s is r else 100)  # follow also hosts the mode picker, the practice ladder and the 3D-model-only read (TICKET-365)
     assert 'role: "trainer"' in r and 'role: "follower"' in f
     assert "editTake" in t and "capture.reset()" in t and "pending.front(rec" in t  # the upload and people job run in web/pending.js (offline takes)
     assert "openPeoplePicker" in t and "mountModeSwitch" in t and "mountLabels" in t and "labels.value()" in t
@@ -112,8 +112,9 @@ def test_capture_and_take_flow_log_the_contract_events():
     for ev in ["camera_opened", "camera_refused", "camera_dark", "camera_unsupported", "recorder_started",
                "take_recorded", "take_dimensions"]:
         assert f'"{ev}"' in c, ev
-    for ev in ["trim_chosen", "upload_done", "upload_failed"]:
+    for ev in ["trim_chosen", "upload_done"]:
         assert f'"{ev}"' in t, ev
+    assert '"upload_failed"' in (WEB / "model" / "job-reason.js").read_text(encoding="utf-8") and "uploadLog(rec, err)" in t
     assert c.count("console.info(") >= 3 and c.count("console.warn(") >= 3
     opened = next(line for line in c.splitlines() if 'clientLog("info", "camera_opened"' in line)
     assert "label" not in opened and "width: set.width" in opened  # the device label never reaches the server

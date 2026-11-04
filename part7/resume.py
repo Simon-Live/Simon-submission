@@ -13,15 +13,21 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from part7 import animation_format, applog, auth, labels, mirrored, model_only, my_reference, people, people_routes, private_mode, processor, run_on, sections
+from part7 import animation_format, applog, auth, identity, labels, mirrored, model_only, my_reference, people, people_routes, private_mode, processor, run_on, sections
+from part7 import consent_record, entry_access, muse_prod, trainer_publish
 
 SPEC_VERSION = 1
 PERSON_SPEC_VERSION = 2  # a spec about one person of a people job (TICKET-287)
 
 
-def trainer_spec(doc: dict[str, Any], name: str, category: str, person: Any) -> dict[str, Any] | None:
+def trainer_spec(doc: dict[str, Any], name: str, category: str, person: Any, choice: Any = None) -> dict[str, Any] | None:
+    """`choice` is the request's `trainer_publish.choice` (None: read from `doc` alone)."""
+    choice = trainer_publish.choice(doc) if choice is None else choice
     return {"v": SPEC_VERSION, "upload_id": str(doc.get("upload_id") or ""), "name": name, "category": category,
             "labels": doc.get("labels"), **({"floor_work": True} if doc.get("floor_work") is True else {}),
+            # trainer-publish.md: the opt-in (True only through `opt_in`, so with its PM-B3 statement) survives a restart
+            **({"public": True, trainer_publish.STATEMENT: True} if choice is True else {}),
+            **({"gpc": True} if choice == entry_access.GPC_PRIVATE else {}),  # and so does GPC
             **_person_spec(doc, person)}
 
 
@@ -70,8 +76,16 @@ def rebuild(app: Any, record: dict[str, Any]) -> Any:
         fn = _follow(app, record, raw, person)
         if fn is None:
             return None
-        return run_on.bind(fn, run_on.resumed(record.get(run_on.FIELD), record["id"]))  # TICKET-364: checked again
+        owner = identity.owner_of_job(app.state, record["id"]) if record.get(run_on.MODAL_FIELD) == run_on.OWN else None  # TICKET-367
+        return run_on.resume_bind(fn, record, app.state, owner)  # TICKET-364 checked again; B2: never the server's Modal
     return None
+
+
+def _publish_choice(spec: dict[str, Any]) -> bool | str:
+    """The publish choice a trainer spec kept: the opt-in, or Global Privacy Control (go-live-readiness.md "GPC")."""
+    if spec.get("public") is True and trainer_publish.stated(spec):  # PM-B3: a spec from before it stays private
+        return True
+    return entry_access.GPC_PRIVATE if spec.get("gpc") is True else False
 
 
 def _trainer(app: Any, record: dict[str, Any], spec: dict[str, Any], raw: Path, person: people.PersonSel | None) -> Any:
@@ -79,12 +93,16 @@ def _trainer(app: Any, record: dict[str, Any], spec: dict[str, Any], raw: Path, 
     state = app.state
     floor = spec.get("floor_work") is True
     on_entry = labels.entry_saver(state, entry_labels, floor)
-    on_entry = auth.owned_entry(app, auth.job_owner(app, record["id"]), on_entry)  # the submitter owns it (identity.md)
-    return processor.trainer_job(
+    owner = auth.job_owner(app, record["id"])
+    # the submitter owns it (identity.md); the job id keeps the movement's delete key (prod-data.md)
+    on_entry = auth.owned_entry(app, owner, on_entry, job_id=record["id"], publish=_publish_choice(spec),
+                                deferred=True)  # go-live R4: public only after narration, as at submit
+    fn = processor.trainer_job(
         raw, name=spec["name"], category=spec["category"], catalog=app.child.catalog_dir, lock=app.lock,
         backend=app.backend, trim=record.get("trim"), on_entry=on_entry, person=person,
-        review_state=state, mirrored=mirrored.of_record(record), floor_work=floor,
+        review_state=state, mirrored=mirrored.of_record(record), floor_work=floor, part1_allowed=consent_record.meta_allowed(record),
     )
+    return run_on.resume_bind(fn, record, app.state, owner)  # byok-prod.md: under BYOK-only on the owner's own Modal
 
 
 def _reference(app: Any, record: dict[str, Any], teacher: bytes) -> tuple[bytes | None, bool]:
@@ -122,6 +140,8 @@ def _follow(app: Any, record: dict[str, Any], raw: Path, person: people.PersonSe
     video_name = (manifest.get("video_uri")
                   if app.phrasing == "live" and not private_mode.enabled(job_flag=private) else None)
     trainer_video = app.child.get_entry_file(entry_id, str(video_name)) if video_name and not kept_own else None
+    if not (consent_record.meta_allowed(record) and muse_prod.trainer_video_allowed(app.state, entry_id)):  # muse-prod.md AC-MP5, as at submit
+        trainer_video = None
     video_kept = model_only.kept(record)
     drop_source = (None if video_kept else
                    model_only.source_dropper(app.queue, app.uploads, str(record.get("upload_id") or ""), record.get("people_job")))

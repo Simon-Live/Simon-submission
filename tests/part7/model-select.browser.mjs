@@ -257,6 +257,7 @@ try {
     await page.getByTestId("model-import-file").setInputFiles({ name: "me.png", mimeType: "image/png", buffer: Buffer.from("png") });
     await page.getByTestId("model-import-consent").selectOption("self");
     await page.getByTestId("model-import-submit").click();
+    await page.waitForFunction(() => document.querySelector("link[data-simon-model-progress-css]")?.sheet); // the sheet loads after the click
     const spin = await page.getByTestId("model-progress-spin").evaluate((n) => getComputedStyle(n).animationName);
     assert.equal(spin, motion === "reduce" ? "none" : "msel-turn", `the ring ${motion === "reduce" ? "is still" : "turns"} (${motion})`);
     await page.getByTestId("model-import-dialog").waitFor({ state: "detached", timeout: 20000 });
@@ -295,10 +296,14 @@ try {
     const group = page.getByTestId("model-import-picture");
     await group.waitFor({ state: "visible" });
     assert.match(await group.textContent(), /What is in the picture\?/);
-    assert.match(await group.textContent(), /A real person \(makes a body of them\)/);
-    assert.match(await group.textContent(), /A character or object \(makes a 3D model of it\)/);
+    assert.match(await group.textContent(), /A real person \(a plain skin-coloured body\)/);
+    assert.match(await group.textContent(), /A character or object \(a textured model with a skeleton\)/);
     assert.equal(await page.getByTestId("model-import-picture-person").isChecked(), true, "person is the default");
     assert.equal(await page.getByTestId("model-import-consent").isVisible(), true, "a person is asked for consent");
+    assert.equal(await page.getByTestId("model-import-look-field").isVisible(), false, "negative: no face copy before the answer");
+    await page.getByTestId("model-import-consent").selectOption("self");
+    await page.getByTestId("model-import-look-field").waitFor({ state: "visible" }); // face copy, for a signed-in person's photo
+    await page.getByTestId("model-import-consent").selectOption("");
     await page.getByTestId("model-import-picture-object").check();
     assert.equal(await page.getByTestId("model-import-consent").isVisible(), false, "negative: no consent question for an object");
     if (AXE) assert.deepEqual(await axe(page, "[data-testid=model-import-dialog]"), []);

@@ -42,9 +42,9 @@ test("countdown: no end, minutes, hours, days, ended", () => {
   assert.equal(timeLeft("garbage", now).ended, false);
 });
 
-test("the challenge link is origin + path + hash route and keeps a staging base path", () => {
+test("the challenge link is the origin + base path + c/<id> page and keeps a staging base path", () => {
   const loc = { origin: "https://example.test", pathname: "/simon-part-7/", search: "?x=1", hash: "#/result/abc" };
-  assert.equal(challengeUrl("Ab_c-1234", loc), "https://example.test/simon-part-7/#/challenge/Ab_c-1234");
+  assert.equal(challengeUrl("Ab_c-1234", loc), "https://example.test/simon-part-7/c/Ab_c-1234");
 });
 
 test("sponsor links must be https", () => {

@@ -44,8 +44,11 @@ def test_trainer_and_follow_with_a_person_share_the_clip_the_tracks_and_the_3d_c
                                         "people_job": pj, "person_id": "1"})
     clip = (api.app.queue.job_dir(pj) / "work" / "clip.mp4").read_bytes()
     assert _video(api, trainer) == clip == _video(api, follow)  # one trimmed clip, made once by the people job
-    assert trainer_p2 == fakes.p2_calls[-1] and trainer_p2["ids"] == ["1"]  # same Part 2 call: tracks and ids
-    assert trainer_p2["tracks"] == str(api.app.queue.job_dir(pj) / "work" / "tracks.json")
+    follow_p2 = fakes.p2_calls[-1]
+    assert trainer_p2["ids"] == follow_p2["ids"] == ["1"]  # same Part 2 call: ids, and the people job's tracks...
+    assert Path(trainer_p2["tracks"]).name == Path(follow_p2["tracks"]).name == "tracks_10fps.json"  # ...at the 3D rate
+    assert Path(trainer_p2["tracks"]).read_bytes() == Path(follow_p2["tracks"]).read_bytes()
+    assert str(api.app.queue.job_dir(pj)) not in trainer_p2["tracks"]  # each job's copy, the people job's file untouched
     assert [p for _, p in fakes.p3_people[-2:]] == ["1", "1"]  # same person for Part 3
     assert fakes.p1_videos[-1].name == "person.mp4" and len(fakes.p1_videos) == 1  # Part 1: trainer only, cropped
     for job in (trainer, follow):

@@ -19,7 +19,7 @@ import sys
 import time
 from typing import Callable, Iterator
 
-from part7 import config, modules, parts_adopt, setup_parts
+from part7 import config, keys, modules, parts_adopt, setup_parts
 
 ROOT_NAME = "module-trees"
 CURRENT = "current"
@@ -366,12 +366,34 @@ def reclaim(state: Path | str | None = None) -> tuple[list[str], list[str]]:
     file says), a tree with a live or unknown owner, a tree that was once `current` and has no owner file (the owner
     write can fail, so it is unknown), and a built (`ready`), never-current, unowned tree younger than the grace. A tree
     with no `ready` marker is a killed build's half tree: under the lock no build runs, so it goes with no grace (R-a).
-    A built `next` that a later build replaced before it was served is never-current, so it goes too (B1).
+    A built `next` that a later build replaced before it was served is never-current, so it goes too (B1). A tree whose
+    `part-1` still has a holder of the `.env` lock (a Part 1 run that outlived its server) is kept, with a line, until it exits.
     `(removed, failed)` tree names."""
     if not trees_root(state).is_dir():
         return [], []
     with _locked(state):
         return _reclaim_locked(state)
+
+
+def _lock_part1(tree: Path) -> tuple[bool, int | None]:
+    """`(held, fd)`: `held` when a process still has the shared `.env` lock on the tree's `part-1` (a Part 1 run that outlived its
+    server, keys.py), when one works inside the tree (a run of an older build holds no lock), or when that cannot be told. Else
+    `fd` is our exclusive try on it, kept until the tree is removed so no run can enter between the try and the remove (a holder
+    waits, then finds no directory). `(False, None)` when there is no `part-1`."""
+    part1 = tree / "part-1"
+    try:
+        fd = os.open(part1, os.O_RDONLY | os.O_DIRECTORY)
+    except FileNotFoundError:  # no part-1 in the tree; any other error is unknown, and raises
+        return False, None
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:  # BlockingIOError: a holder. Anything else: unknown, so the tree stays
+        os.close(fd)
+        return True, None
+    if keys.process_inside(tree) is not None:
+        os.close(fd)
+        return True, None
+    return False, fd
 
 
 def _reclaim_locked(state: Path | str | None) -> tuple[list[str], list[str]]:
@@ -386,7 +408,15 @@ def _reclaim_locked(state: Path | str | None) -> tuple[list[str], list[str]]:
         # The lock is held: every build is finished, so a tree with no `ready` marker is a killed build's (R-a).
         if (tree / READY).is_file() and not (tree / OWNER).exists() and time.time() - tree.stat().st_mtime < grace:
             continue
-        (gone if _remove_tree(base, tree, state) else failed).append(tree.name)
+        held, fd = _lock_part1(tree)
+        if held:  # B4: its `.env` is a live run's key; a stray that keeps the lock delays the reclaim, hence the line
+            print(f"parts-tree: kept {tree.name}: a Part 1 run still holds its .env lock or works inside it", file=sys.stderr)
+            continue
+        try:
+            (gone if _remove_tree(base, tree, state) else failed).append(tree.name)
+        finally:
+            if fd is not None:
+                os.close(fd)
     return gone, failed
 
 

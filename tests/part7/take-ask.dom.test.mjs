@@ -9,7 +9,7 @@ installDom();
 globalThis.matchMedia = () => ({ matches: true }); // reduced motion: the steps run without waits
 const requests = [];
 let me = { available: true, signed_in: true };
-let info = { status: 200, body: { retention: true, can_ask: true, suggestions: ["When does my trunk lean forward show up in this take?"], limit: 20, remaining: 20, max_chars: 200 } };
+let info = { status: 200, body: { retention: true, can_ask: true, suggestions: ["When does my trunk lean forward show up in this take?"], max_chars: 200 } };
 let answer = { status: 200, body: null };
 globalThis.fetch = async (url, opts = {}) => {
   requests.push({ url: String(url), method: opts.method || "GET", body: opts.body ? JSON.parse(opts.body) : null });
@@ -23,7 +23,7 @@ const asksOf = () => requests.filter((r) => r.url.includes("ask-take"));
 
 const OK = {
   status: "ok", text: "Your trunk leans 21.4 degrees more than the example at 0.9 s.", source: "model", validated: true, live: true, model: "muse-wonder-1.0",
-  message: "", remaining: 19, replaced: 0,
+  message: "", replaced: 0,
   tool_calls: [{ name: "get_faults", ok: true }, { name: "seek", ok: true }, { name: "get_joint_angle", ok: false }],
   actions: [{ tool: "seek", t: 0.9, limb: null, joints: [] }, { tool: "spotlight", t: 0.9, limb: "torso", joints: ["left_shoulder", "right_shoulder"] }],
   sent: { model: "muse-wonder-1.0" }, usage: { input_tokens: 2100, cached_tokens: 0, output_tokens: 190, usd: 0.0123, calls: 2 },
@@ -115,16 +115,6 @@ test("an empty or over-long question is stopped before any request", async () =>
   stop();
 });
 
-test("the daily limit shows the server's words and moves nothing", async () => {
-  answer = { status: 429, body: { message: "You have asked 20 questions about takes today. Try again tomorrow.", code: "daily_limit" } };
-  const { slot, calls, stop } = mount();
-  await settle();
-  await ask(slot, "where do I look first?");
-  assert.match(find(slot, "take-ask-status").textContent, /Try again tomorrow/);
-  assert.deepEqual(calls.jump, []);
-  stop();
-});
-
 test("owner only: signed out, not mine, a fixture, a group take, a 404 or a closed box leave no trace and no ask request", async () => {
   for (const [why, setup, ctx] of [
     ["signed out", () => { me = { available: true, signed_in: false }; }, {}],
@@ -135,7 +125,7 @@ test("owner only: signed out, not mine, a fixture, a group take, a 404 or a clos
     ["closed", () => { info = { status: 200, body: { retention: false, can_ask: false } }; }, {}],
   ]) {
     me = { available: true, signed_in: true };
-    info = { status: 200, body: { can_ask: true, suggestions: [], remaining: 20 } };
+    info = { status: 200, body: { can_ask: true, suggestions: [] } };
     setup();
     requests.length = 0;
     const { slot, stop } = mount(ctx);

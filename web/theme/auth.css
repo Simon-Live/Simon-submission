@@ -10,7 +10,7 @@
 .au-input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .au-code { font: var(--weight-semibold) var(--text-lg) var(--font-sans); font-variant-numeric: tabular-nums; letter-spacing: 0.3em; text-align: center; }
 .au-hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.45; }
-.au-error { margin: 0; min-height: 0; color: var(--color-bad); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
+.au-error { margin: 0; min-height: 0; color: var(--color-bad-text); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
 .au-error:empty { display: none; }
 .au-submit { width: 100%; }
 .au-working { margin: 0; padding: var(--space-6) 0; text-align: center; color: var(--color-text-muted); font-size: var(--text-md); }
@@ -24,8 +24,8 @@
 .au-note { margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); }
 .au-note:empty { display: none; }
 .au-note[data-tone="ok"] { color: var(--color-good); }
-.au-note[data-tone="bad"] { color: var(--color-bad); }
-.au-warn { margin: 0; color: var(--color-bad); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
+.au-note[data-tone="bad"] { color: var(--color-bad-text); }
+.au-warn { margin: 0; color: var(--color-bad-text); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
 .au-sure { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-bad-soft); }
 .au-sure[hidden], .au [hidden] { display: none; }
 
@@ -34,8 +34,8 @@
   padding: var(--space-3); border-radius: var(--radius-md); background: var(--card-fill-raised); }
 .au-take-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-3); }
 .au-score { font: 400 var(--text-lg)/1 var(--font-display); color: var(--color-good); }
-.au-score[data-tone="warn"] { color: var(--color-warn); }
-.au-score[data-tone="bad"] { color: var(--color-bad); }
+.au-score[data-tone="warn"] { color: var(--color-warn-text); }  /* a11y go-live N4: the brand pink measured 4.48:1 here at 390 px */
+.au-score[data-tone="bad"] { color: var(--color-bad-text); }
 .au-grade { padding: 2px var(--space-2); border-radius: var(--radius-pill); background: var(--card-fill); color: var(--color-text-muted);
   font: var(--weight-semibold) var(--text-xs)/1.5 var(--font-sans); }
 .au-kind { font-size: var(--text-sm); }

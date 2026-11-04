@@ -146,9 +146,12 @@ export function mountStage(root, { analysis, scoreDisplay = () => null, storage 
     if (ref) stage.setProgress("reference", fraction(ref.t, ref.d));
     stage.setSingle(hd.single());
     for (const { pop, lane } of popClock.update(you.t, now, you.d)) pops.show(pop, lane);
-    const cue = cueAt(analysis, you.t);
-    stage.setCaption(cue && cue.text);
+    // a tapped row keeps its own cue on the caption while the clock plays its lead-in up to the moment
+    if (pin && (you.t > pin.until || now > pin.expires)) pin = null;
+    const cue = pin ? null : cueAt(analysis, you.t);
+    stage.setCaption(pin ? pin.text : cue && cue.text);
   }
+  let pin = null;
   const loop = () => { if (!live) return; tick(); raf = requestAnimationFrame(loop); };
   raf = requestAnimationFrame(loop);
 
@@ -167,6 +170,13 @@ export function mountStage(root, { analysis, scoreDisplay = () => null, storage 
     },
     /** The credit's unit or level changed: repaint what reads it. */
     setGradeDisplay() { repop(); tick(true); },
+    /** A tapped row: its cue (else the cue of the moment) owns the caption until the clock passes `at` by a second, or six seconds go by. */
+    pinCue(at, text) {
+      const found = text || (cueAt(analysis, at) || {}).text;
+      const t = Number(at);
+      pin = found && Number.isFinite(t) ? { text: found.charAt(0).toUpperCase() + found.slice(1), until: t + 1, expires: performance.now() + 6000 } : null;
+      tick(true);
+    },
     reducedMotion,
     destroy() { live = false; cancelAnimationFrame(raf); },
   };

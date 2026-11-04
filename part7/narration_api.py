@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 import wave
 
-from part7 import config, keys
+from part7 import config, keys, prod_mode
 
 URL = os.environ.get("SIMON_META_API", "https://api.meta.ai/v1").rstrip("/") + "/asr/transcribe"  # SIMON_META_API: the judges' relay (deploy/judges/README.md)
 MODEL = "muse-voice-transcribe-1.0"
@@ -125,6 +125,8 @@ def transcribe(
     timeout: float = TIMEOUT_S,
 ) -> dict[str, Any]:
     """Transcribe `wav_path`; returns `{text, turns, duration_s, estimated_usd}`. Raises `NarrationError`."""
+    if prod_mode.is_prod():  # prod writes a trainer's cues on its own GPU workspace; no sound goes to Meta (narration_own)
+        raise NarrationError("Meta transcription is off on this server")
     key = keys.read_key(KEY_NAME, keys_dir=keys_dir)
     if not key:
         raise NarrationError("no Meta Model API key")

@@ -11,18 +11,16 @@ player applies in order. Nothing is stored but a per-day count.
 
 from __future__ import annotations
 
-import os
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from part7 import history_ask, history_facts, history_guard, history_receipt, history_report, history_store
+from part7 import history_ask, history_ask_guard, history_facts, history_guard, history_receipt, history_report, history_store
 from part7.parts import p5_ask
 
 FEATURE = "ask_take"
 PROMPT_VERSION = "ask_take.v2"
-DAILY_ENV, DAILY_DEFAULT = "SIMON7_TAKE_ASK_DAILY", 20
 RUNS_FILE = "ask_take_runs.jsonl"
 MAX_ACTIONS = 16
 SOURCES = ("model", "cache", "measured_facts")
@@ -31,7 +29,6 @@ FIELDS = ["analysis.json", "replay.json"]  # what leaves for Part 5, for the rec
 MSG_NOT_FOUND = "That take was not found."
 MSG_PRIVATE = "This take is private, so Simon does not send it to a model."
 MSG_BUSY = "Simon is answering another question. Try again in a few seconds."
-MSG_LIMIT_FMT = "You have asked {n} questions about takes today. Try again tomorrow."
 MSG_FAILED = "Simon could not answer just now. Try again in a moment."
 MSG_UNAVAILABLE = "Asking about a take is not available on this server yet."
 MSG_FILES = "This take's analysis files are not available, so Simon cannot answer about it."
@@ -45,15 +42,6 @@ Busy = history_ask.Busy  # another question is running; the route adds Retry-Aft
 def available() -> bool:
     """True when a Part 5 `ask` can answer: the pinned Part 5 has the command (a replaced responder, as in tests, counts)."""
     return ASK is not p5_ask.run or p5_ask.available()
-
-
-def daily_limit() -> int:
-    """Questions per user per UTC day from SIMON7_TAKE_ASK_DAILY when it holds a positive integer, else 20 (a rate limit, not a spend cap)."""
-    try:
-        value = int(os.environ.get(DAILY_ENV, ""))
-    except ValueError:
-        return DAILY_DEFAULT
-    return value if value > 0 else DAILY_DEFAULT
 
 
 def asked_today(state: Path, user: str, now: float | None = None) -> int:
@@ -113,7 +101,7 @@ def _sent(doc: dict[str, Any], entry: dict[str, Any], usage: dict[str, Any] | No
     return {**sent, "model": model}  # the model Part 5 used (muse-wonder-1.0), or none when no model call was made
 
 
-def view_of(doc: dict[str, Any], entry: dict[str, Any], words: dict[str, Any] | None, remaining: int) -> dict[str, Any]:
+def view_of(doc: dict[str, Any], entry: dict[str, Any], words: dict[str, Any] | None) -> dict[str, Any]:
     """The answer for the page from a Part 5 document. The text passes the same banned-word guard as Ask my history."""
     source = doc.get("source") if doc.get("source") in SOURCES else None
     text = doc.get("answer") if isinstance(doc.get("answer"), str) else ""
@@ -123,7 +111,7 @@ def view_of(doc: dict[str, Any], entry: dict[str, Any], words: dict[str, Any] | 
             "tool_calls": [{"name": c["name"], "ok": c.get("ok") is True} for c in doc.get("tool_calls") or []
                            if isinstance(c, dict) and isinstance(c.get("name"), str)][:16],
             "replaced": len([n for n in doc.get("replaced_numbers") or []]) if isinstance(doc.get("replaced_numbers"), list) else 0,
-            "usage": usage, "remaining": remaining, "prompt_version": PROMPT_VERSION}
+            "usage": usage, "prompt_version": PROMPT_VERSION}
     if source is None or not text.strip() or history_guard.text_problem(" ".join(text.split()), history_guard.Words(words), 1200):
         return {**base, "status": "unverified", "text": None, "message": MSG_UNCHECKED, "actions": [], "sent": _sent(doc, entry, usage)}
     return {**base, "status": "ok", "text": " ".join(text.split()), "message": "", "actions": clean_actions(doc), "sent": _sent(doc, entry, usage)}
@@ -131,8 +119,10 @@ def view_of(doc: dict[str, Any], entry: dict[str, Any], words: dict[str, Any] | 
 
 def run_question(state: Path, user: str, job_id: str, entry: dict[str, Any] | None, question: Any, now: float | None = None) -> dict[str, Any]:
     """The answer to one question about one take as a plain dict. `entry` is `entry_of(...)` for a take the caller owns, or None
-    (a take that is not theirs or does not exist: 404 before any call). `history_report.Refused` (or `Busy`) for 400, 404, 409, 422, 429, 503."""
+    (a take that is not theirs or does not exist: 404 before any call). `history_report.Refused` (or `Busy`) for 400, 404, 409, 422, 503."""
     state = Path(state)
+    if history_ask_guard.crisis(question):  # reels 3.10: a fixed crisis answer before any other check, no Part 5 call
+        return history_ask_guard.crisis_reply(actions=[])
     if entry is None or not entry["takes"] or entry["takes"][0]["job_id"] != job_id:
         raise history_report.Refused(404, MSG_NOT_FOUND, "not_found")
     if entry["takes"][0]["private"]:
@@ -141,11 +131,9 @@ def run_question(state: Path, user: str, job_id: str, entry: dict[str, Any] | No
         raise history_report.Refused(409, history_report.MSG_CONSENT, "consent_required")
     words = history_guard.load_words()
     clean, message = history_ask.question_problem(question, words)
-    limit = daily_limit()
     if clean is None:
         if message == history_ask.MSG_REFUSED:  # no Part 5 call and not counted against the day
-            return {"status": "refused", "text": None, "actions": [], "message": message, "usage": None, "source": None,
-                    "remaining": max(0, limit - asked_today(state, user, now))}
+            return {"status": "refused", "text": None, "actions": [], "message": message, "usage": None, "source": None}
         raise history_report.Refused(400, message or history_ask.MSG_EMPTY, "invalid_question")
     work = state / "jobs" / job_id / "work"
     analysis, replay = work / "follower" / "analysis.json", work / "follower" / "replay.json"
@@ -155,15 +143,13 @@ def run_question(state: Path, user: str, job_id: str, entry: dict[str, Any] | No
     if not _LOCK.acquire(blocking=False):
         raise Busy(409, MSG_BUSY, "busy")
     try:
-        if asked_today(state, user, now) >= limit:
-            raise history_report.Refused(429, MSG_LIMIT_FMT.format(n=limit), "daily_limit")
+        history_report.muse_gate("ask_take", user, state)
         with history_store.locked(state):
             history_report.note_run(state, user, now, RUNS_FILE)
-        remaining = max(0, limit - asked_today(state, user, now))
         try:
             doc = ASK(clean, analysis, replay, work)
         except p5_ask.AskError:
-            return {"status": "failed", "text": None, "actions": [], "message": MSG_FAILED, "usage": None, "source": None, "remaining": remaining}
-        return view_of(doc, entry, words, remaining)
+            return {"status": "failed", "text": None, "actions": [], "message": MSG_FAILED, "usage": None, "source": None}
+        return view_of(doc, entry, words)
     finally:
         _LOCK.release()

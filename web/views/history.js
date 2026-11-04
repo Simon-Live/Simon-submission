@@ -1,5 +1,6 @@
 // "Your takes over time" from a view model (web/model/history.js), styled by theme/history.css on the brand tokens.
 // No fetching and no storage: the glue passes the handlers in.
+import { policyOn } from "../policy.js";
 import { renderReceipt } from "./receipt.js";
 import { h, clear, stateBlock, linkButton } from "../ui.js";
 import { authorLine } from "./author-line.js";
@@ -145,13 +146,20 @@ function takeRow(t, player) {
     t.clip ? h("button", { type: "button", class: "hs-watch", "data-testid": `history-watch-${t.take}`, text: "Watch", "aria-label": `Watch ${label}`, onclick: () => player.open(t.clip, 0, label) }) : null);
 }
 
-function consentBlock(vm, onConsent) {
+function consentBlock(vm, onConsent, adultsAsked) {
   const on = vm.video;
+  const adults = adultsAsked && !on ? h("input", { type: "checkbox", "data-testid": "history-consent-adults" }) : null;
+  const missing = h("p", { class: "hs-text", "data-testid": "history-consent-missing", hidden: true, text: "Tick that everyone in your videos is 18 or older first." });
   const btn = h("button", { type: "button", class: "hs-toggle", "data-testid": "history-consent-toggle", "aria-pressed": on ? "true" : "false",
-    text: on ? "Muse Spark watches my takes: on" : "Let Muse Spark watch my takes", onclick: () => onConsent(!on) });
+    text: on ? "Muse Spark watches my takes: on" : "Let Muse Spark watch my takes", onclick: () => {
+      if (adults && !adults.checked) { missing.hidden = false; return; }
+      onConsent(!on, adults ? adults.checked : undefined);
+    } });
   return h("section", { class: "hs-card", "data-testid": "history-consent", "data-on": on ? "true" : "false" },
     h("h2", { text: "Your choice" }),
     h("p", { class: "hs-text", text: on ? "Simon sends a few of your kept clips (at most 5) to Meta's Muse Spark with the measurements of every take, so it can point at moments in them." : "Without this, only the measurements of your takes go to Meta's Muse Spark when you compare. No video leaves the app." }),
+    adults ? h("label", { class: "hs-text" }, adults, ` ${vm.adultsLabel}`) : null,
+    missing,
     btn);
 }
 
@@ -166,7 +174,7 @@ export function renderHistoryPage(screen, vm, hooks) {
   const area = h("div", { class: "hs-report", "data-testid": "history-report" });
   const status = h("p", { class: "hs-status", role: "status", "aria-live": "polite", "data-testid": "history-status", hidden: true });
   const reel = renderReelCard(vm.reel, { onMake: () => hooks.onReel() }, player);
-  const run = h("button", { type: "button", class: "btn primary hs-run", "data-testid": "history-run", text: "Compare my takes", onclick: () => hooks.onRun(), disabled: !vm.canRun });
+  const run = h("button", { type: "button", class: "btn primary hs-run", "data-testid": "history-run", text: "Compare my takes", hidden: !policyOn("muse"), onclick: () => hooks.onRun(), disabled: !vm.canRun });
   const chips = vm.chips.length ? h("ul", { class: "hs-chips", "data-testid": "history-chips" }, vm.chips.map((c, i) =>
     h("li", { class: "hs-chip", "data-tone": c.tone, "data-kind": c.kind, "data-testid": `history-chip-${i}` },
       h("span", { class: "hs-chip-kind", text: c.kindText }), h("span", { text: c.label })))) : null;
@@ -181,7 +189,7 @@ export function renderHistoryPage(screen, vm, hooks) {
     ...[renderSeries(vm.series)].filter(Boolean),
     h("ol", { class: "hs-takes", "data-testid": "history-takes" }, vm.takes.map((t) => takeRow(t, player))),
     player.el,
-    consentBlock(vm, hooks.onConsent),
+    consentBlock(vm, hooks.onConsent, hooks.adultsAsked),
     h("div", { class: "hs-run-row" }, run,
       h("p", { class: "hs-hint", "data-testid": "history-run-note", text: vm.runNote }),
       vm.canRun ? null : h("p", { class: "hs-hint", text: "Comparing needs at least 2 takes of this movement." })),

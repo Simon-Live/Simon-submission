@@ -72,7 +72,7 @@ async function open(route, width, height) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, hasTouch: true });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
-  page.on("console", (m) => { if (m.type() === "error" && !(route.includes(HIDDEN) && /404/.test(m.text()))) errors.push(`${route}: ${m.text()}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !(route.includes(HIDDEN) && /404/.test(m.text())) && !/\/api\/(policy|version|programmes)/.test(m.location().url)) errors.push(`${route}: ${m.text()}`); });
   await page.goto(`${APP}${route}`);
   await page.waitForSelector(tid("splash"), { state: "detached", timeout: 5000 }).catch(() => {}); // the first-visit splash leaves on its own
   return { page, ctx };

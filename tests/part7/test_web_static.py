@@ -17,7 +17,7 @@ OWNED = ["app", "api", "catalog", "watch", "record", "follow", "take-flow", "job
 
 # app.md "Web" table, testids this lane owns (result screen ids belong to the RESULT lane).
 TESTIDS = {
-    "views/library": ["search", "record"],  # the catalog screen draws through views/library.js (UI redesign)
+    "views/browse": ["search", "record"],  # the catalog screen draws through views/browse.js (home-browse.md)
     "watch": ["trainer-video", "viewer", "watch-frame", "follow"],
     "take-flow": ["name", "category", "save", "analyse", "record-again", "form-error"],
     "capture": ["cam-start", "cam-stop", "upload"],
@@ -47,12 +47,12 @@ def test_testids_present(name, ids):
 
 
 def test_entry_row_testid_pattern():
-    assert "`entry-${entry.id}`" in src("model/library") and "c.testId" in src("views/library")  # card data from model/library.js
+    assert "`entry-${entry.id}`" in src("model/library") and "c.testId" in src("views/browse")  # card data from model/library.js
 
 
 def test_router_has_every_route():
     app = src("app")
-    for frag in ["watch\\/", "record$", "follow\\/", "job\\/", "result\\/", "^$/"]:
+    for frag in ["watch\\/", "record$", "follow\\/", "job\\/", "result\\/", "^(?:\\?.*)?$/"]:
         assert frag in app, frag
     assert "mountResult" in app and "./result.js" in app
     assert '"fixture"' in app
@@ -90,8 +90,7 @@ def test_error_messages_match_spec():
     a = src("api")
     for msg in ["This file is not a video. Pick an MP4 or WebM file.",
                 "The video is too long (60 s at most).",
-                "The file is too large (95 MB at most).",
-                "You have used today's analyses. Try again tomorrow.",
+                "The file is too large (85 MB at most).",
                 "The app is busy. Try again in a few minutes.",
                 "This movement has no animation to follow."]:
         assert msg in a, msg
@@ -106,7 +105,7 @@ def test_no_em_dash_or_en_dash():
 def test_vendored_three_hashes():
     readme = (WEB / "vendor" / "README.md").read_text(encoding="utf-8")
     rows = re.findall(r"\| `(web/vendor/[^`]+)` \| `[^`]+` \| `([0-9a-f]{64})` \|", readme)
-    assert len(rows) == 8  # three (6 files) and mermaid (2 files)
+    assert len(rows) == 24  # three (6 files), mermaid (2), Inter (11), MediaPipe package files (5)
     for rel, digest in rows:
         assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == digest, rel
     assert "0.170.0" in readme

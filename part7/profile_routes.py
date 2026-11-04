@@ -13,7 +13,8 @@ from part7.auth_routes import MSG_OFF, _fail, _post_body, _reply, _user_or_401
 
 
 def options() -> dict[str, Any]:
-    return {"avatars": list(profile.AVATARS), "modes": list(modes.MODES),
+    # #415: rehab is off in prod (modes.offered, practice-and-modes.md)
+    return {"avatars": list(profile.AVATARS), "modes": list(modes.offered()),
             "goals": [{"key": k, "label": v} for k, v in profile.GOALS.items()], "name_max": profile.NAME_MAX}
 
 

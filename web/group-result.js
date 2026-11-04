@@ -139,7 +139,7 @@ export function mountGroupResult(root, jobId) {
       h("div", { "data-testid": "crew-slot" }),
       result.entry_id ? h("p", { class: "meta" }, h("a", { href: `#/watch/${encodeURIComponent(result.entry_id)}`, "data-testid": "group-entry", text: "Open the trainer's movement" })) : null);
     if (result.entry_id && scored.length) {
-      import("./challenge-actions.js").then((m) => m.mountCrewChallenge?.(screen.querySelector('[data-testid="crew-slot"]'), { jobId, entryId: result.entry_id, rows: rows.filter((r) => r.scorable) })).catch(() => {});
+      import("./challenge-actions.js").then((m) => m.mountCrewChallenge?.(screen.querySelector('[data-testid="crew-slot"]'), { jobId, entryId: result.entry_id, rows: rows.filter((r) => r.scorable), challengeId: job.challenge_id || null })).catch(() => {});
     }
   }
 

@@ -200,17 +200,6 @@ def test_post_and_delete_need_the_same_origin(api: Api) -> None:
     assert stored(api) == [mid]
 
 
-def test_quota_of_20_models_and_500_mb(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
-    for _ in range(20):
-        assert post(api, GOOD, ip="3.3.3.3")[0] == 201
-    status, doc = post(api, GOOD, ip="3.3.3.3")
-    assert status == 429 and "20 models" in doc["error"]
-    assert post(api, GOOD, ip="4.4.4.4")[0] == 201  # another owner is not held back
-    monkeypatch.setattr(model_store, "MAX_BYTES", len(GOOD) * 2 - 1)
-    assert post(api, GOOD, ip="5.5.5.5")[0] == 201
-    assert post(api, GOOD, ip="5.5.5.5")[0] == 429
-
-
 # ---------------------------------------------------------------- refused
 def test_external_uri_is_422_and_nothing_is_kept(api: Api) -> None:
     status, doc = post(api, glbmaker.humanoid(buffer_uri="../../../../etc/hostname"))
@@ -220,7 +209,7 @@ def test_external_uri_is_422_and_nothing_is_kept(api: Api) -> None:
 def test_no_skin_names_the_missing_bones(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(model_import, "_generator", lambda kind="image": None)
     status, doc = post(api, glbmaker.humanoid(skin=False))
-    assert status == 415 and doc["error"] == model_import.MSG_NO_GENERATOR and stored(api) == []  # no rig maker here; no consent question
+    assert status == 415 and doc["error"] == model_import.MSG_NO_RIGGER and stored(api) == []  # no rig maker here; no consent question
     with pytest.raises(model_import.ImportRefused) as err:  # the analysis itself still names the bones
         model_import.analyse(_write(Path(api.app.state) / "plain.glb", glbmaker.humanoid(skin=False)))
     assert err.value.missing == list(model_import.bone_map.REQUIRED) and "hips" in err.value.message
@@ -238,10 +227,10 @@ def test_draco_is_422_with_its_name(api: Api) -> None:
     assert status == 422 and "Draco" in doc["error"]
 
 
-def test_over_100_mb_is_413_before_the_body(api: Api) -> None:
+def test_over_the_cap_is_413_before_the_body(api: Api) -> None:
     head = f"POST {api.app.base}api/models HTTP/1.1\r\nHost: x\r\nOrigin: http://x\r\nContent-Type: application/octet-stream\r\nContent-Length: 101000000"
     status, doc = raw(api, head, b"glTF")
-    assert status == 413 and "100 MB" in doc["error"] and stored(api) == []
+    assert status == 413 and "85 MB" in doc["error"] and stored(api) == []
 
 
 def test_no_length_is_411_and_empty_is_400(api: Api) -> None:
@@ -254,10 +243,10 @@ def test_unknown_obj_text_and_form_types_are_415(api: Api, conv: FakeConverter, 
     monkeypatch.setattr(model_import, "_generator", lambda kind="image": None)
     obj = b"# a mesh\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
     status, doc = post(api, obj)
-    assert status == 415 and doc["error"] == model_import.MSG_NO_GENERATOR
+    assert status == 415 and doc["error"] == model_import.MSG_NO_RIGGER
     assert post(api, b"\x00\x01 not a model at all")[0] == 415
     assert "text FBX" in post(api, b"; FBX 7.4.0 project file\n")[1]["error"]
-    assert ".gltf text" in post(api, b'{"asset": {"version": "2.0"}}')[1]["error"]
+    assert model_import._refusal_for("gltf-text", api.app.state) is None, "a converter reads a whole .gltf (model-convert.md AC-M10)"
     assert post(api, GOOD, ctype="multipart/form-data; boundary=x")[0] == 415
     assert post(api, GOOD, ctype="application/json")[0] == 415
     assert stored(api) == []
@@ -401,7 +390,7 @@ def test_hostile_zips_are_422(api: Api, conv: FakeConverter) -> None:
     nogltf = zip_of({"a.txt": b"hello"})
     for body in (slip, absolute, link, bomb, many, nogltf):
         status, doc = post(api, body)
-        assert status == 422 and "not safe" in doc["error"], doc
+        assert status == 422 and doc["field"] == "file" and "zip" in doc["error"] and "choose" in doc["error"], doc
     assert conv.calls == [] and stored(api) == []
     assert not (Path(api.app.state).parent / "evil.gltf").exists()
     assert not (Path(api.app.state) / "evil.gltf").exists()
@@ -690,6 +679,18 @@ def test_a_converted_model_with_no_skeleton_goes_to_the_rig_maker(api: Api, gen:
     assert model_store.read_status(folder)["status"] == "queued" and model_store.read_meta(folder)["kind"] == "generated"
 
 
+def test_a_failed_model_keeps_the_name_and_licence_its_owner_typed(api: Api) -> None:
+    """A failed model has no manifest: its row still shows what the uploader said, and nothing is served as a file."""
+    owner = "v:" + model_import.quota.visitor_key("127.0.0.1")
+    mid, folder = model_store.create(api.app.state, owner, "failed")
+    model_store.write_meta(folder, {"name": "Soldier", "licence": "CC-BY", "attribution": "Ada, 2024", "format": "fbx"})
+    model_store.write_status(folder, error="This model has no skeleton.")
+    (row,) = [m for m in mine(api) if m["id"] == mid]
+    assert row["status"] == "failed" and row["name"] == "Soldier"
+    assert row["licence"] == {"id": "CC-BY", "attribution": "Ada, 2024"} and row["error"] == "This model has no skeleton."
+    assert get(api, f"/{mid}/meta.json")[0] == 404
+
+
 def test_a_generated_photo_model_carries_the_plain_grey_body_note(api: Api) -> None:
     mid, folder = model_store.create(api.app.state, "v:x", "converting")
     model_store.write_meta(folder, {"name": "Armour", "format": "webp", "kind": "generated"})
@@ -736,3 +737,217 @@ def test_a_model_never_converted_has_no_import_record(api: Api) -> None:
     mid, folder = model_store.create(api.app.state, "v:x", "converting")
     manifest = model_import.finalize(folder, _write(folder / "out" / "model.glb", GOOD), {})
     assert "import" not in manifest and manifest["converter"]["name"] == "none"
+
+
+# Every refusal says the reason and the change that fixes it, and names the field the dialog outlines.
+@pytest.mark.parametrize("body, query, message, field", [
+    (GOOD, "licence=stolen", model_import.MSG_LICENCE, "licence"),
+    (GOOD, "licence=CC-BY", model_import.MSG_CREDIT, "attribution"),
+    (GOOD, "licence=CC-BY-SA", model_import.MSG_CREDIT, "attribution"),
+    (GOOD, "licence=CC-BY-NC", model_import.MSG_CREDIT, "attribution"),
+    (b"", "", model_import.MSG_EMPTY, "file"),
+    (b"\x00\x01 not a model at all", "", model_import.MSG_TYPE, "file"),
+    (b"; FBX 7.4.0 project file\n", "", model_import.MSG_ASCII_FBX, "file"),
+    (b'{"asset": {"version": "2.0"}}', "", model_import.MSG_GLTF_TEXT, "file"),
+    (glbmaker.humanoid(skin=False), "", model_import.MSG_NO_RIGGER, "file"),
+    (b"# a mesh\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n", "", model_import.MSG_NO_RIGGER, "file"),
+    (b"glTF" + b"\0" * 40, "", model_import.glb_inspect.MSG_NOT_GLB, "file"),
+])
+def test_each_refusal_says_the_reason_and_the_fix(api: Api, monkeypatch: pytest.MonkeyPatch, body: bytes, query: str,
+                                                  message: str, field: str) -> None:
+    monkeypatch.setattr(model_import, "_generator", lambda kind="image": None)
+    status, doc = post(api, body, query)
+    assert status in (400, 415, 422) and doc["error"] == message and doc["field"] == field and stored(api) == []
+
+
+def test_licence_refusal_lists_what_is_accepted_and_how_to_change_it() -> None:
+    labels = dict(zip([v for v in model_import.LICENCES if v != "Mixamo-Adobe-terms"], model_import.LICENCE_LABELS))
+    assert set(labels) == {"own-work", "CC0", "CC-BY", "CC-BY-SA", "CC-BY-NC", "VPL-1.0", "personal-use-only", "unknown"}
+    assert all(label in model_import.MSG_LICENCE for label in model_import.LICENCE_LABELS)
+    assert "Licence list" in model_import.MSG_LICENCE and "press Import again" in model_import.MSG_LICENCE
+    for licence in model_import.CREDIT_LICENCES:
+        assert licence in model_import.MSG_CREDIT
+    assert "Credit line" in model_import.MSG_CREDIT and "choose another licence" in model_import.MSG_CREDIT
+
+
+def test_size_count_and_zip_refusals_say_the_limit_and_the_fix(api: Api, tmp_path: Path) -> None:
+    assert "85 MB" in model_import.MSG_TOO_BIG and "Choose a smaller file" in model_import.MSG_TOO_BIG
+    assert "25 MB" in model_import.MSG_IMAGE_BIG and "Choose a smaller photo" in model_import.MSG_IMAGE_BIG
+    assert "Choose 4 or fewer" in model_import.MSG_MANY_IMAGES
+    empty = tmp_path / "none.zip"
+    with zipfile.ZipFile(empty, "w") as zf:
+        zf.writestr("readme.txt", "no model")
+    with pytest.raises(model_import.ImportRefused) as err:
+        model_import.check_zip(empty)
+    assert err.value.message == model_import.MSG_ZIP_NO_GLTF and err.value.field == "file"
+    broken = tmp_path / "broken.zip"
+    broken.write_bytes(b"PK not a zip")
+    with pytest.raises(model_import.ImportRefused) as err:
+        model_import.check_zip(broken)
+    assert err.value.message == model_import.MSG_ZIP_UNREADABLE
+
+
+def test_a_bone_refusal_says_how_to_fix_the_rig(api: Api) -> None:
+    with pytest.raises(model_import.ImportRefused) as err:
+        model_import.analyse(_write(Path(api.app.state) / "plain.glb", glbmaker.humanoid(skin=False)))
+    assert "Rig it in your 3D tool" in err.value.message and err.value.field == "file"
+
+
+class _TextReader(FakeConverter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.sent: list[tuple[str, str]] = []
+
+    @staticmethod
+    def reads_text_fbx(_state: Any = None) -> bool:
+        return True
+
+    def submit(self, folder: Path, path: Path, fmt: str, **_: Any) -> None:
+        self.sent.append((Path(path).name, fmt))
+
+
+@pytest.mark.parametrize("body, name, fmt", [
+    (b"; FBX 6.1.0 project file\nFBXHeaderExtension: {\n}\n", "upload.fbx", "fbx"),
+    (b'{"asset": {"version": "2.0"}, "buffers": [{"uri": "data:application/octet-stream;base64,AAAA", "byteLength": 3}]}', "upload.zip", "gltf-zip"),
+])
+def test_text_fbx_and_a_whole_gltf_go_to_the_converter(api: Api, monkeypatch: pytest.MonkeyPatch, body: bytes, name: str, fmt: str) -> None:
+    reader = _TextReader()
+    monkeypatch.setattr(model_import, "_converter", lambda state=None: reader)
+    status, doc = post(api, body)
+    assert status == 202, doc
+    assert reader.sent == [(name, fmt)]
+
+
+@pytest.mark.parametrize("body", [
+    b'{"asset": {"version": "2.0"}, "buffers": 5}',
+    b'{"asset": {"version": "2.0"}, "images": "x"}',
+    b'{"asset": {"version": "2.0"}, "buffers": [5]}',
+    b'{"asset": {"version": "2.0"}, "images": [null]}',
+    b'{"asset": {"version": "2.0"}, "extras": ' + b"[" * 200000 + b"]" * 200000 + b"}",
+])
+def test_a_gltf_of_the_wrong_shape_is_refused_and_leaves_no_folder(api: Api, monkeypatch: pytest.MonkeyPatch, body: bytes) -> None:
+    """These raised TypeError or RecursionError: nothing was refused and the folder stayed `queued`."""
+    reader = _TextReader()
+    monkeypatch.setattr(model_import, "_converter", lambda state=None: reader)
+    status, doc = post(api, body)
+    assert status == 422 and doc["error"] == model_import.MSG_GLTF_TEXT
+    assert stored(api) == [] and reader.sent == []
+
+
+@pytest.mark.parametrize("uri", ["data:/../..", "data:,AAAA", "data:application/octet-stream", "../secret.bin", "https://example.com/a.bin"])
+def test_a_uri_that_is_not_a_real_data_uri_is_refused(api: Api, monkeypatch: pytest.MonkeyPatch, uri: str) -> None:
+    monkeypatch.setattr(model_import, "_converter", lambda state=None: _TextReader())
+    body = json.dumps({"asset": {"version": "2.0"}, "images": [{"uri": uri}]}).encode()
+    status, doc = post(api, body)
+    assert status == 415 and doc["error"] == model_import.MSG_GLTF_NEEDS_FILES and stored(api) == []
+
+
+@pytest.mark.parametrize("uri", ["data:application/octet-stream;base64,AAAA", "data:image/png;base64,AAAA", "data:application/gltf-buffer;charset=utf-8;base64,AAAA"])
+def test_a_real_data_uri_passes(api: Api, monkeypatch: pytest.MonkeyPatch, uri: str) -> None:
+    reader = _TextReader()
+    monkeypatch.setattr(model_import, "_converter", lambda state=None: reader)
+    status, doc = post(api, json.dumps({"asset": {"version": "2.0"}, "buffers": [{"uri": uri, "byteLength": 3}]}).encode())
+    assert status == 202, doc
+    assert reader.sent == [("upload.zip", "gltf-zip")]
+
+
+@pytest.mark.parametrize(("files", "fine"), [
+    ({"a.gltf": b'{"buffers": [{"uri": "a.bin"}]}', "a.bin": b"\0"}, True),
+    ({"sub/a.gltf": b'{"images": [{"uri": "tex/my%20skin.png"}]}', "sub/tex/my skin.png": b"\0"}, True),
+    ({"sub/a.gltf": b'{"buffers": [{"uri": "../a.bin"}]}', "a.bin": b"\0"}, True),
+    ({"a.gltf": b'{"buffers": [{"uri": "data:application/octet-stream;base64,AAAA"}]}'}, True),
+    ({"a.gltf": b'{"images": [{"uri": "data:image\\/png;base64,AAAA"}]}'}, True),
+    ({"a.gltf": b"{}", "__MACOSX/._a.gltf": b"\x00\x05\x16\x07 not json"}, True),
+    ({"a.gltf": b'{"buffers": [{"uri": "data:/../.."}]}'}, False),
+    ({"a.gltf": b'{"buffers": [{"uri": "../../etc/passwd"}]}'}, False),
+    ({"a.gltf": b'{"buffers": [{"uri": "..%2F..%2Fetc%2Fpasswd"}]}'}, False),
+    ({"a.gltf": b'{"buffers": [{"uri": "/etc/passwd"}]}'}, False),
+    ({"a.gltf": b'{"buffers": [{"uri": "https://example.com/a.bin"}]}'}, False),
+    ({"a.gltf": b'{"buffers": [{"uri": "missing.bin"}]}'}, False),
+    ({"a.gltf": b'{"buffers": [{"\\u0075ri": "../secret.bin"}]}'}, False),
+    ({"a.gltf": b'{"buffers": [{"ur\\u0069": "\\u002e\\u002e/secret.bin"}]}'}, False),
+    ({"first.gltf": b"{}", "second/b.gltf": b'{"buffers": [{"uri": "../../x"}]}'}, False),
+])
+def test_a_gltf_in_a_zip_points_only_inside_it(tmp_path: Path, files: dict[str, bytes], fine: bool) -> None:
+    path = tmp_path / "upload.zip"
+    path.write_bytes(zip_of(files))
+    if fine:
+        model_import.check_zip(path)
+    else:
+        with pytest.raises(model_import.ImportRefused) as refused:
+            model_import.check_zip(path)
+        assert refused.value.status == 422 and refused.value.message == model_import.MSG_ZIP_GLTF_MISSING
+
+
+@pytest.mark.parametrize("uri,inside", [
+    ("data:a/b,/../../../../x", False),  # Blender opens this as a path, and normpath collapses the prefix
+    ("data:application/octet-stream,/../../../../etc/passwd", False),
+    ("data:a/b,%2e%2e/%2e%2e/x", False),
+    ("data:;base64,AAAA", True),
+    ("data:application/octet-stream;base64,AAAA", True),
+    ("tex\\\\a.bin", True),  # Blender turns the backslash, and the file is in the zip
+    ("..\\\\..\\\\x", False),
+])
+def test_the_scan_reads_a_uri_as_blender_does(tmp_path: Path, uri: str, inside: bool) -> None:
+    path = tmp_path / "upload.zip"
+    path.write_bytes(zip_of({"./a.gltf": ('{"buffers": [{"uri": "' + uri + '"}]}').encode(), "./tex/a.bin": b"x"}))
+    if inside:
+        model_import.check_zip(path)
+    else:
+        with pytest.raises(model_import.ImportRefused):
+            model_import.check_zip(path)
+
+
+@pytest.mark.parametrize("encoding", ["utf-16", "utf-16-le", "utf-16-be", "utf-32"])
+def test_a_utf16_gltf_in_a_zip_is_refused_past_the_byte_scan(tmp_path: Path, encoding: str) -> None:
+    """The byte scan reads UTF-8; a UTF-16 file hid its `uri` from it, and a reader that takes UTF-16 would follow it."""
+    path = tmp_path / "upload.zip"
+    path.write_bytes(zip_of({"a.gltf": '{"buffers": [{"uri": "../../etc/passwd"}]}'.encode(encoding)}))
+    with pytest.raises(model_import.ImportRefused) as refused:
+        model_import.check_zip(path)
+    assert refused.value.status == 422 and refused.value.message == model_import.MSG_ZIP_GLTF_MISSING
+
+
+def test_a_utf16_gltf_that_stays_inside_its_zip_passes(tmp_path: Path) -> None:
+    path = tmp_path / "upload.zip"
+    path.write_bytes(zip_of({"a.gltf": '{"buffers": [{"uri": "a.bin"}]}'.encode("utf-16"), "a.bin": b"x"}))
+    model_import.check_zip(path)
+
+
+def test_a_big_single_gltf_is_scanned_and_never_parsed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A file over GLTF_PARSE_MAX is never parsed whole in the server's process; its `uri`s still decide."""
+    def no_parse(_raw: bytes) -> None:
+        raise AssertionError("parsed in process")
+    monkeypatch.setattr(model_import, "_check_gltf_shape", no_parse)
+    pad = b'"' + b"a" * model_import.GLTF_PARSE_MAX + b'"'
+    good = tmp_path / "good.gltf"
+    good.write_bytes(b'{"asset": {"version": "2.0"}, "extras": ' + pad + b', "buffers": [{"uri": "data:application/octet-stream;base64,AAAA"}]}')
+    assert model_import._zip_gltf(good).name == "upload.zip"
+    bad = tmp_path / "bad.gltf"
+    bad.write_bytes(b'{"extras": ' + pad + b', "buffers": [{"uri": "../secret.bin"}]}')
+    with pytest.raises(model_import.ImportRefused) as refused:
+        model_import._zip_gltf(bad)
+    assert refused.value.status == 415 and refused.value.message == model_import.MSG_GLTF_NEEDS_FILES
+
+
+def test_a_zip_gltf_pointing_outside_leaves_no_folder(api: Api, conv: FakeConverter) -> None:
+    status, doc = post(api, zip_of({"a.gltf": b'{"buffers": [{"uri": "data:/../.."}]}'}))
+    assert status == 422 and doc["error"] == model_import.MSG_ZIP_GLTF_MISSING and stored(api) == []
+
+
+def test_the_zip_scan_stays_near_the_size_of_the_file() -> None:
+    """A 4 MB zip can unpack to 400 MB of `[[],[],...`, which json.loads turns into many GB. The scan builds nothing."""
+    code = (
+        "import resource, sys; from part7 import model_import as m; raw = b'[[],' * 25_000_000;"
+        "before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;"
+        "assert m._names_a_file_outside(raw, '', set()) is False;"
+        "print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before)"
+    )
+    done = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, check=True)
+    assert int(done.stdout.strip().splitlines()[-1]) < 50_000, "under 50 MB past the file itself"
+
+
+def test_a_gltf_naming_other_files_is_refused(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(model_import, "_converter", lambda state=None: _TextReader())
+    status, doc = post(api, b'{"asset": {"version": "2.0"}, "buffers": [{"uri": "model.bin", "byteLength": 3}]}')
+    assert status == 415 and doc["error"] == model_import.MSG_GLTF_NEEDS_FILES and stored(api) == []

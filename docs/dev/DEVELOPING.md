@@ -158,7 +158,7 @@ All read from the environment (`part7/config.py`, `part7/quota.py`, `part7/serve
 | `SIMON7_P2_TRACKER` | unset | a Part 2 tracker name (`local-sam31`, `local-open`, `bytetrack`, `api-sam31`) used in place of "auto" for `part2 track` |
 | `SIMON7_P2_TRACK_WORKER` | unset (off) | `1` keeps SAM 3.1 (`local-sam31`) loaded in its own process for the people step: "Warm SAM 3.1 tracker" below (TICKET-117) |
 | `SIMON7_P2_TRACK_WORKER_IDLE_S` | 0 | seconds without a tracking call before the tracker worker frees its GPU memory; `0` loads it at boot and never frees it |
-| `SIMON7_PART1_TIMEOUT_S` | 150 | seconds the trainer job waits for Part 1; past it, the job falls back to keyframes every 10 frames instead of failing |
+| `SIMON7_PART1_TIMEOUT_S` | 215 | seconds the trainer job waits for Part 1, its 65 s stop included (150 s of work); past it, the job falls back to keyframes every 10 frames instead of failing |
 | `SIMON7_LIMITS` | off | `on` enforces the daily caps (`SIMON7_DAILY_GPU` default 40 jobs, `SIMON7_DAILY_TRAINER` default 10) and the per-visitor caps (10 GPU and 3 trainer jobs a day). Jobs are counted either way under `<state>/quota/`. |
 | `SIMON7_STATE_DIR` | `~/.local/state/simon-part-7` | root for `videos/`, `dev/`, `check/` |
 | `SIMON7_KEYS_DIR` | `~/.config/simon/keys` | where Part 7 looks for key files |
@@ -227,7 +227,7 @@ Common failure reasons:
 - `the step failed unexpectedly`: an exception in Part 7; the traceback is in `steps/error.log`.
 - A part that times out (Part 2 20 min, Parts 3 to 5 3 min, doctors 1 min; Part 1 in a trainer job
   `SIMON7_PART1_TIMEOUT_S`, and its timeout is a fallback, not a failure) gets SIGTERM, then SIGKILL
-  10 s later; its log ends with `part <n> timed out after ...`.
+  10 s later (Part 1: 65 s later, inside its budget, so it can delete its upload); its log ends with `part <n> timed out after ...`.
 
 ### Warnings in a finished analysis
 

@@ -117,19 +117,6 @@ def test_after_account_delete_the_old_session_gets_401(api: Api) -> None:
 
 
 @pytest.mark.usefixtures("authenv")
-def test_sixth_export_in_an_hour_is_429_and_a_later_one_works(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:  # AC-ED-6
-    w = two_accounts(api)
-    clock = [auth.CLOCK()]
-    monkeypatch.setattr(auth, "CLOCK", lambda: clock[0])
-    assert [fetch(api, w["ada"])[0] for _ in range(5)] == [200] * 5
-    status, _, body = fetch(api, w["ada"])
-    assert status == 429 and body["message"] == export_data_routes.MSG_RATE
-    assert fetch(api, w["grace"])[0] == 200  # the limit is per person
-    clock[0] += 3601
-    assert fetch(api, w["ada"])[0] == 200
-
-
-@pytest.mark.usefixtures("authenv")
 def test_export_writes_no_file(api: Api) -> None:  # AC-ED-6 no ledger line, never on disk
     w = two_accounts(api)
     state = api.app.state

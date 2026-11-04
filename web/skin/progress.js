@@ -126,13 +126,13 @@ export function mountProgress(host, { startedAt = Date.now(), doc = document, no
       root.setAttribute("data-step", view.key);
       if (view.value === null && shown === null) {
         bar.removeAttribute("aria-valuenow");
-        fill.style.width = "";
+        fill.style.transform = "";
         bar.setAttribute("data-indeterminate", "");
       } else if (view.value !== null) {
         shown = Math.max(shown ?? 0, view.value); // a late or repeated poll never moves the bar back
         bar.setAttribute("aria-valuenow", String(shown));
         bar.removeAttribute("data-indeterminate");
-        fill.style.width = `${shown}%`;
+        fill.style.transform = `scaleX(${shown / 100})`; // reels 1.1: transform, never width
       }
       bar.setAttribute("aria-valuetext", `${view.text}. ${elapsedText(seconds())}`);
       tick();

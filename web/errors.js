@@ -22,6 +22,12 @@ export function reportableStatus(status, path) {
 const SPEECH_PATH = /(^|\/)api\/jobs\/[^/]+\/speech\/\d+\.wav$/;
 
 /** 429 and 503 on a spoken line are designed answers ("try again shortly"): the browser voice speaks it meanwhile. */
+// The server's id for this answer, so a browser report and the server's failure line can be matched (observability.md).
+const requestId = (res) => {
+  const rid = res.headers && res.headers.get ? res.headers.get("x-request-id") : null;
+  return rid ? { rid } : {};
+};
+
 export const isDesignedBusy = (status, path) => (status === 429 || status === 503) && SPEECH_PATH.test(path);
 
 const FIRM_PATH = /(^|\/)_firm\//; // the firm staging gateway's injected widget, not the app
@@ -89,7 +95,7 @@ export function installErrorCapture(win = globalThis, capture = createCapture())
         throw err;
       }
       if (isDesignedBusy(res.status, path)) return res;
-      if (!expected.includes(res.status) && reportableStatus(res.status, path)) capture.report("fetch", `status ${res.status}`, { path, status: res.status });
+      if (!expected.includes(res.status) && reportableStatus(res.status, path)) capture.report("fetch", `status ${res.status}`, { path, status: res.status, ...requestId(res) });
       return res;
     };
   }

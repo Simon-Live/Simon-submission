@@ -186,13 +186,6 @@ def test_runner_refusals(seeded: Path, world: World, model: Answers, monkeypatch
         runner.request(USER, "recap", "2026-11")  # one take in November: the model part stays hidden
     assert few.value.status == 422
     history_all.set_left_out(seeded, USER, [])
-    monkeypatch.setenv("SIMON7_HISTORY_DAILY", "1")
-    model.append(_answer())
-    runner.request(USER, "all")
-    runner.wait_idle(20)
-    with pytest.raises(history_report.Refused) as capped:
-        runner.request(USER, "recap", "2026-10")  # a recap counts toward the same daily cap
-    assert capped.value.status == 429 and model.asked and len(model.asked) == 1
 
 
 def test_one_recap_per_month_and_deleting_a_take_deletes_it(seeded: Path, world: World, model: Answers) -> None:  # AC-4, AC-5

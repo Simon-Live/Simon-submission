@@ -4,6 +4,10 @@
 folders: the score and grade from each take's own `analysis.json` (never from the job record), and the cues the
 score gave. It carries no job id (not even a hash of one), no name and no path, so a public answer cannot hand out a result.
 Each folder is parsed once per change of its files (a cache keyed by file mtimes), so a request costs one `stat` per job folder.
+
+Shared with the teacher (operator ruling 2026-11-03, private-default D3): a take reaches these answers only when its
+owner ticked the share box for that take (`<job folder>/teacher-share.json`, off by default, revocable, gone with the
+folder), or it is seeded demo data. Every other take is left out of `collect` and `page`.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ TAKES_MAX = 200  # the newest takes kept; the oldest are dropped, never the newe
 TOP_CUES_PER_TAKE = 3
 CUE_MAX = 120
 CUES_MAX = 10  # rows of `cue_counts`
+SHARE_FILE = "teacher-share.json"  # the take owner's per-take choice; absent means not shared
 
 
 def _read_json(path: Path) -> Any:
@@ -67,6 +72,26 @@ def _take_of(job: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any] | 
             "shown": shown_score.of_analysis(analysis, (job.get("result") or {}).get("light") if isinstance(job.get("result"), dict) else None)}
 
 
+def shared_with_teacher(folder: Path) -> bool:
+    """True when the take's owner chose to share this take with the movement's owner."""
+    try:
+        doc = _read_json(Path(folder) / SHARE_FILE)
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and doc.get("shared") is True
+
+
+def set_shared(folder: Path, value: bool) -> None:
+    """Record or withdraw the owner's choice for one take (the folder must exist)."""
+    path = Path(folder) / SHARE_FILE
+    if value:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"shared": True}), encoding="utf-8")
+        tmp.replace(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
 def _skip(folder: Path, why: str) -> None:
     applog.log(f"teacher: skipped {folder.name}: {why}", level=logging.WARNING)
 
@@ -93,7 +118,10 @@ def _parse_folder(folder: Path) -> tuple[str, dict[str, Any] | None] | None:
     except (OSError, ValueError):
         _skip(folder, "analysis.json is missing or not readable JSON")
         return None
-    return entry, (_take_of(job, analysis) if isinstance(analysis, dict) else None)
+    take = _take_of(job, analysis) if isinstance(analysis, dict) else None
+    if take is not None:
+        take["_shared"] = take["_synthetic"] or shared_with_teacher(folder)  # D3: seeded demo data is nobody's take
+    return entry, take
 
 
 def _mtime(path: Path) -> int:
@@ -103,7 +131,7 @@ def _mtime(path: Path) -> int:
         return -1
 
 
-_CACHE: dict[str, dict[str, tuple[tuple[int, int], Any]]] = {}  # jobs root -> folder name -> (file stamps, parsed)
+_CACHE: dict[str, dict[str, tuple[tuple[int, int, int], Any]]] = {}  # jobs root -> folder name -> (file stamps, parsed)
 _CACHE_LOCK = threading.Lock()
 
 
@@ -112,17 +140,17 @@ def _finished_takes(jobs_root: Path, entry_id: str) -> list[dict[str, Any]]:
     key = str(jobs_root)
     with _CACHE_LOCK:
         old = _CACHE.get(key, {})
-    fresh: dict[str, tuple[tuple[int, int], Any]] = {}
+    fresh: dict[str, tuple[tuple[int, int, int], Any]] = {}
     takes: list[dict[str, Any]] = []
     for record in sorted(Path(jobs_root).glob("*/job.json")):
         folder = record.parent
         if not jobs.JOB_ID_RE.match(folder.name):
             continue
-        stamp = (_mtime(record), _mtime(folder / "work" / "follower" / "analysis.json"))
+        stamp = (_mtime(record), _mtime(folder / "work" / "follower" / "analysis.json"), _mtime(folder / SHARE_FILE))
         cached = old.get(folder.name)
         parsed = cached[1] if cached and cached[0] == stamp else _parse_folder(folder)
         fresh[folder.name] = (stamp, parsed)
-        if parsed and parsed[0] == entry_id and parsed[1] is not None:
+        if parsed and parsed[0] == entry_id and parsed[1] is not None and parsed[1]["_shared"]:
             takes.append({**parsed[1], "_folder": folder.name})
     with _CACHE_LOCK:
         _CACHE[key] = fresh  # folders that are gone drop out here
@@ -130,7 +158,7 @@ def _finished_takes(jobs_root: Path, entry_id: str) -> list[dict[str, Any]]:
 
 
 def _window(jobs_root: Path | str, entry_id: str) -> list[dict[str, Any]]:
-    """The kept takes of `entry_id` with their private fields, oldest first, at most `TAKES_MAX` (the newest)."""
+    """The shared takes of `entry_id` with their private fields, oldest first, at most `TAKES_MAX` (the newest)."""
     return sorted(_finished_takes(Path(jobs_root), entry_id), key=lambda t: (t["at"], t["_folder"]))[-TAKES_MAX:]
 
 
@@ -146,9 +174,12 @@ def collect(jobs_root: Path | str, entry_id: str) -> dict[str, Any]:
 
 def page(jobs_root: Path | str, entry_id: str, owners: dict[str, str] | None = None, now: datetime | None = None,
          with_followers: bool = False) -> dict[str, Any]:
-    """`collect` plus `class_table` (class_table.build) over the same takes, read once; per-follower rows only for the owner."""
+    """For the movement's owner (`with_followers`): `collect` plus `class_table` over the same shared takes, read once.
+    For anyone else only `take_count`, the number of shared takes: no row, time, score, grade or cue (D3)."""
     found = _window(jobs_root, entry_id)
-    return {**_shape(entry_id, found), "class_table": class_table.build(found, owners, now, with_followers)}
+    if not with_followers:
+        return {"entry": entry_id, "takes": [], "cue_counts": [], "class_table": None, "take_count": len(found)}
+    return {**_shape(entry_id, found), "class_table": class_table.build(found, owners, now, True), "take_count": len(found)}
 
 
 def _shape(entry_id: str, found: list[dict[str, Any]]) -> dict[str, Any]:
