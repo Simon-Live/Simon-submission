@@ -71,13 +71,25 @@ def record(choice: str | None) -> dict[str, str]:
     return {FIELD: choice} if choice else {}
 
 
+def _no_local_gpu() -> bool:
+    """True when this machine has no NVIDIA GPU to run Part 2 on (no nvidia-smi), as on a judge's laptop."""
+    from part7 import gpu_lock  # here: gpu_lock is not needed for the other choices
+    return not gpu_lock.nvidia_smi_path()
+
+
 def bind(fn: JobFn, choice: str | None) -> JobFn:
-    """`fn` with its Part 2 calls on the route `choice` names; `fn` itself when there is no choice."""
+    """`fn` with its Part 2 calls on the route `choice` names; `fn` itself when there is no choice. "This machine" on a
+    machine with no GPU, while the serverless route is set up (the judges' relay), runs on Modal: the picker defaults
+    to This machine, and a local Part 2 there can only fail ("the gpu backend needs CUDA")."""
     if not choice:
         return fn
-    route = CHOICES[choice]
+    chosen = CHOICES[choice]
 
     def run(ctx: JobContext) -> dict[str, Any]:
+        route = chosen
+        if route == "local" and p2_pose.remote() and _no_local_gpu():
+            applog.log("run_on: This machine has no GPU and serverless is set up; the take runs on Modal")
+            route = "modal"
         with p2_pose.job_route_set(route):
             return fn(ctx)
 
