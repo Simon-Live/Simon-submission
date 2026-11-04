@@ -43,8 +43,15 @@ def _git(*args: str) -> str:
 
 
 def _part2() -> tuple[str, Path, Path]:
-    """(sha, checkout, git dir) of Part 2: the `modules/part-2` checkout Part 7 runs (`make parts`)."""
+    """(sha, checkout, git dir) of Part 2: the `modules/part-2` Part 7 runs (`make parts`). As a folder of this repo
+    (ADR-0008) it has no git data of its own: its sha is the one modules/PINS.json names, the image gets no .git, and
+    Part 2 reads its commit from PART2_COMMIT. A checkout of its own (SIMON_PART2_DIR) is read with git, as before."""
     clone = Path(os.environ.get("SIMON_PART2_DIR") or PART7 / "modules" / "part-2")
+    if not (clone / ".git").exists():
+        sha = json.loads((PART7 / "modules" / "PINS.json").read_text(encoding="utf-8"))["parts"]["2"]["sha"]
+        if _git("-C", str(PART7), "status", "--porcelain", "--untracked-files=no", "--", str(clone)):
+            raise SystemExit(f"{clone} has local changes: the image must be a published commit")
+        return sha, clone, Path(tempfile.mkdtemp(prefix="part2-no-git-"))   # an empty .git layer, never this repo's
     sha = _git("-C", str(clone), "rev-parse", "HEAD")
     if len(sha) != 40:
         raise SystemExit(f"no Part 2 checkout at {clone}: run `make parts`")
@@ -63,9 +70,10 @@ image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("git", "ffmpeg", "build-essential", "curl", "ca-certificates", "libgl1", "libglib2.0-0")
     .pip_install("uv")
-    .env({"PART2_SHA": PART2_SHA, "PATH": "/root/.local/bin:/usr/local/bin:/usr/bin:/bin"})
+    .env({"PART2_SHA": PART2_SHA, "PART2_COMMIT": PART2_SHA, "PATH": "/root/.local/bin:/usr/local/bin:/usr/bin:/bin"})
     # The macOS venv and demos are left out. A submodule's .git is a pointer file, so its git dir is copied in
     # as .git (its worktree link is dropped after setup, below): Part 2 records its commit in its outputs' provenance.
+    # Part 2 as a folder of this repo (ADR-0008) gets an empty .git and names its commit through PART2_COMMIT.
     .add_local_dir(str(PART2_CLONE) if PART2_CLONE else ".", REPO_DIR, copy=True,
                    ignore=[".git", ".venv", "demos", "**/__pycache__", "**/.env", "**/.env.*", "**/.meta-spend.json"])  # never keys in the image
     .add_local_dir(str(PART2_GITDIR) if PART2_GITDIR else ".", f"{REPO_DIR}/.git", copy=True)
@@ -78,7 +86,8 @@ image = (
     # The copied repo is owned by the uploader's uid, so git refuses it ("dubious ownership") and Part 2 stamps
     # part2_commit as None, which its own contract check rejects. Trust it, and prove git can read HEAD.
     .run_commands(f"git config --file {REPO_DIR}/.git/config --unset core.worktree || true",
-                  f"git config --system --add safe.directory '*' && git -C {REPO_DIR} rev-parse HEAD")
+                  f"git config --system --add safe.directory '*' && "
+                  f"(git -C {REPO_DIR} rev-parse HEAD || echo \"part2 commit from PART2_COMMIT: $PART2_COMMIT\")")
     # The free local-open tracker downloads its models on first use (YOLOX 351 MB, SAM 2.1 hiera-large): fetch them
     # into the image so a new container does not spend minutes on it (SIMON7_P2_TRACKER=local-open).
     .run_commands(

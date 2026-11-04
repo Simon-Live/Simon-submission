@@ -8,6 +8,7 @@ produced the file. Readers ignore it, so adding or removing it never changes whe
 hosted or its file was not hashed, never a guess. Extra keywords of `block` (detector, mask_source,
 fallback_from, ...) are stored as given.
 """
+import os
 import subprocess
 from datetime import datetime, timezone
 
@@ -58,7 +59,11 @@ def fallback_note(prov: dict) -> str | None:
 
 
 def part2_commit() -> str:
-    """HEAD of the Part 2 checkout, with +dirty when tracked files differ; unknown without git."""
+    """HEAD of the Part 2 checkout, with +dirty when tracked files differ; unknown without git. `PART2_COMMIT`, when
+    set, names it instead: an image built from Part 2 as a folder of a larger repo has no git data of its own."""
+    named = os.environ.get("PART2_COMMIT", "").strip()
+    if named:
+        return named
     try:
         head = _git("rev-parse", "HEAD")
         return head + ("+dirty" if _git("status", "--porcelain", "--untracked-files=no") else "")

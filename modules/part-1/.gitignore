@@ -7,5 +7,5 @@ dist/
 .venv/
 out/
 *.mp4
-!inbox/*.mp4
+# inbox/*.mp4 stays ignored: Part 7 copies each take there during a run (ADR-0008); the labelled videos are not in this repo
 !fixtures/**/*.json

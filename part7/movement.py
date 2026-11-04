@@ -229,7 +229,7 @@ def grep_clones_split(
         if term and term not in terms:
             terms.append(term)
     for clone_dir in sorted(root.iterdir()):
-        if not clone_dir.is_dir() or not (clone_dir / ".git").exists():
+        if not clone_dir.is_dir():   # a part folder of this repo (ADR-0008) or a checkout of its own: git grep reads both
             continue
         for term in terms:
             res = subprocess.run(

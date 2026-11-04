@@ -455,7 +455,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
 <section id="architecture">
   <div class="eyebrow">06 · Architecture</div>
   <h2>Architecture</h2>
-  <p>Part 7 is one Python server. It serves the web app, keeps a job queue, and runs Parts 1 to 6 as separate processes from git submodules: each Part 7 commit records the exact commit of every part, and <code>make parts</code> moves them forward to each part's latest <code>main</code>. The parts meet only through JSON files in the job's folder. Only Part 2 needs a GPU.</p>
+  <p>Part 7 is one Python server. It serves the web app, keeps a job queue, and runs Parts 1 to 6 as separate processes from their folders under modules/ (merged into this one repo for the submission): each Part 7 commit records the exact commit of every part, and <code>make parts</code> moves them forward to each part's latest <code>main</code>. The parts meet only through JSON files in the job's folder. Only Part 2 needs a GPU.</p>
 
   <h3>System context</h3>
   <figure>

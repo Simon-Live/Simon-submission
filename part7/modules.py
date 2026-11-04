@@ -167,6 +167,9 @@ def cli_parts_status(check_remote: bool = False, root: Path | str | None = None)
     print(json.dumps(doc, indent=2))
     if not check_remote:
         return 0
+    # a part folder of this repo (ADR-0008) is the version modules/PINS.json names; it does not follow a remote main
+    in_repo = {k for k in doc if not _own_checkout(load(root).path(k))}
+    doc = {k: p for k, p in doc.items() if k not in in_repo}
     unread = [k for k, p in doc.items() if p["sha"] is None or p["remote_sha"] is None]
     for key in unread:
         print(f"parts-status: part {key}: checkout or remote unreadable", file=sys.stderr)

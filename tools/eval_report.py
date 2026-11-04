@@ -804,7 +804,7 @@ def build_doc(inputs: Inputs) -> str:
              "`make eval-report-check` fails CI on any difference. -->", "",
              "Every table below is built from a raw file under `bench/results/<date>/` and names that file and its "
              "sha256. Run `make eval-report` to rebuild this page byte for byte; it needs no GPU and no key. Parts 1 to "
-             "6 are git submodules, so the part files are in `modules/part-N/` after `git clone --recursive`; the Part 2 "
+             "6 are in this repo under `modules/part-N/` (ADR-0008), so the part files are there after `git clone`; the Part 2 "
              "and Part 5 files here are copies of what those parts committed.", "", "## Accuracy", ""]
     lines += section_part2(inputs) + section_part5(inputs) + section_check7(inputs)
     lines += section_public(inputs) + section_kcurve(inputs) + section_ownref(inputs) + section_mhr(inputs)
