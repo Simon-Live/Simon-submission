@@ -151,16 +151,34 @@ A resident Part 2 worker cut the 3D step from 97.1 s to 51.7 s mean over three r
 ## Try it without a GPU
 
 ```bash
-git clone https://github.com/moalborati/simon-part-7-stitching-app.git
-cd simon-part-7-stitching-app
+git clone https://github.com/Simon-Live/Simon-submission.git
+cd Simon-submission
 make dev
 ```
 
 Open `http://127.0.0.1:8727/#/result/fixture`. This is the result screen on a committed example: score,
 the two bodies in 3D (front, side, top, overlay) and the timed notes. It needs no GPU and no keys. The app needs Python 3.12, [uv](https://docs.astral.sh/uv/), `git`, `make` and `ffmpeg`.
 
-Real jobs need a CUDA GPU with 12 GB free, `make parts` to set up Parts 1 to 6, and keys for the Meta
-Model API. [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md) covers setup, keys, running and debugging.
+## Run the full pipeline with our keys (judges, until Nov 9)
+
+Record a movement, follow it and get your own score and feedback on your machine, with no GPU, no key and no Modal
+account. Your Simon sends its Meta API calls and its Part 2 runs to our relay, which holds Simon's key and runs Part 2
+on our Modal GPU ([deploy/judges/README.md](deploy/judges/README.md)):
+
+```bash
+git clone https://github.com/Simon-Live/Simon-submission.git
+cd Simon-submission
+deploy/judges/run.sh
+```
+
+Open `http://127.0.0.1:8727`. The relay is open until **Nov 9, 2026, 11:59 PM ET** with a shared budget; when it is
+closed, [simon.live](https://simon.live) runs the same app. It forwards only the calls Simon makes. This route needs the
+same tools as above plus `curl`; a take takes a few minutes, most of it Part 2 on the GPU.
+
+## Run it with your own keys and GPU
+
+Real jobs on your own hardware need a CUDA GPU with 12 GB free, `make parts` to set up Parts 1 to 6, and keys for the
+Meta Model API. [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md) covers setup, keys, running and debugging.
 
 ## Tests
 

@@ -13,7 +13,7 @@ from keyframe_finder.sam_parse import BoxParser
 from keyframe_finder.spend import estimate, record, require_budget
 
 ROOT = Path(__file__).resolve().parents[1]
-API = "https://api.meta.ai/v1"
+API = os.environ.get("SIMON_META_API", "https://api.meta.ai/v1").rstrip("/")  # SIMON_META_API: the judges' relay (deploy/judges/README.md)
 SPARK = "muse-spark-1.3"
 SAM = "sam-3.1"
 

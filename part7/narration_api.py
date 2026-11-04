@@ -20,7 +20,7 @@ import wave
 
 from part7 import config, keys
 
-URL = "https://api.meta.ai/v1/asr/transcribe"
+URL = os.environ.get("SIMON_META_API", "https://api.meta.ai/v1").rstrip("/") + "/asr/transcribe"  # SIMON_META_API: the judges' relay (deploy/judges/README.md)
 MODEL = "muse-voice-transcribe-1.0"
 USD_PER_HOUR = 0.18  # Meta's list price for the model, ledger estimate
 BOUNDARY = "simon-part7-narration"

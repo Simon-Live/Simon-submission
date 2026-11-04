@@ -5,18 +5,24 @@
 Part 7 runs this in place of `python -m part2` when SIMON7_PART2_REMOTE=modal. Files after --input and
 --tracks are uploaded, --out is downloaded into the same folder, Part 2's output is printed as it runs
 (Part 7's runner writes it to the step log) and the exit code is Part 2's. Standalone: it needs only `modal`.
+With SIMON_PART2_RELAY set (the judges' relay, deploy/judges/README.md) the same call goes to that address over HTTPS
+and no Modal account is needed.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import io
+import json
+import os
 from pathlib import Path
 import sys
 import tarfile
 
 APP_NAME = "simon-part2"
 FILE_FLAGS = ("--input", "--tracks")
+RELAY_ENV = "SIMON_PART2_RELAY"
 
 
 def remote_argv(sub: list[str]) -> tuple[list[str], dict[str, bytes], Path | None]:
@@ -50,10 +56,14 @@ def main(argv: list[str] | None = None) -> int:
     if not sub:
         ap.error("give the part2 command after --")
 
-    import modal  # here, so --help works without it
-
     remote, inputs, out = remote_argv(sub)
     mb = sum(len(v) for v in inputs.values()) / 1e6
+    relay = os.environ.get(RELAY_ENV, "").strip().rstrip("/")
+    if relay:
+        return via_relay(relay, remote, inputs, out, args.sha, sub[0], mb)
+
+    import modal  # here, so --help works without it
+
     print(f"modal: {APP_NAME} part2 {sub[0]} at {args.sha[:12]}, uploading {mb:.1f} MB", flush=True)
     try:
         part2 = modal.Cls.from_name(APP_NAME, "Part2")()
@@ -75,6 +85,49 @@ def main(argv: list[str] | None = None) -> int:
         print(f"modal: the remote Part 2 call failed: {type(exc).__name__}: {exc}", flush=True)
         return 1
     print(f"modal: part2 exited {code}", flush=True)
+    return code
+
+
+def unpack(kind: str, payload, out: Path | None) -> int | None:
+    """Print a log line, or unpack a result into `out` and return its exit code."""
+    if kind == "log":
+        sys.stdout.write(payload)
+        sys.stdout.flush()
+        return None
+    code = int(payload["exit"])
+    tar_bytes = base64.b64decode(payload["tar"]) if isinstance(payload["tar"], str) else payload["tar"]
+    if out is not None and tar_bytes:
+        out.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:gz") as tar:
+            tar.extractall(out, filter="data")
+    return code
+
+
+def via_relay(relay: str, remote: list[str], inputs: dict[str, bytes], out: Path | None, sha: str, cmd: str, mb: float) -> int:
+    """The same Part 2 call through the judges' relay: one POST, the answer streamed back a line at a time."""
+    import urllib.error
+    import urllib.request
+
+    print(f"relay: part2 {cmd} at {sha[:12]} via {relay}, uploading {mb:.1f} MB", flush=True)
+    body = json.dumps({"argv": remote, "sha": sha,
+                       "inputs": {k: base64.b64encode(v).decode() for k, v in inputs.items()}}).encode()
+    request = urllib.request.Request(f"{relay}/part2", data=body, method="POST",
+                                     headers={"Content-Type": "application/json", "User-Agent": "simon-p2-client"})
+    code = 1
+    try:
+        with urllib.request.urlopen(request, timeout=1800) as answer:
+            for line in answer:
+                if line.strip():
+                    kind, payload = json.loads(line)
+                    got = unpack(kind, payload, out)
+                    code = got if got is not None else code
+    except urllib.error.HTTPError as exc:   # the relay's refusal: closed, over budget, too many requests
+        print(f"relay: refused ({exc.code}): {exc.read().decode(errors='replace')[:300]}", flush=True)
+        return 1
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        print(f"relay: the Part 2 call failed: {type(exc).__name__}: {exc}", flush=True)
+        return 1
+    print(f"relay: part2 exited {code}", flush=True)
     return code
 
 

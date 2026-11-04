@@ -46,7 +46,7 @@ from pathlib import Path
 from ..phrasing.local_llm import no_redirect_opener
 from ..phrasing.muse_spark import append_line, open_ledger_at, path_of, read_key_from, unavailable_for, utc_now
 
-API = "https://api.meta.ai/v1"
+API = os.environ.get("SIMON_META_API", "https://api.meta.ai/v1").rstrip("/")  # SIMON_META_API: the judges' relay (deploy/judges/README.md)
 MODEL = "muse-spark-1.3"
 BACKEND = "meta-model-api"
 KEY_FILE, KEY_ENV = "~/.config/firm/operator-keys/MODEL_API_KEY", "PART5_META_KEY_FILE"

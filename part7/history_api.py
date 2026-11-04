@@ -26,7 +26,7 @@ import uuid
 from part7 import config, history_prompt, keys
 from part7.history_prompt import MAX_VIDEOS, VIDEO_TOKENS_PER_S
 
-API = "https://api.meta.ai/v1"
+API = os.environ.get("SIMON_META_API", "https://api.meta.ai/v1").rstrip("/")  # SIMON_META_API: the judges' relay (deploy/judges/README.md)
 MODEL = "muse-spark-1.3"          # never the -contributor model: student video is not for training
 KEY_NAME = "MODEL_API_KEY"
 RATES = {"input": 1.25, "cached": 0.15, "output": 4.25}   # USD per million tokens
