@@ -7,6 +7,11 @@ on:
     branches: [main]
   pull_request:
 
+# A new push cancels this branch's run still in progress: only the newest commit is tested (team, 2026-11-04).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest

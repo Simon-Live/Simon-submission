@@ -31,8 +31,20 @@ deploy/judges/run.sh
 Open the address it prints (`http://127.0.0.1:8727`, or the next free port), then follow a movement or record one.
 Your copy of Simon runs Parts 1 to 7 here and sends its Meta Model API calls and its GPU work (SAM 3.1, SAM 3D Body,
 MHR, SAM 3D Objects) to our relay, which holds Simon's key and runs on our Modal GPU with a shared budget
-([deploy/judges/README.md](deploy/judges/README.md)). A take takes a few minutes, most of it the 3D step. Muse Spark
-Open runs on Baseten with its own key, so on this route the feedback sentences use Part 5's template.
+([deploy/judges/README.md](deploy/judges/README.md)). Muse Spark Open runs on Baseten with its own key, so on this
+route the feedback sentences use Part 5's template.
+
+**How long it takes, and why.** Measured on Nov 4, 2026 through the relay, except where noted.
+
+| Step | Time | Why |
+|---|---|---|
+| Clone | about a minute | About 190 MB of history plus Part 1's three test videos (81 MB) through Git LFS |
+| First `run.sh` setup | under a minute (8 s for the six parts with empty caches) | Only light Python packages install here; the GPU software and the model weights live in our Modal image |
+| First take after a quiet spell | 83 s for a 5-second clip | Modal starts a GPU container (an L40S) and loads SAM 3.1, SAM 3D Body and MHR from the image into GPU memory before the first frame, which is most of the extra 50 s |
+| Next takes, within 5 minutes | 33 s for the same clip | The container stays warm for 5 minutes after a take, with the models already in memory, so only the frames are processed |
+| A longer take | about 2 minutes for a typical follow (106 s for a whole follow job on staging) | The 3D step runs SAM 3D Body on every sampled frame (5 a second), so time grows with the length of the take |
+| A 3D model from a picture | several minutes (302 s warm on an RTX 5090) | SAM 3D Objects builds a textured mesh, then MHR rigs it: the heaviest model in Simon, about 34 GB of GPU memory at its peak |
+| Feedback sentences, "Ask this take", "You, doing it right" | a few seconds each | Meta Model API calls (Muse Spark, Muse Wonder, Muse Image) |
 
 **3. Check it in 5 minutes, no keys at all.**
 
