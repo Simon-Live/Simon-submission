@@ -65,6 +65,46 @@ export const PAGES = {
     ],
   },
 
+  guide: {
+    route: "guide",
+    title: "How to use Simon",
+    lead: "Follow a trainer's movement and get feedback on yours, or record a movement for your students to follow.",
+    sections: [
+      { id: "follow", heading: "Follow a movement", body: [
+        { steps: [
+          ["Open ", link("simon.live", "#/"), "."],
+          "Browse the movements and pick one you would like to follow.",
+          "Press Use routine.",
+          "Play the reference routine to watch it first.",
+          "Turn on Live check to get guidance on your body position while you record.",
+          "Choose the language you want your feedback in.",
+          "To learn one part of the routine first, use Learn in sections.",
+          "Choose the countdown and how long to record.",
+          "Press Record and do the dance or exercise.",
+          "When the recording ends, trim the video if you need to.",
+          "Press Analyse my take. If the video is not good enough, press Record again instead.",
+          "See your score. Play your take beside the trainer's to see where you moved differently, and read the feedback on what to change at each moment.",
+          "Press Retry set to try again for a better score. Share your take with friends, or start a challenge so they follow the same routine.",
+          "To remove your video and its analysis from Simon, press Delete this take.",
+        ] },
+      ] },
+      { id: "trainer", heading: "Record a movement as a trainer", body: [
+        { steps: [
+          ["Open ", link("simon.live", "#/"), "."],
+          ["Press ", link("Record", "#/record"), " to record a new movement."],
+          "Record your movement.",
+          "Give it a name, a category and tags.",
+          "Press Save movement, and Simon analyses it.",
+          "Open the movement.",
+          "From there, see how your followers did, print a class handout with a QR code your class can scan, or delete the movement.",
+        ] },
+      ] },
+      { id: "help", heading: "Need help?", body: [
+        ["Write to ", mail, ", or use the Feedback tab on the right edge of the screen. Read ", link("Health and safety", "#/safety"), " before you start."],
+      ] },
+    ],
+  },
+
   safety: {
     route: "safety",
     title: "Health and safety",
@@ -237,6 +277,7 @@ export const FOOTER_BRAND = {
 export const FOOTER_COLUMNS = [
   { title: "Simon", links: [
     { label: "Movements", href: "#/", testid: "footer-link-movements" },
+    { label: "How to use", href: "#/guide", testid: "footer-link-guide" },
     { label: "Record a movement", href: "#/record", testid: "footer-link-record" },
     { label: "Who Simon is for", href: "#/impact", testid: "footer-link-impact" },
     { label: "How Simon works", href: "#/architecture", testid: "footer-link-how" },

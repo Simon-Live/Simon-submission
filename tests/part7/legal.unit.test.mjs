@@ -14,8 +14,8 @@ const hrefs = (x, out = []) => {
 };
 const STANDINS = ["privacy", "terms", "accessibility", "biometric", "dmca", "sub-processors"];   // the go-live page names
 
-test("nine pages, each with a title, a lead, the last update and its own section ids", () => {
-  assert.deepEqual(LEGAL_ROUTES, ["about", "mission", "safety", ...STANDINS]);
+test("ten pages, each with a title, a lead, the last update and its own section ids", () => {
+  assert.deepEqual(LEGAL_ROUTES, ["about", "mission", "guide", "safety", ...STANDINS]);
   for (const key of LEGAL_ROUTES) {
     const p = legalPage(key);
     assert.ok(p.title && p.lead && /^Last updated \d{1,2} \w+ \d{4}$/.test(p.updated), key);
@@ -27,7 +27,7 @@ test("nine pages, each with a title, a lead, the last update and its own section
 
 test("the legal pages are stand-ins that say so; About and Health and safety are not", () => {
   for (const key of STANDINS) assert.equal(legalPage(key).notice, STANDIN_NOTICE, key);
-  for (const key of ["about", "mission", "safety"]) assert.equal(legalPage(key).notice, null, key);
+  for (const key of ["about", "mission", "guide", "safety"]) assert.equal(legalPage(key).notice, null, key);
 });
 
 test("the team in the team's order, and the one contact address", () => {
@@ -70,4 +70,15 @@ test("links stay in the app or go to the one contact address; the footer opens e
   const legal = FOOTER_COLUMNS.find((c) => c.title === "Legal").links;
   assert.deepEqual(legal.slice(0, 3).map((l) => l.testid), ["footer-link-privacy", "footer-link-terms", "footer-link-accessibility"],
     "the go-live pages' test ids first");
+});
+
+test("the how-to guide: a follower's 14 steps and a trainer's 7, numbered, and the footer links to it", () => {
+  const g = legalPage("guide");
+  assert.equal(g.title, "How to use Simon");
+  const steps = (id) => g.sections.find((s) => s.id === id).body.find((b) => b && b.steps).steps;
+  assert.equal(steps("follow").length, 14);
+  assert.equal(steps("trainer").length, 7);
+  assert.match(steps("follow").join(" "), /Use routine.*Live check.*Learn in sections.*Analyse my take.*Retry set.*Delete this take/);
+  assert.match(steps("trainer").at(-1), /class handout with a QR code/);
+  assert.ok(FOOTER_COLUMNS[0].links.some((l) => l.href === "#/guide" && l.label === "How to use"));
 });

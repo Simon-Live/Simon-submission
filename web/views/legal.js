@@ -16,6 +16,7 @@ function inline(part) {
 
 function block(item) {
   if (item && item.list) return h("ul", { class: "lg-list" }, item.list.map((li) => h("li", {}, inline(li))));
+  if (item && item.steps) return h("ol", { class: "lg-list lg-steps" }, item.steps.map((li) => h("li", {}, inline(li))));
   if (item && item.license) return h("div", { class: "lg-license", "data-testid": "legal-license-text" }, item.license.map((p) => h("p", { text: p })));
   return h("p", {}, inline(item));
 }
