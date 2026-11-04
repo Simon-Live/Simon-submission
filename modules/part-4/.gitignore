@@ -1,0 +1,8 @@
+__pycache__/
+node_modules/
+dist/
+.env
+out/
+*.mp4
+demo/posters/
+!fixtures/**/*.json

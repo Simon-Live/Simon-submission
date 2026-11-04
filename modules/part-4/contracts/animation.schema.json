@@ -1,0 +1,400 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-4-animate-keyframes/contracts/animation.schema.json",
+  "title": "animation.json written by Part 4",
+  "description": "simon.animation.v1 exactly as Part 4 writes it: one frame per 30 fps tick, joints in metres in the hip-centred body frame. Every object is closed. producer joined v1 as a required constant (A-P4-06). unseen_joints and frames[].conf joined v1 as optional fields; a reader that ignores them is unaffected. Any other new field means a new format.",
+  "x-simon-version": "simon.animation.v1",
+  "x-direction": "output",
+  "x-producer": "Part 4",
+  "x-consumers": [
+    "Part 5",
+    "Part 6"
+  ],
+  "x-version-field": "format",
+  "x-rules": [
+    "frame_count equals round(duration_s * 30) + 1 and equals len(frames)",
+    "frames[i].index equals i and frames[i].t equals index / 30",
+    "interpolated is false exactly on the key indices of keyframes.json",
+    "every bone in bones keeps length_m within 1 mm on every frame",
+    "the hip midpoint stays within 1 mm of the origin",
+    "frames[].conf, when present, is on key frames the key's own values and on filled frames the minimum of the two neighbouring keys; unseen_joints is present exactly when conf is"
+  ],
+  "$defs": {
+    "vec3": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "producer",
+    "fps",
+    "duration_s",
+    "frame_count",
+    "movement",
+    "set",
+    "coordinate_frame",
+    "joints",
+    "bones",
+    "frames"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.animation.v1"
+    },
+    "producer": {
+      "const": "part4",
+      "description": "The part that wrote this file. Part 4 always writes part4."
+    },
+    "fps": {
+      "const": 30
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "frame_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "movement": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "From keyframes.json, else skeleton.json; null when neither names it."
+    },
+    "set": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "From keyframes.json, else skeleton.json, else the --set name."
+    },
+    "coordinate_frame": {
+      "const": {
+        "origin": "hip_midpoint",
+        "x": "subject_left",
+        "y": "world_up",
+        "z": "anterior",
+        "position_unit": "metres",
+        "angle_unit": "degrees",
+        "notes": "z = x cross y. Hip midpoint is subtracted per frame."
+      }
+    },
+    "joints": {
+      "const": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ]
+    },
+    "bones": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "parent",
+          "child",
+          "length_m"
+        ],
+        "properties": {
+          "name": {
+            "enum": [
+              "pelvis",
+              "spine",
+              "shoulder_girdle",
+              "left_thigh",
+              "left_shank",
+              "right_thigh",
+              "right_shank",
+              "left_upper_arm",
+              "left_forearm",
+              "right_upper_arm",
+              "right_forearm",
+              "left_eye_link",
+              "right_eye_link",
+              "left_ear_link",
+              "right_ear_link"
+            ]
+          },
+          "parent": {
+            "type": "string"
+          },
+          "child": {
+            "type": "string"
+          },
+          "length_m": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        }
+      }
+    },
+    "unseen_joints": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "nose",
+          "left_eye",
+          "right_eye",
+          "left_ear",
+          "right_ear",
+          "left_shoulder",
+          "right_shoulder",
+          "left_elbow",
+          "right_elbow",
+          "left_wrist",
+          "right_wrist",
+          "left_hip",
+          "right_hip",
+          "left_knee",
+          "right_knee",
+          "left_ankle",
+          "right_ankle"
+        ]
+      },
+      "description": "Optional. Joints at or below conf 0.3 at every key frame, in canonical order; their positions are not measured. Present, possibly empty, exactly when frames carry conf."
+    },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "t",
+          "interpolated",
+          "joints"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "t": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Seconds, index / 30."
+          },
+          "interpolated": {
+            "type": "boolean",
+            "description": "false on a key frame, true on every other frame."
+          },
+          "joints": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nose",
+              "left_eye",
+              "right_eye",
+              "left_ear",
+              "right_ear",
+              "left_shoulder",
+              "right_shoulder",
+              "left_elbow",
+              "right_elbow",
+              "left_wrist",
+              "right_wrist",
+              "left_hip",
+              "right_hip",
+              "left_knee",
+              "right_knee",
+              "left_ankle",
+              "right_ankle"
+            ],
+            "properties": {
+              "nose": {
+                "$ref": "#/$defs/vec3"
+              },
+              "left_eye": {
+                "$ref": "#/$defs/vec3"
+              },
+              "right_eye": {
+                "$ref": "#/$defs/vec3"
+              },
+              "left_ear": {
+                "$ref": "#/$defs/vec3"
+              },
+              "right_ear": {
+                "$ref": "#/$defs/vec3"
+              },
+              "left_shoulder": {
+                "$ref": "#/$defs/vec3"
+              },
+              "right_shoulder": {
+                "$ref": "#/$defs/vec3"
+              },
+              "left_elbow": {
+                "$ref": "#/$defs/vec3"
+              },
+              "right_elbow": {
+                "$ref": "#/$defs/vec3"
+              },
+              "left_wrist": {
+                "$ref": "#/$defs/vec3"
+              },
+              "right_wrist": {
+                "$ref": "#/$defs/vec3"
+              },
+              "left_hip": {
+                "$ref": "#/$defs/vec3"
+              },
+              "right_hip": {
+                "$ref": "#/$defs/vec3"
+              },
+              "left_knee": {
+                "$ref": "#/$defs/vec3"
+              },
+              "right_knee": {
+                "$ref": "#/$defs/vec3"
+              },
+              "left_ankle": {
+                "$ref": "#/$defs/vec3"
+              },
+              "right_ankle": {
+                "$ref": "#/$defs/vec3"
+              }
+            }
+          },
+          "conf": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nose",
+              "left_eye",
+              "right_eye",
+              "left_ear",
+              "right_ear",
+              "left_shoulder",
+              "right_shoulder",
+              "left_elbow",
+              "right_elbow",
+              "left_wrist",
+              "right_wrist",
+              "left_hip",
+              "right_hip",
+              "left_knee",
+              "right_knee",
+              "left_ankle",
+              "right_ankle"
+            ],
+            "properties": {
+              "nose": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_eye": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_eye": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_ear": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_ear": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_shoulder": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_shoulder": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_elbow": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_elbow": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_wrist": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_wrist": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_hip": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_hip": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_knee": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_knee": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "left_ankle": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "right_ankle": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "description": "Optional. Confidence 0..1 per joint, same shape as the follower files Part 5 reads. 0.3 marks a joint the camera never saw. A key frame carries its key's values; a filled frame the minimum of the two neighbouring keys. Absent when the input carries no confidence."
+          }
+        }
+      }
+    }
+  }
+}
