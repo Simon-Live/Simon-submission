@@ -7,7 +7,7 @@
 export const LIVE_BACKENDS = ["muse-spark", "local-llm"];
 
 /** HARDENING section 8: a line a model wrote is labelled as AI on its row (web/result.js). */
-export const AI_LABEL = "Worded by AI";
+export { AI_LABEL } from "../ai-label.js";
 
 /** The card rows that report a phrasing model, by the backend whose lines they count (part7/models_used.py). */
 export const PHRASING_ROWS = { "spark-phrasing": "muse-spark", "glimmer-phrasing": "local-llm" };

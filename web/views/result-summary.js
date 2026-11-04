@@ -3,7 +3,7 @@
 // result-redesign-additions.md R4 (TICKET-139): on the first paint of a result the score bar fills and the grade lands;
 // skipped under prefers-reduced-motion. R6: the export slot sits with Retry and Replay.
 import { h, ensureCss } from "../ui.js";
-import { AI_LABEL } from "../model/fault-line.js";
+import { AI_LABEL } from "../ai-label.js";
 import { exportSlot } from "./result-slots.js";
 
 // the summary brings its theme, so it is styled wherever it is mounted (the app, a test harness)
