@@ -1,0 +1,32 @@
+name: Plan part / work item
+description: A unit of work with a checkable definition of done (see PLAN.md)
+labels: ["type:part"]
+body:
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      description: One sentence. What can a user (or the next part) do once this is done?
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of done
+      description: Checkable thresholds, plus the command that prints the metrics JSON and exits 0 only when all pass.
+    validations:
+      required: true
+  - type: textarea
+    id: io
+    attributes:
+      label: Input / output
+      description: Exact files and schemas consumed and produced.
+  - type: textarea
+    id: demos
+    attributes:
+      label: Isolated demo / integrated demo
+  - type: input
+    id: deps
+    attributes:
+      label: Depends on
+      description: Issue numbers, e.g. #3, #7

@@ -1,0 +1,28 @@
+name: Question / decision needed
+description: Something a person has to decide before work can continue
+labels: ["type:question", "needs:human"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: One specific question.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options and recommendation
+      description: The realistic options, their trade-offs, and which one you recommend.
+    validations:
+      required: true
+  - type: input
+    id: blocks
+    attributes:
+      label: Blocks
+      description: Which issues wait on this, e.g. #12
+  - type: textarea
+    id: meanwhile
+    attributes:
+      label: What happens meanwhile
+      description: What the asker will work on while waiting.

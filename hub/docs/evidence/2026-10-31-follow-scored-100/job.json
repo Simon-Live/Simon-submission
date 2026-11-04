@@ -1,0 +1,38 @@
+{
+  "id": "994306b52be0",
+  "kind": "follow",
+  "status": "done",
+  "stage": "analyse",
+  "stages": [
+    "upload",
+    "pose",
+    "skeleton",
+    "analyse"
+  ],
+  "note": null,
+  "entry_id": "rdl-d0fd491a",
+  "result": {
+    "score": 100,
+    "grade": "A",
+    "faults": 0,
+    "status_code": "ok",
+    "trim": {
+      "start_ms": 0,
+      "end_ms": 9967
+    },
+    "analysis": "api/results/994306b52be0/analysis.json",
+    "replay": "api/results/994306b52be0/replay.json"
+  },
+  "reason": null,
+  "error": null,
+  "created_at": "2026-10-31T21:23:30Z",
+  "started_at": "2026-10-31T21:23:30Z",
+  "finished_at": "2026-10-31T21:24:10Z",
+  "trim": {
+    "start_ms": 0,
+    "end_ms": 9967
+  },
+  "duration_ms": 10000,
+  "people_job": "1eac976cae82",
+  "person_id": "0"
+}
