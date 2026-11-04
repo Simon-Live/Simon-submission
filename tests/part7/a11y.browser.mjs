@@ -160,14 +160,10 @@ for (const [size, width, height] of SIZES) {
   await audit(size, "follow-ladder", page);
   await ctx.close();
 
-  // the Exercise / Dance / Rehab switch in the header (it replaced the catalog mode filter)
-  ({ ctx, page } = await visit(size, width, height, "/#/", "[data-testid=kind-dance]"));
-  const kinds = page.locator('[data-testid^="kind-"]');
-  await page.getByTestId("kind-dance").click();
-  assert.equal(await page.getByTestId("kind-dance").getAttribute("aria-pressed"), "true");
-  assert.equal(await page.locator('[data-testid^="kind-"][aria-pressed="true"]').count(), 1, `${size}: one kind pressed at a time`);
-  assert.equal(await kinds.count(), 3, `${size}: exercise, dance, rehab`);
-  await audit(size, "catalog-filtered", page);
+  // the catalog with every kind's section; the header has no Exercise / Dance / Rehab switch (removed 2026-11-04)
+  ({ ctx, page } = await visit(size, width, height, "/#/", "[data-testid=section-dance]"));
+  assert.equal(await page.locator('header.bar [data-testid^="kind-"]').count(), 0, `${size}: negative: no kind switch in the header`);
+  await audit(size, "catalog-sections", page);
   await ctx.close();
   console.log(`checked - ${size} states`);
 }

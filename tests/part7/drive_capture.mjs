@@ -216,18 +216,6 @@ async function run(role, viewport) {
   const sizes = await page.evaluate(() => { const c = document.querySelector(".cam"); return { track: c.dataset.trackSize || "", take: c.dataset.takeSize || "" }; });
   check(`${tag}: the recorded take keeps the camera frame`, sizes.take !== "" && sizes.take === sizes.track, `track ${sizes.track}, take ${sizes.take}`);
 
-  if (role === "trainer") { // TICKET-193: the mode bar keeps a held take; the same kind does nothing
-    await tid("kind-exercise").click();
-    check(`${tag}: same kind tapped, the page and the take stay`, await page.evaluate(() => location.hash) === "#/record" && await tid("trim-continue").isVisible());
-    await tid("kind-dance").click();
-    await page.waitForTimeout(300);
-    check(`${tag}: another kind tapped with a take, still on #/record with the take kept`,
-      await page.evaluate(() => location.hash) === "#/record" && await tid("trim-continue").isVisible());
-    check(`${tag}: the kind changed in place`, await tid("kind-dance").getAttribute("aria-pressed") === "true"
-      && await tid("kind-exercise").getAttribute("aria-pressed") === "false");
-    await tid("kind-exercise").click(); // back, so the rest of the drive runs as before
-    await page.waitForTimeout(200);
-  }
   // R5: "Record again" retakes; the first take's object URL is released without a failed blob load (errors checked below)
   await tid("trim-back").click();
   await tid("cam-start").waitFor({ timeout: 8000 });
@@ -315,7 +303,7 @@ async function granted() {
 }
 
 // TICKET-193: with no take on the record page, another kind goes to the library as before; the same kind does not move.
-async function modeBarNoTake() {
+async function noModeBar() {   // the header's Exercise / Dance switch was removed (2026-11-04): none on #/record
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
   const page = await ctx.newPage();
   await page.route("**/api/config", (r) => r.fulfill({ json: { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 } } }));
@@ -323,12 +311,7 @@ async function modeBarNoTake() {
   await page.route("**/api/labels", (r) => r.fulfill({ json: {} }));
   await page.goto(`${BASE}#/record`);
   await page.getByTestId("cam-open").waitFor({ state: "visible", timeout: 5000 });
-  await page.getByTestId("kind-exercise").click();
-  await page.waitForTimeout(300);
-  check("mode bar, no take: the same kind stays on #/record", await page.evaluate(() => location.hash) === "#/record");
-  await page.getByTestId("kind-dance").click();
-  await page.waitForFunction(() => location.hash === "#/", null, { timeout: 3000 }).catch(() => {});
-  check("mode bar, no take: another kind goes to the library", await page.evaluate(() => location.hash) === "#/");
+  check("no mode bar: the header has no kind switch on #/record", await page.locator('header.bar [data-testid^="kind-"]').count() === 0);
   await ctx.close();
 }
 
@@ -337,7 +320,7 @@ for (const viewport of [{ width: 412, height: 915 }, { width: 1280, height: 800 
     try { await run(role, viewport); } catch (e) { check(`${role}-${viewport.width}: drive ran`, false, e.message.split("\n")[0]); }
   }
 }
-try { await modeBarNoTake(); } catch (e) { check("mode bar no take: drive ran", false, e.message.split("\n")[0]); }
+try { await noModeBar(); } catch (e) { check("mode bar no take: drive ran", false, e.message.split("\n")[0]); }
 try { await refused(); } catch (e) { check("refused: drive ran", false, e.message.split("\n")[0]); }
 try { await granted(); } catch (e) { check("granted: drive ran", false, e.message.split("\n")[0]); }
 try { await denied(); } catch (e) { check("denied: drive ran", false, e.message.split("\n")[0]); }

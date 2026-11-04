@@ -12,7 +12,7 @@ import { mountHandout } from "./handout.js";
 import { clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading } from "./progress.js";
 import { mountBuildStamp } from "./build.js";
-import { isDebug, profile, showModes } from "./flags.js";
+import { isDebug, profile } from "./flags.js";
 import { mountPendingList, mountPendingResume, mountPendingBanner } from "./pending-ui.js";
 import { startPending } from "./pending-app.js";
 import { mountShell, mountTestServerBanner } from "./shell.js";
@@ -215,9 +215,7 @@ function show() {
 
 profile(); // `?profile=submission` is read here before any screen and kept (flags.js)
 window.addEventListener("hashchange", show);
-const kindHost = document.getElementById("kind-switch");
-kindHost.hidden = !showModes(); // the submission profile hides the Exercise / Dance / Rehab choice with the other modes
-mountShell({ switchHost: kindHost });
+mountShell();
 mountTestServerBanner(); // a test stand-in server says so in a banner (self-healing.md)
 show();
 if (isDebug()) mountBuildStamp(document.getElementById("build")); // the build line shows only with ?debug=1

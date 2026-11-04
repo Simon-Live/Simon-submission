@@ -100,7 +100,6 @@ const store = (k) => page.evaluate((key) => localStorage.getItem(key), k);
 // The routine library groups cards in sections by kind; the header switch (Exercise, Dance, Rehab) is the practice mode.
 const inSection = async (key) => (await page.locator(`[data-testid="section-${key}"] .lib-thumb`).evaluateAll((els) => els.map((e) => e.dataset.testid.replace(/^entry-(rehab-)?/, "")))).sort();
 const firstSection = () => page.locator("section.lib-section").first().getAttribute("data-testid");
-const pressed = (key) => tid(`kind-${key}`).getAttribute("aria-pressed");
 
 try {
   // 1. Catalog: the kind switch and its persistence
@@ -114,25 +113,17 @@ try {
   assert.equal(new Set(ids).size, ids.length, "negative: no test id repeats");
   assert.equal(await tid("entry-knee").count(), 1, "entry-knee is on exactly one card");
   assert.equal(await tid("entry-rehab-knee").count(), 1, "the Rehab copy has its own test id");
-  assert.equal(await pressed("exercise"), "true", "no stored choice reads as Exercise");
-  await tid("kind-dance").click();
-  assert.equal(await firstSection(), "section-dance");
-  assert.equal(await store("simon.mode"), "dance");
-  await tid("kind-rehab").click();
+  assert.equal(await firstSection(), "section-exercise", "no stored choice reads as Exercise");
+  assert.equal(await page.locator('header.bar [data-testid^="kind-"]').count(), 0, "negative: no Exercise / Dance / Rehab switch in the header");
+  // the stored mode (set on a record or follow page's own picker) still orders the sections, after a reload
+  await page.evaluate(() => localStorage.setItem("simon.mode", "rehab"));
+  await go("#/");
+  await tid("entry-knee").first().waitFor();
   assert.equal(await firstSection(), "section-rehab");
   assert.deepEqual(await inSection("rehab"), ["knee"], "rehab shows only the rehab-tagged movement");
   assert.ok(!(await inSection("rehab")).includes("sq"), "negative: the plain exercise is not under rehab");
-  assert.equal(await store("simon.mode"), "rehab");
-  await tid("kind-exercise").click();
-  assert.equal(await store("simon.mode"), "fitness", "Exercise is stored as fitness");
-  assert.equal(await firstSection(), "section-exercise");
-  await tid("kind-rehab").click();
-  await go("#/");
-  await tid("entry-knee").first().waitFor();
-  assert.equal(await pressed("rehab"), "true", "the choice survives a reload");
-  assert.equal(await firstSection(), "section-rehab");
   await shot("1-catalog-rehab");
-  ok("catalog: the kind switch orders the sections, is stored in simon.mode, kept after reload");
+  ok("catalog: every kind's section is listed, the stored mode orders them; no switch in the header");
 
   // 2. Follow screen: the default comes from the category until a choice is stored
   await page.evaluate(() => localStorage.clear());

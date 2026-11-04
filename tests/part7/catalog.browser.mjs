@@ -107,7 +107,8 @@ const fresh = async () => {
 // The routine library (redesign): cards grouped in sections by kind; a rehab-tagged move shows under Rehab and its own kind.
 const names = (page, section) => page.locator(`[data-testid="section-${section}"] .lib-name`).allTextContents();
 const allIds = async (page) => [...new Set(await page.locator('[data-testid="entries"] .lib-thumb').evaluateAll((els) => els.map((e) => e.dataset.testid.replace(/^entry-rehab-/, "entry-"))))]; // distinct movements: the Rehab copy has its own test id
-const kindSwitchShown = (page) => page.getByTestId("kind-rehab").isVisible();
+// the Rehab section shows in the full app and not in the submission or judge profile (the header has no mode switch)
+const rehabShown = (page) => page.locator('[data-testid="section-rehab"]').isVisible();
 const ok = (msg) => console.log(`ok  ${msg}`);
 
 try {
@@ -123,7 +124,8 @@ try {
   assert.equal(await page.locator("#build").isVisible(), false, "no build line");
   assert.equal(await page.locator('[data-testid="build-line"]').count(), 0);
   assert.match(await page.getByTestId("pitch").textContent(), /Record a movement once.*3D reference.*students/);
-  assert.equal(await kindSwitchShown(page), true, "the Exercise / Dance / Rehab switch is visible by default");
+  assert.equal(await page.locator('header.bar [data-testid^="kind-"]').count(), 0, "negative: no Exercise / Dance switch in the header (removed 2026-11-04)");
+  assert.equal(await rehabShown(page), true, "the Rehab section is shown by default");
   // the header height variable is measured, not a constant: scrolls stop right below the real header
   const headerPx = () => page.evaluate(() => ({ css: getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim(), box: Math.round(document.querySelector("header.bar").getBoundingClientRect().height) }));
   const hh = await headerPx();
@@ -150,7 +152,7 @@ try {
   assert.deepEqual(await names(page, "exercise"), ["Squat"]);
   assert.deepEqual(await names(page, "dance"), ["Arm wave"]);
   assert.equal((await allIds(page)).length, 2, "curated list only");
-  assert.equal(await kindSwitchShown(page), false);
+  assert.equal(await rehabShown(page), false);
   await page.goto(`${BASE}#/follow/arm-wave`);
   await page.reload();
   await page.getByTestId("lang-picker-slot").waitFor({ state: "attached" });
@@ -158,7 +160,7 @@ try {
   assert.equal(await page.getByTestId("mode-safety").count(), 0);
   await page.goto(`${BASE}?profile=default`);
   await page.waitForSelector('[data-testid="entry-squat"]');
-  assert.equal(await kindSwitchShown(page), true);
+  assert.equal(await rehabShown(page), true);
   ok("?profile=submission hides the mode picker and keeps to the curated list; ?profile=default restores them");
   await page.close();
 
@@ -245,32 +247,12 @@ try {
   assert.match(await page.getByTestId("delete-done").textContent(), /stays in the catalog because/, "the server kept the movement and the page says so");
   ok("trainer job view: delete my recording keeps the movement; the second option removes it when it can");
 
-  // ---- the Exercise / Dance / Rehab bar on a movement page (TICKET-186): it leaves for that kind's library; a result stays
-  const firstSection = (pg) => pg.locator('[data-testid="entries"] .lib-section').first().getAttribute("data-testid");
-  // each tap names a kind other than the one chosen before it: the same kind does nothing (TICKET-193)
+  // ---- no Exercise / Dance switch in the header (removed 2026-11-04): a movement page has none either
   await page.goto(`${BASE}#/watch/arm-wave`);
-  await page.getByTestId("kind-exercise").click();
-  await page.waitForTimeout(400);
-  assert.match(page.url(), /#\/watch\/arm-wave$/, "negative: the kind already chosen does not leave the page");
-  await page.getByTestId("kind-dance").click();
-  await page.waitForSelector('[data-testid="section-dance"]');
-  assert.match(page.url(), /#\/$/, "witness 1: the address is the catalog");
-  assert.equal(await firstSection(page), "section-dance", "witness 2: the Dance cards come first");
-  await page.goto(`${BASE}#/follow/squat`);
-  await page.getByTestId("kind-exercise").click();
-  await page.waitForSelector('[data-testid="section-exercise"]');
-  assert.match(page.url(), /#\/$/);
-  assert.equal(await firstSection(page), "section-exercise");
-  await page.goto(`${BASE}#/record`);
-  await page.getByTestId("kind-dance").click();
-  await page.waitForSelector('[data-testid="section-dance"]');
-  assert.match(page.url(), /#\/$/);
-  await page.goto(`${BASE}#/result/rj1`);
-  await page.waitForTimeout(1500);
-  await page.getByTestId("kind-exercise").click();
-  await page.waitForTimeout(500);
-  assert.match(page.url(), /#\/result\/rj1$/, "negative: switching the bar on a result does not navigate");
-  ok("kind bar: watch, follow and record go to the chosen kind's library; a result stays");
+  await page.waitForTimeout(800);
+  assert.equal(await page.locator('header.bar [data-testid^="kind-"]').count(), 0, "negative: no kind switch on a movement page");
+  assert.match(page.url(), /#\/watch\/arm-wave$/);
+  ok("header: no Exercise / Dance switch on a movement page");
 
   // ---- the judge URL: the first visit opens curated with the hero take and without test boards; ?profile=default shows all
   judge.on = true;
@@ -280,7 +262,7 @@ try {
   await page.waitForSelector('[data-testid="hero-link"]');
   assert.equal(await page.getByTestId("hero-link").getAttribute("href"), "#/result/rj1");
   assert.match(await page.getByTestId("hero-take").textContent(), /Scored 81 out of 100/);
-  assert.equal(await kindSwitchShown(page), false, "negative: the judge view has no mode picker");
+  assert.equal(await rehabShown(page), false, "negative: the judge view has no Rehab section");
   assert.equal(await page.locator('[data-testid="entry-extra-move"]').count(), 0, "negative: only the curated list");
   await page.goto(`${BASE}#/watch/arm-wave`);
   await page.waitForSelector('[data-testid="challenge-link-bReal"]');
@@ -293,7 +275,7 @@ try {
   const heroBefore = judge.heroAsked;
   await page.goto(`${BASE}#/`);
   await page.waitForSelector('[data-testid="entry-extra-move"]');
-  assert.equal(await kindSwitchShown(page), true, "?profile=default is kept: the picker is back");
+  assert.equal(await rehabShown(page), true, "?profile=default is kept: the Rehab section is back");
   assert.equal(await page.locator('[data-testid="hero-link"]').count(), 0, "negative: no hero link in the full app");
   assert.equal(judge.heroAsked, heroBefore, "the full app does not ask for the hero");
   judge.on = false;

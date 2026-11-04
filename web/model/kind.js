@@ -1,6 +1,7 @@
 // Exercise, dance or rehab: which kind of movement the person is browsing and practising. Logic only, no DOM.
 // It is stored as the practice mode (modes.js), whose values jobs and the result note rely on: exercise = fitness,
-// dance = dance, rehab = rehab; no choice reads as exercise. A change is announced with the `simon:kind` event.
+// dance = dance, rehab = rehab; no choice reads as exercise. A change is announced with the `simon:kind` event. The
+// choice is made on a record or follow page's mode picker; the header switch is gone (2026-11-04).
 import { loadChoice, saveChoice } from "../modes.js";
 
 export const KINDS = ["exercise", "dance", "rehab"];
@@ -44,32 +45,6 @@ export function kindOfEntry(entry) {
 export function entryInKind(entry, kind, labels = {}) {
   if (kind === "rehab") return (((labels || {})[entry.id] || {}).tags || []).includes(REHAB_TAG);
   return kindOfEntry(entry) === kind;
-}
-
-const KIND_BOUND_ROUTE = /^#?\/?(watch\/[^/]+|follow\/[^/]+(\/c\/[^/]+)?|record)\/?$/;
-
-/**
- * Where a change of kind sends the person: "#/" (the library of that kind) from a watch, follow or record page, else
- * null (stay). The kind of the movement on those pages is not known without a fetch, so they always leave; a result,
- * a job, the catalog and every other route are left alone. Query strings on the hash are ignored.
- */
-export function routeAfterKindChange(hash) {
-  const path = String(hash || "").split("?")[0];
-  return KIND_BOUND_ROUTE.test(path) ? "#/" : null;
-}
-
-const TAKE_ROUTE = /^#?\/?(follow\/[^/]+(\/c\/[^/]+)?|record)\/?$/;
-
-/**
- * Where a tap on the mode bar sends the person (TICKET-193): null when the kind did not change, and null on a record or
- * follow page that records or holds an unsubmitted take (the kind changes in place; the take flow reads it at submit);
- * else what `routeAfterKindChange` says.
- */
-export function routeForKindTap(hash, { changed, holdsTake }) {
-  if (!changed) return null;
-  const path = String(hash || "").split("?")[0];
-  if (holdsTake && TAKE_ROUTE.test(path)) return null;
-  return routeAfterKindChange(hash);
 }
 
 /** The kind a stored practice mode stands for (fitness -> exercise), or null for an unknown or missing mode. */
