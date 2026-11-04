@@ -14,6 +14,7 @@ rebuilds from them without calling the API. --fresh sends the video again.
 
 import json
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -786,6 +787,7 @@ def process(path, fresh=False):
     run_path, tracks_path, spark_path = saved_paths(path.stem)
     print("  uploading", flush=True)
     file_id = upload_video(work)
+    print(f"  uploaded file_id={file_id}", flush=True)   # TICKET-388: every clip at Meta can be matched to its run
     warnings = []
     spark_text = ""
     try:
@@ -817,7 +819,18 @@ def inbox_videos():
     return videos
 
 
+def _stop_cleanly(signum, frame):
+    """SIGTERM (Part 7 stopping a run past its time budget) ends the run like an exception, so every `finally` runs and
+    an uploaded clip is still deleted from Meta (TICKET-388). Without a handler Python exits at once and skips them."""
+    raise SystemExit(128 + signum)
+
+
+def install_stop_handler():
+    signal.signal(signal.SIGTERM, _stop_cleanly)
+
+
 def main(argv=None):
+    install_stop_handler()
     args = list(sys.argv[1:] if argv is None else argv)
     fresh = "--fresh" in args
     args = [arg for arg in args if arg != "--fresh"]
