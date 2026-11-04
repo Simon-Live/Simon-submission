@@ -1,44 +1,60 @@
 # Simon
 
-[![CI](https://github.com/moalborati/simon-part-7-stitching-app/actions/workflows/ci.yml/badge.svg)](https://github.com/moalborati/simon-part-7-stitching-app/actions/workflows/ci.yml)
+[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml)
 
-Architecture on one page: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), three diagrams with each node linked to its code.
+## Abstract
 
-Simon shows a student their movement beside their teacher's in 3D and points to where the two differ; a low score is not by itself a mistake.
-It is for dance and movement teachers with remote students: the teacher records once, each student films
-a take on a phone, and Simon shows both bodies side by side with timed notes on where the student differs.
+Simon lets anyone practise a movement with feedback from the person who taught it. A trainer, dance teacher or
+physiotherapist records a movement once: an exercise, a dance or a rehab routine. A student follows it in front of a
+phone or laptop camera, and Simon turns both videos into 3D bodies, lines the student's take up with the trainer's,
+compares them joint by joint and moment by moment, and gives a score with timed notes in plain words on what to change
+("keep your elbows closer in"). No sensors, special camera or account are needed.
 
-Built for the Meta Global AI Developer Hackathon, theme **Push the Frontier**: SAM 3.1, SAM 3D Body and
-Muse Spark give a machine a movement it has never been configured for, learned from one demonstration filmed
-at any angle.
+Simon is built on Meta's models: SAM 3.1 finds the people in each frame, SAM 3D Body and MHR build their 3D bodies, and
+Muse Spark words the feedback. Simon's own code lines the takes up, measures the differences and scores them. It was
+built in seven parts for the Meta Global AI Developer Hackathon (theme **Push the Frontier**): a machine learns a
+movement it was never configured for from one demonstration filmed at any angle.
 
-![The result screen on the committed example: score, trainer and student in 3D, timed notes](tests/part7/screens/02-side-by-side.png)
+## Try it
 
-The screenshot is the committed example result (`#/result/fixture`), not a live run.
-Demo video: link to be added at submission.
+**[simon.live](https://simon.live)**: pick a movement, press Use routine, record or upload your take, and get your
+score and feedback. Trainers press Record to add their own movement. The footer's "How to use" page walks through both.
 
-## For judges: try Simon on staging
+## Clone and run it
 
-Open <staging URL, sent separately> on a phone, or in a desktop browser with a webcam.
+Needs Python 3.12, [uv](https://docs.astral.sh/uv/), `git`, [Git LFS](https://git-lfs.com) (for Part 1's test
+videos), `make`, `ffmpeg` and `curl`.
 
-1. The browser asks for a username and password before Simon loads. Type the ones given to judges with the URL.
-2. Home lists the movements. The featured take is the card at the top, "See a finished take": a scored squat, grade C, with both bodies in 3D.
-3. To sign in, tap Sign in, type any email address and tap Send. On the next screen tap "Open the test mail outbox to get your code", tap Show, then tap the sign-in link. Me then says "Signed in as" with your address.
-4. Tap the simon logo, tap a movement card, then tap "Follow this movement".
-5. Tap "Open camera", allow the camera and do the movement in view, or tap "Upload a video".
-6. Check the trim and tap Continue. Pick yourself if Simon asks. The analysis starts by itself after 60 s, or tap Analyse.
-7. Wait on "Working on it" until the result opens.
-8. Read the score and the timed notes, open the 3D view to see the trainer and you on one clock, and scroll to "How this was made" for the Meta models that ran.
-9. Tap "Share this result", tap Create link and copy the link.
+```bash
+git lfs install
+git clone https://github.com/Simon-Live/Simon-submission.git
+cd Simon-submission
+```
 
-Limits you will meet:
-- A share link opens only with the staging login, so whoever you send it to needs the same username and password.
-- The wait: the recorded run took 7 minutes from upload to result, and a take waits longer while another job holds the GPU.
-- Parts 1 to 6 are in this repo under `modules/` (ADR-0008): a plain clone has everything, and CI runs the full suite.
-- The team's hub repo (the plan, the seven part briefs, decisions, design docs and the blueprint) is under [`hub/`](hub/), with its history.
-- Part 1's three labelled test videos are in `modules/part-1/inbox/` through Git LFS: install [Git LFS](https://git-lfs.com) before cloning to get them.
+**The full pipeline with our keys (until Nov 9, 2026, 11:59 PM ET).** No GPU, key or Modal account needed:
 
-This path was walked on staging through the real UI (recipe `qa/recipes/judge-path.yaml`, run `20261102162151` on build `333aefca5`, and the second pass `20261102163616-result`; evidence `qa/evidence/judge-path/` on branch `lane/qa-auth-r20`). The hero card text was checked on build `3c9cf0904` (run `20261102184554`).
+```bash
+deploy/judges/run.sh
+```
+
+Open `http://127.0.0.1:8727`, then record or upload a take. Your Simon sends its Meta API calls and its Part 2 runs
+to our relay, which holds Simon's key and runs Part 2 on our Modal GPU with a shared budget
+([deploy/judges/README.md](deploy/judges/README.md)). A take takes a few minutes, most of it Part 2 on the GPU.
+
+**Without any keys.** `make dev`, then open `http://127.0.0.1:8727/#/result/fixture`: the result screen on a
+committed example, with the score, both bodies in 3D and the timed notes.
+
+**With your own keys and GPU.** A CUDA GPU with 12 GB free, `make parts` to set up Parts 1 to 6, and a Meta Model
+API key. [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md) covers setup, keys, running and debugging.
+
+## More details
+
+- **[The blueprint](blueprint.html)** (open the file in a browser): the whole design on one page, with the features,
+  requirements, scoring, architecture, risks and status.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): three diagrams, each node linked to its code.
+- What is in this repo: Part 7 (the app) at the top, Parts 1 to 6 under `modules/` with their history
+  ([modules/PINS.json](modules/PINS.json) names where each came from), and the team's hub repo (plan, part briefs,
+  decisions, design docs) under [`hub/`](hub/).
 
 ## How it works
 
@@ -147,38 +163,6 @@ Staging job summaries since the release 20 live build, test jobs left out (detai
 
 A resident Part 2 worker cut the 3D step from 97.1 s to 51.7 s mean over three runs each on an RTX 5090
 (commit `1d54206`).
-
-## Try it without a GPU
-
-```bash
-git clone https://github.com/Simon-Live/Simon-submission.git
-cd Simon-submission
-make dev
-```
-
-Open `http://127.0.0.1:8727/#/result/fixture`. This is the result screen on a committed example: score,
-the two bodies in 3D (front, side, top, overlay) and the timed notes. It needs no GPU and no keys. The app needs Python 3.12, [uv](https://docs.astral.sh/uv/), `git`, `make` and `ffmpeg`.
-
-## Run the full pipeline with our keys (judges, until Nov 9)
-
-Record a movement, follow it and get your own score and feedback on your machine, with no GPU, no key and no Modal
-account. Your Simon sends its Meta API calls and its Part 2 runs to our relay, which holds Simon's key and runs Part 2
-on our Modal GPU ([deploy/judges/README.md](deploy/judges/README.md)):
-
-```bash
-git clone https://github.com/Simon-Live/Simon-submission.git
-cd Simon-submission
-deploy/judges/run.sh
-```
-
-Open `http://127.0.0.1:8727`. The relay is open until **Nov 9, 2026, 11:59 PM ET** with a shared budget; when it is
-closed, [simon.live](https://simon.live) runs the same app. It forwards only the calls Simon makes. This route needs the
-same tools as above plus `curl`; a take takes a few minutes, most of it Part 2 on the GPU.
-
-## Run it with your own keys and GPU
-
-Real jobs on your own hardware need a CUDA GPU with 12 GB free, `make parts` to set up Parts 1 to 6, and keys for the
-Meta Model API. [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md) covers setup, keys, running and debugging.
 
 ## Tests
 
