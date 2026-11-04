@@ -1,0 +1,50 @@
+{
+  "id": "high-knees-138674fe",
+  "name": "High knees",
+  "video_uri": "video.mp4",
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-11-04T09:47:05Z",
+  "schema_version": 1,
+  "category": "exercise",
+  "description": "Source: \"Man Exercising High Knees\", Pexels video 6326808 (https://www.pexels.com/video/man-exercising-high-knees-6326808/), Pexels License. Trimmed to 0 to 16 s. Made with Simon's trainer pipeline (Parts 1 to 4, Part 6) on 2026-11-04.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 15933,
+  "files_source": "import",
+  "provenance": {
+    "keyframes": {
+      "part": 3,
+      "format": "simon.keyframes.v1",
+      "detected_by": "version",
+      "sha256": "5854080f35650169f5881a7886deb7167324fd9322b31612ce8f94a9b8ffe244",
+      "bytes": 2492,
+      "original_name": "keyframes.json"
+    },
+    "skeleton": {
+      "part": 3,
+      "format": "simon.skeleton.v1",
+      "detected_by": "version",
+      "sha256": "dfe79529561d0b2cb49ddfad10b7584a19d89e873a1e57ae3814ccebca494d31",
+      "bytes": 311780,
+      "original_name": "skeleton.json"
+    },
+    "animation": {
+      "part": 4,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "b00a3f59774f090273882e8e95b91209a7e11303b7409623b6797bfe57c3b3f1",
+      "bytes": 1048583,
+      "original_name": "animation.json"
+    },
+    "video": {
+      "part": null,
+      "format": null,
+      "detected_by": "file",
+      "sha256": "b32d8eecbe3217a2a66fc32737af09a7a0c824f1bfeb048ad86081d36dff41f2",
+      "bytes": 4426443,
+      "original_name": "video.mp4"
+    }
+  },
+  "visitor": false
+}

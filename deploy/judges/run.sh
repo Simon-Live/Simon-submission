@@ -39,6 +39,16 @@ PORT="${SIMON_PORT:-8727}"
 port_free() { python3 -c "import socket,sys; s=socket.socket(); s.bind(('127.0.0.1', int(sys.argv[1])))" "$1" 2>/dev/null; }
 for _ in $(seq 1 20); do port_free "$PORT" && break; echo "Port $PORT is in use; trying $((PORT + 1))."; PORT=$((PORT + 1)); done
 
+# The catalog opens with Part 6's eight built-in samples and the judges' four movements made from stock clips
+# (deploy/judges/catalog/SOURCES.md). Only missing entries are copied, so a judge's own recordings are never touched.
+CATALOG="${SIMON7_STATE_DIR:-$HOME/.local/state/simon-part-7}/dev/catalog"
+mkdir -p "$CATALOG"
+if [ -z "$(ls -A "$CATALOG" 2>/dev/null)" ]; then
+  for e in modules/part-6/fixtures/output/catalog/*/; do cp -R "${e%/}" "$CATALOG/"; done
+fi
+for e in deploy/judges/catalog/*/; do [ -e "$CATALOG/$(basename "$e")" ] || cp -R "${e%/}" "$CATALOG/"; done   # no trailing slash: macOS cp would copy the contents
+echo "Catalog: $(ls -d "$CATALOG"/*/ | wc -l | tr -d ' ') movements in $CATALOG"
+
 make setup
 make setup-parts || echo "Part setup reported a problem above; Part 2 runs on the relay, so the app may still work." >&2
 echo

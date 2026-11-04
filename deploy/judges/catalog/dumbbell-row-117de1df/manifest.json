@@ -1,0 +1,50 @@
+{
+  "id": "dumbbell-row-117de1df",
+  "name": "Dumbbell row",
+  "video_uri": "video.mp4",
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-11-04T09:49:11Z",
+  "schema_version": 1,
+  "category": "exercise",
+  "description": "Source: stock clip 13749263 (Pexels download name 13749263_3840_2160_24fps.mp4), one of Part 1's test videos. Made with Simon's trainer pipeline (Parts 1 to 4, Part 6) on 2026-11-04.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 11067,
+  "files_source": "import",
+  "provenance": {
+    "keyframes": {
+      "part": 1,
+      "format": "simon.keyframes/part1",
+      "detected_by": "version",
+      "sha256": "283c3fb426d610551c4e9f2dc5f1620b74351fc5ac4f8c451ce7227f4116727c",
+      "bytes": 1562,
+      "original_name": "keyframes.json"
+    },
+    "skeleton": {
+      "part": 3,
+      "format": "simon.skeleton.v1",
+      "detected_by": "version",
+      "sha256": "8a9ae98d97cbec1fed3b79b8175d654ad33ce25c2d8917135650f59416f67442",
+      "bytes": 223351,
+      "original_name": "skeleton.json"
+    },
+    "animation": {
+      "part": 4,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "8a7a314e90d4b5196571606f1344d7f8c66fc233399d7f97865f58a56873ac69",
+      "bytes": 730648,
+      "original_name": "animation.json"
+    },
+    "video": {
+      "part": null,
+      "format": null,
+      "detected_by": "file",
+      "sha256": "590f4d34b870049f748b1644bc29cb62e68c36851d7940dbd60913a5f647d2e4",
+      "bytes": 2404065,
+      "original_name": "video.mp4"
+    }
+  },
+  "visitor": false
+}

@@ -1,0 +1,71 @@
+{
+  "format": "simon.keyframes/part1",
+  "video": "inbox/p7-590f4d34b870.mp4",
+  "fps": 23.98,
+  "analysis_fps": 15.0,
+  "spark_names": "spark",
+  "quality": {
+    "verdict": "enhanced",
+    "brightness": 63.1,
+    "spread": 239.0,
+    "blur": 5.13,
+    "motion": 16.017,
+    "near_black": 0.317,
+    "noise": 0.69,
+    "flicker": 0.26,
+    "analysis_width": 960,
+    "filters": [
+      "hqdn3d=luma_spatial=1.5:chroma_spatial=1.5:luma_tmp=2:chroma_tmp=2",
+      "eq=gamma=1.66"
+    ]
+  },
+  "people": [
+    {
+      "id": 0,
+      "repetitions": [
+        {
+          "rep": 1,
+          "movement": "dumbbell_romanian_deadlift",
+          "keyframes": [
+            {
+              "name": "hinged_low",
+              "frame": 50,
+              "t_ms": 2067
+            },
+            {
+              "name": "mid_lift",
+              "frame": 113,
+              "t_ms": 4733
+            },
+            {
+              "name": "standing_lockout",
+              "frame": 190,
+              "t_ms": 7933
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "movement": "dumbbell_romanian_deadlift",
+          "keyframes": [
+            {
+              "name": "standing_lockout",
+              "frame": 206,
+              "t_ms": 8600
+            },
+            {
+              "name": "hinged_low",
+              "frame": 251,
+              "t_ms": 10467
+            },
+            {
+              "name": "standing_lockout",
+              "frame": 265,
+              "t_ms": 11067
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

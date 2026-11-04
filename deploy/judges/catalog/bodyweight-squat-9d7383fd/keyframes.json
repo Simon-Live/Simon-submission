@@ -1,0 +1,68 @@
+{
+  "format": "simon.keyframes/part1",
+  "video": "inbox/p7-bedbf086b2c7.mp4",
+  "fps": 29.97,
+  "analysis_fps": 15.0,
+  "spark_names": "spark",
+  "quality": {
+    "verdict": "fine",
+    "brightness": 197.1,
+    "spread": 201.0,
+    "blur": 6.23,
+    "motion": 5.009,
+    "near_black": 0.0,
+    "noise": 0.69,
+    "flicker": 0.36,
+    "analysis_width": 640,
+    "filters": []
+  },
+  "people": [
+    {
+      "id": 0,
+      "repetitions": [
+        {
+          "rep": 1,
+          "movement": "squat",
+          "keyframes": [
+            {
+              "name": "standing_start",
+              "frame": 44,
+              "t_ms": 1467
+            },
+            {
+              "name": "squat_bottom",
+              "frame": 68,
+              "t_ms": 2267
+            },
+            {
+              "name": "standing_top",
+              "frame": 98,
+              "t_ms": 3267
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "movement": "squat",
+          "keyframes": [
+            {
+              "name": "standing_start",
+              "frame": 116,
+              "t_ms": 3867
+            },
+            {
+              "name": "squat_bottom",
+              "frame": 146,
+              "t_ms": 4867
+            },
+            {
+              "name": "standing_top",
+              "frame": 174,
+              "t_ms": 5800
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "group-dance-23b45646",
+  "name": "Group dance",
+  "video_uri": "video.mp4",
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-11-04T09:49:50Z",
+  "schema_version": 1,
+  "category": "dance",
+  "description": "Source: stock clip 7480487 (Pexels download name 7480487-uhd_2160_3840_25fps.mp4), one of Part 1's test videos. Made with Simon's trainer pipeline (Parts 1 to 4, Part 6) on 2026-11-04.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 16300,
+  "files_source": "import",
+  "provenance": {
+    "keyframes": {
+      "part": 3,
+      "format": "simon.keyframes.v1",
+      "detected_by": "version",
+      "sha256": "013d5c589ab8a1207e31771ecd75154332d43633526d5415a700b71e94c18d63",
+      "bytes": 2528,
+      "original_name": "keyframes.json"
+    },
+    "skeleton": {
+      "part": 3,
+      "format": "simon.skeleton.v1",
+      "detected_by": "version",
+      "sha256": "b78f3ce0e3bfe4b477ea94d757cf2efd216ed24c02e7768d7d4ea3640b24eddd",
+      "bytes": 318125,
+      "original_name": "skeleton.json"
+    },
+    "animation": {
+      "part": 4,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "98778db096cf02f56720d6a61d74364aa4e78de6092029f76eaf4a26661a9997",
+      "bytes": 840879,
+      "original_name": "animation.json"
+    },
+    "video": {
+      "part": null,
+      "format": null,
+      "detected_by": "file",
+      "sha256": "f657a9a0f287015aaf9f226802589a883589969b4afd52cc044b8bba223d496d",
+      "bytes": 3313344,
+      "original_name": "video.mp4"
+    }
+  },
+  "visitor": false
+}

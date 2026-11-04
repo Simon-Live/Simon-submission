@@ -7,6 +7,7 @@ dist/
 .env
 out/
 *.mp4
+!deploy/judges/catalog/*/video.mp4
 # docs/specs/demo.md: the submission video is committed (TICKET-028)
 !demo/simon-end-to-end.mp4
 !fixtures/**/*.json
