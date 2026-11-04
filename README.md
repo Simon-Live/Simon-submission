@@ -37,7 +37,7 @@ cd Simon-submission
 deploy/judges/run.sh
 ```
 
-Open `http://127.0.0.1:8727`, then record or upload a take. Your Simon sends its Meta API calls and its Part 2 runs
+Open the address it prints (`http://127.0.0.1:8727`, or the next free port), then record or upload a take. Your Simon sends its Meta API calls and its Part 2 runs
 to our relay, which holds Simon's key and runs Part 2 on our Modal GPU with a shared budget
 ([deploy/judges/README.md](deploy/judges/README.md)). A take takes a few minutes, most of it Part 2 on the GPU.
 

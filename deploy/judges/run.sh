@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run the whole of Simon on this machine through the judges' relay (deploy/judges/README.md): Simon's Meta API key
 # and Part 2 on Simon's Modal GPU, without a GPU, a key or a Modal account here. Open until Nov 9, 2026, 11:59 PM ET.
-#   deploy/judges/run.sh            then open http://127.0.0.1:8727
-# Needs Python 3.12, uv, git, make and ffmpeg. SIMON_RELAY points it at another relay.
+#   deploy/judges/run.sh            then open the address it prints (http://127.0.0.1:8727 unless that port is taken)
+# Needs Python 3.12, uv, git, make and ffmpeg. SIMON_RELAY points it at another relay, SIMON_PORT picks the port.
 set -euo pipefail
 
 RELAY="${SIMON_RELAY:-https://shrutidoshi94--simon-judges-relay-web.us-east.modal.run}"
@@ -34,7 +34,13 @@ export SIMON7_PART2_REMOTE=modal
 export SIMON7_P2_TRACKER=local-sam31               # tracking on that GPU (the relay insists on it anyway)
 export SIMON7_PART1_SPEND_CAP_USD="${SIMON7_PART1_SPEND_CAP_USD:-5}"   # Part 1 runs only with a cap set
 
+# the first free port from SIMON_PORT (default 8727): another Simon or app already on 8727 must not stop this one
+PORT="${SIMON_PORT:-8727}"
+port_free() { python3 -c "import socket,sys; s=socket.socket(); s.bind(('127.0.0.1', int(sys.argv[1])))" "$1" 2>/dev/null; }
+for _ in $(seq 1 20); do port_free "$PORT" && break; echo "Port $PORT is in use; trying $((PORT + 1))."; PORT=$((PORT + 1)); done
+
 make setup
 make setup-parts || echo "Part setup reported a problem above; Part 2 runs on the relay, so the app may still work." >&2
-echo "Starting Simon at http://127.0.0.1:8727"
-exec make serve
+echo
+echo "Starting Simon: open http://127.0.0.1:$PORT"
+exec uv run python -m part7 serve --host 127.0.0.1 --port "$PORT" --base-path /
