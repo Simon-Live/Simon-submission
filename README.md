@@ -29,6 +29,9 @@ deploy/judges/run.sh
 ```
 
 Open the address it prints (`http://127.0.0.1:8727`, or the next free port), then follow a movement or record one.
+The catalog opens with twelve movements: Part 6's eight built-in samples and four made from openly licensed stock
+clips with Simon's own trainer pipeline (High knees, Bodyweight squat, Group dance, Dumbbell row;
+[sources](deploy/judges/catalog/SOURCES.md)).
 Your copy of Simon runs Parts 1 to 7 here and sends its Meta Model API calls and its GPU work (SAM 3.1, SAM 3D Body,
 MHR, SAM 3D Objects) to our relay, which holds Simon's key and runs on our Modal GPU with a shared budget
 ([deploy/judges/README.md](deploy/judges/README.md)). Muse Spark Open runs on Baseten with its own key, so on this
