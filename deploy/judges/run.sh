@@ -40,13 +40,19 @@ port_free() { python3 -c "import socket,sys; s=socket.socket(); s.bind(('127.0.0
 for _ in $(seq 1 20); do port_free "$PORT" && break; echo "Port $PORT is in use; trying $((PORT + 1))."; PORT=$((PORT + 1)); done
 
 # The catalog opens with Part 6's eight built-in samples and the judges' four movements made from stock clips
-# (deploy/judges/catalog/SOURCES.md). Only missing entries are copied, so a judge's own recordings are never touched.
+# (deploy/judges/catalog/SOURCES.md). The four are ours: every start copies their files over, so a copy left by an older
+# run.sh cannot stay stale (the server hides a row-less entry whose manifest is not marked as a sample). A judge's own
+# recordings live in other folders and are never touched; a file we do not ship stays in its folder.
 CATALOG="${SIMON7_STATE_DIR:-$HOME/.local/state/simon-part-7}/dev/catalog"
 mkdir -p "$CATALOG"
 if [ -z "$(ls -A "$CATALOG" 2>/dev/null)" ]; then
   for e in modules/part-6/fixtures/output/catalog/*/; do cp -R "${e%/}" "$CATALOG/"; done
 fi
-for e in deploy/judges/catalog/*/; do [ -e "$CATALOG/$(basename "$e")" ] || cp -R "${e%/}" "$CATALOG/"; done   # no trailing slash: macOS cp would copy the contents
+for e in deploy/judges/catalog/*/; do
+  dest="$CATALOG/$(basename "$e")"
+  mkdir -p "$dest"
+  cp -R "${e%/}/." "$dest/"   # "dir/." copies the contents into dest the same way on macOS and Linux
+done
 echo "Catalog: $(ls -d "$CATALOG"/*/ | wc -l | tr -d ' ') movements in $CATALOG"
 
 make setup
