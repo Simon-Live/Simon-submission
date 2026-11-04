@@ -203,7 +203,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
   <div class="meta">
     <span class="chip">Meta Global AI Developer Hackathon · <b>Indie track</b></span>
     <span class="chip">Due <b>Wed 4 Nov 2026, 9 PM ET</b></span>
-    <span class="chip">State as of <b>4 Nov 2026, 06:10 UTC</b></span>
+    <span class="chip">State as of <b>4 Nov 2026, 06:40 UTC</b></span>
     <span class="chip">Hub <b>moalborati/simon</b></span>
   </div>
 </header>
@@ -320,7 +320,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
     <thead><tr><th>Feature</th><th>What the user sees</th><th>Where</th><th>Status</th></tr></thead>
     <tbody>
       <tr><td>Routine library</td><td>Cards by kind, search, "Use routine"</td><td>Part 6 + Part 7 UI</td><td><span class="status s-done">Done (redesign)</span></td></tr>
-      <tr><td>Kind switch</td><td>Exercise / Dance / Rehab in the header; filters the library and words the result</td><td>Part 7 UI</td><td><span class="status s-done">Done (redesign)</span></td></tr>
+      <tr><td>Kind switch</td><td>Removed from the header (team, 4 Nov): the library lists every kind's section, and a record or follow page keeps its own mode picker; branch <code>remove-kind-switch</code></td><td>Part 7 UI</td><td><span class="status s-done">Removed</span></td></tr>
       <tr><td>Record a routine</td><td>Camera preview, countdown, length, trim, upload</td><td>Part 7, Parts 1–4, 6</td><td><span class="status s-done">Done</span></td></tr>
       <tr><td>Follow a routine</td><td>Trainer video mirrored beside your camera, in step</td><td>Part 7</td><td><span class="status s-done">Done</span></td></tr>
       <tr><td>Live check</td><td>Your joints on the preview; joints more than 25° off flagged as you move</td><td>Part 7 (MediaPipe)</td><td><span class="status s-done">Done</span></td></tr>
@@ -341,7 +341,7 @@ footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line);
       <tr><td>Challenges</td><td>Share a score, friend and crew boards, sponsored boards, end dates</td><td>Part 7</td><td><span class="status s-done">Done (brand theme)</span></td></tr>
       <tr><td>Capture screen redesign</td><td>Reference routine on top, your camera below, Recording pill, ring record button with an "↑ Upload a video" pill beside it (words shown, not a bare arrow; branch <code>upload-label</code>), steady-phone tip, and a <b>small record button on the camera preview itself</b> (a lime ring with a pink dot, like a video player's play button; a 46 px tap area), so Record shows with the camera without scrolling</td><td>Part 7 UI (<code>record-overlay</code> <code>fffb73b</code>)</td><td><span class="status s-part">Record button in release 23</span></td></tr>
       <tr><td>Theme</td><td>Black with lime, hot pink chalk powder in two corners, halftone dots on outer cards only, a 60% content column on wide screens, a bright pink header divider and a lime Record button with a video icon</td><td>Part 7 UI</td><td><span class="status s-done">Done (release 20)</span></td></tr>
-      <tr><td>Phone header</td><td>On phones of 360 px and up, the dog, the Exercise / Dance switch, Record, Me and Sign in stay on one row (a 384 px Galaxy S24 Ultra wrapped the links under the switch); branch <code>header-phone</code></td><td>Part 7</td><td><span class="status s-done">Built</span></td></tr>
+      <tr><td>Phone header</td><td>The logo at the left and Record, Me and Sign in at the right, on one row (a 384 px Galaxy S24 Ultra had wrapped the links under the Exercise / Dance switch, which is now removed)</td><td>Part 7</td><td><span class="status s-done">Built</span></td></tr>
       <tr><td>Logo and loading</td><td>A see-through outline dog holding the "simon" sign in Sniglet, hanging below the header's divider; pink paws circle the splash; lime paws walk while a take uploads, is checked and is processed</td><td>Part 7 UI</td><td><span class="status s-done">Live on staging</span></td></tr>
       <tr><td>Your takes over time</td><td>Opt-in sign-in with a history of your takes; a Muse Spark report across them</td><td>Part 7 release 15</td><td><span class="status s-part">Shipped, off unless mail is set up</span></td></tr>
       <tr><td>Second opinion and languages</td><td>"What muse-spark-1.3 also noticed" per fault; cues in the follower's language</td><td>Part 5 1.9.0 + Part 7</td><td><span class="status s-done">Done</span></td></tr>
