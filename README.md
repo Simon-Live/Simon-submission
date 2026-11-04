@@ -78,8 +78,6 @@ gives no medical or health advice.
   deleted after 7 days unless kept, and every take can be deleted at any time.
 - **Your own character.** Replay a take as a character made from one picture with SAM 3D Objects and MHR, then share
   it: a reason to come back and to post.
-- **Measured, not guessed.** Every number in this README is traced to the run that produced it, and the tests on
-  real people were pre-registered before they ran ([Evidence](#evidence)).
 
 ## Built for challenges between friends
 
