@@ -48,9 +48,10 @@ body .cap-controls [data-testid="cam-start"]:not([hidden]), body .cap-controls [
 body .cap-controls [data-testid="cam-start"]:not([hidden]):hover { background: var(--color-accent-soft); filter: none; }
 body .cap-controls [data-testid="cam-start"]:disabled { opacity: 0.4; }
 body .cap-controls [data-testid="cam-stop"]::after { content: ""; width: 26px; height: 26px; border-radius: 6px; background: var(--color-bad); }
-/* Upload a video: a round tool beside the ring */
-body .cap-controls label.btn.secondary { display: grid; place-items: center; width: 56px; height: 56px; min-height: 0; padding: 0;
-  border-radius: var(--radius-pill); background: var(--card-fill-raised); border-color: var(--color-line); font-size: 0; }
+/* Upload a video: a pill beside the ring, its arrow and its words both shown (an arrow alone did not say what it does) */
+body .cap-controls label.btn.secondary { display: inline-flex; align-items: center; gap: var(--space-2); height: 56px; min-height: 0;
+  padding: 0 var(--space-6) 0 var(--space-4); border-radius: var(--radius-pill); background: var(--card-fill-raised); border-color: var(--color-line);
+  color: var(--color-text); font-weight: var(--weight-semibold); white-space: nowrap; }
 body .cap-controls label.btn.secondary::before { content: "↑"; font-size: var(--text-lg); color: var(--color-text); }
 
 .cap-tip { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-4) 0 0; color: var(--color-text-muted); font-size: var(--text-sm); }
