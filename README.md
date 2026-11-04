@@ -33,10 +33,10 @@ gives no medical or health advice.
 | Criterion | Where to look |
 |---|---|
 | **Theme: Push the Frontier** | A machine gains a new capability: it learns a 3D movement from one ordinary video and measures anyone against it ([Abstract](#abstract)) |
-| **Impact (30%)** | [Why it matters](#why-it-matters) and [Built for challenges between friends](#built-for-challenges-between-friends) |
-| **Use of Meta AI tooling (25%)** | Eleven Meta models chained, each named with the file that calls it ([table](#the-meta-models-and-what-each-one-makes-possible)) |
-| **Technical depth (20%)** | Seven parts with their full history, about 3,600 tests in CI, measured accuracy ([Evidence](#evidence)) |
-| **Demo (25%)** | [simon.live](https://simon.live), the demo video, and the whole pipeline on your machine with our keys ([Clone and run it](#clone-and-run-it)) |
+| **Impact** | [Why it matters](#why-it-matters) and [Built for challenges between friends](#built-for-challenges-between-friends) |
+| **Use of Meta AI tooling** | Eleven Meta models chained, each named with the file that calls it ([table](#the-meta-models-and-what-each-one-makes-possible)) |
+| **Technical depth** | Seven parts with their full history, about 3,600 tests in CI, measured accuracy ([Evidence](#evidence)) |
+| **Demo** | [simon.live](https://simon.live), the demo video, and the whole pipeline on your machine with our keys ([Clone and run it](#clone-and-run-it)) |
 | **New work only** | Every commit is from Oct 26 to Nov 4, 2026; what we built and what we used are separated in [What we built, and what we used](#what-we-built-and-what-we-used) |
 
 **Bonus prizes Simon is built for:**
