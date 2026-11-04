@@ -577,7 +577,7 @@ def _run_job(model_dir: Path) -> None:
     kind = job.get("kind") if job.get("kind") in _SUBCOMMAND else "image"
     files = [model_dir / "in" / str(n) for n in job.get("inputs", [])]
     part2, py = config.part_dir(2), config.part2_gpu_venv_path() / "bin" / "python"
-    if not part2.is_dir() or not py.is_file():
+    if not part2.is_dir() or not (py.is_file() or (kind in REMOTE_KINDS and _remote())):   # no GPU here: Modal runs it
         _fail(model_dir, MSG_NOT_SET_UP)
         return
     code: int | None = 4
