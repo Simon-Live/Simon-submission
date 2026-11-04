@@ -786,11 +786,12 @@ def process(path, fresh=False):
     }
     run_path, tracks_path, spark_path = saved_paths(path.stem)
     print("  uploading", flush=True)
-    file_id = upload_video(work)
-    print(f"  uploaded file_id={file_id}", flush=True)   # TICKET-388: every clip at Meta can be matched to its run
     warnings = []
     spark_text = ""
-    try:
+    file_id = None
+    try:   # the upload is inside the try, so a SIGTERM the moment it returns still reaches the delete (TICKET-388)
+        file_id = upload_video(work)
+        print(f"  uploaded file_id={file_id}", flush=True)   # every clip at Meta can be matched to its run
         tracks, sam_warnings = track_people(file_id, frames)
         warnings.extend(sam_warnings)
         for stale in (run_path, tracks_path, spark_path, run_path.parent / "silhouettes.npz"):
@@ -806,7 +807,8 @@ def process(path, fresh=False):
         except SpendWarning as exc:
             print(f"\nWARNING: {exc}\n", flush=True)
     finally:
-        delete_file(file_id)
+        if file_id is not None:
+            delete_file(file_id)
     dump_json(run_path, run)
     dest = write_document(path.stem, build_document(run, tracks, spark_text))
     for warning in warnings:
