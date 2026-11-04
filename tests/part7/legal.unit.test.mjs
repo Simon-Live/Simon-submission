@@ -2,7 +2,7 @@
 // 2026-11-03), until the go-live work's lawyer-reviewed pages (part7/legal_pages.py) replace them. `node --test`.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PAGES, LEGAL_ROUTES, legalPage, CONTACT, TEAM, FOOTER_COLUMNS, STANDIN_NOTICE } from "../../web/model/legal.js";
+import { PAGES, LEGAL_ROUTES, legalPage, CONTACT, TEAM, FOOTER_COLUMNS, STANDIN_NOTICE, OPERATOR, COPYRIGHT } from "../../web/model/legal.js";
 import { NOTE } from "../../web/consent.js";
 import { CONSENT_LINES } from "../../web/model/me.js";
 
@@ -33,13 +33,17 @@ test("the legal pages are stand-ins that say so; About and Health and safety are
 test("the team in the team's order, and the one contact address", () => {
   assert.deepEqual(TEAM, ["Mo Alborati", "Shruti Doshi"]);
   assert.ok(words(PAGES.about).includes("Mo Alborati and Shruti Doshi"));
+  assert.equal(OPERATOR, "Simon Live LLC");
+  assert.equal(COPYRIGHT, "© 2026 Simon Live LLC");
   const mails = [...new Set(LEGAL_ROUTES.flatMap((k) => hrefs(PAGES[k])).filter((h) => h.startsWith("mailto:")))];
   assert.deepEqual(mails, [`mailto:${CONTACT}`]);
 });
 
 test("no legal fact the operator has not confirmed: no governing law, company, address or licence name", () => {
   const all = LEGAL_ROUTES.map((k) => words(PAGES[k])).join(" ");
-  for (const never of ["California", "governed by", "LLC", "MIT", "Apache", "Street", "shall"]) assert.ok(!all.includes(never), never);
+  for (const never of ["California", "New York", "governed by", "MIT", "Apache", "Street", "shall"]) assert.ok(!all.includes(never), never);
+  // the one company name is the operator the team confirmed (2026-11-04)
+  assert.deepEqual([...new Set(all.match(/[A-Z][\w ]*\bLLC\b/g) || [])], ["Simon Live LLC"]);
   assert.ok(words(PAGES.safety).includes("not medical or professional advice"));
 });
 

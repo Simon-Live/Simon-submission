@@ -78,5 +78,5 @@ test("source and feedback are plain text; the only links are app pages and the c
     "mailto:hello@simon.live", "#/privacy", "#/terms", "#/accessibility", "#/biometric", "#/dmca", "#/sub-processors", "#/safety", "#/notices"]);
   const app = (x) => x.startsWith("#/") || x.startsWith("api/");
   assert.ok(hrefs.every((x) => app(x) || x === "mailto:hello@simon.live"), "negative: no outside link");
-  assert.equal(q(el, "footer-copyright").textContent, "© 2026 The Simon team");
+  assert.equal(q(el, "footer-copyright").textContent, "© 2026 Simon Live LLC");
 });

@@ -7,7 +7,8 @@
 export const CONTACT = "hello@simon.live";
 export const TEAM = ["Mo Alborati", "Shruti Doshi"];   // in this order (team, 2026-11-03)
 export const UPDATED = "3 November 2026";
-export const COPYRIGHT = "© 2026 The Simon team";
+export const OPERATOR = "Simon Live LLC";   // the company that runs Simon (team, 2026-11-04)
+export const COPYRIGHT = `© 2026 ${OPERATOR}`;
 
 const mail = { text: CONTACT, href: `mailto:${CONTACT}` };
 const link = (text, href) => ({ text, href });
@@ -32,7 +33,7 @@ export const PAGES = {
         "Simon runs on Meta's models: SAM 3.1 finds the people in each frame, SAM 3D Body and MHR build their 3D bodies, and Muse Spark words the feedback. Simon's own code lines the takes up, measures the differences and scores them.",
       ] },
       { id: "team", heading: "The team", body: [
-        `Simon is made by ${team}. It started as a hackathon project in 2026.`,
+        `Simon is made by ${team}, and run by ${OPERATOR}. It started as a hackathon project in 2026.`,
       ] },
       { id: "contact", heading: "Contact", body: [
         ["Questions, feedback, press or partnerships: ", mail, ". On the app itself, the Feedback tab on the right edge of the screen reaches us too."],
