@@ -12,8 +12,7 @@ The judge's own key header is dropped: the relay's key is added on the way out a
 Secret `simon-judges-relay` (made by the team): MODEL_API_KEY (a key made for judging only) and NTFY_TOPIC.
 """
 
-from __future__ import annotations
-
+# no `from __future__ import annotations`: FastAPI reads `request: Request` from the live annotation
 import base64
 from datetime import datetime, timezone
 import json
@@ -50,15 +49,18 @@ def _notify(title: str, text: str, priority: str = "default") -> None:
 
 
 def _charge(usd: float, ip: str) -> None:
-    """Add `usd` to the total and to this address's day, and send any alert the total just passed."""
+    """Add `usd` to the total and to this address's day, and send any alert the total just passed. A negative `usd`
+    gives back the part of a reserve a call did not use (no alert)."""
     import rules
-    if usd <= 0:
+    if usd == 0:
         return
     before = float(state.get("spent", 0.0))
-    after = before + usd
+    after = max(0.0, before + usd)
     state["spent"] = after
     day_key = f"ip:{datetime.now(timezone.utc):%Y-%m-%d}:{ip}"
-    state[day_key] = float(state.get(day_key, 0.0)) + usd
+    state[day_key] = max(0.0, float(state.get(day_key, 0.0)) + usd)
+    if usd < 0:
+        return
     sent = list(state.get("alerts", []))
     for fraction in rules.alerts_due(before, after, sent):
         sent.append(fraction)
@@ -183,8 +185,11 @@ def web():
             finally:
                 await upstream.aclose()
                 await client.aclose()
-                actual = rules.cost_from_usage(model or "", _usage_in(bytes(seen))) if held else None
-                if actual is not None and actual > held:   # the reserve was low: count the rest
+                usage = _usage_in(bytes(seen)) if held else None
+                actual = rules.cost_from_usage(model or "", usage) if held else None
+                print(f"settle {path} {model}: reserved ${held:.4f}, answer ${actual if actual is None else round(actual, 6)}"
+                      f" ({len(seen)} bytes seen, starts {bytes(seen[:12])!r}, usage {'found' if usage else 'none'})", flush=True)
+                if actual is not None:   # the answer said what it cost: settle the reserve to that, up or down
                     _charge(actual - held, ip)
 
         keep = {k: v for k, v in upstream.headers.items() if k.lower() in ("content-type", "cache-control")}

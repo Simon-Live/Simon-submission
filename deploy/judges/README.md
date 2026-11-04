@@ -29,7 +29,7 @@ The rules and every number above are in [rules.py](rules.py) and checked by `tes
    ```
    modal deploy deploy/judges/relay.py
    ```
-   It answers at `https://<workspace>--simon-judges-relay-web.modal.run`. `/health` shows whether it is open and what has been spent.
+   It answers at `https://shrutidoshi94--simon-judges-relay-web.us-east.modal.run`. `/health` shows whether it is open and what has been spent.
 
 ## While judging runs
 
@@ -51,8 +51,8 @@ Revoke the judging key at dev.meta.ai, run `modal app stop simon-judges-relay`, 
 The judge sets these in Simon's `.env` (the repo README's "Run the full pipeline" section):
 
 ```
-SIMON_META_API=https://<workspace>--simon-judges-relay-web.modal.run/meta/v1
-SIMON_PART2_RELAY=https://<workspace>--simon-judges-relay-web.modal.run
+SIMON_META_API=https://shrutidoshi94--simon-judges-relay-web.us-east.modal.run/meta/v1
+SIMON_PART2_RELAY=https://shrutidoshi94--simon-judges-relay-web.us-east.modal.run
 SIMON7_PART2_REMOTE=modal
 MODEL_API_KEY=judges-relay
 ```

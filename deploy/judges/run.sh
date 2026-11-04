@@ -5,7 +5,7 @@
 # Needs Python 3.12, uv, git, make and ffmpeg. SIMON_RELAY points it at another relay.
 set -euo pipefail
 
-RELAY="${SIMON_RELAY:-https://shruti--simon-judges-relay-web.modal.run}"
+RELAY="${SIMON_RELAY:-https://shrutidoshi94--simon-judges-relay-web.us-east.modal.run}"
 RELAY="${RELAY%/}"
 cd "$(dirname "$0")/../.."
 
