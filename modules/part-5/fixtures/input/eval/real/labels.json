@@ -1,0 +1,71 @@
+{
+ "format": "simon.part5.labels.v1",
+ "set": "stock",
+ "generator": "none: labelled by eye (docs/specs/real-takes.md)",
+ "label_source": "visual",
+ "labeller": "Claude Code agent (Part 5), judging the Pexels video by eye",
+ "about": "Labels for the openly licensed stock takes (Pexels licence, accepted by the team on #18). No take is listed until simon-part-2 delivers the stock pose3d.json files and scripts/import-stock-takes.sh has imported them: make report-real then says the fallback set is used. Each take later gets a folder <take_id>/ beside this file with skeleton.json and SOURCE.md, and one entry in takes with label_source visual, the labeller and the expected clip. See SOURCE.md.",
+ "roles": {
+  "5034562": {
+   "role": "expected",
+   "view": "side",
+   "angle": "side",
+   "camera_yaw_deg": 90
+  },
+  "5034577": {
+   "role": "follower",
+   "view": "front",
+   "angle": "front",
+   "camera_yaw_deg": 0
+  },
+  "8837221": {
+   "role": "follower",
+   "view": "three-quarter",
+   "angle": "45",
+   "camera_yaw_deg": 45
+  }
+ },
+ "takes": [
+  {
+   "take_id": "pexels-5034577",
+   "set": "stock",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "label_source": "visual",
+   "labeller": "Claude Code agent (Part 5 main session), 2026-10-29, from eight frames spread over each Pexels video (sha256 checked against Part 2's SOURCE.md)",
+   "correct": true,
+   "faults": [],
+   "expected": "fixtures/input/eval/real/pexels-5034562/skeleton.json",
+   "follower": "fixtures/input/eval/real/pexels-5034577/skeleton.json",
+   "notes": "Squats with both arms straight forward at the bottom, like the example, at a similar depth. Stance width is not judged: the example is filmed from the side."
+  },
+  {
+   "take_id": "pexels-8837221",
+   "set": "stock",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "label_source": "visual",
+   "labeller": "Claude Code agent (Part 5 main session), 2026-10-29, from eight frames spread over each Pexels video (sha256 checked against Part 2's SOURCE.md)",
+   "correct": false,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow",
+      "right_elbow"
+     ],
+     "side": "both",
+     "direction": "more",
+     "text": "elbows bent, hands clasped at the chest; the example keeps the arms straight"
+    }
+   ],
+   "expected": "fixtures/input/eval/real/pexels-5034562/skeleton.json",
+   "follower": "fixtures/input/eval/real/pexels-8837221/skeleton.json",
+   "notes": "Also seen: the upper arms hang lower than the example's arms, which point straight forward; no label type covers it, so it is not scored."
+  }
+ ]
+}

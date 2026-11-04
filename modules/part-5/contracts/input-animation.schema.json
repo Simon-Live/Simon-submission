@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/input-animation.schema.json",
+  "title": "Part 5 input clip (simon.animation.v1)",
+  "version": "1.0.0",
+  "description": "An expected clip (Part 4 animation.json) or a follower clip (Part 3 --view part5 skeleton.json) as part5.io reads it. Joints are [x, y, z] in metres with the hip midpoint at the origin, x the subject's left, y up, z anterior. A joint may be null and a frame may carry conf. Hip midpoint within 1 cm of the origin and strictly increasing t are checked by part5.io, not by this schema. Extra fields are allowed.",
+  "type": "object",
+  "required": [
+    "format",
+    "frames"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.animation.v1"
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "coordinate_frame": {
+      "$ref": "#/$defs/coordinate_frame"
+    },
+    "joints": {
+      "const": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ],
+      "description": "The canonical 17, in this order. May be left out."
+    },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "fps"
+      ]
+    },
+    {
+      "properties": {
+        "frames": {
+          "items": {
+            "required": [
+              "t"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "position": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      },
+      "description": "[x, y, z] in metres, or null when the estimator lost the joint."
+    },
+    "frame": {
+      "type": "object",
+      "required": [
+        "joints"
+      ],
+      "properties": {
+        "index": {
+          "type": "number"
+        },
+        "t": {
+          "type": "number",
+          "description": "Seconds; strictly increasing across the clip."
+        },
+        "interpolated": {
+          "type": "boolean"
+        },
+        "joints": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "nose",
+              "left_eye",
+              "right_eye",
+              "left_ear",
+              "right_ear",
+              "left_shoulder",
+              "right_shoulder",
+              "left_elbow",
+              "right_elbow",
+              "left_wrist",
+              "right_wrist",
+              "left_hip",
+              "right_hip",
+              "left_knee",
+              "right_knee",
+              "left_ankle",
+              "right_ankle"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/position"
+          }
+        },
+        "conf": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "nose",
+              "left_eye",
+              "right_eye",
+              "left_ear",
+              "right_ear",
+              "left_shoulder",
+              "right_shoulder",
+              "left_elbow",
+              "right_elbow",
+              "left_wrist",
+              "right_wrist",
+              "left_hip",
+              "right_hip",
+              "left_knee",
+              "right_knee",
+              "left_ankle",
+              "right_ankle"
+            ]
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "description": "Per joint confidence 0..1. Joints under 0.3 are masked."
+        }
+      }
+    },
+    "coordinate_frame": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "const": "hip_midpoint"
+        },
+        "x": {
+          "const": "subject_left"
+        },
+        "y": {
+          "const": "world_up"
+        },
+        "z": {
+          "const": "anterior"
+        },
+        "position_unit": {
+          "const": "metres"
+        },
+        "angle_unit": {
+          "const": "degrees"
+        }
+      },
+      "description": "May be left out. If present, every field it gives must have these values."
+    }
+  }
+}

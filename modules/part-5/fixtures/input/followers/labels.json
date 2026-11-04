@@ -1,0 +1,6336 @@
+{
+ "format": "simon.part5.labels.v1",
+ "generator": "scripts/make_dummy_followers.py",
+ "seed": 5,
+ "label_source": "synthetic",
+ "angles": {
+  "front": 0,
+  "45": 45,
+  "side": 90
+ },
+ "lighting": {
+  "good": {
+   "lateral": 0.006,
+   "depth": 0.015
+  },
+  "low": {
+   "lateral": 0.014,
+   "depth": 0.035
+  }
+ },
+ "takes": [
+  {
+   "take_id": "exercise_front_good_00_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.994,
+   "speed": 1.104,
+   "lead_in_frames": 5,
+   "frame_count": 88,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_00_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_01_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.956,
+   "speed": 1.062,
+   "lead_in_frames": 8,
+   "frame_count": 94,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_01_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_02_arms_wider-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.064,
+   "speed": 0.966,
+   "lead_in_frames": 15,
+   "frame_count": 109,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "right_shoulder"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 20.7,
+     "peak_deg": 20.7,
+     "text": "right arm too far out",
+     "follower_frames": [
+      26,
+      102
+     ],
+     "expected_frames": [
+      10,
+      84
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_02_arms_wider-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_02_arms_wider-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_03_foot_out-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.909,
+   "speed": 0.896,
+   "lead_in_frames": 3,
+   "frame_count": 104,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 13.6,
+     "peak_deg": 13.6,
+     "text": "right foot too far out",
+     "follower_frames": [
+      20,
+      93
+     ],
+     "expected_frames": [
+      15,
+      81
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_03_foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_03_foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_04_knees_shallow-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.0,
+   "speed": 1.07,
+   "lead_in_frames": 12,
+   "frame_count": 97,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 35.4,
+     "peak_deg": 45.4,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      27,
+      90
+     ],
+     "expected_frames": [
+      15,
+      84
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_05_elbow_bent-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.019,
+   "speed": 1.096,
+   "lead_in_frames": 4,
+   "frame_count": 87,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 25.5,
+     "peak_deg": 25.5,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      13,
+      70
+     ],
+     "expected_frames": [
+      9,
+      73
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_06_trunk_lean-center",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.057,
+   "speed": 0.961,
+   "lead_in_frames": 13,
+   "frame_count": 108,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 17.7,
+     "peak_deg": 17.7,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      28,
+      96
+     ],
+     "expected_frames": [
+      14,
+      80
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_07_knee_caving-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.988,
+   "speed": 0.962,
+   "lead_in_frames": 2,
+   "frame_count": 97,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "left_knee"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 15.1,
+     "peak_deg": 15.1,
+     "text": "left knee caving in",
+     "follower_frames": [
+      20,
+      83
+     ],
+     "expected_frames": [
+      17,
+      78
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_07_knee_caving-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_07_knee_caving-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_08_arms_wider-both+elbow_bent-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.988,
+   "speed": 1.249,
+   "lead_in_frames": 3,
+   "frame_count": 76,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder",
+      "right_shoulder"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 15.9,
+     "peak_deg": 15.9,
+     "text": "elbows wider than the example",
+     "follower_frames": [
+      9,
+      66
+     ],
+     "expected_frames": [
+      7,
+      79
+     ]
+    },
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "right_elbow"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 35.6,
+     "peak_deg": 35.7,
+     "text": "right elbow bent, keep it straighter",
+     "follower_frames": [
+      16,
+      67
+     ],
+     "expected_frames": [
+      16,
+      80
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_08_arms_wider-both+elbow_bent-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_08_arms_wider-both+elbow_bent-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_00_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.952,
+   "speed": 0.99,
+   "lead_in_frames": 11,
+   "frame_count": 103,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_00_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_01_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.947,
+   "speed": 0.865,
+   "lead_in_frames": 2,
+   "frame_count": 107,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_01_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_02_arms_wider-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.055,
+   "speed": 1.154,
+   "lead_in_frames": 7,
+   "frame_count": 86,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder",
+      "right_shoulder"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 22.1,
+     "peak_deg": 22.1,
+     "text": "elbows wider than the example",
+     "follower_frames": [
+      20,
+      81
+     ],
+     "expected_frames": [
+      15,
+      86
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_02_arms_wider-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_02_arms_wider-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_03_foot_out-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.053,
+   "speed": 1.033,
+   "lead_in_frames": 4,
+   "frame_count": 92,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "left_hip"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 17.5,
+     "peak_deg": 17.5,
+     "text": "left foot too far out",
+     "follower_frames": [
+      12,
+      75
+     ],
+     "expected_frames": [
+      8,
+      74
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_03_foot_out-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_03_foot_out-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_04_knees_shallow-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.944,
+   "speed": 1.12,
+   "lead_in_frames": 2,
+   "frame_count": 83,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 34.9,
+     "peak_deg": 46.4,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      11,
+      76
+     ],
+     "expected_frames": [
+      10,
+      83
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_05_elbow_bent-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.986,
+   "speed": 0.882,
+   "lead_in_frames": 5,
+   "frame_count": 108,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "right_elbow"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 32.2,
+     "peak_deg": 32.2,
+     "text": "right elbow bent, keep it straighter",
+     "follower_frames": [
+      19,
+      102
+     ],
+     "expected_frames": [
+      12,
+      86
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_05_elbow_bent-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_05_elbow_bent-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_06_trunk_lean-center",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.1,
+   "speed": 0.891,
+   "lead_in_frames": 6,
+   "frame_count": 108,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 22.3,
+     "peak_deg": 22.3,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      12,
+      90
+     ],
+     "expected_frames": [
+      5,
+      75
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_07_knee_caving-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.007,
+   "speed": 1.247,
+   "lead_in_frames": 1,
+   "frame_count": 74,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 21.6,
+     "peak_deg": 21.6,
+     "text": "right knee caving in",
+     "follower_frames": [
+      10,
+      66
+     ],
+     "expected_frames": [
+      11,
+      82
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_08_trunk_lean-center+arms_wider-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.088,
+   "speed": 1.223,
+   "lead_in_frames": 0,
+   "frame_count": 75,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 21.9,
+     "peak_deg": 21.9,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      13,
+      69
+     ],
+     "expected_frames": [
+      15,
+      85
+     ]
+    },
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 15.0,
+     "peak_deg": 15.0,
+     "text": "left arm too far out",
+     "follower_frames": [
+      5,
+      60
+     ],
+     "expected_frames": [
+      5,
+      74
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_08_trunk_lean-center+arms_wider-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_08_trunk_lean-center+arms_wider-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_00_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.07,
+   "speed": 1.221,
+   "lead_in_frames": 2,
+   "frame_count": 77,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_00_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_01_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.077,
+   "speed": 1.106,
+   "lead_in_frames": 12,
+   "frame_count": 94,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_01_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_02_arms_wider-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.945,
+   "speed": 0.923,
+   "lead_in_frames": 5,
+   "frame_count": 104,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 21.6,
+     "peak_deg": 21.6,
+     "text": "left arm too far out",
+     "follower_frames": [
+      13,
+      94
+     ],
+     "expected_frames": [
+      7,
+      83
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_02_arms_wider-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_02_arms_wider-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_03_foot_out-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.085,
+   "speed": 1.132,
+   "lead_in_frames": 15,
+   "frame_count": 96,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 14.6,
+     "peak_deg": 14.6,
+     "text": "right foot too far out",
+     "follower_frames": [
+      24,
+      84
+     ],
+     "expected_frames": [
+      10,
+      79
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_03_foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_03_foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_04_knees_shallow-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.055,
+   "speed": 1.039,
+   "lead_in_frames": 0,
+   "frame_count": 88,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 37.2,
+     "peak_deg": 44.6,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      15,
+      70
+     ],
+     "expected_frames": [
+      15,
+      73
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_05_elbow_bent-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.933,
+   "speed": 1.198,
+   "lead_in_frames": 15,
+   "frame_count": 91,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 37.9,
+     "peak_deg": 37.9,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      24,
+      78
+     ],
+     "expected_frames": [
+      10,
+      76
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_06_trunk_lean-center",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.903,
+   "speed": 1.172,
+   "lead_in_frames": 4,
+   "frame_count": 82,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 15.6,
+     "peak_deg": 15.6,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      16,
+      73
+     ],
+     "expected_frames": [
+      13,
+      82
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_07_knee_caving-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.037,
+   "speed": 1.045,
+   "lead_in_frames": 0,
+   "frame_count": 87,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 18.6,
+     "peak_deg": 18.6,
+     "text": "right knee caving in",
+     "follower_frames": [
+      16,
+      80
+     ],
+     "expected_frames": [
+      16,
+      84
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_08_trunk_lean-center+arms_wider-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.994,
+   "speed": 0.875,
+   "lead_in_frames": 10,
+   "frame_count": 114,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 21.9,
+     "peak_deg": 21.9,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      16,
+      100
+     ],
+     "expected_frames": [
+      5,
+      79
+     ]
+    },
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "right_shoulder"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 15.2,
+     "peak_deg": 15.2,
+     "text": "right arm too far out",
+     "follower_frames": [
+      30,
+      102
+     ],
+     "expected_frames": [
+      17,
+      81
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_08_trunk_lean-center+arms_wider-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_08_trunk_lean-center+arms_wider-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_00_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.088,
+   "speed": 0.881,
+   "lead_in_frames": 2,
+   "frame_count": 105,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_00_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_01_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.955,
+   "speed": 1.099,
+   "lead_in_frames": 10,
+   "frame_count": 93,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_01_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_02_arms_wider-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.044,
+   "speed": 0.85,
+   "lead_in_frames": 10,
+   "frame_count": 117,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "right_shoulder"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 20.1,
+     "peak_deg": 20.1,
+     "text": "right arm too far out",
+     "follower_frames": [
+      22,
+      108
+     ],
+     "expected_frames": [
+      10,
+      84
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_02_arms_wider-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_02_arms_wider-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_03_foot_out-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.007,
+   "speed": 1.072,
+   "lead_in_frames": 5,
+   "frame_count": 90,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 17.4,
+     "peak_deg": 17.4,
+     "text": "right foot too far out",
+     "follower_frames": [
+      19,
+      74
+     ],
+     "expected_frames": [
+      14,
+      75
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_03_foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_03_foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_04_knees_shallow-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.974,
+   "speed": 1.002,
+   "lead_in_frames": 12,
+   "frame_count": 103,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 38.6,
+     "peak_deg": 49.5,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      24,
+      89
+     ],
+     "expected_frames": [
+      12,
+      78
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_05_elbow_bent-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.077,
+   "speed": 1.107,
+   "lead_in_frames": 15,
+   "frame_count": 97,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 35.5,
+     "peak_deg": 35.5,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      30,
+      83
+     ],
+     "expected_frames": [
+      16,
+      76
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_06_trunk_lean-center",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.036,
+   "speed": 1.061,
+   "lead_in_frames": 0,
+   "frame_count": 86,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 22.6,
+     "peak_deg": 22.6,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      13,
+      69
+     ],
+     "expected_frames": [
+      13,
+      74
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_07_knee_caving-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.038,
+   "speed": 0.868,
+   "lead_in_frames": 2,
+   "frame_count": 107,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 24.4,
+     "peak_deg": 24.4,
+     "text": "right knee caving in",
+     "follower_frames": [
+      17,
+      91
+     ],
+     "expected_frames": [
+      13,
+      78
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_08_elbow_bent-right+trunk_lean-center",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.966,
+   "speed": 1.174,
+   "lead_in_frames": 2,
+   "frame_count": 80,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "right_elbow"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 34.8,
+     "peak_deg": 34.8,
+     "text": "right elbow bent, keep it straighter",
+     "follower_frames": [
+      15,
+      65
+     ],
+     "expected_frames": [
+      15,
+      75
+     ]
+    },
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 22.2,
+     "peak_deg": 22.2,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      8,
+      65
+     ],
+     "expected_frames": [
+      6,
+      75
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_08_elbow_bent-right+trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_08_elbow_bent-right+trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_00_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.061,
+   "speed": 0.806,
+   "lead_in_frames": 0,
+   "frame_count": 113,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_00_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_01_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.046,
+   "speed": 0.939,
+   "lead_in_frames": 13,
+   "frame_count": 110,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_01_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_02_arms_wider-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.035,
+   "speed": 1.093,
+   "lead_in_frames": 2,
+   "frame_count": 85,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 22.2,
+     "peak_deg": 22.2,
+     "text": "left arm too far out",
+     "follower_frames": [
+      9,
+      75
+     ],
+     "expected_frames": [
+      7,
+      80
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_02_arms_wider-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_02_arms_wider-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_03_foot_out-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.977,
+   "speed": 0.811,
+   "lead_in_frames": 2,
+   "frame_count": 114,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "left_hip"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 16.8,
+     "peak_deg": 16.8,
+     "text": "left foot too far out",
+     "follower_frames": [
+      22,
+      92
+     ],
+     "expected_frames": [
+      16,
+      73
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_03_foot_out-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_03_foot_out-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_04_knees_shallow-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.904,
+   "speed": 0.91,
+   "lead_in_frames": 11,
+   "frame_count": 111,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 35.5,
+     "peak_deg": 47.2,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      26,
+      104
+     ],
+     "expected_frames": [
+      13,
+      85
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_05_elbow_bent-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.96,
+   "speed": 1.234,
+   "lead_in_frames": 11,
+   "frame_count": 85,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "right_elbow"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 35.6,
+     "peak_deg": 35.6,
+     "text": "right elbow bent, keep it straighter",
+     "follower_frames": [
+      26,
+      75
+     ],
+     "expected_frames": [
+      18,
+      79
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_05_elbow_bent-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_05_elbow_bent-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_06_trunk_lean-center",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.054,
+   "speed": 1.072,
+   "lead_in_frames": 2,
+   "frame_count": 87,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 19.4,
+     "peak_deg": 19.4,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      18,
+      81
+     ],
+     "expected_frames": [
+      17,
+      85
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_07_knee_caving-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.913,
+   "speed": 0.818,
+   "lead_in_frames": 6,
+   "frame_count": 117,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 16.0,
+     "peak_deg": 16.0,
+     "text": "right knee caving in",
+     "follower_frames": [
+      18,
+      105
+     ],
+     "expected_frames": [
+      9,
+      81
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_08_elbow_bent-left+foot_out-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.057,
+   "speed": 1.007,
+   "lead_in_frames": 6,
+   "frame_count": 96,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 30.2,
+     "peak_deg": 30.2,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      13,
+      89
+     ],
+     "expected_frames": [
+      7,
+      84
+     ]
+    },
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 18.3,
+     "peak_deg": 18.3,
+     "text": "right foot too far out",
+     "follower_frames": [
+      16,
+      78
+     ],
+     "expected_frames": [
+      10,
+      73
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_08_elbow_bent-left+foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_08_elbow_bent-left+foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_00_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.088,
+   "speed": 1.245,
+   "lead_in_frames": 13,
+   "frame_count": 86,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_00_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_01_correct",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.919,
+   "speed": 1.011,
+   "lead_in_frames": 15,
+   "frame_count": 105,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_01_correct/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_02_arms_wider-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.907,
+   "speed": 0.977,
+   "lead_in_frames": 10,
+   "frame_count": 103,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 21.9,
+     "peak_deg": 21.9,
+     "text": "left arm too far out",
+     "follower_frames": [
+      19,
+      84
+     ],
+     "expected_frames": [
+      8,
+      73
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_02_arms_wider-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_02_arms_wider-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_03_foot_out-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.917,
+   "speed": 1.082,
+   "lead_in_frames": 11,
+   "frame_count": 95,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "left_hip"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 15.5,
+     "peak_deg": 15.5,
+     "text": "left foot too far out",
+     "follower_frames": [
+      17,
+      80
+     ],
+     "expected_frames": [
+      6,
+      75
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_03_foot_out-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_03_foot_out-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_04_knees_shallow-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.038,
+   "speed": 0.901,
+   "lead_in_frames": 11,
+   "frame_count": 112,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 37.2,
+     "peak_deg": 47.6,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      28,
+      104
+     ],
+     "expected_frames": [
+      15,
+      84
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_05_elbow_bent-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.917,
+   "speed": 1.011,
+   "lead_in_frames": 0,
+   "frame_count": 90,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 26.1,
+     "peak_deg": 26.1,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      7,
+      84
+     ],
+     "expected_frames": [
+      7,
+      85
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_06_trunk_lean-center",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.043,
+   "speed": 0.927,
+   "lead_in_frames": 14,
+   "frame_count": 112,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 17.5,
+     "peak_deg": 17.5,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      30,
+      103
+     ],
+     "expected_frames": [
+      14,
+      83
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_07_knee_caving-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.09,
+   "speed": 1.03,
+   "lead_in_frames": 2,
+   "frame_count": 90,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "left_knee"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 16.9,
+     "peak_deg": 16.9,
+     "text": "left knee caving in",
+     "follower_frames": [
+      18,
+      74
+     ],
+     "expected_frames": [
+      16,
+      75
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_07_knee_caving-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_07_knee_caving-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_08_foot_out-left+arms_wider-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.943,
+   "speed": 0.854,
+   "lead_in_frames": 1,
+   "frame_count": 107,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "left_hip"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 12.8,
+     "peak_deg": 12.8,
+     "text": "left foot too far out",
+     "follower_frames": [
+      20,
+      97
+     ],
+     "expected_frames": [
+      16,
+      82
+     ]
+    },
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 18.0,
+     "peak_deg": 18.0,
+     "text": "left arm too far out",
+     "follower_frames": [
+      21,
+      92
+     ],
+     "expected_frames": [
+      17,
+      78
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_08_foot_out-left+arms_wider-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_08_foot_out-left+arms_wider-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_00_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.954,
+   "speed": 1.038,
+   "lead_in_frames": 5,
+   "frame_count": 122,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_00_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_01_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.041,
+   "speed": 1.166,
+   "lead_in_frames": 12,
+   "frame_count": 116,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_01_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_02_arms_wider-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.99,
+   "speed": 1.191,
+   "lead_in_frames": 3,
+   "frame_count": 105,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 24.5,
+     "peak_deg": 24.5,
+     "text": "left arm too far out",
+     "follower_frames": [
+      14,
+      92
+     ],
+     "expected_frames": [
+      13,
+      107
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_02_arms_wider-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_02_arms_wider-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_03_foot_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.904,
+   "speed": 1.229,
+   "lead_in_frames": 5,
+   "frame_count": 104,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 15.4,
+     "peak_deg": 15.4,
+     "text": "right foot too far out",
+     "follower_frames": [
+      14,
+      90
+     ],
+     "expected_frames": [
+      11,
+      105
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_03_foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_03_foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_04_knees_shallow-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.086,
+   "speed": 1.243,
+   "lead_in_frames": 0,
+   "frame_count": 98,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 13.4,
+     "peak_deg": 22.4,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      7,
+      82
+     ],
+     "expected_frames": [
+      8,
+      102
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_05_elbow_bent-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.039,
+   "speed": 1.099,
+   "lead_in_frames": 15,
+   "frame_count": 125,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 26.7,
+     "peak_deg": 26.8,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      22,
+      112
+     ],
+     "expected_frames": [
+      7,
+      107
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_06_trunk_lean-center",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.056,
+   "speed": 0.863,
+   "lead_in_frames": 7,
+   "frame_count": 147,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 15.1,
+     "peak_deg": 15.1,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      19,
+      123
+     ],
+     "expected_frames": [
+      10,
+      101
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_07_knee_caving-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.086,
+   "speed": 1.016,
+   "lead_in_frames": 7,
+   "frame_count": 126,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 13.7,
+     "peak_deg": 22.3,
+     "text": "right knee caving in",
+     "follower_frames": [
+      20,
+      107
+     ],
+     "expected_frames": [
+      13,
+      102
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_08_foot_out-left+trunk_lean-center",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.071,
+   "speed": 1.056,
+   "lead_in_frames": 3,
+   "frame_count": 118,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "left_hip"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 14.7,
+     "peak_deg": 14.7,
+     "text": "left foot too far out",
+     "follower_frames": [
+      22,
+      99
+     ],
+     "expected_frames": [
+      20,
+      102
+     ]
+    },
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 16.5,
+     "peak_deg": 16.5,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      20,
+      96
+     ],
+     "expected_frames": [
+      17,
+      99
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_08_foot_out-left+trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_08_foot_out-left+trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_00_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.965,
+   "speed": 0.851,
+   "lead_in_frames": 11,
+   "frame_count": 153,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_00_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_01_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.073,
+   "speed": 0.835,
+   "lead_in_frames": 15,
+   "frame_count": 160,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_01_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_02_arms_wider-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.022,
+   "speed": 0.974,
+   "lead_in_frames": 5,
+   "frame_count": 129,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "right_shoulder"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 24.4,
+     "peak_deg": 24.4,
+     "text": "right arm too far out",
+     "follower_frames": [
+      16,
+      118
+     ],
+     "expected_frames": [
+      10,
+      111
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_02_arms_wider-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_02_arms_wider-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_03_foot_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.995,
+   "speed": 1.223,
+   "lead_in_frames": 10,
+   "frame_count": 109,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 17.0,
+     "peak_deg": 17.0,
+     "text": "right foot too far out",
+     "follower_frames": [
+      27,
+      96
+     ],
+     "expected_frames": [
+      20,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_03_foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_03_foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_04_knees_shallow-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.983,
+   "speed": 0.952,
+   "lead_in_frames": 6,
+   "frame_count": 133,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 16.3,
+     "peak_deg": 29.4,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      19,
+      115
+     ],
+     "expected_frames": [
+      12,
+      104
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_05_elbow_bent-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.061,
+   "speed": 1.034,
+   "lead_in_frames": 5,
+   "frame_count": 122,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 27.2,
+     "peak_deg": 27.3,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      16,
+      107
+     ],
+     "expected_frames": [
+      11,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_06_trunk_lean-center",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.097,
+   "speed": 0.88,
+   "lead_in_frames": 3,
+   "frame_count": 140,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 23.2,
+     "peak_deg": 23.2,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      18,
+      123
+     ],
+     "expected_frames": [
+      13,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_07_knee_caving-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.013,
+   "speed": 1.136,
+   "lead_in_frames": 15,
+   "frame_count": 122,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 16.2,
+     "peak_deg": 24.3,
+     "text": "right knee caving in",
+     "follower_frames": [
+      29,
+      110
+     ],
+     "expected_frames": [
+      15,
+      109
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_08_trunk_lean-center+foot_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.959,
+   "speed": 0.927,
+   "lead_in_frames": 11,
+   "frame_count": 141,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 16.3,
+     "peak_deg": 16.3,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      30,
+      125
+     ],
+     "expected_frames": [
+      17,
+      106
+     ]
+    },
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 16.2,
+     "peak_deg": 16.2,
+     "text": "right foot too far out",
+     "follower_frames": [
+      27,
+      125
+     ],
+     "expected_frames": [
+      14,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_08_trunk_lean-center+foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_08_trunk_lean-center+foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_00_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.082,
+   "speed": 1.17,
+   "lead_in_frames": 0,
+   "frame_count": 104,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_00_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_01_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.06,
+   "speed": 1.207,
+   "lead_in_frames": 6,
+   "frame_count": 106,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_01_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_02_arms_wider-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.901,
+   "speed": 1.017,
+   "lead_in_frames": 9,
+   "frame_count": 128,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "right_shoulder"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 15.6,
+     "peak_deg": 15.6,
+     "text": "right arm too far out",
+     "follower_frames": [
+      24,
+      118
+     ],
+     "expected_frames": [
+      15,
+      111
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_02_arms_wider-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_02_arms_wider-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_03_foot_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.994,
+   "speed": 1.016,
+   "lead_in_frames": 8,
+   "frame_count": 127,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 19.7,
+     "peak_deg": 19.7,
+     "text": "right foot too far out",
+     "follower_frames": [
+      16,
+      114
+     ],
+     "expected_frames": [
+      8,
+      108
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_03_foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_03_foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_04_knees_shallow-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.037,
+   "speed": 0.812,
+   "lead_in_frames": 11,
+   "frame_count": 160,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 11.2,
+     "peak_deg": 24.2,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      28,
+      147
+     ],
+     "expected_frames": [
+      13,
+      111
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_05_elbow_bent-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.068,
+   "speed": 0.971,
+   "lead_in_frames": 0,
+   "frame_count": 125,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 31.8,
+     "peak_deg": 31.9,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      24,
+      98
+     ],
+     "expected_frames": [
+      23,
+      96
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_06_trunk_lean-center",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.016,
+   "speed": 0.886,
+   "lead_in_frames": 8,
+   "frame_count": 144,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 17.6,
+     "peak_deg": 17.7,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      27,
+      120
+     ],
+     "expected_frames": [
+      16,
+      100
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_07_knee_caving-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.958,
+   "speed": 0.994,
+   "lead_in_frames": 1,
+   "frame_count": 123,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 13.7,
+     "peak_deg": 19.0,
+     "text": "right knee caving in",
+     "follower_frames": [
+      10,
+      109
+     ],
+     "expected_frames": [
+      8,
+      108
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_08_elbow_bent-right+arms_wider-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.921,
+   "speed": 0.976,
+   "lead_in_frames": 13,
+   "frame_count": 137,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "right_elbow"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 35.3,
+     "peak_deg": 35.6,
+     "text": "right elbow bent, keep it straighter",
+     "follower_frames": [
+      32,
+      126
+     ],
+     "expected_frames": [
+      18,
+      111
+     ]
+    },
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder",
+      "right_shoulder"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 22.0,
+     "peak_deg": 22.0,
+     "text": "elbows wider than the example",
+     "follower_frames": [
+      32,
+      129
+     ],
+     "expected_frames": [
+      18,
+      114
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_08_elbow_bent-right+arms_wider-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_08_elbow_bent-right+arms_wider-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_00_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.062,
+   "speed": 0.803,
+   "lead_in_frames": 8,
+   "frame_count": 158,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_00_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_01_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.035,
+   "speed": 0.873,
+   "lead_in_frames": 9,
+   "frame_count": 147,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_01_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_02_arms_wider-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.953,
+   "speed": 1.218,
+   "lead_in_frames": 14,
+   "frame_count": 114,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 21.6,
+     "peak_deg": 21.6,
+     "text": "left arm too far out",
+     "follower_frames": [
+      27,
+      101
+     ],
+     "expected_frames": [
+      15,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_02_arms_wider-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_02_arms_wider-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_03_foot_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.981,
+   "speed": 0.9,
+   "lead_in_frames": 14,
+   "frame_count": 148,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 18.3,
+     "peak_deg": 18.3,
+     "text": "right foot too far out",
+     "follower_frames": [
+      22,
+      136
+     ],
+     "expected_frames": [
+      7,
+      110
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_03_foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_03_foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_04_knees_shallow-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.958,
+   "speed": 1.235,
+   "lead_in_frames": 14,
+   "frame_count": 112,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 12.4,
+     "peak_deg": 24.4,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      23,
+      104
+     ],
+     "expected_frames": [
+      10,
+      112
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_05_elbow_bent-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.072,
+   "speed": 1.032,
+   "lead_in_frames": 10,
+   "frame_count": 127,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 30.8,
+     "peak_deg": 30.9,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      20,
+      109
+     ],
+     "expected_frames": [
+      10,
+      103
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_06_trunk_lean-center",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.086,
+   "speed": 0.835,
+   "lead_in_frames": 0,
+   "frame_count": 145,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 23.3,
+     "peak_deg": 23.3,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      20,
+      122
+     ],
+     "expected_frames": [
+      16,
+      102
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_07_knee_caving-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.906,
+   "speed": 0.915,
+   "lead_in_frames": 9,
+   "frame_count": 141,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 12.3,
+     "peak_deg": 20.0,
+     "text": "right knee caving in",
+     "follower_frames": [
+      17,
+      119
+     ],
+     "expected_frames": [
+      7,
+      101
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_08_trunk_lean-center+foot_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.029,
+   "speed": 1.178,
+   "lead_in_frames": 15,
+   "frame_count": 118,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 23.5,
+     "peak_deg": 23.5,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      23,
+      99
+     ],
+     "expected_frames": [
+      9,
+      99
+     ]
+    },
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 12.2,
+     "peak_deg": 12.2,
+     "text": "right foot too far out",
+     "follower_frames": [
+      32,
+      99
+     ],
+     "expected_frames": [
+      19,
+      100
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_08_trunk_lean-center+foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_08_trunk_lean-center+foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_00_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.9,
+   "speed": 0.995,
+   "lead_in_frames": 7,
+   "frame_count": 129,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_00_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_01_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.055,
+   "speed": 0.88,
+   "lead_in_frames": 0,
+   "frame_count": 137,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_01_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_02_arms_wider-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.071,
+   "speed": 1.186,
+   "lead_in_frames": 6,
+   "frame_count": 108,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 18.3,
+     "peak_deg": 18.3,
+     "text": "left arm too far out",
+     "follower_frames": [
+      23,
+      100
+     ],
+     "expected_frames": [
+      19,
+      112
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_02_arms_wider-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_02_arms_wider-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_03_foot_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.009,
+   "speed": 1.219,
+   "lead_in_frames": 1,
+   "frame_count": 100,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "right_hip"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 14.7,
+     "peak_deg": 14.7,
+     "text": "right foot too far out",
+     "follower_frames": [
+      16,
+      80
+     ],
+     "expected_frames": [
+      18,
+      97
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_03_foot_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_03_foot_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_04_knees_shallow-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.004,
+   "speed": 0.861,
+   "lead_in_frames": 4,
+   "frame_count": 144,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 16.7,
+     "peak_deg": 30.3,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      25,
+      118
+     ],
+     "expected_frames": [
+      18,
+      99
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_05_elbow_bent-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.975,
+   "speed": 0.875,
+   "lead_in_frames": 14,
+   "frame_count": 152,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "right_elbow"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 25.6,
+     "peak_deg": 25.8,
+     "text": "right elbow bent, keep it straighter",
+     "follower_frames": [
+      31,
+      131
+     ],
+     "expected_frames": [
+      14,
+      103
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_05_elbow_bent-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_05_elbow_bent-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_06_trunk_lean-center",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.961,
+   "speed": 0.874,
+   "lead_in_frames": 3,
+   "frame_count": 141,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 21.1,
+     "peak_deg": 21.2,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      10,
+      118
+     ],
+     "expected_frames": [
+      6,
+      101
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_07_knee_caving-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.031,
+   "speed": 0.845,
+   "lead_in_frames": 9,
+   "frame_count": 152,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "left_knee"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 15.0,
+     "peak_deg": 22.8,
+     "text": "left knee caving in",
+     "follower_frames": [
+      20,
+      137
+     ],
+     "expected_frames": [
+      9,
+      109
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_07_knee_caving-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_07_knee_caving-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_08_arms_wider-both+foot_out-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.058,
+   "speed": 0.984,
+   "lead_in_frames": 8,
+   "frame_count": 131,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder",
+      "right_shoulder"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 15.7,
+     "peak_deg": 15.7,
+     "text": "elbows wider than the example",
+     "follower_frames": [
+      28,
+      106
+     ],
+     "expected_frames": [
+      19,
+      97
+     ]
+    },
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "left_hip"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 12.3,
+     "peak_deg": 12.3,
+     "text": "left foot too far out",
+     "follower_frames": [
+      23,
+      115
+     ],
+     "expected_frames": [
+      14,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_08_arms_wider-both+foot_out-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_08_arms_wider-both+foot_out-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_00_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 0.949,
+   "speed": 0.933,
+   "lead_in_frames": 13,
+   "frame_count": 143,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_00_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_00_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_01_correct",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": true,
+   "body_scale": 1.03,
+   "speed": 0.896,
+   "lead_in_frames": 1,
+   "frame_count": 136,
+   "faults": [],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_01_correct/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_01_correct/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_02_arms_wider-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.947,
+   "speed": 1.075,
+   "lead_in_frames": 8,
+   "frame_count": 121,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "right_shoulder"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 24.8,
+     "peak_deg": 24.8,
+     "text": "right arm too far out",
+     "follower_frames": [
+      18,
+      106
+     ],
+     "expected_frames": [
+      10,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_02_arms_wider-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_02_arms_wider-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_03_foot_out-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.973,
+   "speed": 1.049,
+   "lead_in_frames": 14,
+   "frame_count": 129,
+   "faults": [
+    {
+     "type": "foot_out",
+     "measure": "thigh_direction",
+     "body_part": "legs",
+     "joints": [
+      "left_hip"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 16.4,
+     "peak_deg": 16.4,
+     "text": "left foot too far out",
+     "follower_frames": [
+      25,
+      119
+     ],
+     "expected_frames": [
+      11,
+      111
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_03_foot_out-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_03_foot_out-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_04_knees_shallow-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.937,
+   "speed": 1.035,
+   "lead_in_frames": 4,
+   "frame_count": 121,
+   "faults": [
+    {
+     "type": "knees_shallow",
+     "measure": "knee_flexion",
+     "body_part": "legs",
+     "joints": [
+      "left_knee",
+      "right_knee"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 13.6,
+     "peak_deg": 26.8,
+     "text": "knees not bent enough",
+     "follower_frames": [
+      27,
+      99
+     ],
+     "expected_frames": [
+      23,
+      99
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_04_knees_shallow-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_04_knees_shallow-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_05_elbow_bent-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.932,
+   "speed": 0.95,
+   "lead_in_frames": 12,
+   "frame_count": 139,
+   "faults": [
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 32.8,
+     "peak_deg": 32.9,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      28,
+      126
+     ],
+     "expected_frames": [
+      15,
+      109
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_05_elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_05_elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_06_trunk_lean-center",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.996,
+   "speed": 1.143,
+   "lead_in_frames": 8,
+   "frame_count": 114,
+   "faults": [
+    {
+     "type": "trunk_lean",
+     "measure": "trunk_lean_forward",
+     "body_part": "torso",
+     "joints": [
+      "spine"
+     ],
+     "side": "center",
+     "direction": "more",
+     "magnitude_deg": 22.3,
+     "peak_deg": 22.3,
+     "text": "leaning forward more than the example",
+     "follower_frames": [
+      18,
+      98
+     ],
+     "expected_frames": [
+      11,
+      104
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_06_trunk_lean-center/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_06_trunk_lean-center/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_07_knee_caving-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.051,
+   "speed": 0.987,
+   "lead_in_frames": 8,
+   "frame_count": 131,
+   "faults": [
+    {
+     "type": "knee_caving",
+     "measure": "knee_valgus",
+     "body_part": "legs",
+     "joints": [
+      "right_knee"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 15.0,
+     "peak_deg": 17.8,
+     "text": "right knee caving in",
+     "follower_frames": [
+      26,
+      114
+     ],
+     "expected_frames": [
+      17,
+      105
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_07_knee_caving-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_07_knee_caving-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_08_arms_wider-both+elbow_bent-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.057,
+   "speed": 0.977,
+   "lead_in_frames": 14,
+   "frame_count": 138,
+   "faults": [
+    {
+     "type": "arms_wider",
+     "measure": "upper_arm_direction",
+     "body_part": "arms",
+     "joints": [
+      "left_shoulder",
+      "right_shoulder"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 18.5,
+     "peak_deg": 18.5,
+     "text": "elbows wider than the example",
+     "follower_frames": [
+      31,
+      130
+     ],
+     "expected_frames": [
+      16,
+      114
+     ]
+    },
+    {
+     "type": "elbow_bent",
+     "measure": "elbow_flexion",
+     "body_part": "arms",
+     "joints": [
+      "left_elbow"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 31.1,
+     "peak_deg": 31.6,
+     "text": "left elbow bent, keep it straighter",
+     "follower_frames": [
+      26,
+      129
+     ],
+     "expected_frames": [
+      11,
+      113
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_08_arms_wider-both+elbow_bent-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_08_arms_wider-both+elbow_bent-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_09_foot_turned_out-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.07,
+   "speed": 1.02,
+   "lead_in_frames": 10,
+   "frame_count": 99,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 18.4,
+     "peak_deg": 18.4,
+     "text": "right foot turned out too far",
+     "follower_frames": [
+      15,
+      86
+     ],
+     "expected_frames": [
+      5,
+      78
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_09_foot_turned_out-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_09_foot_turned_out-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_10_foot_turned_in-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.974,
+   "speed": 0.926,
+   "lead_in_frames": 13,
+   "frame_count": 111,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "less",
+     "magnitude_deg": 24.7,
+     "peak_deg": 24.7,
+     "text": "left foot not turned out enough",
+     "follower_frames": [
+      25,
+      105
+     ],
+     "expected_frames": [
+      11,
+      86
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_10_foot_turned_in-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_10_foot_turned_in-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_11_ankle_rolled_in-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.947,
+   "speed": 1.215,
+   "lead_in_frames": 15,
+   "frame_count": 90,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 17.3,
+     "peak_deg": 17.3,
+     "text": "left ankle rolled in",
+     "follower_frames": [
+      23,
+      84
+     ],
+     "expected_frames": [
+      9,
+      85
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_11_ankle_rolled_in-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_11_ankle_rolled_in-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_good_12_ankle_rolled_out-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.086,
+   "speed": 0.836,
+   "lead_in_frames": 15,
+   "frame_count": 124,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 15.3,
+     "peak_deg": 15.3,
+     "text": "ankles rolled out",
+     "follower_frames": [
+      35,
+      111
+     ],
+     "expected_frames": [
+      16,
+      81
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_good_12_ankle_rolled_out-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_good_12_ankle_rolled_out-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_09_foot_turned_out-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.919,
+   "speed": 0.944,
+   "lead_in_frames": 10,
+   "frame_count": 106,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 19.7,
+     "peak_deg": 19.7,
+     "text": "left foot turned out too far",
+     "follower_frames": [
+      17,
+      98
+     ],
+     "expected_frames": [
+      6,
+      84
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_09_foot_turned_out-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_09_foot_turned_out-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_10_foot_turned_in-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.92,
+   "speed": 0.814,
+   "lead_in_frames": 10,
+   "frame_count": 122,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 22.2,
+     "peak_deg": 22.2,
+     "text": "feet not turned out enough",
+     "follower_frames": [
+      17,
+      114
+     ],
+     "expected_frames": [
+      5,
+      85
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_10_foot_turned_in-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_10_foot_turned_in-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_11_ankle_rolled_in-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.017,
+   "speed": 0.826,
+   "lead_in_frames": 9,
+   "frame_count": 119,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 22.0,
+     "peak_deg": 22.0,
+     "text": "ankles rolled in",
+     "follower_frames": [
+      16,
+      99
+     ],
+     "expected_frames": [
+      5,
+      75
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_11_ankle_rolled_in-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_11_ankle_rolled_in-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_front_low_12_ankle_rolled_out-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.071,
+   "speed": 0.877,
+   "lead_in_frames": 0,
+   "frame_count": 104,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "less",
+     "magnitude_deg": 22.1,
+     "peak_deg": 22.1,
+     "text": "left ankle rolled out",
+     "follower_frames": [
+      7,
+      85
+     ],
+     "expected_frames": [
+      6,
+      75
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_front_low_12_ankle_rolled_out-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_front_low_12_ankle_rolled_out-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_09_foot_turned_out-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.992,
+   "speed": 1.165,
+   "lead_in_frames": 8,
+   "frame_count": 86,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 18.5,
+     "peak_deg": 18.5,
+     "text": "feet turned out more than the example",
+     "follower_frames": [
+      19,
+      78
+     ],
+     "expected_frames": [
+      12,
+      82
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_09_foot_turned_out-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_09_foot_turned_out-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_10_foot_turned_in-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.024,
+   "speed": 1.211,
+   "lead_in_frames": 7,
+   "frame_count": 82,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "less",
+     "magnitude_deg": 16.8,
+     "peak_deg": 16.8,
+     "text": "right foot not turned out enough",
+     "follower_frames": [
+      15,
+      77
+     ],
+     "expected_frames": [
+      9,
+      85
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_10_foot_turned_in-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_10_foot_turned_in-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_11_ankle_rolled_in-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.011,
+   "speed": 0.945,
+   "lead_in_frames": 8,
+   "frame_count": 104,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 15.3,
+     "peak_deg": 15.3,
+     "text": "left ankle rolled in",
+     "follower_frames": [
+      14,
+      92
+     ],
+     "expected_frames": [
+      5,
+      80
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_11_ankle_rolled_in-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_11_ankle_rolled_in-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_good_12_ankle_rolled_out-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.987,
+   "speed": 1.04,
+   "lead_in_frames": 0,
+   "frame_count": 88,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 21.1,
+     "peak_deg": 21.1,
+     "text": "ankles rolled out",
+     "follower_frames": [
+      16,
+      75
+     ],
+     "expected_frames": [
+      16,
+      78
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_good_12_ankle_rolled_out-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_good_12_ankle_rolled_out-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_09_foot_turned_out-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.073,
+   "speed": 0.92,
+   "lead_in_frames": 8,
+   "frame_count": 107,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 17.2,
+     "peak_deg": 17.2,
+     "text": "feet turned out more than the example",
+     "follower_frames": [
+      16,
+      92
+     ],
+     "expected_frames": [
+      7,
+      78
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_09_foot_turned_out-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_09_foot_turned_out-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_10_foot_turned_in-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.096,
+   "speed": 1.214,
+   "lead_in_frames": 14,
+   "frame_count": 89,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "less",
+     "magnitude_deg": 15.1,
+     "peak_deg": 15.1,
+     "text": "left foot not turned out enough",
+     "follower_frames": [
+      26,
+      81
+     ],
+     "expected_frames": [
+      14,
+      82
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_10_foot_turned_in-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_10_foot_turned_in-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_11_ankle_rolled_in-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.941,
+   "speed": 1.17,
+   "lead_in_frames": 13,
+   "frame_count": 91,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 16.0,
+     "peak_deg": 16.0,
+     "text": "left ankle rolled in",
+     "follower_frames": [
+      24,
+      80
+     ],
+     "expected_frames": [
+      12,
+      79
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_11_ankle_rolled_in-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_11_ankle_rolled_in-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_45_low_12_ankle_rolled_out-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.008,
+   "speed": 1.22,
+   "lead_in_frames": 13,
+   "frame_count": 88,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "less",
+     "magnitude_deg": 21.4,
+     "peak_deg": 21.4,
+     "text": "left ankle rolled out",
+     "follower_frames": [
+      18,
+      80
+     ],
+     "expected_frames": [
+      6,
+      82
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_45_low_12_ankle_rolled_out-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_45_low_12_ankle_rolled_out-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_09_foot_turned_out-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.956,
+   "speed": 0.926,
+   "lead_in_frames": 0,
+   "frame_count": 98,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 24.0,
+     "peak_deg": 24.0,
+     "text": "feet turned out more than the example",
+     "follower_frames": [
+      15,
+      85
+     ],
+     "expected_frames": [
+      13,
+      79
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_09_foot_turned_out-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_09_foot_turned_out-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_10_foot_turned_in-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.053,
+   "speed": 0.972,
+   "lead_in_frames": 11,
+   "frame_count": 105,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "less",
+     "magnitude_deg": 15.8,
+     "peak_deg": 15.8,
+     "text": "left foot not turned out enough",
+     "follower_frames": [
+      25,
+      95
+     ],
+     "expected_frames": [
+      13,
+      82
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_10_foot_turned_in-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_10_foot_turned_in-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_11_ankle_rolled_in-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.921,
+   "speed": 0.988,
+   "lead_in_frames": 1,
+   "frame_count": 93,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 16.0,
+     "peak_deg": 16.0,
+     "text": "ankles rolled in",
+     "follower_frames": [
+      6,
+      87
+     ],
+     "expected_frames": [
+      4,
+      85
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_11_ankle_rolled_in-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_11_ankle_rolled_in-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_good_12_ankle_rolled_out-both",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.083,
+   "speed": 1.208,
+   "lead_in_frames": 13,
+   "frame_count": 89,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 22.5,
+     "peak_deg": 22.5,
+     "text": "ankles rolled out",
+     "follower_frames": [
+      22,
+      84
+     ],
+     "expected_frames": [
+      10,
+      86
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_good_12_ankle_rolled_out-both/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_good_12_ankle_rolled_out-both/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_09_foot_turned_out-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.065,
+   "speed": 1.088,
+   "lead_in_frames": 5,
+   "frame_count": 89,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 23.7,
+     "peak_deg": 23.7,
+     "text": "left foot turned out too far",
+     "follower_frames": [
+      13,
+      74
+     ],
+     "expected_frames": [
+      8,
+      76
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_09_foot_turned_out-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_09_foot_turned_out-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_10_foot_turned_in-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.995,
+   "speed": 1.169,
+   "lead_in_frames": 5,
+   "frame_count": 83,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "less",
+     "magnitude_deg": 19.5,
+     "peak_deg": 19.5,
+     "text": "right foot not turned out enough",
+     "follower_frames": [
+      17,
+      70
+     ],
+     "expected_frames": [
+      13,
+      76
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_10_foot_turned_in-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_10_foot_turned_in-right/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_11_ankle_rolled_in-left",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.065,
+   "speed": 1.113,
+   "lead_in_frames": 6,
+   "frame_count": 88,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 23.3,
+     "peak_deg": 23.3,
+     "text": "left ankle rolled in",
+     "follower_frames": [
+      10,
+      71
+     ],
+     "expected_frames": [
+      4,
+      73
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_11_ankle_rolled_in-left/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_11_ankle_rolled_in-left/skeleton.json"
+  },
+  {
+   "take_id": "exercise_side_low_12_ankle_rolled_out-right",
+   "set": "exercise",
+   "movement": "squat",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.91,
+   "speed": 0.971,
+   "lead_in_frames": 12,
+   "frame_count": 106,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "less",
+     "magnitude_deg": 16.0,
+     "peak_deg": 16.0,
+     "text": "right ankle rolled out",
+     "follower_frames": [
+      25,
+      100
+     ],
+     "expected_frames": [
+      12,
+      86
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/exercise/feet.json",
+   "follower_feet": "fixtures/input/followers/exercise/exercise_side_low_12_ankle_rolled_out-right/feet.json",
+   "expected": "fixtures/input/expected/exercise/animation.json",
+   "follower": "fixtures/input/followers/exercise/exercise_side_low_12_ankle_rolled_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_09_foot_turned_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.076,
+   "speed": 0.874,
+   "lead_in_frames": 15,
+   "frame_count": 153,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 16.2,
+     "peak_deg": 16.2,
+     "text": "right foot turned out too far",
+     "follower_frames": [
+      36,
+      130
+     ],
+     "expected_frames": [
+      18,
+      101
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_09_foot_turned_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_09_foot_turned_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_10_foot_turned_in-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.999,
+   "speed": 1.094,
+   "lead_in_frames": 2,
+   "frame_count": 113,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "less",
+     "magnitude_deg": 21.3,
+     "peak_deg": 21.3,
+     "text": "left foot not turned out enough",
+     "follower_frames": [
+      20,
+      93
+     ],
+     "expected_frames": [
+      19,
+      100
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_10_foot_turned_in-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_10_foot_turned_in-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_11_ankle_rolled_in-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.061,
+   "speed": 1.108,
+   "lead_in_frames": 14,
+   "frame_count": 123,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 15.6,
+     "peak_deg": 15.6,
+     "text": "left ankle rolled in",
+     "follower_frames": [
+      30,
+      106
+     ],
+     "expected_frames": [
+      17,
+      102
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_11_ankle_rolled_in-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_11_ankle_rolled_in-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_good_12_ankle_rolled_out-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.929,
+   "speed": 0.985,
+   "lead_in_frames": 7,
+   "frame_count": 130,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "less",
+     "magnitude_deg": 18.3,
+     "peak_deg": 18.3,
+     "text": "right ankle rolled out",
+     "follower_frames": [
+      14,
+      112
+     ],
+     "expected_frames": [
+      6,
+      104
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_good_12_ankle_rolled_out-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_good_12_ankle_rolled_out-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_09_foot_turned_out-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.002,
+   "speed": 1.043,
+   "lead_in_frames": 14,
+   "frame_count": 130,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 24.9,
+     "peak_deg": 24.9,
+     "text": "left foot turned out too far",
+     "follower_frames": [
+      37,
+      118
+     ],
+     "expected_frames": [
+      23,
+      109
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_09_foot_turned_out-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_09_foot_turned_out-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_10_foot_turned_in-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.089,
+   "speed": 0.997,
+   "lead_in_frames": 0,
+   "frame_count": 121,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 16.6,
+     "peak_deg": 16.6,
+     "text": "feet not turned out enough",
+     "follower_frames": [
+      13,
+      98
+     ],
+     "expected_frames": [
+      12,
+      98
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_10_foot_turned_in-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_10_foot_turned_in-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_11_ankle_rolled_in-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.006,
+   "speed": 1.154,
+   "lead_in_frames": 9,
+   "frame_count": 114,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 18.2,
+     "peak_deg": 18.2,
+     "text": "left ankle rolled in",
+     "follower_frames": [
+      23,
+      98
+     ],
+     "expected_frames": [
+      16,
+      103
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_11_ankle_rolled_in-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_11_ankle_rolled_in-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_front_low_12_ankle_rolled_out-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "front",
+   "camera_yaw_deg": 0,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.057,
+   "speed": 1.17,
+   "lead_in_frames": 12,
+   "frame_count": 116,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 19.4,
+     "peak_deg": 19.4,
+     "text": "ankles rolled out",
+     "follower_frames": [
+      26,
+      102
+     ],
+     "expected_frames": [
+      16,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_front_low_12_ankle_rolled_out-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_front_low_12_ankle_rolled_out-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_09_foot_turned_out-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.93,
+   "speed": 1.09,
+   "lead_in_frames": 10,
+   "frame_count": 121,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 18.7,
+     "peak_deg": 18.7,
+     "text": "left foot turned out too far",
+     "follower_frames": [
+      32,
+      107
+     ],
+     "expected_frames": [
+      23,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_09_foot_turned_out-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_09_foot_turned_out-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_10_foot_turned_in-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.922,
+   "speed": 1.089,
+   "lead_in_frames": 10,
+   "frame_count": 121,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 18.2,
+     "peak_deg": 18.2,
+     "text": "feet not turned out enough",
+     "follower_frames": [
+      32,
+      100
+     ],
+     "expected_frames": [
+      23,
+      99
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_10_foot_turned_in-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_10_foot_turned_in-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_11_ankle_rolled_in-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.923,
+   "speed": 0.933,
+   "lead_in_frames": 2,
+   "frame_count": 132,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 16.8,
+     "peak_deg": 16.8,
+     "text": "ankles rolled in",
+     "follower_frames": [
+      15,
+      104
+     ],
+     "expected_frames": [
+      12,
+      96
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_11_ankle_rolled_in-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_11_ankle_rolled_in-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_good_12_ankle_rolled_out-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.972,
+   "speed": 1.132,
+   "lead_in_frames": 6,
+   "frame_count": 113,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 20.5,
+     "peak_deg": 20.5,
+     "text": "ankles rolled out",
+     "follower_frames": [
+      15,
+      95
+     ],
+     "expected_frames": [
+      10,
+      101
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_good_12_ankle_rolled_out-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_good_12_ankle_rolled_out-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_09_foot_turned_out-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.937,
+   "speed": 0.976,
+   "lead_in_frames": 3,
+   "frame_count": 127,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 19.4,
+     "peak_deg": 19.4,
+     "text": "feet turned out more than the example",
+     "follower_frames": [
+      18,
+      108
+     ],
+     "expected_frames": [
+      14,
+      103
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_09_foot_turned_out-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_09_foot_turned_out-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_10_foot_turned_in-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.926,
+   "speed": 1.137,
+   "lead_in_frames": 15,
+   "frame_count": 122,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 20.3,
+     "peak_deg": 20.3,
+     "text": "feet not turned out enough",
+     "follower_frames": [
+      22,
+      103
+     ],
+     "expected_frames": [
+      7,
+      101
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_10_foot_turned_in-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_10_foot_turned_in-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_11_ankle_rolled_in-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.068,
+   "speed": 1.179,
+   "lead_in_frames": 9,
+   "frame_count": 112,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "more",
+     "magnitude_deg": 24.1,
+     "peak_deg": 24.1,
+     "text": "left ankle rolled in",
+     "follower_frames": [
+      19,
+      96
+     ],
+     "expected_frames": [
+      11,
+      103
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_11_ankle_rolled_in-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_11_ankle_rolled_in-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_45_low_12_ankle_rolled_out-left",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "45",
+   "camera_yaw_deg": 45,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.978,
+   "speed": 0.83,
+   "lead_in_frames": 14,
+   "frame_count": 160,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle"
+     ],
+     "side": "left",
+     "direction": "less",
+     "magnitude_deg": 23.0,
+     "peak_deg": 23.0,
+     "text": "left ankle rolled out",
+     "follower_frames": [
+      34,
+      142
+     ],
+     "expected_frames": [
+      16,
+      107
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_45_low_12_ankle_rolled_out-left/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_45_low_12_ankle_rolled_out-left/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_09_foot_turned_out-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.94,
+   "speed": 0.999,
+   "lead_in_frames": 1,
+   "frame_count": 122,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 19.2,
+     "peak_deg": 19.2,
+     "text": "feet turned out more than the example",
+     "follower_frames": [
+      18,
+      99
+     ],
+     "expected_frames": [
+      16,
+      98
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_09_foot_turned_out-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_09_foot_turned_out-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_10_foot_turned_in-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.929,
+   "speed": 1.182,
+   "lead_in_frames": 1,
+   "frame_count": 104,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "less",
+     "magnitude_deg": 16.5,
+     "peak_deg": 16.5,
+     "text": "right foot not turned out enough",
+     "follower_frames": [
+      12,
+      91
+     ],
+     "expected_frames": [
+      12,
+      107
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_10_foot_turned_in-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_10_foot_turned_in-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_11_ankle_rolled_in-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.942,
+   "speed": 1.236,
+   "lead_in_frames": 12,
+   "frame_count": 110,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 16.3,
+     "peak_deg": 16.3,
+     "text": "right ankle rolled in",
+     "follower_frames": [
+      17,
+      97
+     ],
+     "expected_frames": [
+      6,
+      106
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_11_ankle_rolled_in-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_11_ankle_rolled_in-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_good_12_ankle_rolled_out-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "good",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.004,
+   "speed": 0.969,
+   "lead_in_frames": 14,
+   "frame_count": 139,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 18.1,
+     "peak_deg": 18.1,
+     "text": "ankles rolled out",
+     "follower_frames": [
+      28,
+      121
+     ],
+     "expected_frames": [
+      13,
+      104
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_good_12_ankle_rolled_out-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_good_12_ankle_rolled_out-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_09_foot_turned_out-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.033,
+   "speed": 0.987,
+   "lead_in_frames": 15,
+   "frame_count": 138,
+   "faults": [
+    {
+     "type": "foot_turned_out",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "more",
+     "magnitude_deg": 15.8,
+     "peak_deg": 15.8,
+     "text": "feet turned out more than the example",
+     "follower_frames": [
+      30,
+      125
+     ],
+     "expected_frames": [
+      14,
+      109
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_09_foot_turned_out-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_09_foot_turned_out-both/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_10_foot_turned_in-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.993,
+   "speed": 0.804,
+   "lead_in_frames": 12,
+   "frame_count": 162,
+   "faults": [
+    {
+     "type": "foot_turned_in",
+     "measure": "foot_rotation",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "less",
+     "magnitude_deg": 20.3,
+     "peak_deg": 20.3,
+     "text": "right foot not turned out enough",
+     "follower_frames": [
+      29,
+      148
+     ],
+     "expected_frames": [
+      13,
+      110
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_10_foot_turned_in-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_10_foot_turned_in-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_11_ankle_rolled_in-right",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 1.075,
+   "speed": 1.089,
+   "lead_in_frames": 0,
+   "frame_count": 111,
+   "faults": [
+    {
+     "type": "ankle_rolled_in",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "right_ankle"
+     ],
+     "side": "right",
+     "direction": "more",
+     "magnitude_deg": 23.9,
+     "peak_deg": 23.9,
+     "text": "right ankle rolled in",
+     "follower_frames": [
+      17,
+      89
+     ],
+     "expected_frames": [
+      18,
+      97
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_11_ankle_rolled_in-right/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_11_ankle_rolled_in-right/skeleton.json"
+  },
+  {
+   "take_id": "dance_side_low_12_ankle_rolled_out-both",
+   "set": "dance",
+   "movement": "step_touch",
+   "angle": "side",
+   "camera_yaw_deg": 90,
+   "lighting": "low",
+   "variant": "clean",
+   "label_source": "synthetic",
+   "correct": false,
+   "body_scale": 0.929,
+   "speed": 0.998,
+   "lead_in_frames": 15,
+   "frame_count": 136,
+   "faults": [
+    {
+     "type": "ankle_rolled_out",
+     "measure": "ankle_inversion",
+     "body_part": "feet",
+     "joints": [
+      "left_ankle",
+      "right_ankle"
+     ],
+     "side": "both",
+     "direction": "less",
+     "magnitude_deg": 15.0,
+     "peak_deg": 15.0,
+     "text": "ankles rolled out",
+     "follower_frames": [
+      33,
+      128
+     ],
+     "expected_frames": [
+      17,
+      113
+     ]
+    }
+   ],
+   "expected_feet": "fixtures/input/expected-feet/dance/feet.json",
+   "follower_feet": "fixtures/input/followers/dance/dance_side_low_12_ankle_rolled_out-both/feet.json",
+   "expected": "fixtures/input/expected/dance/animation.json",
+   "follower": "fixtures/input/followers/dance/dance_side_low_12_ankle_rolled_out-both/skeleton.json"
+  }
+ ]
+}

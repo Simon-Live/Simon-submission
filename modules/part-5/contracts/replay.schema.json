@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/replay.schema.json",
+  "title": "Part 5 replay.json (simon.replay.v1)",
+  "version": "1.1.0",
+  "description": "Both normalised skeletons, matched frame for frame, for a 3D replay. Written by `part5 analyse --replay`. The timeline runs on the expected clip's frames: at expected frame i the follower shows its own file's frame exp_to_fol[i]. Times are seconds as written in each input file. Extra fields are allowed. 1.1.0 (TICKET-085): every new replay says where the alignment path ends. The alignment is open-ended, so the follower may go on after the routine: the follower frames after follower_t[max(exp_to_fol)] were never compared or scored. aligned_until_s is that time and aligned_until_expected_frame the last expected frame shown with it. A reader that maps follower frames back to expected ones would pair every later follower frame with that expected frame; leave those frames out instead (keep the follower frames whose follower_t is at most aligned_until_s). Reported only: the alignment, the faults and the score are what they were. A 1.0.0 replay has neither field and still validates.",
+  "type": "object",
+  "required": [
+    "format",
+    "schema_version",
+    "fps",
+    "joints",
+    "bones",
+    "expected",
+    "follower",
+    "expected_t",
+    "follower_t",
+    "exp_to_fol",
+    "coordinate_frame"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.replay.v1"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$"
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "joints": {
+      "type": "array",
+      "minItems": 17,
+      "maxItems": 17,
+      "items": {
+        "type": "string"
+      },
+      "description": "The 17 canonical joint names, in order."
+    },
+    "bones": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 16
+          },
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 16
+          }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "expected": {
+      "$ref": "#/$defs/frames"
+    },
+    "follower": {
+      "$ref": "#/$defs/frames"
+    },
+    "expected_t": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "follower_t": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "exp_to_fol": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "coordinate_frame": {
+      "type": "object",
+      "required": [
+        "origin",
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "origin": {
+          "const": "hip_midpoint"
+        },
+        "x": {
+          "const": "subject_left"
+        },
+        "y": {
+          "const": "world_up"
+        },
+        "z": {
+          "const": "anterior"
+        },
+        "unit": {
+          "const": "metres"
+        }
+      }
+    },
+    "aligned_until_s": {
+      "type": "number",
+      "description": "1.1.0 (TICKET-085): seconds on the follower file's own clock, follower_t at the largest exp_to_fol index: where the alignment path ends. Follower frames after it are the idle tail the open-ended alignment skipped; they were never compared or scored. Equal to follower_t[-1] when the path reaches the follower's last frame."
+    },
+    "aligned_until_expected_frame": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "1.1.0 (TICKET-085): the index into expected (and expected_t) of the last expected frame shown with the follower frame at aligned_until_s, the last index of exp_to_fol that holds its largest value."
+    }
+  },
+  "$defs": {
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 17,
+        "maxItems": 17,
+        "items": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          ]
+        }
+      },
+      "description": "Per frame, 17 joints: [x, y, z] metres (4 decimals) or null where the joint is missing."
+    }
+  }
+}

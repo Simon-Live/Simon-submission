@@ -1,0 +1,27 @@
+{
+  "format": "simon.part5.mismatch_manifest.v1",
+  "about": "Which Part 2 clips (through Part 3 --view part5) are a different movement from the clip they are compared with. python -m part5.calibrate --guard reads this file. See SOURCE.md for where each skeleton.json came from and the single content rule.",
+  "fixtures": {
+    "part2-class": {
+      "content": "cat-cow yoga class, 7 people",
+      "population": "mismatch",
+      "against": "fixtures/input/expected/part3-squat/animation.json"
+    },
+    "part2-dance": {
+      "content": "dancers crossing and swapping places",
+      "population": "mismatch",
+      "against": "fixtures/input/expected/part3-squat/animation.json"
+    },
+    "part2-single": {
+      "content": "provisional barbell back squat, pose3d.json sha256 433ae2edfe61b7e5c027f06ccdea289df34741225829f45fb5a652bb5147d857",
+      "population": "matched_reference",
+      "against": "fixtures/input/expected/part3-squat/animation.json",
+      "reason": "Part 2's fixtures/output/single stays the team's provisional barbell squat (Part 2 does not overwrite it), so it is a matched squat pair; the seated stretch its input names is published separately as scored/single and is the part2-stretch fixture"
+    },
+    "part2-stretch": {
+      "content": "seated cross-legged stretches (Pexels 6019962), Part 2 scored/single at 1f2adc5",
+      "population": "mismatch",
+      "against": "fixtures/input/expected/part3-squat/animation.json"
+    }
+  }
+}

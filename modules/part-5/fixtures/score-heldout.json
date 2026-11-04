@@ -1,0 +1,49 @@
+{
+  "format": "simon.part5.score-heldout.v1",
+  "note": "Append-only (ADR-0007). Each seed was generated once after the score freeze commit and scored once; no param changed afterwards. Measured, pass or fail. `freezes` (ADR-0018) holds the freeze of a score version that is recorded before its seed is generated: {version, freeze_commit, params_sha256, seed}, with params_sha256 printed by `python -m part5.score_report --params-sha256`. The attempts of seeds 47 and 53 are simon.score.v1; their params_sha256 is the hash of `score.v1` in part5/rules.json.",
+  "freezes": [
+    {"version": "simon.score.v2", "freeze_commit": "1f2f07a27e226fe8afebd8a87d20186d68c38dee", "params_sha256": "60116de4cede436c574b91b15a74a7f0c5561790ac6f61cf9181a8317575fe95", "seed": 59},
+    {"version": "simon.score.v3", "freeze_commit": "59918a1574c7b22e8a2abfdbe69c97c7497fb286", "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07", "seed": 61}
+  ],
+  "attempts": [
+    {
+      "seed": 47,
+      "freeze_commit": "0aab25b",
+      "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+      "generator": "python3 scripts/make_dummy_followers.py --seed 47 --out <temp dir>/seed-47 --dropout-variant",
+      "scorer": "python -m part5.score_report --set <temp dir>/seed-47",
+      "labels_sha256": "083adc3f44466e666a039116747c3213b50457096c941373c64d1dfa1e8b3ddd",
+      "slices": {
+        "good/0": {"n": 20, "min": 100, "median": 100.0, "max": 100, "grades": {"A": 20}},
+        "good/1": {"n": 60, "min": 72, "median": 81.0, "max": 100, "grades": {"A": 1, "B": 36, "C": 23}},
+        "good/2": {"n": 10, "min": 58, "median": 63.0, "max": 67, "grades": {"D": 6, "F": 4}},
+        "low/0": {"n": 20, "min": 67, "median": 98.0, "max": 100, "grades": {"A": 11, "B": 3, "C": 4, "D": 2}},
+        "low/1": {"n": 60, "min": 27, "median": 77.5, "max": 99, "grades": {"A": 3, "B": 23, "C": 12, "D": 10, "F": 12}},
+        "low/2": {"n": 10, "min": 26, "median": 48.0, "max": 63, "grades": {"D": 1, "F": 9}}
+      },
+      "targets": {"correct good-light all A": "pass", "single faults B or C": "fail", "double faults D or F": "pass"},
+      "misses": ["dance_side_good_07_knee_caving-right_dropout: fault not detected, scored A"]
+    },
+    {
+      "seed": 53,
+      "freeze_commit": "0aab25b",
+      "params_sha256": "e818635bb46b7062f57e335f2940edd35d01835edaaaffed9339fdbfb79eaa62",
+      "generator": "python3 scripts/make_dummy_followers.py --seed 53 --out <temp dir>/seed-53 --dropout-variant",
+      "scorer": "python -m part5.score_report --set <temp dir>/seed-53",
+      "labels_sha256": "8edc5c111daef68230d81bcc37e683126bcac9c18c0892327450d12e6b8f164a",
+      "slices": {
+        "good/0": {"n": 20, "min": 100, "median": 100.0, "max": 100, "grades": {"A": 20}},
+        "good/1": {"n": 60, "min": 72, "median": 81.0, "max": 100, "grades": {"A": 2, "B": 40, "C": 18}},
+        "good/2": {"n": 10, "min": 56, "median": 61.0, "max": 63, "grades": {"D": 8, "F": 2}},
+        "low/0": {"n": 20, "min": 42, "median": 91.0, "max": 100, "grades": {"A": 10, "B": 3, "C": 2, "D": 4, "F": 1}},
+        "low/1": {"n": 60, "min": 32, "median": 76.0, "max": 99, "grades": {"A": 6, "B": 21, "C": 8, "D": 17, "F": 8}},
+        "low/2": {"n": 10, "min": 14, "median": 57.5, "max": 64, "grades": {"D": 4, "F": 6}}
+      },
+      "targets": {"correct good-light all A": "pass", "single faults B or C": "fail", "double faults D or F": "pass"},
+      "misses": ["dance_45_good_04_knees_shallow-both: fault not detected, scored A",
+                 "dance_45_good_04_knees_shallow-both_dropout: fault not detected, scored A"]
+    },
+    {"seed": 59, "version": "simon.score.v2", "freeze_commit": "1f2f07a27e226fe8afebd8a87d20186d68c38dee", "params_sha256": "60116de4cede436c574b91b15a74a7f0c5561790ac6f61cf9181a8317575fe95", "scored_at": "0aba9742f0dd2609262258c3741084e530ebe40b", "holds": false, "generator": "python3 scripts/make_dummy_followers.py --seed 59 --out out/score-heldout/seed-59 --dropout-variant", "scorer": "python3 -m part5.score_report --set out/score-heldout/seed-59 --json-out out/score-heldout/seed-59/report.json", "labels_sha256": "bab05a33762434332eddaeb5ac9dde415bc5782a9f4afd37c863e2588b7d73fe", "slices": {"good/0": {"n": 20, "min": 100, "median": 100.0, "max": 100, "grades": {"A": 20}}, "good/1": {"n": 60, "min": 73, "median": 85.0, "max": 89, "grades": {"B": 53, "C": 7}}, "good/2": {"n": 10, "min": 69, "median": 74.0, "max": 85, "grades": {"B": 3, "C": 5, "D": 2}}, "low/0": {"n": 20, "min": 68, "median": 93.5, "max": 100, "grades": {"A": 10, "B": 6, "C": 3, "D": 1}}, "low/1": {"n": 60, "min": 50, "median": 74.5, "max": 89, "grades": {"B": 23, "C": 18, "D": 8, "F": 11}}, "low/2": {"n": 10, "min": 51, "median": 62.0, "max": 73, "grades": {"C": 1, "D": 6, "F": 3}}}, "targets": {"correct_all_a": "pass", "no_reported_fault_grades_a": "pass", "single_b_or_c": "pass", "double_c_d_or_f": "fail", "sweep": "pass"}},
+    {"seed": 61, "version": "simon.score.v3", "freeze_commit": "59918a1574c7b22e8a2abfdbe69c97c7497fb286", "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07", "scored_at": "7d92b59644c3ffb163f11fff949c0d4edce48a80", "holds": true, "generator": "python3 scripts/make_dummy_followers.py --seed 61 --out out/score-heldout/seed-61 --dropout-variant", "scorer": "python3 -m part5.score_report --set out/score-heldout/seed-61 --json-out out/score-heldout/seed-61/report.json", "labels_sha256": "bc59d2084708d32517707507657ba0348156a6adae0055e8d7e65d0424ae8b4c", "slices": {"good/0": {"n": 20, "min": 100, "median": 100.0, "max": 100, "grades": {"A": 20}}, "good/1": {"n": 60, "min": 73, "median": 86.0, "max": 89, "grades": {"B": 52, "C": 8}}, "good/2": {"n": 10, "min": 63, "median": 69.5, "max": 77, "grades": {"C": 5, "D": 5}}, "low/0": {"n": 20, "min": 72, "median": 85.5, "max": 100, "grades": {"A": 8, "B": 4, "C": 8}}, "low/1": {"n": 60, "min": 23, "median": 79.0, "max": 100, "grades": {"A": 1, "B": 26, "C": 19, "D": 8, "F": 6}}, "low/2": {"n": 10, "min": 21, "median": 66.0, "max": 70, "grades": {"C": 2, "D": 4, "F": 4}}}, "targets": {"correct_all_a": "pass", "no_reported_fault_grades_a": "pass", "single_b_or_c": "pass", "double_c_d_or_f": "pass", "sweep": "pass"}, "beside_targets": {"doubles": [{"take_id": "exercise_front_good_08_arms_wider-left+foot_out-right", "before": 72, "after": 72, "grade": "C", "lowered": false}, {"take_id": "exercise_45_good_08_elbow_bent-right+foot_out-right", "before": 76, "after": 76, "grade": "C", "lowered": false}, {"take_id": "exercise_side_good_08_elbow_bent-left+arms_wider-right", "before": 76, "after": 76, "grade": "C", "lowered": false}, {"take_id": "dance_front_good_08_trunk_lean-center+foot_out-left", "before": 65, "after": 65, "grade": "D", "lowered": false}, {"take_id": "dance_45_good_08_foot_out-right+arms_wider-both", "before": 63, "after": 63, "grade": "D", "lowered": false}, {"take_id": "dance_side_good_08_trunk_lean-center+arms_wider-left", "before": 67, "after": 67, "grade": "D", "lowered": false}, {"take_id": "exercise_45_good_08_elbow_bent-right+foot_out-right_dropout", "before": 77, "after": 77, "grade": "C", "lowered": false}, {"take_id": "exercise_side_good_08_elbow_bent-left+arms_wider-right_dropout", "before": 76, "after": 76, "grade": "C", "lowered": false}, {"take_id": "dance_45_good_08_foot_out-right+arms_wider-both_dropout", "before": 64, "after": 64, "grade": "D", "lowered": false}, {"take_id": "dance_side_good_08_trunk_lean-center+arms_wider-left_dropout", "before": 67, "after": 67, "grade": "D", "lowered": false}], "n": 10, "lowered": 0, "d_or_f": 5, "c": 5, "strict_verdicts": {"good/0": "pass", "good/1": "pass", "good/2": "pass"}}}
+  ]
+}

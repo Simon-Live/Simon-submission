@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/ask.schema.json",
+  "title": "Part 5 Ask this take answer (simon.ask.v1)",
+  "version": "1.0.0",
+  "description": "The answer of `POST api/ask` and `part5 ask` (docs/specs/ask-this-take.md, TICKET-081): one question about one analysed take, answered by muse-wonder-1.0 with tools that read only that take, or by the measured facts. Every number in `answer` is a number of a `tool_calls[].result`, within its rounding. `ui_actions` are for the player to apply in order; the server never acts on them. The request a caller sends is `$defs.request`. With `stream: true` the route answers text/event-stream: `tool_call` events (a `$defs.tool_call`), `ui_action` events (a `$defs.ui_action`), then one `answer` event holding this document. Part 5 has no users: refusing a question about another user's take is Part 7's job ownership. Extra fields are allowed.",
+  "type": "object",
+  "required": [
+    "format",
+    "schema_version",
+    "question",
+    "answer",
+    "source",
+    "model",
+    "live",
+    "validated",
+    "replaced_numbers",
+    "fallback_reason",
+    "take_sha256",
+    "tool_calls",
+    "ui_actions",
+    "spend"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.ask.v1"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$"
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "answer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "description": "One paragraph in plain English. The model's own words only when `source` is `model` (or `cache`); otherwise the measured facts."
+    },
+    "source": {
+      "enum": ["model", "cache", "measured_facts"]
+    },
+    "model": {
+      "description": "muse-wonder-1.0 when a model call was made for this question or the cached answer came from one, else null. The models-used panel lists it.",
+      "oneOf": [{"const": "muse-wonder-1.0"}, {"type": "null"}]
+    },
+    "live": {
+      "type": "boolean",
+      "description": "True when at least one model call was sent for this question."
+    },
+    "validated": {
+      "type": "boolean",
+      "description": "True only when `answer` is the model's own words and every number in it was found in a tool result of the exchange."
+    },
+    "replaced_numbers": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "The numbers of the model's answer that no tool result held, when the answer was replaced for that reason."
+    },
+    "fallback_reason": {
+      "type": ["string", "null"],
+      "maxLength": 200,
+      "description": "Null when `source` is `model`; otherwise why the model's answer is not shown. Never the key or the model's text."
+    },
+    "take_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "tool_calls": {
+      "type": "array",
+      "maxItems": 9,
+      "items": {"$ref": "#/$defs/tool_call"}
+    },
+    "ui_actions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/ui_action"}
+    },
+    "spend": {
+      "type": "object",
+      "required": ["usd", "ledger_purpose", "calls", "input_tokens", "output_tokens", "cached_tokens", "estimated"],
+      "properties": {
+        "usd": {"type": "number", "minimum": 0},
+        "ledger_purpose": {"const": "ask"},
+        "calls": {"type": "integer", "minimum": 0, "maximum": 4},
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0},
+        "cached_tokens": {"type": "integer", "minimum": 0},
+        "estimated": {"type": "boolean"}
+      }
+    }
+  },
+  "$defs": {
+    "request": {
+      "description": "The body of `POST api/ask`.",
+      "type": "object",
+      "required": ["question", "analysis", "replay"],
+      "properties": {
+        "question": {"type": "string", "minLength": 1, "maxLength": 500},
+        "analysis": {
+          "type": "object",
+          "required": ["format", "faults"],
+          "properties": {"format": {"type": "string", "pattern": "^simon\\.analysis\\."}, "faults": {"type": "array"}}
+        },
+        "replay": {
+          "type": "object",
+          "required": ["format"],
+          "properties": {"format": {"const": "simon.replay.v1"}}
+        },
+        "stream": {"type": "boolean"}
+      }
+    },
+    "tool_call": {
+      "type": "object",
+      "required": ["name", "arguments", "ok", "result"],
+      "properties": {
+        "name": {"enum": ["get_faults", "get_joint_angle", "compare_with_teacher", "seek", "spotlight"]},
+        "arguments": {"type": "object"},
+        "ok": {"type": "boolean"},
+        "result": {"type": "object"},
+        "by": {"const": "part5", "description": "Present when Part 5 made the call itself for the measured facts."}
+      }
+    },
+    "ui_action": {
+      "type": "object",
+      "required": ["type", "t", "limb"],
+      "properties": {
+        "type": {"enum": ["seek", "spotlight"]},
+        "t": {"type": "number", "description": "Seconds on the take's own clock (the clock of faults[].at_s)."},
+        "limb": {"type": ["string", "null"]},
+        "joints": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+      },
+      "if": {"properties": {"type": {"const": "spotlight"}}},
+      "then": {"required": ["joints"], "properties": {"limb": {"type": "string"}}},
+      "else": {"properties": {"limb": {"type": "null"}}}
+    }
+  }
+}

@@ -1,0 +1,530 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-5-fault-analysis/contracts/metrics.schema.json",
+  "title": "Part 5 make check-5 document (simon.part5.check.v1)",
+  "version": "1.5.0",
+  "description": "The JSON make check-5 prints. gate carries the held-out result and decides the exit code; tuning and report are reported and never gated. Extra fields are allowed. 1.1.0 (ADR-0007) adds the score report that check-5 writes: gate.sweep (the monotonicity sweep the gate reads), report.score (the grade distribution per slice of every set; reported, never gated beyond gate) and detection_sha256 (the frozen detection rules). A 1.0.0 document validates. 1.2.0 adds report.refusals.gated (always false), so the six report blocks all carry gated false; refusals stays a map of slice to count with that one boolean key beside the slice keys, and a 1.1.0 document without the key still validates. 1.3.0 (ADR-0016) adds the optional top-level profiles_sha256, the sha256 of part5/profiles.json, printed for information beside rules_sha256 and detection_sha256; check-5 runs the fitness profile only. 1.4.0 (ADR-0018) lets report.score.version be simon.score.v2 as well as simon.score.v1 (the score the rules ship); a 1.3.0 document with simon.score.v1 still validates. 1.5.0 (ADR-0019) lets it be simon.score.v3 too; a 1.4.0 document still validates.",
+  "type": "object",
+  "required": [
+    "format",
+    "data_source",
+    "gate",
+    "attempts",
+    "tuning",
+    "report",
+    "rules_sha256"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.part5.check.v1"
+    },
+    "data_source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "gate": {
+      "type": "object",
+      "required": [
+        "set",
+        "seed",
+        "slices",
+        "thresholds",
+        "passed",
+        "failures",
+        "metrics"
+      ],
+      "properties": {
+        "set": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "slices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "thresholds": {
+          "type": "object",
+          "required": [
+            "precision",
+            "recall",
+            "faults_on_correct_takes"
+          ],
+          "properties": {
+            "precision": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "recall": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "faults_on_correct_takes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics_v1"
+        },
+        "sweep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "1.1.0: the monotonicity sweep, keyed '<fault type> <side>': [size in degrees, score] in growing size. The gate fails when a score rises."
+        }
+      }
+    },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "seed",
+          "freeze_commit",
+          "rules_sha256",
+          "approach",
+          "passed",
+          "slices"
+        ],
+        "properties": {
+          "seed": {
+            "type": "integer"
+          },
+          "freeze_commit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rules_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "approach": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "slices": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "tuning": {
+      "type": "object",
+      "required": [
+        "set",
+        "seed",
+        "gated",
+        "metrics"
+      ],
+      "properties": {
+        "set": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "gated": {
+          "const": false
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics_v1"
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "required": [
+        "low_light",
+        "dropout",
+        "kit",
+        "stock",
+        "refusals"
+      ],
+      "properties": {
+        "low_light": {
+          "type": "object",
+          "required": [
+            "gated"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "slices": {
+              "type": "object"
+            }
+          }
+        },
+        "dropout": {
+          "type": "object",
+          "required": [
+            "gated"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "slices": {
+              "type": "object"
+            }
+          }
+        },
+        "kit": {
+          "type": "object",
+          "required": [
+            "gated"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "takes": {
+              "type": "array"
+            }
+          }
+        },
+        "stock": {
+          "type": "object",
+          "required": [
+            "gated"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "takes": {
+              "type": "array"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        "refusals": {
+          "type": "object",
+          "properties": {
+            "gated": {
+              "const": false,
+              "description": "1.2.0: reported, never gated, like every other report block. The other keys are slices ('<lighting>/<angle>'), each a count."
+            }
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "score": {
+          "type": "object",
+          "required": [
+            "gated",
+            "version",
+            "heldout",
+            "tuning",
+            "kit",
+            "stock"
+          ],
+          "properties": {
+            "gated": {
+              "const": false
+            },
+            "version": {
+              "enum": [
+                "simon.score.v1",
+                "simon.score.v2",
+                "simon.score.v3"
+              ]
+            },
+            "heldout": {
+              "type": "object",
+              "required": [
+                "seed",
+                "slices",
+                "targets"
+              ],
+              "properties": {
+                "seed": {
+                  "type": "integer"
+                },
+                "slices": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/$defs/score_slice"
+                  },
+                  "description": "Keyed <lighting>/<labelled faults>, for example good/0."
+                },
+                "targets": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "no takes"
+                    ]
+                  },
+                  "description": "The verdict of each good-light slice against its target, as measured."
+                }
+              }
+            },
+            "tuning": {
+              "type": "object",
+              "required": [
+                "seed",
+                "slices"
+              ],
+              "properties": {
+                "seed": {
+                  "type": "integer"
+                },
+                "slices": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/$defs/score_slice"
+                  },
+                  "description": "Keyed <lighting>/<labelled faults>, for example good/0."
+                }
+              }
+            },
+            "kit": {
+              "type": "object",
+              "required": [
+                "grades"
+              ],
+              "properties": {
+                "grades": {
+                  "type": "object",
+                  "propertyNames": {
+                    "enum": [
+                      "A",
+                      "B",
+                      "C",
+                      "D",
+                      "F"
+                    ]
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "stock": {
+              "type": "object",
+              "required": [
+                "grades"
+              ],
+              "properties": {
+                "grades": {
+                  "type": "object",
+                  "propertyNames": {
+                    "enum": [
+                      "A",
+                      "B",
+                      "C",
+                      "D",
+                      "F"
+                    ]
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "description": "1.1.0 (ADR-0007): the grade distribution per slice of the held-out set and seed 5, and the grades of the real kit and stock takes. Reported, never gated."
+        }
+      }
+    },
+    "rules_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "detection_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "1.1.0: sha256 of the detection rules (part5/rules.json without its score key)."
+    },
+    "profiles_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "1.3.0 (ADR-0016): sha256 of part5/profiles.json, printed for information. make check-5 runs fitness only, so the file never affects the gate."
+    }
+  },
+  "$defs": {
+    "slice": {
+      "type": "object",
+      "required": [
+        "tp",
+        "fp",
+        "fn",
+        "takes",
+        "correct_takes",
+        "faults_on_correct_takes",
+        "precision",
+        "recall"
+      ],
+      "properties": {
+        "tp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "takes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "correct_takes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "faults_on_correct_takes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "precision": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "recall": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Takes the movement guard refused; their labels score as misses."
+        }
+      }
+    },
+    "metrics_v1": {
+      "type": "object",
+      "required": [
+        "format",
+        "slices"
+      ],
+      "properties": {
+        "format": {
+          "const": "simon.part5.metrics.v1"
+        },
+        "slices": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/slice"
+          },
+          "description": "Keyed <lighting>/<angle>, for example good/front."
+        }
+      }
+    },
+    "score_slice": {
+      "type": "object",
+      "required": [
+        "n",
+        "min",
+        "median",
+        "max",
+        "grades"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Scored takes in the slice."
+        },
+        "min": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "median": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "max": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "grades": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "F"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Takes per grade A to F; a grade nobody got is left out."
+        }
+      },
+      "description": "The score distribution of one <lighting>/<labelled faults> slice (null min, median and max when n is 0)."
+    }
+  }
+}

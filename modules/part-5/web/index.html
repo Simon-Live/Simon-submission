@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compare your take with the example</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/" } }
+  </script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Compare your take with the example</h1>
+      <p class="lead">Pick an example movement and a recorded take, or upload your own files, then press Analyse. The result gives a score and a grade, lists each way the take differs from the example in plain words with the time it happens, and replays both in 3D.</p>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Sections" data-testid="tabs">
+      <button type="button" role="tab" id="tab-compare" data-testid="tab-compare" aria-selected="true" aria-controls="panel-compare">Compare</button>
+      <button type="button" role="tab" id="tab-real-takes" data-testid="tab-real-takes" aria-selected="false" aria-controls="panel-real-takes" tabindex="-1">Real takes</button>
+      <button type="button" role="tab" id="tab-preview" data-testid="tab-preview" aria-selected="false" aria-controls="panel-preview" tabindex="-1">Result preview</button>
+    </div>
+
+    <div id="panel-compare" role="tabpanel" aria-labelledby="tab-compare" data-testid="panel-compare">
+      <form id="picker" data-testid="picker">
+        <div class="pickers">
+          <div class="field">
+            <label for="expected-picker">Example movement</label>
+            <select id="expected-picker" data-testid="expected-picker" disabled></select>
+            <div class="upload">
+              <label for="upload-expected">Or upload your own example (JSON file)</label>
+              <input type="file" id="upload-expected" data-testid="upload-expected" accept=".json,application/json" aria-describedby="upload-expected-note upload-expected-error" disabled>
+              <p class="hint" id="upload-expected-note" data-testid="upload-expected-note">Using the example movement above.</p>
+              <button type="button" class="link" id="clear-upload-expected" data-testid="clear-upload-expected" hidden>Use the list instead</button>
+              <p class="error" id="upload-expected-error" role="alert" data-testid="upload-expected-error" hidden></p>
+            </div>
+          </div>
+          <div class="field">
+            <label for="follower-picker">Your take</label>
+            <select id="follower-picker" data-testid="follower-picker" aria-describedby="take-hint" disabled></select>
+            <p class="hint" id="take-hint">Takes are grouped by camera angle and light. Each is labelled with the fault it was made with, or as a correct take.</p>
+            <label class="check" for="show-other-movements">
+              <input type="checkbox" id="show-other-movements" data-testid="show-other-movements" disabled>
+              Also list takes of other movements
+            </label>
+            <div class="upload">
+              <label for="upload-follower">Or upload your own take (JSON file)</label>
+              <input type="file" id="upload-follower" data-testid="upload-follower" accept=".json,application/json" aria-describedby="upload-follower-note upload-follower-error" disabled>
+              <p class="hint" id="upload-follower-note" data-testid="upload-follower-note">Using the take above.</p>
+              <button type="button" class="link" id="clear-upload-follower" data-testid="clear-upload-follower" hidden>Use the list instead</button>
+              <p class="error" id="upload-follower-error" role="alert" data-testid="upload-follower-error" hidden></p>
+            </div>
+          </div>
+        </div>
+        <div class="field profile" id="profile-field" data-testid="profile-field" hidden>
+          <label for="profile">Mode</label>
+          <select id="profile" data-testid="profile" aria-describedby="profile-hint" disabled></select>
+          <p class="hint" id="profile-hint" data-testid="profile-hint">The mode sets how much leeway the comparison allows. A score is only comparable with scores from the same mode.</p>
+        </div>
+        <div class="field phrasing">
+          <label for="phrasing">Wording of the faults</label>
+          <select id="phrasing" data-testid="phrasing" aria-describedby="phrasing-hint phrasing-error" disabled></select>
+          <p class="hint" id="phrasing-hint" data-testid="phrasing-hint">The template wording is always available. A model wording is offered only when this server can run it.</p>
+          <p class="error" id="phrasing-error" role="alert" data-testid="phrasing-error" hidden></p>
+        </div>
+        <button type="submit" id="analyse" data-testid="analyse" disabled>Analyse</button>
+        <p id="form-error" class="error" role="alert" data-testid="form-error" hidden></p>
+      </form>
+
+      <section id="result" aria-labelledby="result-heading" data-stale="false">
+        <h2 id="result-heading">Result</h2>
+        <p id="result-stale" class="stale" role="status" data-testid="result-stale" hidden></p>
+        <p id="result-status" role="status" data-testid="result-status">Results appear here after you press Analyse.</p>
+        <p id="score" class="score" data-testid="score" hidden></p>
+        <p id="score-note" class="hint" data-testid="score-note" hidden></p>
+        <p id="quality-note" class="hint quality-note" data-testid="quality-note" hidden></p>
+        <p id="profile-note" class="hint" data-testid="profile-note" hidden></p>
+        <div id="warning-panel" class="warning" data-testid="warning-panel" role="group" aria-labelledby="warning-heading" hidden>
+          <h3 id="warning-heading">Before you trust this result</h3>
+          <ul id="warning-list" data-testid="warning-list"></ul>
+        </div>
+        <p id="phrasing-status" class="hint" data-testid="phrasing-status" hidden></p>
+
+        <div class="result-grid">
+          <section id="viewer" class="viewer" data-testid="viewer" aria-labelledby="viewer-heading" hidden>
+            <h3 id="viewer-heading">3D replay</h3>
+            <p class="hint">Your take in blue over the example as a pale ghost, lined up in time. Drag to turn it, scroll or pinch to zoom.</p>
+            <div class="stage" id="stage" data-testid="stage" tabindex="0" role="group" aria-label="3D replay. Space plays or pauses. Left and right arrow keys step one frame, with Shift ten frames.">
+              <canvas id="canvas" data-testid="canvas" aria-hidden="true"></canvas>
+              <p id="webgl-note" class="note" data-testid="webgl-note" role="status" hidden></p>
+            </div>
+            <div class="control-row" role="group" aria-label="Playback">
+              <button type="button" id="play" data-testid="play" aria-pressed="false">Play</button>
+              <button type="button" id="pause" data-testid="pause" aria-pressed="true">Pause</button>
+              <label class="inline" for="speed">Speed</label>
+              <select id="speed" data-testid="speed">
+                <option value="0.25">0.25x</option>
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="2">2x</option>
+              </select>
+              <label class="check inline" for="ghost-toggle">
+                <input type="checkbox" id="ghost-toggle" data-testid="ghost-toggle" checked>
+                Show the example (ghost)
+              </label>
+            </div>
+            <div class="scrub">
+              <label for="scrub">Position in the movement</label>
+              <input type="range" id="scrub" data-testid="scrub" min="0" max="0" step="1" value="0">
+            </div>
+            <p id="frame-readout" class="hint" data-testid="frame-readout"></p>
+            <div class="control-row" role="group" aria-label="Camera view">
+              <button type="button" id="view-front" data-testid="view-front" aria-pressed="true">Front</button>
+              <button type="button" id="view-side" data-testid="view-side" aria-pressed="false">Side</button>
+              <button type="button" id="view-top" data-testid="view-top" aria-pressed="false">Top</button>
+            </div>
+            <p id="highlight-readout" class="highlight-readout" data-testid="highlight-readout" role="status"></p>
+            <form id="ask-form" class="ask" data-testid="ask-form" aria-labelledby="ask-heading">
+              <h3 id="ask-heading">Ask this take</h3>
+              <p class="hint" id="ask-hint">Ask about this take in your own words. Muse Wonder reads only this take's measurements, and the replay moves to the moment it answers about.</p>
+              <label for="ask-question">Your question</label>
+              <div class="ask-row">
+                <input type="text" id="ask-question" data-testid="ask-question" maxlength="500" aria-describedby="ask-hint" placeholder="What should I work on first, and when does it happen?">
+                <button type="submit" id="ask" data-testid="ask">Ask</button>
+              </div>
+              <p id="ask-status" class="hint" role="status" data-testid="ask-status"></p>
+              <p id="ask-answer" class="ask-answer" data-testid="ask-answer" hidden></p>
+              <p id="ask-source" class="hint" data-testid="ask-source" hidden></p>
+            </form>
+          </section>
+
+          <div class="fault-column">
+            <section id="insights-panel" class="insights" aria-labelledby="insights-heading" hidden>
+              <h3 id="insights-heading">What to work on first</h3>
+              <ol id="insights" class="insight-list" data-testid="insights"></ol>
+            </section>
+            <ul id="fault-list" class="faults" data-testid="fault-list" aria-label="Faults found" hidden></ul>
+            <p><a id="download" class="download" data-testid="download" download="analysis.json" hidden>Download analysis.json</a></p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="panel-real-takes" role="tabpanel" aria-labelledby="tab-real-takes" data-testid="panel-real-takes" hidden>
+      <section class="card" aria-labelledby="real-takes-heading">
+        <h2 id="real-takes-heading">Real takes <span class="badge" data-testid="real-takes-badge">reported, not gated</span></h2>
+        <p class="lead">Part 5's results on Part 3's labelled kit, on stock clips and on Part 2's clips, with the labels they came with. These numbers are reported for information. No pass or fail depends on them.</p>
+        <p id="real-takes-status" data-testid="real-takes-status" role="status">Loading the report.</p>
+        <div id="real-takes-summary" data-testid="real-takes-summary" hidden></div>
+        <ul id="real-takes-list" class="real-list" data-testid="real-takes-list" aria-label="Real takes" hidden></ul>
+        <ul id="real-takes-notes" class="notes" data-testid="real-takes-notes" hidden></ul>
+      </section>
+    </div>
+
+    <div id="panel-preview" role="tabpanel" aria-labelledby="tab-preview" data-testid="panel-preview" hidden>
+      <section class="card" aria-labelledby="preview-heading">
+        <h2 id="preview-heading" data-testid="preview-heading">Part 5's preview of its published result contract</h2>
+        <p class="lead" data-testid="preview-label">This shows how a follower could read the result file Part 5 publishes (simon.analysis.v1) on a phone. It is not a Part 7 build.</p>
+        <div id="preview-screen" class="phone" data-testid="preview-screen"></div>
+        <div id="preview-fields" class="contract-fields" data-testid="preview-fields"></div>
+      </section>
+    </div>
+
+    <noscript><p class="error">This page needs JavaScript to run an analysis.</p></noscript>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

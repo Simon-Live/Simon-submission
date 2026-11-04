@@ -1,0 +1,455 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.14.0",
+  "profile": "fitness",
+  "expected": {
+    "path": "fixtures/input/expected/exercise/animation.json",
+    "set": "exercise",
+    "movement": "squat"
+  },
+  "follower": {
+    "path": "fixtures/input/followers/exercise/exercise_front_good_08_arms_wider-both+elbow_bent-right/skeleton.json",
+    "take_id": "exercise_front_good_08_arms_wider-both+elbow_bent-right"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [
+    {
+      "measure": "elbow_flexion",
+      "measure_kind": "angle",
+      "joint": "right_elbow",
+      "body_part": "arms",
+      "side": "right",
+      "direction": "more",
+      "magnitude_deg": 36.1,
+      "peak_deg": 43.0,
+      "threshold_deg": 20.0,
+      "unit": "degrees",
+      "expected_frames": [
+        18,
+        77
+      ],
+      "follower_frames": [
+        20,
+        65
+      ],
+      "runs": [
+        [
+          18,
+          77
+        ]
+      ],
+      "phase": [
+        0.2,
+        0.856
+      ],
+      "coverage": 1.0,
+      "confidence": 1.0,
+      "text": "right elbow bent more than the example",
+      "cue": "Straighten your right arm more",
+      "cue_kind": "range",
+      "follower_t_s": [
+        0.667,
+        2.167
+      ],
+      "at_s": 0.7,
+      "follower_runs": [
+        [
+          20,
+          65
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "right elbow bent more than the example at 0.7 s",
+      "joints": [
+        "right_elbow"
+      ],
+      "coaching": "right elbow bent more than the example at 0.7 s"
+    },
+    {
+      "measure": "upper_arm_out",
+      "measure_kind": "direction",
+      "joint": "shoulder",
+      "body_part": "arms",
+      "side": "both",
+      "direction": "more",
+      "magnitude_deg": 15.8,
+      "peak_deg": 17.0,
+      "threshold_deg": 11.0,
+      "unit": "degrees",
+      "expected_frames": [
+        10,
+        72
+      ],
+      "follower_frames": [
+        12,
+        62
+      ],
+      "runs": [
+        [
+          10,
+          72
+        ]
+      ],
+      "phase": [
+        0.111,
+        0.8
+      ],
+      "coverage": 1.0,
+      "confidence": 0.917,
+      "text": "elbows slightly wider than the example",
+      "cue": "Keep your elbows closer in",
+      "cue_kind": "range",
+      "follower_t_s": [
+        0.4,
+        2.067
+      ],
+      "at_s": 0.4,
+      "follower_runs": [
+        [
+          12,
+          62
+        ]
+      ],
+      "lateral": null,
+      "text_timed": "elbows slightly wider than the example at 0.4 s",
+      "joints": [
+        "left_shoulder",
+        "right_shoulder"
+      ],
+      "coaching": "elbows slightly wider than the example at 0.4 s"
+    }
+  ],
+  "quality": {
+    "version": "simon.quality.v1",
+    "level": "ok",
+    "reasons": [],
+    "signals": {
+      "unseen_joint_share": null,
+      "missing_joint_share": 0.0,
+      "missing_frame_share": 0.0,
+      "hidden_measure_share": null,
+      "position_jitter_mm": 11.4,
+      "heading_offset_deg": 2.2
+    },
+    "score_cap": null
+  },
+  "diagnostics": {
+    "alignment_residual": 0.3925,
+    "alignment_measures": [
+      "left_elbow_flexion",
+      "left_knee_flexion",
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_elbow_flexion",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward"
+    ],
+    "follower_span": [
+      3,
+      75
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.3925,
+      "timing_corr": 0.9892,
+      "span_share": 0.9605,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    },
+    "near_misses": {
+      "total": 3,
+      "omitted": 0,
+      "items": [
+        {
+          "measure": "forearm_out",
+          "side": "left",
+          "joint": "left_elbow",
+          "body_part": "arms",
+          "direction": "more",
+          "magnitude_deg": 18.1,
+          "peak_deg": 18.4,
+          "threshold_deg": 17.0,
+          "margin_deg": 1.1,
+          "expected_frames": [
+            63,
+            68
+          ],
+          "follower_frames": [
+            54,
+            58
+          ],
+          "frames_over": 11,
+          "counted_frames": 11,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 24
+        },
+        {
+          "measure": "forearm_out",
+          "side": "right",
+          "joint": "right_elbow",
+          "body_part": "arms",
+          "direction": "more",
+          "magnitude_deg": 17.2,
+          "peak_deg": 17.2,
+          "threshold_deg": 17.0,
+          "margin_deg": 0.2,
+          "expected_frames": [
+            15,
+            17
+          ],
+          "follower_frames": [
+            16,
+            18
+          ],
+          "frames_over": 3,
+          "counted_frames": 0,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 35
+        },
+        {
+          "measure": "knee_flexion",
+          "side": "left",
+          "joint": "left_knee",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 14.7,
+          "peak_deg": 15.2,
+          "threshold_deg": 10.0,
+          "margin_deg": 4.7,
+          "expected_frames": [
+            18,
+            24
+          ],
+          "follower_frames": [
+            20,
+            24
+          ],
+          "frames_over": 9,
+          "counted_frames": 7,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 28
+        }
+      ]
+    }
+  },
+  "insights": [
+    {
+      "cue": "Straighten your right arm more",
+      "why": "Right elbow bent more than the example at 0.7 s",
+      "kind": "range",
+      "at_s": 0.7,
+      "window": 0,
+      "points": 12.9,
+      "measure": "elbow_flexion",
+      "side": "right",
+      "joint": "right_elbow"
+    },
+    {
+      "cue": "Keep your elbows closer in",
+      "why": "Elbows slightly wider than the example at 0.4 s",
+      "kind": "range",
+      "at_s": 0.4,
+      "window": 0,
+      "points": 11.8,
+      "measure": "upper_arm_out",
+      "side": "both",
+      "joint": "shoulder"
+    },
+    {
+      "cue": "Slow down to match the trainer",
+      "why": "You took 80% of the trainer's time",
+      "kind": "tempo",
+      "at_s": 0.1,
+      "window": 0,
+      "points": null,
+      "measure": null,
+      "side": null,
+      "joint": null
+    }
+  ],
+  "phrasing": {
+    "requested": "template",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "lang": "en",
+    "faults": [
+      {
+        "backend": "template",
+        "model": null,
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "right elbow bent more than the example at 0.7 s"
+      },
+      {
+        "backend": "template",
+        "model": null,
+        "fallback_reason": null,
+        "lang": "en",
+        "text": "elbows slightly wider than the example at 0.4 s"
+      }
+    ],
+    "selected_by": "default"
+  },
+  "score": {
+    "version": "simon.score.v3",
+    "value": 75,
+    "grade": "C",
+    "components": {
+      "faults": 24.7,
+      "similarity": 0.46
+    },
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.1,
+          2.5
+        ],
+        "value": 75,
+        "grade": "C",
+        "components": {
+          "faults": 24.7,
+          "similarity": 0.46
+        },
+        "misses": [
+          {
+            "text": "elbows slightly wider than the example at 0.4 s",
+            "measure": "upper_arm_out",
+            "side": "both",
+            "joint": "shoulder",
+            "t_s": [
+              0.4,
+              2.067
+            ],
+            "at_s": 0.4,
+            "points": 11.8,
+            "cue": "Keep your elbows closer in",
+            "cue_kind": "range",
+            "direction": "more"
+          },
+          {
+            "text": "right elbow bent more than the example at 0.7 s",
+            "measure": "elbow_flexion",
+            "side": "right",
+            "joint": "right_elbow",
+            "t_s": [
+              0.667,
+              2.167
+            ],
+            "at_s": 0.7,
+            "points": 12.9,
+            "cue": "Straighten your right arm more",
+            "cue_kind": "range",
+            "direction": "more"
+          }
+        ],
+        "tempo": {
+          "ratio": 0.8,
+          "cue": "Slow down to match the trainer"
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.8,
+      "cue": "Slow down to match the trainer"
+    },
+    "credit": {
+      "version": "simon.credit.v1",
+      "percent": 87.5,
+      "grade": "A",
+      "points": 5841,
+      "max_points": 6673,
+      "tolerance": "normal",
+      "levels": {
+        "easy": {
+          "percent": 92.2,
+          "points": 4615,
+          "max_points": 5005
+        },
+        "normal": {
+          "percent": 87.5,
+          "points": 5841,
+          "max_points": 6673
+        },
+        "hard": {
+          "percent": 81.2,
+          "points": 8131,
+          "max_points": 10010
+        }
+      },
+      "bands": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.6
+        ],
+        [
+          2.0,
+          0.2
+        ]
+      ],
+      "grades": [
+        [
+          95,
+          "S"
+        ],
+        [
+          85,
+          "A"
+        ],
+        [
+          75,
+          "B"
+        ],
+        [
+          65,
+          "C"
+        ],
+        [
+          55,
+          "D"
+        ],
+        [
+          40,
+          "E"
+        ],
+        [
+          0,
+          "F"
+        ]
+      ],
+      "points_per_measure_second": 100,
+      "per_window": [
+        {
+          "t_s": [
+            0.1,
+            2.5
+          ],
+          "percent": 87.5,
+          "points": 5841,
+          "max_points": 6673
+        }
+      ]
+    },
+    "fault_cap": 79
+  }
+}

@@ -1,0 +1,218 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.14.0",
+  "profile": "fitness",
+  "expected": {
+    "path": "fixtures/input/expected/exercise/animation.json",
+    "set": "exercise",
+    "movement": "squat"
+  },
+  "follower": {
+    "path": "fixtures/input/followers/exercise/exercise_front_good_00_correct/skeleton.json",
+    "take_id": "exercise_front_good_00_correct"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [],
+  "quality": {
+    "version": "simon.quality.v1",
+    "level": "ok",
+    "reasons": [],
+    "signals": {
+      "unseen_joint_share": null,
+      "missing_joint_share": 0.0,
+      "missing_frame_share": 0.0,
+      "hidden_measure_share": null,
+      "position_jitter_mm": 10.6,
+      "heading_offset_deg": 1.7
+    },
+    "score_cap": null
+  },
+  "diagnostics": {
+    "alignment_residual": 0.3093,
+    "alignment_measures": [
+      "left_elbow_flexion",
+      "left_knee_flexion",
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_elbow_flexion",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward"
+    ],
+    "follower_span": [
+      6,
+      83
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.3093,
+      "timing_corr": 0.9901,
+      "span_share": 0.8864,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    },
+    "near_misses": {
+      "total": 1,
+      "omitted": 0,
+      "items": [
+        {
+          "measure": "knee_flexion",
+          "side": "left",
+          "joint": "left_knee",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 12.9,
+          "peak_deg": 13.3,
+          "threshold_deg": 10.0,
+          "margin_deg": 2.9,
+          "expected_frames": [
+            0,
+            4
+          ],
+          "follower_frames": [
+            6,
+            9
+          ],
+          "frames_over": 5,
+          "counted_frames": 5,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 30
+        }
+      ]
+    }
+  },
+  "insights": [],
+  "phrasing": {
+    "requested": "template",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "lang": "en",
+    "faults": [],
+    "selected_by": "default"
+  },
+  "score": {
+    "version": "simon.score.v3",
+    "value": 100,
+    "grade": "A",
+    "components": {
+      "faults": 0.0,
+      "similarity": 0.0
+    },
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.2,
+          2.767
+        ],
+        "value": 100,
+        "grade": "A",
+        "components": {
+          "faults": 0.0,
+          "similarity": 0.0
+        },
+        "misses": [],
+        "tempo": {
+          "ratio": 0.86,
+          "cue": null
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 0.86,
+      "cue": null
+    },
+    "credit": {
+      "version": "simon.credit.v1",
+      "percent": 97.8,
+      "grade": "S",
+      "points": 6529,
+      "max_points": 6673,
+      "tolerance": "normal",
+      "levels": {
+        "easy": {
+          "percent": 99.5,
+          "points": 4980,
+          "max_points": 5005
+        },
+        "normal": {
+          "percent": 97.8,
+          "points": 6529,
+          "max_points": 6673
+        },
+        "hard": {
+          "percent": 94.1,
+          "points": 9415,
+          "max_points": 10010
+        }
+      },
+      "bands": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.6
+        ],
+        [
+          2.0,
+          0.2
+        ]
+      ],
+      "grades": [
+        [
+          95,
+          "S"
+        ],
+        [
+          85,
+          "A"
+        ],
+        [
+          75,
+          "B"
+        ],
+        [
+          65,
+          "C"
+        ],
+        [
+          55,
+          "D"
+        ],
+        [
+          40,
+          "E"
+        ],
+        [
+          0,
+          "F"
+        ]
+      ],
+      "points_per_measure_second": 100,
+      "per_window": [
+        {
+          "t_s": [
+            0.2,
+            2.767
+          ],
+          "percent": 97.8,
+          "points": 6529,
+          "max_points": 6673
+        }
+      ]
+    }
+  }
+}

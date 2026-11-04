@@ -1,0 +1,53 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.1.0",
+  "expected": {
+    "path": "fixtures/input/expected/exercise/animation.json",
+    "set": "exercise",
+    "movement": "squat"
+  },
+  "follower": {
+    "path": "fixtures/input/followers/exercise/exercise_front_good_00_correct/skeleton.json",
+    "take_id": "exercise_front_good_00_correct"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [],
+  "diagnostics": {
+    "alignment_residual": 0.3093,
+    "alignment_measures": [
+      "left_elbow_flexion",
+      "left_knee_flexion",
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_elbow_flexion",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward"
+    ],
+    "follower_span": [
+      6,
+      83
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.3093,
+      "timing_corr": 0.9901,
+      "span_share": 0.8864,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    }
+  },
+  "phrasing": {
+    "requested": "template",
+    "backend": "template",
+    "model": null,
+    "fallback_reason": null,
+    "faults": []
+  }
+}

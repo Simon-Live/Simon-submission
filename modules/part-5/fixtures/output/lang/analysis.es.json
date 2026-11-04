@@ -1,0 +1,445 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.14.0",
+  "profile": "fitness",
+  "expected": {
+    "path": "fixtures/input/expected/exercise/animation.json"
+  },
+  "follower": {
+    "path": "fixtures/input/followers/exercise/exercise_front_good_03_foot_out-right/skeleton.json"
+  },
+  "status": {
+    "code": "ok",
+    "text": "Compared with the expected movement."
+  },
+  "faults": [
+    {
+      "measure": "foot_out",
+      "measure_kind": "direction",
+      "joint": "right_ankle",
+      "body_part": "legs",
+      "side": "right",
+      "direction": "more",
+      "magnitude_deg": 9.8,
+      "peak_deg": 13.5,
+      "threshold_deg": 6.0,
+      "unit": "degrees",
+      "expected_frames": [
+        50,
+        76
+      ],
+      "follower_frames": [
+        58,
+        89
+      ],
+      "runs": [
+        [
+          19,
+          44
+        ],
+        [
+          50,
+          76
+        ]
+      ],
+      "phase": [
+        0.556,
+        0.844
+      ],
+      "coverage": 1.0,
+      "confidence": 1.0,
+      "text": "right foot too far out",
+      "cue": "Step your right foot in",
+      "cue_kind": "position",
+      "follower_t_s": [
+        1.933,
+        2.967
+      ],
+      "at_s": 1.9,
+      "follower_runs": [
+        [
+          24,
+          52
+        ],
+        [
+          58,
+          89
+        ]
+      ],
+      "lateral": "right",
+      "lateral_m": 0.09,
+      "text_timed": "right foot too far right at 1.9 s",
+      "joints": [
+        "right_ankle"
+      ],
+      "coaching": "A 1.9 s tu pie derecho est\u00e1 demasiado a la derecha fuera de tu cadera."
+    }
+  ],
+  "diagnostics": {
+    "alignment_residual": 0.2985,
+    "alignment_measures": [
+      "left_elbow_flexion",
+      "left_knee_flexion",
+      "left_upper_arm_forward",
+      "left_thigh_forward",
+      "right_elbow_flexion",
+      "right_knee_flexion",
+      "right_upper_arm_forward",
+      "right_thigh_forward",
+      "trunk_lean_forward"
+    ],
+    "follower_span": [
+      0,
+      101
+    ],
+    "warnings": [],
+    "guard": {
+      "residual": 0.2985,
+      "timing_corr": 0.9858,
+      "span_share": 0.9808,
+      "limits": {
+        "max_residual": 0.5677,
+        "min_timing_corr": 0.8336
+      }
+    },
+    "near_misses": {
+      "total": 4,
+      "omitted": 0,
+      "items": [
+        {
+          "measure": "ankle_inversion",
+          "side": "left",
+          "joint": "left_ankle",
+          "body_part": "feet",
+          "direction": "more",
+          "magnitude_deg": 18.5,
+          "peak_deg": 19.6,
+          "threshold_deg": 14.0,
+          "margin_deg": 4.5,
+          "expected_frames": [
+            25,
+            30
+          ],
+          "follower_frames": [
+            30,
+            37
+          ],
+          "frames_over": 11,
+          "counted_frames": 11,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 24
+        },
+        {
+          "measure": "foot_rotation",
+          "side": "left",
+          "joint": "left_ankle",
+          "body_part": "feet",
+          "direction": "more",
+          "magnitude_deg": 14.2,
+          "peak_deg": 14.7,
+          "threshold_deg": 14.0,
+          "margin_deg": 0.2,
+          "expected_frames": [
+            35,
+            38
+          ],
+          "follower_frames": [
+            42,
+            43
+          ],
+          "frames_over": 8,
+          "counted_frames": 8,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 27
+        },
+        {
+          "measure": "thigh_out",
+          "side": "right",
+          "joint": "right_hip",
+          "body_part": "legs",
+          "direction": "more",
+          "magnitude_deg": 14.0,
+          "peak_deg": 14.8,
+          "threshold_deg": 13.0,
+          "margin_deg": 1.0,
+          "expected_frames": [
+            47,
+            73
+          ],
+          "follower_frames": [
+            54,
+            83
+          ],
+          "frames_over": 42,
+          "counted_frames": 42,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "explained_by",
+          "explained_by": {
+            "measure": "foot_out",
+            "side": "right",
+            "direction": "more"
+          }
+        },
+        {
+          "measure": "knee_valgus",
+          "side": "right",
+          "joint": "right_knee",
+          "body_part": "legs",
+          "direction": "less",
+          "magnitude_deg": -9.6,
+          "peak_deg": -10.0,
+          "threshold_deg": 9.0,
+          "margin_deg": 0.6,
+          "expected_frames": [
+            45,
+            56
+          ],
+          "follower_frames": [
+            53,
+            65
+          ],
+          "frames_over": 12,
+          "counted_frames": 12,
+          "needed_frames": 35,
+          "min_run_frames": 4,
+          "reason": "persistence",
+          "shortfall_frames": 23
+        }
+      ]
+    },
+    "feet": {
+      "expected": {
+        "source": "fixtures/input/expected-feet/exercise/feet.json",
+        "person": 0,
+        "frames_matched": 91,
+        "usable": [
+          "left_foot_rotation",
+          "right_foot_rotation",
+          "left_ankle_inversion",
+          "right_ankle_inversion"
+        ]
+      },
+      "follower": {
+        "source": "fixtures/input/followers/exercise/exercise_front_good_03_foot_out-right/feet.json",
+        "person": 0,
+        "frames_matched": 104,
+        "usable": [
+          "left_foot_rotation",
+          "right_foot_rotation",
+          "left_ankle_inversion",
+          "right_ankle_inversion"
+        ]
+      },
+      "compared": [
+        "left_foot_rotation",
+        "right_foot_rotation",
+        "left_ankle_inversion",
+        "right_ankle_inversion"
+      ],
+      "hidden_reason": null
+    }
+  },
+  "insights": [
+    {
+      "cue": "Step your right foot in",
+      "why": "Right foot too far right at 1.9 s",
+      "kind": "position",
+      "at_s": 1.9,
+      "window": 0,
+      "points": 11.7,
+      "measure": "foot_out",
+      "side": "right",
+      "joint": "right_ankle"
+    }
+  ],
+  "phrasing": {
+    "requested": "muse-spark",
+    "backend": "muse-spark",
+    "model": "meta-models/muse-spark-open-1026",
+    "fallback_reason": null,
+    "lang": "es",
+    "faults": [
+      {
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null,
+        "lang": "es",
+        "text": "A 1.9 s tu pie derecho est\u00e1 demasiado a la derecha fuera de tu cadera."
+      }
+    ],
+    "selected_by": "live",
+    "cues": [
+      {
+        "path": "faults[0].cue",
+        "text": "Entra el pie derecho hacia dentro",
+        "lang": "es",
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null
+      },
+      {
+        "path": "score.timeline[0].misses[0].cue",
+        "text": "Entra el pie derecho hacia dentro",
+        "lang": "es",
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null
+      },
+      {
+        "path": "insights[0].cue",
+        "text": "Entra el pie derecho hacia dentro",
+        "lang": "es",
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null
+      },
+      {
+        "path": "insights[0].why",
+        "text": "Pie derecho demasiado a la derecha a los 1.9 s",
+        "lang": "es",
+        "backend": "muse-spark",
+        "model": "meta-models/muse-spark-open-1026",
+        "fallback_reason": null
+      }
+    ],
+    "native_review": false
+  },
+  "score": {
+    "version": "simon.score.v3",
+    "value": 88,
+    "grade": "B",
+    "components": {
+      "faults": 11.71,
+      "similarity": 0.0
+    },
+    "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07",
+    "basis": "windows",
+    "timeline": [
+      {
+        "t_s": [
+          0.0,
+          3.367
+        ],
+        "value": 88,
+        "grade": "B",
+        "components": {
+          "faults": 11.71,
+          "similarity": 0.0
+        },
+        "misses": [
+          {
+            "text": "A 1.9 s tu pie derecho est\u00e1 demasiado a la derecha fuera de tu cadera.",
+            "measure": "foot_out",
+            "side": "right",
+            "joint": "right_ankle",
+            "t_s": [
+              1.933,
+              2.967
+            ],
+            "at_s": 1.9,
+            "points": 11.7,
+            "cue": "Step your right foot in",
+            "cue_kind": "position",
+            "direction": "more"
+          }
+        ],
+        "tempo": {
+          "ratio": 1.12,
+          "cue": null
+        },
+        "compared": true
+      }
+    ],
+    "tempo": {
+      "ratio": 1.12,
+      "cue": null
+    },
+    "credit": {
+      "version": "simon.credit.v1",
+      "percent": 92.9,
+      "grade": "A",
+      "points": 6197,
+      "max_points": 6673,
+      "tolerance": "normal",
+      "levels": {
+        "easy": {
+          "percent": 96.1,
+          "points": 4809,
+          "max_points": 5005
+        },
+        "normal": {
+          "percent": 92.9,
+          "points": 6197,
+          "max_points": 6673
+        },
+        "hard": {
+          "percent": 89.3,
+          "points": 8937,
+          "max_points": 10010
+        }
+      },
+      "bands": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.6
+        ],
+        [
+          2.0,
+          0.2
+        ]
+      ],
+      "grades": [
+        [
+          95,
+          "S"
+        ],
+        [
+          85,
+          "A"
+        ],
+        [
+          75,
+          "B"
+        ],
+        [
+          65,
+          "C"
+        ],
+        [
+          55,
+          "D"
+        ],
+        [
+          40,
+          "E"
+        ],
+        [
+          0,
+          "F"
+        ]
+      ],
+      "points_per_measure_second": 100,
+      "per_window": [
+        {
+          "t_s": [
+            0.0,
+            3.367
+          ],
+          "percent": 92.9,
+          "points": 6197,
+          "max_points": 6673
+        }
+      ]
+    },
+    "fault_cap": 89
+  }
+}

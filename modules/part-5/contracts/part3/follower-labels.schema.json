@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-3-skeleton-consistency/contracts/follower-labels.schema.json",
+  "title": "Part 3 follower take labels",
+  "description": "Labels for the conformance kit's follower takes (fixtures/conformance/followers/labels.json). Field names follow Part 5's labels: take_id, angle, camera_yaw_deg, correct, faults[]. The version sits in format, as in Part 5's labels; schema is accepted as well. measured_in_output, once present, is the fault size measured on Part 3's output against the correct take at the same angle, in the unit of the applied size. Extra keys are ignored.",
+  "x-simon-version": "simon.part3.follower_labels/1",
+  "x-direction": "output",
+  "x-producer": "Part 3",
+  "x-consumers": [
+    "Part 5"
+  ],
+  "x-version-field": "format",
+  "type": "object",
+  "required": [
+    "takes"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "format"
+      ]
+    },
+    {
+      "required": [
+        "schema"
+      ]
+    }
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.part3.follower_labels/1"
+    },
+    "schema": {
+      "const": "simon.part3.follower_labels/1"
+    },
+    "takes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "take_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "angle": {
+            "enum": [
+              "front",
+              "45",
+              "side"
+            ]
+          },
+          "camera_yaw_deg": {
+            "type": "number"
+          },
+          "correct": {
+            "type": "boolean"
+          },
+          "faults": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "measure": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "body_part": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "joints": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "nose",
+                      "left_eye",
+                      "right_eye",
+                      "left_ear",
+                      "right_ear",
+                      "left_shoulder",
+                      "right_shoulder",
+                      "left_elbow",
+                      "right_elbow",
+                      "left_wrist",
+                      "right_wrist",
+                      "left_hip",
+                      "right_hip",
+                      "left_knee",
+                      "right_knee",
+                      "left_ankle",
+                      "right_ankle"
+                    ]
+                  },
+                  "minItems": 1
+                },
+                "side": {
+                  "enum": [
+                    "left",
+                    "right",
+                    "both",
+                    "center"
+                  ]
+                },
+                "direction": {
+                  "enum": [
+                    "more",
+                    "less"
+                  ]
+                },
+                "magnitude_deg": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "magnitude_m": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "measured_in_output": {
+                  "type": "number",
+                  "description": "Added once the output has been measured; absent before."
+                }
+              },
+              "required": [
+                "type",
+                "measure",
+                "body_part",
+                "joints",
+                "side",
+                "direction",
+                "text"
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "magnitude_deg"
+                  ]
+                },
+                {
+                  "required": [
+                    "magnitude_m"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "take_id",
+          "angle",
+          "camera_yaw_deg",
+          "correct",
+          "faults"
+        ]
+      },
+      "minItems": 1
+    }
+  }
+}

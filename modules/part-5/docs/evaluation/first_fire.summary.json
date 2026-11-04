@@ -1,0 +1,361 @@
+{
+ "format": "simon.part5.bench-score.summary.v1",
+ "command": "uv run python scripts/make_bench_score.py",
+ "seed": 5,
+ "score": {
+  "version": "simon.score.v3",
+  "params_sha256": "4261f8d7630d2787425a55959ca49eda7a2ddc47ff6e3d5a61e63084ac285f07"
+ },
+ "of": "dose_response.first_fire",
+ "grid_deg": [
+  0.0,
+  2.5,
+  5.0,
+  7.5,
+  10.0,
+  12.5,
+  15.0,
+  17.5,
+  20.0,
+  22.5,
+  25.0,
+  27.5,
+  30.0
+ ],
+ "takes": [
+  "exercise_front_good_00_correct",
+  "exercise_front_good_01_correct",
+  "exercise_45_good_00_correct",
+  "exercise_45_good_01_correct",
+  "exercise_side_good_00_correct",
+  "exercise_side_good_01_correct"
+ ],
+ "summary": {
+  "knee": {
+   "median_low": 10.0,
+   "min": 7.5,
+   "max": 15.0,
+   "takes": 6,
+   "never": 0,
+   "stable": 6
+  },
+  "hip": {
+   "median_low": 7.5,
+   "min": 7.5,
+   "max": 7.5,
+   "takes": 6,
+   "never": 0,
+   "stable": 6
+  },
+  "elbow": {
+   "median_low": 20.0,
+   "min": 17.5,
+   "max": 22.5,
+   "takes": 6,
+   "never": 0,
+   "stable": 6
+  },
+  "trunk": {
+   "median_low": 10.0,
+   "min": 7.5,
+   "max": 10.0,
+   "takes": 6,
+   "never": 0,
+   "stable": 6
+  }
+ },
+ "per_take": {
+  "knee": {
+   "exercise_front_good_00_correct": {
+    "first": 10.0,
+    "stable": true
+   },
+   "exercise_front_good_01_correct": {
+    "first": 7.5,
+    "stable": true
+   },
+   "exercise_45_good_00_correct": {
+    "first": 12.5,
+    "stable": true
+   },
+   "exercise_45_good_01_correct": {
+    "first": 15.0,
+    "stable": true
+   },
+   "exercise_side_good_00_correct": {
+    "first": 12.5,
+    "stable": true
+   },
+   "exercise_side_good_01_correct": {
+    "first": 10.0,
+    "stable": true
+   }
+  },
+  "hip": {
+   "exercise_front_good_00_correct": {
+    "first": 7.5,
+    "stable": true
+   },
+   "exercise_front_good_01_correct": {
+    "first": 7.5,
+    "stable": true
+   },
+   "exercise_45_good_00_correct": {
+    "first": 7.5,
+    "stable": true
+   },
+   "exercise_45_good_01_correct": {
+    "first": 7.5,
+    "stable": true
+   },
+   "exercise_side_good_00_correct": {
+    "first": 7.5,
+    "stable": true
+   },
+   "exercise_side_good_01_correct": {
+    "first": 7.5,
+    "stable": true
+   }
+  },
+  "elbow": {
+   "exercise_front_good_00_correct": {
+    "first": 17.5,
+    "stable": true
+   },
+   "exercise_front_good_01_correct": {
+    "first": 17.5,
+    "stable": true
+   },
+   "exercise_45_good_00_correct": {
+    "first": 22.5,
+    "stable": true
+   },
+   "exercise_45_good_01_correct": {
+    "first": 20.0,
+    "stable": true
+   },
+   "exercise_side_good_00_correct": {
+    "first": 20.0,
+    "stable": true
+   },
+   "exercise_side_good_01_correct": {
+    "first": 22.5,
+    "stable": true
+   }
+  },
+  "trunk": {
+   "exercise_front_good_00_correct": {
+    "first": 7.5,
+    "stable": true
+   },
+   "exercise_front_good_01_correct": {
+    "first": 10.0,
+    "stable": true
+   },
+   "exercise_45_good_00_correct": {
+    "first": 10.0,
+    "stable": true
+   },
+   "exercise_45_good_01_correct": {
+    "first": 10.0,
+    "stable": true
+   },
+   "exercise_side_good_00_correct": {
+    "first": 10.0,
+    "stable": true
+   },
+   "exercise_side_good_01_correct": {
+    "first": 10.0,
+    "stable": true
+   }
+  }
+ },
+ "score_at": {
+  "knee": {
+   "0": {
+    "mean": 100.0,
+    "min": 100,
+    "max": 100,
+    "grades": [
+     "A"
+    ]
+   },
+   "10": {
+    "mean": 93.16666666666667,
+    "min": 85,
+    "max": 100,
+    "grades": [
+     "A",
+     "B"
+    ]
+   },
+   "20": {
+    "mean": 78.83333333333333,
+    "min": 77,
+    "max": 80,
+    "grades": [
+     "B",
+     "C"
+    ]
+   },
+   "30": {
+    "mean": 73.33333333333333,
+    "min": 72,
+    "max": 75,
+    "grades": [
+     "C"
+    ]
+   }
+  },
+  "hip": {
+   "0": {
+    "mean": 100.0,
+    "min": 100,
+    "max": 100,
+    "grades": [
+     "A"
+    ]
+   },
+   "10": {
+    "mean": 85.83333333333333,
+    "min": 85,
+    "max": 86,
+    "grades": [
+     "B"
+    ]
+   },
+   "20": {
+    "mean": 78.33333333333333,
+    "min": 78,
+    "max": 79,
+    "grades": [
+     "C"
+    ]
+   },
+   "30": {
+    "mean": 67.83333333333333,
+    "min": 64,
+    "max": 75,
+    "grades": [
+     "C",
+     "D"
+    ]
+   }
+  },
+  "elbow": {
+   "0": {
+    "mean": 100.0,
+    "min": 100,
+    "max": 100,
+    "grades": [
+     "A"
+    ]
+   },
+   "10": {
+    "mean": 100.0,
+    "min": 100,
+    "max": 100,
+    "grades": [
+     "A"
+    ]
+   },
+   "20": {
+    "mean": 92.5,
+    "min": 88,
+    "max": 100,
+    "grades": [
+     "A",
+     "B"
+    ]
+   },
+   "30": {
+    "mean": 85.83333333333333,
+    "min": 85,
+    "max": 86,
+    "grades": [
+     "B"
+    ]
+   }
+  },
+  "trunk": {
+   "0": {
+    "mean": 100.0,
+    "min": 100,
+    "max": 100,
+    "grades": [
+     "A"
+    ]
+   },
+   "10": {
+    "mean": 87.16666666666667,
+    "min": 86,
+    "max": 88,
+    "grades": [
+     "B"
+    ]
+   },
+   "20": {
+    "mean": 81.83333333333333,
+    "min": 81,
+    "max": 82,
+    "grades": [
+     "B"
+    ]
+   },
+   "30": {
+    "mean": 77.16666666666667,
+    "min": 77,
+    "max": 78,
+    "grades": [
+     "C"
+    ]
+   }
+  }
+ },
+ "figures": {
+  "rows": 312,
+  "series": 24,
+  "series_never_rising": 24,
+  "without_matching": {
+   "rows": 116,
+   "values": [
+    100
+   ],
+   "other_faults": 0
+  },
+  "with_matching": {
+   "rows": 196,
+   "min": 64,
+   "max": 89,
+   "grades": [
+    "B",
+    "C",
+    "D"
+   ]
+  },
+  "first_fire_drop": {
+   "min": 11,
+   "max": 15
+  },
+  "later_step_cost": {
+   "max": 3,
+   "max_where_a_second_fault_appears": 12
+  },
+  "second_faults": [
+   {
+    "joint": "hip",
+    "measure": "knee_valgus",
+    "side": "left",
+    "direction": "less",
+    "takes": 4,
+    "from_deg": 25.0
+   }
+  ],
+  "realised_gap_deg": {
+   "knee": 0.25,
+   "hip": 0.0,
+   "elbow": 1.2,
+   "trunk": 0.0
+  }
+ }
+}

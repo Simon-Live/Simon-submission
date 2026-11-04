@@ -1,0 +1,11 @@
+{
+  "format": "simon.analysis.v1",
+  "schema_version": "1.4.0",
+  "source": "part7",
+  "expected": {"path": "fixtures/input/expected/exercise/animation.json"},
+  "follower": {"path": "takes/no-person/skeleton.json"},
+  "status": {"code": "ok", "text": "No person was found in the take, so nothing was compared."},
+  "warnings": [{"code": "no_person", "text": "Part 2 found no person in the take."}],
+  "faults": [],
+  "score": {"version": "simon.score.v1", "value": 0, "grade": "F"}
+}
