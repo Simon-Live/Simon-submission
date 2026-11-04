@@ -1,0 +1,38 @@
+{
+  "id": "side-step",
+  "name": "Side step",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-27T00:00:00Z",
+  "schema_version": 1,
+  "category": "dance",
+  "description": "Step to each side in turn with arms swinging, eight steps.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 8000,
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 6,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "2b1f0a00f799ae2830d9762abfc91a426adfa94a3c498db4c520fe3ee695c725",
+      "bytes": 1424
+    },
+    "skeleton": {
+      "part": 6,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "4e4abf31a409413bd8117fd0b454f21677bb6b71cbd04bae8db56c1f34160c5d",
+      "bytes": 124962
+    },
+    "animation": {
+      "part": 6,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "36c3794c852a2df7cc93bd3a9a6219e567a4f6ad4661a25f922dfdc8084e289d",
+      "bytes": 216071
+    }
+  }
+}

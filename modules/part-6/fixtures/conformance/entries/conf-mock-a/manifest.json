@@ -1,0 +1,39 @@
+{
+  "id": "conf-mock-a",
+  "name": "Conformance mock A",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-28T00:00:00Z",
+  "schema_version": 1,
+  "category": "exercise",
+  "description": "Mock recording from 2026-10-28. Capture and processing are mocked.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 3000,
+  "files_source": "mock",
+  "provenance": {
+    "keyframes": {
+      "part": null,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "7f9c959a1106b77c77184db8b70d9669a29e5957b37ecb0df75d16afefa37041",
+      "bytes": 269
+    },
+    "skeleton": {
+      "part": null,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "ddee406bf0082efbc9a2f7083c90e75b3955f3425b590ea7eed042340cc3ae22",
+      "bytes": 49411
+    },
+    "animation": {
+      "part": null,
+      "format": "simon.animation/1",
+      "detected_by": "version",
+      "sha256": "9058998265f4574a8625b66713b31e2d4a85c19ccb2d75af676289087f44df43",
+      "bytes": 93954
+    }
+  },
+  "visitor": false
+}

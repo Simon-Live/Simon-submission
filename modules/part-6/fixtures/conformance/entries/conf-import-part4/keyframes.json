@@ -1,0 +1,60 @@
+{
+  "format": "simon.keyframes.v1",
+  "set": "exercise",
+  "movement": "squat",
+  "fps": 30,
+  "duration_s": 3.0,
+  "frame_count": 91,
+  "keyframes": [
+    {
+      "index": 0,
+      "t": 0.0,
+      "name": "stand"
+    },
+    {
+      "index": 10,
+      "t": 0.333333,
+      "name": "descend"
+    },
+    {
+      "index": 20,
+      "t": 0.666667,
+      "name": "descend"
+    },
+    {
+      "index": 30,
+      "t": 1.0,
+      "name": "descend"
+    },
+    {
+      "index": 40,
+      "t": 1.333333,
+      "name": "descend"
+    },
+    {
+      "index": 50,
+      "t": 1.666667,
+      "name": "ascend"
+    },
+    {
+      "index": 60,
+      "t": 2.0,
+      "name": "ascend"
+    },
+    {
+      "index": 70,
+      "t": 2.333333,
+      "name": "ascend"
+    },
+    {
+      "index": 80,
+      "t": 2.666667,
+      "name": "ascend"
+    },
+    {
+      "index": 90,
+      "t": 3.0,
+      "name": "stand"
+    }
+  ]
+}

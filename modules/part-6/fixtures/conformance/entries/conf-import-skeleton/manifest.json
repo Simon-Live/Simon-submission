@@ -1,0 +1,36 @@
+{
+  "id": "conf-import-skeleton",
+  "name": "Import without an animation",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": null,
+  "created_at": "2026-10-28T00:00:00Z",
+  "schema_version": 1,
+  "category": "exercise",
+  "description": "Part 1 key frames on a 60 fps clock and a Part 3 skeleton, no animation.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 2133,
+  "files_source": "import",
+  "provenance": {
+    "keyframes": {
+      "part": null,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "2c3d87b3e0ccff3ef5e9ebd72850006c586091d902c230fdf41f955cd9a04b83",
+      "bytes": 448,
+      "source": "fixtures/conformance/formats",
+      "original_name": "keyframes.json"
+    },
+    "skeleton": {
+      "part": null,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "ec43f7fb4f9304f26f9c1c2353ada12d4f3217dafae3b82bede8bbbed104a729",
+      "bytes": 33506,
+      "source": "fixtures/conformance/formats",
+      "original_name": "skeleton.json"
+    }
+  },
+  "visitor": false
+}

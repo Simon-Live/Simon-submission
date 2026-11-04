@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-6-recording-catalog/contracts/keyframes.v1.schema.json",
+  "title": "keyframes.json, simon.keyframes.v1 (Part 4)",
+  "description": "Part 4's key frame file. keyframes is a list of marks with a name and a time t in seconds, or an index with the file's fps. Part 6 recognizes it by the format field, else by shape: keyframes is a list whose items carry no joints.",
+  "type": "object",
+  "required": [
+    "keyframes"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.keyframes.v1"
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "keyframes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mark"
+      }
+    }
+  },
+  "$defs": {
+    "mark": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "t"
+          ],
+          "properties": {
+            "t": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "required": [
+            "index"
+          ],
+          "properties": {
+            "index": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    }
+  }
+}

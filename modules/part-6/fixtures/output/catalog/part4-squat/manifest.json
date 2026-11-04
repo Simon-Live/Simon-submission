@@ -1,0 +1,41 @@
+{
+  "id": "part4-squat",
+  "name": "Squat (Part 4)",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-28T00:00:00Z",
+  "schema_version": 1,
+  "category": "exercise",
+  "description": "Part 4's shipped squat, three seconds, played from its simon.animation.v1 file.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 3000,
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 4,
+      "format": "simon.keyframes.v1",
+      "detected_by": "version",
+      "sha256": "070e5427f73401a36ef74636592a144ca0b14cd89d9df29638521cea73986cd9",
+      "bytes": 898,
+      "source": "simon-part-4-animate-keyframes@9f4c073:fixtures/input/exercise/keyframes.json"
+    },
+    "skeleton": {
+      "part": 4,
+      "format": "simon.skeleton.v1",
+      "detected_by": "version",
+      "sha256": "b16729e3ed06fe9700d9f5567e1963b83a7c26bcfec99e74dcc8101ef9aed1b8",
+      "bytes": 51504,
+      "source": "simon-part-4-animate-keyframes@9f4c073:fixtures/input/exercise/skeleton.json"
+    },
+    "animation": {
+      "part": 4,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "ddd896598cb41af3808f7f280438bcd1a421aa667c9ccfbad8e3cbc4c17ddc4a",
+      "bytes": 152732,
+      "source": "simon-part-4-animate-keyframes@9f4c073:fixtures/output/exercise/animation.json"
+    }
+  }
+}

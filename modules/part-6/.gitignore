@@ -1,0 +1,9 @@
+__pycache__/
+node_modules/
+dist/
+.env
+out/
+*.mp4
+!demo/staging-walkthrough.mp4
+!fixtures/**/*.json
+.pytest_cache/

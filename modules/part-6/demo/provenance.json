@@ -1,0 +1,40 @@
+{
+  "start_utc": "2026-10-27T22:57:20Z",
+  "end_utc": "2026-10-27T23:46:26Z",
+  "end_utc_rule": "commit time of the last commit before the publish (this file's commit)",
+  "elapsed": "0h 49m",
+  "human_turns": 0,
+  "claude_code_version": "2.1.312 (Claude Code)",
+  "model": "claude-opus-5-5 (main session); lanes A, B and C on the sonnet tier; the reviewer agent on the opus tier",
+  "oneshot_start": "d269a4e07c932981e6aadea38576b6f66dedba93",
+  "head": "5104791942ec785d866679feb860940fd6c6b45c",
+  "head_rule": "HEAD when this file was written; this file's own commit is its child",
+  "commits": 10,
+  "prompt_sha256": "232f9e585a63118357986f8840b3a56c0ae38611bf5894426b626ab31f088b14",
+  "transcript": "~/.claude/projects/-home-gingy-simon-part-6/662485fc-317e-4308-9820-44dadc730481.jsonl",
+  "cost": "not captured",
+  "lines_of_code": {
+    "part6": 1329,
+    "web (without vendor)": 1929,
+    "check": 1297,
+    "tests/part6": 2244
+  },
+  "pytest": {
+    "summary": "536 passed",
+    "exit": 0
+  },
+  "check_6": {
+    "metrics": 29,
+    "exit": 0
+  },
+  "prepared_beforehand": [
+    "specs, contracts, ADRs, tickets and the execution brief (goals/complete-simon-part-6.md)",
+    "synthetic input fixtures (fixtures/input/)",
+    "three.js 0.186.1 vendored in web/vendor/three/",
+    "the playwright 1.61.1 pin and package-lock.json",
+    "the publish script (scripts/simon-publish.sh, firm side)",
+    "the locked decisions and the pre-run audit that set them",
+    "the firm CLAUDE.md notice, rules, skills, hooks and agents Claude Code loads in this repo",
+    "the /goal text itself as the stop mechanism"
+  ]
+}

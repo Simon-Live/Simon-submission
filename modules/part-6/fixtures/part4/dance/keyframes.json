@@ -1,0 +1,75 @@
+{
+  "format": "simon.keyframes.v1",
+  "set": "dance",
+  "movement": "step_touch",
+  "fps": 30,
+  "duration_s": 4.0,
+  "frame_count": 121,
+  "keyframes": [
+    {
+      "index": 0,
+      "t": 0.0,
+      "name": "together"
+    },
+    {
+      "index": 10,
+      "t": 0.333333,
+      "name": "lift_left"
+    },
+    {
+      "index": 20,
+      "t": 0.666667,
+      "name": "lift_left"
+    },
+    {
+      "index": 30,
+      "t": 1.0,
+      "name": "crossing"
+    },
+    {
+      "index": 40,
+      "t": 1.333333,
+      "name": "lift_right"
+    },
+    {
+      "index": 50,
+      "t": 1.666667,
+      "name": "lift_right"
+    },
+    {
+      "index": 60,
+      "t": 2.0,
+      "name": "crossing"
+    },
+    {
+      "index": 70,
+      "t": 2.333333,
+      "name": "lift_left"
+    },
+    {
+      "index": 80,
+      "t": 2.666667,
+      "name": "lift_left"
+    },
+    {
+      "index": 90,
+      "t": 3.0,
+      "name": "crossing"
+    },
+    {
+      "index": 100,
+      "t": 3.333333,
+      "name": "lift_right"
+    },
+    {
+      "index": 110,
+      "t": 3.666667,
+      "name": "lift_right"
+    },
+    {
+      "index": 120,
+      "t": 4.0,
+      "name": "together"
+    }
+  ]
+}

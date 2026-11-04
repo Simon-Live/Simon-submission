@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-6-recording-catalog/contracts/keyframes.part1.schema.json",
+  "title": "keyframes.json in Part 1's shape (simon.keyframes/part1)",
+  "description": "Part 1's published key frame file. It has no version field, so Part 6 recognizes it by shape: people is a list. Each mark needs t_ms, or frame together with the file's fps (the video clock). Part 6 reads the person with id 0, else the first.",
+  "type": "object",
+  "required": [
+    "people"
+  ],
+  "properties": {
+    "fps": {
+      "description": "Frames per second of the video clock.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "people": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/person"
+      }
+    }
+  },
+  "$defs": {
+    "person": {
+      "type": "object",
+      "required": [
+        "repetitions"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "repetitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/repetition"
+          }
+        }
+      }
+    },
+    "repetition": {
+      "type": "object",
+      "required": [
+        "keyframes"
+      ],
+      "properties": {
+        "rep": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "keyframes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mark"
+          }
+        }
+      }
+    },
+    "mark": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "t_ms"
+          ],
+          "properties": {
+            "t_ms": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "required": [
+            "frame"
+          ],
+          "properties": {
+            "frame": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    }
+  }
+}

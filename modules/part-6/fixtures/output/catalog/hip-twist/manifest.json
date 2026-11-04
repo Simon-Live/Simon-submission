@@ -1,0 +1,38 @@
+{
+  "id": "hip-twist",
+  "name": "Hip twist",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-27T00:00:00Z",
+  "schema_version": 1,
+  "category": "dance",
+  "description": "Twist the hips left and right with bent knees, eight twists.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 8000,
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 6,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "c63c9e96b365e2669742398e5abd517857ea08b85f9d5a35ec0ef03250f0e273",
+      "bytes": 1440
+    },
+    "skeleton": {
+      "part": 6,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "8b76066e644dd577ffb20d10fcf3d7ee7063d9a198c37977d8336d47fb8e6f85",
+      "bytes": 128866
+    },
+    "animation": {
+      "part": 6,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "c6981b6784cf440907cd3fd6125ed8829bcdaff838d0d35dbd2f9a65e58e3eb8",
+      "bytes": 224427
+    }
+  }
+}

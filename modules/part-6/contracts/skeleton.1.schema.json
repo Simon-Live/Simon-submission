@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-6-recording-catalog/contracts/skeleton.1.schema.json",
+  "title": "skeleton.json, simon.skeleton/1 (Part 3)",
+  "description": "Part 3's skeleton file. frames holds one pose per sample; a frame with an empty people list has no person. Part 6 reads t_ms (milliseconds) or t (seconds), the person with id 0 else the first, and the 17 joints. bone_lengths_m, bones and every other field are ignored. A file with a schema field must name simon.skeleton/1.",
+  "type": "object",
+  "required": [
+    "frames"
+  ],
+  "properties": {
+    "schema": {
+      "const": "simon.skeleton/1"
+    },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    }
+  },
+  "$defs": {
+    "joint": {
+      "description": "One joint: an object with x, y, z, or an array of three or more numbers (x, y, z first). Part 6 keeps x, y, z and ignores the rest.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "number"
+          }
+        }
+      ]
+    },
+    "jointMap": {
+      "description": "All 17 canonical joints. Extra joints are ignored.",
+      "type": "object",
+      "required": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ],
+      "properties": {
+        "nose": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_eye": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ear": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_shoulder": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_elbow": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_wrist": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_hip": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_knee": {
+          "$ref": "#/$defs/joint"
+        },
+        "left_ankle": {
+          "$ref": "#/$defs/joint"
+        },
+        "right_ankle": {
+          "$ref": "#/$defs/joint"
+        }
+      }
+    },
+    "person": {
+      "type": "object",
+      "required": [
+        "joints"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "joints": {
+          "$ref": "#/$defs/jointMap"
+        }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "properties": {
+        "people": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/person"
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "t_ms"
+          ],
+          "properties": {
+            "t_ms": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "required": [
+            "t"
+          ],
+          "properties": {
+            "t": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

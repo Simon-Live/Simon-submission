@@ -1,0 +1,1 @@
+{"format":"simon.keyframes.v1","set":"exercise","movement":"squat","fps":30,"keyframes":[{"index":0,"t":0.0,"name":"stand"},{"index":16,"t":0.533333,"name":"descend"},{"index":32,"t":1.066667,"name":"bottom"},{"index":40,"t":1.333333,"name":"hold"},{"index":48,"t":1.6,"name":"rise"},{"index":63,"t":2.1,"name":"stand"}],"duration_s":2.1,"frame_count":64}

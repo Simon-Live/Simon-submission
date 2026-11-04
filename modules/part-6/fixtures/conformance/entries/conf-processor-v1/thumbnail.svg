@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" aria-hidden="true">
+<g stroke-width="3" stroke-linecap="round" fill="none">
+<line x1="100.27" y1="35.47" x2="59.73" y2="35.47" stroke="#0f9d8f"/>
+<line x1="89.60" y1="88.81" x2="70.40" y2="88.81" stroke="#e8624a"/>
+<line x1="100.27" y1="35.47" x2="89.60" y2="88.81" stroke="#0f9d8f"/>
+<line x1="59.73" y1="35.47" x2="70.40" y2="88.81" stroke="#e8624a"/>
+<line x1="100.27" y1="35.47" x2="102.40" y2="52.74" stroke="#0f9d8f"/>
+<line x1="59.73" y1="35.47" x2="57.60" y2="52.74" stroke="#e8624a"/>
+<line x1="102.40" y1="52.74" x2="102.40" y2="48.99" stroke="#0f9d8f"/>
+<line x1="57.60" y1="52.74" x2="57.60" y2="48.99" stroke="#e8624a"/>
+<line x1="89.60" y1="88.81" x2="90.67" y2="126.29" stroke="#0f9d8f"/>
+<line x1="70.40" y1="88.81" x2="69.33" y2="126.29" stroke="#e8624a"/>
+<line x1="90.67" y1="126.29" x2="90.67" y2="148.00" stroke="#0f9d8f"/>
+<line x1="69.33" y1="126.29" x2="69.33" y2="148.00" stroke="#e8624a"/>
+<line x1="80.00" y1="16.27" x2="83.20" y2="12.00" stroke="#0f9d8f"/>
+<line x1="80.00" y1="16.27" x2="76.80" y2="12.00" stroke="#e8624a"/>
+<line x1="83.20" y1="12.00" x2="88.00" y2="14.13" stroke="#0f9d8f"/>
+<line x1="76.80" y1="12.00" x2="72.00" y2="14.13" stroke="#e8624a"/>
+</g>
+<circle cx="80.00" cy="16.27" r="3" fill="#0f9d8f"/>
+<circle cx="83.20" cy="12.00" r="3" fill="#0f9d8f"/>
+<circle cx="76.80" cy="12.00" r="3" fill="#e8624a"/>
+<circle cx="88.00" cy="14.13" r="3" fill="#0f9d8f"/>
+<circle cx="72.00" cy="14.13" r="3" fill="#e8624a"/>
+<circle cx="100.27" cy="35.47" r="3" fill="#0f9d8f"/>
+<circle cx="59.73" cy="35.47" r="3" fill="#e8624a"/>
+<circle cx="102.40" cy="52.74" r="3" fill="#0f9d8f"/>
+<circle cx="57.60" cy="52.74" r="3" fill="#e8624a"/>
+<circle cx="102.40" cy="48.99" r="3" fill="#0f9d8f"/>
+<circle cx="57.60" cy="48.99" r="3" fill="#e8624a"/>
+<circle cx="89.60" cy="88.81" r="3" fill="#0f9d8f"/>
+<circle cx="70.40" cy="88.81" r="3" fill="#e8624a"/>
+<circle cx="90.67" cy="126.29" r="3" fill="#0f9d8f"/>
+<circle cx="69.33" cy="126.29" r="3" fill="#e8624a"/>
+<circle cx="90.67" cy="148.00" r="3" fill="#0f9d8f"/>
+<circle cx="69.33" cy="148.00" r="3" fill="#e8624a"/>
+</svg>

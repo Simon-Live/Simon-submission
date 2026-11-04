@@ -1,0 +1,32 @@
+{
+  "id": "conf-processor-v1",
+  "name": "Part 4 animation, Part 3 skeleton",
+  "video_uri": null,
+  "keyframes": null,
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-28T00:00:00Z",
+  "schema_version": 1,
+  "category": "dance",
+  "description": "A v1 animation with a simon.skeleton/1 skeleton, as a processor stores them.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 2100,
+  "files_source": "processor",
+  "provenance": {
+    "skeleton": {
+      "part": 3,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "ec43f7fb4f9304f26f9c1c2353ada12d4f3217dafae3b82bede8bbbed104a729",
+      "bytes": 33506
+    },
+    "animation": {
+      "part": 4,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "8ae382508e6677ef6be023509ba56642a67c94a056fbb175124fe5d408d02289",
+      "bytes": 38717
+    }
+  },
+  "visitor": false
+}

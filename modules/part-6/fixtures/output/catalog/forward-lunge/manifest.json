@@ -1,0 +1,38 @@
+{
+  "id": "forward-lunge",
+  "name": "Forward lunge",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-27T00:00:00Z",
+  "schema_version": 1,
+  "category": "exercise",
+  "description": "Step forward and lower, alternating legs, four repetitions.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 12000,
+  "files_source": "fixture",
+  "provenance": {
+    "keyframes": {
+      "part": 6,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "71064bb687b0ebaef910fe4c870362a10fab1ac45699395504ab5931e97ab3d0",
+      "bytes": 797
+    },
+    "skeleton": {
+      "part": 6,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "c001c467ade3a4d6b8e6862ec65f8ff1500a66964fbfa13e168bb3b49fe321e3",
+      "bytes": 192304
+    },
+    "animation": {
+      "part": 6,
+      "format": "simon.animation.v1",
+      "detected_by": "version",
+      "sha256": "f573785d17ecebd184f99b392e6de4636f221f46b3d302018c087431b66c10dd",
+      "bytes": 336288
+    }
+  }
+}

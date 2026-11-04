@@ -1,0 +1,39 @@
+{
+  "id": "conf-mock-b",
+  "name": "Conformance mock B",
+  "video_uri": null,
+  "keyframes": "keyframes.json",
+  "skeleton": "skeleton.json",
+  "animation": "animation.json",
+  "created_at": "2026-10-28T00:00:00Z",
+  "schema_version": 1,
+  "category": "dance",
+  "description": "Mock recording from 2026-10-28. Capture and processing are mocked.",
+  "thumbnail": "thumbnail.svg",
+  "duration_ms": 2000,
+  "files_source": "mock",
+  "provenance": {
+    "keyframes": {
+      "part": null,
+      "format": "simon.keyframes/part1",
+      "detected_by": "shape",
+      "sha256": "de54b5afb8614e45e8b2d9db4be32b4cf497f5e377c2187dbaaffb8b8d8b389a",
+      "bytes": 432
+    },
+    "skeleton": {
+      "part": null,
+      "format": "simon.skeleton/1",
+      "detected_by": "version",
+      "sha256": "8bff4368af8d23fb9fe0904c7c71dd29e76fe9dccec8e7ee646264f2cadfe458",
+      "bytes": 33230
+    },
+    "animation": {
+      "part": null,
+      "format": "simon.animation/1",
+      "detected_by": "version",
+      "sha256": "fb3488fd42c4b651576f58eacf8ccd55da49f1645664770c7fa843ecc7ede120",
+      "bytes": 61536
+    }
+  },
+  "visitor": false
+}
