@@ -35,7 +35,7 @@ def test_files_exist_and_no_build_step():
     assert (WEB / "index.html").is_file() and (WEB / "styles.css").is_file()
     assert not list(WEB.glob("package.json")) and not list(WEB.glob("*.config.*"))
     index = (WEB / "index.html").read_text(encoding="utf-8")
-    assert '<script type="module" src="app.js">' in index
+    assert '<script type="module" src="app.js"' in index
     assert "node_modules" not in index and "https://" not in index and "http://" not in index
 
 

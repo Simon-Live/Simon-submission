@@ -2,6 +2,58 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>
+// A boot that never ends (docs/specs/boot-recovery.md). Before the stylesheets, so a hanging one cannot stop the timer.
+(function () {
+  var KEY = "simon-boot-reload", WAIT_MS = 25000, ended = false;
+  function claimReload() {
+    try {
+      if (sessionStorage.getItem(KEY)) return false;
+      sessionStorage.setItem(KEY, "1");
+      return true;
+    } catch (e) { return false; } // no working guard could mean a reload loop, so no automatic reload
+  }
+  function forgetReload() {
+    try { sessionStorage.removeItem(KEY); } catch (e) { /* nothing was kept */ }
+  }
+  function offer(text, final) {
+    var loader = document.querySelector("[data-testid='boot-loading']");
+    if (!loader) return; // the app has drawn
+    var old = loader.querySelector("[data-testid='boot-recovery']");
+    if (old) old.remove();
+    if (final) loader.textContent = "";
+    var box = document.createElement("div");
+    box.setAttribute("data-testid", "boot-recovery");
+    box.className = "paw-loading";
+    var note = document.createElement("p");
+    note.setAttribute("role", "status");
+    note.textContent = text;
+    var again = document.createElement("button");
+    again.type = "button";
+    again.className = "btn primary";
+    again.setAttribute("data-testid", "boot-retry");
+    again.textContent = "Try again";
+    again.addEventListener("click", function () { forgetReload(); location.reload(); });
+    box.append(note, again);
+    loader.append(box);
+  }
+  window.simonBootFailed = function () {
+    if (claimReload()) { setTimeout(function () { location.reload(); }, 300 + Math.random() * 1200); return; }
+    ended = true;
+    offer("Simon could not load: part of the page did not arrive. Please try again.", true);
+  };
+  setTimeout(function () {
+    if (!ended) offer("Simon is taking a long time to load. You can keep waiting or try again.", false);
+  }, WAIT_MS);
+  // Only a drawn app clears the guard, whatever order a browser fires its events in. A stale guard costs one automatic reload at most.
+  var drawn = setInterval(function () {
+    var app = document.getElementById("app");
+    if (!app || app.querySelector("[data-testid='boot-loading']")) return;
+    forgetReload();
+    clearInterval(drawn);
+  }, 500);
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>Simon</title>
@@ -53,6 +105,6 @@
 </main>
 <noscript><p class="notice">Simon needs JavaScript. Turn it on and reload.</p></noscript>
 <footer id="site-footer" class="site-foot" data-testid="site-footer" hidden></footer>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js" onerror="simonBootFailed()"></script>
 </body>
 </html>
