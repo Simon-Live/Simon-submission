@@ -31,7 +31,9 @@
 .sf-status { margin: 0; }
 
 /* the top: the brand on the left, the link columns on the right; stacked on a phone */
-.sf-top { display: grid; gap: var(--space-6); grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr); padding: var(--space-4) 0; }
+.sf-top { display: grid; gap: var(--space-6); grid-template-columns: max-content minmax(0, 1fr); padding: var(--space-4) 0; }
+/* the build and credit lines under the email stay one line each on a wide screen; the brand column takes their width */
+.sf-brand .sf-credit { white-space: nowrap; }
 .sf-brand { display: grid; gap: var(--space-2); align-content: start; }
 .sf-logo { margin: 0; font: 400 var(--text-xl)/1 var(--font-display); color: var(--color-pink); }
 .sf-tagline { margin: 0; max-width: 34ch; }
@@ -52,8 +54,13 @@
 .sf-copy { margin: 0; color: var(--color-text); }
 .sf-credit { margin: 0; font-size: var(--text-xs); }
 
-@media (max-width: 760px) {
+/* under 1100 px the brand takes its own row above the columns, so its lines still fit on one line each */
+@media (max-width: 1100px) {
   .sf-top { grid-template-columns: minmax(0, 1fr); }
+}
+/* on a phone they wrap */
+@media (max-width: 600px) {
+  .sf-brand .sf-credit { white-space: normal; }
 }
 @media (max-width: 480px) {
   .sf-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
