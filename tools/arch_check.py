@@ -9,7 +9,7 @@ Checks, all against the checkout the doc sits in:
 - every row links `path:line` to a file that exists, the line is inside the file and the row's symbol is defined on
   that line (`def`, `class`, `NAME =`, `function NAME`, `const NAME`; `Class.method` looks inside the class);
 - the parts in the system view are Parts 1 to 6 of `part7/modules.py` (`PART_IDS`) plus Part 7, and each of
-  Parts 1 to 6 is a `modules/part-N` path in `.gitmodules`;
+  Parts 1 to 6 is a `modules/part-N` folder of this repo named in `modules/PINS.json` (ADR-0008);
 - every contract file on a system-view arrow (`*.json`) is named in Part 7's source (`part7/**/*.py`), and every
   format string on an arrow (`simon.*`) is in Part 7's source or in a part's `contracts/` schema.
 
@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import ast
 from pathlib import Path
+import json
 import re
 import sys
 
@@ -134,16 +135,17 @@ def _check_parts(system: str, root: Path) -> list[str]:
         errors.append(f"system view: names Part {extra}, which part7/modules.py PART_IDS does not have")
     for missing in sorted(want - named):
         errors.append(f"system view: Part {missing} is missing from the diagram")
-    gitmodules = root / ".gitmodules"
-    paths = set(re.findall(r"^\s*path\s*=\s*(\S+)", gitmodules.read_text(encoding="utf-8"), re.M)) \
-        if gitmodules.is_file() else set()
+    try:
+        pinned = json.loads((root / "modules" / "PINS.json").read_text(encoding="utf-8")).get("parts") or {}
+    except (OSError, ValueError, AttributeError):
+        pinned = {}
     for part in ids:
-        if f"modules/part-{part}" not in paths:
-            errors.append(f"system view: Part {part} has no modules/part-{part} entry in .gitmodules")
+        if part not in pinned or not (root / "modules" / f"part-{part}").is_dir():
+            errors.append(f"system view: Part {part} has no modules/part-{part} folder named in modules/PINS.json{NEEDS_PARTS}")
     return errors
 
 
-NEEDS_PARTS = " (are the submodules checked out?)"
+NEEDS_PARTS = " (are the parts under modules/?)"
 
 
 def _check_contracts(system: str, root: Path) -> list[str]:

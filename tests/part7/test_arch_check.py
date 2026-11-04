@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import re
+import json
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,7 @@ arch = _load()
 
 @pytest.fixture()
 def tree(tmp_path: Path) -> Path:
-    """A copy of what the check reads: the doc, part7/, web/api.js, the converter supervisor, .gitmodules and the
+    """A copy of what the check reads: the doc, part7/, web/api.js, the converter supervisor, modules/PINS.json and the
     part contracts."""
     (tmp_path / "docs").mkdir()
     shutil.copy(DOC, tmp_path / "docs" / "ARCHITECTURE.md")
@@ -41,7 +42,10 @@ def tree(tmp_path: Path) -> Path:
     (tmp_path / "web").mkdir()
     shutil.copy(ROOT / "web" / "api.js", tmp_path / "web" / "api.js")
     shutil.copytree(ROOT / "tools" / "model-converter", tmp_path / "tools" / "model-converter")
-    shutil.copy(ROOT / ".gitmodules", tmp_path / ".gitmodules")
+    (tmp_path / "modules").mkdir()
+    shutil.copy(ROOT / "modules" / "PINS.json", tmp_path / "modules" / "PINS.json")
+    for n in range(1, 7):
+        (tmp_path / "modules" / f"part-{n}").mkdir(exist_ok=True)
     for schema in ROOT.glob("modules/part-*/contracts/**/*.json"):
         dest = tmp_path / schema.relative_to(ROOT)
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -135,10 +139,11 @@ def test_a_part_dropped_from_the_code_fails(tree: Path) -> None:
     assert any("names Part 6" in e for e in errors), errors
 
 
-def test_a_part_missing_from_gitmodules_fails(tree: Path) -> None:
-    gm = tree / ".gitmodules"
-    gm.write_text(gm.read_text(encoding="utf-8").replace("path = modules/part-4", "path = modules/part-four"),
-                  encoding="utf-8")
+def test_a_part_missing_from_the_pins_fails(tree: Path) -> None:
+    pins = tree / "modules" / "PINS.json"
+    doc = json.loads(pins.read_text(encoding="utf-8"))
+    del doc["parts"]["4"]
+    pins.write_text(json.dumps(doc), encoding="utf-8")
     errors = arch.check(doc_of(tree), tree)
     assert any("modules/part-4" in e for e in errors), errors
 
