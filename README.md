@@ -12,6 +12,40 @@ Reels.
 Meta Global AI Developer Hackathon · Indie Developer track · theme **Push the Frontier**. Built by Mo Alborati,
 the team and Shruti Doshi between Oct 26 and Nov 4, 2026.
 
+## For the judges: how to run it
+
+**1. Try it live, nothing to install.** Open **[simon.live](https://simon.live)**, pick a movement, press Use routine,
+record or upload your take, and get your result. To add your own movement, press Record.
+
+**2. Run the whole pipeline on your machine with our keys** (open until Nov 9, 2026, 11:59 PM ET). No GPU, key or
+Modal account needed. You need Python 3.12, [uv](https://docs.astral.sh/uv/), `git`, [Git LFS](https://git-lfs.com),
+`make`, `ffmpeg` and `curl`.
+
+```bash
+git lfs install
+git clone https://github.com/Simon-Live/Simon-submission.git
+cd Simon-submission
+deploy/judges/run.sh
+```
+
+Open the address it prints (`http://127.0.0.1:8727`, or the next free port), then follow a movement or record one.
+Your copy of Simon runs Parts 1 to 7 here and sends its Meta Model API calls and its GPU work (SAM 3.1, SAM 3D Body,
+MHR, SAM 3D Objects) to our relay, which holds Simon's key and runs on our Modal GPU with a shared budget
+([deploy/judges/README.md](deploy/judges/README.md)). A take takes a few minutes, most of it the 3D step. Muse Spark
+Open runs on Baseten with its own key, so on this route the feedback sentences use Part 5's template.
+
+**3. Check it in 5 minutes, no keys at all.**
+
+```bash
+make dev          # then open http://127.0.0.1:8727/#/result/fixture: a scored take, both bodies in 3D, timed notes
+make parts-smoke  # about 30 s: Part 7 against the six parts' contracts and adapters
+```
+
+The full suite (about 3,600 tests) runs in CI on every push: see the badge above.
+
+**4. With your own keys and GPU.** A CUDA GPU with 12 GB free, `make parts` to set up Parts 1 to 6, and a Meta Model
+API key: [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md).
+
 ## Abstract
 
 Movement is learned by copying someone, and nobody tells you where your copy differs unless they are watching. A
@@ -27,17 +61,6 @@ then turn those measurements into something a person can act on: a sentence held
 follower's own frame redrawn in the matching pose, answers to questions about the take, and the original creator's
 spoken cues. The original recording, not a model's opinion, is the reference; Simon reports differences from it and
 gives no medical or health advice.
-
-## For the judges
-
-| Criterion | Where to look |
-|---|---|
-| **Theme: Push the Frontier** | A machine gains a new capability: it learns a 3D movement from one ordinary video and measures anyone against it ([Abstract](#abstract)) |
-| **Impact** | [Why it matters](#why-it-matters) and [Built for challenges between friends](#built-for-challenges-between-friends) |
-| **Use of Meta AI tooling** | Eleven Meta models chained, each named with the file that calls it ([table](#the-meta-models-and-what-each-one-makes-possible)) |
-| **Technical depth** | Seven parts with their full history, about 3,600 tests in CI, measured accuracy ([Evidence](#evidence)) |
-| **Demo** | [simon.live](https://simon.live), the demo video, and the whole pipeline on your machine with our keys ([Clone and run it](#clone-and-run-it)) |
-| **New work only** | Every commit is from Oct 26 to Nov 4, 2026; what we built and what we used are separated in [What we built, and what we used](#what-we-built-and-what-we-used) |
 
 ## Why it matters
 
@@ -121,51 +144,6 @@ Follower's take ── SAM 3.1 ── SAM 3D Body + MHR ── aligned in time w
 Each part was built in its own repo during the event and is merged here with its full history, under `modules/part-N`
 ([modules/PINS.json](modules/PINS.json) names where each came from). The team's coordination repo, with the plan and the
 seven part briefs, is under [`hub/`](hub/).
-
-## Verify it in 5 minutes
-
-```bash
-git lfs install && git clone https://github.com/Simon-Live/Simon-submission.git && cd Simon-submission
-make dev          # then open http://127.0.0.1:8727/#/result/fixture: a scored take, both bodies in 3D, timed notes, no keys
-make parts-smoke  # about 30 s: Part 7 against the six parts' contracts and adapters
-```
-
-The full suite (about 3,600 tests, 27 minutes) runs in CI on every push: see the badge above. To run the whole
-pipeline on your own takes, see [Clone and run it](#clone-and-run-it).
-
-## Try it
-
-**[simon.live](https://simon.live)**: pick a movement, press Use routine, record or upload your take, and get your
-result. Creators and teachers press Record to add their own movement.
-
-## Clone and run it
-
-Needs Python 3.12, [uv](https://docs.astral.sh/uv/), `git`, [Git LFS](https://git-lfs.com) (for Part 1's test
-videos), `make`, `ffmpeg` and `curl`.
-
-```bash
-git lfs install
-git clone https://github.com/Simon-Live/Simon-submission.git
-cd Simon-submission
-```
-
-**The full pipeline with our keys (until Nov 9, 2026, 11:59 PM ET).** No GPU, key or Modal account needed:
-
-```bash
-deploy/judges/run.sh
-```
-
-Open the address it prints (`http://127.0.0.1:8727`, or the next free port), then record or upload a take. Your Simon
-sends its Meta Model API calls and its GPU work (SAM 3.1, SAM 3D Body, MHR, SAM 3D Objects) to our relay, which holds
-Simon's key and runs Part 2 on our Modal GPU with a shared budget ([deploy/judges/README.md](deploy/judges/README.md)).
-A take takes a few minutes, most of it the 3D step on the GPU. Muse Spark Open runs on Baseten with its own key, so on
-this route Part 5 words its feedback with its template; everything else runs as on simon.live.
-
-**Without any keys.** `make dev`, then open `http://127.0.0.1:8727/#/result/fixture`: the result screen on a
-committed example, with the score, both bodies in 3D and the timed notes.
-
-**With your own keys and GPU.** A CUDA GPU with 12 GB free, `make parts` to set up Parts 1 to 6, and a Meta Model
-API key. [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md) covers setup, keys, running and debugging.
 
 ## Evidence
 
