@@ -4,6 +4,7 @@ node_modules/
 dist/
 .env
 .meta-spend.json
+.meta-spend.json.*
 .venv/
 out/
 *.mp4
