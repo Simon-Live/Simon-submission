@@ -1,0 +1,60 @@
+{
+  "video": "inbox/13749263_3840_2160_24fps.mp4",
+  "fps": 23.98,
+  "people": [
+    {
+      "id": 0,
+      "repetitions": [
+        {
+          "rep": 1,
+          "movement": "dumbbell_deadlift",
+          "keyframes": [
+            {
+              "name": "bent_over",
+              "frame": 50,
+              "t_ms": 2067,
+              "reviewed": true
+            },
+            {
+              "name": "standing_upright",
+              "frame": 115,
+              "t_ms": 4800,
+              "reviewed": true
+            },
+            {
+              "name": "bent_over",
+              "frame": 190,
+              "t_ms": 7933,
+              "reviewed": true
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "movement": "dumbbell_deadlift",
+          "keyframes": [
+            {
+              "name": "bent_over",
+              "frame": 206,
+              "t_ms": 8600,
+              "reviewed": true
+            },
+            {
+              "name": "standing_upright",
+              "frame": 251,
+              "t_ms": 10467,
+              "reviewed": true
+            },
+            {
+              "name": "standing_upright",
+              "frame": 265,
+              "t_ms": 11067,
+              "reviewed": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "analysis_fps": 15
+}

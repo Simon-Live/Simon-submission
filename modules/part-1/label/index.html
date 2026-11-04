@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Label key frames</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #12141a;
+      --panel: #1c2030;
+      --ink: #f4f1ea;
+      --muted: #a7adbd;
+      --line: #34384a;
+      --mark: #e2ff57;
+      --mark-ink: #1a1d12;
+      --dim: #8b93a7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.4 "Avenir Next", "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(960px, calc(100% - 28px));
+      margin: 20px auto 40px;
+    }
+    header {
+      display: flex;
+      gap: 12px;
+      align-items: end;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 22px; margin: 0; font-weight: 650; }
+    p { margin: 4px 0 0; color: var(--muted); }
+    select, button, input { font: inherit; color: inherit; }
+    select, input[type="text"] {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    button {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    button.primary { background: var(--mark); color: var(--mark-ink); border-color: var(--mark); }
+    button:disabled { opacity: 0.45; cursor: default; }
+    video {
+      width: 100%;
+      max-height: 52vh;
+      background: #000;
+      border-radius: 12px 12px 0 0;
+      display: block;
+    }
+    .stage {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .readout, .tools, .keys {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+    }
+    .readout { justify-content: space-between; color: var(--muted); }
+    .clock { color: var(--ink); font-variant-numeric: tabular-nums; }
+    canvas#track {
+      width: calc(100% - 24px);
+      height: 48px;
+      margin: 0 12px 12px;
+      background: #0d0f14;
+      border-radius: 8px;
+      cursor: pointer;
+      display: block;
+    }
+    #reps {
+      margin-top: 14px;
+      max-height: 42vh;
+      overflow: auto;
+      display: grid;
+      gap: 8px;
+    }
+    .rep {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .rep.on { border-color: var(--mark); }
+    .rep-head, .poses { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .poses { margin-top: 8px; }
+    .poses button.on { background: var(--mark); color: var(--mark-ink); border-color: var(--mark); }
+    .poses button.done { border-color: var(--mark); }
+    .poses img { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; background: #000; }
+    .keys { color: var(--dim); padding-top: 8px; }
+    #grabber { position: fixed; width: 160px; height: 90px; left: -999px; top: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Hand labels</h1>
+        <p id="status">Loading the HIIT draft.</p>
+      </div>
+      <div>
+        <select id="person" aria-label="Person"></select>
+        <button id="save" class="primary" type="button">Save labels</button>
+      </div>
+    </header>
+    <div class="stage">
+      <video id="video" controls playsinline preload="metadata"></video>
+      <div class="readout">
+        <span class="clock" id="clock">0:00.0 · frame 0</span>
+        <span id="phase">—</span>
+      </div>
+      <canvas id="track" width="900" height="48"></canvas>
+      <div class="tools">
+        <button id="prev" type="button">Previous</button>
+        <button id="accept" class="primary" type="button">Accept and next</button>
+        <button id="add" type="button">Add pose here</button>
+        <button id="drop" type="button">Delete pose</button>
+        <input id="name" type="text" aria-label="Pose name" spellcheck="false">
+        <input id="movement" type="text" aria-label="Repetition name" spellcheck="false">
+      </div>
+    </div>
+    <div id="reps"></div>
+    <p class="keys">← → one frame · shift ← → half a second · alt ← → nudge the selected pose · A accept and next · N add · delete remove · ⌘S or Ctrl+S save</p>
+  </main>
+  <video id="grabber" muted playsinline preload="metadata"></video>
+  <script>
+    const video = document.getElementById("video");
+    const grabber = document.getElementById("grabber");
+    const status = document.getElementById("status");
+    const personSelect = document.getElementById("person");
+    const clock = document.getElementById("clock");
+    const phase = document.getElementById("phase");
+    const track = document.getElementById("track");
+    const repsEl = document.getElementById("reps");
+    const nameInput = document.getElementById("name");
+    const movementInput = document.getElementById("movement");
+    const params = new URLSearchParams(location.search);
+    const stem = params.get("video") || "";
+
+    let doc = null;
+    let fps = 30;
+    let personIndex = 0;
+    let selected = { rep: 0, key: 0 };
+    let dirty = false;
+    let savedOnce = false;
+    let thumbToken = 0;
+
+    function person() {
+      return doc.people[personIndex];
+    }
+
+    function keyframeCount(item) {
+      return (item.repetitions || []).reduce((sum, rep) => sum + (rep.keyframes || []).length, 0);
+    }
+
+    function marks() {
+      const list = [];
+      person().repetitions.forEach((rep, repIndex) => {
+        (rep.keyframes || []).forEach((kf, keyIndex) => {
+          list.push({ repIndex, keyIndex, kf });
+        });
+      });
+      return list;
+    }
+
+    function current() {
+      const rep = person().repetitions[selected.rep];
+      if (!rep) return null;
+      const kf = (rep.keyframes || [])[selected.key];
+      if (!kf) return null;
+      return { rep, kf };
+    }
+
+    function formatMs(ms) {
+      const sign = ms < 0 ? "-" : "";
+      const total = Math.abs(ms) / 1000;
+      const minutes = Math.floor(total / 60);
+      const seconds = total - minutes * 60;
+      return `${sign}${minutes}:${seconds.toFixed(1).padStart(4, "0")}`;
+    }
+
+    function playheadMs() {
+      return video.currentTime * 1000;
+    }
+
+    function setPlayhead(ms) {
+      const duration = Number.isFinite(video.duration) ? video.duration * 1000 : ms;
+      video.currentTime = Math.min(Math.max(ms, 0), duration) / 1000;
+    }
+
+    function frameFor(ms) {
+      return Math.round(ms / 1000 * fps);
+    }
+
+    function touch(kf) {
+      kf.reviewed = true;
+      kf.frame = frameFor(kf.t_ms);
+      dirty = true;
+    }
+
+    function selectMark(repIndex, keyIndex, seek) {
+      selected = { rep: repIndex, key: keyIndex };
+      const item = current();
+      if (!item) return;
+      nameInput.value = item.kf.name || "";
+      movementInput.value = item.rep.movement || "";
+      if (seek) setPlayhead(item.kf.t_ms);
+      renderList();
+      drawTrack();
+      phase.textContent = `${item.kf.name} · ${item.rep.movement || "rep"}`;
+      loadThumbs(item.rep);
+    }
+
+    function nearestMark() {
+      const now = playheadMs();
+      let best = null;
+      for (const mark of marks()) {
+        const gap = Math.abs(mark.kf.t_ms - now);
+        if (!best || gap < best.gap) best = { ...mark, gap };
+      }
+      return best;
+    }
+
+    function acceptAndNext() {
+      const here = nearestMark();
+      const item = current();
+      const target = here && here.gap <= 400 ? here : item && { repIndex: selected.rep, keyIndex: selected.key, kf: item.kf };
+      if (!target) return;
+      target.kf.reviewed = true;
+      dirty = true;
+      const flat = marks();
+      const index = flat.findIndex((mark) => mark.repIndex === target.repIndex && mark.keyIndex === target.keyIndex);
+      const next = flat.slice(index + 1).find((mark) => !mark.kf.reviewed) || flat.find((mark) => !mark.kf.reviewed);
+      if (next) selectMark(next.repIndex, next.keyIndex, true);
+      else {
+        renderList();
+        drawTrack();
+        updateStatus();
+      }
+    }
+
+    function addPose() {
+      const item = current();
+      const rep = item ? item.rep : person().repetitions[0];
+      if (!rep) {
+        person().repetitions.push({ rep: 1, movement: "movement", keyframes: [] });
+        return addPose();
+      }
+      const t_ms = Math.round(playheadMs());
+      const kf = { name: nameInput.value.trim() || "pose", frame: frameFor(t_ms), t_ms, reviewed: true };
+      rep.keyframes.push(kf);
+      rep.keyframes.sort((a, b) => a.t_ms - b.t_ms);
+      dirty = true;
+      const keyIndex = rep.keyframes.indexOf(kf);
+      const repIndex = person().repetitions.indexOf(rep);
+      selectMark(repIndex, keyIndex, false);
+      renumber();
+    }
+
+    function deletePose() {
+      const rep = person().repetitions[selected.rep];
+      if (!rep) return;
+      rep.keyframes.splice(selected.key, 1);
+      if (rep.keyframes.length === 0) person().repetitions.splice(selected.rep, 1);
+      renumber();
+      dirty = true;
+      const reps = person().repetitions;
+      if (!reps.length) {
+        renderList();
+        drawTrack();
+        updateStatus();
+        return;
+      }
+      const repIndex = Math.min(selected.rep, reps.length - 1);
+      const keyIndex = Math.min(selected.key, reps[repIndex].keyframes.length - 1);
+      selectMark(repIndex, keyIndex, true);
+    }
+
+    function nudge(deltaMs) {
+      const item = current();
+      if (!item) return;
+      const duration = Number.isFinite(video.duration) ? video.duration * 1000 : item.kf.t_ms + deltaMs;
+      item.kf.t_ms = Math.round(Math.min(Math.max(0, item.kf.t_ms + deltaMs), duration));
+      touch(item.kf);
+      item.rep.keyframes.sort((a, b) => a.t_ms - b.t_ms);
+      selected.key = item.rep.keyframes.indexOf(item.kf);
+      setPlayhead(item.kf.t_ms);
+      renderList();
+      drawTrack();
+      updateStatus();
+    }
+
+    function renumber() {
+      person().repetitions.forEach((rep, index) => {
+        rep.rep = index + 1;
+      });
+    }
+
+    function reviewedCount() {
+      return marks().filter((mark) => mark.kf.reviewed).length;
+    }
+
+    function updateStatus() {
+      const total = marks().length;
+      const reviewed = reviewedCount();
+      const saved = dirty ? "unsaved changes" : savedOnce ? "saved" : "not saved yet";
+      status.textContent = `${stem} · person ${person().id} · ${reviewed} of ${total} poses reviewed · ${saved}`;
+    }
+
+    function renderPeople() {
+      const previous = personSelect.value;
+      personSelect.replaceChildren();
+      doc.people.forEach((item, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `Person ${item.id} · ${item.repetitions.length} reps · ${keyframeCount(item)} poses`;
+        personSelect.appendChild(option);
+      });
+      personSelect.value = previous || String(personIndex);
+    }
+
+    function renderList() {
+      const scroll = repsEl.scrollTop;
+      repsEl.replaceChildren();
+      person().repetitions.forEach((rep, repIndex) => {
+        const row = document.createElement("div");
+        row.className = "rep" + (repIndex === selected.rep ? " on" : "");
+        const head = document.createElement("div");
+        head.className = "rep-head";
+        const open = document.createElement("button");
+        open.type = "button";
+        const done = (rep.keyframes || []).filter((kf) => kf.reviewed).length;
+        open.textContent = `Rep ${rep.rep} · ${rep.movement || "movement"} · ${formatMs(rep.keyframes[0] ? rep.keyframes[0].t_ms : 0)} · ${done}/${(rep.keyframes || []).length}`;
+        open.addEventListener("click", () => {
+          if (rep.keyframes && rep.keyframes.length) selectMark(repIndex, 0, true);
+        });
+        head.appendChild(open);
+        row.appendChild(head);
+        if (repIndex === selected.rep) {
+          const poses = document.createElement("div");
+          poses.className = "poses";
+          (rep.keyframes || []).forEach((kf, keyIndex) => {
+            if (kf.thumb) {
+              const image = document.createElement("img");
+              image.src = kf.thumb;
+              image.alt = "";
+              poses.appendChild(image);
+            }
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = `${kf.name} ${formatMs(kf.t_ms)}`;
+            button.className = (keyIndex === selected.key ? "on " : "") + (kf.reviewed ? "done" : "");
+            button.addEventListener("click", () => selectMark(repIndex, keyIndex, true));
+            poses.appendChild(button);
+          });
+          row.appendChild(poses);
+        }
+        repsEl.appendChild(row);
+      });
+      repsEl.scrollTop = scroll;
+      const selectedRow = repsEl.querySelector(".rep.on");
+      if (selectedRow) selectedRow.scrollIntoView({ block: "nearest" });
+      updateStatus();
+    }
+
+    function drawTrack() {
+      const width = track.clientWidth || 900;
+      const height = 48;
+      const scale = window.devicePixelRatio || 1;
+      track.width = Math.round(width * scale);
+      track.height = Math.round(height * scale);
+      const ctx = track.getContext("2d");
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#0d0f14";
+      ctx.fillRect(0, 0, width, height);
+      const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 : 1;
+      for (const mark of marks()) {
+        const x = (mark.kf.t_ms / duration) * width;
+        const chosen = mark.repIndex === selected.rep && mark.keyIndex === selected.key;
+        ctx.fillStyle = mark.kf.reviewed ? "#e2ff57" : "#5d6478";
+        ctx.fillRect(x, chosen ? 8 : 16, chosen ? 3 : 2, chosen ? 32 : 16);
+      }
+      const play = (playheadMs() / duration) * width;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(play, 4, 2, 40);
+    }
+
+    function paintClock() {
+      const ms = Math.round(playheadMs());
+      clock.textContent = `${formatMs(ms)} · frame ${frameFor(ms)}`;
+      const here = nearestMark();
+      const item = current();
+      if (item && Math.abs(item.kf.t_ms - ms) <= 150) phase.textContent = `${item.kf.name} · ${item.rep.movement || "rep"}`;
+      else if (here && here.gap <= 150) phase.textContent = here.kf.name;
+      else phase.textContent = "—";
+      drawTrack();
+    }
+
+    function seekHidden(seconds) {
+      return new Promise((resolve) => {
+        const done = () => {
+          grabber.removeEventListener("seeked", done);
+          resolve();
+        };
+        grabber.addEventListener("seeked", done);
+        grabber.currentTime = seconds;
+      });
+    }
+
+    async function loadThumbs(rep) {
+      const token = ++thumbToken;
+      for (const kf of rep.keyframes || []) {
+        if (kf.thumb || token !== thumbToken) continue;
+        if (grabber.readyState < 1) await new Promise((resolve) => grabber.addEventListener("loadeddata", resolve, { once: true }));
+        await seekHidden(kf.t_ms / 1000);
+        if (token !== thumbToken) return;
+        const canvas = document.createElement("canvas");
+        canvas.width = 160;
+        canvas.height = 90;
+        canvas.getContext("2d").drawImage(grabber, 0, 0, 160, 90);
+        kf.thumb = canvas.toDataURL("image/jpeg", 0.72);
+      }
+      if (token === thumbToken) renderList();
+    }
+
+    function payload() {
+      return {
+        video: doc.video,
+        fps: doc.fps,
+        analysis_fps: doc.analysis_fps,
+        people: doc.people.filter((item) => item.repetitions.length > 0).map((item) => ({
+          id: item.id,
+          repetitions: item.repetitions.map((rep, index) => ({
+            rep: index + 1,
+            movement: rep.movement || "movement",
+            keyframes: (rep.keyframes || []).map((kf) => ({
+              name: kf.name,
+              frame: frameFor(kf.t_ms),
+              t_ms: Math.round(kf.t_ms),
+              ...(kf.reviewed ? { reviewed: true } : {}),
+            })),
+          })),
+        })),
+      };
+    }
+
+    async function save() {
+      const response = await fetch(`/api/labels/${stem}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload()),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "save failed");
+      dirty = false;
+      savedOnce = true;
+      updateStatus();
+      status.textContent = `Saved ${body.saved}. Unreviewed poses were stored as they are now.`;
+    }
+
+    function onKey(event) {
+      if (!doc) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        save().catch((error) => { status.textContent = error.message; });
+        return;
+      }
+      if (event.target.matches("input, select, textarea")) return;
+      const frame = 1000 / fps;
+      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        const sign = event.key === "ArrowRight" ? 1 : -1;
+        if (event.altKey) nudge(sign * frame);
+        else setPlayhead(playheadMs() + sign * (event.shiftKey ? 500 : frame));
+      } else if (event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        acceptAndNext();
+      } else if (event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        addPose();
+      } else if (event.key === "Backspace" || event.key === "Delete") {
+        event.preventDefault();
+        deletePose();
+      } else if (event.key === " ") {
+        event.preventDefault();
+        if (video.paused) video.play();
+        else video.pause();
+      }
+    }
+
+    track.addEventListener("click", (event) => {
+      const rect = track.getBoundingClientRect();
+      const duration = Number.isFinite(video.duration) ? video.duration * 1000 : 0;
+      if (!duration) return;
+      const t = ((event.clientX - rect.left) / rect.width) * duration;
+      let best = null;
+      for (const mark of marks()) {
+        const gap = Math.abs(mark.kf.t_ms - t);
+        if (!best || gap < best.gap) best = { ...mark, gap };
+      }
+      const pixel = duration * (10 / rect.width);
+      if (best && best.gap <= pixel) selectMark(best.repIndex, best.keyIndex, true);
+      else setPlayhead(t);
+    });
+
+    nameInput.addEventListener("input", () => {
+      const item = current();
+      if (!item) return;
+      item.kf.name = nameInput.value.trim() || "pose";
+      touch(item.kf);
+      phase.textContent = item.kf.name;
+      renderList();
+    });
+    movementInput.addEventListener("input", () => {
+      const item = current();
+      if (!item) return;
+      item.rep.movement = movementInput.value.trim() || "movement";
+      dirty = true;
+      renderList();
+    });
+    personSelect.addEventListener("change", () => {
+      personIndex = Number(personSelect.value);
+      selected = { rep: 0, key: 0 };
+      renderList();
+      drawTrack();
+      const first = marks()[0];
+      if (first) selectMark(first.repIndex, first.keyIndex, true);
+    });
+    document.getElementById("accept").addEventListener("click", acceptAndNext);
+    document.getElementById("prev").addEventListener("click", () => {
+      const flat = marks();
+      const index = flat.findIndex((mark) => mark.repIndex === selected.rep && mark.keyIndex === selected.key);
+      const prev = flat[Math.max(0, index - 1)];
+      if (prev) selectMark(prev.repIndex, prev.keyIndex, true);
+    });
+    document.getElementById("add").addEventListener("click", addPose);
+    document.getElementById("drop").addEventListener("click", deletePose);
+    document.getElementById("save").addEventListener("click", () => {
+      save().catch((error) => { status.textContent = error.message; });
+    });
+    video.addEventListener("timeupdate", paintClock);
+    video.addEventListener("seeked", paintClock);
+    video.addEventListener("loadedmetadata", () => {
+      paintClock();
+      const first = marks()[0];
+      if (first) selectMark(first.repIndex, first.keyIndex, true);
+    });
+    window.addEventListener("resize", drawTrack);
+    document.addEventListener("keydown", onKey);
+
+    async function start() {
+      const response = await fetch(`/api/draft?video=${encodeURIComponent(stem)}`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "could not load the draft");
+      doc = structuredClone(body.label || body.draft);
+      fps = Number(doc.fps) || 30;
+      let best = 0;
+      doc.people.forEach((item, index) => {
+        if (keyframeCount(item) > keyframeCount(doc.people[best])) best = index;
+      });
+      personIndex = best;
+      video.src = body.media;
+      grabber.src = body.media;
+      renderPeople();
+      personSelect.value = String(personIndex);
+      renderList();
+      const reviewed = body.label ? "Continuing your saved labels." : "Started from the model's draft. Unreviewed poses are still the model's times.";
+      status.textContent = reviewed;
+    }
+
+    if (!stem) {
+      status.textContent = "Open this page with ?video= and the file name from inbox/.";
+    } else {
+      start().catch((error) => {
+        status.textContent = error.message;
+      });
+    }
+  </script>
+</body>
+</html>

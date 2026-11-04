@@ -1,0 +1,3 @@
+numpy>=2
+imageio-ffmpeg>=0.5.1
+meta-sam-parser==0.1.0
