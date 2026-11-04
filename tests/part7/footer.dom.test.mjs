@@ -47,7 +47,7 @@ test("AC-F4 api/version down: 'Version unavailable', links and credit still draw
   assert.equal(q(el, "footer-version").textContent, "Version unavailable");
   assert.equal(q(el, "footer-build"), null);
   assert.equal(q(el, "footer-copy"), null);
-  assert.ok(q(el, "footer-link-licences") && q(el, "footer-link-data") && q(el, "footer-credit") && q(el, "footer-source") && q(el, "footer-feedback"));
+  assert.ok(q(el, "footer-link-licences") && q(el, "footer-link-mission") && q(el, "footer-credit") && q(el, "footer-source") && q(el, "footer-feedback"));
 });
 
 test("while api/version is on its way the links show and the version slot is empty", async () => {
@@ -65,12 +65,18 @@ test("a missing host element is a no-op", async () => {
   assert.equal(await mountFooter(null, async () => BUILD), false);
 });
 
-test("source and feedback are plain text; the only links are app pages", () => {
+test("source and feedback are plain text; the only links are app pages and the contact address", () => {
   const el = renderFooter(new El("footer"), BUILD);
   assert.equal(q(el, "footer-source").tag, "p");
   assert.equal(q(el, "footer-source").textContent, "Source: private repository (moalborati/simon-part-7-stitching-app)");
   assert.equal(q(el, "footer-feedback").tag, "p");
   assert.equal(q(el, "footer-link-source"), null);
   assert.equal(q(el, "footer-link-feedback"), null);
-  assert.deepEqual(el.querySelectorAll("[href]").map((a) => a.getAttribute("href")), ["#/me", "#/architecture", "api/notices"]);
+  const hrefs = el.querySelectorAll("[href]").map((a) => a.getAttribute("href"));
+  // simon.live's footer (2026-11-03): the brand's contact, then the app, company and legal columns
+  assert.deepEqual(hrefs, ["mailto:hello@simon.live", "#/", "#/record", "#/impact", "#/architecture", "#/about", "#/mission", "#/whitepaper",
+    "mailto:hello@simon.live", "#/privacy", "#/terms", "#/accessibility", "#/biometric", "#/dmca", "#/sub-processors", "#/safety", "#/notices"]);
+  const app = (x) => x.startsWith("#/") || x.startsWith("api/");
+  assert.ok(hrefs.every((x) => app(x) || x === "mailto:hello@simon.live"), "negative: no outside link");
+  assert.equal(q(el, "footer-copyright").textContent, "© 2026 Simon Live LLC");
 });
