@@ -98,21 +98,21 @@ differences. This integration is the next step, not part of this submission.
 
 ## The Meta models, and what each one makes possible
 
-Eleven Meta models, each doing a job the product could not do without it. "Where" points at the code that calls it.
+Eleven Meta models, each doing a job the product could not do without it.
 
-| Model | What it does in Simon | The difference it makes | Where |
-|---|---|---|---|
-| **SAM 3.1** | Finds and tracks people with stable ids (text prompt "person"), on our GPU and through the Meta Model API | A class recording or a busy room still yields one consistent person per track; the follower picks themselves | `modules/part-2/part2/trackers/local_sam31.py`, `modules/part-1/keyframe_finder/meta_client.py` |
-| **SAM 3D Body** | A full 3D body for every frame from one ordinary camera | 3D from a phone at any angle: 2.02% (COCO) and 3.84% (hand-labelled) of body height mean reprojection error | `modules/part-2/part2/backends/gpu_sam3db.py` |
-| **MHR** (Momentum Human Rig) | The body model behind SAM 3D Body, and the skeleton and skin weights for a rigged avatar | Every take shares one skeleton, so a teacher and a student of different builds are compared joint for joint | `modules/part-2/part2/mhr_export.py` |
-| **SAM 3D Objects** | A textured 3D model of a character or object from one picture | Anyone can replay a take as their own character, rigged with MHR | `modules/part-2/part2/image3d.py` |
-| **Muse Spark 1.3** | Watches the teacher's clip and names the movement's phases; a second opinion on a take; patterns across a student's history; referees Muse Image's picture | The movement's structure comes from the video itself, with no per-movement setup | `modules/part-1/keyframe_finder/meta_client.py`, `modules/part-5/part5/opinion/meta_api.py`, `part7/history_api.py` |
-| **Muse Spark Open** | Writes each measured difference as one plain sentence; a validator holds it to the measured facts | Feedback reads like a teacher, never claims what was not measured, and falls back to a template | `modules/part-5/part5/phrasing/muse_spark.py` |
-| **Muse Glimmer** | The same sentences in private mode, on the user's own machine (Ollama) | Feedback with nothing leaving the device | `modules/part-5/part5/phrasing/local_llm.py`, `part7/private_mode.py` |
-| **Muse Wonder 1.0** | "Ask this take": answers a question about the take from its measurements | A student asks "why was my second rep worse?" and gets an answer grounded in the numbers | `modules/part-5/part5/opinion/prompt.py`, `part7/take_ask.py` |
-| **Muse Image 1.0** | "You, doing it right": the student's own frame redrawn in the corrected pose | The correction shown on the student's own body, not described | `part7/muse_fix_api.py` |
-| **Muse Voice Transcribe 1.0** | Turns the teacher's narration in an upload into timed cues | The teacher's own words appear at the moment they apply | `part7/narration_api.py` |
-| **MMS-TTS** | Speaks feedback lines on our server when spoken feedback is on | Feedback heard while moving, without looking at the screen | `part7/speech.py` |
+| Model | What it does in Simon | The difference it makes |
+|---|---|---|
+| **SAM 3.1** | Finds and tracks people with stable ids (text prompt "person"), on our GPU and through the Meta Model API | A class recording or a busy room still yields one consistent person per track; the follower picks themselves |
+| **SAM 3D Body** | A full 3D body for every frame from one ordinary camera | 3D from a phone at any angle: 2.02% (COCO) and 3.84% (hand-labelled) of body height mean reprojection error |
+| **MHR** (Momentum Human Rig) | The body model behind SAM 3D Body, and the skeleton and skin weights for a rigged avatar | Every take shares one skeleton, so a teacher and a student of different builds are compared joint for joint |
+| **SAM 3D Objects** | A textured 3D model of a character or object from one picture | Anyone can replay a take as their own character, rigged with MHR |
+| **Muse Spark 1.3** | Watches the teacher's clip and names the movement's phases; a second opinion on a take; patterns across a student's history; referees Muse Image's picture | The movement's structure comes from the video itself, with no per-movement setup |
+| **Muse Spark Open** | Writes each measured difference as one plain sentence; a validator holds it to the measured facts | Feedback reads like a teacher, never claims what was not measured, and falls back to a template |
+| **Muse Glimmer** | The same sentences in private mode, on the user's own machine (Ollama) | Feedback with nothing leaving the device |
+| **Muse Wonder 1.0** | "Ask this take": answers a question about the take from its measurements | A student asks "why was my second rep worse?" and gets an answer grounded in the numbers |
+| **Muse Image 1.0** | "You, doing it right": the student's own frame redrawn in the corrected pose | The correction shown on the student's own body, not described |
+| **Muse Voice Transcribe 1.0** | Turns the teacher's narration in an upload into timed cues | The teacher's own words appear at the moment they apply |
+| **MMS-TTS** | Speaks feedback lines on our server when spoken feedback is on | Feedback heard while moving, without looking at the screen |
 
 Each result page lists the models that ran for that take ("How this was made", `part7/models_used.py`).
 Every model with its evidence and licence: [docs/submission.md](docs/submission.md), "Use of Meta AI tooling", and
@@ -143,23 +143,6 @@ Each part was built in its own repo during the event and is merged here with its
 ([modules/PINS.json](modules/PINS.json) names where each came from). The team's coordination repo, with the plan and the
 seven part briefs, is under [`hub/`](hub/).
 
-## Evidence
-
-Every number below is traced to the run that produced it. The full tables, with each source file's sha256, are in
-[docs/evaluation.md](docs/evaluation.md); open questions are tracked in the [blueprint](blueprint.html).
-
-| What was measured | Result | Source |
-|---|---|---|
-| 3D pose from one camera, 20 COCO images | 2.02% of body height mean reprojection error | `bench/results/2026-11-02/part2-check.json` |
-| 3D pose, 20 hand-labelled frames | 3.84% of body height mean reprojection error | same |
-| Finding planted differences, held-out seeds, front, 45 degrees and side | precision 0.88 to 1.00, recall 0.83 to 1.00 | `bench/results/2026-11-02/part5-heldout-attempts.json` |
-| A person's own approved take as the reference, on video, pre-registered (public expert-labelled set, 38 reps, 7 people) | AUC 0.70; shuffled-label p 0.007 | [docs/evaluation.md](docs/evaluation.md), "The person's own rep as the reference" |
-| A correct take against an incorrect one, same people | correct scored higher for 6 of 6 people on video (median +12.6 points, p 0.016) and 10 of 10 on motion capture | same, "Paired before and after" |
-| The 3D step with a resident Part 2 worker | 97.1 s down to 51.7 s mean over three runs | commit `1d54206` |
-
-The `bench/results/` files are in this repo. The pre-registered tests on the public dataset ran in the team's GPU
-workspace; docs/evaluation.md gives each result file's path there and its sha256.
-
 ## What we built, and what we used
 
 Everything in this repo was written by the team between Oct 26 and Nov 4, 2026; `git log` shows every commit, from the
@@ -177,6 +160,7 @@ Mermaid under `web/vendor/` (MIT). Part 1's three test videos are stock clips us
 - **[The blueprint](blueprint.html)** (download and open it in a browser): the whole design on one page, with the
   features, requirements, scoring, architecture, risks and status.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): three diagrams, each node linked to its code.
+- [docs/evidence.md](docs/evidence.md): what Simon's accuracy and speed were measured at, with each result's source.
 - [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md): set up a host, run the app, debug a job.
 - [docs/design/](docs/design/README.md): the specs and decisions behind the code.
 - [hub/docs/MINI-APPS.md](hub/docs/MINI-APPS.md): the seven parts and the files they pass between them.
