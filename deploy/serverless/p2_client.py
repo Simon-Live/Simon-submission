@@ -41,6 +41,11 @@ def remote_argv(sub: list[str]) -> tuple[list[str], dict[str, bytes], Path | Non
             out = Path(sub[i + 1])
             argv += [flag, "{out}"]
             i += 2
+        elif not flag.startswith("-") and i > 0 and Path(flag).is_file():   # a positional input (avatar, autorig)
+            name = f"arg{len(inputs)}{Path(flag).suffix}"
+            inputs[name] = Path(flag).read_bytes()
+            argv.append("{in}/" + name)
+            i += 1
         else:
             argv.append(flag)
             i += 1

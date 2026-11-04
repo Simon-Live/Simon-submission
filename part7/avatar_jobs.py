@@ -204,12 +204,26 @@ _MODULE = {"image": "avatar.py", "autorig": "autorig.py"}
 image3d_jobs.extend(_SUBCOMMAND, _MODULE, TIMEOUT_S, MSG_NO_PERSON)  # the picture of a character or object kind
 
 
+# The remote route (SIMON7_PART2_REMOTE=modal, through the judges' relay when SIMON_PART2_RELAY is set) runs `avatar`
+# and `autorig` on Part 2's Modal image (SAM 3D Body and MHR are in it); `image3d` needs SAM 3D Objects' own venv, which
+# that image does not have, so it stays local-GPU only.
+REMOTE_KINDS = ("image", "autorig")
+
+
+def _remote() -> bool:
+    """True when Part 2 runs on Modal rather than this machine's GPU."""
+    from part7.parts import p2_pose  # here: p2_pose imports much of part7
+    return p2_pose.remote() is not None
+
+
 def available(kind: str = "image") -> bool:
-    """True when this checkout of Part 2 has the `avatar` (image) or `autorig` command and its GPU venv exists."""
+    """True when this checkout of Part 2 has the `avatar` (image) or `autorig` command and its GPU venv exists, or
+    Part 2 runs on Modal and the kind runs there."""
     part2, py = config.part_dir(2), config.part2_gpu_venv_path() / "bin" / "python"
     if kind == image3d_jobs.KIND:
         return image3d_jobs.available(part2, py)
-    return kind in _MODULE and (part2 / "part2" / _MODULE[kind]).is_file() and py.is_file()
+    has_module = kind in _MODULE and (part2 / "part2" / _MODULE[kind]).is_file()
+    return has_module and (py.is_file() or (kind in REMOTE_KINDS and _remote()))
 
 
 # --- submit ---------------------------------------------------------------------------------------------------
@@ -453,6 +467,17 @@ def _attempt(model_dir: Path, kind: str, files: list[Path], part2: Path, py: Pat
     """One Part 2 run under the GPU lock. (exit code or None on timeout, lock timed out)."""
     out_dir = model_dir / "out"
     _remove_dir(out_dir)
+    if kind in REMOTE_KINDS and _remote() and not py.is_file():   # no GPU here: Part 2 on Modal (deploy/judges/)
+        from part7 import modules
+        from part7.parts import p2_pose
+        argv = p2_pose._remote_command([_SUBCOMMAND[kind], "--out", str(out_dir), *map(str, files)], modules.load())
+        if not _set_status(model_dir, "converting", step="skeleton" if kind == "autorig" else "making"):
+            return 4, True
+        began = import_timings.start()
+        code = _run_part2(argv, part2, _environment(part2, _scratch(model_dir, kind)), model_dir, TIMEOUT_S[kind])
+        if code == 0:
+            import_timings.done(model_dir, _TIMING_STAGE.get(kind, "avatar"), began)
+        return code, False
     argv = [str(py), "-m", "part2", _SUBCOMMAND[kind], "--out", str(out_dir), *map(str, files)]
     if not _wait_for_card(model_dir, kind):
         return 4, True

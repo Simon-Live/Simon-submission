@@ -163,3 +163,23 @@ def test_meta_callers_read_simon_meta_api():
     for rel in ("modules/part-1/keyframe_finder/meta_client.py", "modules/part-5/part5/opinion/meta_api.py",
                 "part7/history_api.py", "part7/narration_api.py"):
         assert 'os.environ.get("SIMON_META_API", "https://api.meta.ai/v1")' in (ROOT / rel).read_text(), rel
+
+
+def test_p2_client_uploads_positional_photos_for_avatar(tmp_path):
+    photo = tmp_path / "me.jpg"
+    photo.write_bytes(b"jpeg")
+    argv, inputs, out = _load_client().remote_argv(["avatar", "--out", str(tmp_path / "o"), str(photo)])
+    assert argv == ["avatar", "--out", "{out}", "{in}/arg0.jpg"]
+    assert inputs == {"arg0.jpg": b"jpeg"}
+    assert out == tmp_path / "o"
+
+
+def test_photo_and_mesh_models_run_on_modal_without_a_local_gpu_but_character_pictures_do_not(monkeypatch, tmp_path):
+    from part7 import avatar_jobs, config
+    monkeypatch.setattr(config, "part2_gpu_venv_path", lambda: tmp_path / "no-venv")
+    monkeypatch.delenv("SIMON7_PART2_REMOTE", raising=False)
+    assert not avatar_jobs.available("image"), "negative: no GPU and no remote route"
+    monkeypatch.setenv("SIMON7_PART2_REMOTE", "modal")
+    assert avatar_jobs.available("image")
+    assert avatar_jobs.available("autorig")
+    assert not avatar_jobs.available("image3d"), "negative: SAM 3D Objects is not in the Modal image"
