@@ -2,7 +2,7 @@
   "_note": "Parts 1 to 6 live in this repo under modules/part-N (the hackathon submission is one repo). Each was merged with its history by git subtree at the commit below of its own repo, where it was built.",
   "parts": {
     "1": {
-      "sha": "fe09c43577197e1d7ffb6348c5ad038e09929fe0",
+      "sha": "29b018b0fdb60f14e5a7bf9b2668d2445b60b546",
       "from": "https://github.com/moalborati/simon-part-1-keyframes"
     },
     "2": {
