@@ -5,7 +5,10 @@ calls this project records, priced from the published list rates. It is not
 Meta's invoice for the whole account.
 """
 
+import contextlib
+import fcntl
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +44,22 @@ def _load():
 
 
 def _save(ledger):
-    LEDGER.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+    """Write the ledger whole, by a rename, so a reader never sees half a file."""
+    tmp = LEDGER.with_name(LEDGER.name + f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, LEDGER)
+
+
+@contextlib.contextmanager
+def _locked():
+    """One writer at a time (TICKET-380 review): overlapping takes share the ledger, and a read, change and write
+    without a lock let one run's record overwrite another's."""
+    with open(LEDGER.with_name(LEDGER.name + ".lock"), "a", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def thresholds_reached(usd):
@@ -133,6 +151,11 @@ def record(usd, note, model=None):
     """Add a charge and return warning strings for any new $5 mark."""
     if usd < 0:
         raise ValueError("cost cannot be negative")
+    with _locked():
+        return _record(usd, note, model)
+
+
+def _record(usd, note, model):
     ledger = _load()
     before = float(ledger["usd"])
     after = before + float(usd)
