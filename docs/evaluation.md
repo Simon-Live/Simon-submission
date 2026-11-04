@@ -40,7 +40,7 @@ Precision / recall per held-out seed, good light, at three camera angles. Every 
 | 71 | pass | 1f360abddd73 | 0.96 / 1.00 | 1.00 / 0.96 | 1.00 / 0.88 | low/side precision 0.16 |
 | 73 | pass | 47fce0ca21b0 | 1.00 / 0.96 | 0.96 / 0.96 | 1.00 / 0.83 | low/side precision 0.17 |
 
-Source: `bench/results/2026-11-02/part5-heldout-attempts.json`, sha256 `eb0fb1cb69340530bb2e7382639d1a80dc1c43235358f47ae9e732914193fb92`.
+Source: `bench/results/2026-11-02/part5-heldout-attempts.json`, sha256 `c00318c06f3e86acc116e2629b03699c7e6f1a7625a061c27f0b3cb333ccfd0d`.
 The faults are planted in synthetic takes.
 
 ### Part 7, app against a direct run

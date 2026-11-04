@@ -9,8 +9,8 @@ per-movement configuration: the movement is learned from the recording itself. T
 into a challenge friends can take on and be compared against, the way trends already spread on Facebook and Instagram
 Reels.
 
-Meta Global AI Developer Hackathon · Indie Developer track · theme **Push the Frontier**. Built by Mo Alborati,
-the team and Shruti Doshi between Oct 26 and Nov 4, 2026.
+Meta Global AI Developer Hackathon · Indie Developer track · theme **Push the Frontier**. Built by Mo Alborati and
+Shruti Doshi between Oct 26 and Nov 4, 2026.
 
 ## For the judges: how to run it
 
