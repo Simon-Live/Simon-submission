@@ -11,19 +11,21 @@ export const READY_HOLD_MS = 1000; // Ready, with the bar full, stays on screen 
 import { attachPicture } from "./picture-kind.js"; // "What is in the picture?": a person keeps this dialog's path, a character or object has its own
 
 // Limits and wording match part7/model_import.py, so a form that passes here passes there.
-export const MAX_MODEL_BYTES = 100_000_000;
+export const MAX_MODEL_BYTES = 85_000_000; // part7/config.py MAX_UPLOAD_BYTES, the one cap
 export const MAX_IMAGE_BYTES = 25_000_000;
 export const SOURCE_MAX = 300;
 
 export const MSG = {
   noFile: "Choose a file to import.",
-  noCredit: "The Credit line is empty. This licence needs the name of who made the model.",
+  noCredit: "The Credit line is empty, and CC-BY, CC-BY-SA and CC-BY-NC need the name of who made the model. Type that name in the Credit line, or choose another licence, then press Import again.",
   noConsent: "Say who the photo shows: you, or someone who agreed.",
   noSkeleton: "No skeleton found, so Simon is adding one.",
-  badLicence: "The licence is not one Simon knows. Choose one from the Licence list.",
-  tooBig: "This file is over 100 MB. Use a smaller model.",
-  imageBig: "This photo is over 25 MB. Use a smaller photo.",
-  greyBody: "Simon builds a plain grey human body from the pose and build in a photo. It does not copy armour, costumes or textures.",
+  badLicence: `Simon does not accept that licence. In the Licence list, choose ${LICENCES.slice(0, -1).map(([, t]) => t).join(", ")} or ${LICENCES[LICENCES.length - 1][1]}, then press Import again.`,
+  fileKept: "Your file is still chosen, so you do not need to choose it again.",
+  tooBig: "This file is over 85 MB, the limit for a model. Choose a smaller file.",
+  imageBig: "This photo is over 25 MB, the limit for a photo. Choose a smaller photo.",
+  greyBody: "Simon builds a plain skin-coloured human body from the pose and build in a photo. It does not copy armour, costumes or textures. For armour, a costume or a character, choose A character or object.",
+  photoGoes: "On simon.live, Simon sends the picture to Modal in the United States to make the model, and removes it there when the job ends.",
   sourceHint: "A web address, or a few words such as \"my own scan\". You can leave this empty.",
   converting: "Making the model. This can take a minute, and longer for photos.",
   uploading: "Sending the model.",
@@ -90,6 +92,8 @@ export function openImportDialog({ fetchImpl, forJob = null, forPerson = null, u
     consentField.hidden = true;
     const photoHint = h("p", { id: `${uid}-photo-hint`, class: "msel-note msel-photo-hint", "data-testid": "model-import-photo-hint", text: MSG.greyBody });
     photoHint.hidden = true;
+    const photoGoes = h("p", { class: "msel-note", "data-testid": "model-import-photo-goes", text: MSG.photoGoes }); // every picture, whichever path it takes
+    photoGoes.hidden = true;
     const progressHost = h("div", { "data-testid": "model-import-progress-host" });
     const error = h("p", { class: "msel-error", role: "alert", "data-testid": "model-import-error", hidden: true });
     const status = h("p", { class: "msel-status", role: "status", "data-testid": "model-import-status" });
@@ -103,7 +107,7 @@ export function openImportDialog({ fetchImpl, forJob = null, forPerson = null, u
       field(`${uid}-lic`, "Licence", licence),
       field(`${uid}-credit`, "Credit line", credit, "Needed for CC-BY and similar licences."),
       field(`${uid}-src`, "Where it came from (optional)", source, MSG.sourceHint),
-      photoHint, consentField, error, status, progressHost, h("div", { class: "msel-actions" }, cancel, send));
+      photoHint, photoGoes, consentField, error, status, progressHost, h("div", { class: "msel-actions" }, cancel, send));
     dlg.append(form);
     doc.body.append(dlg);
 
@@ -157,20 +161,32 @@ export function openImportDialog({ fetchImpl, forJob = null, forPerson = null, u
       job = null;
       error.textContent = text || MSG.unexpected;
       error.hidden = false;
-      status.textContent = "";
+      clearMarks();
+      const control = where && controls[where];
+      if (control) control.setAttribute("aria-invalid", "true"); // the field at fault is outlined (skin-css.js)
+      status.textContent = control && where !== "file" ? MSG.fileKept : ""; // only the field changes: the file stays
       busy = false;
       send.disabled = false;
       send.removeAttribute("aria-busy");
-      const control = where && controls[where];
       if (control) { if (where === "consent") askWho(true); control.focus(); }
     };
 
-    attachPicture({ doc, uid, dlg, readyHoldMs, form, file, consentField, status, error, validateForm, fetchImpl, upload, wait, waitMs: GENERATE_WAIT_MS,
+    attachPicture({ doc, uid, dlg, readyHoldMs, form, file, consentField, status, error, validateForm, fieldOf: (form) => { const found = checkForm(form); return found ? found.field : null; }, fetchImpl, upload, wait, waitMs: GENERATE_WAIT_MS,
       options: () => ({ name: name.value.trim(), licence: licence.value, attribution: credit.value.trim(), sourceUrl: source.value.trim(), forJob, forPerson }),
       fail: (text, where) => fail(text, where), finish: (value) => finish(value), begin, created: track,
       ready: (value) => { made = value; }, isDone: () => done });
     const files = () => [...(file.files || [])];
     const controls = { file, licence, attribution: credit, consent };
+    function clearMarks() { for (const c of Object.values(controls)) c.removeAttribute("aria-invalid"); }
+    // the person changes the field the error names: the error and the outline go, and the file stays chosen
+    for (const [control, event] of [[licence, "change"], [credit, "input"], [consent, "change"]]) {
+      control.addEventListener(event, () => {
+        if (control.getAttribute("aria-invalid") !== "true") return;
+        clearMarks();
+        error.hidden = true;
+        status.textContent = "";
+      });
+    }
     // a mesh with no skeleton is rigged with no question; the dialog says so up front (null: unreadable, the server decides)
     let unrigged = false;
     let probing = 0;
@@ -181,8 +197,10 @@ export function openImportDialog({ fetchImpl, forJob = null, forPerson = null, u
       const ticket = ++probing;
       unrigged = false;
       error.hidden = true;
+      clearMarks();
       askWho(!!(f.length && needsConsent(f[0])));
       photoHint.hidden = !(f.length && f.every(isImage));
+      photoGoes.hidden = photoHint.hidden;
       if (f.length && !name.value) name.value = f[0].name.replace(/\.[^.]+$/, "");
       if (f.length === 1 && !isImage(f[0])) {
         let skin = null;
@@ -208,6 +226,7 @@ export function openImportDialog({ fetchImpl, forJob = null, forPerson = null, u
     });
     async function run() {
       error.hidden = true;
+      clearMarks();
       const f = files();
       const bad = checkForm({ files: f, licence: licence.value, attribution: credit.value, consent: consent.value });
       if (bad) { fail(bad.text, bad.field); return; }

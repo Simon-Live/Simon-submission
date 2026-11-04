@@ -43,6 +43,7 @@ def _job(root: Path, job_id: str, score: dict[str, Any], *, entry: str = "squat-
               "created_at": "2026-11-02T10:00:00Z", "result": result, **extra}
     (folder / "job.json").write_text(json.dumps(record), encoding="utf-8")
     (folder / "work" / "follower" / "analysis.json").write_text(json.dumps(_analysis(score)), encoding="utf-8")
+    teacher_stats.set_shared(folder, True)  # the take owner shared it with the movement's owner (private-default D3)
     return folder
 
 
@@ -123,22 +124,27 @@ def test_export_download_score_of_a_take_with_no_copy(tmp_path: Path) -> None:
 
 def _routes_h(root: Path) -> Any:
     jobs = {p.name: json.loads((p / "job.json").read_text()) for p in root.iterdir() if (p / "job.json").is_file()}
-    return SimpleNamespace(app=SimpleNamespace(queue=SimpleNamespace(get=jobs.get, job_dir=lambda j: root / j), state=root))
+    # a real request always has headers; with no session cookie `auth.current_user` answers None without opening the store
+    return SimpleNamespace(app=SimpleNamespace(queue=SimpleNamespace(get=jobs.get, job_dir=lambda j: root / j), state=root), headers={})
 
 
-def test_board_entry_stores_the_shown_score_and_ranks_by_the_shown_measure(tmp_path: Path) -> None:  # AC-4
+def test_board_entry_stores_the_shown_score_and_ranks_by_the_shown_measure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # AC-4
+    monkeypatch.setattr(challenge_routes.board_copycheck, "guard", lambda *_a: None)  # no trainer clip here (test_board_copycheck.py)
     _job(tmp_path, "aaaaaaaaaaaa", TRIGGER)
     _job(tmp_path, "bbbbbbbbbbbb", CAPPED)
     _job(tmp_path, "cccccccccccc", {"value": 50, "grade": "F"})
     h, board = _routes_h(tmp_path), {"entry_id": "squat-real-people"}
     credit, capped, plain = (challenge_routes._score_entry(h, board, j, None, n) for j, n in
                              (("aaaaaaaaaaaa", "Ana"), ("bbbbbbbbbbbb", "Ben"), ("cccccccccccc", "Cy")))
-    assert (credit["score"], credit["grade"], credit["shown"]) == (37, "F", CREDIT_SHOWN)
-    assert capped["shown"] == CAPPED_SHOWN
+    board_shown = {"letter": "C", "figures": "72.6%", "caption": "credit earned", "unit": "percent", "capped": False, "warning": [],
+                   "measure": 72.6, "level": "normal", "note": "Standard level", "points": {"points": 16239, "max_points": 22367},
+                   "coverage": None, "partial": False, "board_v": 2}  # score-consistency.md S7
+    assert (credit["score"], credit["grade"], credit["shown"]) == (37, "F", board_shown)
+    assert capped["shown"] == {**board_shown, "warning": CAPPED_SHOWN["warning"], "note": "Standard level, take warning"}   # a warned credit is not capped (L1)
     ranked = challenges.ranked([{**e, "created_at": "2026-11-02T10:00:00Z"} for e in (credit, plain)])
     assert [e["name"] for e in ranked] == ["Ana", "Cy"]   # one-letter.md L3: the shown measure, C at 72.6% above 50 F
     lead = challenges.summary({"id": "x", "entries": [{**credit, "created_at": "2026-11-02T10:00:00Z"}]})["leader"]
-    assert lead["shown"] == CREDIT_SHOWN and lead["score"] == 37
+    assert lead["shown"] == board_shown and lead["score"] == 72.6
 
 
 def test_group_rows(tmp_path: Path) -> None:
@@ -172,7 +178,7 @@ def test_judge_hero_carries_the_shown_score(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setenv(judge_view.HERO_ENV, "aaaaaaaaaaaa")
     hero = judge_view.hero(tmp_path, tmp_path)
     assert hero["job_id"] == "aaaaaaaaaaaa" and hero["shown"] == CREDIT_SHOWN
-    named = judge_view._candidate(tmp_path, "aaaaaaaaaaaa")
+    named = judge_view._candidate(tmp_path, tmp_path, "aaaaaaaaaaaa")
     assert named is not None and named["score"] == 37 and named["shown"] == CREDIT_SHOWN
 
 

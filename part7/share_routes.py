@@ -2,7 +2,12 @@
 `DELETE api/me/shares/<token_hash>` (owner only, 401 signed out, 404 for another person's) and the public
 `GET api/shared/<token>` (+ `/clip.mp4`). `server.py` calls `handle(h, method, route)` with `route` below `api/`.
 
-The viewer answers one generic 404 for a bad, unknown, expired or revoked token and carries nothing but the snapshot.
+The viewer answers one generic 404 for a bad or unknown token, and a plain 410 line for a token this server signed whose
+link expired or was stopped; it carries nothing but the snapshot.
+
+No share link of any kind for someone under 18 (privacy PM-B1, TICKET-233): the create and the preview answer 403 when
+the caller's account is marked 13 to 17, or owns a take or movement that is, or the take itself carries that answer
+(`trainer_publish.minor_refused`); marking an account ends its live links (identity `mark_minor`).
 """
 
 from __future__ import annotations
@@ -12,10 +17,12 @@ import logging
 from typing import Any
 
 from part7 import (applog, attribution, auth, history_report, history_store, identity as ident, jobs, labels, model_only, progress_sheet,
-                   result_media, share, shown_score, source_routes)
+                   result_media, share, shown_score, source_routes, trainer_publish)
 from part7.auth_routes import MSG_CSRF, MSG_SIGN_IN, _post_body, _reply
 
 MSG_GONE = "This link is not available."
+MSG_EXPIRED = "This link has expired."
+MSG_REVOKED = "This link was stopped by the person who shared it."
 MSG_NO_ITEM = "There is nothing here to share."
 MSG_NO_REPORT = "Make a comparison of your takes first, then share it."
 MSG_NO_SHEET = "There are no measured sessions to share yet."
@@ -23,6 +30,7 @@ MSG_NO_CLIP = "This take has no kept clip to share."
 MSG_CONFIRM = "Confirm what the link will show."
 MSG_BAD = "The request is not valid."
 MSG_RATE = "Too many tries. Wait a little, then try again."
+MSG_MINOR = "Share links are off for anyone under 18."
 VIEW_HEADERS = {"X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer"}
 VIEW_PER_IP = (60, 600)
 FAULTS_MAX = 5
@@ -36,6 +44,11 @@ def _limiter(app: Any) -> auth.Limiter:
 
 def _gone(h: Any) -> None:
     _reply(h, 404, {"ok": False, "error": MSG_GONE, "message": MSG_GONE}, VIEW_HEADERS)
+
+
+def _ended(h: Any, why: str) -> None:
+    message = MSG_EXPIRED if why == "expired" else MSG_REVOKED
+    _reply(h, 410, {"ok": False, "error": message, "message": message, "ended": why}, VIEW_HEADERS)
 
 
 def _fail(h: Any, status: int, message: str) -> None:
@@ -185,10 +198,14 @@ def _prepare(h: Any, owner: str, doc: dict[str, Any]) -> tuple[dict[str, Any], b
     kind = doc.get("kind")
     show_name, show_clip = doc.get("show_name") is True, doc.get("show_clip") is True
     ticks = {k: doc.get(f"include_{k}", True) for k in TICKS}  # score and faults are on unless the person unticked them
+    ref = doc.get("item_ref")
+    job = h.app.queue.get(ref) if kind == "take_result" and isinstance(ref, str) and jobs.JOB_ID_RE.match(ref) else None
     if kind not in share.OFFERED_KINDS:
         _fail(h, 400, share.MSG_KIND)
     elif not all(isinstance(v, bool) for v in ticks.values()):
         _fail(h, 400, MSG_BAD)
+    elif trainer_publish.minor_refused(h, owner, job):  # PM-B1: every kind, before anything is read or built
+        _fail(h, 403, MSG_MINOR)
     else:
         try:
             if kind == "take_result":
@@ -274,7 +291,8 @@ def _viewer(h: Any, method: str, parts: list[str]) -> None:
         return _clip(h, store, token) if parts[2] == "clip.mp4" else _gone(h)
     snap = share.resolve(store, token)
     if snap is None:
-        return _gone(h)
+        why = share.ended(store, token)
+        return _ended(h, why) if why else _gone(h)
     if snap.get("clip"):
         snap["clip"] = f"api/shared/{token}/clip.mp4"
     else:

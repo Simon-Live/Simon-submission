@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from part7 import jobs, models_used_person as mup
+from part7 import jobs, models_used_person as mup, upload_owner
 from support import Api
 
 SAM3D = [{"name": "sam-3d-body-dinov3", "source": "hf"}, {"name": "mhr", "source": "hf"}]
@@ -161,7 +161,7 @@ def test_route_answers_per_person_and_404s_others(api: Api) -> None:
         write(ctx.dir / "work" / "part2" / "pose3d.json", {"provenance": {"models": SAM3D}})
         return {"result": {"people": [{"id": "p1", "analysis": "x"}, {"id": "p2", "analysis": "x"}]}}
 
-    rec = api.app.queue.submit("group", fn, people_job=PEOPLE)
+    rec = api.app.queue.submit("group", fn, people_job=PEOPLE, **{upload_owner.PEOPLE_OWNER: ""})  # signed out
     jid = rec["id"]
     assert api.app.queue.wait(jid, 10)["status"] == "done"
     status, doc = api.json("GET", f"api/results/{jid}/p1/models.json")

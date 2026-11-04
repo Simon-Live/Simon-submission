@@ -26,8 +26,6 @@ INCLUDES = ("score", "faults", "clip")
 DEFAULT_INCLUDE = ["score", "faults"]  # the clip is off until ticked
 STATES = ("asked", "answered", "withdrawn", "declined")
 NOTE_MAX = 600
-OPEN_PER_FOLLOWER = 10
-NEW_PER_TRAINER_DAY = 50
 CLIP_URL_S = 60
 BACKUP_NAME = "identity.db.pre-notes"
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
@@ -38,11 +36,10 @@ MSG_NOT_FOUND = "This take cannot be sent to a trainer."
 MSG_GONE = "This request is not available."
 MSG_CLOSED = "This request has already been closed."
 MSG_ALREADY = "This take already has a request."
-MSG_LIMIT_OPEN = "You have 10 requests waiting. Withdraw one or wait for an answer."
-MSG_LIMIT_DAY = "This trainer cannot take more requests today. Try again tomorrow."
 MSG_INCLUDE = "Choose from the score, what Simon noticed and the clip."
 MSG_NO_CLIP = "This take has no clip to send."
 MSG_CONFIRM = "Confirm what the trainer will see."
+MSG_MINOR = "Notes from a trainer are off for anyone under 18."  # privacy PM-R1 (notes_routes)
 MSG_NOTE = "Write 1 to 600 characters of plain text, with no links."
 MSG_AT = "Use a time inside the take, or leave it empty."
 
@@ -169,7 +166,7 @@ def latest_for_job(store: Any, follower_id: str, job_id: str) -> Any | None:
 
 
 def create(store: Any, follower_id: str, job_id: str, found: dict[str, str], include: list[str]) -> Any:
-    """One new request. 409 when the take already has an open or answered one, 429 over the two limits."""
+    """One new request. 409 when the take already has an open or answered one."""
     now = store.clock()
     request_id = secrets.token_urlsafe(12)
     with store._lock:
@@ -177,13 +174,6 @@ def create(store: Any, follower_id: str, job_id: str, found: dict[str, str], inc
         try:
             if store._db.execute("SELECT 1 FROM note_requests WHERE job_id = ? AND state IN ('asked', 'answered')", (job_id,)).fetchone():
                 raise NoteError(MSG_ALREADY, 409)
-            open_now = store._db.execute("SELECT COUNT(*) FROM note_requests WHERE follower_id = ? AND state = 'asked'", (follower_id,)).fetchone()[0]
-            today = store._db.execute("SELECT COUNT(*) FROM note_requests WHERE trainer_id = ? AND asked_utc > ?",
-                                      (found["trainer_id"], ident._iso(now - 86400))).fetchone()[0]
-            if open_now >= OPEN_PER_FOLLOWER:
-                raise NoteError(MSG_LIMIT_OPEN, 429)
-            if today >= NEW_PER_TRAINER_DAY:
-                raise NoteError(MSG_LIMIT_DAY, 429)
             store._db.execute(
                 "INSERT INTO note_requests (id, job_id, entry_id, follower_id, trainer_id, include, state, asked_utc) "
                 "VALUES (?, ?, ?, ?, ?, ?, 'asked', ?)",
@@ -284,7 +274,7 @@ def sign_clip(store: Any, request_id: str) -> tuple[int, str]:
 
 
 def clip_signature_ok(store: Any, request_id: str, exp: Any, sig: Any) -> bool:
-    if not isinstance(exp, str) or not exp.isdigit() or not isinstance(sig, str) or int(exp) < store.clock():
+    if not isinstance(exp, str) or not (exp.isascii() and exp.isdigit()) or len(exp) > 20 or not isinstance(sig, str) or int(exp) < store.clock():
         return False
     want = hmac.new(_clip_key(store), f"{request_id}:{exp}".encode("ascii"), hashlib.sha256).hexdigest()
     return hmac.compare_digest(want, sig)

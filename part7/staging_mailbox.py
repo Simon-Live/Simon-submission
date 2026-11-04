@@ -44,13 +44,14 @@ def _save(path: Path, rows: list[dict[str, Any]]) -> None:
     os.replace(tmp, path)
 
 
-def add(state: Path | str, to: str, code: str, link: str, now: float | None = None) -> None:
-    """Keep one message; expired ones go, and only the newest `KEEP` stay."""
+def add(state: Path | str, to: str, code: str, link: str, now: float | None = None, kind: str = "sign_in",
+        subject: str = "", body: str = "") -> None:
+    """Keep one message of any kind (a sign-in code, a notice, an invite); expired ones go, and only the newest `KEEP` stay."""
     stamp = time.time() if now is None else now
     path = _file(state)
     with _LOCK:
         rows = _load(path, stamp)
-        rows.append({"to": to.strip().lower(), "at": stamp, "code": code, "link": link})
+        rows.append({"to": to.strip().lower(), "at": stamp, "code": code, "link": link, "kind": kind, "subject": subject, "body": body})
         _save(path, rows[-KEEP:])
 
 
@@ -64,7 +65,8 @@ def messages_for(state: Path | str, email: str, now: float | None = None) -> lis
         rows = _load(_file(state), stamp)
     mine = [r for r in rows if r.get("to") == wanted]
     return [{"to": r["to"], "at": datetime.fromtimestamp(r["at"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-             "code": r["code"], "link": r["link"]} for r in reversed(mine)]
+             "code": r["code"], "link": r["link"], "kind": r.get("kind", "sign_in"),
+             "subject": r.get("subject", ""), "body": r.get("body", "")} for r in reversed(mine)]
 
 
 def purge(state: Path | str, email: str) -> int:

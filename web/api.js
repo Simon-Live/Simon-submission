@@ -1,11 +1,16 @@
 // Fetch wrappers for the Part 7 server. Relative URLs only, so the base path never matters.
+import { consentFields, consentHeader } from "./model/consent-store.js";
+import { entryHeader, entryOfUrl, linkEntry, rememberKey } from "./model/creator-keys.js"; // prod-data.md creator token
 
 const MESSAGES = {
   400: "This file is not a video. Pick an MP4 or WebM file.",
-  429: "You have used today's analyses. Try again tomorrow.",
+  401: "Sign in to continue.",
+  429: "The app is busy. Try again in a few minutes.",
   503: "The app is busy. Try again in a few minutes.",
 };
 const OFFLINE = "The app could not be reached. Check your connection and try again.";
+/** Statuses whose on-screen words are set here (413, 409, 404 in messageFor), whatever the server said. */
+const FIXED_WORDS = { 404: true, 409: true, 413: true };
 
 export class ApiError extends Error {
   /** `detail` is the server's own sentence (not the on-screen text); the offline-takes retry sorts failures with it. */
@@ -27,15 +32,13 @@ export function messageFor(status, body) {
   if (status === 413) {
     if (/^The (video is too long|file is too large) \(/.test(server)) return server;
     return /large|byte|size|MB/i.test(server) && !/long|second|60 s/i.test(server)
-      ? "The file is too large (95 MB at most)."
+      ? "The file is too large (85 MB at most)."
       : "The video is too long (60 s at most).";
   }
   if (status === 409) return "This movement has no animation to follow.";
   if (status === 404) return "This movement is not in the catalog.";
-  if (status === 503 && /limit|today/i.test(server)) {
-    return "The app has reached today's limit. Try again tomorrow.";
-  }
   if (status === 400 && server) return server; // TICKET-309: the server's own reason; "not a video" only when it gave none
+  if (server && !(status in FIXED_WORDS)) return server; // the server's reason, whenever it gave one (offline-takes.md AC-OT12)
   if (MESSAGES[status]) return MESSAGES[status];
   return "The app could not finish that. Try again in a moment.";
 }
@@ -50,10 +53,16 @@ async function parse(res) {
   }
 }
 
+/** `init` with this browser's creator token for the trainer's own unpublished movement a catalog URL names (prod-data.md). */
+function withEntryKey(url, init) {
+  const key = entryHeader(entryOfUrl(url));
+  return Object.keys(key).length ? { ...(init || {}), headers: { ...((init && init.headers) || {}), ...key } } : init;
+}
+
 async function request(url, init) {
   let res;
   try {
-    res = await fetch(url, init);
+    res = await fetch(url, withEntryKey(url, init));
   } catch {
     throw new ApiError(0, OFFLINE);
   }
@@ -113,12 +122,22 @@ export function clientLogBody(level, event, detail, page = "") {
 /** The route name of a URL fragment: "#/result/<job>" becomes "#/result", so no id or token is logged (TICKET-174). */
 export const routeName = (hash) => String(hash || "").replace(/^(#\/[^/?#]*)[\s\S]*$/, "$1");
 
+/** The event name of an error report (web/errors.js EVENT); the only event sent under Global Privacy Control. */
+const ERROR_EVENT = "client_error";
+
+/** True when the browser asks for Global Privacy Control (`navigator.globalPrivacyControl`, go-live-readiness.md "GPC"). */
+export function gpcOn(nav = globalThis.navigator) {
+  try { return Boolean(nav && nav.globalPrivacyControl === true); } catch { return false; }
+}
+
 /**
  * Fire and forget: POST one client event to api/client-log so the server log shows what the browser saw
- * (camera, recorder, take size, trim, upload). Never throws and never blocks the caller.
+ * (camera, recorder, take size, trim, upload). Never throws and never blocks the caller. Under Global Privacy
+ * Control only the error report `client_error` is sent: a usage event is optional analytics.
  */
 export function clientLog(level, event, detail = {}) {
   try {
+    if (event !== ERROR_EVENT && gpcOn()) return;
     const page = globalThis.location ? routeName(globalThis.location.hash) : "";
     const body = JSON.stringify(clientLogBody(level, event, detail, page));
     const sent = fetch("api/client-log", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true });
@@ -133,7 +152,7 @@ const postJSON = (url, data, key) => request(url, {
 });
 
 export const DEFAULT_CONFIG = {
-  limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 },
+  limits: { max_seconds: 60, max_bytes: 85000000, recorder_bps: 2500000 },
 };
 
 let configPromise = null;
@@ -146,15 +165,37 @@ export function getConfig() {
 export const getHealth = () => request("api/health");
 export const getVersion = () => request("api/version");
 export const listEntries = async () => (await request("catalog/api/entries")).entries || [];
+/**
+ * One page of the library (api/catalog/search; docs/specs/home-browse.md). `query` is model/browse.js `searchQuery`.
+ * An ApiError with status 404 or 405 means this server has no search yet; the caller then works it out from `listEntries`.
+ */
+export const searchCatalog = (query, signal) => request(`api/catalog/search?${query}`, { signal });
 export const getEntry = (id) => request(`catalog/api/entries/${encodeURIComponent(id)}`, { expectStatus: [404] });
 export const entryFileUrl = (id, file) =>
   `catalog/api/entries/${encodeURIComponent(id)}/${encodeURIComponent(file)}`;
 export const getEntryFile = (id, file) => request(entryFileUrl(id, file));
+/**
+ * A `src` for a movement's video or picture: the plain URL, or for this browser's own unpublished movement a blob URL
+ * fetched with the creator token (a <video> cannot send the header). Resolves to the plain URL when the fetch fails.
+ */
+export async function entryMediaSrc(id, file) {
+  const url = entryFileUrl(id, file);
+  const init = withEntryKey(url, undefined);
+  if (!init) return url;
+  try {
+    const res = await fetch(url, init);
+    return res.ok ? URL.createObjectURL(await res.blob()) : url;
+  } catch { return url; }
+}
 export const entryPageUrl = (id) => `catalog/#/entry/${encodeURIComponent(id)}`;
 
 // A 404 on these is a normal outcome the caller shows (job gone, result not found): `expectStatus` tells errors.js not to report it.
 const NOT_FOUND_OK = { expectStatus: [404] };
-export const getJob = (id) => request(`api/jobs/${encodeURIComponent(id)}`, NOT_FOUND_OK);
+export const getJob = (id) => request(`api/jobs/${encodeURIComponent(id)}`, NOT_FOUND_OK).then((job) => {
+  const entry = job && job.kind === "trainer" && job.result && job.result.entry_id;
+  if (entry) linkEntry(String(entry), String(job.id)); // a trainer take's movement opens with its creator token
+  return job;
+});
 /** TICKET-284: the snapshot of a running job's streamed mesh and the bytes of one file of it (owner only; the job answer names the url). */
 export const getMeshStream = (url) => request(url, { expectStatus: [401, 404, 429] });
 export async function getMeshBytes(url) {
@@ -199,13 +240,14 @@ export const takeArUrl = (job, who, kind) => `${resultUrl(job, "take-ar-url")}?w
 export function uploadVideo(blob, { onProgress, key } = {}) {
   const type = (blob.type || "").split(";")[0] || "video/mp4";
   if (typeof onProgress !== "function" || typeof XMLHttpRequest === "undefined") {
-    return request("api/uploads", { method: "POST", headers: { "Content-Type": type, ...keyHeader(key) }, body: blob });
+    return request("api/uploads", { method: "POST", headers: { "Content-Type": type, ...keyHeader(key), ...consentHeader() }, body: blob });
   }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "api/uploads");
     xhr.setRequestHeader("Content-Type", type);
     if (key) xhr.setRequestHeader(IDEMPOTENCY_HEADER, key);
+    for (const [k, v] of Object.entries(consentHeader())) xhr.setRequestHeader(k, v); // consent-and-age.md
     xhr.upload.onprogress = (e) => onProgress(e.loaded, e.lengthComputable ? e.total : blob.size);
     xhr.onerror = () => reject(new ApiError(0, OFFLINE));
     xhr.onabort = () => reject(new ApiError(0, OFFLINE));
@@ -220,7 +262,9 @@ export function uploadVideo(blob, { onProgress, key } = {}) {
 }
 // recorder.md: `trim` {start_ms, end_ms} and `labels` {tags, notes} (trainer and follower) are optional.
 // people.md: `person` {people_job, person_id} names the person of a people job the take is about.
+// consent-and-age.md: every job request carries the consent version and answers kept in this browser (none: nothing).
 const extras = (trim, labels, person) => ({
+  ...consentFields(),
   ...(trim ? { trim } : {}), ...(labels ? { labels } : {}), ...(person ? { people_job: person.people_job, person_id: person.person_id } : {}),
 });
 // The last argument of each create call is the take's id, sent as Idempotency-Key (offline-takes.md).
@@ -235,13 +279,21 @@ export const createFollowJob = (upload_id, entry_id, trim, labels, person, more,
 /** POST api/people: finds everyone in the trimmed clip; the picker polls the job. `mode` is "single" (Just me) or
  * "group"; it sets the server's people-tracking rate (TICKET-198), and a request without it is treated as group. */
 // TICKET-364: `run_on` ("local" | "serverless") is the take's "Run on" choice; absent keeps the server's route.
-export const createPeopleJob = (upload_id, trim, mode, run_on) =>
-  postJSON("api/people", { upload_id, ...(trim ? { trim } : {}), ...(mode ? { mode } : {}), ...(run_on ? { run_on } : {}) });
+// `role` ("trainer" | "group"): the server no longer reads it, since no cap can refuse a take (people.md AC-P24).
+export const createPeopleJob = (upload_id, trim, mode, run_on, role) =>
+  postJSON("api/people", { ...consentFields(), upload_id, ...(trim ? { trim } : {}), ...(mode ? { mode } : {}), ...(run_on ? { run_on } : {}), ...(role ? { role } : {}) });
 /** POST api/group: {upload_id, trim, people_job, trainer_id, follower_ids, name, category, labels, save_entry}. */
-export const createGroupJob = (body, key) => postJSON("api/group", body, key);
+export const createGroupJob = (body, key) => postJSON("api/group", { ...consentFields(), ...body }, key);
 
 /** Send the request `buildSubmit` built (take-request.js), with the take's id as the Idempotency-Key. */
 export function submitJob(req, key) {
+  return sendJob(req, key).then((answer) => {
+    if (answer && answer.creator_token) rememberKey(answer.job || answer.id, answer.creator_token); // LEG-H4: this device's key
+    return answer;
+  });
+}
+
+function sendJob(req, key) {
   const a = req.args;
   if (req.kind === "trainer" && a[6]) return createTrainerJobWith(a[0], a[1], a[2], a[3], a[4], a[5], a[6], key);
   if (req.kind === "trainer") return createTrainerJob(a[0], a[1], a[2], a[3], a[4], a[5], key);

@@ -31,7 +31,6 @@ export function stateForStatus(status, body) {
   if (code === "forbidden_origin" || status === 403) return { kind: "error", message: said || FORBIDDEN_TEXT };
   if (code === "consent_required" || (status === 409 && !code)) return { kind: "consent", message: said || CONSENT_TEXT };
   if (code === "too_few_takes" || status === 422) return { kind: "few", message: said || "Record at least 2 takes first, then ask about them." };
-  if (code === "daily_limit" || status === 429) return { kind: "limit", message: said || "You have used today's questions. Try again tomorrow." };
   if (status === 400) return { kind: "error", message: said || "That question could not be sent." };
   return { kind: "error", message: "Simon could not answer just now. Try again in a moment." };
 }
@@ -59,7 +58,7 @@ export function receiptLine(body) {
   return line;
 }
 
-/** The answer on screen. `kind`: ok (claims), abstain, unverified, refused, failed. */
+/** The answer on screen. `kind`: ok (claims), abstain, unverified, refused, crisis (the fixed help text, reels 3.10), failed. */
 export function answerView(body) {
   const b = body && typeof body === "object" ? body : {};
   const claims = (Array.isArray(b.claims) ? b.claims : []).map((c) => ({
@@ -68,13 +67,12 @@ export function answerView(body) {
     cites: (Array.isArray(c.cites) ? c.cites : []).map((x) => ({ label: citeLabel(x), clip: x.clip || null, at: typeof x.at_s === "number" ? x.at_s : 0, take: x.take })),
   }));
   return {
-    kind: ["ok", "abstain", "unverified", "refused", "failed"].includes(b.status) ? b.status : "failed",
+    kind: ["ok", "abstain", "unverified", "refused", "crisis", "failed"].includes(b.status) ? b.status : "failed",
     lead: typeof b.text === "string" ? b.text : "",
     message: typeof b.message === "string" ? b.message : "",
     claims,
     dropped: droppedLine(Number(b.dropped) || 0),
     receipt: receiptLine(b),
     sent: sentView(b.sent),
-    remaining: Number.isFinite(b.remaining) ? b.remaining : null,
   };
 }

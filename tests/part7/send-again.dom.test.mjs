@@ -10,7 +10,7 @@ globalThis.location = { hash: "" };
 globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), headers: { get: () => null } });
 const { mountSendAgain, findKept, SEND_AGAIN_TEXT } = await import("../../web/send-again.js");
 const { keptRow, mountPendingBanner } = await import("../../web/pending-ui.js");
-const { KEEP_TEXT } = await import("../../web/pending-keep.js");
+const { KEEP_TEXT, canSendAgain } = await import("../../web/pending-keep.js");
 const { TEXT } = await import("../../web/pending.js");
 const settle = () => new Promise((r) => setTimeout(r, 20));
 
@@ -67,6 +67,17 @@ test("Send it again while the app cannot be reached keeps the take and says so",
   assert.ok(find(slot, "send-again-saved"), "a link to the saved takes");
 });
 
+test("kept rows: a take with nobody in it is not offered again: the same clip would spend the same for the same answer", () => {
+  const nobody = { ...stopped, id: "r4", last_error: { status: 200, kind: "job_failed", message: "No one was found in this clip. Use a clip with someone in it." } };
+  const row = keptRow(engine([]), nobody);
+  assert.equal(find(row, "pending-again-r4"), null);
+  assert.match(find(row, "pending-status-r4").textContent, /No one was found/);
+  assert.ok(find(row, "pending-delete-r4"), "it can still be deleted");
+  assert.equal(canSendAgain(nobody), false);
+  assert.equal(canSendAgain(stopped), true);
+  assert.equal(canSendAgain({ ...stopped, stage: "refused" }), false);
+});
+
 test("kept rows: a stopped take has Send it again and Delete; a refused one says why and has Delete only", async () => {
   const p = engine([]);
   const row = keptRow(p, stopped);
@@ -91,8 +102,45 @@ test("the banner: a failed send shows why with Retry; a stopped take says it cou
   assert.equal(find(el, "pending-failed").textContent, TEXT.unreachable);
   find(el, "pending-retry").click();
   assert.deepEqual(p.calls.at(-1), ["trigger", "manual"]);
-  assert.equal(find(el, "pending-stuck").textContent, KEEP_TEXT.needsYou(1));
+  assert.equal(find(el, "pending-stuck").textContent, KEEP_TEXT.jobFailed);
   assert.equal(find(el, "pending-count").textContent, "1 take waiting to send", "the stopped take is not counted as waiting");
+});
+
+test("a take stopped by a restart says so on the banner and offers Send it again; it never says it could not be sent", async () => {
+  const cut = { ...stopped, last_error: { status: 200, kind: "job_failed", message: "the app restarted before this take finished; record it again" } };
+  const p = engine([cut]);
+  const el = new El("div");
+  mountPendingBanner(el, p);
+  await settle();
+  const line = find(el, "pending-stuck").textContent;
+  assert.equal(line, KEEP_TEXT.jobRestarted);
+  assert.doesNotMatch(line, /could not be sent|record it again/);
+  find(el, "pending-stuck-again").click();
+  assert.deepEqual(p.calls.at(-1), ["again", cut.id]);
+  assert.ok(find(el, "pending-stuck-link"), "the list is a tap away");
+});
+
+test("a job's own reason is shown; several stopped takes are counted and sent from the list", async () => {
+  const why = { ...stopped, last_error: { status: 200, kind: "job_failed", message: "Nobody was found in this clip" } };
+  const one = new El("div");
+  mountPendingBanner(one, engine([why]));
+  await settle();
+  assert.equal(find(one, "pending-stuck").textContent, KEEP_TEXT.jobStopped("Nobody was found in this clip."));
+  const many = new El("div");
+  mountPendingBanner(many, engine([why, { ...why, id: "r9" }]));
+  await settle();
+  assert.equal(find(many, "pending-stuck").textContent, KEEP_TEXT.needsYou(2));
+  assert.equal(find(many, "pending-stuck-again"), null);
+});
+
+test("a take waiting for sign-in links to sign-in instead of a Retry that cannot help", async () => {
+  const waitingSignIn = { id: "w2", stage: "saved", role: "trainer", created_at: 1, size: 1, last_error: { kind: "signin", status: 401 } };
+  const el = new El("div");
+  mountPendingBanner(el, engine([waitingSignIn]));
+  await settle();
+  assert.equal(find(el, "pending-failed").textContent, TEXT.signIn);
+  assert.equal(find(el, "pending-signin").getAttribute("href"), "#/signin");
+  assert.equal(find(el, "pending-retry"), null);
 });
 
 test("the flag that keeps a refused take is off until the outbox's owner agrees (#61)", async () => {

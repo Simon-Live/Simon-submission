@@ -61,7 +61,7 @@ body .simon-result .sr-moment, body .simon-result .sr-worst[aria-pressed="true"]
 /* exercise: the reference in the accent, you in the alert color with the off joint ringed in it */
 .rs-worst[data-tone="exercise"] .rs-fig-ref line, .rs-worst[data-tone="exercise"] .rs-fig-ref .rs-fig-head { stroke: var(--color-accent); }
 .rs-worst[data-tone="exercise"] .rs-fig-you line, .rs-worst[data-tone="exercise"] .rs-fig-you .rs-fig-head { stroke: var(--color-bad); }
-.rs-worst[data-tone="exercise"] .rs-fig-you-wrap figcaption { color: var(--color-bad); }
+.rs-worst[data-tone="exercise"] .rs-fig-you-wrap figcaption { color: var(--color-bad-text); }
 /* dance: the trainer in the text color, you in the accent with the off joint ringed in the accent */
 .rs-worst[data-tone="dance"] .rs-fig-off, .rs-drift-detail .rs-fig-off { stroke: var(--color-accent); }
 
@@ -75,7 +75,7 @@ body .simon-result .sr-moment, body .simon-result .sr-worst[aria-pressed="true"]
 .rs-bar[data-state="focus"] .rs-bar-fill { background: var(--color-bad); }
 .rs-bar[data-state="skipped"] .rs-bar-fill { background: var(--color-line); }
 .rs-bar-label { font-size: var(--text-xs); color: var(--color-text-muted); }
-.rs-bar[data-state="focus"] .rs-bar-label { color: var(--color-bad); }
+.rs-bar[data-state="focus"] .rs-bar-label { color: var(--color-bad-text); }
 
 .rs-drift { display: grid; gap: var(--space-2); }
 .rs-drift-head { display: flex; align-items: center; justify-content: space-between; }
@@ -132,7 +132,7 @@ body .simon-result .sr-fault-item:has(> .sr-fault[aria-pressed="true"]) { border
   background: color-mix(in srgb, var(--sr-hot) 10%, var(--sr-surface)); box-shadow: inset 4px 0 0 var(--sr-hot); }
 body .simon-result .sr-fault-item > .sr-voice-slot { padding: 0 16px 14px; }
 /* "Low confidence": the coral text on its soft fill (result.css had dark text on a dark fill, unreadable on the brand theme) */
-body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--color-bad-soft); border: 1px solid var(--color-bad-line); }
+body .simon-result .sr-chip.sr-low { color: var(--color-bad-text); background: var(--color-bad-soft); border: 1px solid var(--color-bad-line); }
 /* any scroll to a part of the result (a seek, a module's own scrollIntoView) stops below the sticky header */
 .simon-result :is(section, li, .sr-zone, [data-at-s]) { scroll-margin-top: var(--header-height); }
 
@@ -227,6 +227,7 @@ body .simon-result .sr-chip.sr-low { color: var(--color-bad); background: var(--
 /* TICKET-266: text in another language. The row follows the text direction; times and counts keep their own left-to-right order, so numbers are not mirrored. */
 body .simon-result .sr-fault-list[dir] .sr-fault { text-align: start; }
 body .simon-result .sr-fault-list[dir="rtl"] .sr-chip { direction: ltr; unicode-bidi: isolate; }
+body .simon-result .sr-ai-note { margin: var(--space-2, 8px) 0; font-size: .875rem; overflow-wrap: anywhere; }
 body .simon-result .sr-lang-note { margin: var(--space-1, 4px) 0; font-size: .875rem; opacity: .85; overflow-wrap: anywhere; }
 /* Part 5's credit score (model/score-credit.js): "Show score as [ % ] [ Points ]" and the level, under the ring */
 .rs-switches { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
@@ -250,10 +251,10 @@ body .simon-result .sr-lang-note { margin: var(--space-1, 4px) 0; font-size: .87
   box-shadow: 0 0 var(--meter-glow) var(--color-accent); }
 .rs-meter[data-grade="D"] .rs-meter-fill, .rs-meter[data-grade="E"] .rs-meter-fill, .rs-meter[data-grade="F"] .rs-meter-fill { background: var(--color-pink); box-shadow: 0 0 var(--meter-glow) var(--color-pink); }
 .rs-meter-mark { position: absolute; left: calc(var(--at) * 100%); top: calc(var(--meter-h) * -0.75); bottom: calc(var(--meter-h) * -0.75);
-  width: 2px; background: var(--color-text-muted); opacity: 0.5; }
+  width: 2px; background: color-mix(in srgb, var(--color-text-muted) 50%, transparent); }  /* a11y go-live N1: the line is dimmed, never its label */
 .rs-meter-mark-label { position: absolute; bottom: calc(100% + 4px); left: 50%; translate: -50% 0; font: var(--weight-semibold) var(--text-xs)/1 var(--font-sans);
   color: var(--color-text-muted); }
-.rs-meter-mark[data-reached="true"] { opacity: 1; background: var(--color-text); }
+.rs-meter-mark[data-reached="true"] { background: var(--color-text); }
 .rs-meter-mark[data-start="true"] { background: transparent; }
 .rs-meter-mark[data-reached="true"] .rs-meter-mark-label { color: var(--color-text); }
 .rs-meter-score { flex: none; min-width: 6ch; display: grid; justify-items: end; gap: var(--space-1); padding: var(--space-1) var(--space-2);

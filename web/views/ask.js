@@ -16,8 +16,8 @@ function claimItem(c, i, player) {
 }
 
 /**
- * Builds the box into `host`. `vm` = { suggestions: [string], remaining: number|null, maxChars }; `on` = { ask(text) } (the glue
- * sends it). Returns { status(kind, text), busy(bool), answer(view), remaining(n) }.
+ * Builds the box into `host`. `vm` = { suggestions: [string], maxChars }; `on` = { ask(text) } (the glue
+ * sends it). Returns { status(kind, text), busy(bool), answer(view) }.
  */
 export function renderAsk(host, vm, on) {
   const player = clipPlayer();
@@ -26,7 +26,6 @@ export function renderAsk(host, vm, on) {
   const send = h("button", { type: "submit", class: "btn primary", "data-testid": "ask-send", text: "Ask" });
   const status = h("p", { class: "hs-status", role: "status", "aria-live": "polite", "data-testid": "ask-status", hidden: true });
   const out = h("div", { class: "ask-answer", "aria-live": "polite", "data-testid": "ask-answer" });
-  const left = h("p", { class: "hs-hint", "data-testid": "ask-remaining" });
   const submit = () => { if (!send.disabled) on.ask(input.value); };
   const form = h("form", { class: "ask-form", novalidate: true, "data-testid": "ask-form" },
     h("label", { class: "hs-hint", for: "ask-question", text: "Ask a question about your takes" }), input, send);
@@ -34,7 +33,7 @@ export function renderAsk(host, vm, on) {
   const picks = vm.suggestions.length ? h("ul", { class: "hs-chips", "data-testid": "ask-suggestions", "aria-label": "Questions to try" },
     vm.suggestions.map((q, i) => h("li", {}, h("button", { type: "button", class: "hs-toggle", "data-testid": `ask-suggestion-${i}`, text: q,
       onclick: () => { input.value = q; submit(); } })))) : null;
-  host.append(h("section", { class: "hs-card ask", "data-testid": "ask" }, h("h2", { text: "Ask my history" }), form, picks, left, status, out, player.el));
+  host.append(h("section", { class: "hs-card ask", "data-testid": "ask" }, h("h2", { text: "Ask my history" }), form, picks, status, out, player.el));
   const handles = {
     status(kind, text) {
       status.hidden = !text;
@@ -43,7 +42,6 @@ export function renderAsk(host, vm, on) {
       status.textContent = text || "";
     },
     busy(on_) { send.disabled = on_; send.setAttribute("aria-busy", on_ ? "true" : "false"); },
-    remaining(n) { left.textContent = n == null ? "" : `${n} ${n === 1 ? "question" : "questions"} left today.`; },
     answer(view) {
       out.replaceChildren();
       const text = view.kind === "ok" ? view.lead : view.message;
@@ -52,9 +50,7 @@ export function renderAsk(host, vm, on) {
       if (view.dropped) out.append(h("p", { class: "hs-hint", "data-testid": "ask-dropped", text: view.dropped }));
       if (view.receipt) out.append(h("p", { class: "hs-hint", "data-testid": "ask-receipt", text: view.receipt }));
       if (view.sent) out.append(renderReceipt(view.sent, { testid: "ask-sent" }));
-      handles.remaining(view.remaining);
     },
   };
-  handles.remaining(vm.remaining);
   return handles;
 }

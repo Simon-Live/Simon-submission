@@ -17,7 +17,7 @@ import tempfile
 from typing import Any
 import zlib
 
-from part7 import muse_fix_geom as geom
+from part7 import ffsafe, muse_fix_geom as geom
 
 BACKGROUND, LIGHT = 40, (0.3, 0.5, 0.8)
 MAX_SIDE = 4096
@@ -25,6 +25,10 @@ MAX_SIDE = 4096
 
 class RenderError(ValueError):
     """The mesh or camera cannot be used; the message is short and has no path."""
+
+
+class RenderBusy(RenderError):
+    """ffmpeg timed out or could not run on this try: nothing says the next press fails too."""
 
 
 def read_json(path: Path) -> Any:
@@ -178,14 +182,14 @@ def composite(frame: bytes, overlay: bytes) -> bytes:
         (work / "frame").write_bytes(frame)
         (work / "overlay.png").write_bytes(overlay)
         try:
-            done = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(work / "frame"), "-i", str(work / "overlay.png"),
-                                   "-filter_complex", "overlay=0:0", "-frames:v", "1", str(work / "out.png")],
-                                  capture_output=True, timeout=60, check=False)
+            done = ffsafe.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(work / "frame"), "-i", str(work / "overlay.png"),
+                               "-filter_complex", "overlay=0:0", "-frames:v", "1", str(work / "out.png")],
+                              timeout=60, kind="image")
             out = (work / "out.png").read_bytes() if done.returncode == 0 else b""
         except (OSError, subprocess.TimeoutExpired):
             out = b""
         if not out:
-            raise RenderError("the frame could not be drawn on")
+            raise RenderBusy("the frame could not be drawn on")
         return out
     finally:
         shutil.rmtree(work, ignore_errors=True)

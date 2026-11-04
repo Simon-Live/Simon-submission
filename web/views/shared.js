@@ -57,11 +57,14 @@ export function mountShared(el, token, model) {
   const page = h("section", { class: "screen sh", "data-testid": "shared-page" }, h("p", { text: "Loading" }));
   el.append(page);
   (async () => {
-    const res = await call("GET", viewerUrl(token), undefined, { expectStatus: [404, 429] });
+    const res = await call("GET", viewerUrl(token), undefined, { expectStatus: [404, 410, 429] });
     if (!live) return;
     if (res.status === 200 && res.body && typeof res.body === "object") {
       drawn = renderSnapshot(page, res.body, model);
       page.append(h("p", { class: "sh-foot" }, h("a", { href: "#/", text: TEXT.home })));
+    } else if (res.status === 410) { // a link this server made that ended: the plain line, not "not found"
+      const stopped = res.body?.ended === "revoked";
+      clear(page).append(stateBlock("shared-ended", stopped ? TEXT.stoppedByOwner : TEXT.expired, stopped ? TEXT.stoppedByOwnerBody : TEXT.expiredBody, linkButton("#/", TEXT.home, "shared-home")));
     } else if (res.status === 404) {
       clear(page).append(stateBlock("shared-gone", TEXT.gone, TEXT.goneBody, linkButton("#/", TEXT.home, "shared-home")));
     } else {

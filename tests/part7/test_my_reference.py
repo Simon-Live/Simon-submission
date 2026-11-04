@@ -214,9 +214,8 @@ def test_job_record_hides_the_reference_take_and_the_teacher_link_from_everyone_
     second = follow(api, tiny_mp4, ada)
     mine_ = record_of(api, second["id"], ada)
     assert mine_["job_id"] == first["id"] and mine_["teacher_note"] is True
-    for viewer in (grace, None):  # another account, and a link viewer who is signed out
-        seen_ref = record_of(api, second["id"], viewer)
-        assert seen_ref == {"used": "own", "date": mine_["date"]}
+    for viewer in (grace, None):  # another account, and a link viewer who is signed out: no record at all (B2)
+        assert get(api, f"api/jobs/{second['id']}", viewer)[0] == 404
         raw = api.request("GET", f"api/jobs/{second['id']}", None, {"Cookie": f"{auth.COOKIE}={viewer}"} if viewer else {})[2].decode()
         assert first["id"] not in raw.replace(second["id"], "") and "teacher_note" not in raw
 
@@ -263,16 +262,15 @@ def test_delete_my_data_and_forgetting_one_movement_remove_the_reference(api: Ap
 
 
 @pytest.mark.usefixtures("authenv")
-def test_marking_the_same_take_again_runs_no_check_and_many_changes_are_limited(
+def test_marking_the_same_take_again_runs_no_check_and_many_changes_pass(
         api: Api, tiny_mp4: Path, seen: list[bytes], monkeypatch: pytest.MonkeyPatch) -> None:  # AC-MR-17 (R2)
     sid = sign_in(api, ADA)
     a, b = follow(api, tiny_mp4, sid), follow(api, tiny_mp4, sid)
     calls: list[int] = []
     monkeypatch.setattr(my_reference_routes, "accepts", lambda app, data: calls.append(1) or True)
-    monkeypatch.setattr(my_reference_routes, "LIMIT", (2, 60))
     assert mark(api, sid, a["id"])[0] == 200 and mark(api, sid, a["id"])[0] == 200 and len(calls) == 1
     assert mark(api, sid, b["id"])[0] == 200
-    assert mark(api, sid, a["id"])[0] == 429 and len(calls) == 2
+    assert mark(api, sid, a["id"])[0] == 200 and len(calls) == 3  # each change checks once; no usage limit anywhere (operator rule, 2026-11-04)
 
 
 def test_a_switch_of_reference_is_never_improved_or_fixed(tmp_path: Path) -> None:  # AC-MR-18 (B4)
@@ -302,8 +300,8 @@ def test_an_own_reference_take_is_never_the_hero_and_not_in_the_teachers_stats(t
         (folder / "work" / "follower" / "analysis.json").write_text(json.dumps({"status": {"code": "ok"}, "score": {"value": 90, "grade": "A"}}), encoding="utf-8")
     monkeypatch.setattr(mesh_files, "index", lambda root, job: {"trainer": True, "you": True})
     monkeypatch.setattr(judge_view, "_warned", lambda folder, result: False)
-    assert judge_view._candidate(jobs_root, "a" * 12)["job_id"] == "a" * 12
-    assert judge_view._candidate(jobs_root, "b" * 12) is None
+    assert judge_view._candidate(tmp_path, jobs_root, "a" * 12)["job_id"] == "a" * 12
+    assert judge_view._candidate(tmp_path, jobs_root, "b" * 12) is None
     assert teacher_stats._parse_folder(jobs_root / ("a" * 12))[1] is not None
     assert teacher_stats._parse_folder(jobs_root / ("b" * 12)) is None
 

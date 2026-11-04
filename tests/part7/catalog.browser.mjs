@@ -53,11 +53,20 @@ const server = http.createServer((req, res) => {
   req.on("data", (c) => chunks.push(c));
   req.on("end", () => {
     let m;
+    // a failed policy load is fail-closed (policy.js): the fake answers an open policy so Rehab shows
+    if (p === "/api/policy") return json(res, { prod: false, switches: { rehab: true, face_copy: true, trainer_public: true, prize_boards: true, byok_ranked: true, mms_tts: true, muse: true }, phrasing_live: true, consent: { required: false, version: null, items: [], header: "X-Simon-Consent" }, age: { minimum: 18, adult: 18 } });
     if (p === "/api/config") return json(res, { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 }, part5: { lang: true, video: true, private: true } });
     if (p === "/api/client-log") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end('{"ok": true}'); }
+    if (p === "/api/policy") return json(res, { prod: false, switches: { face_copy: true, rehab: true, trainer_public: true, prize_boards: true, byok_ranked: true, mms_tts: true, muse: true }, phrasing_live: false, age: { minimum: 13, adult: 18 }, consent: { required: false, version: null, items: [], header: "X-Simon-Consent" } }); // non-prod: a failed load would read as closed
     if (p === "/api/version") return json(res, { short: "abc123def", started_at: "2026-10-31T12:00:00Z", parts: {} });
     if (p === "/api/labels") return json(res, LABELS);
     if (p === "/api/judge/hero") { judge.heroAsked += 1; return json(res, { job_id: "rj1", entry_id: "arm-wave", score: 81, source: "configured" }); }
+    if ((m = /^\/api\/movements\/([^/]+)\/boards$/.exec(p)) && judge.on) { // the movement page asks for cards, the same filter
+      judge.boardQueries.push(url.search);
+      const rows = BOARDS.filter((b) => b.entry_id === m[1] && (url.searchParams.get("view") !== "judge" || (!b.entry_id.startsWith("verify-") && b.id !== "bWave")));
+      return json(res, { boards: rows.map((b) => ({ id: b.id, title: b.title, kind: b.kind, visibility: "public", ends_at: null, ended: false, entries: 1, viewer_rank: null, top: [], url: `#/challenge/${b.id}` })) });
+    }
+    if (/^\/api\/(boards|movements\/[^/]+\/boards)$/.test(p)) return json(res, { boards: [] });
     if (p === "/api/challenges" && judge.on) {
       judge.boardQueries.push(url.search);
       const rows = url.searchParams.get("view") === "judge" ? BOARDS.filter((b) => !b.entry_id.startsWith("verify-") && b.id !== "bWave") : BOARDS;
@@ -105,10 +114,11 @@ const fresh = async () => {
   return page;
 };
 // The routine library (redesign): cards grouped in sections by kind; a rehab-tagged move shows under Rehab and its own kind.
-const names = (page, section) => page.locator(`[data-testid="section-${section}"] .lib-name`).allTextContents();
+const names = (page) => page.locator('[data-testid="entries"] .lib-name').allTextContents(); // one list, paged and filtered (home-browse.md)
 const allIds = async (page) => [...new Set(await page.locator('[data-testid="entries"] .lib-thumb').evaluateAll((els) => els.map((e) => e.dataset.testid.replace(/^entry-rehab-/, "entry-"))))]; // distinct movements: the Rehab copy has its own test id
-// the Rehab section shows in the full app and not in the submission or judge profile (the header has no mode switch)
-const rehabShown = (page) => page.locator('[data-testid="section-rehab"]').isVisible();
+// TICKET-436: the header has no Exercise / Dance / Rehab switch in any profile
+const kindSwitchCount = (page) => page.locator('[data-testid^="kind-"], .kind-switch, #kind-switch').count();
+const tid = (pg, id) => pg.getByTestId(id);
 const ok = (msg) => console.log(`ok  ${msg}`);
 
 try {
@@ -116,16 +126,13 @@ try {
   let page = await fresh();
   await page.goto(BASE);
   await page.waitForSelector('[data-testid="entry-squat"]');
-  assert.deepEqual(await names(page, "exercise"), ["Squat"]);
-  assert.deepEqual(await names(page, "dance"), ["Arm wave", "Extra move"], "curated first, then by name");
-  assert.deepEqual(await names(page, "rehab"), ["Extra move"]);
+  assert.deepEqual((await names(page)).sort(), ["Arm wave", "Extra move", "Squat"].sort(), "the curated list, no test entries");
   assert.equal(await page.locator('[data-testid="entry-verify-2026-10-31t06-23-06z-317d3534"]').count(), 0, "negative: no verify entry");
   assert.equal(await page.locator('[data-testid="entry-arm-salute-8b6512a8"]').count(), 0, "negative: no arm salute");
   assert.equal(await page.locator("#build").isVisible(), false, "no build line");
   assert.equal(await page.locator('[data-testid="build-line"]').count(), 0);
   assert.match(await page.getByTestId("pitch").textContent(), /Record a movement once.*3D reference.*students/);
-  assert.equal(await page.locator('header.bar [data-testid^="kind-"]').count(), 0, "negative: no Exercise / Dance switch in the header (removed 2026-11-04)");
-  assert.equal(await rehabShown(page), true, "the Rehab section is shown by default");
+  assert.equal(await kindSwitchCount(page), 0, "negative: no Exercise / Dance / Rehab switch in the header");
   // the header height variable is measured, not a constant: scrolls stop right below the real header
   const headerPx = () => page.evaluate(() => ({ css: getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim(), box: Math.round(document.querySelector("header.bar").getBoundingClientRect().height) }));
   const hh = await headerPx();
@@ -149,10 +156,9 @@ try {
   // ---- the submission profile: modes and sponsored challenges hidden, curated only, kept after a reload
   await page.goto(`${BASE}?profile=submission`);
   await page.waitForSelector('[data-testid="entry-squat"]');
-  assert.deepEqual(await names(page, "exercise"), ["Squat"]);
-  assert.deepEqual(await names(page, "dance"), ["Arm wave"]);
+  assert.deepEqual((await names(page)).sort(), ["Arm wave", "Squat"], "curated list only");
   assert.equal((await allIds(page)).length, 2, "curated list only");
-  assert.equal(await rehabShown(page), false);
+  assert.equal(await kindSwitchCount(page), 0);
   await page.goto(`${BASE}#/follow/arm-wave`);
   await page.reload();
   await page.getByTestId("lang-picker-slot").waitFor({ state: "attached" });
@@ -160,8 +166,8 @@ try {
   assert.equal(await page.getByTestId("mode-safety").count(), 0);
   await page.goto(`${BASE}?profile=default`);
   await page.waitForSelector('[data-testid="entry-squat"]');
-  assert.equal(await rehabShown(page), true);
-  ok("?profile=submission hides the mode picker and keeps to the curated list; ?profile=default restores them");
+  assert.equal(await kindSwitchCount(page), 0);
+  ok("?profile=submission hides the mode picker and keeps to the curated list; ?profile=default restores the full list");
   await page.close();
 
   // ---- consent on Record and Follow, lang sent with the take
@@ -247,22 +253,28 @@ try {
   assert.match(await page.getByTestId("delete-done").textContent(), /stays in the catalog because/, "the server kept the movement and the page says so");
   ok("trainer job view: delete my recording keeps the movement; the second option removes it when it can");
 
-  // ---- no Exercise / Dance switch in the header (removed 2026-11-04): a movement page has none either
-  await page.goto(`${BASE}#/watch/arm-wave`);
-  await page.waitForTimeout(800);
-  assert.equal(await page.locator('header.bar [data-testid^="kind-"]').count(), 0, "negative: no kind switch on a movement page");
-  assert.match(page.url(), /#\/watch\/arm-wave$/);
-  ok("header: no Exercise / Dance switch on a movement page");
+  // ---- no kind bar on any page (TICKET-436): movement, follow, record and result pages keep their address; an old mode link opens
+  for (const hash of ["#/watch/arm-wave", "#/follow/squat", "#/record", "#/result/rj1"]) {
+    await page.goto(`${BASE}${hash}`);
+    await page.waitForTimeout(600);
+    assert.equal(await kindSwitchCount(page), 0, `${hash}: no kind switch`);
+    assert.equal(new URL(page.url()).hash, hash, `${hash}: the page stays`);
+  }
+  await page.goto(`${BASE}#/?mode=dance`);
+  await page.waitForSelector('[data-testid="entry-squat"]');
+  assert.equal(await tid(page, "result-count").count(), 1, "witness: an old mode link opens the library");
+  assert.equal(await page.locator('[data-testid="route-missing"]').count(), 0, "negative: not a page-not-found");
+  ok("no kind bar: watch, follow, record and result keep their address; an old mode link opens the library");
 
   // ---- the judge URL: the first visit opens curated with the hero take and without test boards; ?profile=default shows all
   judge.on = true;
   page = await fresh();
   await page.goto(BASE);
-  await page.waitForSelector('[data-testid="section-exercise"]');
+  await page.waitForSelector('[data-testid="entry-squat"]');
   await page.waitForSelector('[data-testid="hero-link"]');
   assert.equal(await page.getByTestId("hero-link").getAttribute("href"), "#/result/rj1");
   assert.match(await page.getByTestId("hero-take").textContent(), /Scored 81 out of 100/);
-  assert.equal(await rehabShown(page), false, "negative: the judge view has no Rehab section");
+  assert.equal(await kindSwitchCount(page), 0, "negative: the judge view has no mode picker");
   assert.equal(await page.locator('[data-testid="entry-extra-move"]').count(), 0, "negative: only the curated list");
   await page.goto(`${BASE}#/watch/arm-wave`);
   await page.waitForSelector('[data-testid="challenge-link-bReal"]');
@@ -275,7 +287,7 @@ try {
   const heroBefore = judge.heroAsked;
   await page.goto(`${BASE}#/`);
   await page.waitForSelector('[data-testid="entry-extra-move"]');
-  assert.equal(await rehabShown(page), true, "?profile=default is kept: the Rehab section is back");
+  assert.equal(await kindSwitchCount(page), 0, "?profile=default is kept; still no header switch");
   assert.equal(await page.locator('[data-testid="hero-link"]').count(), 0, "negative: no hero link in the full app");
   assert.equal(judge.heroAsked, heroBefore, "the full app does not ask for the hero");
   judge.on = false;

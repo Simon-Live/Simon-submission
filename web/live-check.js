@@ -4,21 +4,22 @@
 // approximate: the score after the take (SAM 3D Body and Parts 3 to 5) is the one that counts, and the note says so.
 // Client 22d09a7 / c76b618 (TICKET-187): integrated from the serverless-modal branch. One reconciliation: the check
 // starts OFF and the toggle turns it on (remembered per browser), because starting it loads Google's MediaPipe code
-// and model from a CDN, and no third-party request should happen before the person chooses it. A `loadVision`
-// option replaces the CDN import (tests serve a stub; a host could vendor the files).
+// and model (several megabytes) before the person chooses it. LIC-H5 and LEG-H2: the code, its wasm and the model are
+// vendored under web/vendor/mediapipe/ at pinned versions with hashes (web/vendor/README.md), so no request leaves this
+// site. A `loadVision` option replaces the import (tests serve a stub).
 import { h } from "./ui.js";
 import { getEntryFile } from "./api.js";
 import { referenceTime } from "./reference.js";
 import { tokenValue } from "./theme-colors.js";
 
-const VISION = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
-const MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+export const VISION = new URL("./vendor/mediapipe", import.meta.url).href; // @mediapipe/tasks-vision 0.10.14
+export const MODEL = `${VISION}/models/pose_landmarker_lite.task`; // pose_landmarker_lite float16 v1 (Apache-2.0 model card)
 const PREF = "simon.liveCheck";
 const STEP_MS = 66; // about 15 checks a second is plenty for cues and keeps phones cool
 export const OFF_DEG = 25; // a joint further than this from the trainer's angle is flagged
 export const TEXT = {
   note: "Live check is approximate guidance from your device. Your results after the take are more accurate.",
-  offNote: "It draws your joints on the preview and, on Follow, flags a joint that is off the trainer. Turning it on loads Google's MediaPipe in this browser; no frame leaves your device.",
+  offNote: "It draws your joints on the preview and, on Follow, flags a joint that is off the trainer. Turning it on loads Google's MediaPipe from this site into this browser; no frame leaves your device.",
   loading: "Live check is starting…",
   unavailable: "Live check is not available in this browser.",
   inView: "Whole body in view",

@@ -9,6 +9,9 @@ result the supervisor leaves, and keeps `status.json` honest.
     set_done_handler(fn)                     fn(model_dir, ok, message) runs on every finished conversion
     recover_stuck(state)                     after a restart: settle the conversions of a server that is gone
     running() / cut_off()                    a stopping server waits for its conversions (TICKET-306)
+
+In serverless mode (prod) there is no Docker and no supervisor: `part7/model_convert_modal.py` runs the same converter on
+Modal and hands its result to `_finish`, so everything after the converter is one path.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ import threading
 import time
 from typing import Callable
 
-from part7 import applog, config, import_timings, model_store
+from part7 import applog, compute_mode, config, import_timings, model_store
 
 SPOOL_DIRNAME = "models-spool"
 FORMATS = ("fbx", "blend", "gltf-zip")
@@ -68,6 +71,8 @@ def set_done_handler(fn: DoneHandler | None) -> None:
 def available(state: str | Path | None = None) -> bool:
     if os.environ.get("SIMON7_MODEL_CONVERT") == "off":
         return False
+    if compute_mode.serverless():
+        return _modal().available(spool_dir(state))
     try:
         beat = json.loads((spool_dir(state) / "supervisor.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -76,6 +81,12 @@ def available(state: str | Path | None = None) -> bool:
         return False
     ts = beat.get("ts")
     return isinstance(ts, (int, float)) and abs(time.time() - ts) <= HEARTBEAT_MAX_AGE_S
+
+
+def _modal():
+    from part7 import model_convert_modal  # here: it imports this module for `_finish`
+
+    return model_convert_modal
 
 
 def _write_json(path: Path, data: dict) -> None:
@@ -103,6 +114,19 @@ def _pending(spool: Path) -> int:
     return sum(len(list((spool / sub).glob("*.json"))) for sub in ("queue", "running"))
 
 
+def reads_text_fbx(state: str | Path | None = None) -> bool:
+    """A text FBX can be read: Blender cannot, FBX2glTF can. In the Modal image, whose version `available` checks; on Docker only when installed."""
+    if not available(state):
+        return False
+    if compute_mode.serverless():
+        return True
+    try:
+        beat = json.loads((spool_dir(state) / "supervisor.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(beat, dict) and "fbx2gltf" in (beat.get("tools") or [])
+
+
 def submit(model_dir: Path | str, src_path: Path | str, fmt: str, on_done: DoneHandler | None = None,
            state: str | Path | None = None) -> None:
     """Queue one conversion. Raises ConvertUnavailable, ConvertBusy, or ValueError for a bad format or path."""
@@ -118,7 +142,8 @@ def submit(model_dir: Path | str, src_path: Path | str, fmt: str, on_done: DoneH
     spool = spool_dir(state)
     for sub in ("queue", "running", "results"):
         (spool / sub).mkdir(parents=True, exist_ok=True)
-    if _pending(spool) >= MAX_PENDING:
+    modal_route = compute_mode.serverless()
+    if not modal_route and _pending(spool) >= MAX_PENDING:  # the local worker's own queue; on Modal each call waits its turn there
         raise ConvertBusy(BUSY_MESSAGE)
     job_id = model_dir.name
     if on_done is not None:
@@ -127,6 +152,8 @@ def submit(model_dir: Path | str, src_path: Path | str, fmt: str, on_done: DoneH
     with _lock:
         _active[job_id] = model_dir
     _started[job_id] = import_timings.start()  # TICKET-363: submit to result, the queue wait included
+    if modal_route:
+        return _modal().start(spool, model_dir, src, fmt)
     _write_json(spool / "queue" / f"{job_id}.json",
                 {"id": job_id, "model_dir": str(model_dir), "src": str(src), "fmt": fmt, "submitted_at": time.time()})
     _ensure_poller(spool)
@@ -255,6 +282,8 @@ def cut_off() -> list[tuple[str, str]]:
             (spool / sub / f"{job_id}.json").unlink(missing_ok=True)
         _remove(folder / "out")
         set_status(folder, "failed", RESTART_MESSAGE)
+        if compute_mode.serverless():
+            _modal().stop(job_id)
         cut.append((job_id, "convert"))
     return cut
 
@@ -283,6 +312,8 @@ def recover_stuck(state: str | Path | None = None) -> list[str]:
     root = config.state_root(state)
     spool = spool_dir(state)
     failed: list[str] = []
+    if compute_mode.serverless():
+        _modal().refresh(spool)  # the first upload after a start should not wait for this answer
     for status_path in sorted((root / "models").glob("*/status.json")):
         try:
             data = json.loads(status_path.read_text(encoding="utf-8"))

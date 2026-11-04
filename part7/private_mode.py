@@ -15,6 +15,7 @@ import urllib.request
 from typing import Callable, Iterator, Mapping
 
 from part7 import applog, gpu_lock
+from part7.prod_mode import is_prod
 
 SWITCH_ENV = "SIMON7_PRIVATE"
 MODEL_ENV = "SIMON7_PRIVATE_MODEL"
@@ -58,7 +59,13 @@ class Plan:
 
 
 def enabled(env: Mapping[str, str] | None = None, job_flag: bool | None = None) -> bool:
-    """True when the job asks for private mode, else when `SIMON7_PRIVATE` is a true value (AC-001)."""
+    """True when the job asks for private mode, else when `SIMON7_PRIVATE` is a true value (AC-001).
+
+    Never in prod: the mode runs a local LLM on the host GPU, and prod runs model jobs on the owner's credentials only
+    (byok-prod.md BYOK-C2; prod_check refuses SIMON7_PRIVATE).
+    """
+    if is_prod():
+        return False
     if job_flag is not None:
         return bool(job_flag)
     source = os.environ if env is None else env

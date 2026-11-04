@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
-import os
 from pathlib import Path
 import queue
 import re
@@ -21,21 +20,25 @@ import threading
 import time
 from typing import Any
 
-from part7 import applog, history_facts, history_longpack, history_receipt, history_store, keys, shown_score
+from part7 import applog, ffsafe, muse_prod, history_facts, history_longpack, history_receipt, history_store, keys, shown_score
 
 FORMAT = "simon.history.v1"
 DEFAULT_PROMPT_VERSION = "simon.history.v1"
 DEFAULT_MODEL = "muse-spark-1.3"
-# Both daily limits are off unless SIMON7_HISTORY_DAILY / SIMON7_HISTORY_GLOBAL_DAILY hold a positive integer.
 KEEP_REPORTS = 5
 RETRY_AFTER_S = 5
 MIN_TAKES = 2
 REASON_MAX = 120
 MSG_FEW = "Record at least 2 takes of this movement before comparing them."
 MSG_CONSENT = "Keeping your takes needs your OK first. Turn it on in your account."
-MSG_GLOBAL_LIMIT = "Comparisons are paused for today because many were made. Try again tomorrow."
-MSG_LIMIT_FMT = "You have compared your takes {n} times today. Try again tomorrow."
 ZERO_USAGE = {"input_tokens": 0, "cached_tokens": 0, "output_tokens": 0, "usd": 0.0, "clips_sent": 0}
+
+
+def muse_gate(feature: str, user: str, state: Any) -> None:
+    """`Refused` when the Muse gate closes this feature (docs/specs/muse-prod.md); else one run is counted."""
+    closed = muse_prod.admit(feature, user, state)
+    if closed is not None:
+        raise Refused(closed.status, closed.message, closed.code)
 
 
 class Refused(Exception):
@@ -44,24 +47,6 @@ class Refused(Exception):
     def __init__(self, status: int, message: str, code: str = "") -> None:
         super().__init__(message)
         self.status, self.message, self.code = status, message, code
-
-
-def _env_limit(name: str) -> int | None:
-    try:
-        value = int(os.environ.get(name, ""))
-    except ValueError:
-        return None
-    return value if value > 0 else None
-
-
-def daily_limit() -> int | None:
-    """Reports per user per UTC day; None (no limit) unless SIMON7_HISTORY_DAILY is set."""
-    return _env_limit("SIMON7_HISTORY_DAILY")
-
-
-def global_daily_limit() -> int | None:
-    """Paid comparisons per UTC day across everyone (R7); None unless SIMON7_HISTORY_GLOBAL_DAILY is set."""
-    return _env_limit("SIMON7_HISTORY_GLOBAL_DAILY")
 
 
 def _today_start(now: float) -> float:
@@ -123,7 +108,10 @@ def _versions() -> tuple[str, str]:
     return (str(getattr(prompt, "PROMPT_VERSION", DEFAULT_PROMPT_VERSION)), str(getattr(api, "MODEL", DEFAULT_MODEL)))
 
 
-def _narration(catalog_dir: Path | None, entry_id: str) -> tuple[Any, str]:
+def _narration(catalog_dir: Path | None, entry_id: str, state: Path | str) -> tuple[Any, str]:
+    """The teacher's spoken cues for a request to Meta: what they said is theirs to send, so no tick means no cues (muse-prod.md AC-MP11)."""
+    if not muse_prod.trainer_video_allowed(state, entry_id):
+        return None, ""
     path = Path(catalog_dir) / entry_id / "narration.json" if catalog_dir else None
     doc = history_store.read_json(path) if path else None
     return (doc if isinstance(doc, dict) else None), history_store.sha256_file(path)
@@ -149,8 +137,8 @@ def _duration(path: Path | None) -> float | None:
     if path is None:
         return None
     try:
-        done = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-                              capture_output=True, text=True, timeout=30, check=False)
+        done = ffsafe.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                          timeout=30, text=True)
         value = float(done.stdout.strip())
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return None
@@ -197,7 +185,7 @@ class Runner:
     def plan(self, user_id: str, entry_id: str) -> tuple[list[dict[str, Any]], str, Any]:
         """`(hostable takes, cache key, narration)` for the user's takes of one entry."""
         usable = hostable(history_store.takes(self.state, user_id, entry_id))
-        narration, narration_sha = _narration(self.catalog_dir, entry_id)
+        narration, narration_sha = _narration(self.catalog_dir, entry_id, self.state)
         video = history_store.consent(self.state, user_id)["video"]
         prompt_version, model = _versions()
         notes = history_longpack.owner_notes(self.state, user_id, entry_id, usable)
@@ -208,7 +196,7 @@ class Runner:
             return self._active.get((user_id, entry_id, key))
 
     def request(self, user_id: str, entry_id: str, now: float | None = None) -> tuple[str, Any]:
-        """`("cached", report)` or `("accepted", "queued"|"running")`; `Refused` for 409, 422 and 429."""
+        """`("cached", report)` or `("accepted", "queued"|"running")`; `Refused` for 409 and 422."""
         if not history_store.retention_opt_in(self.state, user_id):
             raise Refused(409, MSG_CONSENT)
         usable, key, _ = self.plan(user_id, entry_id)
@@ -222,11 +210,7 @@ class Runner:
         with self._lock:
             if job in self._active:
                 return ("accepted", self._active[job])
-            per_user, overall = daily_limit(), global_daily_limit()
-            if per_user is not None and runs_today(self.state, user_id, now) >= per_user:
-                raise Refused(429, MSG_LIMIT_FMT.format(n=per_user))
-            if overall is not None and global_runs_today(self.state, now) >= overall:
-                raise Refused(429, MSG_GLOBAL_LIMIT)
+            muse_gate("compare", user_id, self.state)
             with history_store.locked(self.state):
                 _note_run(self.state, user_id, now)
             self._active[job] = "queued"
@@ -298,7 +282,7 @@ class Runner:
         if prompt is None:
             return None
         teacher = Path(self.catalog_dir) / entry_id / "video.mp4" if self.catalog_dir else None
-        teacher = teacher if teacher and teacher.is_file() else None
+        teacher = teacher if teacher and teacher.is_file() and muse_prod.trainer_video_allowed(self.state, entry_id) else None  # AC-MP11
         by_job = {t["job_id"]: t["take"] for t in takes}
         texts = {n: history_longpack.note_block(entry_id, n, [x for x in notes or [] if by_job.get(x["job_id"]) == n]) for n in by_job.values()}
         return prompt.pack(entry_id, facts, takes, teacher_clip=teacher, teacher_duration_s=_duration(teacher),
@@ -319,6 +303,7 @@ class Runner:
         packed = self.packed(entry_id, takes, facts, narration, video, history_longpack.owner_notes(self.state, user_id, entry_id, takes)) if api and guard else None
         if packed is None:
             return {**base, "status": "skipped", "reason": "the model step is not available"}
+        muse_prod.clear_video(packed, self.state, user_id, entry_id)
         try:
             text, usage = api.ask(packed, state=self.state)
             answer = json.loads(text)

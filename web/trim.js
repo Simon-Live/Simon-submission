@@ -8,7 +8,7 @@ import { releaseSharedMediaUrl } from "./media-url.js";
 
 export const MIN_MS = 1000;
 export const MAX_MS = 60000;
-export const MAX_BYTES = 95000000;
+export const MAX_BYTES = 85000000; // part7/config.py MAX_UPLOAD_BYTES, the one cap
 export const STEP_MS = 100;
 const GAP_MS = 100; // handles never cross; the 1 s rule is shown as an error instead
 const MANUAL_TAIL_MS = 1000;
@@ -16,7 +16,7 @@ const MANUAL_TAIL_MS = 1000;
 export const TEXT = {
   short: "Pick at least 1 s of the movement. Move a handle out.",
   long: "Pick 60 s at most. Move a handle in.",
-  bytes: "The file is too large (95 MB at most).",
+  bytes: "The file is too large (85 MB at most).",
   tooShort: "This clip is shorter than 1 s, so it cannot be trimmed.",
   unreadable: "This video could not be read. Go back and try another one.",
   mirrored: "This video is mirrored (a selfie video). Flip left and right.",
@@ -152,8 +152,12 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
     const maskR = h("div", { class: "trim-mask right" });
     const frame = h("div", { class: "trim-frame" });
     const playhead = h("div", { class: "trim-playhead" });
-    const hStart = h("button", { type: "button", class: "trim-handle start", "data-testid": "trim-start" });
-    const hEnd = h("button", { type: "button", class: "trim-handle end", "data-testid": "trim-end" });
+    // a11y-copy R3: each handle is a slider with its value in seconds (WCAG 4.1.2); arrows, Page keys, Home and End move it
+    const handle = (edge, label, testid) => h("div", { class: `trim-handle ${edge}`, role: "slider", tabindex: "0", "aria-label": label,
+      "aria-valuemin": "0", "aria-orientation": "horizontal", "aria-describedby": "trim-keys", "data-testid": testid });
+    const hStart = handle("start", "Start of the movement", "trim-start");
+    const hEnd = handle("end", "End of the movement", "trim-end");
+    const keys = h("p", { id: "trim-keys", hidden: true, text: "Arrow keys move it by 0.1 s, Page Up and Page Down by 1 s." }); // read by aria-describedby while hidden
     const track = h("div", { class: "trim-track" }, canvas, maskL, maskR, frame, playhead, hStart, hEnd);
     const now = h("span", { class: "tnum", "data-testid": "trim-now", text: "0.0 s" });
     const length = h("p", { class: "trim-length tnum", "data-testid": "trim-length", "aria-live": "polite" });
@@ -178,7 +182,7 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
       h("p", { class: "hint", text: "Drag the handles to the first and last moment of the movement." }),
       refRow,
       h("div", { class: "trim-clock hint" }, "Now ", now),
-      track, length, error,
+      track, keys, length, error,
       h("div", { class: "row trim-tools" }, play, setStart, setEnd),
       ...(mirrorRow ? [mirrorRow] : []),
       h("div", { class: "row between trim-actions" }, back, next));
@@ -210,8 +214,11 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
       maskR.style.width = pct(dur - end);
       frame.style.left = pct(start);
       frame.style.width = pct(end - start);
-      hStart.setAttribute("aria-label", `Start of the movement, ${seconds(start)}. Arrow keys move it by 0.1 s.`);
-      hEnd.setAttribute("aria-label", `End of the movement, ${seconds(end)}. Arrow keys move it by 0.1 s.`);
+      for (const [el, at] of [[hStart, start], [hEnd, end]]) {
+        el.setAttribute("aria-valuemax", (dur / 1000).toFixed(1));
+        el.setAttribute("aria-valuenow", (at / 1000).toFixed(1));
+        el.setAttribute("aria-valuetext", seconds(at));
+      }
       length.textContent = lengthLabel(start, end);
       const msg = selectionError(start, end, dur, media.size || 0);
       error.hidden = !msg;
@@ -285,10 +292,14 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
       handle.addEventListener("pointerup", release);
       handle.addEventListener("pointercancel", release);
       handle.addEventListener("keydown", (e) => {
-        const dir = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
-        if (!dir) return;
+        const at = isStart ? state.start : state.end;
+        const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+        const page = { PageDown: -10, PageUp: 10 }[e.key];
+        const to = step ? at + step * STEP_MS * (e.shiftKey ? 10 : 1) : page ? at + page * STEP_MS
+          : e.key === "Home" ? 0 : e.key === "End" ? state.dur : null;
+        if (to === null) return;
         e.preventDefault();
-        move((isStart ? state.start : state.end) + dir * STEP_MS * (e.shiftKey ? 10 : 1));
+        move(to);
       });
     }
     track.addEventListener("pointerdown", (e) => scrub(timeAt(e.clientX)));

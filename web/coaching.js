@@ -81,7 +81,7 @@ export function momentsToReview(analysis) {
   for (const { m, i, k } of misses.slice(0, TOP_MISSES)) {
     if (flagged.some((w) => m.at_s >= w.t_s[0] && m.at_s <= w.t_s[1])) continue;
     out.push({ kind: "miss", index: i, miss: k, at: m.at_s, from: m.at_s, to: m.at_s, points: m.points,
-      label: `${momentLabel(m.at_s)}: ${m.cue || m.text}, costs ${Number(m.points).toFixed(1)} points` });
+      label: `${momentLabel(m.at_s)}: ${m.cue || (m.ai ? "a miss" : m.text)}, costs ${Number(m.points).toFixed(1)} points` });
   }
   out.sort((a, b) => a.at - b.at);
   return out.slice(0, MAX_MOMENTS);

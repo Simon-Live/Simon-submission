@@ -10,7 +10,7 @@ import pytest
 from part7 import challenges, cli, labels
 
 CREATE = ["create", "--entry", "lateral-raise", "--title", "T", "--sponsor-name", "Example Sportswear",
-          "--sponsor-url", "https://example.com", "--prize", "Shoes", "--ends", "2999-12-01"]
+          "--sponsor-url", "https://example.com", "--prize", "Shoes", "--rules-url", "https://example.com/rules", "--ends", "2999-12-01"]
 
 
 def _run(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str, str]:

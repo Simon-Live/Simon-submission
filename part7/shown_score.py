@@ -149,6 +149,64 @@ def shown(analysis: Any, light: Any = None, display: Any = None) -> dict[str, An
             "value": score["value"], "capped": bool(warning), "warning": warning, "tone": tone_of(letter), "measure": score["value"]}
 
 
+BOARD_LEVEL = "normal"  # a board compares every take at this level, whatever level the take was scored at (score-consistency.md S7)
+BOARD_VERSION = 2       # `board_v` on a stored entry made by `for_board`; an entry without it is migrated by `challenges.rescale`
+BOARD_GRADES = ((95, "S"), (85, "A"), (75, "B"), (65, "C"), (55, "D"), (40, "E"), (0, "F"))  # simon.credit.v1's table, one for the board
+
+
+LEVEL_WORDS = {"easy": "easy", "normal": "standard", "hard": "hard"}
+COVERAGE_MIN = 0.75  # Part 5's own line: it warns `measures_hidden` when over a quarter of the measures were left out
+
+
+def coverage_of(analysis: Any) -> float | None:
+    """The share of the body's measures Part 5 could see in a take (1 less `quality.signals.hidden_measure_share`), or None when it does not say."""
+    quality = analysis.get("quality") if isinstance(analysis, dict) else None
+    signals = quality.get("signals") if isinstance(quality, dict) else None
+    share = _num(signals.get("hidden_measure_share")) if isinstance(signals, dict) else None
+    return None if share is None or not 0 <= share <= 1 else round(1 - share, 2)
+
+
+def for_board(analysis: Any, light: Any = None) -> dict[str, Any] | None:
+    """The `shown` block a board entry stores (score-consistency.md S7): one number, the credit percent at `BOARD_LEVEL`,
+    one decimal, with the grade drawn from that same number on one table. Points are not comparable between takes (the
+    most a take can earn follows how much of the example it was matched to and how many measures were seen), so they ride
+    along as `points` and never rank. A take with no credit keeps `shown`'s block (the old 0 to 100 scale, unit "score"),
+    which a board ranks below every credit take."""
+    base = shown(analysis, light)
+    if base is None:
+        return None
+    doc = analysis if "score" in analysis else {"score": analysis}
+    credit = _credit_of(_capped(doc, light))
+    if credit is None:
+        return public(base)
+    levels = credit.get("levels") if isinstance(credit.get("levels"), dict) else {}
+    own = credit.get("tolerance") if isinstance(credit.get("tolerance"), str) else None
+    has = BOARD_LEVEL == own or _level_numbers(levels.get(BOARD_LEVEL)) is not None
+    x = _at(credit, BOARD_LEVEL)
+    percent = round(float(x["percent"]), 1)
+    seen = coverage_of(doc)
+    level = BOARD_LEVEL if has else own
+    parts = [f"{LEVEL_WORDS.get(level, level)} level" if level else "", f"{_round(seen * 100)}% of measures seen" if seen is not None and seen < 1 else "",
+             "take warning" if base["warning"] else ""]   # what a reader needs to weigh the figure (S9)
+    note = ", ".join(p for p in parts if p)
+    return {"letter": _letter_for(percent, list(BOARD_GRADES)), "figures": f"{percent:.1f}%", "caption": CAPTION_PERCENT, "unit": "percent",
+            "capped": False, "warning": base["warning"], "measure": percent, "level": level, "note": note[:1].upper() + note[1:],
+            "points": {"points": x["points"], "max_points": x["max_points"]}, "coverage": seen,
+            "partial": seen is not None and seen < COVERAGE_MIN, "board_v": BOARD_VERSION}
+
+
+def is_partial(row: Any) -> bool:
+    """True when a row's take left out over a quarter of the measures (`COVERAGE_MIN`): a board ranks it below every full-coverage entry."""
+    s = row.get("shown") if isinstance(row, dict) else None
+    return isinstance(s, dict) and s.get("partial") is True
+
+
+def on_credit_scale(row: Any) -> bool:
+    """True when a row's measure is a credit percent (a board ranks these above the old 0 to 100 scores, which are not comparable with them)."""
+    s = row.get("shown") if isinstance(row, dict) else None
+    return isinstance(s, dict) and s.get("unit") in ("percent", "points")
+
+
 def rank_of(row: Any) -> float | None:
     """What a rank or a best compares for a row (one-letter.md L3): its `shown` measure (the credit percent shown, or the
     capped score), else its `score` (a row stored before the measure existed); None without either."""

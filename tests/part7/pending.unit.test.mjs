@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  classifyFailure, backoffMs, nextUtcMidnightMs, capacity, resumeStep, detailsComplete, eligible, statusText, failureText,
+  classifyFailure, backoffMs, capacity, resumeStep, detailsComplete, eligible, statusText, failureText,
   createPending, createLock, memoryStore, newRecord, isExpired, TTL_MS, BACKOFF_S, MAX_TAKES, MAX_BYTES, LARGE_BYTES, TEXT,
 } from "../../web/pending.js";
 import { requestOf } from "../../web/take-request.js";
@@ -47,8 +47,8 @@ test("failures are sorted into retry now, retry later, drop and re-upload", () =
   const k = (status, detail, step) => classifyFailure(err(status, detail), step).kind;
   for (const s of [0, 500, 502, 504]) assert.equal(k(s, ""), "auto", `status ${s}`);
   assert.equal(k(503, "The app is busy. Try again in a few minutes."), "auto");
-  assert.equal(k(503, "The app has reached today's limit. Try again tomorrow."), "later");
-  assert.equal(k(429, "You have used today's analyses. Try again tomorrow."), "later");
+  assert.equal(k(503, "The app is busy."), "auto");
+  assert.equal(k(429, "Too many tries."), "auto");
   for (const s of [413, 404, 409]) assert.equal(k(s, ""), "fatal", `status ${s}`);
   assert.equal(k(400, "This file is not a video. Pick an MP4 or WebM file.", "upload"), "fatal");
   assert.equal(k(400, "The upload was not found. Pick the video again.", "people"), "lost_upload");
@@ -88,12 +88,6 @@ test("a 422 that names the job the server holds counts as sent and leaves the sa
 test("the backoff is 10 s, 30 s, 1 min, 2 min, then every 5 min", () => {
   assert.deepEqual(BACKOFF_S, [10, 30, 60, 120, 300]);
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 20].map(backoffMs), [0, 10000, 30000, 60000, 120000, 300000, 300000, 300000]);
-});
-
-test("a daily limit waits until just after the next UTC midnight", () => {
-  const at = nextUtcMidnightMs(Date.UTC(2026, 9, 31, 23, 59, 30));
-  assert.equal(at, Date.UTC(2026, 10, 1, 0, 1, 0));
-  assert.ok(nextUtcMidnightMs(Date.UTC(2026, 11, 31, 1)) === Date.UTC(2027, 0, 1, 0, 1, 0), "across a year end");
 });
 
 test("caps: three takes and 300 MB", () => {
@@ -312,28 +306,13 @@ test("a bad name on the job call keeps the take and returns it to the details", 
   assert.deepEqual([kept.stage, kept.auto_submit], ["people_ready", false]);
 });
 
-test("429 and today's-limit 503 wait for the next UTC midnight; a reconnect does not retry them, Send now does", async () => {
-  const r = rig({ script: { upload: [err(429, "You have used today's analyses. Try again tomorrow."), { upload_id: "u2" }] } });
+test("a take stored under the old daily limit goes at the next chance: no such limit exists", async () => {
+  const r = rig({ script: { upload: [{ upload_id: "u2" }] } });
   const { record } = await begin(r);
   r.p.release(record);
-  await r.p.trigger("start");
-  let [rec] = await r.store.all();
-  assert.equal(rec.next_try_at, nextUtcMidnightMs(T0));
-  assert.equal(rec.last_error.kind, "later");
-  assert.equal(failureText("later"), TEXT.later);
-  r.clock.t += 3600e3;
-  await r.p.trigger("online");
+  await r.p.update(record, { next_try_at: T0 + 86400e3, last_error: { kind: "later", status: 429 } });
   await r.p.trigger("timer");
-  assert.equal(r.calls.filter(([n]) => n === "upload").length, 1, "no retry before midnight");
-  r.clock.t = rec.next_try_at + 1;
-  await r.p.trigger("timer");
-  assert.equal(r.calls.filter(([n]) => n === "upload").length, 2, "retried after midnight");
-  const manual = rig({ script: { upload: [err(503, "The app has reached today's limit. Try again tomorrow."), { upload_id: "u3" }] } });
-  const m = await begin(manual);
-  manual.p.release(m.record);
-  await manual.p.trigger("start");
-  await manual.p.sendNow(m.record.id);
-  assert.equal(manual.calls.filter(([n]) => n === "upload").length, 2);
+  assert.equal(r.calls.filter(([n]) => n === "upload").length, 1);
 });
 
 test("the fast schedule: the timer waits for the backoff, a reconnect or focus does not", async () => {

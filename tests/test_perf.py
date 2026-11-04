@@ -473,10 +473,10 @@ def test_a_busy_worker_after_admission_runs_in_process_with_the_memory_check(
     assert "min_free_mib" not in seen[0] and "--worker" not in ran[-1]
 
 
-def test_part1_default_budget_is_150_s(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_part1_default_budget_is_215_s(monkeypatch: pytest.MonkeyPatch) -> None:
     from part7 import config
     monkeypatch.delenv("SIMON7_PART1_TIMEOUT_S", raising=False)
-    assert config.DEFAULT_PART1_TIMEOUT_S == 150.0 and config.part1_timeout_s() == 150.0
+    assert config.DEFAULT_PART1_TIMEOUT_S == 215.0 and config.part1_timeout_s() == 215.0
 
 
 def test_slow_part1_grows_the_job_by_at_most_budget_minus_pose(

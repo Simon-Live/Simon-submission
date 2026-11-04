@@ -1,6 +1,6 @@
 // The Me page from plain data (words come in as `t`, rows from model/me.js), styled by theme/auth.css on the brand
 // tokens. No fetching and no storage.
-import { h, clear, stateBlock, linkButton } from "../ui.js";
+import { h, clear, stateBlock, linkButton, focusOn } from "../ui.js";
 
 const note = (testid) => h("p", { class: "au-note", role: "status", "data-testid": testid, text: "" });
 const setNote = (el, text, bad = false) => { el.textContent = text || ""; el.setAttribute("data-tone", bad ? "bad" : "ok"); };
@@ -28,7 +28,9 @@ export function renderMeError(host, { t }) {
 /** The account was deleted: the only thing left to say. */
 export function renderDeleted(host, { t, summary }) {
   clear(host).classList.add("au");
-  host.append(stateBlock("me-deleted", t.deleted, summary, linkButton("#/", t.back, "me-back")));
+  const block = stateBlock("me-deleted", t.deleted, summary, linkButton("#/", t.back, "me-back"));
+  host.append(block);
+  focusOn(block.querySelector("h2")); // a11y-copy R1: the confirm button is gone with the page; the outcome takes focus
 }
 
 /**
@@ -78,16 +80,19 @@ export function renderMe(host, vm, on) {
   const ask = h("button", { class: "btn danger au-submit", type: "button", "data-testid": "me-delete", text: t.deleteButton });
   const yes = h("button", { class: "btn danger au-submit", type: "button", "data-testid": "me-delete-confirm", text: t.deleteConfirm });
   const no = h("button", { class: "btn secondary au-submit", type: "button", "data-testid": "me-delete-cancel", text: t.deleteCancel });
-  const sure = h("div", { class: "au-sure", "data-testid": "me-delete-sure", hidden: true }, h("p", { class: "au-warn", text: t.deleteSure }), yes, no);
-  ask.addEventListener("click", () => { ask.hidden = true; sure.hidden = false; });
-  no.addEventListener("click", () => { sure.hidden = true; ask.hidden = false; });
+  const warn = h("p", { class: "au-warn", "data-testid": "me-delete-warn", text: t.deleteSure });
+  const sure = h("div", { class: "au-sure", "data-testid": "me-delete-sure", hidden: true }, warn, yes, no);
+  // a11y-copy R1: the pressed button is hidden each time, so focus moves with the step (WCAG 2.4.3); Escape cancels.
+  const cancel = () => { sure.hidden = true; ask.hidden = false; focusOn(ask); };
+  ask.addEventListener("click", () => { ask.hidden = true; sure.hidden = false; focusOn(warn); });
+  no.addEventListener("click", cancel);
+  sure.addEventListener("keydown", (e) => { if (e.key === "Escape" && !yes.disabled) cancel(); });
   yes.addEventListener("click", async () => {
     yes.disabled = true;
     const out = await on.delete();
     yes.disabled = false;
     if (out.ok) return;
-    sure.hidden = true;
-    ask.hidden = false;
+    cancel();
     setNote(deleteNote, out.text, true);
     busyList.hidden = !out.busy?.length;
     busyList.textContent = out.busy?.length ? out.busy.join(", ") : "";
@@ -120,7 +125,7 @@ export function renderKeep(host, { t }, { onKeep }) {
     const out = await onKeep();
     btn.disabled = false;
     setNote(msg, out.text, !out.ok);
-    if (out.ok) btn.hidden = true;
+    if (out.ok) { btn.hidden = true; focusOn(msg); } // the pressed button is gone: its outcome takes focus
   });
   host.append(btn, msg);
 }

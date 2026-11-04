@@ -36,6 +36,7 @@
 .msel-error { margin: 12px 0 0; color: var(--sr-text); font: 500 14px/1.4 var(--font-sans); border-inline-start: 3px solid var(--sr-f); padding-inline-start: 10px; }
 .msel-status { margin: 12px 0 0; font-size: 14px; color: var(--sr-muted); }
 .msel-actions { display: flex; gap: 10px; margin-top: 16px; }
+.msel-field [aria-invalid="true"] { outline: 2px solid var(--sr-f); outline-offset: 1px; }
 .msel-field[hidden], .msel-credit[hidden], .msel-error[hidden] { display: none; }
 .msel-picture { border: 0; padding: 0; margin-inline: 0; }
 .msel-picture legend { font: 500 14px/1.2 var(--font-sans); padding: 0; margin-bottom: 6px; }

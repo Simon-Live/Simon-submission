@@ -7,10 +7,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
 from typing import Any
 
-from part7 import media
+from part7 import ffsafe, media
 
 MARGIN = 0.15  # people.md: the union box with a 15% margin
 # people.md: at least 5% of the picture on every side as well. Tracks are sampled (10 fps) and a box hugs the
@@ -92,10 +91,11 @@ def crop_video(src: Path | str, dst: Path | str, box: tuple[int, int, int, int])
         rate = media.rate_args(media.probe(src))
     except ValueError:
         rate = []  # ffmpeg below names the problem
-    res = subprocess.run(
+    res = ffsafe.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-vf", f"crop={w}:{h}:{x}:{y}",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", *rate, *media.AUDIO_ARGS, str(dst_p)],
-        capture_output=True, text=True, timeout=300, check=False,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", *rate, *media.AUDIO_ARGS,
+         *media.FRAME_CAP_ARGS, str(dst_p)],
+        timeout=300, text=True,
     )
     if res.returncode != 0 or not dst_p.is_file():
         raise RuntimeError(f"ffmpeg crop failed: {res.stderr[-300:]}")

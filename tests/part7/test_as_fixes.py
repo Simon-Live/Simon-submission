@@ -13,7 +13,7 @@ import pytest
 
 from auth_support import authenv, get, post, sign_in  # noqa: F401
 from history_support import ENTRY as SQUAT, FIRST, SECOND
-from part7 import auth, history_store, share
+from part7 import auth, history_store, share, teacher_stats
 from support import Api
 from test_history_facts import KNOWN, _made, _real
 from test_share import ENTRY, make_share, owned_job, share_body, store
@@ -71,6 +71,8 @@ def test_entry_count_and_date_ignore_private_takes(api: Api) -> None:
     job = owned_job(api, sid)
     analysis = api.app.state / "jobs" / job / "work" / "follower" / "analysis.json"
     analysis.write_text(json.dumps({**json.loads(analysis.read_text()), "status": {"code": "ok"}}))  # the teacher page counts finished, scored takes
+    assert get(api, "api/me/profile", cookie=sid)[2]["entries"][0]["count"] == 0  # not shared yet (private-default D3)
+    teacher_stats.set_shared(analysis.parents[2], True)
     assert get(api, "api/me/profile", cookie=sid)[2]["entries"][0]["count"] == 1
     path = api.app.state / "jobs" / job / "job.json"
     path.write_text(json.dumps({**json.loads(path.read_text()), "private": True}))
@@ -212,7 +214,7 @@ def test_share_list_has_created_and_revoke_all_ends_every_link(api: Api) -> None
     assert api.request("DELETE", "api/me/shares", b"{}", guard(api, sid, origin=False))[0] == 403  # CSRF guard
     status, _, data = api.request("DELETE", "api/me/shares", b"{}", guard(api, sid))
     assert status == 200 and json.loads(data)["revoked"] == 3
-    assert [get(api, f"api/shared/{t}")[0] for t in tokens] == [404, 404, 404]
+    assert [get(api, f"api/shared/{t}")[0] for t in tokens] == [410, 410, 410]
     assert get(api, f"api/shared/{theirs}")[0] == 200  # negative: another person's link is untouched
     assert api.request("DELETE", "api/me/shares", b"{}", guard(api))[0] == 401
 
@@ -243,6 +245,7 @@ def test_summary_says_when_entry_counts_hit_the_take_cap(api: Api, monkeypatch: 
         job = owned_job(api, sid)
         analysis = api.app.state / "jobs" / job / "work" / "follower" / "analysis.json"
         analysis.write_text(json.dumps({**json.loads(analysis.read_text()), "status": {"code": "ok"}}))
+        teacher_stats.set_shared(analysis.parents[2], True)  # counted once shared (private-default D3)
     monkeypatch.setattr(teacher_stats, "TAKES_MAX", 3)
     below = get(api, "api/me/profile", cookie=sid)[2]
     assert below["entries"][0]["count"] == 2 and below["summary"]["capped"] is False  # negative: under the cap, no flag

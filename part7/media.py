@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-import shutil
 import subprocess
 import threading
 from typing import Any
 
-from part7 import config
+from part7 import config, ffsafe
 
 NON_VIDEO_CODECS = {"png", "mjpeg", "gif", "webp", "bmp", "tiff", "ppm", "pgm"}
 # A browser MediaRecorder WebM has a 1 ms time base, `r_frame_rate` 1000/1 and no average rate. Encoded as is,
@@ -28,6 +27,8 @@ LEGACY_TRIM_FILTER = "scale=-2:'min(1080,ih)'"  # trim before TICKET-067 (the `v
 # The clip keeps the source's first audio track, if it has one (AAC), so the result screen plays it with its sound;
 # the parts read the video stream only. `history_store` copies stay silent on purpose.
 AUDIO_ARGS = ["-map", "0:v:0", "-map", "0:a:0?", "-c:a", "aac", "-b:a", "128k"]
+# APP-M5: no output holds more frames than a source may (`probe` refuses a longer one; this stops a lying container).
+FRAME_CAP_ARGS = ["-frames:v", str(ffsafe.MAX_FRAMES)]
 
 
 def _parse_fps(rate_str: str | None) -> float:
@@ -75,10 +76,10 @@ def _count_packets(path: Path) -> int:
 
 def _ffprobe_packets(path: Path) -> int:
     try:
-        res = subprocess.run(
+        res = ffsafe.run(
             ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
              "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, timeout=60, check=False,
+            timeout=60, text=True,
         )
     except (OSError, subprocess.SubprocessError):
         return 0
@@ -101,23 +102,10 @@ def counted_fps(frames: int, duration_s: float) -> float:
 
 def _fallback_packet_duration_s(path: Path) -> float:
     try:
-        res = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "packet=pts_time,duration_time",
-                "-of",
-                "json",
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
+        res = ffsafe.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,duration_time",
+             "-of", "json", str(path)],
+            timeout=30, text=True,
         )
     except (OSError, subprocess.SubprocessError):
         return 0.0
@@ -151,24 +139,14 @@ def probe(path: Path | str) -> dict[str, Any]:
         raise ValueError(f"not a video: {p}")
 
     try:
-        res = subprocess.run(
+        res = ffsafe.run(
             [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
+                "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                 "stream=codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,duration,sample_aspect_ratio"
                 ":stream_tags=rotate:stream_side_data=rotation:format=duration,format_name",
-                "-of",
-                "json",
-                str(p),
+                "-of", "json", str(p),
             ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
+            timeout=30, text=True,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise ValueError(f"ffprobe failed on {p}: {exc}") from exc
@@ -198,6 +176,8 @@ def probe(path: Path | str) -> dict[str, Any]:
     height = int(stream.get("height") or 0)
     if width <= 0 or height <= 0:
         raise ValueError(f"invalid dimensions {width}x{height} in {p}")
+    if max(width, height) > ffsafe.MAX_SIDE or width * height > ffsafe.MAX_PIXELS:
+        raise ValueError(f"video too large: {width}x{height} in {p}")
 
     duration_s = 0.0
     for candidate in (stream.get("duration"), fmt.get("duration")):
@@ -215,7 +195,11 @@ def probe(path: Path | str) -> dict[str, Any]:
     if duration_s <= 0:
         raise ValueError(f"could not determine positive duration for {p}")
 
+    if duration_s > ffsafe.MAX_SOURCE_S:
+        raise ValueError(f"video too long: {duration_s:.0f} s in {p}")
     fps, counted = _clip_rate(p, stream, duration_s)
+    if fps * duration_s > ffsafe.MAX_FRAMES:
+        raise ValueError(f"video has too many frames: about {fps * duration_s:.0f} in {p}")
     duration_ms = int(math.floor(duration_s * 1000.0))
 
     return {
@@ -349,9 +333,11 @@ def scale_filter(size: tuple[int, int]) -> str:
 
 
 def normalize(src: Path | str, dst: Path | str, max_side: int = 0) -> Path:
-    """Copy MP4 H.264 byte-for-byte, or re-encode other formats (and implausible rates) to MP4 H.264 yuv420p.
+    """Remux MP4 H.264 without re-encoding, or re-encode other formats (and implausible rates) to MP4 H.264 yuv420p.
 
     `max_side` caps the size (`clip_size`, 0: no cap); a clip it changes is re-encoded, others keep the rules above.
+    Every output is stripped of the source's metadata and chapters (APP-M2): the remux is a stream copy that keeps the
+    coded frames and drops the tags (GPS, title, handler names), never a plain file copy.
     """
     src_p = Path(src)
     dst_p = Path(dst)
@@ -359,32 +345,22 @@ def normalize(src: Path | str, dst: Path | str, max_side: int = 0) -> Path:
     meta = probe(src_p)
     size = clip_size(meta, max_side, cut=False)
     if src_p.suffix.lower() == ".mp4" and meta["codec"] == "h264" and not meta["fps_counted"] and size is None:
-        if src_p.resolve() != dst_p.resolve():
-            shutil.copyfile(src_p, dst_p)
-        return dst_p
-
-    res = subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(src_p),
-            *(["-vf", scale_filter(size)] if size else []),
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            *rate_args(meta),
-            *AUDIO_ARGS,
-            str(dst_p),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
+        args = ["-map", "0:v:0", "-map", "0:a:0?", "-c", "copy"]
+    else:
+        args = [*(["-vf", scale_filter(size)] if size else []), "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                *rate_args(meta), *AUDIO_ARGS]
+    # a source and a destination that are one file are written beside and swapped in
+    tmp = dst_p.with_name(f".{dst_p.stem}.norm{dst_p.suffix}") if src_p.resolve() == dst_p.resolve() else dst_p
+    res = ffsafe.run(
+        ["ffmpeg", "-y", "-i", str(src_p), *args, *FRAME_CAP_ARGS, "-map_metadata", "-1", "-map_chapters", "-1", str(tmp)],
+        timeout=300, text=True,
     )
-    if res.returncode != 0 or not dst_p.is_file():
+    if res.returncode != 0 or not tmp.is_file():
+        if tmp != dst_p:
+            tmp.unlink(missing_ok=True)
         raise RuntimeError(f"ffmpeg normalize failed on {src_p}: {res.stderr}")
+    if tmp != dst_p:
+        tmp.replace(dst_p)
     return dst_p
 
 
@@ -407,15 +383,15 @@ def trim(src: Path | str, dst: Path | str, start_ms: int, end_ms: int, max_side:
             vf = scale_filter(size)
     except ValueError:
         rate = []  # ffmpeg below names the problem
-    res = subprocess.run(
+    res = ffsafe.run(
         [
             "ffmpeg", "-y", "-ss", f"{start_ms / 1000:.3f}", "-i", str(src_p),
             "-t", f"{(end_ms - start_ms) / 1000:.3f}",
             "-vf", vf,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", *rate,
-            *AUDIO_ARGS, "-movflags", "+faststart", str(dst_p),
+            *AUDIO_ARGS, *FRAME_CAP_ARGS, "-movflags", "+faststart", str(dst_p),
         ],
-        capture_output=True, text=True, timeout=300, check=False,
+        timeout=300, text=True,
     )
     if res.returncode != 0 or not dst_p.is_file():
         raise RuntimeError(f"ffmpeg trim failed on {src_p}: {res.stderr}")
@@ -427,24 +403,10 @@ def to_y4m(src: Path | str, dst: Path | str, seconds: float = 6.0) -> Path:
     src_p = Path(src)
     dst_p = Path(dst)
     dst_p.parent.mkdir(parents=True, exist_ok=True)
-    res = subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(src_p),
-            "-t",
-            str(seconds),
-            "-vf",
-            "scale=640:-2,fps=30",
-            "-pix_fmt",
-            "yuv420p",
-            str(dst_p),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=180,
-        check=False,
+    res = ffsafe.run(
+        ["ffmpeg", "-y", "-i", str(src_p), "-t", str(seconds), "-vf", "scale=640:-2,fps=30", "-pix_fmt", "yuv420p",
+         *FRAME_CAP_ARGS, str(dst_p)],
+        timeout=180, text=True,
     )
     if res.returncode != 0 or not dst_p.is_file():
         raise RuntimeError(f"ffmpeg to_y4m failed on {src_p}: {res.stderr}")

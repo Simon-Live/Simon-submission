@@ -13,7 +13,7 @@ import json
 from auth_support import authenv, get, post, sign_in  # noqa: F401  (authenv: a fixture used by name)
 from part7 import auth, chain, group, labels, modules, processor, runner
 from part7.parts import p3_skeleton, probe
-from support import Api, ffmpeg_video, make_lock
+from support import Api, ffmpeg_video, make_lock, published
 from test_server import _fake_follower, _fake_trainer, _upload
 from test_trainer_chain_and_harness import seams, step  # noqa: F401  (seams: a fixture used by name)
 
@@ -404,6 +404,7 @@ def test_labels_never_list_an_only_me_entry_to_anyone_but_its_owner(api: Api) ->
     labels.set_floor_work(api.app.state, "plank", True)  # floor work, no tags or notes
     labels.set_floor_work(api.app.state, "bridge", True)
     labels.save(api.app.state, "bridge", {"tags": ["glutes"], "notes": ""})
+    published(api.app.state, "plank", "bridge")  # both public; "only me" then hides plank
     assert post(api, "api/me/entries/plank", {"only_me": True}, cookie=ada)[0] == 200
     mark = {"tags": [], "notes": "", "floor_work": True}
     for cookie in (None, grace):

@@ -233,7 +233,7 @@ def test_an_answer_with_receipt_and_clip_links(asked: tuple[Api, FakeTransport])
     assert status == 200 and doc["status"] == "ok" and doc["dropped"] == 0
     assert doc["text"] == "Trunk lean forward is new in take 2." and doc["claims"][0]["cites"][0]["clip"] == f"api/me/history/{ENTRY}/takes/{SECOND}/clip.mp4"
     assert doc["usage"] == {"input_tokens": 20_000, "cached_tokens": 10_000, "output_tokens": 500, "usd": 0.016125}  # cached_tokens reported
-    assert doc["reach"] == {"takes": 2, "movements": 1, "left_out": 0, "video": False} and doc["remaining"] == 19
+    assert doc["reach"] == {"takes": 2, "movements": 1, "left_out": 0, "video": False}
     sent = doc["sent"]  # the allowlisted receipt (TICKET-212): counts and words, never a path, id or email
     assert sent["feature"] == "ask" and sent["settled"] and sent["input_tokens"] == 20_000 and sent["digest_takes"] == [1, 2] and sent["clip_takes"] == []
     assert history_receipt.leaks(sent, str(api.app.state), USER, "@", FIRST, SECOND) == []  # negative
@@ -283,18 +283,6 @@ def test_a_failed_call_is_a_plain_message(asked: tuple[Api, FakeTransport]) -> N
     fake.fail = "respond"
     status, doc = _post(api, {"question": "is my score up?"})
     assert (status, doc["status"], doc["message"]) == (200, "failed", history_ask.MSG_FAILED) and "500" not in json.dumps(doc)
-
-
-def test_daily_limit_defaults_to_20_and_follows_the_env(asked: tuple[Api, FakeTransport], monkeypatch: pytest.MonkeyPatch) -> None:  # AC-5
-    api, fake = asked
-    assert history_ask.daily_limit() == 20
-    monkeypatch.setenv(history_ask.DAILY_ENV, "2")
-    assert [_post(api, {"question": "is my score up?"})[0] for _ in range(3)] == [200, 200, 429]
-    assert len(fake.bodies) == 2
-    status, info = api.json("GET", BASE, headers=_as(USER))
-    assert (status, info["limit"], info["remaining"]) == (200, 2, 0)
-    monkeypatch.setenv(history_ask.DAILY_ENV, "junk")
-    assert history_ask.daily_limit() == 20
 
 
 def test_one_question_at_a_time_gets_409_with_a_retry_hint(asked: tuple[Api, FakeTransport]) -> None:  # AC-8
@@ -358,10 +346,7 @@ def test_every_refusal_carries_a_stable_code(asked: tuple[Api, FakeTransport], w
     world.opted_in.add(OTHER)
     status, body = _post(api, {"question": "is my score up?"}, user=OTHER)
     assert status == 422 and body["code"] == "too_few_takes"
-    monkeypatch.setenv(history_ask.DAILY_ENV, "1")
     assert _post(api, {"question": "is my score up?"})[0] == 200
-    status, body = _post(api, {"question": "is my score up?"})
-    assert status == 429 and body["code"] == "daily_limit"
 
 
 def test_busy_409_has_its_own_code_not_the_consent_one(asked: tuple[Api, FakeTransport]) -> None:  # AC-8

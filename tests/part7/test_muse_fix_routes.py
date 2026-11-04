@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from history_support import OTHER, USER, World, world  # noqa: F401
-from part7 import delete_routes, history_store, muse_fix, muse_fix_inputs, muse_fix_routes as routes
+from part7 import delete_routes, history_store, muse_fix, muse_fix_inputs, muse_fix_measure, muse_fix_routes as routes
 from support import Api
 from test_muse_fix import PNG, Fake
 
@@ -73,6 +73,9 @@ def fake_run(env: Env, status: str = "shown"):
 
 @pytest.fixture()
 def env(api: Api, world: World, monkeypatch: pytest.MonkeyPatch) -> Env:  # noqa: F811
+    monkeypatch.setattr(muse_fix_measure, "available", lambda: True)
+    monkeypatch.setattr(muse_fix_measure, "reachable", lambda: True)
+    monkeypatch.setattr(muse_fix, "DRAW_ENABLED", True)  # shipped off (release 14); these are the routes of the feature
     e = Env(api, world)
     monkeypatch.setattr(muse_fix, "run", fake_run(e))
     return e
@@ -112,11 +115,49 @@ def test_a_miss_shows_only_the_plain_message_and_no_image(env: Env, monkeypatch:
     assert env.get("/image")[0] == 404 and state["referee"] is None
 
 
+def test_a_host_that_cannot_check_refuses_up_front_and_says_so(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:  # H1
+    consent(env.api)
+    monkeypatch.setattr(muse_fix_measure, "available", lambda: False)
+    status, doc = env.post("image")
+    assert status == 409 and doc["code"] == "no_check" and doc["message"] == muse_fix.NO_CHECK
+    env.settle()
+    state = env.get()[1]
+    assert env.runs == [] and state["can_draw"] is False and state["no_check"] is True
+    assert not muse_fix.folder(env.dir).exists()
+
+
+def test_with_the_switch_off_nothing_is_offered_paid_or_shown(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:  # R14 switch
+    consent(env.api)
+    assert env.post("image")[0] == 202
+    env.settle()
+    assert env.get()[1]["card"]["status"] == "shown" and env.api.request("GET", f"api/jobs/{env.id}/muse-fix/image", headers={"X-Test-User": USER})[0] == 200  # an older picture, while the switch was on
+    monkeypatch.setattr(muse_fix, "DRAW_ENABLED", False)
+    env.runs.clear()
+    status, doc = env.post("image")
+    assert status == 409 and doc["code"] == "no_check" and doc["message"] == muse_fix.SWITCHED_OFF
+    state = env.get()[1]
+    assert env.runs == [] and state["can_draw"] is False and state["no_check"] is True and state["no_check_reason"] == muse_fix.SWITCHED_OFF
+    assert state["card"] is None and state["image"] is None and state["referee"] is None and env.get("/image")[0] == 404
+    status, doc = env.post("referee")  # R14b B4: the older shown picture does not let the paid referee trial run
+    assert status == 409 and doc["code"] == "no_check" and doc["message"] == muse_fix.SWITCHED_OFF
+    env.settle()
+    assert env.runs == []
+
+
+def test_modal_that_cannot_be_reached_refuses_before_anything_is_paid(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:  # R1
+    consent(env.api)
+    monkeypatch.setattr(muse_fix_measure, "reachable", lambda: False)
+    status, doc = env.post("image")
+    assert status == 409 and doc["code"] == "no_check" and doc["message"] == muse_fix.NO_ROUTE
+    env.settle()
+    assert env.runs == [] and not muse_fix.folder(env.dir).exists()
+
+
 def test_owner_only_401_signed_out_404_other_user_403_without_origin(env: Env) -> None:
     consent(env.api)
     assert env.get(user=None)[0] == 401 and env.get("/image", None)[0] == 401 and env.post("image", None, headers={"Origin": f"http://127.0.0.1:{env.api.port}"})[0] == 401
     assert env.get(user=OTHER)[0] == 404 and env.get("/image", OTHER)[0] == 404 and env.post("image", OTHER)[0] == 404
-    assert env.post("image", headers={"X-Test-User": USER})[0] == 403  # no same-origin header
+    assert env.post("image", headers={"X-Test-User": USER, "Origin": ""})[0] == 403  # no same-origin header
     assert env.api.json("GET", "api/jobs/ffffffffffff/muse-fix", headers={"X-Test-User": USER})[0] == 404
     assert env.post("bogus")[0] == 400
     assert env.runs == []

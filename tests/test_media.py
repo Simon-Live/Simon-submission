@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 import subprocess
 import pytest
 
 from part7 import media
+
+
+def _frame_hashes(path: Path) -> str:
+    done = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:v:0", "-f", "md5", "-c", "copy", "-"],
+                          capture_output=True, text=True, check=True)
+    return done.stdout.strip()
 
 
 def _make_sample_mp4(dst: Path, duration_s: float = 2.0) -> Path:
@@ -73,10 +78,10 @@ def test_probe_and_clamp(tmp_path: Path) -> None:
 
 def test_normalize_preserves_h264_mp4_and_transcodes_webm(tmp_path: Path) -> None:
     mp4 = _make_sample_mp4(tmp_path / "orig.mp4", duration_s=1.2)
-    orig_sha = hashlib.sha256(mp4.read_bytes()).hexdigest()
-
     norm_mp4 = media.normalize(mp4, tmp_path / "out_copy.mp4")
-    assert hashlib.sha256(norm_mp4.read_bytes()).hexdigest() == orig_sha
+    # APP-M2: a remux (stream copy, tags stripped), not a file copy; the coded frames are the source's
+    assert _frame_hashes(norm_mp4) == _frame_hashes(mp4)
+    assert media.probe(norm_mp4)["codec"] == "h264"
 
     webm = _make_sample_webm(tmp_path / "orig.webm", duration_s=1.2)
     norm_from_webm = media.normalize(webm, tmp_path / "from_webm.mp4")

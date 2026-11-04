@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from history_support import ENTRY, FIRST, OTHER, SECOND, USER, World, record_two, world  # noqa: F401
-from part7 import history_ask, history_receipt, history_store, take_ask
+from part7 import history_receipt, history_store, take_ask
 from part7.parts import p5_ask
 from support import Api
 
@@ -66,7 +66,7 @@ def test_an_answer_carries_its_source_and_the_players_actions(asked: tuple[Api, 
                               {"tool": "spotlight", "t": 0.9, "limb": "torso", "joints": ["left_shoulder", "right_shoulder"]}]
     assert doc["tool_calls"] == [{"name": "get_faults", "ok": True}, {"name": "seek", "ok": True}]  # names only: no result bodies on the page
     assert fake.calls == [{"question": "when does my trunk lean show up?", "analysis": "analysis.json", "replay": "replay.json"}]
-    assert doc["usage"]["usd"] == 0.0123 and doc["remaining"] == 19
+    assert doc["usage"]["usd"] == 0.0123
 
 
 def test_the_receipt_names_what_was_sent_and_leaks_nothing(asked: tuple[Api, FakePart5]) -> None:
@@ -164,21 +164,10 @@ def test_part7_writes_no_spend_line_of_its_own(asked: tuple[Api, FakePart5]) -> 
     assert not (api.app.state / "history" / "spend.jsonl").exists()
 
 
-def test_the_daily_limit_has_its_own_count(asked: tuple[Api, FakePart5], monkeypatch: pytest.MonkeyPatch) -> None:
-    api, _ = asked
-    assert take_ask.daily_limit() == 20
-    monkeypatch.setenv(take_ask.DAILY_ENV, "1")
-    assert _post(api, {"question": "when does my trunk lean show up?"})[0] == 200
-    status, doc = _post(api, {"question": "where do I look first?"})
-    assert status == 429 and doc["code"] == "daily_limit"
-    monkeypatch.setenv(take_ask.DAILY_ENV, "junk")
-    assert take_ask.daily_limit() == 20 and history_ask.asked_today(api.app.state, USER) == 0  # the history box keeps its own count
-
-
 def test_info_gives_questions_from_this_takes_faults(asked: tuple[Api, FakePart5]) -> None:
     api, _ = asked
     status, doc = _get(api)
-    assert status == 200 and doc["can_ask"] and doc["max_chars"] == 200 and doc["remaining"] == 20
+    assert status == 200 and doc["can_ask"] and doc["max_chars"] == 200
     assert doc["suggestions"][0] == "When does my trunk lean forward show up in this take?" and len(doc["suggestions"]) == 3
     assert _get(api, job=FIRST)[1]["suggestions"][0] == "What is the biggest thing to fix in this take?"
 

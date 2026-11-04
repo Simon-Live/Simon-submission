@@ -129,6 +129,12 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0].lstrip("/")
         if path == "api/challenges" or path.startswith("api/challenges/"):
             return fake_challenges.get(self, self.path)
+        if path == "api/policy":  # a non-prod server: every switch on (without it the app reads a failed load and hides sponsored boards)
+            switches = {k: True for k in ("face_copy", "rehab", "trainer_public", "prize_boards", "byok_ranked", "mms_tts", "muse")}
+            return self.send(200, {"prod": False, "switches": switches, "phrasing_live": False, "age": {"minimum": 13, "adult": 18},
+                                   "consent": {"required": False, "version": None, "items": [], "header": "X-Simon-Consent"}})
+        if path in ("api/boards", "api/me/boards") or (path.startswith("api/movements/") and path.endswith("/boards")):
+            return fake_challenges.boards(self, self.path)
         if path.startswith("__harness/"):  # harness pages beside the tests, served at /__harness/<file>
             page = (Path(__file__).resolve().parent / "harness" / path[len("__harness/"):]).resolve()
             ok = page.is_file() and page.parent == (Path(__file__).resolve().parent / "harness")

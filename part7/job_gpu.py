@@ -6,7 +6,7 @@ functions below; a folder no running job owns (a check, a test, a lane script) r
 
 Fields written on the job record, never a pid or a path:
 
-- `wait`: `{"since": <UTC ISO time>, "reason": "another take" | "other GPU work"}` while the job waits in GPU
+- `wait`: `{"since": <UTC ISO time>, "reason": "another take" | "other GPU work" | "gpu queue"}` while the job waits in GPU
   admission, else null. A take that goes on waiting for the warm worker of its stage (TICKET-320, `warm_wait`) keeps
   the start of its first wait, and says `another take` while it waits for that worker outside admission.
 - `worker`: `"warm"` once the 3D step leased the warm Part 2 worker, `"cold"` when it ran the slower per-call path
@@ -22,6 +22,7 @@ from typing import Any, Callable
 
 ANOTHER_TAKE = "another take"
 OTHER_WORK = "other GPU work"
+GPU_QUEUE = "gpu queue"  # serverless: Modal has not started the call yet (serverless-compute.md AC-SC7)
 WARM = "warm"
 COLD = "cold"
 COLD_BUSY = "busy"  # another take holds the warm worker

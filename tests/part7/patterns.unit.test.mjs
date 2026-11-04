@@ -12,7 +12,7 @@ test("the button needs 3 takes and the url is the entry's", () => {
 });
 
 test("each status has a plain state", () => {
-  for (const [s, k] of [[202, "waiting"], [401, "signedout"], [404, "missing"], [409, "consent"], [422, "few"], [429, "limit"], [500, "error"]]) {
+  for (const [s, k] of [[202, "waiting"], [401, "signedout"], [404, "missing"], [409, "consent"], [422, "few"], [500, "error"]]) {
     assert.equal(M.patternsState(s).kind, k);
     assert.ok(M.patternsState(s).message.length > 10);
   }

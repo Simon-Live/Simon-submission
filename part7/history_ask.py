@@ -13,7 +13,6 @@ from __future__ import annotations
 from datetime import datetime
 import hashlib
 import json
-import os
 import re
 import threading
 import time
@@ -27,7 +26,6 @@ PROMPT_VERSION = "ask.v4"  # v4: a digest carries `shown`, the score the student
 FEATURE = "ask"
 SCHEMA_NAME = "simon_history_ask_v1"
 QUESTION_MAX = 200
-DAILY_ENV, DAILY_DEFAULT = "SIMON7_HISTORY_QA_DAILY", 20
 RUNS_FILE = "ask_runs.jsonl"
 BUDGET_TOKENS = 250_000
 CHARS_PER_TOKEN = 4
@@ -39,7 +37,6 @@ MSG_EMPTY = "Type a question first."
 MSG_LONG = f"Keep your question under {QUESTION_MAX} characters."
 MSG_FEW = "Record at least 2 takes first, then ask about them."
 MSG_BUSY = "Simon is answering another question. Try again in a few seconds."
-MSG_LIMIT_FMT = "You have asked {n} questions today. Try again tomorrow."
 MSG_FAILED = "Simon could not answer just now. Try again in a moment."
 
 INSTRUCTIONS = (
@@ -110,16 +107,6 @@ def question_problem(question: Any, words: dict[str, Any] | None = None) -> tupl
     if (banned and banned.search(clean)) or _STEERING.search(clean):
         return None, MSG_REFUSED
     return clean, None
-
-
-def daily_limit() -> int:
-    """Questions per user per UTC day: SIMON7_HISTORY_QA_DAILY when it holds a positive integer, else DAILY_DEFAULT.
-    A rate limit against runaway use, not a spend cap (spend caps are off by default)."""
-    try:
-        value = int(os.environ.get(DAILY_ENV, ""))
-    except ValueError:
-        return DAILY_DEFAULT
-    return value if value > 0 else DAILY_DEFAULT
 
 
 def asked_today(state: Path, user: str, now: float | None = None) -> int:
@@ -281,16 +268,17 @@ def _result(base: dict[str, Any], **fields: Any) -> dict[str, Any]:
 
 def run_question(state: Path, user: str, question: Any, name_of: Callable[[str], str],
                  clip_url: Callable[[str, str], str | None], now: float | None = None) -> dict[str, Any]:
-    """The answer to one question as a plain dict; `history_report.Refused` (or `Busy`) for 400, 409, 422 and 429."""
+    """The answer to one question as a plain dict; `history_report.Refused` (or `Busy`) for 400, 409 and 422."""
     state = Path(state)
+    if history_ask_guard.crisis(question):  # reels 3.10: a fixed crisis answer first, no model call, not counted
+        return history_ask_guard.crisis_reply(claims=[], dropped=0)
     if not history_store.retention_opt_in(state, user):
         raise history_report.Refused(409, history_report.MSG_CONSENT, "consent_required")
     words = history_guard.load_words()
     clean, message = question_problem(question, words)
     if clean is None:
         if message == MSG_REFUSED:  # no model call and not counted against the day
-            return {"status": "refused", "text": None, "claims": [], "dropped": 0, "message": message, "usage": None,
-                    "remaining": max(0, daily_limit() - asked_today(state, user, now))}
+            return {"status": "refused", "text": None, "claims": [], "dropped": 0, "message": message, "usage": None}
         raise history_report.Refused(400, message or MSG_EMPTY, "invalid_question")
     entries = gather(state, user, name_of)
     if sum(len(e["rows"]) for e in entries) < MIN_TAKES:
@@ -299,15 +287,12 @@ def run_question(state: Path, user: str, question: Any, name_of: Callable[[str],
     if not _LOCK.acquire(blocking=False):
         raise Busy(409, MSG_BUSY, "busy")
     try:
-        limit = daily_limit()
-        if asked_today(state, user, now) >= limit:
-            raise history_report.Refused(429, MSG_LIMIT_FMT.format(n=limit), "daily_limit")
+        history_report.muse_gate("ask_history", user, state)
         with history_store.locked(state):
             history_report.note_run(state, user, now, RUNS_FILE)
         packed = pack(entries, clean)
         sent = {"takes": packed["takes_sent"], "movements": packed["movements"], "left_out": packed["left_out"], "video": False}
-        base = {"claims": [], "dropped": 0, "text": None, "reach": sent, "prompt_version": PROMPT_VERSION,
-                "remaining": max(0, limit - asked_today(state, user, now))}
+        base = {"claims": [], "dropped": 0, "text": None, "reach": sent, "prompt_version": PROMPT_VERSION}
         try:
             text, usage = history_api.ask(packed, state=state)
         except history_api.HistoryError as exc:

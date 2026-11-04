@@ -63,27 +63,27 @@ def test_without_owners_every_take_is_its_own_follower(tmp_path: Path) -> None:
 
 
 def test_an_entry_with_no_takes(tmp_path: Path) -> None:  # AC-C6
-    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW)["class_table"] == {
-        "follower_count": 0, "takes_7d": 0, "window_days": 7, "top_cue": None, "seeded": False}
+    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW, with_followers=True)["class_table"] == {
+        "follower_count": 0, "takes_7d": 0, "window_days": 7, "top_cue": None, "seeded": False, "followers": []}
+    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW)["class_table"] is None  # anyone but the owner (private-default D3)
 
 
 def test_an_entry_with_a_single_take(tmp_path: Path) -> None:  # AC-C6
     _job(tmp_path, "a00000000001", at="2026-11-01T10:00:00Z", score=_score(66, "C", [_window("Knees out", "Knees out")]))
-    table = teacher_stats.page(tmp_path, ENTRY, {"a00000000001": "user-ada"}, NOW)["class_table"]
+    table = teacher_stats.page(tmp_path, ENTRY, {"a00000000001": "user-ada"}, NOW, with_followers=True)["class_table"]
     assert table == {"follower_count": 1, "takes_7d": 1, "window_days": 7, "top_cue": {"text": "Knees out", "followers": 1},
-                     "seeded": False}
-    assert teacher_stats.page(tmp_path, ENTRY, {"a00000000001": "user-ada"}, NOW, with_followers=True)["class_table"]["followers"] == []
+                     "seeded": False, "followers": []}
 
 
 def test_a_take_with_no_cues_gives_no_top_cue(tmp_path: Path) -> None:
     _job(tmp_path, "a00000000001", at="2026-11-01T10:00:00Z", score=_score(90, "A"))
-    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW)["class_table"]["top_cue"] is None
+    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW, with_followers=True)["class_table"]["top_cue"] is None
 
 
 def test_a_tie_goes_to_the_first_cue_in_text_order(tmp_path: Path) -> None:
     _job(tmp_path, "a00000000001", at="2026-11-01T10:00:00Z", score=_score(70, "C", [_window("Zed cue")]))
     _job(tmp_path, "b00000000001", at="2026-11-01T11:00:00Z", score=_score(70, "C", [_window("Alpha cue")]))
-    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW)["class_table"]["top_cue"] == {"text": "Alpha cue", "followers": 1}
+    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW, with_followers=True)["class_table"]["top_cue"] == {"text": "Alpha cue", "followers": 1}
 
 
 def test_the_seven_day_window_edges_and_bad_times() -> None:  # AC-C3
@@ -97,9 +97,11 @@ def test_private_takes_never_reach_the_table(api: Api) -> None:  # AC-C7
     root = api.app.queue.root
     _job(root, "a00000000001", score=_score(64, "C", [_window("Keep your chest up")]))
     _job(root, "b00000000001", score=_score(91, "A", [_window("Secret cue")]), private=True)
+    table = teacher_stats.page(root, ENTRY, {}, NOW, with_followers=True)["class_table"]
+    assert table["follower_count"] == 1
     status, doc = api.json("GET", f"api/teacher/{ENTRY}")
-    assert status == 200 and doc["class_table"]["follower_count"] == 1
-    assert "Secret cue" not in json.dumps(doc)
+    assert status == 200 and doc["take_count"] == 1
+    assert "Secret cue" not in json.dumps(doc) and "Secret cue" not in json.dumps(table)
 
 
 def test_the_table_reads_only_the_kept_takes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # AC-C7
@@ -127,7 +129,7 @@ def test_seeded_takes_are_labelled_and_grouped_by_seed_follower(tmp_path: Path) 
 
 def test_a_synthetic_analysis_alone_marks_the_table_seeded(tmp_path: Path) -> None:  # AC-C8
     _job(tmp_path, "a00000000001", analysis={"status": {"code": "ok"}, "score": _score(60, "D"), "synthetic": True})
-    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW)["class_table"]["seeded"] is True
+    assert teacher_stats.page(tmp_path, ENTRY, {}, NOW, with_followers=True)["class_table"]["seeded"] is True
 
 
 def _class_world(api: Api) -> dict[str, Any]:
@@ -168,9 +170,8 @@ def test_another_account_and_a_follower_get_aggregates_only(api: Api) -> None:  
     for who in ("other", "ada"):  # a stranger, and a follower who is in the table
         status, _, doc = get(api, f"api/teacher/{ENTRY}", cookie=world["sids"][who])
         assert status == 200 and doc["attribution"]["mine"] is False
-        assert set(doc["class_table"]) == {"follower_count", "takes_7d", "window_days", "top_cue", "seeded"}
-        assert doc["class_table"]["follower_count"] == 3 and doc["class_table"]["top_cue"]["followers"] == 3
-        assert "followers" not in doc["class_table"]
+        # private-default D3 (operator ruling 2026-11-03): no class table, no cue, no row; the count of shared takes only
+        assert doc["class_table"] is None and doc["takes"] == [] and doc["cue_counts"] == [] and doc["take_count"] == 6
         text = json.dumps(doc["class_table"])
         for field in PER_FOLLOWER:
             assert field not in text, (who, field)  # negative: no per-follower field reaches anyone but the owner
@@ -182,8 +183,7 @@ def test_another_account_and_a_follower_get_aggregates_only(api: Api) -> None:  
 def test_signed_out_gets_aggregates_only_and_no_401(api: Api) -> None:  # AC-C11
     _class_world(api)
     status, _, doc = get(api, f"api/teacher/{ENTRY}")
-    assert status == 200 and "followers" not in doc["class_table"]
-    assert doc["class_table"]["follower_count"] == 3 and isinstance(doc["class_table"]["takes_7d"], int)  # real clock here
+    assert status == 200 and doc["class_table"] is None and doc["take_count"] == 6  # private-default D3: no time at all
     for field in PER_FOLLOWER:
         assert field not in json.dumps(doc["class_table"])
 
@@ -193,7 +193,7 @@ def test_the_owner_flag_fails_closed(api: Api, monkeypatch: pytest.MonkeyPatch) 
     from part7 import attribution
     monkeypatch.setattr(attribution, "payload", lambda *_: (_ for _ in ()).throw(RuntimeError("store down")))
     status, doc = api.json("GET", f"api/teacher/{ENTRY}")
-    assert status == 200 and "followers" not in doc["class_table"]
+    assert status == 200 and doc["class_table"] is None and doc["takes"] == []
 
 
 def test_follow_owners_reads_only_follow_takes_of_the_entry(api: Api) -> None:

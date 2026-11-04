@@ -5,22 +5,55 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
+import secrets
 import signal
 import socket
 import subprocess
+import threading
 import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from part7 import config, modules, runner
+from part7 import applog, config, entry_access, modules, runner
+
+SLUG_MAX = 40  # Part 6 catalog.SLUG_MAX
+ID_RETRIES = 8  # Part 6 catalog.ID_RETRIES
+
+
+PORT_ENV = "SIMON7_P6_PORT"  # prod/up.sh passes the firm's PROD_INTERNAL_PORT here (go-live contract C2)
 
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def port_problem(env: Any = None) -> str | None:
+    """Why `SIMON7_P6_PORT` cannot be Part 6's port, or None. In prod it must be set: the egress table refuses every
+    loopback port it does not declare, so a random port would leave the app unable to reach its own child (B-H1)."""
+    source = os.environ if env is None else env
+    raw = str(source.get(PORT_ENV, "")).strip()
+    if not raw:
+        if source.get("FIRM_ENV", "") == "prod":
+            return f"{PORT_ENV} is not set; in prod Part 6 listens on the internal port the firm allows (PROD_INTERNAL_PORT)"
+        return None
+    if not raw.isdigit() or not 1024 <= int(raw) <= 65535:
+        return f"{PORT_ENV} is not a port number from 1024 to 65535"
+    return None
+
+
+def configured_port(env: Any = None) -> int:
+    """Part 6's port from `SIMON7_P6_PORT`, 0 when unset outside prod (a free port is picked at spawn).
+    Raises `RuntimeError` naming the problem when the value is bad, or missing in prod."""
+    problem = port_problem(env)
+    if problem:
+        raise RuntimeError(problem)
+    raw = str((os.environ if env is None else env).get(PORT_ENV, "")).strip()
+    return int(raw) if raw else 0
 
 
 def _normalize_simon6_base(base_path: str | None) -> str:
@@ -33,6 +66,17 @@ def _normalize_simon6_base(base_path: str | None) -> str:
     if b == "/catalog" or b.endswith("/catalog"):
         return b
     return b + "/catalog"
+
+
+def _pump(src: Any, sink: Any) -> None:
+    """Copy the Part 6 child's output to part6.log line by line, each with `applog.scrub` (no account id, no movement
+    name: data-integrity DI-R1). Ends with the child's output, or when the log is closed (`stop`)."""
+    try:
+        for raw in iter(src.readline, b""):
+            sink.write(applog.scrub(raw.decode("utf-8", "replace")).encode("utf-8"))
+            sink.flush()
+    except (OSError, ValueError):  # the log was closed by `stop`
+        return
 
 
 class Child:
@@ -63,8 +107,8 @@ class Child:
 
         self.base_path = _normalize_simon6_base(base_path)
         self.follow_url = follow_url
-        self._requested_port = int(port)
-        self.port: int = int(port)
+        self._requested_port = int(port) or configured_port()  # the Watch proxy reads `port`, so both use this one
+        self.port: int = self._requested_port
         self.max_recordings = int(max_recordings)
         self._lock = lock
         self._parts_state = parts_state
@@ -131,10 +175,11 @@ class Child:
             cwd=str(clone6),
             env=env,
             stdin=subprocess.DEVNULL,
-            stdout=self._log_handle,
+            stdout=subprocess.PIPE,  # DI-R1: through `_pump`, so no movement name reaches part6.log
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        threading.Thread(target=_pump, args=(self._proc.stdout, self._log_handle), name="part6-log", daemon=True).start()
 
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
@@ -176,6 +221,14 @@ class Child:
             except OSError:
                 pass
             self._log_handle = None
+
+    def running(self) -> bool:
+        """True while the child process this object started is alive (part6_supervisor.py)."""
+        return self._proc is not None and self._proc.poll() is None
+
+    def returncode(self) -> int | None:
+        """The exit code of the child this object started, None while it runs or when none was started."""
+        return None if self._proc is None else self._proc.poll()
 
     def ensure_running(self) -> bool:
         """Return True when the child is healthy; if it exited, restart it at most once."""
@@ -324,8 +377,10 @@ def import_entry(
     work: Path | str,
     lock: modules.Modules | None = None,
     state: Path | str | None = None,
+    entry_id: str | None = None,
 ) -> tuple[runner.Step, dict[str, Any] | None]:
-    """Import an entry folder into `catalog_dir` using Part 6's `import` CLI with `--part` flags."""
+    """Import an entry folder into `catalog_dir` using Part 6's `import` CLI with `--part` flags; as `entry_id` when
+    given (`--id`, refused by Part 6 when taken), else Part 6 makes the id from the name."""
     lk = lock or modules.load()
     clone = lk.path("6")
     work_p = Path(work)
@@ -346,6 +401,8 @@ def import_entry(
     ]
     for kind, part_num in part_map.items():
         argv.extend(["--part", f"{kind}={int(part_num)}"])
+    if entry_id is not None:
+        argv.extend(["--id", entry_id])
 
     step = runner.run(
         6,
@@ -363,3 +420,21 @@ def import_entry(
         except json.JSONDecodeError:
             pass
     return (step, None)
+
+
+def slugify(name: str) -> str:
+    """Part 6's `catalog.slugify`: lowercase ASCII letters and digits, other runs become -, at most 40 characters."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:SLUG_MAX].strip("-")
+    return slug or "movement"
+
+
+def new_id(catalog_dir: Path | str, name: str, state: Path | str | None = None) -> str:
+    """A free entry id in Part 6's form (`catalog.new_id`: the name's slug, `-`, 8 random hex), chosen by Part 7 so
+    the movement's access row exists before Part 6 saves it (entry_access.Link.reserve, W-N1). With the app's `state`
+    an id whose access row already exists is not free either (app-surface R5)."""
+    rows = Path(state) / entry_access.FOLDER if state is not None else None
+    for _ in range(ID_RETRIES):
+        found = f"{slugify(name)}-{secrets.token_hex(4)}"
+        if not os.path.lexists(Path(catalog_dir) / found) and not (rows and os.path.lexists(rows / f"{found}.json")):
+            return found
+    raise RuntimeError("could not allocate an entry id")

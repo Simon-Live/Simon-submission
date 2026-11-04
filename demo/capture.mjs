@@ -122,8 +122,7 @@ try {
     await sleep(2500); m.at("list");
     await glide(page, 520, 1800); await sleep(900);
     await page.evaluate(() => window.scrollTo(0, 0)); await sleep(700);
-    await page.locator('[data-testid="kind-dance"]').click().catch(() => {}); await sleep(1800); m.at("filter");
-    await page.locator('[data-testid="kind-exercise"]').click().catch(() => {}); await sleep(1500);
+    await sleep(1800); m.at("filter"); // the header has no kind switch (TICKET-436); the library lists every kind
   });
 
   if (want("watch")) await segment(browser, "watch", async (page, m) => {

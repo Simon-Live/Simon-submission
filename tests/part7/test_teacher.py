@@ -7,7 +7,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from part7 import teacher_stats
+import pytest
+
+from auth_support import authenv, get, sign_in  # noqa: F401  authenv is a fixture
+from part7 import auth, teacher_stats
 from support import Api
 
 ENTRY = "lateral-raise"
@@ -22,9 +25,13 @@ def _window(*cues: str, tempo: str | None = None) -> dict[str, Any]:
 
 
 def _job(root: Path, job_id: str, *, score: Any = None, code: str = "ok", entry: str = ENTRY, kind: str = "follow",
-         status: str = "done", at: str = "2026-10-31T10:00:00Z", analysis: Any = "auto", **extra: Any) -> None:
+         status: str = "done", at: str = "2026-10-31T10:00:00Z", analysis: Any = "auto", shared: bool = True,
+         **extra: Any) -> None:
+    """A job folder; `shared` is the take owner's choice to show it to the movement's owner (private-default D3)."""
     folder = root / job_id
     (folder / "work" / "follower").mkdir(parents=True)
+    if shared:
+        teacher_stats.set_shared(folder, True)
     record = {"id": job_id, "kind": kind, "status": status, "entry_id": entry, "finished_at": at, "created_at": at, **extra}
     (folder / "job.json").write_text(json.dumps(record), encoding="utf-8")
     if analysis == "auto":
@@ -161,19 +168,26 @@ def test_cue_text_is_trimmed_and_cut(tmp_path: Path) -> None:
 
 
 # ----- the route ----------------------------------------------------------------------------------------
-def test_route_answers_takes_for_a_catalog_entry(api: Api) -> None:  # AC-T8
+@pytest.mark.usefixtures("authenv")
+def test_route_answers_takes_for_a_catalog_entry(api: Api) -> None:  # AC-T8, private-default D3
     _job(api.app.queue.root, "aaaaaaaaaaaa", score=_score(64, "C", [_window("Keep your chest up")]))
-    status, doc = api.json("GET", f"api/teacher/{ENTRY}")
-    assert status == 200
-    assert doc["takes"][0]["score"] == 64 and doc["cue_counts"] == [{"text": "Keep your chest up", "count": 1}]
-    assert "aaaaaaaaaaaa" not in json.dumps(doc) and doc["takes"][0]["n"] == 1
+    _job(api.app.queue.root, "bbbbbbbbbbbb", score=_score(91, "A", [_window("Not shared cue")]), shared=False)
+    owner = sign_in(api)
+    auth.identity(api.app).attach_entry(ENTRY, get(api, "api/auth/me", cookie=owner)[2]["user_id"], "")
+    status, _, doc = get(api, f"api/teacher/{ENTRY}", cookie=owner)
+    assert status == 200 and [t["score"] for t in doc["takes"]] == [64]  # the shared take only
+    assert doc["cue_counts"] == [{"text": "Keep your chest up", "count": 1}] and doc["take_count"] == 1
+    assert "aaaaaaaaaaaa" not in json.dumps(doc) and "Not shared cue" not in json.dumps(doc) and doc["takes"][0]["n"] == 1
+    status, anon = api.json("GET", f"api/teacher/{ENTRY}")  # everyone else: the count of shared takes, no row
+    assert status == 200 and anon["takes"] == [] and anon["cue_counts"] == [] and anon["class_table"] is None
+    assert anon["take_count"] == 1 and "64" not in json.dumps(anon["takes"])
 
 
 def test_route_empty_entry_is_200_with_no_takes(api: Api) -> None:
     status, doc = api.json("GET", "api/teacher/skel-only")
     assert status == 200 and doc.pop("attribution")["author"] is None  # an entry made signed out is unattributed
-    assert doc.pop("class_table")["follower_count"] == 0  # class-table.md
-    assert doc == {"entry": "skel-only", "takes": [], "cue_counts": []}
+    assert doc.pop("class_table") is None  # not the owner: no class table (private-default D3)
+    assert doc == {"entry": "skel-only", "takes": [], "cue_counts": [], "take_count": 0}
 
 
 def test_route_unknown_or_malformed_entry_is_404_and_never_traverses(api: Api) -> None:  # AC-T9
@@ -194,6 +208,7 @@ def test_a_private_take_is_left_out_of_the_public_page(api: Api) -> None:  # TIC
     root = api.app.queue.root
     _job(root, "aaaaaaaaaaaa", score=_score(64, "C", [_window("Keep your chest up")]))
     _job(root, "bbbbbbbbbbbb", score=_score(91, "A", [_window("Secret cue")]), private=True)
+    assert [t["score"] for t in teacher_stats.collect(root, ENTRY)["takes"]] == [64]  # even shared, a private take stays out
     status, doc = api.json("GET", f"api/teacher/{ENTRY}")
-    assert status == 200 and [t["score"] for t in doc["takes"]] == [64]
+    assert status == 200 and doc["take_count"] == 1
     assert "Secret cue" not in json.dumps(doc) and "bbbbbbbbbbbb" not in json.dumps(doc)

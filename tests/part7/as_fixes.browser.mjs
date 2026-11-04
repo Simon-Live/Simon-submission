@@ -22,6 +22,7 @@ for (let i = 0; i < 150; i++) {
   try { if ((await fetch(`${base}api/auth/me`)).ok && fs.existsSync(idFile)) break; } catch { await new Promise((r) => setTimeout(r, 150)); }
 }
 const job = fs.readFileSync(idFile, "utf8").trim(); // seeded take, not a real recording
+const tokens = JSON.parse(fs.readFileSync(`${idFile}.tokens.json`, "utf8")); // prod-data.md: the making device's creator tokens
 const EMAIL = "coach@example.com";
 const NAME = "Trainer Ada";
 const ENTRY = "lateral-raise";
@@ -52,7 +53,7 @@ const saved = (page) => page.waitForFunction(() => document.querySelector('[data
 try {
   const page = await newPage();
   await signIn(page);
-  assert.equal((await page.evaluate(async (j) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j }) })).status, job)), 200);
+  assert.equal((await page.evaluate(async ([j, t]) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j, creator_token: t }) })).status, [job, tokens[job]])), 200);
   ok("signed in as the seeded trainer and kept the seeded take");
 
   // 1. the header at 412 and 360: the Me link (the one entry point to the Me page) is tappable and nothing sits over it
@@ -115,11 +116,11 @@ try {
   assert.equal(await t(page, "follow-mode").getAttribute("data-value"), "rehab");
   assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[data-testid^="follow-mode-"]')].filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.testid)),
     ["follow-mode-rehab"], "the picker shows the saved mode selected, so a take never uses a mode the person cannot see");
-  await page.evaluate(() => localStorage.setItem("simon.mode", "dance"));
+  await page.evaluate(() => localStorage.setItem("simon.practice.mode", "dance"));
   await page.reload();
   await t(page, "follow-mode").waitFor();
   assert.equal(await t(page, "follow-mode").getAttribute("data-value"), "dance", "a mode the person picked wins over the profile");
-  await page.evaluate(() => localStorage.removeItem("simon.mode"));
+  await page.evaluate(() => localStorage.removeItem("simon.practice.mode"));
   const anon = await newPage();
   await anon.goto(`${base}#/follow/${ENTRY}`);
   await t(anon, "follow-mode").waitFor();
@@ -166,28 +167,18 @@ try {
   assert.equal(await t(anon, "follow-author").count(), 0, "negative: no trainer line on follow either");
   ok("the trainer line shows on watch and follow, only credited names, never unattributed");
 
-  // 5 and 8. share: ticks, preview equal to the viewer
+  // 5 and 8. share: "Share this result" makes a link whose viewer shows the movement name, the score and the faults
   await page.goto(`${base}#/result/${job}`);
-  await t(page, "share-take-open").tap();
-  assert.equal(await t(page, "share-score").isChecked(), true);
-  assert.equal(await t(page, "share-faults").isChecked(), true);
-  assert.equal(await t(page, "share-name").isChecked(), false);
-  assert.equal(await t(page, "share-clip").isChecked(), false);
-  await t(page, "share-preview").getByTestId("shared-faults").waitFor();
-  const previewTitle = await t(page, "share-preview").getByTestId("shared-title").innerText();
-  assert.notEqual(previewTitle, "Your result", "the preview shows the movement name");
-  await t(page, "share-faults").uncheck();
-  await page.waitForFunction(() => !document.querySelector('[data-testid="share-preview"] [data-testid="shared-faults"]'));
-  assert.equal(await t(page, "share-preview").getByTestId("shared-score").count(), 1);
-  await t(page, "share-create").tap();
+  await t(page, "action-share").tap();
+  await t(page, "share-days-7").tap();
   await t(page, "share-link").waitFor();
   const link = await t(page, "share-link").inputValue();
   const clean = await newPage({ width: 412, height: 915 }, false);
   await clean.goto(link);
   await t(clean, "shared-score").waitFor();
-  assert.equal(await text(clean, "shared-title"), previewTitle, "the viewer shows the title the preview showed");
-  assert.equal(await t(clean, "shared-faults").count(), 0, "negative: the unticked faults are not on the viewer page");
-  ok("share: ticks default to score and faults on, the preview matches the viewer, an unticked part is absent");
+  assert.notEqual(await text(clean, "shared-title"), "Your result", "the viewer shows the movement name");
+  assert.ok((await t(clean, "shared-faults").count()) > 0, "the faults are on the viewer page");
+  ok("share: Share this result makes a link whose viewer shows the movement name, score and faults");
 
   // 9 and 10. list: created date, Revoke all with a confirmation
   await page.goto(`${base}#/profile`);
@@ -201,7 +192,7 @@ try {
   await t(page, "share-revoke-all").tap();
   await t(page, "share-revoke-all-yes").tap();
   await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="share-state"]')].every((e) => e.textContent === "Revoked"));
-  assert.equal((await clean.request.get(`${base}api/shared/${link.split("#/shared/")[1]}`)).status(), 404, "revoked on the next request");
+  assert.equal((await clean.request.get(`${base}api/shared/${link.split("#/shared/")[1]}`)).status(), 410, "revoked on the next request");
   ok("share list: the created date, Revoke all asks first and ends every link");
   assert.deepEqual(errors, []);
 } finally {

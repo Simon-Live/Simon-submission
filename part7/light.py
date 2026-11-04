@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from part7 import quality_cap
+from part7 import ffsafe, quality_cap
 
 SAMPLE_FPS = 3
 TIMEOUT_S = 120
@@ -52,7 +52,7 @@ def measure(video: Path | str, *, ffmpeg: str = "ffmpeg") -> dict[str, Any] | No
     graph = f"fps={SAMPLE_FPS},signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-"
     argv = [ffmpeg, "-v", "error", "-nostdin", "-threads", "1", "-i", str(video), "-an", "-vf", graph, "-f", "null", "-"]
     try:
-        run = subprocess.run(argv, capture_output=True, text=True, timeout=TIMEOUT_S, check=False)
+        run = ffsafe.run(argv, timeout=TIMEOUT_S, text=True)
     except (OSError, subprocess.TimeoutExpired):
         return None
     if run.returncode != 0:

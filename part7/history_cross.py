@@ -139,11 +139,7 @@ class Runner:
         with self._lock:
             if job in self._active:
                 return ("accepted", self._active[job])
-            per_user, overall = history_report.daily_limit(), history_report.global_daily_limit()
-            if per_user is not None and history_report.runs_today(self.state, user_id, now) >= per_user:
-                raise history_report.Refused(429, history_report.MSG_LIMIT_FMT.format(n=per_user))
-            if overall is not None and history_report.global_runs_today(self.state, now) >= overall:
-                raise history_report.Refused(429, history_report.MSG_GLOBAL_LIMIT)
+            history_report.muse_gate("cross", user_id, self.state)
             with history_store.locked(self.state):  # a recap and a report count toward the same daily report cap
                 history_report._note_run(self.state, user_id, now)
             self._active[job] = "running"

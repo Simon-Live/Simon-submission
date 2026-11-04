@@ -96,8 +96,8 @@ test("uploadModel handles offline, a bad id and every status the server can answ
   const bad = await uploadModel({ name: "a.glb" }, {}, router({ "api/models": reply(201, { id: "../etc", status: "ready" }) }));
   assert.equal(bad.ok, false);
   for (const s of [400, 403, 411, 413, 415, 422, 429, 500]) assert.ok(errorText(s, null).length > 10, String(s));
-  assert.match(errorText(413, null), /100 MB/);
-  assert.match(errorText(429, null), /Delete one/);
+  assert.match(errorText(413, null), /85 MB/);
+  assert.doesNotMatch(errorText(429, null), /limit|Delete one/);
 });
 
 test("waitReady polls until ready, reports failed with the missing bones, and times out", async () => {

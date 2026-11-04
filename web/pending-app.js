@@ -1,5 +1,6 @@
 // The browser wiring of web/pending.js: IndexedDB, navigator.locks / BroadcastChannel, the real api and the client log.
 // One engine per page, created on first use; app.js starts it (purge, resume, triggers) and the take flow uses it.
+import { accountKnown, answerNeeded } from "./model/consent-store.js";
 import * as api from "./api.js";
 import { createLock, createPending, openIdbStore } from "./pending.js";
 import { requestOf } from "./take-request.js";
@@ -28,6 +29,7 @@ async function build() {
       createPeopleJob: (uploadId, trim) => api.createPeopleJob(uploadId, trim),
       createPeopleJobMode: (uploadId, trim, mode) => api.createPeopleJob(uploadId, trim, mode),
       createPeopleJobOn: (uploadId, trim, mode, runOn) => api.createPeopleJob(uploadId, trim, mode, runOn), // TICKET-364
+      createPeopleJobFor: (uploadId, trim, mode, runOn, role) => api.createPeopleJob(uploadId, trim, mode, runOn, role), // people.md AC-P24
       getJob: (id) => api.getJob(id),
       submitJob: (req, key) => api.submitJob(req, key),
       health: () => api.getHealth(),
@@ -37,6 +39,12 @@ async function build() {
     storage: globalThis.navigator && navigator.storage ? navigator.storage : null,
     channel: channel("simon-pending"),
     log: (level, event, detail) => api.clientLog(level, event, detail),
+    ensureAccount: async () => { // an upload starts only once api/auth/me has answered
+      if (!accountKnown()) await (await import("./auth.js")).fetchMe().catch(() => null);
+      return accountKnown();
+    },
+    needsAnswer: () => answerNeeded(), // a held take is marked instead of sent without a consent answer
+    isSignedIn: async () => (await (await import("./auth.js")).fetchMe()).signedIn === true, // loaded only when a take waits for it
   });
 }
 
@@ -49,6 +57,7 @@ export async function startPending(win = window) {
   await pending.purgeExpired();
   pending.trigger("start");
   win.addEventListener("online", () => pending.trigger("online"));
+  win.addEventListener("auth-changed", () => pending.trigger("auth")); // AC-OT10: signed in on this page
   win.document.addEventListener("visibilitychange", () => { if (win.document.visibilityState === "visible") pending.trigger("visible"); });
   pending.schedule();
   return pending;

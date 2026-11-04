@@ -11,7 +11,7 @@
   "description": "Source: \"Woman Doing Squat Exercise\", Pexels video 5034562 (https://www.pexels.com/video/5034562/), Pexels License. Made with Simon's trainer pipeline (Parts 1 to 4, Part 6) on 2026-11-04.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 6767,
-  "files_source": "import",
+  "files_source": "fixture",
   "provenance": {
     "keyframes": {
       "part": 1,

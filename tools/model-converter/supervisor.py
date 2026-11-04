@@ -68,6 +68,9 @@ TIMEOUT_S = 180
 MAX_GLB_BYTES = 120 * 1024 * 1024
 MAX_INPUT_BYTES = 400 * 1024 * 1024
 LOG_KEEP = 20_000
+MAX_LOG_BYTES = 8 * 1024 * 1024  # APP-L1: a converter that floods stderr is stopped, and the log is read from its end only
+LOG_TAIL_READ = 70_000
+LOG_TOO_BIG_MESSAGE = "The model converter wrote too much output and was stopped."
 POLL_S = 1.0
 MISSING_READINGS = 2  # consecutive "spool missing" readings before the supervisor exits (TICKET-379)
 IMAGE_CHECK_S = 60.0
@@ -103,6 +106,14 @@ def new_tag() -> str:
     return f"{RESULT_PREFIX}{secrets.token_hex(16)}:"
 
 
+def _tail_bytes(path: Path, size: int) -> bytes:
+    """The last `size` bytes of `path`."""
+    with open(path, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        fh.seek(max(0, fh.tell() - size))
+        return fh.read(size)
+
+
 def spool_label(spool: Path | str) -> str:
     return f"{SPOOL_LABEL}={hashlib.sha256(str(Path(spool).resolve()).encode()).hexdigest()}"
 
@@ -127,6 +138,8 @@ def container_argv(name: str, in_dir: str, filename: str, image: str, reader: st
         "--memory", "4g", "--memory-swap", "4g",
         "--cpus", "4",
         "--pids-limit", "256",
+        "--ulimit", "cpu=900", "--ulimit", "nofile=1024:1024", "--ulimit", "fsize=1073741824", "--ulimit", "core=0",
+        "--log-driver", "none",
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "--user", "65534:65534",
@@ -395,6 +408,8 @@ class Supervisor:
                     reason = "timeout"
                 elif out.stat().st_size > MAX_GLB_BYTES:
                     reason = "too-big"
+                elif errlog.stat().st_size > MAX_LOG_BYTES:
+                    reason = "log-flood"
                 if reason:
                     subprocess.run([docker_bin(), "kill", name], capture_output=True, timeout=30)
                     proc.kill()
@@ -403,7 +418,7 @@ class Supervisor:
                 if time.monotonic() - self.beat_at > BEAT_EVERY_S:  # a long chain must not look like a dead supervisor
                     self.heartbeat()
                 time.sleep(0.2)
-        data = errlog.read_bytes()
+        data = _tail_bytes(errlog, LOG_TAIL_READ)  # never the whole file: the jail's stderr is not trusted to be small
         tail = data[-LOG_KEEP:].decode("utf-8", "replace")
         # the tagged result line is the last line and may be up to 64 KB (run.sh caps it), longer than LOG_KEEP, so the
         # last 70 KB are read again to find it whole and append it to the kept tail (review R-f)
@@ -414,6 +429,8 @@ class Supervisor:
             return {"ok": False, "reason": "timeout", "message": TIMEOUT_MESSAGE}, tail
         if reason == "too-big":
             return {"ok": False, "reason": "too-big", "message": TOO_BIG_MESSAGE}, tail
+        if reason == "log-flood":
+            return {"ok": False, "reason": "too-big", "message": LOG_TOO_BIG_MESSAGE}, tail
         with open(out, "rb") as fh:
             magic = fh.read(4)
         if proc.returncode != 0 or magic != b"glTF":

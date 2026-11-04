@@ -6,7 +6,8 @@ import { narrationBox } from "./views/narration.js";
 
 export { inSection, cuesFor, MAX_PER_FAULT, TEXT } from "./model/narration.js";
 
-async function fetchDoc(entryId) {
+/** GET api/narration/<entry>, or null (none, or a failed load). Also the source of the watch page's captions. */
+export async function fetchDoc(entryId) {
   try {
     const res = await fetch(`api/narration/${encodeURIComponent(entryId)}`, { expectStatus: [404] }); // no narration is a normal answer, not reported
     return res.ok ? await res.json() : null;

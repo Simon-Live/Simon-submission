@@ -95,7 +95,7 @@ const cases = {
       return { rec: r(".bar-nav a"), auth: r('[data-testid="auth-link"]'), bar: r(".bar"), brand: r(".brand"), display: nav && getComputedStyle(nav).display, area: nav && getComputedStyle(nav).gridRowStart + "/" + getComputedStyle(nav).gridColumnStart };
     });
     assert.equal(row.display, "flex");
-    assert.equal(row.area, "1/3", "the nav keeps its grid cell");
+    assert.equal(row.area, "1/2", "the nav keeps its grid cell");
     assert.ok(Math.abs((row.rec.top + row.rec.height / 2) - (row.auth.top + row.auth.height / 2)) < 4, "Record and Sign in share one row");
     assert.ok(row.bar.height < 2 * row.brand.height + 40, `the header is one row (${row.bar.height}px)`);
     ok("anonymous: no sign-in prompt on home or record, upload and follow work unsigned");
@@ -203,7 +203,7 @@ const cases = {
     await tid(page, "me-retention").tap();
     await page.waitForFunction(() => document.querySelector('[data-testid="me-consent-note"]').textContent === "Saved.");
     const state = await getJson("__test/auth");
-    assert.deepEqual(state.consent["sam@example.com"], { retention: true, version: "retention-90-v3" });
+    assert.deepEqual(state.consent["sam@example.com"], { retention: true, version: "retention-90-v5" });
     await page.evaluate(() => { location.hash = "#/me"; location.reload(); });
     await tid(page, "me-retention").waitFor();
     assert.equal(await tid(page, "me-retention").isChecked(), true, "the choice survives a reload (read from the server)");
@@ -237,7 +237,7 @@ const cases = {
     await ctx.request.post(`${BASE}/api/me/claims`, { data: { job_id: "busy1" } });
     await page.evaluate(() => { location.hash = "#/keep/x"; location.hash = "#/me"; });
     await tid(page, "me-take-1").waitFor();
-    assert.match(await tid(page, "me-delete-card").textContent(), /A teacher's movement stays in the catalog/);
+    assert.match(await tid(page, "me-delete-card").textContent(), /A sample movement that ships with Simon stays/);
     await tid(page, "me-delete").tap();
     assert.equal(await tid(page, "me-delete-sure").isVisible(), true);
     assert.equal((await getJson("__test/auth")).deleted.length, 0, "negative: one tap deletes nothing");

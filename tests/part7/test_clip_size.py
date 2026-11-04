@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from part7 import config, media, people, runner
+from media_frames import coded_frames  # APP-M2: a remux keeps the frames, not the file bytes
 from part7.parts import p2_pose
 from support import Api
 from test_people import VISITOR, Fakes, _people_job, _step
@@ -112,7 +113,7 @@ def test_normalize_and_trim_scale_large_clips_to_the_rule(tmp_path: Path, size: 
 @pytest.mark.parametrize("size", ["1280x720", "640x360"])
 def test_a_clip_within_the_cap_is_copied_byte_for_byte(tmp_path: Path, size: str) -> None:
     src = _make(tmp_path / "src.mp4", size)
-    assert media.normalize(src, tmp_path / "n.mp4", max_side=1280).read_bytes() == src.read_bytes()
+    assert coded_frames(media.normalize(src, tmp_path / "n.mp4", max_side=1280)) == coded_frames(src)
     assert _size(media.trim(src, tmp_path / "t.mp4", 200, 1600, max_side=1280)) == _size(src)
 
 
@@ -152,7 +153,7 @@ def test_non_square_pixels_scale_by_the_displayed_size_without_distortion(
 
 def test_cap_zero_keeps_the_rules_from_before_ticket_067(tmp_path: Path) -> None:
     src = _make(tmp_path / "src.mp4", "1080x1920")
-    assert media.normalize(src, tmp_path / "n.mp4", max_side=0).read_bytes() == src.read_bytes()  # no cap at all
+    assert coded_frames(media.normalize(src, tmp_path / "n.mp4", max_side=0)) == coded_frames(src)  # no cap at all
     legacy = media.trim(src, tmp_path / "legacy.mp4", 200, 1600)
     assert _size(legacy) == (608, 1080)  # the trim keeps its 1080 px height cap
     assert media.trim(src, tmp_path / "zero.mp4", 200, 1600, max_side=0).read_bytes() == legacy.read_bytes()

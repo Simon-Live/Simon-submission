@@ -138,6 +138,11 @@ def test_a_worktree_failure_is_red_at_the_worktree_step(_env: Path) -> None:
     assert res.outcome == "red" and res.failed_step == "worktree" and rec.calls == [] and len(rec.removed) == 1
 
 
+def test_candidates_skip_a_pin_ahead_of_main() -> None:
+    st = {"1": {"sha": "a" * 40, "remote_sha": "b" * 40, "ahead": True}, "2": {"sha": "c" * 40, "remote_sha": "d" * 40}}
+    assert list(parts_gate.candidates(st)) == ["2"]
+
+
 def test_candidates_ignore_unknown_shas() -> None:
     st = status({"1": NEW})
     st["2"]["remote_sha"] = None

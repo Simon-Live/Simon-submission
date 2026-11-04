@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from part7 import auth
+from part7 import auth, creator, jobs
 from support import Api
 
 EMAIL = "Ada.Lovelace@Example.com"
@@ -80,10 +80,20 @@ def cookie_of(head: dict[str, str]) -> str:
 
 
 def sign_in(api: Api, email: str = EMAIL, by: str = "code", headers: dict[str, str] | None = None) -> str:
-    """Start and verify; returns the new sid."""
+    """Start and verify; returns the new sid. The mail read is the one this start wrote: outbox names begin with the
+    wall clock, which can step back on this host, so the newest name is not always the newest mail."""
+    before = set(outbox(api))
     assert post(api, "api/auth/start", {"email": email}, headers)[0] == 202
-    code, token = last_mail(api)
+    made = [path for path in outbox(api) if path not in before]
+    text = plain_text(made[-1]) if len(made) == 1 else plain_text(outbox(api)[-1])
+    code, token = CODE_RE.search(text).group(1), LINK_RE.search(text).group(1)
     body = {"email": email, "code": code} if by == "code" else {"token": token}
     status, head, _ = post(api, "api/auth/verify", body, headers)
     assert status == 200
     return cookie_of(head)
+
+
+def claim_doc(api: Api, job_id: Any) -> dict[str, Any]:
+    """The body the device that made `job_id` sends to keep it: the job id and its creator token (LEG-H4)."""
+    ok = isinstance(job_id, str) and jobs.JOB_ID_RE.match(job_id)
+    return {"job_id": job_id, "creator_token": creator.token_for(api.app.state, job_id) if ok else None}

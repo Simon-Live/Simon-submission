@@ -47,6 +47,8 @@ const server = http.createServer((req, res) => {
   req.on("end", () => {
     let m;
     if (p === "/api/config") return json(res, { limits: { max_seconds: 60, max_bytes: 95000000, recorder_bps: 2500000 }, part5: { lang: true, video: true, private: true } });
+    // a failed policy load is fail-closed (policy.js): the fake answers an open policy so Rehab shows
+    if (p === "/api/policy") return json(res, { prod: false, switches: { rehab: true, face_copy: true, trainer_public: true, prize_boards: true, byok_ranked: true, mms_tts: true, muse: true }, phrasing_live: true, consent: { required: false, version: null, items: [], header: "X-Simon-Consent" }, age: { minimum: 18, adult: 18 } });
     if (p === "/api/client-log") { res.writeHead(204); return res.end(); }
     if (p === "/api/labels") return json(res, LABELS);
     if (p === "/catalog/api/entries") return json(res, { entries: ENTRIES });
@@ -95,35 +97,36 @@ page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resourc
 const tid = (id) => page.getByTestId(id);
 const shot = (name) => page.screenshot({ path: path.join(out, `practice-${name}.png`), fullPage: true });
 const ok = (m) => console.log(`ok  ${m}`);
+const MSG_CLOSED = "This challenge is closed or not for this movement."; // web/follow-challenge.js
 const go = async (hash) => { await page.goto("about:blank"); await page.goto(`${BASE}${hash}`); };
 const store = (k) => page.evaluate((key) => localStorage.getItem(key), k);
-// The routine library groups cards in sections by kind; the header switch (Exercise, Dance, Rehab) is the practice mode.
-const inSection = async (key) => (await page.locator(`[data-testid="section-${key}"] .lib-thumb`).evaluateAll((els) => els.map((e) => e.dataset.testid.replace(/^entry-(rehab-)?/, "")))).sort();
-const firstSection = () => page.locator("section.lib-section").first().getAttribute("data-testid");
+// The home library is one paged list; the Type filter (Exercise, Dance, Rehab) narrows it (home-browse.md).
+const cardIds = async () => (await page.locator('[data-testid="entries"] .lib-thumb').evaluateAll((els) => els.map((e) => e.dataset.testid.replace(/^entry-/, "")))).sort();
 
 try {
-  // 1. Catalog: the kind switch and its persistence
+  // 1. Catalog: the Type filter does the header switch's old job; there is no switch; an old stored choice is ignored (TICKET-436)
+  await go("#/");
+  await page.evaluate(() => localStorage.setItem("simon.mode", "dance")); // what the removed header switch left behind
   await go("#/");
   await tid("entry-sq").waitFor();
-  await page.waitForFunction(() => document.querySelector('[data-testid="section-rehab"] .lib-thumb'));
-  assert.deepEqual(await inSection("exercise"), ["knee", "sq"]);
-  assert.deepEqual(await inSection("dance"), ["salsa"]);
-  assert.deepEqual(await inSection("rehab"), ["knee"], "a rehab-tagged move also shows under Rehab");
-  const ids = await page.locator("[data-testid^=entry-]").evaluateAll((els) => els.map((e) => e.dataset.testid));
-  assert.equal(new Set(ids).size, ids.length, "negative: no test id repeats");
-  assert.equal(await tid("entry-knee").count(), 1, "entry-knee is on exactly one card");
-  assert.equal(await tid("entry-rehab-knee").count(), 1, "the Rehab copy has its own test id");
-  assert.equal(await firstSection(), "section-exercise", "no stored choice reads as Exercise");
-  assert.equal(await page.locator('header.bar [data-testid^="kind-"]').count(), 0, "negative: no Exercise / Dance / Rehab switch in the header");
-  // the stored mode (set on a record or follow page's own picker) still orders the sections, after a reload
-  await page.evaluate(() => localStorage.setItem("simon.mode", "rehab"));
-  await go("#/");
-  await tid("entry-knee").first().waitFor();
-  assert.equal(await firstSection(), "section-rehab");
-  assert.deepEqual(await inSection("rehab"), ["knee"], "rehab shows only the rehab-tagged movement");
-  assert.ok(!(await inSection("rehab")).includes("sq"), "negative: the plain exercise is not under rehab");
-  await shot("1-catalog-rehab");
-  ok("catalog: every kind's section is listed, the stored mode orders them; no switch in the header");
+  assert.deepEqual(await cardIds(), ["free", "knee", "salsa", "sq"], "one list: every kind, and the entry with no kind (home-browse.md)");
+  assert.equal(await page.locator('[data-testid^="kind-"], .kind-switch, #kind-switch').count(), 0, "negative: no kind switch in the header");
+  assert.equal(await store("simon.mode"), null, "the old stored choice is dropped");
+  await go("#/?type=rehab");
+  await tid("entry-knee").waitFor();
+  assert.deepEqual(await cardIds(), ["knee"], "a rehab-tagged move shows under Rehab, the plain exercise does not");
+  await go("#/?type=dance");
+  await tid("entry-salsa").waitFor();
+  assert.deepEqual(await cardIds(), ["salsa"]);
+  await go("#/?mode=dance");
+  await tid("entry-sq").waitFor();
+  await go("#/follow/sq?mode=rehab");
+  await tid("follow-mode").waitFor();
+  assert.equal(await tid("follow-mode-fitness").getAttribute("aria-pressed"), "true", "the old mode parameter does not override the entry's kind");
+  await go("#/?type=dance");
+  await tid("entry-salsa").waitFor();
+  await shot("1-catalog-dance");
+  ok("catalog: the Type filter narrows the list, no switch, old stored mode dropped, old mode links open");
 
   // 2. Follow screen: the default comes from the category until a choice is stored
   await page.evaluate(() => localStorage.clear());
@@ -131,7 +134,7 @@ try {
   await tid("follow-mode").waitFor();
   assert.equal(await tid("follow-mode").getAttribute("data-value"), "fitness", "exercise defaults to fitness");
   assert.equal(await tid("mode-safety").count(), 0);
-  assert.equal(await store("simon.mode"), null, "nothing is stored until the person chooses");
+  assert.equal(await store("simon.practice.mode"), null, "nothing is stored until the person chooses");
   await go("#/follow/salsa");
   await tid("follow-mode").waitFor();
   assert.equal(await tid("follow-mode").getAttribute("data-value"), "dance", "dance defaults to dance");
@@ -155,10 +158,10 @@ try {
   assert.equal(await tid("mode-safety").count(), 0);
   assert.equal(await tid("countdown-select").inputValue(), "5");
   await tid("follow-mode-rehab").click();
-  assert.equal(await store("simon.mode"), "rehab");
+  assert.equal(await store("simon.practice.mode"), "rehab");
   ok("follow: default from category, the entry's kind locks the picker, picker stored, rehab safety line and 10 s countdown");
 
-  await go("#/follow/knee"); // the rehab-tagged entry: rehab presets whatever the bar says
+  await go("#/follow/knee"); // the rehab-tagged entry: rehab presets whatever was picked
   await tid("follow-mode").waitFor();
 
   // 3. Sections: derived from the keyframes, the ladder, the reference at the step's rate
@@ -272,11 +275,11 @@ try {
   assert.equal(sent.challenge_id, "chOpen", "the challenge id travels with the take");
   assert.equal(sent.mode, "fitness", "TICKET-311: the entry's category decides, even with nothing chosen");
   assert.equal("lang" in sent, false, "no language is sent until the person picks one");
-  assert.equal(await store("simon.mode"), null);
+  assert.equal(await store("simon.practice.mode"), null);
   await go("#/follow/sq/c/chEnded");
   await tid("follow-mode").waitFor();
   await page.waitForTimeout(400);
-  assert.equal(await tid("follow-challenge").isHidden(), true, "an ended challenge is not offered");
+  assert.equal(await tid("follow-challenge").textContent(), MSG_CLOSED, "an ended challenge is not offered: the link says so (challenges.md)");
   await page.evaluate(() => localStorage.setItem("simon.lang", "es"));
   sent = await takeOne();
   assert.equal("challenge_id" in sent, false, "negative: an ended challenge is not sent");
@@ -284,7 +287,7 @@ try {
   await go("#/follow/salsa/c/chOpen");
   await tid("follow-mode").waitFor();
   await page.waitForTimeout(400);
-  assert.equal(await tid("follow-challenge").isHidden(), true, "a challenge for another movement is not offered");
+  assert.equal(await tid("follow-challenge").textContent(), MSG_CLOSED, "a challenge for another movement is not offered: the link says so");
   await go("#/follow/free");
   await tid("follow-mode-rehab").click();
   sent = await takeOne();
@@ -292,14 +295,14 @@ try {
   assert.equal("challenge_id" in sent, false);
   await go("#/follow/sq");
   await tid("follow-mode").waitFor();
-  assert.equal(await store("simon.mode"), "rehab", "the bar says Rehab");
+  assert.equal(await store("simon.practice.mode"), "rehab", "the picker last said Rehab");
   sent = await takeOne();
-  assert.equal(sent.mode, "fitness", "TICKET-311: a fitness entry with the bar on Rehab follows the entry");
-  await page.evaluate(() => localStorage.setItem("simon.mode", "fitness"));
+  assert.equal(sent.mode, "fitness", "TICKET-311: a fitness entry with the picker on Rehab follows the entry");
+  await page.evaluate(() => localStorage.setItem("simon.practice.mode", "fitness"));
   await go("#/follow/knee");
   await tid("follow-mode").waitFor();
   sent = await takeOne();
-  assert.equal(sent.mode, "rehab", "TICKET-311: a rehab entry with the bar on Exercise sends rehab");
+  assert.equal(sent.mode, "rehab", "TICKET-311: a rehab entry with the picker on Fitness sends rehab");
   ok("take: the entry's kind decides the mode, the picker only for an entry without one; challenge_id only for an open challenge of this movement");
 
   assert.deepEqual(errors, [], `console errors: ${errors.join(" | ")}`);

@@ -11,7 +11,7 @@
   "description": "Source: stock clip 13749263 (Pexels download name 13749263_3840_2160_24fps.mp4), one of Part 1's test videos. Made with Simon's trainer pipeline (Parts 1 to 4, Part 6) on 2026-11-04.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 11067,
-  "files_source": "import",
+  "files_source": "fixture",
   "provenance": {
     "keyframes": {
       "part": 1,

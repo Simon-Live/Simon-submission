@@ -97,6 +97,22 @@ def gen(monkeypatch: pytest.MonkeyPatch) -> Generator:
     return fake
 
 
+def test_a_model_still_being_made_is_listed_by_the_name_typed(api: Api, gen: Generator) -> None:
+    """TICKET-493: the list named a queued model "Model" until its manifest existed."""
+    assert post(api, PNG, "kind=object&name=Armour")[0] == 202
+    (entry,) = mine(api)
+    assert entry["status"] == "queued" and entry["name"] == "Armour"
+
+
+def test_policy_says_whether_a_picture_can_be_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TICKET-493: the web asks who a picture shows up front when the server cannot check it (prod)."""
+    from part7 import policy_routes
+    monkeypatch.setattr(person_check, "available", lambda: False)
+    assert policy_routes.policy_doc()["person_check"] is False
+    monkeypatch.setattr(person_check, "available", lambda: True)
+    assert policy_routes.policy_doc()["person_check"] is True
+
+
 # ---------------------------------------------------------------- the question the server asks
 def test_object_picture_needs_no_consent_and_runs_image3d(api: Api, gen: Generator) -> None:
     """AC-I1: kind=object with no consent starts an image3d job for one picture and the model is generated."""
@@ -463,6 +479,8 @@ def test_without_look_the_grey_body_path_is_unchanged(api: Api, gen: Generator) 
     assert "look" not in meta and meta.get("subject") is None and meta["consent"] == "consented"
     manifest = _finish(gen, folder, image3d=False)
     assert manifest["note"] == model_import.GREY_BODY_NOTE and "consent" not in manifest
+    # prod run on release 8: the answer to a person photo also says when and to which wording; the manifest stays as it was
+    assert meta["consent_at"].endswith("Z") and meta["consent_text"] == model_import.CONSENT_TEXT_VERSION
     assert manifest["licence"]["shareable"] is False
     assert post(api, JPEG, "look=0&consent=self")[0] == 202 and gen.calls[-1][0] == "image"
 
@@ -470,7 +488,7 @@ def test_without_look_the_grey_body_path_is_unchanged(api: Api, gen: Generator) 
 def test_fallback_note_names_the_grey_body_and_says_the_look_was_not_copied(api: Api, gen: Generator, authenv: Path) -> None:
     """AC-I25b: the note of a look model that fell back names the grey body; the consent block says look false."""
     _mid, manifest = _finished_look(api, gen, _login(api), fallback=True)
-    assert manifest["note"] == model_import.LOOK_FALLBACK_NOTE and "plain grey body" in manifest["note"]
+    assert manifest["note"] == model_import.LOOK_FALLBACK_NOTE and "plain skin-coloured body" in manifest["note"]
     assert manifest["consent"]["look"] is False and manifest["consent"]["who"] == "self"
     assert manifest["licence"]["shareable"] is False
 
@@ -541,7 +559,7 @@ def test_an_answer_the_detector_did_not_prompt_is_not_marked_asked(api: Api, gen
 
 
 # the wording the answer is given to: a change to any of these strings needs a new CONSENT_TEXT_VERSION and a new row here
-WORDING_HASHES = {"2026-11-02.2": "70e9eb6ce9f38f00"}
+WORDING_HASHES = {"2026-11-02.2": "70e9eb6ce9f38f00", "2026-11-04.1": "50a6f61816ed8df1", "2026-11-04.2": "a4ef1b31739455b6"}
 
 
 def _wording_hash() -> str:
@@ -549,10 +567,12 @@ def _wording_hash() -> str:
     import re
 
     js = (HERE.parent.parent / "web" / "skin" / "picture-kind.js").read_text()
-    client = [re.search(rf'^  {key}: "(.*)",$', js, re.M).group(1) for key in ("look", "lookConsent", "noRealPerson")]
+    client = [re.search(rf'^  {key}: "(.*)",$', js, re.M).group(1) for key in ("look", "lookConsent", "noRealPerson", "noRealPersonHint")]
     dialog = (HERE.parent.parent / "web" / "skin" / "import-dialog.js").read_text()
     labels = [re.search(rf'value: "{value}", text: "(.*?)" \}}', dialog).group(1) for value in ("self", "consented")]
     labels.append(re.search(r'^  noConsent: "(.*)",$', dialog, re.M).group(1))
+    labels.append(re.search(r'^  \[PERSON, "(.*)"\],$', js, re.M).group(1))  # the choice and the note on what it makes sit beside the question
+    labels.append(re.search(r'^  greyBody: "(.*)",$', dialog, re.M).group(1))
     server = [picture_kind.MSG_LOOK_CONSENT, model_import.MSG_PERSON_IN_PICTURE, model_import.MSG_PERSON_UNCHECKED, model_import.MSG_CONSENT]
     return hashlib.sha256("\n".join(client + labels + server).encode()).hexdigest()[:16]
 

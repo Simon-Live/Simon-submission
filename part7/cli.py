@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from part7 import config
@@ -96,6 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     labels_cli.add_parser(sub)
 
+    # part7 evict remove|reinstate|list (go-live-readiness.md "Evict", LEG-H6)
+    from part7 import evict_cli
+
+    evict_cli.add_parser(sub)
+
     # part7 diagnose [--staging|--state DIR] [--since 2h] [--json]
     from part7 import diagnose
 
@@ -111,6 +117,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     state_flags.add_flags(p_heal)
     p_heal.add_argument("--json", action="store_true", help="Print the report as JSON.")
+
+    # part7 failures [--staging|--state DIR] [--hours N] [--json]
+    p_fail = sub.add_parser("failures", help="Print the last hour's failures per route and per job.")
+    state_flags.add_flags(p_fail)
+    p_fail.add_argument("--hours", type=float, default=1.0, help="How many hours to look back.")
+    p_fail.add_argument("--json", action="store_true", help="Print the report as JSON.")
+
+    # part7 ops-notice [--state DIR]: mail PROD_NOTICE_SUBJECT and PROD_NOTICE_BODY to the operator (prod/notice.sh)
+    p_notice = sub.add_parser("ops-notice", help="Mail one operator notice from the environment (prod only).")
+    state_flags.add_flags(p_notice)
+
+    # part7 mail-probe [--state DIR]: the send probe's status (exit 0 ok or waiting, 1 failing, 3 off)
+    p_probe = sub.add_parser("mail-probe", help="Print the timed mail probe's status; exit 1 when failing, 3 when off.")
+    state_flags.add_flags(p_probe)
 
     # part7 replay <job> [--staging|--state DIR]
     p_replay = sub.add_parser("replay", help="Re-run a stored follow job's CPU stages from its pose and compare to its outputs.")
@@ -136,6 +156,23 @@ def main(argv: list[str] | None = None) -> int:
         from part7 import selfheal, state_flags
 
         return selfheal.cli_selfheal_status(state_flags.state_dir(args), as_json=args.json)
+
+    if args.command == "failures":
+        from part7 import failures, state_flags
+
+        doc = failures.report(state_flags.state_dir(args), args.hours)
+        print(json.dumps(doc, indent=1) if args.json else failures.render(doc))
+        return 0
+
+    if args.command == "ops-notice":
+        from part7 import ops_notice, state_flags
+
+        return ops_notice.cli_notice(state_flags.state_dir(args))
+
+    if args.command == "mail-probe":
+        from part7 import mail_probe, state_flags
+
+        return mail_probe.cli(state_flags.state_dir(args))
 
     if args.command == "replay":
         from part7 import golden, state_flags
@@ -206,6 +243,11 @@ def main(argv: list[str] | None = None) -> int:
         from part7 import labels_cli
 
         return labels_cli.main(args)
+
+    if args.command == "evict":
+        from part7 import evict_cli
+
+        return evict_cli.main(args)
 
     if args.command == "models-reskin":
         from part7 import model_reskin

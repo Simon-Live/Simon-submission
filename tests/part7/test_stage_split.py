@@ -86,7 +86,7 @@ def test_a_done_follow_job_answers_its_timing_and_a_people_job_does_not(api: Any
     old = api.app.queue.submit("follow", bare, entry_id="lateral-raise")  # no stage: nothing to split
     assert api.app.queue.wait(old["id"], 10)["status"] == "done"
     assert api.json("GET", f"api/jobs/{old['id']}")[1]["timing"] == {"recorded": False}
-    people = api.app.queue.submit("people", fn)
+    people = api.app.queue.submit("people", fn, _people_owner="")  # made signed out (prod-data.md P-N1)
     assert api.app.queue.wait(people["id"], 10)["status"] == "done"
     status, doc = api.json("GET", f"api/jobs/{people['id']}")
     assert status == 200 and "timing" not in doc

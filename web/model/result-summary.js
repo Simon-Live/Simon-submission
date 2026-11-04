@@ -113,7 +113,7 @@ export function driftOf(analysis) {
   if (!(end > 0)) return null;
   const marks = windows.flatMap((w) => (w.misses || []).map((m) => {
     const span = Array.isArray(m.t_s) && m.t_s.length === 2 ? m.t_s : [num(m.at_s) ?? w.t_s[0], (num(m.at_s) ?? w.t_s[0]) + 0.5];
-    return { at: span[0], start: span[0] / end, width: Math.max(0.02, (span[1] - span[0]) / end), text: m.text, joint: m.joint || null };
+    return { at: span[0], start: span[0] / end, width: Math.max(0.02, (span[1] - span[0]) / end), text: m.text, joint: m.joint || null, ai: m.ai === true, cue: m.cue || null };
   }));
   return { duration: end, marks };
 }
@@ -124,7 +124,7 @@ const withDetails = (drift, model) => drift && { ...drift, marks: drift.marks.ma
 export function driftDetailOf(mark, model) {
   if (!mark) return null;
   const words = typeof mark.text === "string" && mark.text ? mark.text.charAt(0).toUpperCase() + mark.text.slice(1) : null;
-  return { title: `Drift at ${clock(mark.at)}`, badge: TEXT.needsFocus, at: mark.at, you: words, youLabel: TEXT.you,
+  return { title: `Drift at ${clock(mark.at)}`, badge: TEXT.needsFocus, at: mark.at, you: words, youLabel: TEXT.you, ai: mark.ai === true,
     poses: posesAt(model, mark.at), offJoints: mark.joint ? [mark.joint] : [], refLabel: TEXT.trainer };
 }
 
@@ -196,7 +196,7 @@ export function summaryOf(analysis, { kind = "exercise", model = null, entryName
     bars: kind === "dance" ? [] : barsOf(analysis, credit),
     barsTitle: reps ? TEXT.formPerRep : TEXT.formPerPart,
     drift: kind === "dance" ? withDetails(driftOf(analysis), model) : null,
-    note: sentence(insight ? insight.cue : firstMiss ? firstMiss.text : null),
+    note: sentence(insight ? insight.cue : firstMiss ? (firstMiss.ai ? firstMiss.cue : firstMiss.text) : null),
     noteTitle: TEXT.note,
     driftTitle: TEXT.drifted,
     driftLegend: TEXT.needsFocus,

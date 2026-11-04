@@ -7,9 +7,9 @@ asked), then every follower goes through the follower chain against the trainer'
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from part7 import chain, failcause, labels as entry_store, modules, shown_score
+from part7 import chain, failcause, labels as entry_store, modules, narration, shown_score
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
 from part7.people import PersonSel, pose_for, reused_clip
@@ -75,8 +75,11 @@ def group_job(
     phrasing: str = "live",
     mode: str | None = None,
     floor_work: bool = False,
+    on_entry: Callable[[str], Any] | None = None,
 ) -> JobFn:
-    """Return the job function of `POST api/group` on the people job whose work folder is `people_work`."""
+    """Return the job function of `POST api/group` on the people job whose work folder is `people_work`.
+
+    `on_entry` runs once the saved movement exists (`auth.on_entry`: its owner and its access row, prod-data.md)."""
 
     def run(ctx: JobContext) -> dict[str, Any]:
         lk = lock or modules.load()
@@ -94,7 +97,7 @@ def group_job(
         trained = chain.trainer(
             video, ctx.work / "trainer", report=to_stage, lock=lk, backend=backend, state=state,
             catalog=catalog if save_entry else None, name=name, category=category, person=sel,
-            floor_work=floor_work,
+            floor_work=floor_work, reserve=getattr(on_entry, "reserve", None),  # W-N1: row before the save
         )
         if trained.get("note"):
             ctx.add_note(str(trained["note"]))
@@ -103,9 +106,16 @@ def group_job(
         save_new = entry_store.entry_saver(labels_state, entry_labels or None, floor_work) if labels_state is not None else None
         if entry_id and save_new is not None:
             save_new(str(entry_id))  # recorder.md "Labels" and floor-work.md: part7/labels.py
+        if entry_id and on_entry is not None:
+            on_entry(str(entry_id))  # trainer-publish.md: private in prod unless the request opted in
+        if entry_id:  # review S-B1: the trainer path's captions step on the group's own trimmed clip (a11y B3)
+            narration.attach(video, catalog / str(entry_id), files=trained.get("files"), video=video, job_dir=ctx.work)
         rows = _followers(ctx, trained["files"]["animation"], trained["files"]["skeleton"], video, people_work, pose3d,
                           follower_ids, labels or {}, lk, backend, state, phrasing, mode, floor_work)
         result = {"entry_id": entry_id, "trainer_id": trainer_id, "people": order(rows)}
+        ready = getattr(on_entry, "ready", None) if entry_id else None
+        if ready is not None:  # W-R1: published as the group job ends, after every follower, never at the save
+            ready()
         return {"entry_id": entry_id, "result": result}
 
     return run

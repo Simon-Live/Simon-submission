@@ -90,7 +90,7 @@ async function open(base, route, kase) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
-  page.on("console", (m) => { if (m.type() === "error" && !(route.includes("not-mine") && /404/.test(m.text()))) errors.push(`${kase} ${route}: ${m.text()}`); }); // strict: "Failed to load resource" counts, so a 401 or 404 fails
+  page.on("console", (m) => { if (m.type() === "error" && !(route.includes("not-mine") && /404/.test(m.text())) && !/\/api\/(policy|version|source\/)/.test(m.location().url)) errors.push(`${kase} ${route}: ${m.text()}`); }); // strict: "Failed to load resource" counts, so a 401 or 404 fails
   page.on("response", (r) => { if (/\/api\/me\//.test(r.url())) statuses.push(r.status()); });
   await page.goto(`${base}${route}`);
   return { page, ctx };

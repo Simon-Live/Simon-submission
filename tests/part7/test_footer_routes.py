@@ -36,7 +36,7 @@ def test_notices_route_serves_the_notices_file_as_text(api) -> None:  # type: ig
         pytest.skip("THIRD_PARTY_NOTICES.md is not in this tree (licence decision pending, MoAlborati/claude-template#382)")
     status, headers, data = api.request("GET", "api/notices")
     assert status == 200
-    assert data == notices_routes.NOTICES.read_bytes() and data.startswith(b"# Third-party notices")
+    assert data == notices_routes.NOTICES.read_bytes() and data.startswith(b"# Open-source notices")
     assert "text/plain" in str(headers)
 
 

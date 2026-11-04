@@ -49,17 +49,17 @@ and 5. When the Meta Model API refuses Part 1, Part 3's every-10 keyframes stand
 
 | Node | Code | Symbol |
 |---|---|---|
-| WEB | [web/api.js:53](../web/api.js#L53) | `request` |
-| P7 | [part7/server.py:75](../part7/server.py#L75) | `App` |
-| P1 | [part7/parts/p1_keyframes.py:70](../part7/parts/p1_keyframes.py#L70) | `run` |
-| P2 | [part7/parts/p2_pose.py:632](../part7/parts/p2_pose.py#L632) | `run` |
+| WEB | [web/api.js:62](../web/api.js#L62) | `request` |
+| P7 | [part7/server.py:92](../part7/server.py#L92) | `App` |
+| P1 | [part7/parts/p1_keyframes.py:237](../part7/parts/p1_keyframes.py#L237) | `run` |
+| P2 | [part7/parts/p2_pose.py:718](../part7/parts/p2_pose.py#L718) | `run` |
 | P3 | [part7/parts/p3_skeleton.py:139](../part7/parts/p3_skeleton.py#L139) | `part4` |
 | P4 | [part7/parts/p4_animate.py:50](../part7/parts/p4_animate.py#L50) | `run` |
-| P5 | [part7/parts/p5_analyse.py:95](../part7/parts/p5_analyse.py#L95) | `run` |
-| P6 | [part7/parts/p6_catalog.py:38](../part7/parts/p6_catalog.py#L38) | `Child` |
+| P5 | [part7/parts/p5_analyse.py:98](../part7/parts/p5_analyse.py#L98) | `run` |
+| P6 | [part7/parts/p6_catalog.py:82](../part7/parts/p6_catalog.py#L82) | `Child` |
 | GPU | [part7/p2_worker.py:157](../part7/p2_worker.py#L157) | `Pool` |
-| MMA | [part7/keys.py:12](../part7/keys.py#L12) | `KEY_NAMES` |
-| BT | [part7/parts/p5_analyse.py:84](../part7/parts/p5_analyse.py#L84) | `phrasing_args` |
+| MMA | [part7/keys.py:35](../part7/keys.py#L35) | `KEY_NAMES` |
+| BT | [part7/parts/p5_analyse.py:87](../part7/parts/p5_analyse.py#L87) | `phrasing_args` |
 
 Part 3's adapter names each function after the part that receives its output: `p3_skeleton.part4` runs Part 3 with
 `--view part4`, the skeleton Part 4 animates (this recording), and `p3_skeleton.part5` runs it with `--view part5`,
@@ -103,15 +103,15 @@ sequenceDiagram
 
 | Node | Code | Symbol |
 |---|---|---|
-| WEB | [web/api.js:53](../web/api.js#L53) | `request` |
-| SRV | [part7/server.py:766](../part7/server.py#L766) | `_Handler._follow` |
-| Q | [part7/jobs.py:447](../part7/jobs.py#L447) | `JobQueue.submit` |
-| JOB | [part7/chain.py:420](../part7/chain.py#L420) | `follower` |
+| WEB | [web/api.js:62](../web/api.js#L62) | `request` |
+| SRV | [part7/server.py:978](../part7/server.py#L978) | `_Handler._follow` |
+| Q | [part7/jobs.py:494](../part7/jobs.py#L494) | `JobQueue.submit` |
+| JOB | [part7/chain.py:448](../part7/chain.py#L448) | `follower` |
 | LOCK | [part7/gpu_lock.py:423](../part7/gpu_lock.py#L423) | `acquire` |
 | W | [part7/p2_worker.py:644](../part7/p2_worker.py#L644) | `lease` |
-| P2 | [part7/parts/p2_pose.py:632](../part7/parts/p2_pose.py#L632) | `run` |
+| P2 | [part7/parts/p2_pose.py:718](../part7/parts/p2_pose.py#L718) | `run` |
 | P3 | [part7/parts/p3_skeleton.py:229](../part7/parts/p3_skeleton.py#L229) | `part5` |
-| P5 | [part7/parts/p5_analyse.py:95](../part7/parts/p5_analyse.py#L95) | `run` |
+| P5 | [part7/parts/p5_analyse.py:98](../part7/parts/p5_analyse.py#L98) | `run` |
 
 P3's `part5` is Part 3 with `--view part5`: the follower's skeleton clip, shaped for Part 5.
 
@@ -164,13 +164,13 @@ container (ADR-0017).
 
 | Node | Code | Symbol |
 |---|---|---|
-| WEB | [web/api.js:53](../web/api.js#L53) | `request` |
-| SRV | [part7/server.py:274](../part7/server.py#L274) | `_Handler._route` |
-| AUTH | [part7/auth.py:217](../part7/auth.py#L217) | `current_user` |
-| KEYS | [part7/keys.py:71](../part7/keys.py#L71) | `redactor` |
-| CONV | [part7/model_convert.py:106](../part7/model_convert.py#L106) | `submit` |
-| RUN | [part7/runner.py:127](../part7/runner.py#L127) | `run` |
-| SUP | [tools/model-converter/supervisor.py:232](../tools/model-converter/supervisor.py#L232) | `Supervisor` |
-| JAIL | [tools/model-converter/supervisor.py:110](../tools/model-converter/supervisor.py#L110) | `container_argv` |
-| MMA | [part7/keys.py:93](../part7/keys.py#L93) | `part1_dotenv` |
-| BT | [part7/parts/p5_analyse.py:84](../part7/parts/p5_analyse.py#L84) | `phrasing_args` |
+| WEB | [web/api.js:62](../web/api.js#L62) | `request` |
+| SRV | [part7/server.py:376](../part7/server.py#L376) | `_Handler._route` |
+| AUTH | [part7/auth.py:239](../part7/auth.py#L239) | `current_user` |
+| KEYS | [part7/keys.py:107](../part7/keys.py#L107) | `redactor` |
+| CONV | [part7/model_convert.py:130](../part7/model_convert.py#L130) | `submit` |
+| RUN | [part7/runner.py:171](../part7/runner.py#L171) | `run` |
+| SUP | [tools/model-converter/supervisor.py:245](../tools/model-converter/supervisor.py#L245) | `Supervisor` |
+| JAIL | [tools/model-converter/supervisor.py:121](../tools/model-converter/supervisor.py#L121) | `container_argv` |
+| MMA | [part7/keys.py:228](../part7/keys.py#L228) | `part1_dotenv` |
+| BT | [part7/parts/p5_analyse.py:87](../part7/parts/p5_analyse.py#L87) | `phrasing_args` |

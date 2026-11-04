@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from auth_support import EMAIL, authenv, get, outbox, post, sign_in  # noqa: F401
-from part7 import auth, auth_routes, challenge_routes, identity
-from support import Api
+from auth_support import EMAIL, authenv, get, outbox, post, sign_in, claim_doc  # noqa: F401
+from part7 import auth, auth_routes, challenge_routes, entry_access, identity
+from support import Api, published
 
 pytestmark = pytest.mark.usefixtures("authenv")
 ENTRY = "lateral-raise"
@@ -49,15 +49,15 @@ def test_signed_out_routes_answer_401_with_the_text(api: Api) -> None:
 def test_claims_first_wins_409_and_404(api: Api) -> None:  # AC-AU-9
     ada, grace = sign_in(api), sign_in(api, "grace@example.com")
     mine = job(api)
-    status, _, body = post(api, "api/me/claims", {"job_id": mine}, cookie=ada)
-    assert (status, body) == (200, {"claimed": True, "kind": "follow"})
-    assert post(api, "api/me/claims", {"job_id": mine}, cookie=ada)[0] == 200  # a repeat by the owner
-    status, _, body = post(api, "api/me/claims", {"job_id": mine}, cookie=grace)
+    status, _, body = post(api, "api/me/claims", claim_doc(api, mine), cookie=ada)
+    assert (status, body) == (200, {"claimed": True, "kind": "follow", "kept": False})  # no retention consent, so no copy
+    assert post(api, "api/me/claims", claim_doc(api, mine), cookie=ada)[0] == 200  # a repeat by the owner
+    status, _, body = post(api, "api/me/claims", claim_doc(api, mine), cookie=grace)
     assert status == 409 and body["message"] == "This take is kept by another account."
     for missing in ("ffffffffffff", "short", 5, None):
-        status, _, body = post(api, "api/me/claims", {"job_id": missing}, cookie=ada)
+        status, _, body = post(api, "api/me/claims", claim_doc(api, missing), cookie=ada)
         assert status == 404 and body["message"] == challenge_routes.MSG_NO_JOB
-    assert post(api, "api/me/claims", {"job_id": job(api, "people")}, cookie=ada)[0] == 404  # not a claimable kind
+    assert post(api, "api/me/claims", claim_doc(api, job(api, "people")), cookie=ada)[0] == 404  # not a claimable kind
     assert identity.owner_of_job(api.app.state, mine) == auth.identity(api.app).owner_of(mine)
 
 
@@ -66,9 +66,9 @@ def test_a_group_take_is_not_owned_and_a_trainer_entry_is(api: Api) -> None:  # 
     group = job(api, "group", people_job="cccccccccccc")
     one_person = job(api, people_job="cccccccccccc", person_id="0")  # a follow cut from one person of a people job
     trainer = job(api, "trainer", result={"entry_id": "my-move"}, entry_id=None)
-    assert post(api, "api/me/claims", {"job_id": group}, cookie=sid)[0] == 404  # out of scope: no owner, no history
-    assert post(api, "api/me/claims", {"job_id": one_person}, cookie=sid)[2]["kind"] == "follow"  # an ordinary follow take
-    assert post(api, "api/me/claims", {"job_id": trainer}, cookie=sid)[2]["kind"] == "trainer"
+    assert post(api, "api/me/claims", claim_doc(api, group), cookie=sid)[0] == 404  # out of scope: no owner, no history
+    assert post(api, "api/me/claims", claim_doc(api, one_person), cookie=sid)[2]["kind"] == "follow"  # an ordinary follow take
+    assert post(api, "api/me/claims", claim_doc(api, trainer), cookie=sid)[2]["kind"] == "trainer"
     entries = get(api, "api/me/entries", cookie=sid)[2]["entries"]
     assert [(e["entry_id"], e["only_me"]) for e in entries] == [("my-move", False)]
     assert group not in {t["job_id"] for t in auth.identity(api.app).takes_of(get(api, "api/auth/me", cookie=sid)[2]["user_id"])}
@@ -80,7 +80,7 @@ def test_claim_calls_the_history_store_when_it_exists(api: Api, monkeypatch: pyt
     monkeypatch.setitem(sys.modules, "part7.history_store", fake)
     sid = sign_in(api)
     mine = job(api)
-    post(api, "api/me/claims", {"job_id": mine}, cookie=sid)
+    post(api, "api/me/claims", claim_doc(api, mine), cookie=sid)
     user = get(api, "api/auth/me", cookie=sid)[2]["user_id"]
     post(api, "api/me/delete", {"confirm": "delete"}, cookie=sid)
     assert seen == [("claim", api.app.state, user, mine), ("forget", api.app.state, user)]
@@ -90,16 +90,35 @@ def test_takes_newest_first_with_score_from_the_analysis(api: Api) -> None:
     sid = sign_in(api)
     first, second, unscored = job(api), job(api), job(api, score=False)
     for j in (first, second, unscored):
-        post(api, "api/me/claims", {"job_id": j}, cookie=sid)
+        post(api, "api/me/claims", claim_doc(api, j), cookie=sid)
     takes = get(api, "api/me/takes", cookie=sid)[2]["takes"]
     assert {t["job_id"] for t in takes} == {first, second, unscored}
     by_id = {t["job_id"]: t for t in takes}
     assert by_id[first]["score"] == 81 and by_id[first]["grade"] == "B" and by_id[first]["status"] == "done"
     assert by_id[unscored]["score"] is None and by_id[unscored]["grade"] is None
-    assert set(by_id[first]) == {"job_id", "kind", "entry_id", "created_at", "status", "score", "grade", "shown", "video_kept", "attribution"}
+    assert set(by_id[first]) == {"job_id", "kind", "entry_id", "kept", "created_at", "status", "score", "grade", "shown", "video_kept", "attribution"}
     assert by_id[first]["shown"]["letter"] == "B" and by_id[unscored]["shown"] is None  # one-letter.md
     assert [t["created_at"] for t in takes] == sorted((t["created_at"] for t in takes), reverse=True)
     assert get(api, "api/me/takes", cookie=sign_in(api, "grace@example.com"))[2] == {"takes": []}  # not someone else's
+
+
+def test_me_takes_entry_id_given_a_trainer_take_attached_before_its_movement_existed(api: Api) -> None:  # AC-AU-9b
+    """A trainer job is attached at submit, when it has no movement yet, so its row stays empty; the list reads the job."""
+    sid = sign_in(api)
+    owner = get(api, "api/auth/me", cookie=sid)[2]["user_id"]
+    made = job(api, "trainer", score=False, result={"entry_id": "my-move"}, entry_id=None)
+    auth.identity(api.app).attach(made, owner, "trainer", None, None, "submit")
+    assert get(api, "api/me/takes", cookie=sid)[2]["takes"][0]["entry_id"] == "my-move"
+    assert auth.identity(api.app).takes_of(owner)[0]["entry_id"] is None  # read through the job; the row is not rewritten
+
+
+def test_me_takes_entry_id_stays_empty_given_a_trainer_take_with_no_movement(api: Api) -> None:  # AC-AU-9b, negative
+    sid = sign_in(api)
+    owner = get(api, "api/auth/me", cookie=sid)[2]["user_id"]
+    made = job(api, "trainer", score=False, entry_id=None)
+    auth.identity(api.app).attach(made, owner, "trainer", None, None, "submit")
+    auth.identity(api.app).attach("eeeeeeeeeeee", owner, "trainer", None, None, "submit")  # its folder expired
+    assert {t["job_id"]: t["entry_id"] for t in get(api, "api/me/takes", cookie=sid)[2]["takes"]} == {made: None, "eeeeeeeeeeee": None}
 
 
 def test_a_take_whose_folder_expired_is_listed_as_expired(api: Api) -> None:
@@ -128,7 +147,8 @@ def test_only_me_switch_owner_only_and_visibility(api: Api) -> None:
     h.headers = {"Cookie": f"s7_sid={grace}"}
     assert auth.may_view_entry(h, ENTRY) is False
     h.headers = {"Cookie": f"s7_sid={ada}"}
-    assert auth.may_view_entry(h, ENTRY) is True and auth.may_view_entry(h, "other-entry") is True
+    assert auth.may_view_entry(h, ENTRY) is True
+    assert auth.may_view_entry(h, "other-entry") is False  # W-N1: no access row and not a shipped sample
     post(api, f"api/me/entries/{ENTRY}", {"only_me": False}, cookie=ada)
     h.headers = {}
     assert auth.may_view_entry(h, ENTRY) is True
@@ -152,7 +172,7 @@ def test_delete_my_data_busy_keeps_the_account(api: Api) -> None:  # AC-AU-10
     sid = sign_in(api)
     owner = get(api, "api/auth/me", cookie=sid)[2]["user_id"]
     done, (busy, hold) = job(api), running_job(api)
-    post(api, "api/me/claims", {"job_id": done}, cookie=sid)
+    post(api, "api/me/claims", claim_doc(api, done), cookie=sid)
     auth.identity(api.app).attach(busy, owner, "follow", ENTRY, None, "submit")
     status, _, body = post(api, "api/me/delete", {"confirm": "delete"}, cookie=sid)
     assert status == 409 and body["busy"] == [busy] and body["message"] == "Try again when these finish."
@@ -174,8 +194,8 @@ def test_delete_my_data_removes_the_account_cookie_and_mail(api: Api) -> None:  
         sid, other = sign_in(api), sign_in(api, "grace@example.com")
         mine = job(api)
         theirs = job(api)
-        post(api, "api/me/claims", {"job_id": mine}, cookie=sid)
-        post(api, "api/me/claims", {"job_id": theirs}, cookie=other)
+        post(api, "api/me/claims", claim_doc(api, mine), cookie=sid)
+        post(api, "api/me/claims", claim_doc(api, theirs), cookie=other)
         owner = get(api, "api/auth/me", cookie=sid)[2]["user_id"]
         auth.identity(api.app).attach_entry("my-move", owner, mine)
         assert len(outbox(api)) == 2
@@ -183,7 +203,7 @@ def test_delete_my_data_removes_the_account_cookie_and_mail(api: Api) -> None:  
         status, head, body = post(api, "api/me/delete", {"confirm": "delete"}, cookie=sid)
     finally:
         auth_routes.TAKE_REMOVER = None
-    assert status == 200 and body == {"deleted": True, "takes_removed": 1, "entries_unlinked": 1}
+    assert status == 200 and body == {"deleted": True, "takes_removed": 1, "entries_removed": 1, "entries_unlinked": 0}
     assert removed == [mine] and "Max-Age=0" in head["set-cookie"]
     assert get(api, "api/auth/me", cookie=sid)[2]["signed_in"] is False and get(api, "api/me/takes", cookie=sid)[0] == 401
     assert len(outbox(api)) == 1 and "grace" in outbox(api)[0].read_text()  # only the deleted address's mail went
@@ -196,7 +216,7 @@ def test_delete_my_data_reports_busy_from_the_remover(api: Api) -> None:  # AC-A
     try:
         sid = sign_in(api)
         mine = job(api)
-        post(api, "api/me/claims", {"job_id": mine}, cookie=sid)
+        post(api, "api/me/claims", claim_doc(api, mine), cookie=sid)
         status, _, body = post(api, "api/me/delete", {"confirm": "delete"}, cookie=sid)
     finally:
         auth_routes.TAKE_REMOVER = None
@@ -222,9 +242,11 @@ def test_attach_job_and_on_entry_hooks_record_owners_only_when_signed_in(api: Ap
     assert api.app.queue.get(solo).get("user_id") is None  # nothing in the job record  # type: ignore[union-attr]
 
     inner_calls: list[str] = []
-    assert auth.on_entry(anon, None) is None
     marker = lambda entry_id: inner_calls.append(entry_id)  # noqa: E731
-    assert auth.on_entry(anon, marker) is marker  # anonymous: the callback is untouched
+    auth.on_entry(anon, marker)("anon-move")  # type: ignore[misc]
+    assert inner_calls == ["anon-move"] and auth.identity(api.app).entry_owner("anon-move") is None  # no account owns it
+    assert entry_access.get(api.app.state, "anon-move")["owner"] == ""  # the access row (prod-data.md) still is written
+    inner_calls.clear()
     wrapped = auth.on_entry(H(), marker)
     wrapped("new-move")  # type: ignore[misc]
     assert inner_calls == ["new-move"] and auth.identity(api.app).entry_owner("new-move") == (uid, False)
@@ -235,7 +257,7 @@ def test_attach_job_and_on_entry_hooks_record_owners_only_when_signed_in(api: Ap
 def test_forget_job_hook_drops_ownership(api: Api) -> None:
     sid = sign_in(api)
     mine = job(api)
-    post(api, "api/me/claims", {"job_id": mine}, cookie=sid)
+    post(api, "api/me/claims", claim_doc(api, mine), cookie=sid)
     auth.forget_job(api.app, mine)
     assert auth.identity(api.app).owner_of(mine) is None
 
@@ -267,7 +289,7 @@ def test_a_signed_in_visitor_sees_the_same_job_record(api: Api) -> None:  # AC-A
     done = job(api)
     before = api.request("GET", f"api/jobs/{done}")[2]
     sid = sign_in(api)
-    post(api, "api/me/claims", {"job_id": done}, cookie=sid)
+    post(api, "api/me/claims", claim_doc(api, done), cookie=sid)
     after = api.request("GET", f"api/jobs/{done}", None, {"Cookie": f"s7_sid={sid}"})[2]
     seen, own = json.loads(before), json.loads(after)
     assert own.pop("attribution")["mine"] is True and seen.pop("attribution")["mine"] is False  # the one field the viewer changes
@@ -311,6 +333,7 @@ def test_labels_of_an_only_me_entry_are_its_owners_alone(api: Api) -> None:
     labels.save(api.app.state, ENTRY, labels.validate({"tags": ["knee"], "notes": "private"}))
     labels.set_floor_work(api.app.state, ENTRY, True)
     labels.save(api.app.state, "public-move", labels.validate({"tags": ["arm"], "notes": ""}))
+    published(api.app.state, "public-move")
     assert post(api, f"api/me/entries/{ENTRY}", {"only_me": True}, cookie=ada)[0] == 200
     for cookie in (None, grace):  # signed out, then a second account
         listed = get(api, "api/labels", cookie=cookie)[2]

@@ -3,8 +3,8 @@
 import { h } from "../ui.js";
 
 /**
- * Builds the box into `host`. `vm` = { t, suggestions, remaining, maxChars }; `on` = { ask(text), go(seconds) }.
- * Returns { status(kind, text), busy(bool), answer(view), steps(labels, tools), remaining(n) }.
+ * Builds the box into `host`. `vm` = { t, suggestions, maxChars }; `on` = { ask(text), go(seconds) }.
+ * Returns { status(kind, text), busy(bool), answer(view), steps(labels, tools) }.
  */
 export function renderTakeAsk(host, vm, on) {
   const { t } = vm;
@@ -14,7 +14,6 @@ export function renderTakeAsk(host, vm, on) {
   const status = h("p", { class: "ta-status", role: "status", "aria-live": "polite", "data-testid": "take-ask-status", hidden: true });
   const out = h("div", { class: "ta-answer", "aria-live": "polite", "data-testid": "take-ask-answer" });
   const log = h("ol", { class: "ta-steps", "aria-label": t.stepsLabel, "data-testid": "take-ask-steps", hidden: true });
-  const left = h("p", { class: "ta-hint", "data-testid": "take-ask-remaining" });
   const submit = () => { if (!send.disabled) on.ask(input.value); };
   const form = h("form", { class: "ta-form", novalidate: true, "data-testid": "take-ask-form" },
     h("label", { class: "ta-hint", for: "take-ask-question", text: t.label }), input, send);
@@ -23,7 +22,7 @@ export function renderTakeAsk(host, vm, on) {
     vm.suggestions.map((q, i) => h("li", {}, h("button", { type: "button", class: "ta-chip", "data-testid": `take-ask-suggestion-${i}`, text: q,
       onclick: () => { input.value = q; submit(); } })))) : null;
   host.append(h("section", { class: "ta", "data-testid": "take-ask", "aria-labelledby": "take-ask-title" },
-    h("h2", { id: "take-ask-title", text: t.title }), h("p", { class: "ta-hint", text: t.hint }), form, picks, left, status, out, log));
+    h("h2", { id: "take-ask-title", text: t.title }), h("p", { class: "ta-hint", text: t.hint }), form, picks, status, out, log));
   const handles = {
     status(kind, text) {
       status.hidden = !text;
@@ -31,7 +30,6 @@ export function renderTakeAsk(host, vm, on) {
       status.textContent = text || "";
     },
     busy(on_) { send.disabled = on_; send.setAttribute("aria-busy", on_ ? "true" : "false"); },
-    remaining(n) { left.textContent = n == null ? "" : `${n} ${n === 1 ? "question" : "questions"} left today.`; },
     steps(labels, tools = []) {
       log.replaceChildren(...labels.map((text, i) => h("li", { "data-testid": `take-ask-step-${i}`, "data-tool": tools[i] || "", text })));
       log.hidden = labels.length === 0;
@@ -47,9 +45,7 @@ export function renderTakeAsk(host, vm, on) {
       }
       if (view.evidence.length) out.append(h("ul", { class: "ta-evidence", "aria-label": t.evidenceLabel, "data-testid": "take-ask-evidence" }, view.evidence.map((line) => h("li", { text: line }))));
       if (view.receipt) out.append(h("p", { class: "ta-hint", "data-testid": "take-ask-receipt", text: view.receipt }));
-      handles.remaining(view.remaining);
     },
   };
-  handles.remaining(vm.remaining);
   return handles;
 }

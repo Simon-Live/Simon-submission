@@ -11,4 +11,4 @@
 .export-ready { display: grid; gap: var(--space-3); }
 .export-ready video { width: 100%; max-height: 60vh; border-radius: var(--radius-lg); background: var(--color-media-bg); }
 .export-fail { display: grid; gap: var(--space-2); }
-.ex-error { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-bad-soft); color: var(--color-bad); font-size: var(--text-sm); }
+.ex-error { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-bad-soft); color: var(--color-bad-text); font-size: var(--text-sm); }

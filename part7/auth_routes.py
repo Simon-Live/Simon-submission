@@ -13,11 +13,13 @@ import logging
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
-from part7 import (applog, attribution, auth, challenge_routes, devices, history_store, identity, jobs, labels, mail, model_only, model_store,
-                   shown_score, staging_mailbox)
+from part7 import (applog, attribution, auth, challenge_routes, creator, devices, entry_access, history_store, identity, jobs, labels, mail,
+                   mail_status, mail_webhook, modal_creds, model_only, model_store, shown_score, staging_mailbox, trainer_publish)
+from part7 import serverless_route
 from part7.http_body import drain_before_refusal
 
 MSG_SIGN_IN = "Sign in to see this."
+MSG_EVICTED = "This movement was taken out of public view after a report. It stays visible to you."
 MSG_CSRF = "This request came from another site."
 MSG_INVALID = "This link or code is not valid or has expired. Ask for a new one."
 MSG_EMAIL = "Enter a valid email address."
@@ -27,6 +29,7 @@ MSG_OFF = "Sign-in is not available."
 MSG_BAD = "The request is not valid."
 MSG_TOO_BIG = "The request is too large."
 MSG_OTHER = "This take is kept by another account."
+MSG_NOT_CREATOR = "Only the device that made this take can keep it. Open it on that device and keep it there."
 MSG_NO_JOB = challenge_routes.MSG_NO_JOB
 MSG_NO_ENTRY = "This movement is not yours."
 MSG_BUSY = "Try again when these finish."
@@ -87,6 +90,11 @@ def _post_body(h: Any, *, fields: bool = True) -> dict[str, Any] | None:
     return doc
 
 
+def guarded_body(h: Any) -> dict[str, Any] | None:
+    """`_post_body` for the other owner-only POST routes (teacher_routes shares): CSRF, size and a JSON object."""
+    return _post_body(h)
+
+
 def _user_or_401(h: Any) -> str | None:
     user_id = auth.current_user(h)
     if user_id is None:
@@ -122,15 +130,32 @@ def _start(h: Any) -> None:
     if auth.public_origin(h) is None:  # a forged Host would put the sign-in link on someone else's site
         return _fail(h, 403, MSG_ORIGIN)
     store = st.store
-    made = store.start_challenge(email, ip)
+    made, why = store.start_challenge_why(email, ip)
     key = store.email_key(email)
-    if made is None:  # a per-address or global limit: the same 202, no mail
-        applog.log(f"auth: sign-in limited for {key}", level=logging.INFO)
+    attempt = st.mailer.board.new_id()
+    if made is None:  # a per-address or global limit: the same 202 and the same "sent", no mail
+        st.mailer.board.set(attempt, mail_status.SENT)
+        applog.log(f"auth: sign-in limited for {key} ({why})", level=logging.INFO)
+        if why == "global":  # the security limit stays; the operator hears that real people may be getting no code
+            applog.anomaly("signin_global_limited", limit=identity.GLOBAL_MAILS_PER_HOUR)
     else:
         token, code = made
-        st.mailer.send_sign_in(email, code, auth.public_link(h, token))
+        st.mailer.send_sign_in(email, code, auth.public_link(h, token), attempt)
         applog.log(f"auth: sign-in started for {key}")
-    _reply(h, 202, {"ok": True})
+    _reply(h, 202, {"ok": True, "attempt": attempt})
+
+
+def _mail_status(h: Any) -> None:
+    """What became of the mail of one attempt: `pending`, `sent`, `failed` or `unknown` (expired, or not an id). The id is
+    random and ties to no address, and a rate-limited address reads `sent`, so this tells nothing about any account."""
+    st = auth.state(h.app)
+    if not st.available:
+        return _fail(h, 404, MSG_OFF)
+    if not st.status_limit.hit(auth.client_key(h)):
+        return _fail(h, 429, MSG_RATE)
+    raw = parse_qs(urlsplit(h.path).query).get("id", [""])[0]
+    status = st.mailer.board.get(raw) if mail_status.ID_RE.match(raw) else mail_status.UNKNOWN
+    _reply(h, 200, {"status": status}, {"Cache-Control": "no-store"})
 
 
 def _verify(h: Any) -> None:
@@ -184,15 +209,19 @@ def _claim(h: Any) -> None:
     if job_id in delete_routes.featured(h.app):  # TICKET-373: a featured id is public, so it proves no claim
         return _fail(h, 403, delete_routes.MSG_NO_CLAIM)
     store = auth.identity(h.app)
+    # LEG-H4: a result link alone never claims; the account that holds the take may copy it from any browser
+    if store.owner_of(job_id) != user_id and not creator.valid(h.app.state, job_id, doc.get("creator_token")):
+        return _fail(h, 403, MSG_NOT_CREATOR)
     if not store.attach(job_id, user_id, kind, job.get("entry_id"), job.get("people_job"), "claim"):
         return _fail(h, 409, MSG_OTHER)
     result = job.get("result") if isinstance(job.get("result"), dict) else {}
     if kind == "trainer" and isinstance(result.get("entry_id"), str):
         store.attach_entry(result["entry_id"], user_id, job_id)
+        entry_access.record(h.app.state, result["entry_id"], trainer_job=job_id, owner=user_id,
+                            published=entry_access.published_default(None))  # fills the owner of a signed-out trainer take
     claim = _history("claim")
-    if claim is not None:
-        claim(h.app.state, user_id, job_id)
-    _reply(h, 200, {"claimed": True, "kind": kind})
+    copied = claim(h.app.state, user_id, job_id) if claim is not None else False
+    _reply(h, 200, {"claimed": True, "kind": kind, "kept": kind != "follow" or copied is True})  # kept: "See it in Me" holds
 
 
 def _kind_of(job: dict | None) -> str | None:
@@ -223,20 +252,39 @@ def _takes(h: Any, user_id: str) -> None:
     for take in auth.identity(h.app).takes_of(user_id):
         job = h.app.queue.get(take["job_id"])
         score, grade, shown = _score_of(h, take["job_id"], history_store.light_of(job)) if job else (None, None, None)
-        out.append({"job_id": take["job_id"], "kind": take["kind"], "entry_id": take["entry_id"],
+        made = (job or {}).get("entry_id") or ((job or {}).get("result") or {}).get("entry_id")  # a trainer take is attached at submit, before its movement exists
+        has_copy = _history("has_copy")  # a follow take is kept when its history copy exists; a row alone is the 7-day job
+        kept = take["kind"] != "follow" or (has_copy is not None and has_copy(h.app.state, user_id, take["entry_id"] or made, take["job_id"]) is True)
+        out.append({"job_id": take["job_id"], "kind": take["kind"], "entry_id": take["entry_id"] or made, "kept": kept,
                     "created_at": take["created_at"], "status": job["status"] if job else "expired",
                     "score": score, "grade": grade, "shown": shown, "video_kept": model_only.kept(job),
                     "attribution": attribution.for_take(h, take["job_id"], take["entry_id"], owner=user_id)})
     _reply(h, 200, {"takes": out})
 
 
+def _shown(h: Any, entry_id: str) -> bool | None:
+    """Whether the movement's row publishes it; None when it has no row and is no shipped sample, so nobody sees it,
+    its owner included (W-N1, review residual 1). A shipped sample without a row is shown to everyone."""
+    row = entry_access.get(h.app.state, entry_id)
+    if row is not None:
+        return row.get("published") is not False
+    return True if entry_access.shipped_sample(h.app.child.catalog_dir, entry_id) else None
+
+
 def _entries(h: Any, user_id: str) -> None:
     out = []
-    for entry in auth.identity(h.app).entries_of(user_id):
-        out.append({"entry_id": entry["entry_id"], "name": labels.entry_name(h.app.child, entry["entry_id"], h.app.state),
+    store = auth.identity(h.app)
+    minor = trainer_publish.owner_minor(h.app, store, user_id)  # once per request, not per movement (go-live R3)
+    for entry in store.entries_of(user_id):
+        eid = entry["entry_id"]
+        shown = _shown(h, eid)
+        out.append({"entry_id": eid, "name": labels.entry_name(h.app.child, eid, h.app.state),
                     "created_at": entry["created_at"], "only_me": entry["only_me"],
-                    "floor_work": labels.floor_work(h.app.state, entry["entry_id"]),
-                    "attribution": attribution.for_entry(h, entry["entry_id"])})
+                    "published": shown is True, "hidden": shown is None,
+                    # the Watch switch shows only when the server would accept a publish (private-default D1, D5)
+                    "may_publish": not trainer_publish.publish_refused(h.app, store, eid, user_id, minor),
+                    "floor_work": labels.floor_work(h.app.state, eid),
+                    "attribution": attribution.for_entry(h, eid)})
     _reply(h, 200, {"entries": out})
 
 
@@ -244,20 +292,32 @@ def _entry_switch(h: Any, entry_id: str) -> None:
     doc = _post_body(h)
     if doc is None or (user_id := _user_or_401(h)) is None:
         return
-    value, floor = doc.get("only_me"), doc.get("floor_work")
-    if not (isinstance(value, bool) or isinstance(floor, bool)) or any(v is not None and not isinstance(v, bool) for v in (value, floor)):
+    value, floor, publish = doc.get("only_me"), doc.get("floor_work"), doc.get("published")
+    given = (value, floor, publish)
+    if not any(isinstance(v, bool) for v in given) or any(v is not None and not isinstance(v, bool) for v in given):
         return _fail(h, 400, MSG_BAD)
     store = auth.identity(h.app)
     if isinstance(floor, bool) and not labels.ENTRY_ID_RE.match(entry_id):  # the floor-work store holds no such id
         return _fail(h, 404, MSG_NO_ENTRY)
     if (found := store.entry_owner(entry_id)) is None or found[0] != user_id:
         return _fail(h, 404, MSG_NO_ENTRY)
+    if publish is True and (entry_access.get(h.app.state, entry_id) or {}).get("evicted"):  # go-live-readiness.md "Evict"
+        return _fail(h, 403, MSG_EVICTED)
+    if publish is True and trainer_publish.publish_refused(h.app, store, entry_id, user_id):  # D1: never a minor's
+        return _fail(h, 403, trainer_publish.MSG_MINOR_PUBLISH)
+    if publish is True and trainer_publish.statement_missing(h.app.state, entry_id, doc):  # PM-B3: nobody under 18
+        return _fail(h, 403, trainer_publish.MSG_STATEMENT)
+    stated = trainer_publish.stated(doc)
     if isinstance(value, bool):
         store.set_only_me(entry_id, user_id, value)
     if isinstance(floor, bool):
         labels.set_floor_work(h.app.state, entry_id, floor)  # floor-work.md: Part 7's own store, read by every Part 3 call
+    if isinstance(publish, bool):  # the owner's explicit publish choice (prod-data.md); a row is made if none exists
+        if not entry_access.set_published(h.app.state, entry_id, publish, nobody_under_18=stated):
+            entry_access.record(h.app.state, entry_id, owner=user_id, published=publish, nobody_under_18=stated)
     _reply(h, 200, {"entry_id": entry_id, "only_me": found[1] if value is None else value,
-                    **({"floor_work": floor} if isinstance(floor, bool) else {})})
+                    **({"floor_work": floor} if isinstance(floor, bool) else {}),
+                    **({"published": publish} if isinstance(publish, bool) else {})})
 
 
 def _consent(h: Any) -> None:
@@ -278,15 +338,18 @@ def _consent(h: Any) -> None:
     _reply(h, 200, {"retention": (store.user(user_id) or {}).get("retention")})
 
 
-def _delete(h: Any) -> None:
-    doc = _post_body(h)
-    if doc is None or (user_id := _user_or_401(h)) is None:
-        return
-    if doc.get("confirm") != CONFIRM:
-        return _fail(h, 400, MSG_BAD)
-    store, app = auth.identity(h.app), h.app
+def delete_account(app: Any, user_id: str) -> dict[str, Any]:
+    """Delete everything of `user_id` (identity.md "Delete my data", prod-data.md): takes, the movements they recorded
+    with every public copy, history, models, references, outbox mail, then the account. `{busy}` and nothing deleted
+    while one of their takes or a follow of their movement still runs; else `{takes_removed, entries_removed,
+    entries_unlinked}` (unlinked: a shipped sample the account was named on, which stays)."""
+    from part7 import delete_routes  # the movements they recorded and every public copy (APP-H4, LEG-C2)
+    store = auth.identity(app)
     owned = store.takes_of(user_id)
+    movements = delete_routes.account_entries(app, user_id)  # before a trainer take's delete drops its entry row
     busy = [t["job_id"] for t in owned if (app.queue.get(t["job_id"]) or {}).get("status") in ("queued", "running")]
+    made, made_busy = delete_routes.account_jobs(app, user_id)  # people jobs and group takes have no takes row (DI-N1)
+    busy += made_busy
     removed = 0
     if not busy:
         for take in owned:
@@ -295,23 +358,45 @@ def _delete(h: Any) -> None:
                 busy.append(take["job_id"])
             elif outcome == "removed":
                 removed += 1
+    entries: dict[str, list[str]] = {"removed": [], "kept": [], "busy": []}
+    if not busy:
+        entries = delete_routes.remove_entries(app, movements)
+        busy += entries["busy"]
     if busy:
-        return _fail(h, 409, MSG_BUSY, busy=busy)
-    unlinked = len(store.entries_of(user_id))
+        return {"busy": busy}
+    board_jobs = [t["job_id"] for t in owned] + list(made)  # read while the records exist: a board row from before `owner` and `poster` is found by its take
+    delete_routes.remove_made(app, user_id, made)
     email = (store.user(user_id) or {}).get("email")
     forget = _history("forget")
     if forget is not None:
         forget(app.state, user_id)
-    model_store.delete_all(app.state, f"u:{user_id}")  # the models they imported or generated, files and spool entries
+    modal_creds.remove(app.state, user_id)  # TICKET-367: their own Modal credentials file
+    for model_id in model_store.delete_all(app.state, f"u:{user_id}"):  # the models they imported or generated, files and spool entries
+        serverless_route.forget_job(app.state, model_id)  # AC-SC4: and what is still at Modal for them
+    delete_routes.forget_account(app, user_id, board_jobs)  # the boards they made, also on another person's movement (D7)
     store.delete_user(user_id)
     from part7 import my_reference, reference_approval  # again, only these two: an approval under way when the account went leaves no copy (ADR-0019)
     reference_approval.forget(app.state, user_id)
     my_reference.forget(app.state, user_id)
     if email:
         mail.purge_outbox(app.state, email)
+        from part7 import challenge_visibility, invite_mail  # their address off every invite list; an unused stop key goes, a stop stays
+        challenge_visibility.forget_address(app.state, email)
+        invite_mail.forget(app.state, invite_mail.stop_key(store.pepper, email))
+    return {"takes_removed": removed, "entries_removed": len(entries["removed"]), "entries_unlinked": len(entries["kept"])}
+
+
+def _delete(h: Any) -> None:
+    doc = _post_body(h)
+    if doc is None or (user_id := _user_or_401(h)) is None:
+        return
+    if doc.get("confirm") != CONFIRM:
+        return _fail(h, 400, MSG_BAD)
+    outcome = delete_account(h.app, user_id)
+    if "busy" in outcome:
+        return _fail(h, 409, MSG_BUSY, busy=outcome["busy"])
     applog.log(f"auth: account deleted {user_id}")
-    _reply(h, 200, {"deleted": True, "takes_removed": removed, "entries_unlinked": unlinked},
-           {"Set-Cookie": auth.cookie_header(h, None)})
+    _reply(h, 200, {"deleted": True, **outcome}, {"Set-Cookie": auth.cookie_header(h, None)})
 
 
 def _outbox(h: Any) -> None:
@@ -339,10 +424,14 @@ def handle(h: Any, method: str, route: str) -> bool:
     if parts[0] == "me" and not auth.state(h.app).available:  # sign-in off: the person's data routes do not exist
         _fail(h, 404, MSG_OFF)
         return True
-    if route == "auth/me" and get:
+    if route == "auth/mail-webhook" and method == "POST":  # Resend's bounce and complaint events (signed; mail-delivery.md)
+        mail_webhook.handle(h, h.app.state, auth.state(h.app).mailer.keyer, _reply)
+    elif route == "auth/me" and get:
         _reply(h, 200, _me_doc(h, auth.current_user(h)))
     elif route == "auth/outbox" and get:
         _outbox(h)
+    elif route == "auth/mail-status" and get:
+        _mail_status(h)
     elif route == "auth/start" and method == "POST":
         _start(h)
     elif route == "auth/verify" and method == "POST":

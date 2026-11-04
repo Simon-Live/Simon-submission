@@ -122,7 +122,8 @@ def _adapter(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, state: Path, outco
     def dotenv(*a: Any, **k: Any) -> Iterator[bool]:
         yield True
 
-    def fake_run(part: Any, argv: list[str], cwd: Path, timeout_s: float, log_path: Path, lock: Any) -> runner.Step:
+    def fake_run(part: Any, argv: list[str], cwd: Path, env_extra: dict[str, str], timeout_s: float, log_path: Path,
+                 lock: Any, kill_grace_s: float, **kw: Any) -> runner.Step:
         out = outcomes[len(calls)]
         calls.append(1)
         if out["exit"] == 0:
@@ -172,10 +173,32 @@ def test_adapter_counts_cut_streams_but_not_other_exits(monkeypatch: pytest.Monk
     cut = {"exit": 1, "stdout": "IncompleteRead(5 bytes read)"}
     other = {"exit": 2, "stdout": "bad clip"}
     calls, call = _adapter(monkeypatch, tmp_path, state, [cut, cut, other, cut, cut])
-    monkeypatch.setattr(p1_keyframes, "RETRY_MIN_S", 1e9)  # no in-run retry: one call per run
     for _ in range(5):
         call()
     assert len(calls) == 5 and pb.allow(state) == (True, 0.0)
+
+
+def test_adapter_counts_stream_cut_without_another_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                                          clock: Clock) -> None:
+    """TICKET-380: a stream closed without `response.completed` is a network failure, not `other`."""
+    state = tmp_path / "state"
+    closed = {"exit": 1, "stdout": "StreamCut: SAM 3.1 stream closed after 12 frames without response.completed"}
+    calls, call = _adapter(monkeypatch, tmp_path, state, [closed] * 3)
+    for _ in range(3):
+        call()
+    assert len(calls) == 3 and pb.allow(state)[0] is False
+
+
+def test_adapter_does_not_pause_part1_for_failures_after_a_survived_cut(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                                                        clock: Clock) -> None:
+    """B1: three runs that each survived a cut and then failed on something else leave Part 1 running."""
+    state = tmp_path / "state"
+    later = {"exit": 1, "stdout": "  SAM 3.1 stream cut after 58 frames (IncompleteRead); trying again\n"
+                                  "RuntimeError: Meta API 500 on /responses/input_tokens: x\n"}
+    calls, call = _adapter(monkeypatch, tmp_path, state, [later] * 3)
+    for _ in range(3):
+        call()
+    assert len(calls) == 3 and pb.allow(state) == (True, 0.0)
 
 
 def test_adapter_ignores_the_breaker_when_off(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, clock: Clock) -> None:

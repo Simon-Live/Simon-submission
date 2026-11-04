@@ -1,5 +1,5 @@
 // TICKET-316 at 412x915 against tests/part7/fake_api.py: the judge home lists only movements with a trainer video;
-// "You can leave this page open..." (waiting page) and "Or switch it up" (library) are fully visible and clear of the
+// "You can leave this page open..." (waiting page) and the title of the home list are fully visible and clear of the
 // fixed Feedback tab the staging gateway adds; the waiting page shows one time.
 //   PLAYWRIGHT_DIR=<node_modules> /home/gingy/claude-template/scripts/with-browser-slot.sh node tests/part7/judge-ui.browser.mjs
 import assert from "node:assert/strict";
@@ -69,11 +69,11 @@ try {
   await page.getByTestId("entry-arm-wave").waitFor();
   assert.equal(await page.getByTestId("entry-squat").count(), 0, "negative: a movement with no trainer video is not listed");
   ok("judge home lists the movement with a video and not the one without");
-  await page.locator(".lib-section-head h2").first().waitFor();
-  assert.equal(await page.locator(".lib-section-head span").count(), 0, "negative: no section aside (TICKET-336 T6)");
-  await clear(page, ".lib-section-head h2", "library section title");
+  await page.locator(".lib-head h1").waitFor();
+  assert.equal(await page.locator(".lib-section-head").count(), 0, "negative: the home is one list, with no sections (home-browse.md)");
+  await clear(page, ".lib-head h1", "home title");
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/after-home.png`, fullPage: true });
-  ok("the section title is fully visible and clear of the Feedback tab at 412 px");
+  ok("the home title is fully visible and clear of the Feedback tab at 412 px");
 
   await page.goto(`${base}?profile=submission#/job/abcdefabcdef`);
   const note = page.getByTestId("job-note");

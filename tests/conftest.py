@@ -64,6 +64,15 @@ def _private_gpu_lock(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pyt
 
 
 @pytest.fixture(autouse=True)
+def _no_admission_leaks_between_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`gpu_lock._inside` counts calls past admission in this process. A thread a test left inside its body made the next
+    test read `api/health` gpu as {busy: True, holder: part7} (full-suite run of 2026-11-03); each test starts at 0."""
+    from part7 import gpu_lock
+
+    monkeypatch.setattr(gpu_lock, "_inside", 0)
+
+
+@pytest.fixture(autouse=True)
 def _fake_free_gpu_memory(monkeypatch: pytest.MonkeyPatch) -> None:
     """TICKET-191: tests never read the host card's real free memory (a full card failed fallback tests). The reading
     is `SIMON7_TEST_FREE_MIB` (default 40000); a test of the reader itself calls `free_gpu_memory_mib.__wrapped__`."""
@@ -117,6 +126,7 @@ def api(tmp_path: Path, state_dir: Path) -> Iterator[Api]:
 
 
 @pytest.fixture(autouse=True)
-def _limits_on_in_tests(monkeypatch):
-    """The caps are off by default during testing on staging (SIMON7_LIMITS); the tests exercise them on."""
-    monkeypatch.setenv("SIMON7_LIMITS", "on")
+def _disk_guard_on_in_tests(monkeypatch):
+    """The caps are off by default during testing on staging (SIMON7_DISK_GUARD); the tests exercise them on."""
+    monkeypatch.setenv("SIMON7_DISK_GUARD", "on")
+    monkeypatch.setenv("SIMON7_DISK_FLOOR_BYTES", "0")  # the upload guard's disk floor reads the host's free space; tests do not

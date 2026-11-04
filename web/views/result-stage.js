@@ -149,11 +149,10 @@ export function drawActionRow(root, text) {
   const lead = h("div", { class: "st-act-lead" });
   const share = h("button", { type: "button", class: "btn secondary st-act", "data-testid": "action-share", text: text.share });
   const challenge = h("button", { type: "button", class: "btn secondary st-act", "data-testid": "action-challenge", text: text.challenge, hidden: true });
-  const status = h("span", { class: "st-act-status", role: "status", "data-testid": "action-status" });
   const extra = h("div", { class: "st-act-extra" });
-  const el = h("div", { class: "st-actions", "data-testid": "result-actions" }, lead, share, challenge, extra, status);
+  const el = h("div", { class: "st-actions", "data-testid": "result-actions" }, lead, share, challenge, extra);
   root.append(el);
-  return { el, lead, extra, share, challenge, say(t) { status.textContent = t || ""; } };
+  return { el, lead, extra, share, challenge };
 }
 
 /** The Videos view of a take without a trainer video (a group take): the follower's own clip, with its sound. */

@@ -18,6 +18,12 @@ The specs and architecture decision records (ADRs) behind Simon Part 7, copied f
 | [specs/test-videos.md](specs/test-videos.md) | The openly licensed test videos: rule, manifest, fetch and verify |
 | [specs/demo.md](specs/demo.md) | The submission and walkthrough videos under `demo/` |
 
+## Art direction
+
+| File | What it covers |
+|---|---|
+| [art-direction.md](art-direction.md) | The visual direction as implemented, and the source and licence of every shipped image, icon, font, video, mesh and model |
+
 ## ADRs
 
 | File | Decision |

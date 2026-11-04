@@ -1,6 +1,8 @@
 // Model catalog for the picker (docs/specs/model-picker.md): the built-in library, the caller's own models, the upload
 // call and the wait for a conversion. Relative URLs only, as api.js does, so the base path never matters.
 
+import { consentHeader } from "../model/consent-store.js"; // consent-and-age.md: a photo upload names the consent version
+
 export const LIBRARY_URL = "models/library/library.json";
 export const MODELS_URL = "api/models";
 const MODEL_ID = /^[0-9a-f]{32}$/;
@@ -93,10 +95,10 @@ export function errorText(status, body) {
   }
   if (status === 403) return "This page could not confirm the upload came from you. Reload and try again.";
   if (status === 411 || status === 400) return server || "That upload was not understood. Check the form and try again.";
-  if (status === 413) return server || "The file is too large (100 MB at most).";
-  if (status === 502 || status === 503 || status === 504) return GATEWAY;
+  if (status === 413) return server || "The file is too large (85 MB at most).";
+  if (status === 502 || status === 503 || status === 504) return server || GATEWAY; // Simon's own 503 says why, a gateway's has no such body
   if (status === 415) return server || "This file type is not supported. Use a GLB, VRM, FBX, a Blender file, a zip with a glTF, a photo or an OBJ.";
-  if (status === 429) return server || "You have reached your limit of models. Delete one and try again.";
+  if (status === 429) return server || "Simon is busy. Try again in a moment.";
   return server || "The model could not be imported. Try again in a moment.";
 }
 
@@ -144,7 +146,7 @@ export async function uploadModel(file, { name, licence, attribution, sourceUrl,
   if (file.name) q.set("filename", file.name);
   let res;
   try {
-    const headers = { "Content-Type": file.type || "application/octet-stream" };
+    const headers = { "Content-Type": file.type || "application/octet-stream", ...consentHeader() };
     // fetch cannot report how much of a file has gone up, so a caller that wants the percent gets XMLHttpRequest
     const counted = typeof onProgress === "function" && fetchImpl === globalThis.fetch && typeof XMLHttpRequest !== "undefined";
     res = counted ? await xhrPost(`${MODELS_URL}?${q}`, file, headers, onProgress, signal)

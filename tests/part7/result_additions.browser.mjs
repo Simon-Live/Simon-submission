@@ -57,7 +57,7 @@ async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduce
   await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });
   const page = await ctx.newPage();
   // the 404s a case asks for: missing modules (no stubs), broken mesh files, a missing models.json
-  const expected = (url) => /\/api\/source\/take\//.test(url) /* the credit in the open More has no server in the harness */ || (!stubs && isLaneModule404(url)) || isPickerRequest404(url) || (/\/(take-ar\.json|muse-fix)$/.test(url) && isOptionalResult404(url)) || (mesh === "broken" && /\/mesh\/(you|trainer)\/mesh3d/.test(url))
+  const expected = (url) => /\/api\/movements\/[^/]+\/boards\b/.test(url) /* the boards offer has no server in the harness */ || /\/api\/source\/take\//.test(url) /* the credit in the open More has no server in the harness */ || (!stubs && isLaneModule404(url)) || isPickerRequest404(url) || (/\/(take-ar\.json|muse-fix)$/.test(url) && isOptionalResult404(url)) || (mesh === "broken" && /\/mesh\/(you|trainer)\/mesh3d/.test(url))
     || (!models && url.endsWith("/models.json"));
   page.on("console", (m) => { if (m.type() === "error" && !expected(m.location().url)) errors.push(`${kase}: ${m.text()} ${m.location().url}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
@@ -223,6 +223,38 @@ try {
   assert.deepEqual(placement, [0, 1].map(() => ({ box: true, hidden: true, inButton: false })));
   assert.equal(await page.getByTestId("fault-list").count(), 0, "negative: no fault list");
   ok("AC-R6 the voice slots wait hidden for the stage's voice switch; no fault list");
+
+  // "Low confidence" passes WCAG AA: the lean result shows no fault list here, so axe reads the cue list and a real chip added to it
+  await page.evaluate(fs.readFileSync(req.resolve("axe-core/axe.min.js"), "utf8"));
+  const lowChip = await page.evaluate(() => {
+    const chip = Object.assign(document.createElement("span"), { className: "sr-chip sr-low", textContent: "Low confidence" });
+    chip.dataset.testid = "probe-low";
+    document.querySelector('[data-testid="insights"]').append(chip);
+    return chip.textContent;
+  });
+  assert.equal(lowChip, "Low confidence");
+  const contrast = await page.evaluate(() => axe.run(document.querySelector('[data-testid="insights"]'), { runOnly: ["color-contrast"] }));
+  assert.deepEqual(contrast.violations.flatMap((v) => v.nodes.map((n) => n.target.join(" "))), []);
+  // the chip's colour is the theme's text-safe "bad" token (theme/results.css .sr-low): the client pink lightened for AA
+  // text (go-live a11y contrast pass), read from the theme, not a literal (TICKET-241 AC-1).
+  const badToken = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--color-bad-text)";
+    document.body.append(probe);
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  });
+  assert.notEqual(badToken, "rgb(0, 0, 0)", "the token resolved");
+  assert.equal(await tid(page, "probe-low").evaluate((n) => getComputedStyle(n).color), badToken);
+  await tid(page, "probe-low").evaluate((n) => n.remove());
+  // a scroll to the cues stops below the sticky header
+  assert.equal(await page.locator('[data-testid="insights"]').evaluate((n) => getComputedStyle(n).scrollMarginTop),
+    await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim()));
+  await page.locator('[data-testid="insights"]').evaluate((n) => n.scrollIntoView({ block: "start" }));
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(SHOTS, "additions-insights.png") });
+  ok("AC-R6 Low confidence passes AA; a scroll to the cues stops below the header");
 
 
   // ---- R2 the skeleton over the video -------------------------------------------------------------------------

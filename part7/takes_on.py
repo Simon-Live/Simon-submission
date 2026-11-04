@@ -8,8 +8,8 @@ rule lives here; `stays_with_owner` only combines those, and the board POST refu
 - `mine`: the caller's own takes, newest first. Signed in, the identity store's ownership rows; on any browser, the job
   ids the browser says it sent while signed out (a job id is the take's private key, as a result link is), kept only
   when nobody owns the job. An owner lookup that fails drops the take (fails closed).
-- `shared`: scores other people posted to a challenge board of this movement (a board is public by design), never
-  the caller's own, never a take that stays with its owner. No job id.
+- `shared`: scores other people posted to a challenge board of this movement that the caller may open (an invited
+  board answers only to those on it), never the caller's own, never a take that stays with its owner. No job id.
 - `followers`: True for the movement's signed-in owner, whose class table (teacher_routes) already lists the takes.
 """
 
@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from part7 import auth, challenges, history_store, identity as ident, jobs, my_reference, shown_score
+from part7 import auth, challenge_visibility, challenges, consent_record, history_store, identity as ident, jobs, my_reference, shown_score, upload_owner
 
 DEVICE_MAX = 20  # job ids one request may name
 SHARED_MAX = 20  # rows of "shared"; the scan stops once it has them
@@ -45,6 +45,15 @@ def owner(app: Any, job_id: str) -> Any:
         return auth.identity(app).owner_of(job_id)
     except Exception:  # noqa: BLE001  any store fault: the caller drops the take
         return UNKNOWN
+
+
+def keyed_by_id(app: Any, job_id: str, caller: str | None = None) -> bool:
+    """True when naming `job_id` proves it is the caller's: nobody owns it, so its id is its key (identity.md). A group
+    take has no takes row, so its record is read too: one made signed in answers only to that account (S-R1)."""
+    if owner(app, job_id) is not None:
+        return False
+    made = upload_owner.people_owner(app.queue, job_id, ("group",))
+    return made is not upload_owner.UNKNOWN and (not made or made == caller)
 
 
 def stays_with_owner(state: Path | str, job_id: str, job: Any, owner_id: Any, entry_id: str) -> bool:
@@ -107,6 +116,19 @@ def mine(h: Any, entry_id: str, user: str | None, device: list[str]) -> list[dic
     return ordered[:MINE_MAX]
 
 
+def is_minor_post(app: Any, job: Any, account: Any) -> bool:
+    """True when a post is by someone marked 13 to 17: the take's own answer, or its account's mark (privacy PM-B2, PM-R4).
+    The mark can come after the post, so it is read on every view; a store that cannot answer reads as a minor (fails closed)."""
+    if consent_record.is_minor(job if isinstance(job, dict) else None):
+        return True
+    if not isinstance(account, str) or account is UNKNOWN:
+        return account is UNKNOWN
+    try:
+        return auth.identity(app).is_minor(account)
+    except Exception:  # noqa: BLE001  an unknown answer is not an adult's
+        return True
+
+
 def board_keep(app: Any, entry_id: str | None = None) -> Any:
     """The `keep` of a public board view (challenges.view, summary, list_all): a post shows unless it stays with its owner.
 
@@ -123,7 +145,8 @@ def board_keep(app: Any, entry_id: str | None = None) -> Any:
         if job_id not in seen:
             job = history_store.read_json(Path(app.state) / "jobs" / job_id / "job.json")
             movement = entry_id or (job.get("entry_id") or (job.get("result") or {}).get("entry_id") if isinstance(job, dict) else None) or ""
-            seen[job_id] = not stays_with_owner(app.state, job_id, job, owner(app, job_id), str(movement))
+            owner_id = owner(app, job_id)
+            seen[job_id] = not stays_with_owner(app.state, job_id, job, owner_id, str(movement)) and not is_minor_post(app, job, owner_id or item.get("owner"))
         return seen[job_id]
     return keep
 
@@ -146,7 +169,8 @@ def shared(h: Any, entry_id: str, user: str | None, device: list[str]) -> list[d
     """Scores other people posted to a board of `entry_id`, newest first; the board link, never a job id."""
     out: list[dict[str, Any]] = []
     examined = 0
-    for summary in challenges.list_all(h.app.state, entry_id=entry_id)[:BOARDS_MAX]:
+    viewer = challenge_visibility.viewer_of(h)
+    for summary in challenges.list_all(h.app.state, entry_id=entry_id, allow=lambda b: challenge_visibility.can_view(b, viewer))[:BOARDS_MAX]:
         doc = challenges.get(h.app.state, summary["id"]) or {}
         for item in reversed(doc.get("entries", [])):  # newest post first
             examined += 1

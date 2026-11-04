@@ -66,10 +66,11 @@ def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 def candidates(status: dict[str, dict[str, Any]]) -> dict[str, dict[str, str]]:
-    """`{part: {old, new}}` for each part whose remote main differs from the checked-out sha (both known)."""
+    """`{part: {old, new}}` for each part whose remote main differs from the checked-out sha (both known). A checkout
+    ahead of its main is no candidate: adoption is forward only, so a gate on the older main would rerun on every `up`."""
     out: dict[str, dict[str, str]] = {}
     for part, info in status.items():
-        if info.get("sha") and info.get("remote_sha") and info["sha"] != info["remote_sha"]:
+        if info.get("sha") and info.get("remote_sha") and info["sha"] != info["remote_sha"] and not info.get("ahead"):
             out[part] = {"old": info["sha"], "new": info["remote_sha"]}
     return out
 

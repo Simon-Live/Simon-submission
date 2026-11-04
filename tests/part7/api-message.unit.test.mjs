@@ -21,7 +21,12 @@ test("a 400 with no reason falls back to not a video", () => {
   assert.equal(messageFor(400, { error: 7 }), NOT_VIDEO);
 });
 
+test("a 429 says the server's own reason; with none, the busy line, never a daily one", () => {
+  const hourly = "You have sent many files in a short time. Wait a while and try again.";
+  assert.equal(messageFor(429, { error: hourly }), hourly);
+  assert.equal(messageFor(429, {}), "The app is busy. Try again in a few minutes.");
+});
+
 test("other statuses keep their mapping", () => {
-  assert.equal(messageFor(429, { error: "anything" }), "You have used today's analyses. Try again tomorrow.");
   assert.equal(messageFor(404, { error: "anything" }), "This movement is not in the catalog.");
 });

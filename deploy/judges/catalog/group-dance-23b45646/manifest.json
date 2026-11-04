@@ -11,7 +11,7 @@
   "description": "Source: stock clip 7480487 (Pexels download name 7480487-uhd_2160_3840_25fps.mp4), one of Part 1's test videos. Made with Simon's trainer pipeline (Parts 1 to 4, Part 6) on 2026-11-04.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 16300,
-  "files_source": "import",
+  "files_source": "fixture",
   "provenance": {
     "keyframes": {
       "part": 3,

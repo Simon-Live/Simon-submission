@@ -98,8 +98,9 @@ def test_an_approved_take_is_the_students_reference_for_later_takes(room: Room, 
     assert later["reference"]["approved"] == shown["approved"]
     mine_ = record_of(room.api, later["id"], room.ada)  # the owner reads the date, never the teacher's id
     assert mine_["approved"] == shown["approved"] and "approved_by" not in mine_
-    for viewer in (room.theo, None):
-        assert record_of(room.api, later["id"], viewer) == {"used": "own", "date": mine_["date"], "approved": shown["approved"]}
+    for viewer in (room.theo, None):  # an owned take's record answers its owner only (security audit B2)
+        assert room.api.request("GET", f"api/jobs/{later['id']}", None,
+                                {"Cookie": f"{auth.COOKIE}={viewer}"} if viewer else {})[0] == 404
     assert seen[-1] != seen[0]  # Part 5 got the approved clip, not the teacher's
 
 
@@ -179,13 +180,12 @@ def test_deleting_the_approved_take_drops_the_waiting_suggestion(room: Room) -> 
     assert room.reference()["suggestion"] is None
 
 
-def test_the_rate_limit_and_an_unusable_skeleton(room: Room, monkeypatch: pytest.MonkeyPatch) -> None:  # AC-MR-26
+def test_no_limit_and_an_unusable_skeleton(room: Room, monkeypatch: pytest.MonkeyPatch) -> None:  # AC-MR-26
     rid = room.ask(room.take())
     monkeypatch.setattr(my_reference_routes, "accepts", lambda app, data: False)
     assert room.approve(rid)[0] == 422 and room.reference()["reference"] is None
     monkeypatch.setattr(my_reference_routes, "accepts", lambda app, data: True)
-    room.api.app._approve_limit = auth.Limiter(1, 60)
-    assert room.approve(rid)[0] == 200 and room.approve(rid)[0] == 429
+    assert room.approve(rid)[0] == 200 and room.approve(rid)[0] == 200  # no usage limit anywhere (operator rule, 2026-11-04)
 
 
 def test_download_my_data_holds_the_approval_in_both_accounts(room: Room) -> None:  # AC-MR-27

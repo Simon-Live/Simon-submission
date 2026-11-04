@@ -170,7 +170,7 @@ def test_part1_timeout_warning_carries_the_load(monkeypatch: pytest.MonkeyPatch)
 def test_part1_timeout_logs_the_load_in_the_job_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     work = tmp_path / "jobs" / "abc123def456" / "work"
     work.mkdir(parents=True)
-    step = {"part": 1, "exit": None, "timed_out": True, "duration_s": 150.0}
+    step = {"part": 1, "exit": None, "timed_out": True, "duration_s": 150.0, "timeout_s": 150.0, "stop_exit": 143}
     monkeypatch.setattr(chain.p1_keyframes, "run", lambda *a, **k: (step, None, "x"))
     monkeypatch.setattr(chain.os, "getloadavg", lambda: (42.4, 1.0, 1.0))
     run = chain._Run(tmp_path / "v.mp4", None, {})

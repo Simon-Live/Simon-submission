@@ -9,7 +9,7 @@ export async function download(deps = {}) {
   const save = deps.save || saveBlob;
   let res;
   try {
-    res = await doFetch(EXPORT_URL, { expectStatus: [401, 429, 500] }); // the card shows these answers in words
+    res = await doFetch(EXPORT_URL, { expectStatus: [401, 500] }); // the card shows these answers in words
   } catch {
     return { ok: false, text: failureText(0) };
   }

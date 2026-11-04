@@ -24,16 +24,12 @@ KINDS = ("take_result", "progress_card", "history_report", "progress_sheet")
 OFFERED_KINDS = ("take_result", "history_report", "progress_sheet")  # progress_card waits for TICKET-227, which is not merged
 DELETED_ON_REVOKE = ("progress_sheet",)  # TICKET-283: ending a progress-sheet link deletes its stored copy too
 DAYS = (1, 7, 30)
-MAX_ACTIVE = 20
-MAX_PER_HOUR = 10
 INFO = b"simon7-share-v1"
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}\.[A-Za-z0-9_-]{43}$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 MSG_KIND = "That kind of share is not available yet."
 MSG_DAYS = "Choose 1, 7 or 30 days."
-MSG_LIMIT_ACTIVE = "You have 20 active share links. Revoke one to make another."
-MSG_LIMIT_HOUR = "You made 10 share links in the last hour. Try again later."
 MSG_MIGRATION = "Sharing is not available right now."
 
 _COLUMNS = "token_hash, owner_id, kind, item_ref, snapshot, show_name, show_clip, created_utc, expires_utc, revoked_utc"
@@ -117,13 +113,6 @@ def create_share(db: ident.IdentityStore, owner_id: str, kind: str, item_ref: st
         raise ShareError(MSG_DAYS)
     ensure_schema(db)
     now = db.clock()
-    active = db.fetch("SELECT COUNT(*) AS n FROM shares WHERE owner_id = ? AND revoked_utc IS NULL AND expires_utc > ?",
-                      (owner_id, _iso(now)))[0]["n"]
-    recent = db.fetch("SELECT COUNT(*) AS n FROM shares WHERE owner_id = ? AND created_utc > ?", (owner_id, _iso(now - 3600)))[0]["n"]
-    if active >= MAX_ACTIVE:
-        raise ShareError(MSG_LIMIT_ACTIVE, 429)
-    if recent >= MAX_PER_HOUR:
-        raise ShareError(MSG_LIMIT_HOUR, 429)
     share_id = secrets.token_urlsafe(12)
     token = f"{share_id}.{_sign(db, share_id)}"
     db.write(
@@ -145,6 +134,23 @@ def _row(db: ident.IdentityStore, token: Any) -> Any | None:
     if not rows or rows[0]["revoked_utc"] is not None or rows[0]["expires_utc"] <= _iso(db.clock()):
         return None
     return rows[0]
+
+
+def ended(db: ident.IdentityStore, token: Any) -> str | None:
+    """`"expired"` or `"revoked"` for a token this server signed and whose row still exists but no longer serves; else None
+    (live, tampered or unknown). The MAC is checked first, so only someone holding a real token learns this, and it says
+    nothing about who made it or what it showed."""
+    if not isinstance(token, str) or not TOKEN_RE.match(token) or not db.has_table("shares"):
+        return None
+    share_id, mac = token.split(".")
+    if not hmac.compare_digest(_sign(db, share_id), mac):
+        return None
+    rows = db.fetch("SELECT revoked_utc, expires_utc FROM shares WHERE token_hash = ?", (token_hash(token),))
+    if not rows:
+        return None
+    if rows[0]["revoked_utc"] is not None:
+        return "revoked"
+    return "expired" if rows[0]["expires_utc"] <= _iso(db.clock()) else None
 
 
 def resolve(db: ident.IdentityStore, token: Any) -> dict[str, Any] | None:
@@ -194,7 +200,7 @@ def list_for_owner(db: ident.IdentityStore, owner_id: str) -> list[dict[str, Any
     now, out = _iso(db.clock()), []
     for row in db.fetch("SELECT * FROM shares WHERE owner_id = ? ORDER BY created_utc DESC, token_hash", (owner_id,)):
         state = "revoked" if row["revoked_utc"] else "expired" if row["expires_utc"] <= now else "active"
-        out.append({"id": row["token_hash"], "kind": row["kind"], "title": json.loads(row["snapshot"]).get("title"),
+        out.append({"id": row["token_hash"], "kind": row["kind"], "item_ref": row["item_ref"], "title": json.loads(row["snapshot"]).get("title"),
                     "show_name": bool(row["show_name"]), "show_clip": bool(row["show_clip"]), "created_utc": row["created_utc"],
                     "expires_utc": row["expires_utc"], "state": state})
     return out

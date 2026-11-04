@@ -1,6 +1,6 @@
 // Hash router. Relative URLs only; each screen returns a cleanup function.
 import { installErrorCapture } from "./errors.js";
-import { getAnalysis, getReplay, getTrainerVisibility, getFixtureResult, getJob, getEntry, entryFileUrl, routeName, ApiError } from "./api.js";
+import { getAnalysis, getReplay, getTrainerVisibility, getFixtureResult, getJob, getEntry, entryFileUrl, routeName, getVersion, ApiError } from "./api.js";
 import { mountCatalog } from "./catalog.js";
 import { mountWatch } from "./watch.js";
 import { mountRecord } from "./record.js";
@@ -13,12 +13,16 @@ import { clear, stateBlock, linkButton } from "./ui.js";
 import { showLoading } from "./progress.js";
 import { mountBuildStamp } from "./build.js";
 import { isDebug, profile } from "./flags.js";
+import { stripLegacyMode } from "./model/legacy-link.js";
 import { mountPendingList, mountPendingResume, mountPendingBanner } from "./pending-ui.js";
 import { startPending } from "./pending-app.js";
 import { mountShell, mountTestServerBanner } from "./shell.js";
 import { mountMePage, redirectToMe } from "./me-page.js";
 import { mountFooter } from "./footer.js";
 import { loadResultFor as loadChecked } from "./orphan-load.js";
+import { loadPolicy } from "./policy.js";
+import { watchBuild, hasEdits } from "./stale-build.js"; // a page left open across a release reloads at the next safe navigation
+import { takeHeld } from "./take-guard.js";
 
 installErrorCapture(); // uncaught errors and failed fetches reach the server log (observability.md)
 const root = document.getElementById("app");
@@ -50,6 +54,7 @@ function mountResultRoute(el, job, pid) {
   showLoading(el, "Loading your result");
   Promise.all([loadChecked(job, pid, loadResult), import("./result.js")]).then(([data, mod]) => {
     if (!live) return;
+    if (data.redirect) return location.replace(data.redirect); // a trainer job's id: its movement, not a "not found" (orphan-load.js)
     clear(el);
     // TICKET-087: keep the handle, so leaving the screen stops its video and 3D clock
     mod.mountResult(el, { analysis: data.analysis, replay: data.replay, trainerVisibility: data.trainerVisibility, trainerVideoUrl: data.trainerVideoUrl, job, record: data.record, pid }).then((h) => {
@@ -140,7 +145,6 @@ function mountRecapRoute(el, which, month) {
   return () => { live = false; stop(); };
 }
 
-/** `#/impact` and `#/architecture`: the persona page and the diagrams, loaded on first use (impact-page.md). */
 /** A business page (web/legal.js), loaded on first use like the other static pages. */
 function mountLegalRoute(el, key) {
   let stop = () => {};
@@ -149,6 +153,7 @@ function mountLegalRoute(el, key) {
   return () => { live = false; stop(); };
 }
 
+/** `#/impact` and `#/architecture`: the persona page and the diagrams, loaded on first use (impact-page.md). */
 function mountLazy(el, file, name) {
   let stop = () => {};
   let live = true;
@@ -157,9 +162,10 @@ function mountLazy(el, file, name) {
 }
 
 export const ROUTES = [
-  [/^$/, (el) => mountCatalog(el)],
+  [/^(?:\?.*)?$/, (el) => mountCatalog(el)], // home, with its browse state after a ? (home-browse.md)
   [/^watch\/([^/]+)$/, (el, m) => mountWatch(el, m[1])],
   [/^record$/, (el) => mountRecord(el)],
+  [/^record\/c\/([^/]+)$/, (el, m) => mountRecord(el, { challengeId: m[1] })], // a crew recording for a challenge (board-visibility.md)
   [/^follow\/([^/]+)$/, (el, m) => mountFollow(el, m[1])],
   [/^follow\/([^/]+)\/c\/([^/]+)$/, (el, m) => mountFollow(el, m[1], m[2])], // a challenge taken (challenges.md)
   [/^job\/([^/]+)$/, (el, m) => mountJob(el, m[1])],
@@ -183,18 +189,22 @@ export const ROUTES = [
   [/^me\/([^/]+)\/progress$/, (el, m) => mountProgressRoute(el, m[1])],
   [/^me\/([^/]+)$/, (el, m) => mountHistoryRoute(el, m[1])],
   [/^impact$/, (el) => mountLazy(el, "./impact.js", "mountImpact")], // who Simon is for: persona cards (impact-page.md)
-  [/^architecture$/, (el) => mountLazy(el, "./architecture.js", "mountArchitecture")], // the three diagrams of docs/ARCHITECTURE.md
-  [/^(about|mission|guide|safety|privacy|terms|accessibility|biometric|dmca|sub-processors)$/, (el, m) => mountLegalRoute(el, m[1])], // the business pages and legal stand-ins (model/legal.js)
+  [/^(about|mission|guide|architecture|safety|privacy|terms|accessibility|biometric|dmca|sub-processors)$/, (el, m) => mountLegalRoute(el, m[1])], // the business pages (model/legal.js) and the server's legal pages in the app's theme (legal.js); part7/legal_pages.py still serves /privacy and the others
   [/^whitepaper$/, (el) => mountLazy(el, "./whitepaper.js", "mountWhitepaper")], // the design blueprint, shown in the app (web/whitepaper.html)
   [/^notices$/, (el) => mountLazy(el, "./notices.js", "mountNotices")], // the open-source notices as a page (api/notices)
   [/^profile(?:\/.*)?$/, () => redirectToMe()], // the old profile address, and anything below it, opens the Me page
 ];
 
+/** A malformed escape in a shared link ("?q=%zz") stays as typed instead of throwing. */
+function safeDecode(text) {
+  try { return decodeURIComponent(text); } catch { return text; }
+}
+
 export function resolve(hash) {
-  const path = hash.replace(/^#\/?/, "");
+  const path = stripLegacyMode(hash).replace(/^#\/?/, ""); // an old `?mode=` link opens (model/legacy-link.js)
   for (const [re, mount] of ROUTES) {
     const m = re.exec(path);
-    if (m) return { mount, params: m.map((p) => (p ? decodeURIComponent(p) : p)) };
+    if (m) return { mount, params: m.map((p) => (p ? safeDecode(p) : p)) };
   }
   return null;
 }
@@ -214,7 +224,10 @@ function show() {
 }
 
 profile(); // `?profile=submission` is read here before any screen and kept (flags.js)
-window.addEventListener("hashchange", show);
+await loadPolicy(); // #415: the prod switches and the consent step are known before the shell and the first screen (policy.js); never rejects
+let sendingSaved = () => false; // set once the saved takes queue is up
+const build = watchBuild({ getVersion, isSafe: () => !takeHeld() && !sendingSaved() && !document.querySelector("dialog[open]") && !hasEdits(document) });
+window.addEventListener("hashchange", () => { if (!build.navigate()) show(); });
 mountShell();
 mountTestServerBanner(); // a test stand-in server says so in a banner (self-healing.md)
 show();
@@ -222,4 +235,4 @@ if (isDebug()) mountBuildStamp(document.getElementById("build")); // the build l
 mountFooter(document.getElementById("site-footer")); // the live version, links and credits on every screen (version-footer.md)
 // Saved takes: drop expired ones, send what is waiting, and show the banner on every screen (offline-takes.md).
 import("./auth.js").then((m) => m.mountAuthLink(document.getElementById("auth-link"))).catch(() => {}); // the header link, only when sign-in is on
-startPending().then((pending) => mountPendingBanner(document.getElementById("pending"), pending)).catch(() => {});
+startPending().then((pending) => { sendingSaved = () => Boolean(pending.progress()); mountPendingBanner(document.getElementById("pending"), pending); }).catch(() => {});

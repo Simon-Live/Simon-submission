@@ -15,12 +15,12 @@ export const FOOTER_TEXT = {
   copy: "Copy build info",
   copied: "Build info copied.",
   copyFailed: "Copy did not work. Select the lines above and copy them.",
-  detailsLabel: "Build details",
   linksLabel: "About Simon",
-  // only models with a live staging run (docs/specs/version-footer.md, "Model credit")
-  credit: "Built with Meta models: SAM 3.1, Muse Spark, SAM 3D Body, MHR and SAM 3D Objects.",
+  // the models a take runs in prod whose licences ask for it (docs/specs/version-footer.md, "Model credit")
+  credit: "Built with Meta models: SAM 3D Body and MHR.",
+  museCredit: "Built with Muse Spark Open", // Muse Model License section 2, while live wording runs (licence_gates.phrasing)
   // the repos are private and the issue tracker with them, so neither is a link (operator decision, TICKET-326)
-  source: "Source: private repository (moalborati/simon-part-7-stitching-app)",
+  source: "Source: private repository",
   feedback: "To send feedback, tap the Feedback tab on the right edge of the screen.",
   app: "Simon Part 7",
 };

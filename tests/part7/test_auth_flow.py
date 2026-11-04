@@ -39,12 +39,13 @@ def test_mail_holds_code_and_fragment_link_and_no_ip(api: Api) -> None:  # AC-AU
 def test_start_limits(api: Api) -> None:  # AC-AU-2
     first = post(api, "api/auth/start", {"email": EMAIL})
     other = post(api, "api/auth/start", {"email": "new.person@example.org"})
-    assert first[0] == other[0] == 202 and first[2] == other[2] == {"ok": True}  # new and known: identical
+    assert first[0] == other[0] == 202 and set(first[2]) == set(other[2]) == {"ok", "attempt"}  # new and known: the same shape
+    assert first[2]["ok"] is other[2]["ok"] is True and first[2]["attempt"] != other[2]["attempt"]
     for _ in range(4):
         assert post(api, "api/auth/start", {"email": EMAIL})[0] == 202
     mails = len(outbox(api))
     status, _, body = post(api, "api/auth/start", {"email": EMAIL})  # the 6th for one address in an hour
-    assert (status, body) == (202, {"ok": True}) and len(outbox(api)) == mails == 6  # silent: no mail
+    assert status == 202 and set(body) == {"ok", "attempt"} and len(outbox(api)) == mails == 6  # silent: no mail
     assert post(api, "api/auth/start", {"email": "bad"})[0] == 400
     assert post(api, "api/auth/start", {})[0] == 400 and post(api, "api/auth/start", {"email": 7})[0] == 400
 
@@ -359,7 +360,7 @@ def test_log_grep_after_a_full_sign_in_has_no_secret_or_address(api: Api, caplog
         sid = sign_in(api)
         post(api, "api/me/delete", {"confirm": "delete"}, cookie=sid)
     log = "\n".join(r.getMessage() for r in caplog.records)
-    assert "auth: sign-in started" in log and "auth: signed in u-" in log
+    assert "auth: sign-in started" in log and "auth: signed in u#" in log  # applog.pseudonym (prod-data.md D3)
     for secret in (token, code, sid, EMAIL, EMAIL.lower(), "example.com", "ada.lovelace"):
         assert secret not in log, secret
 

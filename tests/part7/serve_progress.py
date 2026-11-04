@@ -36,6 +36,12 @@ def seed(ctx: object) -> dict:
     return {"result": {}}
 
 
+
+def write_tokens(ids: list[str]) -> None:
+    """The creator token of each seeded take, as the device that made it holds them (prod-data.md, LEG-H4)."""
+    from part7 import creator
+    Path(f"{id_file}.tokens.json").write_text(json.dumps({j: creator.token_for(app.state, j) for j in ids}))
+
 ids = []
 for day in DAYS:
     made = app.queue.submit("follow", seed, entry_id="lateral-raise", mode="rehab")
@@ -48,6 +54,7 @@ for day in DAYS:
 trainer = app.queue.submit("trainer", lambda ctx: {"result": {"entry_id": "lateral-raise"}}, entry_id=None)  # its claim makes the owner the entry's author
 app.queue.wait(trainer["id"], 20)
 ids.append(trainer["id"])  # the last line: the trainer job behind the movement
+write_tokens(ids)
 id_file.write_text("\n".join(ids))
 http = server.make_server(app, port=port)
 print(f"serving on {http.server_address[1]}", flush=True)

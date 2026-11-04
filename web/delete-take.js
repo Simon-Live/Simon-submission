@@ -4,10 +4,10 @@ import { h, clear } from "./ui.js";
 
 export const TEXT = {
   button: "Delete this take",
-  ask: "Delete the video, the tracking and the analysis of this take? This cannot be undone.",
+  ask: "Delete the video, the tracking and the analysis of this take? Its score also leaves any leaderboard it is on. This cannot be undone.",
   confirm: "Delete it",
   keep: "Keep it",
-  done: "Deleted. The video, the tracking and the analysis of this take are gone from this server.",
+  done: "Deleted. The video, the tracking and the analysis of this take are gone from this server, and its score is off any leaderboard.",
   busy: "Deleting",
   failed: "The take could not be deleted. Try again in a moment.",
   gone: "This take is already gone.",
@@ -18,7 +18,7 @@ export const TEXT = {
 export const GROUP_TEXT = {
   ...TEXT,
   button: "Delete this group take",
-  ask: "This deletes the whole group take: the video, the tracking and the results of everyone in it, not only this person. This cannot be undone.",
+  ask: "This deletes the whole group take: the video, the tracking and the results of everyone in it, not only this person. Their scores also leave any leaderboard they are on. This cannot be undone.",
   confirm: "Delete the group take",
   done: "Deleted. The video, the tracking and the results of everyone in this group take are gone from this server.",
 };
@@ -40,8 +40,9 @@ export const TRAINER_TEXT = {
 export async function postDelete(job, fetcher = globalThis.fetch.bind(globalThis), { removeEntry = false } = {}) {
   let res;
   try {
-    // always JSON: the route refuses a POST that is not same-origin JSON (CSRF guard, TICKET-374 R8)
-    const init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(removeEntry ? { remove_entry: true } : {}) };
+    // always JSON: the server's CSRF guard (auth.origin_ok) wants the content type and the browser's Origin
+    const init = { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(removeEntry ? { remove_entry: true } : {}) };
     res = await fetcher(`api/jobs/${encodeURIComponent(job)}/delete`, init);
   } catch {
     throw new Error(TEXT.failed);

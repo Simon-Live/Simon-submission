@@ -80,6 +80,7 @@ async function audit(size, name, page, scope = "body") {
 for (const [size, width, height] of SIZES) {
   for (const [name, url, ready] of PAGES) {
     const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce" });
+    await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } }); // moments and near misses sit in "More"
     const page = await ctx.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -101,10 +102,12 @@ const rep = (n, ...ms) => ({ rep: n, movement: "raise", keyframes: ms.map((t_ms,
 const KEYFRAMES = { fps: 25, people: [{ id: 0, repetitions: [rep(1, 0, 1500), rep(2, 4000, 5500), rep(3, 8000, 9500)] }] };
 async function visit(size, width, height, url, ready, { keyframes = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce", hasTouch: width < 600 });
+  // the result screen keeps its moments in "More", closed by default; this viewer left it open (result.browser.mjs does the same)
+  if (url.includes("coach.html")) await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });
   const page = await ctx.newPage();
   if (keyframes) { // the fake API has no keyframes file; the ladder needs three reps to draw
     await page.route("**/catalog/api/entries/lateral-raise/keyframes.json", (r) => r.fulfill({ json: KEYFRAMES }));
-    await page.route("**/catalog/api/entries/lateral-raise", async (r) => r.fulfill({ json: { ...(await (await r.fetch()).json()), keyframes: "keyframes.json", duration_ms: 12000 } }));
+    await page.route("**/catalog/api/entries/lateral-raise", async (r) => r.fulfill({ json: { ...(await (await r.fetch()).json()), keyframes: "keyframes.json", duration_ms: 12000, category: null } })); // no kind of its own, so the mode picker is not locked (TICKET-311)
   }
   await page.goto(url.startsWith("http") ? url : `${BASE}${url}`);
   await page.locator(ready).first().waitFor({ timeout: 6000 });
@@ -138,7 +141,7 @@ for (const [size, width, height] of SIZES) {
   await tid(page, "challenge-create").click();
   await tid(page, "challenge-error").waitFor();
   assert.equal(await tid(page, "challenge-error").getAttribute("role"), "alert");
-  assert.equal(await page.getByLabel("Your name on the board").count(), 1, `${size}: the name field has its label`);
+  assert.equal(await page.getByLabel("Your name, shown on the board").count(), 1, `${size}: the name field has its label`);
   await tid(page, "challenge-name").fill("Sam");
   await tid(page, "challenge-create").click();
   await tid(page, "share-card-preview").waitFor();
@@ -160,10 +163,10 @@ for (const [size, width, height] of SIZES) {
   await audit(size, "follow-ladder", page);
   await ctx.close();
 
-  // the catalog with every kind's section; the header has no Exercise / Dance / Rehab switch (removed 2026-11-04)
-  ({ ctx, page } = await visit(size, width, height, "/#/", "[data-testid=section-dance]"));
-  assert.equal(await page.locator('header.bar [data-testid^="kind-"]').count(), 0, `${size}: negative: no kind switch in the header`);
-  await audit(size, "catalog-sections", page);
+  // the header has no Exercise / Dance / Rehab switch (TICKET-436): the catalog audit covers it, and no kind button is left
+  ({ ctx, page } = await visit(size, width, height, "/#/", "[data-testid=nav-record]"));
+  assert.equal(await page.locator('[data-testid^="kind-"]').count(), 0, `${size}: no kind switch in the header`);
+  await audit(size, "catalog-header", page);
   await ctx.close();
   console.log(`checked - ${size} states`);
 }

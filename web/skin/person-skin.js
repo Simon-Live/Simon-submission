@@ -442,9 +442,9 @@ function measure(tpl, pose, index, verts) {
 
 // ---- loading ---------------------------------------------------------------------------------
 
-async function getJson(url, fetchImpl) {
+async function getJson(url, fetchImpl, init) {
   try {
-    const res = await fetchImpl(url);
+    const res = await fetchImpl(url, init);
     return res.ok ? await res.json() : null;
   } catch {
     return null;
@@ -476,7 +476,8 @@ export async function loadPersonSkin(job, person, opts = {}) {
   try {
     if (!job || (person !== "you" && person !== "trainer")) return null;
     const fetchImpl = opts.fetchImpl || globalThis.fetch;
-    const index = await getJson(`api/results/${encodeURIComponent(job)}/mesh.json`, fetchImpl);
+    // TICKET-493: a group person's result has no mesh.json; a 404 is a normal answer, not a browser error (web/errors.js)
+    const index = await getJson(`api/results/${encodeURIComponent(job)}/mesh.json`, fetchImpl, { expectStatus: [404] });
     const url = index && typeof index[person] === "string" ? index[person] : null;
     if (!url || !url.startsWith(`api/results/${encodeURIComponent(job)}/mesh/`)) return null;
     const tpl = await cachedTemplate(url, fetchImpl);

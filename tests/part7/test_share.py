@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from auth_support import authenv, get, post, sign_in  # noqa: F401
+from auth_support import authenv, get, post, sign_in, claim_doc  # noqa: F401
 from history_support import ENTRY as H_ENTRY, FIRST, SECOND, job_record, seed_job
 from part7 import auth, history_report, history_store, identity, share
 from support import Api
@@ -34,7 +34,7 @@ def make_job(api: Api, score: int = 81) -> str:
 
 def owned_job(api: Api, sid: str, score: int = 81) -> str:
     job = make_job(api, score)
-    assert post(api, "api/me/claims", {"job_id": job}, cookie=sid)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, job), cookie=sid)[0] == 200
     return job
 
 
@@ -123,7 +123,7 @@ def test_expiry_in_one_seven_or_thirty_days(api: Api, monkeypatch: pytest.Monkey
     now[0] += alive_after
     assert get(api, f"api/shared/{token}")[0] == 200
     now[0] += gone_after - alive_after
-    assert get(api, f"api/shared/{token}")[0] == 404
+    assert get(api, f"api/shared/{token}")[0] == 410
     owner = store(api).fetch("SELECT owner_id FROM shares")[0][0]
     assert share.list_for_owner(store(api), owner)[0]["state"] == "expired"
 
@@ -148,7 +148,7 @@ def test_revoke_works_on_the_next_request_and_only_for_the_owner(api: Api) -> No
     assert status == 404 and get(api, f"api/shared/{token}")[0] == 200
     status, _, doc = api.request("DELETE", f"api/me/shares/{mine}", None, {"Origin": f"http://127.0.0.1:{api.port}", "Content-Type": "application/json", "Cookie": f"{auth.COOKIE}={ada}"})
     assert status == 200 and json.loads(doc) == {"revoked": True}
-    assert get(api, f"api/shared/{token}")[0] == 404
+    assert get(api, f"api/shared/{token}")[0] == 410
     assert get(api, "api/me/shares", cookie=ada)[2]["shares"][0]["state"] == "revoked"
 
 
@@ -214,26 +214,10 @@ def test_deleting_a_take_or_the_account_ends_the_links(api: Api) -> None:
     job = owned_job(api, ada)
     gone, kept = make_share(api, ada, job), make_share(api, grace, owned_job(api, grace))
     store(api).forget_job(job)
-    assert get(api, f"api/shared/{gone}")[0] == 404 and get(api, f"api/shared/{kept}")[0] == 200
+    assert get(api, f"api/shared/{gone}")[0] == 410 and get(api, f"api/shared/{kept}")[0] == 200
     own = make_share(api, ada, owned_job(api, ada))
     store(api).delete_user(store(api).session_user(ada))
     assert get(api, f"api/shared/{own}")[0] == 404 and get(api, f"api/shared/{kept}")[0] == 200
-
-
-def test_limits_ten_an_hour_and_twenty_active(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
-    now = [1_800_000_000.0]
-    monkeypatch.setattr(auth, "CLOCK", lambda: now[0])
-    sid = sign_in(api)
-    job = owned_job(api, sid)
-    for _ in range(share.MAX_PER_HOUR):
-        make_share(api, sid, job)
-    status, _, doc = post(api, "api/shares", share_body(job), cookie=sid)
-    assert status == 429 and doc["message"] == share.MSG_LIMIT_HOUR
-    now[0] += 7200
-    for _ in range(share.MAX_PER_HOUR):
-        make_share(api, sid, job)
-    status, _, doc = post(api, "api/shares", share_body(job), cookie=sid)
-    assert status == 429 and doc["message"] == share.MSG_LIMIT_ACTIVE
 
 
 def test_the_viewer_is_rate_limited_per_address(api: Api) -> None:
@@ -335,7 +319,7 @@ def job_with(api: Api, sid: str, analysis: dict[str, Any], result: dict[str, Any
 
     made = api.app.queue.submit("follow", fn, entry_id=ENTRY)
     assert api.app.queue.wait(made["id"], 10)["status"] == "done"
-    assert post(api, "api/me/claims", {"job_id": made["id"]}, cookie=sid)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, made["id"]), cookie=sid)[0] == 200
     return made["id"]
 
 

@@ -287,7 +287,7 @@ def test_trainer_with_person_crops_for_part1_and_points_part3_and_part2(
     cropped = media.probe(fakes.p1_videos[-1])
     assert cropped["width"] < 320 and cropped["height"] <= 240
     assert fakes.p3_people[-1] == ("part4", "1")
-    assert fakes.p2_calls[-1]["ids"] == ["1"] and fakes.p2_calls[-1]["tracks"].endswith("tracks.json")
+    assert fakes.p2_calls[-1]["ids"] == ["1"] and fakes.p2_calls[-1]["tracks"].endswith("tracks_10fps.json")
     assert "cropped to person 1" in job["note"]
     assert job["entry_id"] == "class-warmup"
 
@@ -526,18 +526,6 @@ def test_one_group_job_per_visitor_at_a_time(api: Api, class_mp4: Path, monkeypa
     assert api.json("POST", "api/group", body, VISITOR)[0] == 202
 
 
-def test_group_over_the_visitor_quota_is_429_and_releases_what_it_took(
-    api: Api, class_mp4: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    Fakes(monkeypatch, {i: 20 for i in range(9)})
-    _people_job(api, class_mp4)
-    pj = _people_job(api, class_mp4)["id"]  # 2 GPU jobs; a group of 8 needs 1 trainer + 8 more: over the 10 a day
-    before = api.app.quota.gpu_jobs_today()
-    status, doc = api.json("POST", "api/group", _group_body(api, pj, follower_ids=[str(i) for i in range(1, 9)]), VISITOR)
-    assert status == 429 and "today's analyses" in doc["message"]
-    assert api.app.quota.gpu_jobs_today() == before
-
-
 def test_group_board_job_record_is_public_json(api: Api, class_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fakes, job = _group(api, class_mp4, monkeypatch, follower_ids=["1"])
     status, doc = api.json("GET", f"api/jobs/{job['id']}")
@@ -608,3 +596,25 @@ def test_part3_gets_person_only_when_named(tmp_path: Path, monkeypatch: pytest.M
     assert "--person" not in seen[-1]
     p3_skeleton.part4(tmp_path / "p.json", "every:10", tmp_path / "w", lock=lk, state=tmp_path, person="4")
     assert seen[-1][seen[-1].index("--person") + 1] == "4"
+
+
+@pytest.mark.parametrize("step,said", [
+    ({"exit": 4}, people.NO_ONE_TRACKED),
+    ({"exit": 4, "first_try": {"exit": 4}}, people.NO_ONE_TRACKED),
+    ({"exit": 1}, "the people finder failed"),
+])
+def test_a_clip_with_nobody_says_so_and_a_broken_finder_does_not(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, step: dict[str, Any], said: str) -> None:
+    """Prod run on release 8: `part2: no person found to track`, exit 4, read "The people finder failed."."""
+    from types import SimpleNamespace
+
+    from part7.jobs import JobFailed
+
+    monkeypatch.setattr(p2_pose, "capabilities", lambda *_a: {"track": True})
+    monkeypatch.setattr(p2_pose, "track", lambda *_a, **_k: (step, tmp_path / "absent" / "tracks.json"))
+    monkeypatch.setattr(people.applog, "log", lambda *_a, **_k: None)
+    monkeypatch.setattr(people.applog, "job_id_of", lambda *_a: "j")
+    ctx = SimpleNamespace(work=tmp_path, set_stage=lambda _s: None, add_note=lambda _n: None)
+    with pytest.raises(JobFailed) as failed:
+        people._find_people(ctx, tmp_path / "v.mp4", "cpu", object(), tmp_path, [])
+    assert failed.value.reason.startswith(said)
+    assert (failed.value.cause == "no_person") == (said == people.NO_ONE_TRACKED)

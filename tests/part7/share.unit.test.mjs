@@ -6,9 +6,12 @@ test("a new share has name and clip off, 7 days and the confirm flag", () => {
   assert.deepEqual(createBody({ kind: "take_result", itemRef: "abc" }), { kind: "take_result", item_ref: "abc", show_name: false, show_clip: false, days: DEFAULT_DAYS, confirm: true });
 });
 
-test("a clip is only ever asked for a take result", () => {
-  assert.equal(createBody({ kind: "history_report", itemRef: "x", showClip: true }).show_clip, false);
-  assert.equal(createBody({ kind: "take_result", itemRef: "x", showClip: true }).show_clip, true);
+test("a share body never asks for a clip and never unticks score or faults", () => {
+  for (const kind of ["history_report", "take_result"]) {
+    const body = createBody({ kind, itemRef: "x", showClip: true, includeScore: false, includeFaults: false });
+    assert.equal(body.show_clip, false);
+    assert.equal("include_score" in body || "include_faults" in body, false);
+  }
 });
 
 test("the expiry sentence names the date", () => {

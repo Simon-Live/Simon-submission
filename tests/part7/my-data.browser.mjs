@@ -29,7 +29,7 @@ const browser = await chromium.launch();
 const errors = [];
 let passed = 0;
 const ok = (name) => { passed++; console.log(`ok - ${name}`); };
-const EXPECTED = /status of (401|404|429)/; // 404: the history page asks for a report nobody has made yet (a normal answer)
+const EXPECTED = /status of (401|404)/; // 404: the history page asks for a report nobody has made yet (a normal answer)
 
 async function signIn(page, email) {
   await page.goto(`${base}#/signin`);
@@ -106,26 +106,25 @@ try {
   assert.equal(/seeded clip bytes|sid_hash|token_hash|pepper/.test(file.text), false, "negative: no clip bytes, hashes or pepper");
   ok("ada's file holds none of grace's email, name, movement or job ids, and no secrets or video bytes");
 
-  // the limit: five in an hour, the sixth is told in words and saves nothing
+  // no limit: a sixth download in the hour still saves the whole file
   await page.goto(`${base}#/me`);
   await page.getByTestId("me-export").waitFor();
   for (let i = 0; i < 4; i++) await downloadFile(page);
-  let sixth = false;
-  page.once("download", () => { sixth = true; });
-  await page.getByTestId("me-export").tap();
-  await page.getByTestId("me-export-note").filter({ hasText: "five times in the last hour" }).waitFor();
-  assert.equal(sixth, false, "negative: the sixth click saves no file");
-  await page.screenshot({ path: path.join(SHOTS, "3-limit.png"), fullPage: true });
-  ok("the sixth download in an hour is refused in plain words and saves no file");
+  const sixth = await downloadFile(page);
+  assert.equal(JSON.parse(sixth.text).account.email, "ada@example.com", "witness 1: the sixth file is ada's");
+  assert.equal(sixth.text.includes(adaJobs[0]), true, "witness 2: the sixth file holds her takes");
+  assert.doesNotMatch(await page.locator("#app").innerText(), /in the last hour/, "negative: no limit words");
+  await page.screenshot({ path: path.join(SHOTS, "3-sixth.png"), fullPage: true });
+  ok("a sixth download in an hour still saves the whole file");
 
-  // grace has her own count and her own file
+  // grace has her own file
   const g = await newPage();
   await signIn(g, "grace@example.com");
   await g.getByTestId("me-export").waitFor();
   const gfile = await downloadFile(g);
   assert.equal(JSON.parse(gfile.text).takes.length, 2);
   for (const other of ["ada@example.com", "Ada L", ...adaJobs]) assert.equal(gfile.text.includes(other), false, `negative: grace's file has no ${other}`);
-  ok("grace is not limited by ada's downloads and her file holds only her own data");
+  ok("grace's file holds only her own data");
 
   assert.deepEqual(errors, []);
 } finally {

@@ -101,11 +101,6 @@ def test_report_codes(seeded: Api, world: World, monkeypatch: pytest.MonkeyPatch
     status, doc = _json(seeded, "POST", path)
     assert status == 200 and doc["status"] == "ok" and len(world.asked) == 1  # 200 from cache
     assert _json(seeded, "GET", f"{BASE}/{ENTRY}")[1]["report"] == "ready"
-    # 429: the limit is spent by runs on other keys
-    monkeypatch.setenv("SIMON7_HISTORY_DAILY", "1")
-    history_store.set_consent(seeded.app.state, USER, True, "v1")
-    status, doc = _json(seeded, "POST", path)
-    assert status == 429 and "times today" in doc["message"]
 
 
 def test_report_422_with_fewer_than_two_takes(api: Api, world: World, monkeypatch: pytest.MonkeyPatch) -> None:  # AC-3

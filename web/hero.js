@@ -1,6 +1,7 @@
 // The judge view's first take: a link on Home to one finished, scored take with its 3D mesh (docs/specs/judge-view.md).
 // The server answers it (part7/judge_view.py: only the take the operator names, TICKET-373); this file words and links it.
 import { getHero } from "./api.js";
+import { isProd } from "./policy.js";
 import { h } from "./ui.js";
 import { shownRow, shownText } from "./model/score-labels.js";
 
@@ -11,11 +12,11 @@ export function heroCard(hero) {
   const said = shown && (shown.unit === "score" ? `${shown.figures} out of 100` : shownText(shown));
   const score = shown ? `Scored ${said}, grade ${shown.letter}, with both bodies in 3D.`
     : typeof hero.score === "number" ? `Scored ${Math.round(hero.score)} out of 100, with both bodies in 3D.` : "A scored result with both bodies in 3D.";
-  return { href: `#/result/${encodeURIComponent(hero.job_id)}`, title: "See a finished take", text: score };
+  return { href: `#/result/${encodeURIComponent(hero.job_id)}`, title: isProd() ? "See an example take" : "See a finished take", text: score };
 }
 
 /** Puts the hero link (when the server names a take) and the Impact and architecture links into `root`'s first screen. Returns a cancel function. */
-export function mountHero(root) {
+export function mountHero(root, { moreLinks = true } = {}) {
   let live = true;
   getHero().catch(() => null).then((hero) => {
     if (!live) return;
@@ -25,7 +26,7 @@ export function mountHero(root) {
       head.append(h("p", { class: "lib-hero", "data-testid": "hero-take" },
         h("a", { href: card.href, "data-testid": "hero-link", text: card.title }), h("span", { text: ` ${card.text}` })));
     }
-    mountMoreLinks(root);
+    if (moreLinks) mountMoreLinks(root);
   }).catch(() => {});
   return () => { live = false; };
 }
@@ -33,7 +34,7 @@ export function mountHero(root) {
 /** The judge view's two other doors: who Simon is for, and how it is built (impact-page.md). */
 export const MORE_LINKS = [
   { href: "#/impact", text: "Who Simon is for", testid: "impact-link" },
-  { href: "#/architecture", text: "How Simon is built", testid: "architecture-link" },
+  { href: "#/architecture", text: "How Simon works", testid: "architecture-link" },
 ];
 
 function mountMoreLinks(root) {

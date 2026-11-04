@@ -15,6 +15,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -22,10 +23,11 @@ import textwrap
 import threading
 from typing import Any
 
-from part7 import applog, history_api, history_facts, history_guard, history_prompt, history_receipt, history_report, history_store, keys
+from part7 import shown_score
+from part7 import applog, ffsafe, muse_prod, history_api, history_facts, history_guard, history_prompt, history_receipt, history_report, history_store, keys
 
 FORMAT = "simon.history.reel.v1"
-PROMPT_VERSION = "reel.v1"
+PROMPT_VERSION = "reel.v2"  # v2: only the shown score, so a reel can no longer disagree with the result page
 FEATURE = "reel"
 SCHEMA_NAME = "simon_reel_v1"
 MAX_CLIPS = history_prompt.MAX_VIDEOS   # the API takes at most 5 videos per request; no teacher clip rides along
@@ -60,7 +62,8 @@ INSTRUCTIONS = (
     "or a body part only when it is what you see there.\n"
     "- A take with no measured fault is not proof of good form, and a missing tempo means it was not measured: say only "
     "what you see at that second, and never say a movement was done right because no fault is listed.\n"
-    "- The only numbers allowed are the second you cite, the exact score of the take you cite and take labels such as Take 2.\n"
+    "- The only numbers allowed are the second you cite, the figures in the `shown` score of the take you cite and take labels such as Take 2. "
+    "`shown` is what the student's result page says; never name another score or grade.\n"
     "- No praise. Never mention health, pain, injury, medicine, therapy or rehab. Write in English."
 )
 
@@ -124,6 +127,25 @@ def select_takes(rows: list[dict[str, Any]], facts: dict[str, Any]) -> list[int]
     return sorted(chosen)
 
 
+def _page_score_only(take: dict[str, Any]) -> dict[str, Any]:
+    """A take with a shown score, without Part 5's raw value and grade: the model cannot cite what it never read."""
+    return {**take, "score": None, "grade": None} if isinstance(take.get("shown"), dict) else take
+
+
+def _off_the_page(text: Any, take: dict[str, Any]) -> bool:
+    """True when a caption names a score or grade the take's result page does not show (one-letter.md)."""
+    shown = take.get("shown")
+    if not isinstance(shown, dict):
+        return False
+    said = str(text)
+    named = {round(float(n.replace(",", "")), 3) for n in re.findall(r"(?i)\bscore\D{0,12}(\d[\d,]*(?:\.\d+)?)(?![\d.,]*\s*s\b)", said)}
+    raw = take.get("score")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and re.search(rf"(?<![\d.,]){raw:g}(?![\d.,]*\s*s(?:econds?)?\b)(?![\d,]|\.\d)", said):
+        named.add(round(float(raw), 3))
+    letters = re.findall(r"\b[Gg]rade\s+(?:of\s+)?([A-Z])\b|\b([A-Z])\s+grade\b", said)
+    return bool(named - shown_score.numbers_in(shown)) or any((a or b) != shown.get("letter") for a, b in letters)
+
+
 def pack(entry_id: str, facts: dict[str, Any], rows: list[dict[str, Any]], *, chosen: list[int]) -> dict[str, Any]:
     """The request for `history_api.ask`: instructions, then every take oldest first (digest, and the video when chosen)."""
     sent = sorted((r for r in rows if not r.get("private")), key=lambda r: r["take"])
@@ -133,7 +155,7 @@ def pack(entry_id: str, facts: dict[str, Any], rows: list[dict[str, Any]], *, ch
     used = history_prompt._tokens_text(INSTRUCTIONS) + history_prompt._tokens_text(json.dumps(SCHEMA))
     seconds, clip_takes = 0.0, []
     for row in sent:
-        digest = f"Take {row['take']} digest (JSON): {history_prompt._digest(by_take[row['take']])}"
+        digest = f"Take {row['take']} digest (JSON): {history_prompt._digest(_page_score_only(by_take[row['take']]))}"
         content.append({"type": "text", "text": digest})
         used += history_prompt._tokens_text(digest)
         if row["take"] in chosen and _eligible(row):
@@ -164,8 +186,13 @@ def guard_moments(answer: Any, facts: dict[str, Any], clip_takes: list[int],
         got, bad = history_guard.check({"observations": [{k: m.get(k) for k in ("take", "at_s", "text")} for m in chunk]},
                                        facts, None, words, clip_takes=clip_takes)
         for item in got["observations"]:
-            role = next((m.get("role") for m in chunk if (m.get("take"), m.get("at_s"), m.get("text")) ==
-                         (item["take"], item["at_s"], item["text"])), None)
+            at = next((i for i, m in enumerate(chunk) if (m.get("take"), m.get("at_s"), m.get("text")) ==
+                       (item["take"], item["at_s"], item["text"])), None)
+            take = next((t for t in facts.get("takes") or [] if t.get("take") == item["take"]), {})
+            if _off_the_page(item["text"], take):
+                rejected.append({"item": f"moments[{start + (at or 0)}]", "rule": 4, "reason": "a score or grade the result page does not show"})
+                continue
+            role = chunk[at].get("role") if at is not None else None
             kept.append({**item, "role": role if role in ROLES else "later"})
         rejected += [{**r, "item": f"moments[{start + int(r['item'].split('[')[1].rstrip(']'))}]"} for r in bad
                      if str(r.get("item", "")).startswith("observations[")]
@@ -205,8 +232,7 @@ def _font() -> str:
 
 def _ffmpeg(args: list[str]) -> None:
     try:
-        done = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-threads", "2", *args], capture_output=True,
-                              timeout=FFMPEG_TIMEOUT_S, check=False)
+        done = ffsafe.run(["ffmpeg", "-y", "-loglevel", "error", "-threads", "2", *args], timeout=FFMPEG_TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired):
         raise ReelError(MSG_RENDER) from None
     if done.returncode != 0:
@@ -351,6 +377,7 @@ class ReelRunner:
         with self._lock:
             if job in self._active:
                 return "accepted", self._active[job]
+            history_report.muse_gate("reel", user_id, self.state)
             self._failed.pop(job, None)
             self._active[job] = "queued"
             self._accept_on_disk(user_id, entry_id, key)
@@ -417,6 +444,7 @@ class ReelRunner:
         facts = history_facts.build(usable, entry_id)
         chosen = select_takes(usable, facts)
         packed = pack(entry_id, facts, usable, chosen=chosen)
+        muse_prod.clear_video(packed, self.state, user_id)  # a reel carries the person's own clips and no teacher's
         answer, usage = self._ask(packed)
         moments, rejected = guard_moments(answer, packed["facts"], packed["clip_takes"], history_guard.load_words())
         by_take = {t["take"]: t for t in usable}

@@ -22,10 +22,11 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
-from part7 import config, model_import, model_store as store
+from part7 import byok_route, compute_mode, config, model_import, model_store as store, modules, serverless_route
 
 KINDS = ("image3d", "autorig")  # generated.kind values that Part 2's limb split made
 BACKUP = "model.pre-reskin.glb"
@@ -66,7 +67,12 @@ def _due(mark: dict[str, Any] | None, sha: str | None) -> bool:
 
 
 def part2_runner(src: Path, out: Path) -> tuple[int, str]:
-    """Run `part2 reskin SRC OUT` with Part 2's venv; (exit code, stdout)."""
+    """Run `part2 reskin SRC OUT` with Part 2's venv; (exit code, stdout). NOT_RUN under BYOK-only (prod, nofallback
+    D1): nothing is started, and a NOT_RUN is never marked as a refusal."""
+    if compute_mode.serverless():
+        return _on_modal(src, out)
+    if byok_route.host_models_refused():
+        return NOT_RUN, ""
     from part7 import avatar_jobs  # its environment drops secrets and points PYTHONPATH at Part 2
 
     part2 = config.part_dir(2)
@@ -79,6 +85,29 @@ def part2_runner(src: Path, out: Path) -> tuple[int, str]:
     return done.returncode, done.stdout.decode("utf-8", "replace")
 
 
+def _on_modal(src: Path, out: Path) -> tuple[int, str]:
+    """The same command on the operator's Modal workspace, through the route a take uses (serverless-compute.md AC-SC20): one
+    call, one Volume key under this model's ledger. The report is the JSON line Part 2 prints; the file comes back to `out`."""
+    from part7 import avatar_jobs
+
+    folder = src.parent
+    with tempfile.TemporaryDirectory(dir=folder, prefix="reskin-") as tmp, serverless_route.job(folder.parent.parent, folder.name):
+        back = Path(tmp) / "out" / out.name
+        argv = serverless_route.command(["reskin", str(src), str(back)], modules.load().sha("2"), Path(tmp))
+        try:
+            done = subprocess.run(argv, cwd=config.REPO_ROOT, env=avatar_jobs._environment(config.REPO_ROOT), capture_output=True,
+                                  timeout=serverless_route.timeout_s(TIMEOUT_S), check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            return NOT_RUN, ""
+        if done.returncode == 0 and back.is_file():
+            os.replace(back, out)
+    said = done.stdout.decode("utf-8", "replace")
+    if done.returncode != 0 and (done.returncode == 1 or f"modal: part2 exited {done.returncode}" not in said):
+        return NOT_RUN, ""  # busy, stopped, a token or a failed call: Part 2 did not refuse this model, so the next run tries again
+    lines = said.splitlines() + done.stderr.decode("utf-8", "replace").splitlines()
+    return done.returncode, next((line for line in reversed(lines) if line.startswith("{")), "")
+
+
 def _extra(manifest: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
     generated = dict(manifest.get("generated") or {})
     generated["reskin"] = {"at": store.now(), "part2": _part2_sha(), "bridging_triangles_cut": report.get("bridging_triangles_cut"),
@@ -89,6 +118,8 @@ def _extra(manifest: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
 
 
 def _part2_sha() -> str | None:
+    if compute_mode.serverless():
+        return modules.load().sha("2")
     try:
         done = subprocess.run(["git", "-C", str(config.part_dir(2)), "rev-parse", "HEAD"], capture_output=True, timeout=10,
                               check=False)
@@ -153,8 +184,8 @@ def _reskin_one(folder: Path, run: Runner) -> dict[str, Any]:
     if not isinstance(report, dict) or not new.is_file():
         new.unlink(missing_ok=True)
         if code == NOT_RUN:
-            return {"id": folder.name, "result": "refused", "why": "part2 reskin timed out or could not start", "mark": False}
-        return {"id": folder.name, "result": "refused", "why": f"part2 reskin exit {code}"}
+            return {"id": folder.name, "result": "refused", "why": "Simon could not run the reskin this time. The next run tries again.", "mark": False}
+        return {"id": folder.name, "result": "refused", "why": f"Part 2 refused this model (exit {code})."}
     try:
         model_import.analyse(new)  # the new file must pass the import checks before it replaces anything
     except model_import.ImportRefused as exc:
@@ -257,6 +288,9 @@ def cli(args: Any) -> int:
             print("models-reskin: --restore needs --id", file=sys.stderr)
             return 2
         rows = [restore(state_flags.state_dir(args), args.id)]
+    elif byok_route.host_models_refused() and not compute_mode.serverless():  # nofallback D1: reskin runs Part 2 here, never under BYOK-only
+        print(f"models-reskin: refused; {byok_route.MSG_NO_HOST_MODELS}", file=sys.stderr)
+        return 2
     else:
         rows = run_all(state_flags.state_dir(args), args.apply, args.id)
     for row in rows:

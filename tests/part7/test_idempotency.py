@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from part7 import chain, config, idempotency, quota, server
+from part7 import chain, config, idempotency, server
 from support import Api
 from test_server import _fake_follower, _fake_trainer, _upload
 
@@ -48,7 +48,7 @@ def test_the_same_key_gives_one_job_and_charges_no_second_quota(api: Api, tiny_m
     assert status == 202
     api.app.queue.wait(first["job"], 60)
     used = api.app.quota.gpu_jobs_today()
-    for _ in range(config.VISITOR_TRAINER_PER_DAY + 2):  # more repeats than the visitor's daily allowance
+    for _ in range(5):  # more repeats than the visitor's daily allowance
         status, again = api.json("POST", "api/trainer", body, hdr)
         assert (status, again["job"]) == (202, first["job"])
     assert api.app.quota.gpu_jobs_today() == used
@@ -67,9 +67,10 @@ def test_follow_repeats_return_the_original_job(api: Api, tiny_mp4: Path, monkey
 def test_a_refusal_is_not_remembered_so_the_retry_can_succeed(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(chain, "trainer", _fake_trainer())
     body = {"upload_id": _upload(api, tiny_mp4), "name": "A", "category": "dance"}
-    api.app.quota.daily_gpu = 0
+    real = api.app.queue.has_room
+    api.app.queue.has_room = lambda: False
     assert api.json("POST", "api/trainer", body, _hdr())[0] == 503
-    api.app.quota.daily_gpu = 100
+    api.app.queue.has_room = real
     status, doc = api.json("POST", "api/trainer", body, _hdr())
     assert status == 202 and doc["job"]
 
@@ -131,4 +132,3 @@ def test_start_prunes_old_records(tmp_path: Path, state_dir: Path) -> None:
 def test_only_accepted_answers_are_replayable() -> None:
     assert idempotency.REPLAYABLE == (201, 202)
     assert idempotency.valid_key(KEY.upper()) == KEY and idempotency.valid_key(None) is None
-    assert quota.VISITOR_MESSAGE  # the 429 text is the one the browser classifies as "try again tomorrow"

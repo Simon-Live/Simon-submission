@@ -25,8 +25,6 @@ MSG_NOT_FINISHED = "Mark a take as your reference when it has finished."
 MSG_PRIVATE = "A private take cannot be your reference, because Simon keeps no movement data for it."
 MSG_UNUSABLE = "This take cannot be your reference, because Simon cannot compare other takes with it."
 MSG_GROUP = "A take of one person in a group video cannot be your reference."
-MSG_RATE = "You changed your reference many times just now. Try again in a minute."
-LIMIT = (10, 60)  # marks per person, seconds (each new one runs Part 5's check)
 MSG_BAD_ENTRY = "Pick a movement."
 MSG_GONE = "You have no reference for this movement."
 
@@ -34,13 +32,6 @@ MSG_GONE = "You have no reference for this movement."
 def accepts(app: Any, data: bytes) -> bool:
     """Part 5's doctor decides whether the take's skeleton can be an expected clip (the check a skeleton-only entry gets)."""
     return p5_analyse.accepts_expected(data, app.state / "tmp", app.lock)
-
-
-def _limiter(app: Any) -> auth.Limiter:
-    found = getattr(app, "_reference_limit", None)
-    if found is None:
-        found = app._reference_limit = auth.Limiter(*LIMIT)
-    return found
 
 
 def _eligible_job(h: Any, user_id: str, job_id: Any) -> tuple[dict[str, Any], Path]:
@@ -106,8 +97,6 @@ def _set(h: Any, user_id: str) -> None:
         same = my_reference.meta(h.app.state, user_id, entry)
         if same and same["state"] == "ok" and same["job_id"] == job["id"]:  # nothing changes: no check, no rewrite
             return _reply(h, 200, {"entry_id": entry, "reference": my_reference.public(same)}, NO_STORE)
-        if not _limiter(h.app).hit(user_id):
-            return _fail(h, 429, MSG_RATE)
         data = _skeleton(h, path)
     except _Refuse as exc:
         return _fail(h, exc.status, exc.message)

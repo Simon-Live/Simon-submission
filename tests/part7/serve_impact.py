@@ -25,7 +25,7 @@ for name in ("STAGING_BASE_PATH", "STAGING_ROUTE", "SIMON7_MAIL_TRANSPORT", "SIM
     os.environ.pop(name, None)
 
 from part7 import impact, server  # noqa: E402
-from support import FakeChild, make_lock  # noqa: E402
+from support import FakeChild, make_lock, published  # noqa: E402
 
 CLIP = {"url": "https://www.pexels.com/video/test-clip/", "licence": "Pexels License", "file": "videos/test/take.mp4"}
 
@@ -33,6 +33,7 @@ CLIP = {"url": "https://www.pexels.com/video/test-clip/", "licence": "Pexels Lic
 def finished(app: server.App, entry: str, score: float, mode: str) -> str:
     rec = app.queue.submit("follow", lambda ctx: {"result": {"entry_id": entry, "score": score}}, entry_id=entry, mode=mode)
     assert app.queue.wait(rec["id"], 10)["status"] == "done"
+    published(app.state, entry)  # a movement must be public to be named (`may_view`)
     return rec["id"]
 
 

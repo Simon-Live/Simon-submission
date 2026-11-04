@@ -11,7 +11,7 @@
   "description": "Source: \"Man Exercising High Knees\", Pexels video 6326808 (https://www.pexels.com/video/man-exercising-high-knees-6326808/), Pexels License. Trimmed to 0 to 16 s. Made with Simon's trainer pipeline (Parts 1 to 4, Part 6) on 2026-11-04.",
   "thumbnail": "thumbnail.svg",
   "duration_ms": 15933,
-  "files_source": "import",
+  "files_source": "fixture",
   "provenance": {
     "keyframes": {
       "part": 3,

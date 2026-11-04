@@ -5,6 +5,9 @@ The trainer talks while recording. `attach` takes the audio of the uploaded clip
 to the first voiced frame, attaches each phrase to the movement section that holds most of it and writes
 `narration.json` next to the entry's files. Without audio, without speech or on any API failure there is no file
 and one log line; a trainer job never fails because of narration.
+
+Under BYOK-only (prod) the transcript comes from the trainer's own Modal account instead (`narration_own`, a11y B3),
+and an entry left without `narration.json` has the sound removed from its public video (`narration_own.drop_audio`).
 """
 
 from __future__ import annotations
@@ -15,13 +18,12 @@ import math
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import tempfile
 import time
 import wave
 from typing import Any
 
-from part7 import applog, media, narration_api
+from part7 import applog, ffsafe, media, narration_api, narration_own
 
 FORMAT = "simon.narration.v1"
 FILE_NAME = "narration.json"
@@ -153,9 +155,9 @@ def attach_all(turns: list[dict[str, Any]], sections: list[dict[str, int]], mark
 
 # ----- audio ---------------------------------------------------------------------------------------------------
 def has_audio(src: Path | str, timeout: float = 60.0) -> bool:
-    res = subprocess.run(
+    res = ffsafe.run(
         ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(src)],
-        capture_output=True, text=True, timeout=max(1.0, timeout), check=False,
+        timeout=max(1.0, timeout), text=True,
     )
     return res.returncode == 0 and bool(res.stdout.strip())
 
@@ -169,10 +171,10 @@ def extract_audio(
         return None
     seek = ["-ss", f"{start_ms / 1000:.3f}"] if start_ms else []
     length = ["-t", f"{(end_ms - start_ms) / 1000:.3f}"] if end_ms is not None else []
-    res = subprocess.run(
+    res = ffsafe.run(
         ["ffmpeg", "-y", "-loglevel", "error", *seek, "-i", str(src), *length, "-vn", "-ac", "1",
          "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", str(dst)],
-        capture_output=True, text=True, timeout=max(1.0, left()), check=False,
+        timeout=max(1.0, left()), text=True,
     )
     if res.returncode != 0 or not Path(dst).is_file():
         raise RuntimeError(f"ffmpeg audio extract failed: {res.stderr[-200:]}")
@@ -263,18 +265,40 @@ def build(
         if left < 1.0:
             raise narration_api.NarrationError("the 60 s narration budget is used up")
         extra["timeout"] = left
-    result = narration_api.transcribe(audio, ledger=ledger, call=call, keys_dir=keys_dir, **extra)
+    own = narration_own.wanted()
+    if own:
+        extra.setdefault("timeout", narration_own.BUDGET_S)
+    transcribe = narration_own.transcribe if own else narration_api.transcribe
+    result = transcribe(audio, ledger=ledger, call=call, keys_dir=keys_dir, **extra)
     sections = derive_sections(keyframes, duration_ms)
     cues = attach_all([snap(t, levels) for t in result["turns"]], sections, keyframe_marks(keyframes))
     if not cues:
         return None
     return {
-        "format": FORMAT, "source": narration_api.MODEL, "duration_s": round(duration_ms / 1000.0, 3),
+        "format": FORMAT, "source": narration_own.source() if own else narration_api.MODEL, "duration_s": round(duration_ms / 1000.0, 3),
         "sections": sections, "cues": cues, "text": result["text"], "estimated_usd": result["estimated_usd"],
     }
 
 
-def attach(
+def attach(raw: Path | str, entry_dir: Path | str, **kw: Any) -> Path | None:
+    """`_attach`; under BYOK-only an entry left without cues loses the sound of its public video (a11y B3)."""
+    found = _attach(raw, entry_dir, **kw)
+    if found is None and narration_own.wanted():
+        narration_own.drop_audio(entry_dir, kw.get("job"), kw.get("job_dir"))
+    return found
+
+
+def attach_then_show(raw: Path | str, entry_dir: Path | str, on_entry: Any, **kw: Any) -> Path | None:
+    """`attach`, then the entry's held-back access row may be published (`on_entry.ready`, entry_access.Link): a trainer
+    or group movement is shown to others only once it has captions or no sound (go-live R4, review S-B1, a11y B3)."""
+    found = attach(raw, entry_dir, **kw)
+    ready = getattr(on_entry, "ready", None)
+    if ready is not None:
+        ready()
+    return found
+
+
+def _attach(
     raw: Path | str,
     entry_dir: Path | str,
     *,
@@ -303,7 +327,7 @@ def attach(
     if os.environ.get("SIMON7_NARRATION", "").lower() == "off":
         return None
     try:
-        deadline = time.monotonic() + BUDGET_S
+        deadline = time.monotonic() + (narration_own.BUDGET_S if narration_own.wanted() else BUDGET_S)
         keyframes = keyframes or (files.get("keyframes") if isinstance(files, dict) else None)
         if ledger is None and job_dir is not None:
             root = applog.job_root(job_dir)

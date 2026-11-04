@@ -27,7 +27,7 @@
   --color-raised: var(--palette-grey-850);
   --color-line: var(--palette-grey-800);
   --color-text: var(--palette-white);
-  --color-text-muted: var(--palette-grey-500);
+  --color-text-muted: #b4b4ac;  /* a11y-go-live R18: grey-500 measured 3.5:1 over the chalk and dotted cards at 390 px; this keeps 4.5:1 */
   --color-media-bg: var(--palette-pure-black);
   --color-on-media: var(--palette-pure-white);
 
@@ -41,6 +41,7 @@
   --color-bad-soft: rgb(255 45 149 / 14%);
   --color-bad-line: rgb(255 45 149 / 40%);
   --color-warn: var(--palette-pink);
+  --color-warn-text: #ff4fa6;  /* warn-toned text on the raised card: the brand pink alone measured 4.48:1 (a11y go-live N4) */
   --color-warn-soft: rgb(255 45 149 / 10%);
   --color-warn-line: rgb(255 45 149 / 32%);
   /* one-letter.md: the credit's F to S scale on the share card: S with A and B (lime), E with F (pink) */
@@ -57,7 +58,7 @@
   --color-card-dot: rgb(255 255 255 / 6%);
   --color-card-sheen: rgb(255 255 255 / 4%);
   --color-content-veil: rgb(10 10 10 / 78%);
-  --color-content-veil-phone: rgb(10 10 10 / 38%);   /* on a phone the column is the whole screen: a lighter veil */   /* behind the content column, so text on the page reads over the chalk */
+  --color-content-veil-phone: rgb(10 10 10 / 70%);   /* on a phone the column is the whole screen and the chalk sits behind its text: a darker veil there (a11y-go-live R18, measured at 390 px) */
   --mask-on: var(--palette-pure-black);
   --halftone-card-size: 6px;
   --halftone-back-size: 11px;
@@ -82,7 +83,7 @@
               var(--color-bg);
   --color-alert-bg: var(--palette-amber);  /* the test-server banner: loud on purpose */
   --color-on-alert: var(--palette-pure-black);
-  --color-bad-text: #ff7ab8;  /* pink text on a pink-soft chip: the brand pink alone is under 4.5:1 there (axe) */
+  --color-bad-text: #ff8fc4;  /* pink text on a pink-soft chip and the dark card: the brand pink alone is under 4.5:1 there (axe); #ff7ab8 measured 4.46 at 390 px (a11y-go-live R18) */
   --color-paper: var(--palette-pure-white);  /* the class handout sheet and its QR code: dark ink on white, as a camera reads best */
   --color-ink: var(--palette-pure-black);
 
@@ -211,7 +212,7 @@
   --soft: var(--color-raised);
   --blue-bg: var(--color-accent-soft); --blue-ink: var(--color-accent);
   --green-bg: var(--color-accent-soft); --green-ink: var(--color-good);
-  --red-bg: var(--color-bad-soft); --red-ink: var(--color-bad);
+  --red-bg: var(--color-bad-soft); --red-ink: var(--color-bad-text);
   --font: var(--font-sans);
   --mono: var(--font-mono);
   --tap: var(--tap-target);

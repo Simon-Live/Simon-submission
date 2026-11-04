@@ -9,7 +9,7 @@ export const PAGE = {
   title: "Who Simon is for",
   lead: "One teacher recording, for people of any build.",
   note: "These are demo scenarios, not results. No user study has been run, and Simon makes no medical claim.",
-  architecture: "How Simon is built",
+  architecture: "How Simon works",
 };
 
 const PHYSITRACK = "https://www.physitrack.com/en-gb/insights/state-of-physical-therapy-technology-statistics";
@@ -78,9 +78,10 @@ function takeOf(take) {
  * The page's cards from the route's answer (or null when it failed): one per persona, in order, each with
  * `take` (a link, score and clip) or `empty` (the sentence that says why there is none).
  */
-export function impactView(doc) {
+export function impactView(doc, { rehab = true } = {}) {
   const rows = doc && Array.isArray(doc.personas) ? doc.personas : [];
-  return PERSONAS.map((p) => {
+  // #415, LEG-H3: the "after an injury" persona is health data talk; it leaves the page with the rehab switch
+  return PERSONAS.filter((p) => rehab || p.id !== "home-rehab").map((p) => {
     const row = rows.find((r) => r && r.persona === p.id);
     const take = takeOf(row && row.take);
     const missing = row && row.missing === "not_found" ? "not_found" : "not_listed";

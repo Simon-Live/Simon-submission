@@ -11,10 +11,11 @@ import json
 from pathlib import Path
 import tempfile
 
-from part7 import config, modules, runner
+from part7 import config, modules, muse_prod, runner
 from part7.parts import probe
+from part7.parts.p5_analyse import UV_RUN
 
-_ARGV = ["uv", "run", "python", "-m", "part5", "ask"]
+_ARGV = [*UV_RUN, "python", "-m", "part5", "ask"]
 FORMAT = "simon.ask.v1"
 
 
@@ -34,6 +35,9 @@ def available(lock: modules.Modules | None = None) -> bool:
 def run(question: str, analysis: Path | str, replay: Path | str, work: Path | str, lock: modules.Modules | None = None,
         live: bool = True) -> dict:
     """Run `part5 ask` and return its document. `AskError` when the command is missing, exits non-zero or writes no document."""
+    closed = muse_prod.gate() if live else None
+    if closed is not None:
+        raise AskError(closed.message)
     lk = lock or modules.load()
     clone = lk.path("5")
     if not probe.has_flag(5, _ARGV, clone, "--live", lk):
@@ -42,7 +46,7 @@ def run(question: str, analysis: Path | str, replay: Path | str, work: Path | st
     with tempfile.TemporaryDirectory(prefix="ask-", dir=work_p if work_p.is_dir() else None) as scratch:
         out = Path(scratch) / "ask.json"
         argv = [*_ARGV, "--out", str(out), *(["--live"] if live else []), "--", str(Path(analysis).resolve()), str(Path(replay).resolve()), question]
-        step = runner.run(5, argv, cwd=clone, timeout_s=config.TIMEOUTS["5"], log_path=work_p / "steps" / "part5_ask.log", lock=lk)
+        step = runner.run(5, argv, cwd=clone, env_extra=muse_prod.part5_env(), timeout_s=config.TIMEOUTS["5"], log_path=work_p / "steps" / "part5_ask.log", lock=lk)
         if step["exit"] != 0 or not out.is_file():
             raise AskError(f"part5 ask exited {step['exit']}")
         try:

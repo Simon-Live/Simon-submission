@@ -7,6 +7,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { answerConsentStep } from "./consent-step.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "../..");
@@ -94,6 +95,7 @@ try {
   // 2. the whole take flow: record, upload, people job (5 s), picker; no disabled button without a reason
   await page.goto("about:blank");
   await page.goto(`${BASE}#/record`);
+  await answerConsentStep(page);
   await tid("countdown-select").selectOption("0");
   await tid("duration-select").selectOption("5");
   await tid("cam-start").click();
@@ -115,7 +117,7 @@ try {
   ok("upload panel appears with 'Uploading your take'");
   await shot("2-uploading");
   await tid("people-progress").waitFor({ timeout: 15000 });
-  assert.match(await text("progress-text"), /^Finding the people in your clip, about \d+ (to \d+ )?s$/);
+  assert.match(await text("progress-text"), /^Finding the people in your clip, about 2 to 6 min$/);
   assert.equal(await tid("people-continue").isVisible(), false, "no Continue button while looking");
   await page.waitForFunction(() => /Step \d of 3/.test(document.querySelector('[data-testid="people-stage"]')?.textContent || ""));
   assert.match(await text("people-stage"), /Step \d of 3: /);

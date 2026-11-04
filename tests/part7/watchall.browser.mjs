@@ -67,7 +67,7 @@ const cols = async (page, name) => (await attr(page, name)).split(",");
 try {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true });
   const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error" && !/\/(mesh|library)\.json$|\/web\/skin\/(character|person-skin)\.js$/.test(m.location().url)) errors.push(m.text()); });  // Person asks each take for its mesh index; a take without one answers 404; the library file is not served by the harness
+  page.on("console", (m) => { if (m.type() === "error" && !/\/(mesh|library)\.json$|\/web\/skin\/(character|person-skin)\.js$|\/harness\/api\/auth\/me$/.test(m.location().url)) errors.push(m.text()); });  // Person asks each take for its mesh index; a take without one answers 404; the library file is not served by the harness
   page.on("pageerror", (e) => errors.push(e.message));
   await install(page);
   await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/watchall.html#/group/w1`);

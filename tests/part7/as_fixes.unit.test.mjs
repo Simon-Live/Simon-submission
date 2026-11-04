@@ -43,11 +43,9 @@ test("the follow default is the first saved mode that is valid", () => {
   assert.equal(defaultModeFrom({ modes: ["rehab"] }, () => false), null, "no mode is valid in the submission profile");
 });
 
-test("share ticks: score and faults are on and omitted from the body; unticked ones are sent as false", () => {
+test("share body: score and faults are always in, so the body never carries a tick for them", () => {
   assert.equal("include_score" in createBody({ kind: "take_result", itemRef: "a" }), false);
-  const off = createBody({ kind: "take_result", itemRef: "a", includeScore: false, includeFaults: false });
-  assert.deepEqual([off.include_score, off.include_faults], [false, false]);
-  assert.equal("include_score" in createBody({ kind: "history_report", itemRef: "a", includeScore: false }), false, "a report has no ticks");
+  assert.equal("include_faults" in createBody({ kind: "take_result", itemRef: "a", includeFaults: false }), false);
 });
 
 test("the share list shows the day a link was made", () => {

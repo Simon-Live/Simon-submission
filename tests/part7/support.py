@@ -53,16 +53,42 @@ def make_lock() -> modules.Modules:
     return stub_modules()
 
 
+FINAL_CRISIS_TEXT = "Talk to someone now: call the crisis line of your country, or your local emergency number."
+
+
+def final_legal_pages(folder: Path, monkeypatch: Any, text: str = "# Page\n\nFinal text.\n") -> Path:
+    """Serve legal pages with no placeholder and no review banner from `folder`, and a crisis answer that names its
+    line: the prod start check refuses drafts (part7/legal_drafts.py), and tests of other checks stand on final text."""
+    from part7 import history_ask_guard, legal_pages
+
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in legal_pages.PAGES.values():
+        (folder / name).write_text(text, encoding="utf-8")
+    monkeypatch.setattr(legal_pages, "LEGAL_DIR", folder)
+    monkeypatch.setattr(history_ask_guard, "CRISIS_TEXT", FINAL_CRISIS_TEXT)
+    from part7 import legal_drafts  # the served copy with an operator line (a11y R5), filled in for these tests
+
+    monkeypatch.setattr(legal_drafts, "WEB_COPY", ())
+    return folder
+
+
 class _Part6Stub(BaseHTTPRequestHandler):
     """Answers like Part 6 under `/catalog`: entries, one video with Range support."""
 
     def log_message(self, *args: Any) -> None:
         pass
 
+    LIST_IDS = ("lateral-raise", "skel-only", "empty")  # what `api/entries` lists, as Part 6's list document
+    seen: list[str] = []  # every method and path that reached the stub (the proxy's write refusal never arrives)
+
     def do_GET(self) -> None:
+        _Part6Stub.seen.append(f"{self.command} {self.path}")
         if "/catalog/video.mp4" in self.path:
             return self._video()
-        body = json.dumps({"path": self.path, "ok": True}).encode()
+        doc: dict[str, Any] = {"path": self.path, "ok": True}
+        if self.path.split("?")[0].endswith("/catalog/api/entries"):
+            doc["entries"] = [{"id": e, "name": e} for e in self.LIST_IDS]
+        body = json.dumps(doc).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -72,6 +98,7 @@ class _Part6Stub(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self) -> None:
+        _Part6Stub.seen.append(f"{self.command} {self.path}")
         data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         self.send_response(201)
         self.send_header("Content-Length", str(len(data)))
@@ -111,6 +138,11 @@ class FakeChild:
             "empty": {"id": "empty", "animation": None, "skeleton": None},
         }
         self.files = {"animation.json": b'{"format": "simon.animation.v1"}', "skeleton.json": b'{"format": "x"}'}
+        for entry_id in {*self.entries, *_Part6Stub.LIST_IDS}:  # stand-ins for Part 6's shipped samples (W-N1)
+            folder = Path(catalog_dir) / entry_id
+            if not (folder / "manifest.json").exists():
+                folder.mkdir(parents=True, exist_ok=True)
+                (folder / "manifest.json").write_text(json.dumps({"id": entry_id, "files_source": "fixture"}))
 
     def health(self) -> dict[str, Any] | None:
         return {"ok": True} if self.up else None
@@ -127,6 +159,15 @@ class FakeChild:
     def close(self) -> None:
         self._http.shutdown()
         self._http.server_close()
+
+
+def published(state: Path, *entry_ids: str) -> None:
+    """Give each movement the published access row an adult's opted-in take leaves (W-N1: a movement without a row
+    and not a shipped sample is shown to nobody)."""
+    from part7 import entry_access
+
+    for entry_id in entry_ids:
+        entry_access.record(state, entry_id, published=True, age_band="adult")
 
 
 def ffmpeg_video(path: Path, seconds: float, codec: str = "libx264") -> Path:
@@ -195,14 +236,16 @@ class Api:
 
     def json(self, method: str, path: str, doc: Any = None, headers: dict[str, str] | None = None
              ) -> tuple[int, Any]:
-        hdr = {"Content-Type": "application/json", **({"Origin": f"http://127.0.0.1:{self.port}"} if method == "POST" and path.endswith("/delete") else {}),
-               **(headers or {})}  # a same-origin page sends its Origin on a delete (its CSRF guard)
+        # what a same-origin page sends with fetch: the JSON type and its Origin (the CSRF guard, auth.origin_ok)
+        hdr = {"Content-Type": "application/json", "Origin": f"http://127.0.0.1:{self.port}", **(headers or {})}
         status, _, data = self.request(method, path, None if doc is None else json.dumps(doc).encode(), hdr)
         return status, json.loads(data or b"null")
 
     def upload(self, path: Path, ctype: str = "video/mp4", headers: dict[str, str] | None = None
                ) -> tuple[int, Any]:
-        status, _, data = self.request("POST", "api/uploads", path.read_bytes(), {"Content-Type": ctype, **(headers or {})})
+        # a same-origin page sends its Origin; a session cookie without it is refused (prod-hardening.md item 15)
+        hdr = {"Content-Type": ctype, "Origin": f"http://127.0.0.1:{self.port}", **(headers or {})}
+        status, _, data = self.request("POST", "api/uploads", path.read_bytes(), hdr)
         return status, json.loads(data)
 
 

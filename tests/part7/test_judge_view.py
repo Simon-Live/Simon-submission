@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from part7 import challenges, jobs, judge_view
-from support import Api
+from part7 import challenges, entry_access, jobs, judge_view
+from support import Api, published
 
 REAL = "body-squat-19b06562"
 HEADER = b'{"format": "part2.mesh3d/2026-10-31", "bin": "mesh3d.bin"}'
@@ -41,10 +41,13 @@ def finished(api: Api, kind: str, entry: str, score: int | None = None, mesh: bo
 
     rec = api.app.queue.submit(kind, fn, entry_id=entry)
     assert api.app.queue.wait(rec["id"], 10)["status"] == "done"
+    if kind == "trainer":
+        published(api.app.state, entry)  # the movement it made is public (W-N1)
     return rec["id"]
 
 
 def board(api: Api, entry: str, title: str) -> str:
+    published(api.app.state, entry)  # a published movement (W-N1: one without a row is shown to nobody)
     return challenges.create(api.app.state, entry_id=entry, title=title, creator_name="Sam", kind="friend")["id"]
 
 
@@ -123,6 +126,17 @@ def test_a_configured_hero_wins_by_environment_then_by_file(api: Api, monkeypatc
     _, doc = api.json("GET", "api/judge/hero")
     assert (doc["job_id"], doc["source"]) == (other, "configured")
     assert judge_view.configured_id(api.app.state) == other
+
+
+def test_residual5_the_hero_never_names_a_movement_the_caller_may_not_see(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    finished(api, "trainer", REAL)
+    take = finished(api, "follow", REAL, score=70)
+    monkeypatch.setenv(judge_view.HERO_ENV, take)
+    assert api.json("GET", "api/judge/hero")[1]["job_id"] == take  # shown while the movement is public
+    entry_access.set_published(api.app.state, REAL, False)
+    assert api.json("GET", "api/judge/hero") == (200, NONE), "a private movement named as the hero"
+    entry_access.drop(api.app.state, REAL)
+    assert api.json("GET", "api/judge/hero") == (200, NONE), "a movement with no row named as the hero"
 
 
 def test_a_configured_hero_that_does_not_qualify_is_ignored_and_nothing_stands_in(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:

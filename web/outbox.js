@@ -69,7 +69,11 @@ export function mountOutbox(el) {
       if (!out.ok) { status.textContent = out.status === 429 ? TEXT.limited : TEXT.failed; return; }
       const rows = out.body?.messages || [];
       status.textContent = rows.length ? "" : TEXT.none;
-      rows.forEach((m, i) => list.append(h("div", { class: "au-field", "data-testid": `outbox-message-${i}` },
+      // A notice or an invite (any kind but a sign-in code) shows its subject and text; staging then matches prod, where they are sent.
+      rows.forEach((m, i) => list.append(m.kind && m.kind !== "sign_in" ? h("div", { class: "au-field", "data-testid": `outbox-message-${i}` },
+        h("p", { class: "au-hint", text: `${when(m.at)}, to ${m.to}` }),
+        h("p", { class: "au-lead" }, h("strong", { "data-testid": `outbox-subject-${i}`, text: m.subject || "" })),
+        h("p", { class: "au-lead", "data-testid": `outbox-body-${i}`, text: m.body || "" })) : h("div", { class: "au-field", "data-testid": `outbox-message-${i}` },
         h("p", { class: "au-hint", text: `${when(m.at)}, to ${m.to}` }),
         h("p", { class: "au-lead" }, `${TEXT.code}: `, h("strong", { "data-testid": `outbox-code-${i}`, text: m.code })),
         h("p", { class: "au-lead" }, h("a", { href: m.link, "data-testid": `outbox-link-${i}`, text: TEXT.link })),

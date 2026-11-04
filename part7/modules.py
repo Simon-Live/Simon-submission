@@ -46,10 +46,27 @@ def _git(cwd: Path, *args: str) -> str | None:
     return out if run.returncode == 0 and out else None
 
 
+def firm_sha(path: Path) -> str | None:
+    """The commit a prod release tree was made from: the 40 hex characters in `<path>/.firm-sha` (no .git there)."""
+    try:
+        found = (Path(path) / ".firm-sha").read_text(encoding="utf-8").strip().lower()
+    except OSError:
+        return None
+    return found if _is_sha(found) else None
+
+
+def tree_sha(path: Path) -> str | None:
+    """The commit of the tree at `path`: its `.firm-sha` when present (a prod release), else `git rev-parse HEAD`."""
+    found = firm_sha(path)
+    if found:
+        return found
+    git = _git(path, "rev-parse", "HEAD")
+    return git.lower() if _is_sha(git) else None
+
+
 def head_sha(path: Path) -> str | None:
-    """`git rev-parse HEAD` of the checkout at `path`, read fresh each call (None when unreadable)."""
-    found = _git(path, "rev-parse", "HEAD")
-    return found.lower() if _is_sha(found) else None
+    """The commit of the checkout at `path`, read fresh each call (None when unreadable)."""
+    return tree_sha(path)
 
 
 def _pins() -> dict[str, dict[str, str]]:
@@ -134,6 +151,44 @@ def ls_remote(url: str, branch: str = "main") -> str | None:
     return first if _is_sha(first) else None
 
 
+def _git_ok(cwd: Path, *args: str) -> bool:
+    """True when the command exits 0; for one with no output on success, which `_git` cannot tell from a failure."""
+    try:
+        return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, timeout=GIT_TIMEOUT_S,
+                              env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}, check=False).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _on_a_remote_branch(path: Path, sha: str, url: str | None) -> bool | None:
+    """True when a branch at `url` holds `sha`, False when none does, None when a lookup failed and nobody can say. Heads
+    the checkout lacks are fetched only if no head it has holds it."""
+
+    def holds(heads: list[str]) -> bool:
+        return any(_git(path, "merge-base", sha, head) == sha for head in heads)
+
+    listed = _git(path, "ls-remote", "--heads", url) if url else None
+    if listed is None:  # main was read a moment ago, so a remote with no heads is a failed lookup
+        return None
+    heads = [line.split()[0] for line in listed.splitlines()]
+    known = [head for head in heads if _git(path, "cat-file", "-t", head)]
+    if holds(known):
+        return True
+    missing = [head for head in heads if head not in known]
+    if missing and not _git_ok(path, "fetch", "-q", "--no-tags", str(url), *missing):
+        return None
+    return holds(missing)
+
+
+def _ahead_of(path: Path, sha: str | None, remote: str | None, url: str | None) -> bool | None:
+    """True when the checkout holds the remote main and more, and a remote branch holds that too: a pin on a part's fix
+    branch (TICKET-380). An object the checkout lacks (a main that really moved) reads as not ahead, and so does a main
+    rewound below the pin, since then no remote branch has the pin. None when the branch lookup failed."""
+    if not sha or not remote or sha == remote or _git(path, "merge-base", remote, sha) != remote:
+        return False
+    return _on_a_remote_branch(path, sha, url)
+
+
 def status(check_remote: bool = False, root: Path | str | None = None) -> dict[str, dict[str, Any]]:
     """`{part: {path, sha, short, url, branch, remote_sha}}`; remote_sha is null unless asked for."""
     mods = load(root)
@@ -153,6 +208,11 @@ def status(check_remote: bool = False, root: Path | str | None = None) -> dict[s
             shown = str(path)
         doc[key] = {"path": shown, "sha": sha, "short": sha[:SHORT] if sha else None,
                     "url": url, "branch": branch, "remote_sha": remote}
+        ahead = _ahead_of(path, sha, remote, url)
+        if ahead is None:  # unknown: an unread remote (exit 4, and the gate skips it), never a moved main (exit 3)
+            doc[key]["remote_sha"] = None
+        elif ahead:
+            doc[key]["ahead"] = True
     return doc
 
 
@@ -173,9 +233,9 @@ def cli_parts_status(check_remote: bool = False, root: Path | str | None = None)
     unread = [k for k, p in doc.items() if p["sha"] is None or p["remote_sha"] is None]
     for key in unread:
         print(f"parts-status: part {key}: checkout or remote unreadable", file=sys.stderr)
+    stale = [k for k, p in doc.items() if k not in unread and p["remote_sha"] != p["sha"] and not p.get("ahead")]
+    for key in stale:
+        print(f"parts-status: part {key} differs from its remote main", file=sys.stderr)  # named even when exit 4 wins
     if unread:
         return EXIT_UNREACHABLE
-    stale = [k for k, p in doc.items() if p["remote_sha"] != p["sha"]]
-    for key in stale:
-        print(f"parts-status: part {key} is behind its remote main", file=sys.stderr)
     return EXIT_STALE if stale else 0

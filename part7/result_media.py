@@ -4,7 +4,8 @@
 (group job) and returns True; any other route returns False. The clip is the one Part 5 scored, so its clock is the
 analysis `at_s` clock. Only finished jobs serve it; everything else is 404. The route only reads: any method but GET
 and HEAD is 405 and touches no file (TICKET-373). A take goes only through `POST api/jobs/<id>/delete`, which checks who
-asks (delete_routes.py).
+asks (delete_routes.py). The clip of a take made signed in plays only for its owner's session, or for everyone when it
+is featured (take_access.py); anyone else gets the same 404 as for a missing clip.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from part7 import group, jobs, model_only
+from part7 import group, jobs, model_only, take_access
 
 NAME = "video.mp4"
 CHUNK = 256 * 1024
@@ -97,6 +98,10 @@ def handle(h: Any, method: str, route: str) -> bool:
     job = h.app.queue.get(parts[1]) if jobs.JOB_ID_RE.match(parts[1]) else None
     if model_only.view_only(job):  # the owner shows only the 3D model: 404 to everyone (model-default.md AC-MD12)
         h._error(404, model_only.MSG_VIEW_ONLY)
+        return True
+    refused = take_access.refusal(h, parts[1]) if job is not None else None
+    if refused:  # another account's take: the same 404 as a missing clip (prod-data.md "Object routes")
+        h._error(refused[0], MSG_GONE if refused[0] == 404 else refused[1])
         return True
     path = clip_path(h, parts[1], parts[2] if len(parts) == 4 else None)
     if path is None:

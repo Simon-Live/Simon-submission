@@ -77,7 +77,9 @@ export function mountReference(entry, { mirrored = true } = {}) {
   paint();
   mirror.addEventListener("click", () => { state.mirror = !state.mirror; paint(); });
   swap.addEventListener("click", () => { state.swap = !state.swap; paint(); });
-  media.addEventListener("click", () => { if (el.dataset.mode === "live") { state.swap = !state.swap; paint(); } });
+  // Tap-to-swap is for the trainer video only: on the 3D model a tap or a drag that ends on it orbits the model and
+  // must not move the columns (TICKET-390); the Swap views button covers it.
+  if (video) video.addEventListener("click", () => { if (el.dataset.mode === "live") { state.swap = !state.swap; paint(); } });
 
   if (video) {
     video.addEventListener("loadeddata", () => {

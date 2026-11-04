@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from part7 import architecture, config, impact
-from support import Api
+from part7 import architecture, config, entry_access, impact
+from support import Api, published
 
 SHAPE = {  # the contract of docs/impact/persona-takes.json, from the session that makes the takes
     "persona": "seated", "job_id": "", "entry_id": "seated-stretch-1a2b3c4d", "take_url": "https://example.test/#/result/x",
@@ -29,6 +29,7 @@ def put_job(api: Api, job_id: str, entry: str, score: Any = 71, **extra: Any) ->
     folder.mkdir(parents=True, exist_ok=True)
     record = {"id": job_id, "kind": "follow", "status": "done", "entry_id": entry, "result": {"entry_id": entry, "score": score}, **extra}
     (folder / "job.json").write_text(json.dumps(record), encoding="utf-8")
+    published(api.app.state, entry)  # its movement is public (W-N1: a movement without a row is never named)
     return job_id
 
 
@@ -36,6 +37,7 @@ def finished(api: Api, entry: str, score: Any, **extra: Any) -> str:
     """A real finished follow take through the queue, as a judge's click would find it."""
     rec = api.app.queue.submit("follow", lambda ctx: {"result": {"entry_id": entry, "score": score}}, entry_id=entry, **extra)
     assert api.app.queue.wait(rec["id"], 10)["status"] == "done"
+    published(api.app.state, entry)
     return rec["id"]
 
 
@@ -158,3 +160,14 @@ def test_diagrams_take_the_heading_above_each_block() -> None:
     text = "# T\n\n## One\n\n```mermaid\nflowchart LR\n  a --> b\n```\n\nprose\n\n## Two\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```\n"
     assert architecture.diagrams(text) == [
         {"title": "One", "source": "flowchart LR\n  a --> b"}, {"title": "Two", "source": "sequenceDiagram\n  A->>B: hi"}]
+
+
+def test_residual5_a_card_never_names_a_movement_the_caller_may_not_see(api: Api) -> None:
+    a = finished(api, "seated-stretch-1a2b3c4d", 71, mode="rehab")
+    write_takes(api.app.state / impact.STATE_FILE, [row("seated", a, "seated-stretch-1a2b3c4d")])
+    assert by_persona(api.json("GET", "api/impact")[1])["seated"]["take"]["job_id"] == a  # shown while it is public
+    entry_access.set_published(api.app.state, "seated-stretch-1a2b3c4d", False)
+    got = by_persona(api.json("GET", "api/impact")[1])["seated"]
+    assert got == {"persona": "seated", "take": None, "missing": "not_found"}, "a private movement named on a card"
+    entry_access.drop(api.app.state, "seated-stretch-1a2b3c4d")
+    assert by_persona(api.json("GET", "api/impact")[1])["seated"]["take"] is None, "a movement with no row named"

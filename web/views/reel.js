@@ -1,5 +1,6 @@
 // "Your progress reel" card on the history page, from a view model (web/model/reel.js). No fetching, no storage: the
 // glue passes the handlers in. Styled by theme/history.css on the brand tokens.
+import { policyOn } from "../policy.js";
 import { h, clear } from "../ui.js";
 import { renderReceipt } from "./receipt.js";
 
@@ -11,7 +12,7 @@ import { renderReceipt } from "./receipt.js";
  */
 export function renderReelCard(panel, hooks, player) {
   const make = h("button", { type: "button", class: "btn primary hs-run", "data-testid": "reel-make", text: "Make my progress reel",
-    onclick: () => hooks.onMake(), disabled: !panel.canMake });
+    onclick: () => hooks.onMake(), disabled: !panel.canMake, hidden: !policyOn("muse") });
   const status = h("p", { class: "hs-status", role: "status", "aria-live": "polite", "data-testid": "reel-status", hidden: true });
   const body = h("div", { class: "hs-reel-body", "data-testid": "reel-body" });
   const el = h("section", { class: "hs-card hs-reel", "data-testid": "reel-card" },

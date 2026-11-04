@@ -163,3 +163,12 @@ test("lane fetches with a normal 404 opt out of the report (narration, teacher, 
   await win.fetch("api/narration/boom", { expectStatus: [404] });
   assert.deepEqual(sent.map((x) => x[2].status), [500]);
 });
+
+test("a failed fetch report carries the server's request id when the answer has one", async () => {
+  const { win } = fakeWin(async () => ({ status: 503, headers: { get: (n) => (n === "x-request-id" ? "abc123abc123" : null) } }));
+  const sent = [];
+  installErrorCapture(win, createCapture({ send: (...a) => sent.push(a) }));
+  await win.fetch("api/config");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0][2].rid, "abc123abc123");
+});

@@ -7,6 +7,7 @@ import { seriesView } from "./series-chart.js";
 import { formatAt, plural, toneOf } from "./teacher.js";
 import { shownRow, chartWords } from "./score-labels.js";
 import { historyText, trainerText } from "./attribution.js";
+import { CONSENT_TEXT } from "./consent-text.js";
 
 export { plural };
 
@@ -51,7 +52,6 @@ export function stateForStatus(status) {
   if (status === 404) return { kind: "missing", message: "No takes of this movement were found for you." };
   if (status === 409) return { kind: "consent", message: "Simon needs to keep your takes before it can compare them. Turn on keeping takes in your account, then try again." };
   if (status === 422) return { kind: "few", message: "Comparing needs at least 2 takes of this movement." };
-  if (status === 429) return { kind: "limit", message: "You have used today's comparisons. Try again tomorrow." };
   return { kind: "error", message: "The comparison could not start. Try again in a moment." };
 }
 
@@ -171,6 +171,7 @@ export function pageView(doc, entryId, report) {
     takes: rows,
     chips: factChips(facts),
     video: !!(d.consent && d.consent.video),
+    adultsLabel: CONSENT_TEXT.metaItem.adults.label,
     reel: reelPanel(d),
     hasReport: !!rep,
     ok,

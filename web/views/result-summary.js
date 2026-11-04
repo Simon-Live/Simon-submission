@@ -3,6 +3,7 @@
 // result-redesign-additions.md R4 (TICKET-139): on the first paint of a result the score bar fills and the grade lands;
 // skipped under prefers-reduced-motion. R6: the export slot sits with Retry and Replay.
 import { h, ensureCss } from "../ui.js";
+import { AI_LABEL } from "../model/fault-line.js";
 import { exportSlot } from "./result-slots.js";
 
 // the summary brings its theme, so it is styled wherever it is mounted (the app, a test harness)
@@ -114,12 +115,15 @@ function figPair(poses, off, refLabel, youLabel) {
     h("figure", { class: "rs-fig-you-wrap" }, figure(poses, poses.you, "rs-fig-you", off), h("figcaption", { text: youLabel })));
 }
 
+/** A mark's name for the pointer and screen readers: a model's sentence is not put there unlabelled, so its fixed cue stands in. */
+const markName = (x) => (x.ai ? x.cue || "Moment" : x.text || "Moment");
+
 /** The card a drift mark opens: "Drift at 0:07", Needs focus, both bodies, the miss in words, the note. */
 function driftCard(d) {
   const card = h("section", { class: "rs-card rs-drift-detail", "data-testid": "summary-drift-detail", "aria-live": "polite" },
     h("div", { class: "rs-card-head" }, h("h3", { text: d.title }), h("span", { class: "rs-pill", text: d.badge })));
   if (d.poses) card.append(figPair(d.poses, d.offJoints, d.refLabel, d.youLabel));
-  if (d.you) card.append(h("dl", { class: "rs-rows" }, h("dt", { text: d.youLabel }), h("dd", { text: d.you })));
+  if (d.you) card.append(h("dl", { class: "rs-rows" }, h("dt", { text: d.youLabel }), h("dd", {}, d.you, d.ai ? h("span", { class: "sr-chip sr-ai", "data-testid": "summary-drift-ai", text: AI_LABEL }) : null)));
   return card;
 }
 
@@ -165,7 +169,7 @@ export function renderResultSummary(root, m, on = {}, before = null) {
     };
     const track = h("div", { class: "rs-drift-track", role: "group", "aria-label": `${m.drift.marks.length} moments to focus on` },
       ...m.drift.marks.map((x) => {
-        const btn = h("button", { type: "button", class: "rs-drift-mark", "data-at-s": x.at, title: x.text || "", "aria-label": x.text || "Moment", "aria-expanded": "false",
+        const btn = h("button", { type: "button", class: "rs-drift-mark", "data-at-s": x.at, title: markName(x), "aria-label": markName(x), "aria-expanded": "false",
           "data-testid": "summary-drift-mark", style: `left:${(x.start * 100).toFixed(2)}%;width:${(x.width * 100).toFixed(2)}%` });
         btn.addEventListener("click", () => openDetail(x, btn));
         return btn;

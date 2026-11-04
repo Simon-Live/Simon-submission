@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
 import threading
@@ -13,7 +14,7 @@ from typing import Any, Iterator
 import pytest
 
 from auth_support import authenv, get, post, sign_in  # noqa: F401
-from part7 import auth, avatar_jobs as aj, chain, config, jobs, model_import, server
+from part7 import auth, avatar_jobs as aj, chain, config, jobs, model_import, own_clients, selfheal, server
 from part7.jobs import JobQueue
 from support import Api, FakeChild, make_lock
 from test_avatar_jobs import env, make_model, status  # noqa: F401  (env is the avatar job fixture)
@@ -185,16 +186,34 @@ def test_drain_cuts_off_a_model_job_at_the_max_and_reports_it(
     assert status(d)["status"] == "failed"  # the worker wrote nothing after the cut
 
 
-def test_sigterm_drain_stops_model_jobs_first_and_shares_one_max(monkeypatch: pytest.MonkeyPatch) -> None:
+def _fake_queue(calls: list[Any], root: Path) -> Any:
+    return type("Q", (), {"root": root / "jobs", "drain": lambda self, max_s: calls.append(("takes", max_s)) or 0})()
+
+
+def test_sigterm_drain_stops_model_jobs_first_and_shares_one_max(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[Any] = []
     monkeypatch.setenv("SIMON7_DRAIN_MAX_S", "50")
     monkeypatch.setattr(model_import, "begin_drain", lambda: calls.append("begin"))
     monkeypatch.setattr(model_import, "drain", lambda deadline: calls.append(("models", deadline - time.monotonic())) or 1)
-    queue = type("Q", (), {"drain": lambda self, max_s: calls.append(("takes", max_s)) or 0})()
+    monkeypatch.setattr(own_clients, "stop_all", lambda state, parent=None: calls.append("own") or 0)
     stopped = type("S", (), {"shutdown": lambda self: calls.append("shutdown")})()
-    server._drain_then_stop(queue, stopped)
-    assert calls[0] == "begin" and calls[1] == ("takes", 50.0) and calls[3] == "shutdown"
-    assert calls[2][0] == "models" and 45 < calls[2][1] <= 50
+    server._drain_then_stop(_fake_queue(calls, tmp_path), stopped)
+    assert calls[0] == "begin" and calls[1] == ("takes", 50.0) and calls[2] == "own" and calls[4] == "shutdown"
+    assert calls[3][0] == "models" and 45 < calls[3][1] <= 50
+
+
+def test_sigterm_drain_ends_this_servers_own_route_clients(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """BYOK-M6: right after the take drain, the launchers this server started end; another server's stay."""
+    calls: list[Any] = []
+    stops: list[tuple[Path, int | None]] = []
+    monkeypatch.setattr(model_import, "begin_drain", lambda: None)
+    monkeypatch.setattr(model_import, "drain", lambda deadline: 0)
+    monkeypatch.setattr(selfheal, "record", lambda *a, **k: None)
+    monkeypatch.setattr(own_clients, "stop_all", lambda state, parent=None: stops.append((Path(state), parent)) or 0)
+    stopped = type("S", (), {"shutdown": lambda self: calls.append("shutdown")})()
+    server._drain_then_stop(_fake_queue(calls, tmp_path), stopped)
+    assert stops == [(tmp_path, os.getpid())]
+    assert calls == [("takes", config.drain_max_s()), "shutdown"]
 
 
 def test_a_model_upload_answers_503_while_draining(api: Api) -> None:
@@ -251,7 +270,8 @@ def _seed_people_job(state: Path, clip: Path) -> Path:
     (folder / "work" / "clip.mp4").write_bytes(clip.read_bytes())
     (folder / "work" / "tracks.json").write_text("{}", encoding="utf-8")
     record = {"id": PEOPLE_JOB, "kind": "people", "status": "done", "stage": "done", "stages": ["upload", "track"],
-              "trim": None, "duration_ms": 2000, "result": {"people": [{"id": "0"}, {"id": "1"}], "auto_id": None}}
+              "trim": None, "duration_ms": 2000, "result": {"people": [{"id": "0"}, {"id": "1"}], "auto_id": None},
+              "_people_owner": ""}  # made signed out: its job id is its key (people_routes.OWNER_FIELD)
     (folder / "job.json").write_text(json.dumps(record), encoding="utf-8")
     return folder
 
@@ -406,3 +426,25 @@ def test_a_signed_out_take_resumes_with_no_owner_and_no_error(
     assert after.app.queue.wait(job, 60)["status"] == "done"
     assert not auth.ident.db_path(after.app.state).is_file() or auth.identity(after.app).entry_owner(OWNED) is None
     assert "could not read the owner" not in caplog.text and "could not record the owner" not in caplog.text
+
+
+def test_a_step_that_dies_during_the_drain_is_counted_as_cut_off(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Prod 2026-11-04: a take failed 15 s into a drain with this reason while the drain logged 0 cut off."""
+    release, started = threading.Event(), threading.Event()
+
+    def work(ctx: Any) -> None:
+        started.set()
+        release.wait(10)
+        raise jobs.JobFailed("pose", jobs.DRAIN_CUT_REASON, "restart")
+
+    q = jobs.JobQueue(tmp_path)
+    q.submit("follow", work)
+    assert started.wait(5)
+    timer = threading.Timer(0.2, release.set)
+    timer.start()
+    with caplog.at_level(logging.INFO, logger="part7"):
+        assert q.drain(20, poll_s=0.05) == 1
+    timer.join()
+    assert len([r for r in caplog.records if r.getMessage().startswith("ANOMALY drain_cut_off")]) == 1
+    assert "drain: done, 1 job(s) cut off" in caplog.text
+    q.close()

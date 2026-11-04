@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from auth_support import authenv, get, post, sign_in  # noqa: F401
+from auth_support import authenv, get, post, sign_in, claim_doc  # noqa: F401
 from export_seed import ENTRY as SEED_ENTRY, seed_takes
 from history_support import FIRST, SECOND, USER, World, job_record, seed_job, world  # noqa: F401
 from part7 import auth, chain, history_prompt, history_routes, history_store, jobs, model_only, processor, resume
@@ -278,7 +278,7 @@ def test_a_share_of_a_model_only_take_forces_the_clip_off(api: Api) -> None:  # 
 
     made = api.app.queue.submit("follow", fn, entry_id=SHARE_ENTRY, video_kept=False)
     assert api.app.queue.wait(made["id"], 10)["status"] == "done"
-    assert post(api, "api/me/claims", {"job_id": made["id"]}, cookie=sid)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, made["id"]), cookie=sid)[0] == 200
     status, _, doc = post(api, "api/shares", share_body(made["id"], show_clip=True), cookie=sid)
     assert status == 201, doc
     status, _, shared = get(api, f"api/shared/{doc['token']}")
@@ -286,7 +286,7 @@ def test_a_share_of_a_model_only_take_forces_the_clip_off(api: Api) -> None:  # 
     assert get(api, f"api/shared/{doc['token']}/clip.mp4")[0] == 404
     assert post(api, "api/shares/preview", share_body(made["id"], show_clip=True), cookie=sid)[2]["clip_included"] is False
     plain = share_job(api)  # a take with a video still refuses a tick it cannot honour (unchanged)
-    assert post(api, "api/me/claims", {"job_id": plain}, cookie=sid)[0] == 200
+    assert post(api, "api/me/claims", claim_doc(api, plain), cookie=sid)[0] == 200
     assert post(api, "api/shares", share_body(plain, show_clip=True), cookie=sid)[0] == 400
 
 

@@ -112,7 +112,7 @@ def test_the_repeat_starts_without_the_3_fps_frame_times(
         seen.append((Path(work).parent / "frames.json").is_file() if kw["fps"] == 10 else False)
         path = Path(work) / "part2_track" / "tracks.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(tracks_doc({0: 20}) if kw["fps"] == 3 else _moving({0: 20})), encoding="utf-8")
+        path.write_text(json.dumps(tracks_doc({0: 5}) if kw["fps"] == 3 else _moving({0: 20})), encoding="utf-8")
         if kw["fps"] == 3:
             _frames_json(path.parent, 3)  # the repeat writes no frames.json at all
         return (_step(2), path)

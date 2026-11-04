@@ -202,10 +202,10 @@ def test_follower_result_credits_the_trainer_only_on_opt_in(api: Api, profiles: 
     auth.identity(api.app).attach(job, fid, "follow", ENTRY, None, "submit")
     profiles[tid] = {"name": "Tia", "credit": True}
     profiles[fid] = {"name": None}  # Grace kept show_name off: public_identity gives no name
-    doc = get(api, f"api/jobs/{job}")[2]["attribution"]
+    doc = get(api, f"api/jobs/{job}", cookie=follower)[2]["attribution"]  # B2: an owned take answers its owner only
     assert doc["trainer_credit"]["name"] == "Tia" and doc["author"] == {"name": None, "avatar": None}  # follower hid the name
     profiles[tid]["credit"] = False
-    assert get(api, f"api/jobs/{job}")[2]["attribution"]["trainer_credit"] is None
+    assert get(api, f"api/jobs/{job}", cookie=follower)[2]["attribution"]["trainer_credit"] is None
     anon = make_job(api)  # an anonymous follower: no follower name is invented
     profiles[tid]["credit"] = True
     doc = get(api, f"api/jobs/{anon}")[2]["attribution"]
@@ -221,7 +221,7 @@ def test_deleting_profile_details_makes_every_surface_neutral(api: Api, profiles
     job = make_job(api)
     auth.identity(api.app).attach(job, uid, "follow", ENTRY, None, "submit")
     profiles[uid] = {"name": "Tia", "credit": True, "avatar": "owl"}
-    surfaces = [lambda: get(api, f"api/teacher/{ENTRY}")[2], lambda: get(api, f"api/jobs/{job}")[2],
+    surfaces = [lambda: get(api, f"api/teacher/{ENTRY}")[2], lambda: get(api, f"api/jobs/{job}", cookie=sid)[2],
                 lambda: get(api, "api/me/entries", cookie=sid)[2]["entries"][0], lambda: get(api, "api/me/takes", cookie=sid)[2]["takes"][0]]
     assert "Tia" in json.dumps([s() for s in surfaces])
     profiles.clear()
@@ -235,7 +235,7 @@ def test_no_payload_ever_carries_an_email(api: Api, profiles: dict) -> None:
     job = make_job(api)
     auth.identity(api.app).attach(job, uid, "follow", ENTRY, None, "submit")
     profiles[uid] = {"name": "Tia", "credit": True}
-    bodies = [get(api, f"api/teacher/{ENTRY}")[2], get(api, f"api/jobs/{job}")[2], get(api, "api/me/entries", cookie=sid)[2],
+    bodies = [get(api, f"api/teacher/{ENTRY}")[2], get(api, f"api/jobs/{job}", cookie=sid)[2], get(api, "api/me/entries", cookie=sid)[2],
               get(api, "api/me/takes", cookie=sid)[2]]
     text = json.dumps(bodies)
     assert EMAIL.lower() not in text.lower() and "@" not in json.dumps([b.get("attribution", b) for b in bodies[:2]])
@@ -248,10 +248,12 @@ def test_result_answer_says_whether_the_viewer_owns_it_and_whether_there_is_narr
     job = make_job(api)
     auth.identity(api.app).attach(job, uid_of(api, owner), "follow", ENTRY, None, "submit")
     assert get(api, f"api/jobs/{job}", cookie=owner)[2]["attribution"]["mine"] is True
-    assert get(api, f"api/jobs/{job}", cookie=other)[2]["attribution"]["mine"] is False  # negative: another account
-    assert get(api, f"api/jobs/{job}")[2]["attribution"]["mine"] is False  # negative: signed out
-    assert get(api, f"api/jobs/{job}")[2]["narration"] is False
+    assert get(api, f"api/jobs/{job}", cookie=other)[0] == 404  # negative: another account (B2: not even the record)
+    assert get(api, f"api/jobs/{job}")[0] == 404  # negative: signed out
+    anon = make_job(api)  # an anonymous take answers whoever holds its id, and is nobody's
+    assert get(api, f"api/jobs/{anon}", cookie=other)[2]["attribution"]["mine"] is False
+    assert get(api, f"api/jobs/{job}", cookie=owner)[2]["narration"] is False
     folder = api.app.child.catalog_dir / ENTRY
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "narration.json").write_text(json.dumps({"cues": []}))
-    assert get(api, f"api/jobs/{job}")[2]["narration"] is True
+    assert get(api, f"api/jobs/{job}", cookie=owner)[2]["narration"] is True

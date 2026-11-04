@@ -23,7 +23,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from part7 import config, history_prompt, keys
+from part7 import config, consent_record, history_prompt, keys, muse_prod
 from part7.history_prompt import MAX_VIDEOS, VIDEO_TOKENS_PER_S
 
 API = os.environ.get("SIMON_META_API", "https://api.meta.ai/v1").rstrip("/")  # SIMON_META_API: the judges' relay (deploy/judges/README.md)
@@ -268,6 +268,9 @@ class HttpClient:
         self._opener = urllib.request.build_opener(_NoRedirect)
 
     def _call(self, method: str, path: str, data: bytes | None, content_type: str | None, step: str) -> Any:
+        closed = None if method == "DELETE" else muse_prod.gate()  # a stop never leaves a clip at Meta, so a delete still goes
+        if closed is not None:
+            raise HistoryError(closed.message)
         headers = {"Authorization": f"Bearer {self._key}", "User-Agent": "part7-history"}
         if content_type:
             headers["Content-Type"] = content_type
@@ -332,6 +335,8 @@ def _check_caps_before_upload(ledger: Path, packed: dict[str, Any]) -> None:
 def _check_consent(packed: dict[str, Any]) -> None:
     videos = sum(item["type"] == "video" for item in packed["content"])
     if videos and packed.get("video_consent") is not True:
+        raise HistoryError("no video consent")
+    if videos and consent_record.required() and packed.get("video_cleared") is not True:  # muse-prod.md AC-MP11
         raise HistoryError("no video consent")
     if videos > MAX_VIDEOS:
         raise HistoryError(f"more than {MAX_VIDEOS} videos in one request")

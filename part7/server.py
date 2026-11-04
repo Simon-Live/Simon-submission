@@ -7,39 +7,49 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import errno
 import json
 import logging
 import mimetypes
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import signal
 import sys
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlsplit
 import uuid
 
 from part7 import (
-    animation_format, applog, attribution, auth, auth_routes, buildinfo, challenge_routes, client_log, config, delete_routes, entry_check, export_data_routes, export_routes, heartbeat,
+    animation_format, applog, attribution, auth, auth_routes, buildinfo, board_preview, challenge_routes, client_log, config, delete_routes, entry_check, export_data_routes, export_routes, heartbeat,
     health_probe, history_routes, history_store, idempotency, identity, jobs, judge_view, labels, media, mesh_files, mesh_stream_routes, model_import, model_only, models_used, modes, modules, muse_fix_routes, narration_routes,
-    devices_routes, my_reference, my_reference_routes, notes_routes, people, people_routes, private_mode, profile_routes, processor, proxy, quota, reference_approval_routes, refused_uploads, replay, result_media, resume, run_on, sections, selfheal, share_routes, speech_routes,
+    devices_routes, modal_creds_routes, my_reference, my_reference_routes, notes_routes, people, people_routes, private_mode, profile_routes, processor, proxy, quota, reference_approval_routes, refused_uploads, replay, result_media, resume, run_on, sections, selfheal, share_routes, speech_routes,
     source_routes, progress_routes, teacher_routes,
-    takes_on_routes,
-    architecture, impact,
+    takes_on_routes, upload_owner,
+    architecture, catalog_search_routes, impact,
     group,  # one-letter.md L5: a group job's people carry `shown` at read time
+    mail, mail_probe, mail_webhook,  # the SIGTERM drain waits for a mail in flight; the timed send probe
 )
-from part7 import take_ar, take_ar_url
+from part7 import own_clients  # BYOK-M6: the drain ends the own-route launchers this server started
+from part7 import challenges, reference_approval, share  # their retention runs in the periodic sweep (prod-data.md)
+from part7 import result_paths, take_access, take_ar, take_ar_url
+from part7 import prod_check, security_headers  # prod hardening: start check, Host rule, headers (prod-hardening.md)
+from part7.prod_mode import is_prod
+from part7 import keys  # AC-H5c: what a killed server left in the Part 1 tree
 from part7 import heat  # TICKET-274: heat on the follower's own body
 from part7 import orphan_take  # TICKET-331: a follow take whose movement was deleted
 from part7 import gpu_lock  # TICKET-289: api/health gpu block
 from part7 import ghost, stage_split  # TICKET-264 follow the ghost, TICKET-260 stage split
 from part7 import p2_warmup
+from part7 import serverless_route  # serverless-compute.md: what is left at Modal goes with the sweep
 from part7 import notices_routes  # TICKET-326: the footer's Licences link
+from part7 import consent_record, licence_gates, modal_creds, muse_prod, policy_routes, trainer_publish  # prod hardening call sites (consent-and-age.md, licence-gates.md, byok-prod.md, trainer-publish.md)
 from part7 import mirrored as mirrored_take  # TICKET-310: the person says an upload is a mirrored video
-from part7.parts import p5_analyse
+from part7.parts import p1_keyframes, p5_analyse
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 LANG_RE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
@@ -60,15 +70,22 @@ MSG_TRIM_SHAPE = "The selection needs a start and an end in milliseconds."
 MSG_TRIM_ORDER = "The selection must start before it ends, inside the video."
 MSG_TRIM_SHORT = "The selection is too short (1 s at least)."
 MSG_TRIM_LONG = "The selection is too long (60 s at most)."
-MSG_TOO_LARGE = "The file is too large (95 MB at most)."
+MSG_HOST = "This address is not served here."
+MSG_CHUNKED = "The request needs a Content-Length."
+UPLOAD_BODY_MIN = JSON_BODY_MAX  # a body longer than this is an upload: the per-client guard and the prod body cap apply
 MSG_NO_ENTRY = "This movement is not in the catalog."
 MSG_NO_ANIMATION = "This movement has no animation to follow."
 MSG_BAD_ANIMATION = "This movement's animation is not in a form the comparison accepts."
 MSG_KEY_REUSED = "This Idempotency-Key was already used for a different request."
 MSG_NO_UPLOAD = "The upload was not found. Pick the video again."
+MSG_NO_JOB = "This job was not found."
 MSG_NAME = "Give the movement a name of 80 characters at most."
 MSG_CATEGORY = "Pick exercise or dance."
 MSG_CATALOG_DOWN = "The catalog is not answering. Try again in a moment."
+MSG_CSRF = auth_routes.MSG_CSRF
+MSG_NOT_JSON = "The request must be sent as JSON."
+MSG_UPLOAD_SIGN_IN = "Sign in to upload a video."
+STATE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 
 
 @dataclass
@@ -88,7 +105,6 @@ class App:
     client_rate: client_log.RateLimit = field(default_factory=client_log.RateLimit)
     idem: idempotency.Store | None = None
     part6_probe: health_probe.Part6Probe = field(default_factory=health_probe.Part6Probe)
-
     @property
     def idempotency(self) -> idempotency.Store:
         if self.idem is None:
@@ -106,12 +122,18 @@ class App:
         return found[0] if found else None
 
 
+def too_large_message() -> str:
+    return f"The file is too large ({config.upload_max_bytes() // 1_000_000} MB at most)."
+
+
 def phrasing_from_env() -> str:
-    return "template" if os.environ.get("SIMON7_PHRASING", "live") == "template" else "live"
+    """SIMON7_PHRASING, then the licence gate: prod phrases from the template while the Muse Spark Open terms are unread (LIC-H1)."""
+    return licence_gates.phrasing("template" if os.environ.get("SIMON7_PHRASING", "live") == "template" else "live")
 
 
 SLOW_REQUEST_S = 2.0
 DRAIN_ROUTES = frozenset({"uploads", "trainer", "follow", "people", "group", "models"})  # POSTs that start work (models: TICKET-306)
+TAKE_ROUTES = DRAIN_ROUTES - {"models"}  # POSTs a take walks through
 SLOW_UPLOAD_S = 20.0  # a POST api/uploads or api/models carries the visitor's file: transfer time is part of it
 SLOW_MEDIA_S = 10.0  # media GETs stream; the limit applies to the time to the first byte (headers out)
 MEDIA_SUFFIXES = (".mp4", ".webm", ".mov")
@@ -122,6 +144,7 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
         pass
 
     Handler.app = app
+    Handler.timeout = config.socket_timeout_s()  # APP-M3: a stalled read or write ends the connection (prod: 60 s)
     return Handler
 
 
@@ -129,13 +152,36 @@ class _Handler(BaseHTTPRequestHandler):
     _body_cache: bytes | None = None  # a JSON body read early by the Idempotency-Key check
     app: App
     _expected_busy = False  # set per request by a route whose 5xx is busy by design (speech_routes.py)
+    _rid = ""  # the request id, set per request (observability.md "Failure lines and request ids")
+    _reason = ""  # why this request answered 5xx
     server_version = "Simon7"
     sys_version = ""
 
     # ----- plumbing -------------------------------------------------------------------------
     def log_message(self, fmt: str, *args: Any) -> None:
         line = re.sub(r"(/api/shared/)[^/\s?\"]+", r"\1<token>", fmt % args)  # TICKET-233: a share token is never logged
-        sys.stderr.write(f"{self.log_date_time_string()} {line}\n")
+        line = re.sub(r"\?[^\s\"]*", "", line)  # D8: no query string (a name typed into a form) reaches the log
+        # An ISO UTC time first, so the 14-day age rule can read it (log_retention.py); account ids hashed (applog)
+        sys.stderr.write(f"{applog.utc_stamp()} {applog.scrub(line)}\n")  # DI-R1: no movement name either
+
+    def send_header(self, keyword: str, value: str) -> None:
+        self._header_names = getattr(self, "_header_names", set()) | {keyword.lower()}
+        super().send_header(keyword, value)
+
+    def end_headers(self) -> None:
+        """Every response carries the security headers (security_headers.py); a route that set one itself keeps its own."""
+        sent = getattr(self, "_header_names", set())
+        rest = self._rest() if hasattr(self, "path") else None  # a request line that did not parse has no path
+        catalog = rest is not None and (rest == "catalog" or rest.startswith("catalog/"))
+        web = config.part_dir(6) / "web" if catalog else self.app.web_dir
+        framed = catalog or rest == "whitepaper.html"  # `#/whitepaper` frames this one page from the app's own origin
+        for key, value in security_headers.headers(web, same_origin_frame=framed).items():
+            if key.lower() not in sent:
+                super().send_header(key, value)
+        self._header_names = set()
+        if self._rid:
+            super().send_header("X-Request-Id", self._rid)  # the id its failure line carries, if it fails (observability.md)
+        super().end_headers()
 
     def _send(self, status: int, body: bytes, ctype: str, extra: dict[str, str] | None = None) -> None:
         self.send_response(status)
@@ -154,14 +200,21 @@ class _Handler(BaseHTTPRequestHandler):
         idem = getattr(self, "_idem", None)
         if idem is not None and status in idempotency.REPLAYABLE:
             try:  # remembered before the answer goes out, so a lost answer can be replayed
-                self.app.idempotency.put(idem[0], idem[1], status, obj, getattr(self, "_idem_fp", None))
+                kept = {k: v for k, v in obj.items() if k != "creator_token"} if isinstance(obj, dict) else obj
+                self.app.idempotency.put(idem[0], idem[1], status, kept, getattr(self, "_idem_fp", None))  # R2: no token on disk
             except OSError:
                 pass
         self._send(status, json.dumps(obj).encode("utf-8"), "application/json; charset=utf-8")
 
+    def _take_refusal(self, status: int) -> bool:
+        """A POST that carries a take answered 4xx: named in the log (offline-takes.md AC-OT13)."""
+        return 400 <= status < 500 and self.command == "POST" and (self._rest() or "").removeprefix("api/") in TAKE_ROUTES
+
     def _error(self, status: int, message: str, **extra: Any) -> None:
         if status >= 500:
-            applog.log(f"{self.command} {urlsplit(self.path).path} answered {status}: {message}", level=logging.WARNING)
+            self._reason = self._reason or message  # a crash's own type stays the reason over the visitor's plain text
+        if status >= 500 or self._take_refusal(status):
+            applog.log(f"{self.command} {applog.safe_path(urlsplit(self.path).path)} answered {status}: {message}", level=logging.WARNING)
         self._json(status, {"ok": False, "error": message, "message": message, **extra})
 
     def _rest(self) -> str | None:
@@ -173,7 +226,8 @@ class _Handler(BaseHTTPRequestHandler):
         return path[len(base):] if path.startswith(base) else None
 
     def _visitor(self) -> str | None:
-        return self.headers.get("Cf-Connecting-Ip") or None
+        """The address every limiter counts: `auth.client_addr`, the one header-trust rule (app-surface R6)."""
+        return auth.client_addr(self)
 
     def _body_json(self) -> dict[str, Any] | None:
         try:
@@ -186,6 +240,11 @@ class _Handler(BaseHTTPRequestHandler):
             return None
         if length > JSON_BODY_MAX:
             self._error(413, "The request is too large.")
+            return None
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":  # app-surface R3: a text/plain form post is not taken for JSON
+            self.close_connection = True  # the unread body must not be taken for the next request
+            self._error(415, MSG_NOT_JSON)
             return None
         try:
             raw = self._body_cache if self._body_cache is not None else self.rfile.read(length)
@@ -220,6 +279,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._status = 0
         self._expected_busy = False  # a route sets it on an answer that is busy by design (speech_routes.py)
         self._first_byte = None
+        self._rid = secrets.token_hex(6)  # our own, never the client's: a client must not choose what the log says
+        self._reason = ""
         t0 = time.monotonic()
         try:
             self._timed_route()
@@ -240,10 +301,10 @@ class _Handler(BaseHTTPRequestHandler):
         """`ANOMALY slow_request` past the route's limit and `ANOMALY http_5xx`; `path` is below the base path, no query."""
         full = urlsplit(self.path).path
         rest = self._rest()
-        fields: dict[str, Any] = {"method": self.command, "path": rest if rest is not None else full,
-                                  "status": self._status, "seconds": seconds}
+        path = applog.safe_path(rest if rest is not None else full)
+        fields: dict[str, Any] = {"method": self.command, "path": path, "status": self._status, "seconds": seconds}
         length = self.headers.get("Content-Length", "") if self.headers is not None else ""
-        if length.isdigit():
+        if length.isascii() and length.isdigit() and len(length) <= 20:  # past Python's digit limit int() raises, after the answer went out
             fields["bytes"] = int(length)
         limit, on_first_byte = self._slow_limit(rest)
         if (first_byte_s if on_first_byte and first_byte_s is not None else seconds) > limit:
@@ -251,7 +312,8 @@ class _Handler(BaseHTTPRequestHandler):
         if self._status >= 500 and self._expected_busy:  # a designed "try again shortly": one INFO line, no anomaly
             applog.log(f"{self.command} {fields['path']} answered {self._status} (busy by design)")
         elif self._status >= 500:
-            applog.anomaly("http_5xx", **fields)
+            applog.anomaly("http_5xx", **fields, rid=self._rid or None, route=selfheal.route_key(self.command, path),
+                           reason=self._reason or f"answered {self._status} with no reason from the route")
 
     def _timed_route(self) -> None:
         try:
@@ -261,7 +323,8 @@ class _Handler(BaseHTTPRequestHandler):
             applog.log(f"client closed the connection during {self.command} {urlsplit(self.path).path}")
             self.close_connection = True
         except Exception as exc:  # a handler bug: logged with the request, the visitor gets a plain 500
-            applog.log(f"{self.command} {urlsplit(self.path).path} crashed: {applog.cause(exc)}", level=logging.ERROR)
+            self._reason = f"crashed: {type(exc).__name__}"
+            applog.log(f"{self.command} {applog.safe_path(urlsplit(self.path).path)} crashed rid={self._rid}: {applog.cause(exc)}", level=logging.ERROR)
             selfheal.note_crash(self.command, self._rest() or urlsplit(self.path).path, exc)  # names the type in the 5xx finding
             if self._answered:  # headers (and maybe part of a body) already went out: end the connection instead
                 self.close_connection = True
@@ -271,7 +334,48 @@ class _Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
 
+    def _host_ok(self) -> bool:
+        """Prod serves its own domains only; a direct local request (health.sh, smoke) may name a loopback host."""
+        host = (self.headers.get("Host") or "").strip().lower()
+        if not host or any(c in host for c in "/@ \\"):
+            return False
+        name = urlsplit(f"//{host}").hostname
+        if name in prod_check.allowed_hosts():
+            return True
+        return name in ("127.0.0.1", "localhost", "::1") and not self.headers.get("Cf-Connecting-Ip")
+
+    def _gate_request(self) -> bool:
+        """Host rule, body cap and upload guard before any route reads a byte; True when it answered (EDGE-413, APP-H3).
+
+        In prod every body is capped at `config.body_cap_bytes()`, below the edge's 100 MB, so the 413 is the app's. An
+        upload-sized body is also counted per client (uploads an hour, bytes a day) and refused near a full disk.
+        """
+        if is_prod() and not self._host_ok():
+            self.close_connection = True
+            self._error(421, MSG_HOST)
+            return True
+        if self.command not in ("POST", "PUT", "PATCH"):
+            return False
+        if is_prod() and self.headers.get("Transfer-Encoding"):  # a chunked body has no length to cap
+            self.close_connection = True
+            self._error(411, MSG_CHUNKED)
+            return True
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return False  # the route answers a malformed length itself
+        cap = config.body_cap_bytes()
+        if cap is not None and length > cap:
+            self._reject_upload(413, too_large_message(), length)
+            return True
+        if length <= UPLOAD_BODY_MIN or quota.disk_refusal(self.app.state, length) is None:
+            return False
+        self._reject_upload(503, quota.UPLOAD_MESSAGE_DISK, length)
+        return True
+
     def _route(self) -> None:
+        if self._gate_request():
+            return
         rest = self._rest()
         if rest is None:
             self._error(404, "Not found.")
@@ -281,6 +385,10 @@ class _Handler(BaseHTTPRequestHandler):
         elif rest.startswith("api/"):
             self._api(rest[4:])
         elif self.command in ("GET", "HEAD"):
+            if policy_routes.page(self, rest):  # /privacy, /terms and the other legal drafts (legal-pages.md)
+                return
+            if board_preview.page(self, rest):  # c/<id>: a shared board's link preview, then on to the app (board-discovery.md)
+                return
             self._static(rest)
         else:
             self._error(405, "Method not allowed.")
@@ -293,6 +401,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._idem = None
         self._idem_fp = None
         self._body_cache = None
+        if self._cross_site():
+            return self._reject_upload(403, MSG_CSRF, self._length_or_zero())
         if self.command == "POST" and route in DRAIN_ROUTES and self.app.queue.draining:
             return self._draining_answer(route)
         claimed = self._idempotent_begin(route)
@@ -304,6 +414,17 @@ class _Handler(BaseHTTPRequestHandler):
             if claimed:
                 self.app.idempotency.end(*self._idem)
                 self._idem = None
+
+    def _cross_site(self) -> bool:
+        """app-surface R3: a state-changing request that carries a session cookie must come from this origin
+        (`auth.same_origin`), whatever its route; the routes' own guards still apply after this one."""
+        return self.command in STATE_METHODS and auth.sid_from(self) is not None and not auth.same_origin(self)
+
+    def _length_or_zero(self) -> int:
+        try:
+            return max(0, int(self.headers.get("Content-Length") or 0))
+        except ValueError:
+            return 0
 
     def _draining_answer(self, route: str) -> None:
         """A restart is draining the running jobs: no new job or upload starts (jobs.drain)."""
@@ -366,6 +487,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _api_routes(self, route: str) -> None:
         method, parts = self.command, route.split("/")
+        if self._take_refused(parts):  # prod-data.md "Object routes": every api/jobs/<id> and api/results/<id> route
+            return
         if result_media.handle(self, method, route):  # the follower clip, with Range (coaching-moments.md)
             return
         if models_used.handle(self, method, route):  # models that ran, 2D skeleton (models-and-skeleton-data.md)
@@ -394,6 +517,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if devices_routes.handle(self, method, route):  # signed-in devices (devices.md)
             return
+        if modal_creds_routes.handle(self, method, route):  # TICKET-367: the user's own Modal credentials (AC-H16)
+            return
         if export_data_routes.handle(self, method, route):  # download my data (export-data.md)
             return
         if my_reference_routes.handle(self, method, route):  # my reference (my-reference.md)
@@ -407,6 +532,8 @@ class _Handler(BaseHTTPRequestHandler):
         if people_routes.handle(self, method, route):  # people choice and group mode (people.md)
             return
         if speech_routes.handle(self, method, route):  # spoken feedback lines (voice.md)
+            return
+        if catalog_search_routes.handle(self, method, route):  # search, filter, sort and page the catalog (catalog-search.md)
             return
         if judge_view.handle(self, method, route):  # the hero take of the judge view (judge-view.md)
             return
@@ -432,14 +559,16 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if notices_routes.handle(self, method, route):  # the third-party notices of this build (version-footer.md)
             return
+        if policy_routes.handle(self, method, route):  # api/policy and api/legal/<name> (consent-and-age.md, legal-pages.md)
+            return
         if method in ("GET", "HEAD"):
             if route == "health":
                 return self._health()
             if route == "version":
-                return self._json(200, self.app.build)
+                return self._json(200, health_probe.public_build(self.app.build) if is_prod() else self.app.build)
             if route == "config":
                 return self._config()
-            if route == "fixture-result":
+            if route == "fixture-result" and not is_prod():  # a demo route: not served in prod
                 return self._fixture()
             if route == "labels":  # an entry its owner keeps to "only me" is listed to that owner alone (identity.md)
                 return self._json(200, {k: v for k, v in labels.all_labels(self.app.state).items() if auth.may_view_entry(self, k)})
@@ -458,12 +587,26 @@ class _Handler(BaseHTTPRequestHandler):
                 return handler()
         self._error(404, "Not found.")
 
+    def _take_refused(self, parts: list[str]) -> bool:
+        """Answer 404 (503 when the owner cannot be read) for a take of another account on any `jobs/<id>/...` or
+        `results/<id>/...` route: the job record, results, meshes, skeleton, heat, models used, speech, exports (APP-C1,
+        security audit B2). The delete route keeps its own rule (owner or creator token, 403)."""
+        if len(parts) < 2 or parts[0] not in ("jobs", "results") or parts[2:] == ["delete"]:
+            return False
+        refused = take_access.refusal(self, parts[1])
+        if refused and refused[0] == 404 and parts[0] == "jobs" and len(parts) == 2:
+            refused = (404, MSG_NO_JOB)  # P-N1: the job record answers as for a job that does not exist
+        if refused:
+            self._error(*refused)
+        return refused is not None
+
     # ----- read routes ------------------------------------------------------------------------
     def _health(self) -> None:
         app = self.app
         up, part6 = app.part6_probe.check(app.child)  # TICKET-188: a missed probe is tolerated while the last good one is fresh
         doc = {
             "ok": up,
+            **({"failed": health_probe.failed_components(up)} if not up else {}),
             "part6": part6,
             "pins": app.lock.shas_short(),
             "queue": app.queue.counts(),
@@ -474,8 +617,19 @@ class _Handler(BaseHTTPRequestHandler):
             "build": app.build,
             "fake": False,  # the test stand-in (tests/part7/fake_api.py) answers true; the web shows a banner for it
             "selfheal": selfheal.status(app.state),
+            "mail_webhook": mail_webhook.status(),
+            "mail_probe": mail_probe.status(app.state),  # off, waiting, ok or failing; the firm's watchdog reads it (mail-delivery.md)
         }
+        if is_prod():  # APP-L2: a visitor gets the contract's health line; the detail stays for a direct local probe
+            line = health_probe.public_doc(up, str(app.build.get("sha", "unknown")), app.queue.draining, bool(app.queue.owner))
+            doc = {**doc, **line} if self._direct_local() else line
+            doc.update(run_on.health_fields())  # byok-prod.md: who pays for compute and the idle TTL the store enforces
         self._json(200 if up else 503, doc)
+
+    def _direct_local(self) -> bool:
+        """A loopback peer that did not come through the gateway (no forwarded-address header): firm health.sh, the operator."""
+        return (str(self.client_address[0]) in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+                and not self.headers.get("Cf-Connecting-Ip") and not self.headers.get("X-Forwarded-For"))
 
     def _config(self) -> None:
         movement = None
@@ -492,14 +646,16 @@ class _Handler(BaseHTTPRequestHandler):
                     "max_seconds": config.MAX_UPLOAD_SECONDS,
                     "max_clip_seconds": config.MAX_CLIP_SECONDS,
                     "min_clip_seconds": config.MIN_CLIP_SECONDS,
-                    "max_bytes": config.MAX_UPLOAD_BYTES,
+                    "max_bytes": config.upload_max_bytes(),
                     "recorder_bps": config.RECORDER_BPS,
                 },
                 "phrasing": self.app.phrasing,
+                "signin_required": is_prod(),  # a take needs an account before recording: the challenge line says so
                 "part5": p5_analyse.known_capabilities(),
                 "movement": movement,
-                "fixture_result": _fixture_files()[0].is_file() and _fixture_files()[1].is_file(),
+                "fixture_result": not is_prod() and _fixture_files()[0].is_file() and _fixture_files()[1].is_file(),
                 "serverless": run_on.modal_configured(),  # TICKET-364: presence of Modal config only, never a value
+                **run_on.config_fields(),  # serverless-compute.md: what the take screen says about Run on
             },
         )
 
@@ -517,7 +673,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _job(self, job_id: str) -> None:
         job = self.app.queue.get(job_id) if jobs.JOB_ID_RE.match(job_id) else None
         if job is None:
-            return self._error(404, "This job was not found.")
+            return self._error(404, MSG_NO_JOB)
         if job.get("kind") == "follow":  # the author line of a follower result (docs/specs/attribution.md)
             job = {**job, model_only.FIELD: model_only.kept(job), "attribution": attribution.for_take(self, job_id, job.get("entry_id"))}
             # narration only when there is one; owner-only routes are asked only when attribution.mine (AC-AU-12: the one viewer field)
@@ -544,7 +700,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._error(422, "The replay file does not match its contract.", problems=problems)
             raw = replay.with_follower_unseen(raw, path.parent / "part2", (self.app.queue.get(job_id) or {}).get("person_id"))
         else:
-            raw = path.read_bytes()
+            raw = result_paths.strip(path.read_bytes())
         if not model_only.kept(self.app.queue.get(job_id)):  # model-only-take.md: the web keys on video_kept === false
             raw = model_only.mark(raw)
         self._send(200, raw, "application/json; charset=utf-8")
@@ -579,16 +735,24 @@ class _Handler(BaseHTTPRequestHandler):
         self._error(status, message)
 
     def _upload(self) -> None:
-        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         try:
             length = int(self.headers.get("Content-Length") or "")
         except ValueError:
             return self._reject_upload(411, "The upload has no length.")
+        if is_prod() and auth.current_user(self) is None:  # app-surface R7: under BYOK every job needs a signed-in owner
+            return self._reject_upload(401, MSG_UPLOAD_SIGN_IN, length)
+        barred = consent_record.account_refusal(self, {})  # an account marked under age, from a clean browser too
+        if barred is not None:
+            return self._reject_upload(barred[0], barred[1], length)
+        refused = consent_record.upload_refusal(self.headers)  # consent-and-age.md AC-CA4: nothing is kept before the step
+        if refused is not None:
+            return self._reject_upload(refused[0], refused[1], length)
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if ctype not in VIDEO_TYPES:
             self._log_refusal("content_type", {"type": ctype, "announced": length, "received": 0}, "not a video type")
             return self._reject_upload(400, MSG_NOT_VIDEO, length)
-        if length > config.MAX_UPLOAD_BYTES:
-            return self._reject_upload(413, MSG_TOO_LARGE, length)
+        if length > config.upload_max_bytes():
+            return self._reject_upload(413, too_large_message(), length)
         upload_id = uuid.uuid4().hex[:16]
         folder = self.app.uploads / upload_id
         folder.mkdir(parents=True)
@@ -605,6 +769,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._refuse_kept(folder, "probe_failed", seen, str(exc))
             if meta["duration_s"] > config.MAX_UPLOAD_SECONDS + DURATION_SLACK_S:
                 return self._fail_upload(folder, 413, MSG_TOO_LONG_RAW)
+            upload_owner.record(folder, auth.current_user(self))  # P-N1: only its uploader starts work from it
         except OSError:
             return self._fail_upload(folder, 500, "The upload could not be saved. Try again.")
         self._json(
@@ -634,6 +799,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _refuse_kept(self, folder: Path, reason: str, seen: dict[str, Any], error: str) -> None:
         self._log_refusal(reason, seen, error)
+        if is_prod():  # a refused upload may be a person's video: prod keeps nothing the retention rules do not cover
+            return self._fail_upload(folder, 400, MSG_NOT_VIDEO)
         refused_uploads.keep(folder, self.app.state)
         self._error(400, MSG_NOT_VIDEO)
 
@@ -645,27 +812,34 @@ class _Handler(BaseHTTPRequestHandler):
     def _enqueue(
         self, kind: str, fn: jobs.JobFn, entry_id: str | None = None, quota_kind: str | None = None, **record: Any,
     ) -> None:
-        """Check room and quota (of `quota_kind`, default `kind`), then queue `fn`; answers 202, 429 or 503."""
-        app, visitor = self.app, self._visitor()
+        """Check room, count the job (as `quota_kind`, default `kind`), then queue `fn`; answers 202, 429 (sign in) or 503."""
+        app, visitor = self.app, quota.counted_as(auth.current_user(self), self._visitor())
         counted = quota_kind or kind
         if not app.queue.has_room():
             return self._error(503, jobs.QUEUE_FULL_MESSAGE)
+        people_job = record.get("people_job")
+        paid = people_routes.claim_unit(app.queue, people_job)  # PROD-D3: the people job paid this take's GPU unit
         try:
-            app.quota.reserve(counted, visitor)
-        except quota.VisitorQuotaError as exc:
+            app.quota.reserve(counted, visitor, gpu_paid=paid)
+        except quota.SignInRequired as exc:
+            people_routes.unclaim_unit(app.queue, people_job, paid)
             return self._error(429, str(exc))
-        except quota.DailyCapError as exc:
+        except quota.ComputeStopped as exc:
+            people_routes.unclaim_unit(app.queue, people_job, paid)
             return self._error(503, str(exc))
         try:
             job = app.queue.submit(kind, fn, entry_id=entry_id, **record)
         except (jobs.QueueFullError, jobs.DrainingError) as exc:
-            app.quota.release(counted, visitor)
+            app.quota.release(counted, visitor, gpu_paid=paid)
+            people_routes.unclaim_unit(app.queue, people_job, paid)
             return self._error(503, str(exc))
         auth.attach_job(self, job)  # opt-in identity: records the owner when someone is signed in (identity.md)
         self._json(202, {"job": job["id"], **job})
 
     def _upload_for(self, doc: dict[str, Any]) -> Path | None:
         path = self.app.upload_file(str(doc.get("upload_id") or ""))
+        if path is not None and not upload_owner.may_use(path.parent, auth.current_user(self)):
+            path = None  # P-N1: another account's upload answers as a missing one
         if path is None:
             self._error(400, MSG_NO_UPLOAD)
         return path
@@ -729,10 +903,42 @@ class _Handler(BaseHTTPRequestHandler):
         record = people_routes.clip_record(self, doc["people_job"])
         return record["trim"], {**record, "people_job": doc["people_job"], "person_id": person.id}, person
 
+    def _consent(self, doc: dict[str, Any]) -> dict[str, Any] | None:
+        """The consent job-record fields of a job request (consent-and-age.md), or None after answering 400 or 403."""
+        refused = consent_record.refusal(doc, self)  # PM-R5: the account's kept under 13 answer too
+        if refused is not None:
+            self._error(*refused)
+            return None
+        return consent_record.job_fields(doc, auth.current_user(self))  # B2: the Meta tick is the signed-in account's
+
+    def _muse_part1(self, consent: dict[str, Any]) -> bool:
+        """docs/specs/muse-prod.md: Part 1 sends a trainer recording to Meta only with the person's tick and an open gate."""
+        return consent_record.meta_allowed(consent) and muse_prod.admit("part1", auth.current_user(self), self.app.state) is None
+
+    def _muse_follow(self, consent: dict[str, Any], entry_id: str) -> tuple[str, bool]:
+        """(the phrasing of this take, whether its second opinion may send video), docs/specs/muse-prod.md AC-MP5: wording is counted
+        on the gate; video needs the follower's tick and, for a trainer's own recording, the trainer's tick too."""
+        user, state = auth.current_user(self), self.app.state
+        if self.app.phrasing != "live" or muse_prod.admit("phrasing", user, state) is not None:
+            return "template", False
+        video = (consent_record.meta_allowed(consent) and muse_prod.trainer_video_allowed(self.app.state, entry_id)
+                 and muse_prod.admit("opinion", user, state) is None)
+        return "live", video
+
     def _trainer(self) -> None:
         doc = self._body_json()
         if doc is None:
             return
+        consent = self._consent(doc)
+        if consent is None:
+            return
+        user = auth.current_user(self)
+        refused = trainer_publish.refusal(doc, user)  # #415: a 13 to 17 answer signs in to record a movement
+        if refused is not None:
+            return self._error(*refused)
+        run_choice, run_owner, bad = run_on.byok_job(doc, self.app.state, user)  # byok-prod.md: prod runs on the owner's Modal
+        if bad:
+            return self._error(400, bad)
         name, category = str(doc.get("name") or "").strip(), str(doc.get("category") or "")
         if not 1 <= len(name) <= NAME_MAX:
             return self._error(400, MSG_NAME)
@@ -751,21 +957,30 @@ class _Handler(BaseHTTPRequestHandler):
         if clip is None:
             return
         trim, record, person = clip
+        record.update(consent)
         mirrored = mirrored_take.take(doc, record)  # TICKET-310: kept on the job record, Part 3 flips left and right
+        record["upload_id"] = str(doc.get("upload_id"))  # D1: the take delete and Delete my data drop the raw upload too
         state = self.app.state
         floor = doc.get("floor_work") is True  # the owner's checkbox (floor-work.md)
         on_entry = labels.entry_saver(state, entry_labels, floor)
-        on_entry = auth.on_entry(self, on_entry)  # the signed-in person owns the new entry (identity.md)
+        # the signed-in person owns the new entry (identity.md); private in prod unless the upload opts in (prod-data.md)
+        publish = trainer_publish.choice(doc, self.headers)  # go-live-readiness.md "GPC": Sec-GPC keeps it private
+        on_entry = auth.on_entry(self, on_entry, publish=publish, deferred=True)  # R4: public after captions
         fn = processor.trainer_job(
             raw, name=name, category=category, catalog=self.app.child.catalog_dir, lock=self.app.lock,
             backend=self.app.backend, trim=trim, on_entry=on_entry, person=person, review_state=state,
-            mirrored=mirrored, floor_work=floor,
+            mirrored=mirrored, floor_work=floor, part1_allowed=self._muse_part1(consent),
         )
-        self._enqueue("trainer", fn, _resume=resume.trainer_spec(doc, name, category, person), **record)
+        fn = run_on.bind(fn, run_choice, state, run_owner)
+        record.update(run_on.record(run_choice, run_owner))
+        self._enqueue("trainer", fn, _resume=resume.trainer_spec(doc, name, category, person, publish), **record)
 
     def _follow(self) -> None:
         doc = self._body_json()
         if doc is None:
+            return
+        consent = self._consent(doc)  # consent-and-age.md: before anything of the take is read
+        if consent is None:
             return
         entry_id = str(doc.get("entry_id") or "")
         raw = self._upload_for(doc)
@@ -780,7 +995,9 @@ class _Handler(BaseHTTPRequestHandler):
         practice = self._practice(doc)  # mode and section (practice-and-modes.md); answers 400 itself
         if practice is None:
             return
-        run_choice, bad = run_on.parse(doc)  # TICKET-364: named apart from the reference `choice` below
+        practice = {**practice, **consent}  # kept on the job record with the take (consent-and-age.md AC-CA2)
+        run_user = auth.current_user(self)  # TICKET-367: their own Modal credentials may offer serverless
+        run_choice, bad = run_on.parse(doc, self.app.state, run_user)  # TICKET-364: named apart from the reference `choice` below
         if bad:
             return self._error(400, bad)
         clip = self._clip_of(doc, raw)
@@ -799,8 +1016,11 @@ class _Handler(BaseHTTPRequestHandler):
         record.update(ref)
         if take_labels is not None:
             record["labels"] = take_labels  # the follower's take labels live in the job record (recorder.md)
-        manifest = self.app.child.get_entry(entry_id) if ID_RE.match(entry_id) else None
+        visible = ID_RE.match(entry_id) and auth.may_view_entry(self, entry_id)  # R3: unpublished or "only me" stays hidden
+        manifest = self.app.child.get_entry(entry_id) if visible else None
         if manifest is None:
+            if visible and self.app.child.health() is None:  # AC-OT14: the catalog is down, so nothing says the movement is gone
+                return self._error(503, MSG_CATALOG_DOWN)
             return self._error(404, MSG_NO_ENTRY)
         self._entry_mode(record, entry_id, manifest)  # TICKET-311: the entry's kind decides the scoring profile
         expected = self._expected_clip(entry_id, manifest)
@@ -820,11 +1040,11 @@ class _Handler(BaseHTTPRequestHandler):
         # Private mode for this take (private-mode.md): Part 7 keeps the feedback wording local and sends no trainer
         # video to Part 5. Part 2 still sends frames to SAM 3.1 when a Meta key exists. True/False in the request
         # wins over SIMON7_PRIVATE; absent leaves it to the env.
-        private = doc["private"] if isinstance(doc.get("private"), bool) else None
+        private = doc["private"] if isinstance(doc.get("private"), bool) and not is_prod() else None  # never in prod (B1)
         if private:
             record["private"] = True
-        video_name = (manifest.get("video_uri")
-                      if self.app.phrasing == "live" and not private_mode.enabled(job_flag=private) else None)
+        take_phrasing, send_video = self._muse_follow(consent, entry_id)
+        video_name = manifest.get("video_uri") if send_video and not private_mode.enabled(job_flag=private) else None
         trainer_video = self.app.child.get_entry_file(entry_id, str(video_name)) if video_name and not choice.own else None  # Part 5's second opinion compares with the teacher's video
         model_choice = model_only.requested(doc)  # "Use my 3D model instead of video" (model-only-take.md)
         if model_choice:
@@ -833,14 +1053,15 @@ class _Handler(BaseHTTPRequestHandler):
         drop_source = (model_only.source_dropper(self.app.queue, self.app.uploads, str(doc.get("upload_id")), record.get("people_job"))
                        if model_choice else None)
         fn = processor.follow_job(
-            raw, expected=expected, entry_id=entry_id, phrasing=self.app.phrasing, lock=self.app.lock,
+            raw, expected=expected, entry_id=entry_id, phrasing=take_phrasing, lock=self.app.lock,
             backend=self.app.backend, trim=trim, person=person, visibility=visibility,
             mode=record.get("mode"), lang=record.get("lang"), trainer_video=trainer_video, private=private,
             video_kept=not model_choice, drop_source=drop_source, mirrored=mirrored,
             floor_work=labels.floor_work(self.app.state, entry_id),
         )
-        fn = run_on.bind(fn, run_choice)  # TICKET-364: the take's "Run on" choice is the job's first Part 2 route
-        record.update(run_on.record(run_choice))
+        run_owner = run_on.owner_for(run_choice, self.app.state, run_user)
+        fn = run_on.bind(fn, run_choice, self.app.state, run_owner)  # TICKET-364: the take's "Run on" choice is the job's first Part 2 route
+        record.update(run_on.record(run_choice, run_owner))
         self._enqueue("follow", fn, entry_id=entry_id, _resume=resume.follow_spec(doc, person), **record)
 
     def _entry_mode(self, record: dict[str, Any], entry_id: str, manifest: dict[str, Any]) -> None:
@@ -901,6 +1122,7 @@ def build_app(
     start_queue: bool = True,
 ) -> App:
     """Create the state folders, the queue and the quota around `child`."""
+    prod_check.verify_start()  # prod: a bad configuration stops here, before any state is made
     root = Path(state)
     root.mkdir(parents=True, exist_ok=True)
     app = App(
@@ -913,6 +1135,7 @@ def build_app(
     selfheal.configure(root)
     _clean_uploads(app.uploads)
     refused_uploads.sweep(app.state)
+    muse_prod.bind(app)
     app.queue.on_cleanup = lambda: _sweep(app)  # with each job sweep, so a long-running server also frees them
     auth_routes.TAKE_REMOVER = delete_routes.remove_for_account  # account delete removes the account's takes (identity.md)
     app.idempotency.prune(config.RETENTION_DAYS)
@@ -923,6 +1146,13 @@ def build_app(
 def _sweep(app: App) -> None:
     """The periodic sweep: old uploads, and history copies past their retention (history.md)."""
     _clean_uploads(app.uploads)
+    _clear_part1_env(app.lock)  # at a takeover too; frees the key of a run that outlived its server (AC-H5c)
+    if serverless_route.enabled():
+        serverless_route.delete_due(app.state)  # what a crash or a failed delete left at Modal
+    try:
+        p1_keyframes.sweep(app.state)  # a clip or a key a killed Part 1 run left behind (muse-prod.md AC-MP9)
+    except OSError as exc:
+        applog.log(f"part 1 copy: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
     try:
         refused_uploads.sweep(app.state)
     except OSError as exc:  # kept evidence must not stop the job sweep
@@ -944,6 +1174,31 @@ def _sweep(app: App) -> None:
             auth.identity(app).prune(app.state)
     except Exception as exc:
         applog.log(f"auth: prune failed: {applog.cause(exc)}", level=logging.WARNING)
+    try:
+        delete_routes.sweep_entries(app)  # prod-data.md: movements past their retention, access rows of gone movements
+    except Exception as exc:  # the movement sweep must not stop the job sweep
+        applog.log(f"entries: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
+    _sweep_records(app)
+
+
+def _sweep_records(app: App) -> None:
+    """The small stores' retention (prod-data.md "Retention"): idle boards (D10), expired share links (D12), day files
+    of the quota (D11), reference tombstones (D6) and log lines past 14 days (D3). One fault never stops the others."""
+    steps: list[tuple[str, Callable[[], Any]]] = [
+        ("boards", lambda: challenges.sweep(app.state)),
+        ("quota", lambda: quota.prune(app.quota.dir)),
+        ("reference tombstones", lambda: reference_approval.sweep_tombstones(app.state)),
+        ("logs", lambda: applog.sweep(app.state)),
+    ]
+    if identity.db_path(app.state).is_file():
+        steps.append(("share links", lambda: share.sweep(auth.identity(app))))
+        steps.append(("identity checkpoint", lambda: auth.identity(app).checkpoint_due
+                      and auth.identity(app).checkpoint(identity.CHECKPOINT_RETRY_MS)))  # R2: until a delete's WAL is gone
+    for what, step in steps:
+        try:
+            step()
+        except Exception as exc:  # noqa: BLE001  a retention fault is logged and the next sweep tries again
+            applog.log(f"{what}: sweep failed: {applog.cause(exc)}", level=logging.WARNING)
 
 
 def _clean_uploads(uploads: Path) -> None:
@@ -953,8 +1208,15 @@ def _clean_uploads(uploads: Path) -> None:
             shutil.rmtree(child, ignore_errors=True)
 
 
+LISTEN_BACKLOG = 128  # go-live-readiness.md "Races": the stdlib's 5 reset connections of a burst of 20
+
+
+class _Server(ThreadingHTTPServer):
+    request_queue_size = LISTEN_BACKLOG
+
+
 def make_server(app: App, host: str = config.DEV_HOST, port: int = 0) -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer((host, port), make_handler(app))
+    server = _Server((host, port), make_handler(app))
     server.daemon_threads = True
     return server
 
@@ -966,26 +1228,54 @@ def _drain_then_stop(queue: jobs.JobQueue, server: ThreadingHTTPServer) -> None:
         deadline = time.monotonic() + config.drain_max_s()  # one max for the take jobs and the model jobs
         model_import.begin_drain()  # TICKET-306: no model job starts here any more
         cut = queue.drain(config.drain_max_s())
+        own_clients.stop_all(queue.root.parent, parent=os.getpid())  # BYOK-M6: a cut take's own-route Modal client ends here
         cut += model_import.drain(deadline)
+        cut += mail.drain(max(5.0, deadline - time.monotonic()))  # a sign-in mail in flight, retry included, is not cut in half
         if not cut:
             selfheal.record("restart_drain")  # drained clean; a cut-off job marks it through ANOMALY drain_cut_off
     finally:
         server.shutdown()
 
 
+def _clear_part1_env(lock: modules.Modules, state: Path | str | None = None) -> None:
+    """AC-H5c: the serving tree's `.env`, and in prod (where the key sits in `part1/<pin>`, not in the read-only release) every
+    copy's. A tree that cannot be cleared never stops the server."""
+    # AC-H5c: each call has its own try, so a read-only release tree (EROFS, nothing to clear) never skips the prod sweep
+    calls = [lambda: keys.drop_part1_env(lock.path("1"))]
+    if state is not None:
+        calls.append(lambda: p1_keyframes.sweep(state))
+    for call in calls:
+        try:
+            call()
+        except OSError as exc:
+            if exc.errno != errno.EROFS:
+                applog.log(f"serve: Part 1 .env not cleared: {type(exc).__name__}", level=logging.WARNING)
+
+
 def cli_serve(
     host: str, port: int, base_path: str, state: Path | str, follow_url: str | None = None
 ) -> int:
     """`part7 serve`: start the Part 6 child, then serve until SIGINT or SIGTERM."""
+    from part7 import nodump
+
+    if is_prod():  # go-live-readiness.md "No dump": before any key or token is read (BYOK audit R1); staging and dev
+        nodump.forbid()  # keep their /proc scans of the app (review R1)
     from part7 import p2_worker
+    from part7 import part6_supervisor
     from part7.parts import p2_pose, p6_catalog
 
     if host not in ("127.0.0.1", "localhost", "::1"):
         print("serve: the app listens on 127.0.0.1 only", file=sys.stderr)
         return 2
+    try:
+        prod_check.verify_start()  # APP-C2: before the Part 6 child, the log and the state folder
+    except RuntimeError as exc:  # ProdModeError: names the settings, never a value
+        print(f"serve: {exc}", file=sys.stderr)
+        return 2
     base = config.normalize_base_path(base_path)
     log_path = applog.setup(state)  # first: the queue logs jobs a restart interrupted while it loads
     applog.log(f"serve start: pid {os.getpid()} on {host}:{port}{base}, state {Path(state)}, log {log_path}")
+    _clear_part1_env(modules.load(), state)
     if follow_url is None and config.staging_route() is None:
         follow_url = f"http://{host}:{port}{base}#/follow/{{id}}"
     child = p6_catalog.Child(
@@ -997,6 +1287,7 @@ def cli_serve(
         child.stop()
         return 1
     app = build_app(state, base, child=child)
+    modal_creds.start_sweeper(app.state)  # byok-prod.md BYOK-H2: expired credentials go at start-up, then every 15 minutes
     applog.log(f"serve ready: build {app.build.get('short')}, pins {app.lock.shas_short()}")
     p5_analyse.warm(app.lock)  # the Part 5 probes run off the request path; api/config reads the cached answer
     # The one warm Part 2 worker for `run`, when enabled and the pin has it. A standby (the new build of a restart,
@@ -1005,6 +1296,9 @@ def cli_serve(
     app.queue.when_owner(lambda: p2_pose.start_workers(state, app.lock))
     server = make_server(app, host, port)
     beat = heartbeat.Heartbeat(app.queue, state).start()  # one line a minute; stops with the server
+    supervisor = part6_supervisor.Part6Supervisor(child, state, paused=lambda: app.queue.draining).start()
+    applog.log("mail webhook: " + json.dumps(mail_webhook.status()))  # on, or off and why: the secret file is the operator's
+    prober = mail_probe.Prober(state).start()  # off, and logged as off, unless the operator set SIMON7_MAIL_PROBE_TO
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(
         target=_drain_then_stop, args=(app.queue, server), daemon=True).start())
     print(f"serving http://{host}:{server.server_address[1]}{base} (state {Path(state)})", flush=True)
@@ -1015,6 +1309,8 @@ def cli_serve(
     finally:
         server.server_close()
         beat.stop()
+        prober.stop()
+        supervisor.stop()
         app.queue.close()
         p2_worker.stop_pool()
         p2_worker.stop_track_pool()  # the warm SAM 3.1 tracker, when it ran (TICKET-117)

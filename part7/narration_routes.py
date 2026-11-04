@@ -2,7 +2,8 @@
 
 `server.py` calls `handle` before its own routes. The file is `<catalog>/<entry>/narration.json`, written by
 `narration.attach` after the trainer job; an entry without one (no audio, no speech, a failed call) answers 404 and
-the page shows nothing.
+the page shows nothing. Both routes answer only a movement the caller may view (`auth.may_view_entry`, private-default
+D8): a private or "only me" movement answers the same 404 as one without narration.
 """
 
 from __future__ import annotations
@@ -11,11 +12,16 @@ import json
 import re
 from typing import Any
 
-from part7 import labels, narration
+from part7 import auth, labels, narration
 
 MSG_NONE = "This movement has no narration."
 CLIP_RE = re.compile(r"^cue-[0-9]{1,3}\.wav$")
 PRIVATE = ("estimated_usd",)  # spend stays out of the public answer
+
+
+def _open(h: Any, entry: str) -> bool:
+    """True when `entry` is a well-formed id of a movement this caller may view."""
+    return bool(labels.ENTRY_ID_RE.match(entry)) and auth.may_view_entry(h, entry)
 
 
 def has_narration(h: Any, entry: Any) -> bool:
@@ -33,7 +39,7 @@ def handle(h: Any, method: str, route: str) -> bool:
     if len(parts) == 3:
         return _clip(h, parts[1], parts[2])
     entry = parts[1]
-    path = h.app.child.catalog_dir / entry / narration.FILE_NAME if labels.ENTRY_ID_RE.match(entry) else None
+    path = h.app.child.catalog_dir / entry / narration.FILE_NAME if _open(h, entry) else None
     try:
         doc = json.loads(path.read_text(encoding="utf-8")) if path is not None and path.is_file() else None
     except (OSError, ValueError):
@@ -47,7 +53,7 @@ def handle(h: Any, method: str, route: str) -> bool:
 
 def _clip(h: Any, entry: str, name: str) -> bool:
     """`narration/<entry>/cue-<n>.wav`: the trainer's own words for one cue (TICKET-270); 404 when there is no such clip."""
-    path = h.app.child.catalog_dir / entry / narration.CLIPS_DIR / name if labels.ENTRY_ID_RE.match(entry) and CLIP_RE.match(name) else None
+    path = h.app.child.catalog_dir / entry / narration.CLIPS_DIR / name if CLIP_RE.match(name) and _open(h, entry) else None
     if path is None or path.is_symlink() or not path.is_file():
         h._error(404, MSG_NONE)
     else:

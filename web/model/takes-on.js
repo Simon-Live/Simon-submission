@@ -11,7 +11,7 @@ const DAY_MS = 86400000;
 export const TEXT = {
   mineTitle: "Your takes",
   mineEmpty: "No takes of this movement yet. Follow it to record one.",
-  signedOutHint: "Takes recorded in this browser show here. Sign in to see them on any device.",
+  signedOutHint: "Sign in to see your takes here, on any device.",
   sharedTitle: "Takes shared by others",
   sharedEmpty: "Nobody has posted a take of this movement to a challenge board yet.",
   followers: "See your followers' takes",

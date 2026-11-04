@@ -28,10 +28,9 @@ test("AC-1 each run status maps to a state", () => {
   assert.equal(M.stateForStatus(404).kind, "missing");
   assert.equal(M.stateForStatus(409).kind, "consent");
   assert.equal(M.stateForStatus(422).kind, "few");
-  assert.equal(M.stateForStatus(429).kind, "limit");
   assert.equal(M.stateForStatus(500).kind, "error");
   assert.equal(M.stateForStatus(0).kind, "error");
-  for (const s of [202, 409, 422, 429, 500]) assert.ok(M.stateForStatus(s).message.length > 10);
+  for (const s of [202, 409, 422, 500]) assert.ok(M.stateForStatus(s).message.length > 10);
 });
 
 test("AC-1 Retry-After sets the poll delay, with a floor, a ceiling and a default", () => {
@@ -168,6 +167,19 @@ test("AC-2 a fallback report renders history-fallback with its reason and the fa
   assert.equal(find(el, "history-context"), null);
 });
 
+test("a gated build asks the 18 statement before a yes, and sends nothing without it (muse-prod.md AC-MP11)", () => {
+  const calls = [];
+  const el = new El("section");
+  const view = { ...M.pageView(PAGE, ENTRY, null), video: false };
+  V.renderHistoryPage(el, view, { onRun() {}, onConsent: (v, adults) => calls.push([v, adults]), adultsAsked: true });
+  find(el, "history-consent-toggle").click();
+  assert.deepEqual(calls, []);
+  assert.equal(find(el, "history-consent-missing").hidden, false);
+  find(el, "history-consent-adults").checked = true;
+  find(el, "history-consent-toggle").click();
+  assert.deepEqual(calls, [[true, true]]);
+});
+
 test("run button, status line and consent drive the hooks", () => {
   const calls = [];
   const { el, ui } = page(null, { onRun: () => calls.push("run"), onConsent: (v) => calls.push(`consent:${v}`) });
@@ -233,7 +245,7 @@ test("AC-1 a 202 run polls after Retry-After and shows the report on 200", async
   stop();
 });
 
-for (const [status, kind] of [[409, "consent"], [422, "few"], [429, "limit"], [500, "error"]]) {
+for (const [status, kind] of [[409, "consent"], [422, "few"], [500, "error"]]) {
   test(`AC-1 a ${status} on run shows its status line`, async () => {
     dom_clear();
     fakeServer({ [`GET ${U.page}`]: { status: 200, body: PAGE }, [`POST ${U.run}`]: { status } });

@@ -69,7 +69,7 @@ def test_pack_sends_only_the_chosen_clips_and_prices_by_seconds() -> None:
     packed = history_reel.pack("e1", facts, rows, chosen=chosen)
     videos = [i["label"] for i in packed["content"] if i["type"] == "video"]
     assert len(videos) == packed["clips_sent"] == len(chosen) <= 5 and packed["clip_takes"] == chosen
-    assert packed["feature"] == "reel" and packed["prompt_version"] == "reel.v1" and packed["video_seconds"] == 10.0 * len(chosen)
+    assert packed["feature"] == "reel" and packed["prompt_version"] == "reel.v2" and packed["video_seconds"] == 10.0 * len(chosen)
     assert sum(1 for i in packed["content"] if i["type"] == "text" and i["text"].startswith("Take ")) == 7  # every take's digest rides along
     assert packed["content"][0]["text"] == history_reel.INSTRUCTIONS  # the stable part first
 
@@ -202,7 +202,7 @@ def test_reel_is_made_from_the_clips_and_served_to_its_owner(seeded: Api) -> Non
     assert sent["feature"] == "reel" and sent["clip_takes"] == [1, 2] and sent["digest_takes"] == [1, 2] and sent["video_consent"] is True
     assert history_receipt.leaks(sent, str(seeded.app.state), USER, "@", "clip.mp4", FIRST, SECOND) == []  # negative: no path, id, email, job id
     rows = [json.loads(line) for line in history_api.ledger_path(seeded.app.state).read_text().splitlines()]
-    assert {r["feature"] for r in rows} == {"reel"} and {r["prompt_version"] for r in rows} == {"reel.v1"}
+    assert {r["feature"] for r in rows} == {"reel"} and {r["prompt_version"] for r in rows} == {"reel.v2"}
     again = _json(seeded, "POST", f"{BASE}/reel")
     assert again[0] == 200 and len(transport.bodies) == 1  # served from the stored reel: no second call
 

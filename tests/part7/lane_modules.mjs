@@ -21,7 +21,7 @@ export const isLaneModule404 = (url) => MODULE_RE.test(String(url || ""));
 export const isPickerRequest404 = (url) => PICKER_RE.test(String(url || ""));
 
 /** True for a harness job's optional result file. */
-export const isOptionalResult404 = (url) => OPTIONAL_RE.test(String(url || ""));
+export const isOptionalResult404 = (url) => /\/api\/movements\/[^/]+\/boards\b/.test(url) /* the boards offer has no server in the harness */ || OPTIONAL_RE.test(String(url || ""));
 
 /** Either of the above. */
 export const isResultScreen404 = (url) => isLaneModule404(url) || isOptionalResult404(url) || isPickerRequest404(url);

@@ -31,6 +31,9 @@ for name in ("STAGING_BASE_PATH", "STAGING_ROUTE", "SIMON7_MAIL_TRANSPORT"):
     os.environ.pop(name, None)
 
 from part7 import server  # noqa: E402
+from part7 import avatar_jobs  # noqa: E402
+
+avatar_jobs.available = lambda kind="image": True  # a photo queues without a Part 2 checkout; its job never runs here (no GPU worker)
 from support import FakeChild, make_lock  # noqa: E402
 
 CODE = re.compile(r"Your code: (\d{6})")

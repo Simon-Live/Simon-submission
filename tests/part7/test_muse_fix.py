@@ -7,6 +7,8 @@ import json
 import math
 from pathlib import Path
 import struct
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -24,6 +26,21 @@ def points(deg: float) -> dict[str, list[float]]:
     a = math.radians(deg)
     knee = [0.0, -0.4, 0.0]
     return {"right_hip": [0.0, 0.0, 0.0], "right_knee": knee, "right_ankle": [0.4 * math.sin(a), -0.4 + 0.4 * math.cos(a), 0.0]}
+
+
+def body(deg: float) -> dict[str, dict[str, float]]:
+    """A whole person (all 17 joints, a 0.5 m torso, matching sides) whose right knee is at `deg`: what a measure of a good picture returns."""
+    pts = {n: list(p) for n, p in points(deg).items()}
+    pts.update(left_hip=[-0.2, 0.0, 0.0], left_knee=[-0.2, -0.4, 0.0], left_ankle=[-0.2, -0.8, 0.0],
+               right_shoulder=[0.05, 0.5, 0.0], left_shoulder=[-0.25, 0.5, 0.0], right_elbow=[0.05, 0.2, 0.0], left_elbow=[-0.25, 0.2, 0.0],
+               right_wrist=[0.05, -0.05, 0.0], left_wrist=[-0.25, -0.05, 0.0], nose=[-0.1, 0.7, 0.0], left_eye=[-0.13, 0.73, 0.0],
+               right_eye=[-0.07, 0.73, 0.0], left_ear=[-0.18, 0.7, 0.0], right_ear=[-0.02, 0.7, 0.0])
+    return {n: {"x": p[0], "y": p[1], "z": p[2], "conf": 0.9} for n, p in pts.items()}
+
+
+@pytest.fixture(autouse=True)
+def drawing_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(muse_fix, "DRAW_ENABLED", True)  # the shipped default is off; these tests are of the feature itself
 
 
 def replay_doc(follower_deg: list[float], expected_deg: list[float]) -> dict[str, Any]:
@@ -115,7 +132,7 @@ def measurer_at(deg: float | None):
     def measure(path: Path) -> dict[str, Any] | None:
         seen.append(path)
         assert path.is_file()
-        return None if deg is None else {n: {"x": p[0], "y": p[1], "z": p[2]} for n, p in points(deg).items()}
+        return None if deg is None else body(deg)
     measure.seen = seen  # type: ignore[attr-defined]
     return measure
 
@@ -369,6 +386,121 @@ def test_measure_is_none_when_part2_is_not_set_up(tmp_path: Path, monkeypatch: p
     assert muse_fix_measure.measure(img) is None
 
 
+def serverless_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SIMON7_COMPUTE", "serverless")
+    monkeypatch.setattr(muse_fix_measure.modules, "load", lambda: type("L", (), {"sha": staticmethod(lambda part: "ab" * 20)})())
+
+
+def fake_modal(monkeypatch: pytest.MonkeyPatch, code: int, joints: bool = True, probe: int = 0) -> list[list[str]]:
+    """Stands in for the launcher: records its argv, writes pose3d.json to the --out it was given."""
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **kw: Any) -> Any:
+        calls.append(argv)
+        if "--check-deploy" in argv:  # the reachability read before a paid call: metadata only
+            return type("Done", (), {"returncode": probe, "stdout": b"", "stderr": b""})()
+        out = Path(argv[argv.index("--out") + 1])
+        out.mkdir(parents=True, exist_ok=True)
+        if joints:
+            (out / "pose3d.json").write_text(json.dumps({"frames": [{"people": [{"joints": {"nose": {"x": 0, "y": 0, "z": 0}}}]}]}))
+        return type("Done", (), {"returncode": code, "stdout": b"", "stderr": b""})()
+    monkeypatch.setattr(muse_fix_measure.subprocess, "run", run)
+    return calls
+
+
+def test_on_prod_the_check_runs_on_modal_and_loads_no_model_here(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # H1
+    serverless_env(monkeypatch)
+    calls = fake_modal(monkeypatch, 0)
+    img = tmp_path / "a.png"
+    img.write_bytes(PNG)
+    assert muse_fix_measure.available() is True
+    assert muse_fix_measure.measure(img) == {"nose": {"x": 0, "y": 0, "z": 0}}
+    argv = calls[0]
+    assert "--serverless" in argv and argv[argv.index("--") + 1:argv.index("--") + 5] == ["run", "--mode", "single", "--input"]
+    assert argv[0] == sys.executable  # the interpreter may live in any venv (the repo's own .venv included): that is not Part 2's
+    assert not any(str(muse_fix_measure.config.part2_gpu_venv_path()) in a or a.endswith("part2/cli.py") for a in argv)
+
+
+def test_modal_answers_nobody_found_as_none_and_any_other_failure_as_no_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    serverless_env(monkeypatch)
+    img = tmp_path / "a.png"
+    img.write_bytes(PNG)
+    fake_modal(monkeypatch, 4, joints=False)
+    assert muse_fix_measure.measure(img) is None
+    for code in (1, 79, 80):
+        fake_modal(monkeypatch, code, joints=False)
+        with pytest.raises(muse_fix_measure.CheckFailed):
+            muse_fix_measure.measure(img)
+
+
+def test_a_check_that_could_not_run_is_failed_not_missed_and_is_not_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # H1
+    serverless_env(monkeypatch)
+    fake_modal(monkeypatch, 79, joints=False)
+    job, fake = build_job(tmp_path / "jobs"), Fake()
+    out = muse_fix.run(job, consent=True, transport=fake, state=tmp_path / "s")
+    assert out["status"] == "failed" and "could not be checked" in out["reason"] and len(fake.edits) == 1
+    assert muse_fix.latest_card(job)["message"] == "Simon could not draw the picture this time."
+    assert not list(muse_fix.folder(job).glob("corrected*"))
+
+
+def test_modal_that_cannot_be_reached_is_found_out_before_anything_is_paid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # R1
+    serverless_env(monkeypatch)
+    for code in (80, 81):
+        calls = fake_modal(monkeypatch, 0, probe=code)
+        job, fake = build_job(tmp_path / "jobs", name=f"j{code}"), Fake()
+        out = muse_fix.run(job, consent=True, transport=fake, state=tmp_path / "s")
+        assert out == {"status": "no_check", "reason": muse_fix.NO_ROUTE} and fake.edits == []
+        assert not ledger_rows(tmp_path / "s") and len(calls) == 1 and "--check-deploy" in calls[0] and "--input" not in calls[0]
+        assert muse_fix.latest_card(job) is None  # no press that paid, so no record that says failed
+
+
+def test_a_probe_that_hangs_or_cannot_start_counts_as_not_reachable(monkeypatch: pytest.MonkeyPatch) -> None:  # R1: unknown is no
+    serverless_env(monkeypatch)
+    for boom in (subprocess.TimeoutExpired("x", 1), OSError("no launcher")):
+        def run(argv: list[str], **kw: Any) -> Any:
+            raise boom
+        monkeypatch.setattr(muse_fix_measure.subprocess, "run", run)
+        assert muse_fix_measure.reachable() is False
+    fake_modal(monkeypatch, 0)
+    assert muse_fix_measure.reachable() is True
+
+
+def test_a_host_that_cannot_check_sends_nothing_and_writes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # H1 fallback
+    monkeypatch.setenv("PROD_COMPUTE", "byok")
+    assert muse_fix_measure.available() is False
+    job, fake = build_job(tmp_path / "jobs"), Fake()
+    out = muse_fix.run(job, consent=True, transport=fake, state=tmp_path / "s")
+    assert out == {"status": "no_check", "reason": muse_fix.NO_CHECK} and fake.edits == []
+    assert not muse_fix.folder(job).exists() and muse_fix.latest_card(job) is None
+
+
+def test_a_frame_that_cannot_be_read_this_time_is_not_saved_as_not_available(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # R5
+    job, fake = build_job(tmp_path / "jobs"), Fake()
+    real = Path.read_bytes
+
+    def flaky(self: Path) -> bytes:
+        if self.suffix == ".jpg" and "frames" in self.parts:
+            raise OSError("busy")
+        return real(self)
+    monkeypatch.setattr(Path, "read_bytes", flaky)
+    out = muse_fix.run(job, consent=True, transport=fake, measurer=measurer_at(150.0), state=tmp_path / "s")
+    assert out["status"] == "failed" and fake.edits == []
+    assert [r["status"] for r in muse_fix.records(job)] == ["failed"]  # keeps its Try again
+    monkeypatch.setattr(Path, "read_bytes", real)
+    (job / "work" / "follower" / "part2" / "frames" / "000001.jpg").unlink()
+    assert muse_fix._frame_jpg(job / "work" / "follower" / "part2", 1) is None  # truly missing stays missing
+
+
+def test_report_takes_leave_out_a_take_where_nothing_was_sent(tmp_path: Path) -> None:  # R5
+    root = tmp_path / "jobs"
+    muse_fix.run(build_job(root, name="a1"), consent=True, transport=Fake(), measurer=measurer_at(150.0), state=tmp_path / "s")
+    gone = build_job(root, name="b2")
+    (gone / "work" / "follower" / "analysis.json").write_text(json.dumps({"faults": [{"joint": "nose", "follower_frames": [0]}]}))
+    assert muse_fix.run(gone, consent=True, transport=Fake(), state=tmp_path / "s")["status"] == "not_available"
+    rep = muse_fix.report(root)
+    assert rep["takes"] == 1 and len(rep["runs"]) == 2
+
+
 def test_cli_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (tmp_path / "jobs").mkdir()
     assert muse_fix.main(["report", str(tmp_path)]) == 0
@@ -466,7 +598,7 @@ def sequence(*degs: float | None):
     def measure(path: Path) -> dict[str, Any] | None:
         seen.append(path)
         deg = left.pop(0)
-        return None if deg is None else {n: {"x": p[0], "y": p[1], "z": p[2]} for n, p in points(deg).items()}
+        return None if deg is None else body(deg)
     measure.seen = seen  # type: ignore[attr-defined]
     return measure
 

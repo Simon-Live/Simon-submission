@@ -23,9 +23,8 @@ export const TEXT = Object.freeze({
   retry: "Retry",
   share: "Share",
   challenge: "Challenge a friend",
-  shared: "Link copied",
   noVideo: "Your video was not kept for this take, so only the 3D view is shown.",
-  progress: (who) => `Position in the ${who === "reference" ? "reference" : "your"} video`,
+  progress: (who) => `Position in ${who === "reference" ? "the reference" : "your"} video`, // a11y-copy R9
 });
 
 /**
@@ -87,7 +86,9 @@ export function cueAt(analysis, t) {
   const fi = faults.findIndex((f) => f && inside(f.at_s, w) && (f.cue || f.text));
   if (fi >= 0) return { text: cap(faults[fi].cue || faults[fi].text), at: faults[fi].at_s, target: { kind: "fault", index: fi } };
   const miss = (w.misses || []).find((m) => m && m.text);
-  return miss ? { text: cap(miss.text), at: num(miss.at_s) ?? w.t_s[0], target: null } : null;
+  // a miss a model worded is not captioned with its sentence (no label sits on a caption): its fixed cue stands in, else nothing
+  const said = miss && (miss.ai ? miss.cue : miss.text);
+  return said ? { text: cap(said), at: num(miss.at_s) ?? w.t_s[0], target: null } : null;
 }
 
 // ----- the panes' progress bars ---------------------------------------------------------------------------------

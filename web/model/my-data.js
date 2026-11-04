@@ -12,7 +12,6 @@ export const TEXT = {
   done: "Your file was downloaded.",
   failed: "Your data could not be downloaded. Try again in a moment.",
   signedOut: "Sign in to download your data.",
-  tooMany: "You have downloaded your data five times in the last hour. Try again later.",
   offline: "The app could not be reached. Check your connection and try again.",
 };
 
@@ -25,7 +24,6 @@ export function fileNameFrom(disposition) {
 /** The words for a status that is not 200. 0 means the app could not be reached. */
 export function failureText(status) {
   if (status === 401) return TEXT.signedOut;
-  if (status === 429) return TEXT.tooMany;
   if (status === 0) return TEXT.offline;
   return TEXT.failed;
 }

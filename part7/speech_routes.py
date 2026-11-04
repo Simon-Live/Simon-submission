@@ -2,7 +2,7 @@
 
 Any problem answers 404 so the browser speaks the line itself: unknown job or index, a language without an MMS
 voice, or a synthesis that failed. A line that is not made yet answers 202 (Retry-After) while one background thread
-makes it, 503 while another line is being made, 429 when a visitor starts too many; the browser speaks the line itself
+makes it, 503 while another line is being made; the browser speaks the line itself
 meanwhile and asks again on the next play. A request never starts a model download for an unfinished or unknown job.
 """
 
@@ -20,7 +20,6 @@ WAIT = {
     "pending": (202, "This spoken line is being made."),
     "started": (202, "This spoken line is being made."),
     "busy": (503, "Another spoken line is being made. Try again shortly."),
-    "limited": (429, "Too many spoken lines requested. Try again shortly."),
     "failed": (404, MSG_GONE),
 }
 
@@ -51,6 +50,8 @@ def handle(h: Any, method: str, route: str) -> bool:
 
 def _wav(h: Any, job_id: str, index_text: str) -> Any:
     """The cached wav `Path`, a `speech.start` state word to wait on, or None for a 404."""
+    if not speech.enabled():  # LIC-C1: no MMS wav is made or served, not even one cached before the switch
+        return None
     if not jobs.JOB_ID_RE.match(job_id) or not speech.INDEX_RE.match(index_text):
         return None
     job = h.app.queue.get(job_id)

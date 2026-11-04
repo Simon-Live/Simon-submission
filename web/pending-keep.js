@@ -7,6 +7,8 @@
 // The rules and the kept store's IndexedDB opener live here; the engine (pending.js) and the screens (pending-ui.js,
 // send-again.js) use them.
 
+import { foundNobody } from "./model/job-reason.js";
+
 /** Stages a kept take can be in after the sender is done with it. None of them is sent by the background sender. */
 export const KEPT_STAGES = ["sent", "job_failed", "refused"];
 /** How often the sender asks about the job of a take at "sent". */
@@ -26,12 +28,14 @@ export const KEEP_TEXT = {
   retry: "Retry",
   delete: "Delete",
   seeProgress: "See progress",
-  needsYou: (n) => `${n} ${n === 1 ? "take" : "takes"} could not be sent`,
+  jobRestarted: "The app restarted before this take finished. Your recording is still on this device.",
+  jobStopped: (why) => `The analysis stopped: ${why} Your recording is still on this device.`,
+  needsYou: (n) => `${n} takes did not finish. Their recordings are still on this device.`,
 };
 
 /**
  * The message for a take the server refused as too large (413): what happened and how to stay under the limit. The
- * limit is the one the server named ("95 MB at most"), never a guessed one.
+ * limit is the one the server named ("85 MB at most"), never a guessed one.
  */
 export function tooLargeText(serverMessage, kept = false) {
   const m = /(\d+(?:\.\d+)?)\s*MB/i.exec(String(serverMessage || ""));
@@ -47,14 +51,29 @@ export const isWaiting = (rec) => !!rec && !isKept(rec);
 /** A take that needs the person: a stopped job or a refused upload. */
 export const needsAction = (rec) => !!rec && (rec.stage === "job_failed" || rec.stage === "refused");
 
+/** True when a stopped take may go again: not one where the job looked and found nobody, which would spend the same for the same answer. */
+export const canSendAgain = (rec) => !!rec && rec.stage === "job_failed" && !foundNobody(rec.last_error && rec.last_error.message);
+
 /** The status line of a kept take, or null for any other stage. */
 export function keptStatus(rec) {
   if (!rec) return null;
   if (rec.stage === "sent") return KEEP_TEXT.sent;
-  if (rec.stage === "job_failed") return rec.last_error && rec.last_error.status === 404 ? KEEP_TEXT.jobGone : KEEP_TEXT.jobFailed;
+  if (rec.stage === "job_failed") return jobFailedText(rec.last_error);
   if (rec.stage === "refused") return `${(rec.last_error && rec.last_error.message) || KEEP_TEXT.refusedFallback} ${KEEP_TEXT.refusedKept}`;
   return null;
 }
+
+/** Why a job stopped, in the job's own words when it gave any (offline-takes.md AC-OT15). The recording is kept, so its "record it again" goes. */
+function jobFailedText(e) {
+  if (e && e.status === 404) return KEEP_TEXT.jobGone;
+  const said = `${(e && e.message) || ""}`.replace(/;?\s*record it again\.?$/i, "").trim();
+  if (!said) return KEEP_TEXT.jobFailed;
+  if (/app restarted/i.test(said)) return KEEP_TEXT.jobRestarted;
+  return KEEP_TEXT.jobStopped(/[.!?]$/.test(said) ? said : `${said}.`);
+}
+
+/** The banner's line for the takes that need the person: the reason for one, the count for several. */
+export const stuckLine = (stuck) => (stuck.length === 1 ? keptStatus(stuck[0]) : KEEP_TEXT.needsYou(stuck.length));
 
 /** What the job of a take at "sent" says: "done", "failed" or "running" (queued counts as running). */
 export function jobOutcome(job) {

@@ -139,10 +139,13 @@ def _trainer(api: Api, job_id: str = "1a2b3c4d5e6f", files_source: str = "import
     return folder, entry
 
 
-def test_trainer_delete_removes_the_files_and_keeps_the_movement(api: Api) -> None:
+def test_trainer_delete_removes_the_files_and_keeps_the_movement(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    dropped: list[Any] = []  # the fixture video is not a real clip; narration_own's tests run the real ffmpeg cut
+    monkeypatch.setattr(delete_routes.narration_own, "drop_audio", lambda folder, job=None: dropped.append((folder, job)) or True)
     folder, entry = _trainer(api)
     status, body = _delete(api, "1a2b3c4d5e6f")
-    assert status == 200 and body == {"deleted": True, "removed": ["job", "upload", "narration"]}
+    assert status == 200 and body == {"deleted": True, "removed": ["job", "upload", "narration", "sound"]}
+    assert dropped == [(entry, "1a2b3c4d5e6f")]  # the voice leaves the kept movement's video (review B1)
     assert not folder.exists() and not (api.app.uploads / UPLOAD).exists()  # recording, meshes, job record
     assert (entry / "video.mp4").is_file() and (entry / "keyframes.json").is_file() and (entry / "manifest.json").is_file()
     assert not (entry / "narration.json").exists(), "the transcripts made from the voice go"
@@ -157,7 +160,7 @@ def test_trainer_delete_removes_the_kept_follow_ghost(api: Api) -> None:
     kept.parent.mkdir(parents=True)
     kept.write_text(json.dumps({"format": ghost.KEEP_FORMAT, "entry_id": ENTRY, "trainer_job": "1a2b3c4d5e6f", "ghost": {"box": "image", "frames": [{"t": 0, "pts": []}]}}))
     status, body = _delete(api, "1a2b3c4d5e6f")
-    assert status == 200 and body == {"deleted": True, "removed": ["job", "upload", "narration", "ghost"]}
+    assert status == 200 and body == {"deleted": True, "removed": ["job", "upload", "narration", "sound", "ghost"]}
     assert not kept.exists() and (api.app.child.catalog_dir / ENTRY / "manifest.json").is_file(), "the movement stays"
 
 
@@ -191,20 +194,21 @@ def test_trainer_delete_keeps_a_shipped_sample_even_when_asked(api: Api) -> None
     assert entry.is_dir() and not (entry / "narration.json").exists()
 
 
-def test_trainer_delete_keeps_a_movement_a_challenge_uses(api: Api) -> None:
+def test_trainer_delete_removes_a_movement_a_challenge_uses_and_its_board(api: Api) -> None:  # LEG-C1
     _, entry = _trainer(api)
     api.app.child.entries[ENTRY] = {"id": ENTRY, "animation": "animation.json", "skeleton": "skeleton.json"}
     made = _create(api, entry_id=ENTRY)
     status, body = api.json("POST", "api/jobs/1a2b3c4d5e6f/delete", {"remove_entry": True})
-    assert status == 200 and body["kept"] == ["entry"] and entry.is_dir()
-    assert challenges.get(api.app.state, made["id"]) is not None
+    assert status == 200 and "entry" in body["removed"] and "kept" not in body and not entry.exists()
+    assert challenges.get(api.app.state, made["id"]) is None  # the deletion beats the challenge reference
 
 
 def test_trainer_delete_refuses_a_running_job_and_a_bad_body(api: Api) -> None:
     folder, entry = _trainer(api, status="running")
     assert _error(api, "1a2b3c4d5e6f") == (409, delete_routes.MSG_BUSY)
     api.app.queue._jobs["1a2b3c4d5e6f"]["status"] = "done"
-    assert api.request("POST", "api/jobs/1a2b3c4d5e6f/delete", b"not json", {"Content-Type": "application/json", "Origin": f"http://127.0.0.1:{api.port}"})[0] == 400
+    same_origin = {"Content-Type": "application/json", "Origin": f"http://127.0.0.1:{api.port}"}
+    assert api.request("POST", "api/jobs/1a2b3c4d5e6f/delete", b"not json", same_origin)[0] == 400
     assert folder.is_dir() and entry.is_dir(), "negative: nothing was deleted"
 
 

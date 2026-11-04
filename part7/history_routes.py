@@ -10,7 +10,7 @@ import json
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from part7 import (attribution, history_all, history_all_routes, history_ask, history_facts, history_focus, history_patterns_job, history_plan, history_reel,
+from part7 import (attribution, muse_prod, history_all, history_all_routes, history_ask, history_facts, history_focus, history_patterns_job, history_plan, history_reel,
                    history_recap, history_report, history_since, history_store, labels, progress_sheet, result_media, shown_score, take_ask)
 from part7.auth_routes import MSG_CSRF, MSG_SIGN_IN  # one wording for the sign-in and CSRF refusals
 
@@ -268,14 +268,13 @@ def _reel_file(h: Any, user: str, entry: str) -> None:
 
 
 def _ask_info(h: Any, user: str) -> None:
-    """`GET me/history/ask`: whether the box can be used, three questions built from the person's own takes, the day's allowance."""
+    """`GET me/history/ask`: whether the box can be used, three questions built from the person's own takes."""
     state = h.app.state
     entries = history_ask.gather(state, user, lambda e: labels.entry_name(h.app.child, e, h.app.state))
     takes = sum(len(e["rows"]) for e in entries)
-    limit = history_ask.daily_limit()
-    h._json(200, {"retention": history_store.retention_opt_in(state, user), "takes": takes, "can_ask": takes >= history_ask.MIN_TAKES,
-                  "suggestions": history_ask.suggestions(entries) if takes >= history_ask.MIN_TAKES else [],
-                  "limit": limit, "remaining": max(0, limit - history_ask.asked_today(state, user)),
+    can = takes >= history_ask.MIN_TAKES and muse_prod.status("ask_history", user, state) is None  # muse-prod.md: never a box that fails
+    h._json(200, {"retention": history_store.retention_opt_in(state, user), "takes": takes, "can_ask": can,
+                  "suggestions": history_ask.suggestions(entries) if can else [],
                   "max_chars": history_ask.QUESTION_MAX})
 
 
@@ -317,10 +316,10 @@ def _ask_take(h: Any, user: str, job: str, method: str) -> None:
         return h._error(404, take_ask.MSG_NOT_FOUND, code="not_found")
     state = h.app.state
     if method != "POST":
-        limit, kept = take_ask.daily_limit(), history_store.retention_opt_in(state, user)
-        can = kept and not entry["takes"][0]["private"] and take_ask.available()  # a pin without `part5 ask` shows no box
-        return h._json(200, {"retention": kept, "can_ask": can, "suggestions": take_ask.suggestions(entry) if can else [], "limit": limit,
-                             "remaining": max(0, limit - take_ask.asked_today(state, user)), "max_chars": history_ask.QUESTION_MAX})
+        kept = history_store.retention_opt_in(state, user)
+        can = (kept and not entry["takes"][0]["private"] and take_ask.available()  # a pin without `part5 ask` shows no box
+               and muse_prod.status("ask_take", user, state) is None)  # muse-prod.md: nor a closed feature
+        return h._json(200, {"retention": kept, "can_ask": can, "suggestions": take_ask.suggestions(entry) if can else [], "max_chars": history_ask.QUESTION_MAX})
     doc = h._body_json()
     if doc is None:
         return
@@ -382,7 +381,7 @@ def _consent(h: Any, user: str) -> None:
     if doc is None:
         return
     try:
-        out = history_store.set_consent(h.app.state, user, doc.get("video"), doc.get("version"))
+        out = history_store.set_consent(h.app.state, user, doc.get("video"), doc.get("version"), doc.get("meta_adults"))
     except ValueError:
         return h._error(400, MSG_CONSENT_BODY)
     h._json(200, out)

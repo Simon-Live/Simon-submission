@@ -27,10 +27,12 @@ test("Part 1 found none: the done page says the key frames are evenly spaced and
 test("each Part 1 outcome gets its own reason", () => {
   const p3 = (note) => keyframesNote({ kind: "trainer", status: "done", result: P3, note });
   assert.equal(p3("key frames from Part 3, Part 1 exited 1"), "Key frames are evenly spaced: the key frame finder could not finish on this take.");
+  assert.equal(p3("key frames from Part 3, Part 1 lost its network stream"), "Key frames are evenly spaced: the key frame finder lost its connection on this take.");
   assert.equal(p3("key frames from Part 3, Part 1 took longer than 150 s"), "Key frames are evenly spaced: the key frame finder took too long on this take.");
   assert.equal(p3("key frames from Part 3, Part 1 paused after repeated network failures (until 12:00Z)"), "Key frames are evenly spaced: the key frame finder is paused after repeated network failures.");
   assert.equal(p3("key frames from Part 3, Part 1 unavailable"), "Key frames are evenly spaced: the key frame finder is not set up here.");
   assert.equal(p3("spend cap"), "Key frames are evenly spaced: the key frame finder reached its spending limit.");
+  assert.equal(p3("key frames from Part 3, this take was not sent to Meta"), "Key frames are evenly spaced: the key frame finder was not used on this take.", "a take that was never sent is not 'gave none'");
   assert.equal(p3(null), "Key frames are evenly spaced: the key frame finder gave none for this take.");
 });
 

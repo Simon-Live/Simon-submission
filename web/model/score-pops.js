@@ -96,9 +96,9 @@ export function popsOf(analysis, display = null) {
   // one pop per moment and body part: the same miss written in two windows, or two measures of one part at one
   // moment, show once, with the larger points
   const seen = new Map();
-  const addMiss = (id, at, points, cue, text) => {
+  const addMiss = (id, at, points, cue, text, ai = false) => {
     const word = shortCue(cue, text);
-    const said = missWords(text, cue);
+    const said = missWords(ai ? "" : text, cue);   // the label never carries a model's sentence; the word below only names a body part from it
     const p = num(points);
     const lost = p != null && Math.round(p) > 0 ? Math.round(p) : 0;   // only picks between duplicates; never shown
     if (!said) return;
@@ -110,7 +110,7 @@ export function popsOf(analysis, display = null) {
     seen.set(key, { lost, pop: had ? had.pop : pop });
   };
   windows.forEach((w, i) => (Array.isArray(w.misses) ? w.misses : []).forEach((m, j) => {
-    if (m && num(m.at_s) != null) addMiss(`m${i}.${j}`, m.at_s, m.points, m.cue, m.text);
+    if (m && num(m.at_s) != null) addMiss(`m${i}.${j}`, m.at_s, m.points, m.cue, m.text, m.ai === true);
   }));
   if (!out.some((p) => p.kind === "miss")) {
     (Array.isArray(analysis && analysis.faults) ? analysis.faults : []).forEach((f, k) => {

@@ -123,6 +123,29 @@ test("a miss shows only the plain sentence, no image and a try again", async () 
   assert.equal(find(el, "corrected-ask").textContent, "Try again");
 });
 
+test("a take with no fault to draw says so and offers no button", async () => {
+  const el = new El("section");
+  await card.mountCorrectedCard(el, "j1", { api: { getMuseFix: async () => ({ ...READY, can_draw: false }) } });
+  assert.equal(find(el, "corrected-no-fault").textContent, card.NO_FAULT);
+  assert.equal(find(el, "corrected-ask"), null);
+});
+
+test("a host that cannot check pictures says so, offers no button and the take is not called faultless", async () => {
+  const el = new El("section");
+  await card.mountCorrectedCard(el, "j1", { api: { getMuseFix: async () => ({ ...READY, can_draw: false, no_check: true }) } });
+  assert.equal(find(el, "corrected-no-check").textContent, card.NO_CHECK);
+  assert.equal(find(el, "corrected-no-fault"), null);
+  assert.equal(find(el, "corrected-ask"), null);
+});
+
+test("a press that found nothing to draw leaves its line and no try again", async () => {
+  const el = new El("section");
+  const none = { ...READY, can_draw: true, card: { status: "not_available", message: "Simon could not find a moment to draw in this take. Nothing was sent." } };
+  await card.mountCorrectedCard(el, "j1", { api: { getMuseFix: async () => none } });
+  assert.match(find(el, "corrected-missed").textContent, /Nothing was sent/);
+  assert.equal(find(el, "corrected-ask"), null);
+});
+
 test("negative: consent off, an ineligible take, or a failed read shows no card and sends nothing", async () => {
   for (const state of [{ ...READY, consent: false }, { ...READY, eligible: false }, null]) {
     const el = new El("section");

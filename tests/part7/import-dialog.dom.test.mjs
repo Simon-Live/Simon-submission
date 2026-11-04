@@ -246,3 +246,74 @@ test("a character or object picture: Cancel while it is made stops the wait and 
   await tick();
   assert.deepEqual(m.calls.remove, [ID]);
 });
+
+test("a licence the server refuses outlines the field, keeps the file and clears when the licence changes", async () => {
+  let tries = 0;
+  const m = mount({ readyHoldMs: 0, upload: async () => { tries += 1; return tries === 1
+    ? { ok: false, httpStatus: 400, error: MSG.badLicence, field: "licence" }
+    : { ok: true, id: ID, status: "ready" }; } });
+  const file = glb();
+  m.choose(file);
+  m.submit();
+  await tick(5);
+  const error = m.q("model-import-error");
+  const licence = m.q("model-import-licence");
+  assert.equal(error.textContent, MSG.badLicence);
+  assert.equal(error.hidden, false);
+  assert.match(MSG.badLicence, /My own work, CC0, CC-BY, CC-BY-SA, CC-BY-NC, VPL 1\.0, Personal use only or I do not know/);
+  assert.equal(licence.getAttribute("aria-invalid"), "true");
+  assert.equal(globalThis.document.activeElement, licence);
+  assert.equal(m.q("model-import-status").textContent, MSG.fileKept);
+  assert.deepEqual(m.q("model-import-file").files, [file]);
+  assert.equal(m.q("model-import-file").getAttribute("aria-invalid"), null);
+  licence.value = "CC0";
+  licence.dispatchEvent(new Event("change"));
+  assert.equal(licence.getAttribute("aria-invalid"), null);
+  assert.equal(error.hidden, true);
+  m.submit();
+  assert.equal((await m.out).id, ID);
+  assert.equal(tries, 2);
+});
+
+test("an empty Credit line is caught before sending and outlines that field", async () => {
+  const m = mount();
+  m.choose(glb());
+  m.q("model-import-licence").value = "CC-BY";
+  m.submit();
+  await tick(5);
+  assert.equal(m.q("model-import-error").textContent, MSG.noCredit);
+  assert.match(MSG.noCredit, /CC-BY, CC-BY-SA and CC-BY-NC/);
+  assert.equal(m.q("model-import-credit").getAttribute("aria-invalid"), "true");
+  assert.equal(m.calls.upload.length, 0);
+  m.q("model-import-cancel").dispatchEvent(new Event("click"));
+  await m.out;
+});
+
+test("a refused file outlines the file field and does not say the file is kept", async () => {
+  const m = mount({ upload: async () => ({ ok: false, httpStatus: 415, error: "Simon cannot read this file type.", field: "file" }) });
+  m.choose(glb());
+  m.submit();
+  await tick(5);
+  assert.equal(m.q("model-import-file").getAttribute("aria-invalid"), "true");
+  assert.equal(m.q("model-import-status").textContent, "");
+  m.q("model-import-cancel").dispatchEvent(new Event("click"));
+  await m.out;
+});
+
+test("a picture says where it goes before it is sent, and a model file does not", async () => {
+  const m = mount();
+  const file = m.q("model-import-file");
+  const goes = m.q("model-import-photo-goes");
+  assert.equal(goes.hidden, true);
+  m.choose(png());
+  file.dispatchEvent(new Event("change"));
+  await tick();
+  assert.equal(goes.hidden, false);
+  assert.match(goes.textContent, /Modal in the United States/);
+  m.choose(glb());
+  file.dispatchEvent(new Event("change"));
+  await tick();
+  assert.equal(goes.hidden, true);
+  m.q("model-import-cancel").dispatchEvent(new Event("click"));
+  await m.out;
+});

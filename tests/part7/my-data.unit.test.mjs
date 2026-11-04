@@ -20,7 +20,6 @@ test("file name comes from the header, never a path", () => {
 
 test("each status has plain words, and the words follow the writer rules", () => {
   assert.equal(M.failureText(401), M.TEXT.signedOut);
-  assert.equal(M.failureText(429), M.TEXT.tooMany);
   assert.equal(M.failureText(0), M.TEXT.offline);
   assert.equal(M.failureText(500), M.TEXT.failed);
   for (const line of Object.values(M.TEXT)) assert.doesNotMatch(line, /[\u2013\u2014]| - /, line);
@@ -32,7 +31,7 @@ test("download saves the file on 200 and says so", async () => {
   const blob = { size: 3 };
   const fetch = async (url, opts) => {
     assert.equal(url, "api/me/export");
-    assert.deepEqual(opts.expectStatus, [401, 429, 500]);
+    assert.deepEqual(opts.expectStatus, [401, 500]);
     return { status: 200, blob: async () => blob, headers: { get: () => 'attachment; filename="simon-my-data-2026-11-01.json"' } };
   };
   const out = await G.download({ fetch, save: (b, n) => saved.push([b, n]) });
@@ -41,7 +40,7 @@ test("download saves the file on 200 and says so", async () => {
 });
 
 test("negative: a refused or failed answer saves nothing", async () => {
-  for (const [status, want] of [[401, M.TEXT.signedOut], [429, M.TEXT.tooMany], [500, M.TEXT.failed]]) {
+  for (const [status, want] of [[401, M.TEXT.signedOut], [500, M.TEXT.failed]]) {
     const saved = [];
     const out = await G.download({ fetch: async () => ({ status }), save: () => saved.push(1) });
     assert.deepEqual([out.ok, out.text, saved.length], [false, want, 0]);
@@ -56,7 +55,7 @@ test("the card draws title, one sentence and a button; a click shows working the
   const slot = new El("section");
   let release;
   const gate = new Promise((r) => { release = r; });
-  G.mountDownload(slot, { fetch: async () => { await gate; return { status: 429 }; }, save: () => {} });
+  G.mountDownload(slot, { fetch: async () => { await gate; return { status: 500 }; }, save: () => {} });
   assert.match(text(slot), /Download my data/);
   assert.match(text(slot), /shows your email address/);
   const button = find(slot, "me-export");
@@ -67,6 +66,6 @@ test("the card draws title, one sentence and a button; a click shows working the
   assert.ok("disabled" in button.attrs || button.disabled === true);
   release();
   await tick(); await tick();
-  assert.equal(note.textContent, M.TEXT.tooMany);
+  assert.equal(note.textContent, M.TEXT.failed);
   assert.equal(note.attrs["data-tone"], "bad");
 });

@@ -101,7 +101,7 @@ export function mountCoachStage(root, { compare, videoUrl, worst, moments, total
   const worstBtn = worst ? el("button", { type: "button", class: "sr-btn sr-worst", "data-testid": "replay-worst", "aria-pressed": "false",
     "data-from": worst.from, "data-to": worst.to, "data-at": worst.at, text: "Replay worst moment" }) : null;
   const worstNote = worst ? el("span", { class: "sr-worst-note", "data-testid": "replay-worst-note",
-    text: worst.kind === "window" ? `${worst.from.toFixed(1)} s to ${worst.to.toFixed(1)} s, scored ${worst.value}` : `around ${worst.at.toFixed(1)} s` }) : null;
+    text: worst.kind === "window" ? `${worst.from.toFixed(1)} s to ${worst.to.toFixed(1)} s` : `around ${worst.at.toFixed(1)} s` }) : null;
   const clockOut = el("output", { class: "sr-coach-clock", "data-testid": "coach-clock", "data-t": "0", text: "0.0 s" });
   bar.append(...[worstBtn, worstNote, clockOut].filter(Boolean));
 

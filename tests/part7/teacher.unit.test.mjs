@@ -80,3 +80,17 @@ test("the view model: newest take first, cue shares, tones, empty flag, name fal
   assert.equal(teacherView(null, null, "x").empty, true);
   assert.deepEqual(["A", "B", "C", "D", "F", "?"].map(toneOf), ["good", "good", "warn", "warn", "bad", "warn"]);
 });
+
+test("not the owner: a count line and no takes or table (privacy lane 06927b20)", () => {
+  const vm = teacherView({ class_table: null, takes: [], take_count: 3 }, { name: "Squat" }, "squat");
+  assert.equal(vm.countOnly, true);
+  assert.equal(vm.empty, false);
+  assert.equal(vm.countLine, "3 takes from people who followed it. Only the person who recorded this movement sees them.");
+  assert.equal(vm.classTable, null);
+  assert.deepEqual(vm.takes, []);
+  const none = teacherView({ class_table: null, takes: [], take_count: 0 }, { name: "Squat" }, "squat");
+  assert.equal(none.countOnly, false, "negative: no takes at all is the empty state");
+  assert.equal(none.empty, true);
+  const owner = teacherView({ takes: [{ score: 70, grade: "C", at: "2026-11-02T10:00:00Z" }], take_count: 1 }, null, "e");
+  assert.equal(owner.countOnly, false, "the owner keeps the full page");
+});

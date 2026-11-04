@@ -10,8 +10,38 @@ from typing import Any
 
 from part7 import config, modules, runner
 from part7.parts import p4_animate
+from part7.parts.p5_analyse import UV_RUN
+from part7.prod_mode import is_prod
 
 SETUP_TIMEOUT_S = 600.0
+# Part 3's prod install: its runtime pins with hashes, kept beside Part 3's own requirements.txt (supply audit R6).
+PART3_PROD_REQUIREMENTS = config.REPO_ROOT / "deploy" / "part3-requirements.txt"
+PART1_PROD_REQUIREMENTS = config.REPO_ROOT / "deploy" / "part1-requirements.txt"
+PART3_DEV_ONLY = frozenset({"pytest"})  # in Part 3's requirements.txt for its tests; prod never runs them
+
+
+def _pins(text: str) -> dict[str, str]:
+    """`name==version` pins of a requirements file, names lower case (hash and option lines are skipped)."""
+    out: dict[str, str] = {}
+    for line in text.replace("\\\n", " ").splitlines():
+        spec = line.split("#", 1)[0].strip().split(" ", 1)[0]
+        if "==" in spec and not spec.startswith("-"):
+            name, version = spec.split("==", 1)
+            out[name.strip().lower().replace("_", "-")] = version.strip()
+    return out
+
+
+def part3_prod_problem(clone: Path, hashed: Path = PART3_PROD_REQUIREMENTS) -> str | None:
+    """Why the hashed prod file does not install what Part 3's own requirements.txt pins, or None."""
+    try:
+        theirs, ours = _pins((clone / "requirements.txt").read_text(encoding="utf-8")), _pins(hashed.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return f"part 3: cannot read a requirements file ({type(exc).__name__})"
+    wanted = {name: version for name, version in theirs.items() if name not in PART3_DEV_ONLY}
+    if ours != wanted:
+        return (f"part 3: {hashed.name} pins {sorted(ours.items())}, Part 3's requirements.txt pins "
+                f"{sorted(wanted.items())} (besides {', '.join(sorted(PART3_DEV_ONLY))}); update {hashed.name}")
+    return None
 GPU_CHECK_TIMEOUT_S = 180.0
 # Prints the torch build and device; exits 3 when CUDA is not usable from the venv.
 _GPU_PROBE = (
@@ -23,6 +53,10 @@ _GPU_PROBE = (
 
 def _default_setup_commands(part: str, clone: Path) -> list[list[str]]:
     if part == "1":
+        if is_prod():  # supply audit R6: hashes (docs/specs/muse-prod.md); Part 1's Makefile installs without them
+            venv_py, venv_pip = clone / ".venv" / "bin" / "python", clone / ".venv" / "bin" / "pip"
+            first = [["python3", "-m", "venv", ".venv"]] if not venv_py.is_file() else []
+            return [*first, [str(venv_pip), "install", "-q", "--require-hashes", "--no-deps", "-r", str(PART1_PROD_REQUIREMENTS)]]
         return [["make", ".venv/.installed"]]  # make skips the install when requirements.txt is unchanged
     if part == "2":
         return [["uv", "sync"]]
@@ -32,12 +66,15 @@ def _default_setup_commands(part: str, clone: Path) -> list[list[str]]:
         cmds: list[list[str]] = []
         if not venv_py.is_file():
             cmds.append(["python3", "-m", "venv", ".venv"])
-        cmds.append([str(venv_pip), "install", "-q", "-r", "requirements.txt"])
+        if is_prod():  # supply audit R6: hashes, and only what Part 3 runs (part3_prod_problem checks the pins agree)
+            cmds.append([str(venv_pip), "install", "-q", "--require-hashes", "--no-deps", "-r", str(PART3_PROD_REQUIREMENTS)])
+        else:
+            cmds.append([str(venv_pip), "install", "-q", "-r", "requirements.txt"])
         return cmds
     if part == "4":
         return []
     if part == "5":
-        return [["uv", "sync"]]
+        return [["uv", "sync", "--frozen"]]  # its own uv.lock as it is, never re-resolved (supply audit R6)
     if part == "6":
         return []
     return []
@@ -74,7 +111,7 @@ def _default_doctor_command(part: str, clone: Path) -> tuple[list[str], dict[str
         )
     if part == "5":
         return (
-            ["uv", "run", "python", "-m", "part5", "contract"],
+            [*UV_RUN, "python", "-m", "part5", "contract"],
             None,
             "part5 contract",
         )
@@ -196,6 +233,10 @@ def setup_all(
         part_ok = True
         err_msg: str | None = None
         notes: list[str] = []
+        if part == "3" and is_prod() and not (commands is not None and part in commands):
+            err_msg = part3_prod_problem(clone)
+            if err_msg:
+                part_ok, part_cmds, checks = False, [], []
 
         for idx, cmd in enumerate(part_cmds):
             step = runner.run(

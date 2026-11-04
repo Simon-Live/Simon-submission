@@ -19,6 +19,8 @@ export function buildSubmit({ role, mode, upload, trim, peopleJob, choice, name,
         name, category, labels: { ...choice.labels, ...(hasLabels(labels) ? labels : {}) }, save_entry: true,
         ...(extra.mode ? { mode: extra.mode } : {}),
         ...(extra.floor_work ? { floor_work: true } : {}),
+        ...(extra.challenge_id ? { challenge_id: extra.challenge_id } : {}), // the server derives the source movement from it
+        ...optIn(extra), // trainer-publish.md: the opt-in to show the movement and its PM-B3 statement
       }],
     };
   }
@@ -30,10 +32,17 @@ export function buildSubmit({ role, mode, upload, trim, peopleJob, choice, name,
   return { kind: "trainer", args: [upload, name, category, trim, hasLabels(labels) ? labels : undefined, { people_job: peopleJob, person_id: choice.person_id }] };
 }
 
-/** A trainer take's top-level marks (`mirrored`, `floor_work`), never inside the person; null when it has none. */
+/** A trainer take's top-level marks (`mirrored`, `floor_work`, `public`), never inside the person; null when it has none. */
 function trainerMore(extra) {
-  const more = { ...(extra.mirrored === true ? { mirrored: true } : {}), ...(extra.floor_work === true ? { floor_work: true } : {}) };
+  const more = { ...(extra.mirrored === true ? { mirrored: true } : {}), ...(extra.floor_work === true ? { floor_work: true } : {}),
+    ...optIn(extra) }; // trainer-publish.md
   return Object.keys(more).length ? more : null;
+}
+
+/** The publish opt-in a take carries: `public` and, with it, `nobody_under_18` (privacy PM-B3); `{}` without. */
+function optIn(extra) {
+  if (!extra || extra.public !== true) return {};
+  return { public: true, ...(extra.nobody_under_18 === true ? { nobody_under_18: true } : {}) };
 }
 
 /** The mode, section and challenge a take carries, from a saved record (offline-takes.md). */
@@ -47,6 +56,7 @@ export const extraOf = (rec) => ({
   ...(rec && rec.mirrored === true ? { mirrored: true } : {}), // TICKET-310: the person's word, an upload only
   ...(rec && rec.floor_work === true ? { floor_work: true } : {}),
   ...(rec && rec.run_on ? { run_on: rec.run_on } : {}), // TICKET-364: the take's "Run on" choice
+  ...optIn(rec), // trainer-publish.md: a trainer's opt-in to show the movement, with its PM-B3 statement
 });
 
 /** The request for a saved record: the same call the open take flow makes (role trainer | follow | group). */

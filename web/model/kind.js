@@ -1,38 +1,12 @@
-// Exercise, dance or rehab: which kind of movement the person is browsing and practising. Logic only, no DOM.
-// It is stored as the practice mode (modes.js), whose values jobs and the result note rely on: exercise = fitness,
-// dance = dance, rehab = rehab; no choice reads as exercise. A change is announced with the `simon:kind` event. The
-// choice is made on a record or follow page's mode picker; the header switch is gone (2026-11-04).
-import { loadChoice, saveChoice } from "../modes.js";
+// Exercise, dance or rehab: the kind of a movement. Logic only, no DOM. A movement or a take carries its own kind (its
+// category, its `rehab` tag, the mode on its job record); nothing here is a global choice (TICKET-436 removed the header
+// switch). Practice modes (modes.js) map to kinds: fitness = exercise, dance = dance, rehab = rehab.
 
 export const KINDS = ["exercise", "dance", "rehab"];
 export const KIND_LABEL = { exercise: "Exercise", dance: "Dance", rehab: "Rehab" };
 export const KIND_MODE = { exercise: "fitness", dance: "dance", rehab: "rehab" };
 export const KIND_CATEGORY = { exercise: "exercise", dance: "dance" }; // rehab is a tag, not a catalog category
 export const REHAB_TAG = "rehab";
-export const KIND_EVENT = "simon:kind";
-
-/** "exercise", "dance" or "rehab" from the stored practice mode. */
-export function currentKind(storage) {
-  const mode = loadChoice(storage);
-  return KINDS.find((k) => KIND_MODE[k] === mode) || "exercise";
-}
-
-/** Store `kind` and announce it; an unknown kind changes nothing. */
-export function setKind(kind, { storage, target = globalThis } = {}) {
-  if (!KINDS.includes(kind)) return false;
-  saveChoice(KIND_MODE[kind], storage);
-  if (target && typeof target.dispatchEvent === "function" && typeof CustomEvent === "function") {
-    target.dispatchEvent(new CustomEvent(KIND_EVENT, { detail: { kind } }));
-  }
-  return true;
-}
-
-/** Call `fn(kind)` on every change; returns the unsubscribe function. */
-export function onKindChange(fn, target = globalThis) {
-  const handler = (e) => fn((e && e.detail && e.detail.kind) || currentKind());
-  target.addEventListener(KIND_EVENT, handler);
-  return () => target.removeEventListener(KIND_EVENT, handler);
-}
 
 /** The kind an entry's category names (exercise or dance), or null. */
 export function kindOfEntry(entry) {
@@ -47,7 +21,7 @@ export function entryInKind(entry, kind, labels = {}) {
   return kindOfEntry(entry) === kind;
 }
 
-/** The kind a stored practice mode stands for (fitness -> exercise), or null for an unknown or missing mode. */
+/** The kind a practice mode stands for (fitness -> exercise), or null for an unknown or missing mode. */
 export function kindForMode(mode) {
   return KINDS.find((k) => KIND_MODE[k] === mode) || null;
 }

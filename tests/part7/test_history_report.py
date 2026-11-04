@@ -217,7 +217,6 @@ def test_report_codes(runner: history_report.Runner, world: World, monkeypatch: 
     with pytest.raises(history_report.Refused) as few:
         runner.request(OTHER, ENTRY)
     assert few.value.status == 422
-    monkeypatch.setenv("SIMON7_HISTORY_DAILY", "2")
     world.answers.extend([ANSWER, ANSWER])
     now = time.time()
     runner.request(USER, ENTRY, now=now)
@@ -228,17 +227,7 @@ def test_report_codes(runner: history_report.Runner, world: World, monkeypatch: 
     history_store.set_consent(runner.state, USER, False, "v1")  # drops the video report; the first key's report stays
     kind, _ = runner.request(USER, ENTRY, now=now + 2)
     assert kind == "cached"  # a cache hit never counts toward the limit
-    # change the takes so a third run is needed
-    take = history_store.takes(runner.state, USER, ENTRY)[1]["analysis"]
-    take.write_text(take.read_text().replace('"value": 77', '"value": 79', 1))
-    with pytest.raises(history_report.Refused) as limit:
-        runner.request(USER, ENTRY, now=now + 4)
-    assert limit.value.status == 429 and history_report.runs_today(runner.state, USER, now + 4) == 2
-    assert history_report.runs_today(runner.state, USER, now + 2 * 86400) == 0  # the next day starts clean
-    monkeypatch.setenv("SIMON7_HISTORY_DAILY", "x")
-    assert history_report.daily_limit() is None
-    monkeypatch.setenv("SIMON7_HISTORY_DAILY", "3")
-    assert history_report.daily_limit() == 3
+    assert history_report.runs_today(runner.state, USER, now + 2) == 2  # a cache hit never counts
 
 
 def test_rehab_take_is_included_like_any_other(tmp_path: Path, world: World, monkeypatch: pytest.MonkeyPatch) -> None:  # private
@@ -320,29 +309,8 @@ def test_a_report_made_with_video_is_dropped_when_the_consent_was_withdrawn_mean
     assert not list(history_store.reports_dir(runner.state, USER, ENTRY).glob("*.json"))  # nothing written
 
 
-def test_global_daily_cap_refuses_with_a_clear_message(runner: history_report.Runner, world: World, monkeypatch: pytest.MonkeyPatch) -> None:  # R7
-    monkeypatch.setenv("SIMON7_HISTORY_GLOBAL_DAILY", "1")
-    world.answers.extend([ANSWER, ANSWER])
-    now = time.time()
-    runner.request(USER, ENTRY, now=now)
-    assert runner.wait_idle(20)
-    assert history_report.global_runs_today(runner.state, now) == 1
-    take = history_store.takes(runner.state, USER, ENTRY)[1]["analysis"]
-    take.write_text(take.read_text().replace('"value": 77', '"value": 79', 1))  # a new key: not a cache hit
-    with pytest.raises(history_report.Refused) as limit:
-        runner.request(USER, ENTRY, now=now + 1)
-    assert limit.value.status == 429 and limit.value.message == history_report.MSG_GLOBAL_LIMIT
-    assert history_report.global_runs_today(runner.state, now + 2 * 86400) == 0
-    monkeypatch.setenv("SIMON7_HISTORY_GLOBAL_DAILY", "x")
-    assert history_report.global_daily_limit() is None
-    monkeypatch.setenv("SIMON7_HISTORY_GLOBAL_DAILY", "7")
-    assert history_report.global_daily_limit() == 7
-
-
 def test_no_daily_limit_by_default_many_runs_are_never_refused(runner: history_report.Runner, world: World,
                                                               monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SIMON7_HISTORY_DAILY", raising=False)
-    monkeypatch.delenv("SIMON7_HISTORY_GLOBAL_DAILY", raising=False)
     world.opted_in.add(USER)
     now = time.time()
     for _ in range(60):  # past the old 5 per user and 50 global

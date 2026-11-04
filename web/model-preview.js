@@ -4,12 +4,22 @@
 // on the same real motion; a model's own embedded animation is never played.
 import { TEXT } from "./model/model-default.js";
 import { renderModelPreview } from "./views/model-preview.js";
+import { isProd } from "./policy.js";
 
-/** The motion the preview plays: { model (one figure, compare.js shape), source: "fixture" }. */
-export async function loadMotion() {
-  const [api, cmp] = await Promise.all([import("./api.js"), import("./compare.js")]);
-  const fixture = await api.getFixtureResult();
-  return { model: cmp.singleFromReplay(cmp.normalizeReplay(fixture.replay)), source: "fixture" };
+/** The motion the preview plays: { model (one figure, compare.js shape), source: "fixture" | "rest", still? }. Prod
+ *  answers `api/fixture-result` 404 (prod-hardening.md item 4), so it asks nothing there (byok-ui D3) and, like an
+ *  example result that fails to load, gives the still rest pose (TICKET-389): the person's figure is always shown. */
+export async function loadMotion({ prod = isProd } = {}) {
+  const [cmp, rest] = await Promise.all([import("./compare.js"), import("./model/rest-pose.js")]);
+  const posed = () => ({ model: cmp.singleFromReplay(cmp.normalizeReplay(rest.restReplay())), source: "rest", still: true });
+  if (prod()) return posed();
+  try {
+    const api = await import("./api.js");
+    const fixture = await api.getFixtureResult();
+    return { model: cmp.singleFromReplay(cmp.normalizeReplay(fixture.replay)), source: "fixture" };
+  } catch {
+    return posed();
+  }
 }
 
 /** Everything the preview loads, each on first use. Injectable for tests. */
@@ -71,6 +81,7 @@ export function mountModelPreview(host, deps = defaultDeps) {
     if (!stageMod.webglAvailable()) { view.setStatus(t.noWebgl); return false; }
     model = motion.model;
     view.setReady(true); // the box is shown before the stage measures it
+    if (motion.still) view.setPlayable(false); // a still pose has nothing to play
     try {
       stage = stageMod.createStage(view.stageHost, { joints: model.joints, bones: model.bones, tracks: [{ color: timing.color, ghostInOverlay: false, label: "You" }] });
     } catch {
@@ -79,6 +90,7 @@ export function mountModelPreview(host, deps = defaultDeps) {
       return false;
     }
     view.setMotion(motion.source);
+    if (stage.setTake) stage.setTake([model.frames]); // the framing holds the whole movement from its first frame (model-skin.md AC16)
     if (stage.onCamera) stage.onCamera((c) => view.setCamera(c));
     if (stage.getCamera) view.setCamera(stage.getCamera());
     clock = timing.createClock(model.duration, (time, playing) => { draw(time); view.setPlaying(playing); });

@@ -25,6 +25,8 @@ async function open(kase) {
   await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/quality-result.html?case=${kase}`);
   await page.waitForFunction(() => window.__ready === true);
   await page.waitForTimeout(300);
+  const more = page.getByTestId("result-more-toggle"); // the lean result folds the tips under More
+  if (await more.count() && (await more.getAttribute("aria-expanded")) !== "true") await more.click();
   return page;
 }
 const count = (page, id) => page.getByTestId(id).count();
@@ -56,9 +58,9 @@ try {
   assert.ok(await major.getByTestId("warning-quality_dark").isVisible());
   assert.ok(await major.getByTestId("warning-tip-quality_dark").isVisible());
   assert.equal(await major.getByTestId("warning-moving_part_out_of_frame").getAttribute("data-cause"), "body_cut_off");
-  assert.equal((await major.getByTestId("quality-cap").innerText()).trim(), "Capped at 59 because of the video quality.");
+  assert.equal(await count(major, "quality-cap"), 0, "a take whose credit is shown claims no cap (TICKET-372)");
   assert.ok(await major.getByTestId("record-again").isVisible());
-  ok("major: banner with tips, the cause on the existing warning, cap line, Record again");
+  ok("major: banner with tips, the cause on the existing warning, no cap line, Record again");
 
   assert.deepEqual(errors, []);
   ok("no console errors");

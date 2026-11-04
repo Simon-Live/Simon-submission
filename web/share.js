@@ -5,6 +5,7 @@ import { bylines } from "./model/attribution.js";
 import * as list from "./views/share-list.js";
 import * as action from "./views/share.js";
 import * as viewer from "./views/shared.js";
+import * as resultShare from "./views/share-prompt.js";
 import { renderShared as renderSheet } from "./progress-sheet.js";
 import { resultWarnings, WARNING_TITLE } from "./result.js";
 import { shownScoreDisplay } from "./score-display.js";
@@ -18,8 +19,8 @@ const model = { ...shareModel, bylines, renderSheet,
 /** The injected hooks, read by tests/part7/share-score-cap.dom.test.mjs. */
 export const shareHooks = model;
 
-/** The result page Share slot: `(slot, ctx)`. */
-export const mountShareAction = (slot, ctx) => action.mountShareAction(slot, ctx, model);
+/** The result page "Share this result" flow: `(slot, ctx)`, `ctx.trigger` being the action row's button. */
+export const mountShareAction = (slot, ctx) => resultShare.mountResultShare(slot, ctx, model);
 /** The history page Share button: `(container, entryId)`; its preview is the server's snapshot. */
 export const mountReportShare = (container, entryId) => action.mountReportShare(container, entryId, model);
 /** "Your share links" with Revoke buttons: `(el, opts)`; `opts.signedIn` is the caller's auth/me answer when it has one. */

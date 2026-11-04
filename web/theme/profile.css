@@ -25,7 +25,7 @@
 .pf-input { min-height: var(--button-height); padding: 0 var(--space-4); width: 100%; box-sizing: border-box; font: var(--text-md) var(--font-sans); }
 .pf-input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .pf-input[aria-invalid="true"] { border-color: var(--color-bad); }
-.pf-error { margin: 0; color: var(--color-bad); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
+.pf-error { margin: 0; color: var(--color-bad-text); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
 .pf-error:empty { display: none; }
 
 .pf-picks { display: flex; flex-wrap: wrap; gap: var(--space-3); }
@@ -51,7 +51,7 @@
 .pf-note { margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); }
 .pf-note:empty { display: none; }
 .pf-note[data-tone="ok"] { color: var(--color-good); }
-.pf-note[data-tone="bad"] { color: var(--color-bad); }
+.pf-note[data-tone="bad"] { color: var(--color-bad-text); }
 
 .pf-card { display: grid; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: 1px solid var(--color-line); }
 .pf-card h2 { margin: 0; font-size: var(--text-md); }
@@ -70,4 +70,4 @@
 .pf-stage[hidden] { display: none; }
 
 .pf-sure { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-bad-soft); }
-.pf-warn { margin: 0; color: var(--color-bad); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }
+.pf-warn { margin: 0; color: var(--color-bad-text); font: var(--weight-semibold) var(--text-sm)/1.4 var(--font-sans); }

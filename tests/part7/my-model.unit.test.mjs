@@ -476,7 +476,7 @@ test("Me page signed in: account, notes, profile, My 3D model, takes and one sha
   assert.equal(f.order.find((o) => o[0] === "profile")[1], "me-profile");
   assert.deepEqual(f.order.find((o) => o[0] === "model").slice(1), ["me-model", { signedIn: true }]);
   assert.equal(find(el, "me-history").hidden, false);
-  assert.deepEqual(el.children.map((c) => c.attrs["data-testid"] ?? null), [null, "me-device-takes", "me-profile", "me-model", "me-history", "me-shares"]);
+  assert.deepEqual(el.children.map((c) => c.attrs["data-testid"] ?? null), [null, "me-device-takes", "me-boards", "me-profile", "me-model", "me-modal", "me-history", "me-shares"]);
   stop();
   assert.ok(f.order.some((o) => o[0] === "stop profile") && f.order.some((o) => o[0] === "stop model"));
 });
@@ -610,6 +610,35 @@ test("the preview always plays Simon's sample movement: the example result's tra
   } finally {
     globalThis.fetch = real;
   }
+});
+
+// TICKET-389: prod has no example result, so the preview stands the figure in a still rest pose instead of hiding the stage
+test("TICKET-389: in prod the preview poses the figure at rest, asks nothing, and the stage is shown", async () => {
+  const asked = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => { asked.push(String(url)); return { ok: false, status: 404, headers: { get: () => null }, json: async () => null }; };
+  try {
+    const motion = await P.loadMotion({ prod: () => true });
+    assert.equal(motion.source, "rest");
+    assert.equal(motion.still, true);
+    assert.equal(motion.model.joints.length, 17);
+    assert.deepEqual(asked, [], "negative: no request in prod");
+    const failed = await P.loadMotion({ prod: () => false });
+    assert.equal(failed.source, "rest", "an example result that fails to load also leaves the figure posed");
+  } finally {
+    globalThis.fetch = real;
+  }
+  const f = fakeStage();
+  f.deps.motion = () => P.loadMotion({ prod: () => true });
+  const host = new El("div");
+  const p = P.mountModelPreview(host, f.deps);
+  assert.equal(await p.ready, true);
+  await p.show("up:rig", { id: "rig", name: "Rig" });
+  assert.equal("hidden" in find(host, "my-model-stage").attrs, false, "the stage is shown");
+  assert.equal(find(host, "my-model-preview").attrs["data-shown"], "up:rig");
+  assert.equal(find(host, "my-model-preview-status").textContent, T.previewModel("Rig"));
+  assert.equal(find(host, "my-model-play").disabled, true, "nothing to play on a still pose");
+  assert.ok(f.s.poses.length > 0, "the pose is drawn");
 });
 
 const withRemove = { getItem: (k) => localStorage.getItem(k), setItem: (k, v) => localStorage.setItem(k, v), removeItem: (k) => store.delete(k) };

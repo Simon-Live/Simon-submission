@@ -90,12 +90,8 @@ export function realFiles(dir = REAL_PART2, { shipped = false } = {}) {
     "print(json.dumps(r))"].join(";")], { encoding: "utf8" });
   if (restDoc.status !== 0) throw new Error(restDoc.stderr);
   const arrayBuffer = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength);
-  return { header, arrayBuffer, rest: JSON.parse(restDoc.stdout), pose3d: JSON.parse(fs.readFileSync(`${dir}/pose3d.json`, "utf8")),
-    replay: readReplay() };
-}
-
-/** The real job's follower replay, or null when it is not on this machine: a staging take dir in WARP_DIRS needs none. */
-function readReplay() {
-  const file = `${REAL_JOB}/work/follower/replay.json`;
-  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null;
+  // the replay sits beside part2 in the take's own work dir (a trainer dir has none: replay is null there)
+  const replayPath = `${dir}/../replay.json`;
+  const replay = fs.existsSync(replayPath) ? JSON.parse(fs.readFileSync(replayPath, "utf8")) : null;
+  return { header, arrayBuffer, rest: JSON.parse(restDoc.stdout), pose3d: JSON.parse(fs.readFileSync(`${dir}/pose3d.json`, "utf8")), replay };
 }

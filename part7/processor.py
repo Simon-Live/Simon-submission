@@ -67,6 +67,7 @@ def trainer_job(
     review_state: Path | str | None = None,
     mirrored: bool = False,
     floor_work: bool = False,
+    part1_allowed: bool | None = None,
 ) -> JobFn:
     """Return the job function for a trainer upload; it ends with a Part 6 entry and Part 6 doctor.
 
@@ -81,7 +82,8 @@ def trainer_job(
         video = _clip(ctx, raw, person, trim)
         result = chain.trainer(
             video, ctx.work / "trainer", report=ctx.set_stage, lock=lock, backend=backend, state=state,
-            catalog=catalog, name=name, category=category, person=person, mirrored=mirrored, floor_work=floor_work,
+            catalog=catalog, name=name, category=category, person=person, mirrored=mirrored, floor_work=floor_work, part1_allowed=part1_allowed,
+            reserve=getattr(on_entry, "reserve", None),  # W-N1: the held-back row exists before Part 6 saves
         )
         if result.get("note"):
             ctx.add_note(str(result["note"]))
@@ -89,8 +91,8 @@ def trainer_job(
         entry_id = str(result["entry_id"])
         if on_entry is not None:
             on_entry(entry_id)
-        narration.attach(  # the trainer's spoken cues; never fails the job (narration.md)
-            raw, catalog / entry_id, files=result.get("files"), video=video, trim=trim, job_dir=ctx.work,
+        narration.attach_then_show(  # the trainer's spoken cues, never failing the job; go-live R4: shown only after
+            raw, catalog / entry_id, on_entry, files=result.get("files"), video=video, trim=trim, job_dir=ctx.work,
         )
         if review_state is not None and entry_check.check_entry(review_state, catalog, entry_id, video, ctx.id):
             selfheal.record("entry_content")

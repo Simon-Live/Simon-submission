@@ -13,12 +13,12 @@
 @keyframes msel-turn { to { transform: rotate(360deg); } }
 .msel-progress-label { margin: 0; font: 600 15px/1.3 var(--font-sans); color: var(--color-text); }
 .msel-bar { height: 8px; border-radius: 4px; background: var(--color-line); overflow: hidden; }
-.msel-bar-fill { display: block; height: 100%; width: 0; background: var(--color-accent); }
+.msel-bar-fill { display: block; height: 100%; width: 100%; background: var(--color-accent); transform: scaleX(0); transform-origin: left center; } /* reels 1.1 */
 @media (prefers-reduced-motion: no-preference) {
-  .msel-bar-fill { transition: width 0.3s ease; }
+  .msel-bar-fill { transition: transform 0.3s ease; }
 }
 /* no byte count yet: a pale fill inside the Uploading band (15%, UPLOAD_BAND in progress.js), never past where Waiting starts */
-.msel-bar[data-indeterminate] .msel-bar-fill { width: 15%; opacity: 0.4; }
+.msel-bar[data-indeterminate] .msel-bar-fill { transform: scaleX(0.15); opacity: 0.4; }
 .msel-progress-detail, .msel-progress-time { margin: 0; font: 400 13px/1.4 var(--font-sans); color: var(--color-text-muted); }
 .msel-progress-detail[hidden] { display: none; }
 .msel-progress-time { font-variant-numeric: tabular-nums; }

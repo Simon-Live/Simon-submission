@@ -121,11 +121,11 @@ try {
     await page.goto(`${BASE}/#/`);
     await waitFor(async () => (await kept(page)).some((r) => r.stage === "job_failed"), "the watch to mark the job stopped", 45000);
     await tid("pending-stuck").waitFor();
-    assert.equal(await tid("pending-stuck").innerText(), "1 take could not be sent");
+    assert.match(await tid("pending-stuck").innerText(), /Your recording is still on this device\.$/);
     await page.goto(`${BASE}/#/pending`);
     const [k] = await kept(page);
     await tid(`pending-${k.id}`).waitFor();
-    assert.equal(await tid(`pending-status-${k.id}`).innerText(), "The analysis stopped before it finished. Your recording is still on this device.");
+    assert.equal(await tid(`pending-status-${k.id}`).innerText(), "The app restarted before this take finished. Your recording is still on this device."); // the fake job's reason is a restart (take-continue.browser.mjs)
     assert.ok(await tid(`pending-again-${k.id}`).isVisible());
     await tid(`pending-delete-${k.id}`).click();
     await waitFor(async () => (await kept(page)).length === 0, "Delete to remove the kept take");

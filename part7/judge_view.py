@@ -117,15 +117,22 @@ def configured_id(state: Path) -> str | None:
     return named or None
 
 
-def _candidate(jobs_root: Path, job_id: str) -> dict[str, Any] | None:
-    """`{job_id, entry_id, score}` when `job_id` is a public, finished take of a non-test movement with both meshes."""
+def _candidate(state: Path, jobs_root: Path, job_id: str, may_view: Any = None) -> dict[str, Any] | None:
+    """`{job_id, entry_id, score}` when `job_id` is a public, finished take of a non-test movement with both meshes
+    that no account owns."""
+    from part7 import take_access  # here: take_access imports this module
+
     if not jobs.JOB_ID_RE.match(job_id):
+        return None
+    if not take_access.may_feature(state, job_id):  # prod-data.md D4: an account's take is never the hero
         return None
     record = job_lookup.read_json(jobs_root / job_id / "job.json")
     if not isinstance(record, dict) or record.get("kind") != "follow" or record.get("status") != "done":
         return None
     entry_id = record.get("entry_id")
     if my_reference.uses_own(record):  # ADR-0019: never the hero
+        return None
+    if may_view is not None and not may_view(str(entry_id)):  # residual 5: a hidden movement is never the hero
         return None
     result = record.get("result")
     score = result.get("score") if isinstance(result, dict) else None
@@ -167,11 +174,12 @@ def _warned(folder: Path, result: dict[str, Any]) -> bool:
                 or (doc.get("status") or {}).get("code", "ok") != "ok")
 
 
-def hero(state: Path, jobs_root: Path) -> dict[str, Any]:
+def hero(state: Path, jobs_root: Path, may_view: Any = None) -> dict[str, Any]:
     """The take the judge view shows first: the named take when it qualifies, else none. A named take that does not
-    qualify is ignored, not trusted, and no other take stands in for it."""
+    qualify is ignored, not trusted, and no other take stands in for it. `may_view(entry_id)` (the route passes
+    `auth.may_view_entry`) refuses a take whose movement the caller may not see."""
     named = configured_id(state)
-    found = _candidate(jobs_root, named) if named else None
+    found = _candidate(state, jobs_root, named, may_view) if named else None
     if found:
         return {**found, "source": "configured"}
     return dict(NO_HERO)
@@ -181,5 +189,8 @@ def handle(h: Any, method: str, route: str) -> bool:
     """Answer `judge/hero`; False for any other route."""
     if route != "judge/hero" or method not in ("GET", "HEAD"):
         return False
-    h._json(200, hero(h.app.state, h.app.queue.job_dir("0" * 12).parent))
+    from part7 import auth  # here: the app's one rule for who sees a movement
+
+    h._json(200, hero(h.app.state, h.app.queue.job_dir("0" * 12).parent,
+                      may_view=lambda entry_id: auth.may_view_entry(h, entry_id)))
     return True

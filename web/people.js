@@ -2,7 +2,8 @@
 // openPeoplePicker polls the `people` job, shows the middle frame and the person crops, and resolves
 // with the choice. One person with enough coverage is chosen automatically in "single" mode.
 import { getJob } from "./api.js";
-import { h, clear, ensureCss } from "./ui.js";
+import { h, clear, ensureCss, focusOn } from "./ui.js";
+import { failedText, needsMe, ME_HREF, ME_LINK } from "./model/job-reason.js"; // byok-ui D1
 import { createProgress, estimateText, TYPICAL_S } from "./progress.js";
 import { personQualityHints } from "./quality-result.js";
 import {
@@ -13,7 +14,7 @@ export const MSG_NOBODY = "No one was found in this clip. Record again with the 
 export const MSG_LOW_COVERAGE = "This person is in only part of the clip. The result may be thin. You can still continue.";
 export const MSG_LOST = "Lost the connection. Trying again.";
 export const COVERAGE_OK = 0.6;
-export const FINDING = `Finding the people in your clip, ${estimateText([8, 25])}`;
+export const FINDING = `Finding the people in your clip, ${estimateText(TYPICAL_S.tracking)}`;
 // the people job stages in order (api/jobs `stage`): plain words and the step number
 export const PEOPLE_STAGES = { normalizing: "Preparing the video", trimming: "Cutting your selection", tracking: "Following each person" };
 const STAGE_NAMES = Object.keys(PEOPLE_STAGES);
@@ -51,9 +52,10 @@ export function openPeoplePicker(root, { peopleJob, mode = "single", trimMs, pol
     const cont = h("button", { type: "button", class: "btn primary block", "data-testid": "people-continue", text: "Continue", hidden: true, disabled: true });
     const reason = h("p", { class: "pg-reason", "data-testid": "people-continue-reason", hidden: true });
     const retry = h("button", { type: "button", class: "btn primary block", "data-testid": "people-retry", text: "Try again", hidden: true });
+    const meLink = h("a", { class: "btn primary block", href: ME_HREF, "data-testid": "people-open-me", text: ME_LINK, hidden: true }); // byok-ui D1
     const cancel = h("button", { type: "button", class: "btn secondary block", "data-testid": "people-cancel", text: "Cancel" });
     const screen = h("section", { class: "screen pp", "data-testid": "people", "data-mode": mode, "data-state": "loading" },
-      h("h1", { text: group ? "Who is the trainer?" : "Who is in this clip?" }), lede, body, err, cont, reason, retry, cancel);
+      h("h1", { text: group ? "Who is the trainer?" : "Who is in this clip?" }), lede, body, err, cont, reason, meLink, retry, cancel);
     root.append(screen);
     cancel.addEventListener("click", () => finish(null));
     retry.addEventListener("click", () => finish(null));
@@ -69,7 +71,10 @@ export function openPeoplePicker(root, { peopleJob, mode = "single", trimMs, pol
       reason.hidden = true;
       cancel.hidden = true;
       retry.hidden = false;
+      meLink.hidden = !needsMe(msg); // a Modal token refusal: the fix is on the Me page (byok-ui D1)
+      retry.className = meLink.hidden ? "btn primary block" : "btn secondary block";
       screen.setAttribute("data-state", "error");
+      focusOn(err); // the controls that had focus are gone; the reason takes it (WCAG 2.4.3)
     };
 
     function choose(result) {
@@ -182,7 +187,7 @@ export function openPeoplePicker(root, { peopleJob, mode = "single", trimMs, pol
       try {
         const job = await getJob(peopleJob);
         if (done) return;
-        if (job.status === "failed") { fail(job.note || "The clip could not be checked. Record again."); return; }
+        if (job.status === "failed") { fail(failedText(job, "The clip could not be checked. Record again.")); return; } // byok-ui D1: the reason says what to do
         if (job.status === "done") {
           const result = job.result || job;
           if (result.people) choose(result); else fail(MSG_NOBODY);
@@ -198,7 +203,7 @@ export function openPeoplePicker(root, { peopleJob, mode = "single", trimMs, pol
         err.hidden = true;
       } catch (e) {
         if (e && e.status === 404) { fail("This clip check is not found. Record again."); return; }
-        fail(MSG_LOST, true);
+        fail(e && e.detail ? e.message : MSG_LOST, true); // the server's reason when it gave one (AC-OT12)
       }
       timer = setTimeout(poll, pollMs);
     }

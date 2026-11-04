@@ -12,10 +12,9 @@ import json
 import logging
 from pathlib import Path
 import shutil
-import subprocess
 from typing import Any
 
-from part7 import applog, config, crop, media, modules, quality, runner, stagelog
+from part7 import applog, config, crop, failcause, ffsafe, licence_gates, media, modules, quality, runner, stagelog
 from part7 import track_resample
 from part7.jobs import JobContext, JobFailed, JobFn
 from part7.parts import p2_pose
@@ -35,6 +34,7 @@ CROP_HEIGHT = 240
 FRAME_WIDTH = 1280
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 NO_ONE = "No one was found in this clip. Record again with the person in frame."
+NO_ONE_TRACKED = "No one was found in this clip. Use a clip with someone in it."  # web/model/job-reason.js foundNobody keys on the first sentence
 REASON_UNREADABLE = "the video could not be read"
 NOTE_NO_TRACK = "Part 2 at this pin has no track command, a full multi-person run found the people"
 NOTE_NO_IDS = "Part 2 at this pin cannot limit 3D to chosen people, 3D ran for everyone and Part 3 --person chose"
@@ -222,10 +222,10 @@ def auto_id(people: list[dict[str, Any]]) -> str | None:
 
 # ----- images -----------------------------------------------------------------------------------
 def _ffmpeg_still(clip: Path, t: float, vf: str, dst: Path) -> bool:
-    res = subprocess.run(
+    res = ffsafe.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{max(t, 0.0):.3f}", "-i", str(clip), "-frames:v", "1",
          "-vf", vf, "-q:v", "3", str(dst)],
-        capture_output=True, text=True, timeout=60, check=False,
+        timeout=60, text=True,
     )
     return res.returncode == 0 and dst.is_file()
 
@@ -302,6 +302,8 @@ def _find_people(
     except RuntimeError:
         raise JobFailed("track", "the people finder is not available") from None
     steps.append(step)
+    if failcause.part2_found_nobody(step):  # about the clip, not the machine: the same clip would only spend the same again
+        raise JobFailed("track", NO_ONE_TRACKED, cause="no_person")
     if step["exit"] != 0 or not found.is_file():
         raise JobFailed("track", "the people finder timed out" if step.get("timed_out") else _finder_failure(ctx, step))
     tracks = ctx.work / "tracks.json"
@@ -327,8 +329,12 @@ def _has_participant(tracks: Path, meta: dict[str, Any], fps: int) -> bool:
 
 
 def _repeat_reason(tracks: Path, meta: dict[str, Any], fps: int) -> str | None:
-    """Why the low-rate result is not trusted: no participant, or a member that looks cut into brief pieces."""
+    """Why the low-rate result is not trusted: nobody in the take long enough, or a member that looks cut into brief
+    pieces. Someone present long enough who barely moves is no reason: the rate does not change how far a box moves
+    over the clip (job 4577688732c2: motion 0.064 at 3 fps, 0.075 at 10), so the same person would be paid for twice."""
     found = _selection(tracks, meta, fps)
+    if found and any(p["present_s"] >= min_present_s() for p in found.offered) and not found.participants:
+        return None
     if not found or not found.participants:
         return f"no participant at {fps} fps (present {min_present_s()} s and moving)"
     if found.split_suspect:
@@ -395,7 +401,7 @@ def _note_tracker(ctx: JobContext, tracks: Path) -> None:
         name = str((json.loads(tracks.read_text(encoding="utf-8")).get("provenance") or {}).get("tracker") or "")
     except (OSError, ValueError, AttributeError):
         return
-    if any(word in name for word in OPEN_TRACKERS):
+    if any(word in name for word in OPEN_TRACKERS) and not licence_gates.meta_barred():  # barred, it is the only one
         ctx.add_note(f"people were found with the fallback tracker {name}")
 
 

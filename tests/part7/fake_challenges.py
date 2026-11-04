@@ -73,6 +73,28 @@ def get(handler: Any, raw_path: str) -> None:
     return handler.send(200, _view(doc)) if doc else handler.send(404, {"error": "This challenge was not found."})
 
 
+def _card(doc: dict[str, Any], mine: list[str]) -> dict[str, Any]:
+    ranked = sorted(doc["entries"], key=lambda e: -e["score"])
+    ranks = [i + 1 for i, e in enumerate(ranked) if e.get("job_id") in mine]
+    return {"id": doc["id"], "title": doc["title"], "kind": doc["kind"], "visibility": doc.get("visibility", "public"),
+            "ends_at": doc.get("ends_at"), "ended": _ended(doc), "entries": len(ranked), "viewer_rank": min(ranks) if ranks else None,
+            "top": [{"name": e["name"], "score_label": f"{e['score']} points"} for e in ranked[:3]], "url": f"#/challenge/{doc['id']}"}
+
+
+def boards(handler: Any, raw_path: str) -> None:
+    """The three board lists (api/movements/<id>/boards, api/boards, api/me/boards): public boards only, as the real route."""
+    parts = urlsplit(raw_path)
+    segs = parts.path.lstrip("/").split("/")
+    mine = dict(parse_qsl(parts.query)).get("jobs", "").split(",")
+    docs = [d for d in STATE["challenges"].values() if d.get("visibility", "public") == "public"]
+    if segs[:2] == ["api", "movements"]:
+        docs = [d for d in docs if d["entry_id"] == segs[2]]
+    cards = [_card(d, mine) for d in docs]
+    if segs[:2] == ["api", "me"]:
+        cards = [c for c in cards if c["viewer_rank"]]
+    handler.send(200, {"boards": sorted(cards, key=lambda c: (c["ended"], c["id"]))})
+
+
 def post(handler: Any, raw_path: str, body: bytes) -> None:
     path = urlsplit(raw_path).path.lstrip("/")
     try:

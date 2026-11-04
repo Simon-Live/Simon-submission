@@ -28,6 +28,43 @@ if (c === "insights") {
     exp_to_fol: Array.from({ length: reps }, (_, k) => replay.exp_to_fol.map((f) => f + k * nF)).flat() };
 }
 // Part 5's 1.5.0 golden example: two faults with cues and joints, the insights that point at them
+// release 14: the insights take where the elbow fault was worded live by Muse Spark and the hands fault from fixed text
+if (c === "insights-live" || c === "insights-live-es" || c === "insights-live-tmplwhy") {
+  analysis = await fixture("analysis-insights.json");
+  analysis.faults = [
+    { measure: "elbow_flexion", side: "right", at_s: 5.8, cue: "Straighten your right arm more", text: "right elbow bent", joints: ["right_elbow"] },
+    { measure: "forearm_out", side: "both", at_s: 5.8, cue: "Move your hands out wider", text: "hands too close in", joints: ["left_wrist", "right_wrist"] },
+  ];
+  analysis.phrasing = { ...analysis.phrasing, backend: "muse-spark", faults: [
+    { backend: "muse-spark", model: "muse-spark-open", fallback_reason: null, text: "Your right elbow bends far more than the trainer's." },
+    { backend: "template", model: null, fallback_reason: null, text: "hands too close in" },
+  ] };
+}
+if (c === "insights-live" || c === "insights-live-es" || c === "insights-live-tmplwhy") {   // R14b: Part 5's retimed why, with its rep count, on the model-worded row
+  analysis.insights.forEach((x) => { if (x.cue === "Straighten your right arm more") x.why = "Your right elbow bends far more than the trainer's at 5.8 s (5 of 5 reps)"; });
+}
+if (c === "insights-live-tmplwhy") {   // R15: Part 5 had no live clause for the why, so it holds template words
+  analysis.insights.forEach((x) => { if (x.cue === "Straighten your right arm more") x.why = "Right elbow bent more than the example at 5.8 s"; });
+}
+if (c === "insights-live-es") {   // R14b: the lines are in Spanish: the list says so, the row shows Part 5's own words, no label on fixed text
+  analysis.phrasing.lang = "es";
+  analysis.phrasing.faults.forEach((f) => { f.lang = "es"; });
+}
+// R16: a real j7 take as Part 5 wrote it: every rep row holds its fault's live sentence verbatim
+if (c === "real" || c === "real-es" || c === "real-dance" || c === "real-mixed") {
+  analysis = await fixture("analysis-real-j7.json");
+  const same = (m, f) => f.measure === m.measure && f.side === m.side && f.cue === m.cue;
+  const tl = analysis.score.timeline;
+  if (c === "real-es") {   // a translated live line: phrasing.lang es, and Part 5 copies the translated sentence onto the rep row
+    analysis.phrasing.lang = "es";
+    analysis.phrasing.faults.forEach((f, i) => { f.lang = "es"; f.text = `Linea en espanol ${i + 1}, a los ${analysis.faults[i].at_s} s.`; });
+  }
+  if (c === "real-mixed") analysis.phrasing.faults[1] = { backend: "template", model: null, fallback_reason: "live phrasing timed out", text: analysis.faults[1].text_timed };
+  for (const w of tl) for (const m of w.misses) {
+    const i = analysis.faults.findIndex((f) => same(m, f));
+    if (i >= 0 && c !== "real") m.text = analysis.phrasing.faults[i].text;   // real: kept exactly as Part 5 wrote it
+  }
+}
 if (c === "insights-golden") analysis = await fixture("analysis-1.5.0.json");
 if (c === "refused" || c === "noreplay") {
   analysis.score = null; analysis.faults = [];
@@ -108,6 +145,6 @@ else if (c === "orphan" || c === "orphan-present") { // TICKET-331: a fake follo
   const data = await loadResultFor(JOB, null, loadResult);
   window.__r = await mountResult(root, { analysis: data.analysis, replay: data.replay, trainerVisibility: data.trainerVisibility, trainerVideoUrl: data.trainerVideoUrl, record: data.record, job: JOB, videoUrl: "../fixtures/coach.webm" });
 }
-else window.__r = await mountResult(root, { analysis, trainerVisibility, replay: c === "badreplay" ? { fps: 0 } : c === "noreplay" ? undefined : replay });
+else window.__r = await mountResult(root, { analysis, trainerVisibility, replay: c === "badreplay" ? { fps: 0 } : c === "noreplay" ? undefined : replay, record: c === "real-dance" ? { mode: "dance" } : undefined });
 window.__ready = true;
 </script>

@@ -18,6 +18,7 @@ import { angleHint } from "./heading-note.js";
 
 export const CAMERA_OFF = "Camera access is off. Allow it in the browser, or upload a video.";
 export const FRAMING_HINT = "Step back until your whole body fits, or at least everything that moves.";
+export const UPLOAD_LABEL = "Upload a video"; // the label and the file input's own name (a11y-copy B12)
 export const CAMERA_TEXT = {
   idle: "Open the camera to check that your whole body is in frame before you record.",
   asking: "Allow camera access in your browser's prompt.",
@@ -162,8 +163,10 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
 
   const start = h("button", { type: "button", class: "btn primary", "data-testid": "cam-start", text: "Record", onclick: () => startRecording() });
   const stop = h("button", { type: "button", class: "btn danger", "data-testid": "cam-stop", text: "Stop", hidden: true, onclick: () => stopRecording() });
-  const input = h("input", { type: "file", accept: "video/*", class: "file-input", id: "file-input", "data-testid": "upload", onchange: () => pick(input.files && input.files[0]) });
-  const upload = h("label", { class: "btn secondary", for: "file-input" }, "Upload a video");
+  // a11y-copy B12: the input keeps its own name, and leaves the tab order while its label is hidden (countdown, recording)
+  const input = h("input", { type: "file", accept: "video/*", class: "file-input", id: "file-input", "aria-label": UPLOAD_LABEL, "data-testid": "upload", onchange: () => pick(input.files && input.files[0]) });
+  const upload = h("label", { class: "btn secondary", for: "file-input" }, UPLOAD_LABEL);
+  const showUpload = (on) => { upload.hidden = !on; input.disabled = !on; };
   // a small record button on the preview itself, like a video player's play button (team, 3 Nov). It presses
   // Record or Stop below, so every rule about when a take can start stays in one place.
   const camRec = h("button", { type: "button", class: "cam-rec", "data-testid": "cam-rec", "aria-label": "Record",
@@ -362,7 +365,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     if (!file) return;
     if (file.size > limits.max_bytes) {
       setTake(null);
-      setError("The file is too large (95 MB at most).");
+      setError("The file is too large (85 MB at most).");
       return;
     }
     if (file.type && !file.type.startsWith("video/")) {
@@ -386,7 +389,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     }
     lockOptions(true);
     start.hidden = true;
-    upload.hidden = true;
+    showUpload(false);
     const wait = prefs.countdown;
     if (wait > 0) {
       stage.dataset.state = "counting";
@@ -413,7 +416,7 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     lockOptions(false);
     stage.dataset.state = stream ? "preview" : "idle";
     start.hidden = false;
-    upload.hidden = false;
+    showUpload(true);
     startQualitySampling();
   }
 
@@ -472,6 +475,8 @@ export function mountCapture(root, limits, { reference = null, countdownDefault 
     timer.textContent = `0:00 / ${mmss(limitS)}`;
     stage.dataset.state = "recording";
     stop.hidden = false;
+    const lost = document.activeElement == null || document.activeElement === document.body || document.activeElement === start;
+    if (lost && typeof stop.focus === "function") stop.focus({ preventScroll: true }); // a11y-copy B13: Record and Cancel are gone
     const paint = () => {
       const s = (Date.now() - startedAt) / 1000;
       const text = `${mmss(s)} / ${mmss(limitS)}`;

@@ -30,7 +30,7 @@ export function mountTakeAsk(slot, ctx) {
     const host = document.createElement("div");
     host.className = "sr-take-ask";
     slot.append(host);
-    const ui = renderTakeAsk(host, { t: m.TEXT, suggestions: info.body.suggestions || [], remaining: info.body.remaining, maxChars: m.QUESTION_MAX }, { ask, go });
+    const ui = renderTakeAsk(host, { t: m.TEXT, suggestions: info.body.suggestions || [], maxChars: m.QUESTION_MAX }, { ask, go });
     async function play(steps) {
       const shown = [];
       for (const step of steps) {

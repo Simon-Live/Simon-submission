@@ -6,11 +6,14 @@ operator's generated model had. No copyrighted asset is used."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import types
+from typing import Any
 
 import pytest
 
@@ -19,6 +22,8 @@ sys.path.insert(0, str(HERE / "fixtures" / "models"))
 
 import glbmaker  # noqa: E402
 from part7 import cli, config, model_import, model_reskin, model_store  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
 
 GOOD = glbmaker.humanoid(glbmaker.UE5)
 REPORT = {"changed": True, "bridging_triangles_cut": 7, "triangles": 100,
@@ -212,7 +217,7 @@ def test_a_timeout_or_a_command_that_cannot_start_is_never_marked(tmp_path):
     folder = stored(tmp_path)
     before = snapshot(folder)
     [row] = model_reskin.run_all(tmp_path, apply=True, run=runner(code=model_reskin.NOT_RUN, out=None, report=None))
-    assert row["result"] == "refused" and "timed out" in row["why"]
+    assert row["result"] == "refused" and "next run tries again" in row["why"] and "exit" not in row["why"]
     assert_unmarked(folder, before)
 
 
@@ -314,3 +319,58 @@ def test_real_part2_frees_a_hand_fused_to_the_thigh(tmp_path, monkeypatch):
     assert after["triangles"] < before["triangles"]
     manifest = json.loads((folder / "character.json").read_text())
     assert manifest["counts"]["triangles"] == after["triangles"] and manifest["generated"]["reskin"]["part2"]
+
+
+def test_on_modal_the_command_goes_through_the_take_route_and_the_file_comes_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SIMON7_COMPUTE", "serverless")
+    monkeypatch.setattr(model_reskin.modules, "load", lambda: types.SimpleNamespace(sha=lambda part: "c" * 40))
+    folder = tmp_path / "models" / "m1"
+    folder.mkdir(parents=True)
+    (folder / "model.glb").write_bytes(b"glTF")
+    seen: list[list[str]] = []
+
+    def fake(argv: list[str], **_: Any) -> Any:
+        seen.append(argv)
+        back = Path(argv[-1])
+        back.parent.mkdir(parents=True)
+        back.write_bytes(b"new")
+        return types.SimpleNamespace(returncode=0, stdout=b'noise\n{"stretch": 1}\nmodal: part2 exited 0\n', stderr=b"")
+
+    monkeypatch.setattr(model_reskin.subprocess, "run", fake)
+    code, report = model_reskin.part2_runner(folder / "model.glb", folder / model_reskin.NEW)
+    assert code == 0 and report == '{"stretch": 1}' and (folder / model_reskin.NEW).read_bytes() == b"new"
+    assert "--serverless" in seen[0] and "--secrets-dir" in seen[0] and seen[0][seen[0].index("--") + 1] == "reskin"
+    assert [p.name for p in folder.iterdir() if p.name.startswith("reskin-")] == [], "nothing left behind"
+
+
+@pytest.mark.parametrize(("code", "said", "marked"), [
+    (79, "modal: waiting for a free GPU\n", False), (80, "", False), (78, "", False),
+    (1, "modal: the result was not valid; nothing of it is kept\n", False), (1, "modal: part2 exited 1\n", False),
+    (3, "modal: part2 exited 3\n", True),
+])
+def test_on_modal_only_part2_own_refusal_is_marked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int, said: str, marked: bool) -> None:
+    """A busy GPU, a stop or a failed call says nothing about the model: not marked, so the next run tries it again."""
+    monkeypatch.setenv("SIMON7_COMPUTE", "serverless")
+    monkeypatch.setattr(model_reskin.modules, "load", lambda: types.SimpleNamespace(sha=lambda part: "c" * 40))
+    monkeypatch.setattr(model_reskin.subprocess, "run",
+                        lambda argv, **_: types.SimpleNamespace(returncode=code, stdout=said.encode(), stderr=b""))
+    folder = stored(tmp_path)
+    before = snapshot(folder)
+    [row] = model_reskin.run_all(tmp_path, apply=True, run=model_reskin.part2_runner)
+    assert row["result"] == "refused"
+    if marked:
+        assert row["why"] == f"Part 2 refused this model (exit {code})."
+        assert json.loads((folder / "character.json").read_text())["generated"]["reskin"]["why"] == row["why"]
+    else:
+        assert row["why"] == "Simon could not run the reskin this time. The next run tries again."
+        assert_unmarked(folder, before)
+        assert model_reskin.candidates(tmp_path), "it stays due"
+
+
+def test_the_client_brings_the_reskin_file_back() -> None:
+    spec = importlib.util.spec_from_file_location("p2_client_reskin", ROOT / "deploy/serverless/p2_client.py")
+    client = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(client)
+    argv, files, out = client._store_files(["reskin", "/m/model.glb", "/m/t/out/model.new.glb"])
+    assert argv == ["reskin", "{in}/model.glb", "{out}/model.new.glb"] and files == {"model.glb": Path("/m/model.glb")}
+    assert out == Path("/m/t/out")
