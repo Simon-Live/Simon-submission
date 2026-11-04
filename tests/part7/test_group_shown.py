@@ -50,9 +50,9 @@ def test_every_person_of_an_old_group_job_carries_shown_at_read_time(api: Api) -
     people = doc["result"]["people"]
     assert [p["id"] for p in people] == ["1", "4", "0", "2"]   # the stored order is kept
     for p in people:
-        assert p["shown"]["capped"] is True and p["shown"]["warning"] == ["low_match"], p
-        assert (p["shown"]["letter"], p["shown"]["unit"]) == ("F", "score")   # the cap wins over the credit
-    assert people[0]["shown"]["figures"] == "59"
+        assert p["shown"]["capped"] is False and p["shown"]["warning"] == ["low_match"], p   # nothing capped (team, 2 Nov)
+        assert p["shown"]["unit"] == "points" and p["shown"]["letter"] in "SABCDEF"   # nothing capped: the credit, not the capped score
+    assert people[0]["shown"]["figures"] == "9,000"   # the person's credit points, not the capped 59
 
 
 def test_an_uncapped_person_reads_its_credit_and_a_person_without_an_analysis_has_none(api: Api) -> None:

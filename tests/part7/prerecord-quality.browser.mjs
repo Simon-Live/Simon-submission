@@ -32,8 +32,11 @@ try {
 
   await page.evaluate(() => { window.__scene = "dark"; });
   await page.getByTestId("prerecord-tip-dark").waitFor();
-  await page.getByTestId("cam-start").click();
+  const overlay = page.getByTestId("cam-rec");
+  assert.ok(await overlay.isVisible() && await overlay.getAttribute("aria-label") === "Record" && await overlay.isEnabled());
+  await overlay.click(); // the record button on the preview presses Record below
   await page.getByTestId("cam-stop").waitFor();
+  assert.equal(await overlay.getAttribute("aria-label"), "Stop");
   assert.ok(await tips.isHidden());
   const samples = await page.evaluate(() => window.__samples);
   await page.waitForTimeout(1200);
@@ -45,8 +48,9 @@ try {
   assert.equal(qualityLogs[0].detail.threshold_sample_ms, 500);
   console.log("ok - recording stops sampling and logs one numeric-only reading summary with thresholds");
 
-  await page.getByTestId("cam-stop").click();
+  await overlay.click(); // and the same button stops
   await page.getByTestId("take-preview").waitFor();
+  assert.ok(await overlay.isHidden(), "no record button on a take");
   assert.ok(await tips.isHidden());
   await page.evaluate(() => window.capture.reset());
   await page.getByTestId("prerecord-tip-dark").waitFor();

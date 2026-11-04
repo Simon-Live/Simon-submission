@@ -23,7 +23,7 @@ function dialog({ kind, itemRef, canClip }, onClose, model) {
   const box = h("section", { class: "sh-dialog", "data-testid": "share-dialog", "aria-label": TEXT.title });
 
   const body = () => createBody({ kind, itemRef, showName: name.checked, showClip: clip.checked, days, includeScore: withScore.checked, includeFaults: withFaults.checked,
-    scoreDisplay: model.scoreDisplay ? model.scoreDisplay() : null });   // the owner's points or % choice (share.md "Score and cap")
+    scoreDisplay: model.scoreDisplay ? model.scoreDisplay() : null });   // the share always carries the points display, with the owner's level (share.md "Score and cap")
   const previewTitle = h("h3", { text: TEXT.preview });
   let seq = 0;
 

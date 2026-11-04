@@ -180,6 +180,9 @@ def _claim(h: Any) -> None:
     kind = _kind_of(job)
     if job is None or kind is None:
         return _fail(h, 404, MSG_NO_JOB)
+    from part7 import delete_routes  # here: delete_routes imports route modules that import this one
+    if job_id in delete_routes.featured(h.app):  # TICKET-373: a featured id is public, so it proves no claim
+        return _fail(h, 403, delete_routes.MSG_NO_CLAIM)
     store = auth.identity(h.app)
     if not store.attach(job_id, user_id, kind, job.get("entry_id"), job.get("people_job"), "claim"):
         return _fail(h, 409, MSG_OTHER)

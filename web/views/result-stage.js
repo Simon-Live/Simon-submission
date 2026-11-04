@@ -119,6 +119,31 @@ export function drawBreakdownBar(root, text) {
   return { el, body, setOpen, on(_name, fn) { onToggle = fn; } };
 }
 
+/** The collapsed "More" disclosure under the action row; the body holds the rest of the result. Returns {el, body, setOpen, on}. */
+export function drawMoreBar(root, text) {
+  const body = h("div", { class: "st-more-body", id: "st-more-body", "data-testid": "result-more-body" });
+  const toggle = h("button", { type: "button", class: "st-bd-toggle st-more-toggle", "data-testid": "result-more-toggle", "aria-expanded": "false", "aria-controls": "st-more-body" },
+    h("span", { class: "st-bd-title", text: text.more }), h("span", { class: "st-chev", "aria-hidden": "true" }));
+  const el = h("section", { class: "st-bd st-more", "data-testid": "result-more", "data-open": "false", "aria-label": text.more }, toggle, body);
+  root.append(el);
+  let onToggle = () => {};
+  const setOpen = (open) => {
+    toggle.setAttribute("aria-expanded", String(open));
+    el.setAttribute("data-open", String(open));
+    body.hidden = !open;
+  };
+  toggle.addEventListener("click", () => onToggle(toggle.getAttribute("aria-expanded") !== "true"));
+  setOpen(false);
+  return { el, body, setOpen, on(_name, fn) { onToggle = fn; } };
+}
+
+/** "Show all (N)" under the top cues of "What to work on": reports a tap; `set(open)` relabels it. */
+export function drawShowAll(text, count, onToggle) {
+  const btn = h("button", { type: "button", class: "sr-btn sr-insights-all", "data-testid": "insights-all", "aria-expanded": "false", text: text.showAll(count) });
+  btn.addEventListener("click", () => onToggle(btn.getAttribute("aria-expanded") !== "true"));
+  return { el: btn, set(open) { btn.setAttribute("aria-expanded", String(open)); btn.textContent = open ? text.showFewer : text.showAll(count); } };
+}
+
 /** The action row: the caller's Retry first (moved into `lead`), then Share and Challenge a friend, then `extra`. */
 export function drawActionRow(root, text) {
   const lead = h("div", { class: "st-act-lead" });

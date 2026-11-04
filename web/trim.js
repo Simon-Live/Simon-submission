@@ -4,6 +4,7 @@
 // An uploaded clip also offers "This video is mirrored" (TICKET-310); checked, the range carries `mirrored: true`.
 import { h } from "./ui.js";
 import { showLoading, hideLoading } from "./progress.js";
+import { releaseSharedMediaUrl } from "./media-url.js";
 
 export const MIN_MS = 1000;
 export const MAX_MS = 60000;
@@ -99,9 +100,10 @@ function seekTo(video, sec) {
 }
 
 /** Draw 8 to 12 frames across the canvas; resolves the frame count, or 0 when frames cannot be drawn. */
-async function drawStrip(canvas, url, durationMs, isDone = () => false) {
+async function drawStrip(canvas, url, durationMs, isDone = () => false, onProbe = () => {}) {
   const n = clamp(Math.round(durationMs / 3000), 8, 12);
   const ghost = h("video", { playsinline: true, preload: "auto", src: url });
+  onProbe(ghost); // the editor detaches this probe too before it revokes the shared URL
   ghost.muted = true;
   try {
     await new Promise((res, rej) => {
@@ -182,14 +184,12 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
       h("div", { class: "row between trim-actions" }, back, next));
 
     let finished = false;
+    let probe = null;
     const finish = (value) => {
       if (finished) return;
       finished = true;
       cancelAnimationFrame(state.raf);
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-      URL.revokeObjectURL(url);
+      releaseSharedMediaUrl([video, probe], url); // recorder.md "Object URL lifetime": the strip probe may still be seeking
       if (reference) reference.undock();
       section.remove();
       resolve(value);
@@ -319,7 +319,7 @@ export function openTrimEditor(root, { file, blob, source = "recording", countdo
       paintHead();
       hStart.focus({ preventScroll: true });
       showLoading(track, "Preparing preview", { compact: true });
-      const frames = await drawStrip(canvas, url, dur, () => finished);
+      const frames = await drawStrip(canvas, url, dur, () => finished, (el) => { probe = el; });
       hideLoading(track);
       if (finished) return;
       section.dataset.thumbs = String(frames);

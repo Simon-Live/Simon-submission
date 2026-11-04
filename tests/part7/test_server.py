@@ -196,6 +196,25 @@ def test_follow_job_serves_analysis_and_validated_replay(api: Api, tiny_mp4: Pat
     assert status == 200 and json.loads(body)["format"] == "simon.replay.v1"
 
 
+@pytest.mark.parts("5")
+def test_served_replay_carries_the_followers_unseen_joints_from_part2(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(chain, "follower", _fake_follower())  # TICKET-376
+    job = api.json("POST", "api/follow", {"upload_id": _upload(api, tiny_mp4), "entry_id": "lateral-raise"})[1]["job"]
+    api.app.queue.wait(job, 60)
+    follower = api.app.queue.job_dir(job) / "work" / "follower"
+    doc = json.loads((follower / "replay.json").read_text())
+    names, times = doc["joints"], doc["follower_t"]
+    (follower / "part2").mkdir()
+    pose = {"frames": [{"frame": i, "t_ms": t * 1000.0, "people": [{"id": 0, "joints": {
+        n: {"x": 0.0, "y": 0.0, "z": 0.0, "conf": 0.3 if n.endswith("_ankle") else 1.0} for n in names}}]}
+        for i, t in enumerate(times)]}
+    (follower / "part2" / "pose3d.json").write_text(json.dumps(pose))
+    status, _, body = api.request("GET", f"api/results/{job}/replay.json")
+    served = json.loads(body)
+    ankles = sorted(i for i, n in enumerate(names) if n.endswith("_ankle"))
+    assert status == 200 and served["follower_unseen"] == [ankles] * len(times)
+
+
 def test_replay_that_fails_its_contract_is_422(api: Api, tiny_mp4: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(chain, "follower", _fake_follower())
     job = api.json("POST", "api/follow", {"upload_id": _upload(api, tiny_mp4), "entry_id": "lateral-raise"})[1]["job"]

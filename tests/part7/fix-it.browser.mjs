@@ -26,6 +26,7 @@ const log = [];
 
 async function open(kase, viewport, { video = false, reducedMotion = "reduce" } = {}) {
   const context = await browser.newContext({ viewport, reducedMotion, ...(video ? { recordVideo: { dir: path.join(SHOTS, "video"), size: viewport } } : {}) });
+  await context.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });   // "Fix it for me" sits in "More"
   const page = await context.newPage();
   const bad = [];
   page.on("pageerror", (e) => bad.push(`pageerror ${e.message}`));
@@ -74,7 +75,7 @@ try {
     const { page, bad, context } = await open("ok", { width: vp.width, height: vp.height }, { video: false });
     await root(page).waitFor();
     assert.equal(await page.getByTestId("fix-it-button").textContent(), "Fix it for me");
-    const scoreBefore = await page.getByTestId("score-detail").textContent();
+    const scoreBefore = await page.getByTestId("score").textContent();
     await page.getByTestId("fix-it-button").scrollIntoViewIfNeeded();
     await page.screenshot({ path: path.join(SHOTS, `${vp.name}-0-button.png`) });
     const options = await page.getByTestId("fix-it-pick").locator("option").evaluateAll((os) => os.map((o) => o.textContent));
@@ -170,7 +171,7 @@ try {
     ok(`${vp.name}: split shows you and you, corrected; they differ only inside the window`);
 
     // the score and the claim: nothing the panel does moves the score or says the student did it
-    assert.equal(await page.getByTestId("score-detail").textContent(), scoreBefore);
+    assert.equal(await page.getByTestId("score").textContent(), scoreBefore);
     const panelText = await root(page).innerText();
     assert.ok(!/[\u2013\u2014]/.test(panelText), "no em or en dash on the panel");
     assert.ok(!/you (did|moved|improved|fixed)|new score|score (rose|went up|improved)/i.test(panelText), `no claim in: ${panelText}`);

@@ -34,6 +34,11 @@ export function dimsAt(t, models, hidden = new Set(), ids = models.map((_, i) =>
   return dims;
 }
 
+/** Pure: per figure of `posesAt`, the joint indices the stick figure does not draw (TICKET-376). */
+export function hidesAt(t, models, hidden = new Set(), ids = models.map((_, i) => i)) {
+  return [[], ...models.map((m, i) => (hidden.has(ids[i]) ? [] : m.followerHide[pickFrames(t, m).follower]))];
+}
+
 /**
  * Mount the Watch all view. `people` is [{id, label, replay}] (raw replay.json each).
  * People whose replay cannot be read are skipped and named in a note.
@@ -119,7 +124,7 @@ export async function mountMultiCompare(root, people) {
   wrap.append(el("div", { class: "sr-bar" }, playBtn, scrub, clockEl), toggles, toolsHost);
   if (skipped.length) note(`${skipped.length} take${skipped.length === 1 ? " has" : "s have"} no 3D replay and ${skipped.length === 1 ? "is" : "are"} left out.`);
 
-  const draw = () => stage.setPoses(posesAt(clock.t, models, hidden, ids), dimsAt(clock.t, models, hidden, ids));
+  const draw = () => stage.setPoses(posesAt(clock.t, models, hidden, ids), dimsAt(clock.t, models, hidden, ids), hidesAt(clock.t, models, hidden, ids));
   const clock = createClock(duration, (t, playing) => {
     clockEl.textContent = `${t.toFixed(1)} s`;
     clockEl.setAttribute("data-t", String(t));

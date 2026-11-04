@@ -16,7 +16,7 @@ async function fetchDoc(entryId) {
 }
 
 const faultRows = (container) =>
-  [...container.querySelectorAll("[data-at-s]")].filter((r) => /^fault-\d+$/.test(r.getAttribute("data-testid") || ""));
+  [...container.querySelectorAll("[data-at-s]")].filter((r) => /^(fault|insight)-\d+$/.test(r.getAttribute("data-testid") || ""));
 
 /**
  * Add the teacher's words under each fault row of `container`.

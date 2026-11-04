@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { popsOf, shortCue, missWords, createPopScheduler, NEAR_S, LIFE_MS, LANES, QUEUE_S } from "../../web/model/score-pops.js";
+import { popsOf, popWord, shortCue, missWords, createPopScheduler, NEAR_S, LIFE_MS, LANES, QUEUE_S } from "../../web/model/score-pops.js";
 
 const load = (f) => JSON.parse(fs.readFileSync(new URL(`../../fixtures/input/${f}`, import.meta.url)));
 const plain = load("analysis-timeline.json");
@@ -38,7 +38,7 @@ test("popsOf without credit: the window's own value; misses read '−points  par
   const misses = pops.filter((p) => p.kind === "miss");
   assert.equal(misses.length, 11, "each names its own part at its moment");
   const first = misses[0];
-  assert.deepEqual([first.at, first.text], [4.6, "Left arm too far right"], "Part 5's words, without the time");
+  assert.deepEqual([first.at, first.text, first.label], [4.6, "Left arm", "Left arm too far right"], "the part in the pop, Part 5's words as its label");
   assert.doesNotMatch(misses.map((p) => `${p.text} ${p.label}`).join(" "), /\d|points|lost/i, "words only: no points anywhere");
 });
 
@@ -47,10 +47,10 @@ test("popsOf: one pop per moment and body part, the larger points; faults stand 
   const a = { score: { timeline: [{ t_s: [0, 5], value: 80, misses: [miss] }, { t_s: [5, 9], value: 70, misses: [{ ...miss }] }] } };
   assert.equal(popsOf(a).filter((p) => p.kind === "miss").length, 1);
   const two = { score: { timeline: [{ t_s: [0, 5], value: 80, misses: [{ ...miss, points: 13 }, { ...miss, points: 18.6, cue: "Keep your knee out" }, { at_s: 3.7, points: 9, cue: "Keep your chest up" }] }] } };
-  assert.deepEqual(popsOf(two).filter((p) => p.kind === "miss").map((p) => p.text), ["Right knee bent", "Keep your chest up"], "one per part; a miss without its own line says its cue");
+  assert.deepEqual(popsOf(two).filter((p) => p.kind === "miss").map((p) => p.text), ["Right knee", "Chest"], "one per part; a miss without its own line names its cue's part");
   const b = { score: { timeline: [{ t_s: [0, 5], value: 80, misses: [] }] }, faults: [{ at_s: 2.5, cue: "Keep your chest up" }, { text: "no time" }] };
   const f = popsOf(b).filter((p) => p.kind === "miss");
-  assert.deepEqual(f.map((p) => [p.at, p.text]), [[2.5, "Keep your chest up"]], "a fault without points says its cue; one without a time none");
+  assert.deepEqual(f.map((p) => [p.at, p.text, p.label]), [[2.5, "Chest", "Keep your chest up"]], "a fault without points names its cue's part; one without a time none");
   assert.deepEqual(popsOf(null), []);
   assert.deepEqual(popsOf({ score: { timeline: [{ t_s: [0, 1] }] } }), [], "negative: no value and no credit, nothing to pop");
 });
@@ -122,4 +122,17 @@ test("missWords: Part 5's line without its time or count, capitalised; else the 
   assert.equal(missWords(null, "Keep your chest up"), "Keep your chest up");
   assert.equal(missWords("", "  "), "", "negative: nothing usable");
   assert.equal(missWords(7, undefined), "", "negative: not text");
+});
+
+test("popWord: one or two words, the part with its side when the line puts one before it", () => {
+  assert.equal(popWord(null, "left arm too far right at 4.6 s"), "Left arm", "the side before the part, not the direction after");
+  assert.equal(popWord("Straighten your right knee more", "right knee bent"), "Right knee");
+  assert.equal(popWord("Keep your elbows closer in"), "Elbows");
+  assert.equal(popWord(null, "left upper arm out"), "Left upper arm", "the longer part wins");
+  assert.equal(popWord("Slow down at 2.0 s"), "Slow down", "no body part: shortCue's words");
+  assert.equal(popWord("", null), "");
+  assert.equal(popWord(undefined, 7), "", "negative: not text");
+  for (const t of ["left arm much too low at 3.2 s", "Hands too close in at 11.0 s (2 times)", "leaning forward more than the example"]) {
+    assert.ok(popWord(null, t).split(" ").length <= 3, `short: ${t}`);
+  }
 });

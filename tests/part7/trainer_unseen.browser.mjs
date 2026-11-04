@@ -18,6 +18,7 @@ const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 
 async function open(kase) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, reducedMotion: "reduce" });
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });   // the lean result keeps the worst moment card in "More"
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
   await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/result.html?case=${kase}`);

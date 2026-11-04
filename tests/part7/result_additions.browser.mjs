@@ -54,10 +54,10 @@ const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 async function open(kase, { mesh = "both", stubs = true, models = MODELS, reduced = false, analysis = "", pid = "" } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true, reducedMotion: reduced ? "reduce" : "no-preference" });
   // the stage's "Rep breakdown" (score over time, form per rep) opens for these checks, as a viewer who left it open
-  await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); } catch { /* blocked */ } });
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });
   const page = await ctx.newPage();
   // the 404s a case asks for: missing modules (no stubs), broken mesh files, a missing models.json
-  const expected = (url) => (!stubs && isLaneModule404(url)) || isPickerRequest404(url) || (/\/(take-ar\.json|muse-fix)$/.test(url) && isOptionalResult404(url)) || (mesh === "broken" && /\/mesh\/(you|trainer)\/mesh3d/.test(url))
+  const expected = (url) => /\/api\/source\/take\//.test(url) /* the credit in the open More has no server in the harness */ || (!stubs && isLaneModule404(url)) || isPickerRequest404(url) || (/\/(take-ar\.json|muse-fix)$/.test(url) && isOptionalResult404(url)) || (mesh === "broken" && /\/mesh\/(you|trainer)\/mesh3d/.test(url))
     || (!models && url.endsWith("/models.json"));
   page.on("console", (m) => { if (m.type() === "error" && !expected(m.location().url)) errors.push(`${kase}: ${m.text()} ${m.location().url}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
@@ -121,17 +121,10 @@ try {
   assert.equal(await tid(page, "summary-score").locator(".rs-meter-value").textContent(), "77");
   assert.equal(await tid(page, "summary-grade").textContent(), "C");
 
-  // ---- result-intent.md AC-I2 how the score adds up --------------------------------------------------------------
-  const sum = tid(page, "score-sum");
-  const sumText = (await sum.textContent()).replace(/\u00a0/g, " ");
-  assert.equal(sumText, "Each rep started at 100 and lost, on average, 19.4 points for misses and 3.7 for overall match: "
-    + "100 − 19.4 − 3.7 ≈ 77. The points next to each miss count only in its own rep, so together they add up to more.");
-  for (const f of sumText.match(/\d+(?:\.\d+)?/g)) assert.ok(Number(f) <= 100, `negative: ${f} is off the 0 to 100 scale`);
-  assert.equal(await sum.getAttribute("data-adds"), "true");
-  assert.equal(await sum.evaluate((n) => n.nextElementSibling.matches(".rs-stats")), true, "just before the stats");
-  assert.ok((await sum.evaluate((n) => n.getBoundingClientRect().height)) > 0, "shown in the summary (below the client's stage, ui-for-r20)");
-  ok("AC-I2 how your score adds up: 100 minus Part 5's components lands on 77, on the first screen");
-  ok("AC-I2 every figure in the score line is on the 0 to 100 scale (rubric audit)");
+  // ---- the lean result (team, 2026-11-02): no "how your score adds up" line and no stats tiles -----------------
+  assert.equal(await page.getByTestId("score-sum").count(), 0, "negative: no score-sum line");
+  assert.equal(await page.locator(".rs-stats").count(), 0, "negative: no stats tiles");
+  ok("lean result: the score bar alone says the score (no sum line, no stats tiles)");
 
   // ---- result-intent.md AC-I4 the reveal's last beat: the trainer and you slide together, once seen --------------
   const cmp = tid(page, "compare");
@@ -223,35 +216,14 @@ try {
   await page.waitForFunction(() => Math.abs(Number(document.querySelector('[data-testid="coach-clock"]').dataset.t) - 9.1) < 0.15, null, { timeout: 5000 });
   ok("AC-R6 voice, second-opinion, export and narration mount with the documented context");
 
-  // the voice slot sits inside the fault card, after the row and its chips; never inside the button
+  // the lean result draws no fault list ("What to work on" holds the cues): the voice slots wait, hidden, in one box,
+  // so the stage's voice switch still speaks each line at its moment; never inside a button
   const placement = await page.locator('[data-testid="voice-slot"]').evaluateAll((ns) => ns.map((n) => ({
-    card: n.parentElement.matches("li.sr-fault-item"), afterRow: !!(n.previousElementSibling && n.previousElementSibling.matches("button.sr-fault")),
-    inButton: !!n.closest("button"), inside: (() => { const c = n.parentElement.getBoundingClientRect(), s = n.getBoundingClientRect(); return s.top >= c.top && s.bottom <= c.bottom + 0.5; })(),
-  })));
-  assert.deepEqual(placement, [0, 1].map(() => ({ card: true, afterRow: true, inButton: false, inside: true })));
-  // "Low confidence" passes WCAG AA, checked by axe on the fault list
-  await page.evaluate(fs.readFileSync(req.resolve("axe-core/axe.min.js"), "utf8"));
-  const contrast = await page.evaluate(() => axe.run(document.querySelector('[data-testid="fault-list"]'), { runOnly: ["color-contrast"] }));
-  assert.deepEqual(contrast.violations.flatMap((v) => v.nodes.map((n) => n.target.join(" "))), []);
-  // the chip's colour is the theme's "bad" token (theme/results.css .sr-low), read from the theme, not a literal: the client
-  // theme maps it to its pink (TICKET-241 AC-1). A probe element resolves the token chain to a computed colour.
-  const badToken = await page.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.color = "var(--color-bad)";
-    document.body.append(probe);
-    const c = getComputedStyle(probe).color;
-    probe.remove();
-    return c;
-  });
-  assert.notEqual(badToken, "rgb(0, 0, 0)", "the token resolved");
-  assert.equal(await tid(page, "fault-1-low").evaluate((n) => getComputedStyle(n).color), badToken);
-  // a scroll to a card stops below the sticky header
-  assert.equal(await page.locator(".sr-fault-item").first().evaluate((n) => getComputedStyle(n).scrollMarginTop),
-    await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim()));
-  await page.locator('[data-testid="fault-list"]').evaluate((n) => n.closest("section").scrollIntoView({ block: "start" }));
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: path.join(SHOTS, "additions-fault-list.png") });
-  ok("AC-R6 the voice slot sits inside its fault card; Low confidence passes AA; scrolls stop below the header");
+    box: n.parentElement.matches('[data-testid="voice-lines"]'), hidden: !!n.closest("[hidden]"), inButton: !!n.closest("button") })));
+  assert.deepEqual(placement, [0, 1].map(() => ({ box: true, hidden: true, inButton: false })));
+  assert.equal(await page.getByTestId("fault-list").count(), 0, "negative: no fault list");
+  ok("AC-R6 the voice slots wait hidden for the stage's voice switch; no fault list");
+
 
   // ---- R2 the skeleton over the video -------------------------------------------------------------------------
   await tid(page, "stage-view-annotated").click();   // the skeleton is the stage's Annotated view (the 3D pick above is saved)
@@ -275,7 +247,7 @@ try {
   // ---- R5 a tapped row keeps the video and the 3D view in sight -----------------------------------------------
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(200);
-  const fault = tid(page, "fault-1");
+  const fault = tid(page, "insight-2");   // a "What to work on" row (5.8 s), under the stage
   await fault.scrollIntoViewIfNeeded();
   // the client's stage (ui-for-r20) shows one view at a time: the tap brings the stage's top into sight on the view that moves
   const stageTop = () => tid(page, "stage").evaluate((n) => { const r = n.getBoundingClientRect(); return r.top >= -1 && r.top < innerHeight / 2; });
@@ -286,7 +258,7 @@ try {
   assert.ok(["annotated", "3d"].includes(await tid(page, "stage").getAttribute("data-view")), "on a view that moves (video with the skeleton, or 3D)");
   const clock = Number(await tid(page, "coach-clock").getAttribute("data-t"));
   const cmpClock = Number(await tid(page, "clock").getAttribute("data-t"));
-  assert.ok(Math.abs(clock - 9.1) < 0.2 && Math.abs(cmpClock - 9.1) < 0.2, `seeked to ${clock} and ${cmpClock}`);
+  assert.ok(Math.abs(clock - 5.8) < 0.2 && Math.abs(cmpClock - 5.8) < 0.2, `seeked to ${clock} and ${cmpClock}`);
   await page.screenshot({ path: path.join(SHOTS, "additions-after-tap.png") });
   ok("AC-R5 tapping a coaching line brings the stage into sight on a view that moves; the video and the 3D view are both at the line's time");
 
@@ -365,19 +337,12 @@ try {
   await grpGone.context().close();
   ok("group-results R2: a group person's result shows the card from its own models.json; a 404 shows none");
 
-  // ---- TICKET-120 the fault cap (synthetic simon.score.v3 fixtures) ---------------------------------------------
+  // ---- TICKET-120 the fault cap (synthetic simon.score.v3 fixtures): the sum line that explained it is not drawn on
+  // the lean result; the score bar shows the score as given
   const two = await open("ok", { analysis: "synthetic-v3-two-fault" });
-  const twoText = (await tid(two, "score-sum").textContent()).replace(/ /g, " ");
-  assert.equal((twoText.match(/Capped at/g) || []).length, 1, "the fault cap is explained exactly once");
-  assert.match(twoText, /Capped at 79 \(C\) because the take shows two or more faults\. Without the cap: 82 \(B\)\./);
-  assert.equal(await tid(two, "score-sum").getAttribute("data-capped"), "true");
-  assert.equal((await two.locator("body").innerText()).match(/Capped at/g).length, 1, "and nowhere else on the page");
+  assert.equal(await two.getByTestId("score-sum").count(), 0, "negative: no sum line");
   await two.context().close();
-  const v1 = await open("ok");
-  assert.doesNotMatch(await v1.locator("body").innerText(), /Capped at|Without the cap/, "negative: a v1 result shows no fault cap");
-  assert.equal(await tid(v1, "score-sum").getAttribute("data-capped"), "false");
-  await v1.context().close();
-  ok("TICKET-120 the two-fault v3 result says it was capped at 79 (C), once, with the uncapped grade B; v1 says nothing");
+  ok("TICKET-120 the two-fault v3 result draws no sum line on the lean result");
 
   assert.deepEqual(errors, [], errors.join("\n"));
   ok("no console errors");

@@ -379,7 +379,7 @@
    }
   },
   {
-   "name": "credit, warning capped: the cap wins",
+   "name": "credit, warning capped: nothing capped, the credit shows with its warning (team, 2 Nov)",
    "analysis": {
     "score": {
      "version": "simon.score.v3",
@@ -473,21 +473,21 @@
     ]
    },
    "expect": {
-    "letter": "F",
-    "figures": "37",
-    "caption": "score out of 100",
-    "unit": "score",
+    "letter": "C",
+    "figures": "16,239",
+    "caption": "of 22,367",
+    "unit": "points",
+    "measure": 72.6,
     "value": 37,
-    "capped": true,
+    "capped": false,
     "warning": [
      "low_match"
     ],
-    "tone": "bad",
-    "measure": 37
+    "tone": "warn"
    }
   },
   {
-   "name": "credit, Part 5 quality major caps 75 to 59",
+   "name": "credit, Part 5 quality major: the credit shows, the warning stays",
    "analysis": {
     "score": {
      "version": "simon.score.v3",
@@ -573,21 +573,21 @@
     }
    },
    "expect": {
-    "letter": "F",
-    "figures": "59",
-    "caption": "score out of 100",
-    "unit": "score",
+    "letter": "C",
+    "figures": "16,239",
+    "caption": "of 22,367",
+    "unit": "points",
+    "measure": 72.6,
     "value": 59,
-    "capped": true,
+    "capped": false,
     "warning": [
      "quality_major"
     ],
-    "tone": "bad",
-    "measure": 59
+    "tone": "warn"
    }
   },
   {
-   "name": "credit, a dark video caps 75 to 59",
+   "name": "credit, a dark video: the credit shows, the warning stays",
    "analysis": {
     "score": {
      "version": "simon.score.v3",
@@ -671,17 +671,17 @@
     "level": "major"
    },
    "expect": {
-    "letter": "F",
-    "figures": "59",
-    "caption": "score out of 100",
-    "unit": "score",
+    "letter": "C",
+    "figures": "16,239",
+    "caption": "of 22,367",
+    "unit": "points",
+    "measure": 72.6,
     "value": 59,
-    "capped": true,
+    "capped": false,
     "warning": [
      "quality_light_dark"
     ],
-    "tone": "bad",
-    "measure": 59
+    "tone": "warn"
    }
   },
   {
@@ -1021,6 +1021,105 @@
     }
    },
    "expect": null
+  },
+  {
+   "name": "credit, warned: take b5acba462f16 (credit 2,900 of 3,500 is B, quality major) shows B and 2,900 with the warning",
+   "analysis": {
+    "score": {
+     "version": "simon.score.v3",
+     "value": 99,
+     "grade": "A",
+     "basis": "windows",
+     "credit": {
+      "version": "simon.credit.v1",
+      "percent": 82.9,
+      "grade": "B",
+      "points": 2900,
+      "max_points": 3500,
+      "tolerance": "normal",
+      "levels": {
+       "easy": {
+        "percent": 89.9,
+        "points": 2360,
+        "max_points": 2625
+       },
+       "normal": {
+        "percent": 82.9,
+        "points": 2900,
+        "max_points": 3500
+       },
+       "hard": {
+        "percent": 73.6,
+        "points": 3864,
+        "max_points": 5250
+       }
+      },
+      "bands": [
+       [
+        0.5,
+        1.0
+       ],
+       [
+        1.0,
+        0.6
+       ],
+       [
+        2.0,
+        0.2
+       ]
+      ],
+      "grades": [
+       [
+        95,
+        "S"
+       ],
+       [
+        85,
+        "A"
+       ],
+       [
+        75,
+        "B"
+       ],
+       [
+        65,
+        "C"
+       ],
+       [
+        55,
+        "D"
+       ],
+       [
+        45,
+        "E"
+       ],
+       [
+        30,
+        "F"
+       ]
+      ],
+      "points_per_measure_second": 100
+     }
+    },
+    "quality": {
+     "level": "major",
+     "score_cap": 59,
+     "reasons": []
+    }
+   },
+   "expect": {
+    "letter": "B",
+    "figures": "2,900",
+    "caption": "of 3,500",
+    "unit": "points",
+    "value": 59,
+    "capped": false,
+    "warning": [
+     "quality_major"
+    ],
+    "tone": "good",
+    "measure": 82.9
+   }
   }
  ]
 }

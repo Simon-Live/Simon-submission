@@ -25,7 +25,11 @@ for (let i = 0; i < 50; i++) {
 }
 
 const browser = await chromium.launch();
-const newCtx = () => browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true });
+const newCtx = async () => {
+  const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true });
+  await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });   // the lean result keeps "Keep this take" in "More"
+  return ctx;
+};
 const errors = [];
 let passed = 0;
 const ok = (name) => { passed++; console.log(`ok - ${name}`); };
@@ -71,7 +75,8 @@ const cases = {
     await page.evaluate(() => { location.hash = "#/record"; });
     await page.waitForTimeout(500);
     assert.doesNotMatch(await text(page), words, "negative: the record path shows no sign-in prompt");
-    assert.equal(await page.locator('#app [data-testid^="auth-"], [data-testid^="me-"], [data-testid^="keep-"]').count(), 0);
+    const found = await page.locator('#app [data-testid^="auth-"], #app [data-testid^="me-"], #app [data-testid^="keep-"]').evaluateAll((els) => els.map((e) => e.dataset.testid));
+    assert.deepEqual(found, [], "negative: no account control on the record path");
     // the record path itself still works with nobody signed in: an upload and a follow job go through
     const up = await page.evaluate(async () => (await fetch("api/uploads", { method: "POST", headers: { "Content-Type": "video/webm" }, body: new Blob(["x"]) })).status);
     const job = await page.evaluate(async () => (await fetch("api/follow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ upload_id: "u1", entry_id: "lateral-raise" }) })).status);

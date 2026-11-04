@@ -27,11 +27,13 @@ test("an uncapped group person is drawn on the F to S scale, the same as a singl
   assert.equal(find(panel, "grade").textContent, "C");
 });
 
-test("a capped group person keeps the capped score and grade of a single capped take (cap logic untouched)", () => {
-  const s = shownScore(CAPPED);
+test("a capped group person with no credit keeps the capped score and grade; one with a credit shows it (one-letter.md L1)", () => {
+  const s = shownScore(VECTORS[11].analysis);   // no credit block, warning capped: the A to F fallback
   assert.equal(s.capped, true);
-  assert.equal(s.letter, CAPPED.score.grade);
-  assert.equal(s.figures, String(CAPPED.score.value));
+  assert.equal(s.letter, VECTORS[11].analysis.score.grade);
+  assert.equal(s.figures, String(VECTORS[11].analysis.score.value));
+  const c = shownScore(CAPPED);   // a credit with a warning: nothing capped (moalborati/simon#61 comment 6594742067)
+  assert.deepEqual([c.capped, c.letter, c.figures, c.warning], [false, "C", "16,239", ["low_match"]]);
 });
 
 test("the models card is asked for the person of a group result", async () => {
@@ -42,4 +44,18 @@ test("the models card is asked for the person of a group result", async () => {
   const holder = new El("div");
   await mountModelsUsed(holder, "j1", async (j, p) => { asked.push([j, p]); return { models: [{ id: "sam3d-you", model: "SAM 3D Body", maker: "Meta", clip: "you", status: "live", seconds: null, facts: {} }] }; }, "p2");
   assert.deepEqual(asked, [["j1", "p2"]]);
+});
+
+test("a warned credit person on the board says no 'graded F at most', on the row or the page (TICKET-372: nothing capped)", async () => {
+  const { boardRows, groupCapNote } = await import("../../web/group-result.js");
+  const shown = { letter: "B", figures: "2,900", caption: "credit earned", unit: "points", value: 37, capped: false, warning: ["low_match"], tone: "good" };
+  const rows = boardRows({ people: [{ id: "1", score: 37, grade: "F", status_code: "ok", shown }, { id: "2", score: 40, grade: "F", status_code: "ok", shown: { ...shown } }] });
+  assert.deepEqual([rows[0].grade, rows[0].score], ["B", "2,900"]);
+  assert.equal(rows[0].capNote, "");
+  assert.deepEqual(rows[0].capCodes, []);
+  assert.equal(groupCapNote(rows), "");
+  assert.doesNotMatch(JSON.stringify(rows) + groupCapNote(rows), /graded F/i);
+  const cappedRows = boardRows({ people: [{ id: "3", score: 37, grade: "F", status_code: "ok", shown: { ...shown, letter: "F", figures: "37", capped: true } }] });
+  assert.match(cappedRows[0].capNote, /graded F at most/i, "a take the server capped still says why");
+  assert.match(groupCapNote(cappedRows), /^Every take here is graded F at most/);
 });

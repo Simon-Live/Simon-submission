@@ -23,10 +23,12 @@ const errors = [];
 let passed = 0;
 const ok = (name) => { passed++; console.log(`ok - ${name}`); };
 
-async function open(kase, { noWebgl = false } = {}) {
+async function open(kase, { noWebgl = false, more = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true, reducedMotion: "reduce" });
-  // the stage's "Rep breakdown" (score over time, form per rep) opens for these checks, as a viewer who left it open
+  // the stage's "Rep breakdown" (score over time, form per rep) and the result's "More" open for these checks, as a
+  // viewer who left them open
   await ctx.addInitScript(() => { try { localStorage.setItem("simon.stage.breakdown", "open"); } catch { /* blocked */ } });
+  if (more) await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } });
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error" && !isResultScreen404(m.location().url)) errors.push(`${kase}: ${m.text()} ${m.location().url}`); });
   page.on("pageerror", (e) => errors.push(`${kase}: ${e.message}`));
@@ -63,17 +65,22 @@ try {
   // ---- main result -------------------------------------------------------------------------
   const page = await open("ok");
   assert.equal(await tid(page, "score").textContent(), String(analysis.score.value));
-  assert.equal((await tid(page, "grade").textContent()).trim(), analysis.score.grade);
+  assert.equal((await tid(page, "summary-grade").textContent()).trim(), analysis.score.grade);
   ok("AC-A12/J9 score and grade equal analysis.json");
-  assert.equal(await tid(page, "band-rule").isHidden(), true);
   await page.screenshot({ path: path.join(SHOTS, "01-score.png"), clip: { x: 0, y: 0, width: 412, height: 300 } });
-  await tid(page, "grade").click();
-  assert.equal(await tid(page, "band-rule").isVisible(), true);
-  assert.match(await tid(page, "band-rule").textContent(), /60 to 69/);
-  await page.screenshot({ path: path.join(SHOTS, "01b-score-band-rule.png"), clip: { x: 0, y: 0, width: 412, height: 560 } });
-  await tid(page, "grade").click();
-  assert.equal(await tid(page, "band-rule").isHidden(), true);
-  ok("tap on the grade shows and hides the band rule");
+  // the lean result (team, 2026-11-02): the score bar is the score; no old grade panel, sum line, stats or fault list
+  for (const gone of ["score-panel", "band-rule", "score-sum", "score-detail"]) assert.equal(await page.getByTestId(gone).count(), 0, `negative: no ${gone}`);
+  assert.equal(await page.locator(".rs-stats").count(), 0, "negative: no stats tiles");
+  {
+    const fresh = await open("ok", { more: false });
+    assert.equal(await tid(fresh, "result-more").getAttribute("data-open"), "false", "More is closed by default");
+    assert.equal(await tid(fresh, "download-analysis").isVisible(), false, "the downloads wait in More");
+    await tid(fresh, "result-more-toggle").click();
+    assert.ok(await tid(fresh, "download-analysis").isVisible(), "a tap opens More");
+    assert.equal(await fresh.evaluate(() => localStorage.getItem("simon.result.more")), "open", "the choice is kept");
+    await fresh.context().close();
+  }
+  ok("lean result: the score bar only, everything else under a closed More");
 
   assert.equal(await attr(page, "compare", "data-mode"), "side");
   await page.screenshot({ path: path.join(SHOTS, "02-side-by-side.png"), fullPage: true });
@@ -205,15 +212,15 @@ try {
     assert.match(await tid(p, "warning-different_movement").textContent(), /different movement/);
     assert.ok(await tid(p, "warning").isVisible());
     assert.equal(await tid(p, "score").textContent(), "0");
-    assert.equal(await tid(p, "grade").textContent(), "F");
+    assert.equal(await tid(p, "summary-grade").textContent(), "F");
     assert.ok(await tid(p, "compare").isVisible());
     assert.equal(await p.locator('[data-testid^="fault-"]').count(), 0);
-    assert.match(await tid(p, "record-again").getAttribute("href"), /^#\//);
+    assert.match(await tid(p, "record-again").getAttribute("href"), /^#\//);   // in More (closed): present, not shown
     await p.screenshot({ path: path.join(SHOTS, "08-refusal.png") });
     await p.context().close();
     const n = await open("noreplay");
     assert.equal(await n.getByTestId("compare").count(), 0);
-    assert.equal(await tid(n, "grade").textContent(), "F");
+    assert.equal(await tid(n, "summary-grade").textContent(), "F");
     await n.context().close();
     ok("old-pin refusal: warning banner, score 0 and F, compare when a replay exists, Record again");
   }
@@ -222,33 +229,30 @@ try {
     const p = await open("partial");
     assert.deepEqual((await tid(p, "warning").getAttribute("data-codes")).split(","), ["moving_part_out_of_frame", "low_match"]);
     assert.match(await tid(p, "warning-moving_part_out_of_frame").textContent(), /legs were out of frame/);
-    assert.equal(await tid(p, "grade").textContent(), "F");
+    assert.equal(await tid(p, "summary-grade").textContent(), "F");
     assert.equal(await tid(p, "score").textContent(), "41");
     assert.ok(await tid(p, "compare").isVisible());
     assert.ok(await tid(p, "fault-0").isVisible());
     assert.ok(await tid(p, "fault-0-low").isVisible());
-    assert.match(await tid(p, "score-cap").textContent(), /^Graded F at most: a moving part of your body was out of frame; /);
     await p.screenshot({ path: path.join(SHOTS, "08b-partial.png"), fullPage: true });
     await p.context().close();
     const okp = await open("ok");
     assert.equal(await okp.getByTestId("warning").count(), 0);
     assert.equal(await okp.getByTestId("fault-0-low").count(), 0);
-    assert.equal(await okp.getByTestId("score-cap").count(), 0);
     await okp.context().close();
     ok("partial view: warning banner per code, score and F, faults with low-confidence marking; none on a clean take");
   }
-  // TICKET-155: one fault, 59 F because of the low_match cap; the score card itself says why
+  // TICKET-155: one fault, 59 F because of the low_match cap; the warning banner above the score says why (the old
+  // score card and its cap line are gone from the lean result)
   {
     const p = await open("capped");
     assert.equal(await tid(p, "score").textContent(), "59");
-    assert.equal((await tid(p, "grade").textContent()).trim(), "F");
-    const cap = tid(p, "score-cap");
-    assert.ok(await cap.isVisible());
-    assert.equal(await cap.textContent(), "Graded F at most: this take does not closely match the trainer's movement.");
-    assert.ok(await p.evaluate(() => !!document.querySelector('[data-testid="score-panel"] [data-testid="score-cap"]')));
+    assert.equal((await tid(p, "summary-grade").textContent()).trim(), "F");
+    assert.ok(await tid(p, "warning").isVisible());
+    assert.equal(await p.getByTestId("score-cap").count(), 0, "negative: no old score card");
     await p.screenshot({ path: path.join(SHOTS, "08c-capped.png"), clip: { x: 0, y: 0, width: 412, height: 560 } });
     await p.context().close();
-    ok("TICKET-155 capped score: the score card says why; a clean take has no cap line");
+    ok("TICKET-155 capped score: 59 F under the warning banner");
   }
   // the judge hero (staging job 652b525a73ee, QA 2026-11-02): one score on screen, every other figure labelled
   {
@@ -256,9 +260,7 @@ try {
     assert.equal(await tid(p, "score").textContent(), "59", "the ring is score.value");
     assert.equal(await tid(p, "summary-score-caption").textContent(), "score out of 100");
     assert.equal(await tid(p, "summary-grade").textContent(), "F");
-    const sum = (await tid(p, "score-sum").textContent()).replace(/\u00a0/g, " ");
-    assert.match(sum, /≈ 100 before the warning cap\. A warning then limited the score to 59: /);
-    assert.equal(await tid(p, "summary-stat-best").locator(".rs-stat-label").textContent(), "Best part before the cap");
+    assert.equal(await p.getByTestId("score-sum").count(), 0, "negative: the lean result draws no sum line");
     await p.waitForSelector('[data-testid="breakdown-verdict"]', { state: "attached" });
     assert.equal(await tid(p, "breakdown-verdict").textContent(), "This take didn't match the trainer closely enough to judge form.");
     assert.equal(await tid(p, "insights-empty").textContent(), "This take didn't match the trainer closely enough to judge form.");
@@ -283,22 +285,20 @@ try {
     ok("judge hero: one score (59) in the ring, the grade and the sum; 100 only beside 'before the cap'; no 'Nothing to work on'");
   }
   // one-letter.md: the MM-Fit take 42a02415127e (37 F, credit 16,239 of 22,367, C). The headline and the grade panel
-  // show one letter; capped by a warning, both show 37 and F.
+  // show one letter; with a warning too, both still show C (nothing is capped).
   {
     const p = await open("one-letter");
     assert.equal(await tid(p, "summary-grade").textContent(), "C");
-    assert.equal(await tid(p, "grade").textContent(), "C", "the grade panel shows the headline's letter");
-    assert.equal(await attr(p, "grade", "data-grade"), "C");
-    assert.match(await tid(p, "band-rule").textContent(), /S95 and above/, "the panel's bands are the credit's F to S scale");
-    assert.doesNotMatch(await tid(p, "band-rule").textContent(), /90 and above/, "negative: not the old A to F bands");
+    assert.equal(await p.getByTestId("grade").count(), 0, "negative: no second grade panel");
     await p.context().close();
-    const p0 = (page) => page.evaluate(() => document.querySelector('[data-testid="score-panel"]').textContent);   // hidden rules included
+    // nothing capped (score-as-designed 31a08e6): a warned take with a credit shows the credit and its letter too
     const c = await open("one-letter-capped");
-    assert.equal(await tid(c, "summary-grade").textContent(), "F");
-    assert.equal(await tid(c, "grade").textContent(), "F", "capped: the cap wins in the panel too");
-    assert.doesNotMatch(await p0(c), /16,239|22,367|S95/, "negative: no credit figure or scale on a capped take");
+    assert.equal(await tid(c, "summary-grade").textContent(), "C");
+    assert.equal(await c.locator('[data-testid="summary-grade"]').count(), 1, "one letter on the page");
+    assert.ok(await tid(c, "warning").isVisible(), "the warning banner stays");
+    assert.doesNotMatch(await tid(c, "warning").textContent(), /capped/i, "the banner has no cap wording");
     await c.context().close();
-    ok("one letter: the result's headline and grade panel agree (C uncapped, F capped)");
+    ok("one letter: the result shows one letter (C, warned or not)");
   }
   // no faults, fallback, bad replay
   {
@@ -360,6 +360,8 @@ try {
     const p = await open("insights");
     assert.ok(await tid(p, "compare").isVisible(), "the insights analysis has a compare to seek");
     assert.equal(await p.locator(".sr-insight").count(), ins.insights.length);
+    const showAll = async (page) => { const b = page.getByTestId("insights-all"); if (await b.count()) await b.click(); };   // the top 3 show; the rest after "Show all"
+    await showAll(p);
     for (const [i, x] of ins.insights.entries()) {
       assert.equal(await tid(p, `insight-${i}-cue`).textContent(), x.cue);
       await tid(p, `insight-${i}`).click();
@@ -390,6 +392,7 @@ try {
 
     const gold = fixture("analysis-1.5.0.json");
     const g = await open("insights-golden");
+    await showAll(g);
     for (const [i, x] of gold.insights.entries()) {
       const fault = gold.faults.find((f) => f.cue === x.cue);
       assert.ok(fault, `insight ${i} has a matching fault`);
@@ -398,10 +401,11 @@ try {
       assert.equal(await attr(g, "compare", "data-highlighted-joints"), fault.joints.join(","), `insight ${i} lights its fault's joints`);
       assert.equal(await attr(g, `insight-${i}`, "aria-pressed"), "true");
     }
-    for (const [i, f] of gold.faults.entries()) assert.equal(await tid(g, `fault-${i}-cue`).textContent(), f.cue);
+    for (const [i, x] of gold.insights.entries()) assert.equal(await tid(g, `insight-${i}-cue`).textContent(), x.cue);
+    assert.equal(await g.getByTestId("fault-list").count(), 0, "negative: no second list of the same mistakes");
     await noSideScroll(g, "insights-golden");
     await g.context().close();
-    ok("insights (Part 5 golden): a tap lights the matching fault's joints; fault cues equal the analysis");
+    ok("insights (Part 5 golden): a tap lights the matching fault's joints; insight cues equal the analysis");
 
     for (const kase of ["ok", "partial"]) { // 1.2.0, and the same with the 1.4.0 fields: written before insights
       const o = await open(kase);
@@ -531,6 +535,7 @@ try {
     // TICKET-322 AC-S14: the trainer's clip plays on the result page, so the entry's source and licence show beside the take's
     const openSource = async (kase) => {
       const ctx = await browser.newContext({ viewport: { width: 412, height: 915 } });
+      await ctx.addInitScript(() => { try { localStorage.setItem("simon.result.more", "open"); } catch { /* blocked */ } }); // the credit sits in More
       const page = await ctx.newPage();
       page.on("pageerror", (e) => errors.push(`source ${kase}: ${e.message}`));
       await page.goto(`http://127.0.0.1:${port}/tests/part7/harness/result-source.html?case=${kase}`);

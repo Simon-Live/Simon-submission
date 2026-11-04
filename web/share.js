@@ -7,14 +7,16 @@ import * as action from "./views/share.js";
 import * as viewer from "./views/shared.js";
 import { renderShared as renderSheet } from "./progress-sheet.js";
 import { resultWarnings, WARNING_TITLE } from "./result.js";
-import { loadScoreDisplay } from "./score-display.js";
+import { shownScoreDisplay } from "./score-display.js";
 
 /** The share model plus the attribution wording and the progress sheet (TICKET-283), injected into every share view.
  * A shared take's warnings are the result screen's own (`resultWarnings`, `WARNING_TITLE` in web/result.js) and its unit
- * is the owner's saved points or % choice (docs/specs/share.md "Score and cap"). The hooks read result.js's bindings
+ * is the result page's own, points (`shownScoreDisplay`, TICKET-372). The hooks read result.js's bindings
  * when called, never while the modules load (result.js loads this file with a dynamic import). */
 const model = { ...shareModel, bylines, renderSheet,
-  warningsOf: (analysis) => resultWarnings(analysis), warningTitle: () => WARNING_TITLE, scoreDisplay: () => loadScoreDisplay() };
+  warningsOf: (analysis) => resultWarnings(analysis), warningTitle: () => WARNING_TITLE, scoreDisplay: () => shownScoreDisplay() };
+/** The injected hooks, read by tests/part7/share-score-cap.dom.test.mjs. */
+export const shareHooks = model;
 
 /** The result page Share slot: `(slot, ctx)`. */
 export const mountShareAction = (slot, ctx) => action.mountShareAction(slot, ctx, model);

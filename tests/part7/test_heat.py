@@ -122,6 +122,16 @@ def test_route_serves_heat_for_a_meshed_job_and_caches_it(api: Api) -> None:
     assert api.request("GET", f"api/results/{jid}/heat.bin")[2] == body and cached.stat().st_mtime_ns == stamp
 
 
+def test_mesh_index_has_no_heat_given_only_the_follower_has_a_mesh(api: Api) -> None:
+    # TICKET-375: mesh.json now names a lone follower's mesh (for Person); heat lives in the side-by-side mesh view, which
+    # needs both people, so the field stays off until the trainer has a mesh too
+    put(api, "trainer", lambda d: (d / "work" / "trainer" / "part2").mkdir(parents=True))
+    jid = follow(api)
+    status, doc = api.json("GET", f"api/results/{jid}/mesh.json")
+    assert status == 200 and doc["trainer"] is None and doc["you"] == f"api/results/{jid}/mesh/you/mesh3d.json"
+    assert "heat" not in doc
+
+
 @pytest.mark.parametrize("case", ["no_mesh", "no_replay", "mirrored", "trainer_job", "bad_id"])
 def test_route_is_404_without_a_mesh_or_replay_or_for_other_jobs(api: Api, case: str) -> None:  # AC-3 negative: no Heat control
     if case == "no_mesh":

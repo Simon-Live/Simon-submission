@@ -1,10 +1,11 @@
 // "Learn in sections" (practice-and-modes.md "Sections"): break a routine into sections and teach them in order.
 // Pure helpers first (unit tested), then the panel on the follow screen.
-import { getEntryFile, getJob } from "./api.js";
+import { getAnalysis, getEntryFile, getJob } from "./api.js";
+import { shownScore } from "./model/score-labels.js";
 import { h } from "./ui.js";
 import { ensureStyles, learnSpeed } from "./modes.js";
 
-export const PASS_SCORE = 80; // a step is passed at this score or better
+export const PASS_SCORE = 80; // a step is passed at this score or better: the credit percent at Standard, else the score
 export const MIN_SECTION_MS = 2000; // shorter sections are merged into a neighbour (the server needs 1 s at least)
 export const SLICE_MS = 4000; // the equal-slice rule aims at this length
 export const MIN_SECTIONS = 2;
@@ -13,15 +14,15 @@ export const KEY_PREFIX = "simon.practice.";
 
 export const TEXT = {
   toggle: "Learn in sections",
-  hint: "Practise one part at a time, slow first. Pass a step with 80 or more to unlock the next.",
+  hint: "Practise one part at a time, slow first. Pass a step with 80% or more to unlock the next.",
   watch: "Watch this step",
   stopWatch: "Stop watching",
   locked: "Locked until the step before it reaches 80.",
   none: "This movement is too short to split into sections.",
   loading: "Finding the sections",
   pending: "Your last take is still being analysed.",
-  passed: (score) => `Passed with ${score}`,
-  best: (score) => `Best ${score}`,
+  passed: (score) => `Passed with ${score}%`,
+  best: (score) => `Best ${score}%`,
   now: (label) => `Now: ${label}`,
   done: "Every step passed. Keep practising the full routine.",
 };
@@ -160,17 +161,30 @@ export function recordScore(progress, key, score) {
 }
 
 /**
- * Settle the take the person sent last: read its job, count the score when it finished, drop it when it failed
- * or is gone, keep it while it runs. `readJob(id)` resolves the job record or rejects.
+ * The score a step is judged on, the number the result headline shows (nothing capped): the take's credit percent at
+ * Standard, rounded, else the job's score for a take without a credit.
  */
-export async function settlePending(progress, readJob) {
+export function stepScore(job, analysis) {
+  const shown = analysis ? shownScore(analysis, { light: job.result.light ?? null, display: { mode: "percent", level: "normal" } }) : null;
+  const pct = shown && shown.measure;
+  return Number.isFinite(pct) ? Math.round(pct) : job.result.score;
+}
+
+/**
+ * Settle the take the person sent last: read its job, count the score when it finished, drop it when it failed
+ * or is gone, keep it while it runs. `readJob(id)` resolves the job record or rejects; `readAnalysis(id)`, when
+ * given, its analysis, so the step counts the take's credit (`stepScore`).
+ */
+export async function settlePending(progress, readJob, readAnalysis = null) {
   if (!progress.pending) return progress;
   let job = null;
   try { job = await readJob(progress.pending.job); } catch (e) {
     return e && e.status === 404 ? { ...progress, pending: null } : progress; // gone: forget; offline: try later
   }
   if (job && job.status === "done" && job.result && Number.isFinite(job.result.score)) {
-    return recordScore(progress, progress.pending.key, job.result.score);
+    let analysis = null;
+    if (readAnalysis) { try { analysis = await readAnalysis(progress.pending.job); } catch { analysis = null; } }
+    return recordScore(progress, progress.pending.key, stepScore(job, analysis));
   }
   if (job && (job.status === "failed" || job.status === "done")) return { ...progress, pending: null };
   return progress;
@@ -282,7 +296,7 @@ export function mountPractice(root, { entry, mode, storage }) {
     if (entry.keyframes) { try { doc = await getEntryFile(id, entry.keyframes); } catch { doc = null; } }
     if (!alive) return;
     data = { ...deriveSections(doc, duration), ready: true };
-    progress = await settlePending(progress, getJob);
+    progress = await settlePending(progress, getJob, getAnalysis);
     if (!alive) return;
     save();
     rebuild();

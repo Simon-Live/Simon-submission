@@ -128,7 +128,7 @@ def test_deleted_reference_take_falls_back_and_says_so(api: Api, tiny_mp4: Path,
     sid = sign_in(api, ADA)
     first = follow(api, tiny_mp4, sid)
     mark(api, sid, first["id"])
-    assert api.json("POST", f"api/jobs/{first['id']}/delete", None)[0] == 200
+    assert post(api, f"api/jobs/{first['id']}/delete", None, cookie=sid)[0] == 200  # the owner's session (TICKET-373)
     later = follow(api, tiny_mp4, sid)
     assert later["reference"] == {"used": "teacher", "why": "reference_deleted"} and seen[-1] == animation()
     body = mine(api, sid)

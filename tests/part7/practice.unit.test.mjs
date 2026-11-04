@@ -7,7 +7,7 @@ import {
 } from "../../web/modes.js";
 import {
   deriveSections, repStarts, buildLadder, stepSection, stepLoop, loadProgress, saveProgress, recordScore, isUnlocked,
-  isPassed, currentIndex, settlePending, emptyProgress, PASS_SCORE,
+  isPassed, currentIndex, settlePending, stepScore, emptyProgress, PASS_SCORE,
 } from "../../web/practice.js";
 import { sectionTime } from "../../web/reference.js";
 import { buildSubmit } from "../../web/take-flow.js";
@@ -198,4 +198,21 @@ test("sectionTime loops the take clock inside the section at the playback rate",
   assert.equal(sectionTime(4000, 0, range, 1), 4); // wraps at the end
   assert.equal(sectionTime(0, -1000, range, 1), 7); // a negative offset wraps from the end
   assert.equal(sectionTime(500, 0, { start_s: 3, end_s: 3 }, 1), 3);
+});
+
+// the team, 2026-11-03: sections never unlocked, because a step counted the old 0 to 100 score (0 on a 47.5% take)
+const creditTake = (percent, value = 0) => ({ score: { value, grade: "F", credit: { version: "simon.credit.v1", percent, points: percent * 10,
+  max_points: 1000, grade: "B", tolerance: "normal", grades: [[95, "S"], [85, "A"], [75, "B"], [65, "C"], [55, "D"], [40, "E"], [0, "F"]] } } });
+
+test("a step counts the take's credit percent at Standard, the number the result shows; else the job's score", async () => {
+  const done = { status: "done", result: { score: 0 } };
+  assert.equal(stepScore(done, creditTake(82.6)), 83, "the credit, rounded, not the old score of 0");
+  assert.equal(stepScore(done, null), 0, "no analysis: the job's score");
+  assert.equal(stepScore({ status: "done", result: { score: 71 } }, { score: { value: 71, grade: "C" } }), 71, "no credit: the score");
+  const pend = { ...emptyProgress(), pending: { key: "s1@slow", job: "j1" } };
+  const passed = await settlePending(pend, async () => done, async (id) => (id === "j1" ? creditTake(82.6) : null));
+  assert.equal(passed.best["s1@slow"], 83);
+  assert.ok(isPassed(passed, { key: "s1@slow" }) && 83 >= PASS_SCORE);
+  const offline = await settlePending(pend, async () => done, async () => { throw new Error("offline"); });
+  assert.equal(offline.best["s1@slow"], 0, "negative: the analysis unreadable, the job's score still counts");
 });

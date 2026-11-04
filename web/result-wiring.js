@@ -5,6 +5,7 @@
 import { getModelsUsed, getSkeleton2d, getMeshIndex, getTakeAr, takeArUrl } from "./api.js";
 import { jointsFor } from "./timeline.js";
 import { modelsPanel } from "./model/models-used.js";
+import { withLinesShown } from "./model/fault-line.js";
 import { validSkeleton, mistakesOf, skeletonAt } from "./model/skeleton-frame.js";
 import { trainerClock, meshFaults } from "./model/mesh-clock.js";
 import { alignedUntil } from "./heat/heat-data.js";
@@ -17,9 +18,10 @@ export const hasJobFiles = (job, pid) => !!job && job !== "fixture" && !pid;
 export const hasModels = (job) => !!job && job !== "fixture";
 
 /** R1: "How this was made" into `holder`; resolves the section, or null when there is nothing to show. */
-export async function mountModelsUsed(holder, job, load = getModelsUsed, pid = null) {
+export async function mountModelsUsed(holder, job, load = getModelsUsed, pid = null, analysis = null) {
   let panel = null;
-  try { panel = modelsPanel(await load(job, pid)); } catch { panel = null; }
+  // TICKET-368: the phrasing rows count the lines the fault list shows live (fault-line.js), not what the server read
+  try { panel = modelsPanel(withLinesShown(await load(job, pid), analysis)); } catch { panel = null; }
   return panel && holder.isConnected !== false ? renderModelsUsed(holder, panel) : null;
 }
 

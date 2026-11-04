@@ -6,6 +6,7 @@ import { createProgress, estimateText, TYPICAL_S } from "./progress.js";
 import { mountMeshStream } from "./mesh-stream.js";
 import { queueText, leftText, gpuText } from "./queue-eta.js";
 import { mountSendAgain } from "./send-again.js";
+import { keyframesNote, keyframesFromPart3 } from "./keyframes-note.js";
 
 export const STAGES = {
   trainer: ["upload", "keyframes", "pose", "skeleton", "animation", "catalog"],
@@ -26,6 +27,7 @@ const DETAIL = {
   trainer: "Learning the trainer's movement.", followers: "Comparing each person with the trainer.",
 };
 const POLL_MS = 1500;
+const TERMINAL = new Set(["done", "failed"]);
 let typical = TYPICAL_S;
 // api/config may carry `typical_s` {stage: [low, high]}; the built-in table is the fallback
 getConfig().then((c) => { if (c && c.typical_s) typical = { ...TYPICAL_S, ...c.typical_s }; });
@@ -62,6 +64,7 @@ export function mountJob(root, id) {
   const list = h("ol", { class: "stages", "data-testid": "stages" });
   const prog = createProgress({ testid: "progress", label: "Overall progress", text: "Starting", elapsed: true, walk: true });
   const detail = h("p", { class: "hint", "data-testid": "stage-detail" });
+  const kfNote = h("p", { class: "hint", "data-testid": "keyframes-note", hidden: true }); // Part 3 spaced the key frames
   const gpu = h("p", { class: "hint", "data-testid": "gpu-note", hidden: true }); // TICKET-289: GPU wait or slower path
   const group = h("p", { class: "meta tnum", "data-testid": "group-progress", hidden: true });
   const meta = h("p", { class: "meta tnum" }, h("span", { "data-testid": "queue", hidden: true }),
@@ -70,17 +73,19 @@ export function mountJob(root, id) {
   const [queue, left] = meta.children;
   let deleteSlot = null;
   let stopStream = null; // TICKET-284: the owner's live frames; the job answer names the stream only for its owner
-  root.append(h("section", { class: "screen" }, head, note, prog.el, detail, gpu, group, meta, list, actions));
+  root.append(h("section", { class: "screen" }, head, note, kfNote, prog.el, detail, gpu, group, meta, list, actions));
 
   const tickClock = () => prog.setElapsed((Date.now() - startMs) / 1000);
   clock = setInterval(tickClock, 1000);
 
   function render(job) {
     const states = stageStates(job);
+    const spaced = keyframesFromPart3(job);
     clear(list).append(...states.map(({ name, state }) =>
-      h("li", { class: `stage ${state}`, "data-testid": "stage", "data-stage": name, "data-state": state, "aria-current": state === "current" ? "step" : false },
+      h("li", { class: `stage ${state}`, "data-testid": "stage", "data-stage": name, "data-state": state, "aria-current": state === "current" ? "step" : false,
+        ...(spaced && name === "keyframes" ? { "data-source": "part3" } : {}) },
         h("span", { class: "dot", "aria-hidden": "true" }),
-        h("span", { text: LABELS[name] || name }),
+        h("span", { text: spaced && name === "keyframes" ? `${LABELS[name]} (evenly spaced)` : LABELS[name] || name }),
         state === "pending" && typical[name] ? h("span", { class: "pg-stage-note", text: estimateText(typical[name]) }) : null)));
     const o = overall(job);
     prog.setValue(job.status === "done" ? 1 : o.done / o.total);
@@ -95,6 +100,8 @@ export function mountJob(root, id) {
     left.textContent = leftText(job); // TICKET-288: a rough wait from recent jobs, only when the server has one
     left.hidden = !left.textContent;
     hideStaticTimes({ detail, list, shown: Boolean(queue.textContent || left.textContent) }); // TICKET-316: one time on the page
+    kfNote.textContent = keyframesNote(job);
+    kfNote.hidden = !kfNote.textContent;
     gpu.textContent = gpuText(job);
     gpu.hidden = !gpu.textContent;
     clear(actions);
@@ -149,7 +156,12 @@ export function mountJob(root, id) {
       if (stopped) return;
       const stamp = Date.parse(job.started_at || job.created_at || "");
       if (Number.isFinite(stamp)) startMs = Math.min(stamp, t0);
-      tickClock();
+      if (TERMINAL.has(job.status)) {
+        // AC-JOB-ELAPSED: stop at the job's own duration; frozen at this moment when the job has no end stamp
+        const end = Date.parse(job.finished_at || "");
+        prog.setElapsed(((Number.isFinite(end) ? end : Date.now()) - (Number.isFinite(stamp) ? stamp : startMs)) / 1000);
+        stop();
+      } else tickClock();
       render(job);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {

@@ -109,7 +109,7 @@ try {
   assert.equal(await t(viewer, "shared-score").count(), 0, "negative: the revoked link shows no result");
   ok("revoke from the list ends the link on the next load; a tampered link shows the same page");
 
-  // the cap wins (docs/specs/share.md "Score and cap"): a warning-capped take whose credit ignores the cap
+  // nothing is capped (one-letter.md L1, moalborati/simon#61 comment 6594742067): a warned take with a credit shows it as given
   const cappedJob = fs.readFileSync(`${idFile}.capped`, "utf8").trim();
   assert.equal(await page.evaluate(async (j) => (await fetch("api/me/claims", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j }) })).status, cappedJob), 200);
   await page.goto(`${base}#/result/${cappedJob}`);
@@ -120,10 +120,10 @@ try {
     return { score: q("summary-score").querySelector('[data-testid="score"]').innerText, caption: q("summary-score-caption").textContent,
       grade: q("summary-grade").textContent, warning: q("warning-low_match")?.innerText, top: q("score-top").innerText };
   });
-  assert.equal(head.score, "59");
-  assert.equal(head.grade, "F");
-  assert.match(head.warning, /capped at F/);
-  for (const loose of ["9,087", "12,160"]) assert.equal(head.top.includes(loose), false, `negative: the headline never shows the uncapped credit ${loose}`);
+  assert.equal(head.score, "9,087");
+  assert.equal(head.grade, "C");
+  assert.ok(head.warning && !/capped/i.test(head.warning), "the warning stays, without the cap claim");
+  assert.equal(/capped/i.test(head.top), false, "negative: the headline carries no cap wording");
   await t(page, "share-take-open").tap();
   await page.locator('[data-testid="share-preview"][data-preview="server"]').waitFor();
   const cappedPreview = await t(page, "share-preview").innerText();
@@ -136,15 +136,14 @@ try {
   await t(cappedView, "shared-score").waitFor();
   const shared = { score: await t(cappedView, "shared-score").innerText(), warning: await t(cappedView, "shared-warning-low_match").innerText(),
     page: await t(cappedView, "shared-page").innerText() };
-  console.log(`capped take: result "${head.score} ${head.caption}, grade ${head.grade}", viewer "${shared.score}"`);
+  console.log(`warned take: result "${head.score} ${head.caption}, grade ${head.grade}", viewer "${shared.score}"`);
   assert.equal(shared.score, `${head.score} ${head.caption}, grade ${head.grade}`);
-  assert.equal(shared.warning, head.warning, "the viewer carries the result's own warning text");
-  for (const loose of ["9,087", "12,160", "grade C", "grade A"]) {
+  for (const loose of ["grade F", "score out of 100"]) {
     assert.equal(shared.page.includes(loose), false, `negative: the viewer never shows ${loose}`);
     assert.equal(cappedPreview.includes(loose), false, `negative: the preview never shows ${loose}`);
   }
   assert.ok(cappedPreview.includes(shared.score) && cappedPreview.includes(shared.warning), "the preview shows the viewer's score and warning");
-  ok("a capped take: the headline, the preview and the viewer show the capped score, grade F and the same warning");
+  ok("a capped take: the headline, the preview and the viewer show the credit as given, grade C and a warning");
   assert.deepEqual(errors, []);
 } finally {
   await browser.close();

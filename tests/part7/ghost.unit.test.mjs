@@ -2,7 +2,7 @@
 //   node --test tests/part7/ghost.unit.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { usableGhost, ghostDuration, ghostClock, frameIndexAt, placeGhost, stepScale, SCALE, FOOT_LINE } from "../../web/model/ghost.js";
+import { usableGhost, ghostDuration, ghostClock, frameIndexAt, placeGhost, stepScale, scaleRange, SCALE, IMAGE_SCALE, FOOT_LINE } from "../../web/model/ghost.js";
 
 const doc = {
   format: "simon.skeleton2d.v1", box: "body", available: true, joints: ["nose", "left_ankle", "right_ankle"], bones: [[0, 1], [0, 2]],
@@ -51,4 +51,41 @@ test("the size steps stay inside the allowed range", () => {
   assert.equal(stepScale(SCALE.start, 1), 0.9);
   assert.equal(stepScale(SCALE.max, 1), SCALE.max);
   assert.equal(stepScale(SCALE.min, -1), SCALE.min);
+});
+
+// the trainer's own Part 2 picture (box "image", AC-5): a 640 x 480 trainer frame
+const image = {
+  format: "simon.skeleton2d.v1", box: "image", available: true, image_size: [640, 480], joints: ["nose", "left_wrist", "left_knee"],
+  bones: [[0, 1], [1, 2]], frames: [{ t: 0, pts: [[0.5, 0.25], [0.75, 0.5], null] }],
+};
+
+test("AC-5 an image ghost is the trainer's frame fitted inside the preview, about its centre", () => {
+  assert.equal(usableGhost(image), true);
+  assert.equal(usableGhost({ ...image, image_size: [0, 480] }), false, "an image ghost needs a positive image_size");
+  assert.equal(usableGhost({ ...image, image_size: undefined }), false);
+  assert.deepEqual(scaleRange(image), IMAGE_SCALE);
+  assert.deepEqual(scaleRange(doc), SCALE, "a body ghost keeps the first build's range");
+  // 640 x 480 into a 1280 x 720 landscape preview: height-bound, fit 1.5, so 960 x 720 centred
+  const wide = placeGhost(image, 0, 1280, 720, { mirrored: false });
+  assert.deepEqual(wide.points[0], [640, 180]);
+  assert.deepEqual(wide.points[1], [640 + 0.25 * 960, 360]);
+  assert.equal(wide.points[2], null, "an unseen joint stays unseen");
+  assert.deepEqual(wide.bones, [[0, 1]], "no bone to the unseen knee");
+  // into a 412 x 732 portrait preview: width-bound, fit 412 / 640, a band across the middle
+  const tall = placeGhost(image, 0, 412, 732, { mirrored: false });
+  const fh = 480 * (412 / 640);
+  assert.ok(Math.abs(tall.points[0][1] - (366 - 0.25 * fh)) < 1e-9);
+  assert.ok(Math.abs(tall.points[1][0] - (206 + 0.25 * 412)) < 1e-9);
+  // the default scale is the trainer's own framing (1); scale 0.5 halves the distances from the centre
+  const half = placeGhost(image, 0, 1280, 720, { mirrored: false, scale: 0.5 });
+  assert.deepEqual(half.points[1], [640 + 0.25 * 480, 360]);
+  // mirrored by default, like the reference: the wrist on the image's right is drawn on the left
+  assert.deepEqual(placeGhost(image, 0, 1280, 720).points[1], [640 - 0.25 * 960, 360]);
+});
+
+test("AC-5 the image ghost's size steps between 0.5 and 2", () => {
+  assert.equal(stepScale(IMAGE_SCALE.start, 1, IMAGE_SCALE), 1.1);
+  assert.equal(stepScale(IMAGE_SCALE.max, 1, IMAGE_SCALE), 2);
+  assert.equal(stepScale(IMAGE_SCALE.min, -1, IMAGE_SCALE), 0.5);
+  assert.equal(stepScale(SCALE.max, 1), SCALE.max, "the body range is the default");
 });

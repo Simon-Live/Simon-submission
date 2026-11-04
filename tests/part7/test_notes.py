@@ -495,7 +495,7 @@ def test_cascade_deleting_the_take(world: World) -> None:
     answered(world)
     other = claimed(world.api, world.follower)
     world.ask(job=other)
-    assert world.api.request("POST", f"api/jobs/{world.job}/delete", b"", {})[0] == 200
+    assert post(world.api, f"api/jobs/{world.job}/delete", cookie=world.follower)[0] == 200  # the owner (TICKET-373)
     assert [r["job_id"] for r in world.rows()] == [other]  # only the deleted take's request goes
     assert get(world.api, "api/me/notes?entry=" + ENTRY, cookie=world.follower)[2] == {"notes": []}
 
@@ -575,7 +575,7 @@ def test_cascade_deleting_the_trainers_own_take_removes_requests_to_that_entry(a
     assert post(api, "api/me/claims", {"job_id": made["id"]}, cookie=trainer)[0] == 200
     job = claimed(api, follower, entry="made-entry-1")
     assert send(api, f"api/me/takes/{job}/ask-trainer", {"confirm": True}, follower)[0] == 201
-    assert api.request("POST", f"api/jobs/{made['id']}/delete", b"", {})[0] == 200
+    assert post(api, f"api/jobs/{made['id']}/delete", cookie=trainer)[0] == 200  # the owner (TICKET-373)
     assert store(api).fetch("SELECT * FROM note_requests") == []
 
 

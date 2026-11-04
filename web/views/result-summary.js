@@ -19,15 +19,18 @@ function s(tag, attrs = {}, ...kids) {
 // The score, once, at the top of the result (team, 2026-11-02): the grade, the headline, a bar that fills to the
 // score past the grade marks (the credit's F to S scale from Part 5, else the score's D 60 to A 90) and the score itself, in points or % (a switch
 // under it) when the take has a credit score. On the first paint the bar starts slowly, then the score grows big and settles.
-const SCORE_MARKS = [[60, "D"], [70, "C"], [80, "B"], [90, "A"]];
+const SCORE_MARKS = [[0, "F"], [60, "D"], [70, "C"], [80, "B"], [90, "A"]];
 const marksOf = (r) => (Array.isArray(r.grades) && r.grades.some(([, g]) => g === "S") ? [...r.grades].sort((a, b) => a[0] - b[0]) : SCORE_MARKS);
 function scoreBar(r, m, onToggle) {
   const frac = Math.max(0, Math.min(1, r.frac));
   const value = h("span", { class: "rs-meter-value", "data-testid": "score", text: r.unit === "percent" ? `${r.text}%` : r.text });
   const caption = h("span", { class: "rs-meter-caption", "data-testid": "summary-score-caption", text: r.caption });
-  const unitBtn = (mode, label) => h("button", { type: "button", class: "rs-unit", "data-testid": `score-unit-${mode}`, "aria-pressed": String(r.unit === mode),
-    text: label, onclick: () => r.unit !== mode && onToggle(mode) });
-  const units = onToggle ? h("div", { class: "rs-units", role: "group", "aria-label": "Show the score as" }, unitBtn("points", "Points"), unitBtn("percent", "%")) : null;
+  // points only (team, 2 Nov): the switch under the score is the difficulty, Lenient / Standard / Strict
+  const levels = (m.scoreSwitch && m.scoreSwitch.levels) || [];
+  const levelBtn = (l) => h("button", { type: "button", class: "rs-unit", "data-testid": `score-level-${l.key}`, "aria-pressed": String(!!l.active),
+    text: l.text, onclick: () => !l.active && onToggle(l.key) });
+  const units = onToggle && levels.length > 1
+    ? h("div", { class: "rs-units", role: "group", "aria-label": (m.scoreSwitch && m.scoreSwitch.levelLabel) || "Difficulty" }, ...levels.map(levelBtn)) : null;
   const score = h("span", { class: "rs-meter-score" }, value, caption, ...(units ? [units] : []));
   return h("div", { class: "rs-meter", "data-grade": r.grade, "data-unit": r.unit, role: "group", "aria-label": r.label, "data-testid": "summary-score",
     style: `--frac:${frac};--fill:${frac}` },
@@ -36,22 +39,18 @@ function scoreBar(r, m, onToggle) {
       h("p", { class: "rs-eyebrow", text: m.eyebrow }), h("h2", { class: "rs-title", text: m.headline }),
       h("div", { class: "rs-meter-track", "aria-hidden": "true" },
         h("span", { class: "rs-meter-fill" }),
-        ...marksOf(r).filter(([at]) => at > 0).map(([at, g]) => h("span", { class: "rs-meter-mark", style: `--at:${at / 100}`, "data-reached": String(frac * 100 >= at) },
-          h("span", { class: "rs-meter-mark-label", text: g }))))),
+        // every letter is named over the bar where it starts, with a tick; the lowest is placed below
+        ...marksOf(r).map(([at, g], i, all) => {
+          // the lowest letter (F, from 0) is named in the middle of its own range, with no tick (team, 2026-11-03:
+          // at the bar's very start it looked odd): 20% on the F to S scale, where E starts at 40
+          const start = at <= 0;
+          const place = start && all[1] ? all[1][0] / 2 : at;
+          return h("span", { class: "rs-meter-mark", style: `--at:${place / 100}`, "data-reached": String(frac * 100 >= at),
+            "data-start": String(start) }, h("span", { class: "rs-meter-mark-label", text: g }));
+        }))),
     score);
 }
 
-/** "Show score as [ % ] [ Points ]", and Easy / Normal / Hard when the credit has levels; a tap reports the choice. */
-function scoreSwitch(sw, onPick) {
-  const group = (label, items, key, testid) => h("div", { class: "rs-switch-row" },
-    h("span", { class: "rs-switch-label", text: label }),
-    h("div", { class: "kind-switch rs-switch", role: "group", "aria-label": label, "data-testid": testid },
-      ...items.map((x) => h("button", { type: "button", "data-key": x.key, "data-testid": `${testid}-${x.key}`, "aria-pressed": String(x.active),
-        "aria-label": x.name || x.text, text: x.text, onclick: () => !x.active && onPick({ [key]: x.key }) }))));
-  return h("div", { class: "rs-switches", "data-testid": "score-switch" },
-    group(sw.label, sw.modes, "mode", "score-mode"),
-    sw.levels.length ? group(sw.levelLabel, sw.levels, "level", "score-level") : null);
-}
 
 export const REVEAL_MS = 1800;
 const easeInOut = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);   // slow start, slow landing
@@ -135,12 +134,12 @@ export function renderResultSummary(root, m, on = {}, before = null) {
   for (const [file, marker] of THEME) if (!document.querySelector(`link[href$="${file}"]`)) ensureCss(file, marker);
   const el = h("section", { class: "rs", "data-kind": m.kind, "data-testid": "result-summary", "aria-label": "Session summary" });
   const toggle = m.scoreSwitch && on.scoreDisplay && (m.ring.unit === "percent" || m.ring.unit === "points")
-    ? (mode) => on.scoreDisplay({ mode }) : null;
+    ? (level) => on.scoreDisplay({ level }) : null;
   const bar = scoreBar(m.ring, m, toggle);
   let worstCard = null, figures = null;
   el.append(h("div", { class: "rs-head" }, bar));   // the caller lifts it to the top of the result
   // the credit score's unit and level (absent without a credit block); the caller saves the choice and repaints
-  if (m.scoreSwitch) el.append(scoreSwitch(m.scoreSwitch, (pick) => on.scoreDisplay && on.scoreDisplay(pick)));
+  // the difficulty switch sits under the score (scoreBar); the old unit and level switch is no longer drawn
   // result-intent.md R2: how 100 becomes the score, so the points next to each miss never read as a sum error
   if (m.sum) el.append(h("p", { class: "rs-sum", "data-testid": "score-sum", "data-adds": String(m.sum.adds), "data-capped": String(m.sum.capped), "data-credit": m.sum.credit ? "true" : false, text: m.sum.text }));
   if (m.stats.length) el.append(h("div", { class: "rs-stats", "data-layout": m.statsLayout }, ...m.stats.map((x) =>

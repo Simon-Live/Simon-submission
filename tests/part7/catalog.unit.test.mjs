@@ -150,7 +150,8 @@ test("a trainer recording's delete offers both options and sends remove_entry on
   const fetcher = async (url, init) => { calls.push([url, init]); return { ok: true, status: 200, json: async () => ({ deleted: true, removed: ["job"], kept: ["entry"] }) }; };
   assert.deepEqual((await del.postDelete("a1", fetcher)).kept, ["entry"]);
   await del.postDelete("a1", fetcher, { removeEntry: true });
-  assert.equal(calls[0][1].body, undefined, "negative: the default sends no body");
+  assert.equal(calls[0][1].headers["Content-Type"], "application/json", "the route needs same-origin JSON");
+  assert.deepEqual(JSON.parse(calls[0][1].body), {}, "negative: the default does not ask to remove the movement");
   assert.equal(calls[1][1].body, JSON.stringify({ remove_entry: true }));
 });
 

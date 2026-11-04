@@ -1,6 +1,62 @@
-# Submission video
+# Submission video: `simon-end-to-end.mp4`
 
-The current cut is `simon-demo-r20-53e4a61.mp4`: 2 minutes 12 seconds, 1920x1080, H.264 with AAC audio, captions burned in. It opens cold on one student's squat played on a rigged character and on several bodies, states the problem (home exercises between physio visits, and nobody watching every rep), then follows one exercise through today's app on staging: the recording becomes a 3D reference, the student follows it side by side, Meta's models analyse the take, and the result shows the letter, the first note at its time, the 3D bodies, Fix it for me and Muse Spark's second opinion. Then the models card, one picture becoming a rigged model, Any body, privacy, cost and the app's version footer.
+`demo/simon-end-to-end.mp4` is one recorded run of the eight journey steps on staging build `9154ffec`, at phone width, captions burned in (text in `demo/captions.srt`). A trainer records a standing knee raise, a second visitor plays it and turns its 3D figure, a follower records the same movement, and the result shows the 3D compare, the timed notes and the score.
+
+File: 1 minute 32 seconds (ffprobe 91.77 s), H.264 High, yuv420p, 1080x1920, 30 fps, 10,810,472 bytes, sha256 `5161f05b0d52eab5d83887044c06810bf19dcb117f697f82292a7e7232c20bf0`. Recorded 2026-11-03 from 11:14:53 to 11:22:20 UTC by `staging/submission.mjs` through the staging gateway; run record `~/.local/state/simon-part-7/staging/submission/2026-11-03T11-14-53-299Z/run.json` on the development host.
+
+## Chapters
+
+| Time | Step |
+|---|---|
+| 0:00 | 1. Open the app: the catalog |
+| 0:04 | 2. The trainer records with the camera, trims, saves; the job stages |
+| 0:27 | 3. A second visitor finds the entry, plays the trainer's video, turns the 3D figure |
+| 0:40 | 4. The follower records the same movement beside the reference |
+| 0:59 | 5. The follower's pipeline stages |
+| 1:05 | 6. The compare view turned, then switched between overlay and side by side |
+| 1:13 | 7. The timed notes; a tap on the 1.2 s note moves the replay to 1.2 s |
+| 1:21 | 8. The score and the letter |
+| 1:26 | Credits |
+
+## Numbers on screen
+
+Run: staging `api/version` sha `9154ffeca9d8a463adad948493a6ee4b7740a40c`. Trainer job `2423e0be2fd8` made the entry `standing-knee-raise-11-03-dd2b36df`. Follower job `9d8b4635afe8`, whose analysis is `api/results/9d8b4635afe8/analysis.json` (a copy sits beside the run record).
+
+| On screen | Value | Source |
+|---|---|---|
+| Score | 38,010 of 54,560 | `analysis.json` `score.credit.points` and `max_points` (tolerance `normal`, the Standard tab) |
+| Letter | C | `score.credit.grade`; the page read `summary-grade` = C (`run.json` `result.grade_shown`) |
+| 31,845 (one frame near 1:02) | the ring counting up to 38,010 | the result page's count-up (`web/views/result-summary.js`), not a stored number |
+| Notes "At 0.6 s", "At 1.2 s", "At 1.3 s" | 0.6, 1.2, 1.3 s; "8 of 8 reps" each | `insights[0..2].at_s` and `why` |
+| Tapped note and the replay clock | 1.2 s | `insights[1].at_s`; the page clock read 1.2 and lit `left_knee` (`run.json` `result.tapped`) |
+| "Arms too low at 5.4 s" (3D stage caption) | 5.4 s | `score.timeline[5].misses[0]` |
+| "Processing on the GPU: 22 s / 165 s / 30 s / 131 s skipped" | measured waits | `run.json` `segments[].cuts[].skipped_s` (trainer people step, trainer job, follower people step, follower job) |
+| Recording clock 0:00 to 0:10, countdown 3 to 1 | 3 s countdown, 10 s take | the driver picks 3 s and 10 s (`COUNTDOWN_S`, `DURATION_S`) |
+| Trim "0.0 s to 10.0 s, 10.0 s" | the full take kept | the trim editor; `run.json` records no trim |
+| "Elapsed 2:48", "Elapsed 2:49" and the step counters | trainer job time | the job screen during job `2423e0be2fd8`; the wait itself is cut |
+| "0:10, 31 key frames" | entry details | the Watch screen for `standing-knee-raise-11-03-dd2b36df` |
+| Build footer `9154ffeca` | staging build | `api/version` |
+| Times in the 3D view (6.3 s, 1.2 s) | replay clock | the compare view's clock on the follower take |
+
+## Clips
+
+The camera plays two Pexels clips through Chrome's fake camera: trainer Pexels 6326808, follower Pexels 8026937, both under the Pexels License, author not stated on the page (`videos/pexels-6326808/SOURCE.md`, `videos/pexels-8026937/SOURCE.md`). The video ends on this credit.
+
+## How to reproduce
+
+From the firm hub: `firm/staging/staging.sh exec simon-part-7 -- scripts/with-browser-slot.sh node staging/submission.mjs` (about 8 minutes, most of it GPU work). It writes the run record, `demo/captions.srt` and the MP4. `node staging/submission.mjs --assemble <run dir>` rebuilds the captions and the MP4 from a run record without recording again.
+
+## Limits
+
+- GPU waits are cut. Each cut shows a caption with the measured seconds; the take is otherwise uncut.
+- On the trainer job screen, Part 1 found no person, so the key frames came from Part 3 (the job note on screen at 0:23).
+- The search list in step 3 shows entries of the same name from earlier takes that morning; the visitor opens this run's entry by its id.
+- The page shows the credit score. `analysis.json` also holds `score.value` 27 (grade F), which the lean result page does not show.
+- `demo/build.sh` (the r20 pipeline below) writes the same two paths, `demo/simon-end-to-end.mp4` and `demo/captions.srt`. Running it replaces this video.
+
+# Earlier cut: r20 narrative video (release asset)
+
+The r20 cut is `simon-demo-r20-53e4a61.mp4`: 2 minutes 12 seconds, 1920x1080, H.264 with AAC audio, captions burned in. It opens cold on one student's squat played on a rigged character and on several bodies, states the problem (home exercises between physio visits, and nobody watching every rep), then follows one exercise through today's app on staging: the recording becomes a 3D reference, the student follows it side by side, Meta's models analyse the take, and the result shows the letter, the first note at its time, the 3D bodies, Fix it for me and Muse Spark's second opinion. Then the models card, one picture becoming a rigged model, Any body, privacy, cost and the app's version footer.
 
 The video is not in git. It is kept at `~/.local/state/simon-part-7/demo-video/` on the development host with its contact sheet and captions, and goes up as a release asset with its sha256 (see "Files kept out of git").
 

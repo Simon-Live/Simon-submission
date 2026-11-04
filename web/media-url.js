@@ -27,3 +27,13 @@ export function releaseMediaUrl(el, url, { revoke = (u) => URL.revokeObjectURL(u
   SETTLE_EVENTS.forEach((e) => el.addEventListener(e, once));
   setTimer(once, SETTLE_TIMEOUT_MS);
 }
+
+/** Several elements share `url` (the trim editor's video and its filmstrip probe): revoke once all are released. */
+export function releaseSharedMediaUrl(els, url, { revoke = (u) => URL.revokeObjectURL(u), setTimer = setTimeout } = {}) {
+  if (!url) return;
+  const live = els.filter(Boolean);
+  if (!live.length) { revoke(url); return; }
+  let left = live.length;
+  const one = () => { left -= 1; if (left === 0) revoke(url); };
+  live.forEach((el) => releaseMediaUrl(el, url, { revoke: one, setTimer }));
+}

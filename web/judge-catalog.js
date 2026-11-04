@@ -2,6 +2,7 @@
 // record names `video_uri`. In the submission profile an entry without one is left out, unless the signed-in viewer
 // owns it. Nothing is deleted: the profile and the owner's own list are unchanged.
 import { call } from "./me-api.js";
+import { fetchMe } from "./auth.js";
 
 /** True when the catalog entry names a trainer video. */
 export const hasTrainerVideo = (entry) => Boolean(entry && entry.video_uri);
@@ -14,6 +15,7 @@ export function judgeListed(entries, { submission = false, owned = new Set() } =
 
 /** The ids of the movements the signed-in viewer owns; an empty set when signed out or the call fails. */
 export async function loadOwned() {
+  if (!(await fetchMe()).signedIn) return new Set(); // signed out: api/me/entries is not asked, so no 401 reaches the console
   const out = await call("GET", "api/me/entries", undefined, { expectStatus: [401, 404] });
   const list = out.ok && out.body && Array.isArray(out.body.entries) ? out.body.entries : [];
   return new Set(list.map((e) => e.entry_id).filter(Boolean));

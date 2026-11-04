@@ -69,7 +69,7 @@ export function expirySentence(isoOrDays, now = Date.now()) {
  */
 export function createBody({ kind, itemRef, showName = false, showClip = false, days = DEFAULT_DAYS, includeScore = true, includeFaults = true, scoreDisplay = null }) {
   const take = kind === "take_result";
-  const display = take ? displayChoice(scoreDisplay) : null;   // the owner's points or % choice, so the link shows the result's unit
+  const display = take ? displayChoice(scoreDisplay) : null;   // the share always carries points, so the link shows the points unit
   return {
     kind, item_ref: itemRef, show_name: showName === true, show_clip: take && showClip === true, days, confirm: true,
     ...(take && includeScore === false ? { include_score: false } : {}),

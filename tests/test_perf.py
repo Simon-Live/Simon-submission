@@ -37,9 +37,13 @@ def _patch_rest(monkeypatch: pytest.MonkeyPatch, kf_seen: list[Any]) -> None:
     monkeypatch.setattr(p5_analyse, "doctor", lambda *a, **kw: _ok_step(5))
 
 
-def _fake_p2(delay: float) -> Any:
+def _fake_p2(delay: float, marks: dict[str, float] | None = None) -> Any:
     def run(v: Path, w: Path, **kw: Any) -> Any:
+        if marks is not None:
+            marks["p2_start"] = time.monotonic()
         time.sleep(delay)
+        if marks is not None:
+            marks["p2_end"] = time.monotonic()
         p = Path(w) / "part2" / "pose3d.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("{}", encoding="utf-8")
@@ -61,21 +65,24 @@ def test_trainer_runs_part1_beside_part2(tmp_path: Path, state_dir: Path, monkey
     kf = tmp_path / "kf.json"
     kf.write_text('{"people": [{}]}', encoding="utf-8")
 
+    marks: dict[str, float] = {}
+
     def p1(v: Path, w: Path, **kw: Any) -> Any:
+        marks["p1_start"] = time.monotonic()
         time.sleep(0.4)
+        marks["p1_end"] = time.monotonic()
         return (_ok_step(1), kf, None)
 
     monkeypatch.setattr(p1_keyframes, "run", p1)
     monkeypatch.setattr(p1_keyframes, "doctor", lambda *a, **kw: _ok_step(6))
-    monkeypatch.setattr(p2_pose, "run", _fake_p2(0.4))
+    monkeypatch.setattr(p2_pose, "run", _fake_p2(0.4, marks))
     stages: list[str] = []
-    t0 = time.monotonic()
     res = chain.trainer(
         _video(tmp_path), tmp_path / "w", report=stages.append, lock=_dummy_lock(state_dir), state=state_dir
     )
-    elapsed = time.monotonic() - t0
     assert res["ok"] and res["parts"]["keyframes"] == 1 and seen == [str(kf)]
-    assert elapsed < 0.75, elapsed  # sequential would be 0.8 s
+    # Overlap by ordering, not wall clock (flaked under host load): each part starts before the other ends.
+    assert marks["p1_start"] < marks["p2_end"] and marks["p2_start"] < marks["p1_end"], marks
     assert stages[:2] == ["keyframes", "pose"]
 
 
@@ -481,17 +488,23 @@ def test_slow_part1_grows_the_job_by_at_most_budget_minus_pose(
     _patch_rest(monkeypatch, seen)
     budget, pose = 1.5, 0.5
 
+    marks: dict[str, float] = {}
+
     def p1(v: Path, w: Path, **kw: Any) -> Any:
+        marks["p1_start"] = time.monotonic()
         time.sleep(kw["timeout_s"])  # a Part 1 that runs to the end of its budget
+        marks["p1_end"] = time.monotonic()
         step = _ok_step(1)
         step.update(exit=124, timed_out=True)
         return (step, None, "key frames from Part 3, Part 1 exited 124")
 
     monkeypatch.setattr(p1_keyframes, "run", p1)
-    monkeypatch.setattr(p2_pose, "run", _fake_p2(pose))
+    monkeypatch.setattr(p2_pose, "run", _fake_p2(pose, marks))
     monkeypatch.setenv("SIMON7_PART1_TIMEOUT_S", str(budget))
-    t0 = time.monotonic()
     res = chain.trainer(_video(tmp_path), tmp_path / "w", lock=_dummy_lock(state_dir), state=state_dir)
-    elapsed = time.monotonic() - t0
+    returned = time.monotonic()
     assert res["ok"] and seen == ["every:10"]
-    assert elapsed < budget + 0.3, elapsed  # not budget + pose (2.0 s)
+    # Ordering, not a wall-clock margin (which flaked under host load): Part 1 starts before pose ends, and the
+    # chain returns only after Part 1 has run its whole budget.
+    assert marks["p1_start"] < marks["p2_end"], marks
+    assert returned >= marks["p1_end"] >= marks["p1_start"] + budget, (marks, returned)

@@ -3,28 +3,14 @@
 //   node --test tests/part7/queue-eta.dom.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installDom, El, find } from "./fake-dom.mjs";
+import { mountJobPage } from "./job-dom.mjs";
 
-installDom();
-// what the progress bar touches beyond fake-dom: an inline style and a class list per element
-Object.defineProperty(El.prototype, "style", { get() { return (this._style ||= { setProperty() {} }); } });
-Object.defineProperty(El.prototype, "classList", { get() { return (this._cl ||= { add() {}, remove() {}, toggle() {}, contains: () => false }); } });
-let answer = {};
-globalThis.location = { hash: "" };
-globalThis.fetch = async (url) => {
-  const body = String(url).includes("api/jobs/") ? answer : {};
-  return { ok: true, status: 200, json: async () => body, headers: { get: () => null } };
-};
-const { mountJob } = await import("../../web/job.js");
-const settle = () => new Promise((r) => setTimeout(r, 30));
+const BASE = { kind: "follow", stage: null, stages: [], note: null };
 
 async function show(job) {
-  answer = { id: "abcdefabcdef", kind: "follow", stage: null, stages: [], note: null, ...job };
-  const root = new El("div");
-  const stop = mountJob(root, "abcdefabcdef");
-  await settle();
+  const { stop, find } = await mountJobPage({ ...BASE, ...job });
   stop();
-  return { queue: find(root, "queue"), left: find(root, "eta-left") };
+  return { queue: find("queue"), left: find("eta-left") };
 }
 
 test("queued without eta_s: exactly the old line and no time left", async () => {
@@ -53,23 +39,17 @@ test("running with eta_s: the time left; past the estimate: longer than usual", 
 
 // TICKET-316: the page never shows two different times
 test("a measured time on screen removes the static 'Usually about' hint", async () => {
-  answer = { id: "abcdefabcdef", kind: "follow", stage: "pose", stages: [], note: null, status: "running", eta_s: 240, eta_basis: { late: false } };
-  const root = new El("div");
-  const stop = mountJob(root, "abcdefabcdef");
-  await settle();
+  const { stop, find } = await mountJobPage({ ...BASE, stage: "pose", status: "running", eta_s: 240, eta_basis: { late: false } });
   stop();
-  assert.equal(find(root, "eta-left").textContent, "About 3 to 5 minutes left.");
-  assert.doesNotMatch(find(root, "stage-detail").textContent, /Usually/);
-  assert.equal(find(root, "stages").getAttribute("data-eta"), "shown");
+  assert.equal(find("eta-left").textContent, "About 3 to 5 minutes left.");
+  assert.doesNotMatch(find("stage-detail").textContent, /Usually/);
+  assert.equal(find("stages").getAttribute("data-eta"), "shown");
 });
 
 test("negative: without eta_s the static hint stays", async () => {
-  answer = { id: "abcdefabcdef", kind: "follow", stage: "pose", stages: [], note: null, status: "running" };
-  const root = new El("div");
-  const stop = mountJob(root, "abcdefabcdef");
-  await settle();
+  const { stop, find } = await mountJobPage({ ...BASE, stage: "pose", status: "running" });
   stop();
-  assert.equal(find(root, "eta-left").hidden, true);
-  assert.match(find(root, "stage-detail").textContent, /Usually about/);
-  assert.equal(find(root, "stages").getAttribute("data-eta"), "none");
+  assert.equal(find("eta-left").hidden, true);
+  assert.match(find("stage-detail").textContent, /Usually about/);
+  assert.equal(find("stages").getAttribute("data-eta"), "none");
 });

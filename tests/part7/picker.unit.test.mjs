@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { listModels, list, uploadModel, waitReady, errorText, needsConsent, makesRig, toEntry, deleteModel } from "../../web/skin/catalog.js";
-import { createChooser, resolveChoice, creditFor, choiceIdOf, entryFor, KEY_PREFIX } from "../../web/skin/picker.js";
+import { createChooser, resolveChoice, creditFor, choiceIdOf, entryFor, KEY_PREFIX, noBodyNote } from "../../web/skin/picker.js";
 import { validateForm, MSG } from "../../web/skin/import-dialog.js";
 import { writeDrawStats } from "../../web/compare.js";
 
@@ -184,6 +184,74 @@ test("Person falls back to the stick figure when the skin is missing or throws",
     assert.equal(res.ok, true);
     assert.deepEqual(r.calls, [[1, null]]);
   }
+});
+
+// TICKET-375: Person with no body to show was the stick figure with no word on screen (staging take bea90704d96a)
+test("picker_names_who_has_no_body_given_person_resolves_no_skin", async () => {
+  const r = rig({ loadPersonSkin: async (j, p) => (p === "trainer" ? null : adapter(`person-${j}-${p}`)) });
+  const ch = createChooser({ stage: r.stage, tracks: r.tracks, job: "j1", entries: [], deps: r.deps });
+  await ch.restore();
+  assert.deepEqual(ch.bodiless(), [0]);
+  assert.equal(noBodyNote(r.tracks, ch.bodiless()), "No 3D body for the trainer in this take, so Person shows the stick figure.");
+  const both = rig({ loadPersonSkin: async () => { throw new Error("x"); } });
+  const ch2 = createChooser({ stage: both.stage, tracks: both.tracks, job: "j1", entries: [], deps: both.deps });
+  await ch2.restore();
+  assert.deepEqual(ch2.bodiless(), [0, 1]);
+  assert.equal(noBodyNote(both.tracks, ch2.bodiless()), "No 3D body for the trainer and you in this take, so Person shows the stick figures.");
+  assert.equal(noBodyNote([{ role: "trainer", label: "Your reference" }], [0]), "No 3D body for your reference in this take, so Person shows the stick figure.");
+});
+
+test("picker_says_nothing_about_a_body_given_skeleton_a_model_a_skin_or_no_job (negative)", async () => {
+  const r = rig({ loadPersonSkin: async () => null });
+  const ch = createChooser({ stage: r.stage, tracks: r.tracks, job: "j1", entries: [{ id: "m1", kind: "library", name: "M" }], deps: r.deps });
+  await ch.restore();
+  assert.deepEqual(ch.bodiless(), [0, 1]);
+  await ch.choose(0, "skeleton");
+  await ch.choose(1, "lib:m1");
+  assert.deepEqual(ch.bodiless(), [], "Skeleton and a library model draw what was chosen");
+  await ch.choose(0, "person");
+  assert.deepEqual(ch.bodiless(), [0], "back to Person with no body: said again");
+  assert.equal(noBodyNote(r.tracks, []), "");
+  const skin = rig();
+  const ok = createChooser({ stage: skin.stage, tracks: skin.tracks, job: "j1", entries: [], deps: skin.deps });
+  await ok.restore();
+  assert.deepEqual(ok.bodiless(), [], "a person skin is a body");
+  for (const job of [null, "fixture"]) {   // Watch and the example result have no take to have a body of
+    const w = rig({ job, loadPersonSkin: async () => null });
+    const cw = createChooser({ stage: w.stage, tracks: w.tracks, job, entries: [], deps: w.deps });
+    await cw.restore();
+    assert.deepEqual(cw.bodiless(), [], `job ${job}`);
+  }
+});
+
+test("picker_says_nothing_about_a_body_given_a_generated_avatar_or_an_uploaded_model (negative)", async () => {
+  // a generated avatar shares the choice id "person" with the no-body state: it is a body, so no line
+  const made = { id: "av", name: "av", kind: "generated", status: "ready", glb: "g", manifest: "m", licence: { id: "own-work" }, for: { job: "j1", person: "you" } };
+  const up = { id: "u1", name: "Mine", kind: "upload", glb: "g", manifest: "m", licence: { id: "own-work" }, status: "ready" };
+  const r = rig({ loadPersonSkin: async () => null });
+  const ch = createChooser({ stage: r.stage, tracks: r.tracks, job: "j1", entries: [made, up], deps: r.deps });
+  await ch.restore();
+  assert.equal(ch.current(1), "person");
+  assert.deepEqual(ch.bodiless(), [0], "the follower has the avatar; only the trainer lacks a body");
+  await ch.choose(0, "up:u1");
+  assert.deepEqual(ch.bodiless(), [], "an uploaded model is what was chosen");
+  // the avatar fails to load: Person falls back to the person skin, which has no body either, so it is said
+  const broken = rig({ loadCharacter: async () => { throw new Error("bad glb"); }, loadPersonSkin: async () => null });
+  const ch2 = createChooser({ stage: broken.stage, tracks: broken.tracks, job: "j1", entries: [made], deps: broken.deps });
+  await ch2.restore();
+  assert.deepEqual(ch2.bodiless(), [0, 1]);
+});
+
+test("picker_keeps_the_later_choice_given_a_bodiless_person_load_is_superseded", async () => {
+  let release;
+  const slow = new Promise((res) => { release = res; });
+  const r = rig({ loadPersonSkin: async () => { await slow; return null; } });
+  const ch = createChooser({ stage: r.stage, tracks: r.tracks, job: "j1", entries: [], deps: r.deps });
+  const first = ch.choose(1, "person");
+  await ch.choose(1, "skeleton");
+  release();
+  await first;
+  assert.deepEqual(ch.bodiless(), [], "the Person load that lost the race does not claim a missing body");
 });
 
 test("choosing a library model for one figure leaves the other alone, and remembers it", async () => {

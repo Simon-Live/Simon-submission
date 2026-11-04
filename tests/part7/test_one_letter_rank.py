@@ -68,13 +68,15 @@ def _job(root: Path, job_id: str, score: dict[str, Any], **analysis: Any) -> Non
     (folder / "work" / "follower" / "analysis.json").write_text(json.dumps(doc), encoding="utf-8")
 
 
-def test_the_hero_auto_pick_follows_the_shown_measure_and_never_a_capped_take(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(judge_view.HERO_ENV, raising=False)
+def test_a_named_capped_take_is_never_the_hero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """L6 for the hero, which since TICKET-373 is only ever the take an operator names (no auto-pick)."""
     monkeypatch.setattr(judge_view.mesh_files, "index", lambda root, job_id: {"follower": True, "trainer": True})
-    _job(tmp_path, "aaaaaaaaaaaa", {"value": 50, "grade": "F"})
     _job(tmp_path, "bbbbbbbbbbbb", TRIGGER)
     _job(tmp_path, "cccccccccccc", {**TRIGGER, "value": 95, "grade": "A", "capped_by": ["low_match"],
                                     "credit": {**TRIGGER["credit"], "percent": 99.0}}, warnings=[{"code": "low_match"}])
+    monkeypatch.setenv(judge_view.HERO_ENV, "cccccccccccc")
+    assert judge_view.hero(tmp_path, tmp_path)["job_id"] is None
+    monkeypatch.setenv(judge_view.HERO_ENV, "bbbbbbbbbbbb")
     assert judge_view.hero(tmp_path, tmp_path)["job_id"] == "bbbbbbbbbbbb"
 
 

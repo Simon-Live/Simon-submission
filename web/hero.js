@@ -1,5 +1,5 @@
 // The judge view's first take: a link on Home to one finished, scored take with its 3D mesh (docs/specs/judge-view.md).
-// The server picks it (part7/judge_view.py: named by the operator, else the best scoring one); this file words and links it.
+// The server answers it (part7/judge_view.py: only the take the operator names, TICKET-373); this file words and links it.
 import { getHero } from "./api.js";
 import { h } from "./ui.js";
 import { shownRow, shownText } from "./model/score-labels.js";

@@ -417,7 +417,8 @@ def handle(h: Any, method: str, route: str) -> bool:
         if parts[2] == "trainer-visibility.json":  # the trainer's unseen joints (compare-view.md, TICKET-116)
             doc = trainer_visibility.build(root / job_id / "work" / "expected_skeleton.json") if ok else None
         else:
-            doc = skeleton2d.build(root / job_id / "work" / "follower" / "part2", record.get("person_id")) if ok else None
+            doc = skeleton2d.build(root / job_id / "work" / "follower" / "part2", record.get("person_id"),
+                                    min_conf=skeleton2d.UNSEEN_CONF) if ok else None  # TICKET-376: an unseen joint is not drawn
     if doc is None:
         h._error(404, MSG_GONE)
     else:

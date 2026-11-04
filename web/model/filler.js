@@ -2,6 +2,7 @@
 // with a short clause such as "nice effort." and a take with several misses shows it on every line. At display time
 // a short clause (4 words or fewer, no digit) that a line earlier on the screen already said is left out of the
 // later lines. Logic only, no DOM; the downloaded analysis and the voice and narration modules keep Part 5's words.
+import { faultLine } from "./fault-line.js";
 
 const CLAUSE_SPLIT = /(?<=[.!;,])\s+/;
 const MAX_WORDS = 4;
@@ -48,10 +49,11 @@ export function withoutRepeatedFiller(analysis) {
   const tl = copy.score && Array.isArray(copy.score.timeline) ? copy.score.timeline : [];
   for (const w of tl) for (const m of (w && Array.isArray(w.misses) ? w.misses : [])) if (m) slots.push([m, "text"]);
   for (const x of Array.isArray(copy.insights) ? copy.insights : []) if (x) slots.push([x, "why"]);
-  for (const f of Array.isArray(copy.faults) ? copy.faults : []) {
-    const key = f && FAULT_TEXT.find((k) => typeof f[k] === "string" && f[k]);
-    if (key) slots.push([f, key]);
-  }
+  (Array.isArray(copy.faults) ? copy.faults : []).forEach((f, i) => {
+    const live = faultLine(copy, i).live ? copy.phrasing.faults[i] : null;   // TICKET-368: the row shows the live line
+    const key = live ? "text" : f && FAULT_TEXT.find((k) => typeof f[k] === "string" && f[k]);
+    if (key) slots.push([live || f, key]);
+  });
   const lines = dropRepeatedFiller(slots.map(([o, k]) => o[k]));
   slots.forEach(([o, k], i) => { if (typeof o[k] === "string") o[k] = lines[i]; });
   return copy;

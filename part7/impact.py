@@ -80,6 +80,15 @@ def _take(row: dict[str, Any], jobs_root: Path) -> tuple[dict[str, Any] | None, 
     }, ""
 
 
+def named_job_ids(state: Path, repo_root: Path | None = None) -> set[str]:
+    """Every job id the persona file names, whether or not it qualifies today: those ids are public, so
+    `delete_routes.featured` treats every one as featured (TICKET-373)."""
+    _, path = _source(state, repo_root or config.REPO_ROOT)
+    doc = job_lookup.read_json(path) if path else None
+    rows = doc if isinstance(doc, list) else []
+    return {r["job_id"] for r in rows if isinstance(r, dict) and isinstance(r.get("job_id"), str)}
+
+
 def personas(state: Path, jobs_root: Path, repo_root: Path | None = None) -> dict[str, Any]:
     """The four persona cards' data; a persona without a qualifying take has `take: null` and a `missing` reason."""
     source, path = _source(state, repo_root or config.REPO_ROOT)

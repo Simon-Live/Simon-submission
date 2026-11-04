@@ -40,9 +40,8 @@ export const TRAINER_TEXT = {
 export async function postDelete(job, fetcher = globalThis.fetch.bind(globalThis), { removeEntry = false } = {}) {
   let res;
   try {
-    const init = removeEntry
-      ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remove_entry: true }) }
-      : { method: "POST" };
+    // always JSON: the route refuses a POST that is not same-origin JSON (CSRF guard, TICKET-374 R8)
+    const init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(removeEntry ? { remove_entry: true } : {}) };
     res = await fetcher(`api/jobs/${encodeURIComponent(job)}/delete`, init);
   } catch {
     throw new Error(TEXT.failed);

@@ -79,12 +79,11 @@ test("an uncapped take and a credit score keep the client's model as it is", () 
   assert.equal(summaryOf(plain, { kind: "exercise" }).ring.caption, "average form");
   const cappedCredit = { ...credit, score: { ...credit.score, value: 59, grade: "F", uncapped: { value: 80, grade: "B" }, capped_by: ["low_match"] } };
   assert.deepEqual(summaryOf(credit, { kind: "exercise" }), baseSummaryOf(credit, { kind: "exercise" }), "an uncapped credit ring is the client's");
-  // S5: a warning cap wins over the credit, which ignores it (Part 5 ADR-0020): the ring is score.value and its grade
+  // team, 2 Nov (#61): nothing capped. A warned take with a credit shows the credit, exactly as the client's model draws it
   const m = summaryOf(cappedCredit, { kind: "exercise" });
-  assert.equal(m.ring.unit, "score");
-  assert.deepEqual([m.ring.text, m.ring.grade, m.ring.caption], ["59", "F", SCORE_CAPTION]);
-  assert.equal(m.scoreSwitch, null, "no points or % switch for a credit the cap set aside");
-  assert.notEqual(baseSummaryOf(cappedCredit, { kind: "exercise" }).ring.grade, "F", "the client's model alone shows the credit's letter");
+  assert.deepEqual(m, baseSummaryOf(cappedCredit, { kind: "exercise" }), "the credit ring, its switch and its F to S letter stay");
+  assert.notEqual(m.ring.unit, "score");
+  assert.ok(m.scoreSwitch, "the points or % switch stays");
   assert.equal(labelSummary(null, hero), null);
 });
 

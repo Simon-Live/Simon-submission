@@ -5,9 +5,9 @@ The follower's are in the job's `work/follower/part2/`, the trainer's in the new
 catalog entry, `work/trainer/part2/` (models_used.trainer_job). Part 7 serves the files unchanged.
 
 - `GET results/<job>/mesh.json` answers a done follow job with `{trainer, you}`: each the URL of that person's
-  `mesh3d.json` (relative to the app's base path), or both null unless all four files are present (the view needs both
-  people). Always 200 for such a job, so a result without
-  meshes makes no failing request; 404 for any other id, kind or state.
+  `mesh3d.json` (relative to the app's base path) when that person's two files are present, else null (TICKET-375: the
+  Person model needs only its own person's mesh; the side-by-side mesh view needs both and checks both). Always 200 for
+  such a job, so a result without meshes makes no failing request; 404 for any other id, kind or state.
 - `GET results/<job>/mesh/<trainer|you>/<mesh3d.json|mesh3d.bin>` serves the file; 404 when it is absent.
 - `GET results/<job>/mesh/<trainer|you>/rest.json` (docs/specs/person-skin.md) answers the person's rest joints: the
   17 pose3d keypoints of the first mesh frame that has a person and both elbows bent less than 30 degrees, so the
@@ -83,8 +83,11 @@ def index(jobs_root: Path, job_id: str) -> dict[str, Any] | None:
     if folders is None:
         return None
     url = lambda who: f"api/results/{job_id}/mesh/{who}/mesh3d.json"  # noqa: E731
-    both = all(_regular(folders[who], n) for who in WHO for n in FILES)
-    doc: dict[str, Any] = {who: (url(who) if both else None) for who in WHO}
+    has = {who: all(_regular(folders[who], n) for n in FILES) for who in WHO}
+    both = all(has.values())
+    # TICKET-375: each person on their own, so the Person model shows the follower's body when the trainer was recorded
+    # before --mesh; the side-by-side mesh view needs both URLs and checks that itself (result-wiring.js mountMesh)
+    doc: dict[str, Any] = {who: (url(who) if has[who] else None) for who in WHO}
     from part7 import take_ar  # TICKET-282: AR file link requests, present only for a person who has them (take-ar.md)
 
     ar = take_ar.from_folders(folders, job_id) or {}

@@ -3,27 +3,12 @@
 //   node --test tests/part7/gpu-note.dom.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installDom, El, find } from "./fake-dom.mjs";
-
-installDom();
-Object.defineProperty(El.prototype, "style", { get() { return (this._style ||= { setProperty() {} }); } });
-Object.defineProperty(El.prototype, "classList", { get() { return (this._cl ||= { add() {}, remove() {}, toggle() {}, contains: () => false }); } });
-let answer = {};
-globalThis.location = { hash: "" };
-globalThis.fetch = async (url) => {
-  const body = String(url).includes("api/jobs/") ? answer : {};
-  return { ok: true, status: 200, json: async () => body, headers: { get: () => null } };
-};
-const { mountJob } = await import("../../web/job.js");
-const settle = () => new Promise((r) => setTimeout(r, 30));
+import { mountJobPage } from "./job-dom.mjs";
 
 async function show(job) {
-  answer = { id: "abcdefabcdef", kind: "follow", stages: [], note: null, queue_position: null, ...job };
-  const root = new El("div");
-  const stop = mountJob(root, "abcdefabcdef");
-  await settle();
+  const { stop, find } = await mountJobPage({ kind: "follow", stages: [], note: null, queue_position: null, ...job });
   stop();
-  return { gpu: find(root, "gpu-note"), detail: find(root, "stage-detail"), note: find(root, "job-note") };
+  return { gpu: find("gpu-note"), detail: find("stage-detail"), note: find("job-note") };
 }
 
 test("waiting for the GPU: the line shows under the step line", async () => {

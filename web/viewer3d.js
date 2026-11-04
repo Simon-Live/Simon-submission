@@ -102,7 +102,7 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
       return h;
     });
     scene.add(group);
-    return { group, mat, dimMat, boneMeshes, jointMeshes, halos, pose: null, skin: null, dim: new Set(), stats: null, offset: new THREE.Vector3(), pelvis: new THREE.Vector3() };
+    return { group, mat, dimMat, boneMeshes, jointMeshes, halos, pose: null, skin: null, dim: new Set(), hide: new Set(), stats: null, offset: new THREE.Vector3(), pelvis: new THREE.Vector3() };
   });
 
   const state = { azimuth: 24, elevation: 14, distance: 3.4, mode: tracks.length > 1 ? "side" : "single", highlight: new Set() };
@@ -154,13 +154,15 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
     fig.offset.set(slot - cx, -cy, -cz);
     fig.pelvis.set(slot, 0, 0);
     const hot = trackIdx === figures.length - 1 ? state.highlight : null;
+    // TICKET-376: a joint Part 2 marked unseen in this frame is not drawn, nor its bones (the sticks; a skin is a body model)
+    const unseen = (i) => !fig.skin && fig.hide.has(i);
     pose.forEach((p, i) => {
       const jm = fig.jointMeshes[i];
       const halo = fig.halos[i];
-      if (!p) { jm.visible = false; halo.visible = false; return; }
+      if (p && dim.has(i)) stats.dimmed++; // counted whether the sticks hide it or a skin dims it
+      if (!p || unseen(i)) { jm.visible = false; halo.visible = false; return; }
       jm.visible = true;
       stats.joints++;
-      if (dim.has(i)) stats.dimmed++;
       jm.position.set(p[0] + fig.offset.x, p[1] + fig.offset.y, p[2] + fig.offset.z);
       const lit = !!hot && hot.has(i);
       jm.material = lit ? (fig.skin ? hotOverMat : hotMat) : dim.has(i) ? fig.dimMat : fig.mat;
@@ -173,7 +175,7 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
     bones.forEach(([a, b], k) => {
       const m = fig.boneMeshes[k];
       const pa = pose[a], pb = pose[b];
-      if (!pa || !pb) { m.visible = false; return; }
+      if (!pa || !pb || unseen(a) || unseen(b)) { m.visible = false; return; }
       m.visible = true;
       stats.bones++;
       m.material = dim.has(a) || dim.has(b) ? fig.dimMat : fig.mat;
@@ -391,12 +393,13 @@ export function createStage(host, { joints, bones, tracks, framing = true }) {
 
   return {
     canvas,
-    /** poses[i] is figure i's joints (null hides the figure); dims[i] lists its joint indices to dim. */
-    setPoses(poses, dims = []) {
+    /** poses[i] is figure i's joints (null hides the figure); dims[i] lists its joint indices to dim; hides[i] the ones the stick figure does not draw at all, with their bones (TICKET-376). */
+    setPoses(poses, dims = [], hides = []) {
       poses.forEach((p, i) => {
         if (!figures[i]) return;
         figures[i].pose = p;
         figures[i].dim = new Set(dims[i] || []);
+        figures[i].hide = new Set(hides[i] || []);
       });
       invalidate();
     },
