@@ -365,17 +365,17 @@ def test_the_owners_own_address_is_not_mailed(api: Api) -> None:
 def test_an_address_is_refused_as_a_name_or_title_and_masked_when_stored(api: Api) -> None:
     own = sign_in(api, OWNER)
     for field in ("creator_name", "title"):
-        for typed in ("catherine@example.com", "catherine＠example.com"):
+        for typed in ("teammate@example.com", "teammate＠example.com"):
             status, doc = make(api, own, **{field: typed})
             assert status == 400 and "@" in doc["error"]
     published(api.app.state, ENTRY)
     old = challenges.create(api.app.state, entry_id=ENTRY, title="Fine", creator_name="Sam", kind="friend")
     stored = challenges.get(api.app.state, old["id"])
-    stored["creator_name"] = "catherine@example.com"
-    stored["entries"] = [{"name": "catherine@example.com", "score": 5, "grade": "C", "created_at": "2026-11-01T00:00:00Z"}]
+    stored["creator_name"] = "teammate@example.com"
+    stored["entries"] = [{"name": "teammate@example.com", "score": 5, "grade": "C", "created_at": "2026-11-01T00:00:00Z"}]
     challenges._write(api.app.state, stored)
     text = json.dumps(board(api, None, old["id"])[1]) + json.dumps(get(api, "api/challenges")[2])
-    assert "catherine" not in text and "Hidden name" in text
+    assert "teammate" not in text and "Hidden name" in text
 
 
 # ----- a private movement -------------------------------------------------------------------------------------
