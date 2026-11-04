@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simon Part 3: one movement, four camera angles, one skeleton</title>
+  <meta name="description" content="Four synthetic takes of the same squat, filmed from four angles, aligned by movement phase into one skeleton.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="viewer.css">
+  <script type="importmap">{"imports": {"three": "./vendor/three/three.module.js"}}</script>
+</head>
+<body>
+  <header class="top">
+    <div class="titles">
+      <h1>Simon Part 3: one movement, four camera angles, one skeleton</h1>
+      <p class="subtitle">Four synthetic takes of the same squat, filmed from four angles, aligned by movement phase.</p>
+      <a class="back-link" href="./">Run the pipeline</a>
+    </div>
+    <p class="verdict" id="verdict" role="status">Loading the data</p>
+  </header>
+
+  <section class="metrics" aria-label="Metrics from make check-3">
+    <article class="card">
+      <h2>Joint-angle agreement, p95</h2>
+      <p class="value"><span id="agreement-p95">...</span> <span class="unit">deg</span> <span class="badge" id="agreement-badge"></span></p>
+      <p class="sub" id="agreement-sub">limit 10, 4 takes against take 1</p>
+    </article>
+    <article class="card">
+      <h2>Bone-length variation</h2>
+      <p class="value"><span id="variation">...</span> <span class="badge" id="variation-badge"></span></p>
+      <p class="sub" id="variation-sub">largest relative error, limit 0.020</p>
+    </article>
+    <article class="card">
+      <h2>Left/right flips</h2>
+      <p class="value"><span id="flips-value">...</span> <span class="badge" id="flips-badge"></span></p>
+      <p class="sub" id="flips-sub">repaired of injected</p>
+    </article>
+    <article class="card">
+      <h2>Frames compared</h2>
+      <p class="value"><span id="frames-compared">...</span></p>
+      <p class="sub">take 1 frames used</p>
+    </article>
+    <article class="card">
+      <h2>Largest spread, this frame</h2>
+      <p class="value"><span id="spread-now">n/a</span> <span class="unit" id="spread-unit"></span></p>
+      <p class="sub">largest joint-angle gap between takes</p>
+    </article>
+  </section>
+
+  <section class="controls" aria-label="Playback and camera controls">
+    <div class="group" role="group" aria-label="Camera">
+      <button type="button" id="btn-reset" title="Reset the camera (R)">Reset</button>
+      <button type="button" id="btn-front" title="Front view (F)">Front</button>
+      <button type="button" id="btn-side" title="Side view (S)">Side</button>
+      <button type="button" id="btn-top" title="Top view (T)">Top</button>
+    </div>
+    <div class="group play" role="group" aria-label="Playback">
+      <button type="button" id="btn-play" class="primary" title="Play or pause (Space)">Play</button>
+      <label class="scrub-label" for="scrub">Frame</label>
+      <input type="range" id="scrub" min="0" max="0" step="1" value="0" aria-describedby="frame-readout">
+      <output id="frame-readout" for="scrub">0 of 0</output>
+    </div>
+    <div class="group takes" role="group" aria-label="Show takes in the overlap panel">
+      <label class="take-toggle" style="--take:#1f77b4"><input type="checkbox" id="take-1" checked><span class="chip"></span>Take 1</label>
+      <label class="take-toggle" style="--take:#ff7f0e"><input type="checkbox" id="take-2" checked><span class="chip"></span>Take 2</label>
+      <label class="take-toggle" style="--take:#2ca02c"><input type="checkbox" id="take-3" checked><span class="chip"></span>Take 3</label>
+      <label class="take-toggle" style="--take:#d62728"><input type="checkbox" id="take-4" checked><span class="chip"></span>Take 4</label>
+    </div>
+    <p class="hints" aria-label="Keyboard and mouse hints">
+      <span><kbd>Space</kbd> play or pause</span>
+      <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> step a frame</span>
+      <span>drag to orbit</span>
+      <span>wheel to zoom</span>
+    </p>
+  </section>
+
+  <main class="layout">
+    <section class="inputs" aria-label="Input takes, as Part 2 delivered them">
+      <figure class="panel input" data-take="1" style="--take:#1f77b4">
+        <div class="stage"></div>
+        <figcaption class="tag"><span class="dot"></span><span class="tag-text">Take 1</span></figcaption>
+        <p class="foot"><span class="frame-note">frame</span><span class="badge flip" hidden>flip repaired</span><span class="flip-count"></span></p>
+      </figure>
+      <figure class="panel input" data-take="2" style="--take:#ff7f0e">
+        <div class="stage"></div>
+        <figcaption class="tag"><span class="dot"></span><span class="tag-text">Take 2</span></figcaption>
+        <p class="foot"><span class="frame-note">frame</span><span class="badge flip" hidden>flip repaired</span><span class="flip-count"></span></p>
+      </figure>
+      <figure class="panel input" data-take="3" style="--take:#2ca02c">
+        <div class="stage"></div>
+        <figcaption class="tag"><span class="dot"></span><span class="tag-text">Take 3</span></figcaption>
+        <p class="foot"><span class="frame-note">frame</span><span class="badge flip" hidden>flip repaired</span><span class="flip-count"></span></p>
+      </figure>
+      <figure class="panel input" data-take="4" style="--take:#d62728">
+        <div class="stage"></div>
+        <figcaption class="tag"><span class="dot"></span><span class="tag-text">Take 4</span></figcaption>
+        <p class="foot"><span class="frame-note">frame</span><span class="badge flip" hidden>flip repaired</span><span class="flip-count"></span></p>
+      </figure>
+    </section>
+
+    <section class="panel overlap" aria-label="The four aligned output skeletons, overlapping">
+      <div class="stage" id="overlap-stage"></div>
+      <div class="overlay-head">
+        <h2>Aligned output, one standard body</h2>
+        <ul class="legend" id="legend">
+          <li data-take="1" style="--take:#1f77b4"><span class="dot"></span>Take 1</li>
+          <li data-take="2" style="--take:#ff7f0e"><span class="dot"></span>Take 2</li>
+          <li data-take="3" style="--take:#2ca02c"><span class="dot"></span>Take 3</li>
+          <li data-take="4" style="--take:#d62728"><span class="dot"></span>Take 4</li>
+        </ul>
+      </div>
+      <p class="overlay-foot" id="phase-note">Shared phase, take 1 frame 0 of 0</p>
+    </section>
+  </main>
+
+  <p class="footnote">The take panels show the takes as Part 2 delivered them (camera up, label flips left in; lighter limbs are the subject's left). The aligned output panel shows the output with feet on the grid and the takes as nested tubes (take 1 widest, take 4 thinnest).</p>
+  <p class="error" id="error" role="alert" hidden></p>
+
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>

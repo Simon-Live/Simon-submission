@@ -1,0 +1,26 @@
+{
+  "schema": "simon.body_profile/1",
+  "name": "example-1.62m",
+  "stature_m": 1.62,
+  "bone_lengths_m": {
+    "left_pelvis": 0.1191,
+    "right_pelvis": 0.1191,
+    "left_thigh": 0.389,
+    "right_thigh": 0.389,
+    "left_shank": 0.3905,
+    "right_shank": 0.3905,
+    "spine": 0.4666,
+    "left_clavicle": 0.1886,
+    "right_clavicle": 0.1886,
+    "left_upper_arm": 0.3104,
+    "right_upper_arm": 0.3104,
+    "left_forearm": 0.2436,
+    "right_forearm": 0.2436,
+    "head": 0.1817,
+    "left_eye_link": 0.0589,
+    "right_eye_link": 0.0589,
+    "left_ear_link": 0.0738,
+    "right_ear_link": 0.0738
+  },
+  "source": "conformance example: the Part 3 standard body scaled to 1.62 m, limbs adjusted by hand"
+}

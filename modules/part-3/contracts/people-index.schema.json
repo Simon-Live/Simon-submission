@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-3-skeleton-consistency/contracts/people-index.schema.json",
+  "title": "Part 3 people.json (--all-people index)",
+  "description": "Written beside the per-person folders by python3 -m part3 run --all-people. One entry per tracked id in first-seen order. An id whose frames all failed the hip check has skipped and no file.",
+  "x-simon-version": "simon.part3.people/1",
+  "x-direction": "output",
+  "x-producer": "Part 3",
+  "x-consumers": [
+    "callers of --all-people"
+  ],
+  "x-version-field": "schema",
+  "type": "object",
+  "required": [
+    "schema",
+    "people"
+  ],
+  "properties": {
+    "schema": {
+      "const": "simon.part3.people/1"
+    },
+    "people": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/person_id"
+          },
+          "dir": {
+            "type": "string"
+          },
+          "frames_present": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "file": {
+            "type": "string"
+          },
+          "skipped": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "frames_present"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "dir",
+              "file"
+            ]
+          },
+          {
+            "required": [
+              "skipped"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "person_id": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "A person id as Part 2 writes it: an integer or a string."
+    }
+  }
+}

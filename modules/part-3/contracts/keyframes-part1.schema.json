@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moalborati/simon-part-3-skeleton-consistency/contracts/keyframes-part1.schema.json",
+  "title": "Part 1 keyframes.json",
+  "description": "Part 1's key moments on the original video clock. Part 1 up to 2108c7c writes it without a version field; from 775aa1e it writes format simon.keyframes/part1. Both are read. Part 3 reads people[].repetitions[].keyframes[] name and t_ms when you pass the file to --keyframes. Extra keys are ignored.",
+  "x-simon-version": "part1.keyframes/2026-10-28",
+  "x-direction": "input",
+  "x-producer": "Part 1",
+  "x-consumers": [
+    "Part 3"
+  ],
+  "type": "object",
+  "required": [
+    "people"
+  ],
+  "properties": {
+    "format": {
+      "const": "simon.keyframes/part1",
+      "description": "Part 1's version field from 775aa1e; optional, a file without it is read the same way."
+    },
+    "video": {
+      "type": "string"
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "analysis_fps": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "quality": {
+      "type": "object"
+    },
+    "people": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/person_id"
+          },
+          "repetitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rep": {
+                  "type": "integer"
+                },
+                "movement": {
+                  "type": "string"
+                },
+                "keyframes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "frame": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "t_ms": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "t_ms"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "keyframes"
+              ]
+            }
+          }
+        },
+        "required": [
+          "repetitions"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "person_id": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "A person id as Part 2 writes it: an integer or a string."
+    }
+  }
+}

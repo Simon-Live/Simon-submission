@@ -1,0 +1,174 @@
+{
+  "schema": "simon.part3.compatibility/1",
+  "checked": "2026-10-28",
+  "neighbours": {
+    "part1": "775aa1e",
+    "part2": "7e11a7f",
+    "part4": "9f4c073",
+    "part5": "c292a15",
+    "part6": "59f923f",
+    "part7": "90aa473"
+  },
+  "rows": [
+    {
+      "producer": "Part 2",
+      "file": "pose3d.json",
+      "version": "part2.pose3d/2026-10-28",
+      "consumer": "Part 3",
+      "consumer_version": "part3 phase 2",
+      "result": "works",
+      "option": "",
+      "evidence": "Part 2 7e11a7f README 'Shared-file context'; fixtures/input/part2-single/pose3d.json is the make check-3 input"
+    },
+    {
+      "producer": "Part 2",
+      "file": "pose3d.json with several people per frame",
+      "version": "part2.pose3d/2026-10-28",
+      "consumer": "Part 3",
+      "consumer_version": "part3 phase 2",
+      "result": "works with option",
+      "option": "--person <id> or --all-people",
+      "evidence": "Part 2 7e11a7f README 'Output': pose3d.json per tracked person; without an option Part 3 keeps the id seen in most frames"
+    },
+    {
+      "producer": "Part 2",
+      "file": "pose3d.json without t_ms",
+      "version": "part2.pose3d/2026-10-28",
+      "consumer": "Part 3",
+      "consumer_version": "part3 phase 2",
+      "result": "works with option",
+      "option": "--input-fps <n>",
+      "evidence": "adapter derive-t_ms; a top-level fps in the file does the same; Part 2 7e11a7f writes t_ms, so this covers hand-made files"
+    },
+    {
+      "producer": "Part 2",
+      "file": "pose3d.json with joints as arrays",
+      "version": "part2.pose3d/2026-10-28",
+      "consumer": "Part 3",
+      "consumer_version": "part3 phase 2",
+      "result": "works",
+      "option": "",
+      "evidence": "adapter joint-arrays; the adapters that fired are listed in input.adapters of the output"
+    },
+    {
+      "producer": "Part 1",
+      "file": "keyframes.json",
+      "version": "part1.keyframes/2026-10-28",
+      "consumer": "Part 3",
+      "consumer_version": "part3 phase 2",
+      "result": "works with option",
+      "option": "--view part4 --keyframes <keyframes.json>",
+      "evidence": "Part 1 775aa1e contracts/keyframes.schema.json and keyframes.example.json: format simon.keyframes/part1, people[].repetitions[].keyframes[] name, frame, t_ms on the video clock (files without format, as up to 2108c7c, read the same); Part 3 maps them onto the 30 fps index by time"
+    },
+    {
+      "producer": "Part 4",
+      "file": "keyframes.json",
+      "version": "simon.keyframes.v1",
+      "consumer": "Part 3",
+      "consumer_version": "part3 phase 2",
+      "result": "works",
+      "option": "",
+      "evidence": "Part 4 9f4c073 fixtures/input/exercise/keyframes.json; pass it to --keyframes and the kind is detected; its fps must be 30"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (native)",
+      "version": "simon.skeleton/1",
+      "consumer": "Part 4",
+      "consumer_version": "9f4c073",
+      "result": "rejected",
+      "option": "--view part4 --keyframes <keyframes.json>",
+      "evidence": "Part 4 9f4c073 README 'The file is rejected': no keyframes[], no rest_offsets_m, no local_rotations"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (part4 view)",
+      "version": "simon.skeleton.v1",
+      "consumer": "Part 4",
+      "consumer_version": "9f4c073",
+      "result": "works",
+      "option": "none (--view part4 uses --body part4-rig unless a body is named)",
+      "evidence": "Part 4 9f4c073 README 'Edge cases': fps 30, key t = index / 30 within 1 microsecond, FK within 1 mm; rig.fit reports the residual of snapping key poses to the rig; Part 4's own animator on this view (local neighbour check, 2026-10-28): key error 0.0 m, bone deviation 0.0000013 m. Condition (README 'The file is rejected'): works when no joint turns more than 180 degrees between neighbouring keys in rotation-vector space; Part 3's part4 view refuses to write a clip that breaks this and names the joint and the keys, and the arms rest in a T-pose so an arm overhead or hanging stays 90 degrees from rest"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (part4 view, densified)",
+      "version": "simon.skeleton.v1",
+      "consumer": "Part 4",
+      "consumer_version": "9f4c073",
+      "result": "works",
+      "option": "--view part4 --keyframes <keyframes.json> --keyframes-densify every:10",
+      "evidence": "conformance case view-part4-part1-keyframes-densify-10: the named keys of Part 1 keep their names and a key every 10 ticks is added between them; Part 4's rules (key t = index / 30, strictly increasing indices, forward kinematics within 1 mm, no joint turning the long way) hold, and timeline.densify records n, the channel and the keys added"
+    },
+    {
+      "producer": "Part 3",
+      "file": "keyframes.json (written by --keyframes-out)",
+      "version": "simon.keyframes.v1",
+      "consumer": "Part 4",
+      "consumer_version": "9f4c073",
+      "result": "works",
+      "option": "--keyframes-out <path>",
+      "evidence": "Part 4 9f4c073 README 'What goes in': keyframes.json sits beside skeleton.json and lists the same key indices"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (native)",
+      "version": "simon.skeleton/1",
+      "consumer": "Part 5",
+      "consumer_version": "c292a15",
+      "result": "rejected",
+      "option": "--view part5",
+      "evidence": "Part 5 c292a15 part5/io.py parse_clip: a file without format is rejected"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (part5 view)",
+      "version": "simon.animation.v1",
+      "consumer": "Part 5 (follower clip)",
+      "consumer_version": "c292a15",
+      "result": "works",
+      "option": "",
+      "evidence": "Part 5 c292a15 docs/schemas.md 'Follower clip': assumes the simon.animation.v1 shape (open decision 1 in its #18)"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (part4 view)",
+      "version": "simon.skeleton.v1",
+      "consumer": "Part 5 (expected clip)",
+      "consumer_version": "c292a15",
+      "result": "works",
+      "option": "",
+      "evidence": "Part 5 c292a15 docs/schemas.md 'Expected skeleton alternative': keyframes[] with joints as [x, y, z], extra fields ignored"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (part5 view)",
+      "version": "simon.animation.v1",
+      "consumer": "Part 6",
+      "consumer_version": "59f923f",
+      "result": "works",
+      "option": "",
+      "evidence": "Part 6 59f923f part6/formats.py read_animation: fps must be a number above 0 (E5) and each frame's t is read as given; the part5 view always writes fps, so python3 -m part6 doctor and import accept the golden view-part5 file and every follower skeleton.json"
+    },
+    {
+      "producer": "Part 3",
+      "file": "skeleton.json (native)",
+      "version": "simon.skeleton/1",
+      "consumer": "Part 3 (as pose3d.json)",
+      "consumer_version": "part3 phase 2",
+      "result": "works",
+      "option": "",
+      "evidence": "frames keeps the pose3d.json shape and unknown keys are ignored, so a skeleton.json is a valid input"
+    },
+    {
+      "producer": "Part 3",
+      "file": "command line and files",
+      "version": "python3 -m part3 run",
+      "consumer": "Part 7",
+      "consumer_version": "90aa473",
+      "result": "works",
+      "option": "",
+      "evidence": "Part 7 90aa473 consumes parts through files and commands; exit 0 written, 1 not writable, 2 input or option breaks the contract"
+    }
+  ]
+}

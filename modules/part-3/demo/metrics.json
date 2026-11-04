@@ -1,0 +1,73 @@
+{
+  "part": 3,
+  "data_source": "synthetic",
+  "data": {
+    "real_clip": "fixtures/input/part2-single/pose3d.json",
+    "takes": "fixtures/input/synthetic-4take/"
+  },
+  "alignment": {
+    "method": "dtw",
+    "reference_take": 1,
+    "band_fraction": 0.25,
+    "signal": "mean of 8 interior joint angles in degrees, 5-frame centred moving average",
+    "frame_map": "middle paired frame, 3-frame centred mean, linear interpolation"
+  },
+  "angles": [
+    "left_elbow",
+    "right_elbow",
+    "left_shoulder",
+    "right_shoulder",
+    "left_hip",
+    "right_hip",
+    "left_knee",
+    "right_knee",
+    "trunk_inclination"
+  ],
+  "thresholds": {
+    "bone_length_variation_max": {
+      "value": 0.002,
+      "max": 0.02,
+      "pass": true
+    },
+    "lr_flips": {
+      "value": 0,
+      "max": 0,
+      "pass": true
+    },
+    "joint_angle_agreement_p95_deg": {
+      "value": 7.42,
+      "max": 10.0,
+      "pass": true
+    },
+    "negative_control_p95_deg": {
+      "value": 131.038,
+      "min_exclusive": 10.0,
+      "pass": true
+    }
+  },
+  "context": {
+    "agreement_median_deg": 3.296,
+    "agreement_mean_deg": 3.609,
+    "agreement_max_deg": 12.406,
+    "agreement_per_angle_p95_deg": {
+      "left_elbow": 6.711,
+      "right_elbow": 7.443,
+      "left_shoulder": 2.829,
+      "right_shoulder": 6.735,
+      "left_hip": 9.227,
+      "right_hip": 8.425,
+      "left_knee": 10.087,
+      "right_knee": 8.269,
+      "trunk_inclination": 2.389
+    },
+    "agreement_linear_p95_deg": 52.044,
+    "frames_compared": 113,
+    "input_bone_length_variation_max": 0.137,
+    "flips_injected": 27,
+    "flips_repaired": 27,
+    "real_clip_flips_detected_after_repair": 0,
+    "up_error_max_deg": 1.826,
+    "mirror_take_max_angle_diff_deg": 0.0
+  },
+  "pass": true
+}

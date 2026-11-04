@@ -1,0 +1,85 @@
+{
+  "schema": "simon.standard_body/1",
+  "stature_m": 1.7,
+  "units": "m",
+  "bone_lengths_m": {
+    "left_pelvis": 0.125,
+    "right_pelvis": 0.125,
+    "left_thigh": 0.4165,
+    "right_thigh": 0.4165,
+    "left_shank": 0.4182,
+    "right_shank": 0.4182,
+    "spine": 0.4896,
+    "left_clavicle": 0.1979,
+    "right_clavicle": 0.1979,
+    "left_upper_arm": 0.3162,
+    "right_upper_arm": 0.3162,
+    "left_forearm": 0.2482,
+    "right_forearm": 0.2482,
+    "head": 0.1907,
+    "left_eye_link": 0.0618,
+    "right_eye_link": 0.0618,
+    "left_ear_link": 0.0774,
+    "right_ear_link": 0.0774
+  },
+  "derivation": {
+    "left_pelvis": "h36m hip half-width scaled by winter thigh / h36m thigh",
+    "right_pelvis": "h36m hip half-width scaled by winter thigh / h36m thigh",
+    "left_thigh": "winter (0.530 - 0.285) H",
+    "right_thigh": "winter (0.530 - 0.285) H",
+    "left_shank": "winter (0.285 - 0.039) H",
+    "right_shank": "winter (0.285 - 0.039) H",
+    "spine": "winter (0.818 - 0.530) H",
+    "left_clavicle": "ansur2 biacromial breadth / 2",
+    "right_clavicle": "ansur2 biacromial breadth / 2",
+    "left_upper_arm": "winter 0.186 H",
+    "right_upper_arm": "winter 0.186 H",
+    "left_forearm": "winter 0.146 H",
+    "right_forearm": "winter 0.146 H",
+    "head": "neck to nose in the neutral head model (winter eye level, mediapipe nose offset)",
+    "left_eye_link": "nose to eye centre: ansur2 interpupillary breadth, mediapipe offsets",
+    "right_eye_link": "nose to eye centre: ansur2 interpupillary breadth, mediapipe offsets",
+    "left_ear_link": "eye centre to ear: ansur2 head breadth and tragion height, ear over neck (kendall)",
+    "right_ear_link": "eye centre to ear: ansur2 head breadth and tragion height, ear over neck (kendall)"
+  },
+  "sources": {
+    "winter": "Winter DA. Biomechanics and Motor Control of Human Movement, 4th ed. Wiley, 2009, Fig. 4.1 (after Drillis and Contini 1966)",
+    "ansur2": "Gordon CC et al. 2012 Anthropometric Survey of US Army Personnel (ANSUR II), public data, NATICK/TR-15/007; pooled 4,082 men and 1,986 women",
+    "h36m": "Human3.6M skeleton offsets (Ionescu et al. 2014) as published in facebookresearch/QuaterNet short_term/dataset_h36m.py",
+    "mediapipe": "Google MediaPipe face_geometry canonical_face_model.obj (Apache-2.0)",
+    "kendall": "Kendall FP et al. Muscles: Testing and Function with Posture and Pain, 5th ed. 2005: ideal plumb line through the ear lobe and the acromion"
+  },
+  "neutral_head_m": {
+    "neck": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "nose": [
+      0.0,
+      0.1633,
+      0.0984
+    ],
+    "left_eye": [
+      0.0314,
+      0.2006,
+      0.0604
+    ],
+    "right_eye": [
+      -0.0314,
+      0.2006,
+      0.0604
+    ],
+    "left_ear": [
+      0.0756,
+      0.1807,
+      0.0
+    ],
+    "right_ear": [
+      -0.0756,
+      0.1807,
+      0.0
+    ]
+  },
+  "derivation_script": "docs/research/standard_body_derivation.py"
+}

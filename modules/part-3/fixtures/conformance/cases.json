@@ -1,0 +1,260 @@
+[
+ {
+  "id": "default",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "profile-simon-standard",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--body",
+   "simon-standard"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "profile-part4-rig",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--body",
+   "part4-rig"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "profile-measured",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--body",
+   "measured"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "profile-file",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--body",
+   "file:fixtures/conformance/inputs/profile.example.json"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "profile-stature-185",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--stature",
+   "1.85"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "view-native",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "native"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "view-part4-part1-keyframes",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "part4",
+   "--body",
+   "part4-rig",
+   "--keyframes",
+   "fixtures/conformance/inputs/keyframes.part1.json",
+   "--keyframes-out",
+   "keyframes.json"
+  ],
+  "outputs": [
+   "skeleton.json",
+   "keyframes.json"
+  ]
+ },
+ {
+  "id": "view-part4-part1-keyframes-densify-10",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "part4",
+   "--body",
+   "part4-rig",
+   "--keyframes",
+   "fixtures/conformance/inputs/keyframes.part1.json",
+   "--keyframes-densify",
+   "every:10",
+   "--keyframes-out",
+   "keyframes.json"
+  ],
+  "outputs": [
+   "skeleton.json",
+   "keyframes.json"
+  ]
+ },
+ {
+  "id": "view-part4-part4-keyframes",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "part4",
+   "--keyframes",
+   "fixtures/conformance/inputs/keyframes.part4.json",
+   "--keyframes-out",
+   "keyframes.json"
+  ],
+  "outputs": [
+   "skeleton.json",
+   "keyframes.json"
+  ]
+ },
+ {
+  "id": "view-part4-every-10",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "part4",
+   "--keyframes",
+   "every:10",
+   "--keyframes-out",
+   "keyframes.json"
+  ],
+  "outputs": [
+   "skeleton.json",
+   "keyframes.json"
+  ]
+ },
+ {
+  "id": "view-part4-named-standard-body",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "part4",
+   "--body",
+   "simon-standard",
+   "--keyframes",
+   "every:10",
+   "--keyframes-out",
+   "keyframes.json"
+  ],
+  "outputs": [
+   "skeleton.json",
+   "keyframes.json"
+  ]
+ },
+ {
+  "id": "view-part5",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--view",
+   "part5"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "fps-30",
+  "input": "fixtures/input/part2-single/pose3d.json",
+  "args": [
+   "--fps",
+   "30"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "person-requested",
+  "input": "fixtures/conformance/inputs/pose3d.two-people.json",
+  "args": [
+   "--person",
+   "guest"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "all-people",
+  "input": "fixtures/conformance/inputs/pose3d.two-people.json",
+  "args": [
+   "--all-people"
+  ],
+  "outputs": [
+   "people.json",
+   "person-0/skeleton.json",
+   "person-guest/skeleton.json"
+  ]
+ },
+ {
+  "id": "adapter-joint-arrays",
+  "input": "fixtures/conformance/inputs/pose3d.arrays.json",
+  "args": [],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "adapter-joint-list",
+  "input": "fixtures/conformance/inputs/pose3d.joint-list.json",
+  "args": [],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "adapter-extra-joints",
+  "input": "fixtures/conformance/inputs/pose3d.extra-joints.json",
+  "args": [],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "adapter-derive-t_ms-fps-key",
+  "input": "fixtures/conformance/inputs/pose3d.no-t_ms.json",
+  "args": [],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "adapter-derive-t_ms-input-fps",
+  "input": "fixtures/conformance/inputs/pose3d.no-t_ms.json",
+  "args": [
+   "--input-fps",
+   "15"
+  ],
+  "outputs": [
+   "skeleton.json"
+  ]
+ },
+ {
+  "id": "adapter-flat-frame-index",
+  "input": "fixtures/conformance/inputs/pose3d.flat.json",
+  "args": [],
+  "outputs": [
+   "skeleton.json"
+  ]
+ }
+]

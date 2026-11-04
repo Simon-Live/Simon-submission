@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simon Part 3: clean a 3D skeleton</title>
+  <meta name="description" content="Run the real Part 3 pipeline on a pose3d.json and see the skeleton.json it writes, in 3D.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <script type="importmap">{"imports": {"three": "./vendor/three/three.module.js"}}</script>
+</head>
+<body>
+  <header class="top">
+    <div class="titles">
+      <h1>Simon Part 3: clean a 3D skeleton</h1>
+      <p class="subtitle">Runs the real Part 3 pipeline on a pose3d.json and shows the skeleton.json it writes.</p>
+    </div>
+    <div class="agree">
+      <a class="link" href="agreement">Four-take agreement</a>
+      <p>Four synthetic takes of the same squat, from four camera angles, agree within 10 degrees.</p>
+      <a class="link" href="compare">Compare takes</a>
+      <p>Run two to six inputs together and see how well they agree.</p>
+    </div>
+  </header>
+
+  <noscript><p class="error">This page needs JavaScript.</p></noscript>
+
+  <main class="page">
+    <section class="setup" aria-label="Choose an input and run">
+      <fieldset class="group" role="radiogroup" aria-labelledby="input-legend">
+        <legend id="input-legend">Input</legend>
+        <div class="choices" id="sample-list"></div>
+        <div class="upload-row">
+          <label class="choice">
+            <input type="radio" name="input" id="pick-upload" value="upload" aria-labelledby="upload-label" aria-describedby="upload-meta">
+            <span class="choice-text">
+              <span class="choice-label" id="upload-label">Your own file</span>
+              <span class="choice-meta" id="upload-meta">A pose3d.json, up to 16 MB. It is not stored.</span>
+            </span>
+          </label>
+          <div class="file-field">
+            <label for="file-input">pose3d.json file</label>
+            <input type="file" id="file-input" accept=".json,application/json">
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="side">
+        <fieldset class="group" role="radiogroup" aria-labelledby="mirror-legend">
+          <legend id="mirror-legend">Mirror</legend>
+          <div class="choices single">
+            <label class="choice">
+              <input type="radio" name="mirror" value="auto" checked aria-labelledby="mirror-auto-label" aria-describedby="mirror-auto-meta">
+              <span class="choice-text">
+                <span class="choice-label" id="mirror-auto-label">Auto</span>
+                <span class="choice-meta" id="mirror-auto-meta">Mirror only when the file says it was saved mirrored.</span>
+              </span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="mirror" value="on" aria-labelledby="mirror-on-label" aria-describedby="mirror-on-meta">
+              <span class="choice-text">
+                <span class="choice-label" id="mirror-on-label">On</span>
+                <span class="choice-meta" id="mirror-on-meta">Always mirror left and right.</span>
+              </span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="mirror" value="off" aria-labelledby="mirror-off-label" aria-describedby="mirror-off-meta">
+              <span class="choice-text">
+                <span class="choice-label" id="mirror-off-label">Off</span>
+                <span class="choice-meta" id="mirror-off-meta">Never mirror.</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="group options" aria-labelledby="options-legend">
+          <legend id="options-legend">Output options</legend>
+          <div class="option-grid">
+            <div class="field">
+              <label for="body-select">Body</label>
+              <select id="body-select" aria-describedby="body-hint">
+                <option value="" selected>Default for the View</option>
+                <option value="simon-standard">Simon standard</option>
+                <option value="part4-rig">Part 4 rig</option>
+                <option value="measured">Measured from the clip</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="height-input">Height</label>
+              <input type="number" id="height-input" min="0.5" max="2.5" step="0.01" inputmode="decimal" placeholder="the body's own" aria-describedby="height-hint">
+            </div>
+            <div class="field">
+              <label for="view-select">View</label>
+              <select id="view-select" aria-describedby="view-hint">
+                <option value="native" selected>Native skeleton.json</option>
+                <option value="part4">Part 4 keys, every 10 ticks</option>
+                <option value="part5">Part 5 animation</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fps-select">Frame rate</label>
+              <select id="fps-select" aria-describedby="fps-hint">
+                <option value="" selected>Source</option>
+                <option value="30">30 per second</option>
+                <option value="60">60 per second</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint" id="body-hint">Body: the one set of bone lengths every frame is rebuilt on. The default is Part 4 rig for Part 4 keys and Simon standard for the other Views.</p>
+          <p class="hint" id="height-hint">Height in metres, 0.5 to 2.5. Blank keeps the body's own.</p>
+          <p class="hint" id="view-hint">View: the file shape you download. The 3D panels always draw the native skeleton.</p>
+          <p class="hint" id="fps-hint">Frame rate: Source keeps the input's frames.</p>
+        </fieldset>
+
+        <div class="run-row">
+          <button type="button" id="run-btn" class="primary" disabled>Run</button>
+          <p class="status" id="status" role="status">Loading the samples.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="error" id="alert" role="alert" hidden>
+      <p id="alert-message"></p>
+      <p id="alert-field" hidden></p>
+    </div>
+
+    <section id="results" class="results" aria-labelledby="results-title" hidden>
+      <div class="result-head">
+        <div class="result-title">
+          <h2 id="results-title">Result</h2>
+          <p class="source-note" id="source-note"></p>
+        </div>
+        <button type="button" id="download-btn" class="primary">Download skeleton.json</button>
+      </div>
+
+      <div class="metrics" role="group" aria-label="Metrics">
+        <article class="card">
+          <h3>Output bone-length variation</h3>
+          <p class="value"><span id="m-output">n/a</span> <span class="badge" id="m-output-badge"></span></p>
+          <p class="sub" id="m-output-sub">largest relative error</p>
+        </article>
+        <article class="card">
+          <h3>Input bone-length variation</h3>
+          <p class="value"><span id="m-input">n/a</span></p>
+          <p class="sub">largest relative error against the input's own median lengths</p>
+        </article>
+        <article class="card">
+          <h3>Flips repaired</h3>
+          <p class="value"><span id="m-flips">0</span> <span class="unit">frames</span></p>
+          <p class="sub" id="m-flips-sub">left and right swaps</p>
+        </article>
+        <article class="card">
+          <h3>Mirror</h3>
+          <p class="value"><span id="m-mirror">n/a</span></p>
+          <p class="sub" id="m-mirror-sub"></p>
+        </article>
+        <article class="card">
+          <h3>Body height</h3>
+          <p class="value"><span class="unit" id="m-profile">Standard body</span> <span id="m-height">n/a</span></p>
+          <p class="sub" id="m-height-input" hidden></p>
+          <p class="sub" id="m-height-sub"></p>
+        </article>
+        <article class="card">
+          <h3>Bone lengths</h3>
+          <p class="value"><span id="m-thigh">n/a</span> <span class="unit">thigh</span></p>
+          <p class="sub" id="m-bones-sub"></p>
+        </article>
+        <article class="card">
+          <h3>Frames kept</h3>
+          <p class="value"><span id="m-frames">n/a</span></p>
+          <p class="sub" id="m-frames-sub"></p>
+        </article>
+        <article class="card">
+          <h3>Person</h3>
+          <p class="value"><span id="m-person">n/a</span></p>
+          <p class="sub" id="m-person-sub"></p>
+        </article>
+      </div>
+
+      <div class="controls" aria-label="Playback and camera controls">
+        <div class="cluster" id="camera-group" role="group" aria-label="Camera">
+          <button type="button" id="btn-reset" title="Reset both cameras">Reset</button>
+          <button type="button" id="btn-front" title="Front view">Front</button>
+          <button type="button" id="btn-side" title="Side view">Side</button>
+          <button type="button" id="btn-top" title="Top view">Top</button>
+        </div>
+        <div class="cluster play" role="group" aria-label="Playback">
+          <button type="button" id="btn-play" class="primary" title="Play or pause (Space)">Play</button>
+          <label class="scrub-label" for="frame-slider">Frame</label>
+          <input type="range" id="frame-slider" min="0" max="0" step="1" value="0" aria-describedby="frame-readout">
+          <span id="frame-readout">0 of 0</span>
+        </div>
+        <p class="hints" aria-label="Keyboard and mouse hints">
+          <span><kbd>Space</kbd> play or pause</span>
+          <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> step a frame</span>
+          <span>drag to orbit</span>
+          <span>wheel to zoom</span>
+        </p>
+      </div>
+
+      <div class="panels">
+        <figure class="panel" id="panel-input">
+          <div class="stage" id="stage-input"></div>
+          <figcaption class="tag"><span class="dot input"></span><span>Input, as Part 2 delivered it</span></figcaption>
+          <p class="foot" id="note-input">Frame 1 of 1</p>
+        </figure>
+        <figure class="panel" id="panel-output">
+          <div class="stage" id="stage-output"></div>
+          <figcaption class="tag"><span class="dot output"></span><span>Output skeleton.json, one fixed body</span></figcaption>
+          <p class="foot" id="note-output">Frame 1 of 1</p>
+        </figure>
+      </div>
+
+      <p class="footnote">The input panel shows the input in the camera's frame, with the subject's left side drawn lighter. The output panel shows the output rebuilt on the Body you chose, with the same limb lengths in every frame and the feet on the grid. Measured from the clip uses this clip's own median lengths, left and right averaged, and a Height scales whichever Body you chose.</p>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
