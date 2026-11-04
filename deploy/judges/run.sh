@@ -10,7 +10,7 @@ RELAY="${RELAY%/}"
 cd "$(dirname "$0")/../.."
 
 echo "Simon judges' relay: $RELAY"
-if ! health="$(curl -fsS --max-time 30 "$RELAY/health")"; then
+if ! health="$(curl -fsS --max-time 30 "$RELAY/health?start=1")"; then   # start=1: the relay warms Part 2 for an hour
   echo "The relay did not answer. Try again in a minute; if it stays down, use https://simon.live instead." >&2
   exit 1
 fi

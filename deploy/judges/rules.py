@@ -13,7 +13,7 @@ import re
 
 # Judging ends Nov 9, 2026, 11:59 PM ET (EST, UTC-5): the relay answers 410 after this. RELAY_ENDS (ISO 8601) moves it.
 ENDS = datetime.fromisoformat(os.environ.get("RELAY_ENDS", "2026-11-10T04:59:00+00:00"))
-CAP_USD = float(os.environ.get("RELAY_CAP_USD", "100"))   # every judge together; the relay refuses past it
+CAP_USD = float(os.environ.get("RELAY_CAP_USD", "200"))   # every judge together; the relay refuses past it
 IP_DAY_USD = float(os.environ.get("RELAY_IP_DAY_USD", "25"))   # one address in one UTC day
 IP_PER_MINUTE = int(os.environ.get("RELAY_IP_PER_MINUTE", "60"))   # requests from one address in one minute
 ALERT_FRACTIONS = (0.5, 0.8, 1.0)   # ntfy alerts as spending passes these parts of the cap
@@ -62,6 +62,23 @@ def part2_argv(argv: list[str]) -> list[str]:
         if flag == "--tracker" and out[i + 1] not in LOCAL_TRACKERS:
             out[i + 1] = RELAY_TRACKER
     return out
+
+
+# When run.sh starts (its health check says start=1), Part 2's GPU container is kept warm for an hour, so the judge's
+# first take skips the model load (about 50 s). A ping every 4 minutes keeps it inside Part 2's 5-minute idle window.
+WARM_MINUTES = int(os.environ.get("RELAY_WARM_MINUTES", "60"))
+# Warm-ups start with judging, Nov 5, 2026, 12:00 AM ET (EST, UTC-5); before that a start does not warm Part 2.
+WARM_FROM = datetime.fromisoformat(os.environ.get("RELAY_WARM_FROM", "2026-11-05T05:00:00+00:00"))
+WARM_PING_S = 240
+WARM_USD_PER_MINUTE = 1.95 / 60   # the L40S, counted against the cap like any GPU time
+
+
+def warm_extension(now_s: float, warm_until_s: float) -> float:
+    """Seconds of extra warm time a start adds: up to WARM_MINUTES from now, nothing already covered; none before
+    WARM_FROM."""
+    if now_s < WARM_FROM.timestamp():
+        return 0.0
+    return max(0.0, now_s + WARM_MINUTES * 60 - max(now_s, warm_until_s))
 
 
 def is_open(now: datetime | None = None) -> bool:

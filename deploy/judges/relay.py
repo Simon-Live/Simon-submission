@@ -28,8 +28,13 @@ HERE = Path(__file__).resolve().parent
 if modal.is_local():
     sys.path.insert(0, str(HERE))   # rules.py beside this file; in the container it is /root/rules.py
 app = modal.App("simon-judges-relay")
+# The Part 2 version this repo pins (modules/PINS.json): the warm-up's real run must name it, or Part 2 refuses it.
+PART2_SHA = (json.loads((HERE.parents[1] / "modules" / "PINS.json").read_text())["parts"]["2"]["sha"]
+             if modal.is_local() else "")
 image = (modal.Image.debian_slim(python_version="3.12").pip_install("fastapi[standard]==0.115.6", "httpx==0.28.1")
-         .add_local_file(HERE / "rules.py", "/root/rules.py"))
+         .env({"PART2_SHA": PART2_SHA} if PART2_SHA else {})
+         .add_local_file(HERE / "rules.py", "/root/rules.py")
+         .add_local_file(HERE / "warm.mp4", "/root/warm.mp4"))   # 2 s of Pexels 6326808 (High knees), Pexels License
 state = modal.Dict.from_name("simon-judges-relay-state", create_if_missing=True)
 META = "https://api.meta.ai/v1"
 PART2_APP = "simon-part2"   # deploy/serverless/part2_app.py from this repo, deployed in the same Modal workspace
@@ -151,10 +156,34 @@ def web():
 
     @api.get("/")
     @api.get("/health")
-    def health():
+    def health(request: Request, start: int = 0):
         spent = float(state.get("spent", 0.0))
-        return {"open": rules.is_open() and not state.get("off", False) and spent < rules.CAP_USD,
-                "spent_usd": round(spent, 2), "cap_usd": rules.CAP_USD, "ends": rules.ENDS.isoformat()}
+        is_open = rules.is_open() and not state.get("off", False) and spent < rules.CAP_USD
+        warm = None
+        if start and is_open:   # run.sh starting: keep Part 2 warm for the judge's first takes
+            warm = _start_warm(client_ip(request))
+        return {"open": is_open, "spent_usd": round(spent, 2), "cap_usd": rules.CAP_USD, "ends": rules.ENDS.isoformat(),
+                **({"warm_until": warm} if warm else {})}
+
+    def _start_warm(ip: str) -> str | None:
+        now = time.time()
+        if now < rules.WARM_FROM.timestamp():
+            return None   # warm-ups start with judging
+        extra = rules.warm_extension(now, float(state.get("warm_until", 0.0)))
+        if extra <= 0:
+            return datetime.fromtimestamp(float(state["warm_until"]), timezone.utc).strftime("%H:%M UTC")
+        cost = extra / 60 * rules.WARM_USD_PER_MINUTE
+        if _gate(ip, cost, "Simon started (warm-up)") is not None:
+            return None
+        until = now + rules.WARM_MINUTES * 60
+        running = float(state.get("warm_until", 0.0)) > now   # a warm-up is pinging already: it reads the new end
+        state["warm_until"] = until
+        _charge(cost, ip)
+        if not running:
+            keep_warm.spawn(until)
+        when = datetime.fromtimestamp(until, timezone.utc).strftime("%H:%M UTC")
+        _tell_call(ip, "Simon started from the repo", f"keeping SAM warm on Modal until {when}, ${cost:.2f}")
+        return when
 
     @api.api_route("/meta/v1/{path:path}", methods=["GET", "POST", "DELETE", "PUT", "PATCH"])
     async def meta(path: str, request: Request):
@@ -259,6 +288,33 @@ def ping() -> bool:
         return False
     _notify("Simon judges' relay: test", "Notifications work. You get one for every call the relay gets.", "default")
     return True
+
+
+@app.function(image=image, timeout=3 * 3600)
+def keep_warm(until: float) -> None:
+    """Ping Part 2 every few minutes until `until` (or a later warm_until), so its models stay loaded. The ping names
+    a version Part 2 is not, so it answers at once without running anything; starting the container loads the models."""
+    import os
+    import rules
+    part2 = modal.Cls.from_name(PART2_APP, "Part2")()
+    # First a tiny real run (2 s of video at 2 fps): a fresh container's first inference is slow on its own, beyond
+    # loading the weights (a cold take measured 83 s, the next 33 s), and a ping alone does not pay for it (90 s).
+    try:
+        clip = {"input.mp4": open("/root/warm.mp4", "rb").read()}
+        for _ in part2.run_part2.remote_gen(["run", "--mode", "single", "--input", "{in}/input.mp4", "--out", "{out}",
+                                             "--fps", "2"], clip, os.environ.get("PART2_SHA", "")):
+            pass
+    except Exception as exc:
+        print(f"keep_warm: warm run failed: {type(exc).__name__}: {exc}", flush=True)
+    while time.time() < max(until, float(state.get("warm_until", 0.0))):
+        if state.get("off", False):
+            return
+        try:
+            for _ in part2.run_part2.remote_gen([], {}, "warm-ping"):
+                pass
+        except Exception as exc:   # a failed ping only costs the next take its warm start
+            print(f"keep_warm: ping failed: {type(exc).__name__}: {exc}", flush=True)
+        time.sleep(rules.WARM_PING_S)
 
 
 @app.local_entrypoint()

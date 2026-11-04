@@ -83,15 +83,16 @@ def test_refusals_in_order_closed_cap_address_day_and_rate():
 
 def test_the_relay_closes_nov_9_1159_pm_eastern():
     assert rules.ENDS == datetime(2026, 11, 10, 4, 59, tzinfo=timezone.utc)
-    assert rules.CAP_USD == 100
+    assert rules.CAP_USD == 200
 
 
 def test_alerts_at_50_80_and_100_percent_once_each():
-    assert rules.alerts_due(10, 49, []) == []
-    assert rules.alerts_due(49, 51, []) == [0.5]
-    assert rules.alerts_due(49, 81, []) == [0.5, 0.8]
-    assert rules.alerts_due(49, 81, [0.5]) == [0.8], "negative: no repeat"
-    assert rules.alerts_due(99, 100.5, [0.5, 0.8]) == [1.0]
+    c = rules.CAP_USD / 100   # one percent of the cap
+    assert rules.alerts_due(10 * c, 49 * c, []) == []
+    assert rules.alerts_due(49 * c, 51 * c, []) == [0.5]
+    assert rules.alerts_due(49 * c, 81 * c, []) == [0.5, 0.8]
+    assert rules.alerts_due(49 * c, 81 * c, [0.5]) == [0.8], "negative: no repeat"
+    assert rules.alerts_due(99 * c, 100.5 * c, [0.5, 0.8]) == [1.0]
 
 
 def test_part2_through_the_relay_never_uses_a_meta_api_tracker():
@@ -200,3 +201,12 @@ def test_with_serverless_set_up_a_run_on_choice_is_ignored_and_part2_runs_there(
     monkeypatch.delenv("SIMON7_PART2_REMOTE")
     job(None)
     assert seen == ["modal", "local"], "the serverless route wins; without it the choice applies as before"
+
+
+def test_a_start_warms_part2_for_an_hour_and_a_second_start_only_adds_the_rest():
+    assert rules.warm_extension(rules.WARM_FROM.timestamp() - 60, 0.0) == 0, "negative: no warm-up before judging"
+    now = rules.WARM_FROM.timestamp() + 1000
+    assert rules.warm_extension(now, 0.0) == 3600
+    assert rules.warm_extension(now, now + 3000) == 600, "a warm-up already running is extended, not paid twice"
+    assert rules.warm_extension(now, now + 4000) == 0
+    assert round(3600 / 60 * rules.WARM_USD_PER_MINUTE, 2) == 1.95

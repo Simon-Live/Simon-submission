@@ -4,7 +4,10 @@ Judges run Simon on their own machine with Simon's Meta API key and Simon's Moda
 Their Simon sends its Meta API calls and its Part 2 runs to this relay, which holds the key and calls Part 2 on Modal.
 
 - **Open to anyone with the repo's link, until Nov 9, 2026, 11:59 PM ET.** After that every call gets 410.
-- **$100 cap** across every judge, Meta API calls and Modal GPU time together. Past it every call gets 402.
+- **$200 cap** across every judge, Meta API calls and Modal GPU time together (warm-ups included). Past it every call gets 402.
+- **Warm start from Nov 5, 2026, 12:00 AM ET:** when `run.sh` starts it asks the relay to keep Part 2's GPU container
+  warm for an hour (a ping every 4 minutes), so the judge's first take skips the model load. About $1.95 an hour,
+  counted against the cap; a second start during that hour only adds the rest of its own hour.
 - **Per address:** $25 a UTC day, 60 requests a minute.
 - **Only Simon's calls are forwarded:** the four Meta API paths Simon uses (`files`, `responses`, `responses/input_tokens`, `asr/transcribe`), with Simon's five models. Anything else gets 403, so the key cannot be used for other work.
 - **Part 2 always tracks on the GPU** (`local-sam31`): a Meta-API tracker inside Modal would spend the key without the relay counting it.
