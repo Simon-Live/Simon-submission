@@ -5,8 +5,8 @@ import assert from "node:assert/strict";
 import { hasAt, splitEmails, mailtoInvite, MSG_NAME_AT, ChallengeError } from "../../web/challenge-core.js";
 
 test("a name with an @ in any spelling is caught, a plain name is not", () => {
-  assert.equal(hasAt("catherine@example.com"), true);
-  assert.equal(hasAt("catherine＠example.com"), true);   // full-width @ folds under NFKC
+  assert.equal(hasAt("teammate@example.com"), true);
+  assert.equal(hasAt("teammate＠example.com"), true);   // full-width @ folds under NFKC
   assert.equal(hasAt("the team"), false);
   assert.equal(hasAt(null), false);
   assert.match(MSG_NAME_AT, /Email addresses go in the invite box/);
