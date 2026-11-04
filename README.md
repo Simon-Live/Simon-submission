@@ -1,24 +1,81 @@
 # Simon
 
-[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml) · [Try it on simon.live](https://simon.live) · [Blueprint](blueprint.html) · [Architecture](docs/ARCHITECTURE.md)
+[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml) · [Try it on simon.live](https://simon.live) · [Blueprint](blueprint.html) · [Architecture](docs/ARCHITECTURE.md) · Demo video: link added at submission
+
+**One demonstration in, a 3D movement model out.** A teacher films a movement once on a phone. Simon turns it into a
+3D reference with eleven Meta models chained together, then compares anyone who follows it, joint by joint and moment by
+moment, and says in plain words where and when they moved differently. No sensors, no motion-capture suit, no
+per-movement configuration: the movement is learned from the recording itself.
+
+Meta Global AI Developer Hackathon · Indie Developer track · theme **Push the Frontier**. Built by Mo Alborati,
+the team and Shruti Doshi between Oct 26 and Nov 4, 2026.
 
 ## Abstract
 
-Simon lets anyone practise a movement with feedback from the person who taught it. A trainer, dance teacher or
-physiotherapist records a movement once: an exercise, a dance or a rehab routine. A student follows it in front of a
-phone or laptop camera, and Simon turns both videos into 3D bodies, lines the student's take up with the trainer's,
-compares them joint by joint and moment by moment, and gives a score with timed notes in plain words on what to change
-("keep your elbows closer in"). No sensors, special camera or account are needed.
+Movement is taught by demonstration, and corrected only while the teacher is watching. Between lessons a dance
+student, a beginner learning an exercise or anyone practising a routine at home has nobody to say what differs.
+Existing tools need special hardware, or only know movements someone configured in advance.
 
-Simon is built on Meta's models: SAM 3.1 finds the people in each frame, SAM 3D Body and MHR build their 3D bodies, and
-Muse Spark words the feedback. Simon's own code lines the takes up, measures the differences and scores them. It was
-built in seven parts for the Meta Global AI Developer Hackathon (theme **Push the Frontier**): a machine learns a
-movement it was never configured for from one demonstration filmed at any angle.
+Simon learns a movement from one ordinary video. SAM 3.1 finds and follows the person, SAM 3D Body with the MHR body
+model lifts every frame into a 3D body from a single phone camera at any angle, and Muse Spark watches the clip and
+names the movement's phases. A follower's take goes through the same 3D pipeline; Simon's own code aligns the two in
+time, measures the differences per joint and per moment, and scores them. Meta's language, image and speech models
+then turn those measurements into feedback a person can act on: a sentence held to the measured facts, the follower's
+own frame redrawn in the corrected pose, answers to questions about the take, and the teacher's spoken cues. The
+teacher's recording, not a model's opinion, is the reference; Simon reports differences from it and gives no medical
+or health advice.
+
+## The Meta models, and what each one makes possible
+
+Eleven Meta models, each doing a job the product could not do without it. "Where" points at the code that calls it.
+
+| Model | What it does in Simon | The difference it makes | Where |
+|---|---|---|---|
+| **SAM 3.1** | Finds and tracks people with stable ids (text prompt "person"), on our GPU and through the Meta Model API | A class recording or a busy room still yields one consistent person per track; the follower picks themselves | `modules/part-2/part2/trackers/local_sam31.py`, `modules/part-1/keyframe_finder/meta_client.py` |
+| **SAM 3D Body** | A full 3D body for every frame from one ordinary camera | 3D from a phone at any angle: 2.02% (COCO) and 3.84% (hand-labelled) of body height mean reprojection error | `modules/part-2/part2/backends/gpu_sam3db.py` |
+| **MHR** (Momentum Human Rig) | The body model behind SAM 3D Body, and the skeleton and skin weights for a rigged avatar | Every take shares one skeleton, so a teacher and a student of different builds are compared joint for joint | `modules/part-2/part2/mhr_export.py` |
+| **SAM 3D Objects** | A textured 3D model of a character or object from one picture | Anyone can replay a take as their own character, rigged with MHR | `modules/part-2/part2/image3d.py` |
+| **Muse Spark 1.3** | Watches the teacher's clip and names the movement's phases; a second opinion on a take; patterns across a student's history; referees Muse Image's picture | The movement's structure comes from the video itself, with no per-movement setup | `modules/part-1/keyframe_finder/meta_client.py`, `modules/part-5/part5/opinion/meta_api.py`, `part7/history_api.py` |
+| **Muse Spark Open** | Writes each measured difference as one plain sentence; a validator holds it to the measured facts | Feedback reads like a teacher, never claims what was not measured, and falls back to a template | `modules/part-5/part5/phrasing/muse_spark.py` |
+| **Muse Glimmer** | The same sentences in private mode, on the user's own machine (Ollama) | Feedback with nothing leaving the device | `modules/part-5/part5/phrasing/local_llm.py`, `part7/private_mode.py` |
+| **Muse Wonder 1.0** | "Ask this take": answers a question about the take from its measurements | A student asks "why was my second rep worse?" and gets an answer grounded in the numbers | `modules/part-5/part5/opinion/prompt.py`, `part7/take_ask.py` |
+| **Muse Image 1.0** | "You, doing it right": the student's own frame redrawn in the corrected pose | The correction shown on the student's own body, not described | `part7/muse_fix_api.py` |
+| **Muse Voice Transcribe 1.0** | Turns the teacher's narration in an upload into timed cues | The teacher's own words appear at the moment they apply | `part7/narration_api.py` |
+| **MMS-TTS** | Speaks feedback lines on our server when spoken feedback is on | Feedback heard while moving, without looking at the screen | `part7/speech.py` |
+
+Each result page lists the models that ran for that take ("How this was made", `part7/models_used.py`).
+Every model with its evidence and licence: [docs/submission.md](docs/submission.md), "Use of Meta AI tooling", and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## How the models chain
+
+```
+Teacher's video ─┬─ SAM 3.1 (who) ── SAM 3D Body + MHR (3D, every frame) ── one skeleton ── reference animation
+                 └─ Muse Spark 1.3 (the movement's phases) + Muse Voice Transcribe (the teacher's spoken cues)
+
+Follower's take ── SAM 3.1 ── SAM 3D Body + MHR ── aligned in time with the reference ── per-joint, per-moment differences
+                                                                                              │
+             Muse Spark Open / Glimmer (sentences) · Muse Image (corrected frame) · Muse Wonder (questions) · MMS-TTS (spoken)
+```
+
+| Part | What it does | Meta models |
+|---|---|---|
+| 1 Keyframes | Finds the repetitions and names their phases in the teacher's clip | Muse Spark 1.3, SAM 3.1 (API) |
+| 2 Images to 3D | 3D joints for every frame from one phone camera; avatars from pictures | SAM 3.1, SAM 3D Body, MHR, SAM 3D Objects |
+| 3 Skeleton | One consistent skeleton from the joints | none (our code) |
+| 4 Animation | The teacher's reference animation | none (our code) |
+| 5 Fault analysis | Aligns the take with the reference, finds the differences with times, scores 0 to 100 | Muse Spark Open, Glimmer, Muse Spark 1.3, Muse Wonder |
+| 6 Catalog and player | Stores references, plays 3D in the browser | none (our code) |
+| 7 The app | The web app, job queue and GPU lock that join the six | Muse Image, Muse Voice Transcribe, MMS-TTS, Muse Spark 1.3 |
+
+Each part was built in its own repo during the event and is merged here with its full history, under `modules/part-N`
+([modules/PINS.json](modules/PINS.json) names where each came from). The team's coordination repo, with the plan and the
+seven part briefs, is under [`hub/`](hub/).
 
 ## Try it
 
 **[simon.live](https://simon.live)**: pick a movement, press Use routine, record or upload your take, and get your
-score and feedback. Trainers press Record to add their own movement. The footer's "How to use" page walks through both.
+score and feedback. Trainers press Record to add their own movement.
 
 ## Clone and run it
 
@@ -37,9 +94,11 @@ cd Simon-submission
 deploy/judges/run.sh
 ```
 
-Open the address it prints (`http://127.0.0.1:8727`, or the next free port), then record or upload a take. Your Simon sends its Meta API calls and its Part 2 runs
-to our relay, which holds Simon's key and runs Part 2 on our Modal GPU with a shared budget
-([deploy/judges/README.md](deploy/judges/README.md)). A take takes a few minutes, most of it Part 2 on the GPU.
+Open the address it prints (`http://127.0.0.1:8727`, or the next free port), then record or upload a take. Your Simon
+sends its Meta Model API calls and its GPU work (SAM 3.1, SAM 3D Body, MHR, SAM 3D Objects) to our relay, which holds
+Simon's key and runs Part 2 on our Modal GPU with a shared budget ([deploy/judges/README.md](deploy/judges/README.md)).
+A take takes a few minutes, most of it the 3D step on the GPU. Muse Spark Open runs on Baseten with its own key, so on
+this route Part 5 words its feedback with its template; everything else runs as on simon.live.
 
 **Without any keys.** `make dev`, then open `http://127.0.0.1:8727/#/result/fixture`: the result screen on a
 committed example, with the score, both bodies in 3D and the timed notes.
@@ -47,37 +106,23 @@ committed example, with the score, both bodies in 3D and the timed notes.
 **With your own keys and GPU.** A CUDA GPU with 12 GB free, `make parts` to set up Parts 1 to 6, and a Meta Model
 API key. [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md) covers setup, keys, running and debugging.
 
+## What we built, and what we used
+
+Everything in this repo was written by the team between Oct 26 and Nov 4, 2026; `git log` shows every commit, from the
+first one on Oct 26. We built: the seven parts (keyframes, the 3D pipeline around the models, the skeleton, the
+animation, the alignment, measurement and scoring, the catalog and player, and the app), the prompts and validators
+around each language model, the evaluation in `bench/` and `docs/audit/`, and the judges' relay in `deploy/judges/`.
+
+We used, and did not write: the Meta models above (called through the Meta Model API, or with their published weights,
+downloaded at setup and never committed), and the open-source libraries listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The only third-party code in the repo is the browser's three.js and
+Mermaid under `web/vendor/` (MIT). Part 1's three test videos are stock clips used only to test it.
+
 ## More details
 
-- **[The blueprint](blueprint.html)** (open the file in a browser): the whole design on one page, with the features,
-  requirements, scoring, architecture, risks and status.
+- **[The blueprint](blueprint.html)** (download and open it in a browser): the whole design on one page, with the
+  features, requirements, scoring, architecture, risks and status.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): three diagrams, each node linked to its code.
-- What is in this repo: Part 7 (the app) at the top, Parts 1 to 6 under `modules/` with their history
-  ([modules/PINS.json](modules/PINS.json) names where each came from), and the team's hub repo (plan, part briefs,
-  decisions, design docs) under [`hub/`](hub/).
-
-## How it works
-
-The teacher's recording runs through Parts 1 to 4 and 6; a student's take runs through Parts 2, 3 and 5. Each part was
-built in its own repo during the event and is merged into this one, with its history, under `modules/part-N`
-([modules/PINS.json](modules/PINS.json) names where each came from); Part 7 runs each as a process and passes files.
-This one repo holds everything needed to run and verify the demo ([ADR-0008](docs/design/adr/ADR-0008-one-repo-for-the-submission.md)) The team's coordination repo is in [`hub/`](hub/): [hub/docs/MINI-APPS.md](hub/docs/MINI-APPS.md) defines the seven parts.
-
-| Step | What happens | Meta model |
-|---|---|---|
-| 1 Part 1, keyframes | Finds the repetitions and names their phases in the teacher's clip | Muse Spark 1.3 watches the video and names the phases. SAM 3.1 (Meta Model API) tracks the person; the silhouette sets the times. |
-| 2 Part 2, images to 3D | 3D joints for every frame from one phone camera | SAM 3.1 picks the person. SAM 3D Body (DINOv3 backbone, MHR body model) gives the 3D pose. |
-| 3 Part 3, skeleton | One consistent skeleton from the joints | None |
-| 4 Part 4, animation | The teacher's reference animation | None in the app path |
-| 5 Part 5, fault analysis | Compares student and teacher, finds faults with times, scores 0 to 100 | Muse Spark Open (hosted on Baseten) writes each measured fault as one sentence. A validator holds it to the measured facts and falls back to a template. |
-| 6 Part 6, catalog and player | Stores the reference, plays 3D in the browser | None |
-| 7 Part 7, this repo | The phone app, job queue and GPU lock that join the six | Muse Voice Transcribe 1.0 (Meta) turns the trainer's narration into timed cues when an upload has sound. Meta MMS-TTS runs locally to speak feedback lines when spoken feedback is on. For the Me page, Part 7 runs Part 2's SAM 3D Objects (a textured model from one picture) and SAM 3D Body with the MHR body model (a rigged body from photos, or a skeleton for an unrigged mesh). |
-
-Every Meta model with its evidence: [docs/submission.md](docs/submission.md), "Use of Meta AI tooling". Source for each row: the model audit of 2026-10-31 (`docs/audit/rubric-2026-10-31/meta-ai.md`, kept in the
-development workspace) and the licence table in `modules/part-2/README.md`.
-
-The teacher's recording, not an AI model, is the reference. Simon measures how far the student's movement is from it
-and reports the differences in plain words with the time they happen. A large difference is not by itself a mistake.
 
 ## How accurate is Simon
 

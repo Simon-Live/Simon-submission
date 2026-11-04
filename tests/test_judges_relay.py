@@ -34,6 +34,7 @@ def _load_client():
     ("POST", "responses", "muse-spark-1.3"),
     ("POST", "responses/input_tokens", "muse-wonder-1.0"),
     ("POST", "asr/transcribe", "muse-voice-transcribe-1.0"),
+    ("POST", "images/edits", "muse-image-1.0"),
 ])
 def test_the_calls_simon_makes_are_forwarded(method, path, model):
     assert rules.allowed(method, path, model) is None
@@ -46,6 +47,8 @@ def test_the_calls_simon_makes_are_forwarded(method, path, model):
     ("POST", "chat/completions", "muse-spark-1.3"),
     ("POST", "asr/transcribe", "muse-spark-1.3"),
     ("DELETE", "files/../../admin", None),
+    ("POST", "images/edits", "muse-spark-1.3"),
+    ("POST", "responses", "muse-image-1.0"),
 ])
 def test_negative_anything_else_is_refused(method, path, model):
     assert rules.allowed(method, path, model)
@@ -174,7 +177,7 @@ def test_p2_client_uploads_positional_photos_for_avatar(tmp_path):
     assert out == tmp_path / "o"
 
 
-def test_photo_and_mesh_models_run_on_modal_without_a_local_gpu_but_character_pictures_do_not(monkeypatch, tmp_path):
+def test_photo_mesh_and_character_models_run_on_modal_without_a_local_gpu(monkeypatch, tmp_path):
     from part7 import avatar_jobs, config
     monkeypatch.setattr(config, "part2_gpu_venv_path", lambda: tmp_path / "no-venv")
     monkeypatch.delenv("SIMON7_PART2_REMOTE", raising=False)
@@ -182,4 +185,6 @@ def test_photo_and_mesh_models_run_on_modal_without_a_local_gpu_but_character_pi
     monkeypatch.setenv("SIMON7_PART2_REMOTE", "modal")
     assert avatar_jobs.available("image")
     assert avatar_jobs.available("autorig")
-    assert not avatar_jobs.available("image3d"), "negative: SAM 3D Objects is not in the Modal image"
+    assert avatar_jobs.available("image3d")
+    monkeypatch.delenv("SIMON7_PART2_REMOTE")
+    assert not avatar_jobs.available("image3d"), "negative: no GPU and no remote route"

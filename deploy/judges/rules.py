@@ -27,8 +27,9 @@ ALLOWED_CALLS = (
     ("POST", re.compile(r"^responses$")),
     ("POST", re.compile(r"^responses/input_tokens$")),
     ("POST", re.compile(r"^asr/transcribe$")),
+    ("POST", re.compile(r"^images/edits$")),   # Muse Image: "You, doing it right" (part7/muse_fix_api.py)
 )
-MODELS = ("sam-3.1", "muse-spark-1.3", "muse-wonder-1.0", "muse-voice-transcribe-1.0")
+MODELS = ("sam-3.1", "muse-spark-1.3", "muse-wonder-1.0", "muse-voice-transcribe-1.0", "muse-image-1.0")
 
 # USD, the rates the parts already record (Part 1 keyframe_finder/spend.py): tokens per million, SAM 3.1 per frame.
 RATES = {
@@ -39,7 +40,8 @@ RATES = {
 }
 # What a call is counted at before its answer says more: a SAM 3.1 track of a 90 s take at 30 fps (2,700 frames),
 # a large Muse request, a 5 min transcript. A streamed answer keeps this figure, so it is set high.
-RESERVE_USD = {"sam-3.1": 0.60, "muse-spark-1.3": 0.10, "muse-wonder-1.0": 0.40, "muse-voice-transcribe-1.0": 0.02}
+RESERVE_USD = {"sam-3.1": 0.60, "muse-spark-1.3": 0.10, "muse-wonder-1.0": 0.40, "muse-voice-transcribe-1.0": 0.02,
+               "muse-image-1.0": 0.15}   # Muse Image's price per picture is not published here: counted at this figure
 FREE_PATHS = ("files", "responses/input_tokens")   # uploads, deletes and token counts are not billed
 
 # Part 2 on Modal's L40S: $1.95 an hour (Modal pricing), counted 1.5x for start-up and the idle window after a run.
@@ -72,11 +74,13 @@ def allowed(method: str, path: str, model: str | None) -> str | None:
     method = method.upper()
     if not any(m == method and rx.match(path) for m, rx in ALLOWED_CALLS):
         return f"{method} /v1/{path} is not a call Simon makes"
-    if path in ("responses", "responses/input_tokens", "asr/transcribe"):
+    if path in ("responses", "responses/input_tokens", "asr/transcribe", "images/edits"):
         if model not in MODELS:
             return f"model {model!r} is not one Simon uses"
         if path == "asr/transcribe" and model != "muse-voice-transcribe-1.0":
             return "asr/transcribe takes only muse-voice-transcribe-1.0"
+        if (path == "images/edits") != (model == "muse-image-1.0"):
+            return "muse-image-1.0 goes only to images/edits"
     return None
 
 
