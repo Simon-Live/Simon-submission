@@ -210,3 +210,15 @@ def test_a_start_warms_part2_for_an_hour_and_a_second_start_only_adds_the_rest()
     assert rules.warm_extension(now, now + 3000) == 600, "a warm-up already running is extended, not paid twice"
     assert rules.warm_extension(now, now + 4000) == 0
     assert round(3600 / 60 * rules.WARM_USD_PER_MINUTE, 2) == 1.95
+
+
+def test_a_setup_marker_without_its_venv_does_not_skip_setup(tmp_path):
+    from part7 import setup_parts
+    clone = tmp_path / "part-3"
+    clone.mkdir()
+    assert not setup_parts._env_present("3", clone), "a marker alone must not skip Part 3 (no numpy without its venv)"
+    (clone / ".venv" / "bin").mkdir(parents=True)
+    (clone / ".venv" / "bin" / "python").write_text("")
+    assert setup_parts._env_present("3", clone)
+    assert not setup_parts._env_present("1", tmp_path / "part-1")
+    assert setup_parts._env_present("4", tmp_path / "part-4") and setup_parts._env_present("6", tmp_path / "part-6")

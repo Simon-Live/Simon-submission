@@ -50,7 +50,16 @@ for e in deploy/judges/catalog/*/; do [ -e "$CATALOG/$(basename "$e")" ] || cp -
 echo "Catalog: $(ls -d "$CATALOG"/*/ | wc -l | tr -d ' ') movements in $CATALOG"
 
 make setup
-make setup-parts || echo "Part setup reported a problem above; Part 2 runs on the relay, so the app may still work." >&2
+make setup-parts > /dev/null || echo "Part setup reported a problem; the check below names the part." >&2
+# Every part must run in its own environment before Simon starts (a part without its venv fails each take later,
+# e.g. Part 3 with no numpy). doctor-parts runs each part's contract check the way the app runs the part.
+if ! uv run python -m part7 doctor-parts > /tmp/simon-doctor-parts.json 2>&1; then
+  echo "A part is not set up. Details: /tmp/simon-doctor-parts.json" >&2
+  python3 -c "import json,sys; d=json.load(open('/tmp/simon-doctor-parts.json')); [print('  part', k, ':', (v.get('error') or 'failed')[:200]) for k,v in (d.get('parts') or d).items() if isinstance(v,dict) and not v.get('ok')]" 2>/dev/null || true
+  echo "Fix: rm -rf modules/part-*/.venv, then run deploy/judges/run.sh again." >&2
+  exit 1
+fi
+echo "All six parts are set up."
 echo
 echo "Starting Simon: open http://127.0.0.1:$PORT"
 echo "Sign-in codes are printed here: no mail is sent from a local Simon."

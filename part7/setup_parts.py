@@ -128,6 +128,19 @@ def _stamp(part: str, sha12: str, state: Path | str | None, clone: Path | None =
     return config.state_root(state) / "setup" / f"part-{part}-{sha12}{where}.ok"
 
 
+def _env_present(part: str, clone: Path) -> bool:
+    """True when the environment a part's setup makes is in this checkout: a marker alone is not trusted, since a
+    folder cloned again at the same path, or a removed .venv, keeps the marker without the venv (a judge's Part 3 then
+    ran with the app's own Python, which has no numpy)."""
+    if part == "1":
+        return (clone / ".venv" / ".installed").is_file()
+    if part == "3":
+        return (clone / ".venv" / "bin" / "python").is_file()
+    if part in ("2", "5"):
+        return (clone / ".venv").is_dir()
+    return True   # Parts 4 and 6 run with the system python3 and need no environment of their own
+
+
 def _module_state(lk: modules.Modules, part: str) -> tuple[Path, str, str | None]:
     """`(module dir, sha12 or "unknown", error)`; the error names the part when the module is unusable."""
     clone = lk.path(part)
@@ -168,7 +181,7 @@ def setup_all(
             results[part] = {"ok": False, "commit": sha12, "steps": [], "duration_s": 0.0, "error": missing}
             continue
         stamp = _stamp(part, sha12, state, clone)
-        if stamp.is_file():
+        if stamp.is_file() and (commands is not None or _env_present(part, clone)):   # stub commands make no venv
             results[part] = {"ok": True, "commit": sha12, "steps": [], "duration_s": 0.0, "error": None,
                              "skipped": True, "notes": [f"setup already ran for {sha12}"]}
             continue
