@@ -35,6 +35,8 @@ Limits you will meet:
 - A share link opens only with the staging login, so whoever you send it to needs the same username and password.
 - The wait: the recorded run took 7 minutes from upload to result, and a take waits longer while another job holds the GPU.
 - Parts 1 to 6 are in this repo under `modules/` (ADR-0008): a plain clone has everything, and CI runs the full suite.
+- The team's hub repo (the plan, the seven part briefs, decisions, design docs and the blueprint) is under [`hub/`](hub/), with its history.
+- Part 1's three labelled test videos are in `modules/part-1/inbox/` through Git LFS: install [Git LFS](https://git-lfs.com) before cloning to get them.
 
 This path was walked on staging through the real UI (recipe `qa/recipes/judge-path.yaml`, run `20261102162151` on build `333aefca5`, and the second pass `20261102163616-result`; evidence `qa/evidence/judge-path/` on branch `lane/qa-auth-r20`). The hero card text was checked on build `3c9cf0904` (run `20261102184554`).
 
@@ -43,7 +45,7 @@ This path was walked on staging through the real UI (recipe `qa/recipes/judge-pa
 The teacher's recording runs through Parts 1 to 4 and 6; a student's take runs through Parts 2, 3 and 5. Each part was
 built in its own repo during the event and is merged into this one, with its history, under `modules/part-N`
 ([modules/PINS.json](modules/PINS.json) names where each came from); Part 7 runs each as a process and passes files.
-This one repo holds everything needed to run and verify the demo ([ADR-0008](docs/design/adr/ADR-0008-one-repo-for-the-submission.md)).
+This one repo holds everything needed to run and verify the demo ([ADR-0008](docs/design/adr/ADR-0008-one-repo-for-the-submission.md)) The team's coordination repo is in [`hub/`](hub/): [hub/docs/MINI-APPS.md](hub/docs/MINI-APPS.md) defines the seven parts.
 
 | Step | What happens | Meta model |
 |---|---|---|
