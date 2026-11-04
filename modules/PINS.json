@@ -1,0 +1,29 @@
+{
+  "_note": "Parts 1 to 6 live in this repo under modules/part-N (the hackathon submission is one repo). Each was merged with its history by git subtree at the commit below of its own repo, where it was built.",
+  "parts": {
+    "1": {
+      "sha": "e84e92b1d0b1ded52a54f002b2159f3cef1f1efc",
+      "from": "https://github.com/moalborati/simon-part-1-keyframes"
+    },
+    "2": {
+      "sha": "c273b198f73512775befa53767fe0adcf8ae8bf8",
+      "from": "https://github.com/moalborati/simon-part-2-images-to-3d"
+    },
+    "3": {
+      "sha": "72e120fe2f39152aa7c48277135abeeba9b4a80c",
+      "from": "https://github.com/moalborati/simon-part-3-skeleton-consistency"
+    },
+    "4": {
+      "sha": "7036622fb5d6ada8740f6eb45def267f72bad0d5",
+      "from": "https://github.com/moalborati/simon-part-4-animate-keyframes"
+    },
+    "5": {
+      "sha": "b78026ea7840698d846526a91d2f3569e97b7eea",
+      "from": "https://github.com/moalborati/simon-part-5-fault-analysis"
+    },
+    "6": {
+      "sha": "ced3f3dfb21bace76348af397ad0d7fc5ef8a759",
+      "from": "https://github.com/moalborati/simon-part-6-recording-catalog"
+    }
+  }
+}

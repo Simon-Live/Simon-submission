@@ -34,14 +34,16 @@ Open <staging URL, sent separately> on a phone, or in a desktop browser with a w
 Limits you will meet:
 - A share link opens only with the staging login, so whoever you send it to needs the same username and password.
 - The wait: the recorded run took 7 minutes from upload to result, and a take waits longer while another job holds the GPU.
-- Parts 1 to 6 are private repositories, so their submodule links and a recursive clone need access. Without that access CI still runs, skips the tests that need the parts, and says how many it skipped.
+- Parts 1 to 6 are in this repo under `modules/` (ADR-0008): a plain clone has everything, and CI runs the full suite.
 
 This path was walked on staging through the real UI (recipe `qa/recipes/judge-path.yaml`, run `20261102162151` on build `333aefca5`, and the second pass `20261102163616-result`; evidence `qa/evidence/judge-path/` on branch `lane/qa-auth-r20`). The hero card text was checked on build `3c9cf0904` (run `20261102184554`).
 
 ## How it works
 
-The teacher's recording runs through Parts 1 to 4 and 6; a student's take runs through Parts 2, 3 and 5. Each part is a separate repo,
-included here as a git submodule under `modules/`, and Part 7 runs it as a process and passes files.
+The teacher's recording runs through Parts 1 to 4 and 6; a student's take runs through Parts 2, 3 and 5. Each part was
+built in its own repo during the event and is merged into this one, with its history, under `modules/part-N`
+([modules/PINS.json](modules/PINS.json) names where each came from); Part 7 runs each as a process and passes files.
+This one repo holds everything needed to run and verify the demo ([ADR-0008](docs/design/adr/ADR-0008-one-repo-for-the-submission.md)).
 
 | Step | What happens | Meta model |
 |---|---|---|
@@ -147,7 +149,7 @@ A resident Part 2 worker cut the 3D step from 97.1 s to 51.7 s mean over three r
 ## Try it without a GPU
 
 ```bash
-git clone --recursive https://github.com/moalborati/simon-part-7-stitching-app.git
+git clone https://github.com/moalborati/simon-part-7-stitching-app.git
 cd simon-part-7-stitching-app
 make dev
 ```
@@ -166,7 +168,7 @@ node --test tests/part7/*.unit.test.mjs       # browser-module unit tests
 make check-7                                  # the done-check: app path against a direct run (needs the GPU setup)
 ```
 
-`uv run pytest -q`, the node tests and the linter are set to run in CI on every push ([workflow](.github/workflows/ci.yml)), but all 17 runs listed by `gh run list` on 2026-11-02 (UTC) failed at checkout: Parts 1 to 6 are private repositories, and the workflow cannot read them without the `PARTS_READ_TOKEN` secret. That is why the badge above is red. Run the commands above locally instead.
+`uv run pytest -q`, the node tests and the linter run in CI on every push to `main` and on every pull request ([workflow](.github/workflows/ci.yml)). Parts 1 to 6 are in this repo, so CI runs the full suite, the part tests and the golden pipeline included; tests that need a GPU or the staging host skip there with a stated reason.
 
 ## Limits
 

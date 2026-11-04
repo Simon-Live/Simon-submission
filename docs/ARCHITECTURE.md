@@ -1,6 +1,6 @@
 # Architecture
 
-Simon is seven parts. Parts 1 to 6 are git submodules under `modules/`, and Part 7 (this repo) runs each one as a
+Simon is seven parts. Parts 1 to 6 are folders under `modules/` in this repo (ADR-0008), and Part 7 runs each one as a
 separate process and passes files between them. The three diagrams below show the parts and their contract files,
 one follow job from upload to result, and where the trust boundaries sit. Every node has a row in the table under its
 diagram that links to the file and line it stands for.

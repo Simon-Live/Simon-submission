@@ -27,7 +27,7 @@ Open <staging URL, sent separately> on a phone, or in a desktop browser with a w
 Limits you will meet:
 - A share link opens only with the staging login, so whoever you send it to needs the same username and password.
 - The wait: the recorded run took 7 minutes from upload to result, and a take waits longer while another job holds the GPU.
-- Parts 1 to 6 are private repositories, so their submodule links and a recursive clone need access. Without that access CI still runs, skips the tests that need the parts, and says how many it skipped.
+- Parts 1 to 6 are in this repo under `modules/` (ADR-0008): a plain clone has everything, and CI runs the full suite.
 
 This path was walked on staging through the real UI (recipe `qa/recipes/judge-path.yaml`, run `20261102162151` on build `333aefca5`, and the second pass `20261102163616-result`; evidence `qa/evidence/judge-path/` on branch `lane/qa-auth-r20`). The hero card text was checked on build `3c9cf0904` (run `20261102184554`).
 
@@ -154,7 +154,7 @@ What is not shown yet: no user study. The test students are stock clips from Pex
 
 ## Technical depth
 
-Seven parts, seven repositories. Parts 1 to 6 are git submodules. Part 7 runs each as a process and passes files, with a `doctor` check on every hand-off and a JSON Schema in each part's `contracts/`. Part 7 has no runtime Python dependency beyond the standard library, and the web app is plain ES modules with no build step. A job queue, a GPU lock with a wait for 12288 MiB free, per-job summary lines, key redaction in logs and a fallback for Part 1 (Part 3 every-10 keyframes when the Meta call is refused) keep a run honest.
+Seven parts, built in seven repositories during the event and merged with their history into this one: Parts 1 to 6 are under `modules/` (ADR-0008). Part 7 runs each as a process and passes files, with a `doctor` check on every hand-off and a JSON Schema in each part's `contracts/`. Part 7 has no runtime Python dependency beyond the standard library, and the web app is plain ES modules with no build step. A job queue, a GPU lock with a wait for 12288 MiB free, per-job summary lines, key redaction in logs and a fallback for Part 1 (Part 3 every-10 keyframes when the Meta call is refused) keep a run honest.
 
 The accuracy table, with the run or file behind every figure, is in [docs/evaluation.md](evaluation.md). In short:
 

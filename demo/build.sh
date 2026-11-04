@@ -5,7 +5,7 @@
 #                (do this after the result-screen or catalog UI changes land on the checkout you run it from).
 #   --no-tts     reuse cached voice-over only (fails if a line changed).
 # Env: DEMO_WORK (default /tmp/simon-demo-work), DEMO_PORT (17391), DEMO_MODULES_DIR (part submodules for the local
-# server; default <repo>/modules, so run `git submodule update --init` first or point it at another checkout's modules).
+# server; default <repo>/modules, so run `make parts` first or point it at another checkout's modules).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"

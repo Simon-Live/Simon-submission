@@ -1,7 +1,9 @@
-"""Parts 1 to 6 as git submodules under `modules/part-N` (ADR-0007).
+"""Parts 1 to 6 under `modules/part-N` (ADR-0007, ADR-0008).
 
-Each submodule tracks the `main` of its part repo. Part 7 calls the part's own code and entry
-points from that directory; it keeps no pin file, no private clone and no copy of part logic.
+Part 7 calls each part's own code and entry points from that directory and keeps no copy of part logic. In this repo
+the parts are ordinary folders, merged with their history (the hackathon submission is one repo, ADR-0008), and
+`modules/PINS.json` names the commit of each part's own repo they came from. A module tree that is a git checkout of
+its own (a staging build's `SIMON7_MODULES_DIR`) is read with `git rev-parse HEAD`, as before.
 """
 
 from __future__ import annotations
@@ -50,6 +52,21 @@ def head_sha(path: Path) -> str | None:
     return found.lower() if _is_sha(found) else None
 
 
+def _pins() -> dict[str, dict[str, str]]:
+    """`modules/PINS.json` parts: `{part: {sha, from}}`, or {} when absent or unreadable."""
+    try:
+        doc = json.loads((config.REPO_ROOT / "modules" / "PINS.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    parts = doc.get("parts") if isinstance(doc, dict) else None
+    return parts if isinstance(parts, dict) else {}
+
+
+def _own_checkout(path: Path) -> bool:
+    """Whether `path` is a git checkout of its own (a submodule or clone), not a folder of this repo."""
+    return (path / ".git").exists()
+
+
 def _is_sha(text: str | None) -> bool:
     return text is not None and len(text) == 40 and all(c in "0123456789abcdef" for c in text.lower())
 
@@ -74,8 +91,9 @@ class Modules:
     def sha(self, part: int | str) -> str:
         key = str(part)
         if key not in self._shas:
-            found = _git(self.path(key), "rev-parse", "HEAD")
-            if not _is_sha(found):
+            path = self.path(key)
+            found = _git(path, "rev-parse", "HEAD") if _own_checkout(path) else (_pins().get(key) or {}).get("sha")
+            if not _is_sha(found) or not path.is_dir():
                 raise ModuleError(f"part {key}: no checkout at {self.path(key)} (run make parts)")
             self._shas[key] = str(found).lower()
         return self._shas[key]
@@ -100,9 +118,9 @@ def load(root: Path | str | None = None) -> Modules:
 
 
 def _declared(key: str) -> tuple[str | None, str]:
-    """`(url, branch)` from `.gitmodules` for a part, when the file names it."""
+    """`(url, branch)` from `.gitmodules` for a part, else from `modules/PINS.json` (the repo it came from)."""
     if not (config.REPO_ROOT / ".gitmodules").is_file():
-        return None, "main"
+        return (_pins().get(key) or {}).get("from"), "main"
     name = f"submodule.modules/part-{key}"
     url = _git(config.REPO_ROOT, "config", "--file", ".gitmodules", f"{name}.url")
     branch = _git(config.REPO_ROOT, "config", "--file", ".gitmodules", f"{name}.branch")
@@ -127,7 +145,7 @@ def status(check_remote: bool = False, root: Path | str | None = None) -> dict[s
             sha: str | None = mods.sha(key)
         except ModuleError:
             sha = None
-        url = _git(path, "remote", "get-url", "origin") or declared_url
+        url = (_git(path, "remote", "get-url", "origin") if _own_checkout(path) else None) or declared_url
         remote = ls_remote(url, branch) if (check_remote and url) else None
         try:
             shown = str(path.relative_to(config.REPO_ROOT))

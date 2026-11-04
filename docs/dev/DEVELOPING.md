@@ -7,7 +7,7 @@ where to look. Design background: [../design/README.md](../design/README.md).
 ## What the app is
 
 A phone web app that stitches Parts 1 to 6 into one journey. Part 7 never imports another part's
-code: it runs each part's published CLI from its submodule under `modules/` and passes files between them.
+code: it runs each part's published CLI from its folder under `modules/` and passes files between them.
 
 The journey has eight steps (`docs/design/specs/journey.md`):
 
@@ -34,16 +34,16 @@ The journey has eight steps (`docs/design/specs/journey.md`):
 | Jobs | `part7/processor.py`, `part7/chain.py` | trainer and follow jobs: normalize the upload with ffmpeg, then run the part chain with a doctor check on every hand-off |
 | Part adapters | `part7/parts/p1_keyframes.py` to `p6_catalog.py` | the exact argv for each part, run through `part7/runner.py` (own process group, timeout, key redaction in logs) |
 | GPU admission | `part7/gpu_lock.py` | Part 2's file lock plus a wait for 12288 MiB free (`nvidia-smi`); gives up after 30 min |
-| Part modules | `.gitmodules`, `modules/part-1` to `modules/part-6` | git submodules on the latest `main` of each part repo |
+| Part modules | `modules/part-1` to `modules/part-6`, `modules/PINS.json` | folders of this repo, merged with their history (ADR-0008); PINS.json names each part repo and commit they came from |
 | Part 6 child | `part7/parts/p6_catalog.py` | `python3 -m part6 serve` on a free local port; Part 7 proxies `catalog/` to it |
 | People and groups | `part7/people.py`, `people_routes.py`, `group.py` | choose one person in a clip of several, or analyse a group |
 | Web app | `web/` | plain ES modules, no build step; `web/vendor/` holds the third-party files |
 
 ### The parts harness
 
-- `.gitmodules` names each part's repo with `branch = main`. `make parts` runs `git submodule sync`,
-  `git submodule update --init --remote --recursive` (every module moves to the latest `main`) and
-  then `setup-parts`. There is no pin file; a fresh clone is `git clone --recursive`.
+- Parts 1 to 6 are folders of this repo (ADR-0008): a plain `git clone` has them all. `modules/PINS.json` names the
+  part repo and commit each was merged from. `make parts` runs `setup-parts`. A staging build can still serve from a
+  module tree whose parts are checkouts of their own (`SIMON7_MODULES_DIR`); `parts-status` reads those with git.
 - `python -m part7 parts-status [--check-remote]` prints each part's `path`, `sha`, `short`, `url`,
   `branch` and `remote_sha` as JSON. With `--check-remote` it exits 3 when any part's remote `main`
   differs from the checked-out sha and 0 when all are current (staging's `stale.sh` uses it).
@@ -412,7 +412,7 @@ shipped this entry.
 Parts always follow the latest `main` of their repos, so updating is one command:
 
 ```bash
-make parts       # sync, submodule update --remote, setup-parts
+make parts       # setup-parts for the parts under modules/
 make chain       # optional: run the whole chain on the new parts
 ```
 

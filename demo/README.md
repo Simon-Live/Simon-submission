@@ -234,7 +234,7 @@ There is no cap on this lane (operator ruling 2026-11-01); this is a record. Log
 ### Rebuild
 
 ```bash
-git submodule update --init                      # the local server needs the part checkouts (or set DEMO_MODULES_DIR)
+make parts                                       # set up the parts under modules/ (or set DEMO_MODULES_DIR)
 DEMO_LIVE=1 demo/local-state.sh start            # live server (Meta key for this process only), then:
 python3 demo/make-jobs.py --trainer pexels-8026937 --follower pexels-4224405   # fresh trainer entry and follow job
 DEMO_FRESH_JSON=<out>/fresh-jobs.json DEMO_FRESH_JOB=<follow job> demo/build.sh --recapture   # re-record the UI segments, rebuild, check

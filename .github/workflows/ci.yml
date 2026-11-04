@@ -12,27 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # A secret cannot sit in a step `if:`; this flag is "true" only when PARTS_READ_TOKEN exists, i.e. when
-      # the private part repos are readable (TICKET-244). Parts 1 to 6 are private repositories (checked 2026-10-31
-      # with `gh repo view --json visibility`), so the default token cannot fetch them.
-      HAVE_PARTS: ${{ secrets.PARTS_READ_TOKEN != '' }}
+      # Parts 1 to 6 are in this repo under modules/ (ADR-0008), so the full suite always runs.
+      HAVE_PARTS: 'true'
     steps:
-      # TICKET-244: without the secret the job still runs everything that does not need Parts 1 to 6 (lint, the
-      # evaluation and architecture checks, the node tests, the pytest tests that do not read or run a part). The
-      # tests that need a part skip with a reason naming the secret (tests/part7/ci_skips.py, tests/part7/needs-part.mjs)
-      # and the count lands in the job summary. With the secret: the six submodules at their pins and the full suite.
-      - name: Part repos (PARTS_READ_TOKEN)
-        run: |
-          if [ "$HAVE_PARTS" = true ]; then
-            echo "PARTS_READ_TOKEN is set: Parts 1 to 6 are checked out at their pinned shas and the full suite runs."
-          else
-            echo "::notice title=PARTS_READ_TOKEN is not set::Parts 1 to 6 are not checked out; the tests that need them skip and are counted in the job summary. Set the secret (read access to the six part repos) in Settings > Secrets and variables > Actions to run them."
-          fi
+      # Parts 1 to 6 come with the checkout (modules/, ADR-0008): no token is needed and the full suite runs.
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          submodules: ${{ env.HAVE_PARTS == 'true' && 'recursive' || 'false' }}
-          token: ${{ secrets.PARTS_READ_TOKEN || github.token }}
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true

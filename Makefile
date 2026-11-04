@@ -13,13 +13,10 @@ test:
 test-gpu:
 	SIMON7_TEST_GPU=1 uv run pytest -q
 
-# Parts 1 to 6 are git submodules under modules/ that track each part repo's main (ADR-0007).
-# This moves them to the latest main, then runs each part's setup once per sha. It does not go through the staging
-# parts gate: staging/up.sh runs it only on a first install or with SIMON7_PARTS_GATE=off, and otherwise adopts the
-# gate-validated shas (`part7 parts-adopt`, TICKET-192).
+# Parts 1 to 6 live in this repo under modules/ (ADR-0008: the submission is one repo; modules/PINS.json names where
+# each came from). This runs each part's setup once per version. The staging parts gate and `part7 parts-adopt`
+# (TICKET-192) still read a module tree that is a checkout of its own.
 parts:
-	git submodule sync --recursive
-	git submodule update --init --remote --recursive
 	SIMON7_MODULES_DIR="$${SIMON7_BASE_MODULES_DIR:-$(CURDIR)/modules}" uv run python -m part7 setup-parts
 
 # Sets up the base clones, never the module tree a staging build serves from (TICKET-329).

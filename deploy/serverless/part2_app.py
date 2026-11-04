@@ -47,7 +47,7 @@ def _part2() -> tuple[str, Path, Path]:
     clone = Path(os.environ.get("SIMON_PART2_DIR") or PART7 / "modules" / "part-2")
     sha = _git("-C", str(clone), "rev-parse", "HEAD")
     if len(sha) != 40:
-        raise SystemExit(f"no Part 2 checkout at {clone}: run `make parts` (or `git submodule update --init`)")
+        raise SystemExit(f"no Part 2 checkout at {clone}: run `make parts`")
     if _git("-C", str(clone), "status", "--porcelain", "--untracked-files=no"):
         raise SystemExit(f"{clone} has local changes: the image must be a published commit")
     gitdir = Path(_git("-C", str(clone), "rev-parse", "--absolute-git-dir"))
