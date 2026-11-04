@@ -1,9 +1,11 @@
 """Meta Model API calls. The key is loaded from .env and never printed."""
 
+import http.client
 import json
+import time
 import uuid
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from keyframe_finder.sam_parse import BoxParser
@@ -67,23 +69,35 @@ def _multipart(path):
     return boundary, b"".join(chunks)
 
 
-def upload_video(path):
+def upload_video(path, tries=None, wait_s=None, sleep=None):
+    """Upload `path` to Meta's files endpoint and return its id. A cut connection is tried again (TICKET-380: 2 of 49
+    cut logs were here); an upload costs nothing, so the same bound as SAM's stream keeps the wait short."""
+    tries = SAM_TRIES if tries is None else tries
+    wait_s = SAM_RETRY_WAIT_S if wait_s is None else wait_s
+    sleep = time.sleep if sleep is None else sleep
     boundary, payload = _multipart(path)
-    request = Request(
-        API + "/files",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key()}",
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=300) as response:
-            file_obj = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:2000]
-        raise RuntimeError(f"Meta API {exc.code} on /files: {detail}") from None
+    for attempt in range(1, tries + 1):
+        request = Request(
+            API + "/files",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {api_key()}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=300) as response:
+                file_obj = json.loads(response.read().decode("utf-8"))
+            break
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:2000]
+            raise RuntimeError(f"Meta API {exc.code} on /files: {detail}") from None
+        except _CUT as exc:
+            print(f"  upload cut ({type(exc).__name__}); {'trying again' if attempt < tries else 'giving up'}", flush=True)
+            if attempt == tries:
+                raise StreamCut(f"upload to /files cut ({type(exc).__name__})") from None
+            sleep(wait_s * attempt)
     if "id" not in file_obj:
         raise RuntimeError("File upload did not return an id.")
     return file_obj["id"]
@@ -130,12 +144,19 @@ def _stream(body, timeout):
     return response
 
 
-def track_people(file_id, frame_count):
-    """Stream SAM 3.1 person tracks. Returns observations and the billed frame count."""
-    billed = max(50, int(frame_count))
-    cost = estimate(SAM, frame=billed)
-    require_budget(cost, f"SAM 3.1 on {billed} frames (${cost:.2f})")
-    body = {
+# TICKET-380: 38 of 121 staging runs ended with the stream cut (http.client.IncompleteRead) 63 to 90 s in. A cut stream
+# is tried again, a bounded number of times; each try is checked against the budget and recorded like any other call.
+SAM_TRIES = 2
+SAM_RETRY_WAIT_S = 5.0
+_CUT = (http.client.IncompleteRead, http.client.RemoteDisconnected, ConnectionError, TimeoutError, URLError)
+
+
+class StreamCut(RuntimeError):
+    """SAM 3.1's stream ended before `response.completed`: the answer is partial and is never used as a full one."""
+
+
+def _sam_body(file_id):
+    return {
         "model": SAM,
         "stream": True,
         "metadata": {"include_confidence": "true", "mask_encoding": "one_bit"},
@@ -150,32 +171,64 @@ def track_people(file_id, frame_count):
             }
         ],
     }
+
+
+def _sam_stream(body):
+    """One streamed SAM 3.1 call: (parser, usage). Raises StreamCut when the stream ends without completing."""
     parser = BoxParser()
-    usage = {}
+    usage = None
     announced = 0
-    with _stream(body, timeout=1800) as response:
-        for line in _iter_sse(response):
-            if not line.startswith("data:"):
-                continue
-            data = line[5:].strip()
-            if not data or data == "[DONE]":
-                continue
-            event = json.loads(data)
-            kind = event.get("type", "")
-            if kind == "response.output_text.delta":
-                parser.feed(event.get("delta") or "")
-                if parser.frames >= announced + 200:
-                    announced = parser.frames
-                    print(f"  SAM frames {parser.frames}", flush=True)
-            elif kind == "response.completed":
-                usage = (event.get("response") or {}).get("usage") or event.get("usage") or {}
-            elif kind in {"error", "response.failed"} or event.get("error"):
-                raise RuntimeError(f"SAM 3.1 failed: {event.get('error') or event}")
+    try:
+        with _stream(body, timeout=1800) as response:
+            for line in _iter_sse(response):
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                event = json.loads(data)
+                kind = event.get("type", "")
+                if kind == "response.output_text.delta":
+                    parser.feed(event.get("delta") or "")
+                    if parser.frames >= announced + 200:
+                        announced = parser.frames
+                        print(f"  SAM frames {parser.frames}", flush=True)
+                elif kind == "response.completed":
+                    usage = (event.get("response") or {}).get("usage") or event.get("usage") or {}
+                elif kind in {"error", "response.failed"} or event.get("error"):
+                    raise RuntimeError(f"SAM 3.1 failed: {event.get('error') or event}")
+    except _CUT as exc:
+        raise StreamCut(f"SAM 3.1 stream cut after {parser.frames} frames ({type(exc).__name__})") from None
+    if usage is None:
+        raise StreamCut(f"SAM 3.1 stream closed after {parser.frames} frames without response.completed")
     parser.finish()
-    billed_frames = int(usage.get("video_frames_processed") or billed)
-    actual = estimate(SAM, frame=billed_frames)
-    warnings = record(actual, f"SAM 3.1 person track, {billed_frames} frames", model=SAM)
-    return parser.tracks, warnings
+    return parser, usage
+
+
+def track_people(file_id, frame_count, tries=SAM_TRIES, wait_s=SAM_RETRY_WAIT_S, sleep=time.sleep):
+    """Stream SAM 3.1 person tracks. Returns observations and the billed frame count.
+
+    A cut stream is tried again up to `tries` times in all; a try that was cut is recorded at its estimated cost, since
+    the frames it processed may be billed. The last cut raises StreamCut."""
+    billed = max(50, int(frame_count))
+    cost = estimate(SAM, frame=billed)
+    warnings = []
+    for attempt in range(1, tries + 1):
+        require_budget(cost, f"SAM 3.1 on {billed} frames (${cost:.2f}), try {attempt} of {tries}")
+        try:
+            parser, usage = _sam_stream(_sam_body(file_id))
+        except StreamCut as exc:
+            warnings += record(cost, f"SAM 3.1 person track, {billed} frames, cut on try {attempt} (estimate)", model=SAM) or []
+            print(f"  {exc}; {'trying again' if attempt < tries else 'giving up'}", flush=True)
+            if attempt == tries:
+                raise
+            sleep(wait_s * attempt)
+            continue
+        billed_frames = int(usage.get("video_frames_processed") or billed)
+        actual = estimate(SAM, frame=billed_frames)
+        warnings += record(actual, f"SAM 3.1 person track, {billed_frames} frames", model=SAM) or []
+        return parser.tracks, warnings
+    raise StreamCut("SAM 3.1 was not tried")  # tries < 1
 
 
 def count_spark_tokens(file_id, prompt):

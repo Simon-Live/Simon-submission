@@ -18,6 +18,8 @@ from keyframe_finder.schema import frame_ms
 ERROR_RATIO = 0.18
 # Moving this far across the frame counts as much as a completely different shape.
 STEP_FRACTION = 0.12
+# Once a steady drift is taken out, position that varies less than this share of the frame is standing still.
+STILL_FRACTION = 0.02
 # A pose has to sit still this long before it counts as settled.
 MIN_HOLD_S = 0.50
 SHAPE = 48
@@ -247,10 +249,31 @@ def _features(masks, centers, present):
     for row, frame in enumerate(present):
         if centers[frame] is not None:
             place[row] = centers[frame]
-    place = _fill_columns(place)
+    place = _drift_removed(_fill_columns(place), present)
     size = float(np.median(np.linalg.norm(shape, axis=1)))
     weight = (size if size > 0 else 1.0) / STEP_FRACTION
     return np.hstack([shape, place * weight])
+
+
+def _drift_removed(place, present):
+    """The position without its straight-line trend over the clip.
+
+    A trainer who drifts sideways while doing knee lifts moved 18% of the frame one way (TICKET-380). Weighed as a
+    step, that drift was the person's biggest change, the signal followed it, and no repetition was found. A step
+    out and back has no trend, so it is kept as it was; only a steady drift is taken out.
+    """
+    if place.shape[0] < 3:
+        return place
+    t = np.asarray(present, dtype=np.float64)
+    t = t - t.mean()
+    spread = float(np.dot(t, t))
+    if spread <= 0:
+        return place
+    slope = (t @ (place - place.mean(axis=0))) / spread
+    left = place - np.outer(t, slope)
+    if float(np.max(np.abs(left - left.mean(axis=0)))) < STILL_FRACTION:
+        return np.broadcast_to(left.mean(axis=0), left.shape).copy()   # only drift and rounding were left
+    return left
 
 
 def _movement_signal(masks, centers, present, fps):
