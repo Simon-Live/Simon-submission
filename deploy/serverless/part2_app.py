@@ -102,6 +102,19 @@ image = (
         "from part2.trackers.local_sam31 import hf_download; hf_download(os.environ['HF_TOKEN']); print('sam3.1 cached')\"",
         secrets=[HF_SECRET],
     )
+    # Pictures of a character or object (`part2 image3d`): SAM 3D Objects in its own venv, through Part 2's own setup
+    # (no CUDA compiler needed), then one real run on a Part 2 fixture frame, so its weights (SAM 3D Objects ~12 GiB,
+    # DINOv2, rembg's u2net) are in the image and a judge's first character does not download them. Exit 3 (nothing
+    # humanoid) still caches everything.
+    # open3d and pyvista in that venv load EGL and OpenGL; the slim base has neither (the first build: libEGL.so.1)
+    .apt_install("libegl1", "libgl1", "libgles2", "libglu1-mesa", "libxrender1", "libxext6", "libsm6", "libgomp1")
+    .run_commands(f"bash {REPO_DIR}/envs/image3d-cu128/setup.sh")
+    .run_commands(
+        f"cd {REPO_DIR} && HF_HUB_DISABLE_PROGRESS_BARS=1 PYTHONPATH={REPO_DIR} {VENV_PY} -m part2 image3d --backend sam3do "
+        f"--out /tmp/image3d-warm {REPO_DIR}/fixtures/input/single/frames/000023.jpg; c=$?; rm -rf /tmp/image3d-warm; "
+        "echo \"image3d warm-up exit $c\"; [ $c -eq 0 ] || [ $c -eq 3 ]",
+        gpu=GPU, secrets=[HF_SECRET],
+    )
     .add_local_file(SAM31_SRC, SAM31_PY, copy=True)
 )
 

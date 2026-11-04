@@ -204,10 +204,9 @@ _MODULE = {"image": "avatar.py", "autorig": "autorig.py"}
 image3d_jobs.extend(_SUBCOMMAND, _MODULE, TIMEOUT_S, MSG_NO_PERSON)  # the picture of a character or object kind
 
 
-# The remote route (SIMON7_PART2_REMOTE=modal, through the judges' relay when SIMON_PART2_RELAY is set) runs `avatar`
-# and `autorig` on Part 2's Modal image (SAM 3D Body and MHR are in it); `image3d` needs SAM 3D Objects' own venv, which
-# that image does not have, so it stays local-GPU only.
-REMOTE_KINDS = ("image", "autorig")
+# The remote route (SIMON7_PART2_REMOTE=modal, through the judges' relay when SIMON_PART2_RELAY is set) runs `avatar`,
+# `autorig` and `image3d` on Part 2's Modal image (SAM 3D Body, MHR and SAM 3D Objects are in it).
+REMOTE_KINDS = ("image", "autorig", image3d_jobs.KIND)
 
 
 def _remote() -> bool:
@@ -221,7 +220,8 @@ def available(kind: str = "image") -> bool:
     Part 2 runs on Modal and the kind runs there."""
     part2, py = config.part_dir(2), config.part2_gpu_venv_path() / "bin" / "python"
     if kind == image3d_jobs.KIND:
-        return image3d_jobs.available(part2, py)
+        has_command = (part2 / "part2" / image3d_jobs.MODULE).is_file() or (part2 / "part2" / image3d_jobs.SUBCOMMAND / "__init__.py").is_file()
+        return image3d_jobs.available(part2, py) or (has_command and _remote())
     has_module = kind in _MODULE and (part2 / "part2" / _MODULE[kind]).is_file()
     return has_module and (py.is_file() or (kind in REMOTE_KINDS and _remote()))
 
