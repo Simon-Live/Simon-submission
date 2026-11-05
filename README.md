@@ -1,6 +1,6 @@
 # Simon
 
-[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml) · [Try it on simon.live](https://simon.live) · [Blueprint](blueprint.html) · [Architecture](docs/ARCHITECTURE.md) · Demo video: link added at submission
+[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml) · [Try it on simon.live](https://simon.live) · [Blueprint](https://simon.live/whitepaper.html) · [Architecture](docs/ARCHITECTURE.md) · Demo video: link added at submission
 
 **One demonstration in, a 3D movement model out.** Someone films a movement once on a phone. Simon turns it into a 3D
 reference with eleven Meta models chained together, then compares anyone who follows it, joint by joint and moment by
@@ -177,8 +177,9 @@ Mermaid under `web/vendor/` (MIT). Part 1's three test videos are stock clips us
 
 ## More details
 
-- **[The blueprint](blueprint.html)** (download and open it in a browser): the whole design on one page, with the
-  features, requirements, scoring, architecture, risks and status.
+- **[The blueprint](https://simon.live/whitepaper.html)**: the whole design on one page, with the features,
+  requirements, scoring, architecture, risks and status. The file is in this repo at
+  [web/whitepaper.html](web/whitepaper.html).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): three diagrams, each node linked to its code.
 - [docs/evidence.md](docs/evidence.md): what Simon's accuracy and speed were measured at, with each result's source.
 - [docs/dev/DEVELOPING.md](docs/dev/DEVELOPING.md): set up a host, run the app, debug a job.
