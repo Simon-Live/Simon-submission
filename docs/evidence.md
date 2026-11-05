@@ -1,7 +1,8 @@
 # Evidence: what Simon's accuracy and speed were measured at
 
 Every number below is traced to the run that produced it. The full tables, with each source file's sha256, are in
-[docs/evaluation.md](evaluation.md); open questions are tracked in the [blueprint](../blueprint.html).
+[docs/evaluation.md](evaluation.md); open questions are tracked in the
+[blueprint](https://simon.live/whitepaper.html) ([file in this repo](../web/whitepaper.html)).
 
 | What was measured | Result | Source |
 |---|---|---|
