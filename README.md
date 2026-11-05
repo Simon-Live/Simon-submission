@@ -1,6 +1,8 @@
 # Simon
 
-[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml) · [Try it on simon.live](https://simon.live) · [Blueprint](https://simon.live/whitepaper.html) · [Architecture](docs/ARCHITECTURE.md) · Demo video: link added at submission
+[![CI](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-Live/Simon-submission/actions/workflows/ci.yml) · [Try it on simon.live](https://simon.live) · [Blueprint](https://simon.live/whitepaper.html) · [Architecture](docs/ARCHITECTURE.md) · [Demo video](https://youtu.be/U__ihF5UX-Y)
+
+[![Watch the Simon demo video](https://img.youtube.com/vi/U__ihF5UX-Y/maxresdefault.jpg)](https://youtu.be/U__ihF5UX-Y)
 
 **One demonstration in, a 3D movement model out.** Someone films a movement once on a phone. Simon turns it into a 3D
 reference with eleven Meta models chained together, then compares anyone who follows it, joint by joint and moment by
