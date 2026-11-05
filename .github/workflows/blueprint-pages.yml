@@ -1,0 +1,40 @@
+# Publishes the blueprint on GitHub Pages: only these files, not the repo. web/whitepaper.html is the one source.
+name: Blueprint page
+on:
+  push:
+    branches: [main]
+    paths:
+      - web/whitepaper.html
+      - blueprint.html
+      - .github/workflows/blueprint-pages.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: blueprint-pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Build the page
+        run: |
+          mkdir -p _site/web
+          cp web/whitepaper.html _site/web/whitepaper.html
+          cp web/whitepaper.html _site/whitepaper.html
+          cp web/whitepaper.html _site/index.html
+          cp blueprint.html _site/blueprint.html
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
